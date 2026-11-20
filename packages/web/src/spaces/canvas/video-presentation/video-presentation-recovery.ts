@@ -1,13 +1,14 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { QueryClient } from '@tanstack/react-query';
+import * as React from 'react';
+import { useMutation, useMutationState, useQueryClient, type QueryClient } from '@tanstack/react-query';
 import { newId, type VideoPresentationResponse } from '@breatic/shared';
 import { ApiException } from '@web/data/api/types';
 import { repairVideoPresentation, videoPresentationQuery, type VideoPresentationQueryInput } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 /** Recovery distinguishes platform source work from a local renderer restart. */
-export type VideoPresentationRecoveryReason = 'source' | 'renderer' | 'table';
+export type VideoPresentationRecoveryReason = 'source' | 'renderer';
 /** One existing Retry action, whose concurrent invocations share a press. */
 export interface VideoPresentationRecovery {
   recover: (reason: VideoPresentationRecoveryReason) => Promise<void>;
@@ -41,15 +42,14 @@ export function createVideoPresentationRecovery(client: QueryClient, input: Vide
   let pending: Promise<void> | null = null;
   /**
    * Repairs only failed source work and then rereads authorized facts (§7.12 step 2 and the retry column): a failed
-   * candidate with nothing selected, a failed ledger of the selected version, or a failed table read; a candidate
-   * still in progress is only reread.
+   * candidate with nothing selected; a candidate still in progress is only reread.
    * @param reason - Whether the failure came from source preparation or the local renderer.
    * @throws {Error} The original repair failure or the source query failure.
    */
   async function execute(reason: VideoPresentationRecoveryReason): Promise<void> {
     if (reason === 'renderer') return;
     const data = client.getQueryData<VideoPresentationResponse>(queryKey);
-    if (data !== undefined && (reason === 'table' || (data.presentation === null ? data.preparation?.failure != null : data.ledger?.state === 'failed'))) {
+    if (data !== undefined && data.presentation === null && data.preparation?.failure != null) {
       try {
         await repairVideoPresentation({ projectId: input.projectId, canonicalURL: input.canonicalURL, sourceFingerprint: data.sourceBinding.contentHash }, newId());
       } catch (error) {
@@ -75,4 +75,29 @@ export function createVideoPresentationRecovery(client: QueryClient, input: Vide
     return pending;
   }
   return { recover };
+}
+
+/** The one Retry of a video source's presentation, for the current video and every picked input. */
+export interface VideoPresentationRepair {
+  /** Repairs this source and rereads it; a refusal is reported by the repair request itself. */
+  repair: (canonicalURL: string) => void;
+  /** The sources whose Retry is still waiting. */
+  repairing: ReadonlySet<string>;
+}
+
+/**
+ * The Retry every video tool surface offers on a source whose candidate failed (frames-split §7.12 retry column): repair the
+ * source and reread it, keyed per source so a press keeps waiting after the panel closes. `repairVideoPresentation` already
+ * shows the refusal, so this adds no toast of its own.
+ * @param projectId - The Project.
+ * @returns The repair press and the sources still waiting.
+ * @throws {never} Failures are reported by the repair request.
+ */
+export function useVideoPresentationRepair(projectId: string): VideoPresentationRepair {
+  const queryClient = useQueryClient();
+  const mutationKey = React.useMemo(() => ['video-presentation-repair', projectId], [projectId]);
+  const { mutate } = useMutation({ mutationKey, mutationFn: (canonicalURL: string): Promise<void> => createVideoPresentationRecovery(queryClient, { projectId, canonicalURL, active: true }).recover('source') });
+  const pending = useMutationState({ filters: { mutationKey, exact: true, status: 'pending' }, select: (mutation) => mutation.state.variables as string });
+  const repairing = React.useMemo(() => new Set(pending), [pending]);
+  return React.useMemo(() => ({ repair: mutate, repairing }), [mutate, repairing]);
 }

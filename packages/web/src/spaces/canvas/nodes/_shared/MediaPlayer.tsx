@@ -7,6 +7,7 @@ import { presentedSizeOf, runtimeSourceKeyOf, type VideoPresentationSource, type
 import { Camera, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
 import { VideoPresentationSurface } from '@web/spaces/canvas/video-presentation/VideoPresentationSurface';
+import { VideoPreparationNotice, type VideoPreparationState } from '@web/spaces/canvas/video-presentation/VideoPreparationNotice';
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
 import { Skeleton } from '@web/components/ui/skeleton';
@@ -44,8 +45,13 @@ export interface MediaPlayerProps {
   ref?: React.Ref<MediaPlayerHandle>;
   /** Where to start: a full-screen view goes on from its source player. */
   start?: MediaPlayerState;
-  /** Resolved canonical video; null waits for trusted classification. */
+  /**
+   * The selected version to play; null while there is none, when the original plays for display only (frames-split §7.8
+   * detached × Attach) and a publish swaps to the version keeping time and play or pause (§7.9 T).
+   */
   videoSource?: VideoPresentationSource | null;
+  /** The candidate's state while nothing is selected, shown over the original (§7.9 last paragraph). */
+  preparation?: VideoPreparationState;
   /** Whether this resource is currently displayed. */
   active?: boolean;
   /** Actual source transport lifecycle, never persisted in node data. */
@@ -186,7 +192,8 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * @param root0 - Component props.
  * @param root0.ref - The handle a full-screen view reads and writes the player through.
  * @param root0.start - Where to start.
- * @param root0.videoSource - Resolved canonical presentation; null remains unknown.
+ * @param root0.videoSource - The selected version; null plays the original for display only.
+ * @param root0.preparation - The candidate's state while nothing is selected.
  * @param root0.active - Whether this resource is displayed.
  * @param root0.onVideoBinding - Actual resource and independent overlay target.
  * @param root0.onPresentedFrame - Synchronous canonical frame consumer.
@@ -210,6 +217,7 @@ export function MediaPlayer({
   modality,
   src,
   videoSource,
+  preparation,
   active = true,
   onVideoBinding,
   onPresentedFrame,
@@ -227,13 +235,14 @@ export function MediaPlayer({
   const ref = React.useRef<HTMLMediaElement>(null);
 
   const isVideo = modality === 'video';
-  const ownsVideo = isVideo && videoSource !== undefined;
+  const ownsVideo = isVideo && videoSource != null;
   const key = videoSource ? runtimeSourceKeyOf(videoSource) : JSON.stringify([src, null]);
   const wanted = React.useRef({ key, active });
   wanted.current = { key, active };
   const consumers = React.useRef({ onVideoBinding, onPresentedFrame, onDimensions });
   consumers.current = { onVideoBinding, onPresentedFrame, onDimensions };
   const overlayHost = React.useRef<HTMLDivElement>(null);
+  const handoff = React.useRef<{ src: string; time: number; playing: boolean } | null>(null);
   const previousElement = React.useRef<HTMLVideoElement | null>(null);
   const adapted = React.useRef<{ original: MediaSurfaceBinding; binding: MediaSurfaceBinding } | null>(null);
   const [notice, setNotice] = React.useState<{ key: string; value: MediaSurfaceSnapshot } | null>(null);
@@ -266,6 +275,13 @@ export function MediaPlayer({
         adapted.current = { original, binding: owned };
       }
       binding = adapted.current.binding;
+      // A publish over the original for display keeps where the user was and whether they were playing (§7.9 T).
+      const carried = handoff.current;
+      if (carried !== null && carried.src === src) {
+        handoff.current = null;
+        original.seek(carried.time);
+        if (carried.playing) void original.play().catch(() => undefined);
+      }
       consumers.current.onDimensions?.({ width: original.original.width, height: original.original.height });
     } else adapted.current = null;
     const next = { ...value, binding };
@@ -307,6 +323,11 @@ export function MediaPlayer({
     },
   }), [binding]);
   const unavailable = ownsVideo && binding === null;
+  const displaysOriginal = isVideo && videoSource === null;
+  React.useEffect(() => {
+    if (displaysOriginal) handoff.current = { src, time: p.currentTime, playing: p.playing };
+  }, [displaysOriginal, src, p.currentTime, p.playing]);
+  const [originalFailedFor, setOriginalFailedFor] = React.useState<string | null>(null);
   const t = useTranslation();
   const pointer = useSeekPointer(p.seekFraction, videoControls);
   React.useLayoutEffect(() => {
@@ -482,12 +503,11 @@ export function MediaPlayer({
     </>
   );
 
-  if (ownsVideo) {
-    const original = videoSource ? presentedSizeOf(videoSource.presentation) : size;
+  if (ownsVideo && videoSource != null) {
+    const original = presentedSizeOf(videoSource.presentation);
     const loadingOwner = snapshot?.status !== 'ready';
-    return <div className={cn('group/player @container relative', original === undefined && 'min-h-48')} data-testid='media-player' style={original === undefined ? undefined : { aspectRatio: `${original.width}/${original.height}` }}>
-      {/* A surface without a source has no aspect ratio of its own, so it takes the player's box to show the cover. */}
-      <VideoPresentationSurface source={videoSource ?? null} active={active} onBinding={acceptBinding} onPresentedFrame={acceptFrame} className={videoSource ? undefined : 'absolute inset-0'}>
+    return <div className='group/player @container relative' data-testid='media-player' style={{ aspectRatio: `${original.width}/${original.height}` }}>
+      <VideoPresentationSurface source={videoSource} active={active} onBinding={acceptBinding} onPresentedFrame={acceptFrame}>
         {loadingOwner && shownPoster ? <img src={shownPoster} alt='' className='pointer-events-none absolute inset-0 h-full w-full object-contain' /> : null}
         {loadingOwner && !posterLoaded ? <Skeleton data-testid='media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' /> : null}
         {placedControls}
@@ -519,6 +539,7 @@ export function MediaPlayer({
           height={size?.height}
           className={cn('block w-full', size !== undefined && 'h-auto', covered && 'opacity-0')}
           onPlay={() => setStartedFor(src)}
+          onError={() => setOriginalFailedFor(src)}
           onLoadedData={() => setFrameFor(src)}
           onLoadedMetadata={(e) => {
             setFrameFor(src);
@@ -535,6 +556,7 @@ export function MediaPlayer({
           />
         ) : null}
         {placedControls}
+        {displaysOriginal && preparation !== undefined ? <VideoPreparationNotice {...preparation} originalFailed={originalFailedFor === src} poster={poster} /> : null}
       </div>
     );
   }

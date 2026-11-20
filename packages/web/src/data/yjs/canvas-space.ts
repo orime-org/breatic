@@ -17,7 +17,7 @@ import {
   canGenerate,
 } from '@breatic/shared';
 
-import { MAX_FOCUS_ENTRIES, validFocusImages } from '@web/data/focus-images';
+import { MAX_FOCUS_ENTRIES, validFocusImages } from '@breatic/shared';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { SCENE_ANALYSIS_APPLIED_PREFIX } from '@web/data/yjs/canvas-field-keys';
@@ -1406,8 +1406,9 @@ function appendFocusImageCore(
  * Append a focus crop to a node's `focusImages` (#1782) — a `Y.Array` on
  * the data Y.Map (concurrent-add safe; see `appendFocusImageCore`, one of the
  * exceptions to `buildDataMap`'s plain-values convention, and the only one
- * that is a Y.Array — the backend never reads this field). Creates the array
- * on first add.
+ * that is a Y.Array). The front end appends image focus crops here; collab
+ * appends a video focus crop's result with the same shared rule (frames-split
+ * §5.5). Creates the array on first add.
  * CONTENT_WRITE origin, NOT undo-tracked (adversarial round-3): the append
  * lands asynchronously when the crop upload finishes — the same rule as
  * upload completion (#8), or a slow upload landing seconds later would

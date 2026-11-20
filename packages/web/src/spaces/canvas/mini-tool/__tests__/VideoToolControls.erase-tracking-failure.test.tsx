@@ -18,9 +18,9 @@ import { VideoToolControls } from '../video/VideoToolControls';
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const draft: VideoToolDraftById['video.erase'] = {
   version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [],
-  params: { range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.3, height: 0.3 }, points: [] }, trackingPrompt: '' },
+  params: { range: { start: 0, end: 75 }, anchor: { frameIndex: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.3, height: 0.3 }, points: [] }, trackingPrompt: '' },
 };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 
 /**
  * A failed tracking analysis of the draft.
@@ -46,7 +46,7 @@ function failed(code: string): MiniToolAnalysisRecord {
  * @returns Nothing.
  */
 function mount(code: string, onAnalyse = vi.fn(), onRetryTracking = vi.fn()): void {
-  render(<VideoToolControls toolId='video.erase' draft={draft} analyses={[failed(code)]} frameTable={frameTable} presentedTime={0} disabled={false} pickingSlot={null}
+  render(<VideoToolControls toolId='video.erase' draft={draft} analyses={[failed(code)]} grid={grid} presentedTime={0} disabled={false} pickingSlot={null}
     inputNames={new Map()} onPick={vi.fn()} onAnalyse={onAnalyse} onRetryTracking={onRetryTracking} analysing={false} onEditTimeline={vi.fn()} onChange={vi.fn()} />);
 }
 

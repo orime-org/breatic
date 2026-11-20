@@ -60,11 +60,14 @@ export function isCropSource(el: Element | null): el is CropSourceEl {
  * original, whose natural size is its own. Zero means "not decodable yet": a
  * bitmap still loading, a broken URL, or a video whose metadata has not
  * arrived.
+ * A video with a selected version is framed in that version's display geometry (P.display), never the played file's
+ * size, whose short side is at most 1080 (frames-split §5.5, §7.8).
  * @param el - The crop source.
+ * @param display - The selected version's display size, for a video that has one.
  * @returns The original's size, possibly `0 × 0`.
  */
-export function intrinsicSize(el: CropSourceEl): { width: number; height: number } {
-  if (el instanceof HTMLVideoElement) return { width: el.videoWidth, height: el.videoHeight };
+export function intrinsicSize(el: CropSourceEl, display?: { width: number; height: number } | null): { width: number; height: number } {
+  if (el instanceof HTMLVideoElement) return display == null ? { width: el.videoWidth, height: el.videoHeight } : { width: display.width, height: display.height };
   const width = Number(el.getAttribute('width'));
   const height = Number(el.getAttribute('height'));
   if (width > 0 && height > 0 && el.naturalWidth > 0) return { width, height };

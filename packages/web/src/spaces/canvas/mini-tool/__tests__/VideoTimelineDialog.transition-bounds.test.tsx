@@ -8,7 +8,7 @@
  * (`canvas.miniTool.videoUI.transitionTooShort`). The four types read their locale names (`transitionCut`, `transitionFade`,
  * `transitionWipeLeft`, `transitionWipeRight`). The duration input clamps what is typed into `[min, max]`. The shared function
  * is mocked so the bounds decide each case; the fps it is asked with is the first clip's rate, read off that clip's selected
- * compact presentation table (D13-1). `inputTables` (input id to compact table) is a Dialog prop this test chose.
+ * selected version grid (D13-1). `inputGrids` (input id to grid) is a Dialog prop this test chose.
  */
 
 import * as React from 'react';
@@ -16,7 +16,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
-import type { VideoPresentationTable, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import type { VideoPlanGrid, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() },
@@ -34,15 +34,15 @@ import { toast } from '@web/lib/toast';
 import { VideoTimelineDialog } from '../video/VideoTimelineDialog';
 
 type Bounds = { min: number; max: number } | null;
-const bounds = vi.mocked((miniTools as unknown as { transitionDurationBounds: (clips: readonly VideoToolTimelineClip[], fps: { numerator: string; denominator: string }) => Bounds }).transitionDurationBounds);
+const bounds = vi.mocked((miniTools as unknown as { transitionDurationBounds: (clips: readonly VideoToolTimelineClip[], fps: { numerator: number; denominator: number }) => Bounds }).transitionDurationBounds);
 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/a.mp4', mediaInfo: { width: 960, height: 540, duration: 6, mimeType: 'video/mp4' } };
 const inputA = { inputId: '60000000-0000-4000-8000-000000000001', url: source.canonicalURL, mediaInfo: source.mediaInfo, sourceNodeId: source.nodeId };
 const inputB = { inputId: '60000000-0000-4000-8000-000000000002', url: 'https://media.example.test/b.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
-// Each input's selected compact table: A runs at 30000/1001 fps, B at 25 fps, so neither a default rate nor the other clip's passes.
-const TABLE_NTSC: VideoPresentationTable = { schemaVersion: 1, timescale: 30000, runs: [{ start: 0, count: 180, step: 1001, duration: 1001 }] };
-const TABLE_PAL: VideoPresentationTable = { schemaVersion: 1, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
-const inputTables = new Map([[inputA.inputId, TABLE_NTSC], [inputB.inputId, TABLE_PAL]]);
+// Each input's selected version grid: A runs at 30000/1001 fps, B at 25 fps, so neither a default rate nor the other clip's passes.
+const TABLE_NTSC: VideoPlanGrid = { fps: { numerator: 30000, denominator: 1001 }, frameCount: 180 };
+const TABLE_PAL: VideoPlanGrid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
+const inputGrids = new Map([[inputA.inputId, TABLE_NTSC], [inputB.inputId, TABLE_PAL]]);
 const TYPE_KEYS = ['transitionCut', 'transitionFade', 'transitionWipeLeft', 'transitionWipeRight'] as const;
 
 /**
@@ -51,8 +51,8 @@ const TYPE_KEYS = ['transitionCut', 'transitionFade', 'transitionWipeLeft', 'tra
  * @param b - The other.
  * @returns Whether they are equal.
  */
-function sameRate(a: { numerator: string; denominator: string }, b: { numerator: string; denominator: string }): boolean {
-  return BigInt(a.numerator) * BigInt(b.denominator) === BigInt(b.numerator) * BigInt(a.denominator);
+function sameRate(a: { numerator: number; denominator: number }, b: { numerator: number; denominator: number }): boolean {
+  return a.numerator * b.denominator === b.numerator * a.denominator;
 }
 
 /**
@@ -78,7 +78,7 @@ function draftWith(kind: VideoToolTimelineClip['transition']['kind'], duration: 
  * @returns Nothing.
  */
 function open(draft: VideoToolDraftById['video.transitions'], onChange: (next: VideoToolDraftById['video.transitions']) => void): void {
-  const proposed: object = { inputTables };
+  const proposed: object = { inputGrids };
   render(<VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={onChange} inputNames={new Map([[inputA.inputId, 'A'], [inputB.inputId, 'B']])} disabled={false} onRun={vi.fn()} {...proposed} />);
 }
 
@@ -140,15 +140,15 @@ describe('transition types follow the shared duration bounds (§97; canvas desig
   });
 
   it.each([
-    ['A (30000/1001 fps) first', false, { numerator: '30000', denominator: '1001' }],
-    ['B (25 fps) first', true, { numerator: '25', denominator: '1' }],
-  ])('asks for the bounds at the first clip rate read off its compact table: %s', (_name, swapped, rate) => {
+    ['A (30000/1001 fps) first', false, { numerator: 30000, denominator: 1001 }],
+    ['B (25 fps) first', true, { numerator: 25, denominator: 1 }],
+  ])('asks for the bounds at the first clip rate read off its grid: %s', (_name, swapped, rate) => {
     bounds.mockReturnValue({ min: 0.2, max: 1.2 });
     const draft = draftWith('fade', 0.5);
     open(swapped ? { ...draft, params: { clips: [{ ...draft.params.clips[1], transition: draft.params.clips[0].transition }, { ...draft.params.clips[0], transition: { kind: 'cut', duration: 0 } }] } } : draft, vi.fn());
     expect(bounds).toHaveBeenCalled();
     for (const [, fps] of bounds.mock.calls) {
-      expect(fps).toEqual({ numerator: expect.any(String), denominator: expect.any(String) });
+      expect(fps).toEqual({ numerator: expect.any(Number), denominator: expect.any(Number) });
       expect(sameRate(fps, rate), `${fps.numerator}/${fps.denominator}`).toBe(true);
     }
   });
@@ -202,7 +202,7 @@ describe('the transition duration input clamps to the shared bounds (§97; canva
    */
   function StatefulDialog(props: { initial: VideoToolDraftById['video.transitions'] }): React.JSX.Element {
     const [draft, setDraft] = React.useState(props.initial);
-    const proposed: object = { inputTables };
+    const proposed: object = { inputGrids };
     return <VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={setDraft} inputNames={new Map([[inputA.inputId, 'A'], [inputB.inputId, 'B']])} disabled={false} onRun={vi.fn()} {...proposed} />;
   }
 
@@ -300,7 +300,7 @@ describe('the transition duration input clamps to the shared bounds (§97; canva
     function Outside(): React.JSX.Element {
       const [draft, setDraft] = React.useState(draftWith('fade', 1));
       setFromOutside = setDraft;
-      const proposed: object = { inputTables };
+      const proposed: object = { inputGrids };
       return <VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={setDraft} inputNames={new Map([[inputA.inputId, 'A'], [inputB.inputId, 'B']])} disabled={false} onRun={vi.fn()} {...proposed} />;
     }
     render(<Outside />);

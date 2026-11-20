@@ -46,7 +46,7 @@ export function commitVideoSceneAnalysis(doc: Y.Doc, nodeId: string, record: unk
   if (!references.some((reference) => reference.toolId === 'video.split' && reference.draftId === draft.draftId && reference.analysisRunId === accepted.analysisRunId && reference.inputFingerprint === accepted.inputFingerprint)) return false;
   const key = `${SCENE_ANALYSIS_APPLIED_PREFIX}${accepted.analysisRunId}`;
   if (data.get(key) === true) return false;
-  const next = videoToolDraftSchema('video.split').parse({ ...draft, revision: newId(), params: { ...draft.params, cuts: accepted.result.cuts.map((cut) => cut.pts) } });
+  const next = videoToolDraftSchema('video.split').parse({ ...draft, revision: newId(), params: { ...draft.params, cuts: accepted.result.cuts.map((cut) => cut.frameIndex) } });
   const name = docNameOf(doc);
   return name !== null && writeSpaceDoc(name, { kind: 'add' }, () => {
     doc.transact(() => {

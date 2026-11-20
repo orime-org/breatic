@@ -8,7 +8,7 @@
  * reading and a tool run read apart at a glance.
  */
 
-import { ArrowUp, Captions, ScanText, Sparkles, type LucideIcon } from 'lucide-react';
+import { ArrowUp, Captions, Crop, ScanText, Sparkles, type LucideIcon } from 'lucide-react';
 import { UNDERSTAND_MODEL, type NodeTaskEntry } from '@breatic/shared';
 import { miniToolById } from '@breatic/shared/mini-tools';
 
@@ -38,7 +38,7 @@ export interface TaskRowKind {
  * @returns The badge and what follows it.
  */
 export function taskRowKind(
-  entry: Pick<NodeTaskEntry, 'action' | 'label'>,
+  entry: Pick<NodeTaskEntry, 'action' | 'label'> & { sourceName?: string | null },
   t: Translate,
   displayNameOf: (modelId: string) => string | null,
 ): TaskRowKind {
@@ -66,6 +66,9 @@ export function taskRowKind(
         detail: entry.label === UNDERSTAND_MODEL.id ? UNDERSTAND_MODEL.displayName : entry.label,
       };
     case 'mini_tool': {
+      // A video focus crop is not a menu tool: its row names the action and the source node name frozen at the press
+      // (frames-split §5.5 interface states row).
+      if (entry.label === 'video.focus-crop') return { icon: Crop, label: t('canvas.generatePanel.focusCropTag'), detail: entry.sourceName ?? null };
       // A tool id written before the registry existed is shown as stored.
       const tool = miniToolById(entry.label);
       return tool

@@ -12,12 +12,12 @@ vi.mock('@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails', async (
   useVideoFrameThumbnails: () => ({ status: 'loading', frames: [] }),
 }));
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.webm', mediaInfo: { width: 160, height: 240, duration: 0.28, mimeType: 'video/webm' } };
-const draft = { version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [], params: { mode: 'first', currentTime: 0.13 } } as unknown as VideoToolDraftById['video.extract-frames'];
-const table = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 1, step: 4, duration: 4 }, { start: 4, count: 3, step: 8, duration: 8 }] };
-const common = { toolId: 'video.extract-frames' as const, draft, analyses: [], frameTable: table, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn() };
+const draft = { version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [], params: { mode: 'first', frameIndex: 3 } } as unknown as VideoToolDraftById['video.extract-frames'];
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
+const common = { toolId: 'video.extract-frames' as const, draft, analyses: [], grid, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn() };
 
 describe('explicit unknown presented frame', () => {
-  it('disables only Current when no actual frame exists and keeps the real-table modes reachable', () => {
+  it('disables only Current when no actual frame exists and keeps the grid modes reachable', () => {
     render(<VideoToolControls {...common} presentedTime={null} onChange={vi.fn()} />);
     expect(screen.getByTestId('video-frame-mode-current')).toBeDisabled();
     for (const mode of ['first', 'last']) expect(screen.getByTestId(`video-frame-mode-${mode}`)).not.toBeDisabled();
@@ -32,7 +32,7 @@ describe('explicit unknown presented frame', () => {
     expect(new Set(modes.map((mode) => mode.parentElement)).size).toBe(1);
   });
 
-  it('never persists a fabricated zero or null Current time while selecting a table-only mode', () => {
+  it('never persists a fabricated zero or null Current frame while selecting a grid-only mode', () => {
     const onChange = vi.fn();
     render(<VideoToolControls {...common} presentedTime={null} onChange={onChange} />);
     fireEvent.click(screen.getByTestId('video-frame-mode-last'));

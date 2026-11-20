@@ -26,9 +26,9 @@ type Row = VideoToolDraftById['video.lip-sync']['params']['dialogues'][number];
 const row = (dialogueId: string, personId: string | null = null, runId: string | null = null): Row => ({ dialogueId, personId, analysisRunId: runId, audioInputId: null, startTime: 0 });
 const draftWith = (rows: Row[]): VideoToolDraftById['video.lip-sync'] => ({
   version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [],
-  params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: rows, syncMode: 'cut_off' },
+  params: { anchor: { frameIndex: 0 }, dialogues: rows, syncMode: 'cut_off' },
 });
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 
 /**
  * A people analysis record, as the panel reads it.
@@ -41,7 +41,7 @@ const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 
 function people(analysisRunId: string, status: 'completed' | 'failed' | 'running', acceptedAt: string, ids: readonly string[] = ['person-a', 'person-b']): MiniToolAnalysisRecord {
   return {
     analysisRunId, acceptedAt, kind: 'people', status, artifactUnavailable: false, error: null,
-    result: status === 'completed' ? { kind: 'people', analysisRunId, anchor: { frameIndex: 0, pts: 0 }, people: ids.map((personId, index) => ({ personId, faceBox: { x: index * 0.4, y: 0, width: 0.2, height: 0.2 }, artifactRefs: [] })) } : null,
+    result: status === 'completed' ? { kind: 'people', analysisRunId, anchor: { frameIndex: 0 }, people: ids.map((personId, index) => ({ personId, faceBox: { x: index * 0.4, y: 0, width: 0.2, height: 0.2 }, artifactRefs: [] })) } : null,
   } as unknown as MiniToolAnalysisRecord;
 }
 
@@ -54,7 +54,7 @@ const ui = (key: string, params?: Record<string, string | number>): string => t(
  */
 function mount(extra: Record<string, unknown> = {}): { onChange: ReturnType<typeof vi.fn>; onActiveDialogue: ReturnType<typeof vi.fn>; onSeek: ReturnType<typeof vi.fn> } {
   const onChange = vi.fn(); const onActiveDialogue = vi.fn(); const onSeek = vi.fn();
-  const props: object = { toolId: 'video.lip-sync', draft: draftWith([row(ROW_A)]), analyses: [people(RUN_OLD, 'completed', '2026-11-01T00:00:00Z')], frameTable, presentedTime: 0, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), onChange, onActiveDialogue, onSeek, lipSync: { models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 }, maxPeople: 1, maxDialogues: 8 }, ...extra };
+  const props: object = { toolId: 'video.lip-sync', draft: draftWith([row(ROW_A)]), analyses: [people(RUN_OLD, 'completed', '2026-11-01T00:00:00Z')], grid, presentedTime: 0, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), onChange, onActiveDialogue, onSeek, lipSync: { models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 }, maxPeople: 1, maxDialogues: 8 }, ...extra };
   render(<VideoToolControls {...(props as React.ComponentProps<typeof VideoToolControls>)} />);
   return { onChange, onActiveDialogue, onSeek };
 }

@@ -2,19 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Wire fixtures of the presentation read (frames-split design §3.5 web→server row, §7.12; inner#1306 test plan §95):
- * the response carries the selected bundle, the target policy's preparation and the selected version's ledger, and a
- * repair answers the same response. Every builder returns a value `videoPresentationResponseSchema` admits.
+ * Wire fixtures of the presentation read (frames-split design §3.5 web→server row, §7.12; inner#1306 test plan §69): the
+ * response carries the selected bundle with its grid and tool source, and the target policy's preparation; a repair answers
+ * the same response. Every builder returns a value `videoPresentationResponseSchema` admits.
  */
 import type { QueryClient } from '@tanstack/react-query';
 import { videoPresentationAwaitsServer, type VideoPresentationResponse } from '@breatic/shared';
-import type { VideoPresentationTable } from '@breatic/shared/mini-tools';
-import { sourceLedgerQuery } from '@web/spaces/canvas/video-presentation/source-ledger-query';
 import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 type Bundle = NonNullable<VideoPresentationResponse['presentation']>;
 type Preparation = NonNullable<VideoPresentationResponse['preparation']>;
-type Ledger = NonNullable<VideoPresentationResponse['ledger']>;
 
 /** The fixed identities one source's fixtures share. */
 export const PRESENTED = {
@@ -36,20 +33,32 @@ export function presentedBinding(canonicalURL: string, mediaInfo: VideoPresentat
 }
 
 /**
- * A selected native bundle whose carrier is the source itself, one frame per 1/25 s.
+ * A grid display of the given size and frame count at 25 fps, every slot a real frame.
+ * @param width - Display width.
+ * @param height - Display height.
+ * @param frameCount - Grid frames.
+ * @returns The display.
+ * @throws {never} Never.
+ */
+export function presentedDisplay(width = 96, height = 64, frameCount = 75): Bundle['display'] {
+  return { width, height, fps: { numerator: 25, denominator: 1 }, frameCount, gridStart: { numerator: 0, denominator: 1 }, realFrameCount: frameCount, leadFrames: 0, holdFrames: 0 };
+}
+
+/**
+ * A selected native bundle whose carrier is the source itself, on a 25 fps grid; tools read the original.
  * @param canonicalURL - The source URL, also the carrier.
- * @param fields - Fields to replace (fingerprint, toolInputId, versionId, original, display).
+ * @param fields - Fields to replace (fingerprint, toolInputId, versionId, original, display, playback).
  * @returns The bundle.
  * @throws {never} Never.
  */
 export function presentedBundle(canonicalURL: string, fields: Partial<Bundle> = {}): Bundle {
-  const display = fields.display ?? { width: 96, height: 64, duration: { numerator: '3', denominator: '1' } };
-  const frames = Number(display.duration.numerator) * 25 / Number(display.duration.denominator);
+  const display = fields.display ?? presentedDisplay();
   return {
     schemaVersion: 1, sourceFingerprint: PRESENTED.fingerprint, versionId: PRESENTED.versionId, toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256,
-    policyVersion: 1, producerVersion: 2, profileVersion: 1, original: { width: display.width, height: display.height, duration: frames / 25 }, display,
+    policyVersion: 1, producerVersion: '2'.repeat(64), profileVersion: '1'.repeat(64),
+    original: { width: display.width, height: display.height, duration: display.frameCount * display.fps.denominator / display.fps.numerator }, display,
     playback: { kind: 'native', carrier: { storageKey: new URL(canonicalURL).pathname.slice(1), url: canonicalURL, etag: '"carrier"', size: 4096, sha256: PRESENTED.fingerprint, contentType: 'video/mp4' }, displayRect: null },
-    playbackClock: { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: frames, step: 1, duration: 1 }] },
+    toolSource: { edit: null, keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 2, allKeyframes: false }, sourceDecodeKey: 'sdr_8bit' },
     ...fields,
   };
 }
@@ -66,49 +75,30 @@ export function presentedPreparation(failure: string | null, stage: Preparation[
 }
 
 /**
- * A ready ledger for a bundle, its compact table beside the full ledger.
- * @param bundle - The selected bundle.
- * @param frameCount - The compact table's frames.
- * @returns The ledger.
- * @throws {never} Never.
- */
-export function readyLedger(bundle: Bundle, frameCount = 75): Ledger {
-  const base = bundle.playback.carrier.url;
-  return { state: 'ready', failure: null, receipt: {
-    schemaVersion: 2, sourceFingerprint: bundle.sourceFingerprint, toolInputId: bundle.toolInputId, planSha256: bundle.planSha256, producerVersion: 2,
-    attempt: { jobId: PRESENTED.jobId, deadlineAt: PRESENTED.deadlineAt }, url: `${base}.full.json`, etag: '"full"', size: 1000, sha256: 'b'.repeat(64),
-    contentType: 'application/json', table: { url: `${base}.compact.json`, sha256: 'c'.repeat(64), size: 100, contentType: 'application/json', frameCount },
-  } };
-}
-
-/**
  * A complete presentation response; `pollAfterMs` follows the shared rule (`videoPresentationAwaitsServer`).
  * @param sourceBinding - The binding.
- * @param fields - The selected bundle, the preparation and the ledger, each null when absent.
+ * @param fields - The selected bundle and the preparation, each null when absent.
  * @param pollAfterMs - The interval while the reader waits on server work.
  * @returns The response.
  * @throws {never} Never.
  */
 export function presentedResponse(sourceBinding: VideoPresentationResponse['sourceBinding'],
-  fields: Partial<Pick<VideoPresentationResponse, 'presentation' | 'preparation' | 'ledger' | 'sourceLedgerReadLimits'>> = {}, pollAfterMs = 5000): VideoPresentationResponse {
-  const value = { presentation: null, preparation: null, ledger: null, ...fields };
+  fields: Partial<Pick<VideoPresentationResponse, 'presentation' | 'preparation'>> = {}, pollAfterMs = 5000): VideoPresentationResponse {
+  const value = { presentation: null, preparation: null, ...fields };
   return { sourceBinding, ...value, pollAfterMs: videoPresentationAwaitsServer(value) ? pollAfterMs : null };
 }
 
 /**
- * Puts a usable source in a query cache: a read with a selected bundle and a ready ledger, and its compact table read.
+ * Puts a usable source in a query cache: a read with a selected bundle on its grid.
  * @param client - The cache.
  * @param projectId - The Project.
  * @param canonicalURL - The source URL.
- * @param fields - Bundle fields to replace (toolInputId, planSha256).
+ * @param fields - Bundle fields to replace (toolInputId, planSha256, display).
  * @returns The seeded read.
  * @throws {never} Never.
  */
 export function seedUsablePresentation(client: QueryClient, projectId: string, canonicalURL: string, fields: Partial<Bundle> = {}): VideoPresentationResponse {
-  const bundle = presentedBundle(canonicalURL, fields);
-  const response = presentedResponse(presentedBinding(canonicalURL), { presentation: bundle, ledger: readyLedger(bundle), sourceLedgerReadLimits: { maxBytes: 16777216 } });
-  const table: VideoPresentationTable = { schemaVersion: 1, timescale: 25, runs: [{ start: 0, count: 75, step: 1, duration: 1 }] };
+  const response = presentedResponse(presentedBinding(canonicalURL), { presentation: presentedBundle(canonicalURL, fields) });
   client.setQueryData(videoPresentationQuery({ projectId, canonicalURL, active: true }).queryKey, response);
-  client.setQueryData(sourceLedgerQuery({ projectId, response, active: true }).queryKey, table);
   return response;
 }

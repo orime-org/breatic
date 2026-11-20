@@ -12,7 +12,7 @@
 import * as React from 'react';
 import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { VideoPresentationTable, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import type { VideoPlanGrid, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 
 // Each Timeline mount takes the next number, and its setTime reports (mount, time): the library has no initial-time prop.
 const track: { props: Record<string, unknown> | null; mounts: number; setTime: ReturnType<typeof vi.fn> } = { props: null, mounts: 0, setTime: vi.fn() };
@@ -44,8 +44,8 @@ const HOST = '10000000-0000-4000-8000-000000000001';
 const source = { nodeId: HOST, canonicalURL: 'https://media.example.test/a.mp4', mediaInfo: { width: 960, height: 540, duration: 6, mimeType: 'video/mp4' } };
 const current = { inputId: '60000000-0000-4000-8000-000000000001', url: source.canonicalURL, mediaInfo: source.mediaInfo, sourceNodeId: HOST };
 const picked = { inputId: '60000000-0000-4000-8000-000000000002', url: 'https://media.example.test/b.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
-const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: 30, runs: [{ start: 0, count: 180, step: 1, duration: 1 }] };
-const inputTables = new Map([[current.inputId, TABLE], [picked.inputId, TABLE]]);
+const TABLE: VideoPlanGrid = { fps: { numerator: 30, denominator: 1 }, frameCount: 180 };
+const inputGrids = new Map([[current.inputId, TABLE], [picked.inputId, TABLE]]);
 const inputNames = new Map([[current.inputId, 'Current'], [picked.inputId, 'Picked']]);
 const hostClip: VideoToolTimelineClip = { clipId: '50000000-0000-4000-8000-000000000001', inputId: current.inputId, in: 1, out: 5, transition: { kind: 'cut', duration: 0 } };
 const pickedClip: VideoToolTimelineClip = { clipId: '50000000-0000-4000-8000-000000000002', inputId: picked.inputId, in: 0.5, out: 3, transition: { kind: 'cut', duration: 0 } };
@@ -63,7 +63,7 @@ const onRun = vi.fn();
  * @returns The element.
  */
 function dialog(edited: Draft): React.JSX.Element {
-  const proposed: object = { inputTables };
+  const proposed: object = { inputGrids };
   return <VideoTimelineDialog open onOpenChange={onOpenChange} draft={edited} onChange={onChange} inputNames={inputNames} disabled={false} onRun={onRun} {...proposed} />;
 }
 

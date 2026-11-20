@@ -17,9 +17,9 @@ import { eraseTrackingStatus } from '../video/video-tool-edit';
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const draft: VideoToolDraftById['video.erase'] = {
   version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [],
-  params: { range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.3, height: 0.3 }, points: [] }, trackingPrompt: '' },
+  params: { range: { start: 0, end: 75 }, anchor: { frameIndex: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.3, height: 0.3 }, points: [] }, trackingPrompt: '' },
 };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 
 describe('the erase tracking status line', () => {
   it.each([
@@ -27,7 +27,7 @@ describe('the erase tracking status line', () => {
     ['stale', 'trackingStale'],
     ['draw', 'drawBox'],
   ] as const)('reads %s as %s', (status, key) => {
-    render(<VideoToolControls toolId='video.erase' draft={draft} analyses={[]} frameTable={frameTable} presentedTime={0} disabled={false} pickingSlot={null}
+    render(<VideoToolControls toolId='video.erase' draft={draft} analyses={[]} grid={grid} presentedTime={0} disabled={false} pickingSlot={null}
       inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onChange={vi.fn()} trackingStatus={status} />);
     expect(screen.getByTestId('video-tracking-status').textContent).toBe(t(`canvas.miniTool.videoUI.${key}`));
   });

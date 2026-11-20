@@ -23,14 +23,14 @@ function owner(sourceKey: string): MediaSurfaceBinding {
 afterEach(() => vi.restoreAllMocks());
 
 describe('existing controls on the actual presentation owner', () => {
-  it('uses the owned play, seek and fullscreen container while the old element ref is empty', () => {
+  // Full screen left this hook for the corner button (`MediaFullscreen`), so only play and seek are the owner's here.
+  it('uses the owned play and seek while the old element ref is empty', () => {
     const owned = owner('canonical-a');
     const ref: React.RefObject<HTMLMediaElement | null> = { current: null };
-    const { result } = renderHook(() => useMediaPlayer(ref, 10, owned));
-    act(() => { result.current.togglePlay(); result.current.seekFraction(0.25); result.current.requestFullscreen(); });
+    const { result } = renderHook(() => useMediaPlayer(ref, 10, undefined, owned));
+    act(() => { result.current.togglePlay(); result.current.seekFraction(0.25); });
     expect(owned.play).toHaveBeenCalledOnce();
     expect(owned.seek).toHaveBeenCalledExactlyOnceWith(2.5);
-    expect(owned.container.requestFullscreen).toHaveBeenCalledOnce();
     expect(owned.element.currentTime).toBe(0);
   });
 
@@ -38,7 +38,7 @@ describe('existing controls on the actual presentation owner', () => {
     const first = owner('canonical-a'); const second = owner('canonical-b');
     first.element.currentTime = 3;
     const ref: React.RefObject<HTMLMediaElement | null> = { current: null };
-    const { result, rerender, unmount } = renderHook(({ owned }) => useMediaPlayer(ref, 10, owned), { initialProps: { owned: first } });
+    const { result, rerender, unmount } = renderHook(({ owned }) => useMediaPlayer(ref, 10, undefined, owned), { initialProps: { owned: first } });
     expect(result.current.currentTime).toBe(3);
     rerender({ owned: second });
     expect(result.current.currentTime).toBe(0);
@@ -53,7 +53,7 @@ describe('existing controls on the actual presentation owner', () => {
 
   it('changes volume and mute on the actual packed-video element and reads its native state', () => {
     const owned = owner('canonical-a');
-    const { result } = renderHook(() => useMediaPlayer({ current: null }, 10, owned));
+    const { result } = renderHook(() => useMediaPlayer({ current: null }, 10, undefined, owned));
     act(() => { result.current.setVolumeLevel(0.3); result.current.toggleMute(); owned.element.dispatchEvent(new Event('volumechange')); });
     expect(owned.element.volume).toBe(0.3);
     expect(owned.element.muted).toBe(true);

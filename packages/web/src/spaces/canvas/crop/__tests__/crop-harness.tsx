@@ -8,6 +8,7 @@
  * crop box listens to are recorded so a test can say "the layout changed".
  */
 
+import { QueryClient, QueryClientContext, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, screen } from '@testing-library/react';
 import { ReactFlow, type Node, type NodeProps, type ReactFlowProps } from '@xyflow/react';
 import * as React from 'react';
@@ -61,6 +62,20 @@ function MediaNode({ id, data }: NodeProps<Node<MediaNodeData>>): React.JSX.Elem
 
 const NODE_TYPES = { media: MediaNode };
 
+/** The query cache a harness canvas uses when its test mounts none: the crop layer reads a video's presentation. */
+const HARNESS_CLIENT = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+
+/**
+ * Supplies the harness query cache unless the test already mounted one around the canvas.
+ * @param props - The canvas.
+ * @param props.children - The canvas.
+ * @returns The canvas under a query cache.
+ */
+function WithQueryClient({ children }: { children: React.ReactNode }): React.JSX.Element {
+  const outer = React.useContext(QueryClientContext);
+  return outer === undefined ? <QueryClientProvider client={HARNESS_CLIENT}>{children}</QueryClientProvider> : <>{children}</>;
+}
+
 /**
  * The canvas with its media nodes and whatever else the test mounts on it.
  * @param nodes - The media nodes, by id.
@@ -78,7 +93,7 @@ export function cropCanvas(
   flow: Pick<ReactFlowProps, 'snapToGrid' | 'snapGrid'> = {},
 ): React.JSX.Element {
   return (
-    <div data-region='space'>
+    <WithQueryClient><div data-region='space'>
       <ReactFlow
         nodes={nodes.map(({ id, ...data }) => ({ id, type: 'media', position: { x: 0, y: 0 }, data }))}
         edges={[]}
@@ -91,7 +106,7 @@ export function cropCanvas(
         {children}
       </ReactFlow>
       <div data-testid='reference-pick-banner' tabIndex={-1} />
-    </div>
+    </div></WithQueryClient>
   );
 }
 

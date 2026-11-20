@@ -27,7 +27,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ModelCatalog } from '@breatic/shared';
-import { fingerprintMiniToolAnalysisInput, miniToolPlannedRequestSchema, projectMiniToolAnalysisInput, type MiniToolAnalysisRecord, type VideoPresentationTable, type VideoToolDraftById } from '@breatic/shared/mini-tools';
+import { fingerprintMiniToolAnalysisInput, miniToolPlannedRequestSchema, projectMiniToolAnalysisInput, type MiniToolAnalysisRecord, type VideoPlanGrid, type VideoToolDraftById } from '@breatic/shared/mini-tools';
 
 const http = vi.hoisted(() => ({ posts: [] as [string, Record<string, unknown>][], limits: null as unknown }));
 vi.mock('@web/data/api/request', async (importOriginal) => {
@@ -77,7 +77,8 @@ const AUDIO = '42000000-0000-4000-8000-000000000001';
 const PICKED_INPUT = '42000000-0000-4000-8000-000000000002';
 const RUN = '82000000-0000-4000-8000-000000000001';
 const MEDIA = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' };
-const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+// The selected version's grid: 125 frames at 25 fps, 5 s.
+const GRID: VideoPlanGrid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 const ref = (letter: string): { toolInputId: string; planSha256: string } => ({ toolInputId: letter.repeat(64), planSha256: 'f'.repeat(64) });
 const CATALOG = { image: [], video: [{ name: 'lipsync-configured-a', display_name: 'Configured A', modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, providers: [] }], audio: [], tts: [], three_d: [], total: 1, credit_multiplier: 1 } as unknown as ModelCatalog;
 const clients: QueryClient[] = [];
@@ -96,7 +97,7 @@ function present(status: 'loading' | 'ready', nodes: readonly { id: string; url:
       return [id, { binding, status: status === 'ready' ? 'ready' : 'loading', error: null, overlayTarget: null, sourceBinding: { assetId: '72000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: url, kind: 'video', mediaInfo: MEDIA } }];
     })) as BindingModule.CanvasVideoBindings['bindings'],
     // The real hook publishes presentation facts for the panel host only (the first node); other inputs are read per input.
-    presentations: new Map(nodes.slice(0, 1).map(({ id, url, letter }) => [id, { status, frameTable: status === 'ready' ? TABLE : null, presentedTime: 0, sourceURL: url, sourceEpoch: 1, seekEpoch: 0, presentationRef: { source: ref(letter) } }])),
+    presentations: new Map(nodes.slice(0, 1).map(({ id, url, letter }) => [id, { status, grid: status === 'ready' ? GRID : null, presentedTime: 0, sourceURL: url, sourceEpoch: 1, seekEpoch: 0, presentationRef: { source: ref(letter) } }])),
     onVideoBinding: vi.fn(), onVideoFrame: vi.fn(),
   };
   vi.mocked(useCanvasVideoBindings).mockReturnValue(facts);
@@ -198,7 +199,7 @@ describe('Run sends the quoted body and creates the quoted output node (§97 D27
     const identity = { schemaVersion: 1 as const, draftId: draft.draftId, revision: draft.revision, analysisRunId: RUN, acceptedAt: '2026-11-06T00:00:00.000001Z',
       binding: { assetId: '72000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: HOST_URL, kind: 'video' as const, mediaInfo: MEDIA }, analysisInput, inputFingerprint };
     const record: MiniToolAnalysisRecord = { ...identity, kind: 'people', status: 'completed', artifactUnavailable: false, error: null, usage: [],
-      result: { ...identity, kind: 'people', anchor: { frameIndex: 0, pts: 0 }, people: [{ personId: 'person-a', faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] }] } };
+      result: { ...identity, kind: 'people', anchor: { frameIndex: 0 }, people: [{ personId: 'person-a', faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] }] } };
     vi.spyOn(miniToolAnalysesApi, 'get').mockResolvedValue(record);
     const started = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));
     commitVideoToolAnalysisRef(doc, HOST, { version: 1, toolId: 'video.lip-sync', kind: 'people', draftId: draft.draftId, analysisRunId: RUN, inputFingerprint });

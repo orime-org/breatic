@@ -6,14 +6,14 @@ import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useMediaSurface } from '../use-media-surface';
 import type { VideoPresentationSource, VideoRendererCallbacks, VideoRendererFactory } from '../types';
-import { PRESENTED, presentedBundle } from '@web/test-utils/video-presentation';
+import { PRESENTED, presentedBundle, presentedDisplay } from '@web/test-utils/video-presentation';
 
 // Reviewed resource lifecycle invariants for inner#1306. §97 (D10-1; design §3.3, §7.8): the source carries the selected
 // bundle and its alpha-packed manifest (null for native); the earlier `presentation: VideoPresentation` descriptor with
 // its `state` is gone (fixtures migrated, 4.4.5).
 const CANONICAL = 'https://assets.example/canonical.webm';
 const bundleOf = (versionId: string, fingerprint: string = PRESENTED.fingerprint, url = CANONICAL): ReturnType<typeof presentedBundle> =>
-  presentedBundle(url, { sourceFingerprint: fingerprint, versionId, display: { width: 160, height: 96, duration: { numerator: '1', denominator: '1' } } });
+  presentedBundle(url, { sourceFingerprint: fingerprint, versionId, display: presentedDisplay(160, 96, 25) });
 const source = { canonicalURL: CANONICAL, sourceFingerprint: PRESENTED.fingerprint, presentation: bundleOf(PRESENTED.versionId), manifest: null } as unknown as VideoPresentationSource;
 
 let host: HTMLDivElement;
@@ -191,11 +191,10 @@ describe('effect-owned video surface lifecycle', () => {
     ['native', 2.375], ['alpha_ready', 2.375], ['native', Number.NaN],
   ] as const)('seeks the actual %s clock beyond format duration with actual duration %s', (state, duration) => {
     const packed = { storageKey: 'video/packed.mp4', url: 'https://assets.example/packed.mp4', etag: '"packed"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
-    const clockBundle = presentedBundle(CANONICAL, { display: { width: 160, height: 96, duration: { numerator: '17', denominator: '8' } }, original: { width: 160, height: 96, duration: 2.125 },
-      playbackClock: { schemaVersion: 1, timescale: 8, runs: [{ start: 0, count: 17, step: 1, duration: 1 }] },
+    // A 17-frame grid at 8 fps lasts 17/8 = 2.125 s (P.display, §3.5).
+    const clockBundle = presentedBundle(CANONICAL, { display: { ...presentedDisplay(160, 96, 17), fps: { numerator: 8, denominator: 1 } }, original: { width: 160, height: 96, duration: 2.125 },
       ...(state === 'alpha_ready' ? { playback: { kind: 'alpha-packed' as const, carrier: packed, manifest: { ...packed, storageKey: 'video/packed.json', url: 'https://assets.example/packed.json', contentType: 'application/json' } } } : {}) });
-    const clockSource = { ...source, presentation: clockBundle, manifest: state === 'alpha_ready' ? { schemaVersion: 1, versionId: PRESENTED.versionId, toolInputId: PRESENTED.toolInputId,
-      planSha256: PRESENTED.planSha256, policyVersion: 1, packed, packedWidth: 320, packedHeight: 96, colorRect: { x: 0, y: 0, width: 160, height: 96 }, alphaRect: { x: 160, y: 0, width: 160, height: 96 } } : null } as unknown as VideoPresentationSource;
+    const clockSource = { ...source, presentation: clockBundle, manifest: state === 'alpha_ready' ? { schemaVersion: 1, packed, packedWidth: 320, packedHeight: 96, colorRect: { x: 0, y: 0, width: 160, height: 96 }, alphaRect: { x: 160, y: 0, width: 160, height: 96 } } : null } as unknown as VideoPresentationSource;
     const { result } = renderHook(() => useMediaSurface({ host: hostRef, source: clockSource, active: true, createRenderer }));
     const session = sessions[0];
     Object.defineProperty(session.element, 'duration', { value: duration });

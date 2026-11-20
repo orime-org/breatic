@@ -25,7 +25,7 @@ const picked = { inputId: '60000000-0000-4000-8000-000000000001', url: 'https://
  * @throws {never} Never.
  */
 function renderSlot(draft: VideoToolDraftById['video.transitions'], onChange: (next: unknown) => void = vi.fn()): void {
-  render(<VideoToolControls toolId='video.transitions' draft={draft} analyses={[]} frameTable={null} presentedTime={0} disabled={false} pickingSlot={null}
+  render(<VideoToolControls toolId='video.transitions' draft={draft} analyses={[]} grid={null} presentedTime={0} disabled={false} pickingSlot={null}
     inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onChange={onChange} />);
 }
 
@@ -73,7 +73,7 @@ describe('the transitions panel as the approved demo lays it out', () => {
 
   it('summarises each clip on the timeline in order with its length', () => {
     const draft = withPicked();
-    render(<VideoToolControls toolId='video.transitions' draft={{ ...draft, params: { clips: [draft.params.clips[0]!, { ...draft.params.clips[1]!, in: 0.5, out: 2.75 }] } }} analyses={[]} frameTable={null} presentedTime={0}
+    render(<VideoToolControls toolId='video.transitions' draft={{ ...draft, params: { clips: [draft.params.clips[0]!, { ...draft.params.clips[1]!, in: 0.5, out: 2.75 }] } }} analyses={[]} grid={null} presentedTime={0}
       disabled={false} pickingSlot={null} inputNames={new Map([[draft.inputs[0]!.inputId, 'Current'], [picked.inputId, 'Picked']])} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onChange={vi.fn()} />);
     const rows = screen.getAllByTestId('video-timeline-clip-summary');
     expect(rows.map((row) => row.textContent)).toEqual(['1 · Current5.00 s', '2 · Picked2.25 s']);
@@ -88,7 +88,7 @@ describe('the transitions panel as the approved demo lays it out', () => {
     renderSlot(createVideoToolDraft('video.transitions', source));
     expect(screen.queryByRole('button', { name: t('canvas.miniTool.videoUI.editTimeline') })).toBeNull();
     const onEdit = vi.fn();
-    render(<VideoToolControls toolId='video.transitions' draft={withPicked()} analyses={[]} frameTable={null} presentedTime={0} disabled={false} pickingSlot={null}
+    render(<VideoToolControls toolId='video.transitions' draft={withPicked()} analyses={[]} grid={null} presentedTime={0} disabled={false} pickingSlot={null}
       inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={onEdit} onChange={vi.fn()} />);
     fireEvent.click(within(document.body).getByRole('button', { name: t('canvas.miniTool.videoUI.editTimeline') }));
     expect(onEdit).toHaveBeenCalledOnce();

@@ -15,7 +15,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
-import type { VideoPresentationTable, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import type { VideoPlanGrid, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 
 const track: { props: Record<string, unknown> | null } = { props: null };
 const strips: { props: Record<string, unknown>[] } = { props: [] };
@@ -47,9 +47,9 @@ const source = { nodeId: HOST, canonicalURL: 'https://media.example.test/a.mp4',
 const current = { inputId: '60000000-0000-4000-8000-000000000001', url: source.canonicalURL, mediaInfo: source.mediaInfo, sourceNodeId: HOST };
 const picked = { inputId: '60000000-0000-4000-8000-000000000002', url: 'https://media.example.test/b.mp4', mediaInfo: { width: 720, height: 1280, duration: 5, mimeType: 'video/mp4' } };
 // The first clip runs at 30000/1001 fps, the second at 25 fps: only the first one's rate may be shown.
-const NTSC: VideoPresentationTable = { schemaVersion: 1, timescale: 30000, runs: [{ start: 0, count: 180, step: 1001, duration: 1001 }] };
-const PAL: VideoPresentationTable = { schemaVersion: 1, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
-const inputTables = new Map([[current.inputId, NTSC], [picked.inputId, PAL]]);
+const NTSC: VideoPlanGrid = { fps: { numerator: 30000, denominator: 1001 }, frameCount: 180 };
+const PAL: VideoPlanGrid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
+const inputGrids = new Map([[current.inputId, NTSC], [picked.inputId, PAL]]);
 const hostClip: VideoToolTimelineClip = { clipId: '50000000-0000-4000-8000-000000000001', inputId: current.inputId, in: 1, out: 5, transition: { kind: 'cut', duration: 0 } };
 const pickedClip: VideoToolTimelineClip = { clipId: '50000000-0000-4000-8000-000000000002', inputId: picked.inputId, in: 0.5, out: 3, transition: { kind: 'cut', duration: 0 } };
 const draft: Draft = {
@@ -69,14 +69,14 @@ const opaque: Formats = new Map([[current.inputId, { width: 1920, height: 1080, 
  * @returns Nothing.
  */
 function open({ onChange = vi.fn(), inputFormats = opaque, onRun = vi.fn(), edited = draft }: { onChange?: (next: Draft) => void; inputFormats?: Formats; onRun?: () => Promise<unknown> | undefined; edited?: Draft } = {}): void {
-  const proposed: object = { inputTables, inputFormats };
+  const proposed: object = { inputGrids, inputFormats };
   render(<VideoTimelineDialog open onOpenChange={vi.fn()} draft={edited} onChange={onChange} inputNames={new Map([[current.inputId, 'Current'], [picked.inputId, 'Picked']])} disabled={false} onRun={onRun} {...proposed} />);
 }
 
 beforeEach(() => { vi.clearAllMocks(); track.props = null; preview.props = null; strips.props = []; bounds.mockReturnValue({ min: 0.2, max: 1.2 }); });
 
 describe('A1 the composition row states the first clip format (demo timeline-editor.tsx:45; canvas design §4 transitions row)', () => {
-  it('reads "{width} × {height} · {fps} fps · {duration}" from the first clip\'s display size and table rate', () => {
+  it('reads "{width} × {height} · {fps} fps · {duration}" from the first clip\'s display size and grid rate', () => {
     open();
     expect(screen.getByText('1920 × 1080 · 29.97 fps · 6.500 s')).toBeInTheDocument();
   });

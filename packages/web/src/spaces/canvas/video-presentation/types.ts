@@ -45,14 +45,14 @@ export interface VideoPresentationSource {
 export interface PresentedSize { width: number; height: number; duration: number }
 
 /**
- * The size and length a version presents: its display geometry and duration.
+ * The size and length a version presents: its display geometry and its grid's length, frameCount ÷ fps (§3.5).
  * @param version - The selected version.
  * @returns Width, height and duration in seconds.
  * @throws {never} Never.
  */
 export function presentedSizeOf(version: VideoPresentationVersion): PresentedSize {
-  const { width, height, duration } = version.display;
-  return { width, height, duration: Number(duration.numerator) / Number(duration.denominator) };
+  const { width, height, fps, frameCount } = version.display;
+  return { width, height, duration: frameCount * fps.denominator / fps.numerator };
 }
 
 /**

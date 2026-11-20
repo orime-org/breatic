@@ -4,7 +4,7 @@
 /**
  * inner#1306 frames-split design §7.12 last paragraph: the transitions panel derives each input's state on its own and
  * shows the worst of the current video and every picked input, in the order unsupported, retryable, waiting-presentation,
- * waiting-table, usable. A picked input that is not usable keeps Run unavailable and shows its state the way the current
+ * usable. A picked input that is not usable keeps Run unavailable and shows its state the way the current
  * video's does, and a retryable input's Retry repairs that input.
  */
 
@@ -46,8 +46,9 @@ const projectId = 'input-state-project'; const spaceId = 'input-state-space'; co
 const sourceURL = 'https://assets.example.test/canonical.webm';
 const inputURL = 'https://assets.example.test/second.webm';
 const mediaInfo = { width: 160, height: 240, duration: 4, mimeType: 'video/webm' };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 100, step: 4, duration: 4 }] };
-const ready: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0, panelState: 'usable' };
+// The selected version's grid at 25 fps.
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 100 };
+const ready: VideoToolPresentation = { grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0, panelState: 'usable' };
 
 /**
  * Mounts the transitions panel with a picked input whose presentation read is the one given.
@@ -82,7 +83,8 @@ describe('the transitions panel shows its worst input (frames-split §7.12)', ()
 
   it('shows a retryable input with a Retry that repairs that input', async () => {
     mount(presentedResponse(binding, { preparation: presentedPreparation('expired') }));
-    expect(screen.getByText(t('canvas.miniTool.videoUI.mediaError'))).toBeInTheDocument();
+    // A temporarily failed candidate names its preparation failure (§7.12 step 2), not a media error of the shown resource.
+    expect(screen.getByText(t('canvas.miniTool.videoUI.preparationFailed'))).toBeInTheDocument();
     expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
     act(() => screen.getByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }).click());
     await waitFor(() => expect(repairVideoPresentation).toHaveBeenCalledOnce());
@@ -101,7 +103,7 @@ describe('the transitions panel shows its worst input (frames-split §7.12)', ()
 
   it('shows an input still being prepared as waiting', () => {
     mount(presentedResponse(binding, { preparation: presentedPreparation(null) }));
-    expect(screen.getByText(t('canvas.miniTool.videoUI.loadingFrames'))).toBeInTheDocument();
+    expect(screen.getByText(t('canvas.miniTool.videoUI.preparingVideo'))).toBeInTheDocument();
     expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
   });
 

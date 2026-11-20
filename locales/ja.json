@@ -289,7 +289,8 @@
       "trackingStale": "トラッキング結果が現在の選択と一致しなくなりました。選択範囲をもう一度トラッキングしてください。",
       "transparentSource": "このツールは透明部分のある動画には使えません。",
       "expandTooLong": "拡張できるのは {max} 秒以内の動画です。",
-      "expandTooLarge": "拡張後の動画の長辺は最大 {max} px です。拡張範囲を小さくしてください。"
+      "expandTooLarge": "拡張後の動画の長辺は最大 {max} px です。拡張範囲を小さくしてください。",
+      "presentationChanged": "動画が更新されました。フレームと範囲を選び直してください。"
     },
     "idempotency": {
       "missing": "ページが更新されました。再読み込みしてからもう一度お試しください。",
@@ -1050,7 +1051,8 @@
       },
       "editProposalMarks": "波括弧の中身を書き換えてください。オレンジ色の注意事項はモデルに送られません。",
       "notePrefix": "注意事項：",
-      "integerBlank": "空欄で自動"
+      "integerBlank": "空欄で自動",
+      "focusCropExpired": "時間内に切り抜けませんでした——もう一度お試しください。"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1589,7 +1591,6 @@
         "inPoint": "イン点",
         "last": "最後",
         "ledgerUnsupported": "この動画はまだこのツールで使えません",
-        "loadingFrames": "動画フレームを読み込み中…",
         "mediaError": "動画を読み込めません",
         "outPoint": "アウト点",
         "pause": "一時停止",
@@ -1715,7 +1716,10 @@
         "dialogueStartInvalid": "0 秒以上の時間を入力してください。",
         "outputCount": "{count} 出力",
         "viewerMode": "Viewer モード",
-        "connectionUnavailable": "接続できません"
+        "connectionUnavailable": "接続できません",
+        "preparingVideo": "動画を準備中…",
+        "preparationFailed": "動画を準備できませんでした",
+        "tooLongToPrepare": "準備できる長さを超えています"
       }
     },
     "template": {

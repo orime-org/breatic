@@ -30,7 +30,7 @@ import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { useCanvasStore } from '@web/stores/canvas';
 import { useCurrentUserStore } from '@web/stores/current-user';
-import type { VideoToolDraftById, VideoPresentationTable } from '@breatic/shared/mini-tools';
+import type { VideoToolDraftById, VideoPlanGrid } from '@breatic/shared/mini-tools';
 
 vi.mock('@web/data/yjs/canvas-space', async (original) => ({ ...(await original<typeof CanvasModule>()), useCanvasSpace: vi.fn() }));
 vi.mock('@web/spaces/canvas/mini-tool/start-planned-video-run', async (original) => ({ ...(await original<typeof StartModule>()), startPlannedVideoRun: vi.fn() }));
@@ -51,7 +51,8 @@ const PROJECT = '30000000-0000-4000-8000-000000000001';
 const SPACE = '30000000-0000-4000-8000-000000000002';
 const SOURCE = '30000000-0000-4000-8000-000000000003';
 const URL = 'https://assets.example.test/canonical.webm';
-const TABLE: VideoPresentationTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 1, step: 4, duration: 4 }, { start: 4, count: 3, step: 8, duration: 8 }] };
+// The selected version's grid: 7 frames at 25 fps, 0.28 s.
+const GRID: VideoPlanGrid = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
 const DRAFT: VideoToolDraftById['video.remove-bg'] = { version: 1, draftId: '30000000-0000-4000-8000-000000000004', revision: '30000000-0000-4000-8000-000000000005', source: { nodeId: SOURCE, canonicalURL: URL, mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } }, inputs: [], params: {} };
 const SOURCE_BINDING: VideoPresentationSourceBinding = { assetId: '30000000-0000-4000-8000-000000000007', contentHash: 'a'.repeat(64), canonicalURL: URL, kind: 'video', mediaInfo: DRAFT.source.mediaInfo };
 const clients: QueryClient[] = [];
@@ -61,13 +62,13 @@ const clients: QueryClient[] = [];
 const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
 
 /** Supplies explicit presentation facts without running a browser decoder; a null presentationRef omits the field. @throws {never} Never. */
-function presentation(table: VideoPresentationTable | null, sourceURL = URL, status: VideoToolPresentation['status'] = 'ready',
+function presentation(grid: VideoPlanGrid | null, sourceURL = URL, status: VideoToolPresentation['status'] = 'ready',
   presentationRef: VideoToolPresentation['presentationRef'] | null = PRESENTATION_REF): BindingModule.CanvasVideoBindings {
   const element = document.createElement('video');
   const binding = { sourceKey: 'registered-source', sourceEpoch: 1, element, surface: element, container: document.createElement('div'), original: DRAFT.source.mediaInfo, getSeekEpoch: () => 0, getPresentedFrame: () => null, seek: vi.fn(), play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() };
   const facts: BindingModule.CanvasVideoBindings = {
     bindings: new Map([[SOURCE, { binding, status, error: null, overlayTarget: null, sourceBinding: SOURCE_BINDING }]]),
-    presentations: new Map([[SOURCE, { status, frameTable: table, presentedTime: null, sourceURL, sourceEpoch: 1, seekEpoch: 0, ...(presentationRef === null || presentationRef === undefined ? {} : { presentationRef }) }]]),
+    presentations: new Map([[SOURCE, { status, grid, presentedTime: null, sourceURL, sourceEpoch: 1, seekEpoch: 0, ...(presentationRef === null || presentationRef === undefined ? {} : { presentationRef }) }]]),
     onVideoBinding: vi.fn(), onVideoFrame: vi.fn(),
   };
   vi.mocked(useCanvasVideoBindings).mockReturnValue(facts);
@@ -93,7 +94,7 @@ beforeEach(() => {
   commitVideoToolDraft(doc, SOURCE, 'video.remove-bg', structuredClone(DRAFT));
   vi.mocked(useCanvasSpace).mockReturnValue({ nodes: readNodes(doc), edges: [], undo: vi.fn(), redo: vi.fn(), canUndo: false, canRedo: false, getLastWriteWasLocal: () => true, deletedByPeer: () => false });
   vi.mocked(startPlannedVideoRun).mockResolvedValue({ kind: 'done', result: { task_id: '30000000-0000-4000-8000-000000000006', status: 'pending' } });
-  presentation(TABLE);
+  presentation(GRID);
   act(() => canvasSessions.of(SPACE).getState().openMiniTool(SOURCE, 'video.remove-bg', { sourceContent: URL, params: {} }));
 });
 afterEach(() => { cleanup(); clients.splice(0).forEach((client) => client.clear()); canvasSessions.of(SPACE).getState().closeActivePanel(); destroyDoc(docName.canvasSpace(PROJECT, SPACE)); vi.restoreAllMocks(); });

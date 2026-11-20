@@ -289,7 +289,8 @@
       "trackingStale": "추적 결과가 현재 선택과 더 이상 일치하지 않습니다. 선택 영역을 다시 추적하세요.",
       "transparentSource": "이 도구는 투명 영역이 있는 동영상을 지원하지 않습니다.",
       "expandTooLong": "확장은 최대 {max}초 길이의 동영상을 지원합니다.",
-      "expandTooLarge": "확장된 동영상의 긴 변은 최대 {max}px입니다. 확장 범위를 줄이세요."
+      "expandTooLarge": "확장된 동영상의 긴 변은 최대 {max}px입니다. 확장 범위를 줄이세요.",
+      "presentationChanged": "동영상이 업데이트되었습니다. 프레임과 영역을 다시 선택하세요."
     },
     "idempotency": {
       "missing": "페이지가 업데이트되었습니다. 새로고침한 후 다시 시도하세요.",
@@ -1050,7 +1051,8 @@
       },
       "editProposalMarks": "중괄호 안의 내용을 바꿔 주세요. 주황색 안내는 모델에 전달되지 않습니다.",
       "notePrefix": "안내: ",
-      "integerBlank": "비우면 자동"
+      "integerBlank": "비우면 자동",
+      "focusCropExpired": "시간 내에 자르지 못했습니다——다시 시도하세요."
     },
     "nodeMenu": {
       "generate": "생성",
@@ -1589,7 +1591,6 @@
         "inPoint": "시작 지점",
         "last": "마지막 프레임",
         "ledgerUnsupported": "이 동영상은 아직 이 도구를 사용할 수 없습니다",
-        "loadingFrames": "비디오 프레임 읽는 중…",
         "mediaError": "미디어를 사용할 수 없음",
         "outPoint": "끝 지점",
         "pause": "일시 정지",
@@ -1715,7 +1716,10 @@
         "dialogueStartInvalid": "0초 이상의 시간을 입력하세요.",
         "outputCount": "{count} 출력",
         "viewerMode": "Viewer 모드",
-        "connectionUnavailable": "연결할 수 없음"
+        "connectionUnavailable": "연결할 수 없음",
+        "preparingVideo": "동영상 준비 중…",
+        "preparationFailed": "동영상을 준비하지 못했습니다",
+        "tooLongToPrepare": "준비할 수 있는 길이를 초과했습니다"
       }
     },
     "template": {

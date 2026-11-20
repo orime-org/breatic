@@ -64,9 +64,11 @@ function sameGeometry(a: MediaGeometry | null, b: MediaGeometry | null): boolean
  * the media resizes, or when it finishes loading.
  * @param root - The node's outer wrapper.
  * @param active - Whether anything on this node needs it.
+ * @param display - The selected version's display geometry (P.display): with one, the source size is it, never the
+ *   playing file's `videoWidth`/`videoHeight` (frames-split §7.8 geometry reads).
  * @returns The current reading, or null.
  */
-export function useMediaGeometry(root: HTMLElement | null, active: boolean): MediaGeometry | null {
+export function useMediaGeometry(root: HTMLElement | null, active: boolean, display?: { width: number; height: number } | null): MediaGeometry | null {
   const [geometry, setGeometry] = React.useState<MediaGeometry | null>(null);
   React.useLayoutEffect(() => {
     if (!active || root === null) {
@@ -105,5 +107,8 @@ export function useMediaGeometry(root: HTMLElement | null, active: boolean): Med
       watched?.removeEventListener('loadedmetadata', refresh);
     };
   }, [active, root]);
-  return geometry;
+  const displayWidth = display?.width;
+  const displayHeight = display?.height;
+  return React.useMemo(() => geometry === null || displayWidth === undefined || displayHeight === undefined ? geometry
+    : { ...geometry, natural: { width: displayWidth, height: displayHeight } }, [geometry, displayWidth, displayHeight]);
 }

@@ -53,8 +53,9 @@ function mount(response: VideoPresentationResponse): HTMLElement {
   client.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: ORIGINAL, active: true }).queryKey, response);
   const actions = { setProps: vi.fn(), remove: vi.fn(), download: vi.fn(), dragStart: vi.fn(), dragEnd: vi.fn(), select: vi.fn(), focusBody: vi.fn(), bodyHolds: () => false };
   return render(<QueryClientProvider client={client}><TooltipProvider><DocumentProjectProvider projectId={PROJECT}>
-    <DocumentMediaBlock editor={{}} blockId='video-block' readOnly={false} viewport={null} type='video' props={{ url: ORIGINAL, name: 'source.mov', caption: '', mediaWidth: 1920, mediaHeight: 1080 }}
-      selected={false} hovered={false} toolbarShown={false} host={document.createElement('div')} onHover={vi.fn()} actions={actions} />
+    <DocumentMediaBlock editor={{}} blockId='video-block' readOnly={false} viewport={null} type='video' props={{ url: ORIGINAL, name: 'source.mov', caption: '', uploadId: '', mediaWidth: 1920, mediaHeight: 1080 }}
+      selected={false} hovered={false} toolbarShown={false} host={document.createElement('div')} onHover={vi.fn()} actions={actions}
+      commentActions={{ comment: null, read: vi.fn(), addToAgent: null }} commentCount={0} commentReading={false} tableFullscreen={false} />
   </DocumentProjectProvider></TooltipProvider></QueryClientProvider>).container;
 }
 
@@ -88,6 +89,7 @@ describe('U05 a Document video block plays through Qp (§7.8, §7.9)', () => {
     const original = container.querySelector(`video[src="${ORIGINAL}"]`);
     if (original !== null) fireEvent.error(original);
     expect(screen.getByText('Couldn\'t prepare the video')).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+    // The block itself is a button whose name includes its text, so the Retry button is matched by its whole name.
+    expect(screen.getByRole('button', { name: 'Retry' })).toBeInTheDocument();
   });
 });

@@ -15,7 +15,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
-import type { VideoPresentationTable, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import type { VideoPlanGrid, VideoToolDraftById, VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 
 const track: { props: Record<string, unknown> | null } = { props: null };
 
@@ -44,8 +44,8 @@ const PICKED_NODE = '10000000-0000-4000-8000-000000000002';
 const source = { nodeId: HOST, canonicalURL: 'https://media.example.test/a.mp4', mediaInfo: { width: 960, height: 540, duration: 6, mimeType: 'video/mp4' } };
 const current = { inputId: '60000000-0000-4000-8000-000000000001', url: source.canonicalURL, mediaInfo: source.mediaInfo, sourceNodeId: HOST };
 const picked = { inputId: '60000000-0000-4000-8000-000000000002', url: 'https://media.example.test/b.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' }, sourceNodeId: PICKED_NODE };
-const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: 30, runs: [{ start: 0, count: 180, step: 1, duration: 1 }] };
-const inputTables = new Map([[current.inputId, TABLE], [picked.inputId, TABLE]]);
+const TABLE: VideoPlanGrid = { fps: { numerator: 30, denominator: 1 }, frameCount: 180 };
+const inputGrids = new Map([[current.inputId, TABLE], [picked.inputId, TABLE]]);
 const hostClip: VideoToolTimelineClip = { clipId: '50000000-0000-4000-8000-000000000001', inputId: current.inputId, in: 1, out: 5, transition: { kind: 'fade', duration: 0.5 } };
 const pickedClip: VideoToolTimelineClip = { clipId: '50000000-0000-4000-8000-000000000002', inputId: picked.inputId, in: 0.5, out: 3, transition: { kind: 'cut', duration: 0 } };
 const draft: Draft = {
@@ -59,7 +59,7 @@ const draft: Draft = {
  * @returns Nothing.
  */
 function open(onChange: (next: Draft) => void): void {
-  const proposed: object = { inputTables };
+  const proposed: object = { inputGrids };
   render(<VideoTimelineDialog open onOpenChange={vi.fn()} draft={draft} onChange={onChange} inputNames={new Map([[current.inputId, 'Current'], [picked.inputId, 'Picked']])} disabled={false} onRun={vi.fn()} {...proposed} />);
 }
 

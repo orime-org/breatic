@@ -289,7 +289,8 @@
       "trackingStale": "跟踪结果与当前选区不再一致。请重新跟踪选区。",
       "transparentSource": "这个工具不支持带透明背景的视频。",
       "expandTooLong": "外扩支持最长 {max} 秒的视频。",
-      "expandTooLarge": "外扩后的视频长边最多 {max} 像素。请缩小外扩范围。"
+      "expandTooLarge": "外扩后的视频长边最多 {max} 像素。请缩小外扩范围。",
+      "presentationChanged": "视频已更新，请重新选择画面和区域。"
     },
     "idempotency": {
       "missing": "页面已更新，请刷新后重试。",
@@ -1050,7 +1051,8 @@
       },
       "editProposalMarks": "请替换大括号里的内容。橙色的注意事项不会发给模型。",
       "notePrefix": "注意事项：",
-      "integerBlank": "留空为自动"
+      "integerBlank": "留空为自动",
+      "focusCropExpired": "裁剪超时——请重试。"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1589,7 +1591,6 @@
         "inPoint": "入点",
         "last": "尾帧",
         "ledgerUnsupported": "该视频暂不支持此工具",
-        "loadingFrames": "正在读取视频帧…",
         "mediaError": "媒体不可用",
         "outPoint": "出点",
         "pause": "暂停",
@@ -1715,7 +1716,10 @@
         "dialogueStartInvalid": "请输入大于或等于 0 秒的时间。",
         "outputCount": "{count} 个产物",
         "viewerMode": "Viewer 模式",
-        "connectionUnavailable": "连接不可用"
+        "connectionUnavailable": "连接不可用",
+        "preparingVideo": "正在准备视频…",
+        "preparationFailed": "视频准备失败",
+        "tooLongToPrepare": "超出可准备时长"
       }
     },
     "template": {

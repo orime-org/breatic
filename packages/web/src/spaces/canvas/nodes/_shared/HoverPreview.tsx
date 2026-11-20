@@ -12,6 +12,7 @@ import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/Med
 import { MediaFullscreenButton } from '@web/spaces/canvas/nodes/_shared/MediaFullscreenButton';
 import { MediaPlayer, type MediaPlayerHandle } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
 import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-fullscreen';
+import { PresentedMediaPlayer } from '@web/spaces/canvas/nodes/_shared/PresentedMediaPlayer';
 import {
   HOVER_OPEN_DELAY_MS,
   HOVER_CLOSE_DELAY_MS,
@@ -33,6 +34,11 @@ export interface HoverPreviewProps {
   src?: string;
   /** Video poster (video only); ignored for audio / image. */
   poster?: string;
+  /**
+   * The Project of a registered video: with it the preview plays through the presentation query, as the canvas node does
+   * (frames-split §7.8 surface list), showing only the reason when the candidate failed.
+   */
+  projectId?: string;
   /** Static text body (`text` form; #1815 chip). */
   text?: string;
   /** Image alt text. */
@@ -105,6 +111,7 @@ export interface HoverPreviewProps {
  * @param root0.kind - Content form (image / text / audio / video).
  * @param root0.src - Media / image URL.
  * @param root0.poster - Video poster (video only).
+ * @param root0.projectId - The Project of a registered video, read through Qp.
  * @param root0.text - Static text body (text form).
  * @param root0.alt - Image alt text.
  * @param root0.emptyHint - Hint shown when the source is empty.
@@ -121,6 +128,7 @@ export function HoverPreview({
   kind,
   src,
   poster,
+  projectId,
   text,
   alt = '',
   emptyHint,
@@ -189,7 +197,8 @@ export function HoverPreview({
   if (body) {
     content = body;
   } else if (isMedia && src) {
-    content = <MediaPlayer ref={player} modality={kind} src={src} poster={poster} variant='preview' />;
+    content = kind === 'video' && projectId !== undefined ? <PresentedMediaPlayer ref={player} projectId={projectId} retry={false} src={src} poster={poster} variant='preview' />
+      : <MediaPlayer ref={player} modality={kind} src={src} poster={poster} variant='preview' />;
   } else if (kind === 'image' && src) {
     // Filling the preview's width, height following its aspect, sharp corners
     // like video / audio (user 2026-07-23, decisions A and B).

@@ -63,20 +63,20 @@ describe('parameter-owned overlay in the actual canonical node display', () => {
 });
 
 
-describe('Run with a trusted frame table and an unknown presented frame', () => {
+describe('Run with a usable grid and an unknown presented frame', () => {
   // §97: the interval mode is removed (frames-split §10.6), so only the three kept modes are gated (4.4.5).
   it.each(['current', 'first', 'last'] as const)('gates %s by its actual frame dependency without inventing a Current time', (mode) => {
     const doc = getDoc(docName.canvasSpace(projectId, spaceId));
     addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
     const source = { nodeId, canonicalURL: sourceURL, mediaInfo: { width: 160, height: 240, duration: 0.28, mimeType: 'video/webm' } };
     const initial = createVideoToolDraft('video.extract-frames', source);
-    const draft = { ...initial, params: { mode, currentTime: 0.13 } } as typeof initial;
+    const draft = { ...initial, params: { mode, frameIndex: 3 } } as typeof initial;
     commitVideoToolDraft(doc, nodeId, 'video.extract-frames', draft);
     canvasSessions.of(spaceId).getState().openMiniTool(nodeId, 'video.extract-frames', { sourceContent: sourceURL, params: {} });
     const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...source.mediaInfo } };
-    const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 1, step: 4, duration: 4 }, { start: 4, count: 3, step: 8, duration: 8 }] };
+    const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
     const onRun = vi.fn().mockResolvedValue(undefined);
-    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.extract-frames' node={node} nodes={[node]} onRunVideo={onRun} presentation={{ frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 3, presentedTime: null }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+    render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.extract-frames' node={node} nodes={[node]} onRunVideo={onRun} presentation={{ grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 3, presentedTime: null }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
     const run = screen.getByTestId('mini-tool-run');
     if (mode === 'current') {
       expect(run).toBeDisabled();

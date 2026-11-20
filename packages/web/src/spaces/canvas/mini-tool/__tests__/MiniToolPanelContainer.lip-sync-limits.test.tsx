@@ -73,10 +73,11 @@ const source = { nodeId, canonicalURL: sourceURL, mediaInfo };
 const analysisRunId = '80000000-0000-4000-8000-000000000001';
 const failedRunId = '90000000-0000-4000-8000-000000000001';
 const audioId = '40000000-0000-4000-8000-000000000009';
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+// The selected version's grid: 125 frames at 25 fps (5 s).
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 // The selected tool input the run is planned against (frames-split §7.13); the quote request names it as the run would.
 const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
-const presentation: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
+const presentation: VideoToolPresentation = { grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
 // The same presentation once its selected tool input is known, as a ready node publishes it; analysis and quote requests need it.
 const planned: VideoToolPresentation = { ...presentation, presentationRef: PRESENTATION_REF };
 let mounted: VideoToolPresentation;
@@ -89,7 +90,7 @@ const profile = { id: 'people', version: '1', weightsHash: null, params: {} };
  * @returns The entry.
  */
 function model(name: string, displayName: string): ModelEntry {
-  return { name, display_name: displayName, modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, providers: [] };
+  return { name, display_name: displayName, modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, availability: { upstreams: [] } };
 }
 // The shipped default sits in the catalog too, so a hard-coded list shows it and fails the exact-list assertion.
 let catalog: ModelCatalog;
@@ -216,7 +217,7 @@ async function seed(rows?: Dialogue[], people: readonly string[] = ['person-a'])
   };
   const record: MiniToolAnalysisRecord = {
     ...identity, kind: 'people', status: 'completed', artifactUnavailable: false, error: null, usage: [],
-    result: { ...identity, kind: 'people', anchor: { frameIndex: 0, pts: 0 }, people: people.map((personId, index) => ({ personId, faceBox: { x: 0.1 + index * 0.3, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] })) },
+    result: { ...identity, kind: 'people', anchor: { frameIndex: 0 }, people: people.map((personId, index) => ({ personId, faceBox: { x: 0.1 + index * 0.3, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] })) },
   };
   vi.spyOn(miniToolAnalysesApi, 'get').mockResolvedValue(record);
   commitVideoToolAnalysisRef(doc, nodeId, { version: 1, toolId: 'video.lip-sync', kind: 'people', draftId: draft.draftId, analysisRunId, inputFingerprint });

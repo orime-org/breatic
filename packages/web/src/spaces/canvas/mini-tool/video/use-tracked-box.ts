@@ -9,7 +9,8 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 import { httpRequest } from '@breatic/shared';
-import { presentationCoveringFrame, presentationFramesIn, type MiniToolAnalysisRecord, type VideoPresentationTable } from '@breatic/shared/mini-tools';
+import type { MiniToolAnalysisRecord, VideoPlanGrid } from '@breatic/shared/mini-tools';
+import { frameIndexOfMediaTime } from '@web/spaces/canvas/video-presentation/frame-grid-time';
 import { trackedBox, type TrackedBox } from '@web/spaces/canvas/mini-tool/video/tracked-box';
 
 const countsSchema = z.array(z.string().nullable());
@@ -30,25 +31,25 @@ async function fetchCounts(url: string, signal: AbortSignal): Promise<(string | 
 /**
  * The tracked box on the presented frame.
  * @param record - The tracking analysis made for the current selection, if any.
- * @param table - The source's presentation table.
- * @param range - The erase range in seconds.
+ * @param grid - The selected version's grid.
+ * @param range - The erase range in grid frames.
  * @param presentedTime - The presented media time, null while unknown.
  * @returns The box, or null when nothing is tracked on that frame.
  * @throws {never} Never.
  */
-export function useTrackedBox(record: MiniToolAnalysisRecord | undefined, table: VideoPresentationTable | null, range: { start: number; end: number } | null, presentedTime: number | null): TrackedBox | null {
+export function useTrackedBox(record: MiniToolAnalysisRecord | undefined, grid: VideoPlanGrid | null, range: { start: number; end: number } | null, presentedTime: number | null): TrackedBox | null {
   const result = record?.status === 'completed' && record.result?.kind === 'tracked_mask' ? record.result : null;
   const url = result?.artifactRefs[0]?.canonicalURL ?? null;
   const counts = useQuery({ queryKey: ['tracked-mask-rle', url], queryFn: ({ signal }) => fetchCounts(url!, signal), enabled: url !== null, staleTime: Infinity }).data;
   return React.useMemo(() => {
-    if (result === null || counts === undefined || table === null || range === null || presentedTime === null) return null;
+    if (result === null || counts === undefined || grid === null || range === null || presentedTime === null) return null;
     const size = { width: result.width, height: result.height };
     const masks = counts.map((frame) => frame === null ? null : { size: [size.height, size.width] as const, counts: frame });
     try {
-      return trackedBox(masks, { startFrame: presentationFramesIn(table, range).first, frameCount: result.frameCount }, presentationCoveringFrame(table, presentedTime), size);
+      return trackedBox(masks, { startFrame: range.start, frameCount: result.frameCount }, frameIndexOfMediaTime(presentedTime, grid), size);
     } catch {
       // A mask that does not decode at the result's size draws no box; the selection stays visible.
       return null;
     }
-  }, [result, counts, table, range, presentedTime]);
+  }, [result, counts, grid, range, presentedTime]);
 }

@@ -7,15 +7,17 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t, type VideoPresentationResponse } from '@breatic/shared';
 import { ApiException } from '@web/data/api/types';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
 import { VideoTimelinePreview } from '@web/spaces/canvas/mini-tool/video/VideoTimelinePreview';
 import { CanonicalTimelineDecoder } from '../CanonicalTimelineDecoder';
 import { createVideoPresentationRecovery } from '../video-presentation-recovery';
+import { preparationFailureKey } from '../VideoPreparationNotice';
 import { videoPresentationQuery } from '../video-presentation-query';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '../types';
-import { presentedBinding, presentedBundle, presentedPreparation, presentedResponse, readyLedger } from '@web/test-utils/video-presentation';
+import { presentedBinding, presentedBundle, presentedPreparation, presentedDisplay, presentedResponse } from '@web/test-utils/video-presentation';
 
 const platform = vi.hoisted(() => ({
   apiGet: vi.fn(), apiPost: vi.fn(), toastError: vi.fn(),
@@ -39,10 +41,10 @@ const input = { projectId: 'project', canonicalURL: 'https://assets.example.test
 // §95 (design §3.5, §7.12 step 2): nothing selected and the candidate failed is the retryable source; a repair answers the
 // read response itself (fixtures migrated from the earlier state/status shapes, 4.4.5).
 const sourceBinding: VideoPresentationResponse['sourceBinding'] = presentedBinding(input.canonicalURL, { width: 160, height: 240, duration: 10, mimeType: 'video/webm' });
-const bundle = presentedBundle(input.canonicalURL, { display: { width: 160, height: 240, duration: { numerator: '10', denominator: '1' } } });
+const bundle = presentedBundle(input.canonicalURL, { display: presentedDisplay(160, 240, 250) });
 const failedWith = (code: string): VideoPresentationResponse => presentedResponse(sourceBinding, { preparation: presentedPreparation(code) });
 const failed = failedWith('container_failed');
-const ready: VideoPresentationResponse = presentedResponse(sourceBinding, { presentation: bundle, ledger: readyLedger(bundle, 250) });
+const ready: VideoPresentationResponse = presentedResponse(sourceBinding, { presentation: bundle });
 let client: QueryClient;
 
 function seed(data: VideoPresentationResponse): void {
@@ -53,7 +55,7 @@ function seed(data: VideoPresentationResponse): void {
 }
 
 function mount(content: React.ReactNode): ReturnType<typeof render> {
-  return render(<QueryClientProvider client={client}><CanvasContext.Provider value={{ projectId: input.projectId, spaceId: 'space', readOnly: true, myRole: 'viewer', caretProvider: null }}>{content}</CanvasContext.Provider></QueryClientProvider>);
+  return render(<QueryClientProvider client={client}><TooltipProvider><CanvasContext.Provider value={{ projectId: input.projectId, spaceId: 'space', readOnly: true, myRole: 'viewer', caretProvider: null }}>{content}</CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
 }
 
 function timeline(): React.JSX.Element {
@@ -138,7 +140,9 @@ describe('approved canonical Retry recovery (inner#1306 Canvas recovery oracle)'
   it('the actual node Retry repairs a failed cached preparation and attaches a fresh actual element', async () => {
     seed(failed);
     mount(<NodeIdContext.Provider value='node'><VideoNode data={{ handling: false, content: input.canonicalURL, width: 160, height: 240, duration: 10 }} /></NodeIdContext.Provider>);
-    fireEvent.click(await screen.findByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') }));
+    // With nothing selected the node shows the candidate's failure and, for a temporary one, its Retry (§7.9 N).
+    expect(await screen.findByText(t(preparationFailureKey('container_failed')))).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: t('canvas.task.action.retry') }));
     await waitFor(() => expect(platform.apiPost).toHaveBeenCalledOnce());
     await waitFor(() => expect(platform.sessions).toHaveLength(1));
     const session = platform.sessions[0]!;
@@ -147,12 +151,13 @@ describe('approved canonical Retry recovery (inner#1306 Canvas recovery oracle)'
     expect(platform.apiGet).toHaveBeenCalledOnce();
   });
 
-  // §10.6 failure classes: a content failure comes out the same on every rerun, so the node says so and offers no Retry
-  // (approved state copy: Retry under mediaError for temporary failures only).
+  // §10.6 failure classes: a content failure comes out the same on every rerun, so the node shows only the candidate's
+  // reason and offers no Retry (§7.9 N).
   it('the node shows a content failure without Retry', async () => {
     seed(failedWith('probe_invalid'));
     mount(<NodeIdContext.Provider value='node'><VideoNode data={{ handling: false, content: input.canonicalURL, width: 160, height: 240, duration: 10 }} /></NodeIdContext.Provider>);
-    expect(await screen.findByText(t('canvas.miniTool.videoUI.mediaError'))).toBeInTheDocument();
+    expect(await screen.findByText(t(preparationFailureKey('probe_invalid')))).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: t('canvas.task.action.retry') })).toBeNull();
     expect(screen.queryByRole('button', { name: t('canvas.miniTool.videoUI.retryPreview') })).toBeNull();
   });
 

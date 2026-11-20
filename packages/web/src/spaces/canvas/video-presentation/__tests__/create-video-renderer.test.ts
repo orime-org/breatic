@@ -4,7 +4,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createVideoRenderer } from '../create-video-renderer';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '../types';
-import { PRESENTED, presentedBundle } from '@web/test-utils/video-presentation';
+import { PRESENTED, presentedBundle, presentedDisplay } from '@web/test-utils/video-presentation';
 
 const vap = vi.hoisted(() => vi.fn());
 vi.mock('video-animation-player', () => ({ default: vap }));
@@ -14,10 +14,10 @@ vi.mock('video-animation-player', () => ({ default: vap }));
 const H = PRESENTED.fingerprint;
 const CANONICAL = 'https://assets.test.invalid/video/fixture/original.webm';
 const packed = { storageKey: 'video/fixture/original.webm.packed.mp4', url: 'https://assets.test.invalid/video/fixture/original.webm.packed.mp4', etag: '"packed"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
-const display = { width: 96, height: 64, duration: { numerator: '1', denominator: '1' } };
+const display = presentedDisplay(96, 64, 25);
 const alphaBundle = presentedBundle(CANONICAL, { display, playback: { kind: 'alpha-packed', carrier: packed,
   manifest: { ...packed, storageKey: 'video/fixture/original.webm.manifest.json', url: 'https://assets.test.invalid/video/fixture/original.webm.manifest.json', contentType: 'application/json' } } });
-const manifest = { schemaVersion: 1 as const, versionId: PRESENTED.versionId, toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256, policyVersion: 1,
+const manifest = { schemaVersion: 1 as const,
   packed, packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } };
 const source = { canonicalURL: CANONICAL, sourceFingerprint: H, presentation: alphaBundle, manifest } as unknown as VideoPresentationSource;
 const carrierURL = 'https://assets.test.invalid/video/fixture/original.webm.carrier.mp4';
@@ -109,8 +109,8 @@ describe('approved native and VAP rendering boundary', () => {
     expect(document.body.querySelectorAll('video')).toHaveLength(0);
   });
 
-  it('refuses a manifest of another version or of the wrong size without mounting VAP', async () => {
-    for (const other of [{ ...manifest, versionId: 'b'.repeat(64) }, { ...manifest, colorRect: { x: 0, y: 0, width: 48, height: 32 }, alphaRect: { x: 96, y: 0, width: 48, height: 32 } }]) {
+  it('refuses a manifest of another packed object or of the wrong size without mounting VAP', async () => {
+    for (const other of [{ ...manifest, packed: { ...packed, sha256: 'b'.repeat(64) } }, { ...manifest, colorRect: { x: 0, y: 0, width: 48, height: 32 }, alphaRect: { x: 96, y: 0, width: 48, height: 32 } }]) {
       const resource = createVideoRenderer(host, { ...source, manifest: other } as unknown as VideoPresentationSource, callbacks);
       await settle();
       resource.dispose();

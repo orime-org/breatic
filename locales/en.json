@@ -289,7 +289,8 @@
       "trackingStale": "The tracking no longer matches this selection. Track the selection again.",
       "transparentSource": "This tool doesn't work on videos with transparency.",
       "expandTooLong": "Expand takes videos up to {max} s long.",
-      "expandTooLarge": "The expanded video can be at most {max} px on its long side. Make the frame smaller."
+      "expandTooLarge": "The expanded video can be at most {max} px on its long side. Make the frame smaller.",
+      "presentationChanged": "The video was updated. Pick the frame and region again."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",
@@ -1063,7 +1064,8 @@
       },
       "editProposalMarks": "Replace the text in braces. Orange notes are not sent to the model.",
       "notePrefix": "Note: ",
-      "integerBlank": "Blank for auto"
+      "integerBlank": "Blank for auto",
+      "focusCropExpired": "Could not crop in time — please try again."
     },
     "edge": {
       "delete": "Delete connection"
@@ -1589,7 +1591,6 @@
         "inPoint": "In point",
         "last": "Last frame",
         "ledgerUnsupported": "This video is unsupported by this tool",
-        "loadingFrames": "Reading video frames…",
         "mediaError": "Media unavailable",
         "outPoint": "Out point",
         "pause": "Pause",
@@ -1715,7 +1716,10 @@
         "dialogueStartInvalid": "Enter a time of 0 seconds or later.",
         "outputCount": "{count, plural, one {# output} other {# outputs}}",
         "viewerMode": "Viewer mode",
-        "connectionUnavailable": "Connection unavailable"
+        "connectionUnavailable": "Connection unavailable",
+        "preparingVideo": "Preparing video…",
+        "preparationFailed": "Couldn't prepare the video",
+        "tooLongToPrepare": "Too long to prepare"
       }
     },
     "template": {

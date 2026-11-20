@@ -57,9 +57,10 @@ const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' 
 const source = { nodeId, canonicalURL: sourceURL, mediaInfo };
 const analysisRunId = '80000000-0000-4000-8000-000000000001';
 const audioId = '40000000-0000-4000-8000-000000000009';
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+// The selected version's grid: 125 frames at 25 fps (5 s).
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 const PRESENTATION_REF = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
-const presentation: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0, presentationRef: PRESENTATION_REF };
+const presentation: VideoToolPresentation = { grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0, presentationRef: PRESENTATION_REF };
 // The server's answers; nothing the catalog prices comes to these.
 type QuotedTool = 'video.remove-bg' | 'video.lip-sync' | 'video.erase' | 'video.expand';
 const QUOTES: Readonly<Record<QuotedTool, number>> = { 'video.remove-bg': 73.25, 'video.lip-sync': 137.5, 'video.erase': 41.5, 'video.expand': 88.75 };
@@ -72,7 +73,7 @@ const staleRunId = '80000000-0000-4000-8000-000000000002';
  * @returns The entry.
  */
 function model(name: string): ModelEntry {
-  return { name, display_name: name, modality: 'video', mode: 'edit', description: '', guide: '', tier: 'internal', generation_time: 600, takes_prompt: false, providers: [],
+  return { name, display_name: name, modality: 'video', mode: 'edit', description: '', guide: '', tier: 'internal', generation_time: 600, takes_prompt: false,
     params: { video: { fill: 'tool', default: null }, audio: { fill: 'tool', default: null } },
     pricing: { base_price: 400_000, formula: '{"total_price": get_duration(video) * base_price}', discount_rate: 100 } } as unknown as ModelEntry;
 }
@@ -115,7 +116,8 @@ async function seed(toolId: QuotedTool, tracking: { billed?: number; none?: bool
   if (toolId === 'video.erase') {
     const initial = createVideoToolDraft('video.erase', source);
     const box = { x: 0.3, y: 0.2, width: 0.3, height: 0.6 };
-    const draft: VideoToolDraftById['video.erase'] = { ...initial, params: { ...initial.params, range: { start: 0, end: 3 }, region: { box, points: [] } } };
+    // The range is grid frames: the first 3 s of the 25 fps grid.
+    const draft: VideoToolDraftById['video.erase'] = { ...initial, params: { ...initial.params, range: { start: 0, end: 75 }, region: { box, points: [] } } };
     commitVideoToolDraft(doc, nodeId, toolId, draft);
     if (tracking.none === true) return draft;
     const profile = { id: 'sam3', version: '1', weightsHash: null, params: {} };
@@ -126,8 +128,8 @@ async function seed(toolId: QuotedTool, tracking: { billed?: number; none?: bool
         binding: { assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: sourceURL, kind: 'video' as const, mediaInfo }, analysisInput, inputFingerprint };
       commitVideoToolAnalysisRef(doc, nodeId, { version: 1, toolId: 'video.erase', kind: 'tracked_mask', draftId: draft.draftId, analysisRunId: runId, inputFingerprint });
       return { ...identity, kind: 'tracked_mask', status: 'completed', artifactUnavailable: false, error: null, usage: tracking.billed === undefined ? [] : [{ credits: tracking.billed }],
-        result: { ...identity, kind: 'tracked_mask', width: 960, height: 540, frameCount: 75, timeBase: { numerator: 1, denominator: 100 }, anchor: draft.params.anchor,
-          regionFingerprint: 'c'.repeat(64), sourceFrameMapping: Array.from({ length: 75 }, (_unused, frameIndex) => ({ frameIndex, sourcePts: frameIndex * 0.04 })),
+        result: { ...identity, kind: 'tracked_mask', width: 960, height: 540, frameCount: 75, fps: { numerator: 25, denominator: 1 }, anchor: draft.params.anchor,
+          regionFingerprint: 'c'.repeat(64),
           artifactRefs: [{ role: 'rle', assetId: '70000000-0000-4000-8000-000000000002', canonicalURL: 'https://assets.example.test/track.rle', contentHash: 'b'.repeat(64),
             kind: 'document', mimeType: 'text/plain', size: 10, frameMetadata: null }] } };
     };
@@ -146,7 +148,7 @@ async function seed(toolId: QuotedTool, tracking: { billed?: number; none?: bool
   const identity = { schemaVersion: 1 as const, draftId: draft.draftId, revision: draft.revision, analysisRunId, acceptedAt: '2026-11-06T00:00:00.000001Z',
     binding: { assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: sourceURL, kind: 'video' as const, mediaInfo }, analysisInput, inputFingerprint };
   const record: MiniToolAnalysisRecord = { ...identity, kind: 'people', status: 'completed', artifactUnavailable: false, error: null, usage: [],
-    result: { ...identity, kind: 'people', anchor: { frameIndex: 0, pts: 0 }, people: [{ personId: 'person-a', faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] }] } };
+    result: { ...identity, kind: 'people', anchor: { frameIndex: 0 }, people: [{ personId: 'person-a', faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] }] } };
   vi.spyOn(miniToolAnalysesApi, 'get').mockResolvedValue(record);
   commitVideoToolAnalysisRef(doc, nodeId, { version: 1, toolId: 'video.lip-sync', kind: 'people', draftId: draft.draftId, analysisRunId, inputFingerprint });
   return draft;
@@ -243,9 +245,10 @@ describe('video model tools show the server quote of the current draft in their 
 // Frames-split design §10.8 计费 row: extract-frames and split are charged for their container work like the other planned
 // tools, so their footer shows the server's quote of the planned request, never "Free". A split names one output node per
 // planned segment, so its quote names as many.
-describe('extract-frames and split show the server quote, not "Free" (frames-split §10.8)', () => {
-  const FRAMES_QUOTES = { 'video.extract-frames': 3.25, 'video.split': 6.5 } as const;
-  it.each(['video.extract-frames', 'video.split'] as const)('%s shows exactly the quoted credits for the planned request of its draft', async (toolId) => {
+// Extract-frames is free and shows Free (frames-split §10, test plan §69 U04, extract-frames-free.test.tsx); split is quoted.
+describe('split shows the server quote, not "Free" (frames-split §10.8)', () => {
+  const FRAMES_QUOTES = { 'video.split': 6.5 } as const;
+  it.each(['video.split'] as const)('%s shows exactly the quoted credits for the planned request of its draft', async (toolId) => {
     http.post.mockImplementation(async (path: string): Promise<unknown> => {
       if (path !== '/mini-tools/quote') throw new Error(`Unexpected POST ${path}`);
       return { credits: FRAMES_QUOTES[toolId] };
@@ -253,7 +256,7 @@ describe('extract-frames and split show the server quote, not "Free" (frames-spl
     const doc = getDoc(docName.canvasSpace(projectId, spaceId));
     addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
     const initial = createVideoToolDraft(toolId, source);
-    commitVideoToolDraft(doc, nodeId, toolId, (toolId === 'video.split' ? { ...initial, params: { ...initial.params, cuts: [2] } } : initial));
+    commitVideoToolDraft(doc, nodeId, toolId, { ...initial, params: { ...initial.params, cuts: [50] } });
     canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params: {} });
     const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -263,7 +266,7 @@ describe('extract-frames and split show the server quote, not "Free" (frames-spl
     const body = quoteBodies().at(-1)!;
     expect(miniToolPlannedRequestSchema.safeParse(body).success).toBe(true);
     const outputs = body.outputs as { nodeId: string }[];
-    expect(outputs).toHaveLength(toolId === 'video.split' ? 2 : 1);
+    expect(outputs).toHaveLength(2);
     expect(new Set(outputs.map((output) => output.nodeId)).size).toBe(outputs.length);
   });
 });
@@ -281,7 +284,7 @@ describe('the erase tracking cost beside "Track selection" (canvas design §4 er
     await waitFor(() => expect(screen.getByText(`Est. ${formatCreditAmount(8.5)}`)).toBeTruthy());
     const body = http.post.mock.calls.find(([path]) => path === '/mini-tools/analyses/quote')![1] as Record<string, unknown>;
     expect(body).toMatchObject({ kind: 'tracked_mask', projectId, spaceId, hostNodeId: nodeId, presentationRef: PRESENTATION_REF,
-      params: { range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.3, y: 0.2, width: 0.3, height: 0.6 }, points: [] }, trackingPrompt: '' } });
+      params: { range: { start: 0, end: 75 }, anchor: { frameIndex: 0 }, region: { box: { x: 0.3, y: 0.2, width: 0.3, height: 0.6 }, points: [] }, trackingPrompt: '' } });
   });
 
   it('shows what the current tracking used once it is billed, in place of the estimate', async () => {

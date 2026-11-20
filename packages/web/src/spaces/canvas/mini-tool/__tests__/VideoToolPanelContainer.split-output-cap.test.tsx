@@ -38,7 +38,8 @@ const projectId = 'split-project'; const spaceId = 'split-space'; const nodeId =
 const sourceURL = 'https://assets.example.test/canonical.mp4';
 const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' };
 const source = { nodeId, canonicalURL: sourceURL, mediaInfo };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+// The selected version's grid at 25 fps.
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 
 /**
  * Mounts a split panel over a committed draft.
@@ -53,7 +54,7 @@ function mount(cuts: number[], maxOutputs: number, onRunVideo: () => Promise<unk
   const initial = createVideoToolDraft('video.split', source);
   commitVideoToolDraft(doc, nodeId, 'video.split', { ...initial, params: { ...initial.params, cuts } });
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, 'video.split', { sourceContent: sourceURL, params: {} });
-  const presentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 } as VideoToolPresentation;
+  const presentation = { grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 } as VideoToolPresentation;
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   const proposed: object = { maxOutputs };
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.split' node={node} nodes={[node]} presentation={presentation} onRunVideo={onRunVideo} costs={{ execution: '1' }} {...proposed} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);

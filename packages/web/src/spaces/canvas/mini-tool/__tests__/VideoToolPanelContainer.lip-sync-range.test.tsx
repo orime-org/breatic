@@ -46,8 +46,9 @@ const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' 
 const source = { nodeId, canonicalURL: sourceURL, mediaInfo };
 const runId = '80000000-0000-4000-8000-000000000001';
 const audioId = '40000000-0000-4000-8000-000000000009';
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
-const presentation: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
+// The selected version's grid at 25 fps.
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
+const presentation: VideoToolPresentation = { grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
 const profile = { id: 'people', version: '1', weightsHash: null, params: {} };
 
 type Range = { minDurationSeconds: number; maxDurationSeconds: number };
@@ -85,7 +86,7 @@ async function seed(modelId?: string): Promise<void> {
   };
   const record: MiniToolAnalysisRecord = {
     ...identity, kind: 'people', status: 'completed', artifactUnavailable: false, error: null, usage: [],
-    result: { ...identity, kind: 'people', anchor: { frameIndex: 0, pts: 0 }, people: [{ personId: 'person-a', faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] }] },
+    result: { ...identity, kind: 'people', anchor: { frameIndex: 0 }, people: [{ personId: 'person-a', faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] }] },
   };
   vi.spyOn(miniToolAnalysesApi, 'get').mockResolvedValue(record);
   commitVideoToolAnalysisRef(doc, nodeId, { version: 1, toolId: 'video.lip-sync', kind: 'people', draftId: draft.draftId, analysisRunId: runId, inputFingerprint });

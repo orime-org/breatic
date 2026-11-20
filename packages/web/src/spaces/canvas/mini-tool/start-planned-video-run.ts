@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { newId, t } from '@breatic/shared';
-import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoExpandLayout, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type VideoPresentationTable, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
+import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoExpandLayout, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type VideoPlanGrid, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi, type MiniToolPlannedRunAnswer } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
 import { addEdge, addNode, nodeDataMap, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
@@ -27,7 +27,7 @@ export interface PlannedVideoRun extends Pick<MiniToolRun, 'projectId' | 'spaceI
   /** The quoted press's analysis refs and output node ids (§97 D27-1); a run without a quote names new nodes. */
   plan?: Pick<PlannedVideoPress, 'analysisRefs' | 'outputNodeIds'>;
   /** The source's compact presentation table, which frames and split plan their outputs from; null while not read. */
-  frameTable?: VideoPresentationTable | null;
+  grid?: VideoPlanGrid | null;
   /** The selected version's display size, which an expansion's node is sized on as admission sizes it (§10.5). */
   display?: { width: number; height: number };
 }
@@ -82,8 +82,8 @@ export interface PlannedVideoFacts {
   presentationRef: MiniToolPlannedRequest['presentation_ref'];
   /** The analysis refs the node holds; the draft's own are the ones the request names. */
   analysisRefs: readonly VideoToolAnalysisRef[];
-  /** The source's compact presentation table, which frames and split plan their outputs from. */
-  frameTable?: VideoPresentationTable | null;
+  /** The selected version's grid, which frames and split plan their outputs on. */
+  grid?: VideoPlanGrid | null;
 }
 
 /** A quoted press: the request facts and the output node ids its quote named. */
@@ -97,21 +97,21 @@ const SINGLE_RECIPES: Partial<Record<VideoToolId, PlannedRecipe>> = {
 };
 
 /**
- * Each output's recipe, in output order: frames and split plan theirs from the source table with the shared planner the
- * admission runs on the same table, so the request's outputs equal what the server plans.
+ * Each output's recipe, in output order: frames and split plan theirs on the selected version's grid with the shared planner
+ * the admission runs on the same grid, so the request's outputs equal what the server plans.
  * @param tool - The tool.
  * @param draft - The draft.
- * @param frameTable - The source's compact presentation table.
+ * @param grid - The selected version's grid.
  * @returns The recipes.
- * @throws {Error} When the tool has no planned request, or frames and split have no table.
- * @throws {z.ZodError} When the table or the draft's selection is invalid.
+ * @throws {Error} When the tool has no planned request, or frames and split have no grid.
+ * @throws {z.ZodError} When the grid or the draft's selection is invalid.
  */
-export function plannedVideoRecipes(tool: VideoToolId, draft: VideoToolDraft, frameTable: VideoPresentationTable | null | undefined): PlannedRecipe[] {
+export function plannedVideoRecipes(tool: VideoToolId, draft: VideoToolDraft, grid: VideoPlanGrid | null | undefined): PlannedRecipe[] {
   if (tool === 'video.extract-frames' || tool === 'video.split') {
-    if (frameTable == null) throw new Error('Frames and split plan their outputs from the source table');
+    if (grid == null) throw new Error('Frames and split plan their outputs on the selected version grid');
     return tool === 'video.extract-frames'
-      ? planVideoFrames(frameTable, (draft as VideoToolDraftById['video.extract-frames']).params).map(({ frameIndex, pts }) => ({ kind: 'frame' as const, frameIndex, pts }))
-      : planVideoSplit(frameTable, (draft as VideoToolDraftById['video.split']).params.cuts).map(({ start, end }) => ({ kind: 'segment' as const, range: { start, end } }));
+      ? planVideoFrames(grid, (draft as VideoToolDraftById['video.extract-frames']).params).map(({ frameIndex }) => ({ kind: 'frame' as const, frameIndex }))
+      : planVideoSplit(grid, (draft as VideoToolDraftById['video.split']).params.cuts).map(({ start, end }) => ({ kind: 'segment' as const, range: { start, end } }));
   }
   const recipe = SINGLE_RECIPES[tool];
   if (recipe === undefined) throw new Error(`${tool} has no planned request`);
@@ -130,7 +130,7 @@ export function plannedVideoRecipes(tool: VideoToolId, draft: VideoToolDraft, fr
  * @throws {Error} When the tool has no single-recipe planned request.
  */
 export function buildPlannedVideoRequest(tool: VideoToolId, draft: VideoToolDraft, facts: PlannedVideoFacts, outputNodeIds: readonly string[]): MiniToolPlannedRequest {
-  const recipes = plannedVideoRecipes(tool, draft, facts.frameTable);
+  const recipes = plannedVideoRecipes(tool, draft, facts.grid);
   if (recipes.length !== outputNodeIds.length) throw new Error('Each planned output needs its own node');
   return miniToolPlannedRequestSchema.parse({ tool, project_id: facts.projectId, space_id: facts.spaceId, run_id: newId(), draft: structuredClone(draft),
     analysis_refs: facts.analysisRefs.filter((reference) => reference.toolId === tool && reference.draftId === draft.draftId).map((reference) => structuredClone(reference)),
@@ -149,7 +149,7 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
   if (!run.canWrite() || !run.sourceExists()) return null;
   const held = videoToolDraftSchema(run.toolId).parse(draft) as VideoToolDraft;
   if (held.source.nodeId !== source.id) throw new Error('Planned source differs from its canvas host');
-  const recipes = plannedVideoRecipes(run.toolId, held, run.frameTable);
+  const recipes = plannedVideoRecipes(run.toolId, held, run.grid);
   const spec = miniToolById(run.toolId);
   if (spec === undefined || spec.run.kind !== 'planned' || spec.outputs?.length !== 1) throw new Error('Planned video execution has no output descriptor');
   // An expansion's node takes the widened frame the quote and the admission size it to (execution design §10.5 geometry row).
@@ -165,7 +165,7 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
     return { ...node, id, data: { ...node.data, name: placed.name,
       ...(placed.size === undefined ? {} : { mediaWidth: placed.size.width, mediaHeight: placed.size.height }) } };
   });
-  const body = buildPlannedVideoRequest(run.toolId, held, { projectId: run.projectId, spaceId: run.spaceId, presentationRef: run.presentationRef, analysisRefs: run.plan?.analysisRefs ?? [], frameTable: run.frameTable },
+  const body = buildPlannedVideoRequest(run.toolId, held, { projectId: run.projectId, spaceId: run.spaceId, presentationRef: run.presentationRef, analysisRefs: run.plan?.analysisRefs ?? [], grid: run.grid },
     nodes.map((node) => node.id));
   // A transitions or lip-sync result is also linked from each input node it uses (the picked video, each dialogue audio)
   // while that node is still on the canvas (canvas design §3 inputs row: sourceNodeId gives the edge relation, §4).
@@ -173,12 +173,14 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
   const linksInputs = run.toolId === 'video.transitions' || run.toolId === 'video.lip-sync';
   const linked = [source.id, ...new Set(held.inputs.flatMap((input) =>
     linksInputs && input.sourceNodeId !== undefined && input.sourceNodeId !== source.id && nodeDataMap(doc, input.sourceNodeId) !== null ? [input.sourceNodeId] : []))];
-  runCanvasUndoBatch(run.projectId, run.spaceId, () => {
+  // The nodes and their edges are one add for the size cap, judged before the request: no room means no run.
+  const placed = runCanvasUndoBatch(run.projectId, run.spaceId, { kind: 'add' }, () => {
     for (const node of nodes) {
       addNode(run.projectId, run.spaceId, node);
       for (const from of linked) addEdge(run.projectId, run.spaceId, { id: `${from}->${node.id}`, source: from, target: node.id, toolId: run.toolId });
     }
   });
+  if (!placed.ok) return null;
   if (run.stillOpen()) run.onBuilt(nodes.map((node, index) => ({ id: node.id, position: node.position, width: placements[index]!.width, height: placements[index]!.height })));
   return body;
 }

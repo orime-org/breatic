@@ -35,10 +35,10 @@ const retryable = vi.mocked((miniTools as unknown as { lipsyncFailureRetryable: 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const draft: VideoToolDraftById['video.lip-sync'] = {
   version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [],
-  params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [{ dialogueId: '40000000-0000-4000-8000-000000000001', personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: 'cut_off' },
+  params: { anchor: { frameIndex: 0 }, dialogues: [{ dialogueId: '40000000-0000-4000-8000-000000000001', personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: 'cut_off' },
 };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
-const base = { toolId: 'video.lip-sync' as const, draft, analyses: [], frameTable, presentedTime: 0, disabled: false, pickingSlot: null, inputNames: new Map<string, string>(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn() };
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
+const base = { toolId: 'video.lip-sync' as const, draft, analyses: [], grid, presentedTime: 0, disabled: false, pickingSlot: null, inputNames: new Map<string, string>(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn() };
 
 /**
  * A lip-sync model as the catalog lists it, with the duration range the config gives it.
@@ -47,7 +47,7 @@ const base = { toolId: 'video.lip-sync' as const, draft, analyses: [], frameTabl
  * @returns The model.
  */
 function model(name: string, displayName: string): ModelEntry & { minDurationSeconds: number; maxDurationSeconds: number } {
-  return { name, display_name: displayName, modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, providers: [], minDurationSeconds: 1, maxDurationSeconds: 300 };
+  return { name, display_name: displayName, modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, availability: { upstreams: [] }, minDurationSeconds: 1, maxDurationSeconds: 300 };
 }
 const lipSync = { models: [model('sync-lipsync-3', 'Sync Lipsync 3'), model('ltx-2.3-lipsync', 'LTX 2.3 Lipsync')], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 } };
 

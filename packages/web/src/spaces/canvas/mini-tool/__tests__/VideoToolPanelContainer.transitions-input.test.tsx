@@ -56,8 +56,9 @@ import { toast } from '@web/lib/toast';
 const projectId = 'transitions-project'; const spaceId = 'transitions-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
 const sourceURL = 'https://assets.example.test/canonical.webm';
 const mediaInfo = { width: 160, height: 240, duration: 4, mimeType: 'video/webm' };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 100, step: 4, duration: 4 }] };
-const ready: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
+// The selected version's grid at 25 fps.
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 100 };
+const ready: VideoToolPresentation = { grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
 const name = docName.canvasSpace(projectId, spaceId);
 
 /**

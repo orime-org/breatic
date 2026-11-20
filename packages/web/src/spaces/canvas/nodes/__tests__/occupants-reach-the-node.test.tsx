@@ -11,7 +11,8 @@
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { cleanup, render, screen } from '@testing-library/react';
+import { cleanup, screen } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
 
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';

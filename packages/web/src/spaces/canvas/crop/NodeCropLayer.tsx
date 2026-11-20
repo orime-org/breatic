@@ -8,7 +8,9 @@ import { isModelTool, miniToolById, type RectParam } from '@breatic/shared/mini-
 
 import type { CropRect } from '@web/lib/crop-math';
 import { presetRatio } from '@web/lib/crop-math';
-import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { useQuery } from '@tanstack/react-query';
+import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { fromFraction, toFraction } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
@@ -79,7 +81,16 @@ export function NodeCropLayer({ nodeId, wrapper }: NodeCropLayerProps): React.JS
   const rectParam = rectParamOf(draft);
   // Read only while the layer shows, so a zoom does not re-render it on every node.
   const zoom = useStore((s) => (focus === null && rectParam === undefined ? 1 : s.transform[2]));
-  const geometry = useMediaGeometry(wrapper, focus !== null || rectParam !== undefined);
+  const cropping = focus !== null || rectParam !== undefined;
+  // A video's source size is its selected version's display geometry, not the played file's (frames-split §7.8).
+  const { projectId } = useCanvasContext();
+  const videoURL = useStore((s) => {
+    const node = s.nodeLookup.get(nodeId);
+    const content = (node?.data as { content?: unknown } | undefined)?.content;
+    return cropping && node?.type === 'video' && typeof content === 'string' ? content : '';
+  });
+  const presented = useQuery(videoPresentationQuery({ projectId, canonicalURL: videoURL, active: videoURL !== '' }));
+  const geometry = useMediaGeometry(wrapper, cropping, presented.data?.presentation?.display ?? null);
   const focusWrites = useWrittenElsewhere(focus?.rect ?? null);
   const toolWrites = useWrittenElsewhere<unknown>(
     rectParam === undefined || draft === null ? null : (draft.params[rectParam.key] ?? null),

@@ -9,10 +9,11 @@
 import * as React from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { newId } from '@breatic/shared';
-import { canonicalMiniToolValue, planVideoFrames, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type VideoPresentationTable, type VideoToolDraftById } from '@breatic/shared/mini-tools';
+import { canonicalMiniToolValue, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest, type MiniToolPresentationRef, type VideoPlanGrid, type VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { miniToolAnalysesApi } from '@web/data/api/mini-tool-analyses';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useDebounce } from '@web/lib/use-debounce';
+import { frameIndexOfMediaTime } from '@web/spaces/canvas/video-presentation/frame-grid-time';
 
 /** Where the tracking would run and on what. */
 export interface TrackingCostFacts {
@@ -21,7 +22,8 @@ export interface TrackingCostFacts {
   nodeId: string;
   /** The erase draft, null for any other tool. */
   draft: VideoToolDraftById['video.erase'] | null;
-  frameTable: VideoPresentationTable | null;
+  /** The selected version's grid, null while unusable. */
+  grid: VideoPlanGrid | null;
   presentationRef: MiniToolPresentationRef | undefined;
   presentedTime: number | null;
   /** The completed tracking of the current selection, if any. */
@@ -36,17 +38,15 @@ export interface TrackingCostFacts {
  * @throws {never} Never.
  */
 export function useTrackingCost(facts: TrackingCostFacts): { estimate?: string; actual?: string } {
-  const { projectId, spaceId, nodeId, draft, frameTable, presentationRef, tracking, presentedTime: time } = facts;
+  const { projectId, spaceId, nodeId, draft, grid, presentationRef, tracking, presentedTime: time } = facts;
   const [runId] = React.useState(newId);
   const body = React.useMemo((): MiniToolAnalysisRequest | null => {
-    if (draft === null || frameTable === null || presentationRef === undefined || time === null) return null;
+    if (draft === null || grid === null || presentationRef === undefined || time === null) return null;
     const { range, region, trackingPrompt } = draft.params;
     if (region.box === null && region.points.length === 0) return null;
-    const frame = planVideoFrames(frameTable, { mode: 'current', currentTime: time })[0];
-    if (frame === undefined) return null;
     return { analysisRunId: runId, projectId, spaceId, hostNodeId: nodeId, draftId: draft.draftId, revision: draft.revision, source: draft.source, presentationRef,
-      kind: 'tracked_mask', params: { range, anchor: { frameIndex: frame.frameIndex, pts: frame.pts }, region, trackingPrompt } };
-  }, [draft, frameTable, presentationRef, time, runId, projectId, spaceId, nodeId]);
+      kind: 'tracked_mask', params: { range, anchor: { frameIndex: frameIndexOfMediaTime(time, grid) }, region, trackingPrompt } };
+  }, [draft, grid, presentationRef, time, runId, projectId, spaceId, nodeId]);
   // The run id is new per panel; the quote follows everything else the request says, once it has held still (the route is
   // rate limited), and the last estimate stays on screen meanwhile.
   const pending = React.useMemo(() => body === null ? null : { key: canonicalMiniToolValue({ ...body, analysisRunId: null }), body }, [body]);

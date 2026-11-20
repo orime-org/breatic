@@ -19,10 +19,10 @@ import { VideoToolControls } from '../video/VideoToolControls';
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const draft: VideoToolDraftById['video.erase'] = {
   version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [],
-  params: { range: { start: 0, end: 5 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.3, height: 0.3 }, points: [] }, trackingPrompt: '' },
+  params: { range: { start: 0, end: 125 }, anchor: { frameIndex: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.3, height: 0.3 }, points: [] }, trackingPrompt: '' },
 };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
-const base = { toolId: 'video.erase' as const, draft, analyses: [], frameTable, presentedTime: 0, disabled: false, pickingSlot: null, inputNames: new Map<string, string>(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), onChange: vi.fn() };
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
+const base = { toolId: 'video.erase' as const, draft, analyses: [], grid, presentedTime: 0, disabled: false, pickingSlot: null, inputNames: new Map<string, string>(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), onChange: vi.fn() };
 
 /**
  * The cost text beside the Track selection button, checked to sit outside the button in the same row.

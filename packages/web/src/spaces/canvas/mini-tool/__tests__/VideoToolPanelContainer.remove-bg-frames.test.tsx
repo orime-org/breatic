@@ -38,16 +38,17 @@ const resultId = '10000000-0000-4000-8000-000000000002'; const olderId = '100000
 const failedId = '10000000-0000-4000-8000-000000000004';
 const sourceURL = 'https://assets.example.test/canonical.mp4'; const resultURL = 'https://assets.example.test/alpha.webm';
 const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' };
-const TABLE = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 10, step: 50, duration: 50 }] };
+// The selected version's grid: 10 frames at 2 fps (5 s).
+const GRID = { fps: { numerator: 2, denominator: 1 }, frameCount: 10 };
 
 /**
  * Presentation facts of a source in the given state.
- * @param ready - Whether the frame table is usable.
+ * @param ready - Whether the selected version is usable.
  * @returns The facts.
  */
 function facts(ready: boolean): VideoToolPresentation {
-  return ready ? { status: 'ready', frameTable: TABLE, presentedTime: 1, sourceURL, sourceEpoch: 1, seekEpoch: 0, panelState: 'usable', presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } }
-    : { status: 'ready', frameTable: null, presentedTime: 1, sourceURL, sourceEpoch: 1, seekEpoch: 0, panelState: 'waiting-table' };
+  return ready ? { status: 'ready', grid: GRID, presentedTime: 1, sourceURL, sourceEpoch: 1, seekEpoch: 0, panelState: 'usable', presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } }
+    : { status: 'ready', grid: null, presentedTime: 1, sourceURL, sourceEpoch: 1, seekEpoch: 0, panelState: 'waiting-presentation' };
 }
 
 /** Puts the source video node on the canvas once. */
@@ -88,14 +89,14 @@ function output(id: string, content: string, createdAt: number): void {
 
 afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); vi.restoreAllMocks(); });
 
-describe('remove background waits for the frame table (frames-split §10.6)', () => {
-  it('keeps Run unavailable and shows the ledger line while the frame table is not usable', () => {
+describe('remove background waits for the selected version (frames-split §7.12)', () => {
+  it('keeps Run unavailable and shows the preparing line while the selected version is not usable', () => {
     mount('video.remove-bg', facts(false));
     expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
-    expect(screen.getByText('Reading video frames…')).toBeInTheDocument();
+    expect(screen.getByText('Preparing video…')).toBeInTheDocument();
   });
 
-  it('runs once the frame table is usable', () => {
+  it('runs once the selected version is usable', () => {
     mount('video.remove-bg', facts(true));
     expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled();
   });
@@ -138,7 +139,7 @@ describe('the newest remove-background result (canvas design §4 remove-backgrou
   });
 });
 
-describe('extract frames while the frame table waits', () => {
+describe('extract frames while the selected version waits', () => {
   it('keeps the mode buttons usable while only Run waits', () => {
     mount('video.extract-frames', facts(false));
     expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
@@ -156,7 +157,8 @@ describe('extract frames while the frame table waits', () => {
     expect(canvasSessions.of(spaceId).getState().miniTool?.params.frameMode).toBeUndefined();
     act(() => canvasSessions.of(spaceId).getState().setMiniToolParam('frameMode', 'current'));
     const again = readVideoToolDraft(getDoc(docName.canvasSpace(projectId, spaceId)), nodeId, 'video.extract-frames');
-    expect(again.state === 'supported' && (again.draft as VideoToolDraftById['video.extract-frames']).params).toMatchObject({ mode: 'current', currentTime: 1 });
+    // The presented mediaTime 1 s is grid frame 2 at 2 fps (frames-split §4.3).
+    expect(again.state === 'supported' && (again.draft as VideoToolDraftById['video.extract-frames']).params).toMatchObject({ mode: 'current', frameIndex: 2 });
   });
 });
 

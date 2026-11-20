@@ -11,11 +11,12 @@ import { VideoToolControls } from '../video/VideoToolControls';
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const common = { version: 1 as const, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [] };
 const row = { dialogueId: '40000000-0000-4000-8000-000000000001', personId: null, analysisRunId: null, audioInputId: null, startTime: 0 };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 1, step: 4, duration: 4 }, { start: 4, count: 3, step: 8, duration: 8 }] };
-const base = { analyses: [], frameTable, presentedTime: 0.13, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(),
+// The selected version's grid: 7 frames at 25 fps, 0.28 s, while the registered duration says 5 s.
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
+const base = { analyses: [], grid, presentedTime: 0.13, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(),
 };
 
-const lipSyncModel: ModelEntry & { minDurationSeconds: number; maxDurationSeconds: number } = { name: 'sync-lipsync-3', display_name: 'Sync Lipsync 3', modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, providers: [], minDurationSeconds: 1, maxDurationSeconds: 300 };
+const lipSyncModel: ModelEntry & { minDurationSeconds: number; maxDurationSeconds: number } = { name: 'sync-lipsync-3', display_name: 'Sync Lipsync 3', modality: 'video', mode: 'talking_head', description: '', guide: '', tier: 'optional', generation_time: 600, takes_prompt: false, params: {}, availability: { upstreams: [] }, minDurationSeconds: 1, maxDurationSeconds: 300 };
 const lipSync = { models: [lipSyncModel], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 } };
 
 describe('approved production video parameter controls', () => {
@@ -35,7 +36,7 @@ describe('approved production video parameter controls', () => {
   });
   // Canvas design §4 lip-sync row: the bottom row holds the model on the left and the duration mode on the right.
   it('offers all five complete duration policies from the mode pill on the bottom row', () => {
-    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };
+    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0 }, dialogues: [row], syncMode: 'cut_off' } };
     render(<VideoToolControls {...base} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} lipSync={lipSync} />);
     const mode = screen.getByTestId('video-sync-mode');
     expect(mode.textContent).toContain('Cut off');
@@ -45,18 +46,18 @@ describe('approved production video parameter controls', () => {
     expect(['cut_off', 'silence', 'loop', 'bounce', 'remap'].map((value) => screen.getByTestId(`video-sync-${value}`).textContent)).toEqual(['Cut off', 'Silence', 'Loop', 'Bounce', 'Remap']);
   });
   it('locks the model and the duration mode while the panel is disabled', () => {
-    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };
+    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0 }, dialogues: [row], syncMode: 'cut_off' } };
     render(<VideoToolControls {...base} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} lipSync={lipSync} disabled />);
     expect(screen.getByTestId('video-sync-mode')).toBeDisabled();
     expect(screen.getByTestId('generate-model-trigger')).toBeDisabled();
   });
   it('says start times follow the video and silence inside each audio is kept', () => {
-    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };
+    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0 }, dialogues: [row], syncMode: 'cut_off' } };
     render(<VideoToolControls {...base} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} />);
     expect(screen.getByText(t('canvas.miniTool.videoUI.dialogueTimingHint'))).toBeInTheDocument();
   });
   it('shows the audio, person and zero-second input on one compact dialogue row', () => {
-    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };
+    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0 }, dialogues: [row], syncMode: 'cut_off' } };
     render(<VideoToolControls {...base} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} />);
     const main = screen.getByTestId(`video-dialogue-${row.dialogueId}`);
     expect(main.contains(screen.getByTestId(`video-audio-${row.dialogueId}`))).toBe(true);
@@ -65,7 +66,7 @@ describe('approved production video parameter controls', () => {
   });
   it('keeps invalid dialogue time visible and prevents committing it as a valid persisted number', () => {
     const onChange = vi.fn();
-    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [row], syncMode: 'cut_off' } };
+    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0 }, dialogues: [row], syncMode: 'cut_off' } };
     render(<VideoToolControls {...base} toolId='video.lip-sync' draft={draft} onChange={onChange} />);
     const input = screen.getByTestId(`video-start-${row.dialogueId}`);
     fireEvent.change(input, { target: { value: '-1' } });
@@ -73,10 +74,10 @@ describe('approved production video parameter controls', () => {
     expect(input).toHaveAttribute('aria-invalid', 'true');
     expect(onChange).toHaveBeenCalledTimes(0);
   });
-  // frames-split §7: planVideoSplit refuses a cut at or past the presentation's end (0.28 s here, not the stored 5 s).
+  // frames-split §7: planVideoSplit refuses a cut at or past the grid's end (7 frames, 0.28 s here, not the stored 5 s).
   it('refuses a split cut at or past the presentation end, as the slider does', () => {
     const onChange = vi.fn();
-    render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [0.1] } }} onChange={onChange} />);
+    render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [2] } }} onChange={onChange} />);
     const input = screen.getByTestId('video-cut-0');
     for (const value of ['1', '0.28']) {
       fireEvent.change(input, { target: { value } });
@@ -99,12 +100,12 @@ function peopleRecord(runId: string, acceptedAt: string, failed = false): MiniTo
   const identity = {
     schemaVersion: 1 as const, draftId: common.draftId, revision: common.revision, analysisRunId: runId, acceptedAt,
     binding: { assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: source.canonicalURL, kind: 'video' as const, mediaInfo: source.mediaInfo },
-    analysisInput: { schemaVersion: 1 as const, sourceURL: source.canonicalURL, kind: 'people' as const, anchor: { frameIndex: 0, pts: 0 }, profile: { id: 'people', version: '1', weightsHash: null, params: {} } },
+    analysisInput: { schemaVersion: 1 as const, sourceURL: source.canonicalURL, kind: 'people' as const, anchor: { frameIndex: 0 }, profile: { id: 'people', version: '1', weightsHash: null, params: {} } },
     inputFingerprint: 'b'.repeat(64),
   };
   return {
     ...identity, kind: 'people', status: failed ? 'failed' : 'completed', artifactUnavailable: false, error: failed ? { code: 'failed' } : null, usage: [],
-    result: failed ? null : { ...identity, kind: 'people', anchor: { frameIndex: 0, pts: 0 }, people: [{ personId: 'person-a', faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] }] },
+    result: failed ? null : { ...identity, kind: 'people', anchor: { frameIndex: 0 }, people: [{ personId: 'person-a', faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] }] },
   };
 }
 
@@ -115,7 +116,7 @@ describe('independent progress and reusable people results', () => {
     const success = peopleRecord('80000000-0000-4000-8000-000000000001', '2026-10-24T00:00:00.000001Z');
     const failed = peopleRecord('80000000-0000-4000-8000-000000000002', '2026-10-24T00:00:00.000002Z', true);
     const dialogue = { ...row, personId: 'person-a', analysisRunId: success.analysisRunId };
-    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [dialogue], syncMode: 'cut_off' } };
+    const draft: VideoToolDraftById['video.lip-sync'] = { ...common, params: { anchor: { frameIndex: 0 }, dialogues: [dialogue], syncMode: 'cut_off' } };
     render(<VideoToolControls {...base} analyses={[failed, success]} toolId='video.lip-sync' draft={draft} onChange={vi.fn()} />);
     expect(screen.getByTestId(`video-person-${row.dialogueId}`)).not.toHaveTextContent('Person 1');
     expect(screen.getByTestId(`video-person-${row.dialogueId}`)).toBeDisabled();
@@ -127,7 +128,7 @@ describe('split scene detection and cut list (approved demo split state)', () =>
   const sceneRun: MiniToolAnalysisRecord = {
     schemaVersion: 1, draftId: common.draftId, revision: common.revision, analysisRunId: '80000000-0000-4000-8000-000000000003', acceptedAt: '2026-10-24T00:00:00.000001Z',
     binding: { assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: source.canonicalURL, kind: 'video', mediaInfo: source.mediaInfo },
-    analysisInput: { schemaVersion: 1, sourceURL: source.canonicalURL, kind: 'scene_cuts', range: { start: 0, end: 5 }, profile: { id: 'scenes', version: '1', weightsHash: null, params: {} } },
+    analysisInput: { schemaVersion: 1, sourceURL: source.canonicalURL, kind: 'scene_cuts', range: { start: 0, end: 7 }, profile: { id: 'scenes', version: '1', weightsHash: null, params: {} } },
     inputFingerprint: 'b'.repeat(64), kind: 'scene_cuts', status: 'failed', artifactUnavailable: false, error: { code: 'failed' }, usage: [], result: null,
   };
   it('reads Detect scenes before any detection and Detect again after one', () => {
@@ -141,7 +142,7 @@ describe('split scene detection and cut list (approved demo split state)', () =>
     const { unmount } = render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [] } }} onChange={vi.fn()} />);
     expect(screen.getByText(t('canvas.miniTool.videoUI.noCuts'))).toBeInTheDocument();
     unmount();
-    render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [0.1] } }} onChange={vi.fn()} />);
+    render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [2] } }} onChange={vi.fn()} />);
     expect(screen.queryByText(t('canvas.miniTool.videoUI.noCuts'))).toBeNull();
   });
 });

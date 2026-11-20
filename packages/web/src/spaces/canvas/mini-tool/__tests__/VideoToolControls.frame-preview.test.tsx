@@ -12,21 +12,22 @@ import type { VideoToolDraftById } from '@breatic/shared/mini-tools';
 // panel shows ONE preview of the actually selected frame, filling the row width, with its image and its time.
 vi.mock('@web/spaces/canvas/mini-tool/video/use-video-frame-thumbnails', async (importOriginal) => ({
   ...(await importOriginal<typeof Thumbnails>()),
-  useVideoFrameThumbnails: (): Thumbnails.VideoThumbnailState => ({ status: 'ready', frames: [{ frameIndex: 2, pts: 0.12, url: 'blob:selected-frame' }] }),
+  useVideoFrameThumbnails: (): Thumbnails.VideoThumbnailState => ({ status: 'ready', frames: [{ frameIndex: 3, url: 'blob:selected-frame' }] }),
 }));
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.webm', mediaInfo: { width: 160, height: 240, duration: 0.28, mimeType: 'video/webm' } };
 const draft = { version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [],
-  params: { mode: 'current', currentTime: 0.13 } } as unknown as VideoToolDraftById['video.extract-frames'];
-const table = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 1, step: 4, duration: 4 }, { start: 4, count: 3, step: 8, duration: 8 }] };
+  params: { mode: 'current', frameIndex: 3 } } as unknown as VideoToolDraftById['video.extract-frames'];
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
 
 describe('the single frame preview (§97 G1; canvas design §4)', () => {
   it('shows exactly one full-row preview of the selected frame with its image and time', () => {
-    render(<VideoToolControls toolId='video.extract-frames' draft={draft} analyses={[]} frameTable={table} disabled={false} pickingSlot={null} inputNames={new Map()}
+    render(<VideoToolControls toolId='video.extract-frames' draft={draft} analyses={[]} grid={grid} disabled={false} pickingSlot={null} inputNames={new Map()}
       onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} presentedTime={0.13} onChange={vi.fn()} />);
     const previews = screen.getByTestId('video-frame-previews');
     const images = previews.querySelectorAll('img');
     expect(images).toHaveLength(1);
     expect(images[0].getAttribute('src')).toBe('blob:selected-frame');
+    // Presented at 0.13 s, the shown frame is round(0.13 × 25) = 3, which starts at 3 / 25 = 0.120 s (frames-split §4.3).
     expect(previews.textContent).toContain('0.120');
     // Full row width: no ancestor between the image and the preview root is a half-width card.
     const chain: Element[] = [];

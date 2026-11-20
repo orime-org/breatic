@@ -24,7 +24,7 @@ import { useCanvasStore } from '@web/stores/canvas';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { videoPresentationQuery } from '../video-presentation/video-presentation-query';
-import { PRESENTED, presentedBinding, presentedBundle, presentedResponse, readyLedger } from '@web/test-utils/video-presentation';
+import { PRESENTED, presentedBinding, presentedBundle, presentedDisplay, presentedPreparation, presentedResponse } from '@web/test-utils/video-presentation';
 
 const PRESENTATION_REF = { source: { toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256 } };
 
@@ -35,7 +35,7 @@ vi.mock('@web/data/yjs/canvas-space', async (original) => ({ ...(await original<
 vi.mock('@web/spaces/canvas/mini-tool/start-planned-video-run', async (original) => ({ ...(await original<typeof StartModule>()), startPlannedVideoRun: vi.fn() }));
 vi.mock('@web/spaces/canvas/_shared/NodePanelMount', () => ({ NodePanelMount: ({ children }: { children: React.ReactNode }) => <div>{children}</div> }));
 // Only the node's browser rendering boundary is replaced. CanvasSpace,
-// useCanvasVideoBindings, sourceLedgerQuery, all panels and Buttons remain real.
+// useCanvasVideoBindings, all panels and Buttons remain real.
 vi.mock('@web/spaces/canvas/nodes/VideoNode', () => ({
   VideoNode: function RendererBoundary({ data }: { data: { content: string } }): React.JSX.Element {
     const actions = useCanvasActions();
@@ -59,23 +59,14 @@ const SPACE = '30000000-0000-4000-8000-000000000002';
 const SOURCE = '30000000-0000-4000-8000-000000000003';
 const URL = 'https://assets.example.test/source.webm';
 const HASH = 'a'.repeat(64);
-const table = { schemaVersion: 1, timescale: 1000, runs: [{ start: 2000, count: 4, step: 250, duration: 250 }] };
-// §95: the compact object is the four fields around the S1 table, bound to the selected bundle's toolInputId (4.4.5).
-const tableBytes = new TextEncoder().encode(JSON.stringify({ sourceFingerprint: 'a'.repeat(64), toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256, presentation: table }));
-const tableURL = `${URL}.table.json`;
-const attempt = { jobId: 'ledger-job', deadlineAt: 1900000000000 };
-let sha256 = '';
+// The page's last presented frame is at 2.62 s: on the 25 fps grid that is frame round(2.62 × 25) = 66 (frames-split §4.3).
+const CURRENT_FRAME = 66;
 let client: QueryClient;
-const fetchMock = vi.fn<typeof fetch>();
 
-/** Supplies immutable, bound v2 source facts. @throws {never} Never. */
-function sourceResponse(ledger?: unknown): VideoPresentationResponse {
-  // §95: the read carries the selected bundle and its ledger (fixtures migrated from `state: 'native'` and `sourceLedger`, 4.4.5).
-  const bundle = presentedBundle(URL, { sourceFingerprint: HASH, display: { width: 400, height: 200, duration: { numerator: '4', denominator: '1' } } });
-  const ready = readyLedger(bundle, 4);
-  const receipt = ready.state === 'ready' ? { ...ready.receipt, attempt, table: { ...ready.receipt.table, url: tableURL, size: tableBytes.length, sha256 } } : null;
-  return presentedResponse(presentedBinding(URL, { width: 400, height: 200, duration: 4, mimeType: 'video/webm' }, HASH),
-    { presentation: bundle, ledger: (ledger ?? { state: 'ready', receipt, failure: null }) as VideoPresentationResponse['ledger'], sourceLedgerReadLimits: { maxBytes: 16777216 } });
+/** The read with P selected on a 100-frame 25 fps grid (4 s). @throws {never} Never. */
+function sourceResponse(): VideoPresentationResponse {
+  const bundle = presentedBundle(URL, { sourceFingerprint: HASH, display: presentedDisplay(400, 200, 100) });
+  return presentedResponse(presentedBinding(URL, { width: 400, height: 200, duration: 4, mimeType: 'video/webm' }, HASH), { presentation: bundle });
 }
 /** Publishes a new authoritative response in the actual account query cache. @throws {never} Never. */
 function publish(response: VideoPresentationResponse): void {
@@ -86,12 +77,12 @@ function mount(toolId: VideoToolId = 'video.split'): void {
   act(() => canvasSessions.of(SPACE).getState().openMiniTool(SOURCE, toolId, { sourceContent: URL, params: {} }));
   render(<QueryClientProvider client={client}><TooltipProvider><SpaceConnectionContext.Provider value={{ provider: null, synced: true, hasEverSynced: true, status: 'connected', writeAccess: 'granted', authFailedReason: null }}><CanvasSpace projectId={PROJECT} spaceId={SPACE} readOnly={false} myRole='editor' /></SpaceConnectionContext.Provider></TooltipProvider></QueryClientProvider>);
 }
-/** A transient or content failure of this exact source. @throws {never} Never. */
-function failure(errorCode: string): VideoPresentationResponse {
-  return sourceResponse({ state: 'failed', receipt: null, failure: errorCode });
+/** Nothing selected and the target candidate failed with a code, or still preparing with null. @throws {never} Never. */
+function unselected(errorCode: string | null): VideoPresentationResponse {
+  return presentedResponse(presentedBinding(URL, { width: 400, height: 200, duration: 4, mimeType: 'video/webm' }, HASH), { preparation: presentedPreparation(errorCode) });
 }
 
-beforeEach(async () => {
+beforeEach(() => {
   page.shown = PRESENTED.versionId; page.renotify = null;
   vi.clearAllMocks(); useCanvasStore.getState().reset(); canvasSessions.of(SPACE).getState().closeActivePanel();
   useCurrentUserStore.getState().setUser({ id: 'author', name: 'Author', email: 'author@example.test', personalStudio: null, membershipTier: 'base' });
@@ -101,36 +92,44 @@ beforeEach(async () => {
   addNode(PROJECT, SPACE, { id: SOURCE, type: 'video', position: { x: 30, y: 40 }, data: { content: URL, name: 'SOURCE', mediaWidth: 400, mediaHeight: 200, duration: 4, mimeType: 'video/webm', locked: false, createdBy: 'author', createdAt: 0, attachments: [] } });
   vi.mocked(useCanvasSpace).mockReturnValue({ nodes: readNodes(doc), edges: [], undo: vi.fn(), redo: vi.fn(), canUndo: false, canRedo: false, getLastWriteWasLocal: () => true, deletedByPeer: () => false });
   client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
-  const digest = await crypto.subtle.digest('SHA-256', tableBytes);
-  sha256 = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('');
-  publish(sourceResponse()); fetchMock.mockReset().mockImplementation(async () => new Response(tableBytes, { headers: { 'content-type': 'application/json' } })); vi.stubGlobal('fetch', fetchMock);
+  publish(sourceResponse());
 });
 afterEach(() => { cleanup(); resetRunOnceForTests(); client.clear(); canvasSessions.of(SPACE).getState().closeActivePanel(); destroyDoc(docName.canvasSpace(PROJECT, SPACE)); vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
-describe('S4 actual Canvas → bindings → tools compact table wire', () => {
-  it('C01 enables split only after the compact table is validated through the real Canvas wire', async () => {
+// Frames-split §7.12 through the real Canvas wire: the panel is usable from the selected version P on the page alone (its
+// grid is P.display), waits while nothing is selected, and offers the source repair for a temporary candidate failure.
+describe('S4 actual Canvas → bindings → tools on the frame grid', () => {
+  it('C01 enables split once the page shows the selected version, with no table read', async () => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
-    expect(fetchMock).toHaveBeenCalledTimes(1); expect(fetchMock.mock.calls[0]?.[0]).toBe(tableURL);
-    // Nonzero origin belongs to the table, not the nullable registry duration.
     expect(screen.getByText(/1.*(?:segment|clip)/i)).toBeInTheDocument();
   });
-  it.each(['video.extract-frames', 'video.split', 'video.expand', 'video.erase', 'video.lip-sync', 'video.transitions'] as const)('C02 %s waits for a pending table', async (tool) => {
+  // An erase draft starts on the whole grid, so a first erase while preparing has no draft yet: only the waiting state shows.
+  it('C02 video.erase with no draft yet shows only the preparing state, with no Run', async () => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
     act(() => {
-      publish(sourceResponse({ state: 'pending', receipt: null, failure: null }));
+      publish(unselected(null));
+      canvasSessions.of(SPACE).getState().openMiniTool(SOURCE, 'video.erase', { sourceContent: URL, params: {} });
+    });
+    expect(await screen.findByTestId('video-tool-waiting')).toHaveTextContent(t('canvas.miniTool.videoUI.preparingVideo'));
+    expect(screen.queryByTestId('mini-tool-run')).toBeNull();
+  });
+  it.each(['video.extract-frames', 'video.split', 'video.expand', 'video.lip-sync', 'video.transitions'] as const)('C02 %s waits while the video is being prepared', async (tool) => {
+    mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
+    act(() => {
+      publish(unselected(null));
       canvasSessions.of(SPACE).getState().openMiniTool(SOURCE, tool, { sourceContent: URL, params: {} });
     });
     await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
-    expect(screen.getAllByText('Reading video frames…')[0]).toBeInTheDocument();
+    expect(screen.getAllByText(t('canvas.miniTool.videoUI.preparingVideo'))[0]).toBeInTheDocument();
   });
-  // Frames-split §10.6 panel hookup: remove background and the other model tools wait for the frame table too.
-  it('C03 remove-background waits for a pending table like the other tools', async () => {
-    publish(sourceResponse({ state: 'pending', receipt: null, failure: null })); mount('video.remove-bg');
+  // Frames-split §10.6 panel hookup: remove background waits for the presentation like the other tools.
+  it('C03 remove-background waits while the video is being prepared like the other tools', async () => {
+    publish(unselected(null)); mount('video.remove-bg');
     await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
-    expect(screen.getAllByText('Reading video frames…')[0]).toBeInTheDocument();
+    expect(screen.getAllByText(t('canvas.miniTool.videoUI.preparingVideo'))[0]).toBeInTheDocument();
   });
-  it.each(['expired', 'source_ledger_invalid'])('C04 %s shows real retry; Button remains loading through authoritative refresh', async (code) => {
-    publish(failure(code));
+  it.each(['expired', 'container_failed'])('C04 %s shows real retry; Button remains loading through authoritative refresh', async (code) => {
+    publish(unselected(code));
     let finish!: (value: unknown) => void;
     const post = vi.spyOn(request, 'apiPost').mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     let finishRead!: (value: unknown) => void;
@@ -143,7 +142,7 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
     expect(post).toHaveBeenCalledOnce();
     expect(retry).toHaveAttribute('aria-busy', 'true');
     expect(retry).toHaveAttribute('aria-disabled', 'true');
-    await act(async () => finish(sourceResponse({ state: 'pending', receipt: null, failure: null })));
+    await act(async () => finish(unselected(null)));
     expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
     expect(retry).toHaveAttribute('aria-busy', 'true');
     expect(retry).toHaveAttribute('aria-disabled', 'true');
@@ -153,35 +152,34 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
   });
   it('C05 content failure shows its reason without a retry (after valid-source control)', async () => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
-    act(() => publish(failure('no_presented_frames')));
+    act(() => publish(unselected('no_presented_frames')));
     await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
     expect(screen.queryByRole('button', { name: /retry/i })).not.toBeInTheDocument();
     expect(screen.getByText(/unsupported|no.*frames/i)).toBeInTheDocument();
   });
-  it('C07 cut stepping and split planning use the exact table supplied through Canvas', async () => {
+  it('C07 cut stepping and split planning use the selected version grid supplied through Canvas', async () => {
     mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
     fireEvent.click(screen.getByRole('button', { name: /at cursor/i }));
     fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
     const reading = readVideoToolDraft(getDoc(docName.canvasSpace(PROJECT, SPACE)), SOURCE, 'video.split');
     expect(reading.state).toBe('supported');
     if (reading.state !== 'supported') throw new Error('Expected the persisted split draft');
-    expect(reading.draft.params).toEqual({ cuts: [2.75] });
+    // The cut lands on the current grid frame and one arrow step moves it one grid frame (§10.7 split row).
+    expect(reading.draft.params).toEqual({ cuts: [CURRENT_FRAME + 1] });
     expect(screen.getByTestId('video-cut-count')).toHaveTextContent('1 cut point · 2 segments');
   });
-  it('C08 the lip-sync anchor is the current compact-table frame, not registry FPS', async () => {
+  it('C08 the lip-sync anchor is the current grid frame, not registry FPS', async () => {
     const start = vi.spyOn(miniToolAnalysesApi, 'start').mockImplementation(() => new Promise(() => undefined));
     mount('video.lip-sync');
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
     // §95 D9-4 (design §7.11 analysis admission): every analysis request names the selected bundle's tool input.
-    expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'people', params: { anchor: { frameIndex: 2, pts: 2.5 } }, presentationRef: PRESENTATION_REF });
-    expect(fetchMock.mock.calls[0]?.[0]).toBe(tableURL);
+    expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'people', params: { anchor: { frameIndex: CURRENT_FRAME } }, presentationRef: PRESENTATION_REF });
   });
   // §96 (design §7.12 step 3, §7.8, §3.3): while the page still shows the earlier version the panel waits for the
-  // presentation, even with the new version's table ready; it moves on only once the page reports the new version.
+  // presentation; it moves on only once the page reports the selected version.
   it('C12 the panel waits while the page shows another version, and becomes usable once the page shows the selected one', async () => {
     page.shown = 'b'.repeat(64);
     mount();
-    await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await act(async () => { await new Promise((resolve) => setTimeout(resolve, 50)); });
     expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
     page.shown = PRESENTED.versionId;
@@ -211,17 +209,8 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
     await waitFor(() => expect(start).toHaveBeenCalledOnce());
     expect(start.mock.calls[0]?.[0]).toMatchObject({ kind: 'tracked_mask', presentationRef: PRESENTATION_REF });
   });
-  it('C09 compact read validation errors offer retry without exposing the previous table', async () => {
-    mount(); await waitFor(() => expect(screen.getByTestId('mini-tool-run')).not.toBeDisabled());
-    const next = sourceResponse();
-    if (next.ledger?.state !== 'ready') throw new Error('Expected a ready fixture');
-    next.ledger.receipt.table.sha256 = 'd'.repeat(64);
-    act(() => publish(next));
-    await waitFor(() => expect(screen.getByTestId('mini-tool-run')).toBeDisabled());
-    expect(await screen.findByRole('button', { name: /retry/i })).toBeInTheDocument();
-  });
   it('C06 accepted retry completes even after the panel closes', async () => {
-    publish(failure('expired')); let finish!: (value: unknown) => void;
+    publish(unselected('expired')); let finish!: (value: unknown) => void;
     const post = vi.spyOn(request, 'apiPost').mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
     vi.spyOn(request, 'apiGet').mockResolvedValue(sourceResponse());
     mount(); fireEvent.click(await screen.findByRole('button', { name: /retry/i }));
@@ -230,6 +219,6 @@ describe('S4 actual Canvas → bindings → tools compact table wire', () => {
     expect(screen.queryByTestId('mini-tool-run')).not.toBeInTheDocument();
     await act(async () => finish(sourceResponse()));
     expect(post.mock.calls[0]?.[2]).not.toMatchObject({ signal: expect.any(AbortSignal) });
-    await waitFor(() => expect(client.getQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: URL, active: true }).queryKey)).toMatchObject({ ledger: { state: 'ready' } }));
+    await waitFor(() => expect(client.getQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: URL, active: true }).queryKey)).toMatchObject({ presentation: { versionId: PRESENTED.versionId } }));
   });
 });

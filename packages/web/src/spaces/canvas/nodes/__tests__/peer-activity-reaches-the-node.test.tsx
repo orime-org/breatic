@@ -7,7 +7,8 @@
  * no tasks, kept off one that has any.
  */
 
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
+import { renderWithTooltips as render } from '@web/test-utils/render-with-tooltips';
 import { ReactFlowProvider, type NodeProps } from '@xyflow/react';
 import { describe, expect, it, vi } from 'vitest';
 

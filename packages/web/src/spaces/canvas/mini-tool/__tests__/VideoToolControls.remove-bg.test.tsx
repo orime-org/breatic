@@ -15,7 +15,7 @@ import { VideoPlaybackStrip } from '../video/VideoPlaybackStrip';
 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.webm', mediaInfo: { width: 160, height: 90, duration: 5, mimeType: 'video/webm' } };
 const draft = { version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [], params: {} } as unknown as VideoToolDraftById['video.remove-bg'];
-const common = { toolId: 'video.remove-bg' as const, draft, analyses: [], frameTable: null, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), onChange: vi.fn() };
+const common = { toolId: 'video.remove-bg' as const, draft, analyses: [], grid: null, disabled: false, pickingSlot: null, inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), onChange: vi.fn() };
 
 /**
  * Gives the strip's track a fixed on-screen box, as the browser lays it out.

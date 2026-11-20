@@ -9,7 +9,7 @@
 import * as React from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
 import { newId } from '@breatic/shared';
-import { canonicalMiniToolValue, type MiniToolPlannedRequest, type VideoToolDraft, type VideoToolId } from '@breatic/shared/mini-tools';
+import { canonicalMiniToolValue, miniToolChargeTo, type MiniToolPlannedRequest, type VideoToolDraft, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
 import { useDebounce } from '@web/lib/use-debounce';
@@ -28,7 +28,7 @@ export function usePlannedVideoQuote(tool: VideoToolId, draft: VideoToolDraft | 
   const count = React.useMemo((): number => {
     if (draft === null || facts === null) return 1;
     try {
-      return plannedVideoRecipes(tool, draft, facts.frameTable).length;
+      return plannedVideoRecipes(tool, draft, facts.grid).length;
     } catch {
       return 1;
     }
@@ -55,7 +55,8 @@ export function usePlannedVideoQuote(tool: VideoToolId, draft: VideoToolDraft | 
   const quote = useQuery({
     queryKey: ['mini-tool-quote', settled?.key ?? null],
     queryFn: () => miniToolsApi.quotePlannedVideoRun(settled!.body),
-    enabled: settled !== null,
+    // A platform-funded tool (frame extraction) costs the user nothing, so it is never quoted (frames-split §5.5).
+    enabled: settled !== null && miniToolChargeTo(tool) !== 'platform',
     placeholderData: keepPreviousData,
     retry: false,
   });

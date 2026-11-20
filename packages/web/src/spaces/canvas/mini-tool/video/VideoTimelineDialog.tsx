@@ -5,7 +5,7 @@ import * as React from 'react';
 import { Timeline, type TimelineState } from '@xzdarcy/react-timeline-editor';
 import '@xzdarcy/react-timeline-editor/dist/react-timeline-editor.css';
 import { ArrowLeftRight, Film, Pause, Play, RotateCcw } from 'lucide-react';
-import { clampTransitions, planVideoTimelineSeconds, presentationOutputFps, transitionDurationBounds, type VideoPresentationTable, type VideoToolDraftById, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
+import { clampTransitions, planVideoTimelineSeconds, transitionDurationBounds, type VideoPlanGrid, type VideoToolDraftById, type VideoToolTimelineClip } from '@breatic/shared/mini-tools';
 import { Button } from '@web/components/ui/button';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
 import { ScrollArea } from '@web/components/ui/scroll-area';
@@ -31,8 +31,8 @@ export interface VideoTimelineDialogProps {
   onRun: () => Promise<unknown> | undefined;
   /** Why the panel's Run cannot run now; Export says it instead of exporting (canvas design §10 editor × export). */
   runBlockedReason?: string;
-  /** Each input's selected compact presentation table, by input id (§97 D10-3). */
-  inputTables?: ReadonlyMap<string, VideoPresentationTable>;
+  /** Each input's selected version grid, by input id (§97 D10-3). */
+  inputGrids?: ReadonlyMap<string, VideoPlanGrid>;
   /** Each input's selected display size and whether it presents with transparency, by input id. */
   inputFormats?: ReadonlyMap<string, VideoTimelineFormat>;
   renderDecoder?: VideoTimelineDecoderRenderer;
@@ -50,22 +50,22 @@ const FIRST_TRANSITION_SECONDS = 0.4;
  * @returns The text.
  * @throws {never} Never.
  */
-function fpsText(fps: { numerator: string; denominator: string }): string {
-  return String(Number((Number(fps.numerator) / Number(fps.denominator)).toFixed(2)));
+function fpsText(fps: { numerator: number; denominator: number }): string {
+  return String(Number((fps.numerator / fps.denominator).toFixed(2)));
 }
 
 /**
  * The clips after a Dialog edit, each junction keeping its type with its length held within its duration range on the output
- * grid of the first clip's table (frames-split §7.17), or by half the shorter clip while that table is unknown, and made a
+ * grid of the first clip's version (frames-split §7.17), or by half the shorter clip while that grid is unknown, and made a
  * Cut only when no transition fits (shared `clampTransitions`).
  * @param clips - The full ordered source clip sequence.
- * @param tables - Each input's selected presentation table, by input id.
+ * @param grids - Each input's selected version grid, by input id.
  * @returns The clips, each junction held or made a Cut.
  * @throws {never} Never.
  */
-function normalize(clips: readonly VideoToolTimelineClip[], tables: ReadonlyMap<string, VideoPresentationTable> | undefined): VideoToolTimelineClip[] {
-  const table = clips[0] === undefined ? undefined : tables?.get(clips[0].inputId);
-  const fps = table === undefined ? null : presentationOutputFps(table);
+function normalize(clips: readonly VideoToolTimelineClip[], grids: ReadonlyMap<string, VideoPlanGrid> | undefined): VideoToolTimelineClip[] {
+  const first = clips[0] === undefined ? undefined : grids?.get(clips[0].inputId);
+  const fps = first === undefined ? null : first.fps;
   const clamped = clampTransitions(clips, fps);
   const bounds = fps === null ? null : transitionDurationBounds(clamped, fps);
   if (bounds === null) return clamped;
@@ -123,12 +123,12 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
   const input = draft.inputs.find((item) => item.inputId === clip?.inputId);
   // The one transition sits between the two clips and is carried by the first (demo editJunction).
   const junction = clips.length === 2 ? clips[0]! : null;
-  const firstTable = clips[0] === undefined ? undefined : props.inputTables?.get(clips[0].inputId);
-  // The output grid is the first clip's rate (D13-1); without its table no transition length can be judged yet.
+  const firstGrid = clips[0] === undefined ? undefined : props.inputGrids?.get(clips[0].inputId);
+  // The output grid is the first clip's rate (D13-1); without its grid no transition length can be judged yet.
   const bounds = React.useMemo(() => {
-    const exact = junction === null || firstTable === undefined ? null : transitionDurationBounds(clips, presentationOutputFps(firstTable));
+    const exact = junction === null || firstGrid === undefined ? null : transitionDurationBounds(clips, firstGrid.fps);
     return exact === null ? null : gridBounds(exact);
-  }, [junction, firstTable, clips]);
+  }, [junction, firstGrid, clips]);
   const firstInput = clips[0] === undefined ? undefined : draft.inputs.find((item) => item.inputId === clips[0]!.inputId);
   const firstFormat = clips[0] === undefined ? undefined : props.inputFormats?.get(clips[0].inputId);
   const frameWidth = firstFormat?.width ?? firstInput?.mediaInfo?.width;
@@ -136,7 +136,7 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
   // The output is transparent when either clip is, as export decides (canvas design §4 transitions row).
   const transparent = clips.some((item) => props.inputFormats?.get(item.inputId)?.transparent === true);
   const format = React.useMemo((): VideoTimelineFormat | null => (frameWidth === undefined || frameHeight === undefined ? null : { width: frameWidth, height: frameHeight, transparent }), [frameWidth, frameHeight, transparent]);
-  const compositionText = [format === null ? null : `${format.width} × ${format.height}`, firstTable === undefined ? null : `${fpsText(presentationOutputFps(firstTable))} fps`, `${plan.duration.toFixed(3)} s`].filter((part) => part !== null).join(' · ');
+  const compositionText = [format === null ? null : `${format.width} × ${format.height}`, firstGrid === undefined ? null : `${fpsText(firstGrid.fps)} fps`, `${plan.duration.toFixed(3)} s`].filter((part) => part !== null).join(' · ');
   // The editor labels every scale boundary, the last one included, and that last boundary is its right edge, where the
   // centred label is cut in half: that boundary stays unlabelled.
   const scaleCount = Math.ceil(plan.duration) + 1;
@@ -186,7 +186,7 @@ function TimelineWorkspace(props: VideoTimelineDialogProps): React.JSX.Element {
     setSelected(selection);
     // Any write ends a held transition; editPoint holds it again for the next key of the same entry.
     held.current = null;
-    props.onChange({ ...draft, params: { clips: normalize(next, props.inputTables) } });
+    props.onChange({ ...draft, params: { clips: normalize(next, props.inputGrids) } });
   }
   /**
    * Edits the selected clip's In or Out, the transition re-fitted from the one held since typing began.

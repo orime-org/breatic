@@ -55,6 +55,9 @@ import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labe
 import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document';
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
+import { useTimelinePresentations } from '@web/spaces/timeline/use-timeline-presentations';
+import { preparationFailureKey, preparationRetryable } from '@web/spaces/canvas/video-presentation/VideoPreparationNotice';
+import { useVideoPresentationRepair } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 import { usePublishTimelineView } from '@web/spaces/timeline/use-publish-timeline-view';
 import { userMovedScroll, type TrackScroll } from '@web/spaces/timeline/timeline-follow-scroll';
 import { useTimelineAsset, useTimelineAssets } from '@web/spaces/timeline/use-timeline-asset';
@@ -442,11 +445,19 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const videoAssetIds = React.useMemo(() => (assetSignature === '' ? [] : assetSignature.split(' ')), [assetSignature]);
   const assets = useTimelineAssets(projectId, videoAssetIds);
   const assetOf = React.useCallback((clip: TimelineClip) => clip.kind === 'video' ? assets.get(document.sources[clip.sourceId]?.assetId ?? '') : undefined, [assets, document.sources]);
+  // Each registered original is read through the presentation query the canvas node reads (inner#1306 frames-split §7.8).
+  const urlSignature = [...new Set(videoClips.flatMap((clip) => assetOf(clip)?.data?.fileUrl ?? []))].sort().join('\n');
+  const videoUrls = React.useMemo(() => (urlSignature === '' ? [] : urlSignature.split('\n')), [urlSignature]);
+  const presentations = useTimelinePresentations(projectId, videoUrls);
+  const { repair: repairPresentation, repairing: repairingPresentations } = useVideoPresentationRepair(projectId);
   const videoSpecs = videoClips.map((clip) => {
     const asset = assetOf(clip);
     // Cached data stays usable when a refetch fails; only a read that never returned data fails the layer (#1410 design §6.2).
     const state = asset?.data !== undefined ? 'ready' as const : asset?.isError === true ? 'failed' as const : 'loading' as const;
-    return { clipId: clip.id, fileUrl: state === 'ready' ? asset?.data?.fileUrl ?? null : null, coverUrl: asset?.data?.coverUrl ?? null, state };
+    const original = state === 'ready' ? asset?.data?.fileUrl ?? null : null;
+    // A selected version plays its playback file; until then the original plays for display (§7.8 detached × Attach).
+    const fileUrl = original === null ? null : presentations.get(original)?.playbackUrl ?? original;
+    return { clipId: clip.id, fileUrl, coverUrl: asset?.data?.coverUrl ?? null, state };
   });
   const videoSignature = JSON.stringify(videoSpecs);
   // The layer set keeps its identity while its content is unchanged, so playing on does not resync the elements.
@@ -885,11 +896,19 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     draggedId.current = null;
   }, [handledId, t]);
   const [notesLayer, setNotesLayer] = React.useState<HTMLDivElement | null>(null);
-  const videoNotes = visible.flatMap((clip, index) => {
-    const state = clip.kind === 'video' ? videoStates.get(clip.id) : undefined;
-    if (state !== 'loading' && state !== 'failed') return [];
+  const videoNotes = visible.flatMap((clip, index): VideoNote[] => {
+    const lane = clip.kind === 'video' ? videoStates.get(clip.id) : undefined;
+    const original = clip.kind === 'video' ? assetOf(clip)?.data?.fileUrl : undefined;
+    const presentation = original === undefined ? undefined : presentations.get(original);
     const track = labels.nameOf(clip.trackId) ?? clip.trackId;
-    return [{ clipId: clip.id, z: index + 1, state, track }];
+    // With nothing selected the note follows the candidate (§7.9 last paragraph): its failure, or, once the browser cannot
+    // play the original, "Preparing video…" over the cover instead of a player error.
+    if (original !== undefined && presentation !== undefined && !presentation.selected) {
+      if (presentation.failure !== null) return [{ clipId: clip.id, z: index + 1, state: 'candidate-failed', track, original, failure: presentation.failure }];
+      if (lane === 'failed') return [{ clipId: clip.id, z: index + 1, state: 'preparing', track, original, failure: null }];
+    }
+    if (lane !== 'loading' && lane !== 'failed') return [];
+    return [{ clipId: clip.id, z: index + 1, state: lane, track, original: original ?? null, failure: null }];
   });
   const retryVideoLayer = React.useCallback((clipId: string): void => {
     // The asset is read again first: a file address that stopped loading may have expired (#1410 design §6.2).
@@ -937,8 +956,11 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             <div data-testid='timeline-preview-notes' className='pointer-events-none absolute inset-px' style={NOTE_LAYER_STYLE}>
               <div ref={setNotesLayer} className='absolute right-3 top-3 flex flex-col items-end gap-1.5 *:pointer-events-auto'>
                 {videoNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z}
-                  text={t(note.state === 'failed' ? 'timeline.preview.videoUnavailable' : 'timeline.preview.videoLoading', { track: note.track })}>
+                  text={note.failure !== null ? t(preparationFailureKey(note.failure)) : note.state === 'preparing' ? t('canvas.miniTool.videoUI.preparingVideo')
+                    : t(note.state === 'failed' ? 'timeline.preview.videoUnavailable' : 'timeline.preview.videoLoading', { track: note.track })}>
                   {note.state === 'failed' && <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryVideoLayer(note.clipId)}>{t('timeline.retry')}</Button>}
+                  {note.failure !== null && note.original !== null && preparationRetryable(note.failure) && <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact'
+                    loading={repairingPresentations.has(note.original)} onClick={() => { if (note.original !== null) repairPresentation(note.original); }}>{t('timeline.retry')}</Button>}
                 </PreviewNote>)}
               </div>
             </div>
@@ -1009,6 +1031,18 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     {draft.status !== 'closed' && draft.open && webLimits !== undefined && <TimelineWebAnimationDialog spaceId={spaceId} draft={draft} retry={retryDialog} limits={webLimits}
       onEdit={editDraft} onExecute={execute} onClose={closeDraft} />}
   </div>;
+}
+
+/** A video layer's preview note: its asset or element is loading or failed, or, with no selected version, its candidate. */
+interface VideoNote {
+  clipId: string;
+  z: number;
+  state: 'loading' | 'failed' | 'preparing' | 'candidate-failed';
+  track: string;
+  /** The registered original, once its asset is read. */
+  original: string | null;
+  /** The candidate's failure code, for `candidate-failed`. */
+  failure: string | null;
 }
 
 /**

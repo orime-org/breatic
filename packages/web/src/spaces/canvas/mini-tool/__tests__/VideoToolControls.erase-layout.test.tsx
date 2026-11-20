@@ -18,9 +18,9 @@ import { VideoToolControls } from '../video/VideoToolControls';
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const draft: VideoToolDraftById['video.erase'] = {
   version: 1, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [],
-  params: { range: { start: 1, end: 3 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.3, height: 0.3 }, points: [] }, trackingPrompt: '' },
+  params: { range: { start: 25, end: 75 }, anchor: { frameIndex: 0 }, region: { box: { x: 0.1, y: 0.1, width: 0.3, height: 0.3 }, points: [] }, trackingPrompt: '' },
 };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 
 /**
  * Renders the erase controls.
@@ -28,7 +28,7 @@ const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 
  * @returns The container.
  */
 function mount(overrides: Partial<React.ComponentProps<typeof VideoToolControls>> = {}): HTMLElement {
-  return render(<VideoToolControls toolId='video.erase' draft={draft} analyses={[]} frameTable={frameTable} presentedTime={2} disabled={false} pickingSlot={null}
+  return render(<VideoToolControls toolId='video.erase' draft={draft} analyses={[]} grid={grid} presentedTime={2} disabled={false} pickingSlot={null}
     inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onChange={vi.fn()} analysisCreditText='8' {...overrides} />).container;
 }
 
@@ -59,11 +59,11 @@ describe('the erase range strip (D1)', () => {
     expect(thumbs).toHaveLength(2);
     expect(thumbs[0]!.getAttribute('aria-valuenow')).toBe('1');
     expect(thumbs[1]!.getAttribute('aria-valuenow')).toBe('3');
-    // Radix moves the thumb that last took focus.
+    // Radix moves the thumb that last took focus; the strip shows seconds and the draft stores grid frames (§7.16).
     fireEvent.focus(thumbs[1]!);
-    fireEvent.keyDown(thumbs[1]!, { key: 'ArrowRight' });
+    fireEvent.keyDown(thumbs[1]!, { key: 'End' });
     expect(onChange).toHaveBeenCalledTimes(1);
-    expect(onChange.mock.calls[0]![0].params.range).toEqual({ start: 1, end: 3.01 });
+    expect(onChange.mock.calls[0]![0].params.range).toEqual({ start: 25, end: 125 });
     expect(screen.getByTestId('video-range-start')).toBeInTheDocument();
     expect(screen.getByTestId('video-range-end')).toBeInTheDocument();
   });

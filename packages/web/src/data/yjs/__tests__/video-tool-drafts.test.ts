@@ -96,7 +96,9 @@ function dataOf(doc: Y.Doc): Y.Map<unknown> {
 
 /** Creates a disconnected collaborator sharing the original document state. */
 function collaborator(doc: Y.Doc): Y.Doc {
-  const peer = new Y.Doc();
+  // A managed document of its own: every local Space write goes through the size gate, which writes only to a named doc.
+  counter += 1;
+  const peer = getDoc(docName.canvasSpace(`video-draft-peer-project-${counter}`, `video-draft-peer-space-${counter}`));
   documents.push(peer);
   Y.applyUpdate(peer, Y.encodeStateAsUpdate(doc), 'remote');
   return peer;
@@ -372,10 +374,10 @@ describe('durable scene result application', () => {
     const identity = {
       schemaVersion: 1, draftId, revision: firstRevision, analysisRunId: runId,
       acceptedAt: '2026-10-25T09:03:03.100001Z', kind: 'scene_cuts', binding,
-      analysisInput: { schemaVersion: 1, kind: 'scene_cuts', sourceURL, range: { start: 0, end: 5 }, profile: { id: 'pyscenedetect-content', version: '0.7.2', weightsHash: null, params: { threshold: 27, minSceneLength: 15 } } },
+      analysisInput: { schemaVersion: 1, kind: 'scene_cuts', sourceURL, range: { start: 0, end: 125 }, profile: { id: 'pyscenedetect-content', version: '0.7.2', weightsHash: null, params: { threshold: 27, minSceneLength: 15 } } },
       inputFingerprint: 'a'.repeat(64),
     };
-    return { ...identity, status: 'completed', result: { ...identity, timeBase: { numerator: 1, denominator: 1000 }, frameCount: 125, cuts: [{ frameIndex: 43, pts: 1.7, detectionScore: 31 }, { frameIndex: 85, pts: 3.4, detectionScore: 47 }] }, error: null, usage: [], artifactUnavailable: false };
+    return { ...identity, status: 'completed', result: { ...identity, fps: { numerator: 25, denominator: 1 }, frameCount: 125, cuts: [{ frameIndex: 43, detectionScore: 31 }, { frameIndex: 85, detectionScore: 47 }] }, error: null, usage: [], artifactUnavailable: false };
   }
 
   /** Creates the accepted run's editable source without tracking setup in undo. */
@@ -394,7 +396,7 @@ describe('durable scene result application', () => {
     const record = completedScene();
     const before = structuredClone(record);
     expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe(true);
-    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [1.7, 3.4] } } });
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [43, 85] } } });
     expect(origins).toEqual([CANVAS_UNDO]);
     expect(undo.undoStack).toHaveLength(1);
     expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe(false);
@@ -411,7 +413,7 @@ describe('durable scene result application', () => {
     expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: original });
     expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(false);
     undo.redo();
-    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [1.7, 3.4] } } });
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [43, 85] } } });
     undo.undo();
     undo.destroy();
     const remounted = undoManager(doc);
@@ -428,12 +430,12 @@ describe('durable scene result application', () => {
     api.commitVideoToolAnalysisRef(doc, hostId, analysisRef({ analysisRunId: secondRunId }));
     expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene(secondRunId))).toBe(true);
     expect(undo.undoStack).toHaveLength(1);
-    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [1.7, 3.4] } } });
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [43, 85] } } });
   });
 
   it('retains a manual edit made before the accepted result arrives', () => {
     const doc = sceneSpace();
-    const edited = splitDraft({ cuts: [1.2] }, { revision: secondRevision });
+    const edited = splitDraft({ cuts: [30] }, { revision: secondRevision });
     api.commitVideoToolDraft(doc, hostId, 'video.split', edited);
     const undo = undoManager(doc);
     expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(false);

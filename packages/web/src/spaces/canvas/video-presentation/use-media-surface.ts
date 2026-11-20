@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { videoPresentationVersionSchema } from '@breatic/shared';
 import { createVideoRenderer } from '@web/spaces/canvas/video-presentation/create-video-renderer';
 import { createPresentedFrameClock, type PresentedFrameClock } from '@web/spaces/canvas/video-presentation/presented-frame-clock';
 import { presentedSizeOf, runtimeSourceKeyOf, type PresentedMediaFrame, type MediaSurfaceBinding, type MediaSurfaceSnapshot, type VideoPresentationSource, type VideoRendererFactory, type VideoRendererResource } from '@web/spaces/canvas/video-presentation/types';
@@ -42,10 +41,9 @@ export function useMediaSurface({ host, container, source, active, createRendere
 
   React.useEffect(() => {
     if (!active || !source || !host.current) { setSnapshot(DETACHED); return; }
-    // Only a selected version of this very source reaches a renderer (§7.8).
-    const version = videoPresentationVersionSchema.safeParse(source.presentation);
-    if (!version.success || version.data.sourceFingerprint !== source.sourceFingerprint) { setSnapshot({ status: 'failed', binding: null, error: 'invalid-presentation' }); return; }
-    const original = presentedSizeOf(version.data);
+    // Only a selected version of this very source reaches a renderer (§7.8); the version was validated by the read it came in.
+    if (source.presentation.sourceFingerprint !== source.sourceFingerprint) { setSnapshot({ status: 'failed', binding: null, error: 'invalid-presentation' }); return; }
+    const original = presentedSizeOf(source.presentation);
     setSnapshot({ status: 'loading', binding: null, error: null });
 
     const epoch = ++sourceEpoch.current;

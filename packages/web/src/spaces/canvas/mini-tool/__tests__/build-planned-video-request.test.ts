@@ -44,7 +44,7 @@ const ref = (letter: string): { toolInputId: string; planSha256: string } => ({ 
 const LIP_SYNC: VideoToolDraftById['video.lip-sync'] = {
   version: 1, draftId: '60000000-0000-4000-8000-000000000001', revision: '70000000-0000-4000-8000-000000000001', source,
   inputs: [{ inputId: AUDIO, url: 'https://assets.example.test/voice.m4a', mediaInfo: { duration: 3, mimeType: 'audio/mp4' } }],
-  params: { anchor: { frameIndex: 0, pts: 0 }, syncMode: 'cut_off', modelId: 'sync-lipsync-3',
+  params: { anchor: { frameIndex: 0 }, syncMode: 'cut_off', modelId: 'sync-lipsync-3',
     dialogues: [{ dialogueId: '50000000-0000-4000-8000-000000000001', personId: 'person-a', analysisRunId: RUN, audioInputId: AUDIO, startTime: 0 }] },
 };
 const PEOPLE_REF: VideoToolAnalysisRef = { version: 1, toolId: 'video.lip-sync', kind: 'people', draftId: LIP_SYNC.draftId, analysisRunId: RUN, inputFingerprint: 'e'.repeat(64) };
@@ -62,7 +62,7 @@ const TRANSITIONS: VideoToolDraftById['video.transitions'] = {
 const REMOVE_BG: VideoToolDraftById['video.remove-bg'] = { version: 1, draftId: '60000000-0000-4000-8000-000000000003', revision: '70000000-0000-4000-8000-000000000003', source, inputs: [], params: {} };
 const ERASE: VideoToolDraftById['video.erase'] = {
   version: 1, draftId: '60000000-0000-4000-8000-000000000004', revision: '70000000-0000-4000-8000-000000000004', source, inputs: [],
-  params: { range: { start: 0, end: 3 }, anchor: { frameIndex: 0, pts: 0 }, region: { box: { x: 0.3, y: 0.2, width: 0.3, height: 0.6 }, points: [] }, trackingPrompt: '' },
+  params: { range: { start: 0, end: 3 }, anchor: { frameIndex: 0 }, region: { box: { x: 0.3, y: 0.2, width: 0.3, height: 0.6 }, points: [] }, trackingPrompt: '' },
 };
 const TRACKED_REF: VideoToolAnalysisRef = { version: 1, toolId: 'video.erase', kind: 'tracked_mask', draftId: ERASE.draftId, analysisRunId: RUN, inputFingerprint: 'e'.repeat(64) };
 const EXPAND: VideoToolDraftById['video.expand'] = {

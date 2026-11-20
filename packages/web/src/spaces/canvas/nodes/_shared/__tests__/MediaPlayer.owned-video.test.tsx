@@ -9,11 +9,12 @@ import { VideoNode } from '../../VideoNode';
 import { CanvasContext } from '../../../canvas-context';
 import { CanvasActionsContext } from '../../../canvas-actions';
 import { NodeIdContext } from '../node-id-context';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClientProvider, queryClient } from '@web/app/providers/QueryClientProvider';
 import { videoPresentationQuery } from '../../../video-presentation/video-presentation-query';
 import type { VideoPresentationResponse } from '@breatic/shared';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '../../../video-presentation/types';
-import { PRESENTED, presentedBundle } from '@web/test-utils/video-presentation';
+import { PRESENTED, presentedBundle, presentedDisplay } from '@web/test-utils/video-presentation';
 
 const driver = vi.hoisted(() => ({ sessions: [] as { element: HTMLVideoElement; surface: HTMLCanvasElement; callbacks: VideoRendererCallbacks; dispose: ReturnType<typeof vi.fn> }[] }));
 vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (importOriginal) => ({
@@ -41,9 +42,9 @@ const packed = { storageKey: 'packed.mp4', url: 'https://assets.example.test/pac
  */
 function alphaSource(canonicalURL: string, fingerprint: string, versionId: string): VideoPresentationSource {
   return { canonicalURL, sourceFingerprint: fingerprint, presentation: presentedBundle(canonicalURL, { sourceFingerprint: fingerprint, versionId,
-    display: { width: 160, height: 240, duration: { numerator: '10', denominator: '1' } },
+    display: presentedDisplay(160, 240, 250),
     playback: { kind: 'alpha-packed', carrier: packed, manifest: { ...packed, storageKey: 'manifest.json', url: 'https://assets.example.test/manifest.json', contentType: 'application/json' } } }),
-  manifest: { schemaVersion: 1, versionId, toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256, policyVersion: 1, packed,
+  manifest: { schemaVersion: 1, packed,
     packedWidth: 320, packedHeight: 240, colorRect: { x: 0, y: 0, width: 160, height: 240 }, alphaRect: { x: 160, y: 0, width: 160, height: 240 } } };
 }
 const source = alphaSource('https://assets.example.test/canonical.webm', PRESENTED.fingerprint, PRESENTED.versionId);
@@ -56,7 +57,8 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); queryClient.clear(); });
 
 describe('canonical owned video in the existing player', () => {
-  it('keeps controls inside the canonical display box and fullscreen uses that parent, never packed dimensions', () => {
+  // Full screen left the player for the corner button (`MediaFullscreen`), which opens its own view of the source.
+  it('keeps controls inside the canonical display box, never packed dimensions', () => {
     const onDimensions = vi.fn(); const onBinding = vi.fn();
     const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} onVideoBinding={onBinding} onDimensions={onDimensions} />);
     expect(driver.sessions).toHaveLength(1);
@@ -68,10 +70,6 @@ describe('canonical owned video in the existing player', () => {
     expect(binding.container.style.aspectRatio).toBe('160/240');
     expect(onDimensions).toHaveBeenCalledWith({ width: 160, height: 240 });
     expect(view.container.querySelector(`video[src="${source.canonicalURL}"]`)).toBeNull();
-    const fullscreen = vi.fn().mockResolvedValue(undefined);
-    Object.defineProperty(binding.container, 'requestFullscreen', { value: fullscreen });
-    fireEvent.click(screen.getByTestId('fullscreen'));
-    expect(fullscreen).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByTestId('play-toggle'));
     expect(owned.element.play).toHaveBeenCalledOnce();
   });
@@ -122,20 +120,11 @@ describe('canonical owned video in the existing player', () => {
     expect(bindings.mock.calls.at(-1)![0].binding.element).toBe(next.element);
   });
 
-  it('keeps unknown classification blank instead of interpreting a canonical alpha URL as native', () => {
+  // With nothing selected the original plays for display only (frames-split §7.8 detached × Attach): no renderer is made.
+  it('plays the original for display while no version is selected, without a presentation renderer', () => {
     const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={null} />);
     expect(driver.sessions).toHaveLength(0);
-    expect(view.container.querySelector('video')).toBeNull();
-    expect(screen.getByTestId('play-toggle')).toBeDisabled();
-    expect(screen.getByTestId('seek').getAttribute('data-disabled')).not.toBeNull();
-  });
-
-  it('fills the player box with the cover while the presentation is not known yet', () => {
-    const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={null} poster='https://assets.example.test/cover.jpg' size={{ width: 320, height: 180 }} />);
-    const surface = view.container.querySelector('[data-video-presentation]')!;
-    // Without a source the surface has no aspect ratio of its own; it takes the player's box, which the node's size sets.
-    expect(surface.className.split(' ')).toEqual(expect.arrayContaining(['absolute', 'inset-0']));
-    expect(surface.querySelector('img')?.getAttribute('src')).toBeTruthy();
+    expect(view.container.querySelector(`video[src="${source.canonicalURL}"]`)).not.toBeNull();
   });
 
   it('releases StrictMode resources and inactive displays without accepting disposed frames', () => {
@@ -159,9 +148,9 @@ vi.mock('@web/spaces/canvas/video-presentation/video-presentation-query', async 
     queryKey: ['video-presentation', 1, input.projectId, input.canonicalURL], enabled: input.active,
     queryFn: async (): Promise<VideoPresentationResponse> => ({
       sourceBinding: { assetId: '10000000-0000-4000-8000-000000000001', contentHash: source.sourceFingerprint, canonicalURL: input.canonicalURL, kind: 'video', mediaInfo: { width: 160, height: 240, duration: 10, mimeType: 'video/webm' } },
-      // §95: the read carries the selected bundle and its ledger; the manifest is a bundle receipt, not a response field (4.4.5).
-      presentation: presentedBundle(input.canonicalURL, { sourceFingerprint: source.sourceFingerprint, display: { width: 160, height: 240, duration: { numerator: '10', denominator: '1' } } }),
-      preparation: null, ledger: null, pollAfterMs: 5000,
+      // The read carries the selected bundle; the manifest is a bundle receipt, not a response field.
+      presentation: presentedBundle(input.canonicalURL, { sourceFingerprint: source.sourceFingerprint, display: presentedDisplay(160, 240, 250) }),
+      preparation: null, pollAfterMs: null,
     }),
   })),
 }));
@@ -170,7 +159,7 @@ describe('actual VideoNode authorized presentation bridge', () => {
   it('queries its project canonical source and publishes the real binding/frame through existing canvas actions', async () => {
     const binding = vi.fn(); const frame = vi.fn();
     const data = { handling: false, content: source.canonicalURL, width: 160, height: 240, duration: 10, mimeType: 'video/webm' };
-    render(<QueryClientProvider><CanvasContext.Provider value={{ projectId: 'project', spaceId: 'space', readOnly: true, myRole: 'viewer', caretProvider: null }}><CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), deleteNode: vi.fn(), activateNodeUpload: vi.fn(), beginGroupResize: vi.fn(), reportGroupResize: vi.fn(), commitGroupResize: vi.fn(), onVideoBinding: binding, onVideoFrame: frame }}><NodeIdContext.Provider value='node'><VideoNode data={data} /></NodeIdContext.Provider></CanvasActionsContext.Provider></CanvasContext.Provider></QueryClientProvider>);
+    render(<QueryClientProvider><TooltipProvider><CanvasContext.Provider value={{ projectId: 'project', spaceId: 'space', readOnly: true, myRole: 'viewer', caretProvider: null }}><CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), deleteNode: vi.fn(), activateNodeUpload: vi.fn(), beginGroupResize: vi.fn(), reportGroupResize: vi.fn(), commitGroupResize: vi.fn(), onVideoBinding: binding, onVideoFrame: frame }}><NodeIdContext.Provider value='node'><VideoNode data={data} /></NodeIdContext.Provider></CanvasActionsContext.Provider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
     await waitFor(() => expect(videoPresentationQuery).toHaveBeenCalledWith({ projectId: 'project', canonicalURL: source.canonicalURL, active: true }));
     await waitFor(() => expect(driver.sessions).toHaveLength(1));
     const owned = driver.sessions[0]!;

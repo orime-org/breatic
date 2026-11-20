@@ -32,23 +32,24 @@ import { createVideoToolDraft } from '../video/video-tool-edit';
 const projectId = 'header-project'; const spaceId = 'header-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
 const sourceURL = 'https://assets.example.test/canonical.mp4';
 const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+// The selected version's grid at 25 fps.
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 const name = docName.canvasSpace(projectId, spaceId);
 
 /**
  * Mounts a tool panel on a video node.
  * @param toolId - The tool.
  * @param cuts - Split cuts to seed.
- * @param table - The presentation's frame table, null while it is not usable.
+ * @param table - The selected version's grid, null while it is not usable.
  */
-function open(toolId: VideoToolId, cuts?: number[], table: typeof frameTable | null = frameTable): void {
+function open(toolId: VideoToolId, cuts?: number[], table: typeof grid | null = grid): void {
   addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
   if (cuts !== undefined) {
     const seeded = createVideoToolDraft('video.split', { nodeId, canonicalURL: sourceURL, mediaInfo });
     commitVideoToolDraft(getDoc(name), nodeId, 'video.split', { ...seeded, params: { cuts } }, false);
   }
   canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params: {} });
-  const presentation = { frameTable: table, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0,
+  const presentation = { grid: table, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0,
     presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } } as VideoToolPresentation;
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
   render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId={toolId} node={node} nodes={[node]} presentation={presentation} onRunVideo={vi.fn()} costs={{ execution: '1' }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
@@ -69,8 +70,9 @@ describe('a video tool panel header', () => {
     await waitFor(() => expect(screen.getByText(t('canvas.miniTool.videoUI.outputCount', { count: 3 }))).toBeInTheDocument());
   });
 
-  it('counts the normalized cuts while the frame table is not usable', async () => {
-    open('video.split', [2, 1, 1, 0, 7], null);
+  // Cuts are grid frame numbers; without the grid no cut can be judged past the end, so only 0 and repeats drop out.
+  it('counts the normalized cuts while the grid is not usable', async () => {
+    open('video.split', [2, 1, 1, 0], null);
     await waitFor(() => expect(screen.getByText(t('canvas.miniTool.videoUI.outputCount', { count: 3 }))).toBeInTheDocument());
   });
 

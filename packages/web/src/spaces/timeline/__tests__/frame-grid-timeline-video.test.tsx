@@ -15,9 +15,10 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import type { ProjectRegisteredAsset, TimelineVideoClip, TimelineVideoSource, VideoPresentationResponse } from '@breatic/shared';
-import { applyTimelineEdit, initializeTimelineDocument } from '@breatic/shared/space-content';
+import { initializeTimelineDocument } from '@breatic/shared/space-content';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { applyTimelineEdit } from '@web/data/yjs/timeline-document';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
@@ -61,7 +62,7 @@ const ASSET: ProjectRegisteredAsset = {
 const SOURCE: TimelineVideoSource = { id: '10000000-0000-4000-8000-000000000011', kind: 'video', assetId: ASSET.assetId, timebase: SETTINGS.fps, extentFrames: 48, durationSeconds: '2', durationOrigin: 'registered' };
 const CLIP: TimelineVideoClip = {
   id: '30000000-0000-4000-8000-000000000011', kind: 'video', trackId: 'visual-1', sourceId: SOURCE.id, startFrame: 0, sourceInFrame: 0, durationFrames: 48,
-  rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { x: 0, y: 0, scaleX: 1, scaleY: 1, rotation: 0 },
+  rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 },
 };
 const CONNECTED: SocketState = { provider: null, synced: true, hasEverSynced: true, status: 'connected', writeAccess: 'granted', authFailedReason: null };
 let client: QueryClient;
@@ -77,7 +78,7 @@ async function mount(response: VideoPresentationResponse): Promise<HTMLElement> 
   const doc = getDoc(docName.timelineSpace(PROJECT, SPACE));
   Y.applyUpdate(doc, Y.encodeStateAsUpdate(server), 'provider');
   server.destroy();
-  expect(applyTimelineEdit(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP } })).toBe(true);
+  expect(applyTimelineEdit(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: { magnet: false, linkage: false } }, 'test-setup').ok).toBe(true);
   client.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: ASSET.fileUrl, active: true }).queryKey, response);
   render(<QueryClientProvider client={client}><TooltipProvider><SpaceConnectionContext.Provider value={CONNECTED}>
     <TimelineSpace projectId={PROJECT} spaceId={SPACE} readOnly={false} myRole='editor' />
@@ -109,6 +110,8 @@ describe('U05 the Timeline preview plays through Qp (§7.8, §7.9)', () => {
     const preview = await mount(presentedResponse(presentedBinding(ASSET.fileUrl), { preparation: presentedPreparation(null) }));
     const original = preview.querySelector(`video[src="${ASSET.fileUrl}"]`);
     expect(original).not.toBeNull();
+    // A browser sets the element's MediaError before it fires `error`; jsdom does not (as TimelineSpace.test does).
+    Object.defineProperty(original!, 'error', { configurable: true, value: { code: 4 } });
     fireEvent.error(original!);
     expect(await screen.findByText('Preparing video…')).toBeInTheDocument();
     expect(preview.querySelector(`[src="${ASSET.coverUrl}"], [poster="${ASSET.coverUrl}"]`)).not.toBeNull();

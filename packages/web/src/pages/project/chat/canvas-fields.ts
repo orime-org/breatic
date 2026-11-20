@@ -81,6 +81,8 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   musicVocal: 'reference',
   soundVideo: 'reference',
   focusImages: 'each',
+  // Which video focus crops collab handled, task state rather than content (frames-split §5.5).
+  focusCropOutcomes: 'other',
   miniToolAssetUrls: 'reference',
   'miniToolDraft:video.expand': 'other',
   'miniToolDraft:video.erase': 'other',

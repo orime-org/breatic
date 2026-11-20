@@ -24,7 +24,7 @@ describe('approved video tool edit boundaries', () => {
   });
   // §97 (frames-split §10.6 removal row): a new frame draft starts on Current with no interval period.
   it('starts a frame draft on Current with no interval period', () => {
-    expect(createVideoToolDraft('video.extract-frames', source).params).toEqual({ mode: 'current', currentTime: 0 });
+    expect(createVideoToolDraft('video.extract-frames', source).params).toEqual({ mode: 'current', frameIndex: 0 });
   });
 
   it('retains every audio and explicit start when people are reidentified', () => {

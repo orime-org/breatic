@@ -10,17 +10,18 @@ import { planVideoTimelineSeconds, type MiniToolAnalysisRecord, type MiniToolAna
  * @throws {never} Never.
  * @param toolId - The selected supported video tool.
  * @param source - The registered source and its authoritative media information.
+ * @param frameCount - The selected version's grid frame count (P.display), which an erase range starts as; one frame while unknown.
  * @returns The current value derived from these inputs.
  */
-export function createVideoToolDraft<K extends VideoToolId>(toolId: K, source: VideoToolSourceRef): VideoToolDraftById[K] {
+export function createVideoToolDraft<K extends VideoToolId>(toolId: K, source: VideoToolSourceRef, frameCount = 1): VideoToolDraftById[K] {
   const sourceInputId = newId();
   const common = { version: 1 as const, draftId: newId(), revision: newId(), source, inputs: [] };
   const drafts: VideoToolDraftById = {
     'video.expand': { ...common, params: { frame: { x: 0, y: 0, width: 1, height: 1 }, ratio: 'free', prompt: '' } },
-    'video.erase': { ...common, params: { range: { start: 0, end: source.mediaInfo.duration }, anchor: { frameIndex: 0, pts: 0 }, region: { box: null, points: [] }, trackingPrompt: '' } },
-    'video.lip-sync': { ...common, params: { anchor: { frameIndex: 0, pts: 0 }, dialogues: [{ dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: 'cut_off' } },
+    'video.erase': { ...common, params: { range: { start: 0, end: frameCount }, anchor: { frameIndex: 0 }, region: { box: null, points: [] }, trackingPrompt: '' } },
+    'video.lip-sync': { ...common, params: { anchor: { frameIndex: 0 }, dialogues: [{ dialogueId: newId(), personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: 'cut_off' } },
     'video.remove-bg': { ...common, params: {} },
-    'video.extract-frames': { ...common, params: { mode: 'current', currentTime: 0 } },
+    'video.extract-frames': { ...common, params: { mode: 'current', frameIndex: 0 } },
     'video.transitions': { ...common, inputs: [{ inputId: sourceInputId, url: source.canonicalURL, mediaInfo: source.mediaInfo, sourceNodeId: source.nodeId }], params: { clips: [{ clipId: newId(), inputId: sourceInputId, in: 0, out: source.mediaInfo.duration, transition: { kind: 'cut', duration: 0 } }] } },
     'video.split': { ...common, params: { cuts: [] } },
   };

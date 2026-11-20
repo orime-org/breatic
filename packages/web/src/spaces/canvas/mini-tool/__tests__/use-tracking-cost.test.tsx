@@ -19,7 +19,7 @@ const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: '
 const initial = createVideoToolDraft('video.erase', source);
 const draft: VideoToolDraftById['video.erase'] = { ...initial, params: { ...initial.params, range: { start: 0, end: 3 }, region: { box: { x: 0.3, y: 0.2, width: 0.3, height: 0.6 }, points: [] } } };
 const facts: TrackingCostFacts = { projectId: '01000000-0000-4000-8000-000000000011', spaceId: '02000000-0000-4000-8000-000000000011', nodeId: source.nodeId, draft,
-  frameTable: { schemaVersion: 1, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] },
+  grid: { fps: { numerator: 25, denominator: 1 }, frameCount: 125 },
   presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } }, presentedTime: 0, tracking: undefined, debounceMs: 0 };
 const tracked = (usage: MiniToolAnalysisRecord['usage']): MiniToolAnalysisRecord => ({ status: 'completed', usage } as MiniToolAnalysisRecord);
 

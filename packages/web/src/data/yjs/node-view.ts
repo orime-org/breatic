@@ -393,6 +393,8 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
     soundVideo: data.soundVideo,
     moodImageUrl: data.moodImageUrl,
     focusImages: data.focusImages,
+    // The handled video focus crops by taskId (frames-split §5.5, §7.18), task state the canvas layer settles cards by.
+    ...(data.focusCropOutcomes === undefined ? {} : { focusCropOutcomes: data.focusCropOutcomes }),
     templateNode: data.templateNode,
   };
   switch (type) {

@@ -14,6 +14,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { VideoPresentationResponse } from '@breatic/shared';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { HoverPreview, type HoverPreviewProps } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { HOVER_OPEN_DELAY_MS } from '@web/spaces/canvas/nodes/_shared/hover-preview-timing';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '@web/spaces/canvas/video-presentation/types';
@@ -51,7 +52,7 @@ let client: QueryClient;
  */
 function open(response: VideoPresentationResponse): HTMLElement {
   client.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: ORIGINAL, active: true }).queryKey, response);
-  render(<QueryClientProvider client={client}><Preview kind='video' src={ORIGINAL} poster={COVER} projectId={PROJECT}><span data-testid='trigger'>row</span></Preview></QueryClientProvider>);
+  render(<QueryClientProvider client={client}><TooltipProvider><Preview kind='video' src={ORIGINAL} poster={COVER} projectId={PROJECT}><span data-testid='trigger'>row</span></Preview></TooltipProvider></QueryClientProvider>);
   fireEvent.pointerEnter(screen.getByTestId('trigger'), { pointerType: 'mouse' });
   act(() => { vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10); });
   return screen.getByTestId('hover-preview-content');

@@ -32,6 +32,8 @@ export interface VideoPlaybackStripProps {
   onRangeChange?: (range: { start: number; end: number }) => void;
   /** Names the range in the row below and on the slider. */
   rangeLabel?: string;
+  /** Seconds one range slider step moves: one grid frame when the grid is known, so an arrow key moves a whole frame. */
+  rangeStep?: number;
   /** Whether the range slider takes edits. */
   disabled?: boolean;
   /** Marks drawn on the strip above the filmstrip, such as split's cut handles. */
@@ -140,7 +142,7 @@ export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.El
       {presentedTime === null ? null : <span data-testid='video-playback-head' className='pointer-events-none absolute inset-y-0 border-l border-primary' style={{ left: percent(presentedTime, duration) }}><span className='absolute -left-1 top-0 size-2 bg-primary' /></span>}
       {children}
     </div>
-    {range === undefined || onRangeChange === undefined ? null : <Slider aria-label={rangeLabel} value={[range.start, range.end]} min={0} max={duration} step={0.01} minStepsBetweenThumbs={1} disabled={props.disabled}
+    {range === undefined || onRangeChange === undefined ? null : <Slider aria-label={rangeLabel} value={[range.start, range.end]} min={0} max={duration} step={props.rangeStep ?? 0.01} minStepsBetweenThumbs={1} disabled={props.disabled}
       onValueChange={([start, end]) => setDragged({ start: start!, end: end! })} onValueCommit={([start, end]) => { setDragged(null); onRangeChange({ start: start!, end: end! }); }} />}
     <div data-testid='video-playback-times' className='flex justify-between text-xs tabular-nums text-muted-foreground'>
       <span>{secondsLabel(range?.start ?? 0)}</span><span>{range !== undefined ? [rangeLabel, secondsLabel(range.end - range.start)].filter((part) => part !== undefined).join(' · ') : presentedTime === null ? '' : secondsLabel(presentedTime)}</span><span>{secondsLabel(range?.end ?? duration)}</span>

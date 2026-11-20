@@ -47,7 +47,8 @@ const mediaInfo = { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' 
 const source = { nodeId, canonicalURL: sourceURL, mediaInfo };
 const RUN_A = '80000000-0000-4000-8000-00000000000a'; const RUN_B = '80000000-0000-4000-8000-00000000000b';
 const ROW_A = '41000000-0000-4000-8000-00000000000a'; const ROW_B = '41000000-0000-4000-8000-00000000000b';
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+// The selected version's grid at 25 fps.
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 const profile = { id: 'people', version: '1', weightsHash: null, params: {} };
 let target: HTMLElement | null = null;
 
@@ -82,7 +83,7 @@ async function mount(failedLater: boolean, options: { persons?: readonly (string
   const record = (analysisRunId: string, acceptedAt: string, completed: boolean): MiniToolAnalysisRecord => {
     const identity = { schemaVersion: 1 as const, draftId: draft.draftId, revision: draft.revision, analysisRunId, acceptedAt, binding: { assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: sourceURL, kind: 'video' as const, mediaInfo }, analysisInput, inputFingerprint };
     return completed
-      ? { ...identity, kind: 'people', status: 'completed', artifactUnavailable: false, error: null, usage: [], result: { ...identity, kind: 'people', anchor: { frameIndex: 0, pts: 0 }, people: ['person-a', 'person-b'].map((personId, index) => ({ personId, faceBox: { x: 0.1 + index * 0.4, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] })) } }
+      ? { ...identity, kind: 'people', status: 'completed', artifactUnavailable: false, error: null, usage: [], result: { ...identity, kind: 'people', anchor: { frameIndex: 0 }, people: ['person-a', 'person-b'].map((personId, index) => ({ personId, faceBox: { x: 0.1 + index * 0.4, y: 0.1, width: 0.2, height: 0.2 }, artifactRefs: [] })) } }
       : { ...identity, kind: 'people', status: 'failed', artifactUnavailable: false, error: { code: 'failed', message: 'failed' }, usage: [], result: null } as unknown as MiniToolAnalysisRecord;
   };
   const records = new Map([[RUN_A, record(RUN_A, '2026-11-06T00:00:00.000001Z', true)], ...(failedLater ? [[RUN_B, record(RUN_B, '2026-11-07T00:00:00.000001Z', false)] as const] : [])]);
@@ -94,7 +95,7 @@ async function mount(failedLater: boolean, options: { persons?: readonly (string
   const frame = { sourceKey: 'canonical-key', sourceEpoch: 1, seekEpoch: 1, mediaTime: 0, surface };
   const binding: MediaSurfaceBinding = { sourceKey: frame.sourceKey, sourceEpoch: 1, element, surface, container: target, original: mediaInfo, getSeekEpoch: () => 1, getPresentedFrame: () => frame, seek: vi.fn(), play: vi.fn().mockResolvedValue(undefined), pause: vi.fn() };
   const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
-  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.lip-sync' node={node} nodes={[node]} overlayTarget={target} binding={binding} lipSync={{ models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 }, maxPeople: options.maxPeople }} presentation={{ frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
+  render(<QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}><TooltipProvider><CanvasContext.Provider value={{ projectId, spaceId, readOnly: false, myRole: 'editor', caretProvider: null }}><ReactFlowProvider><VideoToolPanelContainer nodeId={nodeId} toolId='video.lip-sync' node={node} nodes={[node]} overlayTarget={target} binding={binding} lipSync={{ models: [], tracking: { minDurationSeconds: 0.5, maxDurationSeconds: 600 }, maxPeople: options.maxPeople }} presentation={{ grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 }} /></ReactFlowProvider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
   await waitFor(() => expect(screen.getByTestId('video-identify-people')).toBeInTheDocument());
 }
 

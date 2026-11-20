@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import type { ReactElement } from 'react';
+import { render as mount, screen, fireEvent, act, type RenderResult } from '@testing-library/react';
 import { ReactFlowProvider, useStoreApi, type NodeProps } from '@xyflow/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
@@ -19,6 +20,16 @@ import { CanvasContext } from '@web/spaces/canvas/canvas-context';
 import { FLOW_NODE_TYPES } from '@web/spaces/canvas/nodes/flow-node-types';
 import type { AnnotationNodeView } from '@web/data/yjs/node-view';
 import { NODE_TYPE_LIST } from '@web/spaces/canvas/nodes/registry';
+
+/**
+ * Renders under a query cache, as the application root does: a node's crop layer reads a video's presentation.
+ * @param ui - The tree.
+ * @returns The render result.
+ */
+function render(ui: ReactElement): RenderResult {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  return mount(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+}
 import type { TextNodeView } from '@web/data/yjs/node-view';
 
 const PID = 'p1';

@@ -289,7 +289,8 @@
       "trackingStale": "追蹤結果與目前選取範圍不再一致。請重新追蹤選取範圍。",
       "transparentSource": "這個工具不支援含透明背景的影片。",
       "expandTooLong": "外擴支援最長 {max} 秒的影片。",
-      "expandTooLarge": "外擴後的影片長邊最多 {max} 像素。請縮小外擴範圍。"
+      "expandTooLarge": "外擴後的影片長邊最多 {max} 像素。請縮小外擴範圍。",
+      "presentationChanged": "影片已更新，請重新選擇畫面和區域。"
     },
     "idempotency": {
       "missing": "頁面已更新，請重新整理後再試。",
@@ -1050,7 +1051,8 @@
       },
       "editProposalMarks": "請替換大括號裡的內容。橘色的注意事項不會傳給模型。",
       "notePrefix": "注意事項：",
-      "integerBlank": "留空為自動"
+      "integerBlank": "留空為自動",
+      "focusCropExpired": "裁剪逾時——請重試。"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1589,7 +1591,6 @@
         "inPoint": "入點",
         "last": "末影格",
         "ledgerUnsupported": "此影片暫不支援此工具",
-        "loadingFrames": "正在讀取影片影格…",
         "mediaError": "媒體無法使用",
         "outPoint": "出點",
         "pause": "暫停",
@@ -1715,7 +1716,10 @@
         "dialogueStartInvalid": "請輸入大於或等於 0 秒的時間。",
         "outputCount": "{count} 個產物",
         "viewerMode": "Viewer 模式",
-        "connectionUnavailable": "連線無法使用"
+        "connectionUnavailable": "連線無法使用",
+        "preparingVideo": "正在準備影片…",
+        "preparationFailed": "影片準備失敗",
+        "tooLongToPrepare": "超出可準備時長"
       }
     },
     "template": {

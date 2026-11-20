@@ -276,7 +276,7 @@ export function canvasTakesPaste(target: EventTarget | null, text: string): bool
 }
 
 /** Fields that are a node's state or its running work, not its content (2026-10-09). */
-const NOT_COPIED = ['locked', 'taskCounts', 'taskResultEventId', 'miniToolResultOrigin', 'errorMessage'] as const;
+const NOT_COPIED = ['locked', 'taskCounts', 'taskResultEventId', 'miniToolResultOrigin', 'errorMessage', 'focusCropOutcomes'] as const;
 
 /** What {@link cloneForPaste} produces. */
 export interface PastedClones {

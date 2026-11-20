@@ -62,26 +62,26 @@ beforeEach(() => {
 });
 afterEach(() => { resetRunOnceForTests(); vi.useRealTimers(); destroyDoc(docName.canvasSpace(PROJECT, SPACE)); });
 
-// The source's compact presentation table: seven 40 ms frames (0.28 s), as the admission reads it.
-const TABLE = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 7, step: 4, duration: 4 }] };
+// The selected version's grid: seven frames at 25 fps (0.28 s), as the admission reads it.
+const GRID = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
 const COMMON = { version: 1 as const, draftId: draft().draftId, revision: draft().revision, source: draft().source, inputs: [] };
 
-// Frames and split name one output per planned frame or segment; each recipe is what the admission plans from the same table
+// Frames and split name one output per planned frame or segment; each recipe is what the admission plans from the same grid
 // with the same shared function (planVideoFrames, planVideoSplit), which the server requires to equal the request's outputs.
 describe('planned frame and segment outputs', () => {
   it('F20 extracts the picked frame into one image destination whose recipe is the planned frame', async () => {
-    const framesDraft: VideoToolDraftById['video.extract-frames'] = { ...COMMON, params: { mode: 'last', currentTime: 0 } };
-    const body = await preparePlannedVideoRun(press({ toolId: 'video.extract-frames', draft: framesDraft, frameTable: TABLE }));
-    const [frame] = planVideoFrames(TABLE, framesDraft.params);
-    expect(body?.outputs).toEqual([{ outputIndex: 0, nodeId: expect.any(String), recipe: { kind: 'frame', frameIndex: frame!.frameIndex, pts: frame!.pts } }]);
+    const framesDraft: VideoToolDraftById['video.extract-frames'] = { ...COMMON, params: { mode: 'last', frameIndex: 0 } };
+    const body = await preparePlannedVideoRun(press({ toolId: 'video.extract-frames', draft: framesDraft, grid: GRID }));
+    const [frame] = planVideoFrames(GRID, framesDraft.params);
+    expect(body?.outputs).toEqual([{ outputIndex: 0, nodeId: expect.any(String), recipe: { kind: 'frame', frameIndex: frame!.frameIndex } }]);
     expect(miniToolPlannedRequestSchema.safeParse(body).success).toBe(true);
     expect(targets()).toEqual([expect.objectContaining({ id: body!.outputs[0]!.nodeId, type: 'image' })]);
   });
 
   it('F21 splits into one video destination per planned segment, in order', async () => {
-    const splitDraft: VideoToolDraftById['video.split'] = { ...COMMON, params: { cuts: [0.1, 0.2] } };
-    const body = await preparePlannedVideoRun(press({ toolId: 'video.split', draft: splitDraft, frameTable: TABLE }));
-    const segments = planVideoSplit(TABLE, splitDraft.params.cuts);
+    const splitDraft: VideoToolDraftById['video.split'] = { ...COMMON, params: { cuts: [2, 5] } };
+    const body = await preparePlannedVideoRun(press({ toolId: 'video.split', draft: splitDraft, grid: GRID }));
+    const segments = planVideoSplit(GRID, splitDraft.params.cuts);
     expect(segments).toHaveLength(3);
     expect(body?.outputs.map((output) => output.recipe)).toEqual(segments.map(({ start, end }) => ({ kind: 'segment', range: { start, end } })));
     expect(body?.outputs.map((output) => output.outputIndex)).toEqual([0, 1, 2]);
@@ -106,9 +106,9 @@ describe('planned frame and segment outputs', () => {
     expect(targets().map((node) => node.type === 'video' ? [node.data.width, node.data.height] : null)).toEqual([[1920, 1920]]);
   });
 
-  it('F22 builds nothing for a frame or segment run without the source table', async () => {
-    const splitDraft: VideoToolDraftById['video.split'] = { ...COMMON, params: { cuts: [0.1] } };
-    await expect(preparePlannedVideoRun(press({ toolId: 'video.split', draft: splitDraft, frameTable: null }))).rejects.toThrow();
+  it('F22 builds nothing for a frame or segment run without the selected version grid', async () => {
+    const splitDraft: VideoToolDraftById['video.split'] = { ...COMMON, params: { cuts: [2] } };
+    await expect(preparePlannedVideoRun(press({ toolId: 'video.split', draft: splitDraft, grid: null }))).rejects.toThrow();
     expect(targets()).toHaveLength(0);
   });
 });
@@ -155,7 +155,7 @@ describe('a lip-sync result is linked from its dialogue audio nodes', () => {
   const AUDIO = '80000000-0000-4000-8000-000000000003'; const GONE = '80000000-0000-4000-8000-000000000004';
   const lipSync: VideoToolDraftById['video.lip-sync'] = { ...COMMON,
     inputs: [{ inputId: AUDIO, url: 'https://assets.example.test/a.mp3', mediaInfo: { duration: 1 }, sourceNodeId: AUDIO_NODE }, { inputId: GONE, url: 'https://assets.example.test/b.mp3', mediaInfo: { duration: 1 }, sourceNodeId: GONE_NODE }],
-    params: { anchor: { frameIndex: 0, pts: 0 }, syncMode: 'cut_off', dialogues: [
+    params: { anchor: { frameIndex: 0 }, syncMode: 'cut_off', dialogues: [
       { dialogueId: '90000000-0000-4000-8000-000000000021', personId: 'p1', analysisRunId: '90000000-0000-4000-8000-000000000031', audioInputId: AUDIO, startTime: 0 },
       { dialogueId: '90000000-0000-4000-8000-000000000022', personId: 'p1', analysisRunId: '90000000-0000-4000-8000-000000000031', audioInputId: GONE, startTime: 0 },
     ] } } as VideoToolDraftById['video.lip-sync'];

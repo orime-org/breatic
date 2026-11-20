@@ -35,13 +35,14 @@ import { ApiException } from '@web/data/api/types';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { toast } from '@web/lib/toast';
-import { seedUsablePresentation } from '@web/test-utils/video-presentation';
+import { presentedDisplay, seedUsablePresentation } from '@web/test-utils/video-presentation';
 
 const projectId = 'export-project'; const spaceId = 'export-space'; const nodeId = '10000000-0000-4000-8000-000000000001';
 const sourceURL = 'https://assets.example.test/canonical.webm';
 const mediaInfo = { width: 160, height: 240, duration: 4, mimeType: 'video/webm' };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 100, step: 4, duration: 4 }] };
-const ready: VideoToolPresentation = { frameTable, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
+// The selected version's grid at 25 fps.
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 100 };
+const ready: VideoToolPresentation = { grid, status: 'ready', sourceURL, sourceEpoch: 1, seekEpoch: 1, presentedTime: 0 };
 
 /**
  * A cache in which the picked input's presentation is usable, which Run needs as much as the current video's (frames-split
@@ -146,7 +147,7 @@ describe('Export shares the panel Run availability (§97; canvas design §10 edi
 describe('the Dialog composition row reads the first clip\'s selected display size (canvas design §4 transitions row; demo timeline-editor.tsx)', () => {
   it('states the size the current video\'s presentation displays, not its registered size', () => {
     const client = usableInputClient();
-    seedUsablePresentation(client, projectId, sourceURL, { display: { width: 320, height: 480, duration: { numerator: '4', denominator: '1' } } });
+    seedUsablePresentation(client, projectId, sourceURL, { display: presentedDisplay(320, 480, 100) });
     const dialog = openDialog(ready, vi.fn(), client);
     expect(within(dialog).getByText(/^320 × 480 · 25 fps · /)).toBeInTheDocument();
   });

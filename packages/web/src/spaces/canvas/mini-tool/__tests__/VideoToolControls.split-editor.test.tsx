@@ -4,9 +4,10 @@
 /**
  * inner#1306 split panel (canvas design §4 split row: cuts on the time strip, add / move / type / delete, duplicate, order and
  * 0 / end checks, segment preview and the count; demo 2026-10-23-1306-video-tools main.tsx split branch, video-controls.tsx
- * CutEditor and PlaybackStrip; frames-split §10.6 ledger line only while the frame table is not usable).
+ * CutEditor and PlaybackStrip; frames-split §10.6: only Detect while the selected version's grid is not usable).
  *
- * Fixture: a 5 s source at 25 fps (timescale 100, 125 frames of 4 ticks), so cuts snap to multiples of 0.04 s.
+ * Fixture: a selected version on a 25 fps grid of 125 frames (5 s). Cuts are stored as grid frame numbers (frames-split §10.7
+ * split row) and shown as the seconds their frames start at, multiples of 0.04 s.
  */
 
 import * as React from 'react';
@@ -15,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
 import { planVideoSplit, type MiniToolAnalysisRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { VideoNumericInput, VideoToolControls, type VideoToolControlsProps } from '../video/VideoToolControls';
+import { frameIndexOfMediaTime } from '../../video-presentation/frame-grid-time';
 
 // The real plan, spied on, so a test can count the whole plans the panel makes.
 vi.mock('@breatic/shared/mini-tools', async (importOriginal) => {
@@ -25,11 +27,11 @@ import type { VideoPlaybackLiveClock } from '../video/VideoPlaybackStrip';
 
 const source = { nodeId: '10000000-0000-4000-8000-000000000001', canonicalURL: 'https://media.example.test/source.mp4', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } };
 const common = { version: 1 as const, draftId: '20000000-0000-4000-8000-000000000001', revision: '30000000-0000-4000-8000-000000000001', source, inputs: [] };
-const frameTable = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 0, count: 125, step: 4, duration: 4 }] };
+const grid = { fps: { numerator: 25, denominator: 1 }, frameCount: 125 };
 
 /**
  * A split draft with these cuts.
- * @param cuts - The stored cuts.
+ * @param cuts - The stored cuts, grid frame numbers.
  * @returns The draft.
  */
 function draftWith(cuts: number[]): VideoToolDraftById['video.split'] {
@@ -43,7 +45,7 @@ function draftWith(cuts: number[]): VideoToolDraftById['video.split'] {
  */
 function mount(overrides: Partial<VideoToolControlsProps> = {}): { onChange: ReturnType<typeof vi.fn>; rerender: (next: Partial<VideoToolControlsProps>) => void } {
   const onChange = vi.fn();
-  const props = (next: Partial<VideoToolControlsProps>): VideoToolControlsProps => ({ toolId: 'video.split', draft: draftWith([1, 3]), onChange, analyses: [], frameTable, presentedTime: 1.25, disabled: false, pickingSlot: null,
+  const props = (next: Partial<VideoToolControlsProps>): VideoToolControlsProps => ({ toolId: 'video.split', draft: draftWith([25, 75]), onChange, analyses: [], grid, presentedTime: 1.25, disabled: false, pickingSlot: null,
     inputNames: new Map(), onPick: vi.fn(), onAnalyse: vi.fn(), analysing: false, onEditTimeline: vi.fn(), onSeek: vi.fn(), ...overrides, ...next });
   const view = render(<VideoToolControls {...props({})} />);
   return { onChange, rerender: (next) => view.rerender(<VideoToolControls {...props(next)} />) };
@@ -62,12 +64,12 @@ function sceneRecord(status: 'completed' | 'failed'): MiniToolAnalysisRecord {
   const identity = {
     schemaVersion: 1 as const, draftId: common.draftId, revision: common.revision, analysisRunId: '80000000-0000-4000-8000-000000000003', acceptedAt: '2026-10-24T00:00:00.000001Z',
     binding: { assetId: '70000000-0000-4000-8000-000000000001', contentHash: 'a'.repeat(64), canonicalURL: source.canonicalURL, kind: 'video' as const, mediaInfo: source.mediaInfo },
-    analysisInput: { schemaVersion: 1 as const, sourceURL: source.canonicalURL, kind: 'scene_cuts' as const, range: { start: 0, end: 5 }, profile: { id: 'scenes', version: '1', weightsHash: null, params: {} } },
+    analysisInput: { schemaVersion: 1 as const, sourceURL: source.canonicalURL, kind: 'scene_cuts' as const, range: { start: 0, end: 125 }, profile: { id: 'scenes', version: '1', weightsHash: null, params: {} } },
     inputFingerprint: 'b'.repeat(64),
   };
   return status === 'failed'
     ? { ...identity, kind: 'scene_cuts', status, artifactUnavailable: false, error: { code: 'failed' }, usage: [], result: null }
-    : { ...identity, kind: 'scene_cuts', status, artifactUnavailable: false, error: null, usage: [], result: { ...identity, kind: 'scene_cuts', timeBase: { numerator: 1, denominator: 100 }, frameCount: 125, cuts: [{ frameIndex: 25, pts: 1, detectionScore: 0.9 }] } };
+    : { ...identity, kind: 'scene_cuts', status, artifactUnavailable: false, error: null, usage: [], result: { ...identity, kind: 'scene_cuts', fps: grid.fps, frameCount: 125, cuts: [{ frameIndex: 25, detectionScore: 0.9 }] } };
 }
 
 beforeEach(() => {
@@ -83,8 +85,8 @@ describe('split panel rows (demo main.tsx split branch)', () => {
     expect(detect.compareDocumentPosition(screen.getByTestId('video-cut-count')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
-  it('keeps only Detect while the frame table is not usable', () => {
-    mount({ frameTable: null });
+  it('keeps only Detect while the grid is not usable', () => {
+    mount({ grid: null });
     expect(screen.getByTestId('video-detect-scenes')).toBeInTheDocument();
     for (const id of ['video-playback-strip', 'video-cut-count', 'video-cut-0', 'video-segment-0', 'video-cut-handle-0']) expect(screen.queryByTestId(id)).toBeNull();
   });
@@ -108,27 +110,27 @@ describe('cut handles on the filmstrip (demo PlaybackStrip cuts)', () => {
     const handle = screen.getByTestId('video-cut-handle-0');
     fireEvent.pointerDown(handle, { button: 0, clientX: 140, pointerId: 1 });
     expect(handle).toHaveFocus();
-    // 2.5 s lies inside frame 62 (2.48 to 2.52 s), so the handle and the stored cut take that frame's start.
+    // 2.5 s lies inside frame 62 (2.48 to 2.52 s), so the handle takes that frame's start and the stored cut is frame 62.
     fireEvent.pointerMove(handle, { clientX: 200, pointerId: 1 });
     expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('49.6%');
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.pointerUp(handle, { clientX: 209, pointerId: 1 });
-    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [2.48, 3] } }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [62, 75] } }));
     expect(onSeek).not.toHaveBeenCalled();
   });
 
   it.each([
-    ['past the end', 340, 4.96],
-    ['onto the end', 300, 4.96],
-    ['past the start', 40, 0.04],
-    ['onto the first frame', 101, 0.04],
-  ])('keeps a handle dragged %s one frame inside the video and commits it there', (_where, clientX, cut) => {
-    const { onChange } = mount({ draft: draftWith([2]) });
+    ['past the end', 340, 4.96, 124],
+    ['onto the end', 300, 4.96, 124],
+    ['past the start', 40, 0.04, 1],
+    ['onto the first frame', 101, 0.04, 1],
+  ])('keeps a handle dragged %s one frame inside the video and commits it there', (_where, clientX, shown, cut) => {
+    const { onChange } = mount({ draft: draftWith([50]) });
     layOutTrack();
     const handle = screen.getByTestId('video-cut-handle-0');
     fireEvent.pointerDown(handle, { button: 0, clientX: 180, pointerId: 1 });
     fireEvent.pointerMove(handle, { clientX, pointerId: 1 });
-    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe(`${String(cut * 100 / 5)}%`);
+    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe(`${String(shown * 100 / 5)}%`);
     fireEvent.pointerUp(handle, { clientX, pointerId: 1 });
     expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [cut] } }));
   });
@@ -144,26 +146,19 @@ describe('cut handles on the filmstrip (demo PlaybackStrip cuts)', () => {
     expect(handle.style.left).toBe('20%');
   });
 
-  it('draws a cut between frames on the frame start the split uses', () => {
-    mount({ draft: draftWith([2.5]) });
-    expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('49.6%');
-    expect(screen.getByTestId('video-cut-0')).toHaveValue('2.5');
-  });
-
   it('removes a focused handle with Delete or Backspace', () => {
     const { onChange } = mount();
     fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'Delete' });
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ params: { cuts: [3] } }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ params: { cuts: [75] } }));
     fireEvent.keyDown(screen.getByTestId('video-cut-handle-1'), { key: 'Backspace' });
-    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ params: { cuts: [1] } }));
+    expect(onChange).toHaveBeenLastCalledWith(expect.objectContaining({ params: { cuts: [25] } }));
   });
 
   it('moves a focused handle one frame with the arrow keys', () => {
     const { onChange } = mount();
     fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
     const cuts = (onChange.mock.calls[0]![0] as VideoToolDraftById['video.split']).params.cuts;
-    expect(cuts[0]).toBeCloseTo(1.04, 6);
-    expect(cuts[1]).toBe(3);
+    expect(cuts).toEqual([26, 75]);
   });
 });
 
@@ -181,7 +176,7 @@ describe('strip clock (demo PlaybackStrip)', () => {
 
 describe('cut rows and count (canvas design §4 split row)', () => {
   it('lists the normalized cuts, sorted, unique and inside the video, numbered like the handles', () => {
-    mount({ draft: draftWith([3, 1, 1, 0, 7]) });
+    mount({ draft: draftWith([75, 25, 25, 0, 175]) });
     expect(screen.getByTestId('video-cut-0')).toHaveValue('1');
     expect(screen.getByTestId('video-cut-1')).toHaveValue('3');
     expect(screen.queryByTestId('video-cut-2')).toBeNull();
@@ -195,8 +190,8 @@ describe('cut rows and count (canvas design §4 split row)', () => {
      * @returns The panel.
      */
     function Stateful(): React.JSX.Element {
-      const [draft, setDraft] = React.useState(draftWith([1, 3]));
-      return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; changes.push(split.params.cuts); setDraft(split); }} analyses={[]} frameTable={frameTable} presentedTime={1.25} disabled={false} pickingSlot={null}
+      const [draft, setDraft] = React.useState(draftWith([25, 75]));
+      return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; changes.push(split.params.cuts); setDraft(split); }} analyses={[]} grid={grid} presentedTime={1.25} disabled={false} pickingSlot={null}
         inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} />;
     }
     render(<Stateful />);
@@ -207,7 +202,8 @@ describe('cut rows and count (canvas design §4 split row)', () => {
       fireEvent.change(screen.getByTestId('video-cut-0'), { target: { value: `${(screen.getByTestId('video-cut-0') as HTMLInputElement).value}${key}` } });
       expect(screen.getByTestId('video-cut-0')).toHaveValue(typed);
     }
-    expect(changes.at(-1)).toEqual([2.55, 3]);
+    // The typed 2.55 s lies inside frame 63 (2.52 to 2.56 s), which is the cut stored.
+    expect(changes.at(-1)).toEqual([63, 75]);
   });
 
   it('refuses a typed cut at or below 0 and at or past the end', () => {
@@ -219,20 +215,21 @@ describe('cut rows and count (canvas design §4 split row)', () => {
     }
     expect(onChange).not.toHaveBeenCalled();
     fireEvent.change(input, { target: { value: '2' } });
-    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [2, 3] } }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [50, 75] } }));
   });
 
   it('reads the number of cut points and segments', () => {
     const { rerender } = mount();
     expect(screen.getByTestId('video-cut-count')).toHaveTextContent('2 cut points · 3 segments');
-    rerender({ draft: draftWith([1]) });
+    rerender({ draft: draftWith([25]) });
     expect(screen.getByTestId('video-cut-count')).toHaveTextContent('1 cut point · 2 segments');
     rerender({ draft: draftWith([]) });
     expect(screen.getByTestId('video-cut-count')).toHaveTextContent('0 cut points · 1 segment');
   });
 
   it('enables Add at cursor only where it would make a new cut', () => {
-    const { onChange, rerender } = mount({ presentedTime: 1.02 });
+    // 1.01 s presents frame round(25.25) = 25, which already holds a cut (frames-split §4.3).
+    const { onChange, rerender } = mount({ presentedTime: 1.01 });
     expect(screen.getByTestId('video-add-cut')).toBeDisabled();
     rerender({ presentedTime: 0 });
     expect(screen.getByTestId('video-add-cut')).toBeDisabled();
@@ -241,7 +238,7 @@ describe('cut rows and count (canvas design §4 split row)', () => {
     rerender({ presentedTime: 2 });
     expect(screen.getByTestId('video-add-cut')).toBeEnabled();
     fireEvent.click(screen.getByTestId('video-add-cut'));
-    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [1, 2, 3] } }));
+    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [25, 50, 75] } }));
   });
 });
 
@@ -249,7 +246,8 @@ describe('segment preview (canvas design §4 split row preview; demo CutEditor)'
   it('sizes one numbered button per segment by its share of the duration', () => {
     mount();
     expect(['0', '1', '2'].map((index) => screen.getByTestId(`video-segment-${index}`).textContent)).toEqual(['1', '2', '3']);
-    expect(['0', '1', '2'].map((index) => screen.getByTestId(`video-segment-${index}`).style.flexGrow)).toEqual(['1', '2', '2']);
+    // Frames 0–25, 25–75 and 75–125: one share to two to two.
+    expect(['0', '1', '2'].map((index) => screen.getByTestId(`video-segment-${index}`).style.flexGrow)).toEqual(['25', '50', '50']);
     expect(screen.queryByTestId('video-segment-3')).toBeNull();
   });
 
@@ -295,7 +293,7 @@ describe('a failed scene detection (canvas design §4; demo main.tsx run-error)'
 /**
  * The split panel over a draft that takes every change under a new revision, as the panel container does.
  * @param props - The starting cuts, the presented time and the live clock.
- * @param props.cuts - The starting cuts.
+ * @param props.cuts - The starting cuts, grid frame numbers.
  * @param props.presentedTime - The panel's presented time.
  * @param props.liveClock - The source player's live clock.
  * @param props.changes - Collects every stored cut list.
@@ -305,14 +303,14 @@ function StatefulSplit(props: { cuts: number[]; presentedTime?: number | null; l
   const [draft, setDraft] = React.useState(draftWith(props.cuts));
   const { invalid } = props;
   const onInvalidChange = React.useCallback((key: string, bad: boolean) => { if (bad) invalid?.add(key); else invalid?.delete(key); }, [invalid]);
-  return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; props.changes?.push(split.params.cuts); setDraft({ ...split, revision: crypto.randomUUID() }); }} analyses={[]} frameTable={frameTable} presentedTime={props.presentedTime ?? 1.25} liveClock={props.liveClock} disabled={false} pickingSlot={null}
+  return <VideoToolControls toolId='video.split' draft={draft} onChange={(next) => { const split = next as VideoToolDraftById['video.split']; props.changes?.push(split.params.cuts); setDraft({ ...split, revision: crypto.randomUUID() }); }} analyses={[]} grid={grid} presentedTime={props.presentedTime ?? 1.25} liveClock={props.liveClock} disabled={false} pickingSlot={null}
     inputNames={new Map()} onPick={vi.fn()} onAnalyse={vi.fn()} analysing={false} onEditTimeline={vi.fn()} onSeek={vi.fn()} onInvalidChange={onInvalidChange} />;
 }
 
 describe('an invalid cut row keeps blocking the run wherever it moves (web AGENTS "Inputs send what they show")', () => {
   it('reports the invalid row under its new position after leaving it reorders the rows', () => {
     const invalid = new Set<string>();
-    render(<StatefulSplit cuts={[1, 3]} invalid={invalid} />);
+    render(<StatefulSplit cuts={[25, 75]} invalid={invalid} />);
     act(() => (screen.getByTestId('video-cut-0') as HTMLInputElement).focus());
     fireEvent.change(screen.getByTestId('video-cut-0'), { target: { value: '4' } });
     fireEvent.change(screen.getByTestId('video-cut-0'), { target: { value: '' } });
@@ -324,7 +322,7 @@ describe('an invalid cut row keeps blocking the run wherever it moves (web AGENT
 
   it('reports the invalid row under its new position after another row is removed', () => {
     const invalid = new Set<string>();
-    render(<StatefulSplit cuts={[1.5, 3, 4.5]} invalid={invalid} />);
+    render(<StatefulSplit cuts={[50, 75, 100]} invalid={invalid} />);
     act(() => (screen.getByTestId('video-cut-2') as HTMLInputElement).focus());
     fireEvent.change(screen.getByTestId('video-cut-2'), { target: { value: '' } });
     const bin = screen.getAllByRole('button', { name: 'Remove' })[0]!;
@@ -373,7 +371,7 @@ describe('a numeric field reports what it shows', () => {
 describe('typing a cut row in place (web AGENTS "Inputs send what they show")', () => {
   it('keeps every typed key in the typed row and the other row unchanged, then shows the rows ordered on blur without a write', () => {
     const changes: number[][] = [];
-    render(<StatefulSplit cuts={[3, 4.5]} changes={changes} />);
+    render(<StatefulSplit cuts={[75, 100]} changes={changes} />);
     const row = screen.getByTestId('video-cut-1') as HTMLInputElement;
     act(() => row.focus());
     for (const typed of ['1', '1.', '1.5']) {
@@ -382,17 +380,19 @@ describe('typing a cut row in place (web AGENTS "Inputs send what they show")', 
       expect(screen.getByTestId('video-cut-0')).toHaveValue('3');
       expect(screen.getByTestId('video-cut-1')).toHaveFocus();
     }
-    expect(changes.at(-1)).toEqual([3, 1.5]);
+    // 1.5 s lies inside frame 37 (1.48 to 1.52 s); while typing, the frames are stored in row order.
+    expect(changes.at(-1)).toEqual([75, 37]);
     const written = changes.length;
     act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).blur());
-    expect(screen.getByTestId('video-cut-0')).toHaveValue('1.5');
+    // Left, the rows show the stored frames in order, each at its frame start: frame 37 starts at 1.48 s (§10.7).
+    expect(screen.getByTestId('video-cut-0')).toHaveValue('1.48');
     expect(screen.getByTestId('video-cut-1')).toHaveValue('3');
     expect(changes).toHaveLength(written);
   });
 
   it('commits a handle drag pressed right after typing a row that needs reordering', () => {
     const changes: number[][] = [];
-    render(<StatefulSplit cuts={[3, 4.5]} changes={changes} />);
+    render(<StatefulSplit cuts={[75, 100]} changes={changes} />);
     layOutTrack();
     act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
     fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '1.5' } });
@@ -401,12 +401,12 @@ describe('typing a cut row in place (web AGENTS "Inputs send what they show")', 
     fireEvent.pointerMove(screen.getByTestId('video-cut-handle-0'), { clientX: 200, pointerId: 1 });
     expect(screen.getByTestId('video-cut-handle-0').style.left).toBe('49.6%');
     fireEvent.pointerUp(screen.getByTestId('video-cut-handle-0'), { clientX: 200, pointerId: 1 });
-    expect(changes.at(-1)).toEqual([2.48, 3]);
+    expect(changes.at(-1)).toEqual([62, 75]);
   });
 
   it('keeps the focus and the typed text on the typed row when the bin of another row is pressed', () => {
     const changes: number[][] = [];
-    render(<StatefulSplit cuts={[1.5, 3, 4.5]} changes={changes} />);
+    render(<StatefulSplit cuts={[50, 75, 100]} changes={changes} />);
     act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
     fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '3.3' } });
     const bin = screen.getAllByRole('button', { name: 'Remove' })[0]!;
@@ -415,15 +415,16 @@ describe('typing a cut row in place (web AGENTS "Inputs send what they show")', 
     const focused = document.activeElement as HTMLInputElement;
     expect(focused).toBe(screen.getByTestId('video-cut-0'));
     expect(focused).toHaveValue('3.3');
-    expect(screen.getByTestId('video-cut-1')).toHaveValue('4.5');
-    expect(changes.at(-1)).toEqual([3.3, 4.5]);
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('4');
+    // 3.3 s lies inside frame 82 and 3.35 s inside frame 83.
+    expect(changes.at(-1)).toEqual([82, 100]);
     fireEvent.change(focused, { target: { value: '3.35' } });
-    expect(changes.at(-1)).toEqual([3.35, 4.5]);
-    expect(screen.getByTestId('video-cut-1')).toHaveValue('4.5');
+    expect(changes.at(-1)).toEqual([83, 100]);
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('4');
   });
 
   it('keeps both rows and the focus while a row is typed equal to another, and merges them on blur', () => {
-    render(<StatefulSplit cuts={[3, 4.5]} />);
+    render(<StatefulSplit cuts={[75, 100]} />);
     act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
     fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '3' } });
     expect(screen.getByTestId('video-cut-0')).toHaveValue('3');
@@ -435,60 +436,44 @@ describe('typing a cut row in place (web AGENTS "Inputs send what they show")', 
   });
 
   it('orders the rows when Enter is pressed', () => {
-    render(<StatefulSplit cuts={[3, 4.5]} />);
+    render(<StatefulSplit cuts={[75, 100]} />);
     act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
     fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '1.5' } });
     fireEvent.keyDown(screen.getByTestId('video-cut-1'), { key: 'Enter' });
-    expect(screen.getByTestId('video-cut-0')).toHaveValue('1.5');
+    // Frame 37, which 1.5 s lies in, starts at 1.48 s (§10.7).
+    expect(screen.getByTestId('video-cut-0')).toHaveValue('1.48');
     expect(screen.getByTestId('video-cut-1')).toHaveValue('3');
   });
   it('removes the row whose bin is pressed while that row is typed', () => {
     const changes: number[][] = [];
-    render(<StatefulSplit cuts={[3, 4.5]} changes={changes} />);
+    render(<StatefulSplit cuts={[75, 100]} changes={changes} />);
     act(() => (screen.getByTestId('video-cut-1') as HTMLInputElement).focus());
     fireEvent.change(screen.getByTestId('video-cut-1'), { target: { value: '1.5' } });
     const bin = screen.getAllByRole('button', { name: 'Remove' })[1]!;
     // The press keeps the focus in the typed row, so the rows are not reordered under the pointer before the click.
     expect(fireEvent.mouseDown(bin)).toBe(false);
     fireEvent.click(bin);
-    expect(changes.at(-1)).toEqual([3]);
+    expect(changes.at(-1)).toEqual([75]);
   });
 });
 
 describe('Add at cursor decides a new cut by the frame it would split at', () => {
   it('is available exactly where planVideoSplit gains a segment', () => {
-    const cuts = [1, 3, 2.5];
+    const cuts = [25, 75, 62];
     const { rerender } = mount({ draft: draftWith(cuts) });
     for (const time of [0, 0.01, 0.04, 0.99, 1, 1.03, 1.04, 2.47, 2.48, 2.5, 2.52, 3.02, 4.96, 4.99, 5]) {
       rerender({ presentedTime: time });
-      const expected = time > 0 && time < 5 && planVideoSplit(frameTable, [...cuts, time]).length > planVideoSplit(frameTable, cuts).length;
-      expect(screen.getByTestId('video-add-cut').hasAttribute('disabled'), String(time)).toBe(!expected);
-    }
-  });
-
-  it('is unavailable before the first frame of a table that does not start at 0', () => {
-    const late = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 8, count: 123, step: 4, duration: 4 }] };
-    const { rerender } = mount({ draft: draftWith([]), frameTable: late });
-    for (const time of [0.04, 0.08, 0.1, 0.12]) {
-      rerender({ presentedTime: time });
-      const expected = planVideoSplit(late, [time]).length > 1;
+      // The frame a presented time shows is round(mediaTime × fps) (frames-split §4.3).
+      const expected = time > 0 && time < 5 && planVideoSplit(grid, [...cuts, frameIndexOfMediaTime(time, grid)]).length > planVideoSplit(grid, cuts).length;
       expect(screen.getByTestId('video-add-cut').hasAttribute('disabled'), String(time)).toBe(!expected);
     }
   });
 });
 
-describe('stepping a handle that is not on a frame start', () => {
-  it('moves one frame from the frame the cut splits at, so the first press moves the handle', () => {
-    const changes: number[][] = [];
-    render(<StatefulSplit cuts={[2.5]} changes={changes} />);
-    fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowLeft' });
-    expect(changes.at(-1)![0]).toBeCloseTo(2.44, 6);
-    expect(parseFloat(screen.getByTestId('video-cut-handle-0').style.left)).toBeCloseTo(48.8, 6);
-  });
-
+describe('stepping a handle', () => {
   it('keeps the focus on a handle stepped or dragged, so the next key moves it again', () => {
     const changes: number[][] = [];
-    render(<StatefulSplit cuts={[1, 3]} changes={changes} />);
+    render(<StatefulSplit cuts={[25, 75]} changes={changes} />);
     layOutTrack();
     act(() => screen.getByTestId('video-cut-handle-0').focus());
     fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
@@ -496,45 +481,16 @@ describe('stepping a handle that is not on a frame start', () => {
     fireEvent.pointerDown(screen.getByTestId('video-cut-handle-1'), { button: 0, clientX: 220, pointerId: 1 });
     fireEvent.pointerMove(screen.getByTestId('video-cut-handle-1'), { clientX: 260, pointerId: 1 });
     fireEvent.pointerUp(screen.getByTestId('video-cut-handle-1'), { clientX: 260, pointerId: 1 });
-    expect(changes.at(-1)![1]).toBe(4);
+    expect(changes.at(-1)![1]).toBe(100);
     expect(screen.getByTestId('video-cut-handle-1')).toHaveFocus();
-  });
-
-  it('steps forward to the next frame start', () => {
-    const changes: number[][] = [];
-    render(<StatefulSplit cuts={[2.5]} changes={changes} />);
-    fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
-    expect(changes.at(-1)![0]).toBeCloseTo(2.52, 6);
   });
 });
 
 describe('a step keeps a cut off the first frame, as a drag and Add at cursor do', () => {
-  it('does not step back onto the first frame of a table that starts after 0', () => {
-    const late = { schemaVersion: 1 as const, timescale: 100, runs: [{ start: 8, count: 123, step: 4, duration: 4 }] };
-    const { onChange } = mount({ draft: draftWith([0.12]), frameTable: late });
+  it('does not step back onto the first frame', () => {
+    const { onChange } = mount({ draft: draftWith([1]) });
     fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowLeft' });
     expect(onChange).not.toHaveBeenCalled();
-  });
-});
-
-describe('a cut a handle writes on a 30 fps video, whose frame starts are not whole microseconds', () => {
-  // 6 s at 30 fps: frame k starts at k/30 s.
-  const thirty = { schemaVersion: 1 as const, timescale: 30, runs: [{ start: 0, count: 180, step: 1, duration: 1 }] };
-
-  it('writes the frame start a step lands on to the next whole microsecond, inside that frame', () => {
-    const { onChange } = mount({ draft: draftWith([2]), frameTable: thirty });
-    fireEvent.keyDown(screen.getByTestId('video-cut-handle-0'), { key: 'ArrowRight' });
-    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [2.033334] } }));
-  });
-
-  it('writes the last frame start a drag past the end lands on to the next whole microsecond', () => {
-    const { onChange } = mount({ draft: draftWith([2]), frameTable: thirty });
-    layOutTrack();
-    const handle = screen.getByTestId('video-cut-handle-0');
-    fireEvent.pointerDown(handle, { button: 0, clientX: 166, pointerId: 1 });
-    fireEvent.pointerMove(handle, { clientX: 340, pointerId: 1 });
-    fireEvent.pointerUp(handle, { clientX: 340, pointerId: 1 });
-    expect(onChange).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({ params: { cuts: [5.966667] } }));
   });
 });
 
@@ -570,15 +526,16 @@ describe('Add at cursor while the source plays', () => {
 
   it('stores the live time at the press, not the stale panel time', () => {
     const changes: number[][] = [];
-    render(<StatefulSplit cuts={[1, 3]} presentedTime={0.4} liveClock={{ element: playingElement(), read: () => 3.2 }} changes={changes} />);
+    render(<StatefulSplit cuts={[25, 75]} presentedTime={0.4} liveClock={{ element: playingElement(), read: () => 3.2 }} changes={changes} />);
     tick();
     fireEvent.click(screen.getByTestId('video-add-cut'));
-    expect(changes.at(-1)).toEqual([1, 3, 3.2]);
+    // 3.2 s is the start of frame 80.
+    expect(changes.at(-1)).toEqual([25, 75, 80]);
   });
 
   it('makes no whole split plan on the animation frames of a playing source', () => {
     let now = 0.5;
-    render(<StatefulSplit cuts={[1, 3]} presentedTime={0.4} liveClock={{ element: playingElement(), read: () => now }} />);
+    render(<StatefulSplit cuts={[25, 75]} presentedTime={0.4} liveClock={{ element: playingElement(), read: () => now }} />);
     tick();
     vi.mocked(planVideoSplit).mockClear();
     for (let frame = 0; frame < 5; frame += 1) { now += 0.37; tick(); }

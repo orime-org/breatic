@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { classifyVideoSourceLedgerFailure } from '@breatic/shared';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { useCanvasActions } from '@web/spaces/canvas/canvas-actions';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
 import { createVideoPresentationRecovery } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 import { Button } from '@web/components/ui/button';
 import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
 import type { FrameMode, MediaPlayerProps, MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
@@ -88,12 +88,15 @@ function ResolvedNodeVideo(props: MediaPlayerProps & { nodeId: string; projectId
       if (mounted.current && currentIdentity.current === identity) setRetrying(null);
     }
   }
-  return <MediaPlayer {...player} videoSource={presentedSource} onVideoBinding={onBinding} onPresentedFrame={onFrame} onPickFrame={onPickFrame}>
-    {failure === null && localFailure === null ? null : <div className='pointer-events-auto absolute inset-0 z-20 grid place-content-center justify-items-center gap-2 bg-card p-3 text-center'>
+  // Nothing selected: the node plays the original for display, and the candidate's state is shown over it (§7.9 N).
+  const preparation = React.useMemo(() => ({ failure: source === null ? failure : null, onRetry: () => { void retry(); }, retrying: retrying === identity }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retry reads the current identity through refs.
+    [source, failure, retrying, identity]);
+  return <MediaPlayer {...player} videoSource={presentedSource} preparation={preparation} onVideoBinding={onBinding} onPresentedFrame={onFrame} onPickFrame={onPickFrame}>
+    {/* N records only the selected version's playback file failing (§7.9 N). */}
+    {localFailure === null ? null : <div className='pointer-events-auto absolute inset-0 z-20 grid place-content-center justify-items-center gap-2 bg-card p-3 text-center'>
       <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p>
-      {/* A content failure comes out the same on every rerun, so it offers no Retry (design §10.6 failure classes). */}
-      {localFailure === null && failure !== null && classifyVideoSourceLedgerFailure(failure) === 'content' ? null
-        : <Button variant='outline' size='sm' className='nodrag nokey' loading={retrying === identity} onClick={() => { void retry(); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button>}
+      <Button variant='outline' size='sm' className='nodrag nokey' loading={retrying === identity} onClick={() => { void retry(); }}>{t('canvas.miniTool.videoUI.retryPreview')}</Button>
     </div>}
   </MediaPlayer>;
 }
@@ -129,7 +132,9 @@ export const VideoNode = React.memo(function VideoNode({
   const nodeId = React.useContext(NodeIdContext);
   const { projectId } = useCanvasContext();
   const Player = projectId && nodeId ? ResolvedNodeVideo : MediaPlayer;
-  const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height);
+  // The badge shows the selected version's display geometry, the source's resolution (frames-split §7.8).
+  const presented = useQuery(videoPresentationQuery({ projectId, canonicalURL: data.content ?? '', active: Boolean(projectId && nodeId && data.content) }));
+  const { resolution, setResolution } = useNodeResolution(data.content, data.width, data.height, presented.data?.presentation?.display ?? null);
   const fullPoster = useZoomedPastPreview(data.coverUrl);
   // Subscribe to the BOOLEAN, not the session object: this node re-renders
   // only when the answer flips, not on every change to an unrelated pick.

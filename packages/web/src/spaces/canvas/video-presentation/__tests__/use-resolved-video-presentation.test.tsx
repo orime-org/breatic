@@ -7,17 +7,17 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useResolvedVideoPresentation } from '../use-resolved-video-presentation';
 import { videoPresentationQuery } from '../video-presentation-query';
-import { PRESENTED, presentedBinding, presentedBundle, presentedResponse, readyLedger } from '@web/test-utils/video-presentation';
+import { PRESENTED, presentedBinding, presentedBundle, presentedResponse } from '@web/test-utils/video-presentation';
 
 // §96 (frames-split design §3.5 alpha manifest row, §7.8): a selected alpha-packed bundle plays from its manifest object,
 // which names the packed carrier and the logical colour and alpha rectangles. The resolver reads the manifest the bundle's
-// receipt measures, holds it to the version (`alphaPackedManifestMatchesVersion`) and only then yields a playable source;
-// a manifest of another version yields none.
+// receipt measures, holds it to the version (`alphaPackedManifestMatchesVersion`: its packed object is the version's carrier)
+// and only then yields a playable source; a manifest naming another packed object yields none.
 const projectId = 'project-a';
 const url = 'https://assets.example.test/video/alpha.webm';
 const carrier = { storageKey: 'video/alpha.webm.packed.mp4', url: 'https://assets.example.test/video/alpha.webm.packed.mp4', etag: '"packed"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
 const manifestURL = 'https://assets.example.test/video/alpha.webm.manifest.json';
-const manifest = { schemaVersion: 1, versionId: PRESENTED.versionId, toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256, policyVersion: 1,
+const manifest = { schemaVersion: 1,
   packed: carrier, packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } };
 const fetchMock = vi.fn<typeof fetch>();
 let client: QueryClient;
@@ -40,7 +40,7 @@ async function seed(served: Record<string, unknown>): Promise<void> {
   const bytes = new TextEncoder().encode(JSON.stringify(served));
   const receipt = { storageKey: 'video/alpha.webm.manifest.json', url: manifestURL, etag: '"manifest"', size: bytes.length, sha256: await sha256(bytes), contentType: 'application/json' };
   const bundle = presentedBundle(url, { playback: { kind: 'alpha-packed', carrier, manifest: receipt } });
-  const response = presentedResponse(presentedBinding(url, { width: 96, height: 64, duration: 3, mimeType: 'video/webm' }), { presentation: bundle, ledger: readyLedger(bundle) });
+  const response = presentedResponse(presentedBinding(url, { width: 96, height: 64, duration: 3, mimeType: 'video/webm' }), { presentation: bundle });
   const options = videoPresentationQuery({ projectId, canonicalURL: url, active: true });
   client.setQueryDefaults(options.queryKey, { staleTime: Infinity });
   client.setQueryData(options.queryKey, response);
@@ -76,7 +76,7 @@ describe('an alpha-packed selected version plays from its manifest (§96; design
   });
 
   it('AP02 a manifest of another version yields no playable source', async () => {
-    await seed({ ...manifest, versionId: 'b'.repeat(64) });
+    await seed({ ...manifest, packed: { ...carrier, sha256: 'b'.repeat(64) } });
     const { result } = resolve();
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => expect(result.current.failure).not.toBeNull());
