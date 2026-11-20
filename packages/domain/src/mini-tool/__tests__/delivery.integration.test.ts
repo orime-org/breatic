@@ -8,21 +8,22 @@
  */
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { createPgClient, getNodeTaskConfig, initCore, loadLocales } from "@breatic/core";
+import { createPgClient, initCore, loadLocales } from "@breatic/core";
 import { hashMiniToolValue, miniToolExecutionRecordSchema, type MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
 import {
-  beginMiniToolStepAttempt, claimMiniToolSettlement, completeMiniToolConsumptionSet, confirmMiniToolConsumption,
+  completeMiniToolConsumptionSet, recordMiniToolConsumptionLookup,
   miniToolDeliveryService, miniToolExecutionService, miniToolSettlementSchema, recordMiniToolConsumption,
-  recordMiniToolStepIdentity, recordMiniToolStepResult, settleMiniToolCharge, taskRepo, upstreamStepRepo,
+  recordMiniToolStepResult, settleMiniToolCharge, upstreamStepRepo,
   type MiniToolDeliveryAck, type MiniToolDeliveryContext, type MiniToolDeliveryState, type MiniToolExecutionCompletion,
 } from "@domain/index.js";
 import { executionSnapshot, seedExecution, storeExecutionFixture, type ExecutionFixture } from "./execution-lifecycle-fixtures.js";
+import { claimExecutionSettlement, executionIdentity } from "./execution-step-fixtures.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 
 let pg: ReturnType<typeof createPgClient>;
 const ERROR = { code: "original_failure", message: "Original computation failed" };
 const PRIVATE_ERROR = "delivery_history_failed";
-interface OriginalIdentity { stepId: string; identity: { kind: "provider"; provider: "wavespeed"; predictionId: string } }
+interface OriginalIdentity { stepId: string; identity: { kind: "provider"; stepId: string } }
 beforeAll(() => {
   initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1" }); loadLocales();
   pg = createPgClient(inject("DATABASE_URL"), { name: "planned-delivery-fixture", max: 8 });
@@ -85,25 +86,11 @@ async function earlierRun(f: ExecutionFixture): Promise<ExecutionFixture> {
   await storeExecutionFixture(pg, result, result.record);
   return result;
 }
-/** Save the original request, prediction and pending expense with their real task-lock owners.
- * @throws {Error} When a legitimate original intent cannot be saved.
- */
-async function originalIdentity(f: ExecutionFixture): Promise<OriginalIdentity> {
-  const [step] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.provider.model_id, itemIndex: 0 }]);
-  const task = await taskRepo.getMiniToolExecutionTask(f.taskId);
-  if (step === undefined || task === null) throw new Error("Original provider fixture disappeared");
-  const attemptId = randomUUID();
-  expect((await beginMiniToolStepAttempt({ taskId: f.taskId, stepId: step.id, attemptId, requestBody: { ...f.plan.body },
-    deadlineAt: task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms, chargeTo: "user" })).shouldSubmit).toBe(true);
-  const identity = { kind: "provider" as const, provider: "wavespeed" as const, predictionId: `delivery-${f.taskId}` };
-  expect((await recordMiniToolStepIdentity({ taskId: f.taskId, stepId: step.id, attemptId, predictionId: identity.predictionId })).conflict).toBe(false);
-  return { stepId: step.id, identity };
-}
 /** Persist the original returned provider result and canonical receipt, without a transfer.
  * @throws {Error} When the actual result or receipt transaction fails.
  */
 async function returned(f: ExecutionFixture): Promise<OriginalIdentity> {
-  const original = await originalIdentity(f);
+  const { stepId, identity } = await executionIdentity(f); const original = { stepId, identity };
   await recordMiniToolStepResult({ taskId: f.taskId, stepId: original.stepId, identity: original.identity, outcome: "done", result: ["https://provider.example.test/original.webm"] },
     { kind: "generate", parse: () => ({ providerURL: "https://provider.example.test/original.webm" }) });
   await upstreamStepRepo.recordInline(original.stepId, { "miniToolAsset:0": f.registered.assetId }, 0);
@@ -113,10 +100,8 @@ async function returned(f: ExecutionFixture): Promise<OriginalIdentity> {
  * @throws {Error} When the original pending expense cannot be claimed or recorded.
  */
 async function priced(f: ExecutionFixture, original: OriginalIdentity, record: boolean): Promise<void> {
-  const parent = await executionSnapshot(pg, f); const period = miniToolSettlementSchema.parse(parent.result.settlement);
-  const claim = await claimMiniToolSettlement({ taskId: f.taskId, settlementVersion: period.version });
-  if (claim === null) throw new Error("Original price fixture could not claim its period");
-  await confirmMiniToolConsumption({ taskId: f.taskId, ...original, claim: claim.claim, costUsd: 0.3, costSource: "generation_lookup", raw: { originalBill: 0.3 } });
+  const claim = await claimExecutionSettlement(pg, f);
+  await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: original.stepId, claim: claim.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
   if (record) await recordMiniToolConsumption({ taskId: f.taskId, ...original, claim: claim.claim });
 }
 /** Bind an internal publication receipt to the original registered winner, not a temporary URL.
