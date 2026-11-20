@@ -448,6 +448,12 @@ export {
   type InboxAnswer,
   type InboxDelivery,
   type LotRefundLifecycleEvent,
+  accountFactsSchema,
+  accountLookupAnswerSchema,
+  referralBindingEventSchema,
+  type AccountFacts,
+  type AccountLookupAnswer,
+  type ReferralBindingEvent,
 } from "@core/commerce/contract.js";
 export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
 export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";

@@ -11,7 +11,7 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { closeDb, initCore } from "@breatic/core";
+import { accountFactsSchema, accountLookupAnswerSchema, closeDb, initCore } from "@breatic/core";
 import { lookupAccounts, readAccount } from "@server/modules/commerce/commerce-accounts.service.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -62,6 +62,7 @@ describe("readAccount", () => {
     const answer = await readAccount(userId);
 
     expect(answer.httpStatus).toBe(200);
+    expect(accountFactsSchema.safeParse(answer.body).success).toBe(true);
     expect(answer.body).toEqual({
       email: `${userId}@example.test`,
       locale: "zh-CN",
@@ -77,6 +78,7 @@ describe("readAccount", () => {
     const answer = await readAccount(userId);
 
     expect(answer).toMatchObject({ httpStatus: 200, body: { deleted: true, effectiveTier: null } });
+    expect(accountFactsSchema.safeParse(answer.body).success).toBe(true);
   });
 
   it("answers 404 for an account that never existed", async () => {
@@ -92,6 +94,7 @@ describe("lookupAccounts", () => {
     const answer = await lookupAccounts([live.userId, gone.userId, randomUUID()]);
 
     expect(answer.httpStatus).toBe(200);
+    expect(accountLookupAnswerSchema.safeParse(answer.body).success).toBe(true);
     const rows = answer.body as Array<{ userId: string }>;
     expect(rows.sort((a, b) => a.userId.localeCompare(b.userId))).toEqual(
       [

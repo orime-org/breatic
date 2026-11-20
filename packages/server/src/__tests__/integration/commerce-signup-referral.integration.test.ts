@@ -20,7 +20,7 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-import { initCore } from "@breatic/core";
+import { initCore, referralBindingEventSchema } from "@breatic/core";
 import { SignupReferralRefused, createAccount } from "@server/modules/auth/auth.service.js";
 import { initSellingCore, useCommerceApp } from "./commerce-harness.js";
 
@@ -58,6 +58,7 @@ describe("sign-up referral codes", () => {
     expect(referral).toBe("applied");
     expect(suite.received).toEqual([expect.objectContaining({ method: "POST", path: "/v1/referral-codes/check", body: { code: "friend-2026" } })]);
     expect(await bindings(userId)).toEqual([{ userId, code: "FRIEND-2026", source: "signup_typed", requestedAt: expect.any(String) }]);
+    expect((await bindings(userId)).every((payload) => referralBindingEventSchema.safeParse(payload).success)).toBe(true);
   });
 
   it("refuses the sign-up on a refusing path when the code is inactive, creating nothing", async () => {

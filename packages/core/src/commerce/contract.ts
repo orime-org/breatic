@@ -8,7 +8,7 @@
  */
 
 import { z } from "zod";
-import { ANALYTICS_EVENT_NAMES, BILLING_PERIODS, ConsentSnapshotSchema, MEMBERSHIP_TIERS, type AnalyticsEventName } from "@breatic/shared";
+import { ANALYTICS_EVENT_NAMES, BILLING_PERIODS, ConsentSnapshotSchema, MEMBERSHIP_TIERS, SIGNUP_REFERRAL_SOURCES, type AnalyticsEventName } from "@breatic/shared";
 import { ADS_CONVERSIONS } from "@core/ads/ads-types.js";
 import { STRIPE_SUBSCRIPTION_STATUSES } from "@core/auth/subscription-state.js";
 
@@ -178,9 +178,33 @@ export const refundStepAnswerSchema = z
   .strict();
 export type RefundStepAnswer = z.infer<typeof refundStepAnswerSchema>;
 
+/**
+ * `GET /internal/v1/commerce/accounts/:userId`: who to mail, in which
+ * language, the tier in force (null for a deleted account) and the credits
+ * the account holds, as a canonical credit decimal.
+ */
+export const accountFactsSchema = z
+  .object({
+    email: z.string(),
+    locale: z.string(),
+    deleted: z.boolean(),
+    effectiveTier: z.enum(MEMBERSHIP_TIERS).nullable(),
+    heldCredits: z.string(),
+  })
+  .strict();
+export type AccountFacts = z.infer<typeof accountFactsSchema>;
+
 /** `POST /internal/v1/commerce/accounts/lookup`: read many accounts' facts. */
 export const accountLookupRequestSchema = z.object({ userIds: z.array(uuid).min(1).max(100) }).strict();
 export type AccountLookupRequest = z.infer<typeof accountLookupRequestSchema>;
+
+/** The answer to a lookup: one row per account that exists, deleted ones included. */
+export const accountLookupAnswerSchema = z.array(
+  z
+    .object({ userId: uuid, email: z.string(), locale: z.string(), deleted: z.boolean(), personalStudioName: z.string().nullable() })
+    .strict(),
+);
+export type AccountLookupAnswer = z.infer<typeof accountLookupAnswerSchema>;
 
 /** What the product's outbox tells the billing service (inner#1993 §3.4). */
 export const COMMERCE_OUTBOX_TYPES = ["referral_binding", "lot_refund_lifecycle", "account_erasure"] as const;
@@ -191,6 +215,12 @@ export const lotRefundLifecycleEventSchema = z
   .object({ lotId: uuid, paymentId: uuid, userId: uuid, lifecycle: z.string().min(1) })
   .strict();
 export type LotRefundLifecycleEvent = z.infer<typeof lotRefundLifecycleEventSchema>;
+
+/** A sign-up's referral code for the billing service to bind (§8.4). */
+export const referralBindingEventSchema = z
+  .object({ userId: uuid, code: z.string().min(1).max(64), source: z.enum(SIGNUP_REFERRAL_SOURCES), requestedAt: instant })
+  .strict();
+export type ReferralBindingEvent = z.infer<typeof referralBindingEventSchema>;
 
 /** A deleted account whose consent the billing service's orders must drop. */
 export const accountErasureEventSchema = z.object({ userId: uuid }).strict();
