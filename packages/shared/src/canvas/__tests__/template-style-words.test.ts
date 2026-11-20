@@ -88,6 +88,18 @@ const SUBJECT_KEEPS_COLOUR = [
   'hand-tinted-photo',
 ];
 
+/**
+ * Words, in each locale, that hold a whole picture to one colour scheme, and the word for the subject: in a style
+ * that keeps the subject in colour, a sentence using the first must name the second, or it overrules the subject.
+ */
+const WHOLE_PICTURE_COLOUR: Record<string, { absolute: RegExp; subject: string }> = {
+  en: { absolute: /sepia only|other colours|only warm colour|colour leaks/iu, subject: 'subject' },
+  'zh-CN': { absolute: /只用棕褐色|其他颜色|唯一的暖色/u, subject: '主体' },
+  'zh-TW': { absolute: /只用棕褐色|其他顏色|唯一的暖色/u, subject: '主體' },
+  ja: { absolute: /セピアだけ|ほかの色|唯一の暖色/u, subject: '主体' },
+  ko: { absolute: /세피아뿐|다른 색|유일한 따뜻한 색|색 번짐/u, subject: '주체' },
+};
+
 /** The sentence, in each locale, that keeps the subject in colour. */
 const SUBJECT_COLOUR_SENTENCE: Record<string, string> = {
   en: 'Only the subject keeps its own colours',
@@ -105,11 +117,11 @@ const LEFTOVERS_IN_EVERY_LOCALE: RegExp[] = [/[（(]\s*(约|約|前後|안팎|ab
 
 /** The same, in the words of one locale. */
 const LEFTOVERS: Record<string, RegExp[]> = {
-  en: [/\b(?<!to )(near|reach|from)\s*[,;.:]/u, /\bfrom (to|through)\b/u, /\bthrough to\s*[,;.]/u, /\band and\b/u, /\bnear (cover|the rest|with)\b/u],
+  en: [/[a-z]\.[A-Z][a-z]/u, /\b(?<!to )(near|reach|from)\s*[,;.:]/u, /\bfrom (to|through)\b/u, /\bthrough to\s*[,;.]/u, /\band and\b/u, /\bnear (cover|the rest|with)\b/u],
   'zh-CN': [/、(和|与)|从到|从经|经到|约[）)；，。]|接近[，；。]|亮到[；。]|暗部。/u],
   'zh-TW': [/、(和|與)|從到|從經|經到|約[）)；，。]|接近[，；。]|亮到[；。]|暗部。/u],
   ja: [/からを|から(を経て)?まで|^まで|[はの]前後|は近く|は。|は(まで|から)/u],
-  ko: [/에서(을|까지)|^에서|[은는]안팎|[은는]가까이|[은는]이다|\(\s*안팎/u],
+  ko: [/[가-힣]\.[가-힣]/u, /에서(을|까지)|^에서|[은는]안팎|[은는]가까이|[은는]이다|\(\s*안팎/u],
 };
 
 /**
@@ -122,30 +134,30 @@ const PICTURE_RULES: Record<string, { shotStart: RegExp; shotOpens: RegExp; stil
   en: {
     shotStart: /open(s)? on (black|blank)|starts? as|(draws|types|sprays|builds|colours|writes) itself|paint themselves in|develops? out of|snap on one by one/u,
     shotOpens: /\bopens? or closes?\b|\bopens and closes\b/u,
-    stillMotion: /fast cuts|hard cuts?(?! edges)|dissolve|fade to|crossfade|whip pan|\bdeveloping\b/u,
+    stillMotion: /fast cuts|hard cuts?(?! edges)|dissolve|fade to|crossfade|whip pan|\bdeveloping\b|\bthen\b[^.]*\bshots?\b/u,
   },
   'zh-CN': {
     shotStart: /全黑|先只有|自己画|自己涂|自己写|一笔一笔|一笔笔画出来|打出来|喷到墙上|显出来/u,
     shotOpens: /开场或收尾|开场和收尾|开头或结尾/u,
-    stillMotion: /快切|叠化|淡出|甩镜|正在显影/u,
+    stillMotion: /快切|叠化|淡出|甩镜|正在显影|先[^。]*再[^。]*拍/u,
     caseWithPromptLanguage: /[^。]*(大写[^。]*这段提示词的语言|这段提示词的语言[^。]*大写)/u,
   },
   'zh-TW': {
     shotStart: /全黑|先只有|自己畫|自己塗|自己寫|一筆一筆|一筆筆畫出來|打出來|噴到牆上|顯出來/u,
     shotOpens: /開場或收尾|開場和收尾|開頭或結尾/u,
-    stillMotion: /快切|溶接|淡出|甩鏡|正在顯影/u,
+    stillMotion: /快切|溶接|淡出|甩鏡|正在顯影|先[^。]*再[^。]*拍/u,
     caseWithPromptLanguage: /[^。]*(大寫[^。]*這段提示詞的語言|這段提示詞的語言[^。]*大寫)/u,
   },
   ja: {
     shotStart: /黒から|鉛筆だけで始ま|描かれていく|描き込まれていく|ひとりでに|打たれて|吹きつけられ|浮かび上が/u,
     shotOpens: /始まりか終わり|始まりと終わり|冒頭か終わり/u,
-    stillMotion: /速いカット|ディゾルブ|フェード|現像されていく/u,
+    stillMotion: /速いカット|ディゾルブ|フェード|現像されていく|まず[^。]*次に[^。]*撮/u,
     caseWithPromptLanguage: /[^。]*(大文字[^。]*このプロンプトの言語|このプロンプトの言語[^。]*大文字)/u,
   },
   ko: {
     shotStart: /검은 화면에서 시작|연필만으로 시작|스스로 그려|저절로|한 획씩 그려|타자로 쳐진 뒤|벽에 뿌려지고|떠오른다/u,
     shotOpens: /시작이나 끝|시작과 끝/u,
-    stillMotion: /빠른 컷|디졸브|페이드|현상되고 있다/u,
+    stillMotion: /빠른 컷|디졸브|페이드|현상되고 있다|먼저[^.]*(숏|찍는다)/u,
     caseWithPromptLanguage: /[^.]*(대문자[^.]*이 프롬프트의 언어|이 프롬프트의 언어[^.]*대문자)/u,
   },
 };
@@ -309,6 +321,23 @@ describe('template style words', () => {
       '땅가', '슬레이트색는', '금색로', '주황를', '벽돌색와', '바다으로', '물으로',
     ]);
     expect(koreanParticleMismatches('땅이 크다. 슬레이트색은 하늘. 금색으로 타오르고 선으로 그린다. 주황을 거쳐 벽돌색과 하늘.')).toEqual([]);
+  });
+
+  it('limits every whole-picture colour rule to what lies outside the subject in the styles that keep the subject in colour', () => {
+    const overruling: string[] = [];
+    for (const locale of LOCALES) {
+      const rule = WHOLE_PICTURE_COLOUR[locale];
+      expect(rule, locale).toBeDefined();
+      if (rule === undefined) continue;
+      const words = styleWords(locale);
+      for (const style of SUBJECT_KEEPS_COLOUR) {
+        const still = words.get(`canvas.template.styleSet.film-styles.style.${style}.still`) ?? '';
+        for (const sentence of still.split(/(?<=[.;。；])\s*/u)) {
+          if (rule.absolute.test(sentence) && !sentence.includes(rule.subject)) overruling.push(`${locale} ${style}: ${sentence}`);
+        }
+      }
+    }
+    expect(overruling).toEqual([]);
   });
 
   it('names no person, work, publication, company, brand or trademark in the styles or their templates', () => {
