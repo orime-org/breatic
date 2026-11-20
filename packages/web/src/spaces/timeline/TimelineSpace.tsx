@@ -855,7 +855,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2'>
         <div className='flex flex-wrap items-center gap-2'>
           <Button data-testid='timeline-add-media' variant='outline' size='sm' className='gap-1.5' disabled={readOnly} onClick={openMaterial} icon={<Plus className='size-4' />}>{t('timeline.addMedia')}</Button>
-          {!readOnly && webLimits !== undefined && <Button data-testid='timeline-add-web-animation' variant='outline' size='sm' className='gap-1.5' onClick={openPicker} icon={<Code className='size-4' />}>{t('timeline.webAnimation.add')}</Button>}
+          {!readOnly && <Button data-testid='timeline-add-web-animation' variant='outline' size='sm' className='gap-1.5' onClick={openPicker} icon={<Code className='size-4' />}>{t('timeline.webAnimation.add')}</Button>}
           <Button data-testid='timeline-undo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canUndo} onClick={undo} icon={<Undo2 className='size-4' />}>{t('timeline.edit.undo')}</Button>
           <Button data-testid='timeline-redo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canRedo} onClick={redo} icon={<Redo2 className='size-4' />}>{t('timeline.edit.redo')}</Button>
           <Separator orientation='vertical' className='h-5' />

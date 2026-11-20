@@ -193,6 +193,13 @@ describe('track toolbar', () => {
     expect(screen.queryByTestId('timeline-open-executions')).toBeNull();
   });
 
+  it('offers Add web animation while the Timeline limits are still read', async () => {
+    vi.mocked(timelineApi.limits).mockReturnValue(new Promise(() => {}));
+    seed();
+    showTimeline();
+    expect(await screen.findByTestId('timeline-add-web-animation')).toBeInTheDocument();
+  });
+
   it('shows a Viewer neither Add web animation nor an execution list', async () => {
     seed();
     showTimeline(true);
@@ -328,8 +335,8 @@ describe('preview of web copies', () => {
     const later = '30000000-0000-4000-8000-000000000107';
     seed([webClip(first, 'v2', 0, 48, boundTo(SRC_A)), webClip(later, 'v2', 96, 48, boundTo(SRC_A))]);
     showTimeline();
-    // Add web animation shows once the Timeline limits, and so the idle cap, have arrived.
-    await screen.findByTestId('timeline-add-web-animation');
+    // The idle cap arrives with the Timeline limits.
+    await waitFor(() => expect(clients.at(-1)?.getQueryState(['timeline-limits', PROJECT])?.status).toBe('success'));
     const unavailable = t('timeline.webAnimation.preview.unavailable', { track: t('timeline.track', { index: 2 }) });
     await waitFor(() => expect(screen.getByTestId(`timeline-preview-note-${first}`)).toHaveTextContent(unavailable));
     const seek = screen.getByRole('slider', { name: t('timeline.seek') });
