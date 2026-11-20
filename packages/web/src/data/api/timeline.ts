@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineExecution, TimelineWebResolution } from '@breatic/shared';
+import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineWebResolution } from '@breatic/shared';
 import type { z } from 'zod';
 import type { WebAnimationExecutionRequestSchema, WebAnimationRowView } from '@breatic/shared/space-content';
 import { apiGet, apiPost, request, runOnceRequest } from '@web/data/api/request';
@@ -124,7 +124,7 @@ export const timelineApi = {
    * @returns The execution after the request.
    * @throws {ApiException} When it is refused or the request fails.
    */
-  cancelExecution(executionId: string, projectId: string, key: string): Promise<TimelineExecution> {
+  cancelExecution(executionId: string, projectId: string, key: string): Promise<WebAnimationRowView> {
     return apiPost(`/timeline/executions/${executionId}/cancel`, { projectId }, runOnceRequest(key));
   },
   /**

@@ -591,11 +591,12 @@ export async function resolveWebSources(
  * @param userId - The caller.
  * @param executionId - The execution.
  * @param projectId - The Project the request is made from.
- * @returns The row after the request; a terminal row unchanged.
+ * @returns The row after the request, as the lists show it; a terminal row unchanged.
  * @throws {NotFoundError} When there is no such execution, or the caller is not a member of the Project.
  * @throws {ForbiddenError} When the caller is below editor, or the row belongs to another Project.
+ * @throws {AppError} When the row holds no readable input.
  */
-export async function cancel(userId: string, executionId: string, projectId: string): Promise<TimelineExecution> {
+export async function cancel(userId: string, executionId: string, projectId: string): Promise<WebAnimationRowView> {
   const row = await timelineExecutionRepo.findById(executionId);
   if (row === undefined) throw new NotFoundError(t("server.error.not_found"));
   await projectService.assertAccess(projectId, userId, "editor");
@@ -604,9 +605,10 @@ export async function cancel(userId: string, executionId: string, projectId: str
     throw new ForbiddenError(t("server.error.forbidden"));
   }
   const result = await timelineExecutionRepo.transition({ id: executionId, event: { type: "cancel" } });
-  if (!result.applied) return result.row;
-  await announceQuietly(result.row);
-  return result.row;
+  if (result.applied) await announceQuietly(result.row);
+  const [view] = await toRowViews([result.row], { projectId, spaceId: result.row.spaceId });
+  if (view === undefined) throw new AppError(500, t("server.error.internal"));
+  return view;
 }
 
 /**

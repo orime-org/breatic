@@ -30,7 +30,7 @@ import type { Hono } from "hono";
 import { env, getNodeTaskConfig, getTimelineConfig } from "@breatic/core";
 import { timelineExecutionRepo } from "@breatic/domain";
 import { extractPromptText, readSignedPayload, t, timelineSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
-import { decodePreviewToken } from "@breatic/shared/space-content";
+import { WebAnimationRowViewSchema, decodePreviewToken } from "@breatic/shared/space-content";
 import type { TimelineExecution } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import { useWebAnimationHarness, type ProjectFixture } from "@server/__tests__/integration/web-animation-harness.js";
@@ -441,20 +441,35 @@ describe("POST /timeline/executions/:id/cancel", () => {
     const running = await step(row.id, { type: "claim" });
     const res = await cancel(fx.editor.cookie, fx, row.id);
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ status: "cancelling", fence: running.fence, attempt: 1 });
+    expect(((await res.json()) as { data: unknown }).data).toMatchObject({ id: row.id, status: "cancelling" });
+    expect(await timelineExecutionRepo.findById(row.id)).toMatchObject({ status: "cancelling", fence: running.fence, attempt: 1 });
     expect(await holdsOf(fx.studioId)).toEqual([]);
+  });
+
+  it("answers a cancel with the row view, never the stored row's job steps, fence or input hash", async () => {
+    const fx = await seedProject();
+    const row = await accepted(fx);
+    const first = await cancel(fx.editor.cookie, fx, row.id);
+    expect(first.status).toBe(200);
+    const again = await cancel(fx.editor.cookie, fx, row.id);
+    for (const body of [await first.json(), await again.json()] as { data: Record<string, unknown> }[]) {
+      expect(body.data).not.toHaveProperty("steps");
+      expect(body.data).not.toHaveProperty("fence");
+      expect(body.data).not.toHaveProperty("inputHash");
+      expect(WebAnimationRowViewSchema.parse(body.data)).toMatchObject({ id: row.id, status: "cancelled" });
+    }
   });
 
   it("answers a terminal execution with its row unchanged and signals nothing", async () => {
     const fx = await seedProject();
     const row = await accepted(fx);
-    await cancel(fx.editor.cookie, fx, row.id);
+    const first = ((await (await cancel(fx.editor.cookie, fx, row.id)).json()) as { data: unknown }).data;
     const ended = await timelineExecutionRepo.findById(row.id);
     const told = (await executionChangesFor(fx.projectId, fx.spaceId)).length;
     expect(told).toBeGreaterThan(0);
     const again = await cancel(fx.editor.cookie, fx, row.id);
     expect(again.status).toBe(200);
-    expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(ended);
+    expect(((await again.json()) as { data: unknown }).data).toEqual(first);
     expect(await timelineExecutionRepo.findById(row.id)).toEqual(ended);
     expect(await executionChangesFor(fx.projectId, fx.spaceId)).toHaveLength(told);
     expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
