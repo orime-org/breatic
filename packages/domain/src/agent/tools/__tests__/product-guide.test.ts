@@ -1009,6 +1009,8 @@ describe("what the guide says about each surface", () => {
     expect(wrong).toMatch(/browser's own refresh or tab close uses its native confirmation/);
     expect(wrong).toMatch(/With a document open, "[^"]+" also shows for a moment; nothing typed after it is saved/);
     expect(wrong).toMatch(/until they upgrade/);
+    // inner#1968: an active enterprise agreement caps storage too, and only a change to the agreement raises it.
+    expect(wrong).toMatch(/an admin on an enterprise agreement contacts us to change the agreement/);
     expect(wrong).toMatch(/press Cmd\/Ctrl\+A twice, then Cmd\/Ctrl\+C, to copy it out before signing in again or reloading/);
     expect(wrong).toMatch(/as many open editing connections as the plan of the studio's admin allows \(only their upgrade raises it\)/);
   });

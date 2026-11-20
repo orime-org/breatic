@@ -10,9 +10,9 @@
  * not a feature that exists, and saying "forbidden" would imply they might
  * work for somebody else.
  *
- * Both the membership and the credit legs gate on this, so the test lives in
- * one place: a second copy would be a second answer the day the flag's meaning
- * moved. What each leg says is its own — a buyer who asked to top up and is
+ * The membership and credit endpoints all gate on this, so the
+ * test lives in one place: a second copy would be a second answer the day the
+ * flag's meaning moved. What each leg says is its own — a buyer who asked to top up and is
  * told memberships are unavailable has been answered about something else.
  */
 

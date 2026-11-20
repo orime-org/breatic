@@ -163,6 +163,7 @@ import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-swee
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 import { reconcileLotMirror } from "@worker/handlers/commerce-lot-mirror.js";
+import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
 
 /** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
 const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
@@ -172,6 +173,9 @@ const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
 
 /** Queue holding the daily resend of bought lots to the billing service's mirror (inner#1993 §5.4). */
 const COMMERCE_LOT_MIRROR_QUEUE = "commerce-lot-mirror";
+
+/** Queue holding the recurring sweep of tasks waiting for a running slot whose job may be lost (inner#1968). */
+const SLOT_WAIT_SWEEP_QUEUE = "slot-wait-sweep";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -188,6 +192,7 @@ const WORKER_QUEUES: readonly string[] = [
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
   COMMERCE_LOT_MIRROR_QUEUE,
+  SLOT_WAIT_SWEEP_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -287,6 +292,24 @@ export function startWorker(): void {
   });
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
+
+  // The read side of the tasks queue: the stale-waiter sweep below and the
+  // failed-job cleanup further down look jobs up through it.
+  const tasksQueue = createQueue("tasks");
+
+  // Tasks waiting for a running slot whose job was lost end as failed (inner#1968).
+  const slotWaitSweepQueue = createQueue(SLOT_WAIT_SWEEP_QUEUE);
+  const slotWaitSweep = createWorker<Record<string, never>>(SLOT_WAIT_SWEEP_QUEUE, () => sweepSlotWaiters(tasksQueue));
+  slotWaitSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "slot_wait_sweep_failed");
+  });
+  void slotWaitSweepQueue.upsertJobScheduler(
+    SLOT_WAIT_SWEEP_QUEUE,
+    { every: getWorkerConfig().slot_wait_sweep_interval_ms },
+    { name: SLOT_WAIT_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "slot_wait_sweep_schedule_failed");
+  });
 
   // Timeline web-animation executions (inner#1711). A job waiting on its container goes back to the queue as
   // delayed; one that used up its retries is only logged, and the sweep adds it again under the original deadline.
@@ -487,7 +510,6 @@ export function startWorker(): void {
   // re-fetch the job (retained by `removeOnFail` age) via a read-side Queue
   // for its data + terminal `finishedOn`. Runs once per instance (idempotent
   // #1580 #7); past that, the row waits to be judged against its budget.
-  const tasksQueue = createQueue("tasks");
   const queueEvents = createQueueEvents("tasks");
   queueEvents.on("failed", ({ jobId, failedReason }) => {
     void reclaimFailedJobById(tasksQueue, getStreamRedis(), jobId, failedReason)
@@ -596,6 +618,7 @@ export function startWorker(): void {
         () => timelineSweep.close(),
         () => creditChargeSweep.close(),
         () => lotMirror.close(),
+        () => slotWaitSweep.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),

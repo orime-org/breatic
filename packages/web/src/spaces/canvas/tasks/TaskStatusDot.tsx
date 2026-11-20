@@ -2,7 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The mark saying which of the four states a task is in (#186).
+ * The mark saying which state a task is in (#186), or that it waits for a
+ * free running slot (inner#1968).
  *
  * Each state gets its own shape as well as its own colour. Colour alone did
  * not carry it: dark theme measures failed at rgb(255,149,146) against
@@ -10,7 +11,7 @@
  * and the rest of the difference in blue, the channel the eye weighs least.
  * At the size this mark is drawn the two read as one thing (user 2026-09-06).
  * Shape separates them, and it is also what keeps colour from being the only
- * carrier for a user who does not see the four apart (WCAG 1.4.1).
+ * carrier for a user who does not see them apart (WCAG 1.4.1).
  *
  * The state's name stays in the accessible tree, so a user landing on a row
  * rather than on the panel's heading still hears which list they are in.
@@ -23,7 +24,7 @@
  */
 
 import type { JSX } from 'react';
-import { CircleCheck, CircleX, Clock, Loader2 } from 'lucide-react';
+import { CircleCheck, CircleX, Clock, Hourglass, Loader2 } from 'lucide-react';
 
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -32,28 +33,44 @@ import { useTranslation } from '@web/i18n/use-translation';
 export type TaskStatus = 'running' | 'done' | 'failed' | 'expired';
 
 /**
- * The shape per state. All four are round outlines so a column of them reads
- * as one kind of thing, and the running one turns — the way this product
- * already says "working" everywhere else.
+ * Which list a node's count opens: one of the four states, or the running
+ * tasks that wait for a free slot (inner#1968), which have a count of their own.
  */
-const SHAPE: Readonly<Record<TaskStatus, typeof Clock>> = {
+export type TaskListKind = TaskStatus | 'waiting';
+
+/**
+ * The shape per state. The four states are round outlines so a column of them reads
+ * as one kind of thing, and the running one turns — the way this product
+ * already says "working" everywhere else; a task waiting for a free running
+ * slot shows an hourglass, which neither turns nor reads as an end.
+ */
+export const TASK_SHAPE: Readonly<Record<TaskListKind, typeof Clock>> = {
   running: Loader2,
+  waiting: Hourglass,
   done: CircleCheck,
   failed: CircleX,
   expired: Clock,
 };
 
-/** Semantic colour per state. */
-const TONE: Readonly<Record<TaskStatus, string>> = {
+/**
+ * Semantic colour per state. On the counts column the state rides on the
+ * mark rather than on the number: light theme measures these against the
+ * cell's fills at 3.4 to 4.6, under the 4.5 an 11px number needs (WCAG 1.4.3),
+ * while a graphic clears its own 3:1 floor at every one of them, so the cell
+ * draws the mark alone and the count travels in its tooltip (user 2026-09-06).
+ */
+export const TASK_TONE: Readonly<Record<TaskListKind, string>> = {
   running: 'text-status-info-foreground',
+  waiting: 'text-muted-foreground',
   done: 'text-status-success-foreground',
   failed: 'text-status-error-foreground',
   expired: 'text-status-warning-foreground',
 };
 
-/** i18n key per state. */
-const LABEL_KEY: Readonly<Record<TaskStatus, string>> = {
+/** i18n key per state: the name every task surface gives it. */
+export const TASK_LABEL_KEY: Readonly<Record<TaskListKind, string>> = {
   running: 'canvas.task.status.running',
+  waiting: 'canvas.task.status.waiting',
   done: 'canvas.task.status.done',
   failed: 'canvas.task.status.failed',
   expired: 'canvas.task.status.expired',
@@ -61,7 +78,8 @@ const LABEL_KEY: Readonly<Record<TaskStatus, string>> = {
 
 /** What {@link TaskStatusDot} renders. */
 export interface TaskStatusDotProps {
-  status: TaskStatus;
+  /** A state, or a running task that waits for a free slot (inner#1968). */
+  status: TaskListKind;
 }
 
 /**
@@ -75,17 +93,17 @@ export interface TaskStatusDotProps {
  */
 export function TaskStatusDot({ status }: TaskStatusDotProps): JSX.Element {
   const t = useTranslation();
-  const Icon = SHAPE[status];
+  const Icon = TASK_SHAPE[status];
   return (
     <span
       data-testid='task-status-dot'
-      className={cn('relative flex-none', TONE[status])}
+      className={cn('relative flex-none', TASK_TONE[status])}
     >
       <Icon
         aria-hidden='true'
         className={cn('size-3', status === 'running' && 'animate-spin')}
       />
-      <span className='sr-only'>{t(LABEL_KEY[status])}</span>
+      <span className='sr-only'>{t(TASK_LABEL_KEY[status])}</span>
     </span>
   );
 }

@@ -381,4 +381,3 @@ describe("updateShape on deep nesting (spec 14b.1, design 4.1 per-type conclusio
     expect(Buffer.from(Y.encodeStateAsUpdate(d.server)).equals(Buffer.from(before))).toBe(true);
   });
 });
-

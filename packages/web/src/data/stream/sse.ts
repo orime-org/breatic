@@ -65,11 +65,16 @@ export class StreamRefusedError extends Error {
    * @param fromServer - The message came out of our own envelope, which is
    *   what makes it a sentence written for this user rather than one this
    *   file supplied because the refusal needed to carry something
+   * @param reason - The server's `error.reason`, when it marked the refusal
+   * @param details - Every field of the server's `error` body, for refusals
+   *   that carry more than a reason (a spend limit's scope, limit and reset)
    */
   constructor(
     readonly status: number,
     message: string,
     readonly fromServer: boolean,
+    readonly reason?: string,
+    readonly details?: Readonly<Record<string, unknown>>,
   ) {
     super(message);
     this.name = 'StreamRefusedError';
@@ -94,12 +99,14 @@ async function readEnvelopeOrOpen(response: Response): Promise<void> {
 
   let message: string | undefined;
   let reason: string | undefined;
+  let details: Readonly<Record<string, unknown>> | undefined;
   try {
     const body = (await response.json()) as
-      | { error?: { message?: string; reason?: string } }
+      | { error?: { message?: string; reason?: string } & Record<string, unknown> }
       | undefined;
     message = body?.error?.message;
     reason = body?.error?.reason;
+    details = body?.error;
   } catch {
     // A proxy answering with plain text, or a truncated body — there is
     // nothing of ours to read, so fall through to the generic message.
@@ -115,6 +122,8 @@ async function readEnvelopeOrOpen(response: Response): Promise<void> {
     response.status,
     message ?? t('server.error.internal'),
     message !== undefined,
+    reason,
+    details,
   );
 }
 

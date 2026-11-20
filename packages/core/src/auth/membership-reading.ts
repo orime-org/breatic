@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { MembershipTier } from "@breatic/shared";
+import { runningTasksPerUserOf } from "@core/auth/enterprise-membership-contract.js";
 import type { EnterpriseRecord, EnterpriseMembershipProfile } from "@core/auth/enterprise-membership-contract.js";
 import { getMembershipLimits } from "@core/config/membership.js";
 import { subscriptionSituation, tierForSituation } from "@core/auth/subscription-state.js";
@@ -36,13 +37,25 @@ export function resolveMembershipReading(
     const ordinary = subscriptionSituation(subscriptions, clock);
     if (ordinary.lapsed.length > 0) effectiveTier = tierForSituation(ordinary.situation, ordinary.record);
   }
-  const limits = effectiveTier === "enterprise" ? enterpriseState === "active" ? enterprise!.limits : null : getMembershipLimits(effectiveTier);
+  // An active agreement's limits. The record's schema also reads earlier
+  // stored results, so its running-task term is optional in the type although
+  // a live agreement row always holds one; runningTasksPerUserOf is the one
+  // place that fills it. An enterprise account without an agreement has no
+  // limits, and its storage stays uncapped (inner#1968).
+  const limits = effectiveTier === "enterprise"
+    ? enterpriseState === "active"
+      ? {
+        ...enterprise!.limits,
+        running_tasks_per_user: runningTasksPerUserOf({ limits: enterprise!.limits }),
+      }
+      : null
+    : getMembershipLimits(effectiveTier);
   return {
     asOf: clock.now.toISOString(),
     enterpriseState,
     effectiveTier,
     limits,
-    storageBytes: effectiveTier === "enterprise" ? null : limits!.storage_bytes,
+    storageBytes: limits === null ? null : limits.storage_bytes,
     revision: enterprise?.revision ?? null,
     expiresAt: enterprise?.expiresAt ?? null,
     fallbackTier: enterprise?.fallbackTier ?? null,

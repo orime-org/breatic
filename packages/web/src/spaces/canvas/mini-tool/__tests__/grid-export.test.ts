@@ -30,6 +30,26 @@ describe('gridTileRects', () => {
     expect(gridCuts(1007, 8)).toEqual([0, 126, 252, 378, 504, 629, 755, 881, 1007]);
   });
 
+  it('R-01 cuts 1000x700 into 3x3 along the even-split lines, row by row', () => {
+    expect(gridCuts(1000, 3)).toEqual([0, 333, 667, 1000]);
+    expect(gridCuts(700, 3)).toEqual([0, 233, 467, 700]);
+    const rects = gridTileRects(1000, 700, 3, 3);
+    const xs = [0, 333, 667, 1000];
+    const ys = [0, 233, 467, 700];
+    expect(rects).toEqual(
+      [0, 1, 2].flatMap((row) =>
+        [0, 1, 2].map((col) => ({
+          x: xs[col],
+          y: ys[row],
+          width: xs[col + 1]! - xs[col]!,
+          height: ys[row + 1]! - ys[row]!,
+        })),
+      ),
+    );
+    expect(rects.slice(0, 3).reduce((sum, r) => sum + r.width, 0)).toBe(1000);
+    expect(rects.filter((_, i) => i % 3 === 0).reduce((sum, r) => sum + r.height, 0)).toBe(700);
+  });
+
   it('covers every pixel exactly once', () => {
     const rects = gridTileRects(1037, 641, 7, 5);
     expect(rects.reduce((area, r) => area + r.width * r.height, 0)).toBe(1037 * 641);

@@ -210,7 +210,7 @@ export const mocks = {
     recordUpload: vi.fn(),
     recordSnapshot: vi.fn(),
   },
-  // #186 — the task table behind a node's four counts.
+  // #186 — the task table behind a node's task counts.
   emitNodeTaskCounts: vi.fn(),
   nodeTaskService: {
     // Shaped like the real one returns. A bare `vi.fn()` hands back
@@ -282,6 +282,12 @@ export const mocks = {
     reserveCredits: vi.fn().mockResolvedValue({ ok: true }),
     releaseHold: vi.fn().mockResolvedValue(undefined),
     getCreditPosition: vi.fn().mockResolvedValue({ spendable: "100.000000", held: "0.000000", available: "100.000000" }),
+    // The balance admission over this double's own balance, so a case that sets it still decides the answer; no monthly
+    // spend limit is reached (inner#1968 design 3.10), which the integration suites pin.
+    judgeBalanceAdmission: vi.fn(async (_projectId: string, _actorUserId: string, required: number) => {
+      const spendable = String(await mocks.creditLotService.getSpendableCredits("studio-1"));
+      return Number(spendable) >= required ? null : { reason: "no_credits", studioId: "studio-1", spendable };
+    }),
   },
   creditLotService: {
     // Read at module evaluation by `routes/schemas.ts`, so a double without it

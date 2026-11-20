@@ -63,7 +63,7 @@ export { errorMonitoringOptions, type ErrorMonitoringStart } from "@core/config/
 export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
-export { getTimelineConfig, type TimelineConfig } from "@core/config/timeline.js";
+export { getTimelineConfig, timelineReportGraceMs, type TimelineConfig } from "@core/config/timeline.js";
 export { runProjectMediaBackfill } from "@core/asset/project-media-backfill.js";
 export type {
   ProjectMediaBackfillCandidate,
@@ -76,7 +76,7 @@ export type {
   RunProjectMediaBackfillInput,
 } from "@core/asset/project-media-backfill.js";
 export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
-export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
+export { getMiniToolsConfig, reportGraceMs, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
 export {
@@ -226,13 +226,14 @@ export {
   getProjectConcurrentEditorLimit,
   lockLimitsForUser,
   lockAccountRow,
+  runningTaskLimitForStudio,
   changeMembershipTier,
   TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";
 export type { TierChangeReason } from "@core/auth/membership.repo.js";
 export { getEnterpriseMembershipProfile, getMembershipReadingForUser, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@core/auth/membership.repo.js";
 export type { MembershipReading } from "@core/auth/membership.repo.js";
-export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema } from "@core/auth/enterprise-membership-contract.js";
+export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema, runningTasksPerUserOf } from "@core/auth/enterprise-membership-contract.js";
 export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, EnterpriseMembershipResult, RawMembershipSnapshot, EnterpriseRecord } from "@core/auth/enterprise-membership-contract.js";
 // Subscriptions: the rows, and the reading that turns them into the situation
 // an account is in. The reading is here rather than in server because the
@@ -293,6 +294,8 @@ export {
   ValidationError,
   UnauthorizedError,
   TooManyRequestsError,
+  SpendCapReachedError,
+  type SpendCapLimit,
 } from "@core/app-errors.js";
 export {
   ADS_CONVERSION_QUEUE,
@@ -337,6 +340,7 @@ export { createR2MaintenanceStorage, MaintenanceDeleteError, type MaintenanceSto
 export type { S3CompatibleConfig } from "@core/infra/storage/s3.js";
 
 export * from "@core/credit/credit-grant-contract.js";
+export * from "@core/credit/enterprise-credit-purchase-contract.js";
 
 export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
 export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";

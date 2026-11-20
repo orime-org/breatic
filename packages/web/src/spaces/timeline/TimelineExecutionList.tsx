@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { Check, CircleSlash, Code, Dot, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react';
+import { Check, CircleSlash, Code, Dot, Hourglass, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react';
 import { formatCredits, getLocale, type TimelineExecutionRow, type TimelineExecutionStatus } from '@breatic/shared';
 import { TimelineExecutionInputSchema, timelineExecutionEnded, type TimelineExecutionInput } from '@breatic/shared/space-content';
 
@@ -10,7 +10,9 @@ import { Button } from '@web/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { cn } from '@web/lib/utils';
+import { useCurrentUserStore } from '@web/stores/current-user';
 import { useRunning } from '@web/stores/task-actions-in-flight';
 import { WEB_ANIMATION_ENGINE_NAMES } from '@web/spaces/timeline/TimelineWebAnimationDialog';
 import { TimelineWebResultPreview } from '@web/spaces/timeline/TimelineWebResultPreview';
@@ -70,7 +72,8 @@ function stepMark(row: TimelineExecutionRow, index: number): 'done' | 'current' 
   if (row.status === 'succeeded') return 'done';
   if (index === 0) return row.status === 'awaiting_landing' ? 'current' : 'done';
   const stopped = row.status === 'failed' || row.status === 'cancelled' || row.status === 'expired';
-  const reached = row.phase === null ? (row.status === 'running' || stopped ? 0 : -1) : PHASES.indexOf(row.phase);
+  // A row no pickup ever claimed (one cancelled while it queued) reached no step.
+  const reached = row.phase === null ? (row.status === 'running' || (stopped && row.attempt > 0) ? 0 : -1) : PHASES.indexOf(row.phase);
   if (index - 1 < reached) return 'done';
   if (index - 1 > reached) return 'pending';
   return row.status === 'running' ? 'current' : stopped ? 'stopped' : 'pending';
@@ -105,6 +108,9 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
   const t = useTranslation();
   const input = timelineExecutionInput(row);
   const unfinished = !timelineExecutionEnded(row.status);
+  // Waiting for a free running slot (inner#1968): queued, nothing working yet.
+  const waiting = row.status === 'queued' && row.slotWaitSince != null;
+  const selfId = useCurrentUserStore((s) => s.user?.id);
   const cancelling = useRunning(timelineCancelIntent(row.id)) !== undefined;
   const toggle = React.useCallback((): void => onToggle(row.id), [onToggle, row.id]);
   const cancel = React.useCallback((): void => onCancel(row), [onCancel, row]);
@@ -133,11 +139,14 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
       {/* The status tells the execution's own progress, so it sits over the row and leaves presses to the row. */}
       <span data-testid={`timeline-execution-status-${row.id}`}
         className={cn('pointer-events-none absolute right-3 top-2.5 flex items-center gap-1 whitespace-nowrap text-xs', statusTone(row.status))}>
-        {unfinished && <LoaderCircle className='size-3.5 animate-spin' />}
+        {unfinished && !waiting && <LoaderCircle className='size-3.5 animate-spin' />}
+        {/* A wait for a running slot wears the canvas's hourglass, so it does not read as stuck. */}
+        {waiting && <Hourglass data-testid='task-waiting-mark' aria-hidden className='size-3.5' />}
         {statusText}
       </span>
     </div>
     {open && <div data-testid={`timeline-execution-detail-${row.id}`} className='flex flex-col gap-3 px-3 pb-3 text-xs'>
+      {waiting && <p className='text-pretty text-muted-foreground'>{waitReason(t, row.slotWaitLimit, row.actorUserId === selfId ? 'own' : 'other')}</p>}
       <ol className='flex flex-col gap-1'>
         {steps.map((key, index) => {
           const mark = stepMark(row, index);

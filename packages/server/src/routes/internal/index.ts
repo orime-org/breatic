@@ -11,6 +11,7 @@ import type { Hono } from "hono";
 import "@server/middleware/internal-auth.js";
 import { registerMaintenanceRoutes } from "@server/routes/internal/maintenance.js";
 import { registerCreditGrantRoutes } from "@server/routes/internal/credit-grant.js";
+import { registerEnterpriseCreditPurchaseRoutes } from "@server/routes/internal/enterprise-credit-purchase.js";
 import { registerEnterpriseMembershipRoutes } from "@server/routes/internal/enterprise-membership.js";
 import { registerDeploymentVersionRoute } from "@server/routes/internal/deployment-version.js";
 import { registerCommerceRoutes } from "@server/routes/internal/commerce.js";
@@ -22,6 +23,7 @@ import { registerCommerceRoutes } from "@server/routes/internal/commerce.js";
 export function registerInternalRoutes(app: Hono): void {
   registerEnterpriseMembershipRoutes(app);
   registerCreditGrantRoutes(app);
+  registerEnterpriseCreditPurchaseRoutes(app);
   registerMaintenanceRoutes(app);
   registerDeploymentVersionRoute(app);
   registerCommerceRoutes(app);

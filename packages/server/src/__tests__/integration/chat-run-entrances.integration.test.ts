@@ -1082,3 +1082,20 @@ describe("a shutdown during a card's opening", () => {
     expect((await rowsOf(who.conversationId)).filter((r) => r.role === "assistant")).toHaveLength(1);
   });
 });
+
+// Spec R-06 (inner#1968): a message is sent with no Idempotency-Key and
+// answered with no Idempotency-Status.
+describe("a message sent without an Idempotency-Key", () => {
+  it("R-06 is queued as usual and answered with no Idempotency-Status", async () => {
+    const who = await seedOwner(sql, app);
+    const enqueue = vi.spyOn(chatQueue(), "enqueue");
+
+    const res = await send(app, who, { message: "hello" });
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("Idempotency-Status")).toBeNull();
+    expect(((await res.json()) as { data: { status: string } }).data.status).toBe("start");
+    expect(enqueue).toHaveBeenCalledTimes(1);
+    await untilIdle(who.conversationId);
+  });
+});

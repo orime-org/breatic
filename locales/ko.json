@@ -27,7 +27,8 @@
       "refund_still_designated": "이 구매는 Studio에 배정되어 있습니다. 먼저 배정을 해제하세요.",
       "refund_already_spent": "이 구매의 크레딧을 사용했으므로 환불할 수 없습니다.",
       "refund_window_closed": "이 구매의 환불 기간이 종료되었습니다.",
-      "refund_state_changed": "이 구매의 환불 상태가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요."
+      "refund_state_changed": "이 구매의 환불 상태가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요.",
+      "refund_offline_contract": "기업 크레딧 환불은 계약 담당자에게 문의하세요."
     },
     "auth": {
       "invalid_credentials": "이메일 또는 비밀번호가 올바르지 않습니다",
@@ -180,7 +181,8 @@
       "storage_full": {
         "subject": "저장 공간이 가득 찼습니다",
         "lead": "저장 공간이 가득 차서 <b>{studio}</b>에서 업로드와 생성이 거부되었습니다. 저장 공간은 이 Studio뿐 아니라 회원님이 관리하는 모든 Studio를 합산해 계산됩니다.",
-        "footer": "멤버십을 업그레이드하면 더 많은 공간을 사용할 수 있습니다."
+        "footer": "멤버십을 업그레이드하면 더 많은 공간을 사용할 수 있습니다.",
+        "footer_enterprise": "저장 공간은 계약으로 정해져 있습니다. 변경하려면 문의해 주세요."
       },
       "password_reset": {
         "subject": "비밀번호 재설정",
@@ -273,6 +275,10 @@
     },
     "billing": {
       "unavailable": "구매 및 멤버십 서비스를 일시적으로 이용할 수 없습니다. 잠시 후 다시 시도해 주세요."
+    },
+    "spend_cap": {
+      "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. 더 필요하면 Studio Admin에게 문의하세요.",
+      "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요."
     }
   },
   "chat": {
@@ -1036,13 +1042,15 @@
     },
     "task": {
       "stillRunning": "이 작업은 아직 실행 중입니다.",
+      "alreadyStarted": "이 작업은 이미 시작되어 취소할 수 없습니다.",
       "expired": "이 작업은 시간이 초과되었습니다.",
       "couldNotStart": "이 작업을 시작하지 못했습니다. 다시 시도해 주세요.",
       "status": {
         "running": "실행 중",
         "done": "완료",
         "failed": "실패",
-        "expired": "시간 초과"
+        "expired": "시간 초과",
+        "waiting": "대기 중"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1080,6 +1088,7 @@
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
         "no_audio_track": "{kind, select, audio {이 오디오에서 소리를 읽을 수 없습니다.} other {이 동영상에는 오디오 트랙이 없습니다.}}",
         "cut_short": "너무 길어서 끝까지 받아쓰지 못했습니다.",
+        "cancelled": "취소되었습니다.",
         "input_refused": "{model}은(는) 현재 설정으로 실행할 수 없습니다. 설정을 바꾸거나 다른 모델을 선택하세요.",
         "model_not_configured": "이 배포에는 {model}이(가) 아직 설정되지 않았습니다. {envVars}을(를) 설정해야 합니다."
       },
@@ -1088,7 +1097,15 @@
         "generate": "생성",
         "understand": "내용 읽기",
         "transcribe": "받아쓰기"
-      }
+      },
+      "waitReason": "동시에 실행할 수 있는 작업 수에 도달했습니다. 앞의 작업이 끝나면 자동으로 시작됩니다.",
+      "you": "나",
+      "cancelFailed": "이 작업을 취소하지 못했습니다.",
+      "waitReasonLimit": "동시에 실행할 수 있는 작업 한도({limit}개)에 도달했습니다. 앞의 작업이 끝나면 자동으로 시작됩니다.",
+      "waitReasonOther": "시작한 사람의 동시 실행 작업 수가 한도에 도달했습니다. 그 사람의 앞 작업이 끝나면 자동으로 시작됩니다.",
+      "waitReasonOtherLimit": "시작한 사람의 동시 실행 작업 한도({limit}개)에 도달했습니다. 그 사람의 앞 작업이 끝나면 자동으로 시작됩니다.",
+      "waitReasonEach": "{count, plural, =1 {이 대기 중인 작업은 시작한 사람의 동시 실행 작업 수가 한도보다 적어지면 자동으로 시작됩니다.} other {대기 중인 각 작업은 시작한 사람의 동시 실행 작업 수가 한도보다 적어지면 자동으로 시작됩니다.}}",
+      "waitReasonEachLimit": "{count, plural, =1 {이 대기 중인 작업은 시작한 사람의 동시 실행 작업 수가 한도({limit}개)보다 적어지면 자동으로 시작됩니다.} other {대기 중인 각 작업은 시작한 사람의 동시 실행 작업 수가 한도({limit}개)보다 적어지면 자동으로 시작됩니다.}}"
     },
     "panel": {
       "hostDeletedByPeer": "공동 작업자가 노드를 삭제했습니다."
@@ -3491,7 +3508,42 @@
         "colProject": "Project",
         "colModel": "모델",
         "colAmount": "크레딧",
-        "loadError": "크레딧 정보를 불러오지 못했습니다. 페이지를 새로고침하세요."
+        "loadError": "크레딧 정보를 불러오지 못했습니다. 페이지를 새로고침하세요.",
+        "spendCap": {
+          "title": "사용 한도",
+          "studioMonthly": "Studio 월간 총액 한도",
+          "studioMonthlyHint": "모든 사람 합계이며, 개인 한도와 별개입니다",
+          "memberDefault": "1인당 월간 한도 기본값",
+          "memberDefaultHint": "개별 설정이 없는 사람에게 적용됩니다",
+          "notSet": "설정 안 함",
+          "perMonth": "매월",
+          "studioSpent": "이번 달 Studio 사용액",
+          "resetsAt": "초기화",
+          "saved": "사용 한도를 저장했습니다.",
+          "saveFailed": "사용 한도를 저장하지 못했습니다. 다시 시도하세요.",
+          "invalidAmount": "0~{max} 크레딧 사이로, 소수점 둘째 자리까지 입력하세요.",
+          "loadError": "사용 한도를 불러오지 못했습니다.",
+          "retry": "다시 시도",
+          "save": "저장",
+          "colMember": "멤버",
+          "colRelation": "관계",
+          "colSpent": "이번 달 사용액",
+          "colEffective": "적용 한도",
+          "relationStudioMember": "Studio 멤버",
+          "relationProjectCollaborator": "Project 협업자",
+          "relationFormer": "떠남(읽기 전용)",
+          "unlimited": "무제한",
+          "zero": "0(크레딧 사용 불가)",
+          "amount": "{amount} 크레딧",
+          "spentOfLimit": "{spent} / {limit} 크레딧",
+          "sourceOverride": "개별",
+          "sourceDefault": "기본",
+          "atCap": "한도 도달",
+          "override": "개별 설정…",
+          "useDefault": "기본값 사용 ({fallback})",
+          "overrideTitle": "개별 한도 · {name}",
+          "overrideHint": "이 사람에게만 적용되며 기본값보다 우선합니다(현재 기본값: {fallback})."
+        }
       },
       "members": {
         "invite": "멤버 초대",
@@ -3847,7 +3899,8 @@
       "projectsPerStudio": "Studio당 Project 한도",
       "studioMembers": "Studio당 멤버 한도",
       "projectMembers": "Project당 멤버 한도",
-      "concurrentEditors": "Document당 동시 편집 수"
+      "concurrentEditors": "Document당 동시 편집 수",
+      "runningTasksPerUser": "동시에 실행되는 작업 수"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count}개",
@@ -3856,9 +3909,10 @@
     "overLimitTag": "초과",
     "overLimit": {
       "storage": "저장 공간이 한도를 초과했습니다. 기존 콘텐츠는 그대로 사용할 수 있지만 새로 업로드하거나 생성할 수 없습니다. 공간을 늘리려면 업그레이드하세요.",
+      "storageEnterprise": "저장 공간이 계약 한도를 넘었습니다. 기존 내용은 그대로 쓸 수 있지만 새로 업로드하거나 생성할 수는 없습니다. 변경하려면 문의해 주세요.",
       "teamStudios": "팀 Studio 수가 한도를 넘었습니다. 이미 만든 것은 그대로 쓸 수 있지만 새로 만들 수는 없습니다. 더 필요하면 업그레이드하세요."
     },
-    "enterpriseQuota": "사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",
+    "enterpriseQuota": "그 밖의 사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",
     "compare": "등급 비교",
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
@@ -3918,7 +3972,8 @@
       "added": "등록되었습니다. 멤버십을 선택하면 첫 기간이 {percent}% 할인됩니다.",
       "loadFailed": "추천 정보를 불러오지 못했습니다.",
       "retry": "다시 시도"
-    }
+    },
+    "quotaUnlimited": "{used} / 무제한"
   },
   "promoter": {
     "heading": "프로모터 프로그램",
@@ -3988,10 +4043,12 @@
     },
     "source": {
       "payment": "충전",
-      "gift": "체험 크레딧",
+      "gift": "선물 크레딧",
       "operatorGift": "선물 크레딧",
-      "compensation": "보상",
-      "discount": "할인"
+      "compensation": "선물 크레딧",
+      "discount": "할인",
+      "trial": "체험 크레딧",
+      "enterprise": "기업 크레딧"
     },
     "pinnedToPersonalStudio": "개인 Studio에서만 사용",
     "lifecycle": {
@@ -4001,7 +4058,7 @@
       "refunded": "환불 완료"
     },
     "billingOff": {
-      "title": "이 배포에서는 크레딧을 차감하지 않습니다",
+      "title": "셀프 호스팅에서는 크레딧을 차감하지 않습니다",
       "body": "생성해도 차감되지 않고 구매할 필요도 없습니다. 사용량은 그대로 기록됩니다."
     },
     "notSoldHere": {
@@ -4030,7 +4087,7 @@
     "allStudios": "전체 Studio",
     "filterByStudio": "Studio로 좁히기",
     "ledgerEmpty": "사용 기록이 아직 없습니다.",
-    "ledgerBillingOff": "이 배포에서는 크레딧을 차감하지 않습니다. 아래는 사용량 기록입니다.",
+    "ledgerBillingOff": "셀프 호스팅에서는 크레딧을 차감하지 않습니다. 아래는 사용량 기록입니다.",
     "colDay": "날짜",
     "colWho": "사용자",
     "colStudio": "Studio",
@@ -4059,6 +4116,7 @@
     "refundsEmpty": "아직 크레딧 패키지를 구매하지 않았습니다",
     "askRefund": "환불 신청",
     "refundTitle": "환불 규정",
+    "onlinePurchaseRefundTitle": "온라인 구매 크레딧 환불 규정",
     "buy": {
       "taxNotice": "표시 가격은 세금이 포함되지 않습니다. 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액이며, 결제 페이지에 최종 금액이 표시됩니다.",
       "assignNotice": "크레딧은 Studio에 지정해야 사용할 수 있습니다.",
@@ -4100,10 +4158,25 @@
     "refundReason": {
       "spent": "이미 사용함",
       "expired": "30일 경과",
-      "restored": "크레딧 복원됨"
+      "restored": "크레딧 복원됨",
+      "offlineContract": "기업 크레딧 환불은 계약 담당자에게 문의하세요."
     },
     "refundHint": {
       "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
+    },
+    "sourceDetail": {
+      "registration": "가입 선물",
+      "operator": "운영자 선물",
+      "compensation": "보상",
+      "enterprise": "기업 구매"
+    },
+    "contractReference": "계약 {contract}",
+    "refusal": {
+      "spendCap": "이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요."
+    },
+    "spendCap": {
+      "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. {date}에 초기화됩니다. 더 필요하면 Studio Admin에게 문의하세요.",
+      "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. {date}에 초기화됩니다. Studio Admin에게 문의하세요."
     }
   },
   "notFound": {

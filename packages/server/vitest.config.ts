@@ -32,7 +32,7 @@ export default defineConfig({
       },
     },
     globals: true,
-    setupFiles: ["./src/__tests__/setup.ts"],
+    setupFiles: ["./src/__tests__/setup.ts", "@breatic/integration-tests/loopback-listen"],
     // Scan ALL of src/ for unit tests — co-located *.test.ts next to
     // their module (src/modules/*.test.ts, src/infra/*.test.ts) AND the
     // src/__tests__/ suites. This matches the rest of the monorepo

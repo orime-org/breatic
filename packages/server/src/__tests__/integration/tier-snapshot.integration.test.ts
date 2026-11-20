@@ -108,7 +108,7 @@ describe("membershipReadingsAt", () => {
       expect(at(during, base)).toMatchObject({ effectiveTier: "base", settlementProtected: false });
       expect(at(during, pro)).toMatchObject({ effectiveTier: "pro", settlementProtected: false });
       expect(Object.keys(at(during, pro)!.limits ?? {}).sort()).toEqual(
-        ["concurrent_editors", "project_members", "projects_per_studio", "storage_bytes", "studio_members", "team_studios"],
+        ["concurrent_editors", "project_members", "projects_per_studio", "running_tasks_per_user", "storage_bytes", "studio_members", "team_studios"],
       );
 
       // The snapshot reads what every reading reads: the same row the

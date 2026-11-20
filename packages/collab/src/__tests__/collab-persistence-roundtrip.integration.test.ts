@@ -102,6 +102,7 @@ beforeAll(async () => {
   const storeGate: { current?: ReturnType<typeof createUnloadGate> } = {};
   wsServer = new Server({
     port: 0,
+    address: "127.0.0.1",
     quiet: true,
     stopOnSignals: false,
     debounce: 50,

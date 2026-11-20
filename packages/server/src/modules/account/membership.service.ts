@@ -57,7 +57,7 @@ export async function readAccountMembership(
     ? await Promise.all([readStoredSubscriptionSummary(userId), readBillingPanel(userId)])
     : [null, null];
   const subscription = stored === null ? null : { ...stored, payableInvoiceUrl: quoted?.payableInvoiceUrl ?? null };
-  const { tier, limits } = await getMembershipForUser(userId);
+  const { tier, limits, storageLimitBytes } = await getMembershipForUser(userId);
 
   const [teamStudios, storageBytes] = await Promise.all([
     studioRepo.countTeamStudiosAdministeredBy(userId),
@@ -68,6 +68,7 @@ export async function readAccountMembership(
     tier,
     limits,
     usage: { teamStudios, storageBytes },
+    storageLimitBytes,
     catalog: COMPARABLE_MEMBERSHIP_TIERS.map((offered) => ({
       tier: offered,
       limits: getMembershipLimits(offered),

@@ -4,7 +4,7 @@
 /**
  * What collab does with a task-counts event (#186, design §3.4).
  *
- * The canvas document holds four numbers about tasks and nothing else, so
+ * The canvas document holds the node's task counts and nothing else, so
  * this event carries the whole of them, recounted by the server after every
  * state change. There is no task id on the wire and no per-entry update.
  * Each write happens only when the event is newer than what it replaces: the
@@ -66,7 +66,7 @@ function docWithNode(
 }
 
 describe("a counts event replaces what the node holds about tasks", () => {
-  it("writes the four numbers", () => {
+  it("writes the counts", () => {
     const nodeId = crypto.randomUUID();
     const { doc, data } = docWithNode(nodeId);
 
@@ -368,6 +368,14 @@ describe("applyNodeTaskCounts — nothing new, nothing written", () => {
     expect(updates.length).toBeGreaterThan(0);
     expect(data.get("taskCounts")).toEqual({ ...counts, running: 0, done: 3 });
   });
+  // inner#1968 design 21 row 22: the queued cell's tip reads the limit here.
+  it("writes when only the waiting limit moved", () => {
+    const { doc, data } = docWithNode("n-1");
+    apply(doc, { nodeId: "n-1", counts: { ...counts, waiting: 1, waitingLimit: 2 } });
+    apply(doc, { nodeId: "n-1", counts: { ...counts, waiting: 1, waitingLimit: 5 } });
+
+    expect(data.get("taskCounts")).toEqual({ ...counts, waiting: 1, waitingLimit: 5 });
+  });
 });
 
 describe("counts and result each change only for an event newer than their own version", () => {
@@ -449,5 +457,29 @@ describe("a result that cannot be written", () => {
       apply(doc, { nodeId, counts: { running: 0, done: 1, failed: 0, expired: 0 }, result: broken as never }, "1700-9"),
     ).toThrow();
     expect(data.get("taskResultEventId")).toBeUndefined();
+  });
+});
+
+// inner#1968 G-37: the counts carry how many of the running tasks wait for a
+// free slot (`waiting`, a subset of `running`), and an older document whose
+// `taskCounts` has no `waiting` reads it as 0.
+describe("the waiting count", () => {
+  it("rewrites counts that differ only in waiting", () => {
+    const nodeId = crypto.randomUUID();
+    const { doc, data } = docWithNode(nodeId);
+    apply(doc, { nodeId, counts: { running: 1, waiting: 0, done: 0, failed: 0, expired: 0 } });
+    apply(doc, { nodeId, counts: { running: 1, waiting: 1, done: 0, failed: 0, expired: 0 } });
+    expect(data.get("taskCounts")).toEqual({ running: 1, waiting: 1, done: 0, failed: 0, expired: 0 });
+  });
+
+  // sameCounts reads a missing `waiting` as 0, so an older document is not rewritten for it.
+  it("reads an older document's missing waiting as 0, so the same counts with waiting 0 write nothing", () => {
+    const nodeId = crypto.randomUUID();
+    const { doc, data } = docWithNode(nodeId);
+    data.set("taskCounts", { running: 1, done: 0, failed: 0, expired: 0 });
+    let updates = 0;
+    doc.on("update", () => { updates += 1; });
+    apply(doc, { nodeId, counts: { running: 1, waiting: 0, done: 0, failed: 0, expired: 0 } });
+    expect(updates).toBe(0);
   });
 });

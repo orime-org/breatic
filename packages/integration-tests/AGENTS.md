@@ -6,6 +6,8 @@ A test package that is never built or deployed. It holds integration tests that 
 
 **`src/test-utils/containers.ts` (globalSetup), `env.ts` (setupFile) and `provided-context.d.ts` (the `inject()` types) are used by the server, collab and this package's integration configs, so a change there affects all three suites.**
 
+**`loopback-listen.ts` (setupFile, loaded by those three and by the server and collab unit configs too) makes a test server that listens on a port without a host throw; pass `127.0.0.1` (`address` for `createCollabServer` and Hocuspocus `Server`, `host` for `startHealthServer`).** A port bound on every address can also be held on 127.0.0.1 by another local process, which then answers the test's connections.
+
 ## Dependencies
 
 **Declare only the library packages (`@breatic/core`, `@breatic/domain`, `@breatic/provider`, `@breatic/shared`); read server, worker and collab source by path through the `@server`, `@worker` and `@collab` aliases (`tsconfig.json` paths and `vitest.integration.config.ts`).** Server and collab depend on this package for the container start-up, so declaring them back would create a cycle.

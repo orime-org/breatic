@@ -447,4 +447,18 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     expect(active.takes).toEqual(Array.from({ length: cap }, () => "seated"));
     expect(active.owns).toEqual(["no"]);
   });
+
+  it("A-20 a pro studio's Space holds 4 writable editors and opens the 5th read-only (inner#1968)", async () => {
+    // Written out, not read from the config: the agreed pro number is 4.
+    const cap = 4;
+    const fixture = await createFixture("pro", cap + 1);
+    const active = await start(fixture);
+    for (let index = 0; index < cap; index++) {
+      await connect(active, fixture, index, "read-write");
+      await seats(active, fixture, index + 1);
+    }
+    const next = await connect(active, fixture, cap, "readonly");
+    await write(active, next, "pro-fifth-editor", false);
+    await seats(active, fixture, cap);
+  });
 });

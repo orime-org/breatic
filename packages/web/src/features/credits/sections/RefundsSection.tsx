@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
+import { creditSourceText } from '@web/features/credits/credit-source-label';
 
 import { parseCreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { refundRefusal, isPurchased } from '@breatic/shared';
+import { refundRefusal } from '@breatic/shared';
 import type { CreditLotView, RefundRefusal } from '@breatic/shared';
 
 import {
@@ -69,6 +69,7 @@ function noteOf(
   t: Translate,
 ): string | null {
   if (refusal === null) return null;
+  if (refusal === 'offline_contract') return t('credits.refundReason.offlineContract');
   if (refusal === 'already_asked') {
     return t(`credits.lifecycle.${lot.lifecycle}`);
   }
@@ -107,12 +108,7 @@ interface RefundsSectionProps {
 }
 
 /**
- * Every pack this account ever bought, and where each one stands.
- *
- * One list in purchase order, newest first, holding the spent ones and the
- * already refunded ones too. A pack the buyer cannot find here is a pack he
- * has to guess about: the terms at the foot state the rule, and guessing
- * which of his purchases meets it is work this screen should be doing.
+ * Account credit lots, newest first, with their current refund eligibility.
  *
  * A row's right column answers one question — can this be refunded. The ask
  * button when it can, the state when it cannot, and the state is the reason.
@@ -150,26 +146,12 @@ export function RefundsSection({
     <Section
       scrolls={false}
       title={t('credits.section.refunds')}
-      // The terms hold whatever the list is doing, so they stay on screen for
-      // a user whose list is empty or still arriving.
-      //
-      // The lines the rule is published as, read back from the version in
-      // force today. A summary written separately said two of them, and one
-      // of the two it left out is the one a buyer acts on: a pack has to be
-      // released from its Studio before it can be asked about.
-      //
-      // Its own read, so the list is not held up by it — and its own three
-      // states for the same reason: silence here is the one outcome that
-      // reads as "this screen states no rule", which is the opposite of what
-      // the block is for. The heading stands through all three, so the rule
-      // is announced before it arrives.
-      //
-      // Unbordered, set apart by space: the rule is about the screen, while
-      // the bordered block above it holds the packs it is about.
+      // Online purchase terms have an independent read so their heading and
+      // loading/error states remain available while account lots are read.
       footer={
         !selling ? undefined : (
           <div className='mt-3 flex flex-col gap-2'>
-            <h3 className='text-sm font-semibold'>{t('credits.refundTitle')}</h3>
+            <h3 className='text-sm font-semibold'>{t('credits.onlinePurchaseRefundTitle')}</h3>
             {terms.isSuccess ? (
               <RuleLines
                 data-testid='refunds-terms'
@@ -242,12 +224,7 @@ const LotRow = React.memo(function LotRow({
   const t = useTranslation();
   const client = useQueryClient();
   const [asking, setAsking] = React.useState(false);
-  // The view is the candidate in every field but one: the rule asks whether
-  // anyone paid, and the row carries where the credits came from.
-  const refusal = refundRefusal(
-    { ...lot, purchased: isPurchased(lot.sourceKind) },
-    now,
-  );
+  const refusal = refundRefusal(lot, now);
   const note = noteOf(lot, refusal, t);
 
   const askRefund = useMutation({
@@ -283,7 +260,7 @@ const LotRow = React.memo(function LotRow({
     <Row
       main={`${
         lot.paidCents === null
-          ? t(creditSourceLabelKey(lot))
+          ? creditSourceText(lot, t)
           : formatMoney(lot.paidCents, lot.currency ?? 'usd')
       } · ${formatLocalDay(lot.createdAt)}`}
       sub={

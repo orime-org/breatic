@@ -19,6 +19,7 @@ const SIZE_CAP_TESTS = [
 
 export default defineConfig({
   test: {
+    setupFiles: ["@breatic/integration-tests/loopback-listen"],
     // One process for this package instead of one per file — rationale and
     // measurements in packages/web/vitest.config.mts, where the effect was
     // largest.

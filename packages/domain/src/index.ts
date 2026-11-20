@@ -24,6 +24,7 @@ export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export * as creditHoldService from "@domain/credit/creditHold.service.js";
+export * as spendLimitRepo from "@domain/credit/spendLimit.repo.js";
 export { sumCreditsByOperationKeys } from "@domain/credit/agentUsage.repo.js";
 export * as webAnimationSourceRepo from "@domain/timeline/web-animation-source.repo.js";
 export { timelineOperationKey } from "@domain/timeline/operation-key.js";
@@ -59,6 +60,7 @@ export * as studioMembersRepo from "@domain/auth/studioMembers.repo.js";
 // ── Task (+ markCompletedAndBill: completion and charge request in one commit) ─
 export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
+export * as runningSlotService from "@domain/task/running-slot.service.js";
 export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 export * as upstreamCloneRepo from "@domain/task/upstreamClone.repo.js";
 
@@ -212,7 +214,7 @@ export { typeFromAddress } from "@domain/understand/fetch-media.js";
 export type { VoiceSampleConfig } from "@domain/model-catalog/voice-sample-config.js";
 export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
-// ── Node tasks (one row per task on a node; the four counts the node shows) ──
+// ── Node tasks (one row per task on a node; the counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
 export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 export type { SceneTaskRow } from "@domain/node-task/node-task.repo.js";

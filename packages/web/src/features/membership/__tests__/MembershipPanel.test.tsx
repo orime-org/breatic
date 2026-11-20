@@ -2,28 +2,36 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * 会员面板（任务 #90）。
+ * The membership panel (task #90).
  *
- * 面板背后只有一个请求，所以它能渲染的每一种样子都由那一个答案决定。这个
- * 文件钉的是那些样子里、能在 jsdom 里判定的部分：
+ * One request stands behind the panel, so every way it can look is decided by
+ * that one answer. This file pins the parts of those looks jsdom can judge:
  *
- *   1. 正常档位：档位名、价格、账号级两项额度、各档对比表逐格的数字。
- *   2. 只列账号级那两项额度，其余四项在对比表里看，不在额度区重复。
- *   3. 自托管：六项数值全列（因为它没有对比表可看），不显示价格、对比表、
- *      升级按钮，但保留联系邮箱。
- *   4. 企业版：不显示上限数字、不显示对比表，说明额度由单独协议约定。
- *   5. 某项超限：数字照实显示并标已超出，跟一句说明。
- *   6. 加载中：骨架，不是整页 spinner。
- *   7. 加载失败：一行错误文案。
- *   8. 换账号之后不复用上一个账号的答案。
+ *   1. A configured tier: its name, price, the two account-level allowances
+ *      and every figure of the tier comparison table.
+ *   2. Only the two account-level allowances are listed; the other five are
+ *      read in the comparison table and not repeated.
+ *   3. Self-hosted: all seven figures are listed (it has no comparison table
+ *      to read), with no price, table or upgrade button, but the contact
+ *      address stays.
+ *   4. Enterprise: no comparison table, and the allowances are said to be set
+ *      in a separate agreement; storage shows what is used against the
+ *      agreement's ceiling, and an account without an agreement shows no
+ *      ceiling figures.
+ *   5. A ceiling passed: the number is shown as it is, marked as passed, with
+ *      one sentence saying so.
+ *   6. Loading: a skeleton, not a full-page spinner.
+ *   7. A failed load: one line of error copy.
+ *   8. After a change of account, the previous account's answer is not reused.
  *
- * 进度条画多满、当前列的底色深浅这类只有像素能判定的，靠真浏览器 smoke，
- * 不在这里断言 —— jsdom 没有布局。
+ * What only pixels can judge (how full a bar is drawn, how dark the current
+ * column is tinted) is left to real-browser smoke: jsdom has no layout.
  *
- * 块八（#106）之后，升级按钮真的通往 Stripe 收银台，取消和恢复也真的调
- * 后端。所以这里还钉三件跟那条链路有关的事：每个按钮点下去打的是哪个接口、
- * 失败时看得到反馈、以及面板画出来的动作服务端一定接受（两边读同一份判据，
- * 而不是各判各的）。
+ * Since block eight (#106) the upgrade button really leads to the Stripe
+ * checkout, and cancel and resume really call the backend. So three more
+ * things are pinned for that path: which endpoint each button calls, that a
+ * failure is visible, and that every action the panel draws is one the server
+ * accepts (both sides read the same rule).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -38,6 +46,7 @@ import type {
 
 import { MembershipPanel } from '@web/features/membership/MembershipPanel';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { formatBytes } from '@web/lib/format-bytes';
 
 const membershipMock = vi.fn();
 vi.mock('@web/data/api/account', () => ({
@@ -49,9 +58,9 @@ vi.mock('@web/data/api/account', () => ({
 const GIB = 1024 ** 3;
 
 /**
- * 一档的六项上限，按需覆盖。
- * @param over - 要覆盖的字段。
- * @returns 完整的六项。
+ * One tier's seven ceilings, with the fields a case overrides.
+ * @param over - The fields to override.
+ * @returns All seven.
  */
 function limits(over: Partial<MembershipLimits> = {}): MembershipLimits {
   return {
@@ -61,6 +70,7 @@ function limits(over: Partial<MembershipLimits> = {}): MembershipLimits {
     studio_members: 10,
     project_members: 12,
     storage_bytes: 200 * GIB,
+    running_tasks_per_user: 5,
     ...over,
   };
 }
@@ -90,7 +100,7 @@ function subscription(
  * @returns 完整的答案。
  */
 function answer(over: Partial<AccountMembership> = {}): AccountMembership {
-  return {
+  const merged: AccountMembership = {
     tier: 'pro',
     limits: limits(),
     usage: { teamStudios: 1, storageBytes: 38 * GIB },
@@ -106,6 +116,7 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           studio_members: 1,
           project_members: 4,
           storage_bytes: 5 * GIB,
+          running_tasks_per_user: 2,
         },
         prices: { month: null, year: null },
       },
@@ -119,13 +130,17 @@ function answer(over: Partial<AccountMembership> = {}): AccountMembership {
           studio_members: 100,
           project_members: 40,
           storage_bytes: 500 * GIB,
+          running_tasks_per_user: 10,
         },
         prices: { month: { priceCents: 7999, currency: 'usd' }, year: { priceCents: 79999, currency: 'usd' } },
       },
     ],
     subscription: null,
+    storageLimitBytes: null,
     ...over,
   };
+  // As the server answers: an ordinary tier's storage ceiling is its limits' own.
+  return 'storageLimitBytes' in over ? merged : { ...merged, storageLimitBytes: merged.limits?.storage_bytes ?? null };
 }
 
 /**
@@ -207,9 +222,9 @@ describe('MembershipPanel', () => {
     );
   });
 
-  it('额度区不重复列 studio 级那四项', async () => {
-    // 它们在对比表里逐档列着，用户看得到；在这里再列一遍只会让人以为
-    // 那是账号级的数字。
+  it('does not repeat the per-studio ceilings in the allowance area', async () => {
+    // The comparison table lists them tier by tier for the user to read;
+    // listing them here again would read as account-level figures.
     membershipMock.mockResolvedValue(answer());
     setup();
 
@@ -748,9 +763,10 @@ describe('MembershipPanel', () => {
     );
   });
 
-  it('自托管把六项全列出来，并且不显示价格、对比表和升级按钮', async () => {
-    // 它不在价目表上，没有对比表可看，所以那四项只能在额度区列出来，
-    // 否则自托管用户完全看不到自己的上限。
+  it('lists all seven figures for self-hosted, with no price, comparison table or upgrade button', async () => {
+    // It is not on the price list and has no comparison table, so its
+    // ceilings (the per-studio ones and running tasks per person) are listed
+    // in the allowance area, or a self-hosted user would see none of them.
     membershipMock.mockResolvedValue(
       answer({
         tier: 'self_hosted',
@@ -761,6 +777,7 @@ describe('MembershipPanel', () => {
           project_members: 9999,
           concurrent_editors: 9999,
           storage_bytes: 100 * 1024 ** 4,
+          running_tasks_per_user: 3,
         }),
       }),
     );
@@ -769,6 +786,8 @@ describe('MembershipPanel', () => {
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
       'Self-hosted',
     );
+    // A deployment that lowers how many tasks one person runs at once can read it here (inner#1968).
+    expect(screen.getByTestId('quota-running-tasks-per-user')).toHaveTextContent('3');
     expect(screen.getByTestId('quota-projects-per-studio')).toHaveTextContent(
       '9999',
     );
@@ -790,8 +809,9 @@ describe('MembershipPanel', () => {
     expect(contact.parentElement).toHaveTextContent('commercial licence');
   });
 
-  it('企业版不显示上限数字，也不显示对比表', async () => {
-    // 这一档的上限一家一谈、配置里没有，接口给的就是 null。
+  it('shows an enterprise account without an agreement no ceiling figures and no comparison table', async () => {
+    // Its ceilings are negotiated per customer and live in no config file;
+    // without an agreement the answer carries null.
     membershipMock.mockResolvedValue(
       answer({ tier: 'enterprise', limits: null }),
     );
@@ -800,8 +820,10 @@ describe('MembershipPanel', () => {
     expect(await screen.findByTestId('current-tier-name')).toHaveTextContent(
       'Enterprise',
     );
-    expect(screen.getByTestId('enterprise-quota-note')).toBeInTheDocument();
-    expect(screen.queryByTestId('quota-storage')).toBeNull();
+    // Without an agreement storage is shown as used against no cap (inner#1968
+    // design 3.6); the note speaks only of the other allowances, which stay out.
+    expect(screen.getByTestId('enterprise-quota-note')).toHaveTextContent('Your other allowances are set by a separate agreement and are not shown here.');
+    expect(screen.queryByTestId('quota-team-studios')).toBeNull();
     expect(screen.queryByRole('table')).toBeNull();
     expect(screen.queryByTestId('tier-card-pro')).toBeNull();
     expect(screen.queryByTestId('membership-period-switch')).toBeNull();
@@ -828,6 +850,22 @@ describe('MembershipPanel', () => {
     expect(storage).toHaveTextContent('38 GiB / 5 GiB');
     expect(storage).toHaveTextContent('over');
     expect(screen.getByTestId('over-limit-storage')).toBeInTheDocument();
+  });
+
+  it('says existing content stays usable and nothing new can be stored, without an upgrade, when enterprise storage is past its agreement (inner#1968)', async () => {
+    membershipMock.mockResolvedValue(
+      answer({
+        tier: 'enterprise',
+        limits: null,
+        storageLimitBytes: 5 * GIB,
+        usage: { teamStudios: 0, storageBytes: 38 * GIB },
+      }),
+    );
+    setup();
+
+    const note = await screen.findByTestId('over-limit-storage');
+    expect(note).toHaveTextContent('Storage is over your agreement. What is already there works as before, but nothing new can be uploaded or generated.');
+    expect(note).not.toHaveTextContent('Upgrade');
   });
 
   it('加载失败显示一行错误文案', async () => {
@@ -889,13 +927,14 @@ describe('MembershipPanel', () => {
     }
   });
 
-  it('gives the table six rows for six ceilings, and no price row', async () => {
+  it('gives the table seven rows for seven figures, and no price row', async () => {
+    // The six ceilings plus running tasks (inner#1968 I-11).
     membershipMock.mockResolvedValue(answer());
     setup();
 
     await screen.findByTestId('current-tier-name');
     const cells = document.querySelectorAll('[data-testid^="compare-cell-pro-"]');
-    expect(cells).toHaveLength(6);
+    expect(cells).toHaveLength(7);
     expect(
       document.querySelector('[data-testid$="-monthlyFee"]'),
     ).toBeNull();
@@ -964,8 +1003,9 @@ describe('MembershipPanel', () => {
     }
   });
 
-  it('自托管那四行各自读的是自己那一项', async () => {
-    // 同理：四项全填同一个数的话，标签和数值接错看不出来。
+  it('reads each self-hosted row from its own figure', async () => {
+    // The same reason: with one number in every field a label wired to the
+    // wrong value would not show.
     membershipMock.mockResolvedValue(
       answer({
         tier: 'self_hosted',
@@ -976,6 +1016,7 @@ describe('MembershipPanel', () => {
           studio_members: 33,
           project_members: 44,
           storage_bytes: 100 * 1024 ** 4,
+          running_tasks_per_user: 55,
         },
       }),
     );
@@ -984,12 +1025,13 @@ describe('MembershipPanel', () => {
     expect(
       await screen.findByTestId('quota-projects-per-studio'),
     ).toHaveTextContent('111');
+    expect(screen.getByTestId('quota-running-tasks-per-user')).toHaveTextContent('55');
     expect(screen.getByTestId('quota-studio-members')).toHaveTextContent('33');
     expect(screen.getByTestId('quota-project-members')).toHaveTextContent('44');
     expect(screen.getByTestId('quota-concurrent-editors')).toHaveTextContent(
       '22',
     );
-    // 账号级那两项照旧带用量。
+    // The two account-level allowances still carry their usage.
     expect(screen.getByTestId('quota-team-studios')).toHaveTextContent('1 / 7');
     expect(screen.getByTestId('quota-storage')).toHaveTextContent(
       '38 GiB / 100 TiB',
@@ -1202,8 +1244,9 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
     for (const [tier, name] of [['base', 'Starter'], ['pro', 'PRO'], ['team', 'Team']]) {
       expect(screen.getByTestId(`compare-column-${tier}`)).toHaveTextContent(name);
     }
-    // Every figure is a bar until the answer brings it.
-    expect(screen.getAllByTestId('compare-cell-skeleton')).toHaveLength(18);
+    // Every figure is a bar until the answer brings it: seven rows, the six
+    // ceilings plus running tasks (inner#1968 I-11), three tiers each.
+    expect(screen.getAllByTestId('compare-cell-skeleton')).toHaveLength(21);
     expect(screen.getByTestId('membership-contact-priced')).toBeInTheDocument();
   });
 
@@ -1217,4 +1260,58 @@ describe('MembershipPanel while its answer is on the way (#307 A11/A12)', () => 
       expect(screen.getAllByTestId('section-skeleton')).toHaveLength(1);
     },
   );
+});
+
+describe('MembershipPanel for an enterprise account (inner#1968 F-20)', () => {
+  const TIB = 1024 ** 4;
+
+  /**
+   * An enterprise answer with storage used and its cap.
+   * @param storageLimitBytes - The agreement's storage cap, or null without an agreement.
+   * @param storageBytes - Bytes used.
+   * @returns The answer.
+   */
+  function enterprise(storageLimitBytes: number | null, storageBytes: number): AccountMembership {
+    return answer({
+      tier: 'enterprise',
+      limits: null,
+      usage: { teamStudios: 1, storageBytes },
+      storageLimitBytes,
+    } as Partial<AccountMembership>);
+  }
+
+  it('draws storage against the agreement for an active agreement', async () => {
+    const used = Math.round(1.24 * TIB);
+    membershipMock.mockResolvedValue(enterprise(5 * TIB, used));
+    setup();
+
+    const storage = await screen.findByTestId('quota-storage');
+    expect(storage).toHaveTextContent(`${formatBytes(used)} / 5 TiB`);
+  });
+
+  it('draws storage as used against no cap without an agreement', async () => {
+    const used = 320 * 1024 ** 3;
+    membershipMock.mockResolvedValue(enterprise(null, used));
+    setup();
+
+    const storage = await screen.findByTestId('quota-storage');
+    expect(storage).toHaveTextContent('320 GiB');
+    expect(storage).not.toHaveTextContent(/320 GiB \/ \d/);
+  });
+});
+
+describe('MembershipPanel running tasks row (inner#1968 I-11)', () => {
+  it('I-11 the comparison table has a row for running tasks', async () => {
+    const running = { base: 2, pro: 5, team: 10 } as const;
+    const catalog = answer().catalog.map((offer) => ({
+      ...offer,
+      limits: { ...offer.limits, running_tasks_per_user: running[offer.tier as keyof typeof running] },
+    }));
+    membershipMock.mockResolvedValue(answer({ catalog }));
+    setup();
+    await screen.findByTestId('current-tier-name');
+    expect(screen.getByTestId('compare-cell-base-runningTasksPerUser').textContent).toBe('2');
+    expect(screen.getByTestId('compare-cell-pro-runningTasksPerUser').textContent).toBe('5');
+    expect(screen.getByTestId('compare-cell-team-runningTasksPerUser').textContent).toBe('10');
+  });
 });

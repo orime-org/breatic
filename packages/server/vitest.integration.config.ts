@@ -39,7 +39,7 @@ export default defineConfig({
       "@breatic/integration-tests/containers",
     ],
     // setupFiles runs inside the worker process. Re-applies env vars from globalSetup.
-    setupFiles: ["@breatic/integration-tests/env"],
+    setupFiles: ["@breatic/integration-tests/env", "@breatic/integration-tests/loopback-listen"],
     // One file at a time, each in a fresh fork, all against the one container
     // set globalSetup started. A single fork for every file runs out of heap:
     // `singleFork` turns off module isolation, every file re-evaluates the

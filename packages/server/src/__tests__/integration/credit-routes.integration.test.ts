@@ -553,7 +553,7 @@ describe("GET /studio/:slug/credits", () => {
 });
 
 describe("GET /studio/:slug/credits — what a lot carries (inner#1052)", () => {
-  it("sends each lot as buyer, date, purchased and remaining, and nothing about its refunds", async () => {
+  it("sends each Studio lot's source, buyer, date and exact quantities", async () => {
     const fx = await seedFixture();
     const lotId = await seedLot(fx, 120, fx.studioId);
     await sql`UPDATE credit_lots SET refund_attempts = 2 WHERE id = ${lotId}`;
@@ -573,9 +573,11 @@ describe("GET /studio/:slug/credits — what a lot carries (inner#1052)", () => 
       "id",
       "purchasedCredits",
       "remainingCredits",
+      "sourceKind",
     ]);
     expect(body.data.lots[0]).toEqual({
       id: lotId,
+      sourceKind: "payment",
       purchasedCredits: "120.000000",
       remainingCredits: "120.000000",
       createdAt: stored!.created_at.toISOString(),

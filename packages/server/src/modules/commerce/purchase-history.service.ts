@@ -68,20 +68,18 @@ function compareDesc(a: Keyed, b: Keyed): number {
  * @param size - The page size.
  * @param cursor - Where the previous page ended.
  * @returns Up to `size + 1` rows, the bought ones not yet knowing whether they can be resent.
- * @throws {Error} When a gift's origin is missing.
+ * @throws {Error} When a gift's origin or an enterprise purchase's receipt is missing.
  */
 async function localRows(userId: string, size: number, cursor: { createdAt: string; id: string } | null): Promise<Keyed[]> {
   const rows = await creditLotRepo.listLotHistory(userId, size, cursor);
-  const gifts = rows.filter((r) => r.sourceKind === "gift").map((r) => r.sourceId);
-  const origins = await creditSourceRepo.readGiftOrigins(gifts);
+  const details = await creditSourceRepo.readReceiptDetails(rows);
   return rows.map((r) => {
-    if (r.sourceKind === "gift" && !origins.has(r.sourceId)) throw new Error("Gift receipt origin missing");
     return {
       cursorAt: r.cursorAt,
       row: {
         rowId: r.rowId,
         sourceKind: r.sourceKind as CreditSourceKind,
-        ...(r.sourceKind === "gift" ? { giftOrigin: origins.get(r.sourceId)! } : {}),
+        ...details.get(r.sourceId),
         paymentId: r.paymentId,
         amountCents: r.amountCents,
         totalCents: r.totalCents,

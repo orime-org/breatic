@@ -154,13 +154,13 @@ describe("credit_sources", () => {
 
   it("takes every kind the code declares", async () => {
     // Iterated rather than listed, so the TypeScript union and the CHECK
-    // cannot drift apart: a fifth kind added to `CREDIT_SOURCE_KINDS` without
+    // cannot drift apart: a new kind added to `CREDIT_SOURCE_KINDS` without
     // a migration widening the constraint fails right here. On its own this
     // pins nothing — it has meaning beside the rejection above, which says the
-    // constraint is there to widen. The pair says these four are taken and at
+    // constraint is there to widen. The pair says these values are taken and at
     // least one other value is not; what else the constraint might list is
     // read from the migration, not from here.
-    expect(creditSourceRepo.CREDIT_SOURCE_KINDS).toHaveLength(4);
+    expect(creditSourceRepo.CREDIT_SOURCE_KINDS).toHaveLength(5);
     for (const kind of creditSourceRepo.CREDIT_SOURCE_KINDS) {
       await expect(seedSource(kind)).resolves.toBeTruthy();
     }

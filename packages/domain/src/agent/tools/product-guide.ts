@@ -607,7 +607,8 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere. A message needs ` +
       "credits in the project's studio to be answered; with none, the message reads " +
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
-      "a studio. Credits are bought from the account menu on the studio pages, under " +
+      "a studio. A message waiting its turn when a " +
+      "monthly spend limit is reached stays waiting, and the waiting area above the box says so. Credits are bought from the account menu on the studio pages, under " +
       `${quoted(t("studio.topBar.credits"))} then ${quoted(t("credits.section.buy"))}; only the studio's admin ` +
       "can assign them to this studio, so anyone else asks the admin. Where the deployment takes payments, " +
       `${quoted(t("studio.topBar.membership"))} in the same menu opens the membership panel, which has a ` +
@@ -935,6 +936,10 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("canvas.generatePanel.errorStorageFull"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorUnavailable"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorFailed"))}`,
+    "  - when a monthly spend limit the Studio's admin set is reached, with no button, since adding credits does " +
+      "not lift a limit (see the When something is wrong section); for the person's own limit the message names " +
+      "its amount and the day it resets, for the Studio's total only the day it resets; rarely it says only " +
+      `${quoted(t("credits.refusal.spendCap"))}`,
     "  - a sentence naming the model and, when a count says it, the limit the run breaks there, such as how many " +
       "characters or lines its text may have; otherwise it says the model can't take the run as set up and to change " +
       "the settings or pick another model",
@@ -955,12 +960,23 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.kind.upload"))} with an up arrow, followed by the file's name; ` +
       `${quoted(t("canvas.task.kind.generate"))} with a sparkle, ${quoted(t("canvas.task.kind.understand"))}, ` +
       `or ${quoted(t("canvas.task.kind.transcribe"))} with a caption icon, each ` +
-      "followed by the model's name; or a tool's own icon and name, with nothing after it. A done row offers " +
+      "followed by the model's name; or a tool's own icon and name, with nothing after it. At the line's right end is who started it, " +
+      `${quoted(t("canvas.task.you"))} for your own. A done row offers ` +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
       `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
       `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
       `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
+    "Each person runs only so many tasks at once, a number that comes with the membership of the Studio's admin; " +
+      "a task past it waits its turn and starts by itself when an earlier one ends, and the time it waits does " +
+      "not count against its two hours. A node with a waiting task shows an hourglass in that column (below the " +
+      `spinning circle when some of its tasks already run); hovering it shows ${quoted(t("canvas.task.status.waiting"))} with how many, and why: ` +
+      `${quoted(t("canvas.task.waitReasonEachLimit", { count: 2, limit: 2 }))} (it counts the running tasks of whoever started each one, against the Studio's limit; in the list ` +
+      `a row someone else started says so of that person, and your own rows read ${quoted(t("canvas.task.waitReasonLimit", { limit: 2 }))}) — clicking it opens the ${quoted(t("canvas.task.status.waiting"))} ` +
+      `list, which holds only the waiting tasks (the ${quoted(t("canvas.task.status.running"))} list holds only those already running); each row there says ${quoted(t("canvas.task.status.waiting"))}, shows no running time and ` +
+      `offers ${quoted(t("common.cancel"))}, which ends it as ${quoted(t("canvas.task.failure.cancelled"))} A task ` +
+      "that has started running cannot be cancelled; pressing it then says " +
+      `${quoted(t("canvas.task.alreadyStarted"))} A node with a waiting task cannot be deleted, as with a running one.`,
     "",
     "## Inside the generation panel",
     "The top row holds the tool buttons, each an icon over its name, with an X at the far right that closes the " +
@@ -1582,6 +1598,7 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.webAnimation.cancel"))} while it runs, ${quoted(t("timeline.webAnimation.addPlaceholder"))} to place its placeholder at the playhead, ` +
       `${quoted(t("timeline.webAnimation.addToTimeline"))} for a finished result, which adds a separate copy at the playhead each time it is pressed, and ` +
       `${quoted(t("timeline.webAnimation.retry"))} after a failure, a cancel or an expiry, which opens the dialog filled in as before (${quoted(t("timeline.webAnimation.dialog.retryTitle"))}). ` +
+      `A run past the number of tasks one person runs at once waits its turn, says ${quoted(t("canvas.task.status.waiting"))} on its row and why, and can be cancelled. ` +
       "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
       "other copies and the execution in the list as they are. The selected copy's panel names the request it came from. " +
       "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy whose run has not finished, or ended without a result, is noted at the top right of the " +
@@ -1639,7 +1656,10 @@ export function renderProductGuide(): string {
       "the prompt is empty (Text to 3D), no view is filled or a view's upload failed (Image to 3D). " +
       `On the answer it closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row, clearing the panel's filters if they would hide it; a generation that could not start gets its row too, with the reason and Retry. ` +
       "Closing the dialog while the generation is being submitted lets the submission carry on, and its answer still opens the panel on the new row. " +
-      "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message.",
+      "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message. " +
+      `A generation waiting its turn, past the number of tasks one person runs at once, says ${quoted(t("canvas.task.status.waiting"))} on its row, counts no minutes, ` +
+      `offers ${quoted(t("common.cancel"))} and says why it waits. Your own task's row says ${quoted(t("canvas.task.waitReasonLimit", { limit: 2 }))} ` +
+      `Someone else's says ${quoted(t("canvas.task.waitReasonOtherLimit", { limit: 2 }))} One that has started running cannot be cancelled.`,
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))}, ` +
       `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon), ${quoted(t("spaces.threeD.viewfinder.open"))} (four frame corners) and ` +
@@ -2211,6 +2231,19 @@ export function renderProductGuide(): string {
       "Deleting a snapshot asks first and cannot be undone.",
     "",
     "## When something is wrong",
+    "- A monthly spend limit is reached, the person's own or the Studio's total: for the person's own limit the " +
+      "message names its amount and the day it resets, for the Studio's total only the day it resets; rarely it " +
+      `says only ${quoted(t("credits.refusal.spendCap"))} — work that spends credits is refused ` +
+      "until the month resets (on the first of the month, UTC); work already running finishes. Adding credits " +
+      "does not lift it, so the message has no button; only the Studio's admin can change the limits. They are " +
+      `on the Studio page's ${quoted(t("studio.container.tabs.credits"))} tab, under ${quoted(t("studio.container.credits.spendCap.title"))}: ` +
+      `${quoted(t("studio.container.credits.spendCap.studioMonthly"))} and ${quoted(t("studio.container.credits.spendCap.memberDefault"))}, each ` +
+      `${quoted(t("studio.container.credits.spendCap.notSet"))} or an amount per month, with what the Studio spent this month and ` +
+      "when it resets; below, everyone who can spend there, Studio members and " +
+      `${quoted(t("studio.container.credits.spendCap.relationProjectCollaborator"))} alike, with what they spent and the limit that ` +
+      `applies, where ${quoted(t("studio.container.credits.spendCap.override"))} opens a dialog that gives one person a limit of their own (an amount, ` +
+      `${quoted(t("studio.container.credits.spendCap.unlimited"))} or ${quoted(t("studio.container.credits.spendCap.zero"))}) or puts them back on the default ` +
+      "with its first choice, which names the default. A personal Studio has no limits, and neither does a deployment that charges no credits: there the section is not shown.",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
       `${quoted(t("connection.banner.reload"))}: the connection dropped, and the work area is covered until it ` +
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +
@@ -2253,7 +2286,7 @@ export function renderProductGuide(): string {
       "into another studio, or " +
       `${quoted(t("canvas.generatePanel.errorStorageFull"))} when generating: the storage of the studio's admin ` +
       "is full, counted across every studio they administer. What is already there keeps working, but nothing " +
-      "new can be uploaded or generated until they upgrade. The bell's " +
+      "new can be uploaded or generated until they upgrade; an admin on an enterprise agreement contacts us to change the agreement. The bell's " +
       `${quoted(t("notifications.headline.storageQuotaExceeded"))} is the same thing.`,
     "- Each space has a size limit. As a space nears it, a notice at the top of the space says how much it is " +
       "using and that past the limit no more content can be added. Once it is full the notice says so, and only " +

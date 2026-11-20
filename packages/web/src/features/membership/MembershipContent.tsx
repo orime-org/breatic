@@ -77,9 +77,8 @@ function ContactLine({
  *
  *   - The tier it is on. Priced tiers also get a price and an upgrade button.
  *   - Its allowances. Only the two counted account-wide are listed; the other
- *     four are per-studio, and their values are read off the comparison table
- *     below — which is why `self_hosted`, which has ceilings but no table,
- *     lists them here instead.
+ *     five are read off the comparison table below — which is why
+ *     `self_hosted`, which has ceilings but no table, lists them here instead.
  *   - The comparison table, for accounts that could move between the tiers on
  *     it. `self_hosted` is a deployment shape and `enterprise` is negotiated,
  *     so for those two there is nothing to compare against.
@@ -95,7 +94,7 @@ export function MembershipContent({
   membership,
 }: MembershipContentProps): React.JSX.Element {
   const t = useTranslation();
-  const { tier, limits, usage, catalog, subscription } = membership;
+  const { tier, limits, usage, catalog, subscription, storageLimitBytes } = membership;
   const onPriceList = isComparableMembershipTier(tier);
   const { choose, cancel, resume, busy, pending } =
     useSubscriptionActions(subscription);
@@ -154,6 +153,45 @@ export function MembershipContent({
     [choose],
   );
 
+  // Storage against the account's ceiling: its tier's, an agreement's, or
+  // used against no cap for an enterprise account with no agreement on file
+  // (inner#1968, design 3.6).
+  const storageQuota = storageLimitBytes === null ? (
+    <div className='flex items-baseline justify-between gap-3' data-testid='quota-storage'>
+      <span className='text-sm'>{t('membership.quota.storage')}</span>
+      <span className='text-sm tabular-nums text-foreground-secondary'>
+        {t('membership.quotaUnlimited', { used: formatBytes(usage.storageBytes) })}
+      </span>
+    </div>
+  ) : (
+    <QuotaRow
+      testId='quota-storage'
+      label={t('membership.quota.storage')}
+      value={t('membership.quotaValue', {
+        used: formatBytes(usage.storageBytes),
+        limit: formatBytes(storageLimitBytes),
+      })}
+      used={usage.storageBytes}
+      limit={storageLimitBytes}
+      overLabel={t('membership.overLimitTag')}
+    />
+  );
+  // Past its ceiling the account keeps what it has but stores nothing new; an
+  // enterprise agreement is changed with us, not by an upgrade (inner#1968).
+  const storageRow = (
+    <>
+      {storageQuota}
+      {storageLimitBytes !== null && usage.storageBytes > storageLimitBytes ? (
+        <p
+          className='text-sm text-foreground-secondary'
+          data-testid='over-limit-storage'
+        >
+          {t(tier === 'enterprise' ? 'membership.overLimit.storageEnterprise' : 'membership.overLimit.storage')}
+        </p>
+      ) : null}
+    </>
+  );
+
   return (
     // Two rows of the panel's grid, so a fragment rather than one wrapper:
     // the current tier stays in place, and everything under it scrolls.
@@ -189,10 +227,11 @@ export function MembershipContent({
           <section className='flex flex-col gap-4'>
             <SectionHeading>{t('membership.myQuota')}</SectionHeading>
             {limits === null ? (
-            // Enterprise. Its ceilings are agreed per customer and live only in
-            // that agreement, so the panel cannot print them — which makes the
-            // address the one thing it can usefully offer.
+            // Enterprise. Its ceilings besides storage are agreed per customer
+            // and live only in that agreement, so the panel cannot print them —
+            // which makes the address the one thing it can usefully offer.
               <>
+                {storageRow}
                 <p
                   className='text-sm text-foreground-secondary'
                   data-testid='enterprise-quota-note'
@@ -225,27 +264,9 @@ export function MembershipContent({
                     {t('membership.overLimit.teamStudios')}
                   </p>
                 ) : null}
-                <QuotaRow
-                  testId='quota-storage'
-                  label={t('membership.quota.storage')}
-                  value={t('membership.quotaValue', {
-                    used: formatBytes(usage.storageBytes),
-                    limit: formatBytes(limits.storage_bytes),
-                  })}
-                  used={usage.storageBytes}
-                  limit={limits.storage_bytes}
-                  overLabel={t('membership.overLimitTag')}
-                />
-                {usage.storageBytes > limits.storage_bytes ? (
-                  <p
-                    className='text-sm text-foreground-secondary'
-                    data-testid='over-limit-storage'
-                  >
-                    {t('membership.overLimit.storage')}
-                  </p>
-                ) : null}
+                {storageRow}
                 {tier === 'self_hosted' ? (
-                // The four per-studio ceilings, listed here only for this tier:
+                // The five ceilings the table carries, listed here only for this tier:
                 // it is not on the price list, so the comparison table below —
                 // where every other tier reads them — is not shown to it.
                   <div className='flex flex-col gap-3 pt-2'>
@@ -275,6 +296,13 @@ export function MembershipContent({
                       label={t('membership.quota.concurrentEditors')}
                       value={t('membership.countConnections', {
                         count: String(limits.concurrent_editors),
+                      })}
+                    />
+                    <SelfHostedRow
+                      testId='quota-running-tasks-per-user'
+                      label={t('membership.quota.runningTasksPerUser')}
+                      value={t('membership.countItems', {
+                        count: String(limits.running_tasks_per_user),
                       })}
                     />
                     <ContactLine
@@ -412,7 +440,7 @@ export function MembershipContent({
   );
 }
 
-/** One of the four ceilings only the self-hosted tier lists here. */
+/** One of the ceilings only the self-hosted tier lists here. */
 interface SelfHostedRowProps {
   /** What the ceiling is called. */
   label: string;
@@ -425,8 +453,9 @@ interface SelfHostedRowProps {
 /**
  * A ceiling with no usage beside it: a number, not a bar.
  *
- * These four are per-studio, and this panel answers account-level questions —
- * how much of one is spent is a question for the studio it belongs to.
+ * None of these is counted across the account, so the panel shows only the
+ * ceiling; how much of one is used is answered where it is counted — in the
+ * studio, or, for running tasks, for the person across their studios.
  * @param props - The ceiling to draw.
  * @param props.label - What the ceiling is called.
  * @param props.value - The ceiling, with its unit.

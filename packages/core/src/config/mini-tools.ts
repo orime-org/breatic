@@ -87,3 +87,17 @@ export function getMiniToolsConfig(): Readonly<MiniToolsConfig> {
   _cached = Object.freeze(miniToolsConfigSchema.parse(parse(raw) as unknown));
   return _cached;
 }
+
+/**
+ * How long past a task's deadline its last report may still land: two poll
+ * intervals. The worker waits this long before settling a container job as
+ * expired, and the running-task count uses the same room (inner#1968), so
+ * both agree on when a task is over.
+ * @param pollIntervalMs - The poll interval; the configured one by default.
+ * @returns The grace in milliseconds.
+ * @throws {z.ZodError} if the config file is malformed (first read only)
+ * @throws {Error} if `config/mini-tools.yaml` cannot be read (first read only)
+ */
+export function reportGraceMs(pollIntervalMs: number = getMiniToolsConfig().poll_interval_ms): number {
+  return pollIntervalMs * 2;
+}

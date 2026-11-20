@@ -127,12 +127,16 @@ describe("the expand tool's credit precheck", () => {
     expect(await expandPrice()).toBeGreaterThan(0);
   });
 
-  it("refuses a run one credit short of that price, failing its task as no credits", async () => {
+  // A refusal holds nothing and opens no task (inner#1968 design 3.10 U9): 402, no row.
+  it("refuses a run one credit short of that price with 402 and opens no task", async () => {
     const { projectId, cookie } = await seed((await expandPrice()) - 1);
-    const { taskId, status } = await runExpand(projectId, cookie);
-    expect(status).toBe("failed");
-    const [task] = await sql<{ status: string; error: string | null }[]>`SELECT status, error_message AS error FROM tasks WHERE id = ${taskId}`;
-    expect(task).toEqual({ status: "failed", error: "no_credits" });
+    const res = await app.request("/api/v1/mini-tools", {
+      method: "POST",
+      headers: { Cookie: cookie, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
+      body: JSON.stringify({ ...EXPAND, project_id: projectId, space_id: crypto.randomUUID(), node_ids: [crypto.randomUUID()] }),
+    });
+    expect(res.status).toBe(402);
+    expect(await sql`SELECT 1 FROM tasks WHERE project_id = ${projectId}`).toEqual([]);
   });
 
   it("queues a run the designated credits cover exactly", async () => {
@@ -211,9 +215,9 @@ describe.each(Object.keys(BATCH_FOUR))("the %s credit precheck", (tool) => {
     expect(price).toBeGreaterThan(0);
     const short = await seed(covering(price) - 1);
     const refused = await runTool(tool, body, short.projectId, short.cookie);
-    expect(refused.status).toBe("failed");
-    const [task] = await sql<{ error: string | null }[]>`SELECT error_message AS error FROM tasks WHERE id = ${refused.taskId!}`;
-    expect(task?.error).toBe("no_credits");
+    // A refusal holds nothing and opens no task (inner#1968 design 3.10 U9).
+    expect(refused.http).toBe(402);
+    expect(await sql`SELECT 1 FROM tasks WHERE project_id = ${short.projectId}`).toEqual([]);
     const enough = await seed(covering(price));
     const queued = await runTool(tool, body, enough.projectId, enough.cookie);
     const [row] = await sql<{ error: string | null }[]>`SELECT error_message AS error FROM tasks WHERE id = ${queued.taskId!}`;
@@ -229,7 +233,7 @@ describe("the batch-four runs the server prices and refuses", () => {
     // Three pictures cost what the server charges: credits for one picture do not queue a three-picture run.
     const { projectId, cookie } = await seed(one);
     const run = await runTool("image.restyle", { ...BATCH_FOUR["image.restyle"]!.body, slots: { style: STYLE(3) } }, projectId, cookie);
-    expect(run.status).toBe("failed");
+    expect(run.http).toBe(402);
   });
 
   it("refuses a light colour the catalog does not offer, before any task opens", async () => {

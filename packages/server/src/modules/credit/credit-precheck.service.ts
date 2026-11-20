@@ -10,31 +10,20 @@
  * the hold stays until the worker charges the run or the run ends. Concurrent
  * runs therefore see each other's estimates instead of the same balance.
  *
- * A chat turn cannot know up front what it will cost, so it holds nothing: the
- * chat route admits it with `precheckCredits` on the balance alone, and the
- * turn is charged what it spent when it ends, into debt if need be.
+ * Work that cannot know up front what it will cost (a chat turn, a text-tool
+ * run, a Timeline execution) holds nothing: `precheckCredits` first refuses it
+ * when its person or its studio has reached a monthly spend limit, then admits
+ * it while the balance is above zero, and it is charged what it spent when it
+ * ends, into debt if need be.
  *
  * Extracted from mini-tools' route-local `checkCredits` so /canvas/tasks
  * and /mini-tools/* share ONE admission that can never drift.
  */
 
 import { AppError, env, getNodeTaskConfig } from "@breatic/core";
-import { assetService, creditHoldService, creditLotService } from "@breatic/domain";
+import { creditHoldService, creditLotService } from "@breatic/domain";
+import { SpendCapReachedError } from "@breatic/core";
 import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
-
-/**
- * A run refused because running work holds what it needs, so a lane that
- * stores the refusal on its node can name that cause.
- */
-export class CreditsHeldError extends AppError {
-  /**
-   * Build the refusal.
-   * @param message - The refusal, already translated.
-   */
-  constructor(message: string) {
-    super(402, message);
-  }
-}
 
 /** The figures a refusal is explained with: the studio and its position. */
 type RefusalFigures = { studioId: string } & ProjectCreditsView;
@@ -69,8 +58,7 @@ type RefusalFigures = { studioId: string } & ProjectCreditsView;
  * @param required - Credits the run needs.
  * @param figures - The studio's position at the moment it was refused.
  * @returns Never.
- * @throws {CreditsHeldError} 402, when running work holds what the run needs.
- * @throws {AppError} 402, for every other cause.
+ * @throws {AppError} 402, for every cause.
  */
 async function refuse(userId: string, required: number, figures: RefusalFigures): Promise<never> {
   const { studioId, spendable, held, available } = figures;
@@ -89,10 +77,9 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
 
   if (parseCreditDecimal(held) > 0n && parseCreditDecimal(spendable) >= quantizeQuotedCredits(required)) {
     const unassigned = await creditLotService.getUnassignedCredits(userId);
-    // Still a hold refusal: the sentence points at the step that certainly
-    // works, and a lane that stores the cause on its node names the hold.
-    if (parseCreditDecimal(unassigned) > 0n) throw new CreditsHeldError(t("server.credit.unassigned", { available: shown(unassigned) }));
-    throw new CreditsHeldError(t("server.credit.held_by_running", { held: shown(held), available: shown(available) }));
+    // The sentence points at the step that certainly works.
+    if (parseCreditDecimal(unassigned) > 0n) throw new AppError(402, t("server.credit.unassigned", { available: shown(unassigned) }));
+    throw new AppError(402, t("server.credit.held_by_running", { held: shown(held), available: shown(available) }));
   }
 
   if (parseCreditDecimal(available) > 0n) {
@@ -129,8 +116,8 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
  * @param userId - The authenticated caller.
  * @param referenceId - The run's task id, which the worker releases by.
  * @param required - The run's estimate.
- * @throws {CreditsHeldError} 402 when running work holds what it needs.
- * @throws {AppError} 402 when the studio cannot cover it for another cause.
+ * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the estimate.
+ * @throws {AppError} 402 when the studio cannot cover it, running work holding what it needs among the causes.
  * @throws {RangeError} When the estimate is negative or not a number.
  */
 export async function reserveForRun(
@@ -149,16 +136,20 @@ export async function reserveForRun(
     ttlMs: getNodeTaskConfig().default_budget_ms,
   });
   if (outcome.ok) return;
+  if (outcome.cap !== undefined) throw new SpendCapReachedError(outcome.cap);
   await refuse(userId, charge, outcome);
 }
 
 /**
- * Refuse work whose Studio's balance (designated lots less debt) is below
- * `required`, holding nothing and leaving running work's holds out of it.
- * Skipped entirely when payments are disabled.
+ * Admit work that holds nothing (chat turns, text tools, Timeline executions):
+ * refuse it when the caller or the studio has reached a monthly spend limit,
+ * then when the Studio's balance (designated lots less debt) is below
+ * `required`, leaving running work's holds out of it. Skipped entirely when
+ * payments are disabled.
  * @param projectId - The project the work belongs to; its studio pays.
  * @param userId - The authenticated caller.
  * @param required - Credits the studio's balance must at least reach.
+ * @throws {SpendCapReachedError} 402 when the caller or the studio has spent its monthly limit.
  * @throws {AppError} 402 when the balance does not cover `required`.
  */
 export async function precheckCredits(
@@ -166,10 +157,8 @@ export async function precheckCredits(
   userId: string,
   required: number,
 ): Promise<void> {
-  if (!env.CHARGING_ENABLED) return;
-
-  const studioId = await assetService.resolveOwnerStudioId(projectId);
-  const spendable = await creditLotService.getSpendableCredits(studioId);
-  if (parseCreditDecimal(spendable) >= quantizeQuotedCredits(required)) return;
-  await refuse(userId, required, { studioId, spendable, held: serializeCreditMicro(0n), available: spendable });
+  const refusal = await creditHoldService.judgeBalanceAdmission(projectId, userId, required);
+  if (refusal === null) return;
+  if (refusal.reason === "spend_cap") throw new SpendCapReachedError(refusal.cap);
+  await refuse(userId, required, { studioId: refusal.studioId, spendable: refusal.spendable, held: serializeCreditMicro(0n), available: refusal.spendable });
 }

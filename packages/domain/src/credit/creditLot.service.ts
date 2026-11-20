@@ -83,6 +83,7 @@ export const REFKEY_PATTERN = /^[A-Za-z0-9_:.-]{1,255}$/;
  * to be loading this module.
  */
 const REFUSAL_ERRORS: Record<RefundRefusal, () => AppError> = {
+  offline_contract: () => new AppError(422, t("server.credit.refund_offline_contract")),
   not_purchased: () =>
     new AppError(422, t("server.credit.refund_not_purchased")),
   already_asked: () =>
@@ -204,6 +205,29 @@ export async function grantFromPayment(
   // ours to grant. Opening a second one here would let the grant commit
   // while the decision rolls back.
   return outer ? run(outer) : db.transaction(run);
+}
+
+/**
+ * Open one corporate purchase lot in its original decision transaction.
+ * @param input - The confirmed quantity, account, contract and original operator.
+ * @param input.userId - The account owning the purchase.
+ * @param input.credits - The confirmed exact input quantity.
+ * @param input.contractNumber - The locked contract reference.
+ * @param input.reason - The operator's recorded business reason.
+ * @param input.operationKey - The original confirmation key.
+ * @param input.adminId - The authenticated original operator.
+ * @param tx - The transaction holding the original key and account locks.
+ * @returns The immutable initial creation facts.
+ * @throws {Error} When the source, receipt, lot or ledger write fails.
+ */
+export async function grantEnterpriseCredits(input: {
+  userId: string; credits: string; contractNumber: string; reason: string; operationKey: string; adminId: string;
+}, tx: DbTx): Promise<{ sourceId: string; sourceKind: "enterprise"; lotId: string; credits: CreditDecimal; contractNumber: string; designatedStudioId: null; remainingCredits: CreditDecimal }> {
+  const sourceId = randomUUID();
+  const credits = serializeCreditMicro(parseCreditDecimal(input.credits));
+  await creditSourceRepo.createEnterpriseSource({ ...input, id: sourceId, credits }, tx);
+  const lot = await creditLotRepo.createLot({ sourceId, sourceKind: "enterprise", userId: input.userId, purchasedCredits: credits, designatedStudioId: null }, tx);
+  return { sourceId, sourceKind: "enterprise", lotId: lot.id, credits, contractNumber: input.contractNumber, designatedStudioId: null, remainingCredits: credits };
 }
 
 /**
@@ -677,8 +701,9 @@ export async function designateLot(input: {
  * (`markRefunding`, `settleRefund`, `sendBackRefund`, `rejectRefund`,
  * `restoreRefundedCredits`) are below.
  *
- * Six conditions gate it. The first asks whether anybody paid: a refund
- * returns money, and credits that were granted had none. Two come from the
+ * Six conditions gate it. The first checks the original funding channel:
+ * online payment lots use this flow; enterprise purchases follow their
+ * offline contract, and grants are ineligible. Two conditions come from the
  * published promise: a purchase is refundable in full within thirty days if
  * no credit was ever drawn from it. The fourth is that the lot carries no
  * designation, because a refund is asked for on a lot the buyer has already
@@ -704,8 +729,8 @@ export async function designateLot(input: {
  * @returns The lot as it now stands.
  * @throws {NotFoundError} If the lot does not exist or belongs to someone else.
  * @throws {AppError} 409 if it still carries a designation, is already in
- * the refund flow, or had its credits restored; 422 if nobody paid for it, it has been spent from, or its
- * window has closed.
+ * the refund flow, or had its credits restored; 422 for an offline contract,
+ * a grant, previously spent credits or a closed window.
  */
 export async function requestRefund(input: {
   lotId: string;
@@ -722,7 +747,7 @@ export async function requestRefund(input: {
     // cannot offer an ask this would turn down, or hide one it would allow.
     const refusal = refundRefusal(
       {
-        purchased: isPurchased(lot.sourceKind),
+        sourceKind: lot.sourceKind,
         lifecycle: lot.lifecycle,
         designated: lot.designatedStudioId !== null,
         everSpent: await creditLotRepo.hasEverSpent(input.lotId, tx),
