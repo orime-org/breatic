@@ -149,3 +149,31 @@ export const subscriptionFactAnswerSchema = z
   .object({ tier: z.enum(MEMBERSHIP_TIERS), endedFrom: z.enum(MEMBERSHIP_TIERS).nullable() })
   .strict();
 export type SubscriptionFactAnswer = z.infer<typeof subscriptionFactAnswerSchema>;
+
+/** The edges a refund step takes on the product's lot (inner#1993 §3.3 `refund-steps`). */
+export const REFUND_STEPS = ["mark_refunding", "settle", "send_back", "reject", "restore"] as const;
+export type RefundStep = (typeof REFUND_STEPS)[number];
+
+/** What a finished disposition tells the buyer through the bell. */
+export const refundTellSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("refund_completed"), amountCents: cents, currency: z.string().min(1).max(10) }).strict(),
+  z.object({ kind: z.literal("refund_rejected") }).strict(),
+  z.object({ kind: z.literal("refund_restored") }).strict(),
+]);
+export type RefundTell = z.infer<typeof refundTellSchema>;
+
+/**
+ * `POST /internal/v1/commerce/refund-steps/:operationId/:step`: move the lot
+ * one edge. `referenceId` is what the ledger row the edge writes points at:
+ * the Stripe refund for `settle`, the disposition otherwise.
+ */
+export const refundStepRequestSchema = z
+  .object({ lotId: uuid, step: z.enum(REFUND_STEPS), referenceId: z.string().min(1).max(255), tell: refundTellSchema.nullable() })
+  .strict();
+export type RefundStepRequest = z.infer<typeof refundStepRequestSchema>;
+
+/** The answer to a refund step: whether the edge applied, and the lot after it. */
+export const refundStepAnswerSchema = z
+  .object({ status: z.enum(["applied", "refused"]), code: z.literal("lot_state_changed").optional(), lot: lotRefundFactsSchema })
+  .strict();
+export type RefundStepAnswer = z.infer<typeof refundStepAnswerSchema>;

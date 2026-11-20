@@ -18,7 +18,16 @@ import type { StoredAnswer } from "@server/modules/commerce/commerce-request.rep
  */
 export async function readRefundLotFacts(lotIds: string[]): Promise<StoredAnswer> {
   const rows = await creditLotRepo.readLotRefundFacts(lotIds);
-  const body: LotRefundFacts[] = rows.map((row) => ({
+  return { httpStatus: 200, body: rows.map(toLotRefundFacts) };
+}
+
+/**
+ * One lot's refund facts in the contract's shape.
+ * @param row - The lot as the repository read it.
+ * @returns The facts.
+ */
+export function toLotRefundFacts(row: creditLotRepo.LotRefundFactsRow): LotRefundFacts {
+  return {
     lotId: row.id,
     userId: row.userId,
     sourceId: row.sourceId,
@@ -33,6 +42,5 @@ export async function readRefundLotFacts(lotIds: string[]): Promise<StoredAnswer
     everRestored: row.everRestored,
     designated: row.designated,
     createdAt: row.createdAt.toISOString(),
-  }));
-  return { httpStatus: 200, body };
+  };
 }
