@@ -3,15 +3,16 @@
 
 /**
  * What every pickup of a web-animation execution does, whatever container job it runs (inner#1711 design §5.3; #1490
- * design §6): take the row with a new attempt, read back the job its steps fixed, wait for its report until two polls
- * past the deadline, settle only an ended report, re-check the job lock before each write, and charge actual use once.
+ * design §6): take the row with a new attempt, read back the job its steps fixed, wait for its report until the report
+ * grace past the deadline, settle only an ended report, re-check the job lock before each write, and charge actual use once.
  */
 
 import type { Job } from "bullmq";
-import { db, getTimelineConfig, getWorkerConfig, logger, timelineExecutionRepo, type TimelineExecutionJobData } from "@breatic/core";
-import { creditLotService, sumCreditsByOperationKeys, timelineOperationKey, toChargeCredits } from "@breatic/domain";
+import { db, getWorkerConfig, logger, timelineExecutionRepo, timelineReportGraceMs, type TimelineExecutionJobData } from "@breatic/core";
+import { creditLotService, runningSlotService, sumCreditsByOperationKeys, timelineOperationKey, toChargeCredits } from "@breatic/domain";
 import type { TimelineExecution } from "@breatic/shared";
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
+import { StillRunning } from "@worker/handlers/still-running.js";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 
 /** A pickup's hold on its execution. */
@@ -67,13 +68,13 @@ export function storedStep<K extends string, R>(
 }
 
 /**
- * When a job's last report is due: two polls past its deadline.
+ * When a job's last report is due: the report grace past its deadline, the same grace the running-task count holds it.
  * @param deadlineAt - The job's deadline, epoch ms.
  * @returns The time, epoch ms.
- * @throws {never} Never.
+ * @throws {Error} When the Timeline configuration cannot be read.
  */
 export function endsAtOf(deadlineAt: number): number {
-  return deadlineAt + 2 * getTimelineConfig().web_animation.poll_interval_ms;
+  return deadlineAt + timelineReportGraceMs();
 }
 
 /**
@@ -90,20 +91,36 @@ export async function owns(held: Held): Promise<boolean> {
 }
 
 /**
- * Take the row for this pickup: claim a queued one, retry a running one, keep a cancelling one as it is.
+ * Take the row for this pickup: claim a queued one through the running-task gate, retry a running one, keep a
+ * cancelling one as it is. Every kind (create, modify, export) is taken here, so every kind passes the gate.
  * @param row - The row as read.
  * @returns The row this pickup holds, or null when there is nothing for it to do.
+ * @throws {StillRunning} While its person runs as many tasks as their limit; the job goes back to the queue.
  * @throws {Error} When a write fails.
  */
 export async function take(row: TimelineExecution): Promise<TimelineExecution | null> {
   if (row.status === "queued") {
-    // Never claimed, so never submitted: past its deadline it ends without a job.
-    if (Date.parse(row.deadlineAt) <= Date.now()) {
+    // Never claimed, so never submitted: past its deadline it ends without a job. One that waited for a running slot
+    // has no deadline until it starts (inner#1968).
+    if (row.slotWaitSince == null && Date.parse(row.deadlineAt) <= Date.now()) {
       await move(row, { type: "deadline" });
       return null;
     }
-    const claimed = await move(row, { type: "claim" });
-    return claimed.applied ? claimed.row : take(claimed.row);
+    // Its spend was judged once, at its acceptance; waiting for a slot does not judge it again (inner#1968). A row
+    // another pickup claimed first answers ended, and is read again and taken as it stands.
+    let gate: Awaited<ReturnType<typeof runningSlotService.claimWithinLimit>>;
+    try {
+      gate = await runningSlotService.claimWithinLimit(row.id);
+    } catch (err) {
+      if (err instanceof StillRunning) {
+        for (const failure of err.publishFailures) logger.error({ err: failure, executionId: row.id }, "running_slot_publish_failed");
+      }
+      throw err;
+    }
+    for (const err of gate.publishFailures) logger.error({ err, executionId: row.id }, "running_slot_publish_failed");
+    if (gate.outcome === "started") return gate.started;
+    const after = await timelineExecutionRepo.findById(row.id);
+    return after === undefined ? null : take(after);
   }
   if (row.status === "running") {
     // A new attempt changes nothing the user sees, so it does not signal the Space; a phase change does.

@@ -871,6 +871,21 @@ describe("G F8 a waiting Timeline execution has no deadline until it starts", ()
     for (const id of [recent, stale]) expect((await executionRow(id)).status).toBe("queued");
   });
 
+  it("G-43b an export waits behind the gate like a create: its pickup holds the row back as queued (#1490)", async () => {
+    const p = await person();
+    await running(p, 2);
+    const id = await execution(p, "queued");
+    await sql`update timeline_executions set kind = 'web_animation_export', engine = null,
+      input = ${sql.json({ kind: "web_animation_export", sourceVersionId: crypto.randomUUID(), width: 1080, height: 1920, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: "x.mp4" })}
+      where id = ${id}`;
+    const job = { data: { executionId: id } } as unknown as Job<TimelineExecutionJobData>;
+    const thrown = await runTimelineExecution(job).then(() => null, (err: unknown) => err);
+    expect((thrown as Error | null)?.name).toBe("StillRunning");
+    const row = await executionRow(id);
+    expect(row.status).toBe("queued");
+    expect(row.slot_wait_since).not.toBeNull();
+  });
+
   it("G-44 a waiter that starts gets a fresh deadline of start + budget, and later deadline checks use it", async () => {
     const p = await person();
     await running(p, 2);
