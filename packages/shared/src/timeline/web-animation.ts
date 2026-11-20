@@ -122,7 +122,7 @@ export const WebAnimationExecutionRequestSchema = z.discriminatedUnion("kind", [
   z.object({ ...keyed, kind: z.literal(CREATE), ...createFields }).strict(),
   z.object({ ...keyed, kind: z.literal(MODIFY), ...modifyFields }).strict(),
   z.object({ ...keyed, kind: z.literal(EXPORT), ...exportFields }).strict(),
-]).transform((request) => ({ ...request, origin: "web_animation_space" as const }));
+]);
 
 /** A read execution request. */
 export type WebAnimationExecutionRequest = z.infer<typeof WebAnimationExecutionRequestSchema>;

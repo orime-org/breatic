@@ -77,7 +77,7 @@ describe("WebAnimationExecutionRequestSchema for a create", () => {
   };
 
   it("accepts the dialog's input", () => {
-    expect(WebAnimationExecutionRequestSchema.parse(input)).toEqual({ ...input, origin: "web_animation_space" });
+    expect(WebAnimationExecutionRequestSchema.parse(input)).toEqual(input);
   });
 
   it("accepts only the engines and aspects this task ships", () => {

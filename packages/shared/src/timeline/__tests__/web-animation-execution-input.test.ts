@@ -21,7 +21,7 @@ const FPS = { num: 24, den: 1 };
 describe("WebAnimationExecutionRequestSchema", () => {
   it("reads a create request as made in a Motion Space", () => {
     const body = { spaceId: SPACE, actionId: ACTION, kind: "web_animation_create", prompt: "A logo", engine: "deepseek", aspect: "16:9", durationSeconds: 4 };
-    expect(WebAnimationExecutionRequestSchema.parse(body)).toEqual({ ...body, origin: "web_animation_space" });
+    expect(WebAnimationExecutionRequestSchema.parse(body)).toEqual(body);
   });
 
   it("reads a modify request with the base version, its instruction and the new aspect and duration", () => {
@@ -29,12 +29,12 @@ describe("WebAnimationExecutionRequestSchema", () => {
       spaceId: SPACE, actionId: ACTION, kind: "web_animation_modify", baseSourceVersionId: VERSION, instruction: "Slower",
       engine: "deepseek", aspect: "9:16", durationSeconds: 6,
     };
-    expect(WebAnimationExecutionRequestSchema.parse(body)).toEqual({ ...body, origin: "web_animation_space" });
+    expect(WebAnimationExecutionRequestSchema.parse(body)).toEqual(body);
   });
 
   it("reads an export request that names only its source version", () => {
     const body = { spaceId: SPACE, actionId: ACTION, kind: "web_animation_export", sourceVersionId: VERSION };
-    expect(WebAnimationExecutionRequestSchema.parse(body)).toEqual({ ...body, origin: "web_animation_space" });
+    expect(WebAnimationExecutionRequestSchema.parse(body)).toEqual(body);
   });
 
   it("refuses a request without a kind", () => {

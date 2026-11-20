@@ -220,7 +220,7 @@ async function openVideoUpload(projectId: string, userId: string, deadlineAt: Da
  * @throws {AppError} 402 when the studio's balance is not above zero, 507 when an export has no storage left.
  */
 export async function accept(userId: string, body: WebAnimationExecutionRequest & { projectId: string }): Promise<AcceptedExecution> {
-  const { projectId, spaceId, actionId, kind, origin } = body;
+  const { projectId, spaceId, actionId, kind } = body;
   await projectService.assertAccess(projectId, userId, "editor");
   const frozen = await freeze(projectId, body);
   const inputHash = hashInput(kind, frozen.input);
@@ -264,7 +264,7 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
     const row = await db.transaction(async (tx) => {
       const input = sourceVersionId === null ? frozen.input : { ...frozen.input, videoKey: await openVideoUpload(projectId, userId, deadlineAt) };
       const inserted = await timelineExecutionRepo.insert(
-        { projectId, spaceId, actorUserId: userId, kind, engine: frozen.engine, actionId, input, inputHash, deadlineAt, origin },
+        { projectId, spaceId, actorUserId: userId, kind, engine: frozen.engine, actionId, input, inputHash, deadlineAt, origin: "web_animation_space" },
         tx,
       );
       if (inserted === null) throw new InsertLost();

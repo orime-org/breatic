@@ -8,7 +8,7 @@ import { apiGet, apiPost, request, runOnceRequest } from '@web/data/api/request'
 import type { ApiEnvelope } from '@web/data/api/types';
 
 /** What a Motion Space submits: one kinded request, keyed by the Project. */
-export type WebAnimationAcceptBody = Extract<z.input<typeof WebAnimationExecutionRequestSchema>, { kind: string }> & { projectId: string };
+export type WebAnimationAcceptBody = z.input<typeof WebAnimationExecutionRequestSchema> & { projectId: string };
 
 /** A request as a Motion Space builds it, before the Project, Space and action are added. */
 export type WebAnimationAcceptRequest = WebAnimationAcceptBody extends infer Body
