@@ -27,6 +27,8 @@ type Sync = (jobId: string, answer: shared.VideoPresentationPrepareAnswer) => Pr
 let pg: ReturnType<typeof createPgClient>;
 let publicUrl: (key: string) => string;
 const ACTOR = "6061c056-f758-47c1-9527-8495ecba60e3";
+/** The source's colour inputs the plan's probe facts carry. */
+const COLOR = { matrix: "bt601", transfer: "bt709", primaries: "bt470bg", range: "tv", chromaLocation: "left" };
 const price = { containerClass: "MiniToolContainerStd4", size: { vcpu: 4, memory_gib: 12, disk_gb: 20 }, prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 } };
 
 beforeAll(async () => {
@@ -76,11 +78,15 @@ function answer(w: World, fields: Partial<Record<keyof shared.VideoPresentationP
     sourceBinding: { storageKey: w.key, sourceFingerprint: w.source.bundle.sourceFingerprint }, presentation: null,
     preparation: { targetPolicyVersion: 1, jobId: w.job, stage: "encode", failure: null },
     capability: { token: "token", deadlineAt: Date.now() + 3_600_000 },
-    plan: { route: "encode", stages: videoCarrierRouteStages("encode"), toolInputId, planSha256 },
+    plan: {
+      route: "encode", stages: videoCarrierRouteStages("encode"), toolInputId, planSha256,
+      content: w.source.bundle.plan, display: w.source.bundle.display,
+      source: { color: COLOR, keyframes: w.source.bundle.toolSource.keyframes, editTier: null, alpha: false }, editStorageKey: null,
+    },
     work: { kind: "encode", chunks: [{ start: 0, end: 1011 }] },
     units: { [`video-presentation:${w.job}:chunk:0`]: { state: "done", attempt: 1, attempts: [{ attempt: 1, jobId: w.chunk, state: "done", usageRecorded: true }] } },
     // §91 D3b-1: the frozen carrier encode parameters.
-    frozen: { pricing: { basic: { ...price, containerClass: "MediaContainer" }, standard4: price }, actorUserId: ACTOR, projectId: null, carrier: { crf: 18, preset: "medium", maxShortSide: 1080 } },
+    frozen: { pricing: { basic: { ...price, containerClass: "MediaContainer" }, standard4: price }, actorUserId: ACTOR, projectId: null, carrier: { crf: 18, preset: "medium", maxShortSide: 1080 }, edit: { crf: 15, preset: "medium" } },
     ...fields,
   });
 }
