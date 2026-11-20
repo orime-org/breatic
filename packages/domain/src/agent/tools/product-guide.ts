@@ -2001,8 +2001,8 @@ export function renderProductGuide(): string {
       "when the upload is done. One Cmd+Z takes the whole paste or drop away, boxes included, and redo brings " +
       "it back without uploading again. An upload that fails turns the box red with the reason, with " +
       `${quoted(t("spaces.document.media.retry"))} when trying again can help, and ` +
-      `${quoted(t("spaces.document.media.remove"))}. If the person uploading closes the page before it is ` +
-      `done, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
+      `${quoted(t("spaces.document.media.remove"))}. If the uploader closes the page while it is being ` +
+      `sent, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
       `${quoted(t("spaces.document.media.remove"))} it. What cannot be pasted (a canvas node with nothing in ` +
       "it yet, an address the page cannot fetch) is left out, and a message says how many. Hovering a picture, video or " +
       "audio, or clicking it, shows a row of icons above it (under it in a table cell at the view's top): " +
