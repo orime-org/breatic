@@ -50,6 +50,7 @@ import {
   sessionCookieName,
   loadLocales,
   getMembershipLimits,
+  getStorageConfig,
 } from "@breatic/core";
 import { assetRepo } from "@breatic/domain";
 import { signSessionToken, UploadHttpError } from "@breatic/shared";
@@ -57,7 +58,6 @@ import { MINI_TOOLS, mostOutputsOf } from "@breatic/shared/mini-tools";
 import { openCalls, opensByKey, resetOpenDouble, setOpenMode } from "../helpers/ingest-open-double.js";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -132,7 +132,6 @@ async function account(filledBytes = 0): Promise<{
   if (filledBytes > 0) await register(studioId, userId, crypto.randomBytes(32).toString("hex"), filledBytes);
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  await mirrorAllInDirectory(sql);
   return { userId, studioId, projectId, cookie: `${sessionCookieName()}=${token}` };
 }
 
@@ -258,6 +257,32 @@ describe("the batch form of the upload ticket", () => {
       "hit",
       "ticket",
     ]);
+  });
+
+  // Spec R-03 (inner#1968 3.11): a batch costs nothing, so a studio with no
+  // credits is answered tile by tile and nothing is held or charged.
+  it("R-03 answers a new tile, a dedup hit and an oversized tile in order, holding and charging nothing", async () => {
+    const a = await account();
+    await sql`UPDATE users SET membership_tier = 'pro' WHERE id = ${a.userId}`;
+    const hit = crypto.randomBytes(32).toString("hex");
+    await register(a.studioId, a.userId, hit, TILE_BYTES);
+    const oversized = { ...tile(), size: getStorageConfig().upload.max_upload_bytes + 1 };
+
+    const res = await batch(a.cookie, gridBody(a.projectId, [tile(), tile(hit), oversized]));
+
+    expect(res.status).toBe(200);
+    const { data } = (await res.json()) as { data: { items: Item[] } };
+    expect(data.items).toHaveLength(3);
+    expect(isOpened(data.items[0]!)).toBe(true);
+    expect(data.items[1]!.alreadyExists).toBe(true);
+    expect(data.items[2]!.refused).toBeDefined();
+    const [counts] = await sql<{ tasks: number; holds: number; charges: number }[]>`
+      SELECT
+        (SELECT count(*)::int FROM tasks WHERE user_id = ${a.userId}) AS tasks,
+        (SELECT count(*)::int FROM credit_holds WHERE actor_user_id = ${a.userId}) AS holds,
+        (SELECT count(*)::int FROM credit_charge_requests WHERE actor_user_id = ${a.userId}) AS charges
+    `;
+    expect(counts).toEqual({ tasks: 0, holds: 0, charges: 0 });
   });
 
   it.each([

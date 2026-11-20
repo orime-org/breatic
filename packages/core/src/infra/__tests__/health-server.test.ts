@@ -39,16 +39,11 @@ async function fetchJson(port: number, path: string) {
   return { status: res.status, body };
 }
 
-function pickPort(): number {
-  // 0 → kernel assigns; we listen then ask AddressInfo for the
-  // real port. Avoids cross-test port collisions in CI.
-  return 0;
-}
-
 describe("startHealthServer", () => {
   it("returns 200 + status=ok when every check resolves truthy", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [
         { name: "pg", check: async () => true },
@@ -72,7 +67,8 @@ describe("startHealthServer", () => {
 
   it("returns 503 + status=fail when any check resolves falsy", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [
         { name: "pg", check: async () => true },
@@ -90,26 +86,10 @@ describe("startHealthServer", () => {
     await stop();
   });
 
-  it("reports a failing informational check without making the instance unhealthy", async () => {
-    const { server, stop } = startHealthServer({
-      port: pickPort(),
-      serviceName: "test",
-      checks: [
-        { name: "pg", check: async () => true },
-        { name: "global_api", informational: true, check: async () => false },
-      ],
-    });
-    await new Promise((r) => server.once("listening", r));
-    const port = (server.address() as AddressInfo).port;
-    const { status, body } = await fetchJson(port, "/healthz");
-    expect(status).toBe(200);
-    expect(body).toMatchObject({ status: "ok", checks: { global_api: { ok: false } } });
-    await stop();
-  });
-
   it("returns 503 + per-check timeout when a check hangs past the timeout window", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [
         {
@@ -136,7 +116,8 @@ describe("startHealthServer", () => {
 
   it("returns 503 + error tag when a check throws", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [
         {
@@ -165,7 +146,8 @@ describe("startHealthServer", () => {
 
   it("returns 404 for /metrics when no onMetrics hook is supplied", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [{ name: "pg", check: async () => true }],
     });
@@ -178,7 +160,8 @@ describe("startHealthServer", () => {
 
   it("serves /metrics as 200 text when an onMetrics hook is supplied", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [{ name: "pg", check: async () => true }],
       onMetrics: async () => "http_requests_total 1\ndb_up 1\n",
@@ -192,5 +175,17 @@ describe("startHealthServer", () => {
     expect(text).toContain("http_requests_total 1");
     expect(text).toContain("db_up 1");
     await stop();
+  });
+
+  it("listens only on the host it is given, and on every address without one", async () => {
+    const pinned = startHealthServer({ port: 0, host: "127.0.0.1", serviceName: "test", checks: [] });
+    await new Promise((r) => pinned.server.once("listening", r));
+    expect((pinned.server.address() as AddressInfo).address).toBe("127.0.0.1");
+    await pinned.stop();
+
+    const open = startHealthServer({ port: 0, serviceName: "test", checks: [] });
+    await new Promise((r) => open.server.once("listening", r));
+    expect((open.server.address() as AddressInfo).address).toBe("::");
+    await open.stop();
   });
 });

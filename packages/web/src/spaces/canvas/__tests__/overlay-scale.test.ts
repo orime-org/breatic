@@ -76,10 +76,10 @@ describe('countsColumnOffset', () => {
   });
 });
 
-// The column's four cells stack against each other. Once the canvas has
-// shrunk them past the smallest size a target may be, aiming at one of them is
-// aiming at all four — so the three ended states give up their cells rather
-// than shrink into slivers, and the running one keeps its own at every zoom.
+// The column's cells stack against each other. Once the canvas has shrunk
+// them past the smallest size a target may be, aiming at one of them is aiming
+// at all of them — so the three ended states give up their cells rather than
+// shrink into slivers, and the running and queued ones keep theirs at every zoom.
 describe('whether a counts cell still meets the target minimum', () => {
   it('meets it while the cell holds its constant screen size', () => {
     expect(cellMeetsTargetSize(1)).toBe(true);

@@ -44,11 +44,10 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 import { initCore, ForbiddenError, loadLocales, db } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import { openPaymentSource } from "./payment-source.js";
 
@@ -122,7 +121,6 @@ async function seedTeamStudio(userId: string): Promise<string> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${id}, ${userId}, 'admin')
   `;
-  await mirrorInDirectory(sql, id);
   return id;
 }
 

@@ -30,7 +30,6 @@ vi.mock("ai", () => ({
 
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 import type { Hono } from "hono";
 import {
   env,
@@ -42,11 +41,12 @@ import {
   loadLocales,
   sessionCookieName,
   setSession,
+  taskEventsStreamKey,
   timelineExecutionRepo,
   type Redis,
 } from "@breatic/core";
 import { webAnimationSourceRepo } from "@breatic/domain";
-import { extractPromptText, readSignedPayload, t } from "@breatic/shared";
+import { extractPromptText, readSignedPayload, t, timelineSpaceDocName } from "@breatic/shared";
 import { decodePreviewToken } from "@breatic/shared/space-content";
 import type { TimelineExecution } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -126,7 +126,6 @@ async function seedUser(): Promise<Member & { studioId: string }> {
     VALUES (${user!.id}, ${`tlx-s-${crypto.randomBytes(8).toString("hex")}`}, 'personal', 'Personal') RETURNING id
   `;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')`;
-  await mirrorInDirectory(sql, studio!.id);
   return { userId: user!.id, studioId: studio!.id, cookie: await sessionFor(user!.id) };
 }
 
@@ -294,14 +293,20 @@ async function succeed(execution: TimelineExecution): Promise<{ id: string }> {
 }
 
 /**
- * The space-tasks signals one Space received, after giving late ones time to arrive.
+ * What one Timeline Space was told, after giving late messages time to arrive: the changes on the task-events stream
+ * for its document, and the space-tasks signals on its Project's channel.
  * @param projectId - The Project.
  * @param spaceId - The Space.
- * @returns Them.
+ * @returns Both.
  */
-async function signalsFor(projectId: string, spaceId: string): Promise<Record<string, unknown>[]> {
+async function signalsFor(projectId: string, spaceId: string): Promise<{ doc: Record<string, unknown>[]; meta: Record<string, unknown>[] }> {
   await new Promise((resolve) => setTimeout(resolve, 300));
-  return signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
+  const docName = timelineSpaceDocName(projectId, spaceId);
+  const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
+    .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
+    .filter((event) => event.docName === docName);
+  const meta = signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
+  return { doc, meta };
 }
 
 /**
@@ -600,9 +605,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
       expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ id: row.id, status: "cancelled" });
       expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("cancelled");
       expect(await holdsOf(fx.studioId)).toEqual([]);
-      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([
-        { type: "project-space-tasks:changed", projectId: fx.projectId, spaceId: fx.spaceId, ts: expect.any(Number) },
-      ]);
+      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual({ doc: [{ type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) }], meta: [] });
     },
   );
 
@@ -622,13 +625,12 @@ describe("POST /timeline/executions/:id/cancel", () => {
     const row = await accepted(fx);
     await cancel(fx.editor.cookie, row.id);
     const ended = await timelineExecutionRepo.findById(row.id);
-    await signalsFor(fx.projectId, fx.spaceId);
-    signals.length = 0;
+    const told = await signalsFor(fx.projectId, fx.spaceId);
     const again = await cancel(fx.editor.cookie, row.id);
     expect(again.status).toBe(200);
     expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(ended);
     expect(await timelineExecutionRepo.findById(row.id)).toEqual(ended);
-    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
+    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual(told);
   });
 
   it("refuses a viewer with 403 and leaves the row in place", async () => {

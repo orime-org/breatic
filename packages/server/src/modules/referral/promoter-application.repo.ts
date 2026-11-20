@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { and, desc, eq, isNull, sql } from "drizzle-orm";
-import { db, promoterApplications, referralCodes, studioDirectory, users } from "@breatic/core";
+import { db, promoterApplications, referralCodes, studioMembers, studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
 export type PromoterApplicationStatus = "pending" | "approved" | "rejected";
@@ -206,11 +206,11 @@ export async function findApplicationDetail(id: string): Promise<ApplicationDeta
       id: promoterApplications.id,
       userId: promoterApplications.userId,
       email: users.email,
-      // The personal Studio may live in any region; the global directory names it (inner#1955).
       personalStudioName: sql<string | null>`(
-        select ${studioDirectory.name} from ${studioDirectory}
-        where ${studioDirectory.adminUserId} = ${promoterApplications.userId}
-          and ${studioDirectory.type} = 'personal' and ${studioDirectory.deletedAt} is null
+        select ${studios.name} from ${studios}
+        join ${studioMembers} on ${studioMembers.studioId} = ${studios.id}
+        where ${studioMembers.userId} = ${promoterApplications.userId} and ${studioMembers.role} = 'admin'
+          and ${studios.type} = 'personal' and ${studios.deletedAt} is null
         limit 1)`,
       status: promoterApplications.status,
       country: promoterApplications.country,

@@ -4,8 +4,7 @@
 import { fetchEventSource } from '@microsoft/fetch-event-source';
 import { getLocale, t } from '@breatic/shared';
 
-import { ensureFreshIdentity } from '@web/data/api/identity-renewal';
-import { apiBaseForRequest, getRegionConfig } from '@web/data/api/regions';
+import { API_BASE_PATH } from '@web/data/api/base-path';
 import { checkStaleRelease } from '@web/data/deployment/stale-release';
 
 /** The content-type of a stream that opened. Anything else is an answer. */
@@ -66,11 +65,16 @@ export class StreamRefusedError extends Error {
    * @param fromServer - The message came out of our own envelope, which is
    *   what makes it a sentence written for this user rather than one this
    *   file supplied because the refusal needed to carry something
+   * @param reason - The server's `error.reason`, when it marked the refusal
+   * @param details - Every field of the server's `error` body, for refusals
+   *   that carry more than a reason (a spend limit's scope, limit and reset)
    */
   constructor(
     readonly status: number,
     message: string,
     readonly fromServer: boolean,
+    readonly reason?: string,
+    readonly details?: Readonly<Record<string, unknown>>,
   ) {
     super(message);
     this.name = 'StreamRefusedError';
@@ -95,12 +99,14 @@ async function readEnvelopeOrOpen(response: Response): Promise<void> {
 
   let message: string | undefined;
   let reason: string | undefined;
+  let details: Readonly<Record<string, unknown>> | undefined;
   try {
     const body = (await response.json()) as
-      | { error?: { message?: string; reason?: string } }
+      | { error?: { message?: string; reason?: string } & Record<string, unknown> }
       | undefined;
     message = body?.error?.message;
     reason = body?.error?.reason;
+    details = body?.error;
   } catch {
     // A proxy answering with plain text, or a truncated body — there is
     // nothing of ours to read, so fall through to the generic message.
@@ -116,6 +122,8 @@ async function readEnvelopeOrOpen(response: Response): Promise<void> {
     response.status,
     message ?? t('server.error.internal'),
     message !== undefined,
+    reason,
+    details,
   );
 }
 
@@ -137,7 +145,7 @@ function classify(err: unknown, opened: boolean): Error {
 }
 
 interface SseOptions<TEvent> {
-  /** Endpoint relative to the API base (or an absolute URL). */
+  /** Endpoint relative to `API_BASE_PATH` (or an absolute URL). */
   url: string;
   /** POST body sent with the open request. */
   body?: unknown;
@@ -164,13 +172,12 @@ interface SseOptions<TEvent> {
  *   - `POST /chat/message` — Agent chat token stream
  *   - `POST /mini-tools/text` — text mini-tool token stream
  *
- * Both are relative: this wrapper puts them under `apiBaseForRequest`, the same
- * choice of base the axios instance makes, so the two transports cannot drift apart.
+ * Both are relative: this wrapper puts them under `API_BASE_PATH`, the same
+ * prefix the axios instance uses, so the two transports cannot drift apart.
  *
- * Auth: `credentials: 'include'` makes the browser attach the httpOnly
- * cookies on the request: the session cookie for the global region, the
- * identity token cookie for any other region, made fresh first. No Bearer
- * token is read from JS.
+ * Auth: `credentials: 'include'` makes the browser attach the
+ * httpOnly session cookie on the request (2026-05-26
+ * cookie migration). No Bearer token is read from JS.
  *
  * Throws an immediate error if 4xx auth fails; otherwise retries on
  * transient network errors (handled by fetch-event-source defaults).
@@ -178,7 +185,7 @@ interface SseOptions<TEvent> {
  * Caller controls cancellation via an `AbortController` passed as
  * `signal` — closing the stream when the user clicks Abort.
  * @param root0 - SSE connection options.
- * @param root0.url - Endpoint relative to the API base, or an absolute URL.
+ * @param root0.url - Endpoint relative to `API_BASE_PATH`, or an absolute URL.
  * @param root0.body - POST body sent with the open request.
  * @param root0.parseEvent - Parses each `data:` payload, with its frame's event name, into a typed event, or null to skip.
  * @param root0.onEvent - Invoked for every successfully parsed event.
@@ -196,15 +203,13 @@ export async function sseStream<TEvent>({
   onError,
   signal,
 }: SseOptions<TEvent>): Promise<void> {
-  const fullUrl = url.startsWith('http') ? url : `${apiBaseForRequest({ url, data: body }, getRegionConfig())}${url}`;
+  const fullUrl = url.startsWith('http') ? url : `${API_BASE_PATH}${url}`;
 
   // Set once the response turned out to be a stream, which is what separates
   // "never reached the server" from "died on the way".
   let opened = false;
 
   try {
-    // A stream does not go through the axios retry on `identity_expired`.
-    await ensureFreshIdentity();
     await fetchEventSource(fullUrl, {
       method: 'POST',
       headers: {

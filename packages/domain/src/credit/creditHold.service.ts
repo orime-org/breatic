@@ -18,18 +18,18 @@
 
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as creditLotRepo from "@domain/credit/creditLot.repo.js";
+import * as spendLimitRepo from "@domain/credit/spendLimit.repo.js";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
-import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, type CreditPositionMicro } from "@domain/credit/credit-math.js";
-import { createQueue, db, env, getNodeTaskConfig, getRegionsConfig, isGlobalRegion, isRegionUnavailable } from "@breatic/core";
-import { globalApi } from "@domain/region/global-api.js";
+import { fromMicroCredits, positionFrom, serializeCreditPosition, toChargeMicro, toMicroCredits, type CreditPositionMicro } from "@domain/credit/credit-math.js";
+import { db, env } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import type { ProjectCreditsView } from "@breatic/shared";
+import { parseCreditDecimal, quantizeQuotedCredits, type CreditDecimal, type ProjectCreditsView } from "@breatic/shared";
+import { getSpendableCredits } from "@domain/credit/creditLot.service.js";
 
-/** One hold asked for, against a Studio named directly or through its Project. */
-export type HoldRequest = HoldFields & ({ studioId: string } | { projectId: string });
-
-/** What every hold carries. */
-export interface HoldFields {
+/** One hold asked for. */
+export interface HoldRequest {
+  /** The project the work runs in; its studio's credits are held. */
+  projectId: string;
   /** Who started the work. */
   actorUserId: string;
   /** The run's task id. Used once. */
@@ -40,8 +40,137 @@ export interface HoldFields {
   ttlMs: number;
 }
 
-/** What an admission came to: admitted, or refused with the studio's position. */
-export type ReserveOutcome = { ok: true } | ({ ok: false; studioId: string } & ProjectCreditsView);
+/** A monthly spend limit an admission would pass (inner#1968, design 3.10). */
+export interface SpendCapHit {
+  /** The person's own limit, or the studio's total. */
+  scope: "member" | "studio";
+  /** The limit, as a decimal string. */
+  limit: string;
+  /** The next UTC month's first instant, as ISO text. */
+  resetsAt: string;
+}
+
+/** What an admission came to: admitted, refused by a spend limit, or refused with the studio's position. */
+export type ReserveOutcome =
+  | { ok: true }
+  | { ok: false; cap: SpendCapHit }
+  | ({ ok: false; studioId: string; cap?: undefined } & ProjectCreditsView);
+
+/**
+ * The UTC calendar month an instant falls in.
+ * @param at - The instant.
+ * @returns Its first instant and the next month's.
+ */
+function utcMonthOf(at: Date): { start: Date; next: Date } {
+  return {
+    start: new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth(), 1)),
+    next: new Date(Date.UTC(at.getUTCFullYear(), at.getUTCMonth() + 1, 1)),
+  };
+}
+
+/** What a studio spent this UTC month, in millionths: in total and per person. */
+export interface MonthSpent {
+  month: { start: Date; next: Date };
+  total: bigint;
+  byActor: Map<string, bigint>;
+}
+
+/**
+ * What a studio spent this UTC month: every charge request filed against it
+ * this month, pending or settled, plus every counted hold no pending request
+ * has taken over (design 3.10).
+ * @param studioId - The studio.
+ * @param tx - Optional transaction, so an admission sums under its lock.
+ * @returns The month, the total and each person's part.
+ */
+export async function monthSpent(studioId: string, tx?: DbTx): Promise<MonthSpent> {
+  const month = utcMonthOf(new Date());
+  const byActor = new Map<string, bigint>();
+  let total = 0n;
+  for (const { actorUserId, amount } of await creditHoldRepo.sumSpentByActor(studioId, month.start, month.next, tx)) {
+    const micro = toMicroCredits(amount);
+    byActor.set(actorUserId, (byActor.get(actorUserId) ?? 0n) + micro);
+    total += micro;
+  }
+  return { month, total, byActor };
+}
+
+/**
+ * The monthly limit that applies to one person: their own when an admin set
+ * one (which may be no limit at all), otherwise the studio's per-person default.
+ * @param limits - The studio's limits.
+ * @param limits.memberDefault - The per-person default; null when unset.
+ * @param override - The person's own limit, if an admin set one.
+ * @param override.monthlyCredits - Its amount; null for no limit.
+ * @returns The amount, or null when no limit applies.
+ */
+export function effectiveMemberLimit(limits: { memberDefault: string | null }, override: { monthlyCredits: string | null } | null): string | null {
+  return override === null ? limits.memberDefault : override.monthlyCredits;
+}
+
+/**
+ * The limit an admission would pass. With an estimate, spent plus the estimate
+ * must stay within each limit, judged under the studio's debt lock the caller
+ * holds, since the admission then writes its hold; without one (work admitted
+ * on a balance above zero, which writes nothing), spent must be below it, read
+ * once. The studio's total is named when both are passed: raising one
+ * person's limit would not let it through.
+ * @param studioId - The studio.
+ * @param actorUserId - Who starts the work.
+ * @param estimate - What it will hold, in millionths; null when it holds nothing.
+ * @param tx - The admission's transaction, when it holds the lock.
+ * @returns The limit passed, or null when the work fits.
+ */
+async function spendCapHit(studioId: string, actorUserId: string, estimate: bigint | null, tx?: DbTx): Promise<SpendCapHit | null> {
+  const limits = await spendLimitRepo.getStudioLimits(studioId, tx);
+  const memberLimit = effectiveMemberLimit(limits, await spendLimitRepo.findOverride(studioId, actorUserId, tx));
+  if (memberLimit === null && limits.studioMonthly === null) return null;
+  const spent = await monthSpent(studioId, tx);
+  /**
+   * Whether spending this far passes a limit.
+   * @param already - What is spent.
+   * @param limit - The limit.
+   * @returns True when the work does not fit.
+   */
+  const passes = (already: bigint, limit: string): boolean => {
+    const cap = toMicroCredits(limit);
+    return estimate === null ? already >= cap : already + estimate > cap;
+  };
+  const resetsAt = spent.month.next.toISOString();
+  if (limits.studioMonthly !== null && passes(spent.total, limits.studioMonthly)) {
+    return { scope: "studio", limit: fromMicroCredits(toMicroCredits(limits.studioMonthly)), resetsAt };
+  }
+  if (memberLimit !== null && passes(spent.byActor.get(actorUserId) ?? 0n, memberLimit)) {
+    return { scope: "member", limit: fromMicroCredits(toMicroCredits(memberLimit)), resetsAt };
+  }
+  return null;
+}
+
+/** Why work admitted on a balance above zero may not start. */
+export type BalanceRefusal =
+  | { reason: "spend_cap"; cap: SpendCapHit }
+  | { reason: "no_credits"; studioId: string; spendable: CreditDecimal };
+
+/**
+ * The one admission of work that holds nothing (chat turns, text tools,
+ * Timeline executions): the spend limits first, as every admission judges them
+ * (design 3.10), passing while spent is below each limit, then a balance that
+ * reaches `required`. It writes nothing, so it reads the limits, this month's
+ * spending and the balance once, with no lock.
+ * @param projectId - The project the work belongs to; its studio pays.
+ * @param actorUserId - Who starts it.
+ * @param required - Credits the studio's balance must at least reach.
+ * @returns Why it may not start, or null when it may; null with payments off.
+ * @throws {NotFoundError} When the project has no live studio.
+ */
+export async function judgeBalanceAdmission(projectId: string, actorUserId: string, required: number): Promise<BalanceRefusal | null> {
+  if (!env.PAYMENT_ENABLED) return null;
+  const studioId = await resolveOwnerStudioId(projectId);
+  const cap = await spendCapHit(studioId, actorUserId, null);
+  if (cap !== null) return { reason: "spend_cap", cap };
+  const spendable = await getSpendableCredits(studioId);
+  return parseCreditDecimal(spendable) >= quantizeQuotedCredits(required) ? null : { reason: "no_credits", studioId, spendable };
+}
 
 /**
  * Take the studio's debt lock and read its position under it.
@@ -74,32 +203,12 @@ function expiryFor(ttlMs: number): Date {
  */
 export async function reserveCredits(request: HoldRequest): Promise<ReserveOutcome> {
   if (!env.PAYMENT_ENABLED) return { ok: true };
-  // The Project is this region's; the credits are the global region's
-  // (inner#1955). The Studio is read here and the hold taken there.
-  const studioId = "studioId" in request ? request.studioId : await resolveOwnerStudioId(request.projectId);
-  const hold = {
-    studioId,
-    actorUserId: request.actorUserId,
-    referenceId: request.referenceId,
-    amount: request.amount,
-    ttlMs: request.ttlMs,
-  };
-  return globalApi().reserveCredits(hold);
-}
-
-/**
- * Take a hold in the region that holds the books.
- * @param request - The hold, against its Studio.
- * @returns Admitted, or refused with the Studio's position.
- */
-export async function reserveHere(
-  request: HoldFields & { studioId: string },
-): Promise<ReserveOutcome> {
-  if (!env.PAYMENT_ENABLED) return { ok: true };
-  const { studioId } = request;
+  const studioId = await resolveOwnerStudioId(request.projectId);
   const amount = toChargeMicro(request.amount);
   return db.transaction(async (tx) => {
     const position = await lockedPosition(studioId, tx);
+    const cap = await spendCapHit(studioId, request.actorUserId, amount, tx);
+    if (cap !== null) return { ok: false, cap };
     if (position.available < amount) return { ok: false, studioId, ...serializeCreditPosition(position) };
     await creditHoldRepo.insertHold(
       {
@@ -115,154 +224,24 @@ export async function reserveHere(
   });
 }
 
-/** The queue that retries, in a region outside the global one, a release, abandon or extension the global region could not take (inner#1955). */
-export const CREDIT_HOLD_RELEASE_QUEUE = "credit-hold-release";
-
-/** A queued release, an abandon when it names the hold's Studio and actor, or an extension when it names a new expiry. */
-export interface HoldReleaseJob {
-  referenceId: string;
-  abandon?: { studioId: string; actorUserId: string };
-  /** An extension to this ISO instant rather than a release. */
-  extendUntil?: string;
-}
-
-/**
- * How a queued cleanup is named and keyed. An extension carries its target
- * in its id, so it never stands in for the hold's release or a later
- * extension: the queue ignores a job whose id it already holds.
- * @param job - The cleanup.
- * @returns The job's name and id.
- */
-function queuedAs(job: HoldReleaseJob): { name: "release" | "abandon" | "extend"; jobId: string } {
-  if (job.extendUntil !== undefined) return { name: "extend", jobId: `${job.referenceId}:extend:${Date.parse(job.extendUntil)}` };
-  return { name: job.abandon === undefined ? "release" : "abandon", jobId: job.referenceId };
-}
-
-let releaseQueue: ReturnType<typeof createQueue> | null = null;
-
 /**
  * Release a hold. Releasing one that is gone or already released does nothing.
- * Outside the global region a release that finds the global region
- * unavailable is queued and retried, so the Studio's credits are freed within
- * one retry interval of the global region coming back.
  * @param referenceId - Its key.
- * @throws {Error} When the database fails, the global region refuses, or the retry cannot be queued.
+ * @throws {Error} When the database fails.
  */
 export async function releaseHold(referenceId: string): Promise<void> {
-  if (!env.PAYMENT_ENABLED) return;
-  await orQueue(() => globalApi().releaseHold(referenceId), { referenceId });
-}
-
-/**
- * The retry a queued hold cleanup carries: one try every interval for as long
- * as a hold lives, so the cleanup lands within one interval of the global
- * region coming back while the hold still counts.
- * @returns The attempts and the fixed wait between them.
- */
-export function holdCleanupRetry(): { attempts: number; backoff: { type: "fixed"; delay: number } } {
-  const delay = getRegionsConfig().hold_cleanup_retry_interval_ms;
-  return { attempts: Math.ceil(getNodeTaskConfig().default_budget_ms / delay) + 1, backoff: { type: "fixed", delay } };
-}
-
-/**
- * Run a cleanup of a hold through the global region; outside the global
- * region, one that finds the global region unavailable is queued and retried
- * while the hold lives (see {@link holdCleanupRetry}).
- * @param call - The cleanup.
- * @param job - The same cleanup as a queued job.
- * @returns Once done or queued.
- * @throws {Error} When the global region refuses, or the retry cannot be queued.
- */
-async function orQueue(call: () => Promise<void>, job: HoldReleaseJob): Promise<void> {
-  try {
-    await call();
-  } catch (err) {
-    if (isGlobalRegion(env) || !isRegionUnavailable(err)) throw err;
-    releaseQueue ??= createQueue(CREDIT_HOLD_RELEASE_QUEUE);
-    const { name, jobId } = queuedAs(job);
-    await releaseQueue.add(name, job, {
-      ...holdCleanupRetry(),
-      removeOnComplete: true,
-      removeOnFail: true,
-      // A retry keeps every earlier stack trace unless told otherwise, and
-      // the job hash is rewritten on each of its many tries.
-      stackTraceLimit: 1,
-      jobId,
-    });
-  }
-}
-
-/**
- * Run one queued cleanup; a throw makes the queue retry it.
- * @param job - The cleanup.
- * @returns Once released or given up.
- * @throws {Error} When the global region still does not take it.
- */
-export async function runQueuedHoldRelease(job: HoldReleaseJob): Promise<void> {
-  if (job.extendUntil !== undefined) await globalApi().extendHold(job.referenceId, job.extendUntil);
-  else if (job.abandon === undefined) await globalApi().releaseHold(job.referenceId);
-  else await globalApi().abandonHold({ ...job.abandon, referenceId: job.referenceId });
-}
-
-/**
- * Give up a hold after its reserve call failed: the books may have taken it
- * and lost only the answer, or may still be taking it.
- * @param request - The hold that was asked for.
- * @returns Once the key can hold nothing, or the abandon is queued for retry.
- * @throws {NotFoundError} When the project has no live studio.
- * @throws {Error} When the global region refuses, or the retry cannot be queued.
- */
-export async function abandonHold(
-  request: Pick<HoldFields, "actorUserId" | "referenceId"> & ({ studioId: string } | { projectId: string }),
-): Promise<void> {
-  if (!env.PAYMENT_ENABLED) return;
-  const studioId = "studioId" in request ? request.studioId : await resolveOwnerStudioId(request.projectId);
-  const { actorUserId, referenceId } = request;
-  await orQueue(() => globalApi().abandonHold({ studioId, actorUserId, referenceId }), { referenceId, abandon: { studioId, actorUserId } });
-}
-
-/**
- * Give up a hold in the region that holds the books.
- * @param hold - The hold's Studio, actor and key.
- * @param hold.studioId - The Studio.
- * @param hold.actorUserId - Who started the work.
- * @param hold.referenceId - Its key.
- */
-export async function abandonHere(hold: { studioId: string; actorUserId: string; referenceId: string }): Promise<void> {
-  await creditHoldRepo.abandonHold(hold);
-}
-
-/**
- * Release a hold in the region that holds the books.
- * @param referenceId - Its key.
- */
-export async function releaseHere(referenceId: string): Promise<void> {
   await creditHoldRepo.releaseHold(referenceId);
 }
 
 /**
  * Keep a task's hold alive while its cost is looked up after delivery (inner#1743): moved to a later expiry, never an
- * earlier one; a released hold stays released. The hold lives in the global region (inner#1955); outside it an
- * extension that finds the global region unavailable is queued and retried like a release.
+ * earlier one; a released hold stays released.
  * @param referenceId - Its key, the task id.
  * @param until - The new expiry.
- * @returns Once extended or queued.
- * @throws {Error} When the global region refuses, or the retry cannot be queued.
- */
-export async function extendHold(referenceId: string, until: Date): Promise<void> {
-  const extendUntil = until.toISOString();
-  await orQueue(() => globalApi().extendHold(referenceId, extendUntil), { referenceId, extendUntil });
-}
-
-/**
- * Extend a hold in the region that holds the books.
- * @param referenceId - Its key.
- * @param until - The new expiry, as an ISO instant.
- * @returns Once written.
  * @throws {Error} When the database fails.
  */
-export async function extendHere(referenceId: string, until: string): Promise<void> {
-  await creditHoldRepo.extendHold(referenceId, new Date(until));
+export async function extendHold(referenceId: string, until: Date): Promise<void> {
+  await creditHoldRepo.extendHold(referenceId, until);
 }
 
 /**
@@ -272,15 +251,6 @@ export async function extendHere(referenceId: string, until: string): Promise<vo
  * @returns The three figures, in credits.
  */
 export async function getCreditPosition(studioId: string): Promise<ProjectCreditsView> {
-  return globalApi().getCreditPosition(studioId);
-}
-
-/**
- * A Studio's position read in the region that holds the books.
- * @param studioId - The studio.
- * @returns The three figures, in credits.
- */
-export async function positionHere(studioId: string): Promise<ProjectCreditsView> {
   return db.transaction(
     async (tx) => {
       const [lots, debt, held] = await Promise.all([

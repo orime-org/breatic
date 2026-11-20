@@ -24,7 +24,6 @@ import {
   getMembershipForUser,
   getMembershipLimits,
   getSubscriptionPlan,
-  studioDirectoryRepo,
 } from "@breatic/core";
 import {
   BILLING_PERIODS,
@@ -36,6 +35,7 @@ import {
 } from "@breatic/shared";
 
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 
 /**
@@ -56,21 +56,18 @@ export async function readAccountMembership(
   const subscription = selling
     ? await readStoredSubscriptionSummary(userId)
     : null;
-  const { tier, limits } = await getMembershipForUser(userId);
+  const { tier, limits, storageLimitBytes } = await getMembershipForUser(userId);
 
-  // Both count every region (inner#1955): team Studios as the creation quota
-  // counts them, storage as this region's own plus what the others reported.
-  const [teamStudios, storageHere, storageElsewhere] = await Promise.all([
-    studioDirectoryRepo.countTeamQuota(userId),
+  const [teamStudios, storageBytes] = await Promise.all([
+    studioRepo.countTeamStudiosAdministeredBy(userId),
     assetUsageService.accountStorageUsage(userId),
-    studioDirectoryRepo.sumUsageElsewhere(userId, env.REGION),
   ]);
-  const storageBytes = storageHere + storageElsewhere;
 
   return {
     tier,
     limits,
     usage: { teamStudios, storageBytes },
+    storageLimitBytes,
     catalog: COMPARABLE_MEMBERSHIP_TIERS.map((offered) => ({
       tier: offered,
       limits: getMembershipLimits(offered),

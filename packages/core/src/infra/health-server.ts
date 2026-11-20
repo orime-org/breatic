@@ -49,11 +49,6 @@ const CHECK_TIMEOUT_MS = 2000;
 export interface HealthCheck {
   name: string;
   check: () => Promise<boolean>;
-  /**
-   * Reported in the answer but never makes the instance unhealthy: for a
-   * dependency whose loss replacing this instance cannot fix.
-   */
-  informational?: boolean;
 }
 
 export interface HealthServerOptions {
@@ -62,6 +57,12 @@ export interface HealthServerOptions {
    * port (e.g. 1234 for collab WS).
    */
   port: number;
+  /**
+   * Address to listen on; every address when omitted, which is what an
+   * orchestrator probing the container needs. A test passes the address it
+   * connects to (#1478).
+   */
+  host?: string;
   /**
    * Service name tag forwarded to {@link HealthServerOptions.onEvent}
    * (`collab` / `worker`).
@@ -163,7 +164,7 @@ export function startHealthServer(opts: HealthServerOptions): {
   server: Server;
   stop: () => Promise<void>;
 } {
-  const { port, serviceName, checks, onEvent, onMetrics } = opts;
+  const { port, host, serviceName, checks, onEvent, onMetrics } = opts;
 
   const server = createServer((req, res) => {
     if (req.url === "/metrics" && onMetrics) {
@@ -191,7 +192,7 @@ export function startHealthServer(opts: HealthServerOptions): {
         let allOk = true;
         for (let i = 0; i < checks.length; i++) {
           checksMap[checks[i]!.name] = results[i]!;
-          if (!results[i]!.ok && checks[i]!.informational !== true) allOk = false;
+          if (!results[i]!.ok) allOk = false;
         }
         res.statusCode = allOk ? 200 : 503;
         res.setHeader("content-type", "application/json");
@@ -225,7 +226,7 @@ export function startHealthServer(opts: HealthServerOptions): {
     onEvent?.({ type: "listen_error", port, serviceName, err });
   });
 
-  server.listen(port, () => {
+  server.listen({ port, host }, () => {
     onEvent?.({ type: "listening", port, serviceName });
   });
 

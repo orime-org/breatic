@@ -7,7 +7,6 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { db, initCore, getHonouredTierForUser, getEnterpriseMembershipProfile, getMembershipReadingForUser, getMembershipForUser, getLimitsForStudio, getStudioStorageQuota, getMembershipLimits, getMembershipConfig, lockLimitsForUser } from "@breatic/core";
 import { tierLimitsSchema } from "@breatic/shared";
 import { waitUntilBlockedOn } from "./lock-probe.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
 const limits = { team_studios: 8, projects_per_studio: 20, concurrent_editors: 30, studio_members: 200, project_members: 80, storage_bytes: 1099511627776 };
@@ -22,7 +21,6 @@ async function account(tier: string): Promise<{ userId: string; studioId: string
   await sql`insert into users(id,email,membership_tier) values(${userId},${`${userId}@example.test`},${tier})`;
   await sql`insert into studios(id,created_by_user_id,slug,name,type) values(${studioId},${userId},${studioId},'Enterprise test','team')`;
   await sql`insert into studio_members(studio_id,user_id,role) values(${studioId},${userId},'admin')`;
-  await mirrorAllInDirectory(sql);
   return { userId, studioId };
 }
 
@@ -63,10 +61,10 @@ describe("enterprise membership unified reads", () => {
     expect(await getMembershipReadingForUser(userId)).toMatchObject({ storedTier: "enterprise", effectiveTier: "base", enterpriseState: "expired", expiresAt: timestamps.expiresAt, limits: configured, storageBytes: configured.storage_bytes, revision: 1, settlementProtected: false });
     expect(await getEnterpriseMembershipProfile(userId)).toMatchObject({ snapshot: { enterprise: { ...timestamps, entryTimezone: "UTC", revision: 1 } } });
     expect(await getHonouredTierForUser(userId)).toBe("base");
-    expect(await getMembershipForUser(userId)).toEqual({ tier: "base", limits: configured });
+    expect(await getMembershipForUser(userId)).toEqual({ tier: "base", limits: configured, storageLimitBytes: configured.storage_bytes });
     expect(await getLimitsForStudio(studioId)).toEqual(configured);
     expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(configured);
-    expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes });
+    expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes, enterprise: false });
   });
 
   it("reads ordinary account and Studio entitlements with database-valid non-RFC identities", async () => {
@@ -75,19 +73,18 @@ describe("enterprise membership unified reads", () => {
     await sql`insert into users(id,email,membership_tier) values(${userId},${`${userId}@example.test`},'pro')`;
     await sql`insert into studios(id,created_by_user_id,slug,name,type) values(${studioId},${userId},${studioId},'Legacy identity test','team')`;
     await sql`insert into studio_members(studio_id,user_id,role) values(${studioId},${userId},'admin')`;
-    await mirrorAllInDirectory(sql);
     const configured = getMembershipLimits("pro");
     expect(await getMembershipReadingForUser(userId)).toMatchObject({ subject: { accountId: userId }, storedTier: "pro", effectiveTier: "pro", limits: configured, enterpriseState: "ordinary", revision: null, expiresAt: null, settlementProtected: false });
     expect(await getHonouredTierForUser(userId)).toBe("pro");
     expect(await getLimitsForStudio(studioId)).toEqual(configured);
     expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(configured);
-    expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes });
+    expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes, enterprise: false });
   });
 
   it("does not impose management mailbox validation on ordinary entitlements", async () => {
     const { userId, studioId } = await account("pro");
     await sql`update users set email=${`legacy-mailbox-${userId}`} where id=${userId}`;
-    expect(await getMembershipForUser(userId)).toEqual({ tier: "pro", limits: getMembershipLimits("pro") });
+    expect(await getMembershipForUser(userId)).toEqual({ tier: "pro", limits: getMembershipLimits("pro"), storageLimitBytes: getMembershipLimits("pro").storage_bytes });
     expect(await getLimitsForStudio(studioId)).toEqual(getMembershipLimits("pro"));
   });
 
@@ -98,16 +95,16 @@ describe("enterprise membership unified reads", () => {
   ] as const)("reads configured safe-integer limits from %s through %s as %s", async (storedTier, effectiveTier, enterpriseState) => {
     const config = getMembershipConfig();
     const original = config.tiers[effectiveTier];
-    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER });
+    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER, running_tasks_per_user: 2147483648 });
     const { userId, studioId } = await account(storedTier);
     if (storedTier === "enterprise") await enterprise(userId, "2000-01-01T00:00:00Z", effectiveTier);
     config.tiers[effectiveTier] = configured;
     try {
       expect(await getMembershipReadingForUser(userId)).toMatchObject({ storedTier, effectiveTier, enterpriseState, limits: configured, storageBytes: configured.storage_bytes, settlementProtected: effectiveTier === "self_hosted" });
-      expect(await getMembershipForUser(userId)).toEqual({ tier: effectiveTier, limits: configured });
+      expect(await getMembershipForUser(userId)).toEqual({ tier: effectiveTier, limits: configured, storageLimitBytes: configured.storage_bytes });
       expect(await getLimitsForStudio(studioId)).toEqual(configured);
       expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(configured);
-      expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes });
+      expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: configured.storage_bytes, enterprise: false });
     } finally {
       config.tiers[effectiveTier] = original;
     }
@@ -129,14 +126,18 @@ describe("enterprise membership unified reads", () => {
     if (state === "deleted") await sql`update users set deleted_at=now() where id=${userId}`;
     await expect(getMembershipReadingForUser(userId)).rejects.toThrow(`No live account ${userId}`);
   });
+  // Since inner#1968 (design 3.6) the agreement also carries its
+  // running_tasks_per_user term (the column default here) and its storage_bytes
+  // caps storage.
   it("reads all negotiated limits while retaining the enterprise display and storage rules", async () => {
     const { userId, studioId } = await account("enterprise");
     await enterprise(userId, "2070-01-01T00:00:00Z");
+    const agreed = { ...limits, running_tasks_per_user: 10 };
     expect(await getHonouredTierForUser(userId)).toBe("enterprise");
-    expect(await getLimitsForStudio(studioId)).toEqual(limits);
-    expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(limits);
-    expect(await getMembershipForUser(userId)).toEqual({ tier: "enterprise", limits: null });
-    expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: null });
+    expect(await getLimitsForStudio(studioId)).toEqual(agreed);
+    expect(await db.transaction((tx) => lockLimitsForUser(userId, tx))).toEqual(agreed);
+    expect(await getMembershipForUser(userId)).toEqual({ tier: "enterprise", limits: null, storageLimitBytes: limits.storage_bytes });
+    expect(await getStudioStorageQuota(studioId)).toEqual({ adminUserId: userId, storageBytes: limits.storage_bytes, enterprise: true });
   });
   it.each(["base", "self_hosted"])("restores expired %s origin", async (fallback) => {
     const { userId, studioId } = await account("enterprise");
@@ -168,7 +169,6 @@ describe("enterprise membership unified reads", () => {
     await enterprise(from.userId, "2070-01-01T00:00:00Z");
     await sql`update studio_members set role='maintainer' where studio_id=${from.studioId} and user_id=${from.userId}`;
     await sql`insert into studio_members(studio_id,user_id,role) values(${from.studioId},${to.userId},'admin')`;
-    await sql`update studio_directory set admin_user_id=${to.userId} where studio_id=${from.studioId}`;
     expect(await getLimitsForStudio(from.studioId)).toEqual(getMembershipLimits("pro"));
     const legacy = await account("enterprise");
     expect(await getHonouredTierForUser(legacy.userId)).toBe("enterprise");

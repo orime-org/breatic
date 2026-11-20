@@ -49,6 +49,16 @@ export function rowById(
 }
 
 /**
+ * Whether a row has blocks indented under it. A pick that rebuilds the row
+ * with children of its own (a table, columns) would drop them.
+ * @param row - The row.
+ * @returns True when the row's container holds a nested group.
+ */
+export function holdsNestedBlocks(row: RowInDocument): boolean {
+  return row.node.type.name === 'blockContainer' && row.node.childCount > 1;
+}
+
+/**
  * Where a node stands in a document, by identity.
  * @param doc - The document.
  * @param node - The node.

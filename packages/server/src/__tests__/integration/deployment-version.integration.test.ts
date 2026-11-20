@@ -38,11 +38,9 @@ describe("internal deployment identity", () => {
     });
   });
 
-  it("refuses anonymous requests and region callers", async () => {
+  it("refuses anonymous requests", async () => {
     const anonymous = await call(running.baseUrl, path, { unsigned: true });
     expect(anonymous.status).toBe(401);
-    const region = await call(running.baseUrl, path, { admin: "region-test" });
-    expect(region.status).toBe(403);
   });
 
   it("does not mount the deployment endpoint on the public app", async () => {

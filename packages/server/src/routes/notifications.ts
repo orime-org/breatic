@@ -26,11 +26,12 @@
  */
 
 import { Hono } from "hono";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { notificationService } from "@server/modules";
+import { withResolvedRefs } from "@server/modules/notification/notification-refs.js";
 
 const route = new Hono<{ Variables: AuthVariables }>();
 
@@ -46,12 +47,14 @@ route.use(requireAuth);
 route.get("/", async (c) => {
   const user = c.get("user");
   const unreadOnly = c.req.query("unread") !== "false";
-  // Notifications store ids; the names they display are resolved at read
+  const list = unreadOnly
+    ? await notificationService.listUnread(user.id)
+    : await notificationService.listAll(user.id);
+  // Notifications store ids; the names they display are resolved here, at read
   // time, so a renamed studio or a changed @handle never leaves an old entry
   // pointing somewhere wrong. `resolved` sits INSIDE `data` because the
   // frontend's request helper unwraps the envelope and drops anything beside it.
-  // Other regions' notifications are merged in, each naming its region (inner#1955).
-  const data = await notificationService.listFeed(user.id, unreadOnly);
+  const data = await withResolvedRefs(list);
   return c.json({ data });
 });
 
@@ -61,8 +64,8 @@ route.get("/", async (c) => {
  */
 route.get("/count", async (c) => {
   const user = c.get("user");
-  const data = await notificationService.countFeed(user.id);
-  return c.json({ data });
+  const count = await notificationService.countUnread(user.id);
+  return c.json({ data: { count } });
 });
 
 /**
@@ -77,17 +80,14 @@ route.get("/count", async (c) => {
 // there. Marking read is the only thing the bell still does to a row of its
 // own — answering moved to the decision page.
 const notificationParamSchema = z.object({ id: z.string().uuid() });
-const notificationRegionSchema = z.object({ region: z.string().min(1).max(32).optional() });
 
 route.patch(
   "/:id/read",
   validate("param", notificationParamSchema),
-  validate("query", notificationRegionSchema),
   async (c) => {
     const user = c.get("user");
     const id = c.req.param("id");
-    // The bell names the region that holds each notification (inner#1955).
-    await notificationService.markReadIn(id, user.id, c.req.valid("query").region ?? null);
+    await notificationService.markRead(id, user.id);
     return c.json({ data: { ok: true } });
   },
 );
@@ -100,7 +100,7 @@ route.patch(
  */
 route.post("/read-all", async (c) => {
   const user = c.get("user");
-  const count = await notificationService.markAllReadEverywhere(user.id);
+  const count = await notificationService.markAllRead(user.id);
   return c.json({ data: { count } });
 });
 

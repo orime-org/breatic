@@ -27,7 +27,6 @@ import type { ChatTransport, UIMessageChunk } from 'ai';
 import { SSE_HEARTBEAT_MISSES_ALLOWED, getLocale } from '@breatic/shared';
 import type { AskUserResult } from '@breatic/shared';
 import { chatApi } from '@web/data/api/chat';
-import { ensureFreshIdentity } from '@web/data/api/identity-renewal';
 import type { StoredUiMessage } from '@web/data/api/chat';
 import { clearConsolidating, noteConsolidating } from '@web/stores/consolidating';
 import { chatWaiting } from '@web/stores/chat-waiting';
@@ -134,26 +133,20 @@ function sayWhenItAnswers(stream: ReadableStream<UIMessageChunk>, onAnswering: (
  * own, a run resumed after a card included: the server stores it as its own
  * row after the reply that asked.
  * @param conversationId - The conversation.
- * @param projectId - Its Project, whose region holds the run.
  * @returns The transport.
  */
-function transportFor(conversationId: string, projectId: string): ChatTransport<StoredUiMessage> {
+function transportFor(conversationId: string): ChatTransport<StoredUiMessage> {
   const wire = new DefaultChatTransport<StoredUiMessage>({
-    api: chatApi.streamPath(conversationId, projectId),
+    api: chatApi.streamPath(conversationId),
     // The session cookie says who is asking, and a cross-origin default would
     // leave it off wherever the API is not the page's own origin.
     credentials: 'include',
-    prepareReconnectToStreamRequest: async () => {
-      // The Project's region reads only the identity token, and a stream is
-      // not retried after an expired one (inner#1955).
-      await ensureFreshIdentity();
-      return {
-        api: chatApi.streamPath(conversationId, projectId),
-        credentials: 'include',
-        // What the interface is in, as every other request this app makes says.
-        headers: { 'Accept-Language': getLocale() },
-      };
-    },
+    prepareReconnectToStreamRequest: () => ({
+      api: chatApi.streamPath(conversationId),
+      credentials: 'include',
+      // What the interface is in, as every other request this app makes says.
+      headers: { 'Accept-Language': getLocale() },
+    }),
   });
   return {
     sendMessages: () => Promise.reject(new Error('A message is sent by stores/chat-live, not through the transport.')),
@@ -390,7 +383,7 @@ export function chatSessionFor(init: ChatSessionInit): Chat<StoredUiMessage> {
   const chat = new Chat<StoredUiMessage>({
     id: conversationId,
     messages: init.history,
-    transport: transportFor(conversationId, init.projectId),
+    transport: transportFor(conversationId),
     onData: (part) => {
       if (part.type === BEAT) {
         if (reading.has(conversationId)) void expectAnotherBeat(conversationId);

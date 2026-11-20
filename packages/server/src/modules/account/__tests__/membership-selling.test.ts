@@ -20,7 +20,6 @@ const { envRef } = vi.hoisted(() => ({ envRef: { PAYMENT_ENABLED: true } }));
 vi.mock("@breatic/core", () => ({
   env: envRef,
   getMembershipForUser: vi.fn(),
-  studioDirectoryRepo: { countTeamQuota: vi.fn(), sumUsageElsewhere: vi.fn() },
   getSubscriptionPlan: (tier: string, period: string) => ({
     priceCents:
       (tier === "pro" ? 1999 : 7999) * (period === "year" ? 10 : 1),
@@ -39,12 +38,16 @@ vi.mock("@server/modules/asset/assetUsage.service.js", () => ({
   accountStorageUsage: vi.fn(),
 }));
 
+vi.mock("@server/modules/studio/studio.repo.js", () => ({
+  countTeamStudiosAdministeredBy: vi.fn(),
+}));
+
 import {
   getMembershipForUser,
-  studioDirectoryRepo,
 } from "@breatic/core";
 import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
 const LIMITS = {
@@ -54,6 +57,7 @@ const LIMITS = {
   studio_members: 10,
   project_members: 12,
   storage_bytes: 200 * 1024 ** 3,
+  running_tasks_per_user: 5,
 };
 
 const USER = "u-1";
@@ -61,7 +65,7 @@ const USER = "u-1";
 beforeEach(() => {
   vi.clearAllMocks();
   envRef.PAYMENT_ENABLED = true;
-  vi.mocked(getMembershipForUser).mockResolvedValue({ tier: "pro", limits: LIMITS });
+  vi.mocked(getMembershipForUser).mockResolvedValue({ tier: "pro", limits: LIMITS, storageLimitBytes: LIMITS.storage_bytes });
   vi.mocked(readStoredSubscriptionSummary).mockResolvedValue({
     state: "active",
     tier: "pro",
@@ -70,8 +74,7 @@ beforeEach(() => {
     cancelAtPeriodEnd: false,
     payableInvoiceUrl: null,
   });
-  vi.mocked(studioDirectoryRepo.countTeamQuota).mockResolvedValue(1);
-  vi.mocked(studioDirectoryRepo.sumUsageElsewhere).mockResolvedValue(0);
+  vi.mocked(studioRepo.countTeamStudiosAdministeredBy).mockResolvedValue(1);
   vi.mocked(assetUsageService.accountStorageUsage).mockResolvedValue(0);
 });
 

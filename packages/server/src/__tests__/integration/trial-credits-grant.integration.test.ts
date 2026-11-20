@@ -48,7 +48,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import { getTrialGrantCredits } from "@server/config/pricing.js";
+import { getTrialGrantCredits } from "@server/config/credits.js";
 
 const PG_DRIVER_LOCAL = "trial-credits-grant-test-driver";
 
@@ -193,7 +193,6 @@ describe("a new account's trial credits", () => {
       freshSlug(),
     );
     await sql`UPDATE studios SET deleted_at = now() WHERE id = ${first.id}`;
-    await sql`UPDATE studio_directory SET deleted_at = now() WHERE studio_id = ${first.id}`;
     await sql`UPDATE studio_members SET deleted_at = now() WHERE studio_id = ${first.id}`;
 
     // The second studio is created normally — the collision is swallowed

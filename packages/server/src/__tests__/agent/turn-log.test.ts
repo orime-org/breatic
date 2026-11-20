@@ -23,7 +23,7 @@ import type { ModelStreamPart } from "../helpers/model-double.js";
 
 const logInfo = vi.fn();
 const analytics = vi.hoisted(() => ({
-  claimFirstMilestone: vi.fn(async (_kind: string, _userId: string) => true),
+  claimFirstMilestone: vi.fn(async () => true),
   serverAnalyticsWanted: vi.fn(() => true),
   trackServerEvent: vi.fn(),
 }));
@@ -48,8 +48,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     runWithContext: actual.runWithContext,
     getContext: actual.getContext,
     logger: { ...logger, child: () => logger },
-    serverAnalyticsWanted: analytics.serverAnalyticsWanted,
-    trackServerEvent: analytics.trackServerEvent,
+    ...analytics,
   };
 });
 
@@ -61,12 +60,6 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return {
     ...base,
     streamTextRetry: actual.streamTextRetry,
-    // The milestone is claimed in the global region (inner#1955).
-    globalApi: () => ({
-      claimAccountMilestone: async (kind: string, userId: string) => ({
-        claimed: await analytics.claimFirstMilestone(kind, userId),
-      }),
-    }),
     buildAgentConfig: () => ({ modelId: "test", instructions: { base: "system" }, tools: {} }),
     finalizeTurn: async () => [],
     provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>

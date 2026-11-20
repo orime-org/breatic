@@ -280,7 +280,7 @@ describe("refund_restored: the detail block (v9 §8)", () => {
     expect(wording?.restored?.subject, `${locale} server.refund_mail.restored.subject`).toEqual(expect.any(String));
     expect(wording?.restored?.intro, `${locale} server.refund_mail.restored.intro`).toEqual(expect.any(String));
     const mail = await renderRefundMail(restored({ locale }));
-    // Every product mail's subject is "Breatic - <heading>" (utils/mail-shell.ts).
+    // Every product mail's subject is "Breatic - <heading>" (domain `mail/mail-shell.ts`).
     expect(mail.subject).toBe(`Breatic - ${wording!.restored!.subject}`);
   });
 });

@@ -60,13 +60,13 @@ import {
   getUserMembershipTier,
   getMembershipForUser,
   getLimitsForStudio,
+  getMembershipConfig,
   getMembershipLimits,
   db,
   lockLimitsForUser,
 } from "@breatic/core";
 import { MEMBERSHIP_TIERS } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -291,6 +291,18 @@ describe("changeMembershipTier", () => {
 });
 
 describe("a downgrade, which takes nothing away", () => {
+  // base allows 9999 projects since inner#1968 (design 3.8); the ceiling is
+  // pinned to 10 here so the downgrade still leaves the studio over it.
+  let shippedProjects = 0;
+  beforeAll(() => {
+    const base = getMembershipConfig().tiers.base as { projects_per_studio: number };
+    shippedProjects = base.projects_per_studio;
+    base.projects_per_studio = 10;
+  });
+  afterAll(() => {
+    (getMembershipConfig().tiers.base as { projects_per_studio: number }).projects_per_studio = shippedProjects;
+  });
+
   it("leaves every studio, project and member that already exists in place", async () => {
     // The ratified rule, and the one acceptance item whose requirement is that
     // NOTHING happens. Left implicit it would be pinned by nothing at all: a
@@ -318,7 +330,6 @@ describe("a downgrade, which takes nothing away", () => {
         VALUES (${studioId}, ${memberId}, 'maintainer')
       `;
     }
-    await mirrorAllInDirectory(sql);
     for (let i = 0; i < 12; i++) {
       await sql`
         INSERT INTO projects (studio_id, created_by_user_id, name, slug)
@@ -432,7 +443,6 @@ describe("the enterprise tier, which has no ceilings to give", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${st!.id}, ${adminUserId}, 'admin')
     `;
-    await mirrorAllInDirectory(sql);
 
     const err = await getLimitsForStudio(st!.id).then(
       () => null,

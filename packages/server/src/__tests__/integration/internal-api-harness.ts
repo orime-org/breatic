@@ -20,8 +20,7 @@ import { serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, expect, inject, vi } from "vitest";
-import { env, getRedis, initCore, loadLocales } from "@breatic/core";
-import { signRequest } from "@server/middleware/internal-signature.js";
+import { env, getRedis, initCore, loadLocales, signRequest } from "@breatic/core";
 import { fakeStripe } from "./fake-stripe-refunds.js";
 import { expectOnlyRejudged, mailsOf, type SeededLot, type WorldState } from "./credit-refund-fixtures.js";
 
@@ -35,12 +34,10 @@ export const ADMIN = "admin_7";
 /**
  * Point core at an environment with payments and the internal API on.
  * Placeholder Stripe keys: every Stripe call goes to the injected fake.
- * @param extraEnv - Settings a suite adds, such as other regions.
  */
-export function initInternalCore(extraEnv: Record<string, string> = {}): void {
+export function initInternalCore(): void {
   initCore({
     ...process.env,
-    ...extraEnv,
     PAYMENT_ENABLED: "true",
     STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
     STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
@@ -212,14 +209,13 @@ export interface InternalSuite {
  * SQL client, the internal app on a loopback port; before each case the fake
  * Stripe is emptied and the rate-limit buckets cleared.
  * @param appName - `application_name` for the suite's connections.
- * @param extraEnv - Settings the suite adds to the internal environment.
  * @returns A holder filled before the first case runs.
  */
-export function useInternalApp(appName: string, extraEnv: Record<string, string> = {}): InternalSuite {
+export function useInternalApp(appName: string): InternalSuite {
   const holder = {} as InternalSuite;
   let running: RunningApp | undefined;
   beforeAll(async () => {
-    initInternalCore(extraEnv);
+    initInternalCore();
     loadLocales();
     holder.sql = postgres(inject("DATABASE_URL"), {
       max: 8,

@@ -10,7 +10,6 @@ import { studiosApi } from '@web/data/api/studios';
 import { useTranslation } from '@web/i18n/use-translation';
 import { RecentLanding } from '@web/pages/studio/recent/RecentLanding';
 import { toRecentItemView } from '@web/pages/studio/recent/recent-mapper';
-import { useRegionHealthStore } from '@web/stores/region-health';
 
 /**
  * The cross-studio "Recent" landing (spec §4.5) — the index child of the studio
@@ -34,15 +33,9 @@ export default function StudioRecentPage(): React.JSX.Element {
     queryFn: () => studiosApi.getRecent(),
   });
   const projects = React.useMemo(
-    () => (recentQuery.data?.items ?? []).map(toRecentItemView),
+    () => (recentQuery.data ?? []).map(toRecentItemView),
     [recentQuery.data],
   );
-  const unavailableRegions = recentQuery.data?.unavailableRegions;
-  const regionsMissing = unavailableRegions !== undefined && unavailableRegions.length > 0;
-  const reportRegions = useRegionHealthStore((s) => s.report);
-  React.useEffect(() => {
-    if (unavailableRegions !== undefined) reportRegions('recent', unavailableRegions);
-  }, [unavailableRegions, reportRegions]);
 
   // Pending / error center with h-full OUTSIDE the ScrollArea — Radix's
   // viewport wraps children in an auto-height block, so percentage-height
@@ -61,7 +54,7 @@ export default function StudioRecentPage(): React.JSX.Element {
     </div>
   ) : (
     <ScrollArea className='h-full'>
-      <RecentLanding projects={projects} collections={[]} incomplete={regionsMissing} />
+      <RecentLanding projects={projects} collections={[]} />
     </ScrollArea>
   );
 }

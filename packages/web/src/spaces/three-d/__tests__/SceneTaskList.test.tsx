@@ -13,7 +13,7 @@ import type { CollaboratorNames } from '@web/features/collab-editor/use-collabor
 import type { SceneUploadEntry, SceneUploads } from '@web/spaces/three-d/scene-uploads';
 import { SceneTaskList } from '@web/spaces/three-d/SceneTaskList';
 import { toast } from '@web/lib/toast';
-import { t } from '@breatic/shared';
+import { setLocale, t } from '@breatic/shared';
 import { ApiException } from '@web/data/api/types';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 
@@ -280,6 +280,37 @@ describe('the 3D Space task list (inner#1690)', () => {
     expect(api.listSpaceTasks).toHaveBeenCalledTimes(1);
     await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
     expect(api.listSpaceTasks).toHaveBeenCalledTimes(2);
+  });
+
+  // inner#1968 visual round 1: a waiting row wears the canvas's hourglass, not the running blue dot.
+  it('marks a row that waits for a slot with the hourglass', async () => {
+    const waiting = row({ id: 'waiting', startedAt: new Date(NOW - 60_000).toISOString(), deadlineAt: null, waitingSince: new Date(NOW - 60_000).toISOString(), slotWaitLimit: 2 });
+    api.listSpaceTasks.mockResolvedValue(listed(waiting));
+    renderList();
+    const found = await rowOf('waiting');
+    expect(within(found).getByTestId('task-waiting-mark')).toBeInTheDocument();
+    expect(found.querySelector('.bg-status-info')).toBeNull();
+  });
+
+  // inner#1968 visual round 2: hourglass and dot share one 12px box, so every title starts on one line.
+  it('draws every row\'s state mark in the same box', async () => {
+    const waiting = row({ id: 'waiting', startedAt: new Date(NOW - 60_000).toISOString(), deadlineAt: null, waitingSince: new Date(NOW - 60_000).toISOString(), slotWaitLimit: 2 });
+    const running = row({ id: 'running' });
+    api.listSpaceTasks.mockResolvedValue(listed(waiting, running));
+    renderList();
+    for (const id of ['waiting', 'running']) {
+      const mark = within(await rowOf(id)).getByTestId('task-state-mark');
+      expect(mark, id).toHaveClass('size-3', 'shrink-0');
+    }
+  });
+
+  it('sets no re-read for a row that waits for a slot, whose budget has not started', async () => {
+    const waiting = row({ id: 'waiting', startedAt: new Date(NOW - 3 * 3_600_000).toISOString(), deadlineAt: null, waitingSince: new Date(NOW - 3 * 3_600_000).toISOString(), slotWaitLimit: 2 });
+    api.listSpaceTasks.mockResolvedValue(listed(waiting));
+    renderList();
+    await rowOf('waiting');
+    await act(async () => { await vi.advanceTimersByTimeAsync(60_000); });
+    expect(api.listSpaceTasks).toHaveBeenCalledTimes(1);
   });
 });
 
@@ -567,5 +598,34 @@ describe('the 3D Space task list rig line (inner#1692)', () => {
     for (const id of ['plain-done', 'plain-running', 'broken', 'import']) {
       expect(within(await rowOf(id)).queryByTestId('scene-task-rig-note'), id).toBeNull();
     }
+  });
+});
+
+// inner#1968 G-39: a generation that waits for a free slot says so, counts no
+// minutes, and can be cancelled through the canvas task cancel route.
+describe('a 3D generation waiting for a slot', () => {
+  it('says queued, shows no minutes, and offers cancel', async () => {
+    setLocale('zh-CN');
+    try {
+      api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'queued', startedAt: new Date(NOW - 180_000).toISOString(), waitingSince: new Date(NOW - 180_000).toISOString(), slotWaitLimit: 2 })));
+      request.post.mockResolvedValue({ cancelled: true, counts: null });
+      renderList();
+      const queued = await rowOf('queued');
+      expect(queued).toHaveTextContent('排队中');
+      expect(queued).not.toHaveTextContent('分钟');
+      const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+      await user.click(within(queued).getByRole('button', { name: '取消' }));
+      await waitFor(() => expect(request.post.mock.calls.some(([path]) => /\/canvas\/tasks\/[^/]+\/cancel$/.test(String(path)))).toBe(true));
+    } finally {
+      setLocale('en');
+    }
+  });
+  it('says the sentence the server wrote when it refuses the cancel', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(generation({ id: 'queued', startedAt: new Date(NOW - 180_000).toISOString(), waitingSince: new Date(NOW - 180_000).toISOString(), slotWaitLimit: 2 })));
+    request.post.mockRejectedValue(new ApiException({ status: 403, message: 'You can only view this project.', fromServer: true }));
+    renderList();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    await user.click(within(await rowOf('queued')).getByRole('button', { name: 'Cancel' }));
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('You can only view this project.'));
   });
 });

@@ -16,7 +16,7 @@
 import { db, logger } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { creditLotRepo } from "@breatic/domain";
-import { isPurchased, type CreditLotEntity, type PaymentEntity } from "@breatic/shared";
+import type { CreditLotEntity, PaymentEntity } from "@breatic/shared";
 import {
   assessOneShot,
   assessRefundCreate,
@@ -407,7 +407,7 @@ async function findTarget(
   tx?: DbTx,
 ): Promise<{ lot: CreditLotEntity; payment: PaymentEntity } | null> {
   const lot = tx ? await creditLotRepo.lockLiveLot(lotId, tx) : await creditLotRepo.findLotById(lotId);
-  const payment = lot && isPurchased(lot.sourceKind) ? await paymentRepo.getPaymentById(lot.sourceId, tx) : null;
+  const payment = lot?.sourceKind === "payment" ? await paymentRepo.getPaymentById(lot.sourceId, tx) : null;
   return lot && payment ? { lot, payment } : null;
 }
 

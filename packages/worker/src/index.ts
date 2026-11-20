@@ -20,7 +20,6 @@ import {
   createQueue,
   createQueueEvents,
   defaultJobOpts,
-  getRegionsConfig,
   checkInfraReady,
   InfraNotReadyError,
   logger,
@@ -47,12 +46,10 @@ import {
   unscheduleAdsUploadSweep,
   adsConversionConfig,
   type AdsConversionJob,
-  otherRegionsOf,
 } from "@breatic/core";
 import { onDatabaseWaitTimeout } from "@breatic/core";
 import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
 import {
-  creditHoldService,
   modelCatalog,
   USAGE_LOOKUP_QUEUE,
   MEDIA_READ_QUEUE,
@@ -164,35 +161,33 @@ import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-ex
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
-import {
-  CREDIT_CHARGE_SWEEP_QUEUE,
-  CREDIT_HOLD_RELEASE_QUEUE,
-  IDENTITY_REVOCATION_FORWARD_QUEUE,
-  INVITATION_CLAIM_FORWARD_QUEUE,
-  REGION_OUTBOX_RELAY_QUEUE,
-  SLUG_RESERVATION_SWEEP_QUEUE,
-  STORAGE_USAGE_SYNC_QUEUE,
-  TIMELINE_SWEEP_QUEUE,
-  workerQueuesFor,
-} from "@worker/runtime/region-queues.js";
-import {
-  forwardInvitationClaim,
-  forwardRevocation,
-  reconcileDirectoryOnStart,
-  relayRegionOutbox,
-  reportHoldCleanupGaveUp,
-  sweepSlugReservations,
-  syncStorageUsage,
-  type IdentityRevocationForwardJob,
-  type InvitationClaimForwardJob,
-} from "@worker/handlers/region-jobs.js";
+import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
 
-/** Every BullMQ queue this process runs a worker for, by its region (inner#1955). */
-const WORKER_QUEUES: readonly string[] = workerQueuesFor({
-  region: env.REGION,
-  globalRegion: env.GLOBAL_REGION,
-  otherRegions: otherRegionsOf(env),
-});
+/** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
+const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
+
+/** Queue holding the recurring sweep of charge requests still pending (inner#1617). */
+const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
+
+/** Queue holding the recurring sweep of tasks waiting for a running slot whose job may be lost (inner#1968). */
+const SLOT_WAIT_SWEEP_QUEUE = "slot-wait-sweep";
+
+/** Every BullMQ queue this process runs a worker for. */
+const WORKER_QUEUES: readonly string[] = [
+  "tasks",
+  "url-ingest",
+  UPLOAD_FINISH_QUEUE,
+  USAGE_LOOKUP_QUEUE,
+  MEDIA_READ_QUEUE,
+  AUDIO_PEAKS_QUEUE,
+  MAIL_QUEUE,
+  ADS_CONVERSION_QUEUE,
+  LONG_MEDIA_DISPATCH_QUEUE,
+  TIMELINE_QUEUE,
+  TIMELINE_SWEEP_QUEUE,
+  CREDIT_CHARGE_SWEEP_QUEUE,
+  SLOT_WAIT_SWEEP_QUEUE,
+];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
 const SHUTDOWN_DEADLINE_MS = 4000;
@@ -277,6 +272,24 @@ export function startWorker(): void {
   });
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
+
+  // The read side of the tasks queue: the stale-waiter sweep below and the
+  // failed-job cleanup further down look jobs up through it.
+  const tasksQueue = createQueue("tasks");
+
+  // Tasks waiting for a running slot whose job was lost end as failed (inner#1968).
+  const slotWaitSweepQueue = createQueue(SLOT_WAIT_SWEEP_QUEUE);
+  const slotWaitSweep = createWorker<Record<string, never>>(SLOT_WAIT_SWEEP_QUEUE, () => sweepSlotWaiters(tasksQueue));
+  slotWaitSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "slot_wait_sweep_failed");
+  });
+  void slotWaitSweepQueue.upsertJobScheduler(
+    SLOT_WAIT_SWEEP_QUEUE,
+    { every: getWorkerConfig().slot_wait_sweep_interval_ms },
+    { name: SLOT_WAIT_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "slot_wait_sweep_schedule_failed");
+  });
 
   // Timeline web-animation executions (inner#1711). A job waiting on its container goes back to the queue as
   // delayed; one that used up its retries is only logged, and the sweep adds it again under the original deadline.
@@ -423,110 +436,30 @@ export function startWorker(): void {
     );
   });
 
-  // Workers that run only in some regions, closed with the rest on shutdown.
-  const regionWorkers: Array<{ close: () => Promise<void> }> = [];
-
-  if (WORKER_QUEUES.includes(ADS_CONVERSION_QUEUE)) {
-    // Ad conversions a request or webhook queued (inner#1442 §4.9). The sink is
-    // built on the first job, so a deployment without Google Ads configured
-    // never constructs a client.
-    let adsSink: AdsConversionSink | undefined;
-    const adsConversion = createWorker<AdsConversionJob>(ADS_CONVERSION_QUEUE, (job) =>
-      runAdsConversion(job, (config) => (adsSink ??= googleDataManagerSink(config))),
-    );
-    // Queues again any upload whose job was lost between the claim and the add.
-    (adsConversionConfig() ? scheduleAdsUploadSweep() : unscheduleAdsUploadSweep()).catch((err: unknown) =>
-      logger.error({ err }, "ads_conversion_sweep_schedule_failed"),
-    );
-
-    adsConversion.on("failed", (job, err) => {
-      logger.error(
-        {
-          err,
-          conversion: job?.data.conversion,
-          transactionId: job?.data.transactionId,
-          attemptsMade: job?.attemptsMade,
-          attemptsAllowed: job?.opts?.attempts,
-        },
-        "ads_conversion_failed",
-      );
-    });
-    regionWorkers.push(adsConversion);
-  }
-
-  /**
-   * Run a recurring cross-region job where this region runs its queue.
-   * @param queue - The queue.
-   * @param everyMs - How often.
-   * @param run - The job.
-   */
-  const recurringRegionJob = (queue: string, everyMs: number, run: () => Promise<unknown>): void => {
-    if (!WORKER_QUEUES.includes(queue)) return;
-    // One at a time: the scheduler queues the next run as this one starts,
-    // so a slow run would otherwise overlap the next and repeat its work.
-    const recurring = createWorker<Record<string, never>>(queue, () => run(), { concurrency: 1 });
-    recurring.on("failed", (job, err) => {
-      logger.error({ err, jobId: job?.id, queue }, "region_job_failed");
-    });
-    void createQueue(queue)
-      .upsertJobScheduler(queue, { every: everyMs }, { name: queue, data: {}, opts: defaultJobOpts() })
-      .catch((err: unknown) => {
-        logger.error({ err, queue }, "region_job_schedule_failed");
-      });
-    regionWorkers.push(recurring);
-  };
-  const regions = getRegionsConfig();
-  recurringRegionJob(REGION_OUTBOX_RELAY_QUEUE, regions.outbox_relay_interval_ms, relayRegionOutbox);
-  recurringRegionJob(STORAGE_USAGE_SYNC_QUEUE, regions.storage_usage_sync_interval_ms, syncStorageUsage);
-  recurringRegionJob(SLUG_RESERVATION_SWEEP_QUEUE, regions.slug_reservation_sweep_interval_ms, sweepSlugReservations);
-
-  // A self-hosted upgrade aligns the Studio directory once (inner#1955).
-  void reconcileDirectoryOnStart().then(
-    (aligned) => {
-      if (aligned > 0) logger.info({ aligned }, "directory_reconciled");
-    },
-    (err: unknown) => {
-      logger.error({ err }, "directory_reconcile_failed");
-    },
+  // Ad conversions a request or webhook queued (inner#1442 §4.9). The sink is
+  // built on the first job, so a deployment without Google Ads configured
+  // never constructs a client.
+  let adsSink: AdsConversionSink | undefined;
+  const adsConversion = createWorker<AdsConversionJob>(ADS_CONVERSION_QUEUE, (job) =>
+    runAdsConversion(job, (config) => (adsSink ??= googleDataManagerSink(config))),
+  );
+  // Queues again any upload whose job was lost between the claim and the add.
+  (adsConversionConfig() ? scheduleAdsUploadSweep() : unscheduleAdsUploadSweep()).catch((err: unknown) =>
+    logger.error({ err }, "ads_conversion_sweep_schedule_failed"),
   );
 
-  // Sign-in claims and revocations the global region hands to each other region.
-  if (WORKER_QUEUES.includes(INVITATION_CLAIM_FORWARD_QUEUE)) {
-    const claimForward = createWorker<InvitationClaimForwardJob>(INVITATION_CLAIM_FORWARD_QUEUE, forwardInvitationClaim);
-    claimForward.on("failed", (job, err) => {
-      logger.error({ err, region: job?.data.region, userId: job?.data.userId }, "invitation_claim_forward_failed");
-    });
-    regionWorkers.push(claimForward);
-  }
-  // Hold releases and abandons the global region could not take at the time (inner#1955).
-  if (WORKER_QUEUES.includes(CREDIT_HOLD_RELEASE_QUEUE)) {
-    const holdRelease = createWorker<creditHoldService.HoldReleaseJob>(CREDIT_HOLD_RELEASE_QUEUE, (job) =>
-      creditHoldService.runQueuedHoldRelease(job.data),
+  adsConversion.on("failed", (job, err) => {
+    logger.error(
+      {
+        err,
+        conversion: job?.data.conversion,
+        transactionId: job?.data.transactionId,
+        attemptsMade: job?.attemptsMade,
+        attemptsAllowed: job?.opts?.attempts,
+      },
+      "ads_conversion_failed",
     );
-    // Tries keep failing while the global region is down.
-    holdRelease.on("failed", (job, err) => {
-      logger.warn(
-        { err, action: job?.name, referenceId: job?.data.referenceId, studioId: job?.data.abandon?.studioId, attempts: job?.attemptsMade },
-        "credit_hold_cleanup_retry_failed",
-      );
-    });
-    // A cleanup that will not be tried again, including one whose worker
-    // stalled out, leaves the hold to run out on its own; only the queue's
-    // events see every such end, and the job id begins with the hold's key. Every
-    // worker instance hears the event, so the one that claims it logs it.
-    const holdCleanupEnds = createQueueEvents(CREDIT_HOLD_RELEASE_QUEUE);
-    holdCleanupEnds.on("failed", ({ jobId, failedReason }) => {
-      void reportHoldCleanupGaveUp(getRedis(), jobId, failedReason);
-    });
-    regionWorkers.push(holdRelease, holdCleanupEnds);
-  }
-  if (WORKER_QUEUES.includes(IDENTITY_REVOCATION_FORWARD_QUEUE)) {
-    const revocationForward = createWorker<IdentityRevocationForwardJob>(IDENTITY_REVOCATION_FORWARD_QUEUE, forwardRevocation);
-    revocationForward.on("failed", (job, err) => {
-      logger.error({ err, region: job?.data.region, userId: job?.data.userId }, "identity_revocation_forward_failed");
-    });
-    regionWorkers.push(revocationForward);
-  }
+  });
 
   worker.on("completed", (job) => {
     logger.info({ jobId: job.id, taskId: job.data.taskId }, "job_completed");
@@ -557,7 +490,6 @@ export function startWorker(): void {
   // re-fetch the job (retained by `removeOnFail` age) via a read-side Queue
   // for its data + terminal `finishedOn`. Runs once per instance (idempotent
   // #1580 #7); past that, the row waits to be judged against its budget.
-  const tasksQueue = createQueue("tasks");
   const queueEvents = createQueueEvents("tasks");
   queueEvents.on("failed", ({ jobId, failedReason }) => {
     void reclaimFailedJobById(tasksQueue, getStreamRedis(), jobId, failedReason)
@@ -665,6 +597,7 @@ export function startWorker(): void {
         () => timelineWorker.close(),
         () => timelineSweep.close(),
         () => creditChargeSweep.close(),
+        () => slotWaitSweep.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),
@@ -672,7 +605,7 @@ export function startWorker(): void {
         () => mediaRead.close(),
         () => audioPeaks.close(),
         () => mail.close(),
-        ...regionWorkers.map((regionWorker) => () => regionWorker.close()),
+        () => adsConversion.close(),
         () => flushServerAnalytics(),
       ],
       deadlineMs: SHUTDOWN_DEADLINE_MS,

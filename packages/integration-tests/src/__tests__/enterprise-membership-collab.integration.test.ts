@@ -20,7 +20,7 @@ import {
 import { projectMetaDocName, type MembershipTier } from "@breatic/shared";
 import { createSession, logout } from "@server/modules/auth/auth.service.js";
 import { save } from "@server/modules/enterprise-membership/enterprise-membership.service.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
+import { fingerprint } from "@breatic/core";
 import { createAuthHook, type AuthContext } from "@collab/hooks/auth.js";
 import { createUpgradeSessionGate } from "@collab/infra/upgrade-session-gate.js";
 import { createConnectionRegistry, type ConnectionRegistry } from "@collab/services/connection-registry.js";
@@ -34,7 +34,6 @@ import {
   WIRE,
   type ServerFrame,
 } from "@collab/__tests__/helpers/live-hocuspocus.js";
-import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 /** Records owned by one case, including real API-issued Redis sessions. */
 interface Fixture {
@@ -142,7 +141,6 @@ async function createFixture(tier: MembershipTier = "base", memberCount = 4): Pr
     await sql`INSERT INTO project_members (project_id, user_id, role)
       VALUES (${fixture.projectId}, ${userId}, ${index === 0 ? "owner" : "editor"})`;
   }
-  await mirrorInDirectory(sql, fixture.studioId);
   return fixture;
 }
 
@@ -425,8 +423,6 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     await sql.begin(async (tx) => {
       await tx`UPDATE studio_members SET role = 'maintainer' WHERE studio_id = ${fixture.studioId} AND user_id = ${fixture.userIds[0]!}`;
       await tx`UPDATE studio_members SET role = 'admin' WHERE studio_id = ${fixture.studioId} AND user_id = ${fixture.userIds[1]!}`;
-      // A transfer moves the directory's admin too, which the ceilings follow (inner#1955).
-      await tx`UPDATE studio_directory SET admin_user_id = ${fixture.userIds[1]!} WHERE studio_id = ${fixture.studioId}`;
     });
     const next = await connect(active, fixture, 2, "readonly");
     await write(active, next, "new-admin-zero-cap", false);
@@ -450,5 +446,19 @@ describe("persisted enterprise membership in real collab handshakes", () => {
     await seats(active, fixture, cap);
     expect(active.takes).toEqual(Array.from({ length: cap }, () => "seated"));
     expect(active.owns).toEqual(["no"]);
+  });
+
+  it("A-20 a pro studio's Space holds 4 writable editors and opens the 5th read-only (inner#1968)", async () => {
+    // Written out, not read from the config: the agreed pro number is 4.
+    const cap = 4;
+    const fixture = await createFixture("pro", cap + 1);
+    const active = await start(fixture);
+    for (let index = 0; index < cap; index++) {
+      await connect(active, fixture, index, "read-write");
+      await seats(active, fixture, index + 1);
+    }
+    const next = await connect(active, fixture, cap, "readonly");
+    await write(active, next, "pro-fifth-editor", false);
+    await seats(active, fixture, cap);
   });
 });

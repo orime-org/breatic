@@ -194,7 +194,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     await runMediaUpload(file, { projectId: 'p1', derived: true }, deps);
 
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined, undefined);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined);
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
@@ -343,23 +343,6 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
   // that will judge it. The failure names that row, which is how the browser
   // tells this apart from one where nothing on the server ever knew (#186
   // §3.7.3) — and what it keys the retry file by.
-  // inner#1955: the page may move to another region while the bytes go up;
-  // the region that opened the upload is where its ending and its row are.
-  it('waits for the ending and reports a failure at the API base the ticket was asked of', async () => {
-    const SG = 'https://sg.example.test/api/v1';
-    const sgTicket = { ...TICKET_NO_NODE, apiBase: SG };
-    const waited = makeUploadDeps({ requestTicket: vi.fn().mockResolvedValue(sgTicket) });
-    await runMediaUpload(file, { projectId: 'p1', derived: true }, waited);
-    expect(waited.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined, SG);
-
-    const failed = makeUploadDeps({
-      requestTicket: vi.fn().mockResolvedValue({ ...TICKET, apiBase: SG }),
-      sendToIngest: vi.fn().mockRejectedValue(new Error('part refused')),
-    });
-    await runMediaUpload(file, context, failed);
-    expect(failed.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload', taskId: TICKET.taskId, apiBase: SG });
-  });
-
   it('names the task row when the bytes failed after the ticket was granted', async () => {
     const deps = makeUploadDeps({
       sendToIngest: vi.fn().mockRejectedValue(new Error('part refused')),
@@ -618,5 +601,70 @@ describe('runMediaUpload — the server could not open the upload (inner#1595)',
     expect(completes).toHaveLength(1);
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.onFailure).not.toHaveBeenCalled();
+  });
+});
+
+// Spec R-07 (inner#1968): the ticket request carries no Idempotency-Key and
+// retries a 5xx; read through the real API call so the headers it sends are seen.
+describe('runMediaUpload — the ticket request carries no Idempotency-Key', () => {
+  const file = new File(['x'], 'photo.png', { type: 'image/png' });
+  const context = { projectId: 'p1', nodeId: 'n1', spaceId: 's1' };
+
+  /**
+   * Deps whose ticket request goes through the real `assetsApi` onto the
+   * stood-in `apiPost`.
+   * @returns The deps.
+   */
+  async function realTicketDeps(): Promise<Parameters<typeof runMediaUpload>[2]> {
+    const real = await vi.importActual<typeof import('@web/data/api/assets')>('@web/data/api/assets');
+    return makeUploadDeps({
+      requestTicket: (params, signal) => real.assetsApi.requestUploadTicket(params, signal),
+    });
+  }
+
+  /**
+   * Whether no ticket request carried an Idempotency-Key header.
+   * @returns True when none did.
+   */
+  function noKeySent(): boolean {
+    return apiPost.mock.calls.every((call) => !JSON.stringify(call[2] ?? {}).toLowerCase().includes('idempotency'));
+  }
+
+  it('R-07 retries a 5xx and then succeeds, with no Idempotency-Key', async () => {
+    apiPost.mockReset();
+    apiPost.mockRejectedValueOnce(apiError(503)).mockResolvedValueOnce(TICKET);
+    const deps = await realTicketDeps();
+
+    await runMediaUpload(file, context, deps);
+
+    expect(apiPost).toHaveBeenCalledTimes(2);
+    expect(deps.sendToIngest).toHaveBeenCalledOnce();
+    expect(deps.onFailure).not.toHaveBeenCalled();
+    expect(noKeySent()).toBe(true);
+  });
+
+  it('R-07 fails after clientMaxAttempts requests that all fail, with no Idempotency-Key', async () => {
+    apiPost.mockReset();
+    apiPost.mockRejectedValue(apiError(503));
+    const deps = await realTicketDeps();
+
+    await runMediaUpload(file, context, deps);
+
+    expect(apiPost).toHaveBeenCalledTimes(CFG.clientMaxAttempts);
+    expect(deps.sendToIngest).not.toHaveBeenCalled();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'upload' });
+    expect(noKeySent()).toBe(true);
+  });
+
+  it('R-07 fails at once as rateLimited on a 429, with no Idempotency-Key', async () => {
+    apiPost.mockReset();
+    apiPost.mockRejectedValue(apiError(429));
+    const deps = await realTicketDeps();
+
+    await runMediaUpload(file, context, deps);
+
+    expect(apiPost).toHaveBeenCalledOnce();
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'rateLimited' });
+    expect(noKeySent()).toBe(true);
   });
 });

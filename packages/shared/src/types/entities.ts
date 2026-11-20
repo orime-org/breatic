@@ -731,29 +731,6 @@ export interface NotificationListView {
   };
 }
 
-/**
- * The bell's list across regions (inner#1955): every region's notifications,
- * each naming the region that holds it (null for the global region), and the
- * regions that did not answer in time.
- */
-export interface NotificationFeed {
-  items: Array<NotificationEntity & { region: string | null }>;
-  resolved: NotificationListView["resolved"];
-  unavailableRegions: string[];
-}
-
-/** The bell's unread count across regions, and the regions that did not answer. */
-export interface NotificationCount {
-  count: number;
-  unavailableRegions: string[];
-}
-
-/** The recent Projects across regions, and the regions that did not answer. */
-export interface RecentFeed {
-  items: RecentItem[];
-  unavailableRegions: string[];
-}
-
 /** Project entity (v10 schema). */
 export interface ProjectEntity {
   id: string;
@@ -997,6 +974,10 @@ export interface TimelineExecution {
   /** Credits charged, as Postgres renders the numeric. */
   billedCredits: string | null;
   billedAt: string | null;
+  /** First time the running-task gate held it back (inner#1968); null when it never waited. Absent from an older server. */
+  slotWaitSince?: string | null;
+  /** The running-task limit it waits under, as the gate last judged it (inner#1968); null when it never waited. Absent from an older server. */
+  slotWaitLimit?: number | null;
   createdAt: string;
   updatedAt: string;
 }

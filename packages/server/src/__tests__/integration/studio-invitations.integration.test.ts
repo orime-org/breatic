@@ -47,8 +47,6 @@ import { initCore, schema, createTestDb } from "@breatic/core";
 initCore(process.env);
 
 import * as invitesRepo from "../../modules/studio/studioInvitations.repo.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
-import { withPendingDisplay } from "@server/modules/invitation/pending-display.js";
 
 // Fixture IDs — inserted once, reused across tests.
 const INVITER = "00000000-0000-0000-0000-0000000a0001";
@@ -75,7 +73,7 @@ beforeAll(async () => {
     { id: INVITEE, email: "invitee@invite-test.dev" },
     { id: STRANGER, email: "stranger@invite-test.dev" },
   ]);
-  // Personal studios supply the display names the list shows; the team +
+  // Personal studios supply the display names the list join reads; the team +
   // other studios are the invite targets / guard counter-example.
   await db.insert(schema.studios).values([
     {
@@ -93,7 +91,6 @@ beforeAll(async () => {
     { id: TEAM_STUDIO, createdByUserId: INVITER, slug: "team-x", type: "team", name: "Team X" },
     { id: OTHER_STUDIO, createdByUserId: STRANGER, slug: "other-x", type: "team", name: "Other X" },
   ]);
-  await mirrorAllInDirectory(pgClient);
 });
 
 afterAll(async () => {
@@ -116,7 +113,7 @@ describe("createPending + listPendingByStudio", () => {
       expiresAt: future(),
     });
 
-    const pending = await withPendingDisplay(await invitesRepo.listPendingByStudio(TEAM_STUDIO));
+    const pending = await invitesRepo.listPendingByStudio(TEAM_STUDIO);
 
     expect(pending).toHaveLength(1);
     expect(pending[0]).toMatchObject({

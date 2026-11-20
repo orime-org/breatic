@@ -163,17 +163,6 @@ const studioSlug = z
   .refine((value) => !RESERVED_STUDIO_SLUGS.has(value), "slug_reserved");
 
 /**
- * Where a new Studio goes (inner#1955): the id the page generated, reused
- * while the form is unchanged so a retry is the same creation, and the region
- * the user chose. Both are optional so a page loaded before regions existed
- * still creates; the server then picks the id and the global region.
- */
-const studioPlacement = {
-  studioId: z.uuid().optional(),
-  region: z.string().regex(/^[A-Za-z0-9-]{1,32}$/).optional(),
-};
-
-/**
  * `POST /auth/setup-studio` body — the second registration step. The
  * authenticated (but studio-less) user picks the slug for their personal
  * studio; the server validates it here and re-checks uniqueness against
@@ -181,7 +170,6 @@ const studioPlacement = {
  */
 export const setupStudioSchema = z.object({
   slug: studioSlug,
-  ...studioPlacement,
 });
 export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 
@@ -194,7 +182,6 @@ export type SetupStudioInput = z.infer<typeof setupStudioSchema>;
 export const createTeamStudioSchema = z.object({
   name: z.string().trim().min(1).max(255),
   slug: studioSlug,
-  ...studioPlacement,
 });
 export type CreateTeamStudioInput = z.infer<typeof createTeamStudioSchema>;
 
@@ -1056,8 +1043,17 @@ export interface ChatSyncAnswer {
   running: boolean;
   /** A card waits for the user's answer. */
   awaiting: boolean;
-  /** Present when what waits could not open a run because the balance cannot pay for it. */
-  blocked?: "credits";
+  /**
+   * Present when what waits could not open a run: the balance cannot pay for
+   * it, or the user or the Studio has spent its monthly limit (inner#1968).
+   */
+  blocked?: "credits" | "spend_cap";
+  /** With `spend_cap`: whose limit, the user's own or the Studio's total. */
+  scope?: "member" | "studio";
+  /** With `spend_cap`: the limit reached, as a credit decimal. */
+  limit?: string;
+  /** With `spend_cap`: when the limit resets, as ISO text. */
+  resetsAt?: string;
   /** When to ask again, in milliseconds. */
   next_sync_ms: number;
 }

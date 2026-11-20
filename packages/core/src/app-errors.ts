@@ -8,26 +8,22 @@
  * middleware converts them to structured JSON responses.
  */
 
+import { formatCredits, getActiveLocale, t } from "@breatic/shared";
+
 /** Base application error with an HTTP status code. */
 export class AppError extends Error {
   /** HTTP status code to return. */
   public readonly statusCode: number;
-  /** A code the client branches on, sent as `error.reason`; absent when it shows the message alone. */
-  public readonly reason?: string;
 
   /**
    * Build an application error carrying an HTTP status and message.
    * @param statusCode - HTTP status code
    * @param message - Human-readable error message
-   * @param reason - The code the client branches on, if any
-   * @param options - The failure underneath, kept for the error log
-   * @param options.cause - That failure
    */
-  constructor(statusCode: number, message: string, reason?: string, options?: { cause?: unknown }) {
-    super(message, options);
+  constructor(statusCode: number, message: string) {
+    super(message);
     this.name = "AppError";
     this.statusCode = statusCode;
-    if (reason !== undefined) this.reason = reason;
   }
 }
 
@@ -48,12 +44,9 @@ export class ConflictError extends AppError {
   /**
    * Construct a 409 error.
    * @param message - human-readable description of the conflicting state
-   * @param reason - the code the client branches on, if any
-   * @param options - the failure underneath, kept for the error log
-   * @param options.cause - that failure
    */
-  constructor(message: string, reason?: string, options?: { cause?: unknown }) {
-    super(409, message, reason, options);
+  constructor(message: string) {
+    super(409, message);
     this.name = "ConflictError";
   }
 }
@@ -109,5 +102,44 @@ export class TooManyRequestsError extends AppError {
     super(429, message);
     this.name = "TooManyRequestsError";
     this.retryAfterSeconds = Math.ceil(retryAfterSeconds);
+  }
+}
+
+/** A monthly spend limit work would pass: whose, how much, and when the month resets. */
+export interface SpendCapLimit {
+  /** The person's own limit, or the Studio's total. */
+  scope: "member" | "studio";
+  /** The limit, as a decimal string. */
+  limit: string;
+  /** The first instant of the next UTC month, as ISO text. */
+  resetsAt: string;
+}
+
+/** Work refused by a Studio's monthly spend limit (402, inner#1968). */
+export class SpendCapReachedError extends AppError {
+  /** What the web client tells this refusal apart by, as `error.reason`. */
+  public readonly reason = "spend_cap_reached";
+  /** The person's own limit, or the Studio's total. */
+  public readonly scope: SpendCapLimit["scope"];
+  /** The limit, as a decimal string. */
+  public readonly limit: string;
+  /** When the month resets, as ISO text. */
+  public readonly resetsAt: string;
+
+  /**
+   * Build the refusal, in the caller's language.
+   * @param cap - The limit the work would pass.
+   */
+  constructor(cap: SpendCapLimit) {
+    super(
+      402,
+      cap.scope === "member"
+        ? t("server.spend_cap.member", { limit: formatCredits(cap.limit, getActiveLocale()) })
+        : t("server.spend_cap.studio"),
+    );
+    this.name = "SpendCapReachedError";
+    this.scope = cap.scope;
+    this.limit = cap.limit;
+    this.resetsAt = cap.resetsAt;
   }
 }

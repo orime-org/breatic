@@ -14,30 +14,39 @@ import { exitProcess, initSentry } from "@server/sentry.js";
 import { serve } from "@hono/node-server";
 import { createApp } from "@server/app.js";
 import { createInternalApp } from "@server/internal-app.js";
-import { env,
+import {
+  env,
   getAgentConfig,
   getSubscriptionPlans,
+  onDatabaseWaitTimeout,
+  adsConversionState,
+  closeDb,
+  flushServerAnalytics,
+  initServerAnalytics,
+  closeRedis,
+  closeQueues,
+  getRedis,
+  getQueueRedis,
+  getStreamRedis,
+  checkInfraReady,
+  InfraNotReadyError,
+  installDeadlineBoundDispatcher,
+  startHealthServer,
+  getStorageConfig,
+  getTimelineConfig,
+  runGracefulShutdown,
+  logger,
+  initLogger,
+  loadLocales,
 } from "@breatic/core";
-import { lacksRegionListener } from "@server/utils/region-listener.js";
-import { onDatabaseWaitTimeout } from "@breatic/core";
+import { getTrialGrantCredits } from "@server/config/credits.js";
 import { getPricingTiers } from "@server/config/pricing.js";
 import { getMaintenanceConfig } from "@server/config/maintenance.js";
 import { startMaintenanceLoop } from "@server/modules/maintenance/maintenance-loop.js";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
-import { adsConversionState, closeDb, flushServerAnalytics, initServerAnalytics } from "@breatic/core";
-import { closeRedis } from "@breatic/core";
-import { closeQueues } from "@breatic/core";
-import { getRedis, getQueueRedis, getStreamRedis } from "@breatic/core";
-import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
-import { installDeadlineBoundDispatcher, startHealthServer } from "@breatic/core";
-import { getStorageConfig, getTimelineConfig } from "@breatic/core";
-import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
-import { logger, initLogger } from "@breatic/core";
-import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
-import { startRegionLoops } from "@server/modules/studio/region-loops.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
 import { getServerShutdownDeadlineMs } from "@server/config/limits.js";
 import { markShuttingDown } from "@server/agent/shutdown-flag.js";
@@ -153,35 +162,31 @@ try {
   await exitProcess(1);
 }
 
-// The two files that say what this deployment charges: membership plans and
-// credit packs. Unlike the configs above they are not in the repository —
-// they name real prices and real Stripe objects, so each deployment writes
-// its own from the `.template` beside it. Loading them here is what makes a
-// deployment that forgot to fail at boot instead of at the moment somebody
-// tries to pay: the loaders are lazy, and the first read would otherwise be
-// a checkout request.
+// The three files that say what this deployment charges and gives: membership
+// plans, credit packs and the trial grant. Unlike the configs above they are
+// not in the repository — they name real prices, real Stripe objects and a
+// deployment's own grant, so each deployment writes its own from the
+// `.template` beside it. Loading them here is what makes a deployment that
+// forgot to fail at boot instead of at the moment somebody tries to pay or
+// signs up: the loaders are lazy, and the first read would otherwise be a
+// request.
 //
 // Only when this deployment sells something. A self-hosted install with
-// payments off never reaches either loader, so requiring the files of it
-// would refuse to start over two files it has no use for.
+// payments off never reaches these loaders, so requiring the files of it
+// would refuse to start over files it has no use for.
 //
-// A copy of the template with nothing filled in is refused too, without a
-// second check: every price in it is 0, and both schemas require a positive
-// integer.
+// A copy of a price template with nothing filled in is refused too, without
+// a second check: every price in it is 0, and both price schemas require a
+// positive integer. The trial grant may be 0.
 if (env.PAYMENT_ENABLED) {
   try {
     getSubscriptionPlans();
     getPricingTiers();
+    getTrialGrantCredits();
   } catch (err) {
     logger.error({ err }, "payment_config_invalid");
     await exitProcess(1);
   }
-}
-
-// Calls between regions arrive on the internal listener (inner#1955).
-if (lacksRegionListener(env)) {
-  logger.error({ region: env.REGION, globalRegion: env.GLOBAL_REGION }, "region_internal_api_disabled");
-  await exitProcess(1);
 }
 
 // The refund time limits are read lazily by the internal API and the refund
@@ -278,12 +283,10 @@ server.on("error", (err) => {
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
-// The refund disposition loop (inner#1410 §7.1); it runs whenever the global
-// region's internal API is on, since it finishes every disposition the API accepts.
+// The refund disposition loop (inner#1410 §7.1); it runs whenever the
+// internal API is on, since it finishes every disposition the API accepts.
 const refundLoop = startRefundLoop();
 const maintenanceLoop = startMaintenanceLoop();
-// Work left between the global region and another region (inner#1955).
-const regionLoops = startRegionLoops();
 
 // Health probe - separate port so probe traffic stays off the main
 // hono port and per-port failure semantics in the LB stay clean.
@@ -356,7 +359,7 @@ async function shutdown(signal: string): Promise<void> {
       () =>
         // The loop's last tick can still queue a buyer mail, so it stops
         // before the after-reply work is waited for.
-        Promise.all([refundLoop.stop(), maintenanceLoop.stop(), regionLoops.stop()])
+        Promise.all([refundLoop.stop(), maintenanceLoop.stop()])
           .then(() => settleAfterReply())
           .then(() => Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues(), closeChatSubscriberRedis()])),
     ],

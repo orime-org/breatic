@@ -32,7 +32,7 @@
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, roleUpgradeRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { mintShareToken } from "@breatic/core";
+import { mintShareToken } from "@server/utils/share-token.js";
 import type { RequestFailedReason } from "@breatic/shared";
 
 /** Where a request sits in its lifecycle. */

@@ -75,7 +75,7 @@
 | `playwright test --project=smoke --workers=1 --grep "@needs-<标签>"` | 单个子门 |
 | `pnpm --filter @breatic/web test:consent` | `tests/consent/`:`playwright.consent.config.ts` 把前端按不带和带厂商变量各构建一份、用 `vite preview` 起服务，带 `@no-vendors` 标签的用例跑前一份、其余跑后一份;后端用本地已起的 server,CI 的 `consent-network-audit` 作业由它自己起 |
 
-子门用 1 个 worker 跑，全部落在槽位 0:生成类用例要花积分，买过积分包的是槽位 0 的账号，其余槽位的新账号只有试用积分(`config/pricing.yaml` 的 `trial_grant`)。
+子门用 1 个 worker 跑，全部落在槽位 0:生成类用例要花积分，买过积分包的是槽位 0 的账号，其余槽位的新账号只有试用积分(`config/credits.yaml` 的 `trial_grant`)。
 
 **打付费模型的用例用最低成本的设置:同一模式里能验证这条用例的最便宜的模型，最低的分辨率和画质、最短的时长、最少的张数，用不到的附加项(如生成音频)关掉。** 这些用例要证明的是链路跑得通，结果的画质和长短不影响判定，多花的钱什么也没多验。只有用例验的正是某个设置本身(4k 输出能落盘、某个时长的计费、某个模型的专属能力)才用那个值，并在那一行旁边写明它验的是什么。判定题:**这条用例的断言，换成最低档还成立吗?** 成立就用最低档。
 

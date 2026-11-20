@@ -13,16 +13,11 @@ import { createRule } from "#rules/create-rule";
  * stated reason becomes a place to park violations.
  */
 const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
-  ["userRegions", "an append-only fact that a user has data in a region (inner#1955); the global region's cross-region reads ask every region listed, and asking one that has nothing is harmless"],
-  ["creditChargeSettlements", "the idempotency receipt of a region's charge (inner#1955): deleting it would let a retried request be charged a second time"],
-  ["studioStorageUsageGlobal", "the latest usage a region reported per Studio, overwritten in place by newer reports (inner#1955); there is no row to retire"],
-  ["regionOutboxApplied", "the per-aggregate watermark of applied outbox events (inner#1955): removing it would let older events be applied over newer ones"],
-  ["regionOutbox", "internal transactional-outbox queue (inner#1955), the same carve-out as projectLifecycleOutbox: appended in a business tx, marked sent_at by the relay"],
-  ["regionOutboxDeadLetters", "the record that an outbox event could never be applied (inner#1955), kept for the repair that follows"],
-  ["studioCreationTombstones", "a Studio id the global region gave up creating (inner#1955): deleting it would let a late create land a Studio no directory row knows"],
   ["creditCompensations", "immutable funding evidence; deleting a receipt hides the provenance of credits already issued"],
   ["creditGifts", "immutable registration claim or operator funding evidence; removing a registration claim would permit a second grant"],
   ["creditGrantOperations", "immutable original grant decisions retain their idempotency keys permanently; deleting a decision would permit duplicate funding"],
+  ["enterpriseCreditPurchaseOperations", "immutable corporate purchase decisions retain the original key permanently to prevent duplicate funding"],
+  ["creditEnterprisePurchases", "immutable corporate purchase receipts outlive their credit lots and retain the original contract evidence"],
   ["referralCodes", "a code is only disabled, re-enabled or removed; bindings and future commissions point at it permanently"],
   ["referralBindings", "a binding is permanent by the promoter terms; commissions are computed from it"],
   ["referralOperations", "immutable back-office decisions retain their idempotency keys permanently; deleting one would let a replay act twice"],

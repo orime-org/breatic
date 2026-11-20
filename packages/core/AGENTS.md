@@ -16,15 +16,6 @@ The backend shared kernel. These rules apply when you change anything under `pac
 
 **There are two databases: the product database (`db/schema.ts`, `db/migrations/`, clients `db` / `rawPg`) and the Yjs database (`db/yjs-schema.ts`, `db/migrations-yjs/` with its own journal, clients `yjsDb` / `yjsRawPg`, URL `YJS_DATABASE_URL`).** Every migration belongs to exactly one of them, so name which one, and pass `--yjs` to `pnpm db:journal-add` for the Yjs database.
 
-### Global rows go through the global API
-
-**Every table is placed in `TABLE_PLACEMENT` (`src/db/table-placement.ts`) as `global`, `regional` or `both`, and code that can run outside the global region reaches global rows only through `globalApi`, never through SQL.** Outside the global region the services' role has no rights on global tables, so a direct query passes every single-region test and fails only in a second region; `table-placement.test.ts` fails on a table nobody placed. How regions fit together: [docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#regions-and-the-global-region).
-Check: can this code run in a Studio's region while it reads accounts, credits or the directory? Yes → the global API.
-
-### A migration changes data on one side
-
-**A migration fills global tables only from global tables and regional tables only from regional tables; a backfill that crosses the two is a one-off task driven through the global API.** Every region runs the same migrations and the global tables are empty outside the global region, so a crossing `INSERT ... SELECT` silently writes nothing there.
-
 ### Migrations are hand-written
 
 **Since `0018` every migration is a hand-written `NNNN_name.sql`; never run `drizzle-kit generate`.** drizzle-kit's snapshot is frozen at `0017`, so generating diffs `schema.ts` against it and emits every later change again as new.
@@ -70,7 +61,7 @@ Check: render the fragment with `new PgDialect().sqlToQuery(...)`; any `$1` mean
 
 ### Membership limits
 
-**Configured tiers use `config/membership.yaml`; active enterprise membership uses the account's saved negotiated limits.** Count ceilings are non-negative integers checked as `count >= limit`, so zero means zero and large values remain ordinary limits. Effective enterprise storage retains its exemption even when a negotiated storage value is recorded.
+**Configured tiers use `config/membership.yaml`; active enterprise membership uses the account's saved negotiated limits.** Count ceilings are non-negative integers checked as `count >= limit`, so zero means zero and large values remain ordinary limits; `running_tasks_per_user` is at least 1 (1–30 in an agreement). An active agreement's `storage_bytes` caps storage like any tier; only an enterprise account without a saved agreement keeps uncapped storage. The running-task limit comes only from `runningTasksPerUserOf`, which gives an account without an agreement the constant 10 instead of the limits lookup's error.
 
 **Read effective tiers, limits, storage and subscription-settlement protection through `auth/membership.repo.ts`, which derives them from one membership snapshot.** Studio entitlement belongs to its current admin; missing legacy enterprise information remains explicit. Read [membership entitlements](../../docs/ARCHITECTURE.md#membership-entitlements) before changing expiry, origin protection, presentation or management writes.
 

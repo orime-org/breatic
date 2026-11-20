@@ -305,7 +305,7 @@ describe("CanvasNodeFields", () => {
 // ── NodeEvent alias ────────────────────────────────────────────────
 
 describe("NodeEvent", () => {
-  // A node's four task counts, and a 3D part picture stored after upload
+  // A node's task counts, and a 3D part picture stored after upload
   // (inner#1693). `type` stays on the wire so a consumer reading a stream it
   // does not recognise says so instead of guessing.
   it("is the union of the events collab consumes", () => {

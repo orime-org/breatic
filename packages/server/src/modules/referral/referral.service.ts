@@ -1,11 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { db, getMembershipReadingForUser, getStripeCallTimeoutMs, hasPaidMembership, logger } from "@breatic/core";
+import { db, getMembershipReadingForUser, getStripeCallTimeoutMs, hasPaidMembership, logger, frontendOrigin } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { getReferralConfig } from "@server/config/referral.js";
 import { getStripeClient } from "@server/infra/stripe.js";
-import { usersRepo } from "@breatic/domain";
+import { getStripeCustomerId } from "@server/modules/auth/user.repo.js";
 import { findLatestApplication } from "@server/modules/referral/promoter-application.repo.js";
 import { bindReferral } from "@server/modules/referral/referral-binding.service.js";
 import type { BindOutcome } from "@server/modules/referral/referral-binding.service.js";
@@ -13,7 +13,6 @@ import { findBoundCode } from "@server/modules/referral/referral-binding.repo.js
 import { findCodeOfPromoter } from "@server/modules/referral/referral-code.repo.js";
 import type { ReferralCodeStatus } from "@server/modules/referral/referral-code.repo.js";
 import { firstPeriodDiscountFor } from "@server/modules/referral/referral-discount.js";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
 
 /** What the membership panel's two referral sections read (inner#1868 §8). */
 export interface AccountReferral {
@@ -95,7 +94,7 @@ export async function readAccountReferral(userId: string, termsVersion: string):
  */
 async function expireOpenMembershipCheckouts(userId: string): Promise<void> {
   try {
-    const customer = await usersRepo.getStripeCustomerId(userId);
+    const customer = await getStripeCustomerId(userId);
     if (customer === null) return;
     const call = { timeout: getStripeCallTimeoutMs(), maxNetworkRetries: 0 };
     const stripe = getStripeClient();

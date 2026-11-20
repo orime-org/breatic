@@ -17,11 +17,11 @@
 import { Hono } from "hono";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate, env, logger, ForbiddenError } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { creditViewService, paymentService } from "@server/modules";
+import * as studioCreditDesignation from "@server/modules/studio/studioCreditDesignation.service.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { env, logger, ForbiddenError } from "@breatic/core";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
 import {
   creditAmountFormatQuerySchema,
@@ -133,7 +133,7 @@ credits.patch(
     const lotId = c.req.valid("param").id;
     const studioId = c.req.valid("json").studioId;
     try {
-      await creditLotService.designateLot({
+      await studioCreditDesignation.designateLot({
         lotId,
         requestingUserId: user.id,
         studioId,

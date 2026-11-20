@@ -35,17 +35,17 @@
  * only guess.
  */
 
-import { AppError, env, getRedis, getRegionsConfig, logger, isGlobalRegion } from "@breatic/core";
+import { AppError, getStudioStorageQuota, logger } from "@breatic/core";
 import { t } from "@breatic/shared";
-import { assetService, globalApi, profilesService } from "@breatic/domain";
-import type { StorageBudget } from "@breatic/domain";
+import { assetService } from "@breatic/domain";
 import { accountStorageUsage } from "@server/modules/asset/assetUsage.service.js";
 import {
   claimNoticeWindow,
   releaseNoticeWindow,
 } from "@server/modules/asset/storage-notice-throttle.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { studioRepo } from "@breatic/domain";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
+import { getUserById } from "@server/modules/auth/user.repo.js";
 import { buildStorageQuotaExceededMail } from "@server/utils/notification-mail.js";
 import { sendBestEffortMail } from "@server/utils/send-best-effort-mail.js";
 
@@ -83,25 +83,6 @@ export async function assertStorageAllowance(
 }
 
 /**
- * A Studio admin's ceiling and what the admin's Studios use in other regions,
- * from the global region; outside it the answer is cached in Redis for
- * `limits_cache_ttl_ms` (inner#1955).
- * @param studioId - The studio the bytes land in.
- * @returns The budget.
- * @throws {Error} When the studio has no live admin, or the global region does not answer.
- */
-async function storageBudget(studioId: string): Promise<StorageBudget> {
-  if (isGlobalRegion(env)) return globalApi().getStorageBudget(studioId, env.REGION);
-  const redis = getRedis();
-  const key = `${env.ENV}:storage-budget:${studioId}`;
-  const cached = await redis.get(key);
-  if (cached !== null) return JSON.parse(cached) as StorageBudget;
-  const budget = await globalApi().getStorageBudget(studioId, env.REGION);
-  await redis.set(key, JSON.stringify(budget), "PX", getRegionsConfig().limits_cache_ttl_ms);
-  return budget;
-}
-
-/**
  * The same gate, for a caller that already holds the studio the bytes land in.
  * @param studioId - The studio whose pool the bytes land in; its current admin
  *   is the account judged.
@@ -112,16 +93,14 @@ export async function assertStudioStorageAllowance(
   studioId: string,
   purpose: StorageWritePurpose,
 ): Promise<void> {
-  const { adminUserId, storageBytes, elsewhereBytes } = await storageBudget(studioId);
+  const { adminUserId, storageBytes, enterprise } = await getStudioStorageQuota(studioId);
 
-  // Effective enterprise membership retains its storage exemption. Its
-  // negotiated storage value is recorded, while the storage gate uses null.
-  // This also preserves the exemption for legacy enterprise information.
+  // Only an enterprise account without a saved agreement is uncapped: an
+  // active agreement caps storage at its storage_bytes like any tier
+  // (inner#1968).
   if (storageBytes === null) return;
 
-  // This region's Studios are read live on every write; other regions'
-  // usage is what they last reported (inner#1955).
-  const usedBytes = elsewhereBytes + (await accountStorageUsage(adminUserId));
+  const usedBytes = await accountStorageUsage(adminUserId);
   if (storageBytes - usedBytes <= 0) {
     // Logged on EVERY refusal, unlike the notice below. The bell is for the
     // admin and is deliberately quietened to one per window; this line is for
@@ -131,7 +110,7 @@ export async function assertStudioStorageAllowance(
       { studioId, adminUserId, storageBytes, usedBytes, purpose },
       "storage_quota_exceeded",
     );
-    await tellTheAdmin(adminUserId, studioId);
+    await tellTheAdmin(adminUserId, studioId, enterprise);
     throw new AppError(
       INSUFFICIENT_STORAGE,
       t(
@@ -159,10 +138,12 @@ export async function assertStudioStorageAllowance(
  * other request legitimately holds.
  * @param adminUserId - The account that is out of storage.
  * @param studioId - Where this particular refusal happened.
+ * @param enterprise - Whether the account's effective tier is enterprise.
  */
 async function tellTheAdmin(
   adminUserId: string,
   studioId: string,
+  enterprise: boolean,
 ): Promise<void> {
   // Two different states, and only one of them may be given back later:
   // `held` means this request is the one holding the window.
@@ -185,17 +166,16 @@ async function tellTheAdmin(
     // that catch gives the window back on the grounds that nobody was told —
     // which stops being true the moment the insert succeeds.
     await sendBestEffortMail(async () => {
-      // The account lives in the global region; the Studio in this one.
-      const [accounts, studio] = await Promise.all([
-        profilesService.accountsOf([adminUserId]),
+      const [admin, studio] = await Promise.all([
+        getUserById(adminUserId),
         studioRepo.getById(studioId),
       ]);
-      const admin = accounts.get(adminUserId);
       if (!admin || !studio) return null;
       return buildStorageQuotaExceededMail({
         locale: admin.locale,
         recipientEmail: admin.email,
         studioName: studio.name,
+        enterprise,
       });
     }, { userId: adminUserId, subject: "storage_quota_exceeded" });
   } catch (err) {

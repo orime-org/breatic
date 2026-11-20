@@ -17,6 +17,7 @@ import { SCENE_TASK_NOTICES, type SceneGenerationOrigin, type SceneTaskNotice, t
 import { findLiveTasksByIds } from "@domain/task/task.repo.js";
 import * as repo from "@domain/node-task/node-task.repo.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
+import { rowDeadline } from "@domain/node-task/node-task.service.js";
 import type { NodeTaskRow, SceneTaskRow } from "@domain/node-task/node-task.repo.js";
 
 /** Where one settle left a Space-level row. */
@@ -161,7 +162,8 @@ export async function settle(
     const assetWritten = applied || (await repo.attachAsset(row.id, outcome.assetId, outcome.notice));
     return { row, applied, assetWritten };
   }
-  const expired = failureOutcome(row.startedAt.getTime() + row.budgetMs) === "expired";
+  // A row still waiting for a free running slot has no deadline to pass (inner#1968).
+  const expired = failureOutcome(rowDeadline(row)) === "expired";
   const applied = await repo.settleRunning(row.id, expired ? "expired" : "failed", {
     errorMessage: expired ? "expired" : outcome.errorMessage,
   });

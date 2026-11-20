@@ -15,7 +15,7 @@
  * written when the ticket was minted.
  *
  * The node is the part a user sees. However this ends, it settles the task row
- * the ticket opened and publishes the node's four counts: success carries the
+ * the ticket opened and publishes the node's task counts: success carries the
  * content along, failure carries nothing and leaves the row failed. Without
  * that event the node keeps counting an upload that has already ended.
  */
@@ -83,7 +83,6 @@ import {
 } from "@breatic/shared";
 import type { Hono } from "hono";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -150,7 +149,6 @@ async function seedEditor(): Promise<{
 
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  await mirrorAllInDirectory(sql);
   return {
     userId,
     studioId,
@@ -629,12 +627,14 @@ describe("a finish this server drove — a completed upload", () => {
     expect(events).toHaveLength(2);
     expect(events[0]!.counts).toEqual({
       running: 1,
+      waiting: 0,
       done: 0,
       failed: 0,
       expired: 0,
     });
     expect(events[1]!.counts).toEqual({
       running: 0,
+      waiting: 0,
       done: 1,
       failed: 0,
       expired: 0,
@@ -1818,7 +1818,7 @@ describe("a video, whose cover comes back with the rest of the answer", () => {
  * The ticket left a running row on the node. This is where it stops running:
  * a registered upload settles it as done and points it at the history row
  * holding the result, an abort or a refusal settles it as failed. Either way
- * the node's four counts are recomputed and published, because those numbers
+ * the node's task counts are recomputed and published, because those numbers
  * are the whole of what the canvas document knows about tasks.
  */
 describe("a finish this server drove — the task it settles", () => {

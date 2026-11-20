@@ -58,7 +58,6 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import type { Hono } from "hono";
 import postgres from "postgres";
-import { mirrorInDirectory } from "./directory-fixtures.js";
 import {
   initCore,
   loadLocales,
@@ -70,7 +69,7 @@ import { t } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
 import * as paymentService from "@server/modules/payment/payment.service.js";
 import * as authService from "@server/modules/auth/auth.service.js";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import { openPaymentSource } from "./payment-source.js";
 import { chargeNow } from "./studio-credit-fixtures.js";
 
@@ -129,7 +128,6 @@ async function seedFixture(): Promise<Fixture> {
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${userId}, 'admin')
   `;
-  await mirrorInDirectory(sql, studioId);
   const [project] = await sql<{ id: string }[]>`
     INSERT INTO projects (studio_id, created_by_user_id, slug, name)
     VALUES (${studioId}, ${userId}, ${`entry-p-${n}-${Date.now()}`}, 'Entry') RETURNING id

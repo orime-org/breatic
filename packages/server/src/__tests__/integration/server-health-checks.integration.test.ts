@@ -48,7 +48,7 @@ describe("the server's health checks", () => {
     const subscriber = getChatSubscriberRedis();
     await subscriber.ping();
     subscriber.disconnect();
-    const health = startHealthServer({ port: 0, serviceName: "server", checks: serverHealthChecks() });
+    const health = startHealthServer({ port: 0, host: "127.0.0.1", serviceName: "server", checks: serverHealthChecks() });
     try {
       await new Promise<void>((resolve) => {
         if (health.server.listening) resolve();

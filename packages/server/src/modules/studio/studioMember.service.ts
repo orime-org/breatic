@@ -14,13 +14,12 @@
  * studio, sole admin).
  */
 
-import { studioRepo } from "@breatic/domain";
+import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { db, projectMembersRepo } from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError } from "@breatic/core";
-import { directoryWrites, studioMembersRepo } from "@breatic/domain";
+import { spendLimitRepo, studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { onProjectOwnerChanged } from "@server/modules/project/projectOwnerChange.service.js";
-import { assertNoTransferAccepting } from "@server/modules/studio/studioTransfer.service.js";
 
 /** Roles an admin may grant by change-role; admin is excluded. */
 type GrantableRole = "maintainer" | "guest";
@@ -117,10 +116,6 @@ async function detachMember(
   }
 
   await db.transaction(async (tx) => {
-    // The Studio row first, the lock a transfer's acceptance takes too, so an
-    // offer cannot move to accepting between this check and the write.
-    await studioRepo.lockStudio(studio.id, tx);
-    await assertNoTransferAccepting(studio.id, tx);
     // One locked read of the whole membership, inside the transaction, so a
     // concurrent admin transfer can neither commit between the check and the
     // write (which would soft-delete a freshly promoted admin and leave the
@@ -155,7 +150,9 @@ async function detachMember(
       await onProjectOwnerChanged(projectId, adminUserId, tx);
     }
     await studioMembersRepo.softDelete(studio.id, targetUserId, tx);
-    await directoryWrites.memberRemoved(studio.id, targetUserId, tx);
+    // A spend limit set for them belongs to their membership; coming back
+    // starts from the default (inner#1968, design 3.10).
+    await spendLimitRepo.softDeleteOverride(studio.id, targetUserId, tx);
   });
 }
 
@@ -189,8 +186,6 @@ export async function updateMemberRole(
   // change would then demote the member who had just become admin, and the
   // studio would be left with none.
   await db.transaction(async (tx) => {
-    await studioRepo.lockStudio(studio.id, tx);
-    await assertNoTransferAccepting(studio.id, tx);
     const members = await studioMembersRepo.lockMembership(studio.id, tx);
     const current = members.find((m) => m.userId === targetUserId)?.role;
     if (!current) throw new NotFoundError(t("server.error.not_found"));
@@ -204,6 +199,5 @@ export async function updateMemberRole(
       tx,
     );
     if (!ok) throw new NotFoundError(t("server.error.not_found"));
-    await directoryWrites.memberUpserted(studio.id, targetUserId, role, tx);
   });
 }

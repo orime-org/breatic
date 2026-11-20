@@ -47,25 +47,6 @@ describe("corsMiddleware", () => {
     );
   });
 
-  it("lets a page on another origin finish an upload with its upload token", async () => {
-    // A Studio in another region answers on its own origin (inner#1955), and
-    // finishing an upload there carries the session's x-upload-token.
-    const app = new Hono();
-    app.use("*", corsMiddleware);
-    app.post("/complete", (c) => c.text("ok"));
-
-    const res = await app.request("/complete", {
-      method: "OPTIONS",
-      headers: {
-        Origin: "https://app.example.com",
-        "Access-Control-Request-Method": "POST",
-        "Access-Control-Request-Headers": "content-type, x-upload-token",
-      },
-    });
-
-    expect(res.headers.get("Access-Control-Allow-Headers")?.toLowerCase()).toContain("x-upload-token");
-  });
-
   it("lets a page on another origin read whether a run-once answer is final", async () => {
     const app = new Hono();
     app.use("*", corsMiddleware);

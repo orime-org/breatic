@@ -78,7 +78,7 @@ export type ConfiguredMembershipTier =
 const limitSchema = z.number().int().nonnegative();
 
 /**
- * The six ceilings every tier carries.
+ * The seven ceilings every tier carries.
  *
  * `concurrent_editors` counts simultaneous WRITABLE CONNECTIONS to one
  * document, not people: one account with four browser tabs open holds four of
@@ -99,6 +99,11 @@ export const tierLimitsSchema = z.object({
   studio_members: limitSchema,
   project_members: limitSchema,
   storage_bytes: limitSchema,
+  /**
+   * Tasks one person may have running at once (inner#1968). At least 1: a
+   * zero would park that tier's tasks forever without ever expiring them.
+   */
+  running_tasks_per_user: z.number().int().positive(),
 });
 
 /**
@@ -242,7 +247,7 @@ export interface TierPrice {
 export interface TierOffer {
   /** Which tier this row describes. */
   readonly tier: ComparableMembershipTier;
-  /** That tier's six ceilings, read from `config/membership.yaml`. */
+  /** That tier's seven ceilings, read from `config/membership.yaml`. */
   readonly limits: MembershipLimits;
   /**
    * What it costs over each billing period.
@@ -410,7 +415,7 @@ export interface AccountMembership {
   /** The tier stored on this account. */
   readonly tier: MembershipTier;
   /**
-   * That tier's six ceilings, or `null` for `enterprise`.
+   * That tier's seven ceilings, or `null` for `enterprise`.
    *
    * `null` says "this tier's ceilings do not come from configuration", which
    * is a real state rather than a failure: they are agreed per customer, and
@@ -420,6 +425,12 @@ export interface AccountMembership {
   readonly limits: MembershipLimits | null;
   /** How much of the account-level allowances is spent. */
   readonly usage: AccountUsage;
+  /**
+   * The storage ceiling in bytes: the tier's, or an active enterprise
+   * agreement's; null for an enterprise account without an agreement, whose
+   * storage is not capped.
+   */
+  readonly storageLimitBytes: number | null;
   /** The tiers offered for comparison, in ascending order. */
   readonly catalog: readonly TierOffer[];
   /**

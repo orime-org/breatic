@@ -3,7 +3,6 @@
 
 import type { CanvasPasteAnswer, CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
-import { apiBaseForProject, getRegionConfig } from '@web/data/api/regions';
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import { noteCreditsChanged } from '@web/data/api/credits';
 import { bodyOrTransfer } from '@web/data/upload/transfer-body';
@@ -309,11 +308,9 @@ export const canvasApi = {
     text: string;
   }): Promise<{ id: string }> {
     // A long text goes through storage when it is over the request limit (inner#1006).
-    // A transfer reference does not name the Project: the request names its region (inner#1955).
     return apiPost<{ id: string }>(
       '/canvas/node-history/snapshot',
       await bodyOrTransfer(body.project_id, body),
-      { baseURL: apiBaseForProject(body.project_id, getRegionConfig()) },
     );
   },
   /**
@@ -327,11 +324,9 @@ export const canvasApi = {
    */
   async paste(body: CanvasPasteInput): Promise<CanvasPasteAnswer> {
     // Long text history goes through storage when it is over the request limit (inner#1006).
-    // A transfer reference does not name the Project: the request names its region (inner#1955).
     return apiPost<CanvasPasteAnswer>(
       '/canvas/paste',
       await bodyOrTransfer(body.project_id, body),
-      { baseURL: apiBaseForProject(body.project_id, getRegionConfig()) },
     );
   },
 
@@ -371,13 +366,13 @@ export const canvasApi = {
   },
 
   /**
-   * List the tasks behind a node's four counts (#186).
+   * List the tasks behind a node's task counts (#186).
    *
    * The document carries the numbers; this carries the rows they were counted
    * from, and only when the user opens the list. Each row already holds what
    * that task landed on the node, so "replace" needs no second request.
    *
-   * Asking also republishes the node's four numbers from the rows the server
+   * Asking also republishes the node's counts from the rows the server
    * just read (design §4.6.7). The two are not kept in lock step, and this is
    * the way back for a node whose count says something the table no longer
    * holds — which is why the space travels along: the counts are published to
@@ -398,6 +393,22 @@ export const canvasApi = {
       { params: { project_id: projectId, space_id: spaceId } },
     );
     return tasks;
+  },
+
+  /**
+   * Cancel a task that waits for a free running slot (inner#1968, design
+   * 3.9). A task that has started answers 409 and goes on.
+   * @param taskId - The task, or one of its rows in a task list.
+   * @param projectId - The project it runs in, whose credits it held.
+   * @returns The node's counts after it, null for a 3D Space's own row.
+   * @throws {ApiException} When the request fails, 409 once the task has started.
+   */
+  cancelTask(taskId: string, projectId: string): Promise<{ cancelled: true; counts: NodeTaskCounts | null }> {
+    // A cancelled wait releases the hold its run took, so the top bar reads
+    // the credits again, as it does when the run request returns (inner#1611).
+    return apiPost<{ cancelled: true; counts: NodeTaskCounts | null }>(`/canvas/tasks/${taskId}/cancel`, {}).finally(() =>
+      noteCreditsChanged(projectId),
+    );
   },
 
   /**
@@ -444,18 +455,15 @@ export const canvasApi = {
    * to is read off the row by the server, since the task id in the path is
    * something the caller supplied.
    * @param taskId - The row this upload opened.
-   * @param apiBase - The API base the upload's ticket was asked of, whose
-   *   region holds the row; the page's region when absent (inner#1955).
    * @returns The node's counts after the row settled.
    * @throws {import('@web/data/api/types').ApiException} On 403, 422 for a
    *   body the endpoint does not take, or 404 when the row is gone or is not
    *   an upload.
    */
-  async reportNodeTaskFailure(taskId: string, apiBase?: string): Promise<NodeTaskCounts> {
+  async reportNodeTaskFailure(taskId: string): Promise<NodeTaskCounts> {
     const { counts } = await apiPost<{ counts: NodeTaskCounts }>(
       `/canvas/node-tasks/${taskId}/failure`,
       { reason: 'aborted' },
-      apiBase !== undefined ? { baseURL: apiBase } : undefined,
     );
     return counts;
   },

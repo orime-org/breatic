@@ -41,10 +41,9 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import type { ConfiguredMembershipTier } from "@breatic/shared";
-import { initCore, loadLocales, getMembershipLimits } from "@breatic/core";
+import { initCore, loadLocales, getMembershipConfig, getMembershipLimits } from "@breatic/core";
 import { projectService } from "@server/modules";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
-import { mirrorInDirectory } from "@server/__tests__/integration/directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -67,6 +66,24 @@ beforeAll(() => {
 
 afterAll(async () => {
   await sql?.end({ timeout: 1 });
+});
+
+// Since inner#1968 (design 3.8) every configured tier allows 9999 projects.
+// The ceiling is still enforced the same way, so this suite pins it with two
+// small, different ceilings rather than seeding thousands of rows.
+const PINNED = { base: 10, pro: 100 } as const;
+const shipped = { base: 0, pro: 0 };
+beforeAll(() => {
+  for (const tier of ["base", "pro"] as const) {
+    const limits = getMembershipConfig().tiers[tier] as { projects_per_studio: number };
+    shipped[tier] = limits.projects_per_studio;
+    limits.projects_per_studio = PINNED[tier];
+  }
+});
+afterAll(() => {
+  for (const tier of ["base", "pro"] as const) {
+    (getMembershipConfig().tiers[tier] as { projects_per_studio: number }).projects_per_studio = shipped[tier];
+  }
 });
 
 let seq = 0;
@@ -110,7 +127,6 @@ async function insertStudio(
     INSERT INTO studio_members (studio_id, user_id, role)
     VALUES (${studioId}, ${adminUserId}, 'admin')
   `;
-  await mirrorInDirectory(sql, studioId);
   return studioId;
 }
 
@@ -214,8 +230,6 @@ describe("project count per studio — the create path", () => {
       INSERT INTO studio_members (studio_id, user_id, role)
       VALUES (${studio}, ${to}, 'admin')
     `;
-    // And the global directory's admin, which the transfer moves (inner#1955).
-    await sql`UPDATE studio_directory SET admin_user_id = ${to} WHERE studio_id = ${studio}`;
 
     await expect(createProject(to, studio)).rejects.toMatchObject({
       statusCode: 409,

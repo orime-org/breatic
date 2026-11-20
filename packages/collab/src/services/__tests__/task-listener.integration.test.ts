@@ -20,7 +20,7 @@ import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/re
 
 import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
 import { eq } from "drizzle-orm";
-import { CANVAS_NODES_KEY, type NodeTaskCountsEvent } from "@breatic/shared";
+import { CANVAS_NODES_KEY, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import {
@@ -75,6 +75,7 @@ async function startInstance(name: string): Promise<Hocuspocus> {
   const storeGate: { current?: ReturnType<typeof createUnloadGate> } = {};
   const server = new Server({
     port: 0,
+    address: "127.0.0.1",
     quiet: true,
     stopOnSignals: false,
     debounce: 50,
@@ -172,6 +173,92 @@ async function newCase(nodes: Record<string, string>): Promise<Case> {
   }
   await yjsRepo.seedInitialState(docName, Y.encodeStateAsUpdate(doc));
   return { streamKey: `itest:stream:task:${id}`, keyPrefix: `itest-${id}`, docName };
+}
+
+/**
+ * A fresh stream, key prefix and empty Timeline document, a Space type that takes a change version.
+ * @returns The case's names.
+ */
+async function newSpaceTasksCase(): Promise<Case> {
+  const c = bareCase(timelineSpaceDocName(PID, randomUUID()));
+  await yjsRepo.seedInitialState(c.docName, Y.encodeStateAsUpdate(new Y.Doc()));
+  return c;
+}
+
+/**
+ * A fresh stream and key prefix for a document this function leaves unwritten.
+ * @param docName - The document.
+ * @returns The case's names.
+ */
+function bareCase(docName: string): Case {
+  const id = randomUUID();
+  return { streamKey: `itest:stream:task:${id}`, keyPrefix: `itest-${id}`, docName };
+}
+
+/**
+ * Seed a Space document holding one note, so a later read tells its content apart from an empty document.
+ * @param docName - The document.
+ * @param note - The note.
+ * @returns Nothing.
+ */
+async function seedNote(docName: string, note: string): Promise<void> {
+  const doc = new Y.Doc();
+  doc.getMap("probe").set("note", note);
+  await yjsRepo.seedInitialState(docName, Y.encodeStateAsUpdate(doc));
+}
+
+/**
+ * Wait until a document has left the instance's memory, so whatever its unload stores has been stored.
+ * @param docName - The document.
+ * @returns Nothing.
+ */
+async function untilUnloaded(docName: string): Promise<void> {
+  await until(() => !instanceA.documents.has(docName));
+}
+
+/**
+ * Publish that a Space's background work changed.
+ * @param c - The case.
+ * @param count - How many changes, in order.
+ * @param extra - Extra stream fields on every entry.
+ * @returns Their stream ids.
+ */
+async function publishSpaceTasksVersion(c: Case, count = 1, extra: string[] = []): Promise<string[]> {
+  const ids: string[] = [];
+  const payload = JSON.stringify({ type: "space-tasks-version", docName: c.docName });
+  for (let i = 0; i < count; i++) {
+    ids.push((await stream.xadd(c.streamKey, "*", "payload", payload, ...extra))!);
+  }
+  return ids;
+}
+
+/**
+ * The change version a Space document holds, as stored and synced.
+ * @param docName - The document.
+ * @returns The version, or undefined when none was written.
+ */
+async function readSpaceTasksVersion(docName: string): Promise<unknown> {
+  const conn = await instanceA.openDirectConnection(docName, { context: { user: { id: "test" } } });
+  try {
+    return conn.document!.getMap(SPACE_TASKS_KEY).get(SPACE_TASKS_VERSION);
+  } finally {
+    await conn.disconnect();
+  }
+}
+
+/**
+ * A document's note and change version, read after restoring its soft-deleted row.
+ * @param docName - The document.
+ * @returns What the restored document holds.
+ */
+async function readRestored(docName: string): Promise<{ note: unknown; version: unknown }> {
+  expect(await yjsRepo.restoreByName(docName)).toBe(true);
+  const conn = await instanceA.openDirectConnection(docName, { context: { user: { id: "test" } } });
+  try {
+    return { note: conn.document!.getMap("probe").get("note"), version: conn.document!.getMap(SPACE_TASKS_KEY).get(SPACE_TASKS_VERSION) };
+  } finally {
+    await conn.disconnect();
+  }
 }
 
 /**
@@ -714,6 +801,56 @@ describe("task events across two collab instances", () => {
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, [metaId!, brokenId!]));
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("writes the stream id of a Timeline Space's latest change into its document", async () => {
+    const c = await newSpaceTasksCase();
+    const ids = await publishSpaceTasksVersion(c, 3);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readSpaceTasksVersion(c.docName)).toBe(ids[2]);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("keeps a Timeline Space's newer version when an older change is replayed from the dead-letter stream", async () => {
+    const c = await newSpaceTasksCase();
+    const [olderId, newerId] = await publishSpaceTasksVersion(c, 2);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, [olderId!, newerId!]));
+    const replayed = await publishSpaceTasksVersion(c, 1, ["originId", olderId!]);
+    await until(() => handled(c.streamKey, replayed));
+    expect(await readSpaceTasksVersion(c.docName)).toBe(newerId);
+  });
+
+  it("acknowledges and skips a space-tasks version for a document whose type takes none (a canvas)", async () => {
+    const c = await newCase({});
+    const ids = await publishSpaceTasksVersion(c);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readSpaceTasksVersion(c.docName)).toBeUndefined();
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("leaves a deleted Timeline Space's stored content as it was, so restoring it brings the content back", async () => {
+    const c = bareCase(timelineSpaceDocName(PID, randomUUID()));
+    await seedNote(c.docName, "clips");
+    expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
+    const ids = await publishSpaceTasksVersion(c);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await readRestored(c.docName)).toEqual({ note: "clips", version: undefined });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("creates no document for a Space that has none", async () => {
+    const c = bareCase(timelineSpaceDocName(PID, randomUUID()));
+    const ids = await publishSpaceTasksVersion(c);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await yjsRepo.fetchDocData(c.docName)).toBeNull();
+    expect(await yjsRepo.restoreByName(c.docName)).toBe(false);
   });
 });
 

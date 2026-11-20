@@ -38,6 +38,8 @@ export default defineConfig({
   resolve: {
     alias: {
       "@worker": resolve(__dirname, "./src"),
+      // The subpath goes first: an alias matches by prefix, in order.
+      "@breatic/domain/still-running": resolve(__dirname, "../domain/src/task/still-running.ts"),
       "@breatic/domain": resolve(__dirname, "../domain/src/index.ts"),
       "@domain": resolve(__dirname, "../domain/src"),
     },

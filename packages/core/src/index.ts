@@ -24,7 +24,6 @@ export { onDatabaseWaitTimeout, type DatabaseWaitTimeout } from "@core/db/wait-t
 export { yjsDb, yjsRawPg, closeYjsDb } from "@core/db/client.js";
 export type { DbTx, YjsDbTx } from "@core/db/client.js";
 export { runMigrations, runYjsMigrations } from "@core/db/migrate.js";
-export { applyRegionGrants } from "@core/db/region-grants.js";
 export type { LegacyGiftConfirmation } from "@core/db/legacy-gift-migration.js";
 export { createTestDb, migrateDatabase, migrateYjsDatabase } from "@core/db/test-support.js";
 export type { TestDb } from "@core/db/test-support.js";
@@ -64,7 +63,7 @@ export { errorMonitoringOptions, type ErrorMonitoringStart } from "@core/config/
 export { assertKnownQueues, getWorkerConfig } from "@core/config/worker.js";
 export type { WorkerConfig } from "@core/config/worker.js";
 export { getStorageConfig } from "@core/config/storage.js";
-export { getTimelineConfig, type TimelineConfig } from "@core/config/timeline.js";
+export { getTimelineConfig, timelineReportGraceMs, type TimelineConfig } from "@core/config/timeline.js";
 export { runProjectMediaBackfill } from "@core/asset/project-media-backfill.js";
 export type {
   ProjectMediaBackfillCandidate,
@@ -78,31 +77,9 @@ export type {
 } from "@core/asset/project-media-backfill.js";
 export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
 export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
-export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
+export { getMiniToolsConfig, reportGraceMs, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
-export { getRegionsConfig, type RegionsConfig } from "@core/config/regions.js";
-export { TABLE_PLACEMENT, type TablePlacement } from "@core/db/table-placement.js";
-export {
-  identityCookieName,
-  signIdentityToken,
-  verifyIdentityToken,
-  type IdentityClaims,
-  type IdentityClaimsInput,
-  type IdentityRefusal,
-  type IdentitySigningKey,
-  type IdentityVerdict,
-} from "@core/auth/identity-token.js";
-export { canonicalString, signRequest, type SignedParts } from "@core/region/signature.js";
-export { isGlobalRegion, isMultiRegion, otherRegionsOf, type RegionPlacement } from "@core/region/placement.js";
-export {
-  callRegion,
-  createGlobalApi,
-  GlobalApiError,
-  globalApiHealthChecks,
-  isRegionUnavailable,
-  UNREACHABLE_STATUS,
-} from "@core/region/global-api.js";
 export {
   getUsagePricing,
   parseUsagePricing,
@@ -114,13 +91,13 @@ export {
   getMembershipLimits,
   getDefaultMembershipTier,
   getSubscriptionStaleAfterDays,
+  subscriptionClock,
 } from "@core/config/membership.js";
 export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
 export {
   getSubscriptionPlans,
   getSubscriptionPlan,
   findOfferByPriceId,
-  subscriptionClock,
   getStripeCallTimeoutMs,
   resetSubscriptionConfigCache,
 } from "@core/config/subscription.js";
@@ -184,7 +161,6 @@ export {
   publishCreditsChanged,
   publishSpaceTasksChanged,
   publishProjectConnectionsClose,
-  publishSessionsRevoked,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
 } from "@core/infra/control-events.js";
@@ -209,12 +185,6 @@ export {
   revokeSession,
   revokeAllSessions,
   sessionCookieName,
-  backfillSessionIdIndex,
-  checkSessions,
-  recordRevokedIdentities,
-  isIdentityRevoked,
-  IDENTITY_REVOCATION_FORWARD_QUEUE,
-  INVITATION_CLAIM_FORWARD_QUEUE,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";
 export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";
@@ -235,18 +205,12 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // @breatic/domain — collab never touches it.
 export * as projectMembersRepo from "@core/auth/projectMembers.repo.js";
 export * as projectsRepo from "@core/project/projects.repo.js";
-export { isDeadlock, isUniqueViolation } from "@core/db/pg-error.js";
-export { mintShareToken, regionOfShareToken } from "@core/infra/share-token.js";
-export * as studioDirectoryRepo from "@core/region/studioDirectory.repo.js";
-export * as regionOutboxRepo from "@core/region/regionOutbox.repo.js";
-export * as regionOutboxAppliedRepo from "@core/region/regionOutboxApplied.repo.js";
-export type { OutboxRow } from "@core/region/regionOutbox.repo.js";
-export type { DirectoryRow } from "@core/region/studioDirectory.repo.js";
 export * as projectAssetReferenceService from "@core/asset/project-asset-reference.service.js";
 export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
+export { announceExecutionChange } from "@core/timeline/execution-change.js";
 export {
   TIMELINE_QUEUE,
   TIMELINE_EXECUTION_JOB,
@@ -274,13 +238,14 @@ export {
   getProjectConcurrentEditorLimit,
   lockLimitsForUser,
   lockAccountRow,
+  runningTaskLimitForStudio,
   changeMembershipTier,
   TIER_CHANGE_REASONS,
 } from "@core/auth/membership.repo.js";
 export type { TierChangeReason } from "@core/auth/membership.repo.js";
 export { getEnterpriseMembershipProfile, getMembershipReadingForUser, lockRawMembershipSnapshot, writeEnterpriseMembershipRecord } from "@core/auth/membership.repo.js";
 export type { MembershipReading } from "@core/auth/membership.repo.js";
-export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema } from "@core/auth/enterprise-membership-contract.js";
+export { enterpriseMembershipWriteSchema, enterpriseMembershipProfileSchema, enterpriseMembershipResultSchema, runningTasksPerUserOf } from "@core/auth/enterprise-membership-contract.js";
 export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, EnterpriseMembershipResult, RawMembershipSnapshot, EnterpriseRecord } from "@core/auth/enterprise-membership-contract.js";
 // Subscriptions: the rows, and the reading that turns them into the situation
 // an account is in. The reading is here rather than in server because the
@@ -294,6 +259,7 @@ export {
 } from "@core/auth/subscription.repo.js";
 export type {
   StoredSubscription,
+  SubscriptionConn,
   SubscriptionWrite,
 } from "@core/auth/subscription.repo.js";
 export {
@@ -340,13 +306,14 @@ export {
   ValidationError,
   UnauthorizedError,
   TooManyRequestsError,
+  SpendCapReachedError,
+  type SpendCapLimit,
 } from "@core/app-errors.js";
 export {
   ADS_CONVERSION_QUEUE,
   adsConversionConfig,
   adsConversionState,
   enqueueAdsConversion,
-  enqueueAccountAdsConversion,
   requeueStaleAdsUploads,
   unscheduleAdsUploadSweep,
   scheduleAdsUploadSweep,
@@ -385,6 +352,35 @@ export { createR2MaintenanceStorage, MaintenanceDeleteError, type MaintenanceSto
 export type { S3CompatibleConfig } from "@core/infra/storage/s3.js";
 
 export * from "@core/credit/credit-grant-contract.js";
+export * from "@core/credit/enterprise-credit-purchase-contract.js";
 
 export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
 export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";
+
+// HTTP building blocks shared by every service that answers HTTP.
+export { validate, RequestShapeError } from "@core/http/validate.js";
+export * from "@core/http/internal-signature.js";
+export { closeAfterRefusal } from "@core/http/close-after-refusal.js";
+export { toPage } from "@core/http/keyset-page.js";
+export { frontendOrigin } from "@core/http/frontend-origin.js";
+export { fingerprint } from "@core/http/request-fingerprint.js";
+export { isKnownTimeZone } from "@core/util/time-zone.js";
+export { asStorable, holdsOnlyStorableText, isStorableText, storableText } from "@core/util/storable-text.js";
+export {
+  createRateLimiting,
+  type KeyBy,
+  type Quota,
+  type RateLimitAnswers,
+  type RateLimitEvent,
+  type RateLimiting,
+  type RateLimitingDeps,
+} from "@core/http/rate-limit.js";
+export { getRateLimit, rateLimitsConfigSchema } from "@core/config/rate-limits.js";
+export { createRunOnce, type RunContext, type RunOnceDeps, type RunOnceEvent } from "@core/http/run-once.js";
+export { getRunningLeaseMs, idempotencyConfigSchema } from "@core/config/idempotency.js";
+export { createAfterReply, type AfterReply, type AfterReplyDeps } from "@core/http/after-reply.js";
+export { createInternalAuth, type InternalAuthDeps, type InternalAuthEvent } from "@core/http/internal-auth.js";
+export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
+export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";
+export { createLogRequest, type InternalRequestLine } from "@core/http/log-request.js";
+export { membershipReadingsAt, type MembershipSnapshotRow } from "@core/auth/membership.repo.js";

@@ -42,7 +42,6 @@ import {
 } from "@breatic/core";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
-import { mirrorAllInDirectory } from "./directory-fixtures.js";
 
 try {
   initCore(process.env);
@@ -107,7 +106,6 @@ async function seedEditor(): Promise<{
 
   const token = crypto.randomBytes(24).toString("hex");
   await setSession(getRedis(), token, userId);
-  await mirrorAllInDirectory(sql);
   return {
     userId,
     studioId,
@@ -163,6 +161,18 @@ describe("POST /canvas/ingest-url — what it takes", () => {
     expect(body.data.task_id).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
     );
+  });
+
+  // Spec R-05 (inner#1968): no Idempotency-Key asked for, and no
+  // Idempotency-Status answered.
+  it("R-05 takes an address sent without an Idempotency-Key, and answers no Idempotency-Status", async () => {
+    const { userId, projectId, cookie } = await seedEditor();
+    await sql`UPDATE users SET membership_tier = 'pro' WHERE id = ${userId}`;
+
+    const res = await submit(cookie, { project_id: projectId, space_id: crypto.randomUUID() });
+
+    expect(res.status).toBe(201);
+    expect(res.headers.get("Idempotency-Status")).toBeNull();
   });
 
   it("opens the grant first, so the node task carries its key", async () => {

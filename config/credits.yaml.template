@@ -1,0 +1,17 @@
+# This deployment's credit grants. Copy to config/credits.yaml and fill in;
+# git does not track that copy, because what a deployment gives away is its
+# own decision. Read by server only where the deployment charges
+# (PAYMENT_ENABLED), and checked at startup there.
+
+# Credits a new account is given when its personal studio is created — the
+# first credits anybody gets without paying, and the only ones granted
+# automatically. Pinned to that studio when the lot is written, so they can
+# only be spent on the account holder's own work; they are not refundable,
+# because nobody paid for them.
+#
+# Only granted where the deployment charges for anything: a self-hosted
+# install that never takes payment has no notion of a credit to give.
+#
+# Zero means none are granted; the figure is a real zero, not a sentinel.
+trial_grant:
+  credits: 0

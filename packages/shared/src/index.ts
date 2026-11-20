@@ -52,15 +52,12 @@ export type {
   NotificationEntity,
   NotificationRef,
   NotificationListView,
-  NotificationFeed,
-  NotificationCount,
   ProjectEntity,
   ProjectDetail,
   ProjectSummary,
   StudioProjectSort,
   StudioProjectPage,
   RecentItem,
-  RecentFeed,
   MemoryContext,
   AgentMemoryEntity,
   AgentModelChoice,
@@ -76,6 +73,7 @@ export type {
   NodeTaskCountsEvent,
   SceneLookPictureEvent,
   NodeEvent,
+  SpaceTasksVersionEvent,
   ModelModality,
   ModelTier,
   ParamDescriptor,
@@ -169,6 +167,9 @@ export {
   MAX_NODE_NAME_LEN,
   canGenerate,
   CANVAS_NODES_KEY,
+  SPACE_TASKS_KEY,
+  SPACE_TASKS_TYPES,
+  SPACE_TASKS_VERSION,
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
@@ -277,6 +278,7 @@ export {
   proposalWordRuns,
   markReadsBack,
   markText,
+  promptLines,
   writtenMark,
   markedSegments,
   marksTypedIn,
@@ -616,7 +618,6 @@ export type {
 } from "@shared/refund-eligibility.js";
 
 export { newId, deriveId } from "@shared/ids.js";
-export { GLOBAL_API_PATHS } from "@shared/global-api-paths.js";
 
 // The three gates on a capped list param — the panel while picking, the server
 // before enqueue, the worker before mapping to vendor names — read one number,

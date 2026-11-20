@@ -27,15 +27,12 @@ export type {
   NotificationEntity,
   NotificationRef,
   NotificationListView,
-  NotificationFeed,
-  NotificationCount,
   ProjectEntity,
   ProjectDetail,
   ProjectSummary,
   StudioProjectSort,
   StudioProjectPage,
   RecentItem,
-  RecentFeed,
   MemoryContext,
   AgentMemoryEntity,
   AgentModelChoice,
@@ -149,6 +146,7 @@ export {
   TEMPLATE_GUIDE_KEY,
   markReadsBack,
   markText,
+  promptLines,
   writtenMark,
   markedSegments,
   marksTypedIn,
@@ -239,6 +237,8 @@ export type {
 } from "@shared/types/project-invite.js";
 
 export type { SpaceType, Space } from "@shared/types/space.js";
+export { SPACE_TASKS_KEY, SPACE_TASKS_TYPES, SPACE_TASKS_VERSION } from "@shared/types/space-tasks.js";
+export type { SpaceTasksVersionEvent } from "@shared/types/space-tasks.js";
 export { SpaceTypeSchema } from "@shared/types/space.js";
 
 export {

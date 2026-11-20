@@ -28,9 +28,8 @@ export const corsMiddleware = cors({
   credentials: true,
   allowMethods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   // `Idempotency-Key` is the one-per-press key the run-once routes need
-  // (inner#1490); `x-upload-token` finishes an upload, sent to another
-  // region's origin when the Studio lives there (inner#1955).
-  allowHeaders: ["Content-Type", "Idempotency-Key", "x-upload-token"],
+  // (inner#1490).
+  allowHeaders: ["Content-Type", "Idempotency-Key"],
   // Not readable cross-origin unless named: the upload status list backs off
   // by the wait a 429 names (inner#1367), and a run-once press reads whether
   // its answer is final (inner#1490).

@@ -10,7 +10,8 @@
 import type { AgentInstructionsView, ProjectAgentInstructionsEntity } from "@breatic/shared";
 import * as instructionsRepo from "@server/modules/conversation/agent-instructions.repo.js";
 import * as projectService from "@server/modules/project/project.service.js";
-import { profilesService } from "@breatic/domain";
+import * as authService from "@server/modules/auth/auth.service.js";
+import * as studioService from "@server/modules/studio/studio.service.js";
 
 const NONE: AgentInstructionsView = { text: "", updatedBy: null, updatedAt: null };
 
@@ -21,12 +22,11 @@ const NONE: AgentInstructionsView = { text: "", updatedBy: null, updatedAt: null
  * @returns The view.
  */
 async function viewOf(row: ProjectAgentInstructionsEntity): Promise<AgentInstructionsView> {
-  const profile = (await profilesService.profilesOf([row.updatedByUserId])).get(row.updatedByUserId);
-  const name = profile === undefined
-    ? null
-    : profile.name !== null && !profile.deleted
-      ? profile.name
-      : (profile.email?.split("@")[0] ?? null);
+  const [identities, users] = await Promise.all([
+    studioService.getPersonalStudioIdentitiesByUserIds([row.updatedByUserId]),
+    authService.getUsersByIds([row.updatedByUserId]),
+  ]);
+  const name = identities.get(row.updatedByUserId)?.name ?? users[0]?.email.split("@")[0] ?? null;
   return { text: row.content, updatedBy: name, updatedAt: row.updatedAt.toISOString() };
 }
 

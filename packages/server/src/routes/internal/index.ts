@@ -12,10 +12,9 @@
 
 import type { Context, Hono, MiddlewareHandler } from "hono";
 import { z } from "zod";
-import { storableText } from "@server/utils/storable-text.js";
+import { storableText, validate, fingerprint } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import "@server/middleware/internal-auth.js";
-import { validate } from "@server/middleware/validate.js";
 import {
   preview,
   requestOneShot,
@@ -24,14 +23,12 @@ import {
   type Answer,
   type WriteRequest,
 } from "@server/modules/credit-refund/disposition.service.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 import { registerMaintenanceRoutes } from "@server/routes/internal/maintenance.js";
 import { registerCreditGrantRoutes } from "@server/routes/internal/credit-grant.js";
+import { registerEnterpriseCreditPurchaseRoutes } from "@server/routes/internal/enterprise-credit-purchase.js";
 import { registerEnterpriseMembershipRoutes } from "@server/routes/internal/enterprise-membership.js";
 import { registerReferralRoutes } from "@server/routes/internal/referral.js";
-import { registerDirectoryRoutes } from "@server/routes/internal/directory.js";
-import { registerGlobalApiRoutes } from "@server/routes/internal/global.js";
 import { registerDeploymentVersionRoute } from "@server/routes/internal/deployment-version.js";
 
 const LOT = "/internal/v1/credit-lots/:lotId/refund";
@@ -196,9 +193,8 @@ export function registerInternalRoutes(app: Hono): void {
   for (const route of ROUTES) app.on(route.method.toUpperCase(), [route.path], ...route.handlers);
   registerEnterpriseMembershipRoutes(app);
   registerCreditGrantRoutes(app);
+  registerEnterpriseCreditPurchaseRoutes(app);
   registerMaintenanceRoutes(app);
   registerReferralRoutes(app);
-  registerGlobalApiRoutes(app);
-  registerDirectoryRoutes(app);
   registerDeploymentVersionRoute(app);
 }

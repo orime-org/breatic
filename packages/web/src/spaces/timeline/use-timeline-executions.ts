@@ -2,19 +2,15 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { useQuery, useQueryClient, type Query, type UseQueryResult } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import type { TimelineExecutionRow } from '@breatic/shared';
-import { timelineExecutionEnded } from '@breatic/shared/space-content';
 
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { timelineApi } from '@web/data/api/timeline';
 
-// The longest delay a browser timer keeps; a longer one would fire at once.
-const MAX_TIMER_MS = 2 ** 31 - 1;
-
 /**
- * The key one Space's execution list is cached under: inside the Space-task key, so the page's Space-task signal
- * refetches it (inner#1711 design §9).
+ * The key one Space's execution list is cached under: inside the Space-task key, so a new change version in the
+ * Timeline's document (`SpaceTasksWatcher`) reads it again (inner#1711 design §9, #1568).
  * @param projectId - The Project.
  * @param spaceId - The Timeline Space.
  * @returns The key.
@@ -25,42 +21,17 @@ export function timelineExecutionsQueryKey(projectId: string, spaceId: string): 
 }
 
 /**
- * One Space's execution list. It refetches on the Space-task signal, polls while an execution is unfinished, and is
- * read again once when the earliest unfinished execution reaches its deadline, so an expiry shows without a signal.
+ * One Space's execution list. It is read again when the Timeline's document records a change, an expiry included,
+ * since the worker's sweep announces it; nothing reads it on a timer.
  * @param projectId - The Project.
  * @param spaceId - The Timeline Space.
- * @param refreshMs - The polling interval while an execution is unfinished; none polls nothing.
  * @param options - Query options.
  * @param options.enabled - Whether to read the list at all; false reads nothing.
  * @returns The query.
  * @throws {never} Never.
  */
-export function useTimelineExecutions(projectId: string, spaceId: string, refreshMs?: number, { enabled = true }: { enabled?: boolean } = {}): UseQueryResult<TimelineExecutionRow[]> {
-  const queryClient = useQueryClient();
+export function useTimelineExecutions(projectId: string, spaceId: string, { enabled = true }: { enabled?: boolean } = {}): UseQueryResult<TimelineExecutionRow[]> {
   const queryKey = React.useMemo(() => timelineExecutionsQueryKey(projectId, spaceId), [projectId, spaceId]);
   const queryFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.listExecutions(projectId, spaceId, signal), [projectId, spaceId]);
-  const refetchInterval = React.useCallback((query: Query<TimelineExecutionRow[]>): number | false =>
-    refreshMs !== undefined && query.state.data?.some((row) => !timelineExecutionEnded(row.status)) === true ? refreshMs : false, [refreshMs]);
-  const list = useQuery({ queryKey, queryFn, refetchInterval, enabled });
-  // Deadlines already read once; a row the server has not yet marked expired is not read again for the same deadline.
-  const passed = React.useRef(new Set<string>());
-  const deadline = React.useMemo(() => {
-    let earliest: { key: string; at: number } | null = null;
-    for (const row of list.data ?? []) {
-      const key = `${row.id}:${row.deadlineAt}`;
-      const at = new Date(row.deadlineAt).getTime();
-      if (timelineExecutionEnded(row.status) || passed.current.has(key) || !Number.isFinite(at)) continue;
-      if (earliest === null || at < earliest.at) earliest = { key, at };
-    }
-    return earliest;
-  }, [list.data]);
-  React.useEffect(() => {
-    if (deadline === null) return;
-    const timer = setTimeout(() => {
-      passed.current.add(deadline.key);
-      void queryClient.invalidateQueries({ queryKey });
-    }, Math.min(MAX_TIMER_MS, Math.max(0, deadline.at - Date.now())));
-    return () => clearTimeout(timer);
-  }, [deadline, queryClient, queryKey]);
-  return list;
+  return useQuery({ queryKey, queryFn, enabled });
 }

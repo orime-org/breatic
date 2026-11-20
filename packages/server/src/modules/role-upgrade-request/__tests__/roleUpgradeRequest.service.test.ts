@@ -56,7 +56,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // configured layout, and log a failed send; all three are the real ones.
     runWithLocale: actual.runWithLocale,
     getMailLayout: actual.getMailLayout,
-    isUniqueViolation: actual.isUniqueViolation,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn() },
     db: {
       transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
@@ -75,11 +74,9 @@ vi.mock("@breatic/core", async (importOriginal) => {
   };
 });
 // The email is queued for the worker; the job carries the built mail.
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
+  ...(await import("../../../../../domain/src/mail/mail-shell.js")),
   enqueueMail: vi.fn(async () => {}),
-  // The request / approve / reject paths resolve the actor's display identity
-  // (name + personal-studio slug = @handle) for the bell payload.
-  profilesService: { personalProfiles: vi.fn(), accountsOf: vi.fn() },
 }));
 vi.mock("../roleUpgradeRequests.repo.js", () => ({
   createPending: vi.fn(),
@@ -106,6 +103,11 @@ vi.mock("../../notification/notification.service.js", async (importOriginal) => 
     createRoleUpgradeRejected: vi.fn(),
   };
 });
+// The request / approve / reject paths resolve the actor's display identity
+// (name + personal-studio slug = @handle) for the bell payload.
+vi.mock("../../studio/studio.service.js", () => ({
+  getPersonalStudioProfilesByUserIds: vi.fn(),
+}));
 // The outcome notification's project label is read from the repo with the
 // transaction's own handle — reading it through the service would reach for a
 // second pooled connection while the first is still held.
@@ -125,15 +127,19 @@ vi.mock("@server/config/limits.js", () => ({
 // mail is the half of this flow that nothing else observes: the bell entry is
 // visible in the payload assertions, a mail that is never sent is visible
 // nowhere.
+vi.mock("@server/modules/auth/user.repo.js", () => ({
+  getUserById: vi.fn(),
+}));
 
 import * as notificationRepo from "../../notification/notification.repo.js";
 import * as notificationService from "../../notification/notification.service.js";
+import * as studioService from "../../studio/studio.service.js";
 import * as projectRepo from "../../project/project.repo.js";
 import * as requestsRepo from "../roleUpgradeRequests.repo.js";
-import { projectMembersRepo } from "@breatic/core";
-import { enqueueMail, profilesService } from "@breatic/domain";
+import * as userRepo from "@server/modules/auth/user.repo.js";
+import { projectMembersRepo, NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
+import { enqueueMail } from "@breatic/domain";
 import * as roleUpgradeRequestService from "../roleUpgradeRequest.service.js";
-import { NotFoundError, ForbiddenError, ConflictError } from "@breatic/core";
 
 // The mocked core above keeps only what this file uses, so the catalogs the
 // email templates read are loaded from the real one.
@@ -145,8 +151,8 @@ const VIEWER = "u-viewer";
 const PID = "p-1";
 const RID = "r-1";
 const NID = "n-1";
-const VIEWER_PROFILE = { name: "Vicky Viewer", slug: "vicky", deleted: false };
-const OWNER_PROFILE = { name: "Olivia Owner", slug: "olivia", deleted: false };
+const VIEWER_PROFILE = { name: "Vicky Viewer", slug: "vicky" };
+const OWNER_PROFILE = { name: "Olivia Owner", slug: "olivia" };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -154,14 +160,16 @@ beforeEach(() => {
   // Default: no actor profile resolved (callers fall back to ""). Happy-path
   // tests override with a specific name + slug (@handle) per the bell payload.
   vi.mocked(
-    profilesService.personalProfiles,
+    studioService.getPersonalStudioProfilesByUserIds,
   ).mockResolvedValue(new Map());
   vi.mocked(projectRepo.lockLiveProject).mockResolvedValue(true);
   vi.mocked(projectMembersRepo.getOwner).mockResolvedValue(OWNER);
   vi.mocked(requestsRepo.getProjectIdOf).mockResolvedValue(PID);
-  vi.mocked(profilesService.accountsOf).mockResolvedValue(
-    new Map([[OWNER, { id: OWNER, email: "olivia@example.com", emailVerified: true, locale: "en" }]]),
-  );
+  vi.mocked(userRepo.getUserById).mockResolvedValue({
+    id: OWNER,
+    email: "olivia@example.com",
+    locale: "en",
+  } as Awaited<ReturnType<typeof userRepo.getUserById>>);
   vi.mocked(projectMembersRepo.getRole).mockImplementation(
     async (_projectId: string, userId: string) =>
       userId === OWNER ? "owner" : "viewer",
@@ -221,7 +229,7 @@ function fakeNotification(): Awaited<
 describe("request", () => {
   it("files the row and the bell entry with one shared deadline", async () => {
     vi.mocked(
-      profilesService.personalProfiles,
+      studioService.getPersonalStudioProfilesByUserIds,
     ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
     vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
       id: RID,
@@ -271,7 +279,7 @@ describe("request", () => {
     // looks exactly like a builder with one — so the assertion is on the
     // transport, not on the template.
     vi.mocked(
-      profilesService.personalProfiles,
+      studioService.getPersonalStudioProfilesByUserIds,
     ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
     vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
       id: RID,
@@ -303,7 +311,7 @@ describe("request", () => {
 
   it("skips the email when the caller had no Origin to build a link from", async () => {
     vi.mocked(
-      profilesService.personalProfiles,
+      studioService.getPersonalStudioProfilesByUserIds,
     ).mockResolvedValueOnce(new Map([[VIEWER, VIEWER_PROFILE]]));
     vi.mocked(requestsRepo.createPending).mockResolvedValueOnce({
       id: RID,
@@ -392,7 +400,7 @@ describe("approve", () => {
       true,
     );
     vi.mocked(
-      profilesService.personalProfiles,
+      studioService.getPersonalStudioProfilesByUserIds,
     ).mockResolvedValueOnce(new Map([[OWNER, OWNER_PROFILE]]));
 
     await roleUpgradeRequestService.approve({
