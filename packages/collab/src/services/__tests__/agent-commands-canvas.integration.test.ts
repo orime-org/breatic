@@ -404,40 +404,6 @@ describe("comment_on_canvas", () => {
     ]);
   });
 
-  it("answers a thread handed to this connection: the reply carries the hand-over time", async () => {
-    let noteId = "";
-    const world = await seedWorld("owner", (canvas, _uid, ownerId) => {
-      const note = createAnnotationNode({ x: 0, y: 400 }, ownerId, "Shorter?");
-      noteId = note.id;
-      addNodeInDoc(canvas, note);
-    });
-    const assignedAt = 1_700_000_000_000;
-    await readCanvas(harness.instanceA, world, (doc) => {
-      nodeDataMap(doc, noteId)!.set("assignment", { connectionId: world.connectionId, assignedBy: world.userId, assignedAt });
-    });
-    consumeOn(world, harness.instanceA);
-    const reply = await call(world, "comment_on_canvas", { text: "Done", annotationId: noteId });
-    expect(reply).toMatchObject({ status: "done", result: { answered: true } });
-    const replies = ((await nodeOf(world, noteId))?.data as { replies?: unknown[] }).replies;
-    expect(replies).toEqual([expect.objectContaining({ via: world.connectionId, answers: assignedAt })]);
-  });
-
-  it("does not answer a thread handed to another connection", async () => {
-    let noteId = "";
-    const world = await seedWorld("owner", (canvas, uid) => {
-      const note = createAnnotationNode({ x: 0, y: 400 }, uid, "Shorter?");
-      noteId = note.id;
-      addNodeInDoc(canvas, note);
-    });
-    await readCanvas(harness.instanceA, world, (doc) => {
-      nodeDataMap(doc, noteId)!.set("assignment", { connectionId: randomUUID(), assignedBy: world.userId, assignedAt: 1 });
-    });
-    consumeOn(world, harness.instanceA);
-    expect(await call(world, "comment_on_canvas", { text: "Done", annotationId: noteId })).toMatchObject({ status: "done", result: { answered: false } });
-    const replies = ((await nodeOf(world, noteId))?.data as { replies?: Array<Record<string, unknown>> }).replies;
-    expect(replies?.[0]).not.toHaveProperty("answers");
-  });
-
   it("answers not_found for a reply to a note that is gone", async () => {
     const world = await seedWorld();
     consumeOn(world, harness.instanceA);
@@ -624,29 +590,37 @@ describe("where notes are pinned and what is handed over (#1488 §11.7, §11.8)"
     expect(nodes.find((n) => n.id === world.nodeId)).not.toHaveProperty("anchor");
   });
 
-  it("lists the threads handed to this connection that wait for it, with where each is pinned", async () => {
-    const ids: Record<string, string> = {};
+  it("says which connection a note waits for when the canvas is read", async () => {
+    let noteId = "";
+    let answeredId = "";
     const world = await seedWorld("owner", (canvas, uid) => {
-      for (const [key, y] of [["pending", 10], ["answered", 2000], ["other", 3000], ["copied", 4000]] as const) {
-        const note = createAnnotationNode({ x: 10, y }, uid, key);
-        ids[key] = note.id;
-        addNodeInDoc(canvas, note);
-      }
+      const note = createAnnotationNode({ x: 10, y: 10 }, uid, "Brighter?");
+      noteId = note.id;
+      addNodeInDoc(canvas, note);
+      const answered = createAnnotationNode({ x: 10, y: 900 }, uid, "Darker?");
+      answeredId = answered.id;
+      addNodeInDoc(canvas, answered);
     });
-    const assignedAt = 1_700_000_000_000;
-    await readCanvas(harness.instanceA, world, (doc) => {
-      const hand = (key: string, over: Record<string, unknown> = {}): void => {
-        nodeDataMap(doc, ids[key]!)!.set("assignment", { connectionId: world.connectionId, assignedBy: world.userId, assignedAt, projectId: world.projectId, ...over });
-      };
-      hand("pending");
-      hand("answered");
-      nodeDataMap(doc, ids.answered!)!.set("replies", [{ id: "r1", content: "Done", createdBy: world.userId, createdAt: 1, via: world.connectionId, answers: assignedAt }]);
-      hand("other", { connectionId: randomUUID() });
-      hand("copied", { projectId: randomUUID() });
+    for (const [threadId, status] of [[noteId, "pending"], [answeredId, "answered"]] as const) {
+      await run(dsql`INSERT INTO comment_assignments (project_id, space_id, thread_id, connection_id, assigned_by, assigned_at, status)
+        VALUES (${world.projectId}, ${world.spaceId}, ${threadId}, ${world.connectionId}, ${world.userId}, 1, ${status})`);
+    }
+    consumeOn(world, harness.instanceA);
+    const { nodes } = resultOf<{ nodes: Array<{ id: string; handedTo?: unknown }> }>(await call(world, "read_canvas", {}));
+    expect(nodes.find((n) => n.id === noteId)?.handedTo).toBe(world.connectionId);
+    expect(nodes.find((n) => n.id === answeredId)).not.toHaveProperty("handedTo");
+  });
+
+  it("tells which of the asked threads are still on the canvas, with where each is pinned", async () => {
+    let noteId = "";
+    const world = await seedWorld("owner", (canvas, uid) => {
+      const note = createAnnotationNode({ x: 10, y: 10 }, uid, "Shorter?");
+      noteId = note.id;
+      addNodeInDoc(canvas, note);
     });
     consumeOn(world, harness.instanceA);
-    expect(resultOf(await call(world, "read_canvas_assignments", {}))).toEqual({
-      assignments: [{ threadId: ids.pending, assignedBy: world.userId, assignedAt, pin: { x: 10, y: 10, nodeIds: [world.nodeId], groupId: null } }],
+    expect(resultOf(await call(world, "read_canvas_assignments", { threadIds: [noteId, randomUUID()] }))).toEqual({
+      threads: [{ threadId: noteId, authorId: world.userId, pin: { x: 10, y: 10, nodeIds: [world.nodeId], groupId: null } }],
     });
   });
 });

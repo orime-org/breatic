@@ -49,3 +49,13 @@ describe("result-node command parameters", () => {
     expect(ok("check_upload_target", { nodeId: "n1", type: "annotation" })).toBe(false);
   });
 });
+
+describe("hand-over read command parameters (#1488 §11.7)", () => {
+  it("read_canvas_assignments and read_document_assignments name one or more threads", () => {
+    for (const type of ["read_canvas_assignments", "read_document_assignments"] as const) {
+      expect(agentCommandParamsSchemas[type].parse({ threadIds: ["t1", "t2"] })).toEqual({ threadIds: ["t1", "t2"] });
+      expect(ok(type, { threadIds: [] })).toBe(false);
+      expect(ok(type, {})).toBe(false);
+    }
+  });
+});

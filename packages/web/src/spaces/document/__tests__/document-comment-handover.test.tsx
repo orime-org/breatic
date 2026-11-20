@@ -3,8 +3,8 @@
 
 /**
  * Handing a document comment to an external agent (#1488 §11.7): the button
- * in the card's header while it is read, the label and the agent's name on
- * its reply.
+ * in the card's header while it is read, the label the server's record
+ * decides, and the agent's name on its reply.
  */
 
 import * as React from 'react';
@@ -33,7 +33,8 @@ vi.mock('@web/data/use-project-members', () => ({
 }));
 
 const ME = 'u1';
-const handed = { connectionId: 'c1', assignedBy: ME, assignedAt: 100, projectId: 'p1' };
+/** My hand-over of the thread to c1, as the server's record says. */
+const mine = (status: 'pending' | 'answered' = 'pending'): Array<Record<string, unknown>> => [{ threadId: 't1', connectionId: 'c1', assignedAt: 100, status }];
 
 /**
  * One comment.
@@ -49,7 +50,6 @@ const entry = (over: Partial<CommentEntryView> = {}): CommentEntryView => ({
   createdAt: new Date(0),
   fromAgent: false,
   via: null,
-  answers: null,
   ...over,
 });
 
@@ -64,7 +64,6 @@ const card = (over: Partial<CommentCardView> = {}): CommentCardView => ({
   quote: 'the opening',
   media: null,
   entries: [entry()],
-  assignment: undefined,
   ...over,
 });
 
@@ -131,19 +130,27 @@ describe('handing a document comment to an external agent', () => {
     expect(screen.queryByTestId('hand-over-open')).toBeNull();
   });
 
+  it('offers no button on a resolved thread', () => {
+    mount(card({ settled: true }));
+    expect(screen.queryByTestId('hand-over-open')).toBeNull();
+  });
+
   it('takes it back', async () => {
-    mount(card({ assignment: handed }));
-    await userEvent.click(screen.getByTestId('hand-over-cancel'));
+    api.spaceAssignments.mockResolvedValue(mine());
+    mount(card());
+    await userEvent.click(await screen.findByTestId('hand-over-cancel'));
     expect(onTakeBack).toHaveBeenCalledWith('t1');
   });
 
   it('shows the one who handed it over what it waits for, even while the card is not read', async () => {
-    mount(card({ assignment: handed }), false);
+    api.spaceAssignments.mockResolvedValue(mine());
+    mount(card(), false);
     expect(await screen.findByText('Waiting for Claude Code')).toBeInTheDocument();
   });
 
   it('stops waiting once the thread is resolved', async () => {
-    mount(card({ assignment: handed, settled: true }), false);
+    api.spaceAssignments.mockResolvedValue(mine());
+    mount(card({ settled: true }), false);
     await waitFor(() => {
       expect(api.listConnections).toHaveBeenCalled();
       expect(api.spaceAssignments).toHaveBeenCalled();
@@ -154,8 +161,9 @@ describe('handing a document comment to an external agent', () => {
     expect(screen.queryByText('Waiting for Claude Code')).toBeNull();
   });
 
-  it('names the agent on its reply, and the wait is over', async () => {
-    mount(card({ assignment: handed, entries: [entry(), entry({ id: 'e2', via: 'c1', answers: 100 })] }));
+  it('names the agent on its reply, and the wait is over once the record says answered', async () => {
+    api.spaceAssignments.mockResolvedValue(mine('answered'));
+    mount(card({ entries: [entry(), entry({ id: 'e2', via: 'c1' })] }));
     expect(await screen.findByText('Claude Code replied')).toBeInTheDocument();
     expect(screen.queryByText('Waiting for Claude Code')).toBeNull();
   });

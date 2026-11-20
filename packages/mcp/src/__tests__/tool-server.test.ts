@@ -22,17 +22,15 @@ const FINISHED: FinishedTask = {
 };
 
 /**
- * Deps whose server answers the assignment list with `assignments`.
- * @param assignments - What `GET /agent/assignments` answers, or an error to throw.
+ * Deps whose connection has `fresh` threads newly handed to it.
+ * @param fresh - How many the new-assignments set gives up, or an error to throw.
  * @param finished - What the task tracker reports.
  * @returns The deps.
  */
-function depsWith(assignments: unknown[] | Error, finished: FinishedTask[] = []): ToolDeps {
+function depsWith(fresh: number | Error, finished: FinishedTask[] = []): ToolDeps {
   const api: ServerApi = {
-    get: async <T>(path: string): Promise<T> => {
-      if (path !== "/agent/assignments") throw new Error(`unexpected ${path}`);
-      if (assignments instanceof Error) throw assignments;
-      return assignments as T;
+    get: async () => {
+      throw new Error("not used");
     },
     post: async () => {
       throw new Error("not used");
@@ -44,6 +42,12 @@ function depsWith(assignments: unknown[] | Error, finished: FinishedTask[] = [])
     api,
     commands: { submit: vi.fn(), send: vi.fn(), operationResult: vi.fn(), close: vi.fn() },
     tasks,
+    newAssignments: {
+      take: vi.fn(async () => {
+        if (fresh instanceof Error) throw fresh;
+        return fresh;
+      }),
+    },
     config: mcpConfigSchema.parse({}),
     report: vi.fn(),
   };
@@ -110,7 +114,7 @@ const TOOLS = [echo, refuse, broke, poor, picture, malformed];
 
 describe("buildToolServer", () => {
   it("lists each tool with its description, input schema and whether it only reads, and sends the instructions", async () => {
-    const client = await connectClient(buildToolServer(depsWith([]), TOOLS, { instructions: "Call list_assignments first." }));
+    const client = await connectClient(buildToolServer(depsWith(0), TOOLS, { instructions: "Call list_assignments first." }));
     expect((await client.initialize()).instructions).toBe("Call list_assignments first.");
     const listed = await client.listTools();
     expect(listed.map((t) => [t.name, t.annotations?.readOnlyHint])).toEqual([
@@ -125,36 +129,36 @@ describe("buildToolServer", () => {
     expect(listed[0]!.inputSchema).toMatchObject({ type: "object", properties: { word: { type: "string", description: "The word." } } });
   });
 
-  it("answers with the result, the count of threads handed to the agent and the tasks that finished", async () => {
-    const client = await connectClient(buildToolServer(depsWith([{ threadId: "a" }, { threadId: "b" }], [FINISHED]), TOOLS, {}));
+  it("answers with the result, the count of threads newly handed to the agent and the tasks that finished", async () => {
+    const client = await connectClient(buildToolServer(depsWith(2, [FINISHED]), TOOLS, {}));
     await client.initialize();
     expect(await client.callJson("echo", { word: "hi" })).toEqual({
       isError: false,
       body: {
         result: { word: "hi" },
-        pendingAssignments: 2,
+        newAssignments: 2,
         finishedTasks: [{ taskId: FINISHED.taskId, tool: "run_generation", projectId: FINISHED.projectId, spaceId: FINISHED.spaceId, nodeId: FINISHED.nodeId, status: "succeeded", result: "https://cdn/x.png" }],
       },
     });
   });
 
-  it("leaves out finishedTasks when none finished", async () => {
-    const client = await connectClient(buildToolServer(depsWith([]), TOOLS, {}));
+  it("leaves out newAssignments and finishedTasks when there are none", async () => {
+    const client = await connectClient(buildToolServer(depsWith(0), TOOLS, {}));
     await client.initialize();
-    expect((await client.callJson("echo", { word: "hi" })).body).toEqual({ result: { word: "hi" }, pendingAssignments: 0 });
+    expect((await client.callJson("echo", { word: "hi" })).body).toEqual({ result: { word: "hi" } });
   });
 
   it("answers a refusal as an error result that still carries the reminders", async () => {
-    const client = await connectClient(buildToolServer(depsWith([{ threadId: "a" }]), TOOLS, {}));
+    const client = await connectClient(buildToolServer(depsWith(1), TOOLS, {}));
     await client.initialize();
     expect(await client.callJson("refuse", {})).toEqual({
       isError: true,
-      body: { error: "locked", message: "A node the call changes is locked.", pendingAssignments: 1 },
+      body: { error: "locked", message: "A node the call changes is locked.", newAssignments: 1 },
     });
   });
 
   it("passes on the server's own words for a refused request, such as running out of credits", async () => {
-    const client = await connectClient(buildToolServer(depsWith([]), TOOLS, {}));
+    const client = await connectClient(buildToolServer(depsWith(0), TOOLS, {}));
     await client.initialize();
     expect(await client.callJson("poor", {})).toMatchObject({
       isError: true,
@@ -164,7 +168,7 @@ describe("buildToolServer", () => {
 
   it("hides an internal error's detail from the agent and reports it", async () => {
     const onError = vi.fn();
-    const client = await connectClient(buildToolServer(depsWith([]), TOOLS, { onError }));
+    const client = await connectClient(buildToolServer(depsWith(0), TOOLS, { onError }));
     await client.initialize();
     const { isError, body } = await client.callJson("broke", {});
     expect(isError).toBe(true);
@@ -175,13 +179,13 @@ describe("buildToolServer", () => {
 
   it("still answers when the reminders cannot be read", async () => {
     const onError = vi.fn();
-    const client = await connectClient(buildToolServer(depsWith(new ServerApiError(429, "Too many requests")), TOOLS, { onError }));
+    const client = await connectClient(buildToolServer(depsWith(new Error("redis down")), TOOLS, { onError }));
     await client.initialize();
     expect(await client.callJson("echo", { word: "hi" })).toEqual({ isError: false, body: { result: { word: "hi" } } });
   });
 
   it("puts images after the JSON as image content", async () => {
-    const client = await connectClient(buildToolServer(depsWith([]), TOOLS, {}));
+    const client = await connectClient(buildToolServer(depsWith(0), TOOLS, {}));
     await client.initialize();
     const result = await client.callTool("picture", {});
     expect(result.content[1]).toEqual({ type: "image", data: "aGk=", mimeType: "image/webp" });
@@ -190,7 +194,7 @@ describe("buildToolServer", () => {
 
 describe("a command the shared format refuses", () => {
   it("is answered as an invalid request naming the field", async () => {
-    const client = await connectClient(buildToolServer(depsWith([]), TOOLS, {}));
+    const client = await connectClient(buildToolServer(depsWith(0), TOOLS, {}));
     await client.initialize();
     const { isError, body } = await client.callJson("malformed", {});
     expect(isError).toBe(true);

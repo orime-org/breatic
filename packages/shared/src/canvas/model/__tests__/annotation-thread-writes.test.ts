@@ -10,13 +10,12 @@ import { describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
 
 import type { CommentMention } from '@shared/types/canvas-node.js';
-import { readCommentAssignments, readCommentMentions } from '@shared/comment-records.js';
+import { readCommentMentions } from '@shared/comment-records.js';
 import {
   addNodeInDoc,
   addReplyInDoc,
   editAnnotationBodyInDoc,
   editReplyInDoc,
-  setAnnotationAssignmentInDoc,
 } from '@shared/canvas/model/canvas-write.js';
 import { createAnnotationNode } from '@shared/canvas/model/node-factory.js';
 
@@ -70,24 +69,5 @@ describe('mentions on a canvas thread', () => {
     addReplyInDoc(doc, id, { id: 'r1', content: '@Bob', createdBy: 'u3', createdAt: 1, mentions: [bob] });
     editReplyInDoc(doc, id, 'r1', '@Alice', 2, [alice]);
     expect(readCommentMentions('canvas', doc, 'p1').map((m) => m.userId)).toEqual(['u1']);
-  });
-});
-
-describe('the hand-over on a canvas thread', () => {
-  it('sets, replaces and removes it', () => {
-    const { doc, id } = board();
-    expect(setAnnotationAssignmentInDoc(doc, id, { connectionId: 'c1', assignedBy: 'u0', assignedAt: 5, projectId: 'p1' })).toBe(true);
-    expect(readCommentAssignments('canvas', doc, 'p1')).toEqual([
-      { threadId: id, connectionId: 'c1', assignedBy: 'u0', assignedAt: 5, status: 'pending' },
-    ]);
-    setAnnotationAssignmentInDoc(doc, id, { connectionId: 'c2', assignedBy: 'u0', assignedAt: 6, projectId: 'p1' });
-    expect(readCommentAssignments('canvas', doc, 'p1').map((a) => a.connectionId)).toEqual(['c2']);
-    setAnnotationAssignmentInDoc(doc, id, null);
-    expect(readCommentAssignments('canvas', doc, 'p1')).toEqual([]);
-  });
-
-  it('reports a missing annotation', () => {
-    const { doc } = board();
-    expect(setAnnotationAssignmentInDoc(doc, 'gone', null)).toBe(false);
   });
 });

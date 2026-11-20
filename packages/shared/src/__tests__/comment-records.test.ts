@@ -9,7 +9,7 @@
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
 
-import { readCommentAssignments, readCommentMentions } from "@shared/comment-records.js";
+import { readCommentMentions, readThreadState } from "@shared/comment-records.js";
 import { canvasNodesMap } from "@shared/canvas/model/canvas-read.js";
 import { documentBodyFragment, documentCommentThreads } from "@shared/document-body.js";
 
@@ -147,58 +147,28 @@ describe("readCommentMentions — document", () => {
   });
 });
 
-describe("readCommentAssignments — canvas", () => {
-  const assignment = { connectionId: "conn", assignedBy: "giver", assignedAt: 100, projectId: PROJECT };
-
-  it("reads a hand-over as pending until a reply by that connection answers that hand-over", () => {
-    const doc = new Y.Doc();
-    annotation(doc, "a1", { assignment }, [{ id: "r1", createdBy: "giver", via: "conn", answers: 99 }]);
-    annotation(doc, "a2", { assignment }, [{ id: "r2", createdBy: "giver", via: "conn", answers: 100 }]);
-    annotation(doc, "a3", { assignment }, [{ id: "r3", createdBy: "giver", via: "other", answers: 100 }]);
-    expect(readCommentAssignments("canvas", doc, PROJECT)).toEqual([
-      { threadId: "a1", connectionId: "conn", assignedBy: "giver", assignedAt: 100, status: "pending" },
-      { threadId: "a2", connectionId: "conn", assignedBy: "giver", assignedAt: 100, status: "answered" },
-      { threadId: "a3", connectionId: "conn", assignedBy: "giver", assignedAt: 100, status: "pending" },
-    ]);
-  });
-
-  it("reads nothing from a hand-over given in another project, as a project copy carries", () => {
-    const doc = new Y.Doc();
-    annotation(doc, "a1", { assignment: { ...assignment, projectId: OTHER_PROJECT } });
-    annotation(doc, "a2", { assignment: { connectionId: "conn", assignedBy: "giver", assignedAt: 100 } });
-    expect(readCommentAssignments("canvas", doc, PROJECT)).toEqual([]);
-  });
-
-  it("reads nothing from an annotation with no hand-over or a malformed one", () => {
+describe("readThreadState — canvas", () => {
+  it("reads an annotation as open and anything else as gone", () => {
     const doc = new Y.Doc();
     annotation(doc, "a1", {});
-    annotation(doc, "a2", { assignment: { connectionId: "conn", assignedBy: "giver", assignedAt: "soon" } });
-    expect(readCommentAssignments("canvas", doc, PROJECT)).toEqual([]);
+    const node = new Y.Map<unknown>();
+    canvasNodesMap(doc).set("t1", node);
+    node.set("type", "text");
+    expect(readThreadState("canvas", doc, "a1")).toBe("open");
+    expect(readThreadState("canvas", doc, "t1")).toBe("gone");
+    expect(readThreadState("canvas", doc, "nope")).toBe("gone");
   });
 });
 
-describe("readCommentAssignments — document", () => {
-  const assignment = { connectionId: "conn", assignedBy: "giver", assignedAt: 100, projectId: PROJECT };
-
-  it("reads pending, answered and resolved, answered winning over resolved", () => {
+describe("readThreadState — document", () => {
+  it("reads a thread with marked words as open or resolved, and one without as gone", () => {
     const doc = new Y.Doc();
-    const answering = { id: "c2", userId: "giver", metadata: { via: "conn", answers: 100 } };
-    thread(doc, "pending", { metadata: { assignment }, comments: [{ id: "c1", userId: "a" }] });
-    thread(doc, "answered", { metadata: { assignment }, comments: [{ id: "c1", userId: "a" }, answering] });
-    thread(doc, "resolved", { metadata: { assignment }, resolved: true, comments: [{ id: "c1", userId: "a" }] });
-    thread(doc, "both", { metadata: { assignment }, resolved: true, comments: [answering] });
-    expect(readCommentAssignments("document", doc, PROJECT).map((r) => [r.threadId, r.status])).toEqual([
-      ["pending", "pending"],
-      ["answered", "answered"],
-      ["resolved", "resolved"],
-      ["both", "answered"],
-    ]);
-  });
-
-  it("does not count a deleted answering reply, and reads nothing once the thread's words are gone", () => {
-    const doc = new Y.Doc();
-    thread(doc, "t1", { metadata: { assignment }, comments: [{ id: "c2", userId: "g", deletedAt: 5, metadata: { via: "conn", answers: 100 } }] });
-    thread(doc, "t2", { metadata: { assignment }, marked: false, comments: [{ id: "c1", userId: "a" }] });
-    expect(readCommentAssignments("document", doc, PROJECT)).toEqual([{ threadId: "t1", connectionId: "conn", assignedBy: "giver", assignedAt: 100, status: "pending" }]);
+    thread(doc, "open", { comments: [{ id: "c1", userId: "a" }] });
+    thread(doc, "resolved", { resolved: true, comments: [{ id: "c1", userId: "a" }] });
+    thread(doc, "unmarked", { marked: false, comments: [{ id: "c1", userId: "a" }] });
+    expect(readThreadState("document", doc, "open")).toBe("open");
+    expect(readThreadState("document", doc, "resolved")).toBe("resolved");
+    expect(readThreadState("document", doc, "unmarked")).toBe("gone");
+    expect(readThreadState("document", doc, "nope")).toBe("gone");
   });
 });

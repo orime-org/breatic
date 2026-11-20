@@ -14,6 +14,7 @@
 import { describe, expect, it } from "vitest";
 import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
+import { sql as dsql } from "drizzle-orm";
 
 import {
   DOCUMENT_SCHEMA_META_KEY,
@@ -23,7 +24,6 @@ import {
   documentSpaceDocName,
   projectMetaDocName,
 } from "@breatic/shared";
-import { readCommentAssignments } from "@breatic/shared/space-content";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { publishDocumentSchema } from "@collab/services/document-schema-publisher.js";
 import { getCollabConfig } from "@collab/config.js";
@@ -35,6 +35,7 @@ import {
   harness,
   replyOf,
   resultOf,
+  run,
   seedWorld,
   send,
   useAgentCommandHarness,
@@ -58,7 +59,7 @@ interface ReadThread {
   blockId: string | null;
   quotedText: string | null;
   resolved: boolean;
-  comments: Array<{ id: string; userId: string; text: string; via?: string; answers?: number }>;
+  comments: Array<{ id: string; userId: string; text: string; via?: string }>;
 }
 
 /**
@@ -350,45 +351,6 @@ describe("comment_on_document", () => {
     expect((await readDocument(world)).threads.map((t) => t.quotedText)).toEqual(["Hello world."]);
   });
 
-  it("answers a thread handed to this connection: the reply carries the hand-over time", async () => {
-    const world = await seedDocumentWorld([paragraph("b0", "Hello world.")]);
-    consumeOn(world, harness.instanceA);
-    const started = await call(world, "comment_on_document", { blockId: "b0", text: "Tighten" });
-    const { threadId } = resultOf<{ threadId: string }>(started);
-    const assignedAt = 1_700_000_000_000;
-    const conn = await harness.instanceA.openDirectConnection(documentSpaceDocName(world.projectId, world.spaceId), {});
-    try {
-      await conn.transact((doc) => {
-        const thread = documentCommentThreads(doc).get(threadId) as Y.Map<unknown>;
-        thread.set("metadata", { assignment: { connectionId: world.connectionId, assignedBy: world.userId, assignedAt } });
-      });
-    } finally {
-      await conn.disconnect();
-    }
-    expect(await call(world, "comment_on_document", { threadId, text: "Tightened." })).toMatchObject({ status: "done", result: { answered: true } });
-    const thread = (await readDocument(world)).threads.find((t) => t.threadId === threadId)!;
-    expect(thread.comments.at(-1)).toMatchObject({ text: "Tightened.", via: world.connectionId, answers: assignedAt });
-  });
-
-  it("leaves a thread readCommentAssignments reads as pending, then answered once the agent replies", async () => {
-    const world = await seedDocumentWorld([paragraph("b0", "Hello world.")]);
-    consumeOn(world, harness.instanceA);
-    const { threadId } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b0", find: "world", text: "Tighten" }));
-    const assignment = { connectionId: world.connectionId, assignedBy: world.userId, assignedAt: 1_700_000_000_000, projectId: world.projectId };
-    const name = documentSpaceDocName(world.projectId, world.spaceId);
-    const conn = await harness.instanceA.openDirectConnection(name, {});
-    try {
-      await conn.transact((doc) => {
-        (documentCommentThreads(doc).get(threadId) as Y.Map<unknown>).set("metadata", { assignment });
-      });
-      expect(readCommentAssignments("document", conn.document!, world.projectId)).toEqual([{ threadId, connectionId: world.connectionId, assignedBy: world.userId, assignedAt: assignment.assignedAt, status: "pending" }]);
-      await call(world, "comment_on_document", { threadId, text: "Tightened." });
-      expect(readCommentAssignments("document", conn.document!, world.projectId)).toEqual([{ threadId, connectionId: world.connectionId, assignedBy: world.userId, assignedAt: assignment.assignedAt, status: "answered" }]);
-    } finally {
-      await conn.disconnect();
-    }
-  });
-
   it("answers not_found for a reply to a thread that is gone and for words that are not there", async () => {
     const world = await seedDocumentWorld([paragraph("b0", "Hello world.")]);
     consumeOn(world, harness.instanceA);
@@ -451,27 +413,31 @@ describe("who is in the document and what they selected (#1488 §11.4)", () => {
 });
 
 describe("what is handed over in a document (#1488 §11.7)", () => {
-  it("lists the threads handed to this connection that wait for it, with the words they are on", async () => {
+  it("says which connection a thread waits for when the document is read", async () => {
+    const world = await seedDocumentWorld([paragraph("b0", "Hello world.")]);
+    consumeOn(world, harness.instanceA);
+    const { threadId } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b0", find: "world", text: "Bigger?" }));
+    await run(dsql`INSERT INTO comment_assignments (project_id, space_id, thread_id, connection_id, assigned_by, assigned_at, status)
+      VALUES (${world.projectId}, ${world.spaceId}, ${threadId}, ${world.connectionId}, ${world.userId}, 1, 'pending')`);
+    const thread = (await readDocument(world)).threads.find((t) => t.threadId === threadId) as ReadThread & { handedTo?: string };
+    expect(thread.handedTo).toBe(world.connectionId);
+  });
+
+  it("tells which of the asked threads are still open in the document, with the words they are on", async () => {
     const world = await seedDocumentWorld([paragraph("b0", "Hello world."), paragraph("b1", "Second.")]);
     consumeOn(world, harness.instanceA);
-    const { threadId: waiting } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b0", find: "world", text: "Bigger?" }));
-    const { threadId: answered } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b1", text: "Cut?" }));
-    const assignedAt = 1_700_000_000_000;
+    const { threadId: open } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b0", find: "world", text: "Bigger?" }));
+    const { threadId: settled } = resultOf<{ threadId: string }>(await call(world, "comment_on_document", { blockId: "b1", text: "Cut?" }));
     const conn = await harness.instanceA.openDirectConnection(documentSpaceDocName(world.projectId, world.spaceId), {});
     try {
       await conn.transact((doc) => {
-        for (const id of [waiting, answered]) {
-          (documentCommentThreads(doc).get(id) as Y.Map<unknown>).set("metadata", {
-            assignment: { connectionId: world.connectionId, assignedBy: world.userId, assignedAt, projectId: world.projectId },
-          });
-        }
+        (documentCommentThreads(doc).get(settled) as Y.Map<unknown>).set("resolved", true);
       });
     } finally {
       await conn.disconnect();
     }
-    await call(world, "comment_on_document", { threadId: answered, text: "Cut." });
-    expect(resultOf(await call(world, "read_document_assignments", {}))).toEqual({
-      assignments: [{ threadId: waiting, assignedBy: world.userId, assignedAt, blockId: "b0", quotedText: "world" }],
+    expect(resultOf(await call(world, "read_document_assignments", { threadIds: [open, settled, randomUUID()] }))).toEqual({
+      threads: [{ threadId: open, authorId: world.userId, blockId: "b0", quotedText: "world" }],
     });
   });
 });

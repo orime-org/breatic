@@ -35,6 +35,7 @@ function depsWith(outcome: (c: AgentCommand) => SubmitOutcome, startedAt = Date.
     api: {} as ToolDeps["api"],
     commands,
     tasks: {} as ToolDeps["tasks"],
+    newAssignments: {} as ToolDeps["newAssignments"],
     config: mcpConfigSchema.parse({}),
     report: vi.fn(),
   };

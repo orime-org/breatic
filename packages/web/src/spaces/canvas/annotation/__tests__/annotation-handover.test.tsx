@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Handing a canvas note to an external agent (#1488 §11.7): the button on
- * the note, what it writes, the label and the name on the agent's reply.
+ * Handing a canvas note to an external agent (#1488 §11.7, §11.9): the button
+ * on the note asks collab on the canvas's own connection, the label follows
+ * the server's record, and the agent's reply carries its name.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -22,14 +23,24 @@ import { useCanvasStore } from '@web/stores/canvas';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
-const setAnnotationAssignment = vi.fn();
+const sendSpaceCommentRequest = vi.hoisted(() => vi.fn());
+const toastError = vi.hoisted(() => vi.fn());
+
+vi.mock('@web/data/yjs/comment-requests', async (real) => ({
+  ...(await real<typeof import('@web/data/yjs/comment-requests')>()),
+  sendSpaceCommentRequest,
+}));
+
+vi.mock('@web/lib/toast', async (real) => {
+  const actual = await real<typeof import('@web/lib/toast')>();
+  return { ...actual, toast: { ...actual.toast, error: toastError } };
+});
 
 vi.mock('@web/data/yjs/canvas-space', () => ({
   addReply: () => true,
   editAnnotationBody: () => true,
   editReply: () => true,
   removeReply: () => undefined,
-  setAnnotationAssignment: (...a: unknown[]) => setAnnotationAssignment(...a),
   runCanvasUndoBatch: (_p: string, _s: string, _o: unknown, write: () => void) => {
     write();
     return { ok: true };
@@ -94,7 +105,8 @@ const note = (over: Partial<AnnotationNodeView> = {}): AnnotationNodeView => ({
   ...over,
 });
 
-const handed = { connectionId: 'c1', assignedBy: 'u-me', assignedAt: 100, projectId: 'p1' };
+/** My hand-over of the note to c1, as the server's record says. */
+const mine = (status: 'pending' | 'answered' = 'pending'): Array<Record<string, unknown>> => [{ threadId: 'n1', connectionId: 'c1', assignedAt: 100, status }];
 
 beforeEach(() => {
   useCanvasStore.getState().reset();
@@ -106,19 +118,28 @@ beforeEach(() => {
   ]);
   api.spaceAssignments.mockResolvedValue([]);
   api.connectionNames.mockResolvedValue([{ id: 'c1', name: 'Claude Code' }]);
+  sendSpaceCommentRequest.mockImplementation(async (_p: string, _s: string, _k: string, request: object) => ({ id: 'r', ok: true, ...request }));
 });
 
 describe('handing a canvas note to an external agent', () => {
-  it('writes the hand-over picked from the list', async () => {
+  it('asks collab to hand it to the connection picked from the list, then reads the record again', async () => {
+    mount(note());
+    await userEvent.click(screen.getByTestId('hand-over-open'));
+    api.spaceAssignments.mockResolvedValue(mine());
+    await userEvent.click(await screen.findByTestId('hand-over-choice-c1'));
+    expect(sendSpaceCommentRequest).toHaveBeenCalledWith('p1', 's1', 'canvas', {
+      type: 'comment:hand-over',
+      payload: { spaceId: 's1', threadId: 'n1', connectionId: 'c1' },
+    });
+    expect(await screen.findByText('Waiting for Claude Code')).toBeInTheDocument();
+  });
+
+  it('says so when collab refuses the hand-over', async () => {
+    sendSpaceCommentRequest.mockResolvedValue({ id: 'r', ok: false, error: { code: 'FORBIDDEN', message: 'x' } });
     mount(note());
     await userEvent.click(screen.getByTestId('hand-over-open'));
     await userEvent.click(await screen.findByTestId('hand-over-choice-c1'));
-    expect(setAnnotationAssignment).toHaveBeenCalledWith(
-      'p1',
-      's1',
-      'n1',
-      expect.objectContaining({ connectionId: 'c1', assignedBy: 'u-me', projectId: 'p1' }),
-    );
+    await vi.waitFor(() => expect(toastError).toHaveBeenCalled());
   });
 
   it('offers a viewer no button', () => {
@@ -126,24 +147,25 @@ describe('handing a canvas note to an external agent', () => {
     expect(screen.queryByTestId('hand-over-open')).toBeNull();
   });
 
-  it('takes it back', async () => {
-    mount(note({ assignment: handed }));
-    await userEvent.click(screen.getByTestId('hand-over-cancel'));
-    expect(setAnnotationAssignment).toHaveBeenCalledWith('p1', 's1', 'n1', null);
+  it('asks collab to take it back', async () => {
+    api.spaceAssignments.mockResolvedValue(mine());
+    mount(note());
+    await userEvent.click(await screen.findByTestId('hand-over-cancel'));
+    expect(sendSpaceCommentRequest).toHaveBeenCalledWith('p1', 's1', 'canvas', {
+      type: 'comment:cancel-hand-over',
+      payload: { spaceId: 's1', threadId: 'n1' },
+    });
   });
 
   it('shows the one who handed it over what it waits for', async () => {
-    mount(note({ assignment: handed }));
+    api.spaceAssignments.mockResolvedValue(mine());
+    mount(note());
     expect(await screen.findByText('Waiting for Claude Code')).toBeInTheDocument();
   });
 
-  it('names the agent on its reply, and the wait is over', async () => {
-    mount(
-      note({
-        assignment: handed,
-        replies: [{ id: 'r1', content: 'done', createdBy: 'u-me', createdAt: 2, via: 'c1', answers: 100 }],
-      }),
-    );
+  it('names the agent on its reply, and the wait is over once the record says answered', async () => {
+    api.spaceAssignments.mockResolvedValue(mine('answered'));
+    mount(note({ replies: [{ id: 'r1', content: 'done', createdBy: 'u-me', createdAt: 2, via: 'c1' }] }));
     expect(await screen.findByText('Claude Code replied')).toBeInTheDocument();
     expect(screen.queryByText('Waiting for Claude Code')).toBeNull();
   });

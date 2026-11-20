@@ -100,39 +100,40 @@ describe("get_operation_result", () => {
 });
 
 describe("list_assignments", () => {
-  it("lists the threads handed to this agent that still wait, oldest first, with their Space and where each is", async () => {
+  it("lists the threads handed to this agent that are still there, oldest first, with their Space, author and where each is", async () => {
     const [canvas, doc] = [randomUUID(), randomUUID()];
-    const giver = randomUUID();
+    const author = randomUUID();
     const records = [
       { projectId: PROJECT, spaceId: doc, threadId: "t-doc", assignedAt: 20 },
       { projectId: PROJECT, spaceId: canvas, threadId: "t-canvas", assignedAt: 10 },
+      { projectId: PROJECT, spaceId: canvas, threadId: "t-gone", assignedAt: 5 },
     ];
     const { deps, submitted } = stubDeps({
-      api: (call) => (call.path === "/agent/assignments" ? records : call.path === "/users" ? [{ id: giver, username: "Ada" }] : []),
+      api: (call) => (call.path === "/agent/assignments" ? records : call.path === "/users" ? [{ id: author, username: "Ada" }] : []),
       reply: (command) => {
         if (command.type === "list_spaces") {
           return { status: "done", result: { spaces: [{ id: canvas, type: "canvas", name: "Board" }, { id: doc, type: "document", name: "Script" }, { id: randomUUID(), type: "canvas", name: "Other" }] } };
         }
         if (command.type === "read_canvas_assignments") {
-          return { status: "done", result: { assignments: [{ threadId: "t-canvas", assignedBy: giver, assignedAt: 10, pin: { x: 1, y: 2, nodeIds: ["n"], groupId: null } }] } };
+          return { status: "done", result: { threads: [{ threadId: "t-canvas", authorId: author, pin: { x: 1, y: 2, nodeIds: ["n"], groupId: null } }] } };
         }
-        return { status: "done", result: { assignments: [{ threadId: "t-doc", assignedBy: giver, assignedAt: 20, blockId: "b1", quotedText: "words" }] } };
+        return { status: "done", result: { threads: [{ threadId: "t-doc", authorId: author, blockId: "b1", quotedText: "words" }] } };
       },
     });
     const { value } = await listAssignments.run(deps, {});
-    expect(submitted.map((c) => [c.type, c.spaceId]).sort()).toEqual(
+    expect(submitted.map((c) => [c.type, c.spaceId, c.params]).sort()).toEqual(
       [
-        ["list_spaces", null],
-        ["read_canvas_assignments", canvas],
-        ["read_document_assignments", doc],
+        ["list_spaces", null, {}],
+        ["read_canvas_assignments", canvas, { threadIds: ["t-canvas", "t-gone"] }],
+        ["read_document_assignments", doc, { threadIds: ["t-doc"] }],
       ].sort(),
     );
     expect(value).toEqual({
       assignments: [
-        { projectId: PROJECT, spaceId: canvas, spaceType: "canvas", spaceName: "Board", threadId: "t-canvas", assignedBy: giver, assignedAt: 10, pin: { x: 1, y: 2, nodeIds: ["n"], groupId: null } },
-        { projectId: PROJECT, spaceId: doc, spaceType: "document", spaceName: "Script", threadId: "t-doc", assignedBy: giver, assignedAt: 20, blockId: "b1", quotedText: "words" },
+        { projectId: PROJECT, spaceId: canvas, spaceType: "canvas", spaceName: "Board", threadId: "t-canvas", authorId: author, assignedAt: 10, pin: { x: 1, y: 2, nodeIds: ["n"], groupId: null } },
+        { projectId: PROJECT, spaceId: doc, spaceType: "document", spaceName: "Script", threadId: "t-doc", authorId: author, assignedAt: 20, blockId: "b1", quotedText: "words" },
       ],
-      names: { users: { [giver]: "Ada" }, agents: {} },
+      names: { users: { [author]: "Ada" }, agents: {} },
     });
   });
 

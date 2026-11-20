@@ -22,14 +22,20 @@
  * TDD: red because `postComment` does not exist yet.
  */
 
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
+
+const notifyMentioned = vi.hoisted(() => vi.fn());
+
+vi.mock('@web/data/yjs/comment-requests', async (real) => ({
+  ...(await real<typeof import('@web/data/yjs/comment-requests')>()),
+  notifyMentioned,
+}));
 import * as Y from 'yjs';
 
 import { CommentsExtension } from '@blocknote/core/comments';
 
 import { documentBodyFragment, documentCommentThreads } from '@breatic/shared';
-import { readCommentAssignments, readCommentMentions } from '@breatic/shared/space-content';
-import { setThreadAssignment } from '@web/spaces/document/document-comment-thread-store';
+import { readCommentMentions } from '@breatic/shared/space-content';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import {
@@ -269,6 +275,31 @@ describe('mentions in a document comment (#1488 §11.6)', () => {
     expect(readCommentMentions('document', doc, 'p1').map((m) => m.userId)).toEqual(['u2']);
   });
 
+  it('asks collab to record the mentions of a new thread and of a reply, once written', async () => {
+    notifyMentioned.mockClear();
+    const { editor } = open();
+    const run = firstRun(editor);
+    aimAt(editor, { from: run.from, to: run.from + 5 });
+    const place = { projectId: 'p1', spaceId: 's1' };
+    const posted = await postComment(editor, 'ask @Alice', [alice], place);
+    const store = editor.getExtension(CommentsExtension)!.threadStore;
+    const first = store.getThreads().get(posted!.id)!.comments[0]!.id;
+    expect(notifyMentioned).toHaveBeenCalledWith('p1', 's1', 'document', first);
+    notifyMentioned.mockClear();
+    await replyToThread(editor, posted!.id, '@Alice see', [alice], place);
+    const reply = store.getThreads().get(posted!.id)!.comments.at(-1)!.id;
+    expect(notifyMentioned).toHaveBeenCalledWith('p1', 's1', 'document', reply);
+  });
+
+  it('asks nothing for words that mention nobody', async () => {
+    notifyMentioned.mockClear();
+    const { editor } = open();
+    const run = firstRun(editor);
+    aimAt(editor, { from: run.from, to: run.from + 5 });
+    await postComment(editor, 'plain', [], { projectId: 'p1', spaceId: 's1' });
+    expect(notifyMentioned).not.toHaveBeenCalled();
+  });
+
   it('stores no mentions key when there are none', async () => {
     const { editor } = open();
     const run = firstRun(editor);
@@ -276,42 +307,5 @@ describe('mentions in a document comment (#1488 §11.6)', () => {
     const posted = await postComment(editor, 'plain', []);
     const stored = editor.getExtension(CommentsExtension)!.threadStore.getThreads().get(posted!.id);
     expect(stored?.comments[0]?.metadata?.mentions).toBeUndefined();
-  });
-});
-
-describe('handing a document thread to an external agent (#1488 §11.7)', () => {
-  const handed = { connectionId: 'c1', assignedBy: 'u1', assignedAt: 100, projectId: 'p1' };
-
-  it('stores the hand-over on the thread, replaces it and takes it back', async () => {
-    const { editor, doc } = open();
-    const run = firstRun(editor);
-    aimAt(editor, { from: run.from, to: run.from + 5 });
-    const posted = await postComment(editor, 'shorten this');
-    const store = editor.getExtension(CommentsExtension)!.threadStore;
-
-    expect(setThreadAssignment(store, posted!.id, handed)).toBe(true);
-    expect(readCommentAssignments('document', doc, 'p1')).toEqual([
-      { threadId: posted!.id, connectionId: 'c1', assignedBy: 'u1', assignedAt: 100, status: 'pending' },
-    ]);
-    setThreadAssignment(store, posted!.id, { ...handed, connectionId: 'c2', assignedAt: 200 });
-    expect(readCommentAssignments('document', doc, 'p1').map((a) => a.connectionId)).toEqual(['c2']);
-    setThreadAssignment(store, posted!.id, null);
-    expect(readCommentAssignments('document', doc, 'p1')).toEqual([]);
-  });
-
-  it('keeps the thread metadata it already had', async () => {
-    const { editor, doc } = open();
-    const run = firstRun(editor);
-    aimAt(editor, { from: run.from, to: run.from + 5 });
-    const posted = await postComment(editor, 'shorten this');
-    const thread = documentCommentThreads(doc).get(posted!.id) as Y.Map<unknown>;
-    thread.set('metadata', { kept: 1 });
-    setThreadAssignment(editor.getExtension(CommentsExtension)!.threadStore, posted!.id, handed);
-    expect(thread.get('metadata')).toEqual({ kept: 1, assignment: handed });
-  });
-
-  it('reports a thread that is gone', () => {
-    const { editor } = open();
-    expect(setThreadAssignment(editor.getExtension(CommentsExtension)!.threadStore, 'gone', null)).toBe(false);
   });
 });

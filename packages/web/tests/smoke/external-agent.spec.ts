@@ -6,14 +6,18 @@
  * real server, collab and MCP service: the user makes a personal access token
  * from the account menu, the agent works on a canvas with it, and the user sees
  * where it works, lets it see the screen, follows it, hands it a note and reads
- * its reply, then revokes it.
+ * its reply, then revokes it; and a member mentioned in a note hears it from
+ * the bell at once.
  *
  *   pnpm --filter @breatic/web test:smoke external-agent
  */
 import { expect, type Page } from 'playwright/test';
 
+import { dataOf } from '../helpers/api';
+import { credentialsFor } from '../helpers/credentials';
 import { openSmokeProject } from '../helpers/project';
-import { test } from '../helpers/slot';
+import { cleanMembership, inviteMember } from '../helpers/project-members';
+import { stateFile, test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { projectIdOf } from '../helpers/tab-restore';
 
@@ -151,12 +155,41 @@ test('a note handed to an external agent waits for it, and its reply ends the wa
   await expect(sticky).toContainText(`${name} replied`);
   await expect(sticky).not.toContainText(`Waiting for ${name}`);
 
-  // The one who handed it over hears about it from the bell. Collab writes the
-  // notification when it stores the Space, a debounce after the reply, and an
-  // open bell reads its list once, so it is opened again until the row is there.
-  await expect(async () => {
-    await page.keyboard.press('Escape');
-    await page.getByTestId('bell-trigger').click();
-    await expect(page.getByTestId('bell-popover')).toContainText(`${name} finished the comment you handed it`, { timeout: 2_000 });
-  }).toPass({ timeout: 60_000 });
+  // The one who handed it over hears about it from the bell, already open:
+  // collab writes the notification while it runs the reply and tells the
+  // project page, which reads the bell again.
+  await page.getByTestId('bell-trigger').click();
+  await expect(page.getByTestId('bell-popover')).toContainText(`${name} finished the comment you handed it`, { timeout: 5_000 });
+});
+
+test('a member mentioned in a note hears it from the bell on the project page at once', async ({ browser }) => {
+  await openSmokeProject(page);
+  const projectId = projectIdOf(page.url());
+  const peer = await browser.newContext({ storageState: stateFile('B') });
+  const me = await dataOf<{ id: string }>(await peer.request.get('/api/v1/auth/me'), 'read slot B identity');
+  const peerPage = await inviteMember(page, peer, projectId, credentialsFor('B').email, 'editor');
+  try {
+    spaceId = await createSpace(page, 'canvas', `mention-${String(Date.now())}`);
+    await peerPage.goto(page.url());
+    await peerPage.getByTestId('bell-trigger').click();
+    const bell = peerPage.getByTestId('bell-popover');
+    await expect(bell).toBeVisible();
+
+    // A writes a note that mentions B, picked from the @ list.
+    await page.getByTestId('tool-comment').click();
+    const board = await visibleSpace(page).locator('.react-flow__pane').boundingBox();
+    if (board === null) throw new Error('the board draws nothing');
+    await page.mouse.click(board.x + board.width * 0.35, board.y + board.height * 0.45);
+    await expect(page.getByTestId('annotation-composer-input')).toBeVisible();
+    await page.keyboard.type('look @');
+    await page.getByTestId(`mention-picker-member-${me.id}`).click();
+    await page.keyboard.type(' please');
+    await page.keyboard.press('Enter');
+
+    // B's open bell shows it without being opened again.
+    await expect(bell).toContainText('mentioned you in a comment', { timeout: 5_000 });
+  } finally {
+    await cleanMembership(page, projectId, me.id);
+    await peer.close();
+  }
 });

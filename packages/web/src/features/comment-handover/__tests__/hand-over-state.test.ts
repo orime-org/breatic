@@ -3,15 +3,11 @@
 
 import { describe, expect, it } from 'vitest';
 
-import type { AgentConnectionItem, AnnotationAssignment } from '@breatic/shared';
-import {
-  answeredHandOver,
-  handOverChoices,
-  handOverLabel,
-} from '@web/features/comment-handover/hand-over-state';
+import type { AgentConnectionItem } from '@breatic/shared';
+import type { SpaceAssignment } from '@web/data/api/agent-access';
+import { handOverChoices, handOverLabel } from '@web/features/comment-handover/hand-over-state';
 
-const ME = 'u1';
-const handed: AnnotationAssignment = { connectionId: 'c1', assignedBy: ME, assignedAt: 100, projectId: 'p1' };
+const pending: SpaceAssignment = { threadId: 't', connectionId: 'c1', assignedAt: 100, status: 'pending' };
 
 /**
  * A connection of mine.
@@ -28,43 +24,23 @@ const conn = (over: Partial<AgentConnectionItem> = {}): AgentConnectionItem => (
   ...over,
 });
 
-const base = {
-  assignment: handed,
-  viewerId: ME,
-  projectId: 'p1',
-  answered: false,
-  resolved: false,
-  record: undefined,
-  connections: [conn()],
-};
+const base = { record: pending, open: true, connections: [conn()] };
 
 describe('handOverLabel', () => {
-  it('waits on an active connection', () => {
+  it('waits on an active connection while the record of my hand-over is pending', () => {
     expect(handOverLabel(base)).toEqual({ kind: 'waiting', connectionId: 'c1' });
   });
 
-  it('shows nothing to anyone but the one who handed it over', () => {
-    expect(handOverLabel({ ...base, viewerId: 'u2' })).toBeNull();
+  it('shows nothing without a record of my hand-over, which is how others see the thread', () => {
+    expect(handOverLabel({ ...base, record: undefined })).toBeNull();
   });
 
-  it('shows nothing for a thread handed over in another project', () => {
-    expect(handOverLabel({ ...base, assignment: { ...handed, projectId: 'p0' } })).toBeNull();
+  it('shows nothing once the record says answered', () => {
+    expect(handOverLabel({ ...base, record: { ...pending, status: 'answered' } })).toBeNull();
   });
 
-  it('follows the record once it has caught up with this hand-over', () => {
-    expect(handOverLabel({ ...base, record: { threadId: 't', connectionId: 'c1', assignedAt: 100, status: 'answered' } })).toBeNull();
-  });
-
-  it('keeps its own reading while the record is of an earlier hand-over', () => {
-    expect(handOverLabel({ ...base, record: { threadId: 't', connectionId: 'c1', assignedAt: 50, status: 'answered' } })).toEqual({
-      kind: 'waiting',
-      connectionId: 'c1',
-    });
-  });
-
-  it('stops waiting once the agent answered or the thread was resolved, before the record says so', () => {
-    expect(handOverLabel({ ...base, answered: true })).toBeNull();
-    expect(handOverLabel({ ...base, resolved: true })).toBeNull();
+  it('shows nothing on a thread that is gone or resolved', () => {
+    expect(handOverLabel({ ...base, open: false })).toBeNull();
   });
 
   it('says an expired OAuth connection comes back on reconnecting', () => {
@@ -87,16 +63,6 @@ describe('handOverLabel', () => {
 
   it('shows nothing while the connections are still loading', () => {
     expect(handOverLabel({ ...base, connections: undefined })).toBeNull();
-  });
-});
-
-describe('answeredHandOver', () => {
-  it('finds the reply the handed-to connection wrote for this hand-over', () => {
-    expect(answeredHandOver(handed, [{ via: 'c1', answers: 100 }])).toBe(true);
-  });
-
-  it('ignores a reply for an earlier hand-over or by another connection', () => {
-    expect(answeredHandOver(handed, [{ via: 'c1', answers: 50 }, { via: 'c2', answers: 100 }])).toBe(false);
   });
 });
 

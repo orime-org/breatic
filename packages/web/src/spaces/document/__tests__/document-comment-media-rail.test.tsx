@@ -28,7 +28,6 @@ import { rowById } from '@web/spaces/document/document-row-by-id';
 import { useCommentAnchors } from '@web/spaces/document/use-comment-anchors';
 import { useCommentCards } from '@web/spaces/document/use-comment-cards';
 import { useCommentRail } from '@web/spaces/document/use-comment-rail';
-import { setThreadAssignment } from '@web/spaces/document/document-comment-thread-store';
 import { CommentsExtension } from '@blocknote/core/comments';
 
 type Editor = ReturnType<typeof buildDocumentEditor>;
@@ -215,29 +214,23 @@ describe('commentedElement', () => {
   });
 });
 
-describe('useCommentCards with a thread handed to an external agent (#1488 §11.7)', () => {
-  it('reads the hand-over off the thread and the agent off its reply', async () => {
+describe('useCommentCards with a reply an external agent wrote (#1488 §11.7)', () => {
+  it('reads the agent off its reply', async () => {
     const editor = open([WORDS]);
     const { result } = renderHook(() => {
       const rail = useCommentRail(editor);
       return useCommentCards(editor, rail);
     });
-    const handed = { connectionId: 'c1', assignedBy: 'u1', assignedAt: 100, projectId: 'p1' };
     await act(async () => {
       const id = await onWords(editor, 'words');
       const store = editor.getExtension(CommentsExtension)!.threadStore;
-      setThreadAssignment(store, id, handed);
       await store.addComment({
         threadId: id,
-        comment: { body: asCommentBody('done'), metadata: { via: 'c1', answers: 100 } },
+        comment: { body: asCommentBody('done'), metadata: { via: 'c1' } },
       });
     });
 
     const card = result.current.unresolved[0]!;
-    expect(card.assignment).toEqual(handed);
-    expect(card.entries.map((e) => [e.via, e.answers])).toEqual([
-      [null, null],
-      ['c1', 100],
-    ]);
+    expect(card.entries.map((e) => e.via)).toEqual([null, 'c1']);
   });
 });

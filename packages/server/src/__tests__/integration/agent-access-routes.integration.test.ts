@@ -737,7 +737,7 @@ async function handOver(row: {
   projectId: string;
   connectionId: string;
   assignedBy: string;
-  status?: "pending" | "answered" | "resolved";
+  status?: "pending" | "answered";
   voided?: boolean;
   spaceId?: string;
 }): Promise<string> {
