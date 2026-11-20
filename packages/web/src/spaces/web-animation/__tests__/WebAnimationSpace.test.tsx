@@ -1037,6 +1037,22 @@ describe('a preview that cannot load', () => {
     await waitFor(() => expect(play).toHaveBeenCalled());
   });
 
+  it('pauses a playing export while its Space is hidden, as the play bar stops', async () => {
+    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
+    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
+    const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
+    const source = done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z');
+    listing([{ ...exported(source), resultAssetId: '50000000-0000-4000-8000-000000000001' }]);
+    const setMode = showInActivity();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    await waitFor(() => expect(screen.getByTestId('motion-preview').querySelector('video')).not.toBeNull());
+    await userEvent.setup().click(screen.getByTestId('motion-play'));
+    await waitFor(() => expect(play).toHaveBeenCalled());
+    pause.mockClear();
+    act(() => setMode('hidden'));
+    expect(pause).toHaveBeenCalled();
+  });
+
   it('shows the export at the time sought while its address was read', async () => {
     let answer: (asset: unknown) => void = () => undefined;
     vi.mocked(timelineApi.resolveAsset).mockReset().mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);

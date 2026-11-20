@@ -772,12 +772,14 @@ function ExportVideo({ url, assetFailed, assetRetrying, onAssetRetry, time, play
     setBroken(false);
     setAttempt((current) => current + 1);
   }, [assetFailed, onAssetRetry]);
-  // Both run again when the element mounts: a press or a seek made while the address was read reaches it then.
+  // Both run again when the element mounts: a press or a seek made while the address was read reaches it then. A hidden
+  // Space runs this cleanup and stops the play bar's clock, so the video stops with it.
   React.useEffect(() => {
     const element = video.current;
-    if (element === null) return;
+    if (element === null) return undefined;
     if (playing) void element.play().catch(() => {});
     else element.pause();
+    return () => element.pause();
   }, [playing, attempt, url]);
   React.useEffect(() => {
     const element = video.current;
