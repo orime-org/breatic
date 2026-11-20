@@ -4081,6 +4081,8 @@
   "commentHandover": {
     "handOver": "任せる",
     "cancel": "任せるのをやめる",
+    "handOverFailed": "引き渡せませんでした。もう一度お試しください",
+    "takeBackFailed": "取り戻せませんでした。もう一度お試しください",
     "listTitle": "あなたの外部 Agent",
     "again": "{name} にもう一度任せる",
     "token": "トークン {prefix}",

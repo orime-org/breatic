@@ -18,7 +18,7 @@
  */
 
 import { CommentsExtension, CommentMark } from '@blocknote/core/comments';
-import type { ThreadData } from '@blocknote/core/comments';
+import type { CommentData, ThreadData } from '@blocknote/core/comments';
 import type { Mark, Node as PMNode } from '@tiptap/pm/model';
 
 /**
@@ -84,7 +84,7 @@ export interface CommentsApi {
     addComment(options: {
       threadId: string;
       comment: { body: unknown };
-    }): Promise<unknown>;
+    }): Promise<CommentData>;
     createThread(options: {
       initialComment: { body: unknown; metadata?: Record<string, unknown> };
       metadata?: Record<string, unknown>;

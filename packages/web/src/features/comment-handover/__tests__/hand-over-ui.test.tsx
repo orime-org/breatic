@@ -26,13 +26,20 @@ const api = vi.hoisted(() => ({
   connectionNames: vi.fn(),
 }));
 
+const sendSpaceCommentRequest = vi.hoisted(() => vi.fn());
+
+vi.mock('@web/data/yjs/comment-requests', async (real) => ({
+  ...(await real<typeof import('@web/data/yjs/comment-requests')>()),
+  sendSpaceCommentRequest,
+}));
+
 vi.mock('@web/data/api/agent-access', async (real) => ({
   ...(await real<typeof import('@web/data/api/agent-access')>()),
   agentAccessApi: api,
 }));
 
 /** Where the thread is, as both controls are given it. */
-const at = { projectId: 'p1', spaceId: 's1', threadId: 't1' };
+const at = { projectId: 'p1', spaceId: 's1', threadId: 't1', kind: 'canvas' as const };
 /** My hand-over of the thread to c1, as the server's record says. */
 const mine = (status: 'pending' | 'answered' = 'pending'): Array<Record<string, unknown>> => [{ threadId: 't1', connectionId: 'c1', assignedAt: 100, status }];
 
@@ -71,20 +78,23 @@ beforeEach(() => {
   api.spaceAssignments.mockResolvedValue([]);
   api.connectionNames.mockResolvedValue([]);
   useAgentTokensDialog.getState().hide();
+  sendSpaceCommentRequest.mockResolvedValue({ id: 'r', ok: true });
 });
 
 describe('the hand-over button', () => {
-  it('hands the thread to the connection picked from the list', async () => {
-    const onAssign = vi.fn();
-    mount(<HandOverButton {...at} onAssign={onAssign} onCancel={vi.fn()} />);
+  it('asks collab to hand the thread to the connection picked from the list', async () => {
+    mount(<HandOverButton {...at} />);
     await userEvent.click(screen.getByRole('button', { name: 'Hand to' }));
     await userEvent.click(await screen.findByRole('button', { name: /Cursor/ }));
-    expect(onAssign).toHaveBeenCalledWith('c2');
+    expect(sendSpaceCommentRequest).toHaveBeenCalledWith('p1', 's1', 'canvas', {
+      type: 'comment:hand-over',
+      payload: { spaceId: 's1', threadId: 't1', connectionId: 'c2' },
+    });
   });
 
   it('offers the connection that answered my hand-over first, to hand it again', async () => {
     api.spaceAssignments.mockResolvedValue(mine('answered'));
-    mount(<HandOverButton {...at} onAssign={vi.fn()} onCancel={vi.fn()} />);
+    mount(<HandOverButton {...at} />);
     await userEvent.click(screen.getByRole('button', { name: 'Hand to' }));
     const rows = await screen.findAllByTestId(/^hand-over-choice-/);
     expect(rows.map((r) => r.textContent)).toEqual(['Hand to Claude Code again', 'Cursor']);
@@ -96,7 +106,7 @@ describe('the hand-over button', () => {
       conn({ id: 'c4', kind: 'pat', tokenPrefix: 'brt_3f9a' }),
       conn({ id: 'c3', displayName: 'Windsurf', status: 'expired' }),
     ]);
-    mount(<HandOverButton {...at} onAssign={vi.fn()} onCancel={vi.fn()} />);
+    mount(<HandOverButton {...at} />);
     await userEvent.click(screen.getByRole('button', { name: 'Hand to' }));
     expect(await screen.findByText('Token brt_3f9a')).toBeInTheDocument();
     expect(screen.getByText(/^Connected /)).toBeInTheDocument();
@@ -105,7 +115,7 @@ describe('the hand-over button', () => {
 
   it('points to connecting one when there is none', async () => {
     api.listConnections.mockResolvedValue([]);
-    mount(<HandOverButton {...at} onAssign={vi.fn()} onCancel={vi.fn()} />);
+    mount(<HandOverButton {...at} />);
     await userEvent.click(screen.getByRole('button', { name: 'Hand to' }));
     expect(await screen.findByText('No external Agent connected yet')).toBeInTheDocument();
     await userEvent.click(screen.getByRole('button', { name: 'Connect one' }));
@@ -114,7 +124,7 @@ describe('the hand-over button', () => {
 
   it('offers a retry when the list fails', async () => {
     api.listConnections.mockRejectedValueOnce(new Error('down'));
-    mount(<HandOverButton {...at} onAssign={vi.fn()} onCancel={vi.fn()} />);
+    mount(<HandOverButton {...at} />);
     await userEvent.click(screen.getByRole('button', { name: 'Hand to' }));
     await userEvent.click(await screen.findByRole('button', { name: 'Retry' }));
     expect(await screen.findByRole('button', { name: /Cursor/ })).toBeInTheDocument();
@@ -122,21 +132,20 @@ describe('the hand-over button', () => {
 
   it('lets the one who handed it over take it back', async () => {
     api.spaceAssignments.mockResolvedValue(mine());
-    const onCancel = vi.fn();
-    mount(<HandOverButton {...at} onAssign={vi.fn()} onCancel={onCancel} />);
+    mount(<HandOverButton {...at} />);
     await userEvent.click(await screen.findByRole('button', { name: 'Take back' }));
-    expect(onCancel).toHaveBeenCalled();
+    expect(sendSpaceCommentRequest).toHaveBeenCalledWith('p1', 's1', 'canvas', { type: 'comment:cancel-hand-over', payload: { spaceId: 's1', threadId: 't1' } });
   });
 
   it('offers a take-back to nobody without a record of their own hand-over', async () => {
-    mount(<HandOverButton {...at} onAssign={vi.fn()} onCancel={vi.fn()} />);
+    mount(<HandOverButton {...at} />);
     await waitFor(() => expect(api.spaceAssignments).toHaveBeenCalledWith('p1', 's1'));
     expect(screen.queryByRole('button', { name: 'Take back' })).toBeNull();
   });
 });
 
 describe('the label on a thread handed over', () => {
-  const props = { ...at, open: true };
+  const props = { projectId: at.projectId, spaceId: at.spaceId, threadId: at.threadId, open: true };
 
   beforeEach(() => {
     api.spaceAssignments.mockResolvedValue(mine());

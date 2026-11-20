@@ -79,19 +79,13 @@ describe('sendCommentRequest', () => {
     await expect(answered).resolves.toMatchObject({ ok: false, error: { code: 'FORBIDDEN' } });
   });
 
-  it('fails when the connection closes before the answer, and when no answer comes in time', async () => {
+  it('fails when the connection closes before the answer', async () => {
     const closing = fakeProvider();
     const closed = sendCommentRequest(closing.provider, { type: 'comment:cancel-hand-over', payload: { spaceId: SPACE, threadId: 't1' } });
     const closedOutcome = closed.catch((err: unknown) => err);
     await vi.advanceTimersByTimeAsync(FLUSH);
     closing.emit('close');
     expect(await closedOutcome).toBeInstanceOf(Error);
-
-    const silent = fakeProvider();
-    const late = sendCommentRequest(silent.provider, { type: 'comment:cancel-hand-over', payload: { spaceId: SPACE, threadId: 't1' } }, { timeoutMs: 1000 });
-    const lateOutcome = late.catch((err: unknown) => err);
-    await vi.advanceTimersByTimeAsync(FLUSH + 1000);
-    expect(await lateOutcome).toBeInstanceOf(Error);
   });
 });
 

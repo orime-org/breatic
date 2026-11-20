@@ -463,13 +463,15 @@ export default [
   },
   {
     // The app-level provider lives in App.tsx; the dev gallery is a separate
-    // page tree and legitimately mounts its own. The vendor primitive file
+    // page tree and legitimately mounts its own, as do the test helpers that
+    // stand in for the app root around an isolated component. The vendor primitive file
     // needed an exemption from the text guard because its JSDoc examples read
     // as JSX — the AST never sees a comment, so that exemption is gone.
     files: ['src/**/*.tsx'],
     ignores: [
       'src/App.tsx',
       'src/pages/_dev/**',
+      'src/test-utils/**',
       '**/__tests__/**',
       '**/*.test.tsx',
       '**/*.spec.tsx',

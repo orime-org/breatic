@@ -4081,6 +4081,8 @@
   "commentHandover": {
     "handOver": "交给",
     "cancel": "取消交给",
+    "handOverFailed": "没能交出去，请再试一次",
+    "takeBackFailed": "没能收回，请再试一次",
     "listTitle": "交给你的外部 Agent",
     "again": "再交给 {name}",
     "token": "令牌 {prefix}",

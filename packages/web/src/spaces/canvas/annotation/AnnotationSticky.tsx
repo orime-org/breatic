@@ -33,9 +33,7 @@ import {
   editReply,
   removeReply,
   runCanvasUndoBatch,
-  setAnnotationAssignment,
 } from '@web/data/yjs/canvas-space';
-import { answeredHandOver } from '@web/features/comment-handover/hand-over-state';
 import { HandOverStatus } from '@web/features/comment-handover/HandOverStatus';
 import { CanvasHandOverButton } from '@web/spaces/canvas/annotation/CanvasHandOverButton';
 import type { AnnotationNodeView } from '@breatic/shared/canvas-model';
@@ -328,24 +326,6 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
     if (!mayWrite) apply({ type: 'drop', why: 'cannotWrite' });
   }, [mayWrite, apply]);
 
-  // Handing the thread to an external agent (#1488 §11.7): anyone who may
-  // write here may hand it to one of their own; only the one who handed it
-  // over may take it back.
-  const answered = answeredHandOver(data.assignment, data.replies);
-  const handOver = React.useCallback(
-    (connectionId: string): void => {
-      setAnnotationAssignment(projectId, spaceId, nodeId, {
-        connectionId,
-        assignedBy: viewerId ?? '',
-        assignedAt: Date.now(),
-        projectId,
-      });
-    },
-    [projectId, spaceId, nodeId, viewerId],
-  );
-  const takeBack = React.useCallback((): void => {
-    setAnnotationAssignment(projectId, spaceId, nodeId, null);
-  }, [projectId, spaceId, nodeId]);
 
   const editingBody =
     mayWrite && open && draft.use === 'edit' && isTarget(target, { kind: 'body' })
@@ -373,11 +353,10 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
       {mayWrite ? (
         <div className='nodrag flex justify-end border-b border-note-border px-2 py-1'>
           <CanvasHandOverButton
-            assignment={data.assignment}
-            viewerId={viewerId}
-            answered={answered}
-            onAssign={handOver}
-            onCancel={takeBack}
+            projectId={projectId}
+            spaceId={spaceId}
+            threadId={nodeId}
+            kind='canvas'
           />
         </div>
       ) : null}
@@ -481,10 +460,7 @@ export const AnnotationSticky = React.memo(function AnnotationSticky({
         projectId={projectId}
         spaceId={spaceId}
         threadId={nodeId}
-        assignment={data.assignment}
-        viewerId={viewerId}
-        answered={answered}
-        resolved={false}
+        open
         className='flex w-full border-t border-note-border px-2 py-1.5 text-2xs'
       />
 

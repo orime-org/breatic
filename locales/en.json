@@ -4081,6 +4081,8 @@
   "commentHandover": {
     "handOver": "Hand to",
     "cancel": "Take back",
+    "handOverFailed": "Couldn't hand this over. Try again",
+    "takeBackFailed": "Couldn't take it back. Try again",
     "listTitle": "Your external Agents",
     "again": "Hand to {name} again",
     "token": "Token {prefix}",

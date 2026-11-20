@@ -85,6 +85,8 @@ interface DraftCardProps {
   reading: boolean;
   /** The project whose members the `@` list offers; none without it. */
   projectId?: string;
+  /** The Space the thread goes in; with `projectId`, where its mentions are recorded. */
+  spaceId?: string;
 }
 
 /**
@@ -122,6 +124,7 @@ function readDraftQuote(editor: ToolEditor): string | null {
  * @param root0.myRole - The user's role on the project.
  * @param root0.reading - Whether this is the card being read.
  * @param root0.projectId - The project the `@` list offers.
+ * @param root0.spaceId - The Space the thread goes in.
  * @returns The card.
  */
 export function DocumentCommentDraftCard({
@@ -130,6 +133,7 @@ export function DocumentCommentDraftCard({
   myRole,
   reading,
   projectId,
+  spaceId,
 }: DraftCardProps): React.JSX.Element {
   const t = useTranslation();
   const mayWrite = canPostAnnotations(myRole);
@@ -221,7 +225,8 @@ export function DocumentCommentDraftCard({
   const post = React.useCallback((): void => {
     // Words that are only spaces are not worth writing; the card stays open.
     if (words.trim().length === 0) return;
-    void said(postComment(editor, words, picksStillWritten(words, picksOf(opening, DRAFT_PICKS)))).then((thread) => {
+    const place = projectId === undefined || spaceId === undefined ? undefined : { projectId, spaceId };
+    void said(postComment(editor, words, picksStillWritten(words, picksOf(opening, DRAFT_PICKS)), place)).then((thread) => {
       // No thread means nothing was written, whichever way: `undefined` is a
       // refusal `said` has already reported, `null` is `postComment` finding
       // no range left to aim at — and the draft range plugin has already
@@ -231,7 +236,7 @@ export function DocumentCommentDraftCard({
       if (thread == null) return;
       close();
     });
-  }, [words, editor, close, said, opening]);
+  }, [words, editor, close, said, opening, projectId, spaceId]);
 
   if (draft.kind === 'dropped') {
     return (

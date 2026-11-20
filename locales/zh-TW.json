@@ -4081,6 +4081,8 @@
   "commentHandover": {
     "handOver": "交給",
     "cancel": "取消交給",
+    "handOverFailed": "沒能交出去，請再試一次",
+    "takeBackFailed": "沒能收回，請再試一次",
     "listTitle": "交給你的外部 Agent",
     "again": "再交給 {name}",
     "token": "權杖 {prefix}",

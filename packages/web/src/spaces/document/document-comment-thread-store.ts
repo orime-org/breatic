@@ -27,7 +27,7 @@ import { CommentsExtension } from '@blocknote/core/comments';
 import { YjsThreadStore } from '@blocknote/core/yjs';
 import * as Y from 'yjs';
 
-import { documentCommentThreads, type AnnotationAssignment } from '@breatic/shared';
+import { documentCommentThreads } from '@breatic/shared';
 
 import type { UserSummary } from '@web/data/api/users';
 import { usersApi } from '@web/data/api/users';
@@ -173,35 +173,6 @@ function sizeGated(store: YjsThreadStore, doc: Y.Doc): YjsThreadStore {
   return store;
 }
 
-/**
- * Hand a thread to an external agent, or take it back (#1488 §11.7): the
- * hand-over sits in the thread's metadata beside whatever it already holds.
- * Asked of the same auth and size gate as a reply.
- * @param store - The document's thread store.
- * @param threadId - The thread.
- * @param assignment - Who it is handed to; null takes it back.
- * @returns Whether it was written; false when the thread is gone, the user may
- *   not write to it, or the Space's size refused it.
- */
-export function setThreadAssignment(
-  store: object,
-  threadId: string,
-  assignment: AnnotationAssignment | null,
-): boolean {
-  const doc = storeDocs.get(store);
-  const thread = doc === undefined ? undefined : documentCommentThreads(doc).get(threadId);
-  if (doc === undefined || !(thread instanceof Y.Map)) return false;
-  const threads = store as YjsThreadStore;
-  if (!threads.auth.canAddComment(threads.getThread(threadId))) return false;
-  // A document the manager never named has no size to judge; its guid stands
-  // in for the name and the gate lets it through, as the store's own writes do.
-  return writeSpaceDoc(docNameOf(doc) ?? doc.guid, { kind: 'edit' }, () => {
-    doc.transact(() => {
-      const { assignment: _old, ...rest } = (thread.get('metadata') ?? {}) as Record<string, unknown>;
-      thread.set('metadata', assignment === null ? rest : { ...rest, assignment: { ...assignment } });
-    });
-  }).ok;
-}
 
 /** What a caller has to supply to wire comments to a document. */
 export interface DocumentCommentsOptions {

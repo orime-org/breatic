@@ -28,6 +28,7 @@
  * caller says why (A21).
  */
 
+import { notifyMentioned } from '@web/data/yjs/comment-requests';
 import { CommentsExtension, type ThreadData } from '@blocknote/core/comments';
 import type { EditorState } from '@tiptap/pm/state';
 
@@ -152,6 +153,9 @@ export async function commentOn(
  *   extensions registered.
  * @param body - What the user wrote.
  * @param mentions - The members it mentions (#1488 §11.6).
+ * @param place - The Space it is in; when given, collab is asked to record the mentions.
+ * @param place.projectId - The project.
+ * @param place.spaceId - The Space.
  * @returns The thread created, or null when there is no open draft or the
  *   text it was aimed at is gone — in which case nothing was created.
  * @throws {SpaceFullError} When the Space's size refused it; any toast said so.
@@ -161,6 +165,7 @@ export async function postComment(
   editor: CommentableEditor,
   body: string,
   mentions: readonly CommentMention[] = [],
+  place?: { projectId: string; spaceId: string },
 ): Promise<ThreadData | null> {
   const state = editor.prosemirrorView?.state;
   const media = state === undefined ? null : mediaDraftIn(state);
@@ -171,5 +176,7 @@ export async function postComment(
     mentions.length > 0 ? { comment: { mentions: [...mentions] } } : {},
   );
   if (posted !== null && 'ok' in posted) throw new SpaceFullError();
+  const first = posted?.comments[0];
+  if (first !== undefined && mentions.length > 0 && place !== undefined) notifyMentioned(place.projectId, place.spaceId, 'document', first.id);
   return posted;
 }

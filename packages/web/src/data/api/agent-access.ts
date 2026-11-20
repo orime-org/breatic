@@ -17,9 +17,9 @@ export const AGENT_CONNECTIONS_KEY = ['agent-access', 'connections'] as const;
 export interface SpaceAssignment {
   threadId: string;
   connectionId: string;
-  /** When, epoch milliseconds; equals the thread's own `assignedAt` once synced. */
+  /** When it was handed over, epoch milliseconds. */
   assignedAt: number;
-  status: 'pending' | 'answered' | 'resolved';
+  status: 'pending' | 'answered';
 }
 
 /**

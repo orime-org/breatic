@@ -4,10 +4,11 @@
 /**
  * What a comment thread handed to an external agent shows (#1488 §11.7), the
  * same for canvas notes and document comments: the label the one who handed
- * it over sees while it waits, and the list the hand-over button offers.
+ * it over sees while it waits, and the list the hand-over button offers. Both
+ * read the server's hand-over record; the document holds no hand-over.
  */
 
-import { tellConnectionsApart, type AgentConnectionItem, type AnnotationAssignment, type ConnectionTellApart } from '@breatic/shared';
+import { tellConnectionsApart, type AgentConnectionItem, type ConnectionTellApart } from '@breatic/shared';
 import type { SpaceAssignment } from '@web/data/api/agent-access';
 
 /** The label on a thread waiting for an external agent, and what it says. */
@@ -23,57 +24,31 @@ export interface HandOverLabel {
 
 /** What decides a thread's label. */
 export interface HandOverLabelInput {
-  /** The thread's current hand-over, as the document holds it. */
-  assignment: AnnotationAssignment | undefined;
-  viewerId: string | undefined;
-  /** The project the document is in. */
-  projectId: string;
-  /** Whether the handed-to connection has answered this hand-over in the thread. */
-  answered: boolean;
-  /** Whether the thread was resolved (documents only). */
-  resolved: boolean;
-  /** The server's record of this thread, when it has one. */
+  /**
+   * The server's record of this thread, as the viewer's records list holds
+   * it: only the viewer's own hand-overs are there, so a collaborator has none.
+   */
   record: SpaceAssignment | undefined;
+  /** Whether the thread is still there to work on: not deleted, not resolved. */
+  open: boolean;
   /** The viewer's connections; undefined while they load. */
   connections: readonly AgentConnectionItem[] | undefined;
 }
 
 /**
- * The label a thread shows, or null for none. Only the one who handed it
- * over sees one, and only while it waits: the server's record decides once it
- * has caught up with this hand-over, the thread's own words until then.
- * @param input - The thread, the record and the connections.
+ * The label a thread shows, or null for none: only while the record of the
+ * viewer's hand-over is pending, on a thread still there.
+ * @param input - The record, the thread and the connections.
  * @returns The label, or null.
  */
 export function handOverLabel(input: HandOverLabelInput): HandOverLabel | null {
-  const { assignment, record, connections } = input;
-  if (assignment === undefined || assignment.assignedBy !== input.viewerId) return null;
-  if (assignment.projectId !== input.projectId || connections === undefined) return null;
-  const pending =
-    record !== undefined && record.assignedAt === assignment.assignedAt
-      ? record.status === 'pending'
-      : !input.answered && !input.resolved;
-  if (!pending) return null;
-  const connectionId = assignment.connectionId;
+  const { record, connections } = input;
+  if (record === undefined || record.status !== 'pending' || !input.open || connections === undefined) return null;
+  const connectionId = record.connectionId;
   const connection = connections.find((c) => c.id === connectionId);
   if (connection === undefined) return { kind: 'disconnected', connectionId };
   if (connection.status === 'active') return { kind: 'waiting', connectionId };
   return { kind: connection.kind === 'pat' ? 'expiredToken' : 'expiredReconnect', connectionId };
-}
-
-/**
- * Whether the handed-to connection answered this hand-over: a reply it wrote
- * carrying the hand-over's time.
- * @param assignment - The thread's hand-over.
- * @param entries - The thread's comments.
- * @returns True when such a reply is there.
- */
-export function answeredHandOver(
-  assignment: AnnotationAssignment | undefined,
-  entries: ReadonlyArray<{ via?: string | null; answers?: number | null }>,
-): boolean {
-  if (assignment === undefined) return false;
-  return entries.some((e) => e.via === assignment.connectionId && e.answers === assignment.assignedAt);
 }
 
 /** One external agent the hand-over list offers. */

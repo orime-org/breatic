@@ -4081,6 +4081,8 @@
   "commentHandover": {
     "handOver": "맡기기",
     "cancel": "맡기기 취소",
+    "handOverFailed": "넘기지 못했습니다. 다시 시도해 주세요",
+    "takeBackFailed": "되돌리지 못했습니다. 다시 시도해 주세요",
     "listTitle": "내 외부 Agent",
     "again": "{name}에게 다시 맡기기",
     "token": "토큰 {prefix}",

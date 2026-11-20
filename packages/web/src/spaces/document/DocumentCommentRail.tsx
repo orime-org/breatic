@@ -76,8 +76,6 @@ import {
 } from '@web/spaces/document/document-comment-unsent';
 import type { DocumentScope } from '@web/data/api/documents';
 import { picksStillWritten } from '@web/spaces/document/document-comment-unsent';
-import { commentsOn } from '@web/spaces/document/document-comment-extension';
-import { setThreadAssignment } from '@web/spaces/document/document-comment-thread-store';
 import { DocumentCommentDraftCard } from '@web/spaces/document/DocumentCommentDraftCard';
 import { commentedElement } from '@web/spaces/document/document-comment-media';
 import { revealInTable } from '@web/spaces/document/document-table-reveal';
@@ -230,30 +228,18 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
   const projectId = scope?.projectId;
   const onReply = React.useCallback(
     async (threadId: string, body: string) =>
-      (await said(replyToThread(editor, threadId, body, picksStillWritten(body, picksOf(editor, threadId))))) ?? false,
-    [editor, said],
+      (await said(
+        replyToThread(
+          editor,
+          threadId,
+          body,
+          picksStillWritten(body, picksOf(editor, threadId)),
+          projectId === undefined || scope?.spaceId === undefined ? undefined : { projectId, spaceId: scope.spaceId },
+        ),
+      )) ?? false,
+    [editor, said, projectId, scope?.spaceId],
   );
   const spaceId = scope?.spaceId;
-  const onHandOver = React.useCallback(
-    (threadId: string, connectionId: string) => {
-      const store = commentsOn(editor)?.threadStore;
-      if (store === undefined || projectId === undefined) return;
-      setThreadAssignment(store, threadId, {
-        connectionId,
-        assignedBy: viewerId ?? '',
-        assignedAt: Date.now(),
-        projectId,
-      });
-    },
-    [editor, projectId, viewerId],
-  );
-  const onTakeBack = React.useCallback(
-    (threadId: string) => {
-      const store = commentsOn(editor)?.threadStore;
-      if (store !== undefined) setThreadAssignment(store, threadId, null);
-    },
-    [editor],
-  );
   const onMention = React.useCallback(
     (threadId: string, body: string, mention: CommentMention) => {
       addPick(editor, threadId, mention);
@@ -327,15 +313,11 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
       projectId,
       onMention,
       spaceId,
-      onHandOver,
-      onTakeBack,
     }),
     [
       projectId,
       onMention,
       spaceId,
-      onHandOver,
-      onTakeBack,
       myRole,
       viewerId,
       onDraft,
@@ -837,6 +819,7 @@ export const DocumentCommentRail = React.memo(function DocumentCommentRail({
                   <DocumentCommentDraftCard
                     editor={editor}
                     projectId={projectId}
+                    spaceId={spaceId}
                     draft={entry.draft}
                     myRole={myRole}
                     reading={reading === entry.id}

@@ -11,10 +11,11 @@ import type {
 } from '@breatic/shared';
 import { CANVAS_NODES_KEY } from '@breatic/shared';
 
+import { notifyMentioned } from '@web/data/yjs/comment-requests';
 import { docName, getDoc } from '@web/data/yjs/manager';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { runHistoryStep } from '@web/data/yjs/history-step';
-import type { AnnotationAssignment, CommentMention, NodeMediaFields } from '@breatic/shared';
+import type { CommentMention, NodeMediaFields } from '@breatic/shared';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import type { CanvasEdge, CanvasNodeView, NodePlacement, SnapshotNode } from '@breatic/shared/canvas-model';
 import {
@@ -48,7 +49,6 @@ import {
   replyIndex,
   resizeGroupInDoc,
   restoreNodeMediaInDoc,
-  setAnnotationAssignmentInDoc,
   setGroupBackgroundInDoc,
   setNodeExtractedTextInDoc,
   setNodeLockedInDoc,
@@ -590,9 +590,11 @@ export function addNode(
 ): SpaceWriteResult {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
-  return writeSpaceDoc(name, options, () => {
+  const result = writeSpaceDoc(name, options, () => {
     doc.transact(() => addNodeInDoc(doc, node), CANVAS_UNDO);
   });
+  if (result.ok && node.type === 'annotation') mentionedIn(projectId, spaceId, node.id, node.data.mentions);
+  return result;
 }
 
 /**
@@ -767,9 +769,23 @@ export function addReply(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   if (!repliesArray(doc, nodeId)) return false;
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
-  return writeSpaceDoc(name, options, () => {
+  const ok = writeSpaceDoc(name, options, () => {
     doc.transact(() => addReplyInDoc(doc, nodeId, reply), CANVAS_UNDO);
   }).ok;
+  if (ok) mentionedIn(projectId, spaceId, reply.id, reply.mentions);
+  return ok;
+}
+
+/**
+ * Ask collab to record the members an entry just written mentions (#1488
+ * §11.6, §11.9); words that mention nobody ask nothing.
+ * @param projectId - Project the canvas space belongs to.
+ * @param spaceId - Canvas space holding the entry.
+ * @param entryId - The note or reply.
+ * @param mentions - Whom it mentions.
+ */
+function mentionedIn(projectId: string, spaceId: string, entryId: string, mentions: readonly CommentMention[] | undefined): void {
+  if (mentions !== undefined && mentions.length > 0) notifyMentioned(projectId, spaceId, 'canvas', entryId);
 }
 
 /**
@@ -801,9 +817,11 @@ export function editAnnotationBody(
   if (!annotationEditTarget(doc, nodeId, null)) return false;
   // The body is words the user wrote, of any length: an add (design 5.2).
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
-  return writeSpaceDoc(name, options, () => {
+  const ok = writeSpaceDoc(name, options, () => {
     doc.transact(() => editAnnotationBodyInDoc(doc, nodeId, content, editedAt, mentions), CANVAS_UNDO);
   }).ok;
+  if (ok) mentionedIn(projectId, spaceId, nodeId, mentions);
+  return ok;
 }
 
 /**
@@ -830,35 +848,11 @@ export function editReply(
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
   if (!annotationEditTarget(doc, nodeId, replyId)) return false;
   const { name, options } = canvasWrite(projectId, spaceId, 'add');
-  return writeSpaceDoc(name, options, () => {
+  const ok = writeSpaceDoc(name, options, () => {
     doc.transact(() => editReplyInDoc(doc, nodeId, replyId, content, editedAt, mentions), CANVAS_UNDO);
   }).ok;
-}
-
-/**
- * Hand a note's thread to an external agent, or take it back (#1488 §11.7).
- * @param projectId - Project the canvas space belongs to.
- * @param spaceId - Canvas space holding the annotation.
- * @param nodeId - Id of the annotation.
- * @param assignment - Who it is handed to; null takes it back.
- * @returns Whether it was written; false when the note is gone or the size cap refused it.
- */
-export function setAnnotationAssignment(
-  projectId: string,
-  spaceId: string,
-  nodeId: string,
-  assignment: AnnotationAssignment | null,
-): boolean {
-  const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  if (!annotationEditTarget(doc, nodeId, null)) return false;
-  const { name, options } = canvasWrite(projectId, spaceId, 'edit');
-  let wrote = false;
-  const result = writeSpaceDoc(name, options, () => {
-    doc.transact(() => {
-      wrote = setAnnotationAssignmentInDoc(doc, nodeId, assignment);
-    }, CANVAS_UNDO);
-  });
-  return result.ok && wrote;
+  if (ok) mentionedIn(projectId, spaceId, replyId, mentions);
+  return ok;
 }
 
 /**

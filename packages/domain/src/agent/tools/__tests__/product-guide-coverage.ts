@@ -1444,6 +1444,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "commentHandover.token": { excluded: REASONS.FILLS_A_VALUE },
   "commentHandover.since": { excluded: REASONS.FILLS_A_VALUE },
   "commentHandover.loadFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "commentHandover.handOverFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "commentHandover.takeBackFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "commentHandover.retry": { excluded: REASONS.SAYS_TRY_AGAIN },
   "commentHandover.expiredTokenHint": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "commentMention.noMatch": { excluded: REASONS.EMPTY_OR_SEARCH },

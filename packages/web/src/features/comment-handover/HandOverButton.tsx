@@ -4,33 +4,31 @@
 /**
  * The hand-over button on a comment thread (#1488 §11.7): the list of the
  * user's own working external agents, and a take-back for the one who handed
- * the thread over.
+ * the thread over, both from the server's record of their hand-over. Each
+ * press waits for collab's answer.
  */
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Bot, Forward, X } from 'lucide-react';
 
-import type { AnnotationAssignment } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { AGENT_CONNECTIONS_KEY, agentAccessApi } from '@web/data/api/agent-access';
 import { handOverChoices } from '@web/features/comment-handover/hand-over-state';
+import { useHandOverRecord } from '@web/features/comment-handover/use-hand-over-record';
+import { useHandOverRequests } from '@web/features/comment-handover/use-hand-over-requests';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatLocalDay } from '@web/lib/format-day';
 import { useAgentTokensDialog } from '@web/stores/agent-tokens-dialog';
 
 export interface HandOverButtonProps {
-  /** The thread's current hand-over. */
-  assignment?: AnnotationAssignment;
-  viewerId: string | undefined;
-  /** Whether the handed-to connection answered this hand-over. */
-  answered: boolean;
-  /** Hands the thread to one connection. */
-  onAssign: (connectionId: string) => void;
-  /** Takes the hand-over back. */
-  onCancel: () => void;
+  projectId: string;
+  spaceId: string;
+  threadId: string;
+  /** The Space's type, whose connection the requests go on. */
+  kind: 'canvas' | 'document';
   /** The buttons' size: `compact` on a canvas note, `sm` in a document card. */
   size?: 'compact' | 'sm';
   /** Told when the list opens or closes. */
@@ -124,31 +122,36 @@ function HandOverList({
 
 /**
  * The take-back and hand-over buttons for one thread.
- * @param props - The thread's hand-over and what the buttons do.
- * @param props.assignment - The thread's current hand-over.
- * @param props.viewerId - Who is looking.
- * @param props.answered - Whether the handed-to connection answered this hand-over.
- * @param props.onAssign - Hands the thread to one connection.
- * @param props.onCancel - Takes the hand-over back.
+ * @param props - The thread and what the buttons do.
+ * @param props.projectId - The project.
+ * @param props.spaceId - The Space.
+ * @param props.threadId - The thread.
+ * @param props.kind - The Space's type.
  * @param props.size - The buttons' size.
  * @param props.onOpenChange - Told when the list opens or closes.
  * @param props.avoidCollisions - Whether the list may flip to stay on screen.
  * @returns The buttons.
  */
 export function HandOverButton({
-  assignment,
-  viewerId,
-  answered,
-  onAssign,
-  onCancel,
+  projectId,
+  spaceId,
+  threadId,
+  kind,
   size = 'sm',
   onOpenChange,
   avoidCollisions = true,
 }: HandOverButtonProps): React.JSX.Element {
   const t = useTranslation();
   const [open, setOpen] = React.useState(false);
-  const mine = assignment !== undefined && assignment.assignedBy === viewerId;
-  const again = mine && answered ? assignment.connectionId : null;
+  const [busy, setBusy] = React.useState<'assign' | 'cancel' | null>(null);
+  // Only the viewer's own hand-overs are in their records list.
+  const record = useHandOverRecord(projectId, spaceId, threadId);
+  const requests = useHandOverRequests(projectId, spaceId, kind);
+  const again = record?.status === 'answered' ? record.connectionId : null;
+  const run = React.useCallback((which: 'assign' | 'cancel', press: () => Promise<void>): void => {
+    setBusy(which);
+    void press().finally(() => setBusy(null));
+  }, []);
   const changeOpen = React.useCallback(
     (next: boolean): void => {
       setOpen(next);
@@ -159,16 +162,31 @@ export function HandOverButton({
   const icon = size === 'compact' ? 'h-3 w-3' : 'h-3.5 w-3.5';
   return (
     <div className='flex shrink-0 items-center gap-1'>
-      {mine ? (
-        <Button variant='outline' size={size} className='gap-1' data-testid='hand-over-cancel' onClick={onCancel}>
-          <X className={icon} />
+      {record !== undefined ? (
+        <Button
+          variant='outline'
+          size={size}
+          className='gap-1'
+          data-testid='hand-over-cancel'
+          loading={busy === 'cancel'}
+          icon={<X className={icon} />}
+          disabled={busy !== null}
+          onClick={() => run('cancel', () => requests.takeBack(threadId))}
+        >
           {t('commentHandover.cancel')}
         </Button>
       ) : null}
       <Popover open={open} onOpenChange={changeOpen}>
         <PopoverTrigger asChild>
-          <Button variant='outline' size={size} className='gap-1' data-testid='hand-over-open'>
-            <Forward className={icon} />
+          <Button
+            variant='outline'
+            size={size}
+            className='gap-1'
+            data-testid='hand-over-open'
+            loading={busy === 'assign'}
+            icon={<Forward className={icon} />}
+            disabled={busy !== null}
+          >
             {t('commentHandover.handOver')}
           </Button>
         </PopoverTrigger>
@@ -186,7 +204,7 @@ export function HandOverButton({
               onConnect={() => changeOpen(false)}
               onPick={(connectionId) => {
                 changeOpen(false);
-                onAssign(connectionId);
+                run('assign', () => requests.handOver(threadId, connectionId));
               }}
             />
           ) : null}

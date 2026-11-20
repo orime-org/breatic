@@ -23,6 +23,13 @@ const api = vi.hoisted(() => ({
   connectionNames: vi.fn(),
 }));
 
+const sendSpaceCommentRequest = vi.hoisted(() => vi.fn());
+
+vi.mock('@web/data/yjs/comment-requests', async (real) => ({
+  ...(await real<typeof import('@web/data/yjs/comment-requests')>()),
+  sendSpaceCommentRequest,
+}));
+
 vi.mock('@web/data/api/agent-access', async (real) => ({
   ...(await real<typeof import('@web/data/api/agent-access')>()),
   agentAccessApi: api,
@@ -67,8 +74,6 @@ const card = (over: Partial<CommentCardView> = {}): CommentCardView => ({
   ...over,
 });
 
-const onHandOver = vi.fn();
-const onTakeBack = vi.fn();
 
 /**
  * Draw a card.
@@ -95,8 +100,6 @@ function mount(view: CommentCardView, reading = true, myRole: 'editor' | 'viewer
           onDeleteReply={vi.fn()}
           projectId='p1'
           spaceId='s1'
-          onHandOver={onHandOver}
-          onTakeBack={onTakeBack}
         />
       </TooltipProvider>
     </QueryClientProvider>,
@@ -110,6 +113,7 @@ beforeEach(() => {
   ]);
   api.spaceAssignments.mockResolvedValue([]);
   api.connectionNames.mockResolvedValue([{ id: 'c1', name: 'Claude Code' }]);
+  sendSpaceCommentRequest.mockResolvedValue({ id: 'r', ok: true });
 });
 
 describe('handing a document comment to an external agent', () => {
@@ -117,7 +121,10 @@ describe('handing a document comment to an external agent', () => {
     mount(card());
     await userEvent.click(screen.getByTestId('hand-over-open'));
     await userEvent.click(await screen.findByTestId('hand-over-choice-c1'));
-    expect(onHandOver).toHaveBeenCalledWith('t1', 'c1');
+    expect(sendSpaceCommentRequest).toHaveBeenCalledWith('p1', 's1', 'document', {
+      type: 'comment:hand-over',
+      payload: { spaceId: 's1', threadId: 't1', connectionId: 'c1' },
+    });
   });
 
   it('offers no button on a card nobody is reading, nor to a viewer', () => {
@@ -139,7 +146,7 @@ describe('handing a document comment to an external agent', () => {
     api.spaceAssignments.mockResolvedValue(mine());
     mount(card());
     await userEvent.click(await screen.findByTestId('hand-over-cancel'));
-    expect(onTakeBack).toHaveBeenCalledWith('t1');
+    expect(sendSpaceCommentRequest).toHaveBeenCalledWith('p1', 's1', 'document', { type: 'comment:cancel-hand-over', payload: { spaceId: 's1', threadId: 't1' } });
   });
 
   it('shows the one who handed it over what it waits for, even while the card is not read', async () => {
