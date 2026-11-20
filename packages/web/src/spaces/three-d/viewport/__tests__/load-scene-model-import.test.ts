@@ -164,7 +164,8 @@ describe('registered model import containers (inner#1690)', () => {
     expect(bitmap).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledTimes(1);
     // The object budget for part pictures starts from the model's own textures (inner#1693 design 7).
-    expect(lookModelOf(root)?.ownBytes).toBeGreaterThan(0);
+    // A 1x1 RGBA texture has one level: 4 bytes.
+    expect(lookModelOf(root)?.ownBytes).toBe(4);
   });
 
   it.each(['blob:foreign-model-image', 'https://external.example/texture.png'])('rejects a declared image URI outside the closed collection: %s', async (uri) => {
