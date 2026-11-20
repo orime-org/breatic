@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { createHash } from "node:crypto";
 import { candidateOf, candidatesOf, type MediaBinding } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
-import { AccountKeyFailure, costsOf, DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
+import { AccountKeyFailure, costsOf, DeadlinePassed, markCostsOf, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { boundSignal, sideBounds } from "@provider/http/request.js";
@@ -318,6 +319,8 @@ function inChain(error: unknown, test: (e: Error) => boolean): boolean {
  */
 export function createMediaRunner(provider: Provider, options: MediaRunnerOptions): MediaRunner {
   const { config, deploymentKeys } = provider;
+  // Each key has its own slots: ours are sized for our account, and a payer's own key (inner#1953) has the upstream's
+  // limits of its own account, so neither waits behind the other.
   const inFlight = new Map<string, { count: number; waiting: (() => void)[] }>();
 
   /**
@@ -362,16 +365,17 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   /**
    * Run one request inside the upstream's concurrency cap.
    * @param upstream - The upstream.
-   * @param bounds - The request's deadline and signal, which also end its wait for a slot.
+   * @param bounds - The request's deadline and signal, which also end its wait for a slot, and the keys it goes out on.
    * @param work - The request.
    * @returns What the request answered.
    * @throws {Aborted} When the bounds end while it waits for a slot.
    */
-  const capped = async <T>(upstream: string, bounds: RequestBounds, work: () => Promise<T>): Promise<T> => {
+  const capped = async <T>(upstream: string, bounds: RequestBounds & Run, work: () => Promise<T>): Promise<T> => {
     const cap = config.upstreams[upstream]?.concurrency;
     if (cap === undefined) return work();
-    const slot = inFlight.get(upstream) ?? { count: 0, waiting: [] };
-    inFlight.set(upstream, slot);
+    const slotId = bounds.keys.owner === "account" ? `${upstream}\u0000${createHash("sha256").update(keyFor(bounds.keys, upstream)).digest("hex")}` : upstream;
+    const slot = inFlight.get(slotId) ?? { count: 0, waiting: [] };
+    inFlight.set(slotId, slot);
     // First in, first out: a released slot is handed to the head of the queue, so a
     // request that frees one and asks again at once cannot take it back.
     if (slot.count < cap) slot.count++;
@@ -381,7 +385,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     } finally {
       const next = slot.waiting.shift();
       if (next) next();
-      else slot.count--;
+      else if (--slot.count === 0) inFlight.delete(slotId);
     }
   };
 
@@ -993,7 +997,11 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         // On the caller's last try an optional step is given up, as the worker's step runner did on its last attempt.
         const givenUp = bounds.final === true && isOptional(ticket, at.step);
         if (failure?.kind === "no_answer" && givenUp) return passOver(ticket, at.index, bounds, error as Error);
-        if (failure === null || failure.kind === "no_answer") throw error;
+        if (failure === null || failure.kind === "no_answer") {
+          // What the lost answer was billed rides on the error, marked with whose keys sent it.
+          markCostsOf(error, paidInRun(ticket, "media"));
+          throw error;
+        }
         if (failure.kind === "aborted") throw cutAtDeadline(bounds) ? new DeadlinePassed(bounds.deadlineAt) : error;
         // On an account's keys a failure of the key or its upstream never moves on: a lasting one, or any on the
         // caller's last try, ends the step; a passing one has the caller retry the same ticket and key.
