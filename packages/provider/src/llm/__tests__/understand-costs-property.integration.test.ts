@@ -7,6 +7,7 @@ import type { Cost } from "../../cost.js";
 import { costsOf } from "../../errors.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, GENERATE_CONTENT_REPLY, llmProvider, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
+import { accountKeys } from "../../__tests__/keys-harness.js";
 
 // Property (critical path): whatever OpenRouter and Google answer, whether the caller's reader of the
 // image fails when Google needs its bytes, and whether the deadline or the caller's stop ends the call,
@@ -49,6 +50,9 @@ const openRouterAnswers = (n: number): Record<string, Scripted> => {
     busy: { reply: { status: 503, body: { error: { code: 503, message: "busy" } } }, billed: null },
     refused: { reply: { status: 400, body: { error: { code: 400, message: "bad" } } }, billed: null },
     reset: { reply: "reset", billed: null },
+    // The key's own refusals, which end a call on the payer's key as that key's failure (inner#1953).
+    noBalance: { reply: { status: 402, body: { error: { code: 402, message: "Insufficient credits" } } }, billed: null },
+    badKey: { reply: { status: 401, body: { error: { code: 401, message: "User not found." } } }, billed: null },
     held: { reply: { status: 200, raw: `{"id":"gen-${n}",`, contentType: "application/json", hold: true }, billed: "missing" },
   };
 };
@@ -74,7 +78,8 @@ describe("understand: every billed answer reaches the caller once (critical path
         fc.constantFrom<"served" | "busy" | "unreadable">("served", "busy", "unreadable"),
         fc.nat(2),
         fc.constantFrom<"deadline" | "signal">("deadline", "signal"),
-        async (script, google, maxRetries, ender) => {
+        fc.boolean(),
+        async (script, google, maxRetries, ender, onAccount) => {
           const billed: string[] = [];
           let n = 0;
           fakes.openrouter.answer(() => {
@@ -104,12 +109,14 @@ describe("understand: every billed answer reaches the caller once (critical path
               maxOutputTokens: 50,
               deadlineAt: Date.now() + (ender === "deadline" ? 600 : 60_000),
               ...(ender === "signal" ? { signal: stop.signal } : {}),
-            })
+            // On the payer's own OpenRouter key (inner#1953) the call is held to that upstream and its failures are the key's.
+            }, undefined, onAccount ? accountKeys({ openrouter: "acct-or" }) : undefined)
             .catch((e: unknown) => e);
           clearTimeout(timer);
           fakes.openrouter.release();
           const reached = outcome instanceof Error ? costsOf(outcome) : (outcome as { costs: Cost[] }).costs;
           expect(reached.map(keyOf).sort()).toEqual([...billed].sort());
+          if (onAccount) expect(reached.map((cost) => cost.payer)).toEqual(reached.map(() => "account"));
         },
       ),
       { numRuns: 60 },

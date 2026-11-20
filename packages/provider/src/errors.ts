@@ -114,6 +114,21 @@ export function costsOf(error: unknown): Cost[] {
   return costs;
 }
 
+/**
+ * Mark every cost an error and its causes carry, in place, before the error is thrown on to the caller: a billed answer
+ * on an account's keys (inner#1953) reaches the caller marked as the account's, as any other of its costs does.
+ * @param error - The call's own error.
+ * @param mark - How each cost is marked.
+ */
+export function markCostsOf(error: unknown, mark: (cost: Cost) => Cost): void {
+  const seen = new Set<unknown>();
+  for (let current = error; typeof current === "object" && current !== null && !seen.has(current); current = (current as { cause?: unknown }).cause) {
+    seen.add(current);
+    const carried = (current as { costs?: unknown }).costs;
+    if (Array.isArray(carried)) carried.splice(0, carried.length, ...(carried as Cost[]).map(mark));
+  }
+}
+
 /** Who billed an answer: the upstream, and the model it was asked of. */
 export interface ServedBy {
   upstream: string;
