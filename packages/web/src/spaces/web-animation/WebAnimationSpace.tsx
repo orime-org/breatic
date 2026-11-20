@@ -76,12 +76,12 @@ const PLAY_ICON = <Play className='size-4' />;
 const PAUSE_ICON = <Pause className='size-4' />;
 /** How close to the playhead an annotation's point shows on the frame, in seconds. */
 const PIN_WINDOW_SECONDS = 0.15;
-/** An annotation's pin on the frame, saved or being written: a 20px drop whose tip, its bottom-left corner, is the point. */
 /**
  * How far a menu or popover opened from a bar button stands off it: the 4px visible gap from the bar's edge, plus the 7px between
  * the 32px button and the 48px bar's 1px border, and that border.
  */
 const BAR_MENU_OFFSET = 4 + 7 + 1;
+/** An annotation's pin on the frame, saved or being written: a 20px drop whose tip, its bottom-left corner, is the point. */
 const PIN_CLASS = 'absolute size-5 -translate-y-full rounded-full rounded-bl-none border border-background';
 
 /**
@@ -644,7 +644,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
         : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', annotation.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
           {playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}
-          {row?.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.fileUrl ?? null} assetFailed={exportAssetRead.isError}
+          {row.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.fileUrl ?? null} assetFailed={exportAssetRead.isError}
             assetRetrying={exportAssetRead.isFetching} onAssetRetry={retryExportAsset} time={clock.time} playing={clock.playing} />}
           {playable(row) && resultThreads.filter(({ anchor }) => anchor.point !== null && Math.abs(anchor.timeSeconds - clock.time) < PIN_WINDOW_SECONDS).map(({ thread, anchor }) =>
             <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-pin-${thread.id}`} aria-label={t('spaces.webAnimation.annotations')}
@@ -703,7 +703,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
               loading={readingId !== null && readingId === exportRow.executionId} />
             : !readOnly && <BarButton testId='motion-action-export' label={t('spaces.webAnimation.export')} icon={EXPORT_ICON} onClick={exportVideo} loading={exporting} />}
         </>}
-        {row?.kind === 'web_animation_export' && <>
+        {row.kind === 'web_animation_export' && <>
           <BarButton testId='motion-action-download' label={t('spaces.webAnimation.download')} icon={DOWNLOAD_ICON} onClick={download} disabled={exportAsset === undefined} />
           {!readOnly && <PlaceOnCanvas projectId={projectId} row={row} canvases={canvases} />}
           <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={SOURCE_ICON} onClick={viewSource}
