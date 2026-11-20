@@ -36,6 +36,7 @@ beforeAll(async () => {
   // One collab instance wired as production wires it, as the collab suites do.
   server = new Server({
     port: 0,
+    address: "127.0.0.1",
     quiet: true,
     stopOnSignals: false,
     debounce: 50,

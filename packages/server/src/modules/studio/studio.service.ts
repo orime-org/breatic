@@ -22,16 +22,13 @@
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
 import { isUniqueViolation } from "@server/utils/pg-error.js";
-import { db } from "@breatic/core";
-import { ConflictError, NotFoundError } from "@breatic/core";
-import { lockLimitsForUser } from "@breatic/core";
-import { env } from "@breatic/core";
+import { db, ConflictError, NotFoundError, lockLimitsForUser, env } from "@breatic/core";
 import {
   studioMembersRepo,
   studioAuthService,
   creditLotService,
 } from "@breatic/domain";
-import { getTrialGrantCredits } from "@server/config/pricing.js";
+import { getTrialGrantCredits } from "@server/config/credits.js";
 import {
   t,
   SLUG_REGEX,
@@ -77,7 +74,7 @@ export async function createPersonalStudio(
       //
       // The read itself is behind the same flag the grant checks, because an
       // argument is evaluated before the call that discards it: a deployment
-      // that charges nobody has no `config/pricing.yaml` to open, and reading
+      // that charges nobody has no `config/credits.yaml` to open, and reading
       // it anyway would fail registration over a figure about to be thrown
       // away.
       await creditLotService.grantTrialCredits(

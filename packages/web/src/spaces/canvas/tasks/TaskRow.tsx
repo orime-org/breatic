@@ -15,9 +15,12 @@ import * as React from 'react';
 import { getLocale, type NodeTaskEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { cn } from '@web/lib/utils';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { useTranslation } from '@web/i18n/use-translation';
+import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { TaskStatusDot } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { formatDuration } from '@web/spaces/canvas/lib/duration';
 import { elapsedMs } from '@web/spaces/canvas/tasks/task-timing';
@@ -25,6 +28,7 @@ import type { TaskRowAction } from '@web/spaces/canvas/tasks/task-row-actions';
 import { taskRowActions } from '@web/spaces/canvas/tasks/task-row-actions';
 import { taskRowKind } from '@web/spaces/canvas/tasks/task-row-kind';
 import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 /**
  * Used when no catalog is at hand: every model shows as its id.
@@ -75,6 +79,13 @@ export interface TaskRowProps {
   onRetry: (taskId: string) => void;
   /** Drop this row, whether it ended well or badly. */
   onDismiss: (taskId: string) => void;
+  /**
+   * Cancel a task that waits for a free running slot (inner#1968). Absent
+   * where nothing may cancel it.
+   */
+  onCancel?: (taskId: string) => void;
+  /** Whether this row's cancel waits for the server. */
+  cancelling?: boolean;
 }
 
 /**
@@ -129,13 +140,19 @@ export const TaskRow = React.memo(function TaskRow({
   displayNameOf = NO_NAMES,
   onRetry,
   onDismiss,
+  onCancel,
+  cancelling = false,
 }: TaskRowProps): JSX.Element {
   const t = useTranslation();
   const names = useCollaboratorNames();
+  const selfId = useCurrentUserStore((s) => s.user?.id);
   // A person who left the project is gone from the roster while their tasks
   // remain, so an unresolved id drops the name and keeps the row.
-  const starter = names?.resolve(entry.startedByUserId) ?? null;
+  const starter = entry.startedByUserId === selfId ? t('canvas.task.you') : names?.resolve(entry.startedByUserId) ?? null;
   const status = entry.status;
+  // Waiting for a free running slot (inner#1968): queued, not yet timed.
+  const waiting = status === 'running' && entry.waitingSince != null;
+  const cancel = React.useCallback((): void => onCancel?.(entry.id), [onCancel, entry.id]);
 
   const actions = taskRowActions({
     status,
@@ -160,7 +177,8 @@ export const TaskRow = React.memo(function TaskRow({
   // time and the moment it started. One slot carrying two different facts
   // needs the word too, or the user cannot tell which one they are looking
   // at (user 2026-09-06).
-  const instant = entry.settledAt ?? entry.startedAt;
+  // A waiting row has not started, so it names no instant (inner#1968).
+  const instant = waiting ? null : entry.settledAt ?? entry.startedAt;
   const instantKey =
     entry.settledAt !== null ? 'canvas.task.endedAt' : 'canvas.task.startedAt';
 
@@ -176,28 +194,44 @@ export const TaskRow = React.memo(function TaskRow({
       className='flex flex-col gap-1.5 rounded-content-sm px-1.5 py-2'
     >
       <div className='flex items-center gap-2'>
-        <TaskStatusDot status={status} />
+        <TaskStatusDot status={waiting ? 'waiting' : status} />
         <KindBadge
           testId='task-kind'
           icon={kind.icon}
           label={kind.label}
           colorClassName='text-foreground-secondary'
         />
-        {/* What the task acted on, at the weight of context. What the user
-            came for is the sentence below. */}
-        <span className='min-w-0 flex-1 truncate text-2xs text-foreground-secondary'>
+        {/* What the task acted on never shrinks and takes its width first, up to
+            3rem short of the line (the starter's 40px floor plus the gap); the
+            starter at the right end gives way down to 40px. A shrink weight
+            would still take a fraction of a pixel from the name and cut it. */}
+        <span className='flex min-w-0 flex-1 items-center gap-2'>
           {kind.detail !== null ? (
-            <span data-testid='task-detail'>{kind.detail}</span>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className={cn('min-w-0 shrink-0 truncate text-2xs text-foreground-secondary', starter !== null ? 'max-w-[calc(100%-3rem)]' : 'max-w-full')}>
+                  <span data-testid='task-detail'>{kind.detail}</span>
+                </span>
+              </TooltipTrigger>
+              <TooltipContent portal className='max-w-xs break-words'>{kind.detail}</TooltipContent>
+            </Tooltip>
+          ) : null}
+          {starter !== null ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <span className='ml-auto min-w-10 max-w-28 truncate text-right text-2xs text-muted-foreground'>{starter}</span>
+              </TooltipTrigger>
+              <TooltipContent portal className='max-w-xs break-words'>{starter}</TooltipContent>
+            </Tooltip>
           ) : null}
         </span>
-        {starter !== null ? (
-          <span className='shrink-0 text-2xs text-muted-foreground'>
-            {starter}
-          </span>
-        ) : null}
       </div>
 
-      {entry.status === 'running' ? (
+      {waiting ? (
+        <div data-testid='task-waiting' className='flex flex-col gap-0.5 pl-5 text-2xs text-muted-foreground'>
+          <span>{waitReason(t, entry.slotWaitLimit, entry.startedByUserId === selfId ? 'own' : 'other')}</span>
+        </div>
+      ) : entry.status === 'running' ? (
         <div className='flex items-center gap-3 pl-5 text-2xs tabular-nums text-muted-foreground'>
           <span data-testid='task-elapsed'>
             {t('canvas.task.elapsed', {
@@ -224,20 +258,33 @@ export const TaskRow = React.memo(function TaskRow({
       ) : null}
 
       <div className='flex items-center gap-2 pl-5'>
-        {instant !== null ? (
-          <span
-            data-testid='task-instant'
-            className='flex-1 text-2xs tabular-nums text-muted-foreground'
+        {/* The cell stays when it says nothing, so the buttons keep to the right end. */}
+        <span className='flex-1 text-2xs tabular-nums text-muted-foreground'>
+          {instant !== null ? (
+            <span data-testid='task-instant'>
+              {t(instantKey, {
+                when: new Date(instant).toLocaleString(getLocale(), {
+                  month: 'short',
+                  day: 'numeric',
+                  hour: '2-digit',
+                  minute: '2-digit',
+                }),
+              })}
+            </span>
+          ) : null}
+        </span>
+        {waiting && !readOnly && onCancel !== undefined ? (
+          <Button
+            type='button'
+            variant='outline'
+            size='compact'
+            data-testid='task-action-cancel'
+            loading={cancelling}
+            onClick={cancel}
+            className='text-2xs'
           >
-            {t(instantKey, {
-              when: new Date(instant).toLocaleString(getLocale(), {
-                month: 'short',
-                day: 'numeric',
-                hour: '2-digit',
-                minute: '2-digit',
-              }),
-            })}
-          </span>
+            {t('common.cancel')}
+          </Button>
         ) : null}
         {actions.map((action) => (
           <Button

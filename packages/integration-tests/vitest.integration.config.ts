@@ -19,7 +19,7 @@ export default defineConfig({
     globals: true,
     include: ["src/**/*.integration.test.ts"],
     globalSetup: ["@breatic/integration-tests/containers"],
-    setupFiles: ["@breatic/integration-tests/env"],
+    setupFiles: ["@breatic/integration-tests/env", "@breatic/integration-tests/loopback-listen"],
     // Single fork: one worker process, one container set, no port conflicts.
     pool: "forks",
     poolOptions: {

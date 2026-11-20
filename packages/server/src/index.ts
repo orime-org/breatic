@@ -14,26 +14,37 @@ import { exitProcess, initSentry } from "@server/sentry.js";
 import { serve } from "@hono/node-server";
 import { createApp } from "@server/app.js";
 import { createInternalApp } from "@server/internal-app.js";
-import { env,
+import {
+  env,
   getAgentConfig,
   getSubscriptionPlans,
+  onDatabaseWaitTimeout,
+  adsConversionState,
+  closeDb,
+  flushServerAnalytics,
+  initServerAnalytics,
+  closeRedis,
+  closeQueues,
+  getRedis,
+  getQueueRedis,
+  getStreamRedis,
+  checkInfraReady,
+  InfraNotReadyError,
+  installDeadlineBoundDispatcher,
+  startHealthServer,
+  getStorageConfig,
+  getTimelineConfig,
+  runGracefulShutdown,
+  logger,
+  initLogger,
+  loadLocales,
 } from "@breatic/core";
-import { onDatabaseWaitTimeout } from "@breatic/core";
+import { getTrialGrantCredits } from "@server/config/credits.js";
 import { getPricingTiers } from "@server/config/pricing.js";
 import { getMaintenanceConfig } from "@server/config/maintenance.js";
 import { startMaintenanceLoop } from "@server/modules/maintenance/maintenance-loop.js";
 import { getCreditRefundConfig } from "@server/config/credit-refund.js";
-import { adsConversionState, closeDb, flushServerAnalytics, initServerAnalytics } from "@breatic/core";
-import { closeRedis } from "@breatic/core";
-import { closeQueues } from "@breatic/core";
-import { getRedis, getQueueRedis, getStreamRedis } from "@breatic/core";
-import { checkInfraReady, InfraNotReadyError } from "@breatic/core";
-import { installDeadlineBoundDispatcher, startHealthServer } from "@breatic/core";
-import { getStorageConfig, getTimelineConfig } from "@breatic/core";
-import { runGracefulShutdown } from "@breatic/core";
 import { renderMetrics } from "@server/infra/metrics.js";
-import { logger, initLogger } from "@breatic/core";
-import { loadLocales } from "@breatic/core";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
 import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
@@ -151,25 +162,27 @@ try {
   await exitProcess(1);
 }
 
-// The two files that say what this deployment charges: membership plans and
-// credit packs. Unlike the configs above they are not in the repository —
-// they name real prices and real Stripe objects, so each deployment writes
-// its own from the `.template` beside it. Loading them here is what makes a
-// deployment that forgot to fail at boot instead of at the moment somebody
-// tries to pay: the loaders are lazy, and the first read would otherwise be
-// a checkout request.
+// The three files that say what this deployment charges and gives: membership
+// plans, credit packs and the trial grant. Unlike the configs above they are
+// not in the repository — they name real prices, real Stripe objects and a
+// deployment's own grant, so each deployment writes its own from the
+// `.template` beside it. Loading them here is what makes a deployment that
+// forgot to fail at boot instead of at the moment somebody tries to pay or
+// signs up: the loaders are lazy, and the first read would otherwise be a
+// request.
 //
 // Only when this deployment sells something. A self-hosted install with
-// payments off never reaches either loader, so requiring the files of it
-// would refuse to start over two files it has no use for.
+// payments off never reaches these loaders, so requiring the files of it
+// would refuse to start over files it has no use for.
 //
-// A copy of the template with nothing filled in is refused too, without a
-// second check: every price in it is 0, and both schemas require a positive
-// integer.
+// A copy of a price template with nothing filled in is refused too, without
+// a second check: every price in it is 0, and both price schemas require a
+// positive integer. The trial grant may be 0.
 if (env.PAYMENT_ENABLED) {
   try {
     getSubscriptionPlans();
     getPricingTiers();
+    getTrialGrantCredits();
   } catch (err) {
     logger.error({ err }, "payment_config_invalid");
     await exitProcess(1);

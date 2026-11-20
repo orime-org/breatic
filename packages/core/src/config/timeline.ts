@@ -7,6 +7,7 @@ import { parse } from "yaml";
 import { z } from "zod";
 import { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_FRAME_PRESETS, TIMELINE_PREVIEW_DEFAULTS, timelineFramePresetOf } from "@breatic/shared";
 import { MONOREPO_ROOT } from "@core/config/env.js";
+import { reportGraceMs } from "@core/config/mini-tools.js";
 
 const positiveInt = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 const viewport = z.object({ width: positiveInt, height: positiveInt });
@@ -118,4 +119,15 @@ export function getTimelineConfig(): Readonly<TimelineConfig> {
   if (cached !== undefined) return cached;
   cached = Object.freeze(timelineConfigSchema.parse(parse(readFileSync(resolve(MONOREPO_ROOT, "config/timeline.yaml"), "utf8"))));
   return cached;
+}
+
+/**
+ * How long past a Timeline execution's deadline its last report may still
+ * land: two of its poll intervals. The execution settles at its deadline plus
+ * this, and the running-task count holds it that long too (inner#1968).
+ * @returns The grace in milliseconds.
+ * @throws {Error} When the tracked YAML cannot be read or validated.
+ */
+export function timelineReportGraceMs(): number {
+  return reportGraceMs(getTimelineConfig().web_animation.poll_interval_ms);
 }

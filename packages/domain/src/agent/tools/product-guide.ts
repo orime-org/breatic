@@ -610,7 +610,8 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.conversation.gone"))} when the conversation was deleted elsewhere. A message needs ` +
       "credits in the project's studio to be answered; with none, the message reads " +
       `${quoted(t("server.credit.none"))} or names what stands in the way, such as credits not yet assigned to ` +
-      "a studio. Credits are bought from the account menu on the studio pages, under " +
+      "a studio. A message waiting its turn when a " +
+      "monthly spend limit is reached stays waiting, and the waiting area above the box says so. Credits are bought from the account menu on the studio pages, under " +
       `${quoted(t("studio.topBar.credits"))} then ${quoted(t("credits.section.buy"))}; only the studio's admin ` +
       "can assign them to this studio, so anyone else asks the admin. Where the deployment takes payments, " +
       `${quoted(t("studio.topBar.membership"))} in the same menu opens the membership panel, which has a ` +
@@ -941,6 +942,10 @@ export function renderProductGuide(): string {
     `  - ${quoted(t("canvas.generatePanel.errorStorageFull"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorUnavailable"))}`,
     `  - ${quoted(t("canvas.generatePanel.errorFailed"))}`,
+    "  - when a monthly spend limit the Studio's admin set is reached, with no button, since adding credits does " +
+      "not lift a limit (see the When something is wrong section); for the person's own limit the message names " +
+      "its amount and the day it resets, for the Studio's total only the day it resets; rarely it says only " +
+      `${quoted(t("credits.refusal.spendCap"))}`,
     "  - a sentence naming the model and, when a count says it, the limit the run breaks there, such as how many " +
       "characters or lines its text may have; otherwise it says the model can't take the run as set up and to change " +
       "the settings or pick another model",
@@ -961,12 +966,23 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.kind.upload"))} with an up arrow, followed by the file's name; ` +
       `${quoted(t("canvas.task.kind.generate"))} with a sparkle, ${quoted(t("canvas.task.kind.understand"))}, ` +
       `or ${quoted(t("canvas.task.kind.transcribe"))} with a caption icon, each ` +
-      "followed by the model's name; or a tool's own icon and name, with nothing after it. A done row offers " +
+      "followed by the model's name; or a tool's own icon and name, with nothing after it. At the line's right end is who started it, " +
+      `${quoted(t("canvas.task.you"))} for your own. A done row offers ` +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
       `hand, and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
       `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
       `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
+    "Each person runs only so many tasks at once, a number that comes with the membership of the Studio's admin; " +
+      "a task past it waits its turn and starts by itself when an earlier one ends, and the time it waits does " +
+      "not count against its two hours. A node with a waiting task shows an hourglass in that column (below the " +
+      `spinning circle when some of its tasks already run); hovering it shows ${quoted(t("canvas.task.status.waiting"))} with how many, and why: ` +
+      `${quoted(t("canvas.task.waitReasonEachLimit", { count: 2, limit: 2 }))} (it counts the running tasks of whoever started each one, against the Studio's limit; in the list ` +
+      `a row someone else started says so of that person, and your own rows read ${quoted(t("canvas.task.waitReasonLimit", { limit: 2 }))}) — clicking it opens the ${quoted(t("canvas.task.status.waiting"))} ` +
+      `list, which holds only the waiting tasks (the ${quoted(t("canvas.task.status.running"))} list holds only those already running); each row there says ${quoted(t("canvas.task.status.waiting"))}, shows no running time and ` +
+      `offers ${quoted(t("common.cancel"))}, which ends it as ${quoted(t("canvas.task.failure.cancelled"))} A task ` +
+      "that has started running cannot be cancelled; pressing it then says " +
+      `${quoted(t("canvas.task.alreadyStarted"))} A node with a waiting task cannot be deleted, as with a running one.`,
     "",
     "## Inside the generation panel",
     "The top row holds the tool buttons, each an icon over its name, with an X at the far right that closes the " +
@@ -1684,7 +1700,10 @@ export function renderProductGuide(): string {
       "the prompt is empty (Text to 3D), no view is filled or a view's upload failed (Image to 3D). " +
       `On the answer it closes and the ${quoted(t("spaces.threeD.tasks"))} panel opens on the new row, clearing the panel's filters if they would hide it; a generation that could not start gets its row too, with the reason and Retry. ` +
       "Closing the dialog while the generation is being submitted lets the submission carry on, and its answer still opens the panel on the new row. " +
-      "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message.",
+      "A refusal, such as too few credits or a view that is not a picture of this Project, keeps the dialog open with everything in it and says why in a short message. " +
+      `A generation waiting its turn, past the number of tasks one person runs at once, says ${quoted(t("canvas.task.status.waiting"))} on its row, counts no minutes, ` +
+      `offers ${quoted(t("common.cancel"))} and says why it waits. Your own task's row says ${quoted(t("canvas.task.waitReasonLimit", { limit: 2 }))} ` +
+      `Someone else's says ${quoted(t("canvas.task.waitReasonOtherLimit", { limit: 2 }))} One that has started running cannot be cancelled.`,
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))}, ` +
       `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon), ${quoted(t("spaces.threeD.viewfinder.open"))} (four frame corners) and ` +
@@ -1942,15 +1961,41 @@ export function renderProductGuide(): string {
       `menu has a ${quoted(t("spaces.document.commands.textColor"))} row, a ` +
       `${quoted(t("spaces.document.commands.fillColor"))} row and ` +
       `${quoted(t("spaces.document.commands.colorReset"))}.`,
+    `- The insert menus (the plus menu, the slash menu and ${quoted(t("spaces.document.blockHandle.insertBelow"))}) ` +
+      `grey out: on a line in a table cell, ${quoted(t("spaces.document.commands.table"))}, since a table does not go inside a ` +
+      "cell; when the pick turns the line itself into it (the plus, or the slash menu on a block holding nothing but " +
+      `the slash and the letters after it), also ${quoted(t("spaces.document.commands.quote"))} on a line already ` +
+      `in a quote and ${quoted(t("spaces.document.commands.table"))} on a line with lines nested under it; ` +
+      `${quoted(t("spaces.document.commands.columns"))} is greyed where the Document columns section says.`,
     "- Hovering an empty paragraph, with no text selected, shows a plus at its left; clicking it lists the " +
       `same entries as ${quoted(t("spaces.document.blockHandle.insertBelow"))}, and the one picked turns that ` +
       "line itself into it (a divider, or the files picked for an image, audio or video entry, go above the line, " +
       "which stays empty). " +
-      `${quoted(t("spaces.document.commands.quote"))} is greyed there on a line already in a quote. ` +
+      "Its greyed entries are as the insert menus' line says. " +
       `The menu ends with ${quoted(t("spaces.document.blockHandle.delete"))}, which removes that line; it is greyed ` +
       "when that line is the document's only block. Empty " +
       "paragraphs have no six-dot handle, so its menu and dragging are not offered on them; a selection that takes " +
       "in an empty paragraph acts on it as on any other paragraph.",
+    "- Typing a slash (/) with nothing selected at the start of a line or after a space opens, under the slash or, with no room under " +
+      `it, over the line, the same entries as ${quoted(t("spaces.document.blockHandle.insertBelow"))}; the ` +
+      "full-width slash (\uFF0F) and the ideographic comma (\u3001) do the same. Letters after it filter " +
+      "the list by an entry's name in the interface language or in English; when nothing matches it says " +
+      `${quoted(t("spaces.document.slashMenu.empty"))}, and it closes once three more characters still match ` +
+      "nothing. A space right after the slash closes it and keeps what was typed. The up and down arrows move " +
+      "through it; Enter or a click picks. On a block holding nothing but the slash and the letters after it the " +
+      "pick turns that block itself into it, as the plus does; on any other block it goes where " +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))} puts it; lines made with Shift+Enter count with the ` +
+      "rest of the block. Its greyed entries are as the insert menus' line says. " +
+      "Picking a block type, the divider, the table, columns or the formula removes the slash and its letters at " +
+      "once; picking an image, audio or video opens the file picker and removes them when the files land, and " +
+      "closing the picker keeps them. The file picker and formula box after a pick work as in those " +
+      `menus. ${quoted(t("spaces.document.commands.table"))} puts in an empty table of three rows and three ` +
+      "columns at once; picking a size first is done from the plus on an empty paragraph or from " +
+      `${quoted(t("spaces.document.blockHandle.insertBelow"))} elsewhere, and rows and columns are added ` +
+      "from the table's handles. Esc, clicking elsewhere, moving the caret off the line or crossing a " +
+      "Shift+Enter line break closes it and " +
+      "keeps what was typed; one undo after a pick brings the slash and its letters back. It does not open in a " +
+      "code block.",
     "- Hovering any other line, with no text selected, shows a handle of six dots at its left. Drag it to move the " +
       `block; click it for a menu with ${quoted(t("spaces.document.commands.blockType"))}, ` +
       `${quoted(t("spaces.document.blockHandle.duplicate"))}, ` +
@@ -1973,9 +2018,8 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.commands.formula"))}, then ` +
       `${quoted(t("spaces.document.media.image"))}, ${quoted(t("spaces.document.media.audio"))} and ` +
       `${quoted(t("spaces.document.media.video"))}, and puts a new line of the one picked ` +
-      "below; the divider, the table and the formula each come with an empty line under them, a new table puts the caret " +
-      `in its first cell, and a new formula opens its box. On a line in a table cell, ${quoted(t("spaces.document.commands.table"))} is greyed: a ` +
-      "table does not go inside a cell. " +
+      "below; the divider, the table, columns and the formula each come with an empty line under them, a new table puts " +
+      "the caret in its first cell, and a new formula opens its box. Its greyed entries are as the insert menus' line says. " +
       "The last three open the computer's file picker for that kind; the files chosen go " +
       "under the line, above an empty line made for the caret. " +
       `${quoted(t("spaces.document.commands.table"))} opens a grid of squares, nine across and nine down, with ` +
@@ -2101,7 +2145,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.document.table.splitCell"))} is greyed unless the cell was merged; while it is open ` +
       "that cell is tinted the way selected cells are. A cell holds blocks " +
       "the way the rest of the document does: paragraphs, headings, lists, to-dos, quotes, code, dividers, " +
-      "formulas, pictures, videos and audio, each with its own handle of six dots, and an empty line with the plus; a table " +
+      "formulas, pictures, videos and audio, each with its own handle of six dots, and an empty paragraph with the plus; a table " +
       "does not go inside a cell. Enter and Shift+Enter work as anywhere else, and Enter on the last empty line " +
       "of a cell stays in the cell. Tab in a list item indents it when it can be indented and Shift+Tab takes an " +
       "indented one back out; otherwise Tab moves to the next cell, and in the last cell it adds a row first, and " +
@@ -2190,7 +2234,7 @@ export function renderProductGuide(): string {
     "",
     "## Document columns",
     `${quoted(t("spaces.document.commands.columns"))} in a line's ${quoted(t("spaces.document.blockHandle.insertBelow"))} ` +
-      "menu, or behind the plus on an empty line, puts two columns side by side, each holding an empty line, with the " +
+      "menu, behind the plus on an empty paragraph, or in the slash menu, puts two columns side by side, each holding an empty line, with the " +
       "caret in the first. It is greyed on a line in a column, on a line nested under another line and on a line " +
       `with lines nested under it, and pressing it there says ${quoted(t("spaces.document.columns.unavailable"))}`,
     "Dragging a line by its six dots (or a picture, video or audio by itself) onto the left or right " +
@@ -2231,6 +2275,19 @@ export function renderProductGuide(): string {
       "Deleting a snapshot asks first and cannot be undone.",
     "",
     "## When something is wrong",
+    "- A monthly spend limit is reached, the person's own or the Studio's total: for the person's own limit the " +
+      "message names its amount and the day it resets, for the Studio's total only the day it resets; rarely it " +
+      `says only ${quoted(t("credits.refusal.spendCap"))} — work that spends credits is refused ` +
+      "until the month resets (on the first of the month, UTC); work already running finishes. Adding credits " +
+      "does not lift it, so the message has no button; only the Studio's admin can change the limits. They are " +
+      `on the Studio page's ${quoted(t("studio.container.tabs.credits"))} tab, under ${quoted(t("studio.container.credits.spendCap.title"))}: ` +
+      `${quoted(t("studio.container.credits.spendCap.studioMonthly"))} and ${quoted(t("studio.container.credits.spendCap.memberDefault"))}, each ` +
+      `${quoted(t("studio.container.credits.spendCap.notSet"))} or an amount per month, with what the Studio spent this month and ` +
+      "when it resets; below, everyone who can spend there, Studio members and " +
+      `${quoted(t("studio.container.credits.spendCap.relationProjectCollaborator"))} alike, with what they spent and the limit that ` +
+      `applies, where ${quoted(t("studio.container.credits.spendCap.override"))} opens a dialog that gives one person a limit of their own (an amount, ` +
+      `${quoted(t("studio.container.credits.spendCap.unlimited"))} or ${quoted(t("studio.container.credits.spendCap.zero"))}) or puts them back on the default ` +
+      "with its first choice, which names the default. A personal Studio has no limits, and neither does a deployment that charges no credits: there the section is not shown.",
     `- ${quoted(t("connection.banner.disconnected.text"))} across the top, with ` +
       `${quoted(t("connection.banner.reload"))}: the connection dropped, and the work area is covered until it ` +
       `comes back. ${quoted(t("connection.banner.authFailed.text"))} offers ` +
@@ -2273,7 +2330,7 @@ export function renderProductGuide(): string {
       "into another studio, or " +
       `${quoted(t("canvas.generatePanel.errorStorageFull"))} when generating: the storage of the studio's admin ` +
       "is full, counted across every studio they administer. What is already there keeps working, but nothing " +
-      "new can be uploaded or generated until they upgrade. The bell's " +
+      "new can be uploaded or generated until they upgrade; an admin on an enterprise agreement contacts us to change the agreement. The bell's " +
       `${quoted(t("notifications.headline.storageQuotaExceeded"))} is the same thing.`,
     "- Each space has a size limit. As a space nears it, a notice at the top of the space says how much it is " +
       "using and that past the limit no more content can be added. Once it is full the notice says so, and only " +

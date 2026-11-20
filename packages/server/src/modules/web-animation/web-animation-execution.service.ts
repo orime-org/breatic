@@ -6,8 +6,8 @@
  *
  * Accepting looks up the action first: an action already accepted answers its own row, or a conflict when its input
  * differs. An export then looks for a live export of the same source in the same Motion Space that this Project holds
- * a grant for, and answers it. Only a new row needs a balance above zero (no credits are held; settlement later
- * charges actual use) and, for an export, storage left; the row starts `queued` and is written with this Project's
+ * a grant for, and answers it. Only a new row is admitted, once, within the monthly spend limits and on a balance above
+ * zero (no credits are held; settlement later charges actual use) and, for an export, with storage left; the row starts `queued` and is written with this Project's
  * grant in one transaction, an export with the upload its video is written to, and its job is added once that commits. Reads answer through the grants, as
  * the one row view, so a duplicated Project sees, modifies and exports what its source made and cancels only its own.
  */
@@ -56,7 +56,7 @@ import {
   type WebAnimationRowView,
 } from "@breatic/shared/space-content";
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
-import { precheckCredits } from "@server/modules/payment/credit-precheck.service.js";
+import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
 import * as grantRepo from "@server/modules/web-animation/web-animation-grants.repo.js";
 import { timelineQueue } from "@server/modules/web-animation/timeline-queue.js";
@@ -216,6 +216,7 @@ async function openVideoUpload(projectId: string, userId: string, deadlineAt: Da
  * @throws {ForbiddenError} When the caller is below editor.
  * @throws {ValidationError} When the input is out of the configured bounds.
  * @throws {ConflictError} When the action was accepted with a different input.
+ * @throws {SpendCapReachedError} 402 when the caller or the studio has spent its monthly limit.
  * @throws {AppError} 402 when the studio's balance is not above zero, 507 when an export has no storage left.
  */
 export async function accept(userId: string, body: WebAnimationExecutionRequest & { projectId: string }): Promise<AcceptedExecution> {
@@ -254,7 +255,8 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
   const found = await existing();
   if (found !== undefined) return found;
 
-  // A new execution needs a balance above zero to start, as an Agent chat turn does (chat.ts). Payments off: no check.
+  // Admitted once, as an Agent chat turn is (chat.ts): the spend limits, then a balance above zero; one that then
+  // waits for a running slot starts without a second check (design 3.10). Payments off: no check.
   await precheckCredits(projectId, userId, SMALLEST_CREDIT);
   if (sourceVersionId !== null) await assertStorageAllowance(projectId, "generate");
   const deadlineAt = new Date(budgetDeadlineFrom(Date.now()));

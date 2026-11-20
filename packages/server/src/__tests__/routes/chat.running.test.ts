@@ -9,7 +9,7 @@
  * until it has settled, renewed with its hold on the conversation; that half
  * is pinned in `integration/chat-running.integration.test.ts`.
  *
- * A query `validate()` refuses is answered 422 (`middleware/validate.ts`), as on
+ * A query `validate()` refuses is answered 422 (`packages/core/src/http/validate.ts`), as on
  * every other route.
  *
  * The lease module is doubled here; what it does against Redis is pinned by

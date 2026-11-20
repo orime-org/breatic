@@ -14,7 +14,7 @@ import { WebAnimationExecutionRequestSchema } from "@breatic/shared/space-conten
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 import { webAnimationExecutionService as executions } from "@server/modules";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 

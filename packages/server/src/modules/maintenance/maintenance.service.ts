@@ -4,9 +4,8 @@
 /**
  * Signed operations API: immutable decisions and durable, versioned maintenance.
  */
-import { db, defaultJobOpts, maintenanceRepo as repo, type ReclaimScope, type ReclaimDecision, type ReclaimControlDecision, type ReclaimOperationView, type MaintenanceState, type ReclaimRun } from "@breatic/core";
+import { db, defaultJobOpts, maintenanceRepo as repo, type ReclaimScope, type ReclaimDecision, type ReclaimControlDecision, type ReclaimOperationView, type MaintenanceState, type ReclaimRun, fingerprint } from "@breatic/core";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { storageReclaimRepo } from "@breatic/domain";
 import { maintenanceAvailability, maintenanceConfig, maintenanceNow, getMaintenanceDependencies } from "@server/modules/maintenance/dependencies.js";
 import { checkKeptHead } from "@server/modules/maintenance/kept-head.js";

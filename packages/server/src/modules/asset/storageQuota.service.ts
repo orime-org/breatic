@@ -93,11 +93,11 @@ export async function assertStudioStorageAllowance(
   studioId: string,
   purpose: StorageWritePurpose,
 ): Promise<void> {
-  const { adminUserId, storageBytes } = await getStudioStorageQuota(studioId);
+  const { adminUserId, storageBytes, enterprise } = await getStudioStorageQuota(studioId);
 
-  // Effective enterprise membership retains its storage exemption. Its
-  // negotiated storage value is recorded, while the storage gate uses null.
-  // This also preserves the exemption for legacy enterprise information.
+  // Only an enterprise account without a saved agreement is uncapped: an
+  // active agreement caps storage at its storage_bytes like any tier
+  // (inner#1968).
   if (storageBytes === null) return;
 
   const usedBytes = await accountStorageUsage(adminUserId);
@@ -110,7 +110,7 @@ export async function assertStudioStorageAllowance(
       { studioId, adminUserId, storageBytes, usedBytes, purpose },
       "storage_quota_exceeded",
     );
-    await tellTheAdmin(adminUserId, studioId);
+    await tellTheAdmin(adminUserId, studioId, enterprise);
     throw new AppError(
       INSUFFICIENT_STORAGE,
       t(
@@ -138,10 +138,12 @@ export async function assertStudioStorageAllowance(
  * other request legitimately holds.
  * @param adminUserId - The account that is out of storage.
  * @param studioId - Where this particular refusal happened.
+ * @param enterprise - Whether the account's effective tier is enterprise.
  */
 async function tellTheAdmin(
   adminUserId: string,
   studioId: string,
+  enterprise: boolean,
 ): Promise<void> {
   // Two different states, and only one of them may be given back later:
   // `held` means this request is the one holding the window.
@@ -173,6 +175,7 @@ async function tellTheAdmin(
         locale: admin.locale,
         recipientEmail: admin.email,
         studioName: studio.name,
+        enterprise,
       });
     }, { userId: adminUserId, subject: "storage_quota_exceeded" });
   } catch (err) {

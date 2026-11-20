@@ -12,7 +12,7 @@
  * charged for the seconds the report says it used.
  */
 
-import { env, getMiniToolsConfig, logger } from "@breatic/core";
+import { env, getMiniToolsConfig, logger, reportGraceMs } from "@breatic/core";
 import {
   containerCostUsd,
   createUsageRecorder,
@@ -150,7 +150,7 @@ async function checkJob(op: ContainerOp, input: ContainerRunInput, job: StoredJo
   // The job's own deadline and the room for its last report bound every call
   // (inner#1367). Past it, the read that finds the ending still goes out, under
   // the transport's own bound.
-  const endsAt = job.deadlineAt + poll * 2;
+  const endsAt = job.deadlineAt + reportGraceMs(poll);
   const bound = untilDeadlineIfAhead(endsAt);
   let report = await readMiniToolJob(
     env.INGEST_BASE_URL,

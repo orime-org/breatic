@@ -124,6 +124,11 @@ export interface CollabServerInfra {
    */
   port: number;
   /**
+   * Address to listen on; every address when omitted, as a deployment needs.
+   * A test passes the address it connects to (#1478).
+   */
+  address?: string;
+  /**
    * Namespace for the Hocuspocus pub/sub channels (`REDIS_KEY_PREFIX`,
    * which resolves to `ENV` when unset). Two deployments sharing a Redis
    * instance MUST differ here: pub/sub ignores the DB number, so the
@@ -327,6 +332,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
 
   const wsServer = new Server({
     port: infra.port,
+    address: infra.address,
     quiet: cfg.quiet,
     websocketOptions: { maxPayload: limits.frameMaxBytes },
     // Every whole message then passes the size cap's inbound filter

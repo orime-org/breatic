@@ -72,7 +72,7 @@ vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unkno
         cb({ TX: true }),
       ),
     },
-    // A tier with room. The six ceilings are read as one object, so the whole
+    // A tier with room. The seven ceilings are read as one object, so the whole
     // shape is returned rather than the single field under test — a partial
     // stub would pass here and break the moment another ceiling is read.
     getLimitsForStudio: vi.fn(async () => ({

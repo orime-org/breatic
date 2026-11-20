@@ -23,7 +23,9 @@ vi.mock('@web/data/api/canvas', () => ({
 import type { NodeTaskEntry } from '@breatic/shared';
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
 afterEach(cleanup);
 
@@ -92,22 +94,24 @@ function renderRow(
   names: Record<string, string> = { 'u-1': 'Ada' },
 ): void {
   render(
-    <CollaboratorNamesProvider
-      value={{ resolve: (userId: string) => names[userId] ?? null, members: [] }}
-    >
-      <TaskRow
-        entry={entry(over)}
-        now={NOW}
-        hasRetryFile={props.hasRetryFile ?? false}
-        readOnly={props.readOnly ?? false}
-        retrying={props.retrying ?? false}
-        dismissing={props.dismissing ?? false}
-        onView={props.onView ?? ((): void => {})}
-        onRetry={props.onRetry ?? ((): void => {})}
-        onDismiss={props.onDismiss ?? ((): void => {})}
-        {...(props.medium !== undefined && { medium: props.medium })}
-      />
-    </CollaboratorNamesProvider>,
+    <TooltipProvider>
+      <CollaboratorNamesProvider
+        value={{ resolve: (userId: string) => names[userId] ?? null, members: [] }}
+      >
+        <TaskRow
+          entry={entry(over)}
+          now={NOW}
+          hasRetryFile={props.hasRetryFile ?? false}
+          readOnly={props.readOnly ?? false}
+          retrying={props.retrying ?? false}
+          dismissing={props.dismissing ?? false}
+          onView={props.onView ?? ((): void => {})}
+          onRetry={props.onRetry ?? ((): void => {})}
+          onDismiss={props.onDismiss ?? ((): void => {})}
+          {...(props.medium !== undefined && { medium: props.medium })}
+        />
+      </CollaboratorNamesProvider>
+    </TooltipProvider>,
   );
 }
 
@@ -118,6 +122,46 @@ describe('TaskRow', () => {
     const row = screen.getByTestId('node-task-row');
     expect(row).toHaveTextContent('holiday.mp4');
     expect(row).toHaveTextContent('Ada');
+  });
+
+  // inner#1968 visual round 2: what the task acted on keeps its width; a long starter name is cut and shown whole under the pointer.
+  it('cuts a long starter name before what the task acted on, and shows it whole under the pointer', async () => {
+    const long = 'alexandria-montgomery-fitzwilliam-the-third';
+    renderRow({}, {}, { 'u-1': long });
+    const starter = screen.getByText(long);
+    expect(starter).toHaveClass('truncate', 'max-w-28');
+    await userEvent.hover(starter);
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(long);
+  });
+
+  // inner#1968 visual round 3: what the task acted on takes its width before the starter.
+  it('lets the starter give way before what the task acted on', () => {
+    renderRow({}, {}, { 'u-1': 'alexandria-montgomery-fitzwilliam-the-third' });
+    // jsdom lays nothing out: the name never shrinks and stops 3rem short, the 40px floor the starter keeps plus the gap.
+    const detail = screen.getByTestId('task-detail').parentElement!;
+    expect(detail).toHaveClass('shrink-0', 'max-w-[calc(100%-3rem)]');
+    expect(screen.getByText('alexandria-montgomery-fitzwilliam-the-third')).toHaveClass('min-w-10', 'max-w-28', 'truncate');
+  });
+
+  // inner#1968 visual round 3: the user's own task says "You", as the 3D task list does.
+  it('says You for a task the user started', () => {
+    useCurrentUserStore.getState().setUser({ id: 'u-1', name: 'Ada', email: 'ada@x.test', personalStudio: null, membershipTier: 'team' });
+    try {
+      renderRow();
+      const row = screen.getByTestId('node-task-row');
+      expect(row).toHaveTextContent('You');
+      expect(row).not.toHaveTextContent('Ada');
+    } finally {
+      useCurrentUserStore.getState().clear();
+    }
+  });
+
+  // inner#1968 visual round 3: a cut-short file or model name shows whole under the pointer.
+  it('shows what the task acted on whole under the pointer', async () => {
+    const long = 'brand-hero-final-v3-approved-by-client-2026.mp4';
+    renderRow({ label: long });
+    await userEvent.hover(screen.getByTestId('task-detail'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent(long);
   });
 
   it('opens with a badge naming the kind, then what it acted on, in every state', () => {

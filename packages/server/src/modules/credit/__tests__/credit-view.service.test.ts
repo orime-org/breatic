@@ -21,6 +21,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 vi.mock("@breatic/domain", () => ({
   assetService: { resolveOwnerStudioId: vi.fn() },
+  creditSourceRepo: { readReceiptDetails: vi.fn(async () => new Map()) },
   creditLotRepo: { listLedgerByStudio },
   creditLotService: { readStudioCredits },
 }));
@@ -170,7 +171,7 @@ describe("a lot on a studio's credits page (inner#1052)", () => {
     };
   }
 
-  const PAGE_FIELDS = ["buyerName", "createdAt", "id", "purchasedCredits", "remainingCredits"];
+  const PAGE_FIELDS = ["buyerName", "createdAt", "id", "purchasedCredits", "remainingCredits", "sourceKind"];
 
   it("carries exactly what the page shows: who bought it, when, and what is left of it", async () => {
     readStudioCredits.mockResolvedValue({
@@ -181,6 +182,7 @@ describe("a lot on a studio's credits page (inner#1052)", () => {
     expect(Object.keys(lot).sort()).toEqual(PAGE_FIELDS);
     expect(lot).toStrictEqual({
       id: "lot-1",
+      sourceKind: "payment",
       purchasedCredits: "120.500000",
       remainingCredits: "37.250000",
       createdAt: "2026-10-01T08:09:10.123Z",

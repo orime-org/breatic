@@ -93,6 +93,8 @@ export async function seedExecution(
   await sql`INSERT INTO users (id, email, email_verified) VALUES (${userId}, ${`tl-worker-${userId}@example.test`}, true)`;
   const studioId = randomUUID();
   await sql`INSERT INTO studios (id, created_by_user_id, slug, type, name) VALUES (${studioId}, ${userId}, ${studioId}, 'personal', 'Timeline worker')`;
+  // Every studio has its admin; the running-task gate reads the limit from them.
+  await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studioId}, ${userId}, 'admin')`;
   const projectId = randomUUID();
   await sql`INSERT INTO projects (id, studio_id, created_by_user_id, name, slug) VALUES (${projectId}, ${studioId}, ${userId}, 'Timeline worker', ${`tw-${projectId}`})`;
   const spaceId = randomUUID();

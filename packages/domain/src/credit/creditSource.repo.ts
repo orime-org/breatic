@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { inArray } from "drizzle-orm";
-import { db, creditSources, creditGifts, creditCompensations, type DbTx } from "@breatic/core";
+import { db, creditSources, creditGifts, creditCompensations, creditEnterprisePurchases, type DbTx } from "@breatic/core";
 import type { CreditSourceKind } from "@breatic/shared";
 
 // Re-exported rather than declared here: the browser decides what a row
@@ -105,6 +105,41 @@ export async function createOperatorSource(input: OperatorReceipt, tx: DbTx): Pr
   else await tx.insert(creditCompensations).values(values);
 }
 
+/**
+ * Create corporate purchase evidence in the original decision transaction.
+ * @param input - The confirmed corporate purchase facts.
+ * @param input.id - The parent source's identity.
+ * @param input.userId - The purchasing account.
+ * @param input.credits - The exact purchased quantity.
+ * @param input.contractNumber - The original contract reference.
+ * @param input.reason - The recorded purchase reason.
+ * @param input.operationKey - The original confirmation key.
+ * @param input.adminId - The authenticated original operator.
+ * @param tx - The transaction creating the purchase and its decision.
+ * @throws {Error} When any receipt constraint fails.
+ */
+export async function createEnterpriseSource(input: {
+  id: string; userId: string; credits: string; contractNumber: string; reason: string; operationKey: string; adminId: string;
+}, tx: DbTx): Promise<void> {
+  await createSource({ id: input.id, kind: "enterprise" }, tx);
+  await tx.insert(creditEnterprisePurchases).values({ id: input.id, sourceKind: "enterprise", targetUserId: input.userId, credits: input.credits,
+    contractNumber: input.contractNumber, reason: input.reason, operationKey: input.operationKey, requestedBy: input.adminId });
+}
+
+/**
+ * Read the corporate contract evidence for a requested page of sources.
+ * @param sourceIds - The immutable source IDs from that page.
+ * @param tx - The enclosing snapshot, when present.
+ * @returns Actual contract references keyed by source identity.
+ * @throws {Error} When the database cannot read the receipts.
+ */
+export async function readEnterpriseContracts(sourceIds: readonly string[], tx?: DbTx): Promise<Map<string, string>> {
+  if (sourceIds.length === 0) return new Map();
+  const rows = await (tx ?? db).select({ id: creditEnterprisePurchases.id, contractNumber: creditEnterprisePurchases.contractNumber })
+    .from(creditEnterprisePurchases).where(inArray(creditEnterprisePurchases.id, [...sourceIds]));
+  return new Map(rows.map(row => [row.id, row.contractNumber]));
+}
+
 
 /**
  * Read gift provenance through the source table owner for a page of sources.
@@ -123,4 +158,32 @@ export async function readGiftOrigins(sourceIds: readonly string[], tx?: DbTx): 
     origins.set(row.id, row.origin);
   }
   return origins;
+}
+
+/** The receipt facts rendered by account and Studio credit views. */
+export interface CreditReceiptDetails { giftOrigin?: "registration" | "operator"; contractNumber?: string }
+
+/**
+ * Resolve actual receipt provenance for the requested source page.
+ * @param sources - The original source identities on that page.
+ * @param tx - The enclosing snapshot, when present.
+ * @returns Recorded source details keyed by original source ID.
+ * @throws {Error} When a required source receipt is absent or cannot be read.
+ */
+export async function readReceiptDetails(sources: readonly { sourceKind: string; sourceId: string | null }[], tx?: DbTx): Promise<Map<string, CreditReceiptDetails>> {
+  const giftIds = sources.filter(source => source.sourceKind === "gift").map(source => source.sourceId!);
+  const enterpriseIds = sources.filter(source => source.sourceKind === "enterprise").map(source => source.sourceId!);
+  const [origins, contracts] = await Promise.all([readGiftOrigins(giftIds, tx), readEnterpriseContracts(enterpriseIds, tx)]);
+  const details = new Map<string, CreditReceiptDetails>();
+  for (const id of giftIds) {
+    const giftOrigin = origins.get(id);
+    if (giftOrigin === undefined) throw new Error("Gift receipt origin missing");
+    details.set(id, { giftOrigin });
+  }
+  for (const id of enterpriseIds) {
+    const contractNumber = contracts.get(id);
+    if (contractNumber === undefined) throw new Error("Enterprise purchase receipt missing");
+    details.set(id, { contractNumber });
+  }
+  return details;
 }

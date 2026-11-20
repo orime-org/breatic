@@ -27,14 +27,23 @@
  * this module holds the shape and the registry they are collected into.
  */
 
+import { THREE_D_CARTOON_SHORT } from "@shared/canvas/templates/3d-cartoon-short.js";
 import { AMBIENCE_SFX_BED } from "@shared/canvas/templates/ambience-sfx-bed.js";
+import { ANIME_ACTION_CLIMAX } from "@shared/canvas/templates/anime-action-climax.js";
+import { ANIME_OPENING_15S } from "@shared/canvas/templates/anime-opening-15s.js";
+import { ANIME_SCENE } from "@shared/canvas/templates/anime-scene.js";
 import { BEAT_SYNC_OUTFIT_CHANGE } from "@shared/canvas/templates/beat-sync-outfit-change.js";
 import { BULLET_TIME_MISHAP } from "@shared/canvas/templates/bullet-time-mishap.js";
 import { CARRIED_OBJECT_TRANSITION } from "@shared/canvas/templates/carried-object-transition.js";
+import { CARTOON_GAG } from "@shared/canvas/templates/cartoon-gag.js";
 import { CHARACTER_BIBLE } from "@shared/canvas/templates/character-bible.js";
 import { CHARACTER_DESIGN_FROM_TEXT } from "@shared/canvas/templates/character-design-from-text.js";
 import { CHARACTER_SHOWCASE_ORBIT } from "@shared/canvas/templates/character-showcase-orbit.js";
 import { CLIP_AMBIENCE_FOLEY } from "@shared/canvas/templates/clip-ambience-foley.js";
+import { COMIC_4KOMA } from "@shared/canvas/templates/comic-4koma.js";
+import { COMIC_PAGE_TO_MOTION } from "@shared/canvas/templates/comic-page-to-motion.js";
+import { COMIC_PAGE } from "@shared/canvas/templates/comic-page.js";
+import { COMIC_PANELS_TO_SHOTS } from "@shared/canvas/templates/comic-panels-to-shots.js";
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
 import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
 import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
@@ -68,7 +77,10 @@ import { SECTION_MAPPED_SCORE } from "@shared/canvas/templates/section-mapped-sc
 import { SINGLE_VIEW_REFS_SCENE } from "@shared/canvas/templates/single-view-refs-scene.js";
 import { SONG_COVER } from "@shared/canvas/templates/song-cover.js";
 import { SPORTS_LIVE_COVERAGE } from "@shared/canvas/templates/sports-live-coverage.js";
+import { STOP_MOTION_SHORT } from "@shared/canvas/templates/stop-motion-short.js";
 import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
+import { STORYBOARD_SHEET_9 } from "@shared/canvas/templates/storyboard-sheet-9.js";
+import { STORYBOARD_TO_VIDEO } from "@shared/canvas/templates/storyboard-to-video.js";
 import { TALKING_HEAD_PITCH } from "@shared/canvas/templates/talking-head-pitch.js";
 import { TALKING_OWN_VOICE } from "@shared/canvas/templates/talking-own-voice.js";
 import { TALKING_PRESENTER } from "@shared/canvas/templates/talking-presenter.js";
@@ -89,7 +101,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "speed", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -210,6 +222,18 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   IDENTITY_LOCKED_SEQUENCE,
   CHARACTER_SHOWCASE_ORBIT,
   STORYBOARD_GRID_25,
+  STORYBOARD_SHEET_9,
+  COMIC_PAGE,
+  COMIC_4KOMA,
+  STORYBOARD_TO_VIDEO,
+  COMIC_PAGE_TO_MOTION,
+  COMIC_PANELS_TO_SHOTS,
+  CARTOON_GAG,
+  THREE_D_CARTOON_SHORT,
+  STOP_MOTION_SHORT,
+  ANIME_SCENE,
+  ANIME_ACTION_CLIMAX,
+  ANIME_OPENING_15S,
   PRODUCT_AD_15S,
   UGC_CREATOR_REVIEW,
   LIVESTREAM_PITCH,

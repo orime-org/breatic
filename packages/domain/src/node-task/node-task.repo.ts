@@ -11,17 +11,21 @@
  * a refusal.
  */
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, isNotNull, isNull, sql, type SQL } from "drizzle-orm";
 import { db, type DbTx } from "@breatic/core";
-import { nodeHistory, nodeTasks } from "@breatic/core";
+import { nodeHistory, nodeTasks, tasks } from "@breatic/core";
 import type { NodeTaskAction, SceneGenerationOrigin, SceneTaskNotice } from "@breatic/shared";
 
-/** The four states a task can be in, and the four numbers the node shows. */
+/** The four states a task can be in. */
 export type NodeTaskStatus = "running" | "done" | "failed" | "expired";
 
-/** What the node's corner shows: one number per state. */
+/** What the node's corner shows: one number per state, and how many of the running wait for a slot. */
 export interface NodeTaskCounts {
   running: number;
+  /** Of `running`, the rows waiting for a free running slot (inner#1968). */
+  waiting: number;
+  /** The running-task limit the earliest waiting row's task waits under; absent while nothing waits (design 21 row 22). */
+  waitingLimit?: number;
   done: number;
   failed: number;
   expired: number;
@@ -47,6 +51,12 @@ export interface NodeTaskRow {
   nodeHistoryId: string | null;
   /** The registered model a Space-level row holds; null everywhere else. */
   assetId: string | null;
+  /** Since when its task waits for a free running slot; null once it runs (inner#1968). Every read sets it. */
+  waitingSince?: Date | null;
+  /** The AIGC job the row runs as; null on an upload. Every read sets it. */
+  taskId?: string | null;
+  /** The running-task limit its task waits under (inner#1968); null when it does not wait. The list reads set it. */
+  slotWaitLimit?: number | null;
 }
 
 /** A 3D Space's own row (inner#1690, inner#1691), as its list and its actions read it. */
@@ -109,6 +119,8 @@ function rowOf(row: typeof nodeTasks.$inferSelect): NodeTaskRow {
     errorMessage: row.errorMessage,
     nodeHistoryId: row.nodeHistoryId,
     assetId: row.assetId,
+    waitingSince: row.waitingSince,
+    taskId: row.taskId,
   };
 }
 
@@ -199,6 +211,18 @@ export async function settleRunning(
 }
 
 /**
+ * A running row that does not wait for a free running slot: one that never
+ * waited, or whose task no longer waits (inner#1968). A waiting row has no
+ * deadline until its task starts; once the task ended without its rows being
+ * settled (a cancel or a stale-waiter sweep that committed and then failed),
+ * the row is judged by its budget like any other.
+ * @returns The condition.
+ */
+function notWaitingForSlot(): SQL {
+  return sql`(${nodeTasks.waitingSince} is null or not exists (select 1 from ${tasks} where ${tasks.id} = ${nodeTasks.taskId} and ${tasks.status} = 'pending'))`;
+}
+
+/**
  * Move every row on one node that outran its budget to `expired`.
  *
  * This is the whole of judging a task dead (#186, design §4.6): there is no
@@ -231,6 +255,7 @@ export async function harvestExpired(
         eq(nodeTasks.nodeId, nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
+        notWaitingForSlot(),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )
@@ -327,9 +352,9 @@ export async function findByStorageKey(
  * @param taskId - The job every row of that run points at.
  * @returns One entry per row, none when the job opened no row.
  */
-export async function budgetsFor(taskId: string): Promise<Pick<NodeTaskRow, "startedAt" | "budgetMs">[]> {
+export async function budgetsFor(taskId: string): Promise<Pick<NodeTaskRow, "startedAt" | "budgetMs" | "waitingSince">[]> {
   return db
-    .select({ startedAt: nodeTasks.startedAt, budgetMs: nodeTasks.budgetMs })
+    .select({ startedAt: nodeTasks.startedAt, budgetMs: nodeTasks.budgetMs, waitingSince: nodeTasks.waitingSince })
     .from(nodeTasks)
     .where(eq(nodeTasks.taskId, taskId));
 }
@@ -366,7 +391,7 @@ export async function findByTaskAndNode(
  * @param projectId - Owning project.
  * @param nodeId - The node.
  * @param tx - Optional transaction reading its own newly opened row.
- * @returns The four counts, zeros included.
+ * @returns The counts, zeros included.
  */
 export async function countsFor(
   projectId: string,
@@ -374,7 +399,11 @@ export async function countsFor(
   tx?: DbTx,
 ): Promise<NodeTaskCounts> {
   const rows = await (tx ?? db)
-    .select({ status: nodeTasks.status, n: sql<string>`count(*)` })
+    .select({
+      status: nodeTasks.status,
+      n: sql<string>`count(*)`,
+      waiting: sql<string>`count(*) filter (where ${nodeTasks.waitingSince} is not null)`,
+    })
     .from(nodeTasks)
     .where(
       and(
@@ -387,6 +416,7 @@ export async function countsFor(
 
   const counts: NodeTaskCounts = {
     running: 0,
+    waiting: 0,
     done: 0,
     failed: 0,
     expired: 0,
@@ -394,6 +424,26 @@ export async function countsFor(
   for (const row of rows) {
     const key = row.status as NodeTaskStatus;
     if (key in counts) counts[key] = Number(row.n);
+    if (key === "running") counts.waiting = Number(row.waiting);
+  }
+  if ((counts.waiting ?? 0) > 0) {
+    // The limit the earliest waiting task waits under (design 21 row 22).
+    const [first] = await (tx ?? db)
+      .select({ limit: tasks.slotWaitLimit })
+      .from(nodeTasks)
+      .innerJoin(tasks, eq(tasks.id, nodeTasks.taskId))
+      .where(
+        and(
+          eq(nodeTasks.projectId, projectId),
+          eq(nodeTasks.nodeId, nodeId),
+          eq(nodeTasks.status, "running"),
+          isNotNull(nodeTasks.waitingSince),
+          isNull(nodeTasks.deletedAt),
+        ),
+      )
+      .orderBy(asc(nodeTasks.waitingSince))
+      .limit(1);
+    if (first?.limit != null) counts.waitingLimit = first.limit;
   }
   return counts;
 }
@@ -412,9 +462,10 @@ export async function listLive(
   nodeId: string,
 ): Promise<NodeTaskListRow[]> {
   const rows = await db
-    .select({ task: nodeTasks, history: nodeHistory })
+    .select({ task: nodeTasks, history: nodeHistory, limit: tasks.slotWaitLimit })
     .from(nodeTasks)
     .leftJoin(nodeHistory, eq(nodeHistory.id, nodeTasks.nodeHistoryId))
+    .leftJoin(tasks, eq(tasks.id, nodeTasks.taskId))
     .where(
       and(
         eq(nodeTasks.projectId, projectId),
@@ -424,8 +475,9 @@ export async function listLive(
     )
     .orderBy(sql`${nodeTasks.startedAt} DESC`);
 
-  return rows.map(({ task, history }) => ({
+  return rows.map(({ task, history, limit }) => ({
     ...rowOf(task),
+    slotWaitLimit: task.waitingSince === null ? null : limit,
     content: history?.content ?? null,
     coverUrl: history?.thumbnailUrl ?? null,
     mediaWidth: history?.mediaWidth ?? null,
@@ -521,6 +573,7 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
         isNull(nodeTasks.nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
+        notWaitingForSlot(),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )
@@ -536,8 +589,9 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
  */
 export async function listSpace(projectId: string, spaceId: string): Promise<SceneTaskRow[]> {
   const rows = await db
-    .select()
+    .select({ task: nodeTasks, limit: tasks.slotWaitLimit })
     .from(nodeTasks)
+    .leftJoin(tasks, eq(tasks.id, nodeTasks.taskId))
     .where(
       and(
         eq(nodeTasks.projectId, projectId),
@@ -549,7 +603,7 @@ export async function listSpace(projectId: string, spaceId: string): Promise<Sce
     // Newest first by when the row was written, which is when it started;
     // `started_at` is the deadline's clock and is not what the list orders by.
     .orderBy(sql`${nodeTasks.createdAt} DESC`);
-  return rows.map(sceneRowOf);
+  return rows.map(({ task, limit }) => ({ ...sceneRowOf(task), slotWaitLimit: task.waitingSince === null ? null : limit }));
 }
 
 /**
@@ -601,4 +655,54 @@ export async function softDeleteSceneTask(taskId: string): Promise<boolean> {
     )
     .returning({ id: nodeTasks.id });
   return rows.length === 1;
+}
+
+/** Where a row of one task sits: its node, or none for a 3D Space's own row. */
+export interface TaskRowPlace {
+  id: string;
+  projectId: string;
+  spaceId: string;
+  nodeId: string | null;
+}
+
+/**
+ * Mark every running row of a task as waiting for a free running slot, keeping
+ * a row that already waits as it is (inner#1968).
+ * @param taskId - The AIGC job.
+ * @param tx - The gate's transaction.
+ * @returns The rows this call marked.
+ */
+export async function markWaiting(taskId: string, tx: DbTx): Promise<TaskRowPlace[]> {
+  return tx
+    .update(nodeTasks)
+    .set({ waitingSince: sql`now()` })
+    .where(and(eq(nodeTasks.taskId, taskId), eq(nodeTasks.status, "running"), isNull(nodeTasks.waitingSince)))
+    .returning({ id: nodeTasks.id, projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId, nodeId: nodeTasks.nodeId });
+}
+
+/**
+ * Start the waiting rows of a task: they stop waiting and count their budget
+ * from now (inner#1968).
+ * @param taskId - The AIGC job.
+ * @param tx - The gate's transaction.
+ * @returns The rows this call started.
+ */
+export async function startWaiting(taskId: string, tx: DbTx): Promise<TaskRowPlace[]> {
+  return tx
+    .update(nodeTasks)
+    .set({ waitingSince: null, startedAt: sql`now()` })
+    .where(and(eq(nodeTasks.taskId, taskId), eq(nodeTasks.status, "running"), sql`${nodeTasks.waitingSince} is not null`))
+    .returning({ id: nodeTasks.id, projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId, nodeId: nodeTasks.nodeId });
+}
+
+/**
+ * The rows of one task still running, on nodes or on a 3D Space.
+ * @param taskId - The AIGC job.
+ * @returns Each row's place.
+ */
+export async function listRunningForTask(taskId: string): Promise<TaskRowPlace[]> {
+  return db
+    .select({ id: nodeTasks.id, projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId, nodeId: nodeTasks.nodeId })
+    .from(nodeTasks)
+    .where(and(eq(nodeTasks.taskId, taskId), eq(nodeTasks.status, "running"), isNull(nodeTasks.deletedAt)));
 }

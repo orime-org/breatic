@@ -11,7 +11,19 @@
 import * as paymentRepo from "@server/modules/payment/payment.repo.js";
 import { creditLotService, creditSourceRepo } from "@breatic/domain";
 import { getStripeClient } from "@server/infra/stripe.js";
-import { isKnownTimeZone } from "@server/utils/time-zone.js";
+import {
+  isKnownTimeZone,
+  toPage,
+  enqueueAdsConversion,
+  trackServerEvent,
+  AppError,
+  NotFoundError,
+  ForbiddenError,
+  getStripeCallTimeoutMs,
+  db,
+  logger,
+  decodeActivityCursor,
+} from "@breatic/core";
 import {
   findTierByPriceCents,
   getPricingTiers,
@@ -28,22 +40,10 @@ import type {
   PurchaseRow,
 } from "@breatic/shared";
 import { parseCreditDecimal, serializeCreditMicro, t, getActiveLocale, IDEMPOTENCY_RETENTION_SECONDS } from "@breatic/shared";
-import {
-  AppError,
-  NotFoundError,
-  ForbiddenError,
-  getStripeCallTimeoutMs,
-} from "@breatic/core";
-import {
-  db,
-  logger,
-  decodeActivityCursor,
-} from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { claimWebhookEvent } from "@server/modules/subscription/webhook-events.repo.js";
 import { sendPurchaseConfirmation } from "@server/modules/payment/purchase-mail.js";
 import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mail-template.js";
-import { toPage } from "@server/utils/keyset-page.js";
 import {
   CONSENT_CREDITS_VERSION,
   REFUND_CREDITS_VERSION,
@@ -53,8 +53,8 @@ import {
 import * as consentRepo from "@server/modules/payment/purchase-consent.repo.js";
 import * as mailRepo from "@server/modules/payment/purchase-mail.repo.js";
 import { randomUUID } from "node:crypto";
-import { enqueueAdsConversion, trackServerEvent } from "@breatic/core";
 import { readCheckoutSnapshot, takeCheckoutSnapshot } from "@server/modules/analytics/checkout-snapshot.js";
+import { runAfterReply } from "@server/utils/after-reply.js";
 import type Stripe from "stripe";
 
 /**
@@ -397,7 +397,7 @@ export async function fulfillPayment(
     // 2xx, and the overlay's shared gate is holding. The send records its own
     // outcome, and a row left behind by a process that went away still offers
     // its resend.
-    void startConfirmationMail(payment.id);
+    runAfterReply({ task: "purchase_mail", paymentId: payment.id }, () => startConfirmationMail(payment.id));
     reportPurchase(payment);
   }
   return outcome;
@@ -473,7 +473,8 @@ async function sendConfirmationFor(paymentId: string): Promise<boolean> {
  * Build and send one purchase's confirmation, swallowing whatever happens.
  *
  * Separated from the fulfillment path so that nothing here can fail a request
- * that has already taken money and granted credits.
+ * that has already taken money and granted credits. Started as after-reply
+ * work, so a shutdown waits for it before closing the pools.
  * @param paymentId - The purchase to confirm.
  */
 async function startConfirmationMail(paymentId: string): Promise<void> {
@@ -1026,17 +1027,14 @@ export async function getPurchaseHistory(
     size,
     cursor === null ? null : { createdAt: cursor.createdAt, id: cursor.id },
   );
-  const origins = await creditSourceRepo.readGiftOrigins(rows.filter((row) => row.sourceKind === "gift").map((row) => row.sourceId!));
-  for (const row of rows) {
-    if (row.sourceKind === "gift" && !origins.has(row.sourceId!)) throw new Error("Gift receipt origin missing");
-  }
+  const details = await creditSourceRepo.readReceiptDetails(rows);
   return toPage(
     rows,
     size,
     (row) => ({
       rowId: row.rowId,
       sourceKind: row.sourceKind as CreditSourceKind,
-      ...(row.sourceKind === "gift" ? { giftOrigin: origins.get(row.sourceId!)! } : {}),
+      ...details.get(row.sourceId!),
       paymentId: row.paymentId,
       amountCents: row.amountCents,
       totalCents: row.totalCents,
@@ -1050,7 +1048,7 @@ export async function getPurchaseHistory(
       designatedStudioName: row.designatedStudioName,
       status: row.status,
       createdAt: row.createdAt.toISOString(),
-      // A row nobody paid for has no confirmation letter to send again.
+      // An online payment record supplies the confirmation email to resend.
       canResend:
         row.paymentId !== null && canResend(row.mailStatus, row.mailUpdatedAt),
     }),

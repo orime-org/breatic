@@ -5,82 +5,49 @@
  * The counts outside a node's top-right corner (#186 §7.1).
  *
  * They are the whole of what the shared document says about this node's
- * tasks: four numbers, no entries, no ids. The rows behind a number are
+ * tasks: its counts (running, and how many of those wait for a free running
+ * slot, then the three ways a task ends), no entries, no ids. The rows behind a number are
  * fetched only when the user asks for them by clicking it.
  *
  * A state this node has nothing in draws nothing, and a node with no task at
  * all draws no column: zero is not a value this column renders, it is the
  * absence of that count (user 2026-09-06). Most nodes on a canvas have never
- * been uploaded to, and four dimmed zeroes on each of them is the loudest
+ * been uploaded to, and a column of dimmed zeroes on each of them is the loudest
  * thing on the board while saying nothing. The counts that are there keep
  * their lifecycle order, so the column reads the same way every time.
  *
  * `endedShown` is the second half of what gets drawn: the three ways a task
  * can end may give up their cells when the canvas has taken them below the
- * size a target may be, and the running one keeps its cell at every zoom
+ * size a target may be, and the running and waiting ones keep their cells at every zoom
  * (user 2026-09-13). Reading a board zoomed out is when "this node is working
- * right now" matters most, and it is the one of the four that is still
- * happening.
+ * right now" matters most, and those two are what is still happening.
  */
 
 import type { JSX } from 'react';
 import React from 'react';
-import { CircleCheck, CircleX, Clock, Loader2 } from 'lucide-react';
 import type { NodeTaskCounts } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
-import { TASK_COUNT_ORDER } from '@web/spaces/canvas/overlay-scale';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
-
-/**
- * The mark's colour per state. The state rides on the mark rather than on the
- * number: light theme measures these four against the cell's fills at 3.4 to
- * 4.6, under the 4.5 an 11px number needs (WCAG 1.4.3), while a graphic
- * clears its own 3:1 floor at every one of them. So the cell draws the mark
- * alone and the count travels in its tooltip and accessible name
- * (user 2026-09-06).
- */
-const MARK_TONE: Readonly<Record<TaskStatus, string>> = {
-  running: 'text-status-info-foreground',
-  done: 'text-status-success-foreground',
-  failed: 'text-status-error-foreground',
-  expired: 'text-status-warning-foreground',
-};
-
-/**
- * The mark's shape per state, the same four the rows use. Two of the colours
- * read as one thing at this size, so shape is what separates them
- * (see `TaskStatusDot`).
- */
-const MARK_SHAPE: Readonly<Record<TaskStatus, typeof Clock>> = {
-  running: Loader2,
-  done: CircleCheck,
-  failed: CircleX,
-  expired: Clock,
-};
+import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
+import { TASK_COUNT_CELLS } from '@web/spaces/canvas/overlay-scale';
+import { countInList } from '@web/spaces/canvas/tasks/NodeTaskPanel';
+import { TASK_LABEL_KEY, TASK_SHAPE, TASK_TONE, type TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 
 /** The open cell's border, so which list is showing reads without the fill. */
-const OPEN_BORDER: Readonly<Record<TaskStatus, string>> = {
+const OPEN_BORDER: Readonly<Record<TaskListKind, string>> = {
   running: 'border-status-info-foreground',
+  waiting: 'border-active-border',
   done: 'border-status-success-foreground',
   failed: 'border-status-error-foreground',
   expired: 'border-status-warning-foreground',
 };
 
-/** i18n key for the button's accessible name, one per state. */
-const LABEL_KEY: Readonly<Record<TaskStatus, string>> = {
-  running: 'canvas.task.status.running',
-  done: 'canvas.task.status.done',
-  failed: 'canvas.task.status.failed',
-  expired: 'canvas.task.status.expired',
-};
-
 /** What {@link TaskCountColumn} renders and reports. */
 export interface TaskCountColumnProps {
-  /** The node's four numbers, straight off the shared document. */
+  /** The node's counts, straight off the shared document. */
   counts: NodeTaskCounts;
   /**
    * Whether the three ways a task can end are drawn. The running one is drawn
@@ -88,9 +55,9 @@ export interface TaskCountColumnProps {
    */
   endedShown: boolean;
   /** Which state's list is open right now, `null` when none is. */
-  openFor: TaskStatus | null;
+  openFor: TaskListKind | null;
   /** Ask for one state's list, or `null` to close the open one. */
-  onOpen: (status: TaskStatus | null) => void;
+  onOpen: (status: TaskListKind | null) => void;
 }
 
 /**
@@ -100,6 +67,7 @@ export interface TaskCountColumnProps {
  * @param props.value - How many tasks are in it.
  * @param props.isOpen - Whether this state's list is the open one.
  * @param props.onOpen - Called with the state to open, or `null` to close.
+ * @param props.waitingLimit - The waiting cell's running-task limit, when the counts carry it.
  * @returns The count button.
  */
 function TaskCount({
@@ -107,14 +75,16 @@ function TaskCount({
   value,
   isOpen,
   onOpen,
+  waitingLimit,
 }: {
-  status: TaskStatus;
+  status: TaskListKind;
   value: number;
   isOpen: boolean;
-  onOpen: (status: TaskStatus | null) => void;
+  onOpen: (status: TaskListKind | null) => void;
+  waitingLimit?: number;
 }): JSX.Element {
   const t = useTranslation();
-  const Mark = MARK_SHAPE[status];
+  const Mark = TASK_SHAPE[status];
   const handleClick = React.useCallback(() => {
     onOpen(isOpen ? null : status);
   }, [isOpen, onOpen, status]);
@@ -123,7 +93,7 @@ function TaskCount({
   // user meeting it for the first time, and it is where the number the cell
   // used to print now lives (user 2026-09-06).
   const tip = t('canvas.task.countTip', {
-    status: t(LABEL_KEY[status]),
+    status: t(TASK_LABEL_KEY[status]),
     count: value,
   });
 
@@ -142,7 +112,7 @@ function TaskCount({
             'flex items-center justify-center rounded-chrome p-1.5',
             // The open cell keeps the fill its neighbours have, and the coloured
             // rim is what says it is open: a darker fill made the cell the
-            // user had picked read as the least present of the four. The base
+            // user had picked read as the least present of the column. The base
             // fill is repeated under `hover-enabled:` so this one does not take
             // the variant's `hover-enabled:bg-accent` like any other cell — the
             // two share a modifier, so the merge keeps only this one.
@@ -151,11 +121,19 @@ function TaskCount({
         >
           <Mark
             aria-hidden='true'
-            className={cn('size-3 flex-none', MARK_TONE[status], status === 'running' && 'animate-spin')}
+            className={cn('size-3 flex-none', TASK_TONE[status], status === 'running' && 'animate-spin')}
           />
         </Button>
       </TooltipTrigger>
-      <TooltipContent side='right'>{tip}</TooltipContent>
+      {/* On the page, over the nodes: inline it sits in the canvas's transformed layer, under the next node. */}
+      <TooltipContent portal side='right' className='max-w-xs'>
+        {status === 'waiting' ? (
+          <>
+            <span className='block font-medium'>{tip}</span>
+            <span className='mt-0.5 block'>{waitReason(t, waitingLimit, { each: value })}</span>
+          </>
+        ) : tip}
+      </TooltipContent>
     </Tooltip>
   );
 }
@@ -165,27 +143,34 @@ const TaskCountMemo = React.memo(TaskCount);
 /**
  * Render the states this node has tasks in as a column of buttons.
  * @param props - The column inputs.
- * @param props.counts - The four numbers from the shared document.
+ * @param props.counts - The counts from the shared document.
  * @param props.endedShown - Whether the three ended states are drawn.
  * @param props.openFor - Which state's list is open, `null` when none is.
  * @param props.onOpen - Called with the state to open, or `null` to close.
  * @returns The column element, or null when this node has nothing to draw.
  */
 export function TaskCountColumn({ counts, endedShown, openFor, onOpen }: TaskCountColumnProps): JSX.Element | null {
-  const shown = TASK_COUNT_ORDER.filter(
-    (status) => counts[status] > 0 && (endedShown || status === 'running'),
+  /**
+   * How many tasks one cell counts.
+   * @param cell - The cell.
+   * @returns Its count.
+   */
+  const value = (cell: TaskListKind): number => countInList(counts, cell);
+  const shown = TASK_COUNT_CELLS.filter(
+    (cell) => value(cell) > 0 && (endedShown || cell === 'running' || cell === 'waiting'),
   );
   if (shown.length === 0) return null;
 
   return (
     <div className='flex flex-col gap-1' data-testid='node-task-counts'>
-      {shown.map((status) => (
+      {shown.map((cell) => (
         <TaskCountMemo
-          key={status}
-          status={status}
-          value={counts[status]}
-          isOpen={openFor === status}
+          key={cell}
+          status={cell}
+          value={value(cell)}
+          isOpen={openFor === cell}
           onOpen={onOpen}
+          {...(cell === 'waiting' && counts.waitingLimit !== undefined && { waitingLimit: counts.waitingLimit })}
         />
       ))}
     </div>

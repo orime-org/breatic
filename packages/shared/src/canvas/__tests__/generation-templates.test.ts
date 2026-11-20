@@ -197,6 +197,18 @@ const SOCIAL_HOOK_VIDEOS = SOCIAL_HOOKS.filter((id) => id !== 'fisheye-clone-pov
 /** The poster and graphics templates (inner#1809), in registry order. */
 const POSTERS = ['name-as-world-typography', 'destination-festival-poster', 'photo-paper-diorama'];
 
+/** The comic and storyboard templates (inner#1815), after storyboard-grid-25, in registry order. */
+const COMICS = ['storyboard-sheet-9', 'comic-page', 'comic-4koma', 'storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
+
+/** The comic and storyboard templates an image panel lists. */
+const COMICS_IMAGES = ['storyboard-grid-25', 'storyboard-sheet-9', 'comic-page', 'comic-4koma'];
+
+/** The comic and storyboard templates a video panel lists. */
+const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
+
+/** The animated short templates (inner#1814), in registry order. */
+const ANIMATION = ['cartoon-gag', '3d-cartoon-short', 'stop-motion-short', 'anime-scene', 'anime-action-climax', 'anime-opening-15s'];
+
 /** The e-commerce ad templates (inner#1811), in registry order. */
 const ECOMMERCE = [
   'product-ad-15s',
@@ -246,7 +258,7 @@ const SOUND = [
 const SOUND_AUDIO = SOUND.filter((id) => id !== 'clip-ambience-foley');
 
 /** The templates the plan's G13, G15, G18 and G19 give no case for offering unasked. */
-const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover'];
+const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short'];
 
 /**
  * The template nodes a generate node's words carry a note for, counted the
@@ -329,7 +341,7 @@ describe('generation templates', () => {
       'character-bible',
       'expression-sheet',
       'character-design-from-text',
-      'storyboard-grid-25',
+      ...COMICS_IMAGES,
       'product-hero-still',
       'dish-hero-still',
       'fisheye-clone-pov',
@@ -340,6 +352,8 @@ describe('generation templates', () => {
       'single-view-refs-scene',
       'identity-locked-sequence',
       'character-showcase-orbit',
+      ...COMICS_VIDEOS,
+      ...ANIMATION,
       ...ECOMMERCE,
       ...PRODUCT_SHOWCASE_VIDEOS,
       ...FOOD_VIDEOS,
@@ -422,6 +436,43 @@ describe('generation templates', () => {
       'product-commercial-shotlist': t2v(12, '16:9'),
       'unboxing-ad': t2v(25),
       'variant-carousel-ad': t2v(20),
+      'cartoon-gag': t2v(5),
+      '3d-cartoon-short': {
+        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 10, generate_audio: true } },
+        design: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '1:1' } },
+      },
+      'stop-motion-short': t2v(8, '1:1'),
+      'anime-scene': {
+        result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 6, generate_audio: true } },
+        scene: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } },
+      },
+      'storyboard-sheet-9': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } } },
+      'comic-page': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '2:3', resolution: '4k' } } },
+      'comic-4koma': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16', resolution: '4k' } } },
+      'storyboard-to-video': {
+        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true } },
+        sheet: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'comic-page-to-motion': t2v(10, '16:9'),
+      'comic-panels-to-shots': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '16:9', duration: 12, generate_audio: true },
+          shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
+        },
+      },
+      'anime-action-climax': t2v(10, '16:9'),
+      'anime-opening-15s': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '16:9', duration: 15, generate_audio: true },
+          shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
+        },
+      },
       'talking-presenter': {
         result: { type: 'video', mode: 'talking_head', model: 'seedance-2.5-talking-avatar', params: {} },
         portrait: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
@@ -556,11 +607,12 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'speed', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'speed', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
+      ...Object.fromEntries(ANIMATION.map((id) => [id, 'animation'])),
       ...Object.fromEntries(ECOMMERCE.map((id) => [id, 'ecommerce'])),
       ...Object.fromEntries(PRODUCT_SHOWCASE.map((id) => [id, 'product-showcase'])),
       ...Object.fromEntries(TALKING.map((id) => [id, 'talking'])),
@@ -569,7 +621,7 @@ describe('creative goals and triggers', () => {
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
       ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
-      'storyboard-grid-25': 'comics-storyboards',
+      ...Object.fromEntries(['storyboard-grid-25', ...COMICS].map((id) => [id, 'comics-storyboards'])),
       'costume-sheet': 'character',
       'character-bible': 'character',
       'expression-sheet': 'character',
@@ -581,7 +633,7 @@ describe('creative goals and triggers', () => {
     for (const template of GENERATION_TEMPLATES) {
       expect(template.goal, template.id).toBe(goals[template.id]);
       expect(template.triggers.asks.length, `${template.id} asks`).toBeGreaterThan(0);
-      // The plan's G13, G15, G18 and G19 write "none" for when to offer these unasked.
+      // The plan's G5, G13, G15, G18 and G19 write "none" for when to offer these unasked.
       expect(template.triggers.offerWhen.length === 0, `${template.id} offerWhen`).toBe(NEVER_OFFERED_UNASKED.includes(template.id));
       for (const words of [...template.triggers.asks, ...template.triggers.offerWhen]) {
         expect(words.trim().length, template.id).toBeGreaterThan(0);
@@ -613,7 +665,7 @@ describe('creative goals and triggers', () => {
   it('groups a node type\'s templates under their goals in goal order, leaving out goals with none', () => {
     expect(templateGoalsFor('image').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['costume-sheet', 'character-bible', 'expression-sheet', 'character-design-from-text']],
-      ['comics-storyboards', ['storyboard-grid-25']],
+      ['comics-storyboards', COMICS_IMAGES],
       ['product-showcase', ['product-hero-still']],
       ['food', ['dish-hero-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
@@ -621,6 +673,8 @@ describe('creative goals and triggers', () => {
     ]);
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
+      ['comics-storyboards', COMICS_VIDEOS],
+      ['animation', ANIMATION],
       ['ecommerce', ECOMMERCE],
       ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
       ['food', FOOD_VIDEOS],
@@ -815,8 +869,8 @@ describe('optional template inputs (inner#1811, CAP-9)', () => {
   const optionalInputs = (): string[] =>
     GENERATION_TEMPLATES.flatMap((template) => template.inputs.filter((input) => input.optional === true).map((input) => `${template.id}.${input.key}`));
 
-  it('marks the person of the product ad and of the pet selfie vlog optional, and no other input', () => {
-    expect(optionalInputs()).toEqual(['product-ad-15s.person', 'pet-selfie-vlog.person']);
+  it('marks the setting of the nine-panel storyboard and the person of the product ad and of the pet selfie vlog optional, and no other input', () => {
+    expect(optionalInputs()).toEqual(['storyboard-sheet-9.setting', 'product-ad-15s.person', 'pet-selfie-vlog.person']);
   });
 
   it('feeds the pet selfie vlog an optional person after its pet', () => {
