@@ -7,6 +7,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } fro
 import * as core from "@breatic/core";
 import { miniToolConsumptionKey, type MiniToolConsumptionIdentity } from "@breatic/shared/mini-tools";
 import * as domain from "@domain/index.js";
+import { settleCharge } from "@domain/credit/creditLot.service.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 
 // Only notification delivery is replaced; DB, transaction and credit engine stay real.
@@ -161,20 +162,26 @@ async function seed(options: SeedOptions = {}): Promise<Fixture> {
     const stepId = crypto.randomUUID();
     const identity: MiniToolConsumptionIdentity = options.platform
       ? { kind: "container", containerClass: "MiniToolContainerStd1", jobId: `presentation-${taskId}-${position}`, chunkIndex: position }
-      : { kind: "provider", provider: "wavespeed", predictionId: `parent-${taskId}-${position}` };
+      : { kind: "provider", stepId };
     const state = states[position]!;
     const costUsd = state === "pending" ? null : options.platform ? 0.00001256 : credits / 200;
     facts.push({ stepId, consumption: {
       schemaVersion: 1, consumptionKey: await miniToolConsumptionKey({ taskId, stepId, identity }), identity,
       state, creditMultiplier: 2, chargeTo: options.platform ? "platform" : "user",
-      costUsd, costSource: state === "pending" ? null : identity.kind === "provider" ? "generation_lookup" : "computed",
-      raw: costUsd === null ? null : identity.kind === "provider" ? { deductUsd: costUsd, refundUsd: 0 } : { wallMs: 1000, cpuUsec: 100000 },
+      costUsd, costSource: state === "pending" || identity.kind === "provider" ? null : "computed",
+      raw: costUsd === null || identity.kind === "provider" ? null : { wallMs: 1000, cpuUsec: 100000 },
       credits: state === "recorded" ? options.platform ? 0 : credits : null,
       containerPricing: identity.kind === "provider" ? null : {
         configVersion: "cloudflare-2026-10-07",
         size: { vcpu: 0.5, memory_gib: 4, disk_gb: 8 },
         prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
       },
+      // A model step's cost wait (inner#1306 §11.4): its one billed answer, known or still pending.
+      ...(identity.kind === "provider" ? {
+        servedBy: "wavespeed", attempts: 0, windowEndsAt: 4070908800000, nextLookupAt: state === "pending" ? 0 : null, known: costUsd ?? 0,
+        costs: costUsd === null ? [] : [{ state: "known" as const, usd: costUsd, source: "billing" as const }],
+        waiting: costUsd === null ? [{ lookup: { upstream: "wavespeed", predictionId: `parent-${taskId}-${position}` } }] : [],
+      } : {}),
     } });
   }
   const manifest = status === "completed"
@@ -222,7 +229,7 @@ async function seed(options: SeedOptions = {}): Promise<Fixture> {
       INSERT INTO task_upstream_steps (id, task_id, position, kind, endpoint, status, prediction_id, output)
       VALUES (${stepId}, ${taskId}, ${position}, ${consumption.identity.kind === "provider" ? "generate" : "container_job"},
         ${consumption.identity.kind === "provider" ? "wavespeed-ai/sam3-video-rle" : "presentation_prepare"}, 'done',
-        ${consumption.identity.kind === "provider" ? consumption.identity.predictionId : null},
+        ${null},
         ${rawPg.json({ preservedOutput: { original: true }, miniToolConsumption: { ...consumption } })})
     `;
     if (consumption.state === "recorded") {
@@ -232,7 +239,7 @@ async function seed(options: SeedOptions = {}): Promise<Fixture> {
           ${userId}, ${options.missingProject ? null : projectId},
           ${consumption.identity.kind === "provider" ? "wavespeed-ai/sam3-video-rle" : "cloudflare-container:presentation_prepare"},
           ${consumption.identity.kind === "provider" ? "wavespeed" : "cloudflare"}, 1,
-          ${String(consumption.costUsd)}, ${consumption.costSource}, ${String(consumption.credits)})
+          ${String(consumption.costUsd)}, ${consumption.costSource ?? "generation_lookup"}, ${String(consumption.credits)})
       `;
     }
   }
@@ -310,6 +317,31 @@ function claimed(before: Snapshot, after: Snapshot, credits: number): void {
 }
 
 /**
+ * Assert a parent whose claim and charge request committed while the charge itself did not settle: billed, settled,
+ * and funds, hold and ledger as they were.
+ * @returns Nothing.
+ */
+function pendingCharge(before: Snapshot, after: Snapshot, credits: number): void {
+  preserved(before, after);
+  expect(after.task.billed_credits).toBe(credits);
+  expect(after.task.result.settlement).toMatchObject({ state: "settled" });
+  expect(after.lot).toEqual(before.lot);
+  expect(after.hold).toEqual(before.hold);
+  expect(after.ledger).toEqual(before.ledger);
+}
+
+/**
+ * The parent's charge request still waiting to settle.
+ * @returns Its id.
+ * @throws {Error} When none is pending.
+ */
+async function pendingRequest(taskId: string): Promise<string> {
+  const [row] = await rawPg<{ id: string }[]>`SELECT id FROM credit_charge_requests WHERE reference_id=${taskId} AND settled_at IS NULL`;
+  if (!row) throw new Error("No pending charge request for the parent");
+  return row.id;
+}
+
+/**
  * Install a real SQL fault after the guard, an engine mutation or final funds writes.
  * @returns Cleanup that removes only this fixture's temporary fault.
  * @throws {Error} When trigger creation or cleanup fails.
@@ -327,7 +359,7 @@ async function installFault(fixture: Fixture, point: FailurePoint): Promise<() =
   const committedWorkCheck = point === "ledger"
     ? `EXISTS (SELECT 1 FROM credit_lots WHERE id = '${fixture.lotId}'::uuid AND remaining_credits < 1)`
     : point === "settled"
-      ? `EXISTS (SELECT 1 FROM credit_ledger WHERE reference_id = '${fixture.taskId}') AND EXISTS (SELECT 1 FROM credit_holds WHERE reference_id = '${fixture.taskId}' AND status = 'released')`
+      ? "true"
       : point === "standalone_hold" ? `EXISTS (SELECT 1 FROM credit_ledger WHERE reference_id = '${fixture.taskId}' AND lot_id IS NULL)` : "true";
   await rawPg.unsafe(`CREATE FUNCTION ${functionName}() RETURNS trigger LANGUAGE plpgsql AS $$
     BEGIN
@@ -465,22 +497,42 @@ describe("mini-tool parent charge transaction", () => {
     expect(await snapshot(fixture)).toEqual(once);
   });
 
-  it.each(["ledger", "hold", "settled"] as const)("rolls back all parent funds at the real %s failure point and succeeds on retry", async (point) => {
+  // The parent claim and its charge request commit together; the charge settles after that commit, and a charge that
+  // fails to settle stays pending for credit-charge-sweep, whose retry applies it once (domain AGENTS.md, charging).
+  it.each(["ledger", "hold"] as const)("keeps the claimed charge pending when its %s write fails, and its retry applies it once", async (point) => {
     const settle = entry();
     const fixture = await seed();
     const before = await snapshot(fixture);
     const cleanup = await installFault(fixture, point);
     try {
-      await expect(settle(fixture.taskId)).rejects.toMatchObject({ cause: { message: `forced parent ${point} failure` } });
-      unclaimed(before, await snapshot(fixture));
+      expect(await settle(fixture.taskId)).toMatchObject({ state: "settled", first: true, chargeFailure: expect.anything() });
+      pendingCharge(before, await snapshot(fixture), 0.03);
       expect(core.publishCreditsChanged).not.toHaveBeenCalled();
+    } finally {
+      await cleanup();
+    }
+    await settleCharge(await pendingRequest(fixture.taskId));
+    const after = await snapshot(fixture);
+    claimed(before, after, 0.03);
+    expect(Number(after.lot.remaining)).toBe(0.97);
+    expect(after.ledger).toHaveLength(1);
+  });
+
+  it("rolls back the parent claim and its charge request together when the settled state cannot be written, and succeeds on retry", async () => {
+    const settle = entry();
+    const fixture = await seed();
+    const before = await snapshot(fixture);
+    const cleanup = await installFault(fixture, "settled");
+    try {
+      await expect(settle(fixture.taskId)).rejects.toMatchObject({ cause: { message: "forced parent settled failure" } });
+      unclaimed(before, await snapshot(fixture));
+      expect(await rawPg`SELECT id FROM credit_charge_requests WHERE reference_id=${fixture.taskId}`).toHaveLength(0);
     } finally {
       await cleanup();
     }
     await settle(fixture.taskId);
     const after = await snapshot(fixture);
     claimed(before, after, 0.03);
-    expect(Number(after.lot.remaining)).toBe(0.97);
     expect(after.ledger).toHaveLength(1);
   });
 
@@ -513,19 +565,19 @@ describe("mini-tool parent charge transaction", () => {
     if (mode === "missing_project") expect(after.ledger[0]!.studio_id).toBeNull();
   });
 
-  it.each(["payment_off", "missing_project"] as const)("rolls back standalone usage when hold release fails for %s and retries once", async (mode) => {
+  it.each(["payment_off", "missing_project"] as const)("keeps the standalone charge pending when hold release fails for %s, and its retry applies it once", async (mode) => {
     const settle = entry();
     if (mode === "payment_off") payments(false);
     const fixture = await seed({ missingProject: mode === "missing_project" });
     const before = await snapshot(fixture);
     const cleanup = await installFault(fixture, "standalone_hold");
     try {
-      await expect(settle(fixture.taskId)).rejects.toMatchObject({ cause: { message: "forced parent standalone_hold failure" } });
-      unclaimed(before, await snapshot(fixture));
+      expect(await settle(fixture.taskId)).toMatchObject({ state: "settled", first: true, chargeFailure: expect.anything() });
+      pendingCharge(before, await snapshot(fixture), 0.03);
     } finally {
       await cleanup();
     }
-    await settle(fixture.taskId);
+    await settleCharge(await pendingRequest(fixture.taskId));
     const after = await snapshot(fixture);
     claimed(before, after, 0.03);
     expect(after.lot).toEqual(before.lot);

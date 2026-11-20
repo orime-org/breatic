@@ -5,7 +5,7 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { createPgClient, db, initCore, loadLocales, rawPg } from "@breatic/core";
 import {
-  completeMiniToolConsumptionSet, confirmMiniToolConsumption, creditHoldService, miniToolExecutionService, recordMiniToolConsumption, settleMiniToolCharge,
+  completeMiniToolConsumptionSet, recordMiniToolConsumptionLookup, creditHoldService, miniToolExecutionService, recordMiniToolConsumption, settleMiniToolCharge,
 } from "@domain/index.js";
 import { seedDesignatedLot } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
 import { seedExecution } from "./execution-lifecycle-fixtures.js";
@@ -73,7 +73,7 @@ describe("mini-tool transactions on a one-connection pool", () => {
 
   it("settling a recorded charge finishes", async () => {
     const f = await seedExecution(pg, "running"); const i = await executionIdentity(f); const c = await claimExecutionSettlement(pg, f);
-    await confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim, costUsd: 0.3, costSource: "generation_lookup", raw: {} });
+    await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
     await terminalExecution(pg, f); await completeMiniToolConsumptionSet(f.taskId);
     await expect(withinDeadline(settleMiniToolCharge(f.taskId))).resolves.toMatchObject({ state: "settled", credits: 30, first: true });
@@ -90,7 +90,7 @@ describe("the paid charge on a one-connection pool", () => {
     const f = await seedExecution(pg, "running"); const lotId = await seedDesignatedLot(pg, f, 1000);
     expect((await creditHoldService.reserveCredits({ projectId: f.projectId, actorUserId: f.userId, referenceId: f.taskId, amount: 30, ttlMs: 7_200_000 })).ok).toBe(true);
     const i = await executionIdentity(f); const c = await claimExecutionSettlement(pg, f);
-    await confirmMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim, costUsd: 0.3, costSource: "generation_lookup", raw: {} });
+    await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
     await terminalExecution(pg, f); await completeMiniToolConsumptionSet(f.taskId);
     await expect(withinDeadline(settleMiniToolCharge(f.taskId))).resolves.toMatchObject({ state: "settled", credits: 30, first: true });

@@ -21,7 +21,6 @@ vi.mock("@domain/model-catalog/model-catalog.js", async (original) => ({ ...awai
 const URL = "https://assets.example.test/video/source.mp4";
 const KEY = "video/source.mp4";
 const MODEL = "M";
-const ENDPOINT = "bria/fibo/video-background-remover";
 const BODY = { video: URL, background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true };
 
 /** Return a fresh caller-owned source with no authority over registered measurements.
@@ -46,7 +45,7 @@ function asset(): StudioAssetEntity {
 function entry(): ModelEntry {
   return { name: MODEL, display_name: "Fixture video remover", modality: "video", mode: "video-to-video", description: "", guide: "", tier: "internal", generation_time: 1,
     takes_prompt: false, params: { video: { description: "", default: null, max_total_duration: 60 } },
-    providers: [{ name: "wavespeed", model_id: ENDPOINT, priority: 0, available: true }], pricing: { base_price: 300000, formula: "", discount_rate: 100 } };
+    availability: { upstreams: [{ upstream: "wavespeed", weight: 1, configured: true, envVar: "WAVESPEED_API_KEY" }] } };
 }
 
 /** Group the served fixture in the existing catalog shape rather than creating another model registry.
