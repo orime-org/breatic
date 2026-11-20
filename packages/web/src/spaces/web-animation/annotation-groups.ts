@@ -28,6 +28,16 @@ export interface AnnotationGroup<T extends AnnotationThread = AnnotationThread> 
 }
 
 /**
+ * A thread's anchor, when it is live and has one.
+ * @param thread - The thread.
+ * @returns The anchor, or null.
+ * @throws {never} Never.
+ */
+export function anchorOf(thread: Pick<AnnotationThread, 'deletedAt' | 'metadata'>): WebAnimationAnchor | null {
+  return thread.deletedAt === undefined ? readWebAnimationAnchor(thread.metadata) : null;
+}
+
+/**
  * The panel's groups.
  * @param threads - Every thread of the Space.
  * @param options - How to list them.
@@ -42,8 +52,8 @@ export function annotationGroups<T extends AnnotationThread>(
 ): AnnotationGroup<T>[] {
   const byResult = new Map<string, ListedAnnotation<T>[]>();
   for (const thread of threads) {
-    if (thread.deletedAt !== undefined || (options.filter === 'open' && thread.resolved)) continue;
-    const anchor = readWebAnimationAnchor(thread.metadata);
+    if (options.filter === 'open' && thread.resolved) continue;
+    const anchor = anchorOf(thread);
     if (anchor === null) continue;
     const listed = byResult.get(anchor.executionId) ?? [];
     listed.push({ id: thread.id, anchor, thread });

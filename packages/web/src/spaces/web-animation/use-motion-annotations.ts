@@ -13,8 +13,9 @@
 import * as React from 'react';
 import type { ThreadData } from '@blocknote/core/comments';
 import type { YjsThreadStore } from '@blocknote/core/yjs';
-import { readWebAnimationAnchor, type WebAnimationAnchor } from '@breatic/shared/space-content';
+import type { WebAnimationAnchor } from '@breatic/shared/space-content';
 
+import { anchorOf } from '@web/spaces/web-animation/annotation-groups';
 import { revealWithin } from '@web/spaces/web-animation/motion-parts';
 
 /** Which threads the annotation panel lists. */
@@ -86,16 +87,6 @@ export function useThreads(store: YjsThreadStore): ThreadData[] {
     return store.subscribe((all) => setThreads([...all.values()]));
   }, [store]);
   return threads;
-}
-
-/**
- * A thread's anchor, when it is live and has one.
- * @param thread - The thread.
- * @returns The anchor, or null.
- * @throws {never} Never.
- */
-function anchorOf(thread: ThreadData): WebAnimationAnchor | null {
-  return thread.deletedAt === undefined ? readWebAnimationAnchor(thread.metadata) : null;
 }
 
 /**

@@ -8,7 +8,7 @@ import {
   MessageSquarePlus, Pause, Pencil, Play, Plus, Undo2, Upload, Video,
 } from 'lucide-react';
 import { formatCredits, getLocale, newId } from '@breatic/shared';
-import { anchorTimeWithin, readWebAnimationAnchor, type WebAnimationRowView } from '@breatic/shared/space-content';
+import { anchorTimeWithin, type WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '@web/components/ui/alert-dialog';
 import { Button } from '@web/components/ui/button';
@@ -37,7 +37,7 @@ import { SpaceFullError } from '@web/spaces/document/document-comment-thread-sto
 import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 import { useTimelineLimitsQuery } from '@web/spaces/timeline/use-timeline-limits';
 import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftEvent, type FramePoint } from '@web/spaces/web-animation/annotation-draft';
-import { threadSummary } from '@web/spaces/web-animation/annotation-groups';
+import { anchorOf, threadSummary } from '@web/spaces/web-animation/annotation-groups';
 import { webAnimationAnnotationStore } from '@web/spaces/web-animation/annotation-thread-store';
 import { CREATION_DRAFT_CLOSED, transitionCreationDraft, type CreationDraftInput } from '@web/spaces/web-animation/creation-draft';
 import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys, isWebAnimationAspect } from '@web/spaces/web-animation/execution-text';
@@ -329,7 +329,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // Space's document reads it again too.
   const threads = useThreads(store);
   const unlistedIds = React.useMemo(() => [...new Set(threads.flatMap((thread) => {
-    const anchor = thread.deletedAt === undefined ? readWebAnimationAnchor(thread.metadata) : null;
+    const anchor = anchorOf(thread);
     return anchor === null || lists.byId.has(anchor.executionId) || anchor.executionId === selectedId ? [] : [anchor.executionId];
   }))], [threads, lists.byId, selectedId]);
   const unlistedRows = useQueries({
