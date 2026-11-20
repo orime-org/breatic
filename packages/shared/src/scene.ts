@@ -192,6 +192,9 @@ export const SCENE_LOOK_ROTATION_MAX = 180;
 /** One offset, in picture widths. */
 const LOOK_OFFSET = z.number().finite().min(-SCENE_LOOK_OFFSET_MAX).max(SCENE_LOOK_OFFSET_MAX);
 
+/** A part's picture: an asset id, or `'none'` to turn the model's own picture off. */
+export const SceneLookMapSchema = z.union([z.string().uuid(), z.literal('none')]);
+
 /** The fields one part may change; each is optional and absent means the model's own value. */
 const SceneLookPartSchema = z.object({
   color: SceneColorSchema,
@@ -201,7 +204,7 @@ const SceneLookPartSchema = z.object({
   transmission: unit,
   emissive: SceneColorSchema,
   emissiveIntensity: z.number().finite().min(0).max(10),
-  map: z.union([z.string().uuid(), z.literal('none')]),
+  map: SceneLookMapSchema,
   mapRepeat: z.tuple([LOOK_REPEAT, LOOK_REPEAT]),
   mapOffset: z.tuple([LOOK_OFFSET, LOOK_OFFSET]),
   mapRotation: z.number().finite().min(-SCENE_LOOK_ROTATION_MAX).max(SCENE_LOOK_ROTATION_MAX),
