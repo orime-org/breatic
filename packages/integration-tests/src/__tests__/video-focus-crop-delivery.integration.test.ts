@@ -78,9 +78,8 @@ async function seedCrop(nodeStatus: NodeStatus = "running", outcome: "registered
     VALUES (${assetId},${f.studioId},${"c".repeat(64)},${`image/focus/${assetId}.png`},${canonicalURL},20480,'image/png','image','ai',${f.userId},${f.taskId},960,540)`;
   const plan = structuredClone(f.plan) as unknown as Record<string, unknown> & { draft: { params: unknown }; outputs: unknown[]; requestFingerprint: string; planFingerprint: string };
   plan.tool = "video.focus-crop";
-  // A container tool names itself as its model, as extract-frames does; the removal's provider fields do not apply.
+  // A container tool names itself as its model, as extract-frames does.
   plan.model = "video.focus-crop";
-  for (const key of ["provider", "body", "modelCredits", "preparation"]) delete plan[key];
   plan.draft.params = { frameIndex: 42, crop: CROP, sourceName: SOURCE_NAME };
   plan.outputs = [{ outputIndex: 0, nodeId: panelNodeId, recipe: { kind: "frame", frameIndex: 42, crop: CROP } }];
   plan.credits = 0; plan.chargeTo = "platform";
@@ -95,6 +94,11 @@ async function seedCrop(nodeStatus: NodeStatus = "running", outcome: "registered
       mimeType: "image/png", size: 20480, width: 960, height: 540, duration: null, cover: null }, late: false }];
     const delivery = { schemaVersion: 1, planFingerprint: plan.planFingerprint, version: 1, outputs: [{ outputIndex: 0, state: "pending" }], lastErrorCode: null };
     await pg`UPDATE tasks SET result=result || ${pg.json({ miniToolExecution: record, miniToolDelivery: delivery })} WHERE id=${f.taskId}`;
+  }
+  else {
+    // The unfinished record maps the crop's one output, still pending.
+    const record = { ...f.record, planFingerprint: plan.planFingerprint, outputs: [{ ...plan.outputs[0] as object, result: null, late: false }] };
+    await pg`UPDATE tasks SET result=result || ${pg.json({ miniToolExecution: record })} WHERE id=${f.taskId}`;
   }
   const startedAt = new Date(Date.now() - (nodeStatus === "expired" ? getNodeTaskConfig().default_budget_ms + 1 : 0));
   if (nodeStatus === "expired") await pg`UPDATE tasks SET created_at=${startedAt} WHERE id=${f.taskId}`;

@@ -31,6 +31,8 @@ interface Job { jobId: string; outputs: { outputIndex: number; storageKey: strin
 type Runner = (execution: unknown, userId: string, deadlineAt: number) => Promise<{ results: Map<number, Record<string, unknown>>; waiting: boolean }>;
 
 const V = 5.055;
+// A keyframe every 10 grid frames (0.05 s at 200 fps), so each chunk's decode pre-roll stays small beside its share.
+const KEYFRAMES = { earliestKeyframeTime: 0, maxKeyframeInterval: 0.05, allKeyframes: false };
 let pg: ReturnType<typeof core.createPgClient>;
 let app: { request: (path: string, init: RequestInit) => Response | Promise<Response> };
 let base: core.MiniToolsConfig;
@@ -68,10 +70,10 @@ beforeAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks(); configure();
   settings = structuredClone(base);
-  // Every segment is encoded in keyframe chunks: one frame a second of encode work against a 12 s share.
+  // Every segment is encoded in keyframe chunks: a tenth of a second of encode work a frame against a 12 s share.
   const encoder = settings.encoding.encoder;
   encoder.start_seconds = 1;
-  encoder.encode_pixels_per_second = 960 * 540;
+  encoder.encode_pixels_per_second = 960 * 540 * 10;
   for (const key of Object.keys(encoder.decode_convert_pixels_per_second) as (keyof typeof encoder.decode_convert_pixels_per_second)[]) encoder.decode_convert_pixels_per_second[key] = 1e15;
   settings.encoding.chunk_share = 12 / (core.getNodeTaskConfig().default_budget_ms / 1000);
   settings.encoding.max_parallel_chunks = 64;
@@ -122,7 +124,7 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
     const sourceId = randomUUID(); const sourceKey = `video/split-reclaim/${sourceId}.mp4`; const hash = randomBytes(32).toString("hex");
     await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
       VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
-    const presented = await presentedSource(hash, sourceKey, publicUrl);
+    const presented = await presentedSource(hash, sourceKey, publicUrl, { keyframes: KEYFRAMES });
     outside.snapshots.set(sourceKey, presented.snapshot);
     // The cut 2.5 s in, as a frame of the selected grid (frames-split §10.7).
     const grid = { fps: presented.bundle.display.fps, frameCount: presented.bundle.display.frameCount };
@@ -170,7 +172,7 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
     const sourceId = randomUUID(); const sourceKey = `video/split-reclaim/${sourceId}.mp4`; const hash = randomBytes(32).toString("hex");
     await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
       VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
-    const presented = await presentedSource(hash, sourceKey, publicUrl);
+    const presented = await presentedSource(hash, sourceKey, publicUrl, { keyframes: KEYFRAMES });
     outside.snapshots.set(sourceKey, presented.snapshot);
     // The cut 2.5 s in, as a frame of the selected grid (frames-split §10.7).
     const grid = { fps: presented.bundle.display.fps, frameCount: presented.bundle.display.frameCount };
@@ -229,7 +231,7 @@ describe("a split the queue cleanup ends closes its consumption set (execution d
     const sourceId = randomUUID(); const sourceKey = `video/split-cleanup/${sourceId}.mp4`; const hash = randomBytes(32).toString("hex");
     await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
       VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
-    const presented = await presentedSource(hash, sourceKey, publicUrl);
+    const presented = await presentedSource(hash, sourceKey, publicUrl, { keyframes: KEYFRAMES });
     outside.snapshots.set(sourceKey, presented.snapshot);
     // The cut 2.5 s in, as a frame of the selected grid (frames-split §10.7).
     const grid = { fps: presented.bundle.display.fps, frameCount: presented.bundle.display.frameCount };
