@@ -352,9 +352,7 @@ export default tseslint.config(
     // GPL-linked vips and ffmpeg in its image stay separate programs it
     // spawns (inner#1339). The files are the ones the container's tsconfig
     // names, which include the Worker modules bundled into the service, less
-    // its tests. The GL image's renderer (container/gl-renderer/render.mjs,
-    // built by the gl variant of its Dockerfile) is another such separate program: it loads
-    // headless-gl, so it is outside this set and the service only spawns it.
+    // its tests.
     files: MEDIA_CONTAINER_FILES,
     rules: {
       "breatic/media-container-own-code-only": [

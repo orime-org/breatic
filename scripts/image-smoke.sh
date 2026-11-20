@@ -35,11 +35,10 @@ case "$IMAGE_KIND" in
     done
     cmp image-info.json served-info.json
     ;;
-  ingestMedia|ingestGl)
+  ingestMedia)
     docker run --rm --entrypoint sh "$TEST_IMAGE" -c \
       'test -s /usr/share/ffmpeg-source/COPYING.GPLv2 && test -s /usr/share/ffmpeg-source/COPYING.LGPLv2.1 && test -s /usr/share/ffmpeg-source/SOURCE && test -s /usr/share/doc/breatic/THIRD-PARTY.md'
     docker run --rm --network none -v "$PWD/scripts/ingest-media-smoke.mjs:/tmp/media-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/media-smoke.mjs
-    [[ "$IMAGE_KIND" != ingestGl ]] || docker run --rm --entrypoint sh "$TEST_IMAGE" -c 'test -s /app/gl-renderer/render.mjs && command -v Xvfb'
     ;;
   ingestWebReader)
     docker run --rm --entrypoint sh "$TEST_IMAGE" -c 'test -s /usr/share/doc/breatic/THIRD-PARTY.md'

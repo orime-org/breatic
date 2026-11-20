@@ -148,7 +148,7 @@ Replace **every angle-bracket placeholder** in `packages/ingest/wrangler.toml`. 
 | Top-level `[[r2_buckets]].bucket_name` | Exactly the root `.env`'s `R2_BUCKET` |
 | Top-level `[[r2_buckets]].remote` | Keep `true` |
 | Top-level `[[containers]].max_instances` | Keep each block's template value; replace remaining placeholders with unquoted integers |
-| Top-level `[[containers]].image_vars` | `{ DEV_COPY = "breatic" }` in every top-level container block, and `{ DEV_COPY = "breatic", VARIANT = "gl" }` in the `MiniToolContainerGl` block; when several copies of the repository run on one machine, give each its own name |
+| Top-level `[[containers]].image_vars` | `{ DEV_COPY = "breatic" }` in every top-level container block; when several copies of the repository run on one machine, give each its own name |
 | `[dev].port` | Integer `8787` |
 | `[vars].ALLOWED_ORIGINS` | `"http://localhost:8000"` |
 | `[env.production.vars].ALLOWED_ORIGINS` | For this local-only setup, fill with `"http://localhost:8000"` to complete the template |

@@ -148,7 +148,7 @@ pnpm --filter @breatic/ingest exec wrangler whoami
 | 顶层 `[[r2_buckets]]` 的 `bucket_name` | 与根目录 `.env` 的 `R2_BUCKET` 完全相同 |
 | 顶层 `[[r2_buckets]]` 的 `remote` | 保留 `true` |
 | 顶层 `[[containers]]` 的 `max_instances` | 保留各块的模板值；其余占位符替换为不加引号的整数 |
-| 顶层 `[[containers]]` 的 `image_vars` | 每个顶层容器块都填 `{ DEV_COPY = "breatic" }`，`MiniToolContainerGl` 块填 `{ DEV_COPY = "breatic", VARIANT = "gl" }`；同一台机器上有几份仓库副本同时运行时，每份填不同的名字 |
+| 顶层 `[[containers]]` 的 `image_vars` | 每个顶层容器块都填 `{ DEV_COPY = "breatic" }`；同一台机器上有几份仓库副本同时运行时，每份填不同的名字 |
 | `[dev]` 的 `port` | 整数 `8787` |
 | `[vars]` 的 `ALLOWED_ORIGINS` | `"http://localhost:8000"` |
 | `[env.production.vars]` 的 `ALLOWED_ORIGINS` | 此次可先填 `"http://localhost:8000"`，使模板值完整 |

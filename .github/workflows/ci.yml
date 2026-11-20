@@ -339,7 +339,6 @@ jobs:
           - {image: web, arch: amd64, runner: ubuntu-24.04, file: Dockerfile.web, suffix: '-web'}
           - {image: web, arch: arm64, runner: ubuntu-24.04-arm, file: Dockerfile.web, suffix: '-web'}
           - {image: ingestMedia, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/Dockerfile, suffix: '-ingest-media'}
-          - {image: ingestGl, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/Dockerfile, suffix: '-ingest-gl', variant: gl}
           - {image: ingestWebReader, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/web-reader/Dockerfile, suffix: '-ingest-web-reader'}
           - {image: ingestWebAnimation, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/web-animation.Dockerfile, suffix: '-ingest-web-animation'}
     permissions:
@@ -390,7 +389,6 @@ jobs:
             VCS_REF=${{ github.sha }}
             VITE_RELEASE_VERSION=${{ steps.release.outputs.version }}
             VITE_APP_VERSION=${{ github.sha }}
-            VARIANT=${{ matrix.variant || 'standard' }}
           labels: |
             org.opencontainers.image.version=${{ steps.release.outputs.version }}
             org.opencontainers.image.revision=${{ github.sha }}
