@@ -101,14 +101,19 @@ const SUBJECT_COLOUR_SENTENCE: Record<string, string> = {
  * What a sentence looks like where a value it named was cut out and the words around it were left: a
  * preposition or hedge with nothing after it, a bracket holding only a hedge, a doubled conjunction.
  */
+const LEFTOVERS_IN_EVERY_LOCALE: RegExp[] = [/[（(]\s*(约|約|前後|안팎|about|near)?\s*[）)]/u];
+
+/** The same, in the words of one locale. */
 const LEFTOVERS: Record<string, RegExp[]> = {
-  common: [/[（(]\s*(约|約|前後|안팎|about|near)?\s*[）)]/u],
   en: [/\b(?<!to )(near|reach|from)\s*[,;.:]/u, /\bfrom (to|through)\b/u, /\bthrough to\s*[,;.]/u, /\band and\b/u, /\bnear (cover|the rest|with)\b/u],
   'zh-CN': [/从到|从经|经到|约[）)；，。]|接近[，；。]|亮到[；。]|暗部。/u],
   'zh-TW': [/從到|從經|經到|約[）)；，。]|接近[，；。]|亮到[；。]|暗部。/u],
   ja: [/からを|から(を経て)?まで|^まで|[はの]前後|は近く|は。|は(まで|から)/u],
   ko: [/에서(을|까지)|^에서|[은는]안팎|[은는]가까이|[은는]이다|\(\s*안팎/u],
 };
+
+/** The bracket pairs a style's words use. */
+const BRACKETS = [['(', ')'], ['（', '）']] as const;
 
 /** Korean nouns ending in the syllable 을 (늦가을 too), which the particle check must not read as a particle. */
 const KOREAN_NOUNS_ENDING_IN_EUL = /(노|가|마)을$/u;
@@ -158,10 +163,10 @@ describe('template style words', () => {
 
   it('leaves no clause hanging where a value was taken out', () => {
     for (const locale of LOCALES) {
-      const residue = LEFTOVERS.common.concat(LEFTOVERS[locale] ?? []);
+      const residue = [...LEFTOVERS_IN_EVERY_LOCALE, ...(LEFTOVERS[locale] ?? [])];
       for (const [key, text] of styleWords(locale)) {
         for (const pattern of residue) expect(text, `${locale} ${key}`).not.toMatch(pattern);
-        for (const [open, close] of [['(', ')'], ['（', '）']]) {
+        for (const [open, close] of BRACKETS) {
           expect(text.split(open).length, `${locale} ${key} ${open}${close}`).toBe(text.split(close).length);
         }
       }
