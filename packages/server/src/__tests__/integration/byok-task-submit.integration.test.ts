@@ -240,6 +240,16 @@ async function keyColumns(taskId: string): Promise<{ key_id: string | null; llm_
 }
 
 /**
+ * How many tasks a user has opened.
+ * @param userId - The user.
+ * @returns The count.
+ */
+async function taskCount(userId: string): Promise<number> {
+  const [row] = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM tasks WHERE user_id = ${userId}`;
+  return row!.n;
+}
+
+/**
  * The whole task row, as text, to look for a key in it.
  * @param taskId - The task.
  * @returns The row as JSON.
@@ -461,14 +471,15 @@ describe("a canvas reading", () => {
       expect(await taskRowText(taskId)).not.toContain(OPENROUTER_KEY);
     });
 
-    it(`${lane}: holds the estimate on our keys, and fails on its row when the credits cannot cover it, as before`, async () => {
+    it(`${lane}: holds the estimate on our keys, and refuses what the credits cannot cover with no task, as before`, async () => {
       const funded = await seed(100_000);
       const held = await acceptedTask(await SUBMIT[lane](funded));
       expect(held.status).toBe("pending");
       expect((await holdsFor(held.taskId)).length).toBe(1);
 
       const broke = await seed(0);
-      expect((await acceptedTask(await SUBMIT[lane](broke))).status).toBe("failed");
+      expect((await SUBMIT[lane](broke)).status).toBe(402);
+      expect(await taskCount(broke.userId)).toBe(0);
     });
 
     it(`${lane}: records no key row on our keys`, async () => {
@@ -494,14 +505,15 @@ describe("a model mini-tool", () => {
     expect(await taskRowText(taskId)).not.toContain(FAL_KEY);
   });
 
-  it("holds the estimate on our keys, and fails on its rows when the credits cannot cover it, as before", async () => {
+  it("holds the estimate on our keys, and refuses what the credits cannot cover with no task, as before", async () => {
     const funded = await seed(100_000);
     const held = await acceptedTask(await SUBMIT.miniTool(funded));
     expect(held.status).toBe("pending");
     expect((await holdsFor(held.taskId)).length).toBe(1);
 
     const broke = await seed(0);
-    expect((await acceptedTask(await SUBMIT.miniTool(broke))).status).toBe("failed");
+    expect((await SUBMIT.miniTool(broke)).status).toBe(402);
+    expect(await taskCount(broke.userId)).toBe(0);
   });
 
   it("records no key row on our keys", async () => {
