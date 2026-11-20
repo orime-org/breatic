@@ -27,6 +27,7 @@ import type * as SceneApiModule from '@web/data/api/scene';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import type { SocketState } from '@web/data/yjs/use-socket';
+import { downloadAsset } from '@web/lib/download';
 import { toast } from '@web/lib/toast';
 import { placeVideoOnCanvas } from '@web/spaces/canvas/place-video-on-canvas';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
@@ -48,6 +49,7 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
 vi.mock('@hyperframes/player', () => ({}));
 vi.mock('@web/data/api/scene', async (importOriginal) => ({ ...await importOriginal<typeof SceneApiModule>(), getSceneControls: vi.fn() }));
 vi.mock('@web/spaces/canvas/place-video-on-canvas', () => ({ placeVideoOnCanvas: vi.fn() }));
+vi.mock('@web/lib/download', () => ({ downloadAsset: vi.fn() }));
 /** The props every PopoverContent was last rendered with, in render order. */
 const popoverContentProps: Array<Record<string, unknown>> = [];
 vi.mock('@web/components/ui/popover', async (importOriginal) => {
@@ -1053,6 +1055,16 @@ describe('a preview that cannot load', () => {
     await user.click(await within(preview).findByRole('button', { name: t('timeline.retry') }));
     expect(preview.querySelector('video')).not.toBeNull();
     expect(within(preview).queryByText(t('timeline.webAnimation.unavailable'))).toBeNull();
+  });
+
+  it('downloads the export\'s video from its asset address', async () => {
+    vi.mocked(downloadAsset).mockReset();
+    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
+    const user = await onExport();
+    const button = screen.getByTestId('motion-action-download');
+    await waitFor(() => expect(button).toBeEnabled());
+    await user.click(button);
+    expect(downloadAsset).toHaveBeenCalledExactlyOnceWith('https://cdn.example/v.mp4');
   });
 });
 
