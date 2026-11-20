@@ -28,7 +28,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
 import { env, getNodeTaskConfig, getTimelineConfig, timelineExecutionRepo } from "@breatic/core";
-import { extractPromptText, readSignedPayload, t, timelineSpaceDocName } from "@breatic/shared";
+import { extractPromptText, readSignedPayload, t, timelineSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
 import { decodePreviewToken } from "@breatic/shared/space-content";
 import type { TimelineExecution } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -414,19 +414,21 @@ describe("POST /timeline/executions/:id/cancel", () => {
   });
 
   it.each(["awaiting_landing", "queued"] as const)(
-    "cancels a %s execution, with no hold to release, and tells its Timeline Space's document once",
+    "cancels a %s execution, with no hold to release, and tells its own Space's document once",
     async (state) => {
       const fx = await seedProject();
       const row = state === "queued" ? await accepted(fx) : await insertBefore1490(fx);
+      // A Motion run belongs to its Motion Space; a run made before #1490 belongs to its Timeline.
+      const docNameOf = state === "queued" ? webAnimationSpaceDocName : timelineSpaceDocName;
       signals.length = 0;
-      const before = await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName);
+      const before = await executionChangesFor(fx.projectId, fx.spaceId, docNameOf);
       const res = await cancel(fx.editor.cookie, fx, row.id);
       expect(res.status, await res.clone().text()).toBe(200);
       expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ id: row.id, status: "cancelled" });
       expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("cancelled");
       expect(await holdsOf(fx.studioId)).toEqual([]);
-      expect(await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName)).toEqual([
-        ...before, { type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) },
+      expect(await executionChangesFor(fx.projectId, fx.spaceId, docNameOf)).toEqual([
+        ...before, { type: "space-tasks-version", docName: docNameOf(fx.projectId, fx.spaceId) },
       ]);
       expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
     },
@@ -447,12 +449,13 @@ describe("POST /timeline/executions/:id/cancel", () => {
     const row = await accepted(fx);
     await cancel(fx.editor.cookie, fx, row.id);
     const ended = await timelineExecutionRepo.findById(row.id);
-    const told = (await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName)).length;
+    const told = (await executionChangesFor(fx.projectId, fx.spaceId)).length;
+    expect(told).toBeGreaterThan(0);
     const again = await cancel(fx.editor.cookie, fx, row.id);
     expect(again.status).toBe(200);
     expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(ended);
     expect(await timelineExecutionRepo.findById(row.id)).toEqual(ended);
-    expect(await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName)).toHaveLength(told);
+    expect(await executionChangesFor(fx.projectId, fx.spaceId)).toHaveLength(told);
     expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
   });
 
