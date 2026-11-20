@@ -91,11 +91,15 @@ export function whenDecoded(el: Element | null, then: () => void): boolean {
 
 /**
  * The address of the original the element shows, with any preview suffix
- * removed: a preview falling back to its original is the same picture.
+ * removed: a preview falling back to its original is the same picture, and a
+ * video playing its presentation carrier is the original the player marks it
+ * with (frames-split §5.5).
  * @param el - The crop source.
  * @returns The original's address, or null when the element has none.
  */
 export function originalSrc(el: CropSourceEl): string | null {
+  const canonical = el.getAttribute('data-canonical-video-display');
+  if (canonical !== null) return canonical;
   const src = el.getAttribute('src');
   return src === null ? null : originalUrlFor(src);
 }
