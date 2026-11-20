@@ -41,7 +41,7 @@ const spaceExecutionsQuery = z.object({
   projectId: z.uuid(), spaceId: z.uuid(), scope: z.enum(["space", "timeline"]), group: z.enum(["running", "succeeded", "failed"]), ...page,
 });
 const resultsQuery = z.object({ projectId: z.uuid(), ...page });
-const cancelBody = z.object({ projectId: z.uuid().optional() });
+const cancelBody = z.object({ projectId: z.uuid() });
 /** The Project the route takes, apart from the request the shared schema reads strictly. */
 const acceptBody = z.object({ projectId: z.uuid() }).loose()
   .transform(({ projectId, ...request }) => ({ projectId, request }))

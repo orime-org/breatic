@@ -580,18 +580,17 @@ export async function resolveWebSources(
  * sees what its source made but cancels only its own rows.
  * @param userId - The caller.
  * @param executionId - The execution.
- * @param projectId - The Project the request is made from; an older tab sends none and means the row's own.
+ * @param projectId - The Project the request is made from.
  * @returns The row after the request; a terminal row unchanged.
  * @throws {NotFoundError} When there is no such execution, or the caller is not a member of the Project.
  * @throws {ForbiddenError} When the caller is below editor, or the row belongs to another Project.
  */
-export async function cancel(userId: string, executionId: string, projectId?: string): Promise<TimelineExecution> {
+export async function cancel(userId: string, executionId: string, projectId: string): Promise<TimelineExecution> {
   const row = await timelineExecutionRepo.findById(executionId);
   if (row === undefined) throw new NotFoundError(t("server.error.not_found"));
-  const asking = projectId ?? row.projectId;
-  await projectService.assertAccess(asking, userId, "editor");
-  if (row.projectId !== asking) {
-    if (!(await grantRepo.grantedExecutionIds(asking, [row.id])).has(row.id)) throw new NotFoundError(t("server.error.not_found"));
+  await projectService.assertAccess(projectId, userId, "editor");
+  if (row.projectId !== projectId) {
+    if (!(await grantRepo.grantedExecutionIds(projectId, [row.id])).has(row.id)) throw new NotFoundError(t("server.error.not_found"));
     throw new ForbiddenError(t("server.error.forbidden"));
   }
   const result = await timelineExecutionRepo.transition({ id: executionId, event: { type: "cancel" } });

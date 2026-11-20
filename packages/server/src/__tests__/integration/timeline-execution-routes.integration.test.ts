@@ -374,15 +374,34 @@ describe("POST /timeline/executions/:id/cancel", () => {
    * Ask to cancel an execution.
    * @param cookie - Who asks.
    * @param id - The execution.
+   * @param body - The body: the Project asking.
    * @returns The response.
    */
-  async function cancel(cookie: string, id: string): Promise<Response> {
+  async function cancelWith(cookie: string, id: string, body: Record<string, unknown>): Promise<Response> {
     return app.request(`/api/v1/timeline/executions/${id}/cancel`, {
       method: "POST",
       headers: { Cookie: cookie, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-      body: JSON.stringify({}),
+      body: JSON.stringify(body),
     });
   }
+
+  /**
+   * Ask to cancel an execution from a Project.
+   * @param cookie - Who asks.
+   * @param fx - The Project asking.
+   * @param id - The execution.
+   * @returns The response.
+   */
+  async function cancel(cookie: string, fx: ProjectFixture, id: string): Promise<Response> {
+    return cancelWith(cookie, id, { projectId: fx.projectId });
+  }
+
+  it("refuses a cancel that names no Project with 422 and leaves the row in place", async () => {
+    const fx = await seedProject();
+    const row = await accepted(fx);
+    expect((await cancelWith(fx.editor.cookie, row.id, {})).status).toBe(422);
+    expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("queued");
+  });
 
   it.each(["awaiting_landing", "queued"] as const)(
     "cancels a %s execution, with no hold to release, and tells its Timeline Space's document once",
@@ -391,7 +410,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
       const row = state === "queued" ? await accepted(fx) : await insertAsPreviousServer(fx);
       signals.length = 0;
       const before = await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName);
-      const res = await cancel(fx.editor.cookie, row.id);
+      const res = await cancel(fx.editor.cookie, fx, row.id);
       expect(res.status, await res.clone().text()).toBe(200);
       expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ id: row.id, status: "cancelled" });
       expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("cancelled");
@@ -407,7 +426,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
     const fx = await seedProject();
     const row = await accepted(fx);
     const running = await step(row.id, { type: "claim" });
-    const res = await cancel(fx.editor.cookie, row.id);
+    const res = await cancel(fx.editor.cookie, fx, row.id);
     expect(res.status).toBe(200);
     expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ status: "cancelling", fence: running.fence, attempt: 1 });
     expect(await holdsOf(fx.studioId)).toEqual([]);
@@ -416,10 +435,10 @@ describe("POST /timeline/executions/:id/cancel", () => {
   it("answers a terminal execution with its row unchanged and signals nothing", async () => {
     const fx = await seedProject();
     const row = await accepted(fx);
-    await cancel(fx.editor.cookie, row.id);
+    await cancel(fx.editor.cookie, fx, row.id);
     const ended = await timelineExecutionRepo.findById(row.id);
     const told = (await executionChangesFor(fx.projectId, fx.spaceId, timelineSpaceDocName)).length;
-    const again = await cancel(fx.editor.cookie, row.id);
+    const again = await cancel(fx.editor.cookie, fx, row.id);
     expect(again.status).toBe(200);
     expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(ended);
     expect(await timelineExecutionRepo.findById(row.id)).toEqual(ended);
@@ -430,7 +449,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
   it("refuses a viewer with 403 and leaves the row in place", async () => {
     const fx = await seedProject();
     const row = await accepted(fx);
-    expect((await cancel(fx.viewer.cookie, row.id)).status).toBe(403);
+    expect((await cancel(fx.viewer.cookie, fx, row.id)).status).toBe(403);
     expect(row).toMatchObject(await timelineExecutionRepo.findById(row.id) ?? {});
     expect(await holdsOf(fx.studioId)).toEqual([]);
   });
