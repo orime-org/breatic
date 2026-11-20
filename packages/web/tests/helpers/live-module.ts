@@ -32,6 +32,9 @@ export const YJS_MANAGER = 'data/yjs/manager.ts';
  */
 export const TEXT_BODY = 'shared/dist/canvas/text-body.js';
 
+/** The canvas model `@breatic/shared` ships at its own entry: layout, geometry and prompt writers. */
+export const CANVAS_MODEL = 'shared/dist/canvas-model.js';
+
 /**
  * Finds the url one of the page's loaded modules is served under.
  * @param page - A page with the app running on it.

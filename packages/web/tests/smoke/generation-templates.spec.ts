@@ -28,7 +28,7 @@ import { test } from '../helpers/slot';
 
 import { openSmokeProject } from '../helpers/project';
 import { expectNodesInView, expectPanelInView } from '../helpers/canvas-chrome';
-import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { CANVAS_MODEL, CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { wire } from '../helpers/mini-tool';
 
@@ -80,6 +80,9 @@ async function openPanelOnNewNode(kind: 'image' | 'video' | 'audio', pan = 0): P
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage();
+  // `liveModuleUrl` reads the resource-timing list, which keeps 250 entries
+  // by default; the Project page loads more modules than that.
+  await page.addInitScript(() => performance.setResourceTimingBufferSize(10_000));
   await openSmokeProject(page);
   projectId = (/([0-9a-f-]{36})$/.exec(page.url()) ?? [])[1] ?? '';
   if (!projectId) throw new Error(`no project id in ${page.url()}`);
@@ -730,9 +733,7 @@ test('a note at the top of a prompt shows in orange, and generation does not get
   const nodeId = await openPanelOnNewNode('image');
   await expect(page.getByTestId('generate-prompt-editor')).toBeVisible({ timeout: 15_000 });
   const canvasAt = await liveModuleUrl(page, CANVAS_SPACE);
-  // Stateless, so a fresh copy served from source writes the same blocks; its
-  // yjs resolves to the dependency the page already loaded.
-  const promptAt = '/spaces/canvas/generate/proposal-prompt.ts';
+  const promptAt = await liveModuleUrl(page, CANVAS_MODEL);
   await page.evaluate(
     async ([pid, sid, id, at, writer]: [string, string, string, string, string]) => {
       const canvas = (await import(/* @vite-ignore */ at)) as {

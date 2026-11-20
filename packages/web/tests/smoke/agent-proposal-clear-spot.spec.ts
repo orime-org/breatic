@@ -17,18 +17,11 @@ import { expect, type Locator, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 import { answerRuns } from '../helpers/fake-run';
-import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { CANVAS_MODEL, CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
 import { openSmokeProject } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { projectIdOf } from '../helpers/tab-restore';
 
-/**
- * The layout module and the node geometry, read for the numbers the blocker
- * is placed against. Both are pure, so a copy of their own is as good as the
- * one the canvas loaded.
- */
-const PLACE_FLOW = '/spaces/canvas/lib/place-flow.ts';
-const GROUP_GEOMETRY = '/spaces/canvas/group-geometry.ts';
 
 /** Wide letters: each draws about twice the width the estimate gives it. */
 const WIDE_WORDS = 'WWWW '.repeat(60);
@@ -50,6 +43,9 @@ let spaceId = '';
 
 test.beforeEach(async ({ browser }) => {
   page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
+  // `liveModuleUrl` reads the resource-timing list, which keeps 250 entries
+  // by default; the Project page loads more modules than that.
+  await page.addInitScript(() => performance.setResourceTimingBufferSize(10_000));
   await openSmokeProject(page);
   spaceId = await createSpace(page, 'canvas', `clear-spot-${String(Date.now())}`);
 });
@@ -220,17 +216,18 @@ test('lands to the right of a node drawn over its spot, and the camera follows a
     x: (paneBox.width / 2 - before.x) / before.zoom,
     y: (paneBox.height / 2 - before.y) / before.zoom,
   };
+  // The layout estimate and the node geometry the blocker is placed against,
+  // read from the canvas model the page already loaded.
+  const modelAt = await liveModuleUrl(page, CANVAS_MODEL);
   const { estimate, node } = await page.evaluate(
-    async ([flowUrl, geometryUrl, words]: [string, string, string]) => {
-      const layout = (await import(/* @vite-ignore */ flowUrl)) as {
+    async ([at, words]: [string, string]) => {
+      const model = (await import(/* @vite-ignore */ at)) as {
         textFootprintHeight: (text: string) => number;
-      };
-      const geometry = (await import(/* @vite-ignore */ geometryUrl)) as {
         EMPTY_NODE_SIZE: { width: number; height: number };
       };
-      return { estimate: layout.textFootprintHeight(words), node: geometry.EMPTY_NODE_SIZE };
+      return { estimate: model.textFootprintHeight(words), node: model.EMPTY_NODE_SIZE };
     },
-    [PLACE_FLOW, GROUP_GEOMETRY, WIDE_WORDS] as [string, string, string],
+    [modelAt, WIDE_WORDS] as [string, string],
   );
   // Its estimated height ends a gap and a little above the proposal's top
   // edge; the words it holds draw it far taller than that.
