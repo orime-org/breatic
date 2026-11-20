@@ -215,16 +215,6 @@ export function SpaceKindPicker({
     reveal(type);
   }, [onChange, reveal]);
 
-  const onKeyDown = React.useCallback((event: React.KeyboardEvent): void => {
-    if (event.key !== 'ArrowRight' && event.key !== 'ArrowLeft') return;
-    event.preventDefault();
-    const index = TYPE_CARDS.findIndex((card) => card.type === value);
-    const next = TYPE_CARDS[index + (event.key === 'ArrowRight' ? 1 : -1)];
-    if (next === undefined) return;
-    choose(next.type);
-    cardRefs.current.get(next.type)?.focus();
-  }, [choose, value]);
-
   return (
     <div className='flex flex-col gap-2'>
       <Label>{t('spaces.create.typeLabel')}</Label>
@@ -253,7 +243,6 @@ export function SpaceKindPicker({
                   role='radio'
                   aria-checked={selected}
                   onClick={() => choose(card.type)}
-                  onKeyDown={onKeyDown}
                   data-testid={`${idPrefix}-${card.type}`}
                   className={cn(
                     'flex w-28 flex-col items-center gap-2 rounded-chrome border px-3 py-3 text-center transition-colors',

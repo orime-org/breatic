@@ -4,7 +4,7 @@
 /**
  * The type picker as one start-aligned row that scrolls (#1490 design §3.4): the first card at the left edge, an
  * arrow only on a side that can still scroll, an arrow click landing the next hidden card just inside the fade on that
- * side, a vertical wheel turned sideways, the arrow keys moving the selection, and a picked card brought into view.
+ * side, a vertical wheel turned sideways, and a picked card brought into view.
  *
  * jsdom lays nothing out, so the row is given a geometry: a 472px viewport over five 120px cards 8px apart (632px of
  * content), with a 56px fade on each side that can still scroll.
@@ -101,16 +101,6 @@ describe('SpaceKindPicker as a scrolling row', () => {
     const event = new WheelEvent('wheel', { deltaX: 40, deltaY: 0, bubbles: true, cancelable: true });
     viewport.dispatchEvent(event);
     expect(event.defaultPrevented).toBe(false);
-  });
-
-  it('moves the selection with the arrow keys and stops at the ends', async () => {
-    const user = userEvent.setup();
-    const { onChange } = laidOut(0, 'canvas');
-    screen.getByTestId('space-kind-canvas').focus();
-    await user.keyboard('{ArrowRight}');
-    expect(onChange).toHaveBeenLastCalledWith('document');
-    await user.keyboard('{ArrowLeft}');
-    expect(onChange).toHaveBeenCalledTimes(1);
   });
 
   it('brings a picked card that is cut off into view, just inside the fade', async () => {
