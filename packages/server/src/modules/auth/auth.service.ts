@@ -23,6 +23,7 @@ import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import {
+  commerceOutboxRepo,
   currentConsent,
   enqueueAdsConversion,
   env,
@@ -44,7 +45,7 @@ import {
   ValidationError,
   db,
 } from "@breatic/core";
-import { bindReferral } from "@server/modules/referral/referral-binding.service.js";
+import { checkReferralCode } from "@server/modules/commerce/referral-check.service.js";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { Attribution, ReportedConsent, SignupReferralSource, UserEntity } from "@breatic/shared";
 
@@ -100,17 +101,20 @@ export async function createAccount(
 ): Promise<{ user: UserEntity; referral: SignupReferralOutcome }> {
   const consent = currentConsent();
   const attribution = consent.analytics || consent.ads ? (data.attribution ?? null) : null;
-  const wanted = referral !== undefined && env.PAYMENT_ENABLED ? referral : undefined;
-  let outcome: SignupReferralOutcome = null;
+  const wanted = referral !== undefined && env.SELLING ? referral : undefined;
+  // Asked before the account's transaction opens: the transaction never waits on the network.
+  const checked = wanted === undefined ? null : await checkReferralCode(wanted.code);
+  if (checked?.status === "inactive" && wanted!.onRefused === "reject") throw new SignupReferralRefused();
+  const outcome: SignupReferralOutcome = checked === null ? null : checked.status === "active" ? "applied" : "not_applied";
+  // An unknown code is kept: the billing service decides it when the row arrives.
+  const binding = checked === null || checked.status === "inactive" ? null : { code: checked.status === "active" ? checked.code : wanted!.code, source: wanted!.source };
   let user: UserEntity;
   try {
-    user = wanted === undefined
+    user = binding === null
       ? await userRepo.createUser({ ...data, attribution })
       : await db.transaction(async (tx) => {
         const created = await userRepo.createUser({ ...data, attribution }, tx);
-        const bound = await bindReferral({ userId: created.id, code: wanted.code, source: wanted.source }, tx);
-        if (!bound.ok && wanted.onRefused === "reject") throw new SignupReferralRefused();
-        outcome = bound.ok ? "applied" : "not_applied";
+        await commerceOutboxRepo.appendReferralBinding({ userId: created.id, ...binding }, tx);
         return created;
       });
   } catch (err) {
@@ -280,7 +284,7 @@ export async function loginOrCreateGoogle(
 ): Promise<{ user: UserEntity; token: string; created: boolean; referral: SignupReferralOutcome }> {
   let user = await userRepo.getUserByGoogleId(googleId);
   let created = false;
-  let referralOutcome: SignupReferralOutcome = referral && env.PAYMENT_ENABLED ? "not_applied" : null;
+  let referralOutcome: SignupReferralOutcome = referral && env.SELLING ? "not_applied" : null;
 
   if (!user) {
     user = await userRepo.getUserByEmail(email);

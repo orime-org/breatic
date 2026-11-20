@@ -101,7 +101,7 @@ function getGoogleClient(): OAuth2Client {
  */
 auth.get("/options", (c) => {
   return c.json({
-    data: { emailVerification: signupCodeService.emailVerificationEnabled(), referralEnabled: env.PAYMENT_ENABLED },
+    data: { emailVerification: signupCodeService.emailVerificationEnabled(), referralEnabled: env.SELLING },
   });
 });
 
