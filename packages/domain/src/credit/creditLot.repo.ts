@@ -327,6 +327,24 @@ export async function findLotIdByPayment(paymentId: string): Promise<string | nu
 }
 
 /**
+ * The lot a payment opened, read in the caller's transaction.
+ * @param paymentId - The payment, which is the lot's source.
+ * @param tx - The caller's transaction.
+ * @returns The lot's id and when it was granted, or null.
+ */
+export async function findLotGrantedFromPayment(
+  paymentId: string,
+  tx: DbTx,
+): Promise<{ id: string; createdAt: Date } | null> {
+  const rows = await tx
+    .select({ id: creditLots.id, createdAt: creditLots.createdAt })
+    .from(creditLots)
+    .where(eq(creditLots.sourceId, paymentId))
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
  * {@link lockLot}, for the lot a payment opened. `source_id` is unique, so a
  * payment opens at most one lot.
  * @param paymentId - The payment the lot was granted from.

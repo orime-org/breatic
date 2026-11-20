@@ -396,6 +396,14 @@ export {
   type RelayLoopDeps,
   type RelayLoopEvent,
 } from "@core/outbox/relay-loop.js";
+export {
+  adClickSchema,
+  conversionContextSchema,
+  paymentGrantAnswerSchema,
+  paymentGrantRequestSchema,
+  type PaymentGrantAnswer,
+  type PaymentGrantRequest,
+} from "@core/commerce/contract.js";
 export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
 export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";
 export { createLogRequest, type InternalRequestLine } from "@core/http/log-request.js";
