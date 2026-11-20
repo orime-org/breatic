@@ -3,10 +3,9 @@
 
 /**
  * Encoding and carrier configuration (inner#1306; frames-split design §5.4 chunk share, parallel cap, throughput, estimate
- * row and per-job outputs, §5.3 model input preparation class, §4.2 edit tiers, §4.3 and §8.2 carrier settings).
+ * row and per-job outputs, §4.2 edit tiers, §4.3 and §8.2 carrier settings).
  *
- * Values the design gives are asserted: chunk share 0.5, parallel chunk cap 8, `max_outputs_per_job` 8, the remove-bg
- * preparation on standard-4 with precheck 300 s, an encoded carrier on standard-4 with short side at most 1080 and SDR
+ * Values the design gives are asserted: chunk share 0.5, parallel chunk cap 8, `max_outputs_per_job` 8, an encoded carrier on standard-4 with short side at most 1080 and SDR
  * BT.709 labels, and the rate table the estimate reads, which runs only on standard-4: start 3 s, the encode rate, one
  * decode rate per source decode key, the HDR tone-map rate, and an encode and a decode rate per edit-file tier.
  */
@@ -48,7 +47,6 @@ function configured(): Record<string, unknown> {
     presentation: { ...current.presentation, policy_version: 1, carrier: { max_short_side: 720, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } } },
     executions: {
       ...executions,
-      'video.remove-bg': { ...executions['video.remove-bg'], preparation: { container_class: 'MiniToolContainerStd4', precheck_seconds: 41 } },
       'video.extract-frames': { ...executions['video.extract-frames'], max_outputs_per_job: 2 },
       'video.split': { ...executions['video.split'], max_outputs_per_job: 3 },
     },
@@ -94,10 +92,7 @@ describe('EC encoding and carrier configuration', () => {
     const expected = {
       encoding: { chunk_share: 0.5, max_parallel_chunks: 8, encoder: ENCODER, decoder: DECODER },
       presentation: { carrier: CARRIER },
-      executions: {
-        'video.remove-bg': { preparation: { container_class: 'MiniToolContainerStd4', precheck_seconds: 300 } },
-        'video.extract-frames': { max_outputs_per_job: 8 }, 'video.split': { max_outputs_per_job: 8 },
-      },
+      executions: { 'video.extract-frames': { max_outputs_per_job: 8 }, 'video.split': { max_outputs_per_job: 8 } },
     };
     expect(raw).toMatchObject(expected);
     expect(getMiniToolsConfig()).toMatchObject(expected);
@@ -109,10 +104,9 @@ describe('EC encoding and carrier configuration', () => {
     omitted = patched(omitted, ['encoding', 'decoder'], undefined);
     omitted = patched(omitted, ['executions', 'video.split', 'max_outputs_per_job'], undefined);
     omitted = patched(omitted, ['executions', 'video.extract-frames', 'max_outputs_per_job'], undefined);
-    omitted = patched(omitted, ['executions', 'video.remove-bg', 'preparation'], undefined);
     expect(miniToolsConfigSchema.parse(omitted)).toMatchObject({
       encoding: { chunk_share: 0.5, max_parallel_chunks: 8, encoder: ENCODER, decoder: DECODER }, presentation: { carrier: CARRIER },
-      executions: { 'video.remove-bg': { preparation: { container_class: 'MiniToolContainerStd4', precheck_seconds: 300 } }, 'video.extract-frames': { max_outputs_per_job: 8 }, 'video.split': { max_outputs_per_job: 8 } },
+      executions: { 'video.extract-frames': { max_outputs_per_job: 8 }, 'video.split': { max_outputs_per_job: 8 } },
     });
   });
 
@@ -135,7 +129,7 @@ describe('EC encoding and carrier configuration', () => {
 
   it('EC04 encoder rates exist only for standard-4: basic only probes and copies', () => {
     const encoding = (getMiniToolsConfig() as unknown as { encoding: Record<string, unknown> }).encoding;
-    expect(Object.keys(encoding).sort()).toEqual(['chunk_retries', 'chunk_share', 'decoder', 'encoder', 'max_parallel_chunks', 'raw_disk_share', 'reverse_buffer_bytes']);
+    expect(Object.keys(encoding).sort()).toEqual(['chunk_retries', 'chunk_share', 'decoder', 'encoder', 'max_parallel_chunks']);
     expect((encoding.encoder as Record<string, unknown>).container_class).toBe('MiniToolContainerStd4');
   });
 
@@ -161,8 +155,6 @@ describe('EC encoding and carrier configuration', () => {
     ['zero outputs per job', ['executions', 'video.split', 'max_outputs_per_job'], 0],
     ['more outputs per job than the job contract allows', ['executions', 'video.split', 'max_outputs_per_job'], MINI_TOOL_JOB_MAX_OUTPUTS + 1],
     ['fractional outputs per job', ['executions', 'video.extract-frames', 'max_outputs_per_job'], 1.5],
-    ['a preparation outside standard-4', ['executions', 'video.remove-bg', 'preparation', 'container_class'], 'MiniToolContainerStd1'],
-    ['a zero preparation precheck', ['executions', 'video.remove-bg', 'preparation', 'precheck_seconds'], 0],
   ] as const)('EC05 rejects %s after accepting the complete valid configuration', (_, path, value) => {
     expect(miniToolsConfigSchema.safeParse(configured()).success).toBe(true);
     expect(miniToolsConfigSchema.safeParse(patched(configured(), path, value)).success).toBe(false);

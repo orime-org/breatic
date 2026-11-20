@@ -23,8 +23,6 @@ const classSchema = z.object({
   vcpu: z.number().positive(),
   memory_gib: z.number().positive(),
   disk_gb: z.number().positive(),
-  // Output pixels a GL image renders per second (frames-split §5.4 to-be-measured row); only the GL class declares it.
-  render_pixels_per_second: z.number().positive().finite().optional(),
 });
 
 const opSchema = z.strictObject({
@@ -42,39 +40,6 @@ const containerExecutionSchema = z.strictObject({
   max_outputs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(executionDefaults.max_outputs),
   // Outputs one batch job writes (design §5.4); the job contract caps it.
   max_outputs_per_job: z.number().int().positive().max(MINI_TOOL_JOB_MAX_OUTPUTS).default(executionDefaults.max_outputs_per_job),
-});
-
-// Model input preparation for background removal encodes on standard-4 (design §5.3, §5.4).
-const preparationDefaults = { container_class: "MiniToolContainerStd4" as const, precheck_seconds: 300 };
-const removeBackgroundDefaults = { model: "bria-fibo-video-background-remover", preparation: preparationDefaults };
-const preparationSchema = z.strictObject({
-  container_class: z.literal("MiniToolContainerStd4").default(preparationDefaults.container_class),
-  precheck_seconds: z.number().positive().default(preparationDefaults.precheck_seconds),
-});
-const removeBackgroundSchema = z.strictObject({
-  model: z.string().min(1),
-  preparation: preparationSchema.default(preparationDefaults),
-});
-
-// Lip-sync (execution design §9.3): the selectable single-person models, the tracking model's duration range and the run
-// caps. No default: the models' contract values are measured per model, so a deployment without them offers no lip-sync.
-const durationRange = { min_duration_seconds: z.number().positive(), max_duration_seconds: z.number().positive() };
-const lipSyncSchema = containerExecutionSchema.extend({
-  models: z.array(z.strictObject({
-    name: z.string().min(1),
-    schema_fingerprint: z.string().regex(/^[a-f0-9]{64}$/),
-    ...durationRange,
-    crop_size: z.number().int().positive(),
-    accepts_sync_mode: z.boolean(),
-    async_rejection: z.strictObject({ path: z.string().min(1), equals: z.json() }).optional(),
-  }).refine((model) => model.max_duration_seconds > model.min_duration_seconds)).min(1),
-  // The tracker's seconds are its vendor's, written once as provider rejects (execution design §11.5).
-  tracking: z.strictObject({ model: z.string().min(1) }),
-  max_people: z.number().int().positive(),
-  max_dialogues: z.number().int().positive(),
-  // The composite's feathered face edge, as a fraction of the face's shorter side (DD §7.2 step 6: feather(face) ∩ tracked
-  // foreground); frozen into a run's plan at admission.
-  face_feather: z.number().min(0).max(1).default(0.1),
 });
 
 // Chunked encoding (design §5.4): encode jobs run only on standard-4, so the encoder's rates are configured once, for it.
@@ -105,10 +70,6 @@ const encoderDefaults = {
   edit_prores_pixels_per_second: 400_000_000,
   // Audio seconds encoded to AAC per second for the dispatched copy (local Docker nproc 4 reading, to be replaced by standard-4).
   aac_encode_seconds_per_second: 100,
-  // Picture pixels per second YuNet 2023mar searches in the lip-sync faces step (frames-split §5.4 to-be-measured row), one detector
-  // thread as the analysis runtime runs it: 120 1080p frames in 17.4–22.8 s on a maintainer machine held to standard-4
-  // limits (arm64 Docker, --cpus=4), to be replaced by a Cloudflare standard-4 measurement.
-  face_detect_pixels_per_second: 13_000_000,
 };
 // Source pixels per second each edit-file tier decodes; provisional until measured on standard-4 (§5.4).
 const decoderDefaults = {
@@ -120,18 +81,12 @@ const decoderDefaults = {
 };
 const pixelRate = z.number().positive().finite();
 const tierRates = z.strictObject(Object.fromEntries(EDIT_TIER_RATE_KEYS.map((key) => [key, pixelRate])) as Record<(typeof EDIT_TIER_RATE_KEYS)[number], typeof pixelRate>);
-const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, reverse_buffer_bytes: 2_147_483_648, raw_disk_share: 0.5, encoder: encoderDefaults, decoder: decoderDefaults };
+const encodingDefaults = { chunk_share: 0.5, max_parallel_chunks: 8, chunk_retries: 3, encoder: encoderDefaults, decoder: decoderDefaults };
 const encodingSchema = z.strictObject({
   chunk_share: z.number().positive().max(1).default(encodingDefaults.chunk_share),
   max_parallel_chunks: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.max_parallel_chunks),
   // Retries after a chunk attempt fails; a chunk runs at most chunk_retries + 1 attempts (design §7.1.1).
   chunk_retries: z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.chunk_retries),
-  // The decoded frames one job may hold to play a clip backwards; a longer reversed tracking clip is reversed in chunks
-  // (execution design §10.2).
-  reverse_buffer_bytes: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).default(encodingDefaults.reverse_buffer_bytes),
-  // The share of a job's instance disk its raw decoded frames may fill, computed into a lip-sync plan once at admission: a
-  // clip's reused crops and a composite chunk's raw source window stay within it (execution design paragraph before §9.4).
-  raw_disk_share: z.number().positive().max(1).default(encodingDefaults.raw_disk_share),
   encoder: tierRates.extend({
     container_class: z.literal("MiniToolContainerStd4").default(encoderDefaults.container_class),
     start_seconds: z.number().nonnegative().finite().default(encoderDefaults.start_seconds),
@@ -140,7 +95,6 @@ const encodingSchema = z.strictObject({
       .default(encoderDefaults.decode_convert_pixels_per_second),
     tonemap_pixels_per_second: pixelRate.default(encoderDefaults.tonemap_pixels_per_second),
     aac_encode_seconds_per_second: z.number().positive().finite().default(encoderDefaults.aac_encode_seconds_per_second),
-    face_detect_pixels_per_second: pixelRate.default(encoderDefaults.face_detect_pixels_per_second),
   }).default(encoderDefaults),
   decoder: tierRates.default(decoderDefaults),
 });
@@ -180,40 +134,15 @@ const analysisConfigSchema = z.strictObject({
   precheck_seconds: z.number().positive(),
 });
 
-// Erase (execution design §10.4, §10.6): the masked Bria eraser, its frame-for-frame grid ceiling and asynchronous
-// rejection field, and the composite matte in source pixels; its seconds are its vendor's, written once as provider
-// rejects (§11.5). No default, as lip-sync.
-const eraseSchema = containerExecutionSchema.extend({
-  model: z.strictObject({
-    name: z.string().min(1), max_grid_fps: z.number().positive(),
-    async_rejection: z.strictObject({ path: z.string().min(1), equals: z.json() }),
-  }),
-  matte: z.strictObject({ dilate: z.number().int().nonnegative(), feather: z.number().int().nonnegative() }),
-});
-// Expand (execution design §10.5, §10.6): VACE's window length, overlap and frame rate, and the source limits.
-const expandSchema = containerExecutionSchema.extend({
-  model: z.strictObject({ name: z.string().min(1), max_window_seconds: z.number().positive(), overlap_seconds: z.number().positive(), model_fps: z.number().int().positive() })
-    .refine((model) => model.max_window_seconds > model.overlap_seconds),
-  max_duration_seconds: z.number().positive(),
-  max_target_side: z.number().int().positive(),
-});
-
 export const miniToolsConfigSchema = z
   .object({
     poll_interval_ms: z.number().int().positive(),
     executions: z.strictObject({
-      "video.remove-bg": removeBackgroundSchema,
       "video.extract-frames": containerExecutionSchema.default(executionDefaults),
       "video.split": containerExecutionSchema.default(executionDefaults),
       // A video focus crop takes one frame on standard-4, as frame extraction does (frames-split §5.5 configuration row).
       "video.focus-crop": opSchema.extend({ container_class: z.literal("MiniToolContainerStd4") }).default(focusCropDefaults),
-      "video.lip-sync": lipSyncSchema.optional(),
-      "video.erase": eraseSchema.optional(),
-      "video.expand": expandSchema.optional(),
-      // Transitions encode on one class and render their overlap windows on the GL image's class (frames-split §5.4).
-      "video.transitions": z.strictObject({ container_class: z.string().min(1), window_container_class: z.string().min(1), precheck_seconds: z.number().positive(),
-        max_outputs: z.number().int().positive() }).optional(),
-    }).default({ "video.remove-bg": removeBackgroundDefaults, "video.extract-frames": executionDefaults, "video.split": executionDefaults, "video.focus-crop": focusCropDefaults }),
+    }).default({ "video.extract-frames": executionDefaults, "video.split": executionDefaults, "video.focus-crop": focusCropDefaults }),
     encoding: encodingSchema.default(encodingDefaults),
     presentation: z.strictObject({
       container_class: z.string().min(1).default("MediaContainer"),
@@ -269,10 +198,7 @@ export const miniToolsConfigSchema = z
       Object.fromEntries(CONTAINER_OPS.map((op) => [op, opSchema])) as Record<ContainerOp, typeof opSchema>,
     ),
     analyses: z.strictObject({
-      people: analysisConfigSchema,
       scene_cuts: analysisConfigSchema,
-      // Tracking prepares its forward and reversed clips on standard-4 (execution design §10.3).
-      tracked_mask: analysisConfigSchema.extend({ preparation: preparationSchema }),
     }),
     // The audio cut band draws from the peaks file beside the source; while that
     // file is missing it decodes the source in the browser only under both of
@@ -292,25 +218,17 @@ export const miniToolsConfigSchema = z
       .min(2)
       .max(MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1)
       .default(20),
-    // The upstream every video mini-tool model call takes: the one the tools' models and recipes were measured on
-    // (inner#1306 execution design §11.5). Admission freezes it into each run's plan. No default: it names a deployment's
-    // upstream.
-    model_upstream: z.string().min(1),
   })
   .superRefine((config, ctx) => {
     if (!(config.presentation.container_class in config.classes)) {
       ctx.addIssue({ code: "custom", path: ["presentation", "container_class"], message: "Presentation names an undeclared container class" });
     }
-    for (const [path, name] of [[["encoding", "encoder", "container_class"], config.encoding.encoder.container_class], [["executions", "video.remove-bg", "preparation", "container_class"], config.executions["video.remove-bg"].preparation.container_class]] as const) {
-      if (!(name in config.classes)) ctx.addIssue({ code: "custom", path: [...path], message: "Names an undeclared container class" });
+    if (!(config.encoding.encoder.container_class in config.classes)) {
+      ctx.addIssue({ code: "custom", path: ["encoding", "encoder", "container_class"], message: "Names an undeclared container class" });
     }
-    const transitions = config.executions["video.transitions"];
-    if (transitions !== undefined && !(transitions.window_container_class in config.classes)) {
-      ctx.addIssue({ code: "custom", path: ["executions", "video.transitions", "window_container_class"], message: "Execution names an undeclared container class" });
-    }
-    for (const tool of ["video.extract-frames", "video.split", "video.focus-crop", "video.lip-sync", "video.transitions", "video.erase", "video.expand"] as const) {
+    for (const tool of ["video.extract-frames", "video.split", "video.focus-crop"] as const) {
       const execution = config.executions[tool];
-      if (execution !== undefined && !(execution.container_class in config.classes)) {
+      if (!(execution.container_class in config.classes)) {
         ctx.addIssue({ code: "custom", path: ["executions", tool, "container_class"], message: "Execution names an undeclared container class" });
       }
     }

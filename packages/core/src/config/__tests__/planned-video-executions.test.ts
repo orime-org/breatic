@@ -14,12 +14,11 @@ function configured(): Record<string, unknown> {
 }
 
 describe("S5 planned container execution configuration", () => {
-  it("S5-K01 retains configured estimates and capacities independently from remove-bg", () => {
+  it("S5-K01 retains configured estimates and capacities", () => {
     const input = configured();
     const parsed = miniToolsConfigSchema.parse(input);
     expect(parsed.executions).toEqual(input.executions);
     expect(parsed.classes.MiniToolContainerStd4).toMatchObject({ vcpu: 4, memory_gib: 12 });
-    expect(parsed.executions["video.remove-bg"]).toEqual(getMiniToolsConfig().executions["video.remove-bg"]);
     expect(parsed.presentation).toEqual(getMiniToolsConfig().presentation);
   });
   it.each(["video.extract-frames", "video.split"])("S5-K01 loads a configured %s default without a test-authored capacity constant", (tool) => {

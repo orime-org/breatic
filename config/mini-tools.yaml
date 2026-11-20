@@ -10,12 +10,6 @@
 poll_interval_ms: 5000
 
 executions:
-  video.remove-bg:
-    model: "bria-fibo-video-background-remover"
-    # Encoding the model's input runs on standard-4, held to the same precheck as its other tools.
-    preparation:
-      container_class: "MiniToolContainerStd4"
-      precheck_seconds: 300
   # Provisional: reuse the existing eight-output job contract and cut's 300 s
   # precheck, not measured capacity. Std4 worst-sample qualification is pending.
   video.extract-frames:
@@ -33,62 +27,6 @@ executions:
   video.focus-crop:
     container_class: "MiniToolContainerStd4"
     precheck_seconds: 300
-  # Lip-sync (inner#1306): each model's schema_fingerprint is the sha256 of its live model_run request_schema
-  # serialized with sorted keys; a changed fingerprint means the provider changed the request contract. Both
-  # models completed a one-frame clip, so the floor is one frame at 25 fps; the ceilings are the catalog's.
-  video.lip-sync:
-    container_class: "MiniToolContainerStd4"
-    precheck_seconds: 300
-    max_outputs: 1
-    models:
-      - name: "sync-lipsync-3"
-        schema_fingerprint: "b8ce4750db984012285fd6086a514fb109ffd91f804863bf6d4cb7f0d0f73981"
-        min_duration_seconds: 0.04
-        max_duration_seconds: 300
-        crop_size: 512
-        accepts_sync_mode: false
-    # The tracker's seconds are its vendor's, written once as provider rejects (config/provider/media/video.yaml).
-    tracking:
-      model: "sam3-video-rle"
-    max_people: 2
-    max_dialogues: 8
-    # The composite feathers each face's edge over this fraction of the face's shorter side.
-    face_feather: 0.1
-  # Encode chunks and the stitch run on standard-4; the overlap window renders on the GL image at the same size.
-  video.transitions:
-    container_class: "MiniToolContainerStd4"
-    window_container_class: "MiniToolContainerGl"
-    precheck_seconds: 300
-    max_outputs: 1
-  # Erase (inner#1306): Bria's masked eraser keeps 24-30 fps and VFR frame for frame and refuses 60 fps with code 1401, so
-  # inputs above 30 fps are resampled on a 30 fps grid; the 1-5 s it takes are its provider rejects
-  # (config/provider/media/video.yaml). The matte widens the tracked mask and softens its edge, in source pixels.
-  video.erase:
-    container_class: "MiniToolContainerStd4"
-    precheck_seconds: 300
-    max_outputs: 1
-    model:
-      name: "bria-video-eraser-mask"
-      max_grid_fps: 30
-      async_rejection:
-        path: "code"
-        equals: 1401
-    matte:
-      dilate: 4
-      feather: 4
-  # Expand (inner#1306): VACE windows of at most 10 s at 16 fps overlapping 0.625 s; a source up to 180 s fits the two-hour
-  # task budget at the slowest measured window, and the target's long side is held to 4096 pixels.
-  video.expand:
-    container_class: "MiniToolContainerStd4"
-    precheck_seconds: 300
-    max_outputs: 1
-    model:
-      name: "wan-2.1-14b-vace"
-      max_window_seconds: 10
-      overlap_seconds: 0.625
-      model_fps: 16
-    max_duration_seconds: 180
-    max_target_side: 4096
 
 # Chunked full-resolution encoding. Each chunk targets chunk_share of the
 # remaining task budget; a run uses at most max_parallel_chunks chunks, and a
@@ -103,13 +41,6 @@ encoding:
   max_parallel_chunks: 8
   # A failed chunk attempt is retried this many times before the presentation fails.
   chunk_retries: 3
-  # Decoded frames one job holds to play a tracking clip backwards; a longer reversed clip is reversed in chunks
-  # stitched latest first. 2 GiB is a sixth of standard-4's 12 GiB.
-  reverse_buffer_bytes: 2147483648
-  # The share of a job's instance disk (classes.<class>.disk_gb) its raw decoded frames may fill; the rest holds its
-  # downloaded inputs and encoded output. A lip-sync plan freezes it at admission: a clip's reused crops and a composite
-  # chunk whose source goes back, decoded to a raw file, stay within it; every other frame streams through pipes.
-  raw_disk_share: 0.5
   encoder:
     container_class: "MiniToolContainerStd4"
     start_seconds: 3
@@ -146,9 +77,6 @@ encoding:
     # Audio seconds encoded to AAC 48 kHz per second, for the dispatched copy's estimate.
     # Local Docker reading at nproc 4 (aac-encode-rate run), to be replaced by a measurement on Cloudflare standard-4.
     aac_encode_seconds_per_second: 100
-    # Picture pixels per second YuNet searches in the lip-sync faces step, one detector thread: a maintainer-machine reading
-    # (arm64 Docker at standard-4 limits, 1080p frames), to be replaced by a Cloudflare standard-4 measurement.
-    face_detect_pixels_per_second: 13000000
   # Source pixels per second each edit-file tier decodes when a tool reads the edit file; provisional until measured
   # on Cloudflare standard-4.
   decoder:
@@ -239,14 +167,6 @@ classes:
     vcpu: 4
     memory_gib: 12
     disk_gb: 20
-  MiniToolContainerGl:
-    instance_type: "standard-4"
-    vcpu: 4
-    memory_gib: 12
-    disk_gb: 20
-    # Output pixels the headless-gl renderer draws per second on llvmpipe: provisional, the encoder's rate until a
-    # Cloudflare standard-4 measurement replaces it.
-    render_pixels_per_second: 248000000
   # The page reader web_fetch runs (inner#1664); no op names it.
   WebReaderContainer:
     instance_type: "standard-2"
@@ -322,11 +242,6 @@ ops:
 # MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1, which the job contract can carry.
 join_max_clips: 20
 
-# The upstream every video mini-tool model call takes: the one the tools' models
-# and recipes were measured on (inner#1306). Admission freezes it into each run's
-# plan, so a change reaches only runs admitted after it.
-model_upstream: "wavespeed"
-
 # The audio cut band draws the source's waveform from the peaks file beside it
 # (inner#1305 §4.4). An audio without one yet is decoded in the browser only
 # under both of these: the length bounds the memory the decode holds (decoding
@@ -345,17 +260,6 @@ quote_debounce_ms: 300
 # Frozen public detector/provider profiles for accepted analyses (inner#1306).
 # The worker consumes the accepted profile; later config changes apply to new runs.
 analyses:
-  people:
-    container_class: "MiniToolContainerStd1"
-    precheck_seconds: 300
-    profile:
-      id: "opencv-yunet-2023mar"
-      version: "2023mar"
-      weightsHash: "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4"
-      params:
-        scoreThreshold: 0.6
-        nmsThreshold: 0.3
-        topK: 5000
   scene_cuts:
     container_class: "MiniToolContainerStd1"
     precheck_seconds: 300
@@ -366,18 +270,3 @@ analyses:
       params:
         threshold: 27
         minSceneLength: 15
-  tracked_mask:
-    container_class: "MiniToolContainerStd1"
-    precheck_seconds: 300
-    profile:
-      id: "sam3-video-rle"
-      version: "wavespeed-ai/sam3-video-rle"
-      weightsHash: null
-      params:
-        apply_mask: false
-        # The prompt sent when the selection's description is empty.
-        default_prompt: "object"
-    # The forward and reversed tracking clips are prepared on standard-4.
-    preparation:
-      container_class: "MiniToolContainerStd4"
-      precheck_seconds: 300

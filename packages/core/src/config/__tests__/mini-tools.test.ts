@@ -8,14 +8,6 @@ import { getMiniToolsConfig, miniToolsConfigSchema } from "@core/config/mini-too
 import { workerConcurrencyFor } from "@core/config/worker.js";
 
 describe("getMiniToolsConfig", () => {
-  // inner#1306 execution design §11.5: the upstream every video mini-tool model call takes, the one its models and recipes
-  // were measured on, is a deployment parameter frozen into each run's plan.
-  it("names the upstream video mini-tool model calls take, and refuses a config without it", () => {
-    expect(getMiniToolsConfig().model_upstream).toBe("wavespeed");
-    const { model_upstream: _named, ...rest } = getMiniToolsConfig();
-    expect(miniToolsConfigSchema.safeParse(rest).success).toBe(false);
-  });
-
   it("loads and defaults the durable settlement discovery and query settings", () => {
     const expected = { lease_ms: 60000, retry_ms: 30000, lookup_timeout_ms: 15000, discovery_interval_ms: 30000, discovery_page_size: 100 };
     const configured = getMiniToolsConfig() as unknown as Record<string, unknown>;
@@ -55,7 +47,7 @@ describe("getMiniToolsConfig", () => {
     expect(miniToolsConfigSchema.safeParse(config).success).toBe(false);
   });
 
-  it.each(["people", "scene_cuts", "tracked_mask"])("requires the %s analysis profile", (kind) => {
+  it.each(["scene_cuts"])("requires the %s analysis profile", (kind) => {
     const config = structuredClone(getMiniToolsConfig());
     const analyses = config.analyses as Record<string, unknown>;
     delete analyses[kind];
@@ -144,63 +136,5 @@ describe("getMiniToolsConfig", () => {
     const config = structuredClone(getMiniToolsConfig()) as Record<string, unknown> & { ops: Record<string, Record<string, unknown>> };
     config.ops.cut = { ...config.ops.cut, job_deadline_ms: 600_000 };
     expect(miniToolsConfigSchema.safeParse(config).success).toBe(false);
-  });
-});
-
-// inner#1306 §97 D26-2 (frames-split §5.4 待实测 row): the GL render pixel rate of a transition window chunk is configured
-// under the MiniToolContainerGl class as `render_pixels_per_second`; the class schema keeps it and refuses a non-positive one.
-describe("the GL class's render rate (§97 D26-2)", () => {
-  /**
-   * The configured snapshot with the GL class carrying a render rate.
-   * @param rate - The rate.
-   * @returns The config.
-   */
-  const withRate = (rate: number): Record<string, unknown> & { classes: Record<string, Record<string, unknown>> } => {
-    const config = structuredClone(getMiniToolsConfig()) as unknown as Record<string, unknown> & { classes: Record<string, Record<string, unknown>> };
-    config.classes.MiniToolContainerGl = { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20, render_pixels_per_second: rate };
-    return config;
-  };
-
-  it("GR01 keeps a configured render_pixels_per_second on MiniToolContainerGl", () => {
-    const parsed = miniToolsConfigSchema.parse(withRate(123456)) as unknown as { classes: Record<string, Record<string, unknown>> };
-    expect(parsed.classes.MiniToolContainerGl).toMatchObject({ instance_type: "standard-4", render_pixels_per_second: 123456 });
-  });
-
-  it.each([0, -1])("GR02 refuses a render_pixels_per_second of %s after a valid control", (rate) => {
-    expect(miniToolsConfigSchema.safeParse(withRate(123456)).success).toBe(true);
-    expect(miniToolsConfigSchema.safeParse(withRate(rate)).success).toBe(false);
-  });
-});
-
-// The lip-sync composite feathers each face's edge by a fraction of its shorter side (multi-person lip-sync DD §7.2 step 6);
-// the fraction is configured under the lip-sync block and frozen into a run's plan at admission.
-describe("the lip-sync face feather", () => {
-  /**
-   * The configured snapshot with the lip-sync block's face feather set, or removed.
-   * @param feather - The fraction, or undefined to leave it out.
-   * @returns The config.
-   */
-  const withFeather = (feather: unknown): Record<string, unknown> => {
-    const config = structuredClone(getMiniToolsConfig()) as unknown as Record<string, unknown> & { executions: Record<string, Record<string, unknown>> };
-    const lipSync = config.executions["video.lip-sync"]!;
-    delete lipSync.face_feather;
-    if (feather !== undefined) lipSync.face_feather = feather;
-    return config;
-  };
-  /**
-   * The parsed face feather.
-   * @param config - The config.
-   * @returns The lip-sync block's face feather.
-   */
-  const featherOf = (config: Record<string, unknown>): unknown =>
-    (miniToolsConfigSchema.parse(config).executions["video.lip-sync"] as unknown as Record<string, unknown>).face_feather;
-
-  it("LFF01 defaults to a tenth of the face's shorter side and keeps a configured fraction", () => {
-    expect(featherOf(withFeather(undefined))).toBe(0.1);
-    expect(featherOf(withFeather(0.25))).toBe(0.25);
-  });
-
-  it.each([-0.1, 1.5, "0.1"])("LFF02 refuses a face feather of %s", (feather) => {
-    expect(miniToolsConfigSchema.safeParse(withFeather(feather)).success).toBe(false);
   });
 });

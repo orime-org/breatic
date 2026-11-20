@@ -134,7 +134,9 @@ interface FocusCropAppend { taskId: string; image: FocusImage | null; outcome: F
  */
 function focusCropAppend(data: Y.Map<unknown>, event: Pick<NodeTaskCountsEvent, "nodeId" | "focusImageAppend">): FocusCropAppend | null {
   const raw = event.focusImageAppend;
-  if (raw === undefined || (raw.nodeId !== undefined && raw.nodeId !== event.nodeId)) return null;
+  // A redelivered or foreign payload may still name another node; the type does not promise its absence.
+  const named = (raw as { nodeId?: unknown } | undefined)?.nodeId;
+  if (raw === undefined || (named !== undefined && named !== event.nodeId)) return null;
   const [image] = validFocusImages([raw]);
   const taskId = typeof raw.id === "string" ? raw.id : "";
   if (taskId.length === 0 || taskId in outcomesOf(data)) return null;
