@@ -1625,7 +1625,9 @@ export function renderProductGuide(): string {
       `the panel's X or Esc closes it. The ${quoted(t("spaces.webAnimation.executions"))} button shows how many are in progress. Its panel has ${quoted(t("spaces.webAnimation.completed"))}, ` +
       `${quoted(t("spaces.webAnimation.inProgress"))} and ${quoted(t("spaces.webAnimation.failed"))} with their counts; each row shows the name, frame, length and time. ` +
       "Only a finished web animation or video shows in the middle: pressing a row in the first tab shows it. " +
-      `A row in progress also shows its stage, with ${quoted(t("timeline.webAnimation.cancel"))} for runs of this Project; a row under ${quoted(t("spaces.webAnimation.failed"))} ` +
+      `A row in progress also shows its stage, with ${quoted(t("timeline.webAnimation.cancel"))} for runs of this Project; ` +
+      `a run past the number of tasks one person runs at once waits its turn, says ${quoted(t("timeline.webAnimation.status.queued"))} with an hourglass and why, and can be cancelled. ` +
+      `A row under ${quoted(t("spaces.webAnimation.failed"))} ` +
       `(failed, cancelled or expired) shows why, with ${quoted(t("timeline.webAnimation.retry"))}, which opens the dialog filled in as before, or ${quoted(t("spaces.webAnimation.reexport"))} for a video. ` +
       `An empty ${quoted(t("spaces.webAnimation.inProgress"))} tab says ${quoted(t("spaces.webAnimation.emptyInProgress"))}, and an empty ${quoted(t("spaces.webAnimation.failed"))} tab says ${quoted(t("spaces.webAnimation.emptyFailed"))}. ` +
       `Ones made in a Timeline before Motion existed are listed at the end under ${quoted(t("spaces.webAnimation.madeInTimeline"))}, and can be modified and exported like the others. ` +

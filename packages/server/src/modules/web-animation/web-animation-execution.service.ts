@@ -405,6 +405,9 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
       resultAssetId: row.resultAssetId,
       input: stored,
       ownProject: row.projectId === scope.projectId,
+      actorUserId: row.actorUserId,
+      slotWaitSince: row.slotWaitSince ?? null,
+      slotWaitLimit: row.slotWaitLimit ?? null,
       usageCredits: ceilToCreditCent(Number(sums.get(timelineOperationKey(row.id)) ?? 0)),
     };
     const exportOf = scope.spaceId === null ? {} : { export: (row.resultSourceVersionId === null ? undefined : exports.get(row.resultSourceVersionId)) ?? null };

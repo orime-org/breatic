@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { RotateCcw, X } from 'lucide-react';
+import { Hourglass, RotateCcw, X } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 import type { WebAnimationRowView } from '@breatic/shared/space-content';
 
@@ -11,7 +11,9 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
+import { useCurrentUserStore } from '@web/stores/current-user';
 import { useRunning } from '@web/stores/task-actions-in-flight';
+import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { cancelIntent, endedSentenceKey, exportIntent, phaseKey } from '@web/spaces/web-animation/execution-text';
 import { ListLoadError, ListPending, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
@@ -158,9 +160,18 @@ interface ActionRowProps extends RowActions {
  */
 const ProgressRow = React.memo(function ProgressRow({ row, marked, readOnly, onCancel }: ActionRowProps): React.JSX.Element {
   const t = useTranslation();
+  const selfId = useCurrentUserStore((s) => s.user?.id);
   const cancelling = useRunning(cancelIntent(row.id)) !== undefined;
   const cancel = React.useCallback((): void => onCancel(row), [onCancel, row]);
-  return <RowFrame row={row} marked={marked} detail={<span className='truncate text-2xs'>{rowStep(row, t)}</span>}
+  // A run waiting for a running slot wears the canvas's hourglass and says why, so it does not read as stuck (inner#1968).
+  const waiting = row.status === 'queued' && row.slotWaitSince !== null;
+  const detail = waiting
+    ? <>
+      <span className='flex min-w-0 items-center gap-1 text-2xs'><Hourglass data-testid='task-waiting-mark' aria-hidden className='size-3.5 shrink-0' /><span className='truncate'>{rowStep(row, t)}</span></span>
+      <span className='text-pretty text-2xs text-muted-foreground'>{waitReason(t, row.slotWaitLimit, row.actorUserId === selfId ? 'own' : 'other')}</span>
+    </>
+    : <span className='truncate text-2xs'>{rowStep(row, t)}</span>;
+  return <RowFrame row={row} marked={marked} detail={detail}
     action={!readOnly && row.ownProject && row.status !== 'cancelling'
       ? <Button type='button' data-testid='motion-cancel' variant='outline' size='sm' className='gap-1.5' loading={cancelling} onClick={cancel} icon={<X className='size-4' />}>{t('timeline.webAnimation.cancel')}</Button>
       : null} />;

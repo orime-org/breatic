@@ -179,6 +179,12 @@ const rowCommon = {
   createdAt: isoTime,
   resultSourceVersionId: z.uuid().nullable(),
   resultAssetId: z.uuid().nullable(),
+  /** Who started it, so a run waiting for a running slot can say whose limit it waits under (inner#1968). */
+  actorUserId: z.uuid(),
+  /** When it started waiting for a running slot, or null when it never waited (inner#1968). */
+  slotWaitSince: isoTime.nullable(),
+  /** The running-task limit it waits under, or null (inner#1968). */
+  slotWaitLimit: z.number().int().positive().nullable(),
 };
 
 /**

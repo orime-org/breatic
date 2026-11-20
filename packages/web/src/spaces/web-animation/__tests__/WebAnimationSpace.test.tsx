@@ -1214,6 +1214,23 @@ describe('the execution list\'s three tabs', () => {
     expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
   });
 
+  // inner#1968: a run waiting for a running slot wears the canvas's hourglass and says why, as every task list does.
+  it.each([['u1', 'canvas.task.waitReasonLimit'], ['u9', 'canvas.task.waitReasonOtherLimit']])(
+    'marks a run waiting for a running slot with the hourglass and why, for a run started by %s', async (actorUserId, reason) => {
+      act(() => useCurrentUserStore.setState({ user: { id: 'u1' } as never }));
+      const waiting = { ...inProgressRow(RUNNING, 'A dot', null), actorUserId, slotWaitSince: '2026-11-15T10:00:01.000000Z', slotWaitLimit: 2 };
+      listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], { running: [waiting, inProgressRow(FAILED, 'A box')] });
+      show();
+      const panel = await openTab('inProgress');
+      const row = await within(panel).findByTestId(`motion-row-${RUNNING}`);
+      expect(within(row).getByTestId('task-waiting-mark')).toBeInTheDocument();
+      expect(row).toHaveTextContent(t('timeline.webAnimation.status.queued'));
+      expect(row).toHaveTextContent(t(reason, { limit: 2 }));
+      expect(within(row).getByTestId('motion-cancel')).toBeInTheDocument();
+      const plain = await within(panel).findByTestId(`motion-row-${FAILED}`);
+      expect(within(plain).queryByTestId('task-waiting-mark')).toBeNull();
+    });
+
   it('shows a failed row with its reason and Run again, and a cancelled one with its status', async () => {
     listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], {
       failed: [endedRow(done(FAILED, 'A box', '2026-11-15T07:00:00.000000Z')), endedRow(done(RUNNING, 'A dot', '2026-11-15T06:00:00.000000Z'), 'cancelled')],
