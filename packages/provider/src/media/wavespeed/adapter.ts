@@ -105,10 +105,7 @@ async function ask(reach: Reach, predictionId: string, bounds: RequestBounds): P
   if (data === undefined) return { state: "running" };
   if (data.status === "completed") return { state: "done", outputs: data.outputs ?? [] };
   // The upstream's error as text whatever its type, "unknown" when it gave none.
-  if (data.status === "failed") {
-    const detail = typeof data.error === "object" && data.error !== null ? { detail: data.error } : {};
-    return { state: "failed", error: data.error === undefined || data.error === null ? "unknown" : String(data.error), ...detail };
-  }
+  if (data.status === "failed") return { state: "failed", error: data.error === undefined || data.error === null ? "unknown" : String(data.error) };
   return { state: "running" };
 }
 

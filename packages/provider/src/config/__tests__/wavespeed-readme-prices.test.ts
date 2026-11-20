@@ -12,8 +12,6 @@
  * `bytedance/avatar-omni-human-1.5` (readme $0.25/s, formula base_price
  * 160000/s) and `sonilo/video-to-music` (readme bills 5s as 5s, formula bills
  * at least 10s). A smoke run's actual charge settles which one is right.
- * Bria FIBO video removal's whole-second rounding likewise follows its
- * official model formula; the descriptive readme states only a per-second rate.
  */
 import { describe, expect, it } from "vitest";
 import { priceUsd } from "../../pricing/evaluate.js";
@@ -47,12 +45,6 @@ const tripo = (over: Record<string, unknown>): Record<string, unknown> => ({
 });
 
 const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
-  "wavespeed-ai/sam3-video-rle": [
-    { input: { video: "v", prompt: "flower", apply_mask: false }, durations: { video: [5.055] }, usd: 0.06 },
-    { input: { video: "v" }, durations: { video: [1] }, usd: 0.03 },
-    { input: { video: "v" }, durations: { video: [5] }, usd: 0.05 },
-    { input: { video: "v" }, durations: { video: [5.000001] }, usd: 0.06 },
-  ],
   "alibaba/happyhorse-1.1/reference-to-video": [
     { input: { resolution: "720p", duration: 5 }, usd: 0.7 },
     { input: { resolution: "1080p", duration: 5 }, usd: 0.945 },
@@ -76,10 +68,6 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   ],
   "bria/eraser": [{ input: {}, usd: 0.04 }],
   "bria/fibo-edit/genfill": [{ input: {}, usd: 0.04 }],
-  "bria/fibo/video-background-remover": [{ input: { video: "v", background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true }, durations: { video: [5.055] }, usd: 0.3 }],
-  // inner#1306 execution design §10.4, §10.5: the measured quotes of the masked eraser and VACE.
-  "bria/video-eraser/mask": [{ input: { video: "v", mask_video: "m", copy_audio: false }, durations: { video: [2.5] }, usd: 0.15 }, { input: { video: "v", mask_video: "m", copy_audio: false }, durations: { video: [7] }, usd: 0.25 }],
-  "wavespeed-ai/wan-2.1-14b-vace": [{ input: { prompt: "p", duration: 5, size: "832*480" }, usd: 0.3 }, { input: { prompt: "p", duration: 10, size: "832*480" }, usd: 0.45 }],
   "bria/remove-background": [{ input: {}, usd: 0.018 }],
   "bytedance/avatar-omni-human-1.5": [{ input: { audio: "a" }, durations: { audio: [10] }, usd: 1.6 }],
   "bytedance/dreamactor-v2": [{ input: { video: "v" }, durations: { video: [10] }, usd: 0.5 }],

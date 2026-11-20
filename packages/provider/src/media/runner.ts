@@ -7,7 +7,7 @@ import { costsOf, DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, Upstream
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { boundSignal, sideBounds } from "@provider/http/request.js";
-import { outputField, outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
+import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
 import { assess, cloneKeyOf, heldClone, isPresent, stepCalls, stepSource, type CloneKind, type HeldClone } from "@provider/pricing/estimate.js";
@@ -570,12 +570,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    */
   const outputOf = (ticket: Ticket, step: Step, outputs: readonly unknown[], prediction: string | undefined): StepOutput => {
     const billedAs = prediction === undefined ? {} : { prediction };
-    if (step.kind === "generate") {
-      // A fal answer is read at its output_field by its adapter; a WaveSpeed answer of objects names it in each output.
-      const field = bindingOf(ticket).output_field;
-      const read = field !== undefined && outputs.every((o) => typeof o === "object" && o !== null) ? outputs.map((o) => outputField([o], field)) : outputs;
-      return { urls: outputUrls(read), ...billedAs };
-    }
+    if (step.kind === "generate") return { urls: outputUrls(outputs), ...billedAs };
     return { ...codecOf(ticket, step.kind).output(outputs, contextOf(ticket, step)), ...billedAs };
   };
 
@@ -969,7 +964,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         const steps = id === undefined ? ticket.steps : ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: id } : s));
         const costs: Cost[] = id === undefined ? [...ticket.costs, { state: "missing", reason: `${ticket.upstream} took the ${at.step.kind} step and named no id to bill it by` }] : ticket.costs;
         const warnings = id === undefined ? [{ code: "cost_unavailable", detail: { model: ticket.model, upstream: ticket.upstream, step: at.step.kind } }] : [];
-        return endStep({ ...ticket, accepted: true, steps, costs }, at.index, bounds, new UpstreamTaskFailed(ticket.upstream, answer.error, answer.detail), warnings);
+        return endStep({ ...ticket, accepted: true, steps, costs }, at.index, bounds, new UpstreamTaskFailed(ticket.upstream, answer.error), warnings);
       }
       if (answer.outputs !== undefined) {
         // Accepted and billed: an answer without a prediction id leaves nothing to look its cost up by.
@@ -1016,7 +1011,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (asked.handle === undefined) return waiting(ticket);
         return waiting(next(ticket, { steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, handle: asked.handle } : s)) }));
       }
-      if (asked.state === "failed") return endStep(ticket, at.index, bounds, new UpstreamTaskFailed(ticket.upstream, asked.error, asked.detail));
+      if (asked.state === "failed") return endStep(ticket, at.index, bounds, new UpstreamTaskFailed(ticket.upstream, asked.error));
       let output: StepOutput;
       try {
         output = outputOf(ticket, at.step, asked.outputs, at.step.predictionId);

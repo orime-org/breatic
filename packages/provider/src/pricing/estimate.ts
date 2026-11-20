@@ -183,10 +183,10 @@ export const rejectSchema = z.strictObject({
     .strictObject({
       /** Our param the limit is on; the prompt is `prompt`. */
       field: z.string().min(1),
-      /** Characters, lines, only the Chinese characters (CJK ideographs) of the value, or the seconds a media param runs. */
-      measure: z.enum(["characters", "lines", "chinese_characters", "seconds"]),
-      max: z.number().nonnegative().optional(),
-      min: z.number().nonnegative().optional(),
+      /** Characters, lines, or only the Chinese characters (CJK ideographs) of the value. */
+      measure: z.enum(["characters", "lines", "chinese_characters"]),
+      max: z.number().int().nonnegative().optional(),
+      min: z.number().int().nonnegative().optional(),
       /** Counted for each line or each list item rather than for the whole value. */
       per: z.enum(["line", "item"]).optional(),
     })

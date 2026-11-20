@@ -18,7 +18,7 @@
 # { values, equivalent } serves those values for the reason given and
 # { all_values } any value for the reason given. `fixed` fields are sent on
 # every call, `voice_map` maps our voices to the upstream's, `output_field` is
-# where a fal or WaveSpeed result puts its files, `extra_steps` and `reused_by` are the
+# where a fal result puts its files, `extra_steps` and `reused_by` are the
 # upstream's further calls, and the binding's `rejects` hold only what this
 # upstream enforces beyond the vendor. `mentions` is
 # how the prompt names a param's sources there ({n} counts from 1, {i} from 0).
@@ -225,7 +225,6 @@ models:
         reason: "MiniMax music-cover audio_url: Duration 6 seconds to 6 minutes"
         source: https://platform.minimax.io/docs/api-reference/music-generation
       - when: get_duration(audio) > 360
-        limit: { field: audio, measure: seconds, max: 360 }
         reason: "MiniMax music-cover audio_url: Duration 6 seconds to 6 minutes"
         source: https://platform.minimax.io/docs/api-reference/music-generation
     upstreams:
@@ -244,7 +243,6 @@ models:
   sonilo-video-to-music:
     rejects:
       - when: get_duration(video) > 360
-        limit: { field: video, measure: seconds, max: 360 }
         reason: "Sonilo video-to-music video: Max duration: 6 minutes"
         source: https://platform.sonilo.com/docs/api/video-to-music
       - when: $length(prompt) > 2000
@@ -396,7 +394,6 @@ models:
   veed-clean-audio:
     rejects:
       - when: get_duration(audio) > 1800
-        limit: { field: audio, measure: seconds, max: 1800 }
         reason: "VEED Clean Audio audio_url: up to 30 minutes and 512 MB"
         source: https://api.veed.io/openapi.yaml
       - when: strength < 0 or strength > 1

@@ -165,21 +165,16 @@ export class UpstreamTaskFailed extends Error {
   /** The upstream's own words. */
   readonly upstreamError: string;
 
-  /** The upstream's own error object, when it answered one. */
-  readonly detail?: unknown;
-
   /**
    * Record what the error carries.
    * @param upstream - The upstream.
    * @param upstreamError - What it said.
-   * @param detail - Its own error object, when it answered one.
    */
-  constructor(upstream: string, upstreamError: string, detail?: unknown) {
+  constructor(upstream: string, upstreamError: string) {
     super(`${upstream} failed the task: ${upstreamError}`);
     this.name = "UpstreamTaskFailed";
     this.upstream = upstream;
     this.upstreamError = upstreamError;
-    if (detail !== undefined) this.detail = detail;
   }
 }
 

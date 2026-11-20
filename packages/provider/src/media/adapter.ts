@@ -40,8 +40,6 @@ export interface Submitted {
   handle?: Record<string, string>;
   /** Why the step fails although the upstream took it (an answer over the read limit, a run failed at once); it is billed under `predictionId`. */
   error?: string;
-  /** The upstream's own error object beside `error`, kept as it answered for the application to read. */
-  detail?: unknown;
 }
 
 /** What one question about a prediction answered. */
@@ -49,7 +47,7 @@ export type Asked =
   /** `handle` replaces the step's handle for the next question; it survives a JSON round trip in the ticket. */
   | { state: "running"; handle?: Record<string, string> }
   | { state: "done"; outputs: unknown[] }
-  | { state: "failed"; error: string; detail?: unknown };
+  | { state: "failed"; error: string };
 
 /** What one step answered, for the steps after it and for billing. */
 export interface StepOutput {
