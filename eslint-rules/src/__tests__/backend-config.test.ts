@@ -38,4 +38,12 @@ describe("backendConfig", () => {
     );
     expect(block?.files).toEqual(["packages/a/src/index.ts", "packages/b/src/index.ts"]);
   });
+
+  it("checks the header the repository names, and the default one otherwise", () => {
+    const header = { copyright: "// Copyright (c) 2026 Orime, Inc. All rights reserved.", licence: "// SPDX-License-Identifier: LicenseRef-Orime-Proprietary" };
+    const ruleOf = (blocks: ReturnType<typeof backendConfig>): unknown =>
+      blocks.find((b) => b.rules?.["breatic/no-missing-license-header"] !== undefined)?.rules?.["breatic/no-missing-license-header"];
+    expect(ruleOf(backendConfig({ packages: ["packages/x"], rootDir: ROOT, licenseHeader: header }))).toEqual(["error", header]);
+    expect(ruleOf(backendConfig({ packages: ["packages/x"], rootDir: ROOT }))).toBe("error");
+  });
 });

@@ -23,6 +23,8 @@ export interface BackendConfigOptions {
   packages: readonly string[];
   /** The repository root `config/provider/upstreams.yaml` is read from, for `no-upstream-literal`. */
   rootDir: string;
+  /** The two header lines every source file opens with, where they are not this repository's AGPL lines. */
+  licenseHeader?: { copyright: string; licence: string };
 }
 
 // eslint-plugin-jsdoc TypeScript preset (error level): enforces TSDoc-style
@@ -197,7 +199,10 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
     { files: src, ignores: TEST_IGNORES, rules: { "breatic/no-raw-body-parse": "error" } },
     { files: src, ignores: TEST_IGNORES, rules: { "breatic/no-untranslated-error-message": "error" } },
     { files: each("src/**/*.{test,spec}.{ts,tsx}"), rules: { "breatic/test-file-location": "error" } },
-    { files: srcTsx, rules: { "breatic/no-missing-license-header": "error" } },
+    {
+      files: srcTsx,
+      rules: { "breatic/no-missing-license-header": options.licenseHeader === undefined ? "error" : ["error", options.licenseHeader] },
+    },
     { files: srcTsx, ignores: TEST_IGNORES_TSX, rules: { "breatic/no-relative-import": "error" } },
     { files: each("src/index.ts"), rules: { "breatic/service-observability": "error" } },
     { files: src, ignores: TEST_IGNORES, rules: { "breatic/schema-timestamps": "error" } },
