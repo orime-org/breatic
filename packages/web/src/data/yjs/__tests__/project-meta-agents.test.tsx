@@ -81,4 +81,19 @@ describe('agents in the meta document', () => {
     expect(result.current.agents).toEqual([]);
     expect(result.current.users.size).toBe(0);
   });
+
+  it('keeps the same agents list while only a member record changes', () => {
+    seed('u1', { id: 'u1', online: true, lastSeenAt: 1 });
+    seed('u1.agent.c1', { id: 'u1', online: true, lastSeenAt: 9, agent: AGENT });
+    const { result } = renderHook(() => useProjectMeta('p'));
+    const before = result.current.agents;
+    act(() => {
+      (doc.getMap('users').get('u1') as Y.Map<unknown>).set('lastSeenAt', 2);
+    });
+    expect(result.current.agents).toBe(before);
+    act(() => {
+      (doc.getMap('users').get('u1.agent.c1') as Y.Map<unknown>).set('idle', true);
+    });
+    expect(result.current.agents).not.toBe(before);
+  });
 });

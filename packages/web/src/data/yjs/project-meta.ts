@@ -168,7 +168,13 @@ export function useProjectMeta(projectId: string): ProjectMetaState {
      * Re-read the spaces, users and following maps from the doc into React state.
      * @returns Nothing.
      */
-    const update = (): void => setState(readMetaState(doc));
+    const update = (): void =>
+      setState((previous) => {
+        const next = readMetaState(doc);
+        // Members' presence refreshes often; the agents list keeps its identity
+        // until an agent's own record changes, so the Spaces drawing it do not redraw.
+        return sameAgents(previous.agents, next.agents) ? { ...next, agents: previous.agents } : next;
+      });
     // SPACES is a Y.Map keyed by spaceId on the collab side (see
     // `packages/collab/src/space-rpc.ts` + `auth.ts` +
     // `core/src/db/yjs-bootstrap.ts`). Client must observe the same
@@ -263,6 +269,16 @@ function readAgents(doc: Y.Doc): ReadonlyArray<ProjectAgent> {
     out.push({ ownerId: ids.userId, connectionId: ids.connectionId, online, idle: idle === true, lastSeenAt, spaceId: agent.spaceId, focus: agent.focus, focusAt: agent.focusAt });
   });
   return out;
+}
+
+/**
+ * Whether two agents lists say the same.
+ * @param a - One list.
+ * @param b - The other.
+ * @returns True when every record matches in order.
+ */
+function sameAgents(a: ReadonlyArray<ProjectAgent>, b: ReadonlyArray<ProjectAgent>): boolean {
+  return a.length === b.length && JSON.stringify(a) === JSON.stringify(b);
 }
 
 /**
