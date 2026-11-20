@@ -44,7 +44,8 @@ import { agentInstructionsService } from "@server/modules";
 import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
 import { precheckAgentTurn, precheckCredits } from "@server/modules";
-import { SMALLEST_CREDIT, keyOwnerOf, keysById, resolveKeys } from "@breatic/domain";
+import { SMALLEST_CREDIT, resolveKeys } from "@breatic/domain";
+import { turnKeysOf } from "@server/agent/turn-keys.js";
 import type { KeySet } from "@breatic/provider";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
 import { runStreams } from "@server/agent/run-stream.js";
@@ -255,26 +256,13 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
       ? { modelId: await conversationService.modelForMessage(conversation, user.id, body.model), upstream: undefined, keyId: undefined }
       : await conversationService.modelForResume(conversation, user.id, resumed);
   // inner#1953: a new turn runs on the keys of whoever pays for the Studio; a resumed one on the key row its paused
-  // segment ran on, read back by id. Null when that row is gone: the resumed run then ends failed on its own stream,
-  // saying so, without asking a model.
-  let keys: KeySet | undefined | null;
+  // segment ran on, read back by id. Null when they cannot be read: the run then ends failed on its own stream, saying
+  // so, without asking a model.
+  const turnKeys = await turnKeysOf(body.project_id, resumed === undefined ? undefined : { keyId });
+  if ("failed" in turnKeys) logger.warn({ err: turnKeys.failed, userId: user.id, conversationId: conversation.id, keyId }, "chat_turn_keys_unreadable");
+  const keys: KeySet | undefined | null = "failed" in turnKeys ? null : turnKeys.keys;
   // The account whose key that is, so a refusal says whether it is the caller's own or the Studio Admin's.
-  let keyOwner: string | undefined;
-  if (resumed === undefined) {
-    const resolved = await resolveKeys({ projectId: body.project_id }, { kind: "llm" });
-    keys = resolved.keyId === null ? undefined : resolved.keys;
-    keyOwner = resolved.payerUserId ?? undefined;
-  }
-  else if (keyId === undefined) keys = undefined;
-  else {
-    keyOwner = await keyOwnerOf(keyId);
-    try {
-      keys = (await keysById(keyId))?.keys;
-    } catch (err) {
-      logger.warn({ err, userId: user.id, conversationId: conversation.id, keyId }, "chat_resume_key_unreadable");
-      keys = null;
-    }
-  }
+  const { keyOwner } = turnKeys;
   // A turn needs a balance above zero to start (#296), on the payer's own key too (inner#1953). Payments off: no
   // check. Checked before an answer is taken, so a refused answer leaves the card waiting.
   await precheckAgentTurn(body.project_id, user.id, keys === undefined ? undefined : keyOwner);

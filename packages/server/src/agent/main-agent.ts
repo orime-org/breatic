@@ -12,9 +12,10 @@ import { randomUUID } from "node:crypto";
 import { parseCreditDecimal } from "@breatic/shared";
 
 import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
-import { keyOwnerOf, keysById, provider, resolveKeys, streamTextRetry } from "@breatic/domain";
+import { provider, streamTextRetry } from "@breatic/domain";
+import { ON_OUR_KEYS, turnKeysOf, type TurnKeys } from "@server/agent/turn-keys.js";
 import type { ModelMessage, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
-import type { KeySet, PreparedCall } from "@breatic/provider";
+import type { PreparedCall } from "@breatic/provider";
 import {
   buildAgentConfig,
   finalizeTurn,
@@ -105,15 +106,6 @@ const REPLIED_IN_CHAT: CardResult = { repliedInChat: true };
 const FAILED_TEXT = "The assistant could not finish this turn.";
 
 /**
- * The keys a turn runs on (inner#1953), or why they could not be read; undefined keys are the deployment's. `keyOwner`
- * is the account the key row belongs to, so a failure of it says whose key it was.
- */
-type TurnKeys = ({ keys: KeySet | undefined; keyId: string | null } | { failed: unknown }) & { keyOwner?: string };
-
-/** A turn on our keys. */
-const ON_OUR_KEYS: TurnKeys = { keys: undefined, keyId: null };
-
-/**
  * Main Agent for streaming chat interactions.
  *
  * Reads who is speaking and where -- userId, conversationId, projectId -- from
@@ -130,38 +122,6 @@ export class MainAgent {
    */
   private get ctx(): ReturnType<typeof getContext> {
     return getContext();
-  }
-
-  /**
-   * The keys a new turn runs on: those of whoever pays for the project's Studio (inner#1953).
-   * @returns The keys and their row, or the failure to read them, which ends the turn.
-   */
-  private async freshKeys(): Promise<TurnKeys> {
-    try {
-      const resolved = await resolveKeys({ projectId: this.ctx.projectId }, { kind: "llm" });
-      // Our keys are provider's own default, so a turn on them hands provider none.
-      if (resolved.keyId === null) return ON_OUR_KEYS;
-      return { keys: resolved.keys, keyId: resolved.keyId, ...(resolved.payerUserId === null ? {} : { keyOwner: resolved.payerUserId }) };
-    } catch (err) {
-      return { failed: err };
-    }
-  }
-
-  /**
-   * The keys a resumed segment runs on: the key row its paused segment recorded, read back by id, never resolved
-   * again (inner#1953).
-   * @param keyId - The row the paused segment ran on; our keys when absent.
-   * @returns The keys and their row, or the failure to read them (`account_key_missing` once the row is gone).
-   */
-  private async resumedKeys(keyId: string | undefined): Promise<TurnKeys> {
-    if (keyId === undefined) return ON_OUR_KEYS;
-    const keyOwner = await keyOwnerOf(keyId);
-    try {
-      const found = await keysById(keyId);
-      return { keys: found?.keys, keyId, keyOwner };
-    } catch (err) {
-      return { failed: err, keyOwner };
-    }
   }
 
   /**
@@ -265,7 +225,7 @@ export class MainAgent {
       closedAsks,
     };
     await hooks.beforeStream?.(turnIndex);
-    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, undefined, hooks, await this.freshKeys());
+    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, undefined, hooks, await turnKeysOf(this.ctx.projectId));
   }
 
   /**
@@ -308,7 +268,7 @@ export class MainAgent {
       output,
     };
     await hooks.beforeStream?.(turnIndex);
-    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, upstream, hooks, await this.resumedKeys(hooks.resumeKeyId));
+    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, upstream, hooks, await turnKeysOf(this.ctx.projectId, { keyId: hooks.resumeKeyId }));
   }
 
   /**
