@@ -2298,7 +2298,7 @@
       "film-style-still": {
         "name": "Film style still",
         "description": "Your subject redrawn as one scene in a classic style",
-        "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it may change to suit the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No watermark; lettering only where the style below calls for it.",
+        "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it is the scene written here, drawn in the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No watermark; lettering only where the style below calls for it.",
         "input": {
           "subject": {
             "name": "Subject",
@@ -2313,7 +2313,7 @@
         "node": {
           "still": {
             "name": "Styled still",
-            "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it may change to suit the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No watermark; lettering only where the style below calls for it."
+            "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it is the scene written here, drawn in the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No watermark; lettering only where the style below calls for it."
           }
         },
         "input": {
@@ -2334,7 +2334,7 @@
           },
           "widescreen": {
             "name": "Widescreen colour",
-            "prompt": "A widescreen still of [📎 Character] in a scene from a 1950s widescreen colour epic: face and hair as in the picture, clothes of the period. Saturated reds and teals, a painted-sky backdrop and glossy studio light; {✏️ the place, e.g. a grand hotel staircase}. No text."
+            "prompt": "A widescreen still of [📎 Character] in a scene from a 1950s widescreen colour epic: face and hair as in the picture, clothes of the period. Saturated reds and teals, a painted-sky backdrop wherever the place shows sky, and glossy studio light; {✏️ the place, e.g. a grand hotel staircase}. No text."
           },
           "nineties": {
             "name": "90s film",
