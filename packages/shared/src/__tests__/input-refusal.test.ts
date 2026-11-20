@@ -52,14 +52,6 @@ describe("inputRefusalText", () => {
       .toBe("Gemini 3.8 Flash TTS takes at most 2,500 Chinese characters in the text.");
   });
 
-  it("names a media param's length per call in seconds, of its video or its audio (inner#1306 §11.5)", () => {
-    setLocaleMessages("en", catalog("en"));
-    setLocale("en");
-    expect(inputRefusalText({ reason: "r", limit: { field: "video", measure: "seconds", max: 60 } }, "Bria")).toBe("Bria takes at most 60 seconds of the video per call.");
-    expect(inputRefusalText({ reason: "r", limit: { field: "videos", measure: "seconds", max: 15 } }, "Bria")).toBe("Bria takes at most 15 seconds of the video per call.");
-    expect(inputRefusalText({ reason: "r", limit: { field: "reference_audios", measure: "seconds", min: 1 } }, "Bria")).toBe("Bria needs at least 1 second of the audio per call.");
-  });
-
   it("gives a refusal no count explains, or a count of a kind it has no sentence for, the general sentence", () => {
     setLocaleMessages("en", catalog("en"));
     setLocale("en");

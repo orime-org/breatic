@@ -5,7 +5,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import * as miniTools from "@shared/mini-tools/index.js";
 
-type AnalysisKind = "people" | "scene_cuts" | "tracked_mask";
+type AnalysisKind = "scene_cuts";
 type ObjectValue = Record<string, unknown>;
 
 interface AnalysisRecord {
@@ -51,7 +51,7 @@ interface AnalysisApi {
 
 // Namespace access keeps collection working before the new public API exists.
 const api = miniTools as unknown as AnalysisApi;
-const kinds: AnalysisKind[] = ["people", "scene_cuts", "tracked_mask"];
+const kinds: AnalysisKind[] = ["scene_cuts"];
 const earlyId = "ffffffff-ffff-4fff-8fff-ffffffffffff";
 const laterId = "00000000-0000-4000-8000-000000000002";
 const failedId = "00000000-0000-4000-8000-000000000003";
@@ -98,16 +98,7 @@ function inputFor(kind: AnalysisKind): AnalysisInputSource {
 
 /** States the complete dependency projection, independently of its implementation. @throws {Error} Never. */
 function expectedInput(kind: AnalysisKind): ObjectValue {
-  const common = { schemaVersion: 1, kind, sourceURL: binding.canonicalURL, profile: structuredClone(profile) };
-  if (kind === "people") return { ...common, anchor: { frameIndex: 3 } };
-  if (kind === "scene_cuts") return { ...common, range: { start: 0, end: 5 } };
-  return {
-    ...common,
-    range: { start: 0, end: 5 },
-    anchor: { frameIndex: 3 },
-    region: { box: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 }, points: [{ x: 0.2, y: 0.3, label: "positive" }] },
-    trackingPrompt: "the person on the left",
-  };
+  return { schemaVersion: 1, kind, sourceURL: binding.canonicalURL, profile: structuredClone(profile), range: { start: 0, end: 5 } };
 }
 
 /** Builds a frozen common record and its matching typed result. @throws {Error} Never. */
@@ -123,18 +114,7 @@ function recordFor(kind: AnalysisKind, analysisRunId = earlyId, acceptedAt = ear
     analysisInput: expectedInput(kind),
     inputFingerprint: "b".repeat(64),
   };
-  const data: ObjectValue = kind === "people"
-    ? { anchor: { frameIndex: 3 }, people: [] }
-    : kind === "scene_cuts"
-      ? { fps: { numerator: 25, denominator: 1 }, frameCount: 125, cuts: [] }
-      : {
-          fps: { numerator: 25, denominator: 1 }, frameCount: 125,
-          width: 960, height: 540,
-          anchor: { frameIndex: 3 }, regionFingerprint: "c".repeat(64),
-          artifactRefs: [
-            { role: "rle", assetId: "30000000-0000-4000-8000-000000000001", canonicalURL: "https://media.example.test/mask.json", contentHash: "d".repeat(64), kind: "document", mimeType: "text/plain", size: 2048, frameMetadata: null },
-          ],
-        };
+  const data: ObjectValue = { fps: { numerator: 25, denominator: 1 }, frameCount: 125, cuts: [] };
   return { ...identity, status: "completed", result: { ...structuredClone(identity), ...data }, error: null, usage: [], artifactUnavailable: false };
 }
 
@@ -142,39 +122,6 @@ function recordFor(kind: AnalysisKind, analysisRunId = earlyId, acceptedAt = ear
 function selectedIds(kind: AnalysisKind, records: unknown[]): { latestAccepted: string | null; latestSuccessful: string | null } {
   const selected = api.selectMiniToolAnalyses(records, { draftId: recordFor(kind).draftId, kind, inputFingerprint: "b".repeat(64) });
   return { latestAccepted: selected.latestAccepted?.analysisRunId ?? null, latestSuccessful: selected.latestSuccessful?.analysisRunId ?? null };
-}
-
-/** Builds the independently specified two-person result with registered thumbnails. @throws {Error} Never. */
-function peopleRecord(): AnalysisRecord {
-  const record = recordFor("people");
-  return {
-    ...record,
-    result: {
-      ...record.result,
-      people: [
-        {
-          personId: "60000000-0000-4000-8000-000000000001",
-          faceBox: { x: 0.1, y: 0.2, width: 0.3, height: 0.4 },
-          artifactRefs: [{ role: "thumbnail", assetId: "70000000-0000-4000-8000-000000000001", canonicalURL: "https://media.example.test/person-1.jpg", contentHash: "1".repeat(64), kind: "image", mimeType: "image/jpeg", size: 1024, frameMetadata: null }],
-        },
-        {
-          personId: "60000000-0000-4000-8000-000000000002",
-          faceBox: { x: 0.6, y: 0.2, width: 0.2, height: 0.3 },
-          artifactRefs: [{ role: "thumbnail", assetId: "70000000-0000-4000-8000-000000000002", canonicalURL: "https://media.example.test/person-2.jpg", contentHash: "2".repeat(64), kind: "image", mimeType: "image/jpeg", size: 1536, frameMetadata: null }],
-        },
-      ],
-    },
-  };
-}
-
-/** Reads the fixture's person array without relying on a future production type export. @throws {Error} Never. */
-function fixturePeople(record: AnalysisRecord): ObjectValue[] {
-  return record.result?.people as ObjectValue[];
-}
-
-/** Reads the fixture's artifact array without relying on a future production type export. @throws {Error} Never. */
-function fixtureArtifacts(record: AnalysisRecord): ObjectValue[] {
-  return record.result?.artifactRefs as ObjectValue[];
 }
 
 describe("batch six analysis public contract", () => {
@@ -247,10 +194,9 @@ describe("batch six analysis public contract", () => {
     it("ignores another draft, kind or fingerprint without treating revision as a dependency", () => {
       const early = recordFor(kind);
       const newer = recordFor(kind, laterId, laterTime);
-      const otherKind = kinds.find((candidate) => candidate !== kind) ?? "people";
       const otherDraft = { ...newer, draftId: otherDraftId, result: { ...newer.result, draftId: otherDraftId } };
       const otherInput = { ...newer, inputFingerprint: "d".repeat(64), result: { ...newer.result, inputFingerprint: "d".repeat(64) } };
-      expect(selectedIds(kind, [early, otherDraft, recordFor(otherKind, laterId, laterTime), otherInput])).toEqual({ latestAccepted: earlyId, latestSuccessful: earlyId });
+      expect(selectedIds(kind, [early, otherDraft, { ...newer, kind: "people", result: { ...newer.result, kind: "people" } }, otherInput])).toEqual({ latestAccepted: earlyId, latestSuccessful: earlyId });
       expect(selectedIds(kind, [{ ...newer, revision: nextRevision, result: { ...newer.result, revision: nextRevision } }])).toEqual({ latestAccepted: laterId, latestSuccessful: laterId });
       expect(selectedIds(kind, [])).toEqual({ latestAccepted: null, latestSuccessful: null });
       expect(selectedIds(kind, [otherInput])).toEqual({ latestAccepted: null, latestSuccessful: null });
@@ -300,26 +246,6 @@ describe("batch six analysis public contract", () => {
   });
 
   describe("nonempty typed analysis results", () => {
-    it("preserves both independently specified people and their registered thumbnails", () => {
-      const record = peopleRecord();
-      expect(api.miniToolAnalysisRecordSchema.parse(record)).toEqual(record);
-    });
-
-    it.each([
-      { x: 0.8, y: 0.2, width: 0.3, height: 0.4 },
-      { x: 0.1, y: 0.8, width: 0.3, height: 0.4 },
-    ])("rejects a face box extending beyond the source %j", (faceBox) => {
-      const record = peopleRecord();
-      const people = fixturePeople(record);
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, people: [{ ...people[0], faceBox }, people[1]] } }).success).toBe(false);
-    });
-
-    it("rejects repeated person IDs even when their registered thumbnails differ", () => {
-      const record = peopleRecord();
-      const people = fixturePeople(record);
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, people: [people[0], { ...people[1], personId: people[0]?.personId }] } }).success).toBe(false);
-    });
-
     it("preserves the independently specified nonempty scene cuts", () => {
       const record = recordFor("scene_cuts");
       const nonempty = { ...record, result: { ...record.result, cuts: [{ frameIndex: 25, detectionScore: 0.7 }, { frameIndex: 75, detectionScore: 0.8 }] } };
@@ -331,44 +257,10 @@ describe("batch six analysis public contract", () => {
       expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, cuts: [{ frameIndex: 125, detectionScore: 0.7 }] } }).success).toBe(false);
     });
 
-    it.each<AnalysisKind>(["people", "tracked_mask"])("%s result anchor index matches the frozen input", (kind) => {
-      const record = recordFor(kind);
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, anchor: { frameIndex: 4 } } }).success).toBe(false);
-    });
-  });
-
-  describe("tracking artifact contract", () => {
-    it.each(["rle"])("requires the registered %s artifact", (role) => {
-      const record = recordFor("tracked_mask");
-      const artifactRefs = fixtureArtifacts(record).filter((artifact) => artifact.role !== role);
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, artifactRefs } }).success).toBe(false);
-    });
-
-    it.each(["rle"])("rejects a repeated %s artifact role", (role) => {
-      const record = recordFor("tracked_mask");
-      const artifacts = fixtureArtifacts(record);
-      const artifactRefs = [...artifacts, artifacts.find((artifact) => artifact.role === role)];
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, artifactRefs } }).success).toBe(false);
-    });
-
-    // Execution design §10.3: a tracked mask registers its RLE alone; the clip, binary mask and polarity are gone.
-    it.each(["normalized_clip", "binary_mask"])("rejects a %s artifact beside the RLE", (role) => {
-      const record = recordFor("tracked_mask");
-      const rle = fixtureArtifacts(record)[0]!;
-      const artifactRefs = [rle, { ...rle, role, assetId: "30000000-0000-4000-8000-000000000002" }];
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, artifactRefs } }).success).toBe(false);
-    });
-
-    it("rejects the retired binary mask polarity", () => {
-      const record = recordFor("tracked_mask");
-      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...record, result: { ...record.result, polarity: { remove: 0, keep: 255 } } }).success).toBe(false);
-    });
   });
 
   it.each([
-    ["people", "468a01a4f422d72908214d61573b4d13720cf5d0c32d093bf34a5bcaec07c737"],
     ["scene_cuts", "2d9dfe5d020cba42028e4112bb584093bcf0032361a29ae6533ded981fffdbb8"],
-    ["tracked_mask", "23ad477494dc3c30f6c14585f56b2351ffebc13ffaca1867c0b68376a9b90e3e"],
   ] as const)("matches the independent version-one %s fingerprint golden value", async (kind, expected) => {
     expect(await api.fingerprintMiniToolAnalysisInput(expectedInput(kind))).toBe(expected);
   });
@@ -421,26 +313,11 @@ describe("batch six analysis public contract", () => {
     });
   });
 
-  it.each<AnalysisKind>(["people", "tracked_mask"])("%s anchor changes invalidate reuse", async (kind) => {
-    const source = inputFor(kind);
-    const original = await api.fingerprintMiniToolAnalysisInput(api.projectMiniToolAnalysisInput(source));
-    for (const anchor of [{ frameIndex: 4 }, { frameIndex: 2 }]) {
-      expect(await api.fingerprintMiniToolAnalysisInput(api.projectMiniToolAnalysisInput({ ...source, params: { ...source.params, anchor } }))).not.toBe(original);
-    }
-  });
-
-  it.each<AnalysisKind>(["scene_cuts", "tracked_mask"])("%s range changes invalidate reuse", async (kind) => {
+  it.each<AnalysisKind>(["scene_cuts"])("%s range changes invalidate reuse", async (kind) => {
     const source = inputFor(kind);
     expect(await api.fingerprintMiniToolAnalysisInput(api.projectMiniToolAnalysisInput({ ...source, params: { ...source.params, range: { start: 1, end: 4 } } }))).not.toBe(await api.fingerprintMiniToolAnalysisInput(api.projectMiniToolAnalysisInput(source)));
   });
 
-  it("tracks region and tracking prompt changes independently of erasure parameters", async () => {
-    const source = inputFor("tracked_mask");
-    const original = await api.fingerprintMiniToolAnalysisInput(api.projectMiniToolAnalysisInput(source));
-    for (const params of [{ ...source.params, region: { box: { x: 0.2, y: 0.2, width: 0.3, height: 0.4 }, points: [] } }, { ...source.params, trackingPrompt: "the person on the right" }]) {
-      expect(await api.fingerprintMiniToolAnalysisInput(api.projectMiniToolAnalysisInput({ ...source, params }))).not.toBe(original);
-    }
-  });
 });
 
 describe("same-project copied analysis references", () => {
@@ -449,8 +326,7 @@ describe("same-project copied analysis references", () => {
   it.each<AnalysisKind>(kinds)("reuses %s through a matching copied reference without rewriting acceptance", (kind) => {
     const record = recordFor(kind);
     const before = structuredClone(record);
-    const toolId = kind === "people" ? "video.lip-sync" : kind === "scene_cuts" ? "video.split" : "video.erase";
-    const reference = { version: 1, draftId: copiedDraftId, toolId, kind, analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint };
+    const reference = { version: 1, draftId: copiedDraftId, toolId: "video.split", kind, analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint };
     expect(api.selectMiniToolAnalyses([record], { draftId: copiedDraftId, kind, inputFingerprint: record.inputFingerprint, references: [reference] }))
       .toEqual({ latestAccepted: record, latestSuccessful: record });
     expect(record).toEqual(before);
@@ -461,21 +337,21 @@ describe("same-project copied analysis references", () => {
     { draftId: "20000000-0000-4000-8000-000000000003" },
     { analysisRunId: laterId },
     { inputFingerprint: "a".repeat(64) },
-    { kind: "scene_cuts", toolId: "video.split" },
+    { kind: "people", toolId: "video.lip-sync" },
     { toolId: "video.erase" },
     { version: 2 },
   ])("does not widen reuse for a missing or mismatched copied reference %j", (change) => {
-    const record = recordFor("people");
-    const reference = { version: 1, draftId: copiedDraftId, toolId: "video.lip-sync", kind: "people", analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint, ...change };
+    const record = recordFor("scene_cuts");
+    const reference = { version: 1, draftId: copiedDraftId, toolId: "video.split", kind: "scene_cuts", analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint, ...change };
     const references = Object.keys(change).length === 0 ? [] : [reference];
-    expect(api.selectMiniToolAnalyses([record], { draftId: copiedDraftId, kind: "people", inputFingerprint: record.inputFingerprint, references }))
+    expect(api.selectMiniToolAnalyses([record], { draftId: copiedDraftId, kind: "scene_cuts", inputFingerprint: record.inputFingerprint, references }))
       .toEqual({ latestAccepted: null, latestSuccessful: null });
   });
 
   it("requires the current source dependency fingerprint even when the copied reference matches", () => {
-    const record = recordFor("people");
-    const reference = { version: 1, draftId: copiedDraftId, toolId: "video.lip-sync", kind: "people", analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint };
-    expect(api.selectMiniToolAnalyses([record], { draftId: copiedDraftId, kind: "people", inputFingerprint: "c".repeat(64), references: [reference] }))
+    const record = recordFor("scene_cuts");
+    const reference = { version: 1, draftId: copiedDraftId, toolId: "video.split", kind: "scene_cuts", analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint };
+    expect(api.selectMiniToolAnalyses([record], { draftId: copiedDraftId, kind: "scene_cuts", inputFingerprint: "c".repeat(64), references: [reference] }))
       .toEqual({ latestAccepted: null, latestSuccessful: null });
   });
 });

@@ -2,26 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { z } from "zod";
-import { miniToolAnalysisInputSchema, miniToolAnchorSchema, type MiniToolAnalysisKind } from "@shared/mini-tools/analysis-input.js";
+import { miniToolAnalysisInputSchema, type MiniToolAnalysisKind } from "@shared/mini-tools/analysis-input.js";
 import { canonicalMiniToolValue } from "@shared/mini-tools/canonical-value.js";
 import { videoToolAnalysisRefSchema } from "@shared/mini-tools/video-draft.js";
 
 const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
 // Results are on the grid (frames-split §10.12 analysis-record.ts row): grid frame numbers at the grid fps.
 const fpsSchema = z.strictObject({ numerator: z.number().int().positive(), denominator: z.number().int().positive() });
-const frameMetadataSchema = z.strictObject({
-  width: z.number().int().positive(), height: z.number().int().positive(),
-  frameCount: z.number().int().positive(), fps: fpsSchema,
-});
-
-/** References to registered bytes; their MIME and media kind retain ingest truth. */
-export const miniToolAnalysisArtifactSchema = z.strictObject({
-  role: z.enum(["thumbnail", "rle"]),
-  assetId: z.string().uuid(), canonicalURL: z.string().url(), contentHash: hashSchema,
-  kind: z.enum(["image", "video", "audio", "document"]),
-  mimeType: z.string().min(1), size: z.number().int().nonnegative(),
-  frameMetadata: frameMetadataSchema.nullable(),
-});
 
 export const miniToolSourceBindingSchema = z.strictObject({
   assetId: z.string().uuid(), contentHash: hashSchema, canonicalURL: z.string().url(),
@@ -35,39 +22,20 @@ const identityShape = {
   binding: miniToolSourceBindingSchema, analysisInput: miniToolAnalysisInputSchema,
   inputFingerprint: hashSchema,
 };
-const normalizedCoordinate = z.number().min(0).max(1);
-const personSchema = z.strictObject({
-  personId: z.string().min(1),
-  faceBox: z.strictObject({ x: normalizedCoordinate, y: normalizedCoordinate, width: z.number().positive().max(1), height: z.number().positive().max(1) })
-    .refine((box) => box.x + box.width <= 1 && box.y + box.height <= 1),
-  artifactRefs: z.array(miniToolAnalysisArtifactSchema),
-});
 
 /** The owned result format of each analysis; no provider result shape is stored. */
 export const miniToolAnalysisResultSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ ...identityShape, kind: z.literal("people"), anchor: miniToolAnchorSchema, people: z.array(personSchema) }),
   z.strictObject({ ...identityShape, kind: z.literal("scene_cuts"), fps: fpsSchema, frameCount: z.number().int().positive(), cuts: z.array(z.strictObject({ frameIndex: z.number().int().nonnegative(), detectionScore: z.number() })) }),
-  z.strictObject({
-    ...identityShape, kind: z.literal("tracked_mask"), ...frameMetadataSchema.shape,
-    anchor: miniToolAnchorSchema, regionFingerprint: hashSchema,
-    artifactRefs: z.array(miniToolAnalysisArtifactSchema),
-  }),
 ]).superRefine((result, ctx) => {
   if (result.analysisInput.kind !== result.kind) ctx.addIssue({ code: "custom", path: ["analysisInput", "kind"], message: "Analysis kind does not match frozen input" });
   if (result.binding.canonicalURL !== result.analysisInput.sourceURL) ctx.addIssue({ code: "custom", path: ["analysisInput", "sourceURL"], message: "Frozen source differs from registered binding" });
-  if ("anchor" in result && "anchor" in result.analysisInput && canonicalMiniToolValue(result.anchor) !== canonicalMiniToolValue(result.analysisInput.anchor)) ctx.addIssue({ code: "custom", path: ["anchor"], message: "Result anchor differs from frozen input" });
-  if (result.kind === "people" && new Set(result.people.map((person) => person.personId)).size !== result.people.length) ctx.addIssue({ code: "custom", path: ["people"], message: "Candidate person identities must be unique" });
-  if (result.kind === "scene_cuts" && result.cuts.some((cut) => cut.frameIndex >= result.frameCount)) ctx.addIssue({ code: "custom", path: ["cuts"], message: "Cut index lies outside the source frame set" });
-  if (result.kind === "tracked_mask") {
-    // Execution design §10.3: the joined RLE is the one artifact.
-    if (result.artifactRefs.length !== 1 || result.artifactRefs[0]!.role !== "rle") ctx.addIssue({ code: "custom", path: ["artifactRefs"], message: "Expected exactly one rle artifact" });
-  }
+  if (result.cuts.some((cut) => cut.frameIndex >= result.frameCount)) ctx.addIssue({ code: "custom", path: ["cuts"], message: "Cut index lies outside the source frame set" });
 });
 
 /** Common read contract used by acceptance, refresh and collaborator responses. */
 export const miniToolAnalysisRecordSchema = z.strictObject({
   ...identityShape,
-  kind: z.enum(["people", "scene_cuts", "tracked_mask"]),
+  kind: z.enum(["scene_cuts"]),
   status: z.enum(["pending", "running", "completed", "failed"]),
   result: miniToolAnalysisResultSchema.nullable(),
   error: z.record(z.string(), z.json()).nullable(),
@@ -88,7 +56,6 @@ export const miniToolAnalysisRecordSchema = z.strictObject({
 export type MiniToolAnalysisRecord = z.infer<typeof miniToolAnalysisRecordSchema>;
 export type MiniToolAnalysisResult = z.infer<typeof miniToolAnalysisResultSchema>;
 export type MiniToolSourceBinding = z.infer<typeof miniToolSourceBindingSchema>;
-export type MiniToolAnalysisArtifact = z.infer<typeof miniToolAnalysisArtifactSchema>;
 
 /** Selects the newest progress and independently the newest reusable success. */
 export interface MiniToolAnalysisSelection {

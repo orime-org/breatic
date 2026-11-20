@@ -19,9 +19,7 @@ const requestIdentity = {
 
 /** Editable analysis inputs shared by the browser and admission endpoint. */
 export const miniToolAnalysisRequestSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ ...requestIdentity, kind: z.literal("people"), params: miniToolAnalysisInputSchema.options[0].pick({ anchor: true }) }),
-  z.strictObject({ ...requestIdentity, kind: z.literal("scene_cuts"), params: miniToolAnalysisInputSchema.options[1].pick({ range: true }) }),
-  z.strictObject({ ...requestIdentity, kind: z.literal("tracked_mask"), params: miniToolAnalysisInputSchema.options[2].pick({ range: true, anchor: true, region: true, trackingPrompt: true }) }),
+  z.strictObject({ ...requestIdentity, kind: z.literal("scene_cuts"), params: miniToolAnalysisInputSchema.options[0].pick({ range: true }) }),
 ]);
 
 export type MiniToolAnalysisRequest = z.infer<typeof miniToolAnalysisRequestSchema>;

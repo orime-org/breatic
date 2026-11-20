@@ -453,11 +453,9 @@ describe('E2-5 one key per sub-job and the grid recipe shapes (§5.4 「job id�
   const TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
   const CHUNK_A = '6c3b1d2e-0a4f-4d5e-9b8a-1c2d3e4f5a6b';
   const CHUNK_B = '7d4c2e3f-1b5a-4e6f-8c9b-2d3e4f5a6b7c';
-  const EDIT_INPUT = '8e5d3f4a-2c6b-4f7a-9d0c-3e4f5a6b7c8d';
   const chunkEncode = { kind: 'chunk_encode', inputId: INPUT, grid: GRID, source: ORIGINAL, frames: { start: 48, end: 50 }, target: TARGET };
   const stitch = { kind: 'stitch', inputId: INPUT, grid: GRID, chunks: [{ inputId: CHUNK_A, frames: { start: 0, end: 48 } }, { inputId: CHUNK_B, frames: { start: 48, end: 50 } }], audio: true, target: TARGET };
   const editStitch = { kind: 'stitch', grid: GRID, chunks: [{ inputId: CHUNK_A, frames: { start: 0, end: 48 } }, { inputId: CHUNK_B, frames: { start: 48, end: 50 } }], edit: { profile: 'edit_h264_intra_8bit_420' } };
-  const modelInput = { kind: 'prepare_model_input', inputId: INPUT, grid: GRID, source: ORIGINAL, frames: { start: 48, end: 50 }, target: TARGET, audio: true };
   const editEncode = {
     kind: 'edit_encode', inputId: INPUT, grid: GRID, source: ORIGINAL, frames: { start: 0, end: 25 }, edit: { profile: 'edit_h264_intra_10bit_444', crf: 15, preset: 'medium' },
     color: { matrix: 'bt2020nc', transfer: 'smpte2084', primaries: 'bt2020', range: 'tv', chromaLocation: 'left' }, toneMap: 'sdr-bt709',
@@ -488,10 +486,6 @@ describe('E2-5 one key per sub-job and the grid recipe shapes (§5.4 「job id�
     ['stitch without audio', { ...stitch, audio: false }, chunkInputs],
     ['the edit file stitch', editStitch, chunkInputs],
     ['chunk_encode for an odd, padded carrier', { ...chunkEncode, target: { ...TARGET, width: 162, height: 98, displayRect: { x: 0, y: 0, width: 161, height: 97 } } }, []],
-    // S6e E3b (§7.17, §5.3): the model input over its grid frames, written as an intermediate object.
-    ['prepare_model_input', modelInput, []],
-    ['prepare_model_input from the edit file with the original\'s audio', { ...modelInput, source: { kind: 'edit' }, audioInputId: EDIT_INPUT }, [{ inputId: EDIT_INPUT, storageKey: `${KEY}.original` }]],
-    ['prepare_model_input for an odd, padded picture without audio', { ...modelInput, audio: false, target: { ...TARGET, width: 162, height: 98, displayRect: { x: 0, y: 0, width: 161, height: 97 } } }, []],
   ] as const)('RC01 admits the %s recipe on a standard-4 job request', (_name, recipe, inputs) => {
     expect(miniToolPlanRecipeSchema.parse(recipe)).toEqual(recipe);
     const request = jobOf(recipe, [...inputs]);
@@ -526,8 +520,6 @@ describe('E2-5 one key per sub-job and the grid recipe shapes (§5.4 「job id�
     ['an edit encode of an unknown tier', { ...editEncode, edit: { ...editEncode.edit, profile: 'edit_hevc' } }],
     ['a grid count without its rate', { ...gridCount, fps: undefined }],
     ['the retired copy carrier', { kind: 'copy_carrier', inputId: INPUT, colorMatrix: 'bt601', origin: r(0), audio: null }],
-    ['a model input without its frames', { ...modelInput, frames: undefined }],
-    ['a model input without its audio field', { ...modelInput, audio: undefined }],
   ])('RC02 rejects %s', (_name, recipe) => {
     expect(miniToolPlanRecipeSchema.safeParse(chunkEncode).success).toBe(true);
     expect(miniToolPlanRecipeSchema.safeParse(JSON.parse(JSON.stringify(recipe))).success).toBe(false);

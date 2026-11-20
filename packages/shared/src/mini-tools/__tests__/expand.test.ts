@@ -69,12 +69,3 @@ describe("image.expand", () => {
     ).toBe(true);
   });
 });
-
-// Execution design §10.5 prompt row: video expand fills an empty prompt the same way image expand does.
-describe("video.expand prompt", () => {
-  it("declares the panel placeholder and an English default sent when the prompt is empty", () => {
-    const spec = miniToolById("video.expand");
-    expect(spec?.prompt?.placeholderKey).toBe("canvas.miniTool.videoUI.expandPrompt");
-    expect(spec?.prompt?.defaultText).toMatch(/^[A-Za-z][A-Za-z ,.'-]+$/);
-  });
-});

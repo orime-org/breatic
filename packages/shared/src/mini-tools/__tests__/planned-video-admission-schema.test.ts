@@ -97,13 +97,6 @@ describe("S5 planned frame and segment request contracts", () => {
     expect(miniToolPlannedRequestSchema.parse(body)).toEqual(body);
     expect(miniToolPlannedRequestSchema.safeParse(changed(body, String(path), value)).success).toBe(false);
   });
-  it("S5-Q03 planned remove-bg also names its tool input: its model input is prepared from the full ledger (E3-1)", () => {
-    const body = changed(request(), "tool", "video.remove-bg");
-    const removal = changed(changed(body, "draft.params", {}), "outputs.0.recipe", { kind: "remove-bg" });
-    expect(miniToolPlannedRequestSchema.parse(removal)).toEqual(removal);
-    expect(miniToolSubmissionSchema.parse(removal)).toEqual(removal);
-    expect(miniToolPlannedRequestSchema.safeParse(changed(removal, "presentation_ref", undefined)).success).toBe(false);
-  });
   it("S5-Q03 preserves the legacy container cut contract", () => {
     const body = { tool: "video.cut", project_id: "10000000-0000-4000-8000-000000000001", space_id: "20000000-0000-4000-8000-000000000001",
       node_ids: [NODES[0]], source: { url: "https://assets.example.test/source.mp4" }, params: { range: { start: 1, end: 3 } }, slots: {} };
@@ -112,15 +105,11 @@ describe("S5 planned frame and segment request contracts", () => {
   it("S5-Q04 accepts a new execution selecting original failed output identities", () => {
     expect(miniToolSubmissionSchema.parse(retry())).toEqual(retry());
   });
-  it("S6e-Q05 accepts a remove-bg failed-output retry: it reuses the frozen prepared input (inner#1306 §90 E3b; design §5.3, §7.11)", () => {
-    const body = changed(changed(retry(), "tool", "video.remove-bg"), "retry.outputIndexes", [0]);
-    expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
-  });
-  it("D24-1 accepts a lip-sync failed-output retry and still refuses a tool outside the planned set (execution design §9.4)", () => {
-    const body = changed(changed(retry(), "tool", "video.lip-sync"), "retry.outputIndexes", [0]);
+  it("accepts a split failed-output retry and still refuses a tool outside the planned set", () => {
+    const body = changed(changed(retry(), "tool", "video.split"), "retry.outputIndexes", [0]);
     expect(miniToolExecutionRetryRequestSchema.parse(body)).toEqual(body);
     expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
-    expect(miniToolExecutionRetryRequestSchema.safeParse(changed(body, "tool", "video.unknown")).success).toBe(false);
+    expect(miniToolExecutionRetryRequestSchema.safeParse(changed(body, "tool", "video.lip-sync")).success).toBe(false);
     expect(miniToolSubmissionSchema.safeParse(changed(body, "tool", "video.unknown")).success).toBe(false);
   });
   it.each([

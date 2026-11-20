@@ -34,10 +34,7 @@ type JobSpec =
   | { kind: 'presentation-edit-stitch'; jobId: string; attempt: number }
   | { kind: 'run-batch'; taskId: string; batch: number; attempt: number }
   | { kind: 'run-chunk'; taskId: string; output: number; chunk: number; attempt: number }
-  | { kind: 'run-stitch'; taskId: string; output: number; attempt: number }
-  | { kind: 'prep'; taskId: string; input: number; attempt: number }
-  | { kind: 'prep-chunk'; taskId: string; input: number; chunk: number; attempt: number }
-  | { kind: 'prep-stitch'; taskId: string; input: number; attempt: number };
+  | { kind: 'run-stitch'; taskId: string; output: number; attempt: number };
 interface EncodeApi {
   isHdrTransfer: (transfer: string | null | undefined) => boolean;
   videoCarrierGeometry: (display: { width: number; height: number }, maxShortSide: number) => { width: number; height: number; displayRect: Rect | null };
@@ -250,7 +247,6 @@ describe('JI §5.4 container job identities', () => {
     [{ kind: 'presentation-chunk', jobId: 'job-1', chunk: 0, attempt: 1 }, 'video-presentation:job-1:chunk:0:a1'],
     [{ kind: 'presentation-chunk', jobId: 'job-1', chunk: 3, attempt: 1 }, 'video-presentation:job-1:chunk:3:a1'],
     [{ kind: 'run-chunk', taskId: task, output: 0, chunk: 0, attempt: 1 }, `${task}:out:0:enc:0:a1`],
-    [{ kind: 'prep', taskId: task, input: 0, attempt: 1 }, `${task}:prep:0:a1`],
     [{ kind: 'presentation-stitch', jobId: 'job-1', attempt: 2 }, 'video-presentation:job-1:stitch:a2'],
     [{ kind: 'presentation-count', jobId: 'job-1', attempt: 1 }, 'video-presentation:job-1:count:a1'],
     [{ kind: 'presentation-edit', jobId: 'job-1', chunk: 2, attempt: 1 }, 'video-presentation:job-1:edit:2:a1'],
@@ -258,9 +254,6 @@ describe('JI §5.4 container job identities', () => {
     [{ kind: 'run-batch', taskId: task, batch: 0, attempt: 1 }, `${task}:batch:0:a1`],
     [{ kind: 'run-chunk', taskId: task, output: 2, chunk: 5, attempt: 3 }, `${task}:out:2:enc:5:a3`],
     [{ kind: 'run-stitch', taskId: task, output: 2, attempt: 1 }, `${task}:out:2:stitch:a1`],
-    [{ kind: 'prep', taskId: task, input: 1, attempt: 1 }, `${task}:prep:1:a1`],
-    [{ kind: 'prep-chunk', taskId: task, input: 1, chunk: 4, attempt: 2 }, `${task}:prep:1:enc:4:a2`],
-    [{ kind: 'prep-stitch', taskId: task, input: 1, attempt: 1 }, `${task}:prep:1:stitch:a1`],
   ] as const)('JI01 %o is %s', (spec, id) => {
     expect(required('videoContainerJobId')(spec)).toBe(id);
   });
@@ -271,7 +264,7 @@ describe('JI §5.4 container job identities', () => {
     ['a negative chunk', { kind: 'presentation-chunk', jobId: 'job-1', chunk: -1, attempt: 1 }],
     ['a fractional output', { kind: 'run-stitch', taskId: task, output: 0.5, attempt: 1 }],
     ['an empty job id', { kind: 'presentation-probe', jobId: '' }],
-    ['an empty task id', { kind: 'prep', taskId: '', input: 0, attempt: 1 }],
+    ['an empty task id', { kind: 'run-batch', taskId: '', batch: 0, attempt: 1 }],
   ] as const)('JI02 rejects %s', (_, spec) => {
     const id = required('videoContainerJobId');
     expect(() => id(spec as JobSpec)).toThrow(RangeError);
@@ -292,9 +285,6 @@ describe('JI §5.4 container job identities', () => {
       fc.record({ kind: fc.constant('run-batch' as const), taskId: name, batch: n, attempt: m }),
       fc.record({ kind: fc.constant('run-chunk' as const), taskId: name, output: n, chunk: n, attempt: m }),
       fc.record({ kind: fc.constant('run-stitch' as const), taskId: name, output: n, attempt: m }),
-      fc.record({ kind: fc.constant('prep' as const), taskId: name, input: n, attempt: m }),
-      fc.record({ kind: fc.constant('prep-chunk' as const), taskId: name, input: n, chunk: n, attempt: m }),
-      fc.record({ kind: fc.constant('prep-stitch' as const), taskId: name, input: n, attempt: m }),
     );
     fc.assert(fc.property(fc.uniqueArray(spec, { minLength: 2, maxLength: 40, selector: (value) => JSON.stringify(value) }), (specs) => {
       expect(new Set(specs.map(id)).size).toBe(specs.length);

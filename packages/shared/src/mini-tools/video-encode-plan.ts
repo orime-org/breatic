@@ -9,7 +9,7 @@
  */
 
 import { MINI_TOOL_JOB_MAX_OUTPUTS } from "@shared/mini-tools/types.js";
-import type { FrameRate, SourceDecodeKey } from "@shared/upload/frame-grid-rate.js";
+import type { SourceDecodeKey } from "@shared/upload/frame-grid-rate.js";
 
 /** How a presentation candidate gets its carrier (§7.1 route table). */
 export type VideoCarrierRoute = "encode" | "edit" | "reuse_edit" | "reuse";
@@ -83,11 +83,7 @@ export type VideoContainerJobSpec =
   | { kind: "presentation-edit-stitch"; jobId: string; attempt: number }
   | { kind: "run-batch"; taskId: string; batch: number; attempt: number }
   | { kind: "run-chunk"; taskId: string; output: number; chunk: number; attempt: number }
-  | { kind: "run-stitch"; taskId: string; output: number; attempt: number }
-  | { kind: "run-window"; taskId: string; output: number; chunk: number; attempt: number }
-  | { kind: "prep"; taskId: string; input: number; attempt: number }
-  | { kind: "prep-chunk"; taskId: string; input: number; chunk: number; attempt: number }
-  | { kind: "prep-stitch"; taskId: string; input: number; attempt: number };
+  | { kind: "run-stitch"; taskId: string; output: number; attempt: number };
 
 const HDR_TRANSFERS = new Set(["smpte2084", "arib-std-b67"]);
 const ROUTE_STAGES: Readonly<Record<VideoCarrierRoute, readonly VideoCarrierStage[]>> = {
@@ -290,8 +286,8 @@ export function packedPlaneWidth(packedWidth: number): number {
 }
 
 /**
- * Estimate a job whose only encoding is one AAC track (§5.4): its start plus the audio seconds over the AAC rate. A lip-sync
- * stem and the lip-sync stitch (its video chunks joined by packet copy) are such jobs.
+ * Estimate a job whose only encoding is one AAC track (§5.4): its start plus the audio seconds over the AAC rate. A
+ * presentation stitch (its video chunks joined by packet copy) is such a job.
  * @param audioSeconds - The audio seconds encoded.
  * @param rates - The encoder's start seconds and AAC rate.
  * @param rates.startSeconds - A job's start seconds.
@@ -419,7 +415,7 @@ export function videoContainerJobId(spec: VideoContainerJobSpec): string {
   const owner = "jobId" in spec ? spec.jobId : spec.taskId;
   if (owner.length === 0) throw new RangeError("A job or task id must not be empty");
   if ("attempt" in spec) positiveInteger(spec.attempt, "An attempt");
-  for (const key of ["chunk", "batch", "output", "input"]) if (key in spec) indexInteger(Reflect.get(spec, key) as number, `The ${key} index`);
+  for (const key of ["chunk", "batch", "output"]) if (key in spec) indexInteger(Reflect.get(spec, key) as number, `The ${key} index`);
   const a = "attempt" in spec ? `a${spec.attempt}` : "";
   switch (spec.kind) {
     case "presentation-probe": return `video-presentation:${owner}`;
@@ -431,10 +427,6 @@ export function videoContainerJobId(spec: VideoContainerJobSpec): string {
     case "run-batch": return `${owner}:batch:${spec.batch}:${a}`;
     case "run-chunk": return `${owner}:out:${spec.output}:enc:${spec.chunk}:${a}`;
     case "run-stitch": return `${owner}:out:${spec.output}:stitch:${a}`;
-    case "run-window": return `${owner}:out:${spec.output}:win:${spec.chunk}:${a}`;
-    case "prep": return `${owner}:prep:${spec.input}:${a}`;
-    case "prep-chunk": return `${owner}:prep:${spec.input}:enc:${spec.chunk}:${a}`;
-    case "prep-stitch": return `${owner}:prep:${spec.input}:stitch:${a}`;
   }
 }
 
@@ -480,205 +472,22 @@ export function batchVideoRunOutputs(
 export type FrameWindow = { start: number; end: number };
 /** The §5.4 job layout of frames and split, frozen at admission: batches of output indices, and the outputs encoded in chunks. */
 export type FramesExecutionLayout = { batches: number[][]; encodes: { outputIndex: number; chunks: FrameWindow[] }[] };
-/** Remove-background: the model input's preparation chunks. */
-export type RemovalExecutionLayout = { preparation: FrameWindow[] };
-/** Erase: the preparation chunks, the mask (`bria_mask`) and the model composite chunks. */
-export type CompositeExecutionLayout = { preparation: FrameWindow[]; composite: FrameWindow[] };
-/** Expand: the preparation chunks, the windows (each its own stage) and the model composite chunks (execution design §10.5). */
-export type ExpandExecutionLayout = { preparation: FrameWindow[]; composite: FrameWindow[]; windows: number };
-/**
- * Lip-sync: the preparation chunks, the people it generates for, the composite chunks and the jobs preparing the tracking
- * clips (execution design §10.2): `forward` the one prepare:fwd job, none when the clip is the preparation itself or
- * absent; `reverse` each prepare:rev job's window (`clipJobWindows`), stitched when there are several.
- */
-export type LipsyncExecutionLayout = { preparation: FrameWindow[]; persons: number; composite: FrameWindow[]; tracking: { forward: FrameWindow[]; reverse: FrameWindow[] } };
-/** Transitions: the encode chunks and the overlap window chunks on the output grid. */
-export type TransitionExecutionLayout = { encode: FrameWindow[]; window: FrameWindow[] };
-/** The job layout an execution freezes at admission, by tool. */
-export type MiniToolExecutionLayout =
-  | FramesExecutionLayout | RemovalExecutionLayout | CompositeExecutionLayout | ExpandExecutionLayout | LipsyncExecutionLayout | TransitionExecutionLayout;
+/** The job layout an execution freezes at admission. */
+export type MiniToolExecutionLayout = FramesExecutionLayout;
 /** A stage of a planned execution and the container jobs it sends at once. */
-export type MiniToolStageJobs = {
-  stage: "prepare" | "prepare_stitch" | "track_prepare" | "track_prepare_stitch" | "track_join" | "encode" | "stitch" | "faces" | "clip_stem" |
-    "mask" | "window" | "model_composite" | "composite";
-  jobs: number;
-};
+export type MiniToolStageJobs = { stage: "encode" | "stitch"; jobs: number };
 
 /**
  * The container jobs each stage of a frozen layout sends, in execution order, stages with no job left out (§5.4 limit row):
- * frames and split encode every batch and chunk, then stitch each chunked output; a prepared model input stitches its
- * chunks only when there are several; lip-sync prepares its tracking clips side by side and stitches a chunked reversed
- * one, joins each person's track (`track_join`), runs each person's faces and its clip and stem, then the composite; erase
- * makes its mask; expand runs its windows one after another (window and window_mask, and frame_at from the second
- * window); transitions encode the encode and window chunks; every composited or transitioned result is stitched once.
+ * frames and split encode every batch and chunk, then stitch each chunked output.
  * @param layout - The frozen layout.
  * @returns Each stage and its job count.
  * @throws {never} Never.
  */
 export function plannedStageJobs(layout: MiniToolExecutionLayout): MiniToolStageJobs[] {
   const stages: MiniToolStageJobs[] = [];
-  /**
-   * Record a stage when it has jobs.
-   * @param stage - The stage.
-   * @param jobs - Its job count.
-   * @throws {never} Never.
-   */
-  const add = (stage: MiniToolStageJobs["stage"], jobs: number): void => { if (jobs > 0) stages.push({ stage, jobs }); };
-  if ("batches" in layout) {
-    add("encode", layout.batches.length + layout.encodes.reduce((total, encode) => total + encode.chunks.length, 0));
-    add("stitch", layout.encodes.length);
-    return stages;
-  }
-  if ("encode" in layout) {
-    add("encode", layout.encode.length + layout.window.length);
-    add("stitch", 1);
-    return stages;
-  }
-  add("prepare", layout.preparation.length);
-  add("prepare_stitch", layout.preparation.length > 1 ? 1 : 0);
-  if ("persons" in layout) {
-    add("track_prepare", layout.tracking.forward.length + layout.tracking.reverse.length);
-    add("track_prepare_stitch", layout.tracking.reverse.length > 1 ? 1 : 0);
-    add("track_join", layout.persons);
-    add("faces", layout.persons);
-    add("clip_stem", layout.persons * 2);
-    add("composite", layout.composite.length);
-    add("stitch", 1);
-  } else if ("windows" in layout) {
-    for (let window = 0; window < layout.windows; window += 1) add("window", window === 0 ? 2 : 3);
-    add("model_composite", layout.composite.length);
-    add("stitch", 1);
-  } else if ("composite" in layout) {
-    add("mask", 1);
-    add("model_composite", layout.composite.length);
-    add("stitch", 1);
-  }
+  const encode = layout.batches.length + layout.encodes.reduce((total, item) => total + item.chunks.length, 0);
+  if (encode > 0) stages.push({ stage: "encode", jobs: encode });
+  if (layout.encodes.length > 0) stages.push({ stage: "stitch", jobs: layout.encodes.length });
   return stages;
-}
-
-/** A cost budget for transition chunks: the seconds one chunk's frames may take, and what each output frame costs. */
-export interface TransitionChunkBudget {
-  targetSeconds: number;
-  /** One output frame's work: each clip's decode it shows at that clip's own size, its encode, and a window frame's render. */
-  frameSeconds: (frame: number, window: boolean) => number;
-}
-
-/** The two-clip timeline on the output grid that transition chunks are planned on (§97 D15-3). */
-export interface TransitionChunkTimeline { frameCount: number; clips: readonly { startFrame: number; frameCount: number }[]; window: { startFrame: number; frameCount: number } | null }
-
-/**
- * The transition chunks on the output grid (§97 D15-4; frames-split §5.4): the window chunks partition the
- * overlap window, the encode chunks partition each clip's frames outside it, and no chunk exceeds the target; a Cut has
- * no window chunks. Chunks are sized by each output frame's own cost against the share, so a chunk holds as many frames as
- * its own clips' work allows (§97, the per-clip cost the quote sums).
- * @param timeline - The frame-grid timeline.
- * @param budget - The share in seconds and each output frame's cost.
- * @returns The encode and window chunks.
- * @throws {RangeError} When the share is not a positive finite number.
- */
-export function planTransitionChunks(timeline: TransitionChunkTimeline, budget: TransitionChunkBudget): { encode: FrameWindow[]; window: FrameWindow[] } {
-  if (!(Number.isFinite(budget.targetSeconds) && budget.targetSeconds > 0)) throw new RangeError("targetSeconds must be a positive finite number");
-  /**
-   * Split one region into the fewest chunks that fit the share, as even in cost as whole frames allow: a chunk ends at the
-   * last frame whose running cost stays within its even part; a split whose chunk would pass the share takes one chunk more.
-   * Under a uniform cost this is an even split by frames.
-   * @param from - The region's first frame.
-   * @param to - Its end.
-   * @param window - Whether it is the overlap window.
-   * @returns The chunks; none for an empty region.
-   * @throws {never} Never.
-   */
-  const chunk = (from: number, to: number, window: boolean): FrameWindow[] => {
-    if (to <= from) return [];
-    const costs = Array.from({ length: to - from }, (_, at) => budget.frameSeconds(from + at, window));
-    const before = [0];
-    for (const cost of costs) before.push(before.at(-1)! + cost);
-    const total = before.at(-1)!;
-    // A single frame costing more than the whole share still makes a chunk of one.
-    for (let count = Math.max(1, Math.ceil(total / budget.targetSeconds - 1e-9)); ; count += 1) {
-      const ends = Array.from({ length: count }, (_, at) => {
-        if (at === count - 1) return costs.length;
-        const part = (total * (at + 1)) / count;
-        let end = 0;
-        while (end < costs.length && before[end + 1]! <= part + 1e-9) end += 1;
-        return end;
-      });
-      const chunks = ends.map((end, at) => ({ start: from + (at === 0 ? 0 : ends[at - 1]!), end: from + end })).filter((part) => part.end > part.start);
-      if (count >= costs.length || chunks.every((part) => before[part.end - from]! - before[part.start - from]! <= budget.targetSeconds + 1e-9 || part.end - part.start === 1)) return chunks;
-    }
-  };
-  const window = timeline.window;
-  if (window === null) {
-    const boundary = timeline.clips[1]?.startFrame ?? timeline.frameCount;
-    return { encode: [...chunk(0, boundary, false), ...chunk(boundary, timeline.frameCount, false)], window: [] };
-  }
-  const end = window.startFrame + window.frameCount;
-  return {
-    encode: [...chunk(0, window.startFrame, false), ...chunk(end, timeline.frameCount, false)],
-    window: chunk(window.startFrame, end, true),
-  };
-}
-
-/**
- * Where a clip's picture sits on a transition's output frame (§7.17 transition output profile row; the preview's `contain`):
- * scaled by the smaller of the two side ratios, rounded to whole pixels, and centred. Every encode chunk and every window
- * chunk of the clip uses this one rectangle.
- * @param display - The clip's display size.
- * @param display.width - Its width.
- * @param display.height - Its height.
- * @param output - The output frame.
- * @param output.width - Its width.
- * @param output.height - Its height.
- * @returns The rectangle in output pixels.
- * @throws {never} Never.
- */
-export function transitionFitRect(display: { width: number; height: number }, output: { width: number; height: number }): { x: number; y: number; width: number; height: number } {
-  const scale = Math.min(output.width / display.width, output.height / display.height);
-  const width = Math.max(1, Math.min(output.width, Math.round(display.width * scale)));
-  const height = Math.max(1, Math.min(output.height, Math.round(display.height * scale)));
-  return { x: Math.floor((output.width - width) / 2), y: Math.floor((output.height - height) / 2), width, height };
-}
-
-/** The SDR BT.709 colour every transition output is written in. */
-export interface TransitionOutputColor { matrix: "bt709"; range: "tv"; primaries: "bt709"; transfer: "bt709" }
-/** The one output profile both clips of a transition are encoded to (frames-split §7.17 transition output profile row). */
-export interface TransitionOutputProfile {
-  width: number; height: number; fps: FrameRate; timeBase: FrameRate; pixFmt: "yuv420p" | "yuva420p";
-  color: TransitionOutputColor; codec: "h264" | "vp9"; encode: { crf: number; preset: string }; alpha: boolean;
-}
-/** What a clip's selected P gives the profile: its display size, its grid fps and whether it is transparent. */
-export interface TransitionClipPlan {
-  display: { width: number; height: number; fps: FrameRate };
-  alpha: boolean;
-}
-
-/**
- * The transition output profile from the two clips' selected P, in timeline order (§7.17 transition output profile row): the first
- * clip's display size, odd sides of an opaque output taken down to even (one up to two) and a transparent one kept; the
- * first clip's grid fps; alpha when either clip is transparent, then VP9 and yuva420p, else H.264 and yuv420p; time base
- * 1/fps; SDR BT.709 colour.
- * @param first - The first clip.
- * @param second - The second clip.
- * @param config - The presentation encode settings.
- * @param config.encode - Its crf and preset.
- * @param config.encode.crf - The crf.
- * @param config.encode.preset - The x264 preset.
- * @returns The profile.
- * @throws {never} Never.
- */
-export function transitionOutputProfile(first: TransitionClipPlan, second: TransitionClipPlan, config: { encode: { crf: number; preset: string } }): TransitionOutputProfile {
-  const alpha = first.alpha || second.alpha;
-  const { fps } = first.display;
-  /**
-   * An opaque side taken down to even, one up to two; a transparent side kept.
-   * @param side - The display side.
-   * @returns The output side.
-   * @throws {never} Never.
-   */
-  const even = (side: number): number => (alpha ? side : Math.max(2, side - (side % 2)));
-  return {
-    width: even(first.display.width), height: even(first.display.height), fps: { ...fps }, timeBase: { numerator: fps.denominator, denominator: fps.numerator },
-    pixFmt: alpha ? "yuva420p" : "yuv420p", color: { matrix: "bt709", range: "tv", primaries: "bt709", transfer: "bt709" },
-    codec: alpha ? "vp9" : "h264", encode: { crf: config.encode.crf, preset: config.encode.preset }, alpha,
-  };
 }

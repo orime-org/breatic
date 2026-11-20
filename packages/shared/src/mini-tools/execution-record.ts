@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { miniToolSourceBindingSchema, type MiniToolSourceBinding } from "@shared/mini-tools/analysis-record.js";
-import { miniToolExecutionRecipeSchema, type MiniToolPlannedRequest } from "@shared/mini-tools/planned-request-schema.js";
+import { MINI_TOOL_RETRY_TOOLS, miniToolExecutionRecipeSchema, type MiniToolPlannedRequest } from "@shared/mini-tools/planned-request-schema.js";
 
 /** Public registered cover facts, independent from provider presentation derivatives. */
 export interface MiniToolExecutionCover {
@@ -103,3 +103,27 @@ export const miniToolExecutionRecordSchema: z.ZodType<MiniToolExecutionRecord> =
     ctx.addIssue({ code: "custom", message: "Late media belongs to a preserved failed execution" });
   }
 });
+
+/**
+ * Whether a planned run's failed output can be retried, the one decision the terminal commit's pin release, retry
+ * admission and the node share (frames-split §7.15 end of retryability): a frames or split output's failure is retryable,
+ * a tool without retry never is.
+ * @param tool - The run's tool.
+ * @returns True when retrying the failed output can succeed.
+ * @throws {never} Never.
+ */
+export function plannedFailureRetryable(tool: string): boolean {
+  return (MINI_TOOL_RETRY_TOOLS as readonly string[]).includes(tool);
+}
+
+/**
+ * Whether one output of a planned run can be retried now (frames-split §7.15 end of retryability): it failed, no admitted
+ * retry has taken it over, and its failure is one a retry can clear (`plannedFailureRetryable`).
+ * @param tool - The run's tool.
+ * @param output - The run's output.
+ * @returns True when the output offers a retry.
+ * @throws {never} Never.
+ */
+export function plannedOutputRetryable(tool: string, output: Pick<MiniToolExecutionOutput, "result" | "takenOver">): boolean {
+  return output.result?.status === "failed" && output.takenOver !== true && plannedFailureRetryable(tool);
+}

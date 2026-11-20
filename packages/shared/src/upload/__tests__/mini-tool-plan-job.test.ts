@@ -79,7 +79,6 @@ describe("planned media job requests", () => {
     frameAt(INPUT_A, 0),
     { kind: "segment", inputId: INPUT_A, grid: GRID, source: SOURCE_REF, frames: { start: 25, end: 53 },
       target: { width: 32, height: 18, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium", format: "mp4-h264" }, audio: true },
-    { kind: "people", inputId: INPUT_A, grid: GRID, source: SOURCE_REF, frameIndex: 1, target: FRAME_TARGET, profile: { id: "opencv-yunet-2023mar", version: "2023mar", weightsHash: "8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4", params: { scoreThreshold: 0.6, nmsThreshold: 0.3, topK: 5000 } } },
     { kind: "scene_cuts", inputId: INPUT_A, grid: GRID, source: { kind: "edit" }, frames: { start: 0, end: 125 }, profile,
       target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none" } },
   ])("accepts the complete owned $kind recipe", (recipe) => {
@@ -197,7 +196,7 @@ describe("planned media job output reports", () => {
   });
 
   it("reads a job ingest expired at its deadline as failed with reason expired, and still reads every older reason", () => {
-    for (const reason of ["expired", "tool_failed", "no_audio_track", "internal", "empty_foreground", "no_face", "tracking_output_mismatch", "model_output_mismatch"]) {
+    for (const reason of ["expired", "tool_failed", "no_audio_track", "internal"]) {
       const failed = { schemaVersion: 2, state: "failed", reason, outputs: [], usage: null };
       expect(readMiniToolPlanJobReport(request, failed)).toEqual(failed);
     }
@@ -213,14 +212,5 @@ describe("planned media job output reports", () => {
     { ...report, schemaVersion: 3 },
   ])("rejects missing, duplicated, foreign or mismatched output identities", (invalid) => {
     expect(() => readMiniToolPlanJobReport(request, invalid)).toThrow();
-  });
-});
-
-// inner#1306 test plan §97 items 2 and 3 (frames-split §7.17 recipe table; D11-3, D11-4): the planned job lane names the
-// transition window and the erase/expand model composite as recipe kinds of its own union. Their fields beyond the kind
-// are not asserted here (§97 需要确认: field names not fixed by the design).
-describe("the recipe kinds of the batch-six container jobs (§97 D11-3, D11-4)", () => {
-  it.each(["transition_window", "model_composite"])("RK01 the recipe union has the %s kind", (kind) => {
-    expect(miniToolPlanRecipeSchema.options.map((option) => option.shape.kind.value)).toContain(kind);
   });
 });

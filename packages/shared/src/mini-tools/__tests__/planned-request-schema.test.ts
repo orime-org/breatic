@@ -17,7 +17,7 @@ import {
 
 // inner#1306: the independent HTTP contract supplies this complete literal and digest.
 const BODY: MiniToolPlannedRequest = {
-  tool: "video.remove-bg",
+  tool: "video.focus-crop",
   project_id: "10000000-0000-4000-8000-000000000001",
   space_id: "20000000-0000-4000-8000-000000000001",
   run_id: "50000000-0000-4000-8000-000000000001",
@@ -31,14 +31,14 @@ const BODY: MiniToolPlannedRequest = {
       mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" },
     },
     inputs: [],
-    params: {},
+    params: { frameIndex: 12, crop: { x: 10, y: 20, width: 300, height: 200 }, sourceName: "clip" },
   },
   analysis_refs: [],
-  outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
+  outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "frame", frameIndex: 12, crop: { x: 10, y: 20, width: 300, height: 200 } } }],
   // S6e E3-1 (inner#1306 §90): every video tool request names its tool input; the digest was recomputed with Python.
   presentation_ref: { source: { toolInputId: "e989392b50af768e7d1a42bdf29921f364c87e90bdb34ddc633209ffe22a19ec", planSha256: "bf04fa15ca5b369ad3012912dacce70ff0ec47c9779c5c1f87e461505e3c4ea1" } },
 };
-const BODY_HASH = "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725";
+const BODY_HASH = "1544517960125b7b00fab2fa65f831ec121e3a67fbed40b592b0d016a7b2edd5";
 
 const LEGACY_MODEL: MiniToolRequest = {
   tool: "image.remove-bg",
@@ -61,8 +61,8 @@ const LEGACY_CONTAINER: MiniToolRequest = {
 const REFERENCE: VideoToolAnalysisRef = {
   version: 1,
   draftId: BODY.draft.draftId,
-  toolId: "video.erase",
-  kind: "tracked_mask",
+  toolId: "video.split",
+  kind: "scene_cuts",
   analysisRunId: "90000000-0000-4000-8000-000000000001",
   inputFingerprint: "a".repeat(64),
 };
@@ -99,7 +99,7 @@ describe("planned video submission schema", () => {
       presentation_ref: (BODY as { presentation_ref: unknown }).presentation_ref,
       outputs: BODY.outputs,
       analysis_refs: BODY.analysis_refs,
-      draft: { params: {}, inputs: [], source: BODY.draft.source, revision: BODY.draft.revision, draftId: BODY.draft.draftId, version: 1 },
+      draft: { params: BODY.draft.params, inputs: [], source: BODY.draft.source, revision: BODY.draft.revision, draftId: BODY.draft.draftId, version: 1 },
       run_id: BODY.run_id,
       space_id: BODY.space_id,
       project_id: BODY.project_id,
@@ -120,7 +120,7 @@ describe("planned video submission schema", () => {
 
   it("H03 rejects the legacy-shaped body for a planned tool", () => {
     const oldShape = {
-      tool: "video.remove-bg", project_id: BODY.project_id, space_id: BODY.space_id,
+      tool: "video.focus-crop", project_id: BODY.project_id, space_id: BODY.space_id,
       node_ids: [BODY.outputs[0]!.nodeId], source: { url: BODY.draft.source.canonicalURL }, params: {}, slots: {},
     };
     expect(miniToolPlannedRequestSchema.safeParse(oldShape).success).toBe(false);
@@ -143,8 +143,8 @@ describe("planned video submission schema", () => {
     { anchor: { frameIndex: 0, pts: 0 } },
     { argv: ["ffmpeg", "-version"] },
     { model: "another-model" },
-  ])("H04 refuses undeclared remove-bg params %j", (params) => {
-    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, draft: { ...BODY.draft, params } }).success).toBe(false);
+  ])("H04 refuses undeclared focus crop params %j", (params) => {
+    expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, draft: { ...BODY.draft, params: { ...BODY.draft.params, ...params } } }).success).toBe(false);
   });
 
   it.each([-1, 0.5, Number.MAX_SAFE_INTEGER + 1])("H05 rejects invalid output index %s", (outputIndex) => {
@@ -158,9 +158,9 @@ describe("planned video submission schema", () => {
   it.each([
     {},
     { kind: "frame" },
-    { kind: "remove-bg", argv: ["ffmpeg", "-version"] },
-    { kind: "remove-bg", model: "another-model" },
-    { kind: "remove-bg", schemaVersion: 2 },
+    { kind: "frame", frameIndex: 12, crop: { x: 10, y: 20, width: 300, height: 200 }, argv: ["ffmpeg", "-version"] },
+    { kind: "frame", frameIndex: 12, crop: { x: 10, y: 20, width: 300, height: 200 }, model: "another-model" },
+    { kind: "frame", frameIndex: 12, crop: { x: 10, y: 20, width: 300, height: 200 }, schemaVersion: 2 },
   ])("H05 rejects a non-public or widened recipe %j", (recipe) => {
     expect(miniToolPlannedRequestSchema.safeParse({ ...BODY, outputs: [{ ...BODY.outputs[0], recipe }] }).success).toBe(false);
   });
@@ -196,29 +196,22 @@ describe("planned video submission schema", () => {
     const nodeData = {
       [`miniToolAnalysis:${REFERENCE.analysisRunId}`]: REFERENCE,
       "miniToolAnalysis:90000000-0000-4000-8000-000000000002": {
-        ...REFERENCE, analysisRunId: "90000000-0000-4000-8000-000000000002", toolId: "video.lip-sync", kind: "people",
+        ...REFERENCE, analysisRunId: "90000000-0000-4000-8000-000000000002", toolId: "video.erase", kind: "tracked_mask",
       },
       "miniToolAnalysis:90000000-0000-4000-8000-000000000003": {
-        ...REFERENCE, analysisRunId: "90000000-0000-4000-8000-000000000003", toolId: "video.split", kind: "scene_cuts",
+        ...REFERENCE, analysisRunId: "90000000-0000-4000-8000-000000000003",
       },
     };
     const references = videoToolAnalysisRefs(nodeData);
-    expect(references.map((reference) => reference.kind)).toEqual(["tracked_mask", "people", "scene_cuts"]);
+    expect(references.map((reference) => reference.kind)).toEqual(["scene_cuts", "scene_cuts"]);
     const tool: string = BODY.tool;
     const selected = references.filter((reference) => reference.toolId === tool);
     expect(selected).toEqual([]);
     expect(miniToolPlannedRequestSchema.parse({ ...BODY, analysis_refs: selected })).toEqual(BODY);
   });
 
-  it("preserves valid additional draft inputs and references without inventing a zero-count cap", () => {
-    const candidate = {
-      ...BODY,
-      draft: {
-        ...BODY.draft,
-        inputs: [{ inputId: "a0000000-0000-4000-8000-000000000001", url: "https://assets.example.test/audio/extra.m4a" }],
-      },
-      analysis_refs: [REFERENCE],
-    };
+  it("preserves valid additional references without inventing a zero-count cap", () => {
+    const candidate = { ...BODY, analysis_refs: [REFERENCE] };
     expect(miniToolPlannedRequestSchema.parse(candidate)).toEqual(candidate);
   });
 

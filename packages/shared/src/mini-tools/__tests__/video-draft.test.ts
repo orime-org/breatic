@@ -5,7 +5,7 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import * as miniTools from "@shared/mini-tools/index.js";
 
-const toolIds = ["video.expand", "video.erase", "video.lip-sync", "video.remove-bg", "video.extract-frames", "video.transitions", "video.split"] as const;
+const toolIds = ["video.extract-frames", "video.split"] as const;
 type VideoToolId = typeof toolIds[number];
 type ObjectValue = Record<string, unknown>;
 interface Draft {
@@ -20,7 +20,7 @@ interface AnalysisRef {
   version: 1;
   draftId: string;
   toolId: VideoToolId;
-  kind: "people" | "scene_cuts" | "tracked_mask";
+  kind: "scene_cuts";
   analysisRunId: string;
   inputFingerprint: string;
 }
@@ -40,16 +40,9 @@ const hostId = "30000000-0000-4000-8000-000000000001";
 const inputId = "40000000-0000-4000-8000-000000000001";
 const runId = "50000000-0000-4000-8000-000000000001";
 const otherRunId = "50000000-0000-4000-8000-000000000002";
-const dialogueId = "60000000-0000-4000-8000-000000000001";
 const source = { nodeId: hostId, canonicalURL: "https://media.example.test/source.mp4", mediaInfo: { width: 960, height: 540, duration: 5, mimeType: "video/mp4" } };
-const anchor = { frameIndex: 3 };
 const params: Record<VideoToolId, ObjectValue> = {
-  "video.expand": { frame: { x: 0, y: 0, width: 1, height: 1 }, ratio: "free", prompt: "" },
-  "video.erase": { range: { start: 0, end: 5 }, anchor, region: { box: null, points: [] }, trackingPrompt: "" },
-  "video.lip-sync": { anchor, dialogues: [{ dialogueId, personId: null, analysisRunId: null, audioInputId: null, startTime: 0 }], syncMode: "cut_off" },
-  "video.remove-bg": {},
   "video.extract-frames": { mode: "current", frameIndex: 3 },
-  "video.transitions": { clips: [] },
   "video.split": { cuts: [1], sensitivity: 0.4 },
 };
 
@@ -77,12 +70,6 @@ function refFor(toolId: VideoToolId, kind: AnalysisRef["kind"]): AnalysisRef {
 describe("persistent video tool draft contract", () => {
   it("exports the schema, reader and reference entry points", () => {
     expect(["videoToolDraftSchema", "readVideoToolDraft", "videoToolAnalysisRefSchema", "videoToolDraftAssetUrls", "videoToolAnalysisRefs"].filter((key) => !(key in miniTools))).toEqual([]);
-  });
-
-  // Execution design §10.4: Bria takes no prompt, so the erase draft keeps only the tracking prompt.
-  it("refuses an erase draft that still carries an erase prompt", () => {
-    const value = draftFor("video.erase");
-    expect(api.videoToolDraftSchema("video.erase").safeParse({ ...value, params: { ...value.params, erasePrompt: "" } }).success).toBe(false);
   });
 
   describe.each(toolIds)("%s scalar draft", (toolId) => {
@@ -128,16 +115,6 @@ describe("persistent video tool draft contract", () => {
     });
   });
 
-  it.each([
-    { x: 0.1, y: 0, width: 2, height: 2 },
-    { x: 0, y: 0.1, width: 2, height: 2 },
-    { x: -0.5, y: 0, width: 1, height: 1 },
-    { x: 0, y: -0.5, width: 1, height: 1 },
-  ])("rejects an expansion frame that loses part of the source %j", (frame) => {
-    const value = draftFor("video.expand");
-    expect(api.videoToolDraftSchema("video.expand").safeParse({ ...value, params: { ...value.params, frame } }).success).toBe(false);
-  });
-
   // §97 (frames-split §10.6 删除行; tools design acceptance item 5): the frame draft keeps first, last and current only.
   it.each([
     ["the interval mode", { mode: "interval", frameIndex: 3, interval: 1 }],
@@ -148,36 +125,6 @@ describe("persistent video tool draft contract", () => {
     const value = draftFor("video.extract-frames");
     expect(api.videoToolDraftSchema("video.extract-frames").safeParse(value).success).toBe(true);
     expect(api.videoToolDraftSchema("video.extract-frames").safeParse({ ...value, params: frameParams }).success).toBe(false);
-  });
-
-  it("preserves a biased expansion and the chosen aspect ratio", () => {
-    const value = draftFor("video.expand");
-    value.params = { frame: { x: -0.125, y: -0.375, width: 1.375, height: 2 }, ratio: "free", prompt: "extend the scene" };
-    expect(api.videoToolDraftSchema("video.expand").parse(value)).toEqual(value);
-  });
-
-  it.each([Number.NaN, Number.POSITIVE_INFINITY, -1])("rejects an invalid dialogue start time %s", (startTime) => {
-    const value = draftFor("video.lip-sync");
-    value.params = { ...value.params, dialogues: [{ dialogueId, personId: "person-a", analysisRunId: runId, audioInputId: inputId, startTime }] };
-    expect(api.videoToolDraftSchema("video.lip-sync").safeParse(value).success).toBe(false);
-  });
-
-  it("preserves multiple independent dialogue rows for one person", () => {
-    const value = draftFor("video.lip-sync");
-    value.inputs = [{ inputId, url: "https://media.example.test/voice.m4a", mediaInfo: { duration: 5, mimeType: "audio/mp4" } }];
-    value.params = { ...value.params, dialogues: [
-      { dialogueId, personId: "person-a", analysisRunId: runId, audioInputId: inputId, startTime: 0 },
-      { dialogueId: "60000000-0000-4000-8000-000000000002", personId: "person-a", analysisRunId: runId, audioInputId: inputId, startTime: 1.25 },
-    ] };
-    expect(api.videoToolDraftSchema("video.lip-sync").parse(value)).toEqual(value);
-  });
-
-  it("requires distinct dialogue identities for independently editable rows", () => {
-    const value = draftFor("video.lip-sync");
-    value.inputs = [{ inputId, url: "https://media.example.test/voice.m4a", mediaInfo: { duration: 5, mimeType: "audio/mp4" } }];
-    const row = { dialogueId, personId: "person-a", analysisRunId: runId, audioInputId: inputId, startTime: 0 };
-    value.params = { ...value.params, dialogues: [row, { ...row, startTime: 1.25 }] };
-    expect(api.videoToolDraftSchema("video.lip-sync").safeParse(value).success).toBe(false);
   });
 
   // frames-split §10.7 分割 row: cuts are grid frame numbers, kept as edited (planVideoSplit drops the edges and duplicates).
@@ -200,8 +147,6 @@ describe("persistent video tool draft contract", () => {
   });
 
   describe.each([
-    ["video.erase", "tracked_mask"],
-    ["video.lip-sync", "people"],
     ["video.split", "scene_cuts"],
   ] as const)("%s analysis reference", (toolId, kind) => {
     it("preserves its complete accepted identity", () => {
@@ -216,8 +161,7 @@ describe("persistent video tool draft contract", () => {
     });
 
     it("requires the tool's actual analysis kind", () => {
-      const wrongKind = kind === "people" ? "scene_cuts" : "people";
-      expect(api.videoToolAnalysisRefSchema.safeParse({ ...refFor(toolId, kind), kind: wrongKind }).success).toBe(false);
+      expect(api.videoToolAnalysisRefSchema.safeParse({ ...refFor(toolId, kind), kind: "people" }).success).toBe(false);
     });
 
     it("enumerates independently accepted runs and verifies each run key", () => {

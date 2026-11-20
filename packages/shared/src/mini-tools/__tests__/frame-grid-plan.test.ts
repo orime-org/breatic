@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * inner#1306 test plan §64.4 SC02, SC03, SC05, SC06, SC12 (frames-split design §5.4 上限/派发 rows, §7.1 route table,
- * §10.7, §10.8; execution design §10.2, §10.4, §10.5).
+ * inner#1306 test plan §64.4 SC02, SC03, SC06 (frames-split design §5.4 上限/派发 rows, §7.1 route table, §10.7, §10.8).
  *
  * - SC02: a carrier identity has sha256 producer/profile versions and `editProfileVersion` (null without an edit file);
  *   the route compares the new job with the latest published version V: reuse the carrier only from a ready selected P
@@ -11,10 +10,7 @@
  *   file and then the playback file when the job needs one, else encode the playback file. The stage sequence of each
  *   route is checked once, in `packages/ingest/src/__tests__/frame-grid-routes.test.ts`.
  * - SC03: frames and split plan on grid frame numbers; recipes carry frame numbers only.
- * - SC05/SC06: `plannedStageJobs` counts lip-sync `track_join` (one per person), erase `mask` (one), expand window
- *   stages (each window its own stage: window and window_mask, plus frame_at from the second window), and the stage
- *   jobs always sum to the jobs the layout plans.
- * - SC12: erase anchors and ranges are grid frame numbers.
+ * - SC06: the stage jobs of `plannedStageJobs` always sum to the jobs the layout plans.
  */
 
 import fc from "fast-check";
@@ -22,7 +18,6 @@ import { describe, expect, it } from "vitest";
 import { chooseVideoCarrierRoute, plannedStageJobs } from "../video-encode-plan.js";
 import { planVideoFrames, planVideoSplit } from "../video-plan.js";
 import { miniToolExecutionRecipeSchema } from "../planned-request-schema.js";
-import { anchorInTrackingRange, eraseRangeCheck } from "../tracking-clips.js";
 import type { FrameRate } from "../../upload/frame-grid-rate.js";
 
 type Window = { start: number; end: number };
@@ -43,8 +38,6 @@ const route = chooseVideoCarrierRoute as unknown as (input: { plan: Identity; re
 const stagesOf = plannedStageJobs as unknown as (layout: unknown) => Stage[];
 const frames = planVideoFrames as unknown as (grid: Grid, request: { mode: "first" | "last" | "current"; frameIndex?: number }) => unknown[];
 const split = planVideoSplit as unknown as (grid: Grid, cuts: readonly number[]) => unknown[];
-const inRange = anchorInTrackingRange;
-const eraseCheck = eraseRangeCheck as unknown as (grid: Grid, range: Window, anchor: { frameIndex: number }, limits: { minSeconds: number; maxSeconds: number; maxGridFps: number }) => unknown;
 
 const job = (overrides: Partial<Identity> = {}): Identity => ({ planSha256: PLAN, producerVersion: PRODUCER, profileVersion: PROFILE, editProfileVersion: null, ...overrides });
 
@@ -118,90 +111,28 @@ describe("SC03: frames and split planned on grid frame numbers", () => {
   });
 });
 
-describe("SC05: plannedStageJobs covers every §5.4 stage", () => {
-  it("SC05: lip-sync adds track_join, one job per person, after the tracking preparation", () => {
-    const tracking = { forward: [w(30, 90)], reverse: [w(0, 11), w(11, 22), w(22, 31)] };
-    expect(stagesOf({ preparation: [w(0, 90)], persons: 2, composite: [w(0, 90)], tracking })).toEqual([
-      { stage: "prepare", jobs: 1 }, { stage: "track_prepare", jobs: 4 }, { stage: "track_prepare_stitch", jobs: 1 }, { stage: "track_join", jobs: 2 },
-      { stage: "faces", jobs: 2 }, { stage: "clip_stem", jobs: 4 }, { stage: "composite", jobs: 1 }, { stage: "stitch", jobs: 1 },
-    ]);
-  });
-
-  it("SC05: erase is one prepare job, one mask job (bria_mask), the composite chunks, then one stitch", () => {
-    expect(stagesOf({ preparation: [w(0, 60)], composite: [w(0, 30), w(30, 60)] })).toEqual([
-      { stage: "prepare", jobs: 1 }, { stage: "mask", jobs: 1 }, { stage: "model_composite", jobs: 2 }, { stage: "stitch", jobs: 1 },
-    ]);
-  });
-
-  it("SC05: expand sends each window as its own stage (window, window_mask, and frame_at from the second window), then composite and stitch", () => {
-    expect(stagesOf({ preparation: [], composite: [w(0, 40), w(40, 80)], windows: 3 })).toEqual([
-      { stage: "window", jobs: 2 }, { stage: "window", jobs: 3 }, { stage: "window", jobs: 3 },
-      { stage: "model_composite", jobs: 2 }, { stage: "stitch", jobs: 1 },
-    ]);
-  });
-});
-
 /**
  * The container jobs a layout plans, enumerated from the design's dispatch row independently of `plannedStageJobs`.
  * @param layout - A layout of one of the tools.
  * @returns The number of container jobs.
  */
 function plannedJobs(layout: Record<string, unknown>): number {
-  const count = (key: string): number => (layout[key] as unknown[] | undefined)?.length ?? 0;
-  if ("batches" in layout) {
-    const encodes = layout.encodes as { chunks: Window[] }[];
-    return count("batches") + encodes.reduce((total, encode) => total + encode.chunks.length + 1, 0);
-  }
-  if ("encode" in layout) return count("encode") + count("window") + 1;
-  const preparation = count("preparation") + (count("preparation") > 1 ? 1 : 0);
-  if ("persons" in layout) {
-    const persons = layout.persons as number;
-    const tracking = layout.tracking as { forward: Window[]; reverse: Window[] };
-    return preparation + tracking.forward.length + tracking.reverse.length + (tracking.reverse.length > 1 ? 1 : 0)
-      + persons /* track_join */ + persons /* faces */ + 2 * persons /* clip, stem */ + count("composite") + 1;
-  }
-  if ("windows" in layout) {
-    const windows = layout.windows as number;
-    return windows * 2 + Math.max(0, windows - 1) + count("composite") + 1;
-  }
-  if ("composite" in layout) return preparation + 1 /* mask */ + count("composite") + 1;
-  return preparation;
+  const encodes = layout.encodes as { chunks: Window[] }[];
+  return (layout.batches as unknown[]).length + encodes.reduce((total, encode) => total + encode.chunks.length + 1, 0);
 }
 
 describe("SC06: the stage jobs sum to the planned jobs", () => {
   const windows = (min: number): fc.Arbitrary<Window[]> => fc.array(fc.nat(1000), { minLength: min, maxLength: 6 }).map((starts) => starts.map((start) => w(start, start + 10)));
-  const layouts = fc.oneof(
-    fc.record({ batches: fc.array(fc.array(fc.nat(9), { minLength: 1, maxLength: 4 }), { maxLength: 4 }), encodes: fc.array(fc.record({ outputIndex: fc.nat(9), chunks: windows(1) }), { maxLength: 3 }) }),
-    fc.record({ encode: windows(0), window: windows(0) }),
-    fc.record({ preparation: windows(1) }),
-    fc.record({ preparation: windows(1).map((list) => list.slice(0, 1)), composite: windows(1) }),
-    fc.record({ preparation: fc.constant([] as Window[]), composite: windows(1), windows: fc.integer({ min: 1, max: 5 }) }),
-    fc.record({ preparation: windows(1), persons: fc.integer({ min: 1, max: 4 }), composite: windows(1),
-      tracking: fc.record({ forward: windows(0).map((list) => list.slice(0, 1)), reverse: windows(0) }) }),
-  );
+  const layouts = fc.record({
+    batches: fc.array(fc.array(fc.nat(9), { minLength: 1, maxLength: 4 }), { maxLength: 4 }),
+    encodes: fc.array(fc.record({ outputIndex: fc.nat(9), chunks: windows(1) }), { maxLength: 3 }),
+  });
 
-  it("SC06: for every tool's layout, the sum over stages equals the jobs the layout plans", () => {
+  it("SC06: for every frames or split layout, the sum over stages equals the jobs the layout plans", () => {
     fc.assert(fc.property(layouts, (layout) => {
       const stages = stagesOf(layout);
       expect(stages.every((stage) => stage.jobs > 0)).toBe(true);
       expect(stages.reduce((total, stage) => total + stage.jobs, 0)).toBe(plannedJobs(layout as Record<string, unknown>));
     }));
-  });
-});
-
-describe("SC12: erase anchors and ranges are grid frame numbers", () => {
-  it("SC12: the anchor lies in [start, end) of the grid frame range", () => {
-    expect(inRange(w(30, 90), { frameIndex: 30 })).toBe(true);
-    expect(inRange(w(30, 90), { frameIndex: 89 })).toBe(true);
-    expect(inRange(w(30, 90), { frameIndex: 90 })).toBe(false);
-    expect(inRange(w(30, 90), { frameIndex: 29 })).toBe(false);
-  });
-
-  it("SC12: the erase check reads the grid: frames kept frame for frame at the grid fps, resampled above the eraser's top rate", () => {
-    const limits = { minSeconds: 1, maxSeconds: 10, maxGridFps: 30 };
-    expect(eraseCheck(grid(300), w(30, 90), { frameIndex: 45 }, limits)).toEqual({ refusal: null, first: 30, count: 60, grid: { mode: "frames", rate: 30, frameCount: 60 } });
-    expect(eraseCheck(grid(600, 60), w(60, 180), { frameIndex: 60 }, limits)).toEqual({ refusal: null, first: 60, count: 120, grid: { mode: "resample", rate: 30, frameCount: 60 } });
-    expect(eraseCheck(grid(300), w(30, 90), { frameIndex: 90 }, limits)).toEqual({ refusal: "anchor" });
-    expect(eraseCheck(grid(300), w(30, 45), { frameIndex: 30 }, limits)).toEqual({ refusal: "range" });
   });
 });

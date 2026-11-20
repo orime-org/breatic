@@ -15,7 +15,7 @@ const KEY = "b".repeat(64);
 /** Construct only the independently frozen public wire fixture. */
 function record(): MiniToolExecutionRecord {
   return { schemaVersion: 1, runId: RUN, status: "pending", planFingerprint: "c".repeat(64), resultVersion: 0, sourceBindings: [structuredClone(BINDING)],
-    outputs: [{ outputIndex: 0, nodeId: NODE, recipe: { kind: "remove-bg" }, result: null, late: false }], usage: [], billingState: "idle", error: null };
+    outputs: [{ outputIndex: 0, nodeId: NODE, recipe: { kind: "segment", range: { start: 0, end: 30 } }, result: null, late: false }], usage: [], billingState: "idle", error: null };
 }
 /** Construct the initial complete media snapshot, independently of the schema. */
 function done(): MiniToolExecutionRecord {
