@@ -135,7 +135,7 @@ const AFTER_CONSONANT = new Set(['이', '은', '을', '과', '으로']);
  */
 function koreanParticleMismatches(text: string): string[] {
   const out: string[] = [];
-  for (const match of text.matchAll(/([가-힣]+)(으로|로|이|가|은|는|을|를|과|와)(?=[\s,.;:)])/gu)) {
+  for (const match of text.matchAll(/([가-힣]+?)(으로|로|이|가|은|는|을|를|과|와)(?=[\s,.;:)])/gu)) {
     const [whole = '', word = '', particle = ''] = match;
     if (KOREAN_WORDS_NOT_NOUN_AND_PARTICLE.has(whole)) continue;
     const final = ((word.codePointAt(word.length - 1) ?? 0) - 0xac00) % 28;
@@ -146,12 +146,13 @@ function koreanParticleMismatches(text: string): string[] {
 }
 
 /**
- * A pattern finding a name as a whole word, letters and digits on neither side.
+ * A pattern finding a name as a whole Latin word: no Latin letter or digit on either side, so a name written
+ * straight against Chinese, Japanese or Korean text is still found.
  * @param word - The name.
  * @returns The pattern.
  */
 function wholeWord(word: string): RegExp {
-  return new RegExp(`(?<![\\p{L}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{L}\\p{N}])`, 'u');
+  return new RegExp(`(?<![\\p{Script=Latin}\\p{N}])${word.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?![\\p{Script=Latin}\\p{N}])`, 'u');
 }
 
 /** The templates of the film style goal (inner#1817), whose words the forbidden-name check reads too. */
@@ -234,9 +235,15 @@ describe('template style words', () => {
     expect([...styleWords('ko')].flatMap(([key, text]) => koreanParticleMismatches(text).map((word) => `${key}: ${word}`))).toEqual([]);
   });
 
+  it('finds a Latin name written straight against other scripts, and only as a whole Latin word', () => {
+    expect(wholeWord('Polaroid').test('Polaroid相纸')).toBe(true);
+    expect(wholeWord('Kodachrome').test('Kodachromeのフィルム')).toBe(true);
+    expect(wholeWord('Polaroid').test('Polaroids')).toBe(false);
+  });
+
   it('catches each particle pair written in the wrong form', () => {
-    expect(koreanParticleMismatches('땅가 크다. 슬레이트색는 하늘. 금색로 타오른다. 주황를 거쳐 벽돌색와 하늘.')).toEqual([
-      '땅가', '슬레이트색는', '금색로', '주황를', '벽돌색와',
+    expect(koreanParticleMismatches('땅가 크다. 슬레이트색는 하늘. 금색로 타오른다. 주황를 거쳐 벽돌색와 하늘. 바다으로 간다. 물으로 씻는다.')).toEqual([
+      '땅가', '슬레이트색는', '금색로', '주황를', '벽돌색와', '바다으로', '물으로',
     ]);
     expect(koreanParticleMismatches('땅이 크다. 슬레이트색은 하늘. 금색으로 타오르고 선으로 그린다. 주황을 거쳐 벽돌색과 하늘.')).toEqual([]);
   });
