@@ -271,6 +271,11 @@ test('one web animation is made, modified, exported, put on a Canvas that View o
       await expect(motion.getByTestId(`motion-row-${exported}`)).toContainText('Video · ');
       await waitMotionFinished(page, exported, 'video');
       await expect(motion.getByTestId('motion-action-download')).toBeEnabled();
+      // The rendered video decodes and plays in the preview.
+      await motion.getByTestId('motion-play').click();
+      const video = motion.getByTestId('motion-preview').locator('video');
+      await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.readyState >= 2 && element.currentTime > 0), { timeout: 30_000 }).toBe(true);
+      await motion.getByTestId('motion-play').click();
       await motion.getByTestId('motion-action-view-source').click();
       await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', modified);
       await motion.getByTestId('motion-action-view-video').click();
