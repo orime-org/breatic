@@ -18,7 +18,7 @@ import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { videoPresentationKeyFor } from '@breatic/shared';
 import { presentationSnapshot } from '@ingest/video-presentation-store.js';
-import { admission, bundle, D, H, planned, source, storedDescriptor, T, T2, withStore, type Admission, type MachineStore, type MachineView } from './helpers/machine-store.js';
+import { admission, bundle, D, H, planned, source, T, withStore, type Admission, type MachineStore, type MachineView } from './helpers/machine-store.js';
 
 const V = 'e'.repeat(64);
 const V2 = 'f'.repeat(64);
@@ -47,7 +47,7 @@ function snapshot(view: MachineView, key: string): Snapshot {
 }
 
 /**
- * Publish a version through one job: admit (optionally with a condition), start, plan identity and report it verified.
+ * Publish a version through one job: admit (optionally with a condition), start, plan the publish-only route and report it verified.
  * @param store - The store.
  * @param key - The storage key.
  * @param jobId - The job.
@@ -57,14 +57,14 @@ function snapshot(view: MachineView, key: string): Snapshot {
  */
 async function publish(store: MachineStore, key: string, jobId: string, versionId: string, condition?: Expect): Promise<MachineView> {
   if (condition === undefined) {
-    const identity = await planned(store, key, jobId, 'identity');
+    const identity = await planned(store, key, jobId, 'reuse');
     return store.report(identity, { kind: 'verified', bundle: await bundle(key, versionId) });
   }
   await store.accept(conditional(key, jobId, condition));
   const { token } = await store.prepare({ storageKey: key, sourceFingerprint: H, jobId, deadlineAt: D }, Date.now());
   expect(token, `${jobId} was admitted and started`).toEqual(expect.any(String));
   const identity = { storageKey: key, sourceFingerprint: H, jobId, deadlineAt: D, token: token! };
-  await store.planPresentation(identity, { route: 'identity', toolInputId: T, planSha256: 'd'.repeat(64) });
+  await store.planPresentation(identity, { route: 'reuse', toolInputId: T, planSha256: 'd'.repeat(64) });
   return store.report(identity, { kind: 'verified', bundle: await bundle(key, versionId) });
 }
 
@@ -222,24 +222,6 @@ describe('repair of a version that failed again after its readmit (§93 D6; desi
       const view = await store.accept({ ...admission(key, 'job-c'), repair: true });
       expect(view.candidate).toMatchObject({ jobId: 'job-c', state: 'accepted' });
       expect(view.archive.map((job) => job.jobId)).toEqual(['job-a', 'job-b']);
-    });
-  });
-});
-
-describe('ready(A) × Bad republishes a verified waiting candidate (§93 D6; design §7.2 ready(A)×Bad)', () => {
-  it.each([['removed', false], ['replaced by foreign bytes', true]])('BA01 the descriptor %s: the waiting candidate is swapped in without waiting for its L', async (_name, replace) => {
-    const key = await source();
-    await withStore(key, async (store) => {
-      await publish(store, key, 'job-a', V);
-      // B plans another toolInputId whose L is still pending, so it waits in verified behind ready(A).
-      const b = await planned(store, key, 'job-b', 'identity', T2);
-      const waiting = await store.report(b, { kind: 'verified', bundle: await bundle(key, V2, T2) });
-      expect(waiting.selected).toEqual({ kind: 'ready', version: { versionId: V, toolInputId: T } });
-      expect(waiting.candidate).toMatchObject({ jobId: 'job-b', state: 'verified' });
-      const view = await bad(store, key, replace);
-      expect(view.selected).toEqual({ kind: 'ready', version: { versionId: V2, toolInputId: T2 } });
-      // The conditional write took the ETag the read observed (or none for a missing object) as its base.
-      expect(await storedDescriptor(key)).toMatchObject({ versionId: V2, toolInputId: T2 });
     });
   });
 });

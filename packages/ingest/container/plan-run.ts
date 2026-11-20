@@ -11,7 +11,8 @@ import { executePresentationRecipe, RecipeFailure, type PlanLimits } from "@inge
 import { executeLipsyncRecipe, isLipsyncRecipe } from "@ingest/container/lipsync-recipes.js";
 import { executeModelRecipe, isModelRecipe } from "@ingest/container/model-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
-import { download, put, cpuUsec } from "@ingest/container/mini-tool-run.js";
+import { download, put } from "@ingest/container/mini-tool-run.js";
+import { cpuUsec } from "@ingest/container/run-steps.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
 
@@ -97,7 +98,7 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
       signal.throwIfAborted();
       const recipe = output.recipe;
       const file = join(directory, `output-${output.outputIndex}`);
-      // Every recipe carries what the worker wrote from the full ledger; the container reads no frame table (§7.17).
+      // Every recipe carries the grid frame numbers the worker wrote from the frozen plan; the container reads no frame table (§7.17).
       const inputs = new Map<string, string>();
       for (const id of named(recipe)) inputs.set(id, await fetchInput(id));
       const request = { inputs, output: file, directory, signal, limits: job.limits };

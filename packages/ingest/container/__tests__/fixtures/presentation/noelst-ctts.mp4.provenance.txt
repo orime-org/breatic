@@ -1,8 +1,0 @@
-noelst-ctts.mp4: H.264 High 256x128 in MP4 with a ctts box and no edit list (no edts/elst), video only,
-17 frames of 2048 ticks on a 1/16384 time base; the first presented frame starts at 4096 (0.25 s), so the
-frame start is above 0 without any edit list. Colour tagged smpte170m.
-Purpose: S6d D1-4 leading-start fixture (inner#1306 test plan §91; design §4.2.1 first-frame row).
-Provenance: copied unchanged from the maintainers' 2026-11-01 leading-empty-edit evidence, where Chromium 151
-loaded it at currentTime 0.25 and clamped a seek to 0 to 0.25. The command that produced it was not recorded
-with the evidence; the facts above were read back with ffprobe (FFmpeg 7.1.1) and from the box list.
-SHA-256: 3f83f770847c523b14ddffaed077d91ca53ae96aa074c77ee7c358d903e04f83

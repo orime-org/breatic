@@ -22,6 +22,14 @@ import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
 import { miniToolPlanRecipeSchema } from "@shared/upload/mini-tool-plan-job.js";
 import type { FrameRate } from "@shared/upload/frame-grid-rate.js";
 
+declare global {
+  /**
+   * The planned job schema's module reaches shared's HTTP client, which names the DOM `BodyInit`; this Node program has Node's
+   * fetch types instead, whose request body is the same union.
+   */
+  type BodyInit = NonNullable<RequestInit["body"]>;
+}
+
 export const run = promisify(execFile);
 
 /** The committed samples of the maintainers' frame-grid sample set. */
@@ -243,7 +251,9 @@ export async function rawFrames(path: string, format: "rgb24" | "rgba", filter?:
  * @returns frameCount pictures.
  */
 export async function oracleFrames(path: string, grid: GridRef, format: "rgb24" | "rgba" = "rgb24"): Promise<Buffer[]> {
-  const frames = await rawFrames(path, format, gridChain(grid));
+  // `-copyts`: the grid start is a source time as ffprobe reads it, so the decode keeps the source's own timestamps; without
+  // it the CLI moves a source that starts late (an MPEG-TS from 1.48 s) to 0 and the chain shifts it a second time.
+  const frames = await rawFrames(path, format, gridChain(grid), ["-copyts"]);
   expect(frames, "the oracle decode yields one picture per grid slot").toHaveLength(grid.frameCount);
   return frames;
 }

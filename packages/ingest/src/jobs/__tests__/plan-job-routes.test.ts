@@ -5,7 +5,7 @@ import { env } from "cloudflare:test";
 import { describe, expect, it, vi } from "vitest";
 import { submitJob, type JobsEnv } from "@ingest/jobs/routes.js";
 
-// §93 D5 (frames-split design §7.17 frame row 「不得把presentation ordinal当原解码n」, 「唯一写点：worker的配方构造」): a job frame recipe names a full-ledger entry and its PNG target, not a frameIndex.
+// Frames-split design §7.17 frame row (「唯一写点：worker的配方构造」): a job frame recipe names a grid frame of its tool source and its PNG target.
 const PLAN = {
   limits: { probeStdoutBytes: 1048576, analysisStdoutBytes: 1048576, stderrTailBytes: 8192 },
   schemaVersion: 2,
@@ -16,7 +16,7 @@ const PLAN = {
     { inputId: "20000000-0000-4000-8000-000000000001", storageKey: "fixtures/source-a.mp4" },
     { inputId: "20000000-0000-4000-8000-000000000002", storageKey: "fixtures/source-b.mp4" },
   ],
-  outputs: [{ outputIndex: 8, storageKey: "results/T/o08.png", contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000002", entry: { kind: "source", decodeStart: { numerator: "6", denominator: "5" }, clipStart: { numerator: "6", denominator: "5" }, displayStart: { numerator: "6", denominator: "5" }, displayEnd: { numerator: "31", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }],
+  outputs: [{ outputIndex: 8, storageKey: "results/T/o08.png", contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000002", grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 50, realFrameCount: 50 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frameIndex: 30, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }],
 };
 
 describe("planned job route dispatch without a container image", () => {

@@ -12,32 +12,41 @@ import { describe, expect, it, vi } from 'vitest';
 
 import { videoPresentationRoute, type VideoPresentationEnv } from '@ingest/video-presentation-route.js';
 
-const ledgerLimits = { maxBytes: 16777216, probeStdoutBytes: 67108864, metadataBytes: 16777216, isoBoxCount: 100000, matroskaElementCount: 1000000, matroskaMaxBlocks: 250000 };
 const accept = {
   action: 'accept', storageKey: 'video/canonical.webm', sourceFingerprint: 'a'.repeat(64), jobId: 'video-presentation-a', deadlineAt: 1900000000000,
   original: null, contentType: 'video/webm',
-  limits: { maxSourceBytes: 1, maxPackedBytes: 1, crf: 18, preset: 'medium', probeStdoutBytes: 1, analysisStdoutBytes: 1, stderrTailBytes: 1, sourceLedger: ledgerLimits },
+  limits: { maxSourceBytes: 1, maxPackedBytes: 1, crf: 18, preset: 'medium', probeStdoutBytes: 1, analysisStdoutBytes: 1, stderrTailBytes: 1 },
   // S6c (design §3.5, §5.1): both prices frozen at admission, the target policy and the frozen retry caps.
   pricing: {
     basic: { containerClass: 'MediaContainer', size: { vcpu: 0.25, memory_gib: 1, disk_gb: 4 }, prices: { vcpu_second_usd: 0, memory_gib_second_usd: 0, disk_gb_second_usd: 0 } },
     standard4: { containerClass: 'MiniToolContainerStd4', size: { vcpu: 4, memory_gib: 12, disk_gb: 20 }, prices: { vcpu_second_usd: 0, memory_gib_second_usd: 0, disk_gb_second_usd: 0 } },
   },
-  targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 },
-  // S6d D1 (§91 D-6): the probe's sample count and the plan's single-frame duration are frozen at admission.
-  probe: { sampleFrames: 1, singleFrameDurationMs: 5000, identityFormats: [{ container: 'mp4', videoCodec: 'h264', profiles: ['Constrained Baseline', 'Baseline', 'Main', 'High'], pixFmt: 'yuv420p', bitDepth: 8, audioCodecs: ['aac', 'none'], rotation: 0, sar: '1:1', matrixTagged: true }] },
+  targetPolicyVersion: 1, policy: { chunkRetries: 3 },
+  // The probe's sample count, the plan's single-frame duration and the rate cap are frozen at admission (§5.1 step 2, §4.1).
+  probe: { sampleFrames: 1, singleFrameDurationMs: 5000, maxFps: 120 },
   // S6e E2-1: the encoding parameters are frozen at admission.
   encoding: {
     chunkShare: 0.5, maxParallelChunks: 8,
-    encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000, sdr_16bit: 294000000, hdr_16bit: 71900000 }, aacEncodeSecondsPerSecond: 100 },
-    copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
+    encoder: {
+      startSeconds: 3, encodePixelsPerSecond: 248e6, tonemapPixelsPerSecond: 1170e6,
+      decodeConvertPixelsPerSecond: {
+        sdr_8bit: 910e6, sdr_10bit: 810e6, sdr_12bit: 690e6, sdr_alpha_layer: 600e6, sdr_prores: 820e6, sdr_dnx: 735e6, sdr_av1_8bit: 740e6, sdr_av1_10bit: 570e6,
+        sdr_av1_12bit: 610e6, sdr_jpeg2000: 25e6, sdr_ffv1: 75e6, sdr_png: 340e6, sdr_other: 1080e6,
+        edit_h264_intra_8bit_420: 1500e6, edit_h264_intra_10bit_420: 1200e6, edit_h264_intra_8bit_444: 1100e6, edit_h264_intra_10bit_444: 900e6, edit_prores: 950e6,
+      },
+      editEncodePixelsPerSecond: { edit_h264_intra_8bit_420: 300e6, edit_h264_intra_10bit_420: 250e6, edit_h264_intra_8bit_444: 200e6, edit_h264_intra_10bit_444: 180e6, edit_prores: 400e6 },
+      aacEncodeSecondsPerSecond: 100,
+    },
+    edit: { crf: 15, preset: 'medium', proresProfile: '4444', bytesPerPixel: 0.5, maxEditBytes: 10_000_000_000 },
+    carrier: { maxShortSide: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } },
   },
   actorUserId: '6061c056-f758-47c1-9527-8495ecba60e3', projectId: null,
   // S6e (inner 1c3a5892): one frozen public base replaces the per-object URLs.
   publicBaseURL: 'https://assets.example.test',
 };
 
-describe('presentation admission at the ingest boundary (inner#1306 §77)', () => {
-  it('I01 passes the ledger budgets and the public base through to the store', async () => {
+describe('presentation admission at the ingest boundary (inner#1306 §3.5 server/worker→ingest row)', () => {
+  it('I01 passes the frozen limits, encoding and the public base through to the store', async () => {
     const acceptPresentation = vi.fn(async () => ({ presentation: null, attempt: null }));
     const env = {
       INGEST_SHARED_SECRET: 'secret',
@@ -49,7 +58,7 @@ describe('presentation admission at the ingest boundary (inner#1306 §77)', () =
     }), env);
     expect(response.status).toBe(200);
     expect(acceptPresentation).toHaveBeenCalledWith(expect.objectContaining({
-      limits: expect.objectContaining({ sourceLedger: ledgerLimits }),
+      limits: accept.limits, encoding: accept.encoding,
       publicBaseURL: accept.publicBaseURL,
     }));
   });
@@ -65,8 +74,8 @@ describe('presentation admission at the ingest boundary (inner#1306 §77)', () =
       method: 'POST', headers: { 'x-ingest-secret': 'secret', 'content-type': 'application/json' }, body: JSON.stringify(accept),
     }), env);
     expect(acceptPresentation).toHaveBeenCalledWith(expect.objectContaining({
-      pricing: accept.pricing, targetPolicyVersion: 1, policy: { chunkRetries: 3, maxAutoRepairs: 3 },
-      probe: { sampleFrames: 1, singleFrameDurationMs: 5000, identityFormats: [{ container: 'mp4', videoCodec: 'h264', profiles: ['Constrained Baseline', 'Baseline', 'Main', 'High'], pixFmt: 'yuv420p', bitDepth: 8, audioCodecs: ['aac', 'none'], rotation: 0, sar: '1:1', matrixTagged: true }] },
+      pricing: accept.pricing, targetPolicyVersion: 1, policy: { chunkRetries: 3 },
+      probe: { sampleFrames: 1, singleFrameDurationMs: 5000, maxFps: 120 },
     }));
   });
 });
@@ -92,7 +101,7 @@ async function route(body: Record<string, unknown>, rpc: Record<string, unknown>
 describe('staged presentation actions at the ingest boundary (inner#1306 §90 E2-3, E2-4)', () => {
   const identity = { storageKey: accept.storageKey, sourceFingerprint: accept.sourceFingerprint, jobId: accept.jobId };
   const capability = { ...identity, deadlineAt: accept.deadlineAt, token: 'token-a' };
-  const view = { candidate: { jobId: null }, presentation: null, targetPolicyVersion: null, ledgers: {} };
+  const view = { candidate: { jobId: null }, presentation: null, targetPolicyVersion: null };
 
   it('RA01 prepare hands the job identity to preparePresentation and answers its result as it is', async () => {
     const answer = { prepared: true };

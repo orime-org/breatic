@@ -17,8 +17,7 @@
 
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
-import { digest } from './helpers/source-ledger-fixture.js';
-import { admission, bundle, H, NOW, PLAN, source, storedDescriptor, T, withStore, type Bundle, type Identity, type MachineStore } from './helpers/machine-store.js';
+import { admission, bundle, digest, H, NOW, PLAN, source, storedDescriptor, T, withStore, type Bundle, type Identity, type MachineStore } from './helpers/machine-store.js';
 
 /**
  * Store one object and return its measured small receipt.
@@ -45,7 +44,7 @@ async function alphaBundle(key: string): Promise<Bundle> {
 }
 
 /**
- * Admit, start and plan an identity-route job with registered metadata.
+ * Admit, start and plan a publish-only (carrier reuse) route job with registered metadata.
  * @param store - The store.
  * @param key - The source key.
  * @param registered - The registered measurement.
@@ -55,7 +54,7 @@ async function plannedWith(store: MachineStore, key: string, registered?: { widt
   await store.accept({ ...admission(key, 'job-a'), ...(registered === undefined ? {} : { registeredMetadata: registered }) });
   const { token } = await store.prepare({ storageKey: key, sourceFingerprint: H, jobId: 'job-a', deadlineAt: admission(key, 'job-a').deadlineAt }, NOW);
   const identity = { storageKey: key, sourceFingerprint: H, jobId: 'job-a', deadlineAt: admission(key, 'job-a').deadlineAt, token: token! };
-  await store.planPresentation(identity, { route: 'identity', toolInputId: T, planSha256: PLAN });
+  await store.planPresentation(identity, { route: 'reuse', toolInputId: T, planSha256: PLAN });
   return identity;
 }
 

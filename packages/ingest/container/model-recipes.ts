@@ -7,20 +7,18 @@
  */
 import { open, readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
-import { gridFrameSlot, gridSlotFrame, presentationGridFrames, type ModelGrid } from "@shared/mini-tools/model-grid.js";
-import { presentationRunOffsets, type VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
+import { gridFrameSlot, gridSlotFrame, type ModelGrid } from "@shared/mini-tools/model-grid.js";
 import type {
-  MiniToolPlanBriaMask, MiniToolPlanEraseComposite, MiniToolPlanFrameAt, MiniToolPlanModelWindow, MiniToolPlanModelWindowMask, MiniToolPlanRecipe,
+  MiniToolPlanBriaMask, MiniToolPlanGrid, MiniToolPlanEraseComposite, MiniToolPlanFrameAt, MiniToolPlanModelWindow, MiniToolPlanModelWindowMask, MiniToolPlanRecipe,
   MiniToolPlanRleJoin, MiniToolPlanTarget,
 } from "@shared/upload/mini-tool-plan-types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
-import { presentationTimes, readRleTrack, rleForeground } from "@ingest/container/rle-track.js";
+import { readRleTrack, rleForeground } from "@ingest/container/rle-track.js";
 import {
-  BT709_TAGS, decodedPicture, local, minus, modelResultDecode, picture, placement, probeModelResultDecode, readVideoMetadata, RecipeFailure, roundTimes, seconds, span,
-  videoOutput, windowGraph, type PlanLimits,
+  BT709_TAGS, decodeGridWindow, local, picture, placement, probeModelResultDecode, readVideoMetadata, RecipeFailure, sourceFacts, videoOutput, type PlanLimits,
 } from "@ingest/container/presentation-recipes.js";
-import { rational } from "@shared/mini-tools/video-presentation-projection.js";
+import { decodedPicture } from "@ingest/container/playback-command.js";
 import { pngSize } from "@ingest/png-size.js";
 
 /** The recipes this module runs. */
@@ -36,9 +34,6 @@ export interface ModelRecipeRequest {
 }
 /** The process lifetime and IO bounds of one command. */
 type Run = { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: number };
-/** A presented frame's interval in seconds. */
-interface TableFrame { start: number; end: number }
-
 const HEAD = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file"];
 // A lossless full-range H.264 mask: what the erase model and VACE read as white and black exactly.
 const LOSSLESS_MASK = ["-c:v", "libx264", "-crf", "0", "-bf", "0", "-pix_fmt", "yuv420p", "-color_range", "pc"];
@@ -53,28 +48,6 @@ const FULL_RANGE = "scale=in_range=pc:out_range=pc,format=yuv420p";
 export function isModelRecipe(recipe: MiniToolPlanRecipe): recipe is ModelRecipe {
   return recipe.kind === "rle_join" || recipe.kind === "bria_mask" || recipe.kind === "model_window" || recipe.kind === "model_window_mask"
     || recipe.kind === "frame_at" || (recipe.kind === "model_composite" && recipe.mode === "erase");
-}
-
-/**
- * The presented frames [startFrame, startFrame + count) of a table, in seconds.
- * @param table - The presentation table.
- * @param startFrame - The first frame's ordinal.
- * @param count - How many frames.
- * @returns Each frame's [start, end).
- * @throws {RangeError} When a frame lies outside the table.
- */
-function tableFrames(table: VideoPresentationTable, startFrame: number, count: number): TableFrame[] {
-  const offsets = presentationRunOffsets(table);
-  if (startFrame < 0 || startFrame + count > offsets.at(-1)!) throw new RangeError("Frames lie outside the presentation table");
-  const frames: TableFrame[] = [];
-  let run = 0;
-  for (let index = startFrame; index < startFrame + count; index += 1) {
-    while (offsets[run + 1]! <= index) run += 1;
-    const entry = table.runs[run]!;
-    const start = entry.start + (index - offsets[run]!) * entry.step;
-    frames.push({ start: start / table.timescale, end: (start + entry.duration) / table.timescale });
-  }
-  return frames;
 }
 
 /**
@@ -128,69 +101,78 @@ function gridTiming(grid: ModelGrid): { filter: string; timing: string[] } {
 }
 
 /**
- * The erase model's mask video (execution design §10.4): one frame per grid slot, white where that slot's RLE frame has
- * foreground, lossless and full range, at the prepared input's size.
+ * The erase model's mask video (execution design §10.4): one frame per model slot, white where the range frame that slot shows
+ * has foreground, lossless and full range, at the prepared input's size.
  * @param recipe - The mask.
  * @param request - Its files.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
- * @throws {RecipeFailure} `tracking_output_mismatch` when the RLE does not cover the range at the target size.
+ * @throws {RecipeFailure} `tracking_output_mismatch` when the RLE does not cover the range.
  * @throws {Error} When FFmpeg fails.
  */
 async function eraseMask(recipe: MiniToolPlanBriaMask, request: ModelRecipeRequest, run: Run): Promise<void> {
   const track = await readRleTrack(local(request.inputs, recipe.inputId));
   if (track.length !== recipe.range.frameCount) throw new RecipeFailure("tracking_output_mismatch");
-  const frames = presentationGridFrames(recipe.table, recipe.range.startFrame, recipe.range.frameCount);
   const size = recipe.target;
-  const raw = Buffer.alloc(size.width * size.height * recipe.grid.frameCount);
-  for (let slot = 0; slot < recipe.grid.frameCount; slot += 1) {
-    const mask = rleForeground(track[gridSlotFrame(recipe.grid, frames, slot)] ?? null, size, 255);
+  const raw = Buffer.alloc(size.width * size.height * recipe.model.frameCount);
+  for (let slot = 0; slot < recipe.model.frameCount; slot += 1) {
+    const mask = rleForeground(track[gridSlotFrame(recipe.model, recipe.fps, slot)] ?? null, size, 255);
     raw.set(mask, slot * size.width * size.height);
   }
   const file = join(request.directory, "erase-mask.gray");
   await writeFile(file, raw);
-  const { filter, timing } = gridTiming(recipe.grid);
+  const { filter, timing } = gridTiming(recipe.model);
   await runPlanCommand("ffmpeg", [...HEAD, "-f", "rawvideo", "-pix_fmt", "gray", "-s", `${size.width}x${size.height}`, "-i", file,
     "-vf", `${FULL_RANGE},${filter}`, ...LOSSLESS_MASK, ...timing, "-movflags", "+faststart", "-f", "mp4", request.output], run);
 }
 
 /**
- * One expand window's model input (execution design §10.5): each grid slot shows the frame covering span.start + j / fps,
- * scaled into `sourceRoi` over the fill colour; slots past the span repeat its last frame; lossless.
+ * The chain that puts grid frames [fs, …) on a model window's slots (§10.5): slot j shows the grid frame covering
+ * span.start + j / fps, slots past the span repeat its last frame; exactly `count` slots.
+ * @param grid - The grid fps and the window's first grid frame.
+ * @param grid.fps - The grid rate.
+ * @param grid.first - The first grid frame decoded.
+ * @param spanStart - The span's start in grid seconds.
+ * @param model - The model window grid.
+ * @returns The filter chain text, on 1/fps.
+ * @throws {never} Never.
+ */
+function onModelSlots(grid: { fps: MiniToolPlanGrid["fps"]; first: number }, spanStart: MiniToolPlanGrid["gridStart"], model: { fps: number; frameCount: number }): string {
+  // slot(m) = ceil(((first + m) / gridFps − spanStart) × modelFps), clamped to 0.
+  const a = grid.fps.denominator * spanStart.denominator;
+  const b = spanStart.numerator * grid.fps.numerator;
+  const c = grid.fps.numerator * spanStart.denominator;
+  return `settb=1/${model.fps},setpts=max(ceil(((N+${grid.first})*${a}-${b})*${model.fps}/${c})\\,0),fps=fps=${model.fps}:round=up,` +
+    `tpad=stop_mode=clone:stop=${model.frameCount},trim=end_frame=${model.frameCount}`;
+}
+
+/**
+ * One expand window's model input (execution design §10.5): each slot shows the grid frame covering span.start + j / fps, scaled
+ * into `sourceRoi` over the fill colour; lossless.
  * @param recipe - The window.
  * @param request - Its files.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
- * @throws {RangeError} When a time is malformed.
  * @throws {Error} When FFmpeg fails.
  */
 async function modelWindow(recipe: MiniToolPlanModelWindow, request: ModelRecipeRequest, run: Run): Promise<void> {
-  const { frame, sourceRoi: roi, fill, grid } = recipe;
-  const clock = BigInt(recipe.timescale);
-  const origin = span(recipe.entries[0]!).start;
+  const { frame, sourceRoi: roi, fill, model } = recipe;
+  const file = local(request.inputs, recipe.inputId);
+  const facts = await sourceFacts(file, run);
   const hex = fill.map((channel) => channel.toString(16).padStart(2, "0")).join("");
-  // The frames are tagged BT.709 limited range before the pad, so the RGB fill colour is converted with that matrix.
-  const window = await windowGraph(recipe.entries, clock, local(request.inputs, recipe.inputId), run,
-    (label, colour) => `${decodedPicture(recipe.target, roi.width, roi.height, colour, label, { format: "yuv444p", bt709: true })},${BT709_TAGS},` +
-      `pad=${frame.width}:${frame.height}:${roi.x}:${roi.y}:color=0x${hex}`,
-    () => `color=c=0x${hex}:s=${frame.width}x${frame.height}:r=1:d=1,format=yuv444p,${BT709_TAGS}`);
-  // The span can start or end between the window clock's ticks, so it is placed on a 1/90000 clock.
-  const fine = 90000n;
-  const shift = roundTimes(minus(recipe.span.start, origin), fine);
-  const end = roundTimes(minus(recipe.span.end, origin), fine);
-  // The window's frames up to the span's end, then one clone placed at the end so `fps` emits the slot the last frames fall
-  // into; frames before the span's start all land on 0, so slot 0 shows the one covering the start.
-  window.graph.push(`${window.graph.pop()!.replace(/\[v\]$/u, "[w]")};[w]settb=1/${fine},trim=end=${seconds([end, fine])},tpad=stop_mode=clone:stop=1,` +
-    `setpts=if(lte(PTS\\,PREV_INPTS)\\,${end - shift}\\,max(PTS-${shift}\\,0)),` +
-    `fps=fps=${grid.fps}:round=up,tpad=stop_mode=clone:stop=${grid.frameCount},trim=end_frame=${grid.frameCount},format=yuv420p,setsar=1,${BT709_TAGS}[v]`);
+  const chain = `${decodedPicture(recipe.target.colorMatrix, facts.range, roi.width, roi.height, { format: "yuv444p", bt709: true })},${BT709_TAGS},` +
+    `pad=${frame.width}:${frame.height}:${roi.x}:${roi.y}:color=0x${hex},${onModelSlots({ fps: recipe.grid.fps, first: recipe.frames.start }, recipe.span.start, model)},` +
+    `format=yuv420p,setsar=1,${BT709_TAGS}`;
   const lossless: MiniToolPlanTarget = { ...recipe.target, width: frame.width, height: frame.height, displayRect: null, crf: 0, alpha: "none", format: undefined };
-  const { video, muxer } = videoOutput(lossless, BigInt(grid.fps), BigInt(grid.frameCount));
-  await runPlanCommand("ffmpeg", [...window.args, "-filter_complex", window.graph.join(";"), "-map", "[v]", ...video, "-an", ...muxer, request.output], run);
+  const { video, muxer } = videoOutput(lossless, { numerator: model.fps, denominator: 1 });
+  await decodeGridWindow({ file, grid: recipe.grid, source: recipe.source, frames: recipe.frames }, facts, request.directory, run, (input, graph) => [
+    ...input, "-filter_complex", `${graph};[g]${chain}[v]`, "-map", "[v]", ...video, "-an", ...muxer, request.output,
+  ]);
 }
 
 /**
- * One expand window's mask (execution design §10.5): black inside `sourceRoi`, white elsewhere, one frame per grid slot,
- * lossless and full range.
+ * One expand window's mask (execution design §10.5): black inside `sourceRoi`, white elsewhere, one frame per slot, lossless
+ * and full range.
  * @param recipe - The mask.
  * @param request - Its files.
  * @param run - The lifetime and IO bounds.
@@ -198,40 +180,36 @@ async function modelWindow(recipe: MiniToolPlanModelWindow, request: ModelRecipe
  * @throws {Error} When FFmpeg fails.
  */
 async function windowMask(recipe: MiniToolPlanModelWindowMask, request: ModelRecipeRequest, run: Run): Promise<void> {
-  const { frame, sourceRoi: roi, grid } = recipe;
+  const { frame, sourceRoi: roi, model } = recipe;
   const plane = Buffer.alloc(frame.width * frame.height, 255);
   for (let y = roi.y; y < roi.y + roi.height; y += 1) plane.fill(0, y * frame.width + roi.x, y * frame.width + roi.x + roi.width);
   const file = join(request.directory, "window-mask.gray");
   await writeFile(file, plane);
   await runPlanCommand("ffmpeg", [...HEAD, "-f", "rawvideo", "-pix_fmt", "gray", "-s", `${frame.width}x${frame.height}`, "-i", file,
-    "-vf", `loop=loop=${grid.frameCount - 1}:size=1:start=0,${FULL_RANGE},settb=1/${grid.fps},setpts=N`, ...LOSSLESS_MASK,
-    ...timingTo(grid.fps, grid.frameCount), "-movflags", "+faststart", "-f", "mp4", request.output], run);
+    "-vf", `loop=loop=${model.frameCount - 1}:size=1:start=0,${FULL_RANGE},settb=1/${model.fps},setpts=N`, ...LOSSLESS_MASK,
+    ...timingTo(model.fps, model.frameCount), "-movflags", "+faststart", "-f", "mp4", request.output], run);
 }
 
 /**
- * The PNG of the frame whose presentation time is closest to `time`, the earlier on a tie (execution design §10.5 condition),
- * decoded from the previous window's model result with its own colour tags ({@link modelResultDecode}).
+ * The PNG of one grid frame of a model result (execution design §10.5 condition step), decoded with the result's own colour
+ * tags ({@link probeModelResultDecode}).
  * @param recipe - The condition frame.
  * @param request - Its files.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
- * @throws {RangeError} When the result's tagged matrix has no decode value.
- * @throws {Error} When the video has no frame or FFmpeg fails.
+ * @throws {Error} When FFmpeg fails.
  */
 async function frameAt(recipe: MiniToolPlanFrameAt, request: ModelRecipeRequest, run: Run): Promise<void> {
-  const source = local(request.inputs, recipe.inputId);
-  const { times, stream } = await presentationTimes(source, run);
-  if (times.length === 0) throw new Error("The condition video has no frame");
-  const [numerator, denominator] = rational(recipe.time);
-  const target = Number(numerator) / Number(denominator);
-  let best = 0;
-  times.forEach((time, at) => { if (Math.abs(time - target) < Math.abs(times[best]! - target) - 1e-9) best = at; });
-  await runPlanCommand("ffmpeg", [...HEAD, "-i", source, "-vf", `select=eq(n\\,${best}),scale=${recipe.target.width}:${recipe.target.height}:${modelResultDecode(stream)},format=rgb24`,
-    "-frames:v", "1", "-fps_mode", "passthrough", "-f", "image2", "-c:v", "png", "-update", "1", request.output], run);
+  const file = local(request.inputs, recipe.inputId);
+  const facts = await sourceFacts(file, run);
+  const decode = await probeModelResultDecode(file, run);
+  await decodeGridWindow({ file, grid: recipe.grid, source: recipe.source, frames: { start: recipe.frameIndex, end: recipe.frameIndex + 1 } }, facts, request.directory, run,
+    (input, graph) => [...input, "-filter_complex", `${graph};[g]scale=${recipe.target.width}:${recipe.target.height}:${decode},format=rgb24[v]`,
+      "-map", "[v]", "-frames:v", "1", "-c:v", "png", "-f", "image2", request.output]);
 }
 
 /**
- * A one-frame 4:4:4 Y4M image: a header naming its size and format, then the Y, U and V planes.
+ * A one-frame 4:4:4 Y4M image on the grid rate: a header naming its size, rate and format, then the Y, U and V planes.
  * @param width - Its width.
  * @param height - Its height.
  * @param planes - The three planes, `width × height` bytes each.
@@ -239,39 +217,32 @@ async function frameAt(recipe: MiniToolPlanFrameAt, request: ModelRecipeRequest,
  * @throws {never} Never.
  */
 function y4m(width: number, height: number, planes: readonly Uint8Array[]): Buffer {
-  // A 1/90000 frame rate, so the concat list's durations place each image on that clock.
-  return Buffer.concat([Buffer.from(`YUV4MPEG2 W${width} H${height} F90000:1 Ip A1:1 C444\nFRAME\n`, "ascii"), ...planes]);
+  return Buffer.concat([Buffer.from(`YUV4MPEG2 W${width} H${height} F25:1 Ip A1:1 C444\nFRAME\n`, "ascii"), ...planes]);
 }
 
 /**
- * Composite the erase model's result over a chunk (execution design §10.4 composite row): each frame in the range shows its
- * grid slot's result frame through its RLE mask, dilated by `matte.dilate` pixels and feathered by `matte.feather`, at the
- * picture's size (source × (1 − m) + result × m, per 4:4:4 plane, so the source outside the mask is kept as decoded);
- * outside the range the source. The result's own timestamps are ignored: the result frames and masks are laid out per chunk
- * frame with the chunk's presented durations, on its clock. The result is decoded with its own colour tags ({@link modelResultDecode}).
+ * Composite the erase model's result over a chunk (execution design §10.4 composite row): each chunk frame inside the range
+ * shows its model slot's result frame through its RLE mask, dilated by `matte.dilate` and feathered by `matte.feather`
+ * (source × (1 − m) + result × m per 4:4:4 plane); outside the range the source. Every stream is laid out frame by frame on
+ * the chunk's grid. The result is decoded with its own colour tags.
  * @param recipe - The composite.
  * @param request - Its files.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
- * @throws {RecipeFailure} `model_output_mismatch` when a chunk with frames in the range reads a result with another frame
- * count than the grid, `tracking_output_mismatch` when the RLE does not cover the range.
- * @throws {RangeError} When the result's tagged matrix has no decode value.
+ * @throws {RecipeFailure} `model_output_mismatch` when the result's frames are not the model grid's, `tracking_output_mismatch`
+ * when the RLE does not cover the range.
  * @throws {Error} When FFprobe or FFmpeg fails.
  */
 async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: ModelRecipeRequest, run: Run): Promise<void> {
-  const { target, range, grid, matte } = recipe;
+  const { target, range, model, matte, grid, frames } = recipe;
   const { rect } = placement(target);
-  const clock = BigInt(recipe.timescale);
   const directory = request.directory;
   const area = rect.width * rect.height;
-  const rangeFrames = presentationGridFrames(recipe.table, range.startFrame, range.frameCount);
-  const count = recipe.window.end - recipe.window.start;
-  const chunk = tableFrames(recipe.table, recipe.window.start, count);
-  // The grid slot each of this chunk's frames inside the range shows; a chunk outside the range decodes no result.
+  const count = frames.end - frames.start;
   const slots = new Map<number, number>();
   for (let n = 0; n < count; n += 1) {
-    const inRange = recipe.window.start + n - range.startFrame;
-    if (inRange >= 0 && inRange < range.frameCount) slots.set(n, gridFrameSlot(grid, rangeFrames, inRange));
+    const inRange = frames.start + n - range.startFrame;
+    if (inRange >= 0 && inRange < range.frameCount) slots.set(n, gridFrameSlot(model, grid.fps, inRange));
   }
   if (slots.size > 0) {
     const decoded = join(directory, "result.yuv");
@@ -281,7 +252,7 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
     const resultFile = await open(decoded, "r");
     try {
       const { size } = await resultFile.stat();
-      if (size !== grid.frameCount * area * 3) throw new RecipeFailure("model_output_mismatch");
+      if (size !== model.frameCount * area * 3) throw new RecipeFailure("model_output_mismatch");
       const frame = Buffer.alloc(area * 3);
       for (const slot of new Set(slots.values())) {
         await resultFile.read(frame, 0, frame.length, slot * frame.length);
@@ -291,7 +262,6 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
   }
   const track = await readRleTrack(local(request.inputs, recipe.rle));
   if (track.length !== range.frameCount) throw new RecipeFailure("tracking_output_mismatch");
-  // Each concat list holds one image format; a blank result is black and a blank mask keeps the source.
   const blank = { result: join(directory, "blank-result.y4m"), mask: join(directory, "blank-mask.y4m") };
   await writeFile(blank.result, y4m(rect.width, rect.height, [new Uint8Array(area).fill(16), new Uint8Array(area).fill(128), new Uint8Array(area).fill(128)]));
   const maskArea = recipe.rleSize.width * recipe.rleSize.height;
@@ -299,40 +269,36 @@ async function eraseComposite(recipe: MiniToolPlanEraseComposite, request: Model
   const resultList: string[] = [];
   const maskList: string[] = [];
   for (let n = 0; n < count; n += 1) {
-    const duration = (n + 1 < count ? chunk[n + 1]!.start : chunk[n]!.end) - chunk[n]!.start;
-    const inRange = recipe.window.start + n - range.startFrame;
     const slot = slots.get(n);
-    let result = blank.result;
-    let mask = blank.mask;
+    let [result, mask] = [blank.result, blank.mask];
     if (slot !== undefined) {
       result = join(directory, `result-${slot}.y4m`);
-      const pixels = rleForeground(track[inRange] ?? null, recipe.rleSize, 255);
+      const pixels = rleForeground(track[frames.start + n - range.startFrame] ?? null, recipe.rleSize, 255);
       mask = join(directory, `mask-${n}.y4m`);
       // Every plane carries the mask, so colour is blended by the same weight as luma.
       await writeFile(mask, y4m(recipe.rleSize.width, recipe.rleSize.height, [pixels, pixels, pixels]));
     }
-    resultList.push(`file '${result}'`, `duration ${duration.toFixed(6)}`);
-    maskList.push(`file '${mask}'`, `duration ${duration.toFixed(6)}`);
+    resultList.push(`file '${result}'`);
+    maskList.push(`file '${mask}'`);
   }
-  // The concat demuxer applies the last duration only when the last file is listed once more.
-  resultList.push(resultList.at(-2)!); maskList.push(maskList.at(-2)!);
   const lists = { result: join(directory, "results.txt"), mask: join(directory, "masks.txt") };
   await writeFile(lists.result, `ffconcat version 1.0\n${resultList.join("\n")}\n`);
   await writeFile(lists.mask, `ffconcat version 1.0\n${maskList.join("\n")}\n`);
-  const window = await windowGraph(recipe.entries, clock, local(request.inputs, recipe.inputId), run, (label, colour) => decodedPicture(target, rect.width, rect.height, colour, label, { format: "yuv444p", bt709: true }),
-    () => `color=c=black:s=${rect.width}x${rect.height}:r=1:d=1,format=yuv444p`);
-  const { args, graph } = window;
-  const resultInput = window.inputs;
-  args.push("-f", "concat", "-safe", "0", "-i", lists.result, "-f", "concat", "-safe", "0", "-i", lists.mask);
+  const file = local(request.inputs, recipe.inputId);
+  const facts = await sourceFacts(file, run);
   const widen = Array.from({ length: matte.dilate }, () => "dilation").join(",");
   const soften = matte.feather > 0 ? `gblur=sigma=${matte.feather}` : "";
   const maskChain = [`scale=${rect.width}:${rect.height}:flags=neighbor`, widen, soften].filter((part) => part !== "").join(",");
-  // All three inputs carry the source's BT.709 limited-range tags, so no conversion is inserted before the merge; the mask's
-  // values are weights.
-  graph.push(`[${resultInput}:v:0]settb=1/${clock},${BT709_TAGS}[r]`, `[${resultInput + 1}:v:0]${maskChain},settb=1/${clock},${BT709_TAGS}[m]`,
-    `[v][r][m]maskedmerge,trim=end_frame=${count},${picture({ ...target, colorMatrix: "bt709", toneMap: "none" }, "o", null)}[c]`);
-  const { video, muxer } = videoOutput(target, clock, roundTimes(minus(span(recipe.entries[recipe.entries.length - 1]!).end, span(recipe.entries[0]!).start), clock));
-  await runPlanCommand("ffmpeg", [...args, "-filter_complex", graph.join(";"), "-map", "[c]", ...video, "-an", ...muxer, request.output], run);
+  // Every stream is retimed frame by frame onto the chunk's grid, so frame n of each meets frame n of the others.
+  const onGrid = `settb=${grid.fps.denominator}/${grid.fps.numerator},setpts=N`;
+  const { video, muxer } = videoOutput(target, grid.fps);
+  await decodeGridWindow({ file, grid, source: recipe.source, frames }, facts, directory, run, (input, head) => [
+    ...input, "-f", "concat", "-safe", "0", "-i", lists.result, "-f", "concat", "-safe", "0", "-i", lists.mask, "-filter_complex", [
+      head, `[g]${decodedPicture(target.colorMatrix, facts.range, rect.width, rect.height, { format: "yuv444p", bt709: true })},${BT709_TAGS},${onGrid}[v]`,
+      `[1:v:0]${onGrid},${BT709_TAGS}[r]`, `[2:v:0]${maskChain},${onGrid},${BT709_TAGS}[m]`,
+      `[v][r][m]maskedmerge,trim=end_frame=${count},${picture({ ...target, colorMatrix: "bt709", toneMap: "none" }, "tv", "o")}[c]`,
+    ].join(";"), "-map", "[c]", ...video, "-an", ...muxer, request.output,
+  ]);
 }
 
 /**

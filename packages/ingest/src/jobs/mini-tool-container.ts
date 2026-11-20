@@ -218,7 +218,7 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
             op: request.op,
             params: request.params,
             input: mediaObjectUrl(request.input.storageKey),
-            extra: extra.map((input) => mediaObjectUrl(input.storageKey)),
+            extra: (request.extra ?? []).map((input) => mediaObjectUrl(input.storageKey)),
             outputs: request.outputs.map((output) => ({
               url: mediaObjectUrl(output.storageKey), key: output.storageKey,
               ...(output.coverKey !== undefined && { coverUrl: mediaObjectUrl(output.coverKey) }),

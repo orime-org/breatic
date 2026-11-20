@@ -28,17 +28,20 @@ const CHUNK_B = "10000000-0000-4000-8000-0000000000b1";
 const SOURCE_BASE = "http://source.test/";
 
 // The current presentation run contract's request constants (as presentation-probe.node.test.ts sends them).
+const SOURCE_RATES = {
+  sdr_8bit: 910e6, sdr_10bit: 810e6, sdr_12bit: 690e6, sdr_alpha_layer: 600e6, sdr_prores: 820e6, sdr_dnx: 735e6, sdr_av1_8bit: 740e6, sdr_av1_10bit: 570e6,
+  sdr_av1_12bit: 610e6, sdr_jpeg2000: 25e6, sdr_ffv1: 75e6, sdr_png: 340e6, sdr_other: 1080e6,
+};
+const EDIT_TIERS = { edit_h264_intra_8bit_420: 1500e6, edit_h264_intra_10bit_420: 1200e6, edit_h264_intra_8bit_444: 1100e6, edit_h264_intra_10bit_444: 900e6, edit_prores: 950e6 };
 const ENCODING = {
   chunkShare: 0.5, maxParallelChunks: 8,
-  encoder: { startSeconds: 3, encodePixelsPerSecond: 248000000, decodeConvertPixelsPerSecond: { sdr_8bit: 2200000000, sdr_10bit: 1310000000, sdr_12bit: 816000000, hdr_8bit: 106000000, hdr_10bit: 102000000, hdr_12bit: 109000000, sdr_16bit: 294000000, hdr_16bit: 71900000 }, aacEncodeSecondsPerSecond: 100 },
-  copyDiskMarginBytes: 33554432, carrier: { maxShortSide: 1080, color: { primaries: "bt709", transfer: "bt709", matrix: "bt709", range: "tv" } },
+  encoder: { startSeconds: 3, encodePixelsPerSecond: 248e6, tonemapPixelsPerSecond: 1170e6, decodeConvertPixelsPerSecond: { ...SOURCE_RATES, ...EDIT_TIERS },
+    editEncodePixelsPerSecond: EDIT_TIERS, aacEncodeSecondsPerSecond: 100 },
+  edit: { crf: 15, preset: "medium", proresProfile: "4444", bytesPerPixel: 0.5, maxEditBytes: 10_000_000_000 },
+  carrier: { maxShortSide: 1080, color: { primaries: "bt709", transfer: "bt709", matrix: "bt709", range: "tv" } },
 };
-const PROBE_LIMITS = {
-  maxSourceBytes: 1073741824, maxPackedBytes: 1073741824, crf: 18, preset: "medium", probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536,
-  sourceLedger: { maxBytes: 16777216, probeStdoutBytes: 67108864, metadataBytes: 16777216, isoBoxCount: 100000, matroskaElementCount: 1000000, matroskaMaxBlocks: 250000 },
-};
-const IDENTITY_FORMATS = [{ container: "mp4", videoCodec: "h264", profiles: ["Constrained Baseline", "Baseline", "Main", "High"], pixFmt: "yuv420p", bitDepth: 8, audioCodecs: ["aac", "none"], rotation: 0, sar: "1:1", matrixTagged: true }];
-const PROBE = { sampleFrames: 1, singleFrameDurationMs: 5000, identityFormats: IDENTITY_FORMATS };
+const PROBE_LIMITS = { maxSourceBytes: 1073741824, maxPackedBytes: 1073741824, crf: 18, preset: "medium", probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
+const PROBE = { sampleFrames: 1, singleFrameDurationMs: 5000, maxFps: 120 };
 
 let dir: string;
 const files = new Map<string, string>();
@@ -130,7 +133,7 @@ describe("R05 the planned display is FFmpeg's first decoded frame (§4.3, D07)",
       action: "probe", jobId: "video-presentation-a", sourceFingerprint, deadlineAt: Date.now() + 3_600_000,
       sourceURL: `${SOURCE_BASE}${name}`, limits: PROBE_LIMITS, encoding: ENCODING, probe: PROBE,
     });
-    const answer = presentationProbeAnswerSchema.parse(await runOwner.runPresentationProbe(body as Parameters<typeof runOwner.runPresentationProbe>[0])) as unknown as
+    const answer = presentationProbeAnswerSchema.parse(await runOwner.runPresentationProbe(body)) as unknown as
       { kind: string; plan?: { display: { width: number; height: number } } };
     expect(answer.kind, JSON.stringify(answer)).toBe("planned");
     expect({ width: answer.plan!.display.width, height: answer.plan!.display.height }).toEqual(decoded);

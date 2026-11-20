@@ -17,11 +17,9 @@ import { once } from "node:events";
 import { open, readFile, type FileHandle } from "node:fs/promises";
 import { join } from "node:path";
 import type { Writable } from "node:stream";
-import { rational } from "@shared/mini-tools/video-presentation-projection.js";
 import {
-  lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncResultSourceFrames, lipsyncSourceFrameAt, lipsyncSourceSpan, type LipsyncTimeline,
+  lipsyncClipCropFrames, lipsyncPictureBytes, lipsyncResultFrameCount, lipsyncResultSourceFrames, lipsyncSourceFrameAt, lipsyncSourceSpan, type LipsyncGrid, type LipsyncTimeline,
 } from "@shared/mini-tools/lipsync-timeline.js";
-import type { VideoPresentationTable } from "@shared/mini-tools/video-presentation-projection.js";
 import type {
   MiniToolPlanDetectorProfile, MiniToolPlanLipsyncClip, MiniToolPlanLipsyncComposite, MiniToolPlanLipsyncFaces, MiniToolPlanLipsyncStem, MiniToolPlanPixelRect, MiniToolPlanTarget,
 } from "@shared/upload/mini-tool-plan-types.js";
@@ -30,8 +28,8 @@ import { readYuNetFaces } from "@ingest/container/analysis-detection.js";
 import { runPlanCommand, startPlanCommand, type PlanPipe } from "@ingest/container/plan-command.js";
 import { readRleTrack, rleForeground } from "@ingest/container/rle-track.js";
 import {
-  BT709_TAGS, RecipeFailure, detect, local, modelResultDecode, picture, placement, readMediaMetadata, readVideoMetadata, roundTimes, videoOutput, windowGraph, writeJson,
-  type PlanLimits,
+  BT709_TAGS, RecipeFailure, detect, landedGridInput, local, modelResultDecode, picture, placement, readMediaMetadata, readVideoMetadata, sourceFacts, videoOutput,
+  writeJson, type PlanLimits,
 } from "@ingest/container/presentation-recipes.js";
 
 /** The lip-sync recipes. */
@@ -389,18 +387,15 @@ function cropFace(frame: Picture, rect: FaceRect, mask: Uint8Array | null, size:
 }
 
 /**
- * The result timeline's frames on the prepared video's frame rate (§7.17 lipsync_clip row): its clock and frame step, the
- * end in ticks and the frame count; the last frame ends at the result duration.
+ * The result timeline's frames on a grid (§7.17 lipsync_clip row): its clock (fps.numerator ticks a second) and frame step
+ * (fps.denominator ticks), the end in ticks and the frame count; the last frame ends at the result duration.
  * @param timeline - The frozen timeline.
- * @param table - The prepared video's presentation table.
- * @returns The grid.
+ * @param grid - The grid.
+ * @returns The result grid.
  * @throws {never} Never.
  */
-function resultGrid(timeline: LipsyncTimeline, table: VideoPresentationTable): { clock: number; step: number; end: number; count: number } {
-  const clock = table.timescale;
-  const step = table.runs[0]!.step;
-  const end = Math.round(timeline.duration * clock);
-  return { clock, step, end, count: Math.ceil(end / step) };
+function resultGrid(timeline: LipsyncTimeline, grid: LipsyncGrid): { clock: number; step: number; end: number; count: number } {
+  return { clock: grid.fps.numerator, step: grid.fps.denominator, end: Math.round(timeline.duration * grid.fps.numerator), count: lipsyncResultFrameCount(timeline, grid) };
 }
 
 /**
@@ -421,7 +416,7 @@ function resultGrid(timeline: LipsyncTimeline, table: VideoPresentationTable): {
  */
 function startEncode(frame: { width: number; height: number; alpha: boolean }, timing: { clock: number; tick: number; end: number },
   target: MiniToolPlanTarget, output: string, run: Run): PlanPipe & { stdin: Writable } {
-  const { video, muxer } = videoOutput(target, BigInt(timing.clock), BigInt(timing.end));
+  const { video, muxer } = videoOutput(target, { numerator: timing.clock, denominator: timing.tick }, { ticks: timing.clock, end: timing.end });
   const pipe = startPlanCommand("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-f", "rawvideo", "-pix_fmt", frame.alpha ? "yuva420p" : "yuv420p",
     "-s", `${frame.width}x${frame.height}`, "-framerate", `${timing.clock}/${timing.tick}`, "-i", "pipe:0",
     "-vf", `settb=1/${timing.clock},setpts=N*${timing.tick},setsar=1,${BT709_TAGS}`, ...video, "-an", ...muxer, output], run, { stdin: true });
@@ -441,7 +436,7 @@ async function finishEncode(encode: PlanPipe & { stdin: Writable }): Promise<voi
 
 /**
  * Write one person's face clip (§7.17 lipsync_clip row, execution design §9.2): result frame k shows source frame
- * `lipsyncSourceFrameAt(timeline, table, k)` cropped to that frame's face, H.264 of `timeline.duration` on the prepared
+ * `lipsyncSourceFrameAt(timeline, grid, k)` cropped to that frame's face, H.264 of `timeline.duration` on the prepared
  * video's frame rate. The prepared video is decoded once, forward, on FFmpeg's stdout and each crop goes to the encoder's
  * stdin in result order (execution design paragraph before §9.4); every frame of `lipsyncClipCropFrames` is cropped into
  * the crop file as the decode passes it and read back from there.
@@ -456,8 +451,9 @@ async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipe
   const video = local(request.inputs, recipe.inputId);
   const { width, height } = await videoFacts(video, run);
   const [track, faces] = await Promise.all([readRleTrack(local(request.inputs, recipe.track)), readFaces(local(request.inputs, recipe.faces))]);
-  const grid = resultGrid(recipe.timeline, recipe.table);
-  const sources = lipsyncResultSourceFrames(recipe.timeline, recipe.table);
+  const lipsyncGrid = { fps: recipe.grid.fps, frameCount: recipe.grid.frameCount };
+  const grid = resultGrid(recipe.timeline, lipsyncGrid);
+  const sources = lipsyncResultSourceFrames(recipe.timeline, lipsyncGrid);
   const highest = Math.max(...sources);
   const kept = new Set(lipsyncClipCropFrames(sources));
   const slots = new Int32Array(highest + 1).fill(-1);
@@ -504,6 +500,17 @@ async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipe
 }
 
 /**
+ * An exact time in seconds as samples on the 48 kHz grid, rounded to the nearest (halves away from 0).
+ * @param time - The time.
+ * @returns The samples.
+ * @throws {never} Never.
+ */
+function stemSamples(time: { numerator: number; denominator: number }): bigint {
+  const [a, b] = [BigInt(time.numerator) * 48000n, BigInt(time.denominator)];
+  return (2n * a + b) / (2n * b);
+}
+
+/**
  * Write one person's dialogue stem (§7.17 lipsync_stem row): each row placed at its start time on the 48 kHz grid and summed
  * without normalising, silence elsewhere, exactly `duration` long, AAC.
  * @param recipe - The stem recipe.
@@ -513,11 +520,11 @@ async function writeClip(recipe: MiniToolPlanLipsyncClip, request: LipsyncRecipe
  * @throws {Error} When FFmpeg fails.
  */
 async function writeStem(recipe: MiniToolPlanLipsyncStem, request: LipsyncRecipeRequest, run: Run): Promise<void> {
-  const samples = roundTimes(rational(recipe.duration), 48000n);
+  const samples = stemSamples(recipe.duration);
   const args = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file"];
   const graph = recipe.rows.map((row, at) => {
     args.push("-i", local(request.inputs, row.inputId));
-    return `[${at}:a:0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono,asetpts=PTS-STARTPTS,adelay=delays=${roundTimes(rational(row.startTime), 48000n)}S:all=1[r${at}]`;
+    return `[${at}:a:0]aresample=48000,aformat=sample_fmts=fltp:channel_layouts=mono,asetpts=PTS-STARTPTS,adelay=delays=${stemSamples(row.startTime)}S:all=1[r${at}]`;
   });
   const rows = recipe.rows.map((_row, at) => `[r${at}]`).join("");
   graph.push(`${rows}${recipe.rows.length === 1 ? "anull" : `amix=inputs=${recipe.rows.length}:normalize=0:duration=longest`},apad=whole_len=${samples},atrim=end_sample=${samples}[a]`);
@@ -683,7 +690,7 @@ function copyPicture(frame: Picture): Picture {
 /**
  * Write one composite chunk (§7.17 lipsync_composite row, §5.4): result frames [window.start, window.end) on the result clock
  * from 0, opening with a keyframe; result frame k shows the original's presentation frame
- * `lipsyncSourceFrameAt(timeline, table, k)` with every person's result frame laid onto that frame's face, the result frame
+ * `lipsyncSourceFrameAt(timeline, grid, k)` with every person's result frame laid onto that frame's face, the result frame
  * being the one whose presentation time is nearest k's on the result grid (`resultFramesShown`); a frame without a face, or past
  * the person's result, leaves the source; a transparent original keeps its alpha (VP9), an opaque one is H.264. The entries cover
  * only the source frames the chunk shows (`lipsyncChunkSourceWindow`). Frames move through pipes (execution design
@@ -699,31 +706,29 @@ function copyPicture(frame: Picture): Picture {
  * @throws {Error} When decoding, reading or encoding fails.
  */
 async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: LipsyncRecipeRequest, run: Run): Promise<void> {
-  const { target, table, timeline, window } = recipe;
+  const { target, timeline, frames: window } = recipe;
+  const grid = { fps: recipe.grid.fps, frameCount: recipe.grid.frameCount };
   if (target.alpha === "packed") throw new RangeError("A lip-sync composite is an opaque H.264 or a transparent VP9 chunk");
   const alpha = target.alpha === "straight";
   const { rect: placed } = placement(target);
   // Tracks and face tables are in the prepared video's pixels; its picture rectangle is shown on the output's (§5.3, §4.3).
   const { prepared } = recipe;
   const map: Mapping = { prepared, area: prepared.displayRect ?? { x: 0, y: 0, width: prepared.width, height: prepared.height }, placed };
-  // Result frame j of the chunk lasts the prepared video's frame step, in this chunk's ticks.
-  const step = table.runs[0]!.step * recipe.timescale;
-  if (step % table.timescale !== 0) throw new RangeError("The result frame step is not a whole number of the chunk's ticks");
-  const tick = step / table.timescale;
   const length = window.end - window.start;
-  const sources = Array.from({ length }, (_unused, j) => lipsyncSourceFrameAt(timeline, table, window.start + j));
-  // The entries cover only the source frames this chunk shows, so the decoded frames start at the window's first.
+  const sources = Array.from({ length }, (_unused, j) => lipsyncSourceFrameAt(timeline, grid, window.start + j));
+  // Only the source grid frames this chunk shows are decoded, indexed from the first of them.
   const shown = lipsyncSourceSpan(sources, { start: 0, end: length });
-  const graph = await windowGraph(recipe.entries, BigInt(table.timescale), local(request.inputs, recipe.inputId), run, (label, colour) => picture(target, label, colour),
-    (entry) => `color=c=black${alpha && entry.fill === "transparent" ? "@0" : ""}:s=${target.width}x${target.height}:r=1:d=1,format=${alpha ? "yuva420p" : "yuv420p"},setsar=1`);
-  const sourceArgs = [...graph.args, "-filter_complex", graph.graph.join(";"), "-map", "[v]"];
+  const file = local(request.inputs, recipe.inputId);
+  const facts = await sourceFacts(file, run);
+  const landed = await landedGridInput({ file, grid: recipe.grid, source: recipe.source, frames: { start: shown.start, end: shown.end } }, facts, request.directory, run);
+  const sourceArgs = [...landed.input, "-filter_complex", `${landed.graph};[g]${picture(target, facts.range, "p")}[v]`, "-map", "[v]"];
   const persons: CompositePerson[] = [];
   let [held, streamed, encode]: [RawFrames | null, PlanPipe | null, (PlanPipe & { stdin: Writable }) | null] = [null, null, null];
   try {
     for (const person of recipe.persons) {
       const result = local(request.inputs, person.result);
       const [faces, track, times] = await Promise.all([readFaces(local(request.inputs, person.faces)), readRleTrack(local(request.inputs, person.track)), frameTimes(result, run)]);
-      const shows = resultFramesShown(times, { clock: table.timescale, step: table.runs[0]!.step }, window);
+      const shows = resultFramesShown(times, { clock: grid.fps.numerator, step: grid.fps.denominator }, window);
       const used = shows.filter((index): index is number => index !== null);
       let decode: PlanPipe | null = null;
       if (used.length > 0) {
@@ -753,7 +758,8 @@ async function writeComposite(recipe: MiniToolPlanLipsyncComposite, request: Lip
       if (held.count > shown.end - shown.start) throw new RangeError("The lip-sync composite's source decoded past the frames it shows");
     } else streamed = startDecode(sourceArgs, alpha, run);
     const stream = streamed === null ? null : frameStream(streamed, target.width, target.height, alpha);
-    encode = startEncode({ width: target.width, height: target.height, alpha }, { clock: recipe.timescale, tick, end: length * tick }, target, request.output, run);
+    const tick = grid.fps.denominator;
+    encode = startEncode({ width: target.width, height: target.height, alpha }, { clock: grid.fps.numerator, tick, end: length * tick }, target, request.output, run);
     let [position, current]: [number, Picture | null] = [shown.start - 1, null];
     for (const [j, s] of sources.entries()) {
       let frame: Picture;

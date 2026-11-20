@@ -56,7 +56,7 @@ const RATES: Rates = {
  * @returns The module's exports.
  */
 async function frameGrid(): Promise<Record<string, unknown>> {
-  return await import('@shared/upload/frame-grid-rate.js') as Record<string, unknown>;
+  return await import('@shared/upload/frame-grid-rate.js');
 }
 
 /**

@@ -63,7 +63,7 @@ async function versions(input: VersionInput): Promise<Versions> {
  * @returns It.
  */
 function chooseRoute(): ChooseRoute {
-  return plan.chooseVideoCarrierRoute as unknown as ChooseRoute;
+  return plan.chooseVideoCarrierRoute;
 }
 
 /**

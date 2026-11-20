@@ -52,8 +52,31 @@ export async function runPlanCommand(program: string, args: readonly string[], o
   return Buffer.concat(stdout, stdoutBytes);
 }
 
+/**
+ * Run one plan program that reports on stderr (FFmpeg's seek warnings): its stdout and its stderr tail.
+ * @param program - A repository-selected executable.
+ * @param args - Its owned argument vector.
+ * @param options - The original lifetime and frozen IO limits.
+ * @returns Its bounded stdout and the kept stderr tail.
+ * @throws {PlanCommandExit} When the program exits with a non-zero code.
+ * @throws {Error} When spawn or IO bounds fail, or a signal ends the program.
+ */
+export async function runPlanCommandWithStderr(program: string, args: readonly string[], options: PlanCommandOptions): Promise<{ stdout: Buffer; stderr: string }> {
+  const pipe = startPlanCommand(program, args, options, { stdout: true });
+  const stdout: Buffer[] = [];
+  let bytes = 0;
+  pipe.stdout!.on("data", (chunk: Buffer) => {
+    bytes += chunk.length;
+    if (bytes > options.stdoutBytes) pipe.stop();
+    else stdout.push(Buffer.from(chunk));
+  });
+  await pipe.done;
+  if (bytes > options.stdoutBytes) throw new Error(`${program} stdout exceeded its frozen byte limit`);
+  return { stdout: Buffer.concat(stdout), stderr: pipe.stderr() };
+}
+
 /** A spawned plan program whose stdin or stdout its caller streams; `done` settles once the process has closed. */
-export interface PlanPipe { stdin: Writable | null; stdout: Readable | null; done: Promise<void>; stop(): void }
+export interface PlanPipe { stdin: Writable | null; stdout: Readable | null; done: Promise<void>; stop(): void; stderr(): string }
 
 /**
  * Start one directly spawned plan program whose stdin or stdout the caller streams (execution design paragraph before
@@ -113,5 +136,5 @@ export function startPlanCommand(program: string, args: readonly string[], optio
   });
   // A caller that stops early awaits `done` after `stop`; until then a rejection is not unhandled.
   done.catch(() => undefined);
-  return { stdin: child.stdin, stdout: child.stdout, done, stop };
+  return { stdin: child.stdin, stdout: child.stdout, done, stop, stderr: () => stderr.toString("utf8") };
 }

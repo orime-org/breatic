@@ -8,22 +8,22 @@
  *
  * Each case runs the planned job owner (`runPlanJob`) as the standard-4 container does, with every fixture generated here by
  * FFmpeg and every assertion a fact FFmpeg reads back (pixel means of the stored planes, packets, decoded PCM). The edge is
- * faked at `fetch`. Recipe shapes (none is in `miniToolPlanRecipeSchema` yet; they reuse the conventions of
- * `mini-tool-plan-job.ts`: bound inputs by `inputId`, exact times `{ numerator, denominator }`, `windowRecipe`, `target`):
+ * faked at `fetch`. Recipe shapes are those of `mini-tool-plan-types.ts`: bound inputs by `inputId`, exact times
+ * `{ numerator, denominator }`, the source's fixed-rate `grid` { fps, gridStart, frameCount, realFrameCount } and tool
+ * `source` (frames-split §7.16), `target`:
  *
  * - `lipsync_faces`: `{ kind, inputId (prepared video), track (RLE JSON), profile (the people detector profile) }` writes
  *   `{ frames: [{ frameIndex, faceRect: { x, y, width, height } | null }] }` in prepared-video pixels, one entry per frame,
  *   searching faces only inside the person's tracked foreground; all null fails with `no_face`, no foreground on any frame
  *   with `empty_foreground`.
- * - `lipsync_clip`: `{ kind, inputId (prepared video), faces (transform table JSON), track, cropSize, timeline, table, encode }`
- *   writes a `cropSize`² H.264 MP4 of `timeline.duration` on the prepared video's frame rate; result frame t shows the source
- *   frame `lipsyncSourceFrameAt(timeline, table, k)` cropped to its faceRect, scaled to fit and padded, black outside the mask.
+ * - `lipsync_clip`: `{ kind, inputId (prepared video), faces (transform table JSON), track, cropSize, timeline, grid, encode }`
+ *   writes a `cropSize`² H.264 MP4 of `timeline.duration` on the grid's frame rate; result frame k shows the source grid
+ *   frame `lipsyncSourceFrameAt(timeline, grid, k)` cropped to its faceRect, scaled to fit and padded, black outside the mask.
  * - `lipsync_stem`: `{ kind, rows: [{ inputId, startTime }], duration }` writes AAC 48 kHz of exactly `duration`, each row
  *   placed at its start and summed, silence elsewhere, a row past the end truncated.
- * - `lipsync_composite`: `{ kind, ...windowRecipe, timeline, table, persons: [{ result, faces, track, cropSize }], rawDiskBytes,
- *   feather }`, where
- *   `window` is the chunk's result-frame ordinals on `timescale`, and `entries` are the original's spans over [0, V): one
- *   chunk on the result clock from 0 opening with a keyframe; each person's result inverse-transformed onto its faceRect and
+ * - `lipsync_composite`: `{ kind, inputId, grid, source, frames, target, timeline, prepared, persons: [{ result, faces, track,
+ *   cropSize }], rawDiskBytes, feather }`, where `frames` are the chunk's result frames on the grid, each showing the source grid
+ *   frame the timeline maps it to: one chunk on the result clock from 0 opening with a keyframe; each person's result inverse-transformed onto its faceRect and
  *   blended with feather(face) ∩ tracked foreground; no face gives alpha 0; outside every mask the source; opaque H.264,
  *   transparent VP9 keeping the source alpha.
  *
@@ -51,10 +51,10 @@ import { cocoCounts } from './helpers/coco-counts.js';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 import { runPlanCommand, startPlanCommand } from '@ingest/container/plan-command.js';
 import type * as PlanCommand from '@ingest/container/plan-command.js';
-import { lipsyncSourceFrameAt, type LipsyncTimeline } from '@shared/mini-tools/lipsync-plan.js';
+import { lipsyncSourceFrameAt, type LipsyncTimeline } from '@shared/mini-tools/lipsync-timeline.js';
 import { canonicalMediaType } from '@shared/upload/media-type.js';
 import { sniffMimeType } from '@shared/upload/sniff-mime.js';
-import type { VideoPresentationTable } from '@shared/mini-tools/video-presentation-table.js';
+import type { FrameRate } from '@shared/upload/frame-grid-rate.js';
 
 vi.mock('@ingest/container/analysis-pipeline.js', () => ({ runAnalysisPipeline: vi.fn() }));
 // The real command runners, spied on so a test can read which programs run over which inputs and what files they write.
@@ -65,7 +65,6 @@ vi.mock('@ingest/container/plan-command.js', async (original) => {
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const run = promisify(execFile);
-type Exact = { numerator: string; denominator: string };
 type Recipe = Record<string, unknown>;
 type Rect = { x: number; y: number; width: number; height: number };
 type Plane = 'y' | 'u' | 'v' | 'a';
@@ -73,14 +72,23 @@ interface Report { ok: boolean; reason?: string; outputs: { outputIndex: number 
 interface Stream { codec_type: string; codec_name: string; width?: number; height?: number; sample_rate?: string; time_base: string; duration_ts?: number }
 interface Packet { pts_time: string; duration_time: string; flags: string }
 
-const r = (numerator: number, denominator = 1): Exact => ({ numerator: String(numerator), denominator: String(denominator) });
+const r = (numerator: number, denominator = 1): FrameRate => ({ numerator, denominator });
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 const PEOPLE = { id: 'opencv-yunet-2023mar', version: '2023mar', weightsHash: '8f2383e4dd3cfbb4553ea8718107fc0423210dc964f9f4280604804ed2552fa4', params: { scoreThreshold: 0.6, nmsThreshold: 0.3, topK: 5000 } };
 const W = 160;
 const H = 96;
 const FPS = 25;
-// Every video fixture: ten 25 fps frames, so V = 0.4 s; the presentation table of the prepared video and the original.
-const TABLE: VideoPresentationTable = { schemaVersion: 1, timescale: FPS, runs: [{ start: 0, count: 10, step: 1, duration: 1 }] };
+/**
+ * The grid of a constant-rate fixture: `count` frames at `fps` from 0, every slot a real frame.
+ * @param fps - Its rate.
+ * @param count - Its frames.
+ * @returns The grid.
+ */
+const cfr = (fps: FrameRate, count: number): { fps: FrameRate; gridStart: FrameRate; frameCount: number; realFrameCount: number } => ({ fps, gridStart: r(0), frameCount: count, realFrameCount: count });
+// Every video fixture: ten 25 fps frames, so V = 0.4 s; the grid of the prepared video and the original.
+const GRID = cfr(r(FPS), 10);
+// Every fixture read as an original: its first keyframe at 0 and no keyframe interval over one second.
+const ORIGINAL = { kind: 'original', keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } };
 const V = 0.4;
 // The plan's frozen container encode a clip carries, and the face feather a composite carries (config/mini-tools.yaml).
 const CLIP_ENCODE = { crf: 18, preset: 'medium' };
@@ -327,14 +335,6 @@ function failure(): string | undefined {
 }
 
 /**
- * A source span of the 25 fps original over its whole [0, V) (§7.17 entries).
- * @returns The span.
- */
-function wholeSource(): Recipe {
-  return { kind: 'source', decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(2, 5), rate: r(1) };
-}
-
-/**
  * The first sample whose magnitude passes a threshold, from a sample on.
  * @param pcm - Mono float samples.
  * @param from - The first sample searched.
@@ -551,7 +551,7 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
     const faces = await facesTable(`clip-faces-${syncMode}.json`, n => ({ x: 8 + 8 * n, y: 16, width: 32, height: 32 }));
     const mask = await track(`clip-track-${syncMode}.json`, (n, x) => x >= 8 + 8 * n && x < 32 + 8 * n);
     const file = await produce({ [ID.video]: join(dir, 'clip-source.mp4'), [ID.faces]: faces, [ID.track]: mask },
-      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table: TABLE, encode: CLIP_ENCODE });
+      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, grid: GRID, encode: CLIP_ENCODE });
     const video = (await streams(file)).find(stream => stream.codec_type === 'video')!;
     expect([video.codec_name, video.width, video.height]).toEqual(['h264', CROP, CROP]);
     const count = Math.round(duration * FPS);
@@ -561,7 +561,7 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
     const { width, frames } = await planeFrames(file, 'y');
     expect(frames).toHaveLength(count);
     frames.forEach((frame, k) => {
-      const s = lipsyncSourceFrameAt(timeline, TABLE, k);
+      const s = lipsyncSourceFrameAt(timeline, GRID, k);
       expect(Math.abs(mean(frame, width, { x: 20, y: 20, width: 20, height: 36 }) - (40 + 18 * s)), `frame ${k} shows source ${s}`).toBeLessThan(4);
       expect(mean(frame, width, { x: 2, y: 2, width: 10, height: 10 }), `frame ${k} marker at the crop's corner`).toBeGreaterThan(200);
       expect(mean(frame, width, { x: 52, y: 4, width: 10, height: 56 }), `frame ${k} masked out`).toBeLessThan(24);
@@ -579,7 +579,7 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
     const mask = await track(`seg-track-${syncMode}.json`, (n, x) => x >= 8 + 8 * n && x < 32 + 8 * n);
     const count = Math.round(duration * FPS);
     const file = await produce({ [ID.video]: join(dir, 'clip-source.mp4'), [ID.faces]: faces, [ID.track]: mask },
-      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table: TABLE, encode: CLIP_ENCODE });
+      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, grid: GRID, encode: CLIP_ENCODE });
     // The prepared video is the job's first downloaded input; every FFmpeg run that reads it decodes it.
     const reads = (calls: unknown[][]): unknown[][] => calls.filter(([program, args]) => program === 'ffmpeg' && (args as string[]).some((arg, at, all) => all[at - 1] === '-i' && arg.endsWith('source-0')));
     expect(reads(vi.mocked(runPlanCommand).mock.calls), 'no run decodes the prepared video into a file').toEqual([]);
@@ -589,31 +589,9 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
     const { width, frames } = await planeFrames(file, 'y');
     expect(frames).toHaveLength(count);
     frames.forEach((frame, k) => {
-      const s = lipsyncSourceFrameAt(timeline, TABLE, k);
+      const s = lipsyncSourceFrameAt(timeline, GRID, k);
       expect(Math.abs(mean(frame, width, { x: 20, y: 20, width: 20, height: 36 }) - (40 + 18 * s)), `frame ${k} shows source ${s}`).toBeLessThan(4);
       expect(mean(frame, width, { x: 2, y: 2, width: 10, height: 10 }), `frame ${k} marker at the crop's corner`).toBeGreaterThan(200);
-    });
-  });
-
-  // Execution design paragraph before §9.4: on a variable-frame-rate source the result grid (the first run's rate) skips
-  // frames of a faster run in the first cycle and shows them first in a later one, after the decode has passed them; the
-  // clip crops them into its crop file as the decode passes and still decodes once. The fixture's ten frames are declared
-  // as five 25 fps frames, then five 37.5 fps frames: V = 25 ticks of a 75 tick clock, the result grid every 3 ticks.
-  it.each([['loop', 0.72], ['bounce', 0.72]] as const)('LC04 %s over %s s of a variable-frame-rate source shows every mapped source frame from one decode', async (syncMode, duration) => {
-    const table: VideoPresentationTable = { schemaVersion: 1, timescale: 75, runs: [{ start: 0, count: 5, step: 3, duration: 3 }, { start: 15, count: 5, step: 2, duration: 2 }] };
-    const timeline: LipsyncTimeline = { duration, videoDuration: 1 / 3, syncMode };
-    const faces = await facesTable(`vfr-faces-${syncMode}.json`, n => ({ x: 8 + 8 * n, y: 16, width: 32, height: 32 }));
-    const mask = await track(`vfr-track-${syncMode}.json`, (n, x) => x >= 8 + 8 * n && x < 32 + 8 * n);
-    const file = await produce({ [ID.video]: join(dir, 'clip-source.mp4'), [ID.faces]: faces, [ID.track]: mask },
-      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table, encode: CLIP_ENCODE });
-    const reads = vi.mocked(startPlanCommand).mock.calls.filter(([program, args]) => program === 'ffmpeg' && (args as string[]).some((arg, at, all) => all[at - 1] === '-i' && arg.endsWith('source-0')));
-    expect(reads, 'one decode of the prepared video').toHaveLength(1);
-    const { width, frames } = await planeFrames(file, 'y');
-    expect(frames).toHaveLength(Math.round(duration * FPS));
-    const shown = frames.map((_frame, k) => lipsyncSourceFrameAt(timeline, table, k));
-    expect(shown.some((s, k) => shown.slice(0, k).some(earlier => earlier > s) && !shown.slice(0, k).includes(s)), 'some frame is first shown after a later one').toBe(true);
-    frames.forEach((frame, k) => {
-      expect(Math.abs(mean(frame, width, { x: 20, y: 20, width: 20, height: 36 }) - (40 + 18 * shown[k]!)), `frame ${k} shows source ${shown[k]}`).toBeLessThan(4);
     });
   });
 
@@ -623,7 +601,7 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
     const faces = await facesTable('enc-faces.json', n => ({ x: 8 + 8 * n, y: 16, width: 32, height: 32 }));
     const mask = await track('enc-track.json', (n, x) => x >= 8 + 8 * n && x < 32 + 8 * n);
     await produce({ [ID.video]: join(dir, 'clip-source.mp4'), [ID.faces]: faces, [ID.track]: mask },
-      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table: TABLE, encode: { crf: 31, preset: 'veryfast' } });
+      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, grid: GRID, encode: { crf: 31, preset: 'veryfast' } });
     const encodes = vi.mocked(startPlanCommand).mock.calls.map(([, args]) => args as string[]).filter(args => args.includes('pipe:0'));
     expect(encodes).toHaveLength(1);
     const args = encodes[0]!;
@@ -641,9 +619,8 @@ describe('lipsync_clip (§7.17 lipsync_clip row; execution design §9.2 timing t
     const timeline: LipsyncTimeline = { duration: 0.08, videoDuration: 0.08, syncMode: 'cut_off' };
     const faces = await facesTable(`pad-faces-${axis}-${before}-${after}.json`, () => rect, 2);
     const mask = await track(`pad-track-${axis}-${before}-${after}.json`, () => true, 2);
-    const table: VideoPresentationTable = { schemaVersion: 1, timescale: FPS, runs: [{ start: 0, count: 2, step: 1, duration: 1 }] };
     const file = await produce({ [ID.video]: join(dir, 'white.mp4'), [ID.faces]: faces, [ID.track]: mask },
-      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, table, encode: CLIP_ENCODE });
+      { kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: CROP, timeline, grid: cfr(r(FPS), 2), encode: CLIP_ENCODE });
     const { width, frames } = await planeFrames(file, 'y');
     expect(frames).toHaveLength(2);
     const expected = Array.from({ length: CROP }, (_unused, at) => (at < before || at >= CROP - after ? 'pad' : 'crop'));
@@ -679,7 +656,7 @@ describe('a streamed lip-sync decode that fails mid-stream', () => {
     const faces = await facesTable('fail-faces.json', n => ({ x: 8 + 8 * n, y: 16, width: 32, height: 32 }));
     const mask = await track('fail-track.json', (n, x) => x >= 8 + 8 * n && x < 32 + 8 * n);
     const { report } = await runJob({ [ID.video]: join(dir, 'clip-source.mp4'), [ID.faces]: faces, [ID.track]: mask },
-      [{ kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: 64, timeline: { duration: 0.32, videoDuration: V, syncMode: 'cut_off' }, table: TABLE, encode: CLIP_ENCODE }]);
+      [{ kind: 'lipsync_clip', inputId: ID.video, faces: ID.faces, track: ID.track, cropSize: 64, timeline: { duration: 0.32, videoDuration: V, syncMode: 'cut_off' }, grid: GRID, encode: CLIP_ENCODE }]);
     expect([report.ok, report.outputs]).toEqual([false, []]);
     expect(failure()).toMatch(/^sh exited 3: decode-broke/);
   });
@@ -689,8 +666,7 @@ describe('a streamed lip-sync decode that fails mid-stream', () => {
   ] as const)('LE02 the composite\'s decode of %s fails and the job carries its exit', async (_name, input, bytes) => {
     await failDecode(input, bytes);
     const timeline: LipsyncTimeline = { duration: V, videoDuration: V, syncMode: 'cut_off' };
-    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(2, 25), displayStart: r(2, 25), displayEnd: r(9, 25), rate: r(1) }];
-    const recipe = { kind: 'lipsync_composite', inputId: ID.video, window: { start: 2, end: 9 }, timescale: FPS, entries, target: OPAQUE, timeline, table: TABLE,
+    const recipe = { kind: 'lipsync_composite', inputId: ID.video, grid: GRID, source: ORIGINAL, frames: { start: 2, end: 9 }, target: OPAQUE, timeline,
       rawDiskBytes: AMPLE_RAW_DISK_BYTES, feather: FEATHER, prepared: { width: W, height: H, displayRect: null }, persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }] };
     const { report } = await runJob({ [ID.video]: join(dir, 'comp-source.mp4'), [ID.result1]: join(dir, 'person-1.mp4'),
       [ID.faces1]: await facesTable('fail-comp-faces.json', () => ({ x: 16, y: 8, width: 48, height: 48 })),
@@ -766,7 +742,7 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
    * @returns The recipe.
    */
   function recipe(target: Recipe): Recipe {
-    return { kind: 'lipsync_composite', inputId: ID.video, window: WINDOW, timescale: FPS, entries: [wholeSource()], target, timeline: TIMELINE, table: TABLE, rawDiskBytes: AMPLE_RAW_DISK_BYTES, feather: FEATHER,
+    return { kind: 'lipsync_composite', inputId: ID.video, grid: GRID, source: ORIGINAL, frames: WINDOW, target, timeline: TIMELINE, rawDiskBytes: AMPLE_RAW_DISK_BYTES, feather: FEATHER,
       prepared: { width: W, height: H, displayRect: null },
       persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }, { result: ID.result2, faces: ID.faces2, track: ID.track2, cropSize: 64 }] };
   }
@@ -791,7 +767,7 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     expect(y.frames).toHaveLength(8);
     y.frames.forEach((frame, j) => {
       const k = WINDOW.start + j;
-      const s = lipsyncSourceFrameAt(TIMELINE, TABLE, k);
+      const s = lipsyncSourceFrameAt(TIMELINE, GRID, k);
       const original = source.frames[s]!;
       // Outside every person's foreground: the source frame s, against its lossless reference within the encode's error.
       expect(mad(frame, original, W, OUTSIDE), `frame ${j} outside every mask is source ${s}`).toBeLessThan(2.5);
@@ -836,7 +812,7 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     const frames = bytes.length / (W * H * 3);
     expect(frames).toBe(WINDOW.end - WINDOW.start);
     for (let j = 0; j < frames; j += 1) {
-      const rect = face1(lipsyncSourceFrameAt(TIMELINE, TABLE, WINDOW.start + j));
+      const rect = face1(lipsyncSourceFrameAt(TIMELINE, GRID, WINDOW.start + j));
       if (rect === null) continue;
       const sums = [0, 0, 0];
       for (let y = rect.y + 16; y < rect.y + 32; y += 1) for (let x = rect.x + 12; x < rect.x + 28; x += 1) for (let c = 0; c < 3; c += 1) sums[c]! += bytes[(j * W * H + y * W + x) * 3 + c]!;
@@ -857,7 +833,7 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     y.frames.forEach((frame, j) => {
       const k = WINDOW.start + j;
       const strip = { x: 106, y: 56, width: 2, height: 16 };
-      const original = mean(source.frames[lipsyncSourceFrameAt(TIMELINE, TABLE, k)]!, W, strip);
+      const original = mean(source.frames[lipsyncSourceFrameAt(TIMELINE, GRID, k)]!, W, strip);
       const blended = [2.5, 3.5].map((edge) => { const weight = Math.min(1, edge / Math.max(1, 48 * feather)); return original * (1 - weight) + (160 - 5 * k) * weight; });
       expect(Math.abs(mean(frame, W, strip) - (blended[0]! + blended[1]!) / 2), `frame ${j}`).toBeLessThan(4);
     });
@@ -869,11 +845,9 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
   it('LM03 a chunk across the bounce reversal shows each result frame\'s mapped source frame and person frame', async () => {
     const bounce: LipsyncTimeline = { duration: 0.72, videoDuration: V, syncMode: 'bounce' };
     const window = { start: 6, end: 14 };
-    const sources = Array.from({ length: 8 }, (_unused, j) => lipsyncSourceFrameAt(bounce, TABLE, window.start + j));
+    const sources = Array.from({ length: 8 }, (_unused, j) => lipsyncSourceFrameAt(bounce, GRID, window.start + j));
     expect(sources).toEqual([6, 7, 8, 9, 9, 9, 8, 7]);
-    // The chunk's entries cover only the source frames it shows, [6, 10) (execution design paragraph before §9.4).
-    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(6, 25), displayStart: r(6, 25), displayEnd: r(10, 25), rate: r(1) }];
-    const file = await produce(await inputs('comp-source.mp4'), { ...recipe(OPAQUE), timeline: bounce, window, entries });
+    const file = await produce(await inputs('comp-source.mp4'), { ...recipe(OPAQUE), timeline: bounce, frames: window });
     const list = await packets(file);
     expect(list.map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 8 }, (_unused, j) => j / FPS));
     expect(list[0]!.flags).toContain('K');
@@ -894,23 +868,11 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
   // the container refuses one that does not rather than fill its disk.
   it('LM05 refuses a chunk that goes back when its raw source window is over the frozen disk budget', async () => {
     const bounce: LipsyncTimeline = { duration: 0.72, videoDuration: V, syncMode: 'bounce' };
-    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(6, 25), displayStart: r(6, 25), displayEnd: r(10, 25), rate: r(1) }];
-    const job = { ...recipe(OPAQUE), timeline: bounce, window: { start: 6, end: 14 }, entries };
+    const job = { ...recipe(OPAQUE), timeline: bounce, frames: { start: 6, end: 14 } };
     // Source frames [6, 10) are four 160x96 pictures.
     expect((await runJob(await inputs('comp-source.mp4'), [{ ...job, rawDiskBytes: 4 * W * H * 1.5 }])).report.ok).toBe(true);
     const { report } = await runJob(await inputs('comp-source.mp4'), [{ ...job, rawDiskBytes: 4 * W * H * 1.5 - 1 }]);
     expect([report.ok, report.outputs]).toEqual([false, []]);
-  });
-
-  // A chunk that goes back reads its source window from a raw file; a source that decodes fewer frames than the window
-  // fails as the streamed source does, never repeating its last frame in place of the missing ones.
-  it('LM07 a chunk that goes back fails when its source decodes fewer frames than the window it shows', async () => {
-    await lossless('comp-source-short.mp4', '40+18*N', { width: W, height: H, frames: 8 });
-    const bounce: LipsyncTimeline = { duration: 0.72, videoDuration: V, syncMode: 'bounce' };
-    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(6, 25), displayStart: r(6, 25), displayEnd: r(10, 25), rate: r(1) }];
-    const { report } = await runJob(await inputs('comp-source-short.mp4'), [{ ...recipe(OPAQUE), timeline: bounce, window: { start: 6, end: 14 }, entries }]);
-    expect([report.ok, report.outputs]).toEqual([false, []]);
-    expect(failure()).toBe("The lip-sync composite's source ends before a frame it shows");
   });
 
   // Execution design paragraph before §9.4: a chunk whose source frames never go back streams the source, every person's
@@ -919,10 +881,8 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     ['cut_off', 0.4, { start: 2, end: 9 }], ['silence', 0.72, { start: 6, end: 16 }], ['remap', 0.72, { start: 3, end: 15 }],
   ] as const)('LM04 a forward %s chunk streams its frames and writes no raw file', async (syncMode, duration, window) => {
     const timeline: LipsyncTimeline = { duration, videoDuration: V, syncMode };
-    const sources = Array.from({ length: window.end - window.start }, (_unused, j) => lipsyncSourceFrameAt(timeline, TABLE, window.start + j));
-    const shown = { start: Math.min(...sources), end: Math.max(...sources) + 1 };
-    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(shown.start, 25), displayStart: r(shown.start, 25), displayEnd: r(shown.end, 25), rate: r(1) }];
-    const file = await produce(await inputs('comp-source.mp4'), { ...recipe(OPAQUE), timeline, window, entries });
+    const sources = Array.from({ length: window.end - window.start }, (_unused, j) => lipsyncSourceFrameAt(timeline, GRID, window.start + j));
+    const file = await produce(await inputs('comp-source.mp4'), { ...recipe(OPAQUE), timeline, frames: window });
     const calls = [...vi.mocked(runPlanCommand).mock.calls, ...vi.mocked(startPlanCommand).mock.calls].map(([program, args]) => ({ program, args: args as string[] }));
     expect(calls.filter(({ args }) => args.at(-1)!.endsWith('.yuv')), 'no raw file').toEqual([]);
     // Person results are the job's inputs after the source: each is opened at the window, not trimmed from frame 0.
@@ -967,13 +927,12 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
    * @returns For each frame with a face, the result frame it shows (by luma) against the one it should.
    */
   async function bframesShown(window: { start: number; end: number }): Promise<{ k: number; shown: number }[]> {
-    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(window.start, 25), displayStart: r(window.start, 25), displayEnd: r(window.end, 25), rate: r(1) }];
-    const file = await produce({ ...await inputs('comp-source.mp4'), [ID.result1]: join(dir, BFRAMES) }, { ...recipe(OPAQUE), timeline: BFRAMES_TIMELINE, window, entries });
+    const file = await produce({ ...await inputs('comp-source.mp4'), [ID.result1]: join(dir, BFRAMES) }, { ...recipe(OPAQUE), timeline: BFRAMES_TIMELINE, frames: window });
     const y = await planeFrames(file, 'y');
     expect(y.frames).toHaveLength(window.end - window.start);
     return y.frames.flatMap((frame, j) => {
       const k = window.start + j;
-      const rect = face1(lipsyncSourceFrameAt(BFRAMES_TIMELINE, TABLE, k));
+      const rect = face1(lipsyncSourceFrameAt(BFRAMES_TIMELINE, GRID, k));
       return rect === null ? [] : [{ k, shown: (mean(frame, W, { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 }) - 50) / 7 }];
     });
   }
@@ -1010,7 +969,7 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     expect(y.frames).toHaveLength(8);
     y.frames.forEach((frame, j) => {
       const k = WINDOW.start + j;
-      const s = lipsyncSourceFrameAt(TIMELINE, TABLE, k);
+      const s = lipsyncSourceFrameAt(TIMELINE, GRID, k);
       const rect = face1(s);
       if (rect === null) return;
       const centre = { x: rect.x + 12, y: rect.y + 16, width: 16, height: 16 };
@@ -1026,7 +985,6 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
   it.each([
     ['at -r 29.97 on a 1/11988 clock', ['-r', '29.97']], ['on an MP4 timescale of 15360', ['-video_track_timescale', '15360']],
   ] as const)('LM11 a 29.97 fps person result %s shows result frame k on grid frame k', async (_name, clock) => {
-    const table: VideoPresentationTable = { schemaVersion: 1, timescale: 30000, runs: [{ start: 0, count: 10, step: 1001, duration: 1001 }] };
     const [source, result] = ['comp-source-2997.mp4', `person-1-2997-${clock[1]}.mp4`];
     await make(source, ['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:r=30000/1001,format=yuv420p,geq=lum='40+18*N':cb=128:cr=128`, '-frames:v', '10',
       '-c:v', 'libx264', '-qp', '0', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', '-video_track_timescale', '30000']);
@@ -1034,9 +992,8 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
       '-c:v', 'libx264', '-qp', '0', '-g', '5', '-bf', '0', '-pix_fmt', 'yuv420p', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', ...clock]);
     const timeline: LipsyncTimeline = { duration: 10010 / 30000, videoDuration: 10010 / 30000, syncMode: 'cut_off' };
     const window = { start: 0, end: 10 };
-    const entries = [{ kind: 'source', decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(10010, 30000), rate: r(1) }];
     const file = await produce({ ...await inputs(source), [ID.result1]: join(dir, result) },
-      { ...recipe(OPAQUE), timescale: 30000, table, timeline, window, entries, persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }] });
+      { ...recipe(OPAQUE), grid: cfr(r(30000, 1001), 10), timeline, frames: window, persons: [{ result: ID.result1, faces: ID.faces1, track: ID.track1, cropSize: 64 }] });
     const y = await planeFrames(file, 'y');
     expect(y.frames).toHaveLength(10);
     y.frames.forEach((frame, k) => {
@@ -1069,7 +1026,7 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     y.frames.forEach((frame, j) => {
       const k = WINDOW.start + j;
       expect(Math.abs(mean(frame, y.width, centre) - (50 + 7 * k)), `frame ${j} shows person 1's result frame ${k}`).toBeLessThan(4);
-      expect(Math.abs(mean(frame, y.width, outside) - sourceLuma(lipsyncSourceFrameAt(TIMELINE, TABLE, k))), `frame ${j} outside the foreground is the source`).toBeLessThan(3);
+      expect(Math.abs(mean(frame, y.width, outside) - sourceLuma(lipsyncSourceFrameAt(TIMELINE, GRID, k))), `frame ${j} outside the foreground is the source`).toBeLessThan(3);
     });
   });
 
@@ -1082,7 +1039,7 @@ describe('lipsync_composite (§7.17 lipsync_composite row, §5.4 chunks; executi
     const [alpha, u] = await Promise.all([planeFrames(file, 'a', vp9), planeFrames(file, 'u', vp9)]);
     expect(alpha.frames).toHaveLength(8);
     alpha.frames.forEach((frame, j) => {
-      const s = lipsyncSourceFrameAt(TIMELINE, TABLE, WINDOW.start + j);
+      const s = lipsyncSourceFrameAt(TIMELINE, GRID, WINDOW.start + j);
       // Straight alpha 0.25 of the source is 64 of 255, over the whole picture and over person 2's face.
       expect(Math.abs(mean(frame, W, { x: 0, y: 0, width: W, height: H }) - 64), `frame ${j} alpha`).toBeLessThan(3);
       expect(Math.abs(mean(frame, W, { x: 120, y: 56, width: 16, height: 16 }) - 64)).toBeLessThan(3);
@@ -1142,7 +1099,7 @@ describe('lip-sync stitch audio mix (§97 D22-3; §7.17 stitch row; execution de
     // Two stems as lipsync_stem writes them: 0.4 s AAC 48 kHz, 440 Hz and 1000 Hz, each at amplitude 0.25 (peak sum 0.5).
     await make('stem-a.m4a', ['-f', 'lavfi', '-i', 'sine=f=440:r=48000:d=0.4,volume=2', '-c:a', 'aac', '-b:a', '192k']);
     await make('stem-b.m4a', ['-f', 'lavfi', '-i', 'sine=f=1000:r=48000:d=0.4,volume=2', '-c:a', 'aac', '-b:a', '192k']);
-    const recipe = { kind: 'stitch', inputId: ID.video, target: OPAQUE, chunks: [{ inputId: CHUNK, duration: r(2, 5) }], audio: { kind: 'mix', inputs: [STEM.a, STEM.b] } };
+    const recipe = { kind: 'stitch', inputId: ID.video, grid: GRID, target: OPAQUE, chunks: [{ inputId: CHUNK, frames: { start: 0, end: 10 } }], audio: { kind: 'mix', inputs: [STEM.a, STEM.b] } };
     const file = await produce({ [ID.video]: join(dir, 'comp-source.mp4'), [CHUNK]: join(dir, 'comp-source.mp4'),
       [STEM.a]: join(dir, 'stem-a.m4a'), [STEM.b]: join(dir, 'stem-b.m4a') }, recipe, 'video/mp4');
     const audio = (await streams(file)).filter(stream => stream.codec_type === 'audio');

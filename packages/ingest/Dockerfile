@@ -108,13 +108,12 @@ COPY packages/shared/src/audio-denoise.ts /shared/src/audio-denoise.ts
 COPY packages/shared/src/audio-dynamics.ts /shared/src/audio-dynamics.ts
 COPY packages/shared/src/audio-peaks.ts /shared/src/audio-peaks.ts
 COPY packages/shared/src/upload/agent-picture-types.ts /shared/src/upload/agent-picture-types.ts
-# The presentation probe plans from these (container/presentation-run.ts, container/assemble-video-source-ledger.ts).
+# The presentation probe plans the frame grid from these (container/presentation-run.ts).
 COPY packages/shared/src/mini-tools/canonical-json.ts /shared/src/mini-tools/canonical-json.ts
-COPY packages/shared/src/upload/video-presentation-keys.ts /shared/src/upload/video-presentation-keys.ts
 COPY packages/shared/src/mini-tools/types.ts /shared/src/mini-tools/types.ts
 COPY packages/shared/src/mini-tools/video-encode-plan.ts /shared/src/mini-tools/video-encode-plan.ts
-COPY packages/shared/src/mini-tools/video-presentation-projection.ts /shared/src/mini-tools/video-presentation-projection.ts
-COPY packages/shared/src/mini-tools/video-presentation-timeline.ts /shared/src/mini-tools/video-presentation-timeline.ts
+COPY packages/shared/src/upload/frame-grid-rate.ts /shared/src/upload/frame-grid-rate.ts
+COPY packages/shared/src/upload/frame-grid.ts /shared/src/upload/frame-grid.ts
 # The planned job runner names each recipe's inputs and maps lip-sync result frames with these (container/plan-run.ts,
 # container/lipsync-recipes.ts).
 COPY packages/shared/src/upload/mini-tool-plan-types.ts /shared/src/upload/mini-tool-plan-types.ts
@@ -125,7 +124,6 @@ COPY packages/shared/src/mini-tools/model-grid.ts /shared/src/mini-tools/model-g
 COPY packages/shared/src/mini-tools/coco-rle.ts /shared/src/mini-tools/coco-rle.ts
 COPY packages/shared/src/media/long-media-job-types.ts /shared/src/media/long-media-job-types.ts
 COPY packages/shared/src/upload/video-presentation-types.ts /shared/src/upload/video-presentation-types.ts
-COPY packages/shared/src/upload/video-source-ledger-types.ts /shared/src/upload/video-source-ledger-types.ts
 COPY scripts/release.mjs ./scripts/release.mjs
 ARG RELEASE_VERSION=0.0.0-dev
 ARG VCS_REF=unknown
@@ -135,9 +133,12 @@ RUN mkdir -p /out && node scripts/release.mjs build-info "$RELEASE_VERSION" "$VC
 # a transitive dependency, at seven different versions — so there is no "the
 # repo's version" to follow; this pin is its own. Bundling here rather than on
 # whoever runs the build is what makes `docker build` the whole of it, which is
-# also the fourth GPL obligation below.
+# also the fourth GPL obligation below. The playback and edit command builders' source digests are embedded here: they are
+# part of the presentation producer and edit profile versions (container/presentation-run.ts, frames-split design §3.5).
 RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
   && esbuild container/server.ts \
+    --define:__PLAYBACK_BUILDER_SHA256__="\"$(sha256sum container/playback-command.ts | cut -d ' ' -f 1)\"" \
+    --define:__EDIT_BUILDER_SHA256__="\"$(sha256sum container/edit-command.ts | cut -d ' ' -f 1)\"" \
     --bundle --platform=node --format=esm --target=node24 \
     --tsconfig=tsconfig.json \
     --outfile=/out/server.mjs

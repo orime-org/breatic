@@ -3,12 +3,11 @@
 
 /**
  * The presentation Durable Object state machine as pure transitions (inner#1306; frames-split design §7.1 candidate
- * A/A', §7.1.1 chunk set, §7.2 selected bundle P, §7.3 stored object roles R, §7.4 companion admission item and
- * instance L/L'). Each function is the decision half of one single write point; the store persists what it returns.
+ * A/A', §7.1.1 chunk set, §7.2 selected bundle P, §7.3 stored object roles R). Each function is the decision half of one
+ * single write point; the store persists what it returns.
  * A refused cell returns `rejected: true` with the state unchanged; a kept cell returns the state and no effects.
  */
 
-import { classifyVideoSourceLedgerFailure } from '@shared/upload/video-source-ledger.js';
 import { videoCarrierRouteStages, videoContainerJobId, type VideoCarrierRoute } from '@shared/mini-tools/video-encode-plan.js';
 
 /** One transition's result. */
@@ -47,8 +46,6 @@ function moved<T, E>(next: T, effects: E[] = []): PresentationStep<T, E> {
 
 // ---------------------------------------------------------------- candidate A (§7.1)
 
-/** The L state a plan fact met for its toolInputId. */
-export type PresentationLedgerKind = 'absent' | 'pending' | 'ready' | 'failed-transient' | 'failed-content';
 /** One presentation candidate record. */
 export interface PresentationCandidate {
   state: 'none' | 'accepted' | 'building' | 'verified' | 'failed';
@@ -62,9 +59,13 @@ export interface PresentationCandidate {
   failure: string | null;
   autoRepairs: number;
 }
-/** A physical fact reported by the candidate's work. */
+/**
+ * A physical fact reported by the candidate's work: the plan (its toolInputId is null on the edit route until the edit file is
+ * measured, §3.2 item 3), the edit file's toolInputId, or verified evidence.
+ */
 export type PresentationFact =
-  | { kind: 'plan'; route: VideoCarrierRoute; toolInputId: string; ledger: PresentationLedgerKind; ledgerCode?: string }
+  | { kind: 'plan'; route: VideoCarrierRoute; toolInputId: string | null }
+  | { kind: 'tool-input'; toolInputId: string }
   | { kind: 'verified' };
 /** One candidate event. */
 export type PresentationCandidateEvent =
@@ -74,14 +75,11 @@ export type PresentationCandidateEvent =
   | { kind: 'Ev'; jobId: string; fact: PresentationFact }
   | { kind: 'Er'; jobId: string; code: string }
   | { kind: 'Ar' }
-  | { kind: 'Rt'; jobId: string; deadlineAt: number; ledgerMissing?: boolean }
-  | { kind: 'Lr' | 'Lt'; toolInputId: string; selected: boolean }
-  | { kind: 'Lc'; toolInputId: string; code: string; selected: boolean };
+  | { kind: 'Rt'; jobId: string; deadlineAt: number };
 /** One candidate side effect. */
 export type PresentationCandidateEffect =
   | { kind: 'dispatch'; stage: string }
   | { kind: 'publish'; toolInputId: string }
-  | { kind: 'repair-ledger'; toolInputId: string }
   | { kind: 'recheck-publish'; toolInputId: string };
 type CandidateStep = PresentationStep<PresentationCandidate, PresentationCandidateEffect>;
 
@@ -102,23 +100,6 @@ function lastWorkStage(route: VideoCarrierRoute): string {
 }
 
 /**
- * Apply a ledger event (Lr/Lt/Lc) to a verified candidate waiting for its own toolInputId.
- * @param record - The record.
- * @param event - The ledger event.
- * @param maxAutoRepairs - The frozen automatic repair cap.
- * @returns The step.
- * @throws {never} Never.
- */
-function candidateLedgerEvent(record: PresentationCandidate, event: Extract<PresentationCandidateEvent, { kind: 'Lr' | 'Lt' | 'Lc' }>, maxAutoRepairs: number): CandidateStep {
-  if (record.state !== 'verified' || record.archived || event.toolInputId !== record.toolInputId || event.selected) return kept(record);
-  const toolInputId = record.toolInputId;
-  if (event.kind === 'Lr') return moved(record, [{ kind: 'publish', toolInputId }]);
-  if (event.kind === 'Lc') return moved({ ...record, state: 'failed', failure: event.code, pinned: false });
-  if (record.autoRepairs >= maxAutoRepairs) return kept(record);
-  return moved({ ...record, autoRepairs: record.autoRepairs + 1 }, [{ kind: 'repair-ledger', toolInputId }]);
-}
-
-/**
  * Apply a reported fact (Ev) to an admitted candidate.
  * @param record - The record, admitted.
  * @param fact - The fact.
@@ -126,7 +107,7 @@ function candidateLedgerEvent(record: PresentationCandidate, event: Extract<Pres
  * @throws {never} Never.
  */
 function candidateFact(record: PresentationCandidate, fact: PresentationFact): CandidateStep {
-  const same = fact.kind === 'verified' || (fact.route === record.route && fact.toolInputId === record.toolInputId);
+  const same = fact.kind === 'verified' || (fact.kind === 'plan' ? fact.route === record.route && fact.toolInputId === record.toolInputId : fact.toolInputId === record.toolInputId);
   switch (record.state) {
     case 'verified': return same ? kept(record) : refused(record);
     case 'failed':
@@ -137,9 +118,11 @@ function candidateFact(record: PresentationCandidate, fact: PresentationFact): C
   if (fact.kind === 'plan') {
     if (record.route !== null) return same ? kept(record) : refused(record);
     if (record.stage !== 'plan') return refused(record);
-    const planned = { ...record, route: fact.route, toolInputId: fact.toolInputId };
-    if (fact.ledger === 'failed-content') return moved({ ...planned, state: 'failed', pinned: false, failure: fact.ledgerCode ?? 'invalid_ledger' });
-    return moved({ ...planned, pinned: !record.archived });
+    return moved({ ...record, route: fact.route, toolInputId: fact.toolInputId, pinned: !record.archived });
+  }
+  if (fact.kind === 'tool-input') {
+    if (record.toolInputId !== null) return same ? kept(record) : refused(record);
+    return record.route === 'edit' ? moved({ ...record, toolInputId: fact.toolInputId }) : refused(record);
   }
   if (record.route === null || record.toolInputId === null || record.stage !== lastWorkStage(record.route)) return kept(record);
   return moved({ ...record, state: 'verified' }, record.archived ? [] : [{ kind: 'publish', toolInputId: record.toolInputId }]);
@@ -150,23 +133,17 @@ function candidateFact(record: PresentationCandidate, fact: PresentationFact): C
  * frozen route, failed is terminal and an archived record never publishes, dispatches or repairs.
  * @param record - The current record.
  * @param event - The event.
- * @param policy - The caps frozen at admission.
- * @param policy.maxAutoRepairs - Automatic ledger repairs after a transient ledger failure.
  * @returns The next record, its effects and whether the event was refused.
  * @throws {never} Never.
  */
-export function advancePresentationCandidate(record: PresentationCandidate, event: PresentationCandidateEvent, policy: { maxAutoRepairs: number }): CandidateStep {
+export function advancePresentationCandidate(record: PresentationCandidate, event: PresentationCandidateEvent): CandidateStep {
   if (record.state === 'none') {
     if (event.kind === 'Ad' || event.kind === 'Rt') return moved({ ...record, state: 'accepted', jobId: event.jobId, deadlineAt: event.deadlineAt });
     return event.kind === 'St' || event.kind === 'Sg' || event.kind === 'Ev' ? refused(record) : kept(record);
   }
   switch (event.kind) {
     case 'Ad': return event.jobId === record.jobId ? kept(record) : refused(record);
-    case 'Rt':
-      if (record.state === 'verified' && event.ledgerMissing === true && !record.archived && record.toolInputId !== null) {
-        return moved(record, [{ kind: 'repair-ledger', toolInputId: record.toolInputId }]);
-      }
-      return kept(record);
+    case 'Rt': return kept(record);
     case 'Ar': return record.archived ? kept(record) : moved({ ...record, archived: true, pinned: false });
     case 'St':
       if (record.state === 'accepted') {
@@ -184,7 +161,6 @@ export function advancePresentationCandidate(record: PresentationCandidate, even
     case 'Er':
       if (record.state === 'verified' || record.state === 'failed') return kept(record);
       return event.jobId === record.jobId ? moved({ ...record, state: 'failed', failure: event.code, pinned: false }) : refused(record);
-    default: return candidateLedgerEvent(record, event, policy.maxAutoRepairs);
   }
 }
 
@@ -199,7 +175,7 @@ export interface PresentationChunkAttempt {
   usageRecorded: boolean;
   failure: string | null;
 }
-/** One chunk (or the stitch or copy unit) and its attempts. */
+/** One unit (a count, a playback or edit chunk, or a stitch) and its attempts. */
 export interface PresentationChunk {
   state: 'none' | 'open' | 'done' | 'failed';
   attempt: number;
@@ -218,9 +194,11 @@ export type PresentationChunkEvent =
 export type PresentationChunkEffect = { kind: 'dispatch'; jobId: string } | { kind: 'chunk-done' } | { kind: 'candidate-failed'; code: string };
 /** The unit's container job identity without its attempt number (§5.4). */
 export type PresentationChunkIdentity =
+  | { kind: 'presentation-count'; jobId: string }
   | { kind: 'presentation-chunk'; jobId: string; chunk: number }
   | { kind: 'presentation-stitch'; jobId: string }
-  | { kind: 'presentation-copy'; jobId: string };
+  | { kind: 'presentation-edit'; jobId: string; chunk: number }
+  | { kind: 'presentation-edit-stitch'; jobId: string };
 type ChunkStep = PresentationStep<PresentationChunk, PresentationChunkEffect>;
 
 /** A unit not submitted yet. */
@@ -310,17 +288,16 @@ export type PresentationSelection =
   | { kind: 'unknown' }
   | { kind: 'ready'; version: PresentationVersionRef }
   | { kind: 'invalid'; version: PresentationVersionRef };
-/** One selection event; Pub carries the publication gate G (`complete && current`) and whether L(candidate) is ready. */
+/** One selection event; Pub carries the publication gate G (`complete && current`). */
 export type PresentationSelectionEvent =
-  | { kind: 'Pub'; candidate: PresentationVersionRef; complete: boolean; current: boolean; ledgerReady: boolean }
+  | { kind: 'Pub'; candidate: PresentationVersionRef; complete: boolean; current: boolean }
   | { kind: 'Chk'; proof: 'complete' | 'head-only' | 'none'; version: PresentationVersionRef }
   | { kind: 'Bad' } | { kind: 'New' } | { kind: 'Src' } | { kind: 'Late'; version: PresentationVersionRef };
-/** One selection step: whether the candidate was published or must wait for its ledger. */
+/** One selection step: whether the candidate was published. */
 export interface PresentationSelectionStep { next: PresentationSelection; published: boolean; waiting: boolean }
 
 /**
- * Advance the selected bundle (§7.2): only a complete current Pub or a complete stored proof selects a version, and a
- * ready selection changes to another toolInputId only once that toolInputId's ledger is ready.
+ * Advance the selected bundle (§7.2): only a complete current Pub or a complete stored proof selects a version.
  * @param state - The current selection.
  * @param event - The event.
  * @returns The next selection and whether the candidate was published or is waiting.
@@ -331,7 +308,6 @@ export function advanceSelectedPresentation(state: PresentationSelection, event:
   switch (event.kind) {
     case 'Pub': {
       if (!event.complete || !event.current) return keep;
-      if (state.kind === 'ready' && state.version.toolInputId !== event.candidate.toolInputId && !event.ledgerReady) return { ...keep, waiting: true };
       return { next: { kind: 'ready', version: event.candidate }, published: true, waiting: false };
     }
     case 'Chk':
@@ -403,153 +379,5 @@ export function advancePresentationObject(object: PresentationObject, event: Pre
       return keep;
     case 'Replace':
       return kind === 'published' && object.role === 'R0' ? to('published', event.receipt) : keep;
-  }
-}
-
-// ---------------------------------------------------------------- L admission item and instance (§7.4)
-
-/** The candidate's companion admission item. */
-export type PresentationLedgerItem =
-  | { kind: 'absent'; archived: boolean }
-  | { kind: 'waiting'; jobId: string; archived: boolean }
-  | { kind: 'merged'; jobId: string; toolInputId: string; archived: boolean }
-  | { kind: 'failed'; jobId: string; code: string; archived: boolean };
-/** One admission item event. */
-export type PresentationLedgerItemEvent =
-  | { kind: 'Ask'; jobId: string; ledgerOnly: boolean }
-  | { kind: 'Tp'; jobId: string; toolInputId: string }
-  | { kind: 'Err'; jobId: string; code: string }
-  | { kind: 'Ar' };
-/** One admission item effect: an event handed to the toolInputId's instance, or a candidate failure. */
-export type PresentationLedgerItemEffect =
-  | { kind: 'instance-tp'; toolInputId: string; jobId: string }
-  | { kind: 'instance-err'; toolInputId: string; jobId: string; code: string }
-  | { kind: 'instance-wa'; toolInputId: string; jobId: string }
-  | { kind: 'candidate-failed'; code: string };
-type ItemStep = PresentationStep<PresentationLedgerItem, PresentationLedgerItemEffect>;
-
-/**
- * Advance a candidate's companion admission item (§7.4): it waits without a toolInputId until the plan (Tp) merges it
- * into that instance; a failure before the plan fails the candidate and touches no instance.
- * @param item - The item.
- * @param event - The event.
- * @returns The next item, its effects and whether the event was refused.
- * @throws {never} Never.
- */
-export function advanceLedgerAdmission(item: PresentationLedgerItem, event: PresentationLedgerItemEvent): ItemStep {
-  switch (event.kind) {
-    case 'Ask': return item.kind === 'absent' && !event.ledgerOnly ? moved({ kind: 'waiting', jobId: event.jobId, archived: item.archived }) : kept(item);
-    case 'Tp':
-      if (item.kind === 'waiting' && event.jobId === item.jobId) {
-        return moved({ kind: 'merged', jobId: item.jobId, toolInputId: event.toolInputId, archived: item.archived }, [{ kind: 'instance-tp', toolInputId: event.toolInputId, jobId: item.jobId }]);
-      }
-      return item.kind === 'merged' && event.jobId === item.jobId && event.toolInputId === item.toolInputId ? kept(item) : refused(item);
-    case 'Err':
-      if (item.kind === 'absent') return refused(item);
-      if (item.kind === 'failed') return kept(item);
-      if (event.jobId !== item.jobId) return refused(item);
-      if (item.kind === 'merged') return moved(item, [{ kind: 'instance-err', toolInputId: item.toolInputId, jobId: item.jobId, code: event.code }]);
-      return moved({ kind: 'failed', jobId: item.jobId, code: event.code, archived: item.archived }, [{ kind: 'candidate-failed', code: event.code }]);
-    case 'Ar':
-      if (item.kind === 'absent' || item.archived) return kept(item);
-      return moved({ ...item, archived: true }, item.kind === 'merged' ? [{ kind: 'instance-wa', toolInputId: item.toolInputId, jobId: item.jobId }] : []);
-  }
-}
-
-/** One companion instance per toolInputId. */
-export type PresentationLedgerInstance<R = string> =
-  | { kind: 'absent' }
-  | { kind: 'pending'; writer: string; writerArchived: boolean; waiters: string[] }
-  | { kind: 'ready'; receipt: R }
-  | { kind: 'failed-transient'; code: string }
-  | { kind: 'failed-content'; code: string };
-/** One instance event. */
-export type PresentationLedgerEvent<R = string> =
-  | { kind: 'Ask'; jobId: string }
-  | { kind: 'Tp'; jobId: string }
-  | { kind: 'Wa'; jobId: string }
-  | { kind: 'Repair'; jobId: string }
-  | { kind: 'Both'; jobId: string; receipt: R; startedStreamProof?: boolean; workTerminal?: boolean; samePlan?: boolean }
-  | { kind: 'Err'; jobId: string; code: string }
-  | { kind: 'Check'; failure: 'source_ledger_missing' | 'source_ledger_invalid' | null; proof?: R }
-  | { kind: 'Change' }
-  | { kind: 'H2'; receipt: R; workTerminal: boolean; samePlan: boolean };
-/** One instance effect. */
-export type PresentationLedgerEffect<R = string> =
-  | { kind: 'write'; jobId: string }
-  | { kind: 'reuse'; receipt: R }
-  | { kind: 'archive-receipt'; jobId: string; receipt: R }
-  | { kind: 'Lr' } | { kind: 'Lt' } | { kind: 'Lc'; code: string }
-  | { kind: 'candidate-failed'; code: string };
-
-// Presentation candidate failures share the content rule but are never written into ledger state (§7.4).
-const CANDIDATE_CODES: ReadonlySet<string> = new Set(['too_long', 'packed_over_cap', 'packed_clock_mismatch']);
-
-/**
- * Whether two receipts are the same fact.
- * @param left - One receipt.
- * @param right - The other.
- * @returns True when equal by value.
- * @throws {never} Never.
- */
-function sameReceipt(left: unknown, right: unknown): boolean {
-  return left === right || JSON.stringify(left) === JSON.stringify(right);
-}
-
-/**
- * Advance one companion instance (§7.4 L and L'): one writer at a time, chosen by Ask, Tp, Repair or a Wa hand-over;
- * only the writer's commit makes it ready (an archived writer's only under the H2 conditions); candidate codes are
- * never written; a content failure is final under the same policy.
- * @param instance - The instance.
- * @param event - The event.
- * @returns The next instance, its effects and whether the event was refused.
- * @throws {never} Never.
- */
-export function advancePresentationLedger<R = string>(instance: PresentationLedgerInstance<R>, event: PresentationLedgerEvent<R>): PresentationStep<PresentationLedgerInstance<R>, PresentationLedgerEffect<R>> {
-  const writer = (jobId: string, waiters: string[] = []): PresentationStep<PresentationLedgerInstance<R>, PresentationLedgerEffect<R>> =>
-    moved({ kind: 'pending', writer: jobId, writerArchived: false, waiters: waiters.filter((waiter) => waiter !== jobId) }, [{ kind: 'write', jobId }]);
-  const ready = (receipt: R): PresentationStep<PresentationLedgerInstance<R>, PresentationLedgerEffect<R>> => moved({ kind: 'ready', receipt }, [{ kind: 'Lr' }]);
-  switch (instance.kind) {
-    case 'absent':
-      if (event.kind === 'Ask' || event.kind === 'Tp' || event.kind === 'Repair') return writer(event.jobId);
-      if (event.kind === 'Both') return refused(instance);
-      return event.kind === 'H2' && event.workTerminal && event.samePlan ? ready(event.receipt) : kept(instance);
-    case 'pending':
-      switch (event.kind) {
-        case 'Ask': case 'Tp': case 'Repair':
-          if (event.jobId === instance.writer || instance.waiters.includes(event.jobId)) return kept(instance);
-          if (instance.writerArchived) return writer(event.jobId, instance.waiters);
-          return moved({ ...instance, waiters: [...instance.waiters, event.jobId] });
-        case 'Wa': {
-          if (event.jobId !== instance.writer) return kept(instance);
-          const [next, ...rest] = instance.waiters;
-          return next === undefined ? moved({ ...instance, writerArchived: true }) : writer(next, rest);
-        }
-        case 'Both':
-          if (event.jobId !== instance.writer) return refused(instance);
-          if (!instance.writerArchived || (event.workTerminal === true && event.samePlan === true)) return ready(event.receipt);
-          return moved(instance, [{ kind: 'archive-receipt', jobId: event.jobId, receipt: event.receipt }]);
-        case 'Err':
-          if (event.jobId !== instance.writer) return refused(instance);
-          if (CANDIDATE_CODES.has(event.code)) return kept(instance);
-          return classifyVideoSourceLedgerFailure(event.code) === 'content'
-            ? moved({ kind: 'failed-content', code: event.code }, [{ kind: 'Lc', code: event.code }])
-            : moved({ kind: 'failed-transient', code: event.code }, [{ kind: 'Lt' }]);
-        default: return kept(instance);
-      }
-    case 'ready':
-      switch (event.kind) {
-        case 'Ask': case 'Tp': return moved(instance, [{ kind: 'reuse', receipt: instance.receipt }]);
-        case 'Both': return sameReceipt(event.receipt, instance.receipt) ? kept(instance) : refused(instance);
-        case 'Check': return event.failure === null ? kept(instance) : moved({ kind: 'failed-transient', code: event.failure }, [{ kind: 'Lt' }]);
-        default: return kept(instance);
-      }
-    case 'failed-transient':
-      if (event.kind === 'Ask' || event.kind === 'Tp' || event.kind === 'Repair') return writer(event.jobId);
-      if (event.kind === 'Both' && event.startedStreamProof === true) return ready(event.receipt);
-      return event.kind === 'H2' && event.workTerminal && event.samePlan ? ready(event.receipt) : kept(instance);
-    case 'failed-content':
-      if (event.kind === 'Tp') return moved(instance, [{ kind: 'candidate-failed', code: instance.code }]);
-      return event.kind === 'Check' && event.failure === null && event.proof !== undefined ? ready(event.proof) : kept(instance);
   }
 }

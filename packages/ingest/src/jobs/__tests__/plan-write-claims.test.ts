@@ -59,7 +59,7 @@ async function fixture(): Promise<Fixture> {
     schemaVersion: 2, jobId: nonce, containerClass: "MiniToolContainerStd1", deadlineAt: Date.now() + 7200000,
     limits: { probeStdoutBytes: 1048576, analysisStdoutBytes: 1048576, stderrTailBytes: 8192 },
     inputs: [{ inputId: "20000000-0000-4000-8000-000000000001", storageKey: `plan-write-claim/${nonce}/source.mp4` }],
-    outputs: [{ outputIndex: 8, storageKey: key, contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000001", entry: { kind: "source", decodeStart: { numerator: "6", denominator: "5" }, clipStart: { numerator: "6", denominator: "5" }, displayStart: { numerator: "6", denominator: "5" }, displayEnd: { numerator: "31", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }],
+    outputs: [{ outputIndex: 8, storageKey: key, contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000001", grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 50, realFrameCount: 50 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frameIndex: 30, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }],
   };
   const id = env.PLAN_WRITE_TEST.idFromName(nonce);
   const stub = env.PLAN_WRITE_TEST.get(id);

@@ -46,7 +46,7 @@ describe('durable presentation admission and selection (inner#1306 §7.1, §7.2)
   it('a replaced failed job that finishes later never publishes', async () => {
     const key = await source();
     await withStore(key, async (store) => {
-      const a = await planned(store, key, 'job-a', 'identity');
+      const a = await planned(store, key, 'job-a', 'reuse');
       await store.fail(a, 'expired');
       await store.accept(admission(key, 'job-b'));
       const view = await store.report(a, { kind: 'verified', bundle: await bundle(key, 'e'.repeat(64)) });
@@ -59,7 +59,7 @@ describe('durable presentation admission and selection (inner#1306 §7.1, §7.2)
   it('a bundle whose carrier object is absent is not selected', async () => {
     const key = await source();
     await withStore(key, async (store) => {
-      const a = await planned(store, key, 'job-a', 'identity');
+      const a = await planned(store, key, 'job-a', 'reuse');
       const published = await bundle(key, 'e'.repeat(64));
       const carrier = (published.descriptor.playback as { carrier: Record<string, unknown> }).carrier;
       carrier.storageKey = `${key}.missing-carrier.mp4`;
@@ -72,7 +72,7 @@ describe('durable presentation admission and selection (inner#1306 §7.1, §7.2)
   it('a selected version whose stored descriptor disappeared reads as invalid, not as a cached ready', async () => {
     const key = await source();
     await withStore(key, async (store) => {
-      const a = await planned(store, key, 'job-a', 'identity');
+      const a = await planned(store, key, 'job-a', 'reuse');
       expect((await store.report(a, { kind: 'verified', bundle: await bundle(key, 'e'.repeat(64)) })).selected.kind).toBe('ready');
     });
     await env.BUCKET.delete(videoPresentationKeyFor(key));

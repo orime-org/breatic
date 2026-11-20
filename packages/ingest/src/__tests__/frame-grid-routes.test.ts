@@ -32,7 +32,7 @@ interface Capability { storageKey: string; sourceFingerprint: string; jobId: str
 interface Grant { capability: Capability | null; reuseFrom?: { versionId: string; ready: boolean } | null }
 interface Granting {
   grantPresentation: (identity: { storageKey: string; sourceFingerprint: string; jobId: string }, now: number) => Promise<Grant>;
-  planPresentation: (identity: Capability, plan: { route: string; toolInputId: string; planSha256: string }, facts: Record<string, unknown>) => Promise<{ writer: boolean; view: MachineView }>;
+  planPresentation: (identity: Capability, plan: { route: string; toolInputId: string; planSha256: string }, facts: Record<string, unknown>) => Promise<{ accepted: boolean; view: MachineView }>;
   publishReuse: (identity: Capability) => Promise<boolean>;
 }
 
@@ -48,7 +48,7 @@ const NO_EDIT: Identity = { ...WITH_EDIT, editProfileVersion: null };
  * @returns It.
  */
 function chooseRoute(): ChooseRoute {
-  return plan.chooseVideoCarrierRoute as unknown as ChooseRoute;
+  return plan.chooseVideoCarrierRoute;
 }
 
 /**
@@ -63,13 +63,13 @@ function planFn<F>(name: string): F {
 }
 
 /**
- * Publish V through one identity-route job, then make the read observe Bad so P is invalid(V).
+ * Publish V through one publish-only (carrier reuse) route job, then make the read observe Bad so P is invalid(V).
  * @param store - The store.
  * @param key - The storage key.
  * @returns The view after the read.
  */
 async function publishThenInvalidate(store: MachineStore, key: string): Promise<MachineView> {
-  const identity = await planned(store, key, 'job-a', 'identity');
+  const identity = await planned(store, key, 'job-a', 'reuse');
   expect((await store.report(identity, { kind: 'verified', bundle: await bundle(key, V) })).selected.kind).toBe('ready');
   await env.BUCKET.delete(videoPresentationKeyFor(key));
   return store.read(key, H);
@@ -120,9 +120,9 @@ describe('choosing the route from the new job and the latest published V (design
 describe('V06 the readmit after P turned invalid reuses V\'s edit file with the same toolInputId (design §3.2 item 3, §7.1)', () => {
   it('V06 toolInputId = sha256(canonical(sourceFingerprint, planSha256, editFileSha256)); null without an edit file', async () => {
     const edit = 'f'.repeat(64);
-    expect(await videoPresentationToolInputId({ sourceFingerprint: H, planSha256: PLAN, editFileSha256: edit } as never))
+    expect(await videoPresentationToolInputId({ sourceFingerprint: H, planSha256: PLAN, editFileSha256: edit }))
       .toBe(await hashMiniToolValue({ sourceFingerprint: H, planSha256: PLAN, editFileSha256: edit }));
-    expect(await videoPresentationToolInputId({ sourceFingerprint: H, planSha256: PLAN, editFileSha256: null } as never))
+    expect(await videoPresentationToolInputId({ sourceFingerprint: H, planSha256: PLAN, editFileSha256: null }))
       .toBe(await hashMiniToolValue({ sourceFingerprint: H, planSha256: PLAN, editFileSha256: null }));
   });
 
@@ -143,7 +143,7 @@ describe('V07 a reuse route whose reused object cannot be read fails reuse_sourc
   it('V07 the carrier route: the selected carrier object is gone when the candidate publishes', async () => {
     const key = await source();
     await withStore(key, async (store) => {
-      const identity = await planned(store, key, 'job-a', 'identity');
+      const identity = await planned(store, key, 'job-a', 'reuse');
       const published = await bundle(key, V);
       await store.report(identity, { kind: 'verified', bundle: published });
       await store.accept({ ...admission(key, 'job-b'), targetPolicyVersion: 2 });
@@ -153,9 +153,9 @@ describe('V07 a reuse route whose reused object cannot be read fails reuse_sourc
       const { descriptor } = published;
       await granting.planPresentation(capability!, { route: 'reuse', toolInputId: T, planSha256: PLAN }, {
         route: 'reuse', toolInputId: T, planSha256: PLAN, producerVersion: descriptor.producerVersion, profileVersion: descriptor.profileVersion,
-        display: descriptor.display, playbackClock: descriptor.playbackClock, work: { kind: 'none' }, copyAudio: null,
+        display: descriptor.display, work: { kind: 'none' },
       });
-      // The identity carrier is the stored source object; it is unreadable from here on.
+      // The fixture's carrier is the stored source object; it is unreadable from here on.
       await env.BUCKET.delete(key);
       await granting.publishReuse(capability!);
       expect((await store.read(key, H)).candidate).toMatchObject({ jobId: 'job-b', state: 'failed', failure: 'reuse_source_invalid' });

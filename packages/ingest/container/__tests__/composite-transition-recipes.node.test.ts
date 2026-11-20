@@ -2,26 +2,28 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Batch-6 container recipes on real media: the expand `model_composite` (erase is in erase-expand-recipes.node.test.ts), the GL `transition_window` and the transition
- * `stitch` (inner#1306 test plan §97 D15, D16; frames-split design §7.17 rows `model_composite`, `transition_window`,
- * `stitch`, `chunk_encode`, the 转场输出档 row and the `segment` row's output profile; §5.4 切块, 块的时间, 拼接 rows and its
- * last paragraph; execution design §8, §8.1; transitions render DD of 2026-11-05).
+ * Batch-6 container recipes on real media and the frame grid: the expand `model_composite` (erase is in
+ * erase-expand-recipes.node.test.ts), the GL `transition_window`, the transition `chunk_encode` and the transition `stitch`
+ * (inner#1306 test plan §97 D15, D16; frames-split design §4.1, §7.16, §7.17 rows `model_composite`, `transition_window`,
+ * `stitch`, `chunk_encode` and the 转场输出档 row; §5.4 切块, 块的时间, 拼接 rows; execution design §8, §8.1).
  *
  * Each case runs the planned job owner (`runPlanJob`) as the container does, with the edge faked at `fetch`, like
- * `presentation-recipes.node.test.ts`. Every recipe here is one the shared recipe schema (`mini-tool-plan-job.ts`) admits;
- * the schema is not imported, because it pulls the shared HTTP transport into the container's DOM-less typecheck. Every
- * fixture is generated here with FFmpeg and every assertion is a fact FFmpeg reads back.
+ * `presentation-recipes.node.test.ts`. Every recipe here is one the shared recipe schema (`mini-tool-plan-job.ts`) admits.
+ * Every fixture is generated here with FFmpeg, its grid (`grid` {fps, gridStart, frameCount, realFrameCount}) and tool
+ * source (the original with its keyframe statistics) read with the harness's `gridOf`; every assertion is a fact FFmpeg
+ * reads back.
  *
  * Readings this file makes of the recipes (recorded for review):
- * - expand: each background object is already in the target geometry, on its own clock from 0 at its window's start
- *   (§8.1 "按其实际PTS映射回本窗"); the frozen source position is `target.displayRect`, as a chunk places the picture there
- *   (§3.5); inside an overlap the two backgrounds are blended by presentation time (§8.1 "重叠区域按presentation时间混合").
- *   A background with `crop` (inner#1306 D20-2) is a whole model frame: the container crops it to that rectangle, in the
- *   model output's own pixels, and scales the crop to the target geometry before mapping it by PTS (execution §8: the
- *   worker never decodes pixels). `crop` is not yet in the shared schema, whose strict background object refuses it.
- * - transition_window: each clip's entries cover the chunk's own frames [k0, k1) in that clip's presentation time, and each
- *   clip carries its own `colorMatrix` and `toneMap` (frames-split §4.3 colour/HDR row), so an HDR clip is tone mapped to
- *   SDR BT.709 with its plan matrix before the blend, exactly as its `chunk_encode`/`segment` chunks are.
+ * - expand: the source's grid frames [start, end) are composited over each background, which is already in the target
+ *   geometry, on its own clock from 0 at its window's start in grid seconds (§8.1 "按其实际PTS映射回本窗"); the frozen
+ *   source position is `target.displayRect` (§3.5); inside an overlap the two backgrounds are blended by grid time. A
+ *   background with `crop` (inner#1306 D20-2) is a whole model frame: the container crops it to that rectangle, in the model
+ *   output's own pixels, and scales the crop to the target geometry before mapping it by PTS.
+ * - transitions: a chunk's and a window's `frames` are output frames; each clip carries its grid and `placement`
+ *   {startFrame, inFrame}, and output frame k shows the clip grid frame inFrame + ⌊(k − startFrame) · clip fps / output fps⌋.
+ *   A transition chunk's `target` is the clip's display size, which `transitionFitRect` fits into the profile; a window
+ *   clip names its `fit` and its own plan's `colorMatrix`. The stitch names each clip's grid, placement and output frame
+ *   count and whether it has audio.
  *
  * The `transition_window` cases need the headless-gl renderer process, which exists only in the `MiniToolContainerGl` image
  * (frames-split §5.4 派发 and 拼接 rows; the image is built on the `MiniToolContainerStd4` image). They run only when
@@ -29,8 +31,9 @@
  *   IMAGE=<gl image> BUILD=0 packages/ingest/scripts/test-container-in-image.sh container/__tests__/composite-transition-recipes.node.test.ts
  * once the script passes `MINI_TOOL_CONTAINER_GL=1` into the container (it does not yet: it builds only
  * `packages/ingest/Dockerfile` and forwards no environment). Elsewhere they are skipped. The transition stitch runs in the standard image and is never skipped: its chunks there are `chunk_encode`
- * chunks, because the stitch only stream-copies chunk video. TW07 runs everywhere: it stands a recorder in for the renderer
- * process (the one `node` command the window job runs), so it checks the frames the job decodes for the blend, not the blend.
+ * chunks, because the stitch only stream-copies chunk video. TW09 and TW10 run everywhere: they stand a recorder in for the
+ * renderer process (the one `node` command the window job runs), so they check the frames the job decodes for the blend,
+ * not the blend.
  */
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -40,6 +43,7 @@ import { promisify } from 'node:util';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 import type { PlanCommandOptions } from '@ingest/container/plan-command.js';
+import { gridOf, type GridFacts } from './helpers/frame-grid-harness.js';
 
 // The renderer stand-in (TW07): when on, the GL renderer command records both decoded RGBA inputs and writes the first as
 // the output, so the window job completes outside the GL image; every other command runs for real.
@@ -60,7 +64,7 @@ vi.mock('@ingest/container/plan-command.js', async (original) => {
 });
 
 const run = promisify(execFile);
-type Exact = { numerator: string; denominator: string };
+type Exact = { numerator: number; denominator: number };
 type Recipe = Record<string, unknown>;
 type Rect = { x: number; y: number; width: number; height: number };
 interface Report { ok: boolean; outputs: { outputIndex: number }[] }
@@ -71,24 +75,22 @@ const GL = process.env.MINI_TOOL_CONTAINER_GL !== undefined && process.env.MINI_
 const GL_SKIP = 'needs the MiniToolContainerGl image (headless-gl renderer); set MINI_TOOL_CONTAINER_GL inside it';
 
 /**
- * An exact time in lowest terms (the shared exact-time schema compares by value; lowest terms keep it canonical).
+ * An exact rational in lowest terms (the shared exact-time schema compares by value; lowest terms keep it canonical).
  * @param numerator - Its numerator.
  * @param denominator - Its denominator.
- * @returns The exact time.
+ * @returns The exact rational.
  */
 function r(numerator: number, denominator = 1): Exact {
   let [a, b] = [Math.abs(numerator), denominator];
   while (b !== 0) [a, b] = [b, a % b];
   const g = a === 0 ? denominator : a;
-  return { numerator: String(numerator / g), denominator: String(denominator / g) };
+  return { numerator: numerator / g, denominator: denominator / g };
 }
 
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 const TARGET = { width: 64, height: 36, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
-// Each window clip's source conversion (frames-split §4.3): an SDR BT.709 clip as it is, a PQ BT.2020 clip tone mapped.
-const SDR = { colorMatrix: 'bt709', toneMap: 'none' };
-const HDR = { colorMatrix: 'bt2020nc', toneMap: 'sdr-bt709' };
 const PROFILE = { width: 64, height: 36, fps: r(25), timeBase: r(1, 25), pixFmt: 'yuv420p', color: { matrix: 'bt709', range: 'tv', primaries: 'bt709', transfer: 'bt709' }, codec: 'h264', encode: { crf: 18, preset: 'medium' }, alpha: false };
+const THIRTY = { ...PROFILE, fps: r(30), timeBase: r(1, 30) };
 const SOURCE = '10000000-0000-4000-8000-000000000001';
 const BACKGROUNDS = ['10000000-0000-4000-8000-0000000000b0', '10000000-0000-4000-8000-0000000000b1'];
 const CLIP_A = '10000000-0000-4000-8000-0000000000a1';
@@ -97,14 +99,16 @@ const CHUNKS = ['10000000-0000-4000-8000-0000000000c0', '10000000-0000-4000-8000
 // The transition timeline on the 25 fps output grid: clip A is 40 frames, clip B 40 frames, the window is A's last 10
 // frames over B's first 10, so output frames [0, 30) are A, [30, 40) the window, [40, 70) B's frames 10 to 40.
 const WINDOW = { startFrame: 30, frameCount: 10 };
-// Each clip's whole audio, ALAC at 48 kHz with one edit from media time 0 (as presentation-recipes CC02 writes it).
-const CLIP_AUDIO = { start: r(0), end: r(8, 5), origin: r(0), spans: [{ sourceStart: r(0), sourceEnd: r(8, 5), presentationStart: r(0), rate: r(1) }] };
+// Where each clip sits on that output grid: A from output frame 0, B from output frame 30 (a Cut puts B at 40).
+const AT_A = { startFrame: 0, inFrame: 0 };
+const AT_B = { startFrame: 30, inFrame: 0 };
 
 let dir: string;
 let served = new Map<string, string>();
 const written = new Map<string, Uint8Array>();
 let reports: Report[] = [];
 let logged: unknown[][] = [];
+const grids = new Map<string, GridFacts>();
 
 /**
  * Generate one fixture with FFmpeg.
@@ -117,45 +121,59 @@ async function make(name: string, args: string[]): Promise<void> {
 }
 
 /**
- * One source clip span (§7.17 `segment` row), every time in presentation time except the two source times.
- * @param decodeStart - The keyframe the decode starts at.
- * @param clipStart - The source time the span starts at.
- * @param displayStart - Its presentation start.
- * @param displayEnd - Its presentation end.
- * @returns The span.
+ * A fixture's grid and tool source, read in `beforeAll`.
+ * @param name - The fixture.
+ * @returns Its grid and source fields.
  */
-function span(decodeStart: Exact, clipStart: Exact, displayStart: Exact, displayEnd: Exact): Recipe {
-  return { kind: 'source', decodeStart, clipStart, displayStart, displayEnd, rate: r(1) };
+function gridOfFixture(name: string): Pick<GridFacts, 'grid' | 'source'> {
+  const facts = grids.get(name);
+  if (facts === undefined) throw new Error(`No grid read for ${name}`);
+  return { grid: facts.grid, source: facts.source };
 }
 
 /**
- * A transition `chunk_encode` over one clip's presented frames [start, end) at 25 fps, keyframes every 10 frames.
- * @param inputId - The clip.
- * @param start - Its first presented frame.
- * @param end - The frame after its last.
- * @param conversion - The clip's source conversion.
- * @returns The recipe, carrying the transition output profile.
+ * A transition `chunk_encode` over output frames [start, end) of one clip placed on the output grid.
+ * @param inputId - The clip's input.
+ * @param name - The clip's fixture.
+ * @param start - The chunk's first output frame.
+ * @param end - The output frame after its last.
+ * @param options - The clip's placement (A's when absent), the profile (`PROFILE` when absent) and target fields that differ.
+ * @param options.placement - Where the clip sits on the output grid.
+ * @param options.profile - The transition output profile.
+ * @param options.target - Target fields that differ (the clip's display size).
+ * @returns The recipe.
  */
-function clipChunk(inputId: string, start: number, end: number, conversion = SDR): Recipe {
-  const from = r(start, 25);
-  // The clip and the profile are both 25 fps here, so the chunk's output frames are its presented frames.
-  return { kind: 'chunk_encode', inputId, window: { start, end }, timescale: 25, entries: [span(r(Math.floor(start / 10) * 10, 25), from, from, r(end, 25))], target: { ...TARGET, ...conversion }, profile: PROFILE, frames: { start, end } };
+function clipChunk(inputId: string, name: string, start: number, end: number, options: { placement?: Recipe; profile?: Recipe; target?: Recipe } = {}): Recipe {
+  return { kind: 'chunk_encode', inputId, ...gridOfFixture(name), frames: { start, end }, target: { ...TARGET, ...options.target },
+    profile: options.profile ?? PROFILE, placement: options.placement ?? AT_A };
 }
 
 /**
- * A `transition_window` chunk over output frames [start, end) of the window, each clip's entries covering those frames.
+ * A `transition_window` chunk over output frames [start, end) of the window: clip A from output frame 0, clip B from 30.
  * @param transition - The transition type.
  * @param start - The chunk's first output frame.
  * @param end - The frame after its last.
- * @param conversions - Clip A's and clip B's source conversions.
+ * @param names - Clip A's and clip B's fixtures.
  * @returns The recipe.
  */
-function windowChunk(transition: 'fade' | 'wipeLeft' | 'wipeRight', start: number, end: number, conversions = [SDR, SDR]): Recipe {
-  const offset = start - WINDOW.startFrame;
+function windowChunk(transition: 'fade' | 'wipeLeft' | 'wipeRight', start: number, end: number, names: [string, string] = ['clip-a.mp4', 'clip-b.mp4']): Recipe {
   const fit = { x: 0, y: 0, width: 64, height: 36 };
-  const from = { inputId: CLIP_A, entries: [span(r(30, 25), r(30 + offset, 25), r(30 + offset, 25), r(30 + offset + end - start, 25))], fit, ...conversions[0] };
-  const to = { inputId: CLIP_B, entries: [span(r(0), r(offset, 25), r(offset, 25), r(offset + end - start, 25))], fit, ...conversions[1] };
+  const from = { inputId: CLIP_A, ...gridOfFixture(names[0]), placement: AT_A, colorMatrix: 'bt709', toneMap: 'none', fit };
+  const to = { inputId: CLIP_B, ...gridOfFixture(names[1]), placement: AT_B, colorMatrix: 'bt709', toneMap: 'none', fit };
   return { kind: 'transition_window', clips: [from, to], frames: { start, end }, window: WINDOW, transition, profile: PROFILE };
+}
+
+/**
+ * A transition stitch's clip: its original's grid, its placement, its output frame count and whether it has audio.
+ * @param inputId - The clip's input.
+ * @param name - The clip's fixture.
+ * @param placement - Where it sits on the output grid.
+ * @param frameCount - Its output frames.
+ * @param audio - Whether its audio plays.
+ * @returns The stitch clip.
+ */
+function stitchClip(inputId: string, name: string, placement: Recipe, frameCount: number, audio: boolean): Recipe {
+  return { inputId, grid: gridOfFixture(name).grid, placement, frameCount, audio };
 }
 
 /**
@@ -269,49 +287,6 @@ async function columnMeans(path: string): Promise<number[][]> {
 }
 
 /**
- * Every stored frame of a file decoded to RGBA through a filter chain (passthrough: exactly the stored frames).
- * @param path - The file.
- * @param filters - The chain that converts its frames to `rgba`.
- * @returns The raw RGBA frames.
- */
-async function rgba(path: string, filters: string): Promise<Buffer> {
-  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-fps_mode', 'passthrough', '-vf', filters, '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
-  return stdout;
-}
-
-/**
- * The mean red, green and blue of every 64x36 RGBA frame.
- * @param bytes - The raw RGBA frames.
- * @returns Per frame, [R, G, B].
- */
-function channelMeans(bytes: Buffer): number[][] {
-  const size = 64 * 36 * 4;
-  return Array.from({ length: bytes.length / size }, (_unused, frame) => [0, 1, 2].map((channel) => {
-    let sum = 0;
-    for (let at = frame * size + channel; at < (frame + 1) * size; at += 4) sum += bytes[at]!;
-    return sum / (64 * 36);
-  }));
-}
-
-/**
- * The mean stored Y, U and V of every 64x36 frame, read as 8-bit 4:2:0 after an optional filter chain.
- * @param path - The file.
- * @param filters - A chain run before the read, none when absent.
- * @returns Per frame, [Y, U, V].
- */
-async function planeMeans(path: string, filters?: string): Promise<number[][]> {
-  const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-i', path, '-fps_mode', 'passthrough', ...(filters === undefined ? [] : ['-vf', filters]),
-    '-f', 'rawvideo', '-pix_fmt', 'yuv420p', '-'], { encoding: 'buffer', maxBuffer: 1 << 28 });
-  const bytes = stdout as unknown as Buffer;
-  const [luma, chroma] = [64 * 36, 32 * 18];
-  const mean = (from: number, length: number): number => bytes.subarray(from, from + length).reduce((sum, value) => sum + value, 0) / length;
-  return Array.from({ length: bytes.length / (luma + 2 * chroma) }, (_unused, frame) => {
-    const at = frame * (luma + 2 * chroma);
-    return [mean(at, luma), mean(at + luma, chroma), mean(at + luma + chroma, chroma)];
-  });
-}
-
-/**
  * The first audio stream's first channel as 32-bit float samples at 48 kHz: the mono test tones play on both channels of the
  * stitched output at their own level.
  * @param path - The file.
@@ -381,11 +356,9 @@ beforeAll(async () => {
   const h264 = ['-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', ...tagged];
   // Ten frames at 25 fps, each a different grey (stored luma 16 + 20n), keyframes at frames 0 and 5.
   await make('greys.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128", ...h264, '-g', '5', '-video_track_timescale', '25']);
+  // Twenty 30000/1001 fps frames of stored luma 16 + 10n on a 1/30000 clock.
   await make('greys-ntsc.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=30000/1001:d=0.7,format=yuv420p,geq=lum='16+10*N':cb=128:cr=128,trim=end_frame=20",
     ...h264, '-g', '30', '-video_track_timescale', '30000']);
-  // 30000/1001 fps greys of stored luma 16 + 6n on a 1/90000 clock from pts 0, B-frames on (a late picture's media).
-  await make('greys-90k.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=30000/1001:d=1,format=yuv420p,geq=lum='16+6*N':cb=128:cr=128",
-    '-c:v', 'libx264', '-qp', '0', '-bf', '2', '-g', '30', '-pix_fmt', 'yuv420p', '-video_track_timescale', '90000', '-use_editlist', '0']);
   // 25 fps greys of stored luma 16 + 6n as FFmpeg's default x265 MP4 writes them: media pts from 1024/12800, one whole-media edit.
   await make('greys-x265.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=1,format=yuv420p,geq=lum='16+6*N':cb=128:cr=128",
     '-c:v', 'libx265', '-x265-params', 'lossless=1:bframes=2:log-level=error', '-g', '25', '-pix_fmt', 'yuv420p']);
@@ -393,10 +366,6 @@ beforeAll(async () => {
   await make('greys-30.webm', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=30:d=1,format=yuv420p,geq=lum='16+6*N':cb=128:cr=128", '-c:v', 'libvpx-vp9', '-lossless', '1', '-pix_fmt', 'yuv420p']);
   // The same greys at 29.97 fps: stored at 0, 33, 67, 100 ms... while frame n truly starts at n · 1001/30000 s.
   await make('greys-2997.webm', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=30000/1001,format=yuv420p,geq=lum='16+6*N':cb=128:cr=128", '-frames:v', '30', '-c:v', 'libvpx-vp9', '-lossless', '1', '-pix_fmt', 'yuv420p']);
-  // The greys of greys.mp4 on a 1/15360 clock, FFmpeg's default MP4 video timescale for 25 fps.
-  await make('greys-15360.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.4,format=yuv420p,geq=lum='16+20*N':cb=128:cr=128", ...h264, '-g', '10', '-video_track_timescale', '15360']);
-  await make('late-edge.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=0.16,format=yuv420p,geq=lum='16+40*N':cb=128:cr=128,settb=1/90000,setpts='if(eq(N,2),3601,N*1800)'",
-    ...h264, '-g', '4', '-fps_mode', 'passthrough', '-enc_time_base', '1/90000', '-video_track_timescale', '90000']);
   // Expand backgrounds in the 128x72 target geometry at 50 fps (twice the source rate, so a frame-index mapping shows):
   // window 0 is 16 frames of luma 40 + 8n, window 1 is 12 frames of luma 150 + 6n.
   await make('bg0.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=128x72:r=50:d=0.32,format=yuv420p,geq=lum='40+8*N':cb=128:cr=128", ...h264, '-g', '16', '-video_track_timescale', '50']);
@@ -412,9 +381,6 @@ beforeAll(async () => {
     '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ac', '1', '-shortest']);
   await make('clip-b-stereo.mp4', ['-f', 'lavfi', '-i', 'color=c=0xC0C0C0:s=64x36:r=25:d=1.6', '-f', 'lavfi', '-i', 'sine=f=1500:r=48000:d=1.6',
     '-filter_complex', '[1:a]pan=stereo|c0=c0|c1=0*c0[a]', '-map', '0:v', '-map', '[a]', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', '-g', '10', '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
-  // A transparent HDR clip: 10-bit 4:4:4 at alpha 64, tagged PQ BT.2020 limited range, as a motion-graphics HDR delivery.
-  await make('clip-hdr-alpha.mkv', ['-f', 'lavfi', '-i', 'color=c=0x808080:s=64x36:r=25:d=2,format=yuva444p10le,colorchannelmixer=aa=0.25,setparams=color_primaries=bt2020:color_trc=smpte2084:colorspace=bt2020nc:range=tv',
-    '-c:v', 'ffv1', '-pix_fmt', 'yuva444p10le', '-color_range', 'tv', '-colorspace', 'bt2020nc', '-color_primaries', 'bt2020', '-color_trc', 'smpte2084']);
   // A narrower clip: 48x36 white for 2 s, contained in the 64x36 profile with 8-pixel bars.
   await make('clip-narrow.mp4', ['-f', 'lavfi', '-i', 'color=c=white:s=48x36:r=25:d=2', ...h264, '-g', '10']);
   // A transparent clip: 2 s of grey at alpha 64 in a VP9 WebM, which stores its alpha in BlockAdditional.
@@ -423,10 +389,9 @@ beforeAll(async () => {
     await make(name, ['-f', 'lavfi', '-i', `color=c=${grey}:s=64x36:r=25:d=1.6`, '-f', 'lavfi', '-i', `sine=f=${tone}:r=48000:d=1.6`,
       ...h264, '-g', '10', '-video_track_timescale', '25', '-c:a', 'alac', '-shortest']);
   }
-  // An HDR clip A: 1.6 s at 25 fps, a flat colour stored as 10-bit PQ BT.2020 (the PQ fixture of frame-recipe and
-  // presentation-recipes, here at the transition clips' size and keyframe interval).
-  await make('clip-hdr.mp4', ['-f', 'lavfi', '-i', 'color=c=0xB08060:s=64x36:r=25:d=1.6', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p10le',
-    '-x264-params', 'colorprim=bt2020:transfer=smpte2084:colormatrix=bt2020nc', '-g', '10', '-video_track_timescale', '25']);
+  for (const [name, fps] of [['greys.mp4', [25, 1]], ['greys-ntsc.mp4', [30000, 1001]], ['greys-x265.mp4', [25, 1]], ['greys-30.webm', [30, 1]],
+    ['greys-2997.webm', [30000, 1001]], ['clip-a.mp4', [25, 1]], ['clip-b.mp4', [25, 1]], ['clip-b-mono.mp4', [25, 1]], ['clip-b-stereo.mp4', [25, 1]],
+    ['clip-narrow.mp4', [25, 1]], ['clip-alpha.webm', [25, 1]]] as const) grids.set(name, await gridOf(join(dir, name), { numerator: fps[0], denominator: fps[1] }));
 }, 120_000);
 afterAll(async () => { await rm(dir, { recursive: true, force: true }); });
 
@@ -455,95 +420,52 @@ beforeEach(() => {
 
 describe('chunk_encode on the transition profile (§7.17 chunk_encode row; 转场输出档 row: the first clip sets the rate)', () => {
   it('CR01 a clip at a lower rate than the profile gives one frame per output frame of its chunk, none cut off', async () => {
-    // Clip A is 25 fps; 30 presented frames (1.2 s) on a 30 fps profile are 36 output frames.
-    const thirty = { ...PROFILE, fps: r(30), timeBase: r(1, 30) };
-    const [file] = await produce({ [CLIP_A]: join(dir, 'clip-a.mp4') }, [{ ...clipChunk(CLIP_A, 0, 30), profile: thirty, frames: { start: 0, end: 36 } }]);
+    // Clip A is 25 fps; its 30 grid frames (1.2 s) on a 30 fps profile are 36 output frames.
+    const [file] = await produce({ [CLIP_A]: join(dir, 'clip-a.mp4') }, [clipChunk(CLIP_A, 'clip-a.mp4', 0, 36, { profile: THIRTY })]);
     const frames = await packets(file!);
     expect(frames).toHaveLength(36);
     expect(Number(frames.at(-1)!.pts_time) + Number(frames.at(-1)!.duration_time)).toBeCloseTo(1.2, 3);
   });
-});
 
-describe('the entries the worker writes for late pictures and media that start after the origin (§7.17 timeline row)', () => {
-  // A 0.3 s lead on greys-90k.mp4: frame 0 held over [0, 10001/30000) at rate 1/10 from its own pts, then frame 1 on.
-  it('CR07 a 25 fps chunk starting inside a 29.97 fps lead on 1/90000 encodes the held frame, then each slot\'s covering frame', async () => {
-    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 0, end: 7 }, timescale: 30000, target: TARGET, profile: PROFILE, frames: { start: 3, end: 12 },
-      entries: [{ ...span(r(0), r(0), r(3, 25), r(10001, 30000)), rate: r(1, 10) }, span(r(0), r(1001, 30000), r(10001, 30000), r(16007, 30000))] };
-    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-90k.mp4') }, [recipe]);
-    // Slots 3..8 (0.12 to 0.32 s) lie in the lead; slot 9 (0.36 s) in frame 1; slot 10 (0.40 s) in frame 2; slot 11 (0.44 s) in frame 4.
-    const shown = (await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6));
-    expect(shown).toEqual([0, 0, 0, 0, 0, 0, 1, 2, 4]);
-  });
-
-  it('CR08 a 30 fps chunk starting inside a frame of an x265 clip whose media starts at 2/25 s shows the frame covering each slot', async () => {
-    // Output frames 16..23 at k/30 s show clip frames floor(k · 25 / 30); frame 13 starts at 13/25 s, media pts 3/5.
-    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 13, end: 20 }, timescale: 25, target: TARGET, profile: { ...PROFILE, fps: r(30), timeBase: r(1, 30) },
-      frames: { start: 16, end: 24 }, entries: [span(r(2, 25), r(46, 75), r(8, 15), r(4, 5))] };
-    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-x265.mp4') }, [recipe]);
+  it('CR08 a 30 fps chunk of an x265 clip whose media starts at 2/25 s shows at each output frame the clip grid frame covering it', async () => {
+    // Output frames 16..23 at k/30 s show clip grid frames ⌊k · 25 / 30⌋; the grid starts at the clip's first frame.
+    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-x265.mp4') }, [clipChunk(CLIP_A, 'greys-x265.mp4', 16, 24, { profile: THIRTY })]);
     const shown = (await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6));
     expect(shown).toEqual([13, 14, 15, 15, 16, 17, 18, 19]);
   });
 });
 
-describe('frame times a source stores rounded to its clock (§7.17 rounding clock row)', () => {
+describe('frame times a source stores rounded to its clock (§4.1 源帧落位 row: fps round=near)', () => {
   it('CR09 a 30 fps WebM on its own 30 fps grid shows every frame once: a frame stored at 67 ms takes the slot at 66.67 ms', async () => {
-    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 0, end: 30 }, timescale: 1000, target: TARGET, profile: { ...PROFILE, fps: r(30), timeBase: r(1, 30) },
-      frames: { start: 0, end: 30 }, entries: [{ ...span(r(0), r(0), r(0), r(1)), conform: { origin: r(1, 30), period: r(1, 30) } }] };
-    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-30.webm') }, [recipe]);
+    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-30.webm') }, [clipChunk(CLIP_A, 'greys-30.webm', 0, 30, { profile: THIRTY })]);
     expect((await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6))).toEqual(Array.from({ length: 30 }, (_unused, n) => n));
   });
 
-  it('CR10 a 29.97 fps WebM on a 30 fps grid shows at each slot the frame truly covering it, as the admission window takes it', async () => {
-    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 0, end: 30 }, timescale: 1000, target: TARGET, profile: { ...PROFILE, fps: r(30), timeBase: r(1, 30) },
-      frames: { start: 0, end: 30 }, entries: [{ ...span(r(0), r(0), r(0), r(1001, 1000)), conform: { origin: r(1001, 30000), period: r(1001, 30000) } }] };
-    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-2997.webm') }, [recipe]);
+  it('CR10 a 29.97 fps WebM on a 30 fps profile shows at each output frame the grid frame covering it', async () => {
+    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-2997.webm') }, [clipChunk(CLIP_A, 'greys-2997.webm', 0, 30, { profile: THIRTY })]);
     expect((await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6))).toEqual(Array.from({ length: 30 }, (_unused, k) => Math.floor((k * 1000) / 1001)));
   });
 });
 
-describe('a chunk that starts between a rounded frame\'s stored start and its grid point (§7.17 rounding clock row)', () => {
-  it('CR11 a 29.97 fps WebM from In 1 on a 30 fps grid starts on frame 0, which still covers 1/30 s', async () => {
-    // Frame 1 is stored at 33 ms, at or before 1/30 s, but truly starts at 1001/30000 s, after it.
-    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 0, end: 7 }, timescale: 1000, target: TARGET, profile: { ...PROFILE, fps: r(30), timeBase: r(1, 30) },
-      frames: { start: 0, end: 7 }, entries: [{ ...span(r(0), r(1, 30), r(1, 30), r(7007, 30000)), conform: { origin: r(1001, 30000), period: r(1001, 30000) } }] };
-    const [file] = await produce({ [CLIP_A]: join(dir, 'greys-2997.webm') }, [recipe]);
-    expect((await lumaMeans(file!)).map((mean) => Math.round((mean - 16) / 6))).toEqual(Array.from({ length: 7 }, (_unused, k) => Math.floor(((k + 1) * 1000) / 1001)));
-  });
-});
-
-describe('a frame grid FFmpeg cannot carry (FFmpeg filter time bases are int rationals)', () => {
-  // On a 34650000/1154957 fps grid (an exact VFR average) a 1/15360 clip needs a 1/2217600000 clock, past 2^31 − 1, which
-  // settb would clamp to 1/2147483647 and so move frames to the wrong slots.
-  it('CR06 a chunk whose exact clock exceeds 2^31 − 1 fails with that reason instead of encoding moved frames', async () => {
-    const profile = { ...PROFILE, fps: r(34650000, 1154957), timeBase: r(1154957, 34650000) };
-    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2, 5))], target: TARGET, profile, frames: { start: 0, end: 12 } };
-    const { report } = await runJob({ [CLIP_A]: join(dir, 'greys-15360.mp4') }, [recipe]);
-    expect(report.ok).toBe(false);
-    expect(JSON.stringify(logged)).toContain('time base range');
-  });
-});
-
-describe('the last frame of a transition chunk (§7.17 chunk_encode row: every presented frame is kept)', () => {
+describe('the last frame of a transition chunk (§7.17 chunk_encode row: every grid frame is kept)', () => {
   // greys.mp4: ten 25 fps frames of stored luma 16 + 20n, so frame 9 is 196 and frame 8 is 176.
   it.each([
     ['on its own rate', PROFILE, 10],
-    ['on a faster profile', { ...PROFILE, fps: r(30), timeBase: r(1, 30) }, 12],
-  ])('CR02 a chunk %s ends on the window\'s last frame, not a repeat of the one before', async (_name, profile, frames) => {
-    const [file] = await produce({ [CLIP_A]: join(dir, 'greys.mp4') }, [{ ...clipChunk(CLIP_A, 0, 10), profile, frames: { start: 0, end: frames } }]);
+    ['on a faster profile', THIRTY, 12],
+  ])('CR02 a chunk %s ends on the clip\'s last frame, not a repeat of the one before', async (_name, profile, frames) => {
+    const [file] = await produce({ [CLIP_A]: join(dir, 'greys.mp4') }, [clipChunk(CLIP_A, 'greys.mp4', 0, frames, { profile })]);
     const means = await lumaMeans(file!);
     expect(means).toHaveLength(frames);
     expect(Math.abs(means.at(-1)! - 196)).toBeLessThan(4);
   });
 });
 
-describe('a chunk that starts inside a source frame (§7.17 transition output profile row: output frame k shows the source frame covering k / fps)', () => {
+describe('a chunk that starts inside a clip frame (§7.17 transition output profile row: output frame k shows the clip frame covering k / fps)', () => {
   // greys.mp4: ten 25 fps frames of stored luma 16 + 20n. On a 30 fps profile, output frame k shows frame ⌊k · 25 / 30⌋.
   it('CR03 a 25 fps clip split at output frame 5 of a 30 fps profile shows, chunk after chunk, the frames one window would', async () => {
-    const thirty = { ...PROFILE, fps: r(30), timeBase: r(1, 30) };
-    const chunk = (frames: { start: number; end: number }, window: { start: number; end: number }, from: Exact): Recipe => ({
-      kind: 'chunk_encode', inputId: CLIP_A, window, timescale: 25, entries: [span(r(0), from, from, r(window.end, 25))], target: TARGET, profile: thirty, frames });
     // Output frame 5 is at 1/6 s, inside frame 4 (0.16 to 0.2 s): the second chunk starts there, not at frame 4's start.
-    const [first, second] = await produce({ [CLIP_A]: join(dir, 'greys.mp4') }, [chunk({ start: 0, end: 5 }, { start: 0, end: 4 }, r(0)), chunk({ start: 5, end: 12 }, { start: 4, end: 10 }, r(1, 6))]);
+    const [first, second] = await produce({ [CLIP_A]: join(dir, 'greys.mp4') },
+      [clipChunk(CLIP_A, 'greys.mp4', 0, 5, { profile: THIRTY }), clipChunk(CLIP_A, 'greys.mp4', 5, 12, { profile: THIRTY })]);
     const shown = [...await lumaMeans(first!), ...await lumaMeans(second!)];
     expect(shown).toHaveLength(12);
     shown.forEach((value, k) => expect(Math.abs(value - (16 + 20 * Math.floor((k * 25) / 30))), `output frame ${k}`).toBeLessThan(4));
@@ -552,35 +474,21 @@ describe('a chunk that starts inside a source frame (§7.17 transition output pr
   // greys-ntsc.mp4: twenty 30000/1001 fps frames of stored luma 16 + 10n on a 1/30000 clock; frame n starts at n · 1001 ticks.
   it('CR04 a 29.97 fps clip split at output frame 7 of its own 29.97 fps profile shows every frame once, none repeated', async () => {
     const ntsc = { ...PROFILE, fps: r(30000, 1001), timeBase: r(1001, 30000) };
-    const chunk = (frames: { start: number; end: number }, from: Exact): Recipe => ({
-      kind: 'chunk_encode', inputId: CLIP_A, window: frames, timescale: 30000, entries: [span(r(0), from, from, r(frames.end * 1001, 30000))], target: TARGET, profile: ntsc, frames });
-    const [first, second] = await produce({ [CLIP_A]: join(dir, 'greys-ntsc.mp4') }, [chunk({ start: 0, end: 7 }, r(0)), chunk({ start: 7, end: 20 }, r(7 * 1001, 30000))]);
+    const [first, second] = await produce({ [CLIP_A]: join(dir, 'greys-ntsc.mp4') },
+      [clipChunk(CLIP_A, 'greys-ntsc.mp4', 0, 7, { profile: ntsc }), clipChunk(CLIP_A, 'greys-ntsc.mp4', 7, 20, { profile: ntsc })]);
     const shown = [...await lumaMeans(first!), ...await lumaMeans(second!)];
     expect(shown).toHaveLength(20);
     shown.forEach((value, k) => expect(Math.abs(value - (16 + 10 * k)), `output frame ${k}`).toBeLessThan(4));
-  });
-
-  // late-edge.mp4: four frames on a 1/90000 clock at 0, 1800, 3601 and 5400 ticks, stored luma 16, 56, 96, 136. Frame 1
-  // ends 1 tick after output slot 2 of a 25 fps profile (3600 ticks), so it is the frame shown at slot 1 and only there.
-  it.each([
-    ['two frames from slot 0', { start: 0, end: 2 }, r(0), [16, 56]],
-    ['one frame at slot 1', { start: 1, end: 2 }, r(1, 25), [56]],
-  ])('CR05 a chunk of %s whose last frame ends just after the next slot keeps that frame', async (_name, frames, from, expected) => {
-    const recipe = { kind: 'chunk_encode', inputId: CLIP_A, window: frames, timescale: 90000, entries: [span(r(0), from, from, r(3601, 90000))], target: TARGET, profile: PROFILE, frames };
-    const [file] = await produce({ [CLIP_A]: join(dir, 'late-edge.mp4') }, [recipe]);
-    const means = await lumaMeans(file!);
-    expect(means).toHaveLength(expected.length);
-    means.forEach((value, k) => expect(Math.abs(value - expected[k]!), `output frame ${k}`).toBeLessThan(4));
   });
 });
 
 describe('model_composite (§7.17 model_composite and segment rows; execution design §8, §8.1)', () => {
   // The erase shape (mask, grid and matte) is pinned in erase-expand-recipes.node.test.ts EC01–EC07.
-  it('MC03 expand: each background mapped back by PTS, the source over it at the frozen position, the overlap blended by presentation time', async () => {
+  it('MC03 expand: each background mapped back by PTS, the source over it at the frozen position, the overlap blended by grid time', async () => {
     const displayRect = { x: 16, y: 20, width: 64, height: 36 };
-    // Window 0 covers presentation [0, 8/25), window 1 [4/25, 2/5): an overlap of frames 4 to 7.
+    // Window 0 covers grid time [0, 8/25), window 1 [4/25, 2/5): an overlap of frames 4 to 7.
     const recipe = {
-      kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2, 5))],
+      kind: 'model_composite', mode: 'expand', inputId: SOURCE, ...gridOfFixture('greys.mp4'), frames: { start: 0, end: 10 },
       target: { ...TARGET, width: 128, height: 72, displayRect },
       backgrounds: [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(8, 25) } }, { inputId: BACKGROUNDS[1], window: { start: r(4, 25), end: r(2, 5) } }],
     };
@@ -590,17 +498,17 @@ describe('model_composite (§7.17 model_composite and segment rows; execution de
     const list = await packets(file!);
     expect(list).toHaveLength(10);
     expect(list[0]!.flags).toContain('K');
-    // The source rectangle (inset 2 px from its edges) is the source frame of the same presentation time.
+    // The source rectangle (inset 2 px from its edges) is the source frame of the same grid time.
     const source = await lumaMeans(join(dir, 'greys.mp4'));
     const inside = await lumaMeans(file!, { x: displayRect.x + 2, y: displayRect.y + 2, width: displayRect.width - 4, height: displayRect.height - 4 });
     inside.forEach((mean, n) => expect(Math.abs(mean - source[n]!), `source rect, frame ${n}`).toBeLessThan(4));
-    // The surround (the strip above the source) is the background frame at the same presentation time: background i's
+    // The surround (the strip above the source) is the background frame at the same grid time: background i's
     // frame at local time n/25 - window.start, i.e. frame 2n (window 0) or 2(n - 4) (window 1) at 50 fps.
     const strip = { x: 0, y: 0, width: 128, height: 16 };
     const [bg0, bg1, surround] = [await lumaMeans(join(dir, 'bg0.mp4'), strip), await lumaMeans(join(dir, 'bg1.mp4'), strip), await lumaMeans(file!, strip)];
     for (const n of [0, 1, 2, 3]) expect(Math.abs(surround[n]! - bg0[2 * n]!), `window 0 only, frame ${n}`).toBeLessThan(4);
     for (const n of [8, 9]) expect(Math.abs(surround[n]! - bg1[2 * (n - 4)]!), `window 1 only, frame ${n}`).toBeLessThan(4);
-    // Inside the overlap each frame lies between the two backgrounds, moving from window 0 to window 1 with presentation time.
+    // Inside the overlap each frame lies between the two backgrounds, moving from window 0 to window 1 with grid time.
     const weights = [4, 5, 6, 7].map(n => (surround[n]! - bg0[2 * n]!) / (bg1[2 * (n - 4)]! - bg0[2 * n]!));
     for (const weight of weights) {
       expect(weight).toBeGreaterThan(-0.06);
@@ -615,9 +523,9 @@ describe('model_composite (§7.17 model_composite and segment rows; execution de
     const target = { ...TARGET, width: 128, height: 72, displayRect };
     const backgrounds = [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(8, 25) } }, { inputId: BACKGROUNDS[1], window: { start: r(4, 25), end: r(2, 5) } }];
     const inputs = { [SOURCE]: join(dir, 'greys.mp4'), [BACKGROUNDS[0]!]: join(dir, 'bg0.mp4'), [BACKGROUNDS[1]!]: join(dir, 'bg1.mp4') };
-    const whole = { kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2, 5))], target, backgrounds };
-    // Frames 6 to 9: the chunk opens two frames into window 1's overlap with window 0 (frames 4 to 7), decoding from keyframe 5.
-    const chunk = { ...whole, window: { start: 6, end: 10 }, entries: [span(r(5, 25), r(6, 25), r(6, 25), r(2, 5))] };
+    const whole = { kind: 'model_composite', mode: 'expand', inputId: SOURCE, ...gridOfFixture('greys.mp4'), frames: { start: 0, end: 10 }, target, backgrounds };
+    // Grid frames 6 to 9: the chunk opens two frames into window 1's overlap with window 0 (frames 4 to 7).
+    const chunk = { ...whole, frames: { start: 6, end: 10 } };
     const [unchunked] = await produce(inputs, [whole]);
     const [chunked] = await produce(inputs, [chunk]);
     expect(await packets(chunked!)).toHaveLength(4);
@@ -632,7 +540,7 @@ describe('model_composite (§7.17 model_composite and segment rows; execution de
     const displayRect = { x: 16, y: 20, width: 64, height: 36 };
     const roi = { x: 96, y: 40, width: 256, height: 144 };
     const recipe = {
-      kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(0), r(0), r(2, 5))],
+      kind: 'model_composite', mode: 'expand', inputId: SOURCE, ...gridOfFixture('greys.mp4'), frames: { start: 0, end: 10 },
       target: { ...TARGET, width: 128, height: 72, displayRect },
       backgrounds: [{ inputId: BACKGROUNDS[0], window: { start: r(0), end: r(2, 5) }, crop: roi }],
     };
@@ -719,13 +627,13 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
   });
 
   it.skipIf(!GL)(`TW05 a window chunk has the codec headers of the profile's chunk_encode chunks, and the transition stitch joins [encode, window, encode] [${GL_SKIP}]`, async () => {
-    const [before, after] = await produce(inputs(), [clipChunk(CLIP_A, 0, 30), clipChunk(CLIP_B, 10, 40)]);
+    const [before, after] = await produce(inputs(), [clipChunk(CLIP_A, 'clip-a.mp4', 0, 30), clipChunk(CLIP_B, 'clip-b.mp4', 40, 70, { placement: AT_B })]);
     const [window] = await produce(inputs(), [windowChunk('fade', 30, 40)]);
     expect(await codecHeaders(window!)).toEqual(await codecHeaders(before!));
     expect(await codecHeaders(after!)).toEqual(await codecHeaders(before!));
     const [file] = await produce({ ...inputs(), [CHUNKS[0]!]: before!, [CHUNKS[1]!]: window!, [CHUNKS[2]!]: after! }, [{
-      kind: 'stitch', chunks: [{ inputId: CHUNKS[0], duration: r(6, 5) }, { inputId: CHUNKS[1], duration: r(2, 5) }, { inputId: CHUNKS[2], duration: r(6, 5) }],
-      clips: [{ inputId: CLIP_A, audio: CLIP_AUDIO }, { inputId: CLIP_B, audio: CLIP_AUDIO }], crossfade: WINDOW, profile: PROFILE,
+      kind: 'stitch', chunks: [{ inputId: CHUNKS[0], frames: { start: 0, end: 30 } }, { inputId: CHUNKS[1], frames: { start: 30, end: 40 } }, { inputId: CHUNKS[2], frames: { start: 40, end: 70 } }],
+      clips: [stitchClip(CLIP_A, 'clip-a.mp4', AT_A, 40, true), stitchClip(CLIP_B, 'clip-b.mp4', AT_B, 40, true)], crossfade: WINDOW, profile: PROFILE,
     }]);
     const list = await packets(file!);
     expect(list.map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 70 }, (_unused, n) => n / 25));
@@ -735,38 +643,9 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
     for (let i = 0; i < 10; i += 1) expect(Math.abs(means[30 + i]! - (a + (b - a) * i / 10)), `frame ${30 + i}`).toBeLessThan(3);
   });
 
-  // TW07 reads the window chunk the job encodes from the frames it decoded for the blend (the renderer stand-in passes clip
-  // A's frames through), against clip A's own chunk_encode chunk over the same frames: the segment row's picture chain,
-  // which tone maps, on the same profile. Equal there means no colour jump where a chunk_encode chunk meets the window.
-  // Tolerance 2 stored levels per plane: measured with FFmpeg 8 on three PQ colours (0xB08060, 0x9070A0, 0x806040), a
-  // window decode that tone maps with the plan matrix and keeps the range through RGBA is within 1 of the chunk; the
-  // same chain read to RGBA without minding the limited range it ends on is up to 9 off, and no tone mapping 18 to 61.
-  const TOLERANCE = 2;
-
-  it(`TW07 an HDR clip is tone mapped with its plan matrix before the blend; the SDR clip beside it is decoded as it is (§4.3; renderer stand-in)`, async () => {
-    renderer.fake = true;
-    const [hdr, sdr] = [join(dir, 'clip-hdr.mp4'), join(dir, 'clip-b.mp4')];
-    const [window] = await produce({ [CLIP_A]: hdr, [CLIP_B]: sdr }, [windowChunk('fade', 30, 40, [HDR, SDR])]);
-    const [, to] = renderer.inputs;
-    renderer.fake = false;
-    expect(to, 'the window job ran the renderer').toBeDefined();
-    const [reference] = await produce({ [CLIP_A]: hdr }, [clipChunk(CLIP_A, 30, 40, HDR)]);
-    const expected = await planeMeans(reference!);
-    const plain = (await planeMeans(hdr, 'scale=in_color_matrix=bt2020:out_color_matrix=bt709:out_range=tv'))[0]!;
-    expect(expected).toHaveLength(10);
-    expect(Math.max(...expected[0]!.map((mean, plane) => Math.abs(mean - plain[plane]!))), 'tone mapping moves this colour').toBeGreaterThan(15);
-    const got = await planeMeans(window!);
-    expect(got).toHaveLength(10);
-    got.forEach((means, i) => means.forEach((mean, plane) => expect(Math.abs(mean - expected[i]![plane]!),
-      `frame ${30 + i} ${'YUV'[plane]}: window ${mean.toFixed(2)}, tone-mapped chunk ${expected[i]![plane]!.toFixed(2)}, plain matrix conversion ${plain[plane]!.toFixed(2)}`).toBeLessThan(TOLERANCE)));
-    // Clip B is SDR: its blend input is its own decode, not clip A's conversion.
-    const grey = channelMeans(await rgba(sdr, 'scale=in_color_matrix=bt709:in_range=tv,format=rgba'))[0]!;
-    channelMeans(to!).forEach((means, i) => means.forEach((mean, channel) => expect(Math.abs(mean - grey[channel]!), `clip B frame ${i} ${'RGB'[channel]}`).toBeLessThan(TOLERANCE)));
-  });
-
   it(`TW09 a transparent clip reaches the blend with its alpha on a transparent profile (§7.17 alpha row; renderer stand-in)`, async () => {
     renderer.fake = true;
-    const recipe = { ...windowChunk('fade', 30, 34), profile: { ...PROFILE, codec: 'vp9', pixFmt: 'yuva420p', alpha: true } };
+    const recipe = { ...windowChunk('fade', 30, 34, ['clip-alpha.webm', 'clip-b.mp4']), profile: { ...PROFILE, codec: 'vp9', pixFmt: 'yuva420p', alpha: true } };
     await produce({ [CLIP_A]: join(dir, 'clip-alpha.webm'), [CLIP_B]: join(dir, 'clip-b.mp4') }, [recipe]);
     const [from] = renderer.inputs;
     renderer.fake = false;
@@ -782,7 +661,7 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
   it(`TW10 a narrower clip reaches the blend in its fitted rectangle, and its encode chunk puts it in the same place (§7.17; renderer stand-in)`, async () => {
     renderer.fake = true;
     const fit = { x: 8, y: 0, width: 48, height: 36 };
-    const recipe = windowChunk('fade', 30, 32);
+    const recipe = windowChunk('fade', 30, 32, ['clip-narrow.mp4', 'clip-b.mp4']);
     (recipe.clips as Recipe[])[0] = { ...(recipe.clips as Recipe[])[0]!, fit };
     await produce({ [CLIP_A]: join(dir, 'clip-narrow.mp4'), [CLIP_B]: join(dir, 'clip-b.mp4') }, [recipe]);
     const [from] = renderer.inputs;
@@ -793,7 +672,8 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
     expect(row.slice(8, 56).every((value) => value > 235), JSON.stringify(row)).toBe(true);
     expect(row.slice(56).every((value) => value < 20), JSON.stringify(row)).toBe(true);
     for (const profile of [PROFILE, { ...PROFILE, codec: 'vp9', pixFmt: 'yuva420p', alpha: true }]) {
-      const chunk = { ...clipChunk(CLIP_A, 30, 32), profile, target: { ...TARGET, displayRect: fit } };
+      // The chunk's target is the clip's 48x36 display, which transitionFitRect fits at (8, 0) in the 64x36 profile.
+      const chunk = clipChunk(CLIP_A, 'clip-narrow.mp4', 30, 32, { profile, target: { width: 48, height: 36 } });
       const [file] = await produce({ [CLIP_A]: join(dir, 'clip-narrow.mp4') }, [chunk]);
       const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', ...(profile.alpha ? ['-c:v', 'libvpx-vp9'] : []), '-i', file!, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 });
       const pixels = stdout as unknown as Buffer;
@@ -805,51 +685,13 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
 
   it(`TW12 on an odd transparent frame with an odd offset the encode chunk places the clip exactly where the window does`, async () => {
     const transparent = { ...PROFILE, width: 63, height: 36, codec: 'vp9', pixFmt: 'yuva420p', alpha: true };
-    const fit = { x: 7, y: 0, width: 48, height: 36 };
-    const [file] = await produce({ [CLIP_A]: join(dir, 'clip-narrow.mp4') }, [{ ...clipChunk(CLIP_A, 30, 32), profile: transparent, target: { ...TARGET, width: 63, height: 36, displayRect: fit } }]);
+    // The clip's 48x36 display fits at x = ⌊(63 − 48) / 2⌋ = 7 in the 63x36 profile, where a window's fit { x: 7, width: 48 } puts it.
+    const [file] = await produce({ [CLIP_A]: join(dir, 'clip-narrow.mp4') }, [clipChunk(CLIP_A, 'clip-narrow.mp4', 30, 32, { profile: transparent, target: { width: 48, height: 36 } })]);
     const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-c:v', 'libvpx-vp9', '-i', file!, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 });
     const pixels = stdout as unknown as Buffer;
     expect(pixels.length).toBe(63 * 36 * 4);
     const alpha = (x: number): number => pixels[(18 * 63 + x) * 4 + 3]!;
     expect([alpha(6), alpha(7), alpha(54), alpha(55)]).toEqual([0, 255, 255, 0]);
-  });
-
-  it(`TW13 an HDR clip's encode chunk carries the D05 tone map's colours: zscale converts it from YUV, as the chain was measured`, async () => {
-    const hdr = join(dir, 'clip-hdr.mp4');
-    const [chunk] = await produce({ [CLIP_A]: hdr }, [clipChunk(CLIP_A, 30, 32, HDR)]);
-    const d05 = 'zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,tonemap=tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv';
-    const reference = (await planeMeans(hdr, `${d05},scale=64:36:in_color_matrix=bt2020:out_color_matrix=bt709:out_range=tv`))[30]!;
-    const got = (await planeMeans(chunk!))[0]!;
-    got.forEach((mean, plane) => expect(Math.abs(mean - reference[plane]!), `${'YUV'[plane]}: chunk ${mean.toFixed(2)}, D05 ${reference[plane]!.toFixed(2)}`).toBeLessThan(0.6));
-  });
-
-  it(`TW11 a transparent HDR clip keeps its alpha through the tone map, in the window and in its encode chunk (§4.3; renderer stand-in)`, async () => {
-    renderer.fake = true;
-    const transparent = { ...PROFILE, codec: 'vp9', pixFmt: 'yuva420p', alpha: true };
-    const recipe = { ...windowChunk('fade', 30, 32, [HDR, SDR]), profile: transparent };
-    await produce({ [CLIP_A]: join(dir, 'clip-hdr-alpha.mkv'), [CLIP_B]: join(dir, 'clip-b.mp4') }, [recipe]);
-    const [from] = renderer.inputs;
-    renderer.fake = false;
-    let sum = 0;
-    for (let at = 3; at < 64 * 36 * 4; at += 4) sum += from![at]!;
-    expect(Math.abs(sum / (64 * 36) - 64), 'window alpha').toBeLessThan(3);
-    const [file] = await produce({ [CLIP_A]: join(dir, 'clip-hdr-alpha.mkv') }, [{ ...clipChunk(CLIP_A, 30, 32, HDR), profile: transparent }]);
-    const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-c:v', 'libvpx-vp9', '-i', file!, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgba', '-'], { encoding: 'buffer', maxBuffer: 1 << 24 });
-    const pixels = stdout as unknown as Buffer;
-    let chunk = 0;
-    for (let at = 3; at < 64 * 36 * 4; at += 4) chunk += pixels[at]!;
-    expect(Math.abs(chunk / (64 * 36) - 64), 'chunk alpha').toBeLessThan(3);
-  });
-
-  it.skipIf(!GL)(`TW08 fade from an HDR clip: frame k mixes the tone-mapped clip A into clip B, so progress 0 matches A's tone-mapped chunk [${GL_SKIP}]`, async () => {
-    const hdr = join(dir, 'clip-hdr.mp4');
-    const [file] = await produce({ [CLIP_A]: hdr, [CLIP_B]: join(dir, 'clip-b.mp4') }, [windowChunk('fade', 30, 40, [HDR, SDR])]);
-    const [reference] = await produce({ [CLIP_A]: hdr }, [clipChunk(CLIP_A, 30, 40, HDR)]);
-    const a = (await lumaMeans(reference!))[0]!;
-    const b = (await lumaMeans(join(dir, 'clip-b.mp4')))[0]!;
-    const means = await lumaMeans(file!);
-    expect(means).toHaveLength(10);
-    means.forEach((mean, i) => expect(Math.abs(mean - (a + (b - a) * i / 10)), `frame ${30 + i}`).toBeLessThan(3));
   });
 
   it.skipIf(!GL)(`TW06 progress is continuous across two window chunks: the second starts at progress 0.5, not 0 [${GL_SKIP}]`, async () => {
@@ -864,18 +706,23 @@ describe('transition_window (§7.17 transition_window and 转场输出档 rows; 
 
 describe('transition stitch audio (§7.17 stitch and 转场输出档 rows: acrossfade c1=tri:c2=tri, Cut joins directly, no audio is silence)', () => {
   /**
-   * Encode the clips' chunks with the profile and run the transition stitch over them.
-   * @param chunks - Per chunk: its clip, first and end presented frame of that clip.
-   * @param clips - The stitch's two clip audio entries.
+   * Encode the clips' chunks with the profile and run the transition stitch over them: clip A from output frame 0, clip B
+   * from 30 under a transition or from 40 after a Cut, each 40 output frames.
+   * @param chunks - Per chunk: its clip and its first and end output frame.
+   * @param audio - Whether clip A's and clip B's audio plays.
    * @param crossfade - The crossfade window, null for a Cut.
+   * @param names - Clip A's and clip B's fixtures.
    * @returns The stitched file.
    */
-  async function transitionStitch(chunks: [string, number, number][], clips: [Recipe | null, Recipe | null], crossfade: typeof WINDOW | null): Promise<string> {
-    const inputs = { [CLIP_A]: join(dir, 'clip-a.mp4'), [CLIP_B]: join(dir, 'clip-b.mp4') };
-    const files = await produce(inputs, chunks.map(([clip, start, end]) => clipChunk(clip, start, end)));
+  async function transitionStitch(chunks: [string, number, number][], audio: [boolean, boolean], crossfade: typeof WINDOW | null,
+    names: [string, string] = ['clip-a.mp4', 'clip-b.mp4']): Promise<string> {
+    const inputs = { [CLIP_A]: join(dir, names[0]), [CLIP_B]: join(dir, names[1]) };
+    const atB = crossfade === null ? { startFrame: 40, inFrame: 0 } : AT_B;
+    const files = await produce(inputs, chunks.map(([clip, start, end]) => (clip === CLIP_A ? clipChunk(CLIP_A, names[0], start, end)
+      : clipChunk(CLIP_B, names[1], start, end, { placement: atB }))));
     const [file] = await produce({ ...inputs, ...Object.fromEntries(files.map((path, at) => [CHUNKS[at]!, path])) }, [{
-      kind: 'stitch', chunks: chunks.map(([_clip, start, end], at) => ({ inputId: CHUNKS[at], duration: r(end - start, 25) })),
-      clips: [{ inputId: CLIP_A, audio: clips[0] }, { inputId: CLIP_B, audio: clips[1] }], crossfade, profile: PROFILE,
+      kind: 'stitch', chunks: chunks.map(([_clip, start, end], at) => ({ inputId: CHUNKS[at], frames: { start, end } })),
+      clips: [stitchClip(CLIP_A, names[0], AT_A, 40, audio[0]), stitchClip(CLIP_B, names[1], atB, 40, audio[1])], crossfade, profile: PROFILE,
     }]);
     return file!;
   }
@@ -904,56 +751,34 @@ describe('transition stitch audio (§7.17 stitch and 转场输出档 rows: acros
   // Blocks are 20 ms; the first two and last two are skipped for the encoder's onset and tail, and blocks next to a junction for its
   // spread. AAC moves a steady tone's block amplitude by up to about 4 % (FFmpeg 7.1 reference run), hence 8 % for an unchanged
   // clip; a quarter-sine crossfade (qsin) is off the linear gain by over 20 % mid-window, against the 6 % allowed.
-  // A clip whose audio has no edit list (spans null) and does not reach its chosen range yields no samples: its padding must
-  // still advance on the sample clock, or the junction collapses clip B's audio into a few milliseconds.
-  it('TS04 Cut after a clip with no audio over its range: clip A is silence, clip B\'s audio stays whole and in place', async () => {
-    const past = { start: r(5), end: r(33, 5), origin: r(0), spans: null };
-    const file = await transitionStitch([[CLIP_A, 0, 40], [CLIP_B, 0, 40]], [past, CLIP_AUDIO], null);
-    await expectAudio(file, 3.2);
-    const [, b] = await sourceAmplitudes();
-    const ampB = toneAmplitudes(await samples(file), 1500);
-    for (let block = 2; block <= 78; block += 1) expect(ampB[block]! / b, `no B at block ${block}`).toBeLessThan(0.03);
-    for (let block = 81; block <= 157; block += 1) expect(Math.abs(ampB[block]! / b - 1), `B at block ${block}`).toBeLessThan(0.08);
-  });
-
   // The junction keeps one stereo layout, as the preview plays it: a first clip that is silent or mono does not fold the
   // second clip's stereo into mono (concat and acrossfade take the first input's layout).
   it('TS05 Cut after a silent clip: the output is stereo and clip B\'s left-only tone stays on the left', async () => {
-    const inputs = { [CLIP_A]: join(dir, 'clip-a.mp4'), [CLIP_B]: join(dir, 'clip-b-stereo.mp4') };
-    const files = await produce(inputs, [clipChunk(CLIP_A, 0, 40), clipChunk(CLIP_B, 0, 40)]);
-    const [file] = await produce({ ...inputs, [CHUNKS[0]!]: files[0]!, [CHUNKS[1]!]: files[1]! }, [{
-      kind: 'stitch', chunks: [{ inputId: CHUNKS[0], duration: r(40, 25) }, { inputId: CHUNKS[1], duration: r(40, 25) }],
-      clips: [{ inputId: CLIP_A, audio: null }, { inputId: CLIP_B, audio: CLIP_AUDIO }], crossfade: null, profile: PROFILE,
-    }]);
-    const audio = (await probe(file!)).streams.filter(stream => stream.codec_type === 'audio') as unknown as { channels: number }[];
+    const file = await transitionStitch([[CLIP_A, 0, 40], [CLIP_B, 40, 80]], [false, true], null, ['clip-a.mp4', 'clip-b-stereo.mp4']);
+    const audio = (await probe(file)).streams.filter(stream => stream.codec_type === 'audio') as unknown as { channels: number }[];
     expect(audio.map(stream => stream.channels)).toEqual([2]);
     const level = async (path: string, from: number, channel: string): Promise<number> => {
       const { stderr } = await run('ffmpeg', ['-v', 'info', '-ss', String(from), '-t', '1', '-i', path, '-af', `pan=mono|c0=${channel},astats=metadata=0:reset=0`, '-f', 'null', '-'], { maxBuffer: 1 << 24 });
       return Number(/RMS level dB: (-?[\d.]+|-inf)/u.exec(String(stderr))?.[1]?.replace('-inf', '-200') ?? '0');
     };
     // Clip B plays from 1.6 s; its left channel keeps the source's level, unboosted, and its right stays silent.
-    expect(Math.abs(await level(file!, 2, 'c0') - await level(join(dir, 'clip-b-stereo.mp4'), 0.4, 'c0'))).toBeLessThan(1);
-    expect(await level(file!, 2, 'c1')).toBeLessThan(-60);
+    expect(Math.abs(await level(file, 2, 'c0') - await level(join(dir, 'clip-b-stereo.mp4'), 0.4, 'c0'))).toBeLessThan(1);
+    expect(await level(file, 2, 'c1')).toBeLessThan(-60);
   });
 
   it('TS06 a mono clip plays at its own level on both channels, as the preview plays it', async () => {
-    const inputs = { [CLIP_A]: join(dir, 'clip-a.mp4'), [CLIP_B]: join(dir, 'clip-b-mono.mp4') };
-    const files = await produce(inputs, [clipChunk(CLIP_A, 0, 40), clipChunk(CLIP_B, 0, 40)]);
-    const [file] = await produce({ ...inputs, [CHUNKS[0]!]: files[0]!, [CHUNKS[1]!]: files[1]! }, [{
-      kind: 'stitch', chunks: [{ inputId: CHUNKS[0], duration: r(40, 25) }, { inputId: CHUNKS[1], duration: r(40, 25) }],
-      clips: [{ inputId: CLIP_A, audio: CLIP_AUDIO }, { inputId: CLIP_B, audio: CLIP_AUDIO }], crossfade: null, profile: PROFILE,
-    }]);
+    const file = await transitionStitch([[CLIP_A, 0, 40], [CLIP_B, 40, 80]], [true, true], null, ['clip-a.mp4', 'clip-b-mono.mp4']);
     const level = async (path: string, from: number, channel: string): Promise<number> => {
       const { stderr } = await run('ffmpeg', ['-v', 'info', '-ss', String(from), '-t', '1', '-i', path, '-af', `pan=mono|c0=${channel},astats=metadata=0:reset=0`, '-f', 'null', '-'], { maxBuffer: 1 << 24 });
       return Number(/RMS level dB: (-?[\d.]+|-inf)/u.exec(String(stderr))?.[1]?.replace('-inf', '-200') ?? '0');
     };
     const source = await level(join(dir, 'clip-b-mono.mp4'), 0.4, 'c0');
-    expect(Math.abs(await level(file!, 2, 'c0') - source)).toBeLessThan(1);
-    expect(Math.abs(await level(file!, 2, 'c1') - source)).toBeLessThan(1);
+    expect(Math.abs(await level(file, 2, 'c0') - source)).toBeLessThan(1);
+    expect(Math.abs(await level(file, 2, 'c1') - source)).toBeLessThan(1);
   });
 
   it('TS01 Cut (crossfade null): clip A\'s audio then clip B\'s, joined directly with no fade', async () => {
-    const file = await transitionStitch([[CLIP_A, 0, 40], [CLIP_B, 0, 40]], [CLIP_AUDIO, CLIP_AUDIO], null);
+    const file = await transitionStitch([[CLIP_A, 0, 40], [CLIP_B, 40, 80]], [true, true], null);
     expect(await packets(file)).toHaveLength(80);
     await expectAudio(file, 3.2);
     const [a, b] = await sourceAmplitudes();
@@ -971,7 +796,7 @@ describe('transition stitch audio (§7.17 stitch and 转场输出档 rows: acros
 
   it('TS02 a transition crossfades the window\'s audio with linear (tri) gains and leaves each clip unchanged outside it', async () => {
     // The window's video chunk here is clip A's frames 30 to 40 encoded with the profile: the stitch only stream-copies chunk video.
-    const file = await transitionStitch([[CLIP_A, 0, 30], [CLIP_A, 30, 40], [CLIP_B, 10, 40]], [CLIP_AUDIO, CLIP_AUDIO], WINDOW);
+    const file = await transitionStitch([[CLIP_A, 0, 30], [CLIP_A, 30, 40], [CLIP_B, 40, 70]], [true, true], WINDOW);
     const list = await packets(file);
     expect(list.map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 70 }, (_unused, n) => n / 25));
     await expectAudio(file, 2.8);
@@ -994,8 +819,8 @@ describe('transition stitch audio (§7.17 stitch and 转场输出档 rows: acros
     }
   });
 
-  it('TS03 a clip without audio (audio null) contributes silence over its span', async () => {
-    const file = await transitionStitch([[CLIP_A, 0, 30], [CLIP_A, 30, 40], [CLIP_B, 10, 40]], [CLIP_AUDIO, null], WINDOW);
+  it('TS03 a clip without audio (audio false) contributes silence over its span', async () => {
+    const file = await transitionStitch([[CLIP_A, 0, 30], [CLIP_A, 30, 40], [CLIP_B, 40, 70]], [true, false], WINDOW);
     await expectAudio(file, 2.8);
     const [a] = await sourceAmplitudes();
     const signal = await samples(file);

@@ -43,8 +43,8 @@ const PLAN: MiniToolPlanJobRequest = {
     { inputId: "20000000-0000-4000-8000-000000000002", storageKey: "fixtures/source-b.mp4" },
   ],
   outputs: [
-    { outputIndex: 8, storageKey: "results/T/o08.png", contentType: "image/png", coverKey: "results/T/o08.cover.png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000002", entry: { kind: "source", decodeStart: { numerator: "6", denominator: "5" }, clipStart: { numerator: "6", denominator: "5" }, displayStart: { numerator: "6", denominator: "5" }, displayEnd: { numerator: "31", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
-    { outputIndex: 9, storageKey: "results/T/o09.png", contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000001", entry: { kind: "source", decodeStart: { numerator: "31", denominator: "25" }, clipStart: { numerator: "31", denominator: "25" }, displayStart: { numerator: "31", denominator: "25" }, displayEnd: { numerator: "32", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
+    { outputIndex: 8, storageKey: "results/T/o08.png", contentType: "image/png", coverKey: "results/T/o08.cover.png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000002", grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 50, realFrameCount: 50 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frameIndex: 30, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
+    { outputIndex: 9, storageKey: "results/T/o09.png", contentType: "image/png", recipe: { kind: "frame", inputId: "20000000-0000-4000-8000-000000000001", grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 50, realFrameCount: 50 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frameIndex: 31, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } },
   ],
 };
 const WRITTEN = { sha256: "a".repeat(64), sizeBytes: 64, contentType: "image/png" };
@@ -119,7 +119,7 @@ describe("planned DO state with a mocked container base, not an image", () => {
       { ...PLAN, inputs: [{ ...PLAN.inputs[0]!, storageKey: "fixtures/other.mp4" }, PLAN.inputs[1]!] },
       { ...PLAN, outputs: [{ ...PLAN.outputs[0]!, outputIndex: 16 }, PLAN.outputs[1]!] },
       { ...PLAN, outputs: [{ ...PLAN.outputs[0]!, storageKey: "results/other.png" }, PLAN.outputs[1]!] },
-      { ...PLAN, outputs: [{ ...PLAN.outputs[0]!, recipe: { kind: "frame", inputId: PLAN.inputs[0]!.inputId, entry: { kind: "source", decodeStart: { numerator: "31", denominator: "25" }, clipStart: { numerator: "31", denominator: "25" }, displayStart: { numerator: "31", denominator: "25" }, displayEnd: { numerator: "32", denominator: "25" }, rate: { numerator: "1", denominator: "1" } }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }, PLAN.outputs[1]!] },
+      { ...PLAN, outputs: [{ ...PLAN.outputs[0]!, recipe: { kind: "frame", inputId: PLAN.inputs[0]!.inputId, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 50, realFrameCount: 50 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frameIndex: 31, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }, PLAN.outputs[1]!] },
     ];
     for (const changed of changes) {
       await expect(object.submit(changed)).rejects.toThrow();
@@ -279,7 +279,8 @@ describe("planned startup facts preserve unknown consumption, with only the cont
     const [source, chunk] = PLAN.inputs;
     const target = { width: 192, height: 64, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "packed", crf: 18, preset: "medium" };
     const stitch = { ...PLAN, jobId: "plan-stitch-1", outputs: [{ outputIndex: 0, storageKey: "results/T/stitch.mp4", contentType: "video/mp4",
-      recipe: { kind: "stitch", inputId: source!.inputId, chunks: [{ inputId: chunk!.inputId, duration: { numerator: "2", denominator: "1" } }], audio: null, target } }] } as unknown as MiniToolPlanJobRequest;
+      recipe: { kind: "stitch", inputId: source!.inputId, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 50, realFrameCount: 50 },
+        chunks: [{ inputId: chunk!.inputId, frames: { start: 0, end: 50 } }], audio: false, target } }] } as unknown as MiniToolPlanJobRequest;
     const { object, storage } = owner();
     await object.submit(stitch);
     const attemptId = (storage.get("job") as { state: { attemptId: string } }).state.attemptId;

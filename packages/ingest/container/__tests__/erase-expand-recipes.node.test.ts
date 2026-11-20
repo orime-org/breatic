@@ -2,34 +2,30 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The erase and expand container recipes on real media (inner#1306 execution design §10.2–§10.5; frames-split design §7.17
- * rows as §10.8 changes them).
+ * The erase and expand container recipes on real media (inner#1306 execution design §10.2–§10.5; frames-split design §7.16,
+ * §7.17 rows as §10.8 changes them).
  *
  * Each case runs the planned job owner (`runPlanJob`) as the standard-4 container does, with every fixture generated here by
- * FFmpeg and every assertion a fact FFmpeg reads back. The edge is faked at `fetch`. Recipe shapes (none is in
- * `miniToolPlanRecipeSchema` yet; they follow §10.2–§10.5 and the conventions of `mini-tool-plan-job.ts`):
+ * FFmpeg and every assertion a fact FFmpeg reads back. The edge is faked at `fetch`. The recipes are the shapes of
+ * `mini-tool-plan-types.ts`: a window recipe reads grid frames `frames` [start, end) of its tool source (`source`, the original
+ * with its keyframe statistics) on the source's fixed-rate `grid` { fps, gridStart, frameCount, realFrameCount } (§7.16), so
+ * a constant-rate fixture of n frames at f fps is the grid { fps: f/1, gridStart: 0, frameCount: n, realFrameCount: n }.
  *
- * - `rle_join`: `{ kind, inputs: [{ inputId, order: "forward" | "reverse", frameCount }], width, height }` writes the range's
- *   RLE as a JSON array (`text/plain`): the reversed clip's frames from the range start up to the anchor, then the forward
- *   clip's; when both exist the anchor frame is the forward clip's first. A null entry is a frame without a mask.
- * - `bria_mask`: `{ kind, inputId (RLE), table, range: { startFrame, frameCount }, grid: { mode, rate, frameCount }, target }`
- *   writes `grid.frameCount` lossless full-range frames on `1 / rate`, white where the RLE frame of that grid slot has
- *   foreground and black elsewhere.
- * - `prepare_model_input` gains `order` (`"reverse"` plays the window backwards) and `grid` (`frames`: the window's frames as
- *   they are, re-stamped `N / rate`; `resample`: slot j shows the frame covering window start + j / rate).
- * - `model_window`: the window recipe plus `grid: { fps, frameCount }`, `frame`, `sourceRoi`, `fill`, `span`; slot j shows the
- *   frame covering span.start + j / fps scaled into `sourceRoi` over `fill`, and the last frame of the span repeats to
- *   `frameCount`; lossless.
- * - `model_window_mask`: `{ kind, grid, frame, sourceRoi, span }`, black inside `sourceRoi`, white elsewhere, lossless full range.
- * - `frame_at`: `{ kind, inputId, time, target: { width, height } }` writes the PNG of the frame whose PTS is closest to
- *   `time`, the earlier on a tie.
- * - `model_composite` erase: the window recipe plus `{ mode: "erase", result, rle, table, range, grid, matte: { dilate,
- *   feather }, rleSize }`; each presented frame in the range takes its grid slot's result frame (the result's own timestamps
- *   ignored), blended as source × (1 − m) + result × m with m the frame's RLE mask dilated and feathered; outside the range
- *   the source. A result whose frame count differs from `grid.frameCount` fails with `model_output_mismatch`.
- *
- * Readings this file makes (recorded for review): `window` holds presentation frame indices, as the admission's chunk
- * windows do; a grid slot of a frame is the last slot whose time is not after the frame's start (§10.4).
+ * - `rle_join` writes the range's RLE as a JSON array (`text/plain`): the reversed clip's frames from the range start up to the
+ *   anchor, then the forward clip's; when both exist the anchor frame is the forward clip's first. A null entry is a frame
+ *   without a mask.
+ * - `bria_mask` `{ inputId (RLE), fps, range, model: { mode, rate, frameCount }, target }` writes `model.frameCount` lossless
+ *   full-range frames on `1 / rate`, white where the RLE frame of that model slot has foreground and black elsewhere.
+ * - `prepare_model_input` takes `order` (`"reverse"` plays the window backwards) and `model` (`frames`: the window's frames
+ *   as they are; `resample`: slot j shows the frame covering window start + j / rate).
+ * - `model_window` adds `model: { fps, frameCount }`, `frame`, `sourceRoi`, `fill`, `span`; slot j shows the grid frame
+ *   covering span.start + j / fps scaled into `sourceRoi` over `fill`, the last frame repeated to `frameCount`; lossless.
+ * - `model_window_mask` `{ model, frame, sourceRoi, span }` is black inside `sourceRoi`, white elsewhere, lossless full range.
+ * - `frame_at` writes the PNG of grid frame `frameIndex` (the planner picks the index, run-expand.ts `previousFrameOf`).
+ * - `model_composite` erase adds `{ result, rle, range, model, matte: { dilate, feather }, rleSize }`; each grid frame in the
+ *   range takes its model slot's result frame (the result's own timestamps ignored), blended as source × (1 − m) + result × m
+ *   with m the frame's RLE mask dilated and feathered; outside the range the source. A result whose frame count differs from
+ *   `model.frameCount` fails with `model_output_mismatch`.
  */
 import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
@@ -41,13 +37,12 @@ import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 import { modelResultDecode } from '@ingest/container/presentation-recipes.js';
 import { canonicalMediaType } from '@shared/upload/media-type.js';
 import { sniffMimeType } from '@shared/upload/sniff-mime.js';
-import type { VideoPresentationTable } from '@shared/mini-tools/video-presentation-table.js';
+import type { FrameRate } from '@shared/upload/frame-grid-rate.js';
 import { cocoCounts } from './helpers/coco-counts.js';
 
 vi.setConfig({ testTimeout: 120_000, hookTimeout: 120_000 });
 
 const run = promisify(execFile);
-type Exact = { numerator: string; denominator: string };
 type Recipe = Record<string, unknown>;
 type Rect = { x: number; y: number; width: number; height: number };
 interface Report { ok: boolean; reason?: string; outputs: { outputIndex: number }[] }
@@ -55,7 +50,7 @@ interface Stream { codec_type: string; codec_name: string; width?: number; heigh
 type Rgb = readonly [number, number, number];
 interface Packet { pts_time: string; duration_time: string; flags: string }
 
-const r = (numerator: number, denominator = 1): Exact => ({ numerator: String(numerator), denominator: String(denominator) });
+const r = (numerator: number, denominator = 1): FrameRate => ({ numerator, denominator });
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 const W = 64;
 const H = 36;
@@ -69,19 +64,18 @@ const RLE = '10000000-0000-4000-8000-0000000000d0';
 const FORWARD = '10000000-0000-4000-8000-0000000000d1';
 const REVERSE = '10000000-0000-4000-8000-0000000000d2';
 const BACKGROUND = '10000000-0000-4000-8000-0000000000b0';
-const cfr = (fps: number, count: number): VideoPresentationTable => ({ schemaVersion: 1, timescale: fps, runs: [{ start: 0, count, step: 1, duration: 1 }] });
-// The VFR fixture's eight frames in milliseconds: 50 ms and 33 ms alternating, 332 ms in all (24.1 fps on average).
-const VFR_STARTS = [0, 50, 83, 133, 166, 216, 249, 299];
-const VFR_END = 332;
-const VFR: VideoPresentationTable = {
-  schemaVersion: 1, timescale: 1000,
-  runs: VFR_STARTS.map((start, at) => ({ start, count: 1, step: (VFR_STARTS[at + 1] ?? VFR_END) - start, duration: (VFR_STARTS[at + 1] ?? VFR_END) - start })),
-};
+/**
+ * The grid of a constant-rate fixture: `count` frames at `fps` from 0, every slot a real frame.
+ * @param fps - Its rate.
+ * @param count - Its frames.
+ * @returns The grid.
+ */
+const cfr = (fps: FrameRate, count: number): Recipe => ({ fps, gridStart: r(0), frameCount: count, realFrameCount: count });
+// Every fixture read as an original: its first keyframe at 0 and no keyframe interval over one second.
+const ORIGINAL = { kind: 'original', keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } };
 const LEFT = (x: number): boolean => x < 32;
 const LEFT_IN: Rect = { x: 2, y: 2, width: 26, height: 32 };
 const RIGHT_IN: Rect = { x: 36, y: 2, width: 26, height: 32 };
-// greys-tone.mp4's AAC audio as the probe's plan records it: one edit skipping the AAC priming.
-const TONE_AUDIO = { start: r(0), end: r(2), origin: r(0), spans: [{ sourceStart: r(256, 11025), sourceEnd: r(22306, 11025), presentationStart: r(0), rate: r(1) }] };
 
 let dir: string;
 let served = new Map<string, string>();
@@ -326,29 +320,14 @@ async function expectBinaryFrames(path: string, masks: ((x: number, y: number) =
   });
 }
 
-/**
- * A source span over [start, end) seconds from a keyframe at the start.
- * @param start - Its presentation start.
- * @param end - Its presentation end.
- * @returns The span.
- */
-function span(start: Exact, end: Exact): Recipe {
-  return { kind: 'source', decodeStart: start, clipStart: start, displayStart: start, displayEnd: end, rate: r(1) };
-}
-
 beforeAll(async () => {
   dir = await mkdtemp(join(tmpdir(), 'erase-expand-recipes-'));
-  // Sources: 25 fps (frame n luma 16 + 20n), 60 fps (16 + 15n), 29.97 fps on a 1 ms track clock (16 + 12n), VFR (40 + 20n).
+  // Sources: 25 fps (frame n luma 16 + 20n), 60 fps (16 + 15n), 29.97 fps on a 1 ms track clock (16 + 12n).
   await lossless('greys25.mp4', '16+20*N', { fps: '25', frames: 10, timescale: 25 });
   await lossless('greys60.mp4', '16+15*N', { fps: '60', frames: 12, timescale: 60 });
   await lossless('greys2997.mp4', '16+12*N', { fps: '30000/1001', frames: 15, timescale: 1000 });
   // 60 fps greys (16 + 8n) in a lossless VP9 WebM, whose 1 ms clock stores them at 0, 17, 33, 50, 67 ms...
   await make('greys60.webm', ['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:r=60,format=yuv420p,geq=lum='16+8*N':cb=128:cr=128`, '-frames:v', '24', '-c:v', 'libvpx-vp9', '-lossless', '1', '-pix_fmt', 'yuv420p']);
-  // Nine stored frames so the eighth ends at 332 ms; the table and every recipe use the first eight. FFmpeg 8's setpts keeps
-  // the 30 fps rate, so without the explicit encoder time base the timestamps are quantized to 1/30 s.
-  await make('vfr.mp4', ['-f', 'lavfi', '-i', `color=c=black:s=${W}x${H}:r=30,format=yuv420p,geq=lum='40+20*N':cb=128:cr=128,settb=1/1000,setpts='floor(N/2)*83+mod(N,2)*50'`,
-    '-frames:v', '9', '-fps_mode', 'passthrough', '-enc_time_base:v', '1/1000', '-c:v', 'libx264', '-qp', '0', '-g', '4', '-bf', '0', '-pix_fmt', 'yuv420p',
-    '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', '-video_track_timescale', '1000']);
   await make('greys-tone.mp4', ['-f', 'lavfi', '-i', "color=c=black:s=64x36:r=25:d=2,format=yuv420p,geq=lum='16+4*N':cb=128:cr=128", '-f', 'lavfi', '-i', 'sine=f=1000:r=44100:d=2',
     '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p', '-x264-params', 'colorprim=bt709:transfer=bt709:colormatrix=bt709', '-g', '25', '-video_track_timescale', '25', '-c:a', 'aac', '-shortest']);
   await make('clip-hdr.mp4', ['-f', 'lavfi', '-i', 'color=c=0xB08060:s=64x36:r=25:d=0.4', '-c:v', 'libx264', '-bf', '0', '-pix_fmt', 'yuv420p10le',
@@ -358,7 +337,6 @@ beforeAll(async () => {
   await lossless('result4.mp4', '200+10*N', { fps: '30', frames: 4, timescale: 30 }, result);
   await lossless('result5.mp4', '200+10*N', { fps: '30', frames: 5, timescale: 30 }, result);
   await lossless('result6.mp4', '170+12*N', { fps: '30', frames: 6, timescale: 30 }, result);
-  await lossless('result8.mp4', '120+12*N', { fps: '30', frames: 8, timescale: 30 }, result);
   await lossless('result10.mp4', '230', { fps: '30', frames: 10, timescale: 30 }, result);
   // A VACE output at 16 fps: frame n luma 40 + 20n.
   await lossless('vace16.mp4', '40+20*N', { fps: '16', frames: 8, timescale: 16 });
@@ -446,7 +424,7 @@ describe('bria_mask (execution design §10.4 model grid and steps rows)', () => 
 
   it('BM01 frame for frame: one lossless full-range binary frame per range frame, white where the RLE frame has foreground', async () => {
     const path = await rle('bm-frames.json', [0, 1, 2, 3].map(k => growing(k, 8)));
-    const file = await produce({ [RLE]: path }, { kind: 'bria_mask', inputId: RLE, table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 }, target: { width: W, height: H } });
+    const file = await produce({ [RLE]: path }, { kind: 'bria_mask', inputId: RLE, fps: r(25), range: { startFrame: 3, frameCount: 4 }, model: { mode: 'frames', rate: 25, frameCount: 4 }, target: { width: W, height: H } });
     const stream = await video(file);
     expect([stream.width, stream.height, stream.color_range]).toEqual([W, H, 'pc']);
     await expectBinaryFrames(file, [0, 1, 2, 3].map(k => growing(k, 8)));
@@ -455,34 +433,33 @@ describe('bria_mask (execution design §10.4 model grid and steps rows)', () => 
 
   it('BM02 a 60 fps range is resampled on the 30 fps grid: slot j takes RLE frame 2j', async () => {
     const path = await rle('bm-resample.json', Array.from({ length: 12 }, (_unused, k) => growing(k, 4)));
-    const file = await produce({ [RLE]: path }, { kind: 'bria_mask', inputId: RLE, table: cfr(60, 12), range: { startFrame: 0, frameCount: 12 }, grid: { mode: 'resample', rate: 30, frameCount: 6 }, target: { width: W, height: H } });
+    const file = await produce({ [RLE]: path }, { kind: 'bria_mask', inputId: RLE, fps: r(60), range: { startFrame: 0, frameCount: 12 }, model: { mode: 'resample', rate: 30, frameCount: 6 }, target: { width: W, height: H } });
     await expectBinaryFrames(file, Array.from({ length: 6 }, (_unused, j) => growing(2 * j, 4)));
     (await packets(file)).forEach((packet, j) => expect(Number(packet.pts_time)).toBeCloseTo(j / 30, 3));
   });
 
-  it('BM03 a 29.97 fps average rate re-stamps the frames N / rate', async () => {
+  it('BM03 a 29.97 fps grid re-stamps the frames N / rate', async () => {
     const path = await rle('bm-2997.json', [0, 1, 2, 3].map(k => growing(k, 8)));
     const rate = 30000 / 1001;
-    const file = await produce({ [RLE]: path }, { kind: 'bria_mask', inputId: RLE, table: cfr(25, 4), range: { startFrame: 0, frameCount: 4 }, grid: { mode: 'frames', rate, frameCount: 4 }, target: { width: W, height: H } });
+    const file = await produce({ [RLE]: path }, { kind: 'bria_mask', inputId: RLE, fps: r(30000, 1001), range: { startFrame: 0, frameCount: 4 }, model: { mode: 'frames', rate, frameCount: 4 }, target: { width: W, height: H } });
     (await packets(file)).forEach((packet, k) => expect(Math.abs(Number(packet.pts_time) - k / rate)).toBeLessThanOrEqual(0.001));
   });
 });
 
 describe('prepare_model_input order and grid (execution design §10.2, §10.4)', () => {
   /**
-   * A model-input recipe over a whole source.
-   * @param window - Its presentation frames.
-   * @param timescale - Its clock.
-   * @param end - The source's presentation end.
-   * @param extra - The order or grid fields.
+   * A model-input recipe over grid frames of a constant-rate source.
+   * @param frames - Its grid frames.
+   * @param grid - The source's grid.
+   * @param extra - The order or model fields.
    * @returns The recipe.
    */
-  function prepare(window: { start: number; end: number }, timescale: number, end: Exact, extra: Recipe): Recipe {
-    return { kind: 'prepare_model_input', inputId: SOURCE, window, timescale, entries: [span(r(0), end)], target: TARGET, audio: null, ...extra };
+  function prepare(frames: { start: number; end: number }, grid: Recipe, extra: Recipe): Recipe {
+    return { kind: 'prepare_model_input', inputId: SOURCE, grid, source: ORIGINAL, frames, target: TARGET, audio: false, ...extra };
   }
 
   it('PG01 order reverse plays the window backwards on its own clock', async () => {
-    const file = await produce({ [SOURCE]: join(dir, 'greys25.mp4') }, prepare({ start: 0, end: 10 }, 25, r(2, 5), { order: 'reverse' }));
+    const file = await produce({ [SOURCE]: join(dir, 'greys25.mp4') }, prepare({ start: 0, end: 10 }, cfr(r(25), 10), { order: 'reverse' }));
     const [source, prepared] = [await lumaMeans(join(dir, 'greys25.mp4')), await lumaMeans(file)];
     expect(prepared).toHaveLength(10);
     prepared.forEach((value, k) => expect(Math.abs(value - source[9 - k]!), `frame ${k}`).toBeLessThan(3));
@@ -491,27 +468,22 @@ describe('prepare_model_input order and grid (execution design §10.2, §10.4)',
 
   it('PG04 a reversed clip in two chunks, the later chunk stitched first, plays the whole window backwards', async () => {
     const source = join(dir, 'greys25.mp4');
-    const reversed = async (window: { start: number; end: number }, start: Exact, end: Exact): Promise<string> =>
-      produce({ [SOURCE]: source }, { kind: 'prepare_model_input', inputId: SOURCE, window, timescale: 25, entries: [span(start, end)], target: TARGET, audio: null, order: 'reverse' });
-    const [late, early] = [await reversed({ start: 5, end: 10 }, r(1, 5), r(2, 5)), await reversed({ start: 0, end: 5 }, r(0), r(1, 5))];
+    const reversed = async (frames: { start: number; end: number }): Promise<string> => produce({ [SOURCE]: source }, prepare(frames, cfr(r(25), 10), { order: 'reverse' }));
+    const [late, early] = [await reversed({ start: 5, end: 10 }), await reversed({ start: 0, end: 5 })];
     const [LATE, EARLY] = ['10000000-0000-4000-8000-0000000000d1', '10000000-0000-4000-8000-0000000000d0'];
-    const file = await produce({ [SOURCE]: source, [LATE]: late, [EARLY]: early },
-      { kind: 'stitch', inputId: SOURCE, target: TARGET, chunks: [{ inputId: LATE, duration: r(1, 5) }, { inputId: EARLY, duration: r(1, 5) }], audio: null });
+    // Each chunk names the slots it fills in the reversed clip (model-run-steps.ts): the later source frames play first.
+    const file = await produce({ [SOURCE]: source, [LATE]: late, [EARLY]: early }, { kind: 'stitch', inputId: SOURCE, grid: cfr(r(25), 10), target: TARGET,
+      chunks: [{ inputId: LATE, frames: { start: 0, end: 5 } }, { inputId: EARLY, frames: { start: 5, end: 10 } }], audio: false });
     const [original, joined] = [await lumaMeans(source), await lumaMeans(file)];
     expect(joined).toHaveLength(10);
     joined.forEach((value, k) => expect(Math.abs(value - original[9 - k]!), `frame ${k}`).toBeLessThan(3));
     (await packets(file)).forEach((packet, k) => expect(Number(packet.pts_time)).toBeCloseTo(k / 25, 3));
   });
 
-  it.each([
-    ['a 29.97 fps source on a 1 ms clock', 'greys2997.mp4', 15, null],
-    ['a jittery VFR source', 'vfr.mp4', 8, VFR_END],
-  ] as const)('PG02 a frames grid keeps every frame of %s and re-stamps it N / rate', async (_case, name, count, knownEnd) => {
-    const source = join(dir, name);
-    const stored = await packets(source);
-    const end = knownEnd ?? Math.round((Number(stored.at(-1)!.pts_time) + Number(stored.at(-1)!.duration_time)) * 1000);
-    const rate = (count * 1000) / end;
-    const file = await produce({ [SOURCE]: source }, prepare({ start: 0, end: count }, 1000, r(end, 1000), { grid: { mode: 'frames', rate, frameCount: count } }));
+  it('PG02 a frames model grid keeps every frame of a 29.97 fps source on a 1 ms clock and re-stamps it N / rate', async () => {
+    const source = join(dir, 'greys2997.mp4');
+    const [count, rate] = [15, 30000 / 1001];
+    const file = await produce({ [SOURCE]: source }, prepare({ start: 0, end: count }, cfr(r(30000, 1001), count), { model: { mode: 'frames', rate, frameCount: count } }));
     const [original, prepared] = [await lumaMeans(source), await lumaMeans(file)];
     expect(prepared).toHaveLength(count);
     prepared.forEach((value, k) => expect(Math.abs(value - original[k]!), `frame ${k}`).toBeLessThan(3));
@@ -519,7 +491,7 @@ describe('prepare_model_input order and grid (execution design §10.2, §10.4)',
   });
 
   it('PG03 a resample grid takes the frame covering each 30 fps slot of a 60 fps source', async () => {
-    const file = await produce({ [SOURCE]: join(dir, 'greys60.mp4') }, prepare({ start: 0, end: 12 }, 60, r(1, 5), { grid: { mode: 'resample', rate: 30, frameCount: 6 } }));
+    const file = await produce({ [SOURCE]: join(dir, 'greys60.mp4') }, prepare({ start: 0, end: 12 }, cfr(r(60), 12), { model: { mode: 'resample', rate: 30, frameCount: 6 } }));
     const [source, prepared] = [await lumaMeans(join(dir, 'greys60.mp4')), await lumaMeans(file)];
     expect(prepared).toHaveLength(6);
     prepared.forEach((value, j) => expect(Math.abs(value - source[2 * j]!), `slot ${j}`).toBeLessThan(3));
@@ -527,8 +499,7 @@ describe('prepare_model_input order and grid (execution design §10.2, §10.4)',
   });
 
   it('PG06 a 60 fps WebM resampled on a 30 fps grid: slot j shows frame 2j, as the mask and the composite read it', async () => {
-    const recipe = { ...prepare({ start: 0, end: 24 }, 1000, r(2, 5), { grid: { mode: 'resample', rate: 30, frameCount: 12 } }),
-      entries: [{ ...span(r(0), r(2, 5)), conform: { origin: r(1, 60), period: r(1, 60) } }] };
+    const recipe = prepare({ start: 0, end: 24 }, cfr(r(60), 24), { model: { mode: 'resample', rate: 30, frameCount: 12 } });
     const file = await produce({ [SOURCE]: join(dir, 'greys60.webm') }, recipe);
     const [source, prepared] = [await lumaMeans(join(dir, 'greys60.webm')), await lumaMeans(file)];
     expect(prepared).toHaveLength(12);
@@ -537,7 +508,7 @@ describe('prepare_model_input order and grid (execution design §10.2, §10.4)',
 
   it('PG05 a resample grid whose last slot starts on the last frame shows that frame there, not the one before', async () => {
     // 11 frames at 60 fps on a 30 fps grid: slot 5 is at 10/60, the start of frame 10, the range's last frame.
-    const file = await produce({ [SOURCE]: join(dir, 'greys60.mp4') }, prepare({ start: 0, end: 11 }, 60, r(11, 60), { grid: { mode: 'resample', rate: 30, frameCount: 6 } }));
+    const file = await produce({ [SOURCE]: join(dir, 'greys60.mp4') }, prepare({ start: 0, end: 11 }, cfr(r(60), 12), { model: { mode: 'resample', rate: 30, frameCount: 6 } }));
     const [source, prepared] = [await lumaMeans(join(dir, 'greys60.mp4')), await lumaMeans(file)];
     expect(prepared).toHaveLength(6);
     prepared.forEach((value, j) => expect(Math.abs(value - source[2 * j]!), `slot ${j}`).toBeLessThan(3));
@@ -549,23 +520,26 @@ describe('model_window, model_window_mask and frame_at (execution design §10.5 
   const ROI: Rect = { x: 8, y: 10, width: 48, height: 28 };
   const ROI_IN: Rect = { x: ROI.x + 2, y: ROI.y + 2, width: ROI.width - 4, height: ROI.height - 4 };
   const FILL_IN: Rect = { x: 0, y: 0, width: 64, height: 8 };
+  // A previous window's 16 fps model output of eight frames, read as run-expand.ts `previousFrameOf` reads it.
+  const VACE_FRAMES = { grid: cfr(r(16), 8), source: { kind: 'original', keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 0.5, allKeyframes: false } } };
 
   /**
-   * A model window over the 25 fps greys.
+   * A model window over the 25 fps greys: its grid frames from the one covering the span start to the last.
    * @param start - The span start.
+   * @param frames - The grid frames the span shows.
    * @param conversion - The source conversion.
    * @returns The recipe.
    */
-  function modelWindow(start: Exact, conversion: Recipe = {}): Recipe {
+  function modelWindow(start: FrameRate, frames: { start: number; end: number }, conversion: Recipe = {}): Recipe {
     return {
-      kind: 'model_window', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(2, 5))],
-      target: { ...TARGET, width: ROI.width, height: ROI.height, ...conversion }, grid: { fps: 16, frameCount: 80 }, frame: FRAME, sourceRoi: ROI,
+      kind: 'model_window', inputId: SOURCE, grid: cfr(r(25), 10), source: ORIGINAL, frames,
+      target: { ...TARGET, width: ROI.width, height: ROI.height, ...conversion }, model: { fps: 16, frameCount: 80 }, frame: FRAME, sourceRoi: ROI,
       fill: [127, 127, 127], span: { start, end: r(2, 5) },
     };
   }
 
   it('MW01 each 16 fps slot shows the covering source frame in the source rectangle over the RGB 127 fill, the last frame repeated to the grid count', async () => {
-    const file = await produce({ [SOURCE]: join(dir, 'greys25.mp4') }, modelWindow(r(0)));
+    const file = await produce({ [SOURCE]: join(dir, 'greys25.mp4') }, modelWindow(r(0), { start: 0, end: 10 }));
     const stream = await video(file);
     expect([stream.width, stream.height]).toEqual([64, 48]);
     const list = await packets(file);
@@ -582,7 +556,7 @@ describe('model_window, model_window_mask and frame_at (execution design §10.5 
   });
 
   it('MW02 the grid starts at the span start: the first slot of a span at 0.1 s is source frame 2, the next frame 4', async () => {
-    const file = await produce({ [SOURCE]: join(dir, 'greys25.mp4') }, modelWindow(r(1, 10)));
+    const file = await produce({ [SOURCE]: join(dir, 'greys25.mp4') }, modelWindow(r(1, 10), { start: 2, end: 10 }));
     const source = (await rgbMeans(join(dir, 'greys25.mp4'), { width: W, height: H }, { x: 0, y: 0, width: W, height: H })).map(rgb => rgb[0]!);
     const inside = (await rgbMeans(file, FRAME, ROI_IN)).map(rgb => rgb[0]!);
     expect(Math.abs(inside[0]! - source[2]!)).toBeLessThan(3);
@@ -590,10 +564,9 @@ describe('model_window, model_window_mask and frame_at (execution design §10.5 
   });
 
   it('MW04 a 60 fps WebM window starting on a frame stored before its grid point: slot j shows the frame covering start + j / fps on the grid', async () => {
-    // Frame 2 is stored at 33 ms and truly starts at 1/30 s: a span at 33 ms opens on frame 1 (from 1/60 s).
-    const recipe = { kind: 'model_window', inputId: SOURCE, window: { start: 1, end: 11 }, timescale: 1000,
-      entries: [{ kind: 'source', decodeStart: r(0), clipStart: r(1, 60), displayStart: r(1, 60), displayEnd: r(11, 60), rate: r(1), conform: { origin: r(1, 60), period: r(1, 60) } }],
-      target: { ...TARGET, width: ROI.width, height: ROI.height }, grid: { fps: 30, frameCount: 5 }, frame: FRAME, sourceRoi: ROI, fill: [127, 127, 127], span: { start: r(33, 1000), end: r(1, 5) } };
+    // Frame 2 is stored at 33 ms and truly starts at 1/30 s: a span at 33 ms opens on grid frame 1 (from 1/60 s).
+    const recipe = { kind: 'model_window', inputId: SOURCE, grid: cfr(r(60), 24), source: ORIGINAL, frames: { start: 1, end: 12 },
+      target: { ...TARGET, width: ROI.width, height: ROI.height }, model: { fps: 30, frameCount: 5 }, frame: FRAME, sourceRoi: ROI, fill: [127, 127, 127], span: { start: r(33, 1000), end: r(1, 5) } };
     const file = await produce({ [SOURCE]: join(dir, 'greys60.webm') }, recipe);
     const source = (await rgbMeans(join(dir, 'greys60.webm'), { width: W, height: H }, { x: 0, y: 0, width: W, height: H })).map(rgb => rgb[0]!);
     const inside = (await rgbMeans(file, FRAME, ROI_IN)).map(rgb => rgb[0]!);
@@ -603,36 +576,33 @@ describe('model_window, model_window_mask and frame_at (execution design §10.5 
 
   it('MW03 an HDR source is tone mapped with its plan matrix: the source rectangle equals the composite\'s source layer', async () => {
     const hdr = join(dir, 'clip-hdr.mp4');
-    const file = await produce({ [SOURCE]: hdr }, modelWindow(r(0), HDR));
+    const file = await produce({ [SOURCE]: hdr }, modelWindow(r(0), { start: 0, end: 10 }, HDR));
     expect([(await video(file)).width, (await video(file)).height]).toEqual([64, 48]);
-    const chunk = await produce({ [SOURCE]: hdr }, { kind: 'chunk_encode', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(2, 5))], target: { ...TARGET, width: ROI.width, height: ROI.height, ...HDR } });
+    const chunk = await produce({ [SOURCE]: hdr }, { kind: 'chunk_encode', inputId: SOURCE, grid: cfr(r(25), 10), source: ORIGINAL, frames: { start: 0, end: 10 }, target: { ...TARGET, width: ROI.width, height: ROI.height, ...HDR } });
     const layer = (await rgbMeans(chunk, { width: ROI.width, height: ROI.height }, { x: 2, y: 2, width: ROI.width - 4, height: ROI.height - 4 }))[0]!;
     const inside = (await rgbMeans(file, FRAME, ROI_IN))[0]!;
     inside.forEach((channel, at) => expect(Math.abs(channel - layer[at]!), `channel ${at}`).toBeLessThan(3));
   });
 
   it('MM01 the window mask is black inside the source rectangle and white elsewhere, lossless full range, one frame per slot', async () => {
-    const file = await produce({}, { kind: 'model_window_mask', grid: { fps: 16, frameCount: 80 }, frame: FRAME, sourceRoi: ROI, span: { start: r(0), end: r(2, 5) } });
+    const file = await produce({}, { kind: 'model_window_mask', model: { fps: 16, frameCount: 80 }, frame: FRAME, sourceRoi: ROI, span: { start: r(0), end: r(2, 5) } });
     expect((await video(file)).color_range).toBe('pc');
     const outside = (x: number, y: number): boolean => !(x >= ROI.x && x < ROI.x + ROI.width && y >= ROI.y && y < ROI.y + ROI.height);
     await expectBinaryFrames(file, Array.from({ length: 80 }, () => outside));
   });
 
-  it.each([
-    ['the closest frame', r(1, 10), 2],
-    ['the earlier frame on a tie', r(3, 32), 1],
-  ] as const)('FA01 frame_at takes %s by PTS and writes it as a PNG of the target size', async (_case, time, expected) => {
-    const file = await produce({ [RESULT]: join(dir, 'vace16.mp4') }, { kind: 'frame_at', inputId: RESULT, time, target: { width: 32, height: 18 } }, 'image/png');
+  it('FA01 frame_at takes grid frame 2 and writes it as a PNG of the target size', async () => {
+    const file = await produce({ [RESULT]: join(dir, 'vace16.mp4') }, { kind: 'frame_at', inputId: RESULT, ...VACE_FRAMES, frameIndex: 2, target: { width: 32, height: 18 } }, 'image/png');
     const stream = await video(file);
     expect([stream.codec_name, stream.width, stream.height]).toEqual(['png', 32, 18]);
     const frames = (await rgbMeans(join(dir, 'vace16.mp4'), { width: W, height: H }, { x: 0, y: 0, width: W, height: H })).map(rgb => rgb[0]!);
     const [picture] = await rgbMeans(file, { width: 32, height: 18 }, { x: 0, y: 0, width: 32, height: 18 });
-    expect(Math.abs(picture![0]! - frames[expected]!)).toBeLessThan(3);
+    expect(Math.abs(picture![0]! - frames[2]!)).toBeLessThan(3);
   });
 
   it.each(RESULT_TAGGINGS)('FA02 frame_at decodes a previous window\'s result (%s) with its own matrix: the PNG keeps its RGB', async (_case, tagged) => {
     const previous = await providerVideo(`fa02-${String(tagged)}.mp4`, { width: W, height: H, fps: 16, frames: 8 }, threeBands, tagged);
-    const file = await produce({ [RESULT]: previous }, { kind: 'frame_at', inputId: RESULT, time: r(1, 10), target: { width: W, height: H } }, 'image/png');
+    const file = await produce({ [RESULT]: previous }, { kind: 'frame_at', inputId: RESULT, ...VACE_FRAMES, frameIndex: 1, target: { width: W, height: H } }, 'image/png');
     for (const { y, height, colour } of BAND_ROWS) expectRgb((await rgbMeans(file, { width: W, height: H }, { x: 4, y, width: 56, height }))[0]!, colour, `band at row ${y}`);
   });
 });
@@ -643,22 +613,20 @@ describe('model_composite erase (execution design §10.4 model grid and composit
 
   /**
    * An erase composite chunk.
-   * @param chunk - Its window, clock and spans.
-   * @param chunk.window - Its presentation frames.
-   * @param chunk.timescale - Its clock.
-   * @param chunk.entries - Its spans.
-   * @param erase - Its table, range, grid and matte.
-   * @param erase.table - The source's presentation table.
+   * @param chunk - Its grid frames and the source's grid.
+   * @param chunk.frames - Its grid frames.
+   * @param chunk.grid - The source's grid.
+   * @param erase - Its range, model grid and matte.
    * @param erase.range - The erase range.
-   * @param erase.grid - The model grid.
+   * @param erase.model - The model grid.
    * @param erase.matte - The matte, none when absent.
    * @param erase.target - The segment target, {@link TARGET} when absent.
    * @returns The recipe.
    */
-  function erase(chunk: { window: { start: number; end: number }; timescale: number; entries: Recipe[] },
-    erase: { table: VideoPresentationTable; range: { startFrame: number; frameCount: number }; grid: Recipe; matte?: { dilate: number; feather: number }; target?: Recipe }): Recipe {
-    return { kind: 'model_composite', mode: 'erase', inputId: SOURCE, ...chunk, target: erase.target ?? TARGET, result: RESULT, rle: RLE, table: erase.table, range: erase.range, grid: erase.grid,
-      matte: erase.matte ?? { dilate: 0, feather: 0 }, rleSize: { width: W, height: H } };
+  function erase(chunk: { frames: { start: number; end: number }; grid: Recipe },
+    erase: { range: { startFrame: number; frameCount: number }; model: Recipe; matte?: { dilate: number; feather: number }; target?: Recipe }): Recipe {
+    return { kind: 'model_composite', mode: 'erase', inputId: SOURCE, grid: chunk.grid, source: ORIGINAL, frames: chunk.frames, target: erase.target ?? TARGET,
+      result: RESULT, rle: RLE, range: erase.range, model: erase.model, matte: erase.matte ?? { dilate: 0, feather: 0 }, rleSize: { width: W, height: H } };
   }
 
   /**
@@ -683,18 +651,18 @@ describe('model_composite erase (execution design §10.4 model grid and composit
     resultFile = 'result4.mp4';
     const source = join(dir, 'greys25.mp4');
     const file = await produce({ [SOURCE]: source, [RESULT]: join(dir, resultFile), [RLE]: await rle('ec-left4.json', Array(4).fill(LEFT)) },
-      erase({ window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(2, 5))] }, { table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 } }));
+      erase({ frames: { start: 0, end: 10 }, grid: cfr(r(25), 10) }, { range: { startFrame: 3, frameCount: 4 }, model: { mode: 'frames', rate: 25, frameCount: 4 } }));
     const list = await packets(file);
     expect(list.map(packet => Number(packet.pts_time))).toEqual(Array.from({ length: 10 }, (_unused, n) => n / 25));
     expect(list[0]!.flags).toContain('K');
     await expectErased(file, source, [null, null, null, 0, 1, 2, 3, null, null, null], Array.from({ length: 10 }, (_unused, n) => n));
   });
 
-  it('EC02 a chunk starting inside the range finds its first frame\'s slot from the table: frames 5, 6 show result frames 2, 3', async () => {
+  it('EC02 a chunk starting inside the range finds its first frame\'s slot on the grid: frames 5, 6 show result frames 2, 3', async () => {
     resultFile = 'result4.mp4';
     const source = join(dir, 'greys25.mp4');
     const file = await produce({ [SOURCE]: source, [RESULT]: join(dir, resultFile), [RLE]: await rle('ec-left4b.json', Array(4).fill(LEFT)) },
-      erase({ window: { start: 5, end: 10 }, timescale: 25, entries: [span(r(1, 5), r(2, 5))] }, { table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 } }));
+      erase({ frames: { start: 5, end: 10 }, grid: cfr(r(25), 10) }, { range: { startFrame: 3, frameCount: 4 }, model: { mode: 'frames', rate: 25, frameCount: 4 } }));
     expect((await packets(file)).map(packet => Number(packet.pts_time))).toEqual([0, 0.04, 0.08, 0.12, 0.16]);
     await expectErased(file, source, [2, 3, null, null, null], [5, 6, 7, 8, 9]);
   });
@@ -703,27 +671,19 @@ describe('model_composite erase (execution design §10.4 model grid and composit
     resultFile = 'result6.mp4';
     const source = join(dir, 'greys60.mp4');
     const file = await produce({ [SOURCE]: source, [RESULT]: join(dir, resultFile), [RLE]: await rle('ec-left12.json', Array(12).fill(LEFT)) },
-      erase({ window: { start: 0, end: 12 }, timescale: 60, entries: [span(r(0), r(1, 5))] }, { table: cfr(60, 12), range: { startFrame: 0, frameCount: 12 }, grid: { mode: 'resample', rate: 30, frameCount: 6 } }));
+      erase({ frames: { start: 0, end: 12 }, grid: cfr(r(60), 12) }, { range: { startFrame: 0, frameCount: 12 }, model: { mode: 'resample', rate: 30, frameCount: 6 } }));
     await expectErased(file, source, Array.from({ length: 12 }, (_unused, i) => Math.floor(i / 2)), Array.from({ length: 12 }, (_unused, i) => i));
-  });
-
-  it('EC04 a VFR range averaging under 30 fps maps frame for frame', async () => {
-    resultFile = 'result8.mp4';
-    const source = join(dir, 'vfr.mp4');
-    const file = await produce({ [SOURCE]: source, [RESULT]: join(dir, resultFile), [RLE]: await rle('ec-left8.json', Array(8).fill(LEFT)) },
-      erase({ window: { start: 0, end: 8 }, timescale: 1000, entries: [span(r(0), r(VFR_END, 1000))] }, { table: VFR, range: { startFrame: 0, frameCount: 8 }, grid: { mode: 'frames', rate: 8000 / VFR_END, frameCount: 8 } }));
-    await expectErased(file, source, Array.from({ length: 8 }, (_unused, i) => i), Array.from({ length: 8 }, (_unused, i) => i));
   });
 
   it('EC05 a result with a frame count other than the grid\'s fails with model_output_mismatch', async () => {
     await fails({ [SOURCE]: join(dir, 'greys25.mp4'), [RESULT]: join(dir, 'result5.mp4'), [RLE]: await rle('ec-left4c.json', Array(4).fill(LEFT)) },
-      erase({ window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(2, 5))] }, { table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 } }), 'model_output_mismatch');
+      erase({ frames: { start: 0, end: 10 }, grid: cfr(r(25), 10) }, { range: { startFrame: 3, frameCount: 4 }, model: { mode: 'frames', rate: 25, frameCount: 4 } }), 'model_output_mismatch');
   });
 
   it('EC06 the matte dilates the mask past its edge and feathers it into a gradual edge', async () => {
     const inputs = async (name: string): Promise<Record<string, string>> => ({ [SOURCE]: join(dir, 'greys25.mp4'), [RESULT]: join(dir, 'result4.mp4'), [RLE]: await rle(name, Array(4).fill(LEFT)) });
-    const chunk = { window: { start: 3, end: 4 }, timescale: 25, entries: [span(r(3, 25), r(4, 25))] };
-    const base = { table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 } };
+    const chunk = { frames: { start: 3, end: 4 }, grid: cfr(r(25), 10) };
+    const base = { range: { startFrame: 3, frameCount: 4 }, model: { mode: 'frames', rate: 25, frameCount: 4 } };
     const column = (x: number): Rect => ({ x, y: 2, width: 1, height: 32 });
     const [source, result] = [(await lumaMeans(join(dir, 'greys25.mp4')))[3]!, (await lumaMeans(join(dir, 'result4.mp4')))[0]!];
     const weight = async (file: string, x: number): Promise<number> => ((await lumaMeans(file, column(x)))[0]! - source) / (result - source);
@@ -739,9 +699,9 @@ describe('model_composite erase (execution design §10.4 model grid and composit
   it('EC07 a stitch over an erase chunk re-attaches the source audio; frames 10..19 show the result', async () => {
     const source = join(dir, 'greys-tone.mp4');
     const chunk = await produce({ [SOURCE]: source, [RESULT]: join(dir, 'result10.mp4'), [RLE]: await rle('ec-all10.json', Array(10).fill(() => true)) },
-      erase({ window: { start: 0, end: 50 }, timescale: 25, entries: [span(r(0), r(2))] }, { table: cfr(25, 50), range: { startFrame: 10, frameCount: 10 }, grid: { mode: 'frames', rate: 25, frameCount: 10 } }));
+      erase({ frames: { start: 0, end: 50 }, grid: cfr(r(25), 50) }, { range: { startFrame: 10, frameCount: 10 }, model: { mode: 'frames', rate: 25, frameCount: 10 } }));
     const CHUNK = '10000000-0000-4000-8000-0000000000c0';
-    const file = await produce({ [SOURCE]: source, [CHUNK]: chunk }, { kind: 'stitch', inputId: SOURCE, target: TARGET, chunks: [{ inputId: CHUNK, duration: r(2) }], audio: TONE_AUDIO });
+    const file = await produce({ [SOURCE]: source, [CHUNK]: chunk }, { kind: 'stitch', inputId: SOURCE, grid: cfr(r(25), 50), target: TARGET, chunks: [{ inputId: CHUNK, frames: { start: 0, end: 50 } }], audio: true });
     const { stdout } = await run('ffprobe', ['-v', 'error', '-show_streams', '-of', 'json', file]);
     expect((JSON.parse(stdout) as { streams: Stream[] }).streams.map(stream => stream.codec_type).sort()).toEqual(['audio', 'video']);
     const composed = await lumaMeans(file);
@@ -754,7 +714,7 @@ describe('model_composite erase (execution design §10.4 model grid and composit
     const unreadable = join(dir, 'unreadable-result.mp4');
     await writeFile(unreadable, Buffer.from('not a video'));
     const file = await produce({ [SOURCE]: source, [RESULT]: unreadable, [RLE]: await rle('ec-left4d.json', Array(4).fill(LEFT)) },
-      erase({ window: { start: 7, end: 10 }, timescale: 25, entries: [span(r(7, 25), r(2, 5))] }, { table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 } }));
+      erase({ frames: { start: 7, end: 10 }, grid: cfr(r(25), 10) }, { range: { startFrame: 3, frameCount: 4 }, model: { mode: 'frames', rate: 25, frameCount: 4 } }));
     await expectErased(file, source, [null, null, null], [7, 8, 9]);
   });
 
@@ -762,7 +722,7 @@ describe('model_composite erase (execution design §10.4 model grid and composit
     const result = await providerVideo(`ec09-${String(tagged)}.mp4`, { width: W, height: H, fps: 30, frames: 4 }, threeBands, tagged);
     const source = join(dir, 'greys25.mp4');
     const file = await produce({ [SOURCE]: source, [RESULT]: result, [RLE]: await rle(`ec09-${String(tagged)}.json`, Array(4).fill(LEFT)) },
-      erase({ window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(2, 5))] }, { table: cfr(25, 10), range: { startFrame: 3, frameCount: 4 }, grid: { mode: 'frames', rate: 25, frameCount: 4 }, target: LOSSLESS_TARGET }));
+      erase({ frames: { start: 0, end: 10 }, grid: cfr(r(25), 10) }, { range: { startFrame: 3, frameCount: 4 }, model: { mode: 'frames', rate: 25, frameCount: 4 }, target: LOSSLESS_TARGET }));
     const size = { width: W, height: H };
     const bands = await Promise.all(BAND_ROWS.map(({ y, height }) => rgbMeans(file, size, { x: 4, y, width: 24, height })));
     const [untouched, original] = await Promise.all([rgbMeans(file, size, RIGHT_IN), rgbMeans(source, size, RIGHT_IN)]);
@@ -777,7 +737,7 @@ describe('model_composite expand (execution design §10.5 composite row and fail
   it('EX01 a ten-second window whose 16 fps background has 159 frames composes without a frame-count check, the last frame held', async () => {
     const displayRect = { x: 32, y: 18, width: 64, height: 36 };
     const recipe = {
-      kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 250 }, timescale: 25, entries: [span(r(0), r(10))],
+      kind: 'model_composite', mode: 'expand', inputId: SOURCE, grid: cfr(r(25), 250), source: ORIGINAL, frames: { start: 0, end: 250 },
       target: { ...TARGET, width: 128, height: 72, displayRect },
       backgrounds: [{ inputId: BACKGROUND, window: { start: r(0), end: r(10) } }],
     };
@@ -793,7 +753,7 @@ describe('model_composite expand (execution design §10.5 composite row and fail
     const colourAt = (x: number, y: number): Rgb => (y < 18 ? (x < 64 ? RED : GREEN) : BLUE);
     const background = await providerVideo(`ex02-${String(tagged)}.mp4`, { width: 128, height: 72, fps: 16, frames: 8 }, colourAt, tagged);
     const recipe = {
-      kind: 'model_composite', mode: 'expand', inputId: SOURCE, window: { start: 0, end: 10 }, timescale: 25, entries: [span(r(0), r(2, 5))],
+      kind: 'model_composite', mode: 'expand', inputId: SOURCE, grid: cfr(r(25), 10), source: ORIGINAL, frames: { start: 0, end: 10 },
       target: { ...LOSSLESS_TARGET, width: 128, height: 72, displayRect }, backgrounds: [{ inputId: BACKGROUND, window: { start: r(0), end: r(2, 5) } }],
     };
     const file = await produce({ [SOURCE]: join(dir, 'greys25.mp4'), [BACKGROUND]: background }, recipe);

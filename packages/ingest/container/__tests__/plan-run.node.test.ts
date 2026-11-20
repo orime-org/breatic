@@ -5,30 +5,32 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
 import { executePresentationRecipe } from "@ingest/container/presentation-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
-import { download, put, cpuUsec } from "@ingest/container/mini-tool-run.js";
+import { download, put } from "@ingest/container/mini-tool-run.js";
+import { cpuUsec } from "@ingest/container/run-steps.js";
 
-// §93 D5 (frames-split design §7.17 「唯一写点：worker的配方构造」, 「容器不读帧表」): every job recipe is written on full-ledger
-// entries and runs as a presentation recipe, so the per-source inspection seam (`inspectPlanInput`) and the frame-table
-// executor are no longer on the path; the download, alias and lifetime facts are asserted on the presentation executor.
+// Frames-split design §7.17 (「唯一写点：worker的配方构造」): every job recipe is written on grid frame numbers and runs as a
+// presentation recipe; the download, alias and lifetime facts are asserted on the presentation executor.
 vi.mock("@ingest/container/presentation-recipes.js", async (original) => ({ ...await original<Record<string, unknown>>(), executePresentationRecipe: vi.fn() }));
 vi.mock("@ingest/container/plan-command.js", () => ({ runPlanCommand: vi.fn() }));
-vi.mock("@ingest/container/mini-tool-run.js", () => ({ download: vi.fn(), put: vi.fn(), cpuUsec: vi.fn() }));
+vi.mock("@ingest/container/mini-tool-run.js", () => ({ download: vi.fn(), put: vi.fn() }));
+vi.mock("@ingest/container/run-steps.js", () => ({ cpuUsec: vi.fn() }));
 
 const NOW = 1700000000000;
 const A = "20000000-0000-4000-8000-000000000001";
 const B = "20000000-0000-4000-8000-000000000002";
 const ALIAS = "20000000-0000-4000-8000-000000000003";
 const MEDIA = { width: 400, height: 200, durationSeconds: null, cover: null };
-const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
-const ENTRY = { kind: "source", decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(1, 25), rate: r(1) } as const;
+const GRID = { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 25, realFrameCount: 25 };
+const SOURCE = { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } } as const;
+const STILL = { grid: GRID, source: SOURCE, frameIndex: 0 };
 const PNG = { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } as const;
 const JOB: PlanRunBody = {
   schemaVersion: 2, attemptId: "30000000-0000-4000-8000-000000000001", deadlineAt: NOW + 7200000,
   limits: { probeStdoutBytes: 1048576, analysisStdoutBytes: 1048576, stderrTailBytes: 8192 },
   inputs: [{ inputId: A, url: "http://r2.local/source-a?attempt=current" }, { inputId: B, url: "http://r2.local/source-b?attempt=current" }, { inputId: ALIAS, url: "http://r2.local/source-a?attempt=current" }],
   outputs: [
-    { outputIndex: 8, key: "results/T/o08.png", url: "http://r2.local/out-8?attempt=current", contentType: "image/png", recipe: { kind: "frame", inputId: ALIAS, entry: ENTRY, target: PNG } },
-    { outputIndex: 9, key: "results/T/o09.png", url: "http://r2.local/out-9?attempt=current", contentType: "image/png", recipe: { kind: "frame", inputId: B, entry: ENTRY, target: PNG } },
+    { outputIndex: 8, key: "results/T/o08.png", url: "http://r2.local/out-8?attempt=current", contentType: "image/png", recipe: { kind: "frame", inputId: ALIAS, ...STILL, target: PNG } },
+    { outputIndex: 9, key: "results/T/o09.png", url: "http://r2.local/out-9?attempt=current", contentType: "image/png", recipe: { kind: "frame", inputId: B, ...STILL, target: PNG } },
   ],
   reportUrl: "http://jobs.local/report?attempt=current",
 };
@@ -87,7 +89,7 @@ describe("planned local owner with IO and recipes mocked, not actual media", () 
   });
 
   it("does not fetch or execute against an unbound recipe input", async () => {
-    const job = { ...JOB, outputs: [{ ...JOB.outputs[0]!, recipe: { kind: "frame" as const, inputId: "unbound", entry: ENTRY, target: PNG } }] };
+    const job = { ...JOB, outputs: [{ ...JOB.outputs[0]!, recipe: { kind: "frame" as const, inputId: "unbound", ...STILL, target: PNG } }] };
     await runPlanJob(job);
     expect(download).not.toHaveBeenCalled();
     expect(executePresentationRecipe).not.toHaveBeenCalled();
@@ -102,22 +104,19 @@ describe("planned local owner with IO and recipes mocked, not actual media", () 
   });
 });
 
-// S6d D4-6 (inner#1306 §92; design §7.17 「容器不读帧表」, scene_cuts 「去掉inspect_video步骤」): once frame, segment, people and
-// scene_cuts carry full-ledger entries, no recipe reads the per-frame probe: each runs as a presentation recipe (§93 D5:
-// re-expressed on that executor, so the pin no longer names the inspection seam it removed).
-describe("no recipe inspects the source frame by frame after D4 (§92 D4-6)", () => {
-  const r = (numerator: number, denominator = 1): { numerator: string; denominator: string } => ({ numerator: String(numerator), denominator: String(denominator) });
-  const entry = { kind: "source", decodeStart: r(0), clipStart: r(0), displayStart: r(0), displayEnd: r(1, 25), rate: r(1) };
+// Frames-split design §7.17: frame, segment, people and scene_cuts read grid frames from the tool source, and each runs as a
+// presentation recipe.
+describe("frame, segment, people and scene_cuts run as presentation recipes (§7.17)", () => {
   const png = { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" };
   const video = { width: 400, height: 200, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium", format: "mp4-h264" };
+  const frames = { start: 0, end: 1 };
   it.each([
-    ["frame", { kind: "frame", inputId: A, entry, target: png }],
-    ["people", { kind: "people", inputId: A, entry, target: png, profile: "standard" }],
-    ["scene_cuts", { kind: "scene_cuts", inputId: A, window: { start: 0, end: 1 }, timescale: 25, profile: "standard", entries: [{ ...entry, ordinalOffset: 0 }], target: { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none" } }],
-    ["segment", { kind: "segment", inputId: A, window: { start: 0, end: 1 }, timescale: 25, entries: [entry], target: video, audio: null }],
-  ])("DP06 a %s recipe on full-ledger entries runs as a presentation recipe", async (_name, recipe) => {
+    ["frame", { kind: "frame", inputId: A, ...STILL, target: png }],
+    ["people", { kind: "people", inputId: A, ...STILL, target: png, profile: "standard" }],
+    ["scene_cuts", { kind: "scene_cuts", inputId: A, grid: GRID, source: SOURCE, frames, profile: "standard", target: { width: 400, height: 200, colorMatrix: "bt709", toneMap: "none" } }],
+    ["segment", { kind: "segment", inputId: A, grid: GRID, source: SOURCE, frames, target: video, audio: false }],
+  ])("DP06 a %s recipe on grid frames runs as a presentation recipe", async (_name, recipe) => {
     await runPlanJob({ ...JOB, outputs: [{ ...JOB.outputs[0]!, recipe }] } as unknown as PlanRunBody);
     expect(vi.mocked(executePresentationRecipe).mock.calls.map(([request]) => request.recipe)).toEqual([recipe]);
   });
 });
-
