@@ -304,10 +304,11 @@ export function applyLook(root: Object3D, table: LookPartTable, look: SceneLook,
         made.push(material.map);
       }
     }
+    // The reset already restored a model part's own colour exactly; a built-in part takes the theme's.
     if (material.color) {
-      const own = entry.builtin ? options.themeColor : entry.color;
       if (fields.color !== undefined) material.color.set(fields.color);
-      else material.color.set(showingUser ? SCENE_LOOK_PICTURE_COLOR : own);
+      else if (showingUser) material.color.set(SCENE_LOOK_PICTURE_COLOR);
+      else if (entry.builtin) material.color.set(options.themeColor);
     }
     if (lit) {
       if (fields.roughness !== undefined) material.roughness = fields.roughness;

@@ -101,6 +101,19 @@ describe('buildPartTable', () => {
 });
 
 describe('applyLook', () => {
+  it('keeps a model part\u2019s own colour exactly when the look leaves the colour alone', () => {
+    const material = new MeshStandardMaterial();
+    material.color.setRGB(0.5, 0.25, 0.002);
+    material.userData.lookPart = '0';
+    const mesh = new Mesh(new BoxGeometry(), material);
+    const root = new Group();
+    root.add(mesh);
+    const table = exported<Build>('buildPartTable')(root, partOf, { builtin: false });
+    exported<Apply>('applyLook')(root, table, { 0: { roughness: 0.3 } }, { themeColor: THEME, picture: () => null });
+    const { r, g, b } = materialOf(mesh).color;
+    expect([r, g, b]).toEqual([0.5, 0.25, 0.002]);
+  });
+
   it('asks for a new shader program when the picture shown reads another UV set', () => {
     const { root, meshes } = model();
     materialOf(meshes[0]!).map!.channel = 1;
