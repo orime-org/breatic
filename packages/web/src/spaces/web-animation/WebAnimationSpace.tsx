@@ -95,6 +95,27 @@ function rowsRead(results: Array<UseQueryResult<WebAnimationRowView>>): Readonly
 }
 
 /**
+ * Read one execution by id under the Space-task key, so a change in the Space's document reads it again; every by-id
+ * read shares this key and its cache.
+ * @param projectId - The Project.
+ * @param spaceId - The Motion Space.
+ * @param id - The execution.
+ * @returns The query's options.
+ * @throws {never} Never.
+ */
+function byIdQuery(projectId: string, spaceId: string, id: string): {
+  queryKey: unknown[];
+  queryFn: (context: { signal: AbortSignal }) => Promise<WebAnimationRowView>;
+  staleTime: number;
+} {
+  return {
+    queryKey: [...spaceTasksQueryKey(projectId, spaceId), 'motion-held', id],
+    queryFn: ({ signal }) => timelineApi.getExecution(projectId, spaceId, id, signal),
+    staleTime: Infinity,
+  };
+}
+
+/**
  * The frame ratio a row is shown at.
  * @param row - The row.
  * @returns Width over height.
@@ -312,11 +333,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     return anchor === null || lists.byId.has(anchor.executionId) || anchor.executionId === selectedId ? [] : [anchor.executionId];
   }))], [threads, lists.byId, selectedId]);
   const unlistedRows = useQueries({
-    queries: unlistedIds.map((id) => ({
-      queryKey: [...spaceTasksQueryKey(projectId, spaceId), 'motion-held', id],
-      queryFn: ({ signal }: { signal: AbortSignal }) => timelineApi.getExecution(projectId, spaceId, id, signal),
-      staleTime: Infinity,
-    })),
+    queries: unlistedIds.map((id) => byIdQuery(projectId, spaceId, id)),
     combine: rowsRead,
   });
   // A row by id: its copy on a loaded page, the shown row as the selection last saw it, or its read by id.
@@ -330,11 +347,9 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // as it reads the lists; it starts from the copy the selection holds.
   const heldId = selectedId !== null && !lists.byId.has(selectedId) ? selectedId : null;
   const heldRead = useQuery({
-    queryKey: [...spaceTasksQueryKey(projectId, spaceId), 'motion-held', heldId],
-    queryFn: ({ signal }) => timelineApi.getExecution(projectId, spaceId, heldId ?? '', signal),
+    ...byIdQuery(projectId, spaceId, heldId ?? ''),
     enabled: heldId !== null,
     initialData: heldId === null ? undefined : selected,
-    staleTime: Infinity,
   });
   // The shown row is never missing while one is selected: the freshest listed copy, or the held row as last read.
   const row = selected === undefined ? undefined : lists.byId.get(selected.id) ?? (heldRead.data?.id === selected.id ? heldRead.data : selected);
@@ -539,12 +554,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // The result a modification starts from: listed here, or read once when it is not.
   const baseId = draft.status !== 'closed' ? draft.input.base?.executionId ?? null : null;
   const listedBase = baseId === null ? undefined : rowById(baseId);
-  const readBase = useQuery({
-    queryKey: [...spaceTasksQueryKey(projectId, spaceId), 'motion-base', baseId],
-    queryFn: ({ signal }) => timelineApi.getExecution(projectId, spaceId, baseId ?? '', signal),
-    enabled: baseId !== null && listedBase === undefined,
-    staleTime: Infinity,
-  });
+  const readBase = useQuery({ ...byIdQuery(projectId, spaceId, baseId ?? ''), enabled: baseId !== null && listedBase === undefined });
   const baseRow = listedBase ?? readBase.data;
   const { refetch: refetchBase } = readBase;
   const baseRead = React.useMemo(() => ({
