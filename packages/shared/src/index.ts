@@ -496,6 +496,7 @@ export {
   UPLOAD_DEADLINE_ATTR,
   UPLOAD_FAILURE_ATTR,
   UPLOAD_HOME_ATTR,
+  UPLOAD_RETRYABLE_ATTR,
   UPLOAD_STATE_ATTR,
   type DocumentUploadEvent,
   type DocumentUploadResult,

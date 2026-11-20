@@ -62,8 +62,10 @@ export const UPLOAD_HOME_ATTR = "uploadHome";
 export const UPLOAD_STATE_ATTR = "uploadState";
 /** Block attribute: epoch ms after which a `processing` block reads as timed out. */
 export const UPLOAD_DEADLINE_ATTR = "uploadDeadline";
-/** Block attribute: the {@link UploadFailure} of a `failed` block. */
+/** Block attribute: the {@link PendingFailureReason} of a `failed` block. */
 export const UPLOAD_FAILURE_ATTR = "uploadFailure";
+/** Block attribute: whether a `failed` block's upload can be run again. */
+export const UPLOAD_RETRYABLE_ATTR = "uploadRetryable";
 
 const MEDIA_BLOCKS: ReadonlySet<string> = new Set(["image", "video", "audio"]);
 
@@ -162,9 +164,12 @@ export function applyDocumentUpload(fragment: Y.XmlFragment, event: DocumentUplo
         block.removeAttribute(UPLOAD_STATE_ATTR);
         block.removeAttribute(UPLOAD_DEADLINE_ATTR);
         block.removeAttribute(UPLOAD_FAILURE_ATTR);
+        block.removeAttribute(UPLOAD_RETRYABLE_ATTR);
       } else if (event.state === "failed") {
+        const failure = documentUploadFailure(event.reason);
         block.setAttribute(UPLOAD_STATE_ATTR, "failed");
-        block.setAttribute(UPLOAD_FAILURE_ATTR, documentUploadFailure(event.reason) as never);
+        block.setAttribute(UPLOAD_FAILURE_ATTR, failure.reason);
+        block.setAttribute(UPLOAD_RETRYABLE_ATTR, failure.retryable as never);
       }
     }
   };

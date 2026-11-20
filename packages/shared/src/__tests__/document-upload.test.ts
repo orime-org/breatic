@@ -79,13 +79,14 @@ describe("applyDocumentUpload", () => {
       expect(attrs.uploadState).toBeUndefined();
       expect(attrs.uploadDeadline).toBeUndefined();
       expect(attrs.uploadFailure).toBeUndefined();
+      expect(attrs.uploadRetryable).toBeUndefined();
     }
   });
 
   it("writes the failure as the body's short reason and whether it can be retried", () => {
     const { fragment } = body([pending]);
     applyDocumentUpload(fragment, failed);
-    expect(media(fragment)[0]).toMatchObject({ uploadState: "failed", uploadFailure: { reason: "unreachable", retryable: true } });
+    expect(media(fragment)[0]).toMatchObject({ uploadState: "failed", uploadFailure: "unreachable", uploadRetryable: true });
   });
 
   it("leaves blocks of another upload, another home or with an address alone", () => {
