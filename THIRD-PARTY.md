@@ -15,18 +15,16 @@ beside the bundle at `/third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish five images, and a deployment that enables web animation builds a
-sixth, the web-animation container, from source. The media container and the
-transition renderer's image built on it carry FFmpeg and vips; the page reader
-carries a Chromium headless shell and the FFmpeg build Playwright installs
-beside it; the web-animation container carries Chromium and the DeepSeek
-Harness:
+We publish four images, and a deployment that enables web animation builds a
+fifth, the web-animation container, from source. The media container carries
+FFmpeg and vips; the page reader carries a Chromium headless shell and the
+FFmpeg build Playwright installs beside it; the web-animation container carries
+Chromium and the DeepSeek Harness:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
 | `ghcr.io/<owner>/breatic` | [Dockerfile](./Dockerfile) | `node:24-bookworm-slim` | no |
 | the media container | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) | `alpine:3.23` | yes |
-| the MiniToolContainerGl image | [packages/ingest/Dockerfile](./packages/ingest/Dockerfile) with `VARIANT=gl` | the media container | yes |
 | the page reader | [packages/ingest/web-reader/Dockerfile](./packages/ingest/web-reader/Dockerfile) | `node:24-bookworm-slim` | yes — Playwright's LGPL build, which the reader never runs |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
 | the web-animation container | [packages/ingest/web-animation.Dockerfile](./packages/ingest/web-animation.Dockerfile) | `node:24-bookworm-slim` | no — see [Web animation](#web-animation) |
@@ -116,7 +114,7 @@ while the image is built, as the FFmpeg one above is.
 ### Isolated analysis in the media container
 
 The media container also carries Python 3.12.16, NumPy 2.3.5, OpenCV
-4.12.0, PySceneDetect 0.7.2 and the YuNet 2023mar face detector. The Node
+4.12.0 and PySceneDetect 0.7.2. The Node
 service invokes our Python analysis program as a separate process and hands
 it raw BGR frames. Python does not decode media: OpenCV is built from source
 with FFmpeg, GStreamer, GUI and dynamic backend plugins disabled. The
@@ -130,49 +128,14 @@ existing FFmpeg program supplies decoded frames through a separate process.
 | GCC runtime libraries | GPL-3.0-or-later WITH GCC-exception-3.1 | https://gcc.gnu.org/pub/gcc/releases/gcc-15.2.0/gcc-15.2.0.tar.xz |
 | Limited OpenCV 4.12.0 | Apache-2.0 and its bundled notices, including Protobuf, SoftFloat and MSCR | https://github.com/opencv/opencv/tree/4.12.0 |
 | PySceneDetect 0.7.2 | BSD-3-Clause | https://github.com/Breakthrough/PySceneDetect/tree/v0.7.2 |
-| YuNet 2023mar weights | MIT | https://github.com/opencv/opencv_zoo/tree/main/models/face_detection_yunet |
 
 The image retains upstream licence texts and a `SOURCE` declaration under
 `/usr/share/analysis-source/`. That declaration includes the fixed upstream
-archive and weight hashes and the installed Alpine package metadata.
+archive hashes and the installed Alpine package metadata.
 OpenCV's generated CMake cache, install manifest and build/runtime package
 lists are retained under `/opt/opencv/build-record/`. Python package notices
 also remain in their installed `dist-info` directories. This separate
 analysis runtime leaves the existing media programs' notices in place.
-
-### The transition renderer in the MiniToolContainerGl image
-
-The transitions export renders each overlap window with the same `gl-transitions`
-shaders the browser preview draws. It runs in its own image, the `gl` variant of
-[packages/ingest/Dockerfile](./packages/ingest/Dockerfile), which is the media
-container above plus the renderer, so FFmpeg, x264 and libvpx are the same. That image adds
-one separate program, `container/gl-renderer/render.mjs`, which the container's
-service starts as a process and hands raw frames through files; the service
-loads none of these modules into its own process.
-
-| Component | Licence | Source |
-|---|---|---|
-| headless-gl (`gl`) 8.1.6, with its bundled ANGLE | BSD-2-Clause; ANGLE BSD-3-Clause | https://github.com/stackgl/headless-gl/tree/v8.1.6 |
-| `gl-transition` 2.1.0 | MIT | https://github.com/gre/gl-transition-libs |
-| `gl-transitions` 1.76.1 (the shaders; the same versions `packages/web/package.json` pins) | MIT | https://github.com/gl-transitions/gl-transitions |
-| Mesa 25.2 (`mesa-gl`, `mesa-dri-gallium`, the llvmpipe software renderer) | MIT AND SGI-B-2.0 AND BSL-1.0 | Alpine 3.23 `main/mesa` |
-| LLVM 21 libraries, pulled in by llvmpipe | Apache-2.0 (Alpine's package metadata) | Alpine 3.23 `main/llvm21` |
-| Xvfb 21.1 (the X display headless-gl draws through) and its X libraries | MIT, X11 | Alpine 3.23 `community/xorg-server`, `main/libx11` and siblings |
-
-Three libraries those packages link carry a GPL choice: `libelf` (elfutils,
-linked by Mesa), `nettle` and `gmp` (linked by Xvfb) are each offered under
-GPL-2.0-or-later **or** LGPL-3.0-or-later. **Our election: LGPL-3.0-or-later**,
-which lets the renderer and Xvfb load them as the shared libraries Alpine ships,
-replaceable by the recipient. Alpine's metadata for `libelf` also names
-GPL-3.0-or-later, which covers the elfutils programs, none of which this image
-runs. The rest are permissive.
-
-The image carries each module's licence files and a
-`SOURCE` file at `/usr/share/gl-renderer-source/`, written while the image is
-built: every module's version and declared licence, and every Alpine package the
-image adds to its base with its version, licence and the aports commit it was
-built from.
-
 
 ### Chromium and its libraries in the page reader
 
@@ -237,10 +200,6 @@ bundled the same way and runs beside five installed packages, all under
 permissive licences: `playwright-core` 1.62.1 and `@mozilla/readability` 0.6.0
 (Apache-2.0), `turndown` 7.2.0 and `unpdf` 1.1.0 (MIT), and `@mixmark-io/domino`
 2.2.0 (BSD-2-Clause), which `turndown` depends on.
-The MiniToolContainerGl image adds
-the transition renderer's `node_modules`, installed with `npm ci` from
-[packages/ingest/container/gl-renderer/package-lock.json](./packages/ingest/container/gl-renderer/package-lock.json);
-its packages under other licences are listed after the server-side ones.
 
 ### Server-side packages under other licences
 
@@ -260,21 +219,6 @@ its packages under other licences are listed after the server-side ones.
 | `sax` | `1.6.1` | `packages/server` → `mjml` → `mjml-core` → `htmlnano` → `svgo` | **BlueOak-1.0.0**, per the tarball's `LICENSE.md` | https://github.com/isaacs/sax-js |
 | `sentry` | `0.45.0` | `packages/server`, `packages/worker`, `packages/collab` → `@sentry/node` → `@sentry/bundler-plugins` | **FSL-1.1-Apache-2.0** (Functional Source License 1.1), per the tarball's `LICENSE.md`: use and redistribution for any purpose other than a product competing with Sentry, becoming Apache-2.0 two years after each release. It is Sentry's command-line tool; `@sentry/node` imports it only from its bundler-plugin entry points (`/vite`, `/rollup`, `/webpack`, `/esbuild`), which none of our services load, so it sits in the image without running | https://github.com/getsentry/cli |
 | `slick` | `1.12.2` | `packages/server` → `mjml` → `mjml-core` → `juice` | Reported as `MIT (http://mootools.net/license.txt)`, which is what its `package.json` declares. Neither the published tarball nor the upstream repository carries a licence file, and that address no longer serves the licence text. We use it under the author's MIT declaration | https://github.com/kamicane/slick |
-
-### Transition renderer packages under other licences
-
-| Package | Version | Reached through | Licence | Source |
-|---|---|---|---|---|
-| `expand-template` | `2.0.3` | `gl` → `prebuild-install` | MIT **or** WTFPL, at the recipient's option. **Our election: MIT** | https://github.com/ralphtheninja/expand-template |
-| `gl-format-compiler-error` | `1.0.3` | `gl-transition` → `gl-shader` | **Unlicense**, a dedication to the public domain, which asks nothing of us | https://github.com/wwwtyro/gl-format-compiler-error |
-| `isexe` | `3.1.5` | `gl` → `node-gyp` → `which` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/isexe |
-| `jackspeak` | `3.4.3` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/jackspeak |
-| `minipass` | `7.1.3` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/minipass |
-| `minipass-flush` | `1.0.7` | `gl` → `node-gyp` → `make-fetch-happen` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/minipass-flush |
-| `package-json-from-dist` | `1.0.1` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/package-json-from-dist |
-| `path-scurry` | `1.11.1` | `gl` → `node-gyp` → `glob` | **BlueOak-1.0.0**, as its `package.json` declares | https://github.com/isaacs/path-scurry |
-| `rc` | `1.2.8` | `gl` → `prebuild-install` | BSD-2-Clause **or** MIT **or** Apache-2.0, at the recipient's option. **Our election: MIT** | https://github.com/dominictarr/rc |
-| `weakmap-shim` | `1.1.1` | `gl-transition` → `gl-shader` | Its `package.json` declares no licence; the repository's `LICENCE` is the MIT licence | https://github.com/Raynos/weakmap-shim |
 
 ## Source copied into our own files
 
@@ -382,20 +326,6 @@ WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ```
 
 ## Packages reachable from the front-end bundle
-
-### Video timeline editing and transitions
-
-| Package | Version | Licence | Source |
-|---|---|---|---|
-| `@xzdarcy/react-timeline-editor` | `1.0.0` | MIT | https://github.com/xzdarcy/react-timeline-editor |
-| `gl-transition` | `2.1.0` | MIT | https://github.com/gre/gl-transition-libs |
-| `gl-format-compiler-error` | `1.0.3` | Unlicense; the WebGL compiler diagnostic formatter reached through `gl-transition` | https://github.com/wwwtyro/gl-format-compiler-error |
-| `gl-transitions` | `1.76.1` | MIT for the shipped fade, wipeLeft and wipeRight shaders | https://github.com/gl-transitions/gl-transitions |
-
-The timeline editor's gesture ownership correction is distributed in
-`patches/@xzdarcy__react-timeline-editor@1.0.0.patch` under its MIT licence.
-The three transition shaders retain their upstream author and licence notices.
-The full dependency notices travel with the generated front-end licence file.
 
 ### BlockNote
 
@@ -514,13 +444,11 @@ enough that listing every one of them would bury the entries that matter. The
 project's rule on which licences may be taken at all, and which need a decision
 first, lives in the collaboration spec.
 
-For the pnpm workspace that rule is a check rather than a habit: the
+The npm half of that rule is a check rather than a habit: the
 `notice-covers-dependencies` check in `repo-lint` runs `pnpm licenses list
 --json --prod`, and reports any package under a licence that is not wholly
 permissive unless this file names it above the "Build and development tools"
-heading and states the same licence. The transition renderer's packages are
-installed by npm from their own lockfile, outside the workspace, so that check
-never sees them; they are read by hand. There are four reads, one per part of
+heading and states the same licence. There are three reads, one per part of
 this file.
 
 Two further checks keep the front-end half honest. `dependencies-declare-what-ships`
@@ -536,8 +464,7 @@ file, not this one, is what carries full licence texts to a browser.
 
 | Part | How it is read |
 |---|---|
-| The distributed npm packages of the pnpm workspace | `pnpm licenses list --json --prod` — the same source the check reads |
-| The transition renderer's packages | The `license` field of every entry in [packages/ingest/container/gl-renderer/package-lock.json](./packages/ingest/container/gl-renderer/package-lock.json), which is what `npm ci` installs into the MiniToolContainerGl image; the dependency path comes from `npm ls --all --json` in that directory after `npm ci`. An entry with no `license` field is read from the licence file in its own tarball, as `weakmap-shim` was |
+| The distributed npm packages | `pnpm licenses list --json --prod` — the same source the check reads |
 | The build and development tools | `pnpm licenses list --json` without `--prod`, minus the packages the line above reports. Read it for a licence the project may not take, not to transcribe it — nothing here is distributed |
 | The FFmpeg build | The version comes from the package: `awk '/^P:ffmpeg$/,/^$/' /lib/apk/db/installed` in the media container. **The licence comes from the binary**: `ffmpeg -hide_banner -L`, which names the version of the GPL that build actually landed on. Both readings go into the media container's own `SOURCE` file |
 
