@@ -15,7 +15,7 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { expect, type Page } from 'playwright/test';
+import { expect, type Browser, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
@@ -2074,6 +2074,67 @@ test('a picture and its caption show in a second client opening the document (A1
   } finally {
     await second.close();
   }
+});
+
+/**
+ * Opens the Document `page` shows in a second browser as the uploader, caret in its body.
+ * @param browser - The browser.
+ * @returns The uploader's page and what closes it.
+ */
+async function openUploader(browser: Browser): Promise<{ uploader: Page; leave: () => Promise<void> }> {
+  const home = (await page.locator('[role="tab"][aria-selected="true"]').getAttribute('data-testid'))!;
+  const context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  const uploader = await context.newPage();
+  await uploader.goto(page.url());
+  await uploader.getByTestId(home).click();
+  await expect(uploader.locator(EDITOR)).toBeVisible({ timeout: 15_000 });
+  await uploader.locator(EDITOR).click();
+  return { uploader, leave: () => context.close() };
+}
+
+/**
+ * Waits for the uploader's page to hand its bytes to the server.
+ * @param uploader - The uploader's page.
+ * @returns Once the finish is queued.
+ */
+async function handedOver(uploader: Page): Promise<void> {
+  const finished = await uploader.waitForResponse(
+    (r) => /\/assets\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST',
+    { timeout: 60_000 },
+  );
+  expect(finished.status()).toBe(202);
+}
+
+// #1574: the result reaches the Document through the server, whatever became of the page that sent it.
+test('a picture lands for another member after its uploader closed the page once it was sent @needs-ingest @needs-storage', async ({ browser }) => {
+  await openFreshDocument(page);
+  const { uploader, leave } = await openUploader(browser);
+  try {
+    const sent = handedOver(uploader);
+    await pastePicture(uploader, 'away.png');
+    await sent;
+  } finally {
+    await leave();
+  }
+
+  await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await expect(page.locator(PENDING)).toHaveCount(0);
+});
+
+test('another member sees the server refuse an upload, with its reason, after the uploader left @needs-ingest @needs-storage', async ({ browser }) => {
+  await openFreshDocument(page);
+  const { uploader, leave } = await openUploader(browser);
+  try {
+    const sent = handedOver(uploader);
+    // Named a picture, but the stored bytes are text: only the server can tell.
+    await pasteFile(uploader, Buffer.from(`not a picture ${Date.now()} ${Math.random()}`), 'fake.png', 'image/png');
+    await sent;
+  } finally {
+    await leave();
+  }
+
+  await expect(page.locator('[data-testid="doc-pending-failure"]')).toHaveText('fake.png · Format not supported', { timeout: UPLOAD_TIMEOUT });
+  await expect(page.locator('[data-testid="doc-pending-remove"]')).toBeVisible();
 });
 
 // inner#1844: a viewer has no editing icons over a video, but can open it full screen.
