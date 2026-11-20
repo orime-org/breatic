@@ -26,7 +26,7 @@ const PROJECT = '60000000-0000-4000-8000-000000000001';
 const SPACE = '70000000-0000-4000-8000-000000000001';
 const BASE = '90000000-0000-4000-8000-000000000001';
 const BASE_SOURCE = '80000000-0000-4000-8000-000000000001';
-const LIMITS = { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000, sourceRefreshIntervalMs: 3_600_000 };
+const LIMITS = { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000 };
 
 const baseRow = {
   id: BASE, projectId: PROJECT, spaceId: SPACE, actorUserId: 'u1', actionId: BASE, inputHash: 'sha256:x', attempt: 1, fence: null,

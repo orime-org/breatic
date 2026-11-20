@@ -85,7 +85,7 @@ const CONNECTED: SocketState = { provider: null, synced: true, hasEverSynced: tr
 const LIMITS = {
   defaults: { width: 1920, height: 1080, fps: { num: 24, den: 1 } },
   assets: { pageSize: 50, pageMax: 100 },
-  webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000, sourceRefreshIntervalMs: 3_600_000 },
+  webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000 },
 };
 const clients: QueryClient[] = [];
 

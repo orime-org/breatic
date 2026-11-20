@@ -41,8 +41,7 @@ describe('useMotionRunning', () => {
     expect(runningReads).toHaveLength(1);
   });
 
-  it('reads the in-progress list once while a run is in progress, however short a refresh interval the server sends', async () => {
-    vi.mocked(timelineApi.limits).mockResolvedValue({ webAnimation: { sourceRefreshIntervalMs: 20 } } as never);
+  it('reads the in-progress list once while a run is in progress, with no polling', async () => {
     vi.mocked(timelineApi.listSpaceExecutions).mockImplementation(async () => (
       { rows: [{ id: 'r1' }], nextCursor: null, totals: { running: 1, succeeded: 0, failed: 0 } }
     ) as never);

@@ -60,7 +60,7 @@ const ENTRIES = [ENTRY];
 const LIMITS = {
   defaults: { width: 1920, height: 1080, fps: FPS },
   assets: { pageSize: 50, pageMax: 100 },
-  webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 50, sourceRefreshIntervalMs: 10000 },
+  webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 50 },
 };
 
 beforeEach(() => {
