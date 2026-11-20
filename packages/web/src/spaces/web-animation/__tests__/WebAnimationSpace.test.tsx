@@ -17,6 +17,7 @@ import * as Y from 'yjs';
 import { t } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
+import { ApiException } from '@web/data/api/types';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import type * as PopoverModule from '@web/components/ui/popover';
@@ -29,6 +30,7 @@ import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import type { SocketState } from '@web/data/yjs/use-socket';
 import { downloadAsset } from '@web/lib/download';
 import { toast } from '@web/lib/toast';
+import { spendCapMessage } from '@web/lib/spend-cap-message';
 import { placeVideoOnCanvas } from '@web/spaces/canvas/place-video-on-canvas';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
 import { bodyText } from '@web/spaces/document/use-comment-cards';
@@ -1595,6 +1597,20 @@ describe('creating a web animation', () => {
     await act(() => new Promise((resolve) => setTimeout(resolve, 20)));
     act(() => refuse(new Error('refused')));
     expect(await screen.findByTestId('web-animation-prompt')).toHaveValue('A red dot');
+  });
+
+  // inner#1968 design 3.3a: a spend limit is told in a toast with its reset day, as at every entry that starts work.
+  it('toasts the spend limit and keeps the dialog and the input when Execute is refused by a spend limit', async () => {
+    const details = { reason: 'spend_cap_reached', scope: 'member', limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' };
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockRejectedValue(new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details }));
+    vi.mocked(toast.error).mockClear();
+    show();
+    const user = userEvent.setup();
+    await executeNew(user, 'A dot');
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith(spendCapMessage('member', '10', '2026-12-01T00:00:00.000Z')));
+    expect(screen.queryByRole('alert')).toBeNull();
+    expect(screen.getByTestId('web-animation-prompt')).toBeEnabled();
+    expect(screen.getByTestId('web-animation-prompt')).toHaveValue('A dot');
   });
 
   it('gives the dialog back with the unknown result when the press is let go without an answer', async () => {

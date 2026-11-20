@@ -19,7 +19,7 @@ import { Slider } from '@web/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { useSceneControls } from '@web/data/api/use-scene-controls';
-import { serverMessage } from '@web/data/api/server-message';
+import { refusalSentence, serverMessage } from '@web/data/api/server-message';
 import { timelineApi, type WebAnimationAcceptBody, type WebAnimationAcceptRequest } from '@web/data/api/timeline';
 import { useProjectSpaceList, type ProjectSpace } from '@web/data/yjs/project-meta';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -432,7 +432,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const refresh = React.useCallback((): Promise<void> => queryClient.invalidateQueries({ queryKey: spaceTasksQueryKey(projectId, spaceId) }), [queryClient, projectId, spaceId]);
   // `intent` is what the button waits on, and a press while it waits sends nothing; `actionId` is fresh for every press
   // that does send.
-  const accept = React.useCallback((request: WebAnimationAcceptRequest, intent: string, actionId: string, onRefused?: (message: string) => void): void => {
+  const accept = React.useCallback((request: WebAnimationAcceptRequest, intent: string, actionId: string, onRefused?: (message: string | null) => void): void => {
     if (getRunning(intent) !== undefined) return;
     void runOnce(intent, {
       scope: 'timeline-execution',
@@ -449,8 +449,12 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         return;
       }
       if (outcome.kind === 'failed') {
-        const message = serverMessage(outcome.error, t('common.runOnce.unknownResult'));
-        if (onRefused === undefined) toast.error(message); else onRefused(message);
+        // A spend limit is told in a toast with its reset day, as at every entry that starts work, and the dialog
+        // comes back with its input (inner#1968, design 3.3a).
+        const capped = refusalSentence(outcome.error);
+        const message = capped ?? serverMessage(outcome.error, t('common.runOnce.unknownResult'));
+        if (onRefused === undefined || capped !== null) toast.error(message);
+        onRefused?.(capped === null ? message : null);
         return;
       }
       const { row: accepted } = outcome.result;

@@ -40,7 +40,7 @@ export type CreationDraftEvent =
   | { type: 'close' }
   /** An accept answered; only the submission's own action closes the draft. */
   | { type: 'accepted'; actionId: string }
-  | { type: 'refused'; error: string };
+  | { type: 'refused'; error: string | null };
 
 /** No dialog: the draft's start and where it returns once closed or accepted. */
 export const CREATION_DRAFT_CLOSED: CreationDraftState = { status: 'closed' };
