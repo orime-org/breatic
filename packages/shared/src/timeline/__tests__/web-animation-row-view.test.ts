@@ -21,6 +21,9 @@ const common = {
   phase: null,
   failureReason: null,
   ownProject: true,
+  actorUserId: "60000000-0000-4000-8000-000000000009",
+  slotWaitSince: null,
+  slotWaitLimit: null,
   usageCredits: 0.3,
   createdAt: "2026-11-15T08:00:00.000000Z",
 };
