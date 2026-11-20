@@ -581,6 +581,7 @@ beforeAll(async () => {
   //    WebSocket port (port:0 = ephemeral, but we never connect via WebSocket).
   wsServer = new Server({
     port: 0,
+    address: "127.0.0.1",
     quiet: true,
     extensions: [],
   });
