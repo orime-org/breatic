@@ -81,15 +81,18 @@ async function accept(cookie: string, body: Record<string, unknown>): Promise<Re
 }
 
 /**
- * Accept an execution and read it back from the answer.
+ * Accept an execution and read its row.
  * @param fx - The Project.
  * @param overrides - Body fields a case varies.
- * @returns The accepted row.
+ * @returns The accepted row as stored.
  */
 async function accepted(fx: ProjectFixture, overrides: Record<string, unknown> = {}): Promise<TimelineExecution> {
   const res = await accept(fx.editor.cookie, createBody(fx, overrides));
   expect(res.status, await res.clone().text()).toBe(201);
-  return ((await res.json()) as { data: TimelineExecution }).data;
+  const { id } = ((await res.json()) as { data: { id: string } }).data;
+  const row = await timelineExecutionRepo.findById(id);
+  if (row === undefined) throw new Error("Accepted execution missing");
+  return row;
 }
 
 /**
@@ -129,8 +132,17 @@ describe("POST /timeline/executions", () => {
     const before = Date.now();
     const res = await accept(fx.editor.cookie, body);
     expect(res.status, await res.clone().text()).toBe(201);
-    const { data } = (await res.json()) as { data: TimelineExecution };
+    const { data } = (await res.json()) as { data: { id: string } };
     expect(data).toMatchObject({
+      spaceId: fx.spaceId,
+      kind: "web_animation_create",
+      status: "queued",
+      request: body.prompt,
+      ownProject: true,
+      resultSourceVersionId: null,
+    });
+    const row = await timelineExecutionRepo.findById(data.id);
+    expect(row).toMatchObject({
       projectId: fx.projectId,
       spaceId: fx.spaceId,
       actorUserId: fx.editor.userId,
@@ -139,18 +151,15 @@ describe("POST /timeline/executions", () => {
       actionId: body.actionId,
       origin: "web_animation_space",
       status: "queued",
-      request: body.prompt,
-      ownProject: true,
       attempt: 0,
       fence: null,
       resultSourceVersionId: null,
       billedAt: null,
     });
-    expect(data.input).toEqual({ prompt: body.prompt, engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: getTimelineConfig().web_animation.fps });
+    expect(row?.input).toEqual({ prompt: body.prompt, engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: getTimelineConfig().web_animation.fps });
     const budget = getNodeTaskConfig().default_budget_ms;
-    expect(Date.parse(data.deadlineAt)).toBeGreaterThanOrEqual(before + budget - 1);
-    expect(Date.parse(data.deadlineAt)).toBeLessThanOrEqual(Date.now() + budget + 1);
-    expect(data).toMatchObject(await timelineExecutionRepo.findById(data.id) ?? {});
+    expect(Date.parse(row!.deadlineAt)).toBeGreaterThanOrEqual(before + budget - 1);
+    expect(Date.parse(row!.deadlineAt)).toBeLessThanOrEqual(Date.now() + budget + 1);
     expect(await grantedProjects(data.id)).toEqual([fx.projectId]);
     expect(await holdsOf(fx.studioId)).toEqual([]);
   });
@@ -184,10 +193,10 @@ describe("POST /timeline/executions", () => {
     const body = createBody(fx);
     const first = await accept(fx.editor.cookie, body);
     expect(first.status).toBe(201);
-    const original = ((await first.json()) as { data: TimelineExecution }).data;
+    const original = ((await first.json()) as { data: unknown }).data;
     const again = await accept(fx.editor.cookie, body);
     expect(again.status, await again.clone().text()).toBe(200);
-    expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(original);
+    expect(((await again.json()) as { data: unknown }).data).toEqual(original);
     expect(await holdsOf(fx.studioId)).toEqual([]);
     const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`
       SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId} AND action_id = ${String(body.actionId)}
@@ -198,11 +207,12 @@ describe("POST /timeline/executions", () => {
   it("refuses an action already accepted with a different input with 409, holding nothing", async () => {
     const fx = await seedProject();
     const body = createBody(fx);
-    const original = ((await (await accept(fx.editor.cookie, body)).json()) as { data: TimelineExecution }).data;
+    const { id } = ((await (await accept(fx.editor.cookie, body)).json()) as { data: { id: string } }).data;
+    const original = await timelineExecutionRepo.findById(id);
     const changed = await accept(fx.editor.cookie, { ...body, prompt: "A blue circle" });
     expect(changed.status).toBe(409);
     expect(await holdsOf(fx.studioId)).toEqual([]);
-    expect(original).toMatchObject(await timelineExecutionRepo.findById(original.id) ?? {});
+    expect(await timelineExecutionRepo.findById(id)).toEqual(original);
   });
 
   it("refuses a viewer with 403 and an outsider with 404, writing and holding nothing", async () => {

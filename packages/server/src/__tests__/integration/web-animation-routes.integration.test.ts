@@ -71,9 +71,9 @@ afterAll(async () => {
 });
 
 /** A row as the routes answer it. */
-type RowView = TimelineExecution & {
-  origin: string;
+type RowView = Pick<TimelineExecution, "id" | "spaceId" | "kind" | "status" | "phase" | "failureReason" | "createdAt" | "resultSourceVersionId" | "input"> & {
   ownProject: boolean;
+  usageCredits: number;
   request?: string;
   base?: { executionId: string; request: string };
   source?: { executionId: string; request: string; base?: { executionId: string; request: string } };
@@ -222,10 +222,8 @@ describe("POST /timeline/executions — create from a Motion Space", () => {
     const fx = await seedProject();
     const body = createBody(fx);
     const data = await acceptRow(fx.editor.cookie, body, 201);
-    expect(data).toMatchObject({
-      kind: "web_animation_create", origin: "web_animation_space", status: "queued", engine: "deepseek",
-      request: "A logo reveal", export: null, ownProject: true, resultAssetId: null,
-    });
+    expect(data).toMatchObject({ kind: "web_animation_create", status: "queued", request: "A logo reveal", export: null, ownProject: true, resultAssetId: null });
+    expect(await timelineExecutionRepo.findById(data.id)).toMatchObject({ origin: "web_animation_space", engine: "deepseek" });
     expect(data.input).toEqual({ prompt: "A logo reveal", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: getTimelineConfig().web_animation.fps });
     expect(await grantedProjects(data.id)).toEqual([fx.projectId]);
     expect(await executionChangesFor(fx.projectId, fx.spaceId)).toEqual([
@@ -285,9 +283,10 @@ describe("POST /timeline/executions — modify", () => {
     const { execution, versionId } = await finishedCreate(fx);
     const data = await acceptRow(fx.editor.cookie, modifyBody(fx, versionId), 201);
     expect(data).toMatchObject({
-      kind: "web_animation_modify", origin: "web_animation_space", status: "queued", engine: "deepseek",
+      kind: "web_animation_modify", status: "queued",
       request: "Make it slower", base: { executionId: execution.id, request: "A red square" }, export: null,
     });
+    expect(await timelineExecutionRepo.findById(data.id)).toMatchObject({ origin: "web_animation_space", engine: "deepseek" });
     expect(data.input).toEqual({ baseSourceVersionId: versionId, instruction: "Make it slower", engine: "deepseek", aspect: "9:16", durationSeconds: 6, fps: { num: 24, den: 1 } });
   });
 
@@ -323,10 +322,8 @@ describe("POST /timeline/executions — export", () => {
     const fx = await seedProject();
     const { execution, versionId } = await finishedCreate(fx, fx.spaceId, { width: 1080, height: 1920, durationFrames: 144 });
     const data = await acceptRow(fx.editor.cookie, exportBody(fx, versionId), 201);
-    expect(data).toMatchObject({
-      kind: "web_animation_export", origin: "web_animation_space", status: "queued", engine: null,
-      source: { executionId: execution.id, request: "A red square" }, resultAssetId: null,
-    });
+    expect(data).toMatchObject({ kind: "web_animation_export", status: "queued", source: { executionId: execution.id, request: "A red square" }, resultAssetId: null });
+    expect(await timelineExecutionRepo.findById(data.id)).toMatchObject({ origin: "web_animation_space", engine: null });
     expect(data).not.toHaveProperty("export");
     const input = data.input as { videoKey: string };
     expect(input).toEqual({ sourceVersionId: versionId, width: 1080, height: 1920, fps: { num: 24, den: 1 }, durationFrames: 144, videoKey: expect.stringMatching(/\.mp4$/) });
@@ -563,7 +560,7 @@ describe("GET /timeline/space-executions", () => {
     await succeed(motion);
     const listed = await page(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=timeline&group=succeeded`);
     expect(listed.rows.map((row) => row.id)).toEqual([old.id]);
-    expect(listed.rows[0]).toMatchObject({ origin: "timeline", spaceId: timelineSpace, export: null });
+    expect(listed.rows[0]).toMatchObject({ spaceId: timelineSpace, export: null });
     expect(listed.totals).toEqual({ running: 0, succeeded: 1, failed: 0 });
   });
 

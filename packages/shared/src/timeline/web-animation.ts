@@ -172,39 +172,27 @@ const isoTime = z.string().min(1);
 
 const rowCommon = {
   id: z.uuid(),
-  projectId: z.uuid(),
   spaceId: z.uuid(),
-  actorUserId: z.string().min(1),
-  actionId: z.string().min(1),
-  inputHash: z.string().min(1),
-  attempt: z.number().int().nonnegative(),
-  fence: z.string().nullable(),
-  billedCredits: z.string().nullable(),
-  billedAt: isoTime.nullable(),
-  origin: OriginSchema,
   status: WebAnimationExecutionStatusSchema,
   phase: WebAnimationPhaseSchema.nullable(),
-  steps: z.array(z.unknown()),
   failureReason: z.string().nullable(),
   ownProject: z.boolean(),
   usageCredits: z.number().nonnegative(),
-  deadlineAt: isoTime,
   createdAt: isoTime,
-  updatedAt: isoTime,
   resultSourceVersionId: z.uuid().nullable(),
   resultAssetId: z.uuid().nullable(),
 };
 
 /**
- * The one shape every route answers a web-animation execution in (#1490 design §4.4): the execution row with its
- * request text, the base a modification started from, the source an export renders, and, on routes that name the
- * Motion Space the user is in, the export this result already has there.
+ * The one shape every route answers a web-animation execution in (#1490 design §4.4): the execution fields the Motion
+ * and Timeline lists read, with its request text, the base a modification started from, the source an export renders,
+ * and, on routes that name the Motion Space the user is in, the export this result already has there.
  */
 export const WebAnimationRowViewSchema = z.discriminatedUnion("kind", [
-  z.object({ ...rowCommon, kind: z.literal(CREATE), engine, input: frozenCreate, request: z.string(), export: exportRef.nullable().optional() }).strict(),
-  z.object({ ...rowCommon, kind: z.literal(MODIFY), engine, input: frozenModify, request: z.string(), base: requestRef, export: exportRef.nullable().optional() }).strict(),
+  z.object({ ...rowCommon, kind: z.literal(CREATE), input: frozenCreate, request: z.string(), export: exportRef.nullable().optional() }).strict(),
+  z.object({ ...rowCommon, kind: z.literal(MODIFY), input: frozenModify, request: z.string(), base: requestRef, export: exportRef.nullable().optional() }).strict(),
   z.object({
-    ...rowCommon, kind: z.literal(EXPORT), engine: z.null(), input: frozenExport,
+    ...rowCommon, kind: z.literal(EXPORT), input: frozenExport,
     source: z.object({ executionId: z.uuid(), request: z.string(), base: requestRef.optional() }).strict(),
   }).strict(),
 ]);

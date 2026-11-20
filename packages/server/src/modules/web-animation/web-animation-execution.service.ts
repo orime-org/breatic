@@ -43,7 +43,6 @@ import {
   signPayload,
   t,
   type TimelineExecution,
-
   type TimelineWebResolution,
   type TimelineWebResolutionOrigin,
   type WebAnimationSourceVersion,
@@ -394,7 +393,14 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
     if (input === undefined) continue;
     const { kind: _kind, ...stored } = input;
     const common = {
-      ...row,
+      id: row.id,
+      spaceId: row.spaceId,
+      status: row.status,
+      phase: row.phase,
+      failureReason: row.failureReason,
+      createdAt: row.createdAt,
+      resultSourceVersionId: row.resultSourceVersionId,
+      resultAssetId: row.resultAssetId,
       input: stored,
       ownProject: row.projectId === scope.projectId,
       usageCredits: ceilToCreditCent(Number(sums.get(timelineOperationKey(row.id)) ?? 0)),
