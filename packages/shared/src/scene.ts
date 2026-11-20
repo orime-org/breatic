@@ -464,3 +464,64 @@ const SCENE_LOOK_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'] as cons
 export function isSceneLookImageMediaType(value: string): boolean {
   return (SCENE_LOOK_IMAGE_TYPES as readonly string[]).includes(value);
 }
+
+/**
+ * Values read for an editable key that has no live value. Two members writing
+ * the same key at once, followed by the winner's undo, leaves the key empty;
+ * the object stays visible and editable, as canvas nodes do.
+ * @param model - The record's model, which names the fallback.
+ * @returns Defaults for every editable key.
+ */
+function editableDefaults(model: SceneModel): Omit<SceneObjectValues, 'model'> {
+  const transform = { position: [0, 0, 0] as SceneVector, rotation: [0, 0, 0, 1] as SceneRotation, scale: [1, 1, 1] as SceneVector, locked: false };
+  if (model.kind === 'camera') {
+    return { ...transform, name: 'Camera', focalLength: SCENE_FOCAL_LENGTH_DEFAULT, frame: DEFAULT_VIEWFINDER_RATIO, freeRatio: 16 / 9 };
+  }
+  if (model.kind === 'light') {
+    return { ...transform, name: 'Light', color: SCENE_LIGHT_COLOR_DEFAULT, intensity: SCENE_LIGHT_INTENSITY[model.type].initial, castShadow: true,
+      ...(model.type === 'spot' ? { angle: SCENE_SPOT_ANGLE_DEFAULT } : {}) };
+  }
+  return { ...transform, name: model.kind === 'builtin' ? model.id : 'Model' };
+}
+
+/**
+ * Read one stored object record, given as its plain flat keys, the way the editor and collab both read it.
+ * @param id - Stable scene object identity.
+ * @param stored - The record's keys and values.
+ * @returns The validated object.
+ * @throws {z.ZodError} When the model or a stored value does not match the scene format.
+ */
+export function readSceneRecord(id: string, stored: Readonly<Record<string, unknown>>): SceneObject {
+  const model = SceneObjectValuesSchema.shape.model.parse(stored.model);
+  return SceneObjectSchema.parse({ ...editableDefaults(model), ...gatherSceneLook(gatherScenePose(stored)), model, id });
+}
+
+/** What happens to a picture uploaded for a part (inner#1693 design 6.3). */
+export type SceneLookPictureOutcome = 'write' | 'done' | 'objectGone' | 'partChanged' | 'partLimit';
+
+/** Why an uploaded picture was not put on its part. */
+export type SceneLookPictureRefusal = Exclude<SceneLookPictureOutcome, 'write' | 'done'>;
+
+/**
+ * Whether an uploaded picture goes on the part the upload started from. The part may still hold the picture it held at
+ * the start, or none at all (it was reset meanwhile); another picture or `'none'` there means someone chose otherwise.
+ * @param input - The object as it is now, the part, its picture at the start and the uploaded picture.
+ * @param input.object - The object, or undefined when the scene no longer holds a readable one.
+ * @param input.part - The part key.
+ * @param input.startMap - The part's `map` when the upload started, or null for none.
+ * @param input.picture - The uploaded picture's asset id.
+ * @returns `write`, `done` when the part already holds the picture, or why it is not written.
+ */
+export function judgeSceneLookPicture(input: {
+  object: SceneObject | undefined; part: string; startMap: string | null; picture: string;
+}): SceneLookPictureOutcome {
+  const { object, part } = input;
+  if (!object || object.locked || !isSceneModelFile(object.model)) return 'objectGone';
+  const look = object.look ?? {};
+  const held = Object.prototype.hasOwnProperty.call(look, part);
+  const now = held ? look[part]?.map : undefined;
+  if (now === input.picture) return 'done';
+  if (now !== undefined && now !== input.startMap) return 'partChanged';
+  if (!held && Object.keys(look).length >= SCENE_LOOK_MAX_PARTS) return 'partLimit';
+  return 'write';
+}

@@ -85,6 +85,7 @@ export type {
   NodeTaskResult,
   NodeMediaNumbers,
   NodeTaskCountsEvent,
+  SceneLookPictureEvent,
   NodeEvent,
 } from "@shared/types/canvas-node.js";
 
@@ -245,6 +246,7 @@ export {
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
   SPACE_TASKS_CHANGED_SIGNAL,
+  SCENE_LOOK_REFUSED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -261,6 +263,7 @@ export type {
   ActivityNewSignal,
   CreditsChangedSignal,
   SpaceTasksChangedSignal,
+  SceneLookRefusedSignal,
 } from "@shared/types/project-activity.js";
 
 export {
@@ -290,6 +293,7 @@ export {
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
+  sceneLookRefusedChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -298,6 +302,7 @@ export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
   SpaceTasksChangedControlEvent,
+  SceneLookRefusedControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,

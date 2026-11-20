@@ -28,6 +28,8 @@
  * auth-related DB0 (session / lock / rate-limit).
  */
 
+import type { SceneLookPictureRefusal } from "@shared/scene.js";
+
 // ── Project lifecycle (transactional outbox → durable stream) ───────
 //
 // Yjs document store lives in a SEPARATE Postgres database from the
@@ -152,6 +154,36 @@ export interface SpaceTasksChangedControlEvent {
  */
 export function spaceTasksChangedChannel(prefix: string, projectId: string): string {
   return `${prefix}:project:${projectId}:space-tasks:changed`;
+}
+
+/**
+ * Control event announcing that collab did not put an uploaded picture on the
+ * part it was uploaded for (inner#1693 design 6.3). Collab relays it as the
+ * `scene-look:refused` stateless signal on the project meta doc; the uploader's
+ * page tells them why. Fire-and-forget: the picture stays in the Project's
+ * pictures either way.
+ */
+export interface SceneLookRefusedControlEvent {
+  type: "project-scene-look:refused";
+  projectId: string;
+  spaceId: string;
+  objectId: string;
+  part: string;
+  picture: string;
+  userId: string;
+  reason: SceneLookPictureRefusal;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link SceneLookRefusedControlEvent}. Matched by
+ * {@link allProjectChannelsPattern}.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @param projectId - Project the Space belongs to.
+ * @returns The channel name `{prefix}:project:{projectId}:scene-look:refused`.
+ */
+export function sceneLookRefusedChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:scene-look:refused`;
 }
 
 /** Why every collab instance closes a project's connections. */

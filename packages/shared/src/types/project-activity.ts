@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 
+import type { SceneLookPictureRefusal } from "@shared/scene.js";
 import type { ProjectRole } from "@shared/types/role.js";
 
 /** Every event type the feed can carry (SQL CHECK mirrors this list). */
@@ -205,4 +206,22 @@ export interface SpaceTasksChangedSignal {
   t: typeof SPACE_TASKS_CHANGED_SIGNAL;
   projectId: string;
   spaceId: string;
+}
+
+/**
+ * Stateless WS signal broadcast on the project meta doc when collab did not
+ * put an uploaded picture on its part (inner#1693 design 6.3); the uploader's
+ * page tells them why.
+ */
+export const SCENE_LOOK_REFUSED_SIGNAL = "scene-look:refused" as const;
+
+export interface SceneLookRefusedSignal {
+  t: typeof SCENE_LOOK_REFUSED_SIGNAL;
+  projectId: string;
+  spaceId: string;
+  objectId: string;
+  part: string;
+  picture: string;
+  userId: string;
+  reason: SceneLookPictureRefusal;
 }

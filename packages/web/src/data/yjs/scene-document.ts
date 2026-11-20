@@ -5,10 +5,10 @@ import * as Y from 'yjs';
 import { z } from 'zod';
 
 import {
-  DEFAULT_VIEWFINDER_RATIO, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
-  SCENE_FOCAL_LENGTH_DEFAULT, SCENE_FORMAT_VERSION, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LOOK_FIELDS, SCENE_LOOK_KEY_PREFIX,
-  SCENE_LOOK_MAX_PARTS, SCENE_POSE_KEY_PREFIX, SCENE_POSE_MAX_KEYS, SCENE_SPOT_ANGLE_DEFAULT, SceneColorSchema, SceneLookSchema, SceneObjectSchema, SceneObjectValuesSchema,
-  ScenePoseSchema, expandSceneLook, expandScenePose, gatherSceneLook, gatherScenePose, getSceneRootMap, isSceneModelFile, nextDirectorNumber,
+  SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
+  SCENE_FORMAT_VERSION, SCENE_LOOK_FIELDS, SCENE_LOOK_KEY_PREFIX,
+  SCENE_LOOK_MAX_PARTS, SCENE_POSE_KEY_PREFIX, SCENE_POSE_MAX_KEYS, SceneColorSchema, SceneLookSchema, SceneObjectSchema, SceneObjectValuesSchema,
+  ScenePoseSchema, expandSceneLook, expandScenePose, getSceneRootMap, isSceneModelFile, nextDirectorNumber, readSceneRecord,
   type SceneEditableField, type SceneLook, type SceneLookField, type SceneLookPart, type SceneModel, type SceneObject, type SceneObjectValues, type ScenePose,
 } from '@breatic/shared';
 
@@ -88,26 +88,6 @@ export function isSceneSizeRefusal(reason: SceneCommandFailure): reason is Space
 }
 
 /**
- * Values read for an editable key that has no live value. Two members writing
- * the same key at once, followed by the winner's undo, leaves the key empty;
- * the object stays visible and editable, as canvas nodes do.
- * @param model - The record's model, which names the fallback.
- * @returns Defaults for every editable key.
- */
-function editableDefaults(model: SceneModel): Omit<SceneObjectValues, 'model'> {
-  const transform = { position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],
-    scale: [1, 1, 1] as [number, number, number], locked: false };
-  if (model.kind === 'camera') {
-    return { ...transform, name: 'Camera', focalLength: SCENE_FOCAL_LENGTH_DEFAULT, frame: DEFAULT_VIEWFINDER_RATIO, freeRatio: 16 / 9 };
-  }
-  if (model.kind === 'light') {
-    return { ...transform, name: 'Light', color: SCENE_LIGHT_COLOR_DEFAULT, intensity: SCENE_LIGHT_INTENSITY[model.type].initial, castShadow: true,
-      ...(model.type === 'spot' ? { angle: SCENE_SPOT_ANGLE_DEFAULT } : {}) };
-  }
-  return { ...transform, name: model.kind === 'builtin' ? model.id : 'Model' };
-}
-
-/**
  * Read the ambient light; a missing or malformed key reads as its default.
  * @param scene - The `scene` root.
  * @returns The ambient colour and intensity.
@@ -131,9 +111,7 @@ function readRecord(id: string, value: unknown): SceneObject {
   if (!(value instanceof Y.Map)) throw new Error('Object must be a shared map');
   // A look and a pose are stored only as flat keys; a whole value under one key is outside the format.
   if (value.has('look') || value.has('pose')) throw new Error('Look and pose are stored as flat keys');
-  const model = SceneObjectValuesSchema.shape.model.parse(value.get('model'));
-  const stored: Record<string, unknown> = Object.fromEntries(value.entries());
-  return SceneObjectSchema.parse({ ...editableDefaults(model), ...gatherSceneLook(gatherScenePose(stored)), model, id });
+  return readSceneRecord(id, Object.fromEntries(value.entries()));
 }
 
 /**
