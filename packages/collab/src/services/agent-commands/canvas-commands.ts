@@ -13,14 +13,12 @@
 import type * as Y from "yjs";
 import type { LastView } from "@collab/services/last-view-cache.js";
 import type { CanvasPerson } from "@collab/services/agent-commands/people.js";
-import { readCommentAssignments } from "@breatic/shared/space-content";
 import {
   callScopedId,
   canConnect,
   type AgentCommand,
   type AgentCommandParams,
   type AgentCommandRefusal,
-  type AnnotationAssignment,
   type CanvasProposal,
 } from "@breatic/shared";
 import {
@@ -531,24 +529,11 @@ export function comment(doc: Y.Doc, params: AgentCommandParams<"comment_on_canva
     const replies = repliesArray(doc, annotationId);
     if (type !== "annotation" || !replies) return refuse("invalid_command");
     const replyId = callScopedId(command.callId, "reply");
-    // Collaborative data: read as untrusted.
-    const assignment = nodeDataMap(doc, annotationId)?.get("assignment") as Partial<AnnotationAssignment> | undefined;
-    const answers =
-      assignment?.connectionId === command.connectionId && typeof assignment.assignedAt === "number"
-        ? assignment.assignedAt
-        : undefined;
-    const answered = answers !== undefined;
     if (replyIndex(replies, replyId) === -1) {
-      addReplyInDoc(doc, annotationId, {
-        id: replyId,
-        content: text,
-        createdBy: command.userId,
-        createdAt: Date.now(),
-        via: command.connectionId,
-        ...(answered ? { answers } : {}),
-      });
+      addReplyInDoc(doc, annotationId, { id: replyId, content: text, createdBy: command.userId, createdAt: Date.now(), via: command.connectionId });
     }
-    return done({ replyId, answered });
+    // Whether it answered a hand-over is settled once the reply is stored (`answerReply`).
+    return done({ replyId, answered: false });
   }
   let tip = position;
   if (nodeId !== undefined) {
@@ -639,22 +624,25 @@ function drawnPlacements(doc: Y.Doc): NodePlacement[] {
 }
 
 /**
- * The canvas threads handed to this connection that still wait for it, each
- * with where its pin is and what the pin is on (§11.7, §11.8).
+ * Which of the asked canvas threads are still there, each with its author,
+ * where its pin is and what the pin is on (§11.7, §11.8). The server's
+ * records say which threads wait for the agent; this answers which of them
+ * the canvas still holds.
  * @param doc - The canvas document.
- * @param command - The command.
+ * @param threadIds - The threads to look for.
  * @returns The answer.
  */
-export function readCanvasAssignments(doc: Y.Doc, command: AgentCommand): Answer {
+export function readCanvasAssignments(doc: Y.Doc, threadIds: readonly string[]): Answer {
   const placements = drawnPlacements(doc);
-  const assignments = readCommentAssignments("canvas", doc, command.projectId)
-    .filter((a) => a.connectionId === command.connectionId && a.status === "pending")
-    .flatMap(({ threadId, assignedBy, assignedAt }) => {
-      const pin = placements.find((p) => p.id === threadId);
-      const anchor = annotationAnchor(placements, threadId);
-      return pin && anchor ? [{ threadId, assignedBy, assignedAt, pin: { x: pin.x, y: pin.y, ...anchor } }] : [];
-    });
-  return done({ assignments });
+  const threads = threadIds.flatMap((threadId) => {
+    if (typeOf(doc, threadId) !== "annotation") return [];
+    const pin = placements.find((p) => p.id === threadId);
+    const anchor = annotationAnchor(placements, threadId);
+    // Collaborative data: read as untrusted.
+    const authorId = nodeDataMap(doc, threadId)?.get("createdBy");
+    return pin && anchor ? [{ threadId, authorId: typeof authorId === "string" ? authorId : null, pin: { x: pin.x, y: pin.y, ...anchor } }] : [];
+  });
+  return done({ threads });
 }
 
 /**

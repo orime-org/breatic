@@ -47,6 +47,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     // place the deployment prefix is injected), so the stub must agree with
     // the prefix the emitted channels below are built with.
     projectControlChannelPattern: () => `${TEST_PREFIX}:project:*`,
+    env: { REDIS_KEY_PREFIX: TEST_PREFIX },
     createLogger: () => ({
       info: vi.fn(),
       warn: vi.fn(),
@@ -62,6 +63,8 @@ type FakeRedis = EventEmitter & {
   duplicate: () => FakeRedis;
   psubscribe: ReturnType<typeof vi.fn>;
   punsubscribe: ReturnType<typeof vi.fn>;
+  subscribe: ReturnType<typeof vi.fn>;
+  unsubscribe: ReturnType<typeof vi.fn>;
   quit: ReturnType<typeof vi.fn>;
 };
 
@@ -71,6 +74,10 @@ function buildRedis(): { source: FakeRedis; subscriber: FakeRedis } {
       cb?.(null);
     }),
     punsubscribe: vi.fn(async () => undefined),
+    subscribe: vi.fn((_channel: string, cb?: (err: Error | null) => void) => {
+      cb?.(null);
+    }),
+    unsubscribe: vi.fn(async () => undefined),
     quit: vi.fn(async () => undefined),
   }) as FakeRedis;
   // duplicate() returns the subscriber so all event-emitter handlers
@@ -246,5 +253,28 @@ describe("startProjectControlSync — a control event it cannot act on", () => {
 
     expect(close).not.toHaveBeenCalled();
     expect(rejections).toEqual([]);
+  });
+});
+
+describe("startProjectControlSync — notifications:changed (breatic#1488 §11.9)", () => {
+  it("listens on the deployment's notifications channel and tells the named users' meta connections", async () => {
+    const mine = { context: { user: { id: "u1" } }, close: vi.fn(), sendStateless: vi.fn() };
+    const theirs = { context: { user: { id: "u2" } }, close: vi.fn(), sendStateless: vi.fn() };
+    const metaDoc = {
+      doc: new Y.Doc(),
+      broadcastStateless: vi.fn(),
+      relayStateless: vi.fn(),
+      connections: new Map([[mine, { clients: new Set<number>() }], [theirs, { clients: new Set<number>() }]]),
+    } as unknown as DocSpy;
+    const { hocuspocus } = buildHocuspocus(metaDoc);
+    const { subscriber } = buildRedis();
+    const stop = startProjectControlSync(hocuspocus, subscriber as unknown as Redis);
+    expect(subscriber.subscribe).toHaveBeenCalledWith(`${TEST_PREFIX}:notifications:changed`, expect.any(Function));
+    subscriber.emit("message", `${TEST_PREFIX}:notifications:changed`, JSON.stringify({ type: "notifications:changed", userIds: ["u1"], ts: 1 }));
+    subscriber.emit("message", "someone-else:notifications:changed", JSON.stringify({ type: "notifications:changed", userIds: ["u2"], ts: 1 }));
+    expect(mine.sendStateless).toHaveBeenCalledWith(JSON.stringify({ t: "notifications:changed" }));
+    expect(theirs.sendStateless).not.toHaveBeenCalled();
+    await stop();
+    expect(subscriber.unsubscribe).toHaveBeenCalledWith(`${TEST_PREFIX}:notifications:changed`);
   });
 });

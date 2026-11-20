@@ -372,9 +372,10 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
         await reply(item.command.callId, verdict.refused, item);
         return "done";
       }
-      const answer = await readDoc(docNameOf(item), item.command.userId, (doc) =>
+      const read = await readDoc(docNameOf(item), item.command.userId, (doc) =>
         spec.run(doc, item.params, item.command, verdict),
       );
+      const answer = spec.after ? await spec.after(item.params, item.command, read) : read;
       const watching = item.type === "view_user_screen" && answer.status === "done" && (answer.result as { watching?: unknown }).watching === true;
       if (watching) await requestCapture(item);
       else await reply(item.command.callId, answer, item);
@@ -462,7 +463,10 @@ export function startAgentCommandConsumer(deps: AgentCommandConsumerDeps): Group
         outcomes.set(item.entry.id, answer);
       } else {
         try {
-          await reply(item.command.callId, answer, item);
+          const spec = commandSpec(item.type);
+          // Only a command that ran has a stored change to build on.
+          const settled = spec.after && ran.has(item.entry.id) ? await spec.after(item.params, item.command, answer) : answer;
+          await reply(item.command.callId, settled, item);
           outcomes.set(item.entry.id, "done");
           if (answer.status === "done") await recordEdit(item);
           if (ran.has(item.entry.id)) await recordPresence(item, answer);

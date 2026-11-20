@@ -47,6 +47,8 @@ import {
   placedLate,
 } from "@collab/services/agent-commands/result-commands.js";
 import { applyGenerationTemplate } from "@collab/services/agent-commands/template-commands.js";
+import { commentAssignmentsRepo } from "@breatic/core";
+import { answerReply } from "@collab/services/comment-requests.js";
 import {
   commentOnDocument,
   deleteBlocks,
@@ -97,6 +99,53 @@ interface CommandSpec<T extends AgentCommandType> {
   counted: boolean;
   /** Whether it reads what the members have on screen (§6). */
   views?: true;
+  /**
+   * Work on the product database once the command's document change is
+   * stored, which may change its answer; a throw fails the command, which is
+   * retried.
+   */
+  after?: (params: AgentCommandParams<T>, command: AgentCommand, answer: Answer) => Promise<Answer>;
+}
+
+/**
+ * Settle whether a reply answered its thread's hand-over (§11.7, §15.10):
+ * a reply to a thread, by a connection the thread waits for.
+ * @param command - The reply command.
+ * @param answer - Its answer once stored.
+ * @param kind - The Space kind.
+ * @param threadId - The thread replied to, absent when the command started one.
+ * @returns The answer, with `answered` settled.
+ * @throws {Error} When the lock, the database or Redis fails.
+ */
+async function answered(command: AgentCommand, answer: Answer, kind: "canvas" | "document", threadId: string | undefined): Promise<Answer> {
+  if (answer.status !== "done" || threadId === undefined || command.spaceId === null) return answer;
+  const yes = await answerReply({ projectId: command.projectId, spaceId: command.spaceId, threadId }, kind, command.connectionId);
+  return { ...answer, result: { ...(answer.result as Record<string, Json>), answered: yes } };
+}
+
+/**
+ * Mark each thread a read lists with the connection it waits for, from the
+ * hand-over records (§11.7).
+ * @param command - The read command.
+ * @param answer - Its answer.
+ * @param list - The result key holding the threads.
+ * @param idKey - The key of each thread's id.
+ * @returns The answer, threads waiting for a connection marked `handedTo`.
+ * @throws {Error} When the database read fails.
+ */
+async function withHandedTo(command: AgentCommand, answer: Answer, list: "nodes" | "threads", idKey: "id" | "threadId"): Promise<Answer> {
+  if (answer.status !== "done" || command.spaceId === null) return answer;
+  const result = answer.result as Record<string, Json>;
+  const items = result[list];
+  if (!Array.isArray(items)) return answer;
+  const waiting = new Map((await commentAssignmentsRepo.listPendingInSpace(command.projectId, command.spaceId)).map((r) => [r.threadId, r.connectionId]));
+  if (waiting.size === 0) return answer;
+  const marked = items.map((item) => {
+    const id = (item as Record<string, Json>)[idKey];
+    const to = typeof id === "string" ? waiting.get(id) : undefined;
+    return to === undefined ? item : { ...(item as Record<string, Json>), handedTo: to };
+  });
+  return { ...answer, result: { ...result, [list]: marked } };
 }
 
 /** The command table, by type. */
@@ -113,6 +162,7 @@ export interface AnyCommandSpec {
   focus: (params: unknown, answer: Answer) => readonly string[] | undefined;
   counted: boolean;
   views?: true;
+  after?: (params: unknown, command: AgentCommand, answer: Answer) => Promise<Answer>;
 }
 
 /**
@@ -197,6 +247,7 @@ const COMMANDS: CommandTable = {
     focus: ({ nodeIds }) => nodeIds,
     counted: true,
     views: true,
+    after: (_params, command, answer) => withHandedTo(command, answer, "nodes", "id"),
   },
   create_canvas_nodes: {
     params: agentCommandParamsSchemas.create_canvas_nodes,
@@ -294,6 +345,7 @@ const COMMANDS: CommandTable = {
     late: unfinished,
     focus: ({ nodeId }) => (nodeId === undefined ? undefined : [nodeId]),
     counted: true,
+    after: ({ annotationId }, command, answer) => answered(command, answer, "canvas", annotationId),
   },
   restore_node_version: {
     params: agentCommandParamsSchemas.restore_node_version,
@@ -371,13 +423,14 @@ const COMMANDS: CommandTable = {
     focus: keepFocus,
     counted: true,
     views: true,
+    after: (_params, command, answer) => withHandedTo(command, answer, "threads", "threadId"),
   },
   read_canvas_assignments: {
     params: agentCommandParamsSchemas.read_canvas_assignments,
     write: false,
     size: null,
     space: "canvas",
-    run: (doc, _params, command) => readCanvasAssignments(doc, command),
+    run: (doc, { threadIds }) => readCanvasAssignments(doc, threadIds),
     late: unfinished,
     focus: keepFocus,
     counted: true,
@@ -387,7 +440,7 @@ const COMMANDS: CommandTable = {
     write: false,
     size: null,
     space: "document",
-    run: (doc, _params, command) => readDocumentAssignments(doc, command),
+    run: (doc, { threadIds }) => readDocumentAssignments(doc, threadIds),
     late: unfinished,
     focus: keepFocus,
     counted: true,
@@ -434,6 +487,7 @@ const COMMANDS: CommandTable = {
     late: unfinished,
     focus: ({ blockId }) => (blockId === undefined ? undefined : [blockId]),
     counted: true,
+    after: ({ threadId }, command, answer) => answered(command, answer, "document", threadId),
   },
 };
 

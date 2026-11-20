@@ -46,9 +46,14 @@
 
 import type { Hocuspocus } from "@hocuspocus/server";
 import type { Redis } from "@breatic/core";
-import { createLogger, getMcpConfig, projectControlChannelPattern } from "@breatic/core";
+import { createLogger, env, getMcpConfig, projectControlChannelPattern } from "@breatic/core";
 import {
+  notificationsChangedChannel,
+  NOTIFICATIONS_CHANGED_SIGNAL,
+  parseDocName,
   projectMetaDocName,
+  type NotificationsChangedControlEvent,
+  type NotificationsChangedSignal,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
@@ -125,6 +130,31 @@ export function relayViewCaptureRequest(hocuspocus: Hocuspocus, event: ViewCaptu
       connection.sendStateless(JSON.stringify(signal));
     } catch (err) {
       logger.warn({ err, projectId: event.projectId, requestId: event.requestId }, "view_capture_relay_failed");
+    }
+  }
+}
+
+/**
+ * Tell each named user's meta connections on this instance that their
+ * notifications changed (breatic#1488 §11.9), in whatever project they have
+ * open; their project pages read the bell again. A connection that fails is
+ * skipped.
+ * @param hocuspocus - The server.
+ * @param event - Whose notifications changed.
+ */
+export function relayNotificationsChanged(hocuspocus: Hocuspocus, event: NotificationsChangedControlEvent): void {
+  const users = new Set(event.userIds);
+  const signal = JSON.stringify({ t: NOTIFICATIONS_CHANGED_SIGNAL } satisfies NotificationsChangedSignal);
+  for (const [name, doc] of hocuspocus.documents ?? []) {
+    if (parseDocName(name)?.kind !== "meta") continue;
+    for (const [connection] of doc.connections) {
+      const userId = (connection.context as { user?: { id?: string } } | undefined)?.user?.id;
+      if (userId === undefined || !users.has(userId)) continue;
+      try {
+        connection.sendStateless(signal);
+      } catch (err) {
+        logger.warn({ err, documentName: name }, "notifications_signal_relay_failed");
+      }
     }
   }
 }
@@ -230,6 +260,7 @@ export function startProjectControlSync(
   // pattern. Re-deriving it per call site is how a subscriber ends up deaf to
   // its own publishers without any error surfacing.
   const pattern = projectControlChannelPattern();
+  const notifications = notificationsChangedChannel(env.REDIS_KEY_PREFIX);
 
   subscriber.psubscribe(pattern, (err) => {
     if (err) {
@@ -249,10 +280,25 @@ export function startProjectControlSync(
     });
   });
 
+  // One deployment-wide channel: a member's project pages may be on any
+  // instance, in any project (breatic#1488 §11.9).
+  subscriber.subscribe(notifications, (err) => {
+    if (err) logger.error({ err }, "notifications_changed_subscribe_failed");
+  });
+  subscriber.on("message", (channel, message) => {
+    if (channel !== notifications) return;
+    try {
+      relayNotificationsChanged(hocuspocus, JSON.parse(message) as NotificationsChangedControlEvent);
+    } catch (err) {
+      logger.error({ err, channel }, "notifications_changed_relay_failed");
+    }
+  });
+
   return async () => {
     if (started) {
       await subscriber.punsubscribe(pattern);
     }
+    await subscriber.unsubscribe(notifications);
     await subscriber.quit();
     logger.info("project_control_sync_stopped");
   };

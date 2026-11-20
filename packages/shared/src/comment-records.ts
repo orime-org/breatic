@@ -170,6 +170,22 @@ export function readCommentMentions(kind: CommentSpaceKind, doc: Y.Doc, projectI
   return out;
 }
 
+/**
+ * The members one entry mentions, as written in this project, or null when
+ * the document holds no such entry (an entry of a document thread whose words
+ * are gone counts as held by none).
+ * @param kind - The Space kind.
+ * @param doc - Its document.
+ * @param projectId - The project the document belongs to.
+ * @param entryId - The annotation body, reply or document comment.
+ * @returns Its mentions, or null.
+ */
+export function readEntryMentions(kind: CommentSpaceKind, doc: Y.Doc, projectId: string, entryId: string): CommentMentionRecord[] | null {
+  const held = threadsOf(kind, doc).some((t) => t.entries.some((e) => e.id === entryId));
+  if (!held) return null;
+  return readCommentMentions(kind, doc, projectId).filter((m) => m.entryId === entryId);
+}
+
 /** Whether a thread is there to work on: open, resolved (documents only) or gone. */
 export type CommentThreadState = "open" | "resolved" | "gone";
 

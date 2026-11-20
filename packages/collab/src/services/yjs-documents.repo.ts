@@ -156,6 +156,21 @@ export async function softDeleteByName(name: string): Promise<boolean> {
 }
 
 /**
+ * Whether a document's row exists and is not soft-deleted: a Space being
+ * deleted has its content row soft-deleted under the Space count lock.
+ * @param name - Full doc name.
+ * @returns True while the row is live.
+ */
+export async function isLiveDoc(name: string): Promise<boolean> {
+  const rows = await yjsDb
+    .select({ name: yjsDocuments.name })
+    .from(yjsDocuments)
+    .where(and(eq(yjsDocuments.name, name), isNull(yjsDocuments.deletedAt)))
+    .limit(1);
+  return rows.length > 0;
+}
+
+/**
  * Count the live (non-soft-deleted) CONTENT docs of a project — i.e. its
  * live Space count.
  *

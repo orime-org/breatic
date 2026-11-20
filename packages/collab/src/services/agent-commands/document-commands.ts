@@ -21,7 +21,7 @@
 import * as Y from "yjs";
 import type { LastView } from "@collab/services/last-view-cache.js";
 import { documentPeople } from "@collab/services/agent-commands/people.js";
-import { readCommentAssignments } from "@breatic/shared/space-content";
+import { readThreadState } from "@breatic/shared/space-content";
 import { initProseMirrorDoc, updateYFragment } from "y-prosemirror";
 import { blockToNode, nodeToBlock, type PartialBlock } from "@blocknote/core";
 import { CommentMark, DefaultThreadStoreAuth } from "@blocknote/core/comments";
@@ -247,24 +247,29 @@ function quotedWords(doc: Node): Map<string, { blockId: string; text: string }> 
 }
 
 /**
- * The document threads handed to this connection that still wait for it,
- * each with the block and words it is on (§11.7).
+ * Which of the asked document threads are still open, each with its author
+ * and the block and words it is on (§11.7): the server's records say which
+ * wait for the agent, and a thread whose words were deleted or that was
+ * resolved is not one to work on.
  * @param ydoc - The document Space's document.
- * @param command - The command.
+ * @param threadIds - The threads to look for.
  * @returns The answer.
  */
-export function readDocumentAssignments(ydoc: Y.Doc, command: AgentCommand): Answer {
+export function readDocumentAssignments(ydoc: Y.Doc, threadIds: readonly string[]): Answer {
   const quoted = quotedWords(readBody(ydoc).doc);
-  const assignments = readCommentAssignments("document", ydoc, command.projectId)
-    .filter((a) => a.connectionId === command.connectionId && a.status === "pending")
-    .map(({ threadId, assignedBy, assignedAt }) => ({
+  const threads = threadIds.flatMap((threadId) => {
+    if (readThreadState("document", ydoc, threadId) !== "open") return [];
+    // Collaborative data: read as untrusted.
+    const first = ((documentCommentThreads(ydoc).get(threadId) as Y.Map<unknown>).get("comments") as Y.Array<unknown> | undefined)?.get(0);
+    const authorId = first instanceof Y.Map ? first.get("userId") : (first as { userId?: unknown } | undefined)?.userId;
+    return [{
       threadId,
-      assignedBy,
-      assignedAt,
+      authorId: typeof authorId === "string" ? authorId : null,
       blockId: quoted.get(threadId)?.blockId ?? null,
       quotedText: quoted.get(threadId)?.text ?? null,
-    }));
-  return done({ assignments });
+    }];
+  });
+  return done({ threads });
 }
 
 /**
@@ -304,13 +309,12 @@ export function readDocument(ydoc: Y.Doc, command: AgentCommand, views: readonly
     comments: thread.comments
       .filter((comment) => comment.deletedAt === undefined)
       .map((comment) => {
-        const metadata = (comment.metadata ?? {}) as { via?: unknown; answers?: unknown };
+        const metadata = (comment.metadata ?? {}) as { via?: unknown };
         return {
           id: comment.id,
           userId: comment.userId,
           text: commentText(comment.body),
           ...(typeof metadata.via === "string" ? { via: metadata.via } : {}),
-          ...(typeof metadata.answers === "number" ? { answers: metadata.answers } : {}),
         };
       }),
   }));
@@ -416,9 +420,7 @@ export function deleteBlocks(ydoc: Y.Doc, blockIds: string[]): Answer {
 
 /**
  * Start a thread on words in a block (or its whole text), or reply to a
- * thread, as the user. Every comment records the connection that wrote it,
- * and a reply on a thread handed to this connection records which hand-over
- * it answers.
+ * thread, as the user. Every comment records the connection that wrote it.
  * @param ydoc - The document Space's document.
  * @param params - The command's parameters.
  * @param command - The command.
@@ -430,20 +432,14 @@ export function commentOnDocument(ydoc: Y.Doc, params: AgentCommandParams<"comme
   if (params.threadId !== undefined) {
     const thread = threads.get(params.threadId);
     if (!(thread instanceof Y.Map)) return refuse("not_found");
-    // Collaborative data: read as untrusted.
-    const assignment = (thread.get("metadata") as { assignment?: { connectionId?: unknown; assignedAt?: unknown } } | undefined)?.assignment;
-    const answers =
-      assignment?.connectionId === command.connectionId && typeof assignment.assignedAt === "number" ? assignment.assignedAt : undefined;
     const comments = thread.get("comments");
     if (!(comments instanceof Y.Array)) return refuse("invalid_command");
     if (!comments.toArray().some((c: unknown) => c instanceof Y.Map && c.get("id") === commentId)) {
-      appendThreadComment(comments as Y.Array<Y.Map<unknown>>, commentId, command.userId, params.text, {
-        via: command.connectionId,
-        ...(answers === undefined ? {} : { answers }),
-      });
+      appendThreadComment(comments as Y.Array<Y.Map<unknown>>, commentId, command.userId, params.text, { via: command.connectionId });
       thread.set("updatedAt", Date.now());
     }
-    return done({ threadId: params.threadId, commentId, answered: answers !== undefined });
+    // Whether it answered a hand-over is settled once the reply is stored (`answerReply`).
+    return done({ threadId: params.threadId, commentId, answered: false });
   }
 
   const threadId = callScopedId(command.callId, "thread");

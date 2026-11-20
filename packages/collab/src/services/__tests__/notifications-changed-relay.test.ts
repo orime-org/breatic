@@ -5,6 +5,11 @@ import { describe, expect, it, vi } from "vitest";
 import type { Hocuspocus } from "@hocuspocus/server";
 import { projectMetaDocName } from "@breatic/shared";
 
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  createLogger: () => ({ info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() }),
+}));
+
 import { relayNotificationsChanged } from "@collab/services/project-control-sync.js";
 
 const PROJECT_A = "11111111-1111-4111-8111-111111111111";

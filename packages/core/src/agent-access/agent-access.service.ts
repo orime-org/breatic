@@ -104,6 +104,20 @@ export async function isConnectionUsable(connectionId: string, now: Date = new D
 }
 
 /**
+ * Whether one of a user's own connections is live and its agent may act now.
+ * @param connectionId - The row id.
+ * @param userId - The user it must belong to.
+ * @param now - The caller's clock.
+ * @returns True while it is theirs and usable.
+ * @throws {Error} When the database read fails.
+ */
+export async function isOwnConnectionUsable(connectionId: string, userId: string, now: Date = new Date()): Promise<boolean> {
+  const row = await connectionsRepo.findLive(connectionId, userId);
+  if (!row) return false;
+  return rowIsUsable(row, now);
+}
+
+/**
  * The usability of a live row, by its kind.
  * @param row - The live row.
  * @param now - The caller's clock.

@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
 import { sql as dsql } from "drizzle-orm";
 
-import { agentAccessService, env, getMcpRedis, getStreamRedis, type ProjectRole } from "@breatic/core";
+import { agentAccessService, env, getMcpRedis, getStreamRedis } from "@breatic/core";
 import {
   assignmentsChangedChannel,
   canvasSpaceDocName,
@@ -27,6 +27,7 @@ import {
   notificationsChangedChannel,
   projectMetaDocName,
   type CommentRequest,
+  type ProjectRole,
   type CommentResponse,
 } from "@breatic/shared";
 import { addNodeInDoc, createAnnotationNode, nodeDataMap } from "@breatic/shared/canvas-model";

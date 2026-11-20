@@ -72,6 +72,19 @@ const {
   loggerDebugMock: vi.fn(),
 }));
 
+const commentRecordsMock = vi.hoisted(() => ({
+  voidSpaceRecords: vi.fn(async () => ({ changed: false })),
+  restoreSpaceRecords: vi.fn(async () => ({ changed: false })),
+}));
+// A Space's comment records live in Postgres; their own integration tests
+// cover them (`comment-requests.integration.test.ts`).
+vi.mock("@collab/services/comment-requests.js", () => ({
+  voidSpaceRecords: commentRecordsMock.voidSpaceRecords,
+  restoreSpaceRecords: commentRecordsMock.restoreSpaceRecords,
+  announceSpaceRecords: vi.fn(async () => undefined),
+  handleCommentRequest: vi.fn(),
+  answerReply: vi.fn(async () => false),
+}));
 // The yjs-store repo moved to collab; space-rpc imports it locally. These
 // four are the "content rows" of the design: the PG rows that hold the
 // user's actual writing.
@@ -416,6 +429,10 @@ beforeEach(() => {
   loggerWarnMock.mockReset();
   loggerInfoMock.mockReset();
   loggerDebugMock.mockReset();
+  commentRecordsMock.voidSpaceRecords.mockReset();
+  commentRecordsMock.voidSpaceRecords.mockResolvedValue({ changed: false });
+  commentRecordsMock.restoreSpaceRecords.mockReset();
+  commentRecordsMock.restoreSpaceRecords.mockResolvedValue({ changed: false });
 });
 
 describe("step order — content rows, then the broadcast, then the activity row", () => {
@@ -1615,5 +1632,69 @@ describe("settlePublish — the rule itself", () => {
     settlePublish({ kind: "decided", response: answer, broadcast: true }, build);
     settlePublish({ kind: "published" }, build);
     expect(build).not.toHaveBeenCalled();
+  });
+});
+
+describe("a Space's comment records go with it, before the broadcast (#1488 §11.9)", () => {
+  it("space:delete voids them before the broadcast", async () => {
+    seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+    seedSpace(OTHER_SID, { type: "canvas", name: "Second", order: 1, locked: false });
+    armBroadcastMarker();
+    commentRecordsMock.voidSpaceRecords.mockImplementation(async () => {
+      expect(metaBroadcastMock).not.toHaveBeenCalled();
+      return { changed: true };
+    });
+    const res = await handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, { userId: ACTOR, role: "editor" }, { id: "r1", type: "space:delete", payload: { spaceId: SID } });
+    expect(res.ok).toBe(true);
+    expect(commentRecordsMock.voidSpaceRecords).toHaveBeenCalledWith(PID, SID);
+    expect(metaBroadcastMock).toHaveBeenCalled();
+  });
+
+  it("space:delete broadcasts nothing and brings its content rows back when voiding the records fails", async () => {
+    seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+    seedSpace(OTHER_SID, { type: "canvas", name: "Second", order: 1, locked: false });
+    armBroadcastMarker();
+    commentRecordsMock.voidSpaceRecords.mockRejectedValue(new Error("pg down"));
+    const res = await handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, { userId: ACTOR, role: "editor" }, { id: "r1", type: "space:delete", payload: { spaceId: SID } });
+    expect(res).toMatchObject({ ok: false, error: { code: "INTERNAL" } });
+    expect(metaBroadcastMock).not.toHaveBeenCalled();
+    for (const kind of CONTENT_KINDS) expect(restoreByNameMock).toHaveBeenCalledWith(spaceContentDocName(PID, SID, kind));
+  });
+
+  it("space:delete restores the records it voided when the broadcast does not go out", async () => {
+    seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+    seedSpace(OTHER_SID, { type: "canvas", name: "Second", order: 1, locked: false });
+    const hocuspocus = makeHocuspocus({
+      beforeFirstTransact: () => {
+        metaDoc.getMap("spaces").delete(SID);
+        armBroadcastMarker();
+      },
+    });
+    await handleSpaceRpc({ hocuspocus }, PID, { userId: ACTOR, role: "editor" }, { id: "r1", type: "space:delete", payload: { spaceId: SID } });
+    expect(commentRecordsMock.voidSpaceRecords).toHaveBeenCalledWith(PID, SID);
+    expect(commentRecordsMock.restoreSpaceRecords).toHaveBeenCalledWith(PID, SID);
+  });
+
+  it("space:restore brings them back before the broadcast, and undoes its content row when that fails", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    armBroadcastMarker();
+    commentRecordsMock.restoreSpaceRecords.mockRejectedValue(new Error("pg down"));
+    const res = await handleSpaceRpc({ hocuspocus: makeHocuspocus() }, PID, { userId: ACTOR, role: "owner" }, { id: "r1", type: "space:restore", payload: { spaceId: SID } });
+    expect(res).toMatchObject({ ok: false, error: { code: "INTERNAL" } });
+    expect(metaBroadcastMock).not.toHaveBeenCalled();
+    expect(softDeleteByNameMock).toHaveBeenCalledWith(spaceContentDocName(PID, SID, "canvas"));
+  });
+
+  it("space:restore voids the records again when the broadcast does not go out", async () => {
+    activityLatestUnrestoredMock.mockResolvedValue(DELETED_ROW);
+    const hocuspocus = makeHocuspocus({
+      beforeFirstTransact: () => {
+        seedSpace(SID, { type: "canvas", name: "Main", order: 0, locked: false });
+        armBroadcastMarker();
+      },
+    });
+    await handleSpaceRpc({ hocuspocus }, PID, { userId: ACTOR, role: "owner" }, { id: "r1", type: "space:restore", payload: { spaceId: SID } });
+    expect(commentRecordsMock.restoreSpaceRecords).toHaveBeenCalledWith(PID, SID);
+    expect(commentRecordsMock.voidSpaceRecords).toHaveBeenCalledWith(PID, SID);
   });
 });

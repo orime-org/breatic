@@ -37,6 +37,19 @@ const {
   activityInsertMock: vi.fn(),
 }));
 
+const commentRecordsMock = vi.hoisted(() => ({
+  voidSpaceRecords: vi.fn(async () => ({ changed: false })),
+  restoreSpaceRecords: vi.fn(async () => ({ changed: false })),
+}));
+// A Space's comment records live in Postgres; their own integration tests
+// cover them (`comment-requests.integration.test.ts`).
+vi.mock("@collab/services/comment-requests.js", () => ({
+  voidSpaceRecords: commentRecordsMock.voidSpaceRecords,
+  restoreSpaceRecords: commentRecordsMock.restoreSpaceRecords,
+  announceSpaceRecords: vi.fn(async () => undefined),
+  handleCommentRequest: vi.fn(),
+  answerReply: vi.fn(async () => false),
+}));
 vi.mock("@collab/services/yjs-documents.repo.js", () => ({
   fetchDocData: fetchDocDataMock,
   softDeleteByName: vi.fn(),

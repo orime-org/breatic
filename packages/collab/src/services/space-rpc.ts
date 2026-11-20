@@ -64,7 +64,7 @@ import {
 } from "@breatic/core";
 import { recordProjectEdit } from "@collab/services/project-edit-recorder.js";
 import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
-import { recomputeCommentRecords, voidCommentRecords } from "@collab/services/comment-record-acceptance.js";
+import { announceSpaceRecords, restoreSpaceRecords, voidSpaceRecords } from "@collab/services/comment-requests.js";
 import {
   withSpaceCountLock,
   SpaceCountLockBusyError,
@@ -810,6 +810,21 @@ async function handleDelete(
 }
 
 /**
+ * Put a Space's comment records back the way they were when its delete or
+ * restore did not go out. A failure is logged: the records then disagree
+ * with the Space until it is deleted or restored again.
+ * @param undo - Voids or restores them.
+ * @param logCtx - What the log line names.
+ */
+async function undoCommentRecords(undo: () => Promise<unknown>, logCtx: Record<string, unknown>): Promise<void> {
+  try {
+    await undo();
+  } catch (e) {
+    logger.error({ err: e, ...logCtx }, "space_rpc_comment_records_undo_failed");
+  }
+}
+
+/**
  * The `space:delete` critical section, run under the per-project lock.
  *
  * §6.2's order: checks first (entry exists + the AUTHORITATIVE PG
@@ -890,6 +905,18 @@ async function runDelete(
       return err(req.id, "INTERNAL", "Could not delete the Space");
     }
 
+    // ── Comment records, BEFORE the broadcast (#1488 §11.9) ─────────
+    // Under this lock, so a comment request on the Space runs wholly before
+    // or wholly after the delete.
+    let records: { changed: boolean };
+    try {
+      records = await voidSpaceRecords(projectId, spaceId);
+    } catch (e) {
+      logger.error({ err: e, ...logCtx }, "space_rpc_delete_comment_records_failed");
+      await undoContentRows("restore", projectId, spaceId, softDeleted.touched, logCtx);
+      return err(req.id, "INTERNAL", "Could not delete the Space");
+    }
+
     // ── The broadcast ───────────────────────────────────────────────
     let snapshot: Record<string, unknown> | null = null;
     let deletedName: string | undefined;
@@ -914,6 +941,7 @@ async function runDelete(
     );
     if (settled.response) {
       if (settled.undo) {
+        await undoCommentRecords(() => restoreSpaceRecords(projectId, spaceId), logCtx);
         await undoContentRows(
           "restore",
           projectId,
@@ -924,14 +952,7 @@ async function runDelete(
       }
       return settled.response;
     }
-
-    // ── Comment records, allowed to fail ────────────────────────────
-    // A store landing later finds the Space unlisted and leaves these void.
-    try {
-      await voidCommentRecords(projectId, spaceId);
-    } catch (e) {
-      logger.error({ err: e, ...logCtx }, "comment_records_void_failed");
-    }
+    if (records.changed) await announceSpaceRecords(projectId, spaceId);
 
     // ── Audit, allowed to fail ──────────────────────────────────────
     // This row carries the snapshot `space:restore` consumes to rebuild the
@@ -1224,6 +1245,16 @@ async function runRestore(
       return err(req.id, "INTERNAL", "Could not restore the Space");
     }
 
+    // ── Comment records, BEFORE the broadcast (#1488 §11.9) ─────────
+    let records: { changed: boolean };
+    try {
+      records = await restoreSpaceRecords(projectId, spaceId);
+    } catch (e) {
+      logger.error({ err: e, ...logCtx }, "space_rpc_restore_comment_records_failed");
+      if (restored) await undoContentRows("soft-delete", projectId, spaceId, [kind.data], logCtx);
+      return err(req.id, "INTERNAL", "Could not restore the Space");
+    }
+
     // ── The broadcast ───────────────────────────────────────────────
     const outcome = await publishMetaChange(conn, projectId, logCtx, (doc, mark) => {
       const spaces = doc.getMap("spaces");
@@ -1242,6 +1273,7 @@ async function runRestore(
       err(req.id, "INTERNAL", "Could not restore the Space"),
     );
     if (settled.response) {
+      if (settled.undo) await undoCommentRecords(() => voidSpaceRecords(projectId, spaceId), logCtx);
       if (settled.undo && restored) {
         await undoContentRows(
           "soft-delete",
@@ -1253,14 +1285,7 @@ async function runRestore(
       }
       return settled.response;
     }
-
-    // ── Comment records, allowed to fail ────────────────────────────
-    // The next store of the Space recomputes them again.
-    try {
-      await recomputeCommentRecords(projectId, spaceId, kind.data, spaceContentDocName(projectId, spaceId, kind.data));
-    } catch (e) {
-      logger.error({ err: e, ...logCtx }, "comment_records_recompute_failed");
-    }
+    if (records.changed) await announceSpaceRecords(projectId, spaceId);
 
     // ── Audit, allowed to fail ──────────────────────────────────────
     const spaceName =

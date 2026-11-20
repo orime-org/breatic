@@ -63,6 +63,8 @@ import {
   parseDocName,
   SpaceRpcRequestSchema,
   SyncConfirmRequestSchema,
+  CommentRequestSchema,
+  type CommentResponse,
   DocSizeSeenSchema,
   type ProjectRole,
   type SpaceRpcResponse,
@@ -114,6 +116,7 @@ import { fetchDocData } from "@collab/services/yjs-documents.repo.js";
 import {
   handleSpaceRpc,
 } from "@collab/services/space-rpc.js";
+import { handleCommentRequest } from "@collab/services/comment-requests.js";
 
 const logger = createLogger("hocuspocus");
 
@@ -245,7 +248,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
     // bookkeeping once the document has actually left memory.
     createChangeTrackingExtension(),
     // The server is built below; stores run only once it exists.
-    createPersistenceExtension({ loadedDoc: (name) => wsServer.hocuspocus.documents.get(name) }),
+    createPersistenceExtension(),
     new RedisExtension({
       // Hocuspocus extension-redis supports an explicit `createClient`
       // factory; when present it bypasses the bare `new RedisClient(
@@ -816,6 +819,22 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
         }
       }
       if (parsed.kind === "canvas" || parsed.kind === "document") {
+        // Comment requests follow the edits queued before them on this
+        // connection (breatic#1488 §11.9).
+        const comment = CommentRequestSchema.safeParse(json);
+        if (comment.success) {
+          const user = (connection.context as { user?: { id?: string; role?: ProjectRole } } | undefined)?.user;
+          const answer: CommentResponse =
+            user?.id === undefined || user.role === undefined
+              ? { id: comment.data.id, ok: false, error: { code: "FORBIDDEN", message: "Anonymous caller" } }
+              : await handleCommentRequest(
+                { projectId: parsed.projectId, spaceId: parsed.spaceId, kind: parsed.kind, doc: document },
+                { userId: user.id, role: user.role },
+                comment.data,
+              );
+          connection.sendStateless(JSON.stringify(answer));
+          return;
+        }
         const request = SyncConfirmRequestSchema.safeParse(json);
         if (!request.success) return;
         try {
