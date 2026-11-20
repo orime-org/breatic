@@ -512,7 +512,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   // Web animation (#1490 design §8): copies of the Project's results are placed here; they are made in Motion Spaces.
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const spaces = useProjectSpaceList(projectId);
-  const motionSpaces = React.useMemo(() => spaces.filter((space) => space.type === 'web_animation'), [spaces]);
+  const hasMotionSpace = React.useMemo(() => spaces.some((space) => space.type === 'web_animation'), [spaces]);
   const openPicker = React.useCallback((): void => setPickerOpen(true), []);
   const closePicker = React.useCallback((): void => setPickerOpen(false), []);
   // Each pick places a copy of its own, bound to the result's source.
@@ -539,28 +539,24 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     });
     useSpaceOpenRequestStore.getState().dispatch({ type: 'request', request: { type: 'web_animation' } });
   }, []);
-  /**
-   * Open the Motion Space that made a copy's execution, with it selected; one made in a Timeline before Motion opens in
-   * the newest Motion Space, whose group of those holds it.
-   * @param origin - What made the copy.
-   * @param origin.spaceId - The Space that made it.
-   * @param origin.executionId - The execution.
-   * @param origin.origin - Whether it was made in a Motion Space or a Timeline.
-   * @throws {never} Never.
-   */
-  const openInMotion = React.useCallback((origin: NonNullable<TimelineWebClipView['origin']>): void => {
-    useSpaceOpenRequestStore.getState().dispatch({
-      type: 'request',
-      request: origin.origin === 'web_animation_space'
-        ? { type: 'web_animation', spaceId: origin.spaceId, select: origin.executionId }
-        : { type: 'web_animation', select: origin.executionId },
-    });
-  }, []);
   const selectedWeb = selected?.kind === 'web-animation' ? webClips.get(selected.id) : undefined;
   // A Viewer can open a Motion Space but cannot make one.
-  const canOpenInMotion = !readOnly || motionSpaces.length > 0;
+  const canOpenInMotion = !readOnly || hasMotionSpace;
   const selectedOrigin = selectedWeb?.origin ?? null;
-  const openSelectedInMotion = React.useCallback((): void => { if (selectedOrigin !== null) openInMotion(selectedOrigin); }, [openInMotion, selectedOrigin]);
+  /**
+   * Open the Motion Space that made the selected copy's execution, with it selected; one made in a Timeline before
+   * Motion opens in the newest Motion Space, whose group of those holds it.
+   * @throws {never} Never.
+   */
+  const openSelectedInMotion = React.useCallback((): void => {
+    if (selectedOrigin === null) return;
+    useSpaceOpenRequestStore.getState().dispatch({
+      type: 'request',
+      request: selectedOrigin.origin === 'web_animation_space'
+        ? { type: 'web_animation', spaceId: selectedOrigin.spaceId, select: selectedOrigin.executionId }
+        : { type: 'web_animation', select: selectedOrigin.executionId },
+    });
+  }, [selectedOrigin]);
   const selectedWebCopy = React.useMemo(() => selectedWeb === undefined ? null : {
     request: selectedWeb.request,
     baseRequest: selectedWeb.baseRequest,
