@@ -11,7 +11,8 @@
  */
 
 import * as React from 'react';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import fc from 'fast-check';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t } from '@breatic/shared';
 import { planVideoSplit, type MiniToolAnalysisRecord, type VideoToolDraftById } from '@breatic/shared/mini-tools';
@@ -548,5 +549,26 @@ describe('Add at cursor while the source plays', () => {
     now = 0.5;
     tick();
     expect(screen.getByTestId('video-add-cut')).toBeEnabled();
+  });
+});
+
+describe('cut rows show their frame start in milliseconds (frames-split §10.7 split row; web AGENTS "Inputs send what they show")', () => {
+  const grid30 = { fps: { numerator: 30, denominator: 1 }, frameCount: 593 };
+
+  it('shows a 30 fps frame start rounded up to the millisecond, never a long fraction', () => {
+    mount({ grid: grid30, draft: draftWith([10, 269]) });
+    expect(screen.getByTestId('video-cut-0')).toHaveValue('0.334');
+    expect(screen.getByTestId('video-cut-1')).toHaveValue('8.967');
+  });
+
+  it('keeps every shown time on the frame it stands for, so typing it back changes nothing', () => {
+    fc.assert(fc.property(fc.constantFrom(24, 25, 30, 50, 60, 120), fc.integer({ min: 1, max: 590 }), (fps, frame) => {
+      cleanup();
+      const { onChange } = mount({ grid: { fps: { numerator: fps, denominator: 1 }, frameCount: 593 }, draft: draftWith([frame]) });
+      const shown = (screen.getByTestId('video-cut-0') as HTMLInputElement).value;
+      expect(shown).toMatch(/^\d+(\.\d{1,3})?$/);
+      fireEvent.change(screen.getByTestId('video-cut-0'), { target: { value: shown } });
+      for (const call of onChange.mock.calls) expect(call[0]).toEqual(expect.objectContaining({ params: { cuts: [frame] } }));
+    }), { numRuns: 60 });
   });
 });

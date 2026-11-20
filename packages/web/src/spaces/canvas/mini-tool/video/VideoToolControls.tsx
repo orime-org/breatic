@@ -173,6 +173,17 @@ function withRowIds(previous: readonly CutRow[], values: readonly number[]): Cut
 }
 
 /**
+ * A cut's frame start as its row shows it: rounded up to the millisecond, which stays inside that frame at any rate up to
+ * 1000 fps, so the shown time typed back covers the same frame; the tolerance keeps an exact millisecond from rounding up.
+ * @param seconds - The frame start.
+ * @returns The shown seconds.
+ * @throws {never} Never.
+ */
+function cutRowSeconds(seconds: number): number {
+  return Math.ceil(seconds * 1000 - 1e-6) / 1000;
+}
+
+/**
  * Edits split cuts on the source clock (demo video-controls.tsx CutEditor and PlaybackStrip cuts): numbered handles on the
  * filmstrip that drag (committed once on release), step one frame with the arrow keys and go with Delete; the count with
  * Add at cursor; one row per cut; and one button per segment that plays exactly that range in the node's player.
@@ -337,7 +348,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { grid: VideoPlanGrid })
         }}><span className='h-full border-l border-status-selected' /><span className='absolute bottom-0 rounded-chrome-sm bg-popover px-1 text-xs text-foreground'>{index + 1}</span></Button>)}
     </VideoPlaybackStrip>
     <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: segments.length - 1, segments: segments.length })}</span><AddCutButton grid={grid} starts={snapped} presentedTime={props.presentedTime} liveClock={props.liveClock} disabled={props.disabled} onAdd={add} /></div>
-    {rows.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{rows.map(({ id, value: cut }, index) => <div key={id} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cut} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => type(id, value)} onSettle={settle} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => remove(id)}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
+    {rows.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{rows.map(({ id, value: cut }, index) => <div key={id} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cutRowSeconds(cut)} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => type(id, value)} onSettle={settle} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => remove(id)}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
     <div className='flex min-h-8 overflow-hidden rounded-chrome border border-border'>{segments.map((segment) => <Button key={segment.outputIndex} variant={null} size={null} data-testid={`video-segment-${segment.outputIndex}`} disabled={props.onPlayRange === undefined} className='min-w-0 rounded-none border-r border-border bg-accent px-1 py-2 text-xs last:border-r-0 hover-enabled:bg-accent-strong' style={{ flexGrow: segment.end - segment.start, flexBasis: 0 }} onClick={() => preview(gridSeconds(grid, segment.start), gridSeconds(grid, segment.end))}>{segment.outputIndex + 1}</Button>)}</div>
     {previewing === null ? null : <div data-testid='video-segment-preview' className='flex items-center justify-between gap-2 text-xs text-muted-foreground'><span className='tabular-nums'>{t('canvas.miniTool.videoUI.segmentPreview', { start: secondsLabel(previewing.start), end: secondsLabel(previewing.end) })}</span><Button variant='outline' size='compact' onClick={() => playback.current?.stop()}>{t('canvas.miniTool.videoUI.stopPreview')}</Button></div>}
     {playFailed ? <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}
