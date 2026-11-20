@@ -42,7 +42,7 @@ const suite = useInternalApp("internal-api-idempotency-test");
  * @returns The seeded account.
  */
 function account(): Promise<PersonalFixture> {
-  return seedPersonal(suite.sql, "internal-api-idempotency");
+  return seedPersonal(suite.sql, "api-idem");
 }
 
 /**

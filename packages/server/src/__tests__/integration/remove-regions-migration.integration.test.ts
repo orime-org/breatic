@@ -45,17 +45,19 @@ async function run(tx: Tx, statements: string[]): Promise<void> {
 }
 
 /**
- * The migrations folder cut at 0125, the last migration before regions.
+ * The migrations folder cut after one migration, so later migrations (which
+ * add tables of their own) stay out of the comparison.
+ * @param lastIdx - The last migration kept.
  * @returns The folder's path.
  */
-async function beforeRegionsFolder(): Promise<string> {
+async function folderUpTo(lastIdx: number): Promise<string> {
   const cache = resolve(migrationDir, "../../../../../node_modules/.cache");
   await mkdir(cache, { recursive: true });
-  fixtureRoot = await mkdtemp(resolve(cache, "remove-regions-"));
-  const folder = resolve(fixtureRoot, "before-regions");
+  fixtureRoot ??= await mkdtemp(resolve(cache, "remove-regions-"));
+  const folder = resolve(fixtureRoot, `up-to-${lastIdx}`);
   await cp(migrationDir, folder, { recursive: true });
   const journal = JSON.parse(await readFile(resolve(migrationDir, "meta/_journal.json"), "utf8")) as { entries: { idx: number }[] };
-  await writeFile(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter((e) => e.idx <= 125) }));
+  await writeFile(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter((e) => e.idx <= lastIdx) }));
   return folder;
 }
 
@@ -149,9 +151,9 @@ async function rowsOf(tx: Tx, studioId: string): Promise<unknown> {
 }
 
 describe("migration 0127 removes regions", () => {
-  it("leaves a fully migrated database with the schema it had before 0126", async () => {
-    const beforeRegions = await migratedSchema(await beforeRegionsFolder());
-    expect(await migratedSchema()).toEqual(beforeRegions);
+  it("leaves a database migrated through 0127 with the schema it had before 0126", async () => {
+    const beforeRegions = await migratedSchema(await folderUpTo(125));
+    expect(await migratedSchema(await folderUpTo(127))).toEqual(beforeRegions);
   });
 
   it("refuses a Studio transfer in the accepting state", async () => {
