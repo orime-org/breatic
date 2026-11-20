@@ -349,6 +349,7 @@ export * as accountActivityCoverageRepo from "@core/activity/account-activity-co
 export { validate, RequestShapeError } from "@core/http/validate.js";
 export * from "@core/http/internal-signature.js";
 export { closeAfterRefusal } from "@core/http/close-after-refusal.js";
+export { refuseUnstorableText } from "@core/http/refuse-unstorable-text.js";
 export { toPage } from "@core/http/keyset-page.js";
 export { frontendOrigin } from "@core/http/frontend-origin.js";
 export { fingerprint } from "@core/http/request-fingerprint.js";
