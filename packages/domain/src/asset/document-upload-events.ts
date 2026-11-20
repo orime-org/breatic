@@ -13,7 +13,13 @@
  */
 
 import { getStreamRedis, publishDocumentUploadEvent } from "@breatic/core";
-import { documentSpaceDocName, readTaskFailure, type DocumentUploadEvent, type StudioAssetEntity } from "@breatic/shared";
+import {
+  DOCUMENT_MEDIA_BLOCK_TYPES,
+  documentSpaceDocName,
+  readTaskFailure,
+  type DocumentUploadEvent,
+  type StudioAssetEntity,
+} from "@breatic/shared";
 import { uploadDeadline } from "@domain/asset/upload-deadline.js";
 import { findGrantByKey, type UploadGrant } from "@domain/asset/upload-grant.repo.js";
 
@@ -24,7 +30,8 @@ export interface DocumentUploadTarget {
   uploadId: string;
 }
 
-const MEDIA_KINDS: ReadonlySet<string> = new Set(["image", "video", "audio"]);
+// An asset's kind names the block it lands in.
+const MEDIA_KINDS: ReadonlySet<string> = new Set(DOCUMENT_MEDIA_BLOCK_TYPES);
 
 /**
  * The Document block a grant's bytes land in, when it names one.

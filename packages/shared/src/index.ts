@@ -493,6 +493,8 @@ export {
 export {
   applyDocumentUpload,
   documentUploadFailure,
+  DOCUMENT_MEDIA_BLOCK_TYPES,
+  landDocumentUpload,
   UPLOAD_DEADLINE_ATTR,
   UPLOAD_FAILURE_ATTR,
   UPLOAD_HOME_ATTR,

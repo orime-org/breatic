@@ -39,12 +39,10 @@ vi.mock('@web/data/api/assets', () => ({
   },
 }));
 vi.mock('@web/data/api/canvas', () => ({ canvasApi: { paste: vi.fn() } }));
-vi.mock('@web/data/upload/upload-status', () => ({ waitForUploadEnding: vi.fn() }));
 
 import { toast } from '@web/lib/toast';
 import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
-import { waitForUploadEnding } from '@web/data/upload/upload-status';
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import { clearAllDocSizes, docSizeSynced, startDocResync } from '@web/data/yjs/doc-size';
 import { destroyDoc, docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
@@ -269,7 +267,6 @@ afterEach(() => {
   upload.media.mockReset();
   vi.mocked(assetsApi.ingestUrl).mockReset();
   vi.mocked(canvasApi.paste).mockReset();
-  vi.mocked(waitForUploadEnding).mockReset();
   document.body.innerHTML = '';
 });
 
@@ -620,7 +617,6 @@ describe('DU-09 a pasted outside link is not fetched while the Space is full', (
     const { name, link } = openPage();
     enterSize(name, 'F');
     vi.mocked(assetsApi.ingestUrl).mockResolvedValue({ storage_key: 'k1' });
-    vi.mocked(waitForUploadEnding).mockReturnValue(new Promise(() => undefined));
     act(() => {
       link.start('up1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     });

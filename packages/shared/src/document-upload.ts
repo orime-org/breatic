@@ -67,7 +67,10 @@ export const UPLOAD_FAILURE_ATTR = "uploadFailure";
 /** Block attribute: whether a `failed` block's upload can be run again. */
 export const UPLOAD_RETRYABLE_ATTR = "uploadRetryable";
 
-const MEDIA_BLOCKS: ReadonlySet<string> = new Set(["image", "video", "audio"]);
+/** The Document body blocks that show a picture, a video or a sound; an upload lands only in one of them. */
+export const DOCUMENT_MEDIA_BLOCK_TYPES = ["image", "video", "audio"] as const;
+
+const MEDIA_BLOCKS: ReadonlySet<string> = new Set(DOCUMENT_MEDIA_BLOCK_TYPES);
 
 /**
  * How an upload that ended in each cause fails: what the block says and
@@ -137,6 +140,22 @@ function targets(fragment: Y.XmlFragment, event: DocumentUploadEvent): Y.XmlElem
 }
 
 /**
+ * Write a finished upload into its block: the address and size, and nothing left of the wait.
+ * @param block - The media block.
+ * @param result - What the upload resolved to.
+ */
+export function landDocumentUpload(block: Y.XmlElement, result: DocumentUploadResult): void {
+  block.setAttribute("url", result.url);
+  if (result.mediaWidth !== undefined) block.setAttribute("mediaWidth", result.mediaWidth as never);
+  if (result.mediaHeight !== undefined) block.setAttribute("mediaHeight", result.mediaHeight as never);
+  block.setAttribute("uploadId", "");
+  block.removeAttribute(UPLOAD_STATE_ATTR);
+  block.removeAttribute(UPLOAD_DEADLINE_ATTR);
+  block.removeAttribute(UPLOAD_FAILURE_ATTR);
+  block.removeAttribute(UPLOAD_RETRYABLE_ATTR);
+}
+
+/**
  * Write one upload's event into the blocks waiting for it.
  *
  * An address, once written, is never changed; an ending replaces
@@ -158,14 +177,7 @@ export function applyDocumentUpload(fragment: Y.XmlFragment, event: DocumentUplo
         block.setAttribute(UPLOAD_STATE_ATTR, "processing");
         block.setAttribute(UPLOAD_DEADLINE_ATTR, event.deadline as never);
       } else if (event.state === "completed" && event.result !== undefined) {
-        block.setAttribute("url", event.result.url);
-        if (event.result.mediaWidth !== undefined) block.setAttribute("mediaWidth", event.result.mediaWidth as never);
-        if (event.result.mediaHeight !== undefined) block.setAttribute("mediaHeight", event.result.mediaHeight as never);
-        block.setAttribute("uploadId", "");
-        block.removeAttribute(UPLOAD_STATE_ATTR);
-        block.removeAttribute(UPLOAD_DEADLINE_ATTR);
-        block.removeAttribute(UPLOAD_FAILURE_ATTR);
-        block.removeAttribute(UPLOAD_RETRYABLE_ATTR);
+        landDocumentUpload(block, event.result);
       } else if (event.state === "failed") {
         const failure = documentUploadFailure(event.reason);
         block.setAttribute(UPLOAD_STATE_ATTR, "failed");

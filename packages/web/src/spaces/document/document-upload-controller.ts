@@ -25,11 +25,13 @@ import * as Y from 'yjs';
 
 import {
   documentBodyFragment,
+  landDocumentUpload,
   UPLOAD_DEADLINE_ATTR,
   UPLOAD_FAILURE_ATTR,
   UPLOAD_HOME_ATTR,
   UPLOAD_RETRYABLE_ATTR,
   UPLOAD_STATE_ATTR,
+  type DocumentUploadResult,
   type UploadFailure,
 } from '@breatic/shared';
 
@@ -46,11 +48,7 @@ export type UploadSource =
   | { readonly kind: 'ours'; readonly url: string; readonly coverUrl?: string };
 
 /** A finished upload: the stored address and the media's own size. */
-export interface UploadResult {
-  readonly url: string;
-  readonly mediaWidth?: number;
-  readonly mediaHeight?: number;
-}
+export type UploadResult = DocumentUploadResult;
 
 export type { PendingFailureReason, UploadFailure } from '@breatic/shared';
 
@@ -267,11 +265,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
       writeSpaceDoc(body.name ?? '', { kind: 'edit', notify: false }, () => {
         body.doc.transact(() => {
           for (const { element, uploadId } of writable) {
-            const result = finished(uploadId)!;
-            element.setAttribute('url', result.url);
-            if (result.mediaWidth !== undefined) element.setAttribute('mediaWidth', result.mediaWidth as never);
-            if (result.mediaHeight !== undefined) element.setAttribute('mediaHeight', result.mediaHeight as never);
-            element.setAttribute('uploadId', '');
+            landDocumentUpload(element, finished(uploadId)!);
           }
         }, UPLOAD_WRITE_ORIGIN);
       }).ok;
