@@ -7,9 +7,10 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { ACCOUNT_KEY_FAILURE_REASONS } from "../../types/task-failure.js";
 
 import {
-  WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobCancelSchema, webAnimationJobReportSchema, webAnimationJobRequestSchema,
+  JOB_KEY_FAILURE_REASONS, WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobCancelSchema, webAnimationJobReportSchema, webAnimationJobRequestSchema,
 } from "../web-animation-job.js";
 
 const request = {
@@ -182,5 +183,11 @@ describe("webAnimationJobReportSchema", () => {
 
   it("reads a call a Worker deployed before the plan reported", () => {
     expect(webAnimationJobReportSchema.parse({ ...report, calls: [legacyCall] }).calls).toEqual([legacyCall]);
+  });
+});
+
+describe("the key failure reasons a job report names (inner#1953)", () => {
+  it("are the main entry's own, written apart only to keep them out of the chunk the Timeline schemas share", () => {
+    expect(JOB_KEY_FAILURE_REASONS).toEqual(ACCOUNT_KEY_FAILURE_REASONS);
   });
 });

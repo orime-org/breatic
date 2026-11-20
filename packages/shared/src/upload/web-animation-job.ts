@@ -9,7 +9,13 @@
 import { z } from "zod";
 
 import { TimelineRateSchema } from "@shared/timeline/schema.js";
-import { ACCOUNT_KEY_FAILURE_REASONS } from "@shared/types/task-failure.js";
+
+/**
+ * Why an upstream refused the payer's own key, as a job report names it (inner#1953): `ACCOUNT_KEY_FAILURE_REASONS` of
+ * the main entry, written here because this module ships through `space-content`, and importing what web calls from
+ * the main entry would move that into the chunk the Timeline schemas share with Yjs. A test holds the two equal.
+ */
+export const JOB_KEY_FAILURE_REASONS = ["invalid", "no_balance", "model_not_found", "rate_limited"] as const;
 
 /** The container class `POST /jobs` dispatches web-animation jobs to. */
 export const WEB_ANIMATION_CONTAINER_CLASS = "WebAnimationContainer";
@@ -133,7 +139,7 @@ export const webAnimationJobReportSchema = z.object({
    */
   failureUpstream: z.string().min(1).nullable().optional(),
   /** Why the upstream refused the payer's own key (`account_key_failed`); null otherwise, absent from an older Worker. */
-  failureKeyReason: z.enum(ACCOUNT_KEY_FAILURE_REASONS).nullable().optional(),
+  failureKeyReason: z.enum(JOB_KEY_FAILURE_REASONS).nullable().optional(),
 });
 
 /** What a job answers. */
