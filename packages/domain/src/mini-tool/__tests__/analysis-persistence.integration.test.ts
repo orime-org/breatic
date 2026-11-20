@@ -6,7 +6,7 @@ import fc from "fast-check";
 import { z } from "zod";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { ConflictError, NotFoundError, createPgClient, db, getMiniToolsConfig, getNodeTaskConfig, getStorageAdapter, initCore } from "@breatic/core";
-import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolAnalysisRequestSchema, miniToolAnalysisResultSchema, miniToolConsumptionKey, projectMiniToolAnalysisInput, selectMiniToolAnalyses, type MiniToolAnalysisArtifact, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
+import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolAnalysisRequestSchema, miniToolAnalysisResultSchema, miniToolConsumptionKey, projectMiniToolAnalysisInput, selectMiniToolAnalyses, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import * as domain from "@domain/index.js";
 import { miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
@@ -27,7 +27,7 @@ vi.mock("@breatic/shared", async (original) => ({
 }));
 
 type Status = "pending" | "running" | "completed" | "failed" | "cancelled";
-type PeopleResult = Extract<MiniToolAnalysisResult, { kind: "people" }>;
+type ScenesResult = Extract<MiniToolAnalysisResult, { kind: "scene_cuts" }>;
 interface Fixture {
   taskId: string; userId: string; nodeTaskId: string; stepId: string; consumptionKey: string;
   result: MiniToolAnalysisResult; initial: MiniToolAnalysisRecord;
@@ -59,23 +59,11 @@ beforeEach(() => {
 });
 afterAll(async () => { vi.unstubAllGlobals(); await pg.end(); });
 
-/** Register independent fixture truth for one internal artifact. */
-async function artifact(studioId: string, userId: string, role: MiniToolAnalysisArtifact["role"]): Promise<MiniToolAnalysisArtifact> {
-  const id = crypto.randomUUID(); const hash = crypto.randomBytes(32).toString("hex");
-  const document = role === "rle"; const image = role === "thumbnail";
-  const kind = document ? "document" : image ? "image" : "video";
-  const mimeType = document ? "text/plain" : image ? "image/png" : "video/mp4";
-  const key = `${kind}/analysis-fixture/${id}`; const url = publicUrl(key);
-  await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
-    VALUES (${id},${studioId},${hash},${key},${url},128,${mimeType},${kind},'upload',${userId},${document ? null : 80},${document ? null : 60},${kind === "video" ? 5 : null})`;
-  return { role, assetId: id, canonicalURL: url, contentHash: hash, kind, mimeType, size: 128, frameMetadata: null };
-}
-
 /**
  * Seed a frozen task with registered references and independent execution facts.
  * @param open - Whether the task also holds a provider submit intent with no answer, so a terminal outcome leaves its set open.
  */
-async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "running", at = T0, open = false): Promise<Fixture> {
+async function seed(kind: MiniToolAnalysisKind = "scene_cuts", status: Status = "running", at = T0, open = false): Promise<Fixture> {
   const { userId, studioId, projectId } = await seedStudioFixture(pg, "analysis-persistence");
   await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${projectId},${userId},'owner')`;
   const taskId = crypto.randomUUID(); const spaceId = crypto.randomUUID(); const hostNodeId = crypto.randomUUID();
@@ -84,14 +72,12 @@ async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "run
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
     VALUES (${sourceAssetId},${studioId},${sourceHash},${sourceKey},${sourceURL},4096,'video/mp4','video','upload',${userId},400,200,5)`;
   const binding = { assetId: sourceAssetId, contentHash: sourceHash, canonicalURL: sourceURL, kind: "video", mediaInfo: { width: 400, height: 200, duration: 5, mimeType: "video/mp4" } };
-  const anchor = { frameIndex: 1 }; const range = { start: 0, end: 5 };
+  const range = { start: 0, end: 5 };
   const analysisInput = projectMiniToolAnalysisInput({ kind, source: { canonicalURL: sourceURL }, profile: getMiniToolsConfig().analyses[kind].profile,
-    params: kind === "people" ? { anchor } : kind === "scene_cuts" ? { range } : { anchor, range, region: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, points: [] }, trackingPrompt: "the selected person" },
+    params: { range },
   });
   const identity = { schemaVersion: 1, draftId: "20000000-0000-4000-8000-000000000001", revision: "30000000-0000-4000-8000-000000000001", analysisRunId: taskId, acceptedAt: at, kind, binding, analysisInput, inputFingerprint: await fingerprintMiniToolAnalysisInput(analysisInput) };
-  const payload = kind === "people" ? { anchor, people: [{ personId: "person-1", faceBox: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, artifactRefs: [await artifact(studioId, userId, "thumbnail")] }] }
-    : kind === "scene_cuts" ? { fps: { numerator: 4, denominator: 1 }, frameCount: 20, cuts: [{ frameIndex: 2, detectionScore: 85 }] }
-      : { anchor, width: 400, height: 200, frameCount: 20, fps: { numerator: 4, denominator: 1 }, regionFingerprint: "d".repeat(64), artifactRefs: await Promise.all(["rle"].map((role) => artifact(studioId, userId, role as MiniToolAnalysisArtifact["role"]))) };
+  const payload = { fps: { numerator: 4, denominator: 1 }, frameCount: 20, cuts: [{ frameIndex: 2, detectionScore: 85 }] };
   const result = miniToolAnalysisResultSchema.parse({ ...identity, ...payload });
   const normalized = status === "cancelled" ? "failed" : status;
   const initial = miniToolAnalysisRecordSchema.parse({ ...identity, status: normalized, result: status === "completed" ? result : null, error: normalized === "failed" ? ERROR : null, usage: [{ marker: "original-usage" }], artifactUnavailable: false });
@@ -101,12 +87,12 @@ async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "run
     source: { nodeId: hostNodeId, canonicalURL: sourceURL, mediaInfo: binding.mediaInfo }, binding, analysisInput, inputFingerprint: identity.inputFingerprint,
     // The tool input, the selected version and the payer frozen with the analysis, as for an execution (frames-split §7.11, §5.5).
     presentationRef: presentation.presentationRef, presentations: { source: presentation.bundle }, versionIds: { source: presentation.versionId },
-    chargeTo: kind === "people" ? "platform" as const : "user" as const };
-  const params = { analysis: frozen, requestFingerprint: "e".repeat(64), sourceKey, credits: kind === "people" ? 0 : 1 };
+    chargeTo: "user" as const };
+  const params = { analysis: frozen, requestFingerprint: "e".repeat(64), sourceKey, credits: 1 };
   const stepId = crypto.randomUUID(); const nodeTaskId = crypto.randomUUID();
   const expenseIdentity = { kind: "container", containerClass: "std1", jobId: taskId, chunkIndex: 0 } as const;
   const key = await miniToolConsumptionKey({ taskId, stepId, identity: expenseIdentity });
-  const fact = { schemaVersion: 1, consumptionKey: key, identity: expenseIdentity, state: "known", creditMultiplier: 1, chargeTo: kind === "people" ? "platform" : "user", costUsd: 0.0001, costSource: "computed", raw: { wallMs: 1000, cpuUsec: 1000 }, credits: null, containerPricing: { configVersion: "fixture", size: { vcpu: 0.5, memory_gib: 4, disk_gb: 8 }, prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 } } };
+  const fact = { schemaVersion: 1, consumptionKey: key, identity: expenseIdentity, state: "known", creditMultiplier: 1, chargeTo: "user", costUsd: 0.0001, costSource: "computed", raw: { wallMs: 1000, cpuUsec: 1000 }, credits: null, containerPricing: { configVersion: "fixture", size: { vcpu: 0.5, memory_gib: 4, disk_gb: 8 }, prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 } } };
   const settlement = { version: 7, state: "waiting", pendingConsumptionKeys: [key], nextAttemptAt: T0, leaseToken: null, leaseUntil: null, lastError: null, consumptionSetComplete: false };
   await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,params,result,error_message,created_at,completed_at)
     VALUES (${taskId},${userId},${projectId},${spaceId},'mini_tool_analysis','append','mini_tool',${status},${pg.json(z.json().parse(params))},${pg.json({ analysis: initial, settlement, manifest: { outputs: [{ canonicalURL: "https://assets.test.invalid/preserved.mp4" }] }, preserved: { original: true } })},${normalized === "failed" ? ERROR.code : null},${at}::text::timestamptz,${status === "completed" || normalized === "failed" ? at : null}::text::timestamptz)`;
@@ -120,7 +106,7 @@ async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "run
       attempts: [{ attemptId: crypto.randomUUID(), preparedAt: T0, requestFingerprint: fingerprint, resolution: { kind: "unresolved" } }] };
     await pg`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,item_index,status,output) VALUES (${intentStepId},${taskId},1,'generate','analysis-fixture-model',0,'pending',${pg.json({ miniToolStep: intent })})`;
   }
-  if (kind !== "people") await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at) VALUES (${studioId},${userId},${taskId},1,'held','2099-01-01T00:00:00Z')`;
+  await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at) VALUES (${studioId},${userId},${taskId},1,'held','2099-01-01T00:00:00Z')`;
   return { taskId, userId, nodeTaskId, stepId, consumptionKey: key, result, initial };
 }
 
@@ -131,7 +117,7 @@ async function seed(kind: MiniToolAnalysisKind = "people", status: Status = "run
  * @param at - The acceptance instant.
  * @returns The fixture.
  */
-async function seedOpen(kind: MiniToolAnalysisKind = "people", status: Status = "running", at = T0): Promise<Fixture> {
+async function seedOpen(kind: MiniToolAnalysisKind = "scene_cuts", status: Status = "running", at = T0): Promise<Fixture> {
   return seed(kind, status, at, true);
 }
 
@@ -172,14 +158,13 @@ async function fail(f: Fixture, error: unknown = ERROR): Promise<MiniToolAnalysi
   return (await domain.miniToolAnalysisService.finishMiniToolAnalysis(f.taskId, { kind: "error", error })).record;
 }
 
-/** Select a fresh people payload for the frozen-field mutation matrix. */
-function people(f: Fixture): PeopleResult {
-  if (f.result.kind !== "people") throw new Error("Expected a people fixture");
+/** Select a fresh scene-cuts payload for the frozen-field mutation matrix. */
+function scenes(f: Fixture): ScenesResult {
   return structuredClone(f.result);
 }
 
 describe("accepted analysis execution entry", () => {
-  it.each(["people", "scene_cuts", "tracked_mask"] as const)("starts the original pending %s analysis with its SQL identity", async (kind) => {
+  it.each(["scene_cuts"] as const)("starts the original pending %s analysis with its SQL identity", async (kind) => {
     const f = await seed(kind, "pending", "2026-10-25T01:02:03.123456Z");
     const before = await snapshot(f);
     const execution = await domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-original");
@@ -215,7 +200,7 @@ describe("accepted analysis execution entry", () => {
   });
 
   it("continues an accepted analysis hidden from user history using the original source", async () => {
-    const f = await seed("people", "pending");
+    const f = await seed("scene_cuts", "pending");
     await pg`UPDATE tasks SET deleted_at='2026-10-25T01:02:03.123456Z'::timestamptz WHERE id=${f.taskId}`;
     const before = await snapshot(f);
     const execution = await domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-hidden");
@@ -225,7 +210,7 @@ describe("accepted analysis execution entry", () => {
   });
 
   it.each(["source", "task_type", "source_key", "run", "project", "space"] as const)("rejects the invalid persisted %s before changing execution state", async (field) => {
-    const f = await seed("people", "pending");
+    const f = await seed("scene_cuts", "pending");
     if (field === "source") await pg`UPDATE tasks SET source='task' WHERE id=${f.taskId}`;
     else if (field === "task_type") await pg`UPDATE tasks SET task_type='image' WHERE id=${f.taskId}`;
     else if (field === "source_key") await pg`UPDATE tasks SET params=params-'sourceKey' WHERE id=${f.taskId}`;
@@ -241,7 +226,7 @@ describe("accepted analysis execution entry", () => {
   });
 
   it("rejects an absent task and an empty queue identity", async () => {
-    const f = await seed("people", "pending"); const before = await snapshot(f);
+    const f = await seed("scene_cuts", "pending"); const before = await snapshot(f);
     await expect(domain.miniToolAnalysisService.startMiniToolAnalysisExecution(crypto.randomUUID(), "analysis-job-absent")).rejects.toThrow();
     await expect(domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "")).rejects.toThrow();
     expect(await snapshot(f)).toEqual(before);
@@ -277,7 +262,7 @@ describe("accepted analysis execution entry", () => {
 });
 
 describe("atomic analysis computation completion", () => {
-  it.each(["people", "scene_cuts", "tracked_mask"] as const)("commits %s metadata and proven identities together", async (kind) => {
+  it.each(["scene_cuts"] as const)("commits %s metadata and proven identities together", async (kind) => {
     const f = await seed(kind); const before = await snapshot(f);
     const params = before.task.params as { analysis: { projectId: string; spaceId: string; hostNodeId: string } };
     const expected = { ...f.initial, status: "completed", result: f.result };
@@ -430,7 +415,7 @@ describe("atomic analysis computation completion", () => {
 });
 
 describe("persistent analysis results", () => {
-  it.each(["people", "scene_cuts", "tracked_mask"] as const)("commits the complete %s result and preserves execution facts", async (kind) => {
+  it.each(["scene_cuts"] as const)("commits the complete %s result and preserves execution facts", async (kind) => {
     const f = await seedOpen(kind); const before = await snapshot(f);
     const expected = { ...f.initial, status: "completed", result: f.result };
     expect(await record(f)).toEqual(expected);
@@ -441,7 +426,7 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["pending", "running"] as const)("completes a task from %s", async (status) => {
-    const f = await seedOpen("people", status);
+    const f = await seedOpen("scene_cuts", status);
     expect(await record(f)).toEqual({ ...f.initial, status: "completed", result: f.result });
   });
 
@@ -451,9 +436,9 @@ describe("persistent analysis results", () => {
     const after = await snapshot(f); expect(after.task.status).toBe("failed"); assertPreserved(before, after);
   });
 
-  it("keeps committed people identities and all SQL fields on a replay", async () => {
+  it("keeps committed scene cuts and all SQL fields on a replay", async () => {
     const f = await seedOpen(); const committed = await record(f); const before = await snapshot(f);
-    const incoming = people(f);
+    const incoming = scenes(f);
     incoming.analysisInput.profile.params = Object.fromEntries(Object.entries(incoming.analysisInput.profile.params).reverse());
     expect(await record(f, incoming)).toEqual(committed);
     expect(await snapshot(f)).toEqual(before);
@@ -462,7 +447,7 @@ describe("persistent analysis results", () => {
   });
 
   it.each(["failed", "cancelled"] as const)("preserves %s and its error when a matching result arrives late", async (status) => {
-    const f = await seedOpen("people", status); const before = await snapshot(f);
+    const f = await seedOpen("scene_cuts", status); const before = await snapshot(f);
     const expected = { ...f.initial, result: f.result };
     expect(await record(f)).toEqual(expected);
     const after = await snapshot(f); expect(after.task.status).toBe(status); expect(after.task.completed_at).toBe(before.task.completed_at); assertPreserved(before, after);
@@ -472,20 +457,20 @@ describe("persistent analysis results", () => {
     expect(selectMiniToolAnalyses([expected], { draftId: expected.draftId, kind: expected.kind, inputFingerprint: expected.inputFingerprint }).latestSuccessful).toBeNull();
   });
 
-  it.each(["people", "scene_cuts"] as const)("accepts empty %s results as complete analysis", async (kind) => {
-    const f = await seedOpen(kind); const result = f.result.kind === "people" ? { ...f.result, people: [] } : { ...f.result, cuts: [] };
+  it.each(["scene_cuts"] as const)("accepts empty %s results as complete analysis", async (kind) => {
+    const f = await seedOpen(kind); const result = { ...f.result, cuts: [] };
     expect(await record(f, result)).toEqual({ ...f.initial, status: "completed", result });
   });
 
   it("keeps two distinct SQL instants within the same JavaScript millisecond", async () => {
     for (const at of [T0, "2026-10-24T09:03:03.100002Z"]) {
-      const f = await seedOpen("people", "running", at);
+      const f = await seedOpen("scene_cuts", "running", at);
       expect((await record(f)).acceptedAt).toBe(at);
       expect((await domain.miniToolAnalysisService.get(f.taskId, f.userId)).acceptedAt).toBe(at);
     }
   });
 
-  const identityChanges: { field: string; change: (result: PeopleResult) => PeopleResult; rehash?: boolean }[] = [
+  const identityChanges: { field: string; change: (result: ScenesResult) => ScenesResult; rehash?: boolean }[] = [
     { field: "draftId", change: (r) => ({ ...r, draftId: crypto.randomUUID() }) },
     { field: "revision", change: (r) => ({ ...r, revision: crypto.randomUUID() }) },
     { field: "analysisRunId", change: (r) => ({ ...r, analysisRunId: crypto.randomUUID() }) },
@@ -498,30 +483,19 @@ describe("persistent analysis results", () => {
     { field: "profile version", rehash: true, change: (r) => ({ ...r, analysisInput: { ...r.analysisInput, profile: { ...r.analysisInput.profile, version: "other-version" } } }) },
     { field: "weights", rehash: true, change: (r) => ({ ...r, analysisInput: { ...r.analysisInput, profile: { ...r.analysisInput.profile, weightsHash: "e".repeat(64) } } }) },
     { field: "profile params", rehash: true, change: (r) => ({ ...r, analysisInput: { ...r.analysisInput, profile: { ...r.analysisInput.profile, params: { ...r.analysisInput.profile.params, changed: true } } } }) },
-    { field: "anchor", rehash: true, change: (r) => ({ ...r, anchor: { frameIndex: 2 }, analysisInput: { ...r.analysisInput, anchor: { frameIndex: 2 } } }) },
+    { field: "range", rehash: true, change: (r) => ({ ...r, analysisInput: { ...r.analysisInput, range: { start: 1, end: 5 } } }) },
     { field: "fingerprint", change: (r) => ({ ...r, inputFingerprint: "f".repeat(64) }) },
   ];
   it.each(identityChanges)("rejects frozen $field changes without a partial write", async ({ change, rehash }) => {
-    const f = await seedOpen(); const before = await snapshot(f); const incoming = change(people(f));
+    const f = await seedOpen(); const before = await snapshot(f); const incoming = change(scenes(f));
     if (rehash) incoming.inputFingerprint = await fingerprintMiniToolAnalysisInput(incoming.analysisInput);
     await expect(record(f, incoming)).rejects.toBeInstanceOf(ConflictError);
     expect(await snapshot(f)).toEqual(before);
   });
 
-  it("rejects a different valid analysis kind for the original task", async () => {
-    const f = await seedOpen(); const before = await snapshot(f);
-    const input = projectMiniToolAnalysisInput({ kind: "scene_cuts", source: { canonicalURL: f.result.binding.canonicalURL }, profile: getMiniToolsConfig().analyses.scene_cuts.profile, params: { range: { start: 0, end: 5 } } });
-    const raw: Record<string, unknown> = { ...f.result, kind: "scene_cuts", analysisInput: input, inputFingerprint: await fingerprintMiniToolAnalysisInput(input), fps: { numerator: 4, denominator: 1 }, frameCount: 20, cuts: [] };
-    delete raw.people; delete raw.anchor;
-    const incoming = miniToolAnalysisResultSchema.parse(raw);
-    await expect(record(f, incoming)).rejects.toBeInstanceOf(ConflictError); expect(await snapshot(f)).toEqual(before);
-  });
-
-  it.each(["people", "scene_cuts", "tracked_mask"] as const)("applies the complete typed %s schema at the write boundary", async (kind) => {
+  it.each(["scene_cuts"] as const)("applies the complete typed %s schema at the write boundary", async (kind) => {
     const f = await seedOpen(kind); const before = await snapshot(f);
-    const invalid = f.result.kind === "people" ? { ...f.result, people: [{ ...f.result.people[0]!, faceBox: { x: 0.9, y: 0, width: 0.2, height: 0.3 } }] }
-      : f.result.kind === "scene_cuts" ? { ...f.result, cuts: [{ frameIndex: 20, detectionScore: 85 }] }
-        : { ...f.result, artifactRefs: [] };
+    const invalid = { ...f.result, cuts: [{ frameIndex: 20, detectionScore: 85 }] };
     await expect(record(f, invalid)).rejects.toBeInstanceOf(z.ZodError); expect(await snapshot(f)).toEqual(before);
   });
 
@@ -532,19 +506,8 @@ describe("persistent analysis results", () => {
   });
 
   it("checks the frozen input even when the callback repeats the accepted fingerprint", async () => {
-    const f = await seedOpen(); const before = await snapshot(f); const incoming = people(f);
+    const f = await seedOpen(); const before = await snapshot(f); const incoming = scenes(f);
     incoming.analysisInput.profile.version = "changed-with-original-fingerprint";
-    await expect(record(f, incoming)).rejects.toBeInstanceOf(ConflictError);
-    expect(await snapshot(f)).toEqual(before);
-  });
-
-  it.each(["range", "region", "points", "trackingPrompt"] as const)("checks frozen tracking %s independently of its declared fingerprint", async (field) => {
-    const f = await seedOpen("tracked_mask"); const before = await snapshot(f); const incoming = structuredClone(f.result);
-    if (incoming.analysisInput.kind !== "tracked_mask") throw new Error("Expected tracking input");
-    if (field === "range") incoming.analysisInput.range = { start: 1, end: 4 };
-    if (field === "region") incoming.analysisInput.region.box = { x: 0.2, y: 0.1, width: 0.2, height: 0.3 };
-    if (field === "points") incoming.analysisInput.region.points = [{ x: 0.2, y: 0.2, label: "positive" }];
-    if (field === "trackingPrompt") incoming.analysisInput.trackingPrompt = "another subject";
     await expect(record(f, incoming)).rejects.toBeInstanceOf(ConflictError);
     expect(await snapshot(f)).toEqual(before);
   });
@@ -555,9 +518,9 @@ describe("persistent analysis results", () => {
     expect(await snapshot(f)).toEqual(before);
   });
 
-  it("rejects a conflicting replacement for a committed person identity", async () => {
-    const f = await seedOpen(); await record(f); const before = await snapshot(f); const incoming = people(f);
-    incoming.people[0]!.personId = "person-replacement";
+  it("rejects a conflicting replacement for a committed scene cut", async () => {
+    const f = await seedOpen(); await record(f); const before = await snapshot(f); const incoming = scenes(f);
+    incoming.cuts[0]!.frameIndex = 3;
     await expect(record(f, incoming)).rejects.toBeInstanceOf(ConflictError); expect(await snapshot(f)).toEqual(before);
   });
 
@@ -581,7 +544,7 @@ describe("persistent analysis results", () => {
     const before = await snapshot(f); await expect(record(f)).rejects.toBeInstanceOf(NotFoundError); expect(await snapshot(f)).toEqual(before);
   });
 
-  it.each(["people", "scene_cuts"] as const)("preserves completed %s work when admission receives a queue error", async (kind) => {
+  it.each(["scene_cuts"] as const)("preserves completed %s work when admission receives a queue error", async (kind) => {
     const f = await seedOpen(kind); const before = await snapshot(f);
     const params = before.task.params as Record<string, unknown>;
     const frozen = domain.miniToolAnalysisService.miniToolFrozenAnalysisSchema.parse(params.analysis);
@@ -589,12 +552,11 @@ describe("persistent analysis results", () => {
       analysisRunId: crypto.randomUUID(), projectId: frozen.projectId, spaceId: frozen.spaceId,
       hostNodeId: frozen.hostNodeId, draftId: frozen.draftId, revision: frozen.revision, kind, source: frozen.source,
       presentationRef: (params.analysis as { presentationRef: unknown }).presentationRef,
-      params: kind === "people" && frozen.analysisInput.kind === "people" ? { anchor: frozen.analysisInput.anchor }
-        : { range: { start: 0, end: 5 } },
+      params: { range: { start: 0, end: 5 } },
     });
     let committed!: MiniToolAnalysisRecord;
     await expect(domain.miniToolAnalysisService.accept(body, f.userId, async (accepted) => {
-      if (kind === "scene_cuts") await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at)
+      await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at)
         SELECT studio_id,${f.userId},${body.analysisRunId},1,'held','2099-01-01T00:00:00Z' FROM projects WHERE id=${body.projectId}`;
       const identity = accepted.record;
       committed = await record(f, {

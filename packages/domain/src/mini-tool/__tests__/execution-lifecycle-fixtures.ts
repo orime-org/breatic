@@ -12,34 +12,32 @@ import { presentedSource } from "../../../../server/src/__tests__/integration/pr
 
 const OUTPUT_HASH = "147d7b46f5062b1cc7231edff71bed11071dd088c5b3434432f24e5d41037a07";
 const SOURCE_URL = "https://assets.example.test/video/source.mp4";
-const BODY = { video: { kind: "prepared", inputId: "source", job: "50000000-0000-4000-8000-000000000001:prep:0" }, background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true } as const;
-// The frozen removal plan names its tool input and the selected version on the frame grid (frames-split §7.11); the
-// version is the removal source's (presentation-fixtures.ts), built per seed.
+// The frozen split plan names its tool input and the selected version on the frame grid (frames-split §7.11); the
+// version is the source's (presentation-fixtures.ts), built per seed.
 const SOURCE_KEY = "video/source.mp4";
-const PREPARATION = {
+const CONTAINER = {
   containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
   prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
-  limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 96 }], chunkRetries: 3,
-  // §91 D3b-5: the model input's encode parameters frozen at admission.
-  encode: { crf: 18, preset: "medium" },
+  limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
+  startSeconds: 3, encode: { crf: 18, preset: "medium" }, chunkRetries: 3,
 };
 
 const GOLDEN = {
-  schemaVersion: 1, tool: "video.remove-bg", taskId: "50000000-0000-4000-8000-000000000001", projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001",
+  schemaVersion: 1, tool: "video.split", taskId: "50000000-0000-4000-8000-000000000001", projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001",
   targetNodeIds: ["40000000-0000-4000-8000-000000000001"],
   binding: { assetId: "80000000-0000-4000-8000-000000000001", contentHash: "a".repeat(64), canonicalURL: SOURCE_URL, kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } },
   sourceKey: SOURCE_KEY,
-  draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001", source: { nodeId: "30000000-0000-4000-8000-000000000001", canonicalURL: SOURCE_URL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: {} },
-  analysisRefs: [], outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
-  model: "fixture-bria-fibo-video", route: { mode: "upstream", upstream: "wavespeed" }, body: BODY,
-  preparation: PREPARATION, credits: 35, modelCredits: 30, chargeTo: "user",
+  draft: { version: 1, draftId: "60000000-0000-4000-8000-000000000001", revision: "70000000-0000-4000-8000-000000000001", source: { nodeId: "30000000-0000-4000-8000-000000000001", canonicalURL: SOURCE_URL, mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } }, inputs: [], params: { cuts: [] } },
+  analysisRefs: [], outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "segment", range: { start: 0, end: 96 } } }],
+  model: "video.split", layout: { batches: [[0]], encodes: [] }, stageJobs: [{ stage: "encode", jobs: 1 }], outputSeconds: [20],
+  container: CONTAINER, credits: 35, chargeTo: "user",
   requestFingerprint: "329f16d3751e013600fc7b50f226a6629d74425d96ef234c6e4d1f016a89e725", planFingerprint: "8f36d34692aa41e3bc7f64f2aef5eefbb1f0f8a0c0fef3119aefc6af7bc22925",
-} as unknown as Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>;
+} as unknown as AcceptedMiniToolExecution;
 
 export type FixturePg = ReturnType<typeof createPgClient>;
 export interface ExecutionFixture {
   taskId: string; userId: string; viewerId: string; projectId: string; studioId: string;
-  plan: Extract<AcceptedMiniToolExecution, { tool: "video.remove-bg" }>; record: MiniToolExecutionRecord; registered: MiniToolExecutionRegistered;
+  plan: AcceptedMiniToolExecution; record: MiniToolExecutionRecord; registered: MiniToolExecutionRegistered;
 }
 /** Seed original F, a real parent, membership and registered canonical rows, with no network or media processing.
  * @throws {Error} On a fixture SQL failure.
@@ -52,7 +50,6 @@ export async function seedExecution(pg: FixturePg, status: MiniToolExecutionReco
   plan.taskId = randomUUID(); plan.projectId = target.projectId; plan.spaceId = randomUUID();
   plan.targetNodeIds = [randomUUID()]; plan.outputs[0]!.nodeId = plan.targetNodeIds[0]!; plan.binding.assetId = randomUUID();
   plan.draft.draftId = randomUUID(); plan.draft.revision = randomUUID(); plan.draft.source.nodeId = randomUUID();
-  (plan.body as unknown as { video: { job: string } }).video.job = `${plan.taskId}:prep:0`;
   const { requestFingerprint: _request, planFingerprint: _hash, ...projection } = plan; plan.planFingerprint = await hashMiniToolValue(projection);
   const viewerId = randomUUID();
   await pg`INSERT INTO users (id,email,email_verified) VALUES (${viewerId},${`life-${viewerId}@example.test`},true)`;

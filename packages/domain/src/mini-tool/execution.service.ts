@@ -277,8 +277,7 @@ async function requireRegistered(output: MiniToolExecutionOutput, tx: DbTx): Pro
 
 /**
  * End a run's pins at a terminal write when nothing can retry it (frames-split §7.15 end of retryability): no output is
- * failed (it completed, or a failed run's failed outputs were all registered late), its tool has no retry (transitions),
- * or a failed output carries a failure no retry can clear (§9.4, §10.4, §10.5: no_face, model_rejected, a frame count mismatch).
+ * failed (it completed, or a failed run's failed outputs were all registered late), or its tool has no retry.
  * @param id - The run.
  * @param tool - Its frozen tool.
  * @param record - The terminal record just stored.
@@ -287,9 +286,8 @@ async function requireRegistered(output: MiniToolExecutionOutput, tx: DbTx): Pro
  */
 async function releaseUnretryablePins(id: string, tool: string, record: MiniToolExecutionRecord, tx: DbTx): Promise<void> {
   const failed = record.outputs.flatMap((output) => output.result?.status === "failed" ? [output.result.error] : []);
-  if (failed.length > 0 && failed.every((error) => plannedFailureRetryable(tool, error))) return;
+  if (failed.length > 0 && plannedFailureRetryable(tool)) return;
   await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
-  await presentationPinService.release({ holderKind: "prepared", holderId: id }, tx);
 }
 
 /**

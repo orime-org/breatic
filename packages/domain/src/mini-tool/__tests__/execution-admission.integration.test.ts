@@ -2,23 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Remove-background durable admission (S6e E3b, inner#1306 test plan §90; design §5.3 remove-bg and model-input rows,
- * §7.11, §5.4 作业身份; frames-split §7.11). The request names its tool input; admission freezes the selected version
- * on the frame grid, `params.video` as the prepared reference `<taskId>:prep:0`, the standard-4 preparation (price,
- * limits and grid chunk windows) and the payer, and quotes the model (the grid's display duration) plus max(preparation
- * precheck, planned preparation work) at the frozen standard-4 price. The golden fingerprints were recomputed
- * independently with Python's canonical JSON/SHA-256 (ECMAScript number text).
+ * Planned execution durable admission (inner#1306 test plan §90; frames-split §5.4, §5.5, §7.11), on frame extraction.
+ * The request names its tool input; admission freezes the selected version on the frame grid, the frames layout, the
+ * standard-4 policy and the payer (the platform pays for frame extraction, so it quotes 0).
  */
 import crypto from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
-import * as core from "@breatic/core";
+import type * as core from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError, createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
-import * as shared from "@breatic/shared";
+import type * as shared from "@breatic/shared";
 import { miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
-import { acceptMiniToolExecution, initProvider, type AcceptedMiniToolExecution } from "@domain/index.js";
-import { containerCostUsd } from "@domain/credit/container-cost.js";
-import { creditsForUsd } from "@domain/credit/usage-cost.js";
-import { estimateModelCredits, MIN_TASK_CREDIT_COST, resetModelCatalog } from "@domain/model-catalog/model-catalog.js";
+import { acceptMiniToolExecution, type AcceptedMiniToolExecution } from "@domain/index.js";
 import { seedStudioFixture } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 import { presentedSource, type PresentedSource } from "../../../../server/src/__tests__/integration/presentation-fixtures.js";
@@ -31,7 +25,7 @@ vi.mock("@breatic/core", async (original) => {
 });
 
 interface Fixture {
-  body: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }>;
+  body: Extract<MiniToolPlannedRequest, { tool: "video.extract-frames" }>;
   userId: string;
   otherEditorId: string;
   viewerId: string;
@@ -59,8 +53,8 @@ interface StoredTask {
 }
 
 // inner#1306: the independent admission oracle supplies these request literals.
-const GOLDEN_BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> = {
-  tool: "video.remove-bg",
+const GOLDEN_BODY: Extract<MiniToolPlannedRequest, { tool: "video.extract-frames" }> = {
+  tool: "video.extract-frames",
   project_id: "10000000-0000-4000-8000-000000000001",
   space_id: "20000000-0000-4000-8000-000000000001",
   run_id: "50000000-0000-4000-8000-000000000001",
@@ -74,70 +68,21 @@ const GOLDEN_BODY: Extract<MiniToolPlannedRequest, { tool: "video.remove-bg" }> 
       mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" },
     },
     inputs: [],
-    params: {},
+    params: { mode: "first", frameIndex: 0 },
   },
   analysis_refs: [],
-  outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "remove-bg" } }],
+  outputs: [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", recipe: { kind: "frame", frameIndex: 0 } }],
   // The golden source's grid tool input (presentation-fixtures.ts with hash "a" x 64 at video/source.mp4).
   presentation_ref: { source: { toolInputId: "6d11edc6ff23f7252db3a5d7410aa1bc6fd09eb0a82d4e9416708a6e5a56f20d", planSha256: "f8d213d4c5ed6a79e8161cc7acf54c558ab53ea5f18cebc3baedb18f95a4d955" } },
 };
-// The complete server-plan projection was hashed independently with Python's JSON/SHA-256.
-const GOLDEN_PLAN: AcceptedMiniToolExecution = {
-  schemaVersion: 1,
-  tool: "video.remove-bg",
-  taskId: GOLDEN_BODY.run_id,
-  projectId: GOLDEN_BODY.project_id,
-  spaceId: GOLDEN_BODY.space_id,
-  targetNodeIds: ["40000000-0000-4000-8000-000000000001"],
-  binding: {
-    assetId: "80000000-0000-4000-8000-000000000001",
-    contentHash: "a".repeat(64),
-    canonicalURL: "https://assets.example.test/video/source.mp4",
-    kind: "video",
-    mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" },
-  },
-  sourceKey: "video/source.mp4",
-  draft: GOLDEN_BODY.draft,
-  analysisRefs: [],
-  outputs: GOLDEN_BODY.outputs,
-  model: "bria-fibo-video-background-remover",
-  route: { mode: "upstream", upstream: "wavespeed" },
-  body: {
-    // E3-8: the provider input is the prepared model input, resolved by the worker after its preparation steps.
-    video: { kind: "prepared", inputId: "source", job: "50000000-0000-4000-8000-000000000001:prep:0" },
-    background_color: "Transparent",
-    output_container_and_codec: "webm_vp9",
-    preserve_audio: true,
-  },
-  // The selected version and its reference are the golden source's (presentation-fixtures.ts), set by `goldenPlan`.
-  preparation: {
-    containerClass: "MiniToolContainerStd4", precheckSeconds: 300, size: { instance_type: "standard-4", vcpu: 4, memory_gib: 12, disk_gb: 20 },
-    prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
-    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunks: [{ start: 0, end: 1011 }],
-    // §3.2 item 1: the preparation's retry cap is frozen at admission (encoding.chunk_retries).
-    chunkRetries: 3,
-    // §91 D3b-5: the model input's encode parameters, frozen at admission from presentation.crf/preset like the carrier's.
-    encode: { crf: 18, preset: "medium" },
-  },
-  // Model 30 for 5.055 s of display + standard-4 preparation at its 300 s floor (0.03342 USD, the 5-credit minimum).
-  credits: 35,
-  chargeTo: "user",
-  // The frozen model part of the quote (display.duration), so a retry that reruns only generate can hold it alone.
-  modelCredits: 30,
-  requestFingerprint: "91f5eef27ba46d6f47d72ab8878e296659fe7c0509b75eaea4a5fff359b78f86",
-  // Both fingerprints were recomputed independently in Python (sorted keys, compact JSON, ECMAScript number text, SHA-256)
-  // over the golden request and the plan with the golden source's grid version (frames-split §7.11).
-  planFingerprint: "174dba674db23eb6d9b4bde25f84b6029d951def2c95f5a9a92a7adc646e98c9",
-} as unknown as AcceptedMiniToolExecution;
+const GOLDEN_ASSET = "80000000-0000-4000-8000-000000000001";
 
 let pg: ReturnType<typeof createPgClient>;
 let publicUrl: (key: string) => string;
 
-/** Configure only fixture values; the key is never sent to an upstream. @throws {Error} If test configuration is invalid. */
-function configure(key = "unused-by-admission-integration"): void {
-  initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1", WAVESPEED_API_KEY: key, UPLOAD_BASE_URL: "https://assets.example.test" });
-  initProvider();
-  resetModelCatalog();
+/** Configure only fixture values. @throws {Error} If test configuration is invalid. */
+function configure(): void {
+  initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1", UPLOAD_BASE_URL: "https://assets.example.test" });
 }
 
 beforeAll(async () => {
@@ -165,7 +110,7 @@ beforeEach(() => {
     return new Response(body, { headers: { "Content-Type": "application/json" } });
   }));
 });
-afterAll(async () => { await pg.end(); initCore(process.env); initProvider(); resetModelCatalog(); vi.unstubAllGlobals(); });
+afterAll(async () => { await pg.end(); initCore(process.env); vi.unstubAllGlobals(); });
 
 /** Insert a real project member without synthesizing authorization answers. @throws {Error} On fixture SQL failure. */
 async function member(projectId: string, role: "editor" | "viewer"): Promise<string> {
@@ -189,7 +134,7 @@ async function seed(golden = false): Promise<Fixture> {
   const userId = await member(projectId, "editor");
   const otherEditorId = await member(projectId, "editor");
   const viewerId = await member(projectId, "viewer");
-  const sourceAssetId = golden ? GOLDEN_PLAN.binding.assetId : crypto.randomUUID();
+  const sourceAssetId = golden ? GOLDEN_ASSET : crypto.randomUUID();
   const sourceKey = golden ? "video/source.mp4" : `video/admission-fixture/${sourceAssetId}.mp4`;
   const sourceHash = golden ? "a".repeat(64) : crypto.randomBytes(32).toString("hex");
   const sourceURL = publicUrl(sourceKey);
@@ -212,16 +157,6 @@ async function seed(golden = false): Promise<Fixture> {
   return { body, userId, otherEditorId, viewerId, sourceStudioId: source.studioId, targetStudioId: target.studioId, sourceAssetId, sourceKey, sourceHash, presented };
 }
 
-/**
- * The golden plan with the golden source's selected version (frames-split §7.11): the plan freezes the version the
- * snapshot selects, its reference and its versionId.
- * @param f - The golden fixture.
- * @returns The plan.
- */
-function goldenPlan(f: Fixture): AcceptedMiniToolExecution {
-  return { ...GOLDEN_PLAN, presentationRef: f.presented.presentationRef, presentations: { source: f.presented.bundle }, versionIds: { source: f.presented.versionId } };
-}
-
 /** Read the task independently of the admission service and its repository mapper. @throws {Error} On fixture SQL failure. */
 async function readTask(taskId: string): Promise<StoredTask | null> {
   const [row] = await pg<StoredTask[]>`SELECT id,user_id,project_id,space_id,task_type,source,mode,status,model,params,result,
@@ -235,22 +170,24 @@ function startRecorder(): ReturnType<typeof vi.fn<(accepted: AcceptedMiniToolExe
 }
 
 describe("planned execution durable admission", () => {
-  it("A03 freezes the independently specified complete cross-Studio plan before the sole start callback", async () => {
+  it("A03 freezes the complete cross-Studio frames plan before the sole start callback", async () => {
     const f = await seed(true);
     expect(f.sourceStudioId).not.toBe(f.targetStudioId);
     const captured: AcceptedMiniToolExecution[] = [];
     const start = vi.fn(async (accepted: AcceptedMiniToolExecution): Promise<"pending"> => {
       captured.push(structuredClone(accepted));
       const task = await readTask(accepted.taskId);
-      expect(task?.params).toEqual({ miniToolExecution: goldenPlan(f) });
+      expect(task?.params).toEqual({ miniToolExecution: JSON.parse(JSON.stringify(accepted)) });
       return "pending";
     });
     expect(await acceptMiniToolExecution(f.body, f.userId, start)).toEqual({ taskId: GOLDEN_BODY.run_id, status: "pending" });
     expect(start).toHaveBeenCalledTimes(1);
-    expect(captured).toEqual([goldenPlan(f)]);
+    expect(captured[0]).toMatchObject({ tool: "video.extract-frames", taskId: GOLDEN_BODY.run_id, model: "video.extract-frames", chargeTo: "platform", credits: 0,
+      sourceKey: "video/source.mp4", outputs: GOLDEN_BODY.outputs, draft: GOLDEN_BODY.draft, layout: { batches: [[0]], encodes: [] },
+      presentationRef: f.presented.presentationRef, presentations: { source: f.presented.bundle }, versionIds: { source: f.presented.versionId } });
     const task = await readTask(f.body.run_id);
     expect(task).toMatchObject({ id: f.body.run_id, user_id: f.userId, project_id: f.body.project_id, space_id: f.body.space_id,
-      task_type: "video", source: "mini_tool", mode: "append", status: "pending", model: "bria-fibo-video-background-remover", params: { miniToolExecution: goldenPlan(f) } });
+      task_type: "image", source: "mini_tool", mode: "append", status: "pending", model: "video.extract-frames" });
     const [destination] = await pg<{ target_studio: string; source_studio: string }[]>`SELECT p.studio_id AS target_studio,a.studio_id AS source_studio
       FROM projects p CROSS JOIN studio_assets a WHERE p.id=${f.body.project_id} AND a.id=${f.sourceAssetId}`;
     expect(destination).toEqual({ target_studio: f.targetStudioId, source_studio: f.sourceStudioId });
@@ -265,11 +202,10 @@ describe("planned execution durable admission", () => {
     const initial = await acceptMiniToolExecution(f.body, f.userId, start);
     const before = await readTask(f.body.run_id);
     await pg`UPDATE studio_assets SET deleted_at=clock_timestamp() WHERE id=${f.sourceAssetId}`;
-    configure("");
     const reordered: MiniToolPlannedRequest = {
       outputs: structuredClone(f.body.outputs), analysis_refs: [],
-      draft: { params: {}, inputs: [], source: structuredClone(f.body.draft.source), revision: f.body.draft.revision, draftId: f.body.draft.draftId, version: 1 },
-      run_id: f.body.run_id, space_id: f.body.space_id, project_id: f.body.project_id, tool: "video.remove-bg",
+      draft: { params: { frameIndex: 0, mode: "first" }, inputs: [], source: structuredClone(f.body.draft.source), revision: f.body.draft.revision, draftId: f.body.draft.draftId, version: 1 },
+      run_id: f.body.run_id, space_id: f.body.space_id, project_id: f.body.project_id, tool: "video.extract-frames",
       presentation_ref: structuredClone(f.body.presentation_ref),
     };
     expect(await acceptMiniToolExecution(reordered, f.userId, start)).toEqual(initial);
@@ -362,11 +298,6 @@ describe("planned execution durable admission", () => {
     expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toEqual(before);
   });
 
-  it("A14 refuses an unavailable real catalog before creating or starting a task", async () => {
-    const f = await seed(); const start = startRecorder(); configure("");
-    await expect(acceptMiniToolExecution(f.body, f.userId, start)).rejects.toMatchObject({ statusCode: 503 });
-    expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toBeNull();
-  });
 
   it.each(["missing membership", "missing Project", "deleted Project"] as const)("requires current project authority for %s", async (kind) => {
     const f = await seed(); const start = startRecorder();
@@ -390,71 +321,14 @@ describe("planned execution durable admission", () => {
     const accepted = start.mock.calls[0]?.[0];
     expect(accepted?.binding).toEqual({ assetId: f.sourceAssetId, contentHash: f.sourceHash, canonicalURL: f.body.draft.source.canonicalURL,
       kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } });
-    expect(accepted?.credits).toBe(35);
+    expect(accepted?.credits).toBe(0);
     expect(accepted?.draft.source.mediaInfo).toEqual({ width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" });
   });
 });
 
-/**
- * Record that a run finished its model-input preparation: its prepared pin, as the preparation's registration writes it
- * (design §7.15 prepared row). A removal retry reuses only such a preparation (frames-split retry row).
- * @param runId - The run that prepared.
- * @param toolInputId - Its source's tool input.
- * @param sourceKey - Its source's storage key.
- * @returns Nothing.
- * @throws {Error} On fixture SQL failure.
- */
-async function seedPrepared(runId: string, toolInputId: string, sourceKey: string): Promise<void> {
-  const preparedKey = `${sourceKey}.${runId}:prep:0:a1`;
-  const [pin] = await pg<{ id: string }[]>`INSERT INTO presentation_pins (holder_kind,holder_id,tool_input_id,prepared_key)
-    VALUES ('prepared',${runId},${toolInputId},${preparedKey}) RETURNING id`;
-  await pg`INSERT INTO presentation_pin_objects (pin_id,storage_key) VALUES (${pin!.id},${preparedKey})`;
-}
-
-/** Credits for some standard-4 seconds under the shipped configuration: the one container quote rule (E3-5). @throws {Error} On invalid prices. */
-function std4Credits(seconds: number): number {
-  const config = core.getMiniToolsConfig();
-  return Math.max(shared.ceilToCreditCent(creditsForUsd(containerCostUsd({ wallMs: seconds * 1000, cpuUsec: null }, config.classes.MiniToolContainerStd4!, config.prices), 1)), MIN_TASK_CREDIT_COST);
-}
-
-describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; design §5.3, §5.4, §7.11)", () => {
-  it("RB-A01 freezes params.video as the prepared reference of this run's first preparation", async () => {
-    const f = await seed(); const start = startRecorder();
-    await acceptMiniToolExecution(f.body, f.userId, start);
-    const accepted = start.mock.calls[0]![0] as unknown as { body: { video: unknown }; presentationRef: unknown; preparation: { chunks: unknown } };
-    expect(accepted.body.video).toEqual({ kind: "prepared", inputId: "source", job: `${f.body.run_id}:prep:0` });
-    expect(accepted.presentationRef).toEqual(f.body.presentation_ref);
-    expect(accepted.preparation.chunks).toEqual([{ start: 0, end: 1011 }]);
-    // §3.2 item 1: the preparation's retry cap is frozen with it.
-    expect(accepted.preparation).toMatchObject({ chunkRetries: core.getMiniToolsConfig().encoding.chunk_retries });
-  });
-
-  // §91 D3b-5 (design §5.3 model-input row, §5.4 「编码参数完全一致」): the model input's crf and preset are frozen at
-  // admission from the presentation encode settings, so every preparation chunk of the run encodes alike whatever the
-  // configuration says later.
-  it("RB-A03 freezes the model input's encode parameters from the presentation settings", async () => {
-    const f = await seed(); const start = startRecorder();
-    const { presentation } = core.getMiniToolsConfig();
-    await acceptMiniToolExecution(f.body, f.userId, start);
-    const accepted = start.mock.calls[0]![0] as unknown as { preparation: { encode?: unknown } };
-    expect(accepted.preparation.encode).toEqual({ crf: presentation.crf, preset: presentation.preset });
-  });
-
-  it("RB-A02 quotes the model from the display duration plus the preparation at max(precheck, planned work)", async () => {
-    const f = await seed(); const start = startRecorder();
-    const actual = structuredClone(core.getMiniToolsConfig());
-    actual.executions["video.remove-bg"].preparation.precheck_seconds = 100000;
-    outside.config.mockReturnValue(actual);
-    await acceptMiniToolExecution(f.body, f.userId, start);
-    const model = await estimateModelCredits("bria-fibo-video-background-remover", { params: {}, durations: { video: [5.055] }, sources: ["video"] });
-    const accepted = start.mock.calls[0]![0] as unknown as { credits: number; modelCredits: number };
-    expect(accepted.modelCredits).toBe(model!.credits);
-    // A fresh run's quote is the frozen model part plus the preparation part.
-    expect(accepted.credits).toBe(accepted.modelCredits + std4Credits(100000));
-  });
-
+describe("planned admission on the selected version and failed-output retry (frames-split §7.11, §7.15)", () => {
   // frames-split §7.11: the press is admitted only on the selected version it names.
-  it.each(["ref toolInputId", "ref planSha256", "nothing selected"])("RB-A03 refuses when %s, before claiming the run", async (bad) => {
+  it.each(["ref toolInputId", "ref planSha256", "nothing selected"])("refuses when %s, before claiming the run", async (bad) => {
     const f = await seed(); const start = startRecorder();
     const snapshot = outside.snapshots.get(f.sourceKey) as { presentation: unknown };
     if (bad === "ref toolInputId") f.body.presentation_ref.source.toolInputId = "b".repeat(64);
@@ -464,40 +338,20 @@ describe("remove-bg model-input preparation at admission (inner#1306 §90 E3b; d
     expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toBeNull();
   });
 
-  it("RB-R01 a failed-output retry reuses the frozen params.video reference and preparation without reading the current version or re-preparing", async () => {
+  it("a failed-output retry reuses the frozen plan without reading the current version and keeps the platform payer", async () => {
     const f = await seed(); const start = startRecorder();
     await acceptMiniToolExecution(f.body, f.userId, start);
-    const original = start.mock.calls[0]![0] as unknown as { body: { video: unknown }; preparation: unknown; presentationRef: unknown; presentations: unknown; planFingerprint: string; binding: unknown; outputs: unknown[]; sourceKey: string };
-    await seedPrepared(f.body.run_id, f.body.presentation_ref.source.toolInputId, original.sourceKey);
+    const original = start.mock.calls[0]![0];
     const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: original.planFingerprint,
-      resultVersion: 1, sourceBindings: [original.binding], outputs: (original.outputs as Record<string, unknown>[]).map((output) => ({ ...output, late: false,
-        result: { status: "failed", error: { code: "provider_failed" } } })), usage: [], billingState: "idle", error: { code: "provider_failed" } });
+      resultVersion: 1, sourceBindings: [original.binding], outputs: original.outputs.map((output) => ({ ...output, late: false,
+        result: { status: "failed", error: { code: "mini_tool_failed" } } })), usage: [], billingState: "idle", error: { code: "mini_tool_failed" } });
     await pg`UPDATE tasks SET status='failed',result=${pg.json({ miniToolExecution: JSON.parse(JSON.stringify(record)) })},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
     outside.ingest.mockClear(); outside.reads.length = 0;
-    const retry = { tool: "video.remove-bg", project_id: f.body.project_id, space_id: f.body.space_id, run_id: crypto.randomUUID(), retry: { runId: f.body.run_id, outputIndexes: [0] } };
-    await acceptMiniToolExecution(retry as never, f.otherEditorId, start);
-    const accepted = start.mock.calls[1]![0] as unknown as typeof original;
-    expect(accepted.body.video).toEqual(original.body.video);
-    expect(accepted.preparation).toEqual(original.preparation);
-    expect(accepted.presentationRef).toEqual(original.presentationRef);
-    expect(accepted.presentations).toEqual(original.presentations);
+    const retry = { tool: "video.extract-frames" as const, project_id: f.body.project_id, space_id: f.body.space_id, run_id: crypto.randomUUID(), retry: { runId: f.body.run_id, outputIndexes: [0] } };
+    await acceptMiniToolExecution(retry, f.otherEditorId, start);
+    const accepted = start.mock.calls[1]![0];
+    expect(accepted).toMatchObject({ taskId: retry.run_id, retry: retry.retry, outputs: original.outputs, chargeTo: "platform", credits: 0,
+      presentationRef: original.presentationRef, presentations: original.presentations, layout: original.layout });
     expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
   });
-
-  it("RB-R02 a failed-output retry reruns only generate: its quote is the frozen model part alone, without the preparation it does not rerun", async () => {
-    const f = await seed(); const start = startRecorder();
-    await acceptMiniToolExecution(f.body, f.userId, start);
-    const original = start.mock.calls[0]![0] as unknown as { planFingerprint: string; binding: unknown; outputs: unknown[]; sourceKey: string };
-    await seedPrepared(f.body.run_id, f.body.presentation_ref.source.toolInputId, original.sourceKey);
-    const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: original.planFingerprint,
-      resultVersion: 1, sourceBindings: [original.binding], outputs: (original.outputs as Record<string, unknown>[]).map((output) => ({ ...output, late: false,
-        result: { status: "failed", error: { code: "provider_failed" } } })), usage: [], billingState: "idle", error: { code: "provider_failed" } });
-    await pg`UPDATE tasks SET status='failed',result=${pg.json({ miniToolExecution: JSON.parse(JSON.stringify(record)) })},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
-    const retry = { tool: "video.remove-bg", project_id: f.body.project_id, space_id: f.body.space_id, run_id: crypto.randomUUID(), retry: { runId: f.body.run_id, outputIndexes: [0] } };
-    await acceptMiniToolExecution(retry as never, f.userId, start);
-    const model = await estimateModelCredits("bria-fibo-video-background-remover", { params: {}, durations: { video: [5.055] }, sources: ["video"] });
-    expect(start.mock.calls[0]![0].credits).toBe(model!.credits + std4Credits(300));
-    expect(start.mock.calls[1]![0].credits).toBe(model!.credits);
-  });
 });
-

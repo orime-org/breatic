@@ -2,20 +2,18 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { z } from "zod";
-import { AppError, ConflictError, ForbiddenError, NotFoundError, ValidationError, db, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from "@breatic/core";
+import { ConflictError, ForbiddenError, NotFoundError, ValidationError, db, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { ceilToCreditCent, t, videoPresentationVersionSchema, type ConsentSnapshot, type VideoPresentationVersion } from "@breatic/shared";
-import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, hashMiniToolValue, miniToolAnalysisInputSchema, miniToolChargeTo, miniToolPresentationRefSchema, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, miniToolSourceBindingSchema, projectMiniToolAnalysisInput, trackingClips, videoToolSourceRefSchema, type MiniToolAnalysisRequest, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult, type MiniToolSourceBinding } from "@breatic/shared/mini-tools";
+import { canonicalMiniToolValue, fingerprintMiniToolAnalysisInput, hashMiniToolValue, miniToolAnalysisInputSchema, miniToolChargeTo, miniToolPresentationRefSchema, miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, miniToolSourceBindingSchema, projectMiniToolAnalysisInput, videoToolSourceRefSchema, type MiniToolAnalysisRequest, type MiniToolAnalysisKind, type MiniToolAnalysisRecord, type MiniToolAnalysisResult, type MiniToolSourceBinding } from "@breatic/shared/mini-tools";
 import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
-import { getModelCatalog, MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
-import { admitModelCall } from "@domain/mini-tool/model-call-admission.js";
+import { MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
-import { assertOpaqueSource, eraseModelLimits, eraseRangeGrid, trackingClipSeconds } from "@domain/mini-tool/tracking-range.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 
 export { miniToolAnalysisRequestSchema, type MiniToolAnalysisRequest } from "@breatic/shared/mini-tools";
@@ -25,7 +23,7 @@ export const miniToolFrozenAnalysisSchema = z.strictObject({
   schemaVersion: z.literal(1),
   analysisRunId: z.string().uuid(), projectId: z.string().uuid(), spaceId: z.string().uuid(),
   hostNodeId: z.string().uuid(), draftId: z.string().uuid(), revision: z.string().uuid(),
-  kind: z.enum(["people", "scene_cuts", "tracked_mask"]), source: videoToolSourceRefSchema,
+  kind: z.enum(["scene_cuts"]), source: videoToolSourceRefSchema,
   binding: miniToolSourceBindingSchema, analysisInput: miniToolAnalysisInputSchema,
   inputFingerprint: z.string().regex(/^[a-f0-9]{64}$/),
   // The selected tool input and its version (grid, tool source and source keyframe statistics), frozen as an execution
@@ -178,39 +176,18 @@ export async function resolveSource(source: MiniToolAnalysisRequest["source"]): 
 }
 
 /**
- * Hold the same actual container prices and model pricing contract as execution.
- * A tracked mask is quoted per tracking clip (execution design §10.3 estimate): the tracker over each clip's encoded
- * length and each clip's standard-4 preparation at its precheck, beside the join at the analysis class's precheck.
+ * Hold the same actual container prices as execution: the analysis class at its precheck.
  * @param kind - The analysis operation.
- * @param input - Its frozen public dependencies.
- * @param display - The selected version's display grid, which a tracked mask's clips are cut on.
- * @returns User credits; a platform-funded kind (people detection) quotes 0.
- * @throws {AppError} When a deployment does not serve or price the selected model.
- * @throws {ValidationError} When a clip is longer than the tracker takes.
+ * @returns User credits; a platform-funded kind quotes 0.
+ * @throws {Error} When the class is not configured.
  */
-async function estimate(kind: MiniToolAnalysisKind, input: MiniToolAnalysisRecord["analysisInput"], display: VideoPresentationVersion["display"]): Promise<number> {
+function estimate(kind: MiniToolAnalysisKind): number {
   if (miniToolChargeTo(kind) === "platform") return 0;
   const config = getMiniToolsConfig();
   const operation = config.analyses[kind];
   const size = config.classes[operation.container_class]!;
   const usd = containerCostUsd({ wallMs: operation.precheck_seconds * 1000, cpuUsec: null }, size, config.prices);
-  let credits = creditsForUsd(usd, env.CREDIT_MULTIPLIER);
-  if (input.kind === "tracked_mask") {
-    const entry = getModelCatalog().video.find((candidate) => candidate.name === input.profile.id);
-    if (!entry) throw new AppError(503, t("server.mini_tool.unavailable"));
-    const first = input.range.start;
-    const count = Math.min(input.range.end, display.frameCount) - first;
-    const preparation = config.analyses.tracked_mask.preparation;
-    const prepareUsd = containerCostUsd({ wallMs: preparation.precheck_seconds * 1000, cpuUsec: null }, config.classes[preparation.container_class]!, config.prices);
-    for (const seconds of trackingClipSeconds(display, trackingClips({ start: first, end: first + count }, input.anchor.frameIndex))) {
-      // Each clip is one SAM3 call, admitted and priced on the frozen route (inner#1306 §11.5).
-      const model = await admitModelCall(input.profile.id, {
-        params: { video: input.sourceURL, apply_mask: false }, prompt: input.trackingPrompt,
-        durations: { video: [seconds] }, sources: ["video"],
-      });
-      credits += model + creditsForUsd(prepareUsd, env.CREDIT_MULTIPLIER);
-    }
-  }
+  const credits = creditsForUsd(usd, env.CREDIT_MULTIPLIER);
   return Math.max(ceilToCreditCent(credits), MIN_TASK_CREDIT_COST);
 }
 
@@ -295,13 +272,9 @@ export async function get(id: string, userId: string): Promise<MiniToolAnalysisR
   if (!task?.projectId || task.taskType !== "mini_tool_analysis") throw new NotFoundError(t("server.error.not_found"));
   await assertAccess(task.projectId, userId, false);
   const record = recordFromTask(task);
-  const references = [record.binding, ...(record.result && "artifactRefs" in record.result ? record.result.artifactRefs : []),
-    ...(record.result?.kind === "people" ? record.result.people.flatMap((person) => person.artifactRefs) : [])];
-  const available = await Promise.all(references.map(async (reference) => {
-    const asset = await assetRepo.findById(reference.assetId);
-    return asset !== null && asset.deletedAt === null && asset.contentHash === reference.contentHash;
-  }));
-  return { ...record, artifactUnavailable: record.artifactUnavailable || available.includes(false) };
+  const asset = await assetRepo.findById(record.binding.assetId);
+  const available = asset !== null && asset.deletedAt === null && asset.contentHash === record.binding.contentHash;
+  return { ...record, artifactUnavailable: record.artifactUnavailable || !available };
 }
 
 /**
@@ -309,7 +282,6 @@ export async function get(id: string, userId: string): Promise<MiniToolAnalysisR
  * @param body - Validated editable inputs.
  * @returns The frozen facts and the credits the run holds.
  * @throws {ValidationError} When a source, range or expected fingerprint is invalid.
- * @throws {AppError} When the deployment does not offer or price the analysis.
  * @throws {Error} When ingest cannot be read.
  */
 async function freeze(body: MiniToolAnalysisRequest): Promise<{
@@ -321,25 +293,13 @@ async function freeze(body: MiniToolAnalysisRequest): Promise<{
   const { display } = version;
   const profile = getMiniToolsConfig().analyses[body.kind].profile;
   const analysisInput = projectMiniToolAnalysisInput({ kind: body.kind, source: { canonicalURL: binding.canonicalURL }, profile, params: body.params });
-  // Ranges and anchors are grid frames of the selected version (frames-split §10.12 analysis-input.ts row).
-  if (("range" in analysisInput && analysisInput.range.end > display.frameCount)
-    || ("anchor" in analysisInput && analysisInput.anchor.frameIndex >= display.frameCount)) {
-    throw new ValidationError(t("server.mini_tool.foreignSource"));
-  }
-  if (analysisInput.kind === "tracked_mask") {
-    // Tracking serves an erase, so the selection is checked as the erase will be (execution design §10.2, §10.4).
-    const erase = getMiniToolsConfig().executions["video.erase"];
-    assertOpaqueSource(version);
-    if (erase === undefined) throw new AppError(400, t("server.mini_tool.unavailable"));
-    const limits = eraseModelLimits(erase.model);
-    if (limits === null) throw new AppError(503, t("server.mini_tool.unavailable"));
-    eraseRangeGrid(display, analysisInput.range, analysisInput.anchor, limits);
-  }
+  // Ranges are grid frames of the selected version (frames-split §10.12 analysis-input.ts row).
+  if (analysisInput.range.end > display.frameCount) throw new ValidationError(t("server.mini_tool.foreignSource"));
   const inputFingerprint = await fingerprintMiniToolAnalysisInput(analysisInput);
   if (body.inputFingerprint !== undefined && body.inputFingerprint !== inputFingerprint) {
     throw new ValidationError(t("server.idempotency.mismatch"));
   }
-  return { binding, sourceKey, version, profile, analysisInput, inputFingerprint, credits: await estimate(body.kind, analysisInput, display) };
+  return { binding, sourceKey, version, profile, analysisInput, inputFingerprint, credits: estimate(body.kind) };
 }
 
 /**
@@ -376,7 +336,7 @@ export async function accept(
   const previous = await taskRepo.getAnalysisTask(body.analysisRunId);
   if (previous !== null) return replay(previous, body, userId, requestFingerprint);
   const frozen = await freeze(body);
-  const { sourceKey, profile } = frozen;
+  const { sourceKey } = frozen;
   const analysis: MiniToolFrozenAnalysis = {
     schemaVersion: 1, analysisRunId: body.analysisRunId, projectId: body.projectId,
     spaceId: body.spaceId, hostNodeId: body.hostNodeId, draftId: body.draftId,
@@ -389,7 +349,7 @@ export async function accept(
   const inserted = await db.transaction(async (tx) => {
     const claimed = await taskRepo.claimAnalysisTask({
       id: body.analysisRunId, userId, projectId: body.projectId, spaceId: body.spaceId,
-      params: taskParams, ...(body.kind === "tracked_mask" ? { model: profile.id } : {}),
+      params: taskParams,
     }, tx);
     // The analysis keeps its input's edit file alive until it ends (§7.15 analysis row).
     if (claimed) await presentationPinService.acquire({ holderKind: "analysis", holderId: body.analysisRunId, toolInputId, objectKeys: toolSourceObjects(frozen.version) }, tx);

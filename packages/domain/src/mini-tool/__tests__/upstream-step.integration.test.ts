@@ -2,25 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import crypto from "node:crypto";
-import fc from "fast-check";
-import { z } from "zod";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createPgClient, initCore } from "@breatic/core";
 import type { MiniToolConsumptionIdentity } from "@breatic/shared/mini-tools";
 import { miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanJobRequest } from "@breatic/shared";
-import {
-  recordMiniToolStepResult, openMiniToolPlanJob, recordMiniToolConsumption, markStepSending, endMiniToolModelStep,
-  type MiniToolStepResultParser,
-} from "@domain/index.js";
-import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
+import { recordMiniToolStepResult, openMiniToolPlanJob, type MiniToolStepResultParser } from "@domain/index.js";
 
 const DEADLINE = 4070908800000;
-const RESULT = { schemaVersion: 1, kind: "tracking_observation", frames: [{ ordinal: 0, counts: "4" }] };
 const ERROR = { code: "provider_failed", detail: "Original diagnostic" };
 const SIBLING = { original: true, rows: [1, { nested: "kept" }] };
 const MANIFEST = { outputs: [{ outputIndex: 8, canonicalURL: "https://assets.test.invalid/old.mp4" }] };
-const RESULT_SCHEMA = z.strictObject({ schemaVersion: z.literal(1), kind: z.literal("tracking_observation"), frames: z.array(z.strictObject({ ordinal: z.number().int().nonnegative(), counts: z.string() })) });
-const PARSER: MiniToolStepResultParser = { kind: "generate", parse: (value) => RESULT_SCHEMA.parse(value) };
 let pg: ReturnType<typeof createPgClient>;
 
 interface Fixture { taskId: string; stepId: string; userId: string; nodeId: string }
@@ -52,10 +43,10 @@ beforeAll(() => {
 });
 afterAll(async () => { await pg.end(); });
 
-/** Seed an independent pending provider call without invoking the owner under test.
+/** Seed an independent pending container step without invoking the owner under test.
  * @throws {Error} When actual fixture SQL fails.
  */
-async function seed(kind: "generate" | "container_job" = "generate"): Promise<Fixture> {
+async function seed(kind: "container_job" = "container_job"): Promise<Fixture> {
   const taskId = crypto.randomUUID(); const stepId = crypto.randomUUID(); const userId = crypto.randomUUID();
   const studioId = crypto.randomUUID(); const projectId = crypto.randomUUID(); const spaceId = crypto.randomUUID(); const nodeId = crypto.randomUUID();
   await pg`INSERT INTO users (id,email,email_verified) VALUES (${userId},${`step-${userId}@example.test`},true)`;
@@ -67,7 +58,7 @@ async function seed(kind: "generate" | "container_job" = "generate"): Promise<Fi
   await pg`INSERT INTO node_tasks (id,project_id,space_id,node_id,kind,action,status,started_by_user_id,budget_ms,label,task_id)
     VALUES (${nodeId},${projectId},${spaceId},${crypto.randomUUID()},'generation','mini_tool','running',${userId},7200000,'analysis',${taskId})`;
   await pg`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,status,output)
-    VALUES (${stepId},${taskId},0,${kind},${kind === "generate" ? "wavespeed-ai/sam3-video-rle" : "MiniToolContainerStd1"},'pending',${pg.json({ sibling: SIBLING })})`;
+    VALUES (${stepId},${taskId},0,${kind},${"MiniToolContainerStd1"},'pending',${pg.json({ sibling: SIBLING })})`;
   return { taskId, stepId, userId, nodeId };
 }
 
@@ -83,17 +74,6 @@ async function snapshot(f: Fixture): Promise<Snapshot> {
   return { task, step, node, usage };
 }
 
-/** End the model step returned through the real public entries: its send is marked, then its answer and costs are
- * written once (inner#1306 §11.4).
- * @param cost - The step's one billed cost: still pending on its lookup, or already known.
- * @throws {Error} When the send or the end cannot be saved.
- */
-async function identify(f: Fixture, cost: "pending" | "known" = "pending"): Promise<void> {
-  await markStepSending(f.taskId, f.stepId, DEADLINE, "wavespeed");
-  await endMiniToolModelStep({ taskId: f.taskId, stepId: f.stepId, end: { kind: "returned", link: "https://provider.test.invalid/out.json" },
-    costs: [cost === "known" ? { state: "known", usd: 0.2, source: "billing" } : { state: "pending", lookup: { upstream: "wavespeed", predictionId: "prediction-original" } }], servedBy: "wavespeed" });
-}
-
 /** Keep original computation, node and unrelated JSON facts outside the step owner.
  * @throws {Error} When an invariant differs.
  */
@@ -103,31 +83,6 @@ function preserved(before: Snapshot, after: Snapshot): void {
   expect(after.task.result.manifest).toEqual(MANIFEST); expect(after.task.result.analysis).toEqual(before.task.result.analysis);
   expect(after.task.result.other).toEqual(SIBLING); expect(after.step.output.sibling).toEqual(SIBLING); expect(after.node).toEqual(before.node);
   expect(after.step.inline_cost_usd).toBe(before.step.inline_cost_usd);
-}
-
-/** Save a provider-specific parsed result, with no network or mask algorithm involved.
- * @throws {Error} When schema, identity or persistence fails.
- */
-async function done(f: Fixture, result: unknown = RESULT): Promise<void> {
-  await recordMiniToolStepResult({ taskId: f.taskId, stepId: f.stepId, identity: { kind: "provider", stepId: f.stepId }, outcome: "done", result }, PARSER);
-}
-
-/** Hold a real task row until both independently observed contenders have queued.
- * @throws {Error} When a contender bypasses the task lock or the gated operation fails.
- */
-async function gated(f: Fixture, first: () => Promise<unknown>, second?: () => Promise<unknown>): Promise<void> {
-  let release!: () => void; let entered!: () => void;
-  const holding = new Promise<void>((resolve) => { release = resolve; });
-  const ready = new Promise<void>((resolve) => { entered = resolve; });
-  const gate = pg.begin(async (tx) => { await tx`SELECT id FROM tasks WHERE id=${f.taskId} FOR UPDATE`; entered(); await holding; });
-  await ready;
-  let one: Promise<unknown> | undefined; let two: Promise<unknown> | undefined;
-  try {
-    one = first(); one.catch(() => undefined);
-    await waitUntilBlockedOn(pg, ["tasks", "for update"], 1);
-    if (second) { two = second(); two.catch(() => undefined); await waitUntilBlockedOn(pg, ["tasks", "for update"], 2); }
-  } finally { release(); await gate; }
-  await one; await two;
 }
 
 /** Prepare a container-only fixture through its existing request and expense owner.
@@ -144,31 +99,6 @@ async function container(): Promise<{ f: Fixture; plan: MiniToolPlanJobRequest; 
 }
 
 describe("operation-typed results keep execution, plans and expenses separate", () => {
-  it("saves a complete parsed result while fee state stays pending and source facts remain unchanged", async () => {
-    const f = await seed(); await identify(f); const before = await snapshot(f); await done(f); const after = await snapshot(f);
-    expect(after.step.status).toBe("done"); expect(after.step.output.miniToolStep!.result).toEqual({ outcome: "done", result: RESULT, error: null }); expect(after.step.output.miniToolConsumption).toEqual(before.step.output.miniToolConsumption); expect(after.usage).toEqual([]); preserved(before, after);
-    const [shape] = await pg`SELECT jsonb_typeof(output->'miniToolStep') AS owner,jsonb_typeof(output->'sibling') AS sibling,jsonb_typeof(output->'miniToolStep'->'result'->'result'->'frames') AS frames FROM task_upstream_steps WHERE id=${f.stepId}`; expect(shape).toEqual({ owner: "object", sibling: "object", frames: "array" });
-  });
-  it("rejects malformed results, a mismatched kind and unowned patch fields without partial writes", async () => {
-    const f = await seed(); await identify(f); const before = await snapshot(f);
-    await expect(done(f, { ...RESULT, frames: "not-frames" })).rejects.toThrow();
-    await expect(recordMiniToolStepResult({ taskId: f.taskId, stepId: f.stepId, identity: before.step.output.miniToolConsumption!.identity, outcome: "done", result: RESULT }, { ...PARSER, kind: "container_job" })).rejects.toThrow();
-    await expect(done(f, { ...RESULT, miniToolConsumption: { state: "pending" }, miniToolPlanJob: { replaced: true } })).rejects.toThrow(); expect(await snapshot(f)).toEqual(before);
-  });
-  it("requires the model step's end before saving an operation result", async () => {
-    const f = await seed(); await markStepSending(f.taskId, f.stepId, DEADLINE, "wavespeed"); const before = await snapshot(f); await expect(done(f)).rejects.toThrow(); expect(await snapshot(f)).toEqual(before);
-    await endMiniToolModelStep({ taskId: f.taskId, stepId: f.stepId, end: { kind: "returned", link: "https://provider.test.invalid/out.json" }, costs: [], servedBy: "wavespeed" });
-    await done(f); expect((await snapshot(f)).step.status).toBe("done");
-  });
-  it("refuses a result under another step's identity", async () => {
-    const f = await seed(); await identify(f); const before = await snapshot(f);
-    await expect(recordMiniToolStepResult({ taskId: f.taskId, stepId: f.stepId, identity: { kind: "provider", stepId: crypto.randomUUID() }, outcome: "done", result: RESULT }, PARSER)).rejects.toThrow();
-    expect(await snapshot(f)).toEqual(before);
-  });
-  it("replays the same result without replacing the first canonical result or incrementing costs", async () => {
-    const f = await seed(); await identify(f); await done(f); const first = await snapshot(f); await done(f); expect(await snapshot(f)).toEqual(first);
-    await expect(done(f, { ...RESULT, frames: [{ ordinal: 0, counts: "5" }] })).rejects.toThrow(); const after = await snapshot(f); expect(after.step.output.miniToolStep!.result).toEqual(first.step.output.miniToolStep!.result); expect(after.step.output.miniToolConsumption).toEqual(first.step.output.miniToolConsumption);
-  });
   it.each([false, true])("keeps the full container plan and failed completed subset with missingCPU=%s", async (missingCpu) => {
     const { f, plan, identity, parser } = await container(); const before = await snapshot(f);
     const report = { schemaVersion: 2, state: "failed", reason: "tool_failed", usage: missingCpu ? null : { wallMs: 1234, cpuUsec: 900 }, outputs: [{ outputIndex: 8, storageKey: "issued/frame-8.png", sha256: "a".repeat(64), sizeBytes: 8, contentType: "image/png", width: 2, height: 3, durationSeconds: null, cover: null, upright: null }] };
@@ -176,47 +106,9 @@ describe("operation-typed results keep execution, plans and expenses separate", 
     expect(after.step.status).toBe("failed"); expect(after.step.prediction_id).toBeNull(); expect(after.step.output.miniToolPlanJob).toEqual(plan); expect(after.step.output.miniToolConsumption).toEqual(before.step.output.miniToolConsumption);
     expect(after.step.output.miniToolStep!.result!.result).toEqual(report); expect(after.step.output.miniToolStep!.error).toEqual(ERROR); expect(after.usage).toEqual([]); preserved(before, after);
   });
-  it.each([false, true])("merges typed result and actual usage in both observed lock orders, resultFirst=%s", async (resultFirst) => {
-    const f = await seed(); await identify(f, "known"); const before = await snapshot(f); const identity = before.step.output.miniToolConsumption!.identity;
-    const record = (): Promise<unknown> => recordMiniToolConsumption({ taskId: f.taskId, stepId: f.stepId, identity });
-    if (resultFirst) await gated(f, () => done(f), record); else await gated(f, record, () => done(f));
-    const after = await snapshot(f); expect(after.step.status).toBe("done"); expect(after.step.output.miniToolStep!.result!.result).toEqual(RESULT); expect(after.step.output.miniToolConsumption).toMatchObject({ state: "recorded", known: 0.2 }); expect(after.usage).toHaveLength(1); preserved(before, after);
-  });
-  it("keeps result persistence idempotent for arbitrary repeated pickup counts", async () => {
-    await fc.assert(fc.asyncProperty(fc.integer({ min: 1, max: 6 }), async (repeats) => {
-      const f = await seed(); await identify(f); await done(f); const first = await snapshot(f);
-      for (let i = 0; i < repeats; i += 1) await done(f);
-      expect(await snapshot(f)).toEqual(first);
-    }), { numRuns: 8 });
-  });
 });
 
 describe("planned step contract branches isolated from earlier terminal shortcuts", () => {
-  it("persists a distinct valid result conflict while keeping the first result and expense", async () => {
-    const f = await seed(); await identify(f); await done(f); const before = await snapshot(f);
-    const candidate = { schemaVersion: 1, kind: "tracking_observation", frames: [{ ordinal: 0, counts: "5" }] };
-    expect(PARSER.parse(candidate)).toEqual(candidate);
-    await expect(done(f, candidate)).rejects.toThrow(); const after = await snapshot(f);
-    expect(after.step.status).toBe("done");
-    expect(after.step.output.miniToolStep!.result).toEqual(before.step.output.miniToolStep!.result);
-    expect(after.step.output.miniToolStep!.conflicts).toEqual([{ kind: "result", result: candidate }]);
-    expect(after.step.output.miniToolConsumption).toEqual(before.step.output.miniToolConsumption);
-    expect(after.task).toEqual(before.task); expect(after.usage).toEqual(before.usage); preserved(before, after);
-    await expect(done(f, candidate)).rejects.toThrow(); expect(await snapshot(f)).toEqual(after);
-  });
-
-  it("refuses the result for an existing non-mini-tool parent", async () => {
-    const f = await seed(); await identify(f); await pg`UPDATE tasks SET source='canvas' WHERE id=${f.taskId}`;
-    const before = await snapshot(f); await expect(done(f)).rejects.toThrow(); expect(await snapshot(f)).toEqual(before);
-    const [parent] = await pg`SELECT source FROM tasks WHERE id=${f.taskId}`; expect(parent?.source).toBe("canvas");
-  });
-
-  it("refuses the result for a missing parent without touching another task's step", async () => {
-    const f = await seed(); await identify(f); const before = await snapshot(f); const missing = crypto.randomUUID();
-    await expect(done({ ...f, taskId: missing })).rejects.toThrow(); expect(await snapshot(f)).toEqual(before);
-    const [remaining] = await pg`SELECT count(*)::int AS count FROM tasks WHERE id=${missing}`; expect(remaining?.count).toBe(0);
-  });
-
   it("refuses a parsed failed container report without its required failure diagnostic", async () => {
     const { f, identity, parser } = await container(); const before = await snapshot(f);
     const report = { schemaVersion: 2, state: "failed", reason: "tool_failed", usage: { wallMs: 1234, cpuUsec: 900 }, outputs: [] };
@@ -225,13 +117,26 @@ describe("planned step contract branches isolated from earlier terminal shortcut
     expect(await snapshot(f)).toEqual(before);
   });
 
-  it.each(["known", "recorded"] as const)("keeps the closed call set and active lookup claim on a same-result %s replay", async (state) => {
-    const f = await seed(); await identify(f, "known"); await done(f); const identity = (await snapshot(f)).step.output.miniToolConsumption!.identity;
-    if (state === "recorded") await recordMiniToolConsumption({ taskId: f.taskId, stepId: f.stepId, identity });
-    const open = await snapshot(f); const claim = crypto.randomUUID();
-    await pg`UPDATE tasks SET status='completed',result=jsonb_set(result,'{settlement}',(result->'settlement') || ${pg.json({ state: "checking", consumptionSetComplete: true, leaseToken: claim, leaseUntil: "2099-01-01T00:00:00.000000Z" })}) WHERE id=${f.taskId}`;
-    const before = await snapshot(f); expect(before.step.status).toBe("done"); expect(before.step.output.miniToolConsumption!.state).toBe(state);
-    expect(before.task.result.settlement).toMatchObject({ state: "checking", consumptionSetComplete: true, leaseToken: claim }); expect(before.usage).toEqual(open.usage);
-    await done(f); expect(await snapshot(f)).toEqual(before);
+  it("replays the same done report without replacing the first canonical result, and keeps a distinct one as a conflict", async () => {
+    const { f, identity, parser } = await container();
+    const report = (wallMs: number): unknown => ({ schemaVersion: 2, state: "done", usage: { wallMs, cpuUsec: 900 }, outputs: [{ outputIndex: 8, storageKey: "issued/frame-8.png", sha256: "a".repeat(64), sizeBytes: 8, contentType: "image/png", width: 2, height: 3, durationSeconds: null, cover: null, upright: null }] });
+    const save = (value: unknown): Promise<unknown> => recordMiniToolStepResult({ taskId: f.taskId, stepId: f.stepId, identity, outcome: "done", result: value }, parser);
+    await save(report(1234)); const first = await snapshot(f);
+    expect(first.step.status).toBe("done");
+    await save(report(1234)); expect(await snapshot(f)).toEqual(first);
+    await expect(save(report(4321))).rejects.toThrow(); const after = await snapshot(f);
+    expect(after.step.output.miniToolStep!.result).toEqual(first.step.output.miniToolStep!.result);
+    expect(after.step.output.miniToolStep!.conflicts).toHaveLength(1);
+    expect(after.step.output.miniToolConsumption).toEqual(first.step.output.miniToolConsumption); preserved(first, after);
+  });
+
+  it("refuses a result for an existing non-mini-tool parent or a missing parent", async () => {
+    const { f, identity, parser } = await container();
+    const report = { schemaVersion: 2, state: "failed", reason: "tool_failed", usage: null, outputs: [] };
+    await pg`UPDATE tasks SET source='canvas' WHERE id=${f.taskId}`;
+    const before = await snapshot(f);
+    await expect(recordMiniToolStepResult({ taskId: f.taskId, stepId: f.stepId, identity, outcome: "failed", result: report, error: ERROR }, parser)).rejects.toThrow();
+    await expect(recordMiniToolStepResult({ taskId: crypto.randomUUID(), stepId: f.stepId, identity, outcome: "failed", result: report, error: ERROR }, parser)).rejects.toThrow();
+    expect(await snapshot(f)).toEqual(before);
   });
 });

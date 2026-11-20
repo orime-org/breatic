@@ -5,11 +5,11 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { sql } from "drizzle-orm";
 import { createPgClient, db, initCore, loadLocales, rawPg } from "@breatic/core";
 import {
-  completeMiniToolConsumptionSet, recordMiniToolConsumptionLookup, creditHoldService, miniToolExecutionService, recordMiniToolConsumption, settleMiniToolCharge,
+  completeMiniToolConsumptionSet, creditHoldService, miniToolExecutionService, recordMiniToolConsumption, settleMiniToolCharge,
 } from "@domain/index.js";
 import { seedDesignatedLot } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
 import { seedExecution } from "./execution-lifecycle-fixtures.js";
-import { claimExecutionSettlement, executionCompletion, executionIdentity, terminalExecution } from "./execution-step-fixtures.js";
+import { claimExecutionSettlement, confirmExecutionCost, executionCompletion, executionIdentity, terminalExecution } from "./execution-step-fixtures.js";
 
 // Every statement a transaction needs must run on that transaction's own connection. With a pool of exactly one
 // connection, a call inside the transaction that asks the pool for a second one waits forever, so each case below
@@ -73,7 +73,7 @@ describe("mini-tool transactions on a one-connection pool", () => {
 
   it("settling a recorded charge finishes", async () => {
     const f = await seedExecution(pg, "running"); const i = await executionIdentity(f); const c = await claimExecutionSettlement(pg, f);
-    await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
+    await confirmExecutionCost(f, i, c.claim, 0.3);
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
     await terminalExecution(pg, f); await completeMiniToolConsumptionSet(f.taskId);
     await expect(withinDeadline(settleMiniToolCharge(f.taskId))).resolves.toMatchObject({ state: "settled", credits: 30, first: true });
@@ -90,7 +90,7 @@ describe("the paid charge on a one-connection pool", () => {
     const f = await seedExecution(pg, "running"); const lotId = await seedDesignatedLot(pg, f, 1000);
     expect((await creditHoldService.reserveCredits({ projectId: f.projectId, actorUserId: f.userId, referenceId: f.taskId, amount: 30, ttlMs: 7_200_000 })).ok).toBe(true);
     const i = await executionIdentity(f); const c = await claimExecutionSettlement(pg, f);
-    await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: i.stepId, claim: c.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
+    await confirmExecutionCost(f, i, c.claim, 0.3);
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
     await terminalExecution(pg, f); await completeMiniToolConsumptionSet(f.taskId);
     await expect(withinDeadline(settleMiniToolCharge(f.taskId))).resolves.toMatchObject({ state: "settled", credits: 30, first: true });

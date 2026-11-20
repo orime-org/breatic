@@ -8,7 +8,6 @@ import { canonicalMiniToolValue, miniToolConsumptionKey } from "@breatic/shared/
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 import { miniToolStepStateSchema, hasUnresolvedMiniToolStepAttempts } from "@domain/mini-tool/upstream-step.types.js";
-import { isUnresolvedModelStep } from "@domain/mini-tool/consumption-due.js";
 import {
   miniToolConsumptionRecordSchema, miniToolSettlementSchema, openMiniToolConsumptionInputSchema,
   type MiniToolConsumptionRecord, type MiniToolSettlement, type OpenMiniToolConsumptionInput,
@@ -131,7 +130,7 @@ export async function completeMiniToolConsumptionSet(taskId: string, transaction
     }
     const steps = await upstreamStepRepo.listSteps(id, tx);
     for (const step of steps) {
-      if (isUnresolvedModelStep(step) || step.output.miniToolStep !== undefined && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep))) {
+      if (step.output.miniToolStep !== undefined && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep))) {
         throw new Error("Mini-tool submit attempts are still unresolved");
       }
     }
@@ -152,8 +151,8 @@ export async function completeMiniToolConsumptionSet(taskId: string, transaction
 
 /**
  * Close an ended computation's call set once every submit attempt it persisted is resolved, whatever its tool or lane
- * (execution design §6.12). Every billable call stores its identity before IO (a provider call's submit intent, a
- * container job's consumption), and an ended task opens no new identity, so the persisted steps are the whole call set.
+ * (execution design §6.12). Every billable call stores its identity before IO (a container job's consumption), and an
+ * ended task opens no new identity, so the persisted steps are the whole call set.
  * @param taskId - The mini-tool task, an execution or an analysis.
  * @param tx - The transaction committing its terminal outcome or a late receipt.
  * @returns Nothing; the set stays open while the task runs or any attempt is unresolved.
@@ -163,7 +162,7 @@ export async function completeResolvedMiniToolConsumptionSet(taskId: string, tx:
   const task = await taskRepo.lockMiniToolConsumptionTask(taskId, tx);
   if (!task || (task.status !== "completed" && task.status !== "failed")) return;
   const steps = await upstreamStepRepo.listSteps(taskId, tx);
-  if (steps.some((step) => isUnresolvedModelStep(step) || step.output.miniToolStep !== undefined
+  if (steps.some((step) => step.output.miniToolStep !== undefined
     && hasUnresolvedMiniToolStepAttempts(miniToolStepStateSchema.parse(step.output.miniToolStep)))) return;
   await completeMiniToolConsumptionSet(taskId, tx);
 }

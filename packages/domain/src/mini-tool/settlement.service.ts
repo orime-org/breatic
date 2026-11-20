@@ -7,7 +7,7 @@ import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { requestCharge, settleCharge, type ChargeOutcome } from "@domain/credit/creditLot.service.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
-import { miniToolConsumptionRecordSchema, miniToolSettlementSchema, type MiniToolConsumptionRecord } from "@domain/mini-tool/consumption.types.js";
+import { miniToolConsumptionRecordSchema, miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
 
 /** Whether a parent's complete expense has committed to its credit ledger. */
 export type MiniToolChargeResult =
@@ -56,7 +56,7 @@ export async function settleMiniToolCharge(taskId: string): Promise<MiniToolChar
         kind: "task", projectId: task.projectId, actorUserId: task.userId, amount: credits,
         referenceId: taskId, releaseHold: taskId, description: "Video mini-tool",
         model: task.model ?? undefined,
-        provider: chargeProvider(consumptions),
+        provider: "cloudflare",
       }, tx);
       if (requestId === null) throw new Error("Mini-tool charge request already exists for a task whose billing guard was open");
     } else {
@@ -85,15 +85,4 @@ export async function settleMiniToolCharge(taskId: string): Promise<MiniToolChar
   } catch (signalFailure) {
     return { ...decision.result, signalFailure };
   }
-}
-
-/**
- * Who a run's charge names (inner#1306 execution design §11.4 recording row): the upstream that served its model steps,
- * `cloudflare` for its container work, `mixed` when more than one took part.
- * @param consumptions - The run's recorded consumptions.
- * @returns The provider the charge request carries.
- */
-function chargeProvider(consumptions: readonly MiniToolConsumptionRecord[]): string {
-  const servers = new Set(consumptions.map((consumption) => (consumption.identity.kind === "provider" ? consumption.servedBy ?? "mixed" : "cloudflare")));
-  return servers.size === 1 ? [...servers][0]! : "mixed";
 }

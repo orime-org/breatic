@@ -59,10 +59,7 @@ export async function recordMiniToolConsumption(input: RecordMiniToolConsumption
       if (request.claim) return consumption;
       throw new Error("Consumption upstream identity cannot be replaced");
     }
-    if (consumption.identity.kind === "provider" && (consumption.identity.stepId !== step.id || step.kind !== "generate")) {
-      throw new Error("Consumption differs from its model step");
-    }
-    if (consumption.identity.kind === "container" && step.kind !== "container_job") {
+    if (step.kind !== "container_job") {
       throw new Error("Container consumption requires its actual container step");
     }
     const settlement = miniToolSettlementSchema.parse(task.result.settlement);
@@ -76,17 +73,10 @@ export async function recordMiniToolConsumption(input: RecordMiniToolConsumption
       operationKey: key, feature: "mini_tool", actorUserId: task.userId, projectId: task.projectId,
       multiplier,
       write: (row) => insertUsageRecord(row, tx),
-      // A model step's cost no upstream could name is recorded at zero, as a canvas generation's is (cost-wait.ts);
-      // the worker logs `cost_unavailable` where the step's run or lookup handed it over.
+      // A container job's cost is computed from its report, never missing.
       onMissingCost: () => undefined,
     });
-    if (consumption.identity.kind === "provider") {
-      // One row per billed answer, its source as provider reported it (§11.4 recording row).
-      const answered = [...consumption.costs!, ...consumption.waiting!.flatMap((held) => (held.cost === undefined ? [] : [held.cost]))];
-      for (const cost of answered) recorder.recordModelCall({ source: "model", model: step.endpoint, upstream: consumption.servedBy ?? "unknown", cost });
-    } else {
-      recorder.recordServiceCall({ source: "container", service: `cloudflare-container:${step.endpoint}`, provider: "cloudflare", requests: 1, costUsd, costSource: "computed" });
-    }
+    recorder.recordServiceCall({ source: "container", service: `cloudflare-container:${step.endpoint}`, provider: "cloudflare", requests: 1, costUsd, costSource: "computed" });
     // settle waits for the injected write; its rounded return belongs to the
     // ordinary single-operation charge path, not this parent's later aggregate.
     await recorder.settle();
@@ -130,7 +120,7 @@ export async function confirmMiniToolConsumption(input: ConfirmMiniToolConsumpti
     if (consumption.state !== "pending" || task.billedAt !== null) return consumption;
     const key = await miniToolConsumptionKey({ taskId: task.id, stepId: step.id, identity: consumption.identity });
     if (key !== consumption.consumptionKey) throw new Error("Consumption key differs from its persistent identity");
-    if (consumption.identity.kind !== "container" || step.kind !== "container_job") {
+    if (step.kind !== "container_job") {
       throw new Error("Only a container job's cost is confirmed from its report");
     }
     const known = miniToolConsumptionRecordSchema.parse({

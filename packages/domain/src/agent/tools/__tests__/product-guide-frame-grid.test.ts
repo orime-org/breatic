@@ -57,9 +57,9 @@ describe("U07 the product guide describes the frame grid's waiting and failures 
     expect(focus).toMatch(/panel (is )?closed|clos(e|ing) the panel/i);
   });
 
-  it("U07: the Mini-tools list still names the seven video tools", () => {
+  it("U07: the Mini-tools list still names the panel video tools", () => {
     const tools = section("Mini-tools");
-    expect(VIDEO_TOOL_IDS).toHaveLength(7);
+    expect(VIDEO_TOOL_IDS).toHaveLength(2);
     for (const id of VIDEO_TOOL_IDS) expect(tools).toContain(t(`canvas.miniTool.video.${id.slice("video.".length)}.label`));
   });
 });

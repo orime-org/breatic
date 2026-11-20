@@ -50,12 +50,8 @@ export async function recordMiniToolStepResult(input: RecordMiniToolStepResultIn
     if (step.kind !== parser.kind) throw new Error("Result parser differs from its owning step kind");
     const consumption = miniToolConsumptionRecordSchema.parse(step.output.miniToolConsumption);
     if (canonicalMiniToolValue(consumption.identity) !== canonicalMiniToolValue(request.identity)) throw new Error("Execution result differs from its stored consumption identity");
-    if (request.identity.kind === "provider") {
-      if (step.kind !== "generate" || request.identity.stepId !== step.id) throw new Error("Execution result differs from its model step");
-    } else {
-      const plan = miniToolPlanJobRequestSchema.parse(step.output.miniToolPlanJob);
-      if (step.kind !== "container_job" || step.endpoint !== request.identity.containerClass || plan.containerClass !== request.identity.containerClass || plan.jobId !== request.identity.jobId) throw new Error("Execution result differs from its complete original plan");
-    }
+    const plan = miniToolPlanJobRequestSchema.parse(step.output.miniToolPlanJob);
+    if (step.kind !== "container_job" || step.endpoint !== request.identity.containerClass || plan.containerClass !== request.identity.containerClass || plan.jobId !== request.identity.jobId) throw new Error("Execution result differs from its complete original plan");
     const incoming = { outcome: request.outcome, result, error: request.error ?? null };
     if (state.result !== null) {
       if (canonicalMiniToolValue(state.result) === canonicalMiniToolValue(incoming)) return step;
@@ -67,9 +63,6 @@ export async function recordMiniToolStepResult(input: RecordMiniToolStepResultIn
     if (request.outcome === "failed" && !terminal) state.error = request.error!;
     await stepRepo.storeMiniToolStepExecution(task.id, step.id, state, terminal ? {} : { status: request.outcome }, tx);
     const pins = request.presentation;
-    if (pins?.prepared !== undefined) {
-      await presentationPinService.acquire({ holderKind: "prepared", holderId: task.id, toolInputId: pins.prepared.toolInputId, preparedKey: pins.prepared.preparedKey, objectKeys: [pins.prepared.preparedKey] }, tx);
-    }
     const holderKind = task.taskType === "mini_tool_analysis" ? "analysis" : "execution";
     if (pins?.retire !== undefined) await presentationPinService.retire({ holderKind, holderId: task.id }, pins.retire, tx);
     if (pins?.pin !== undefined) await pinRepo.appendPinObjects(holderKind, task.id, pins.pin, tx);
@@ -84,7 +77,6 @@ const scope = { taskId: z.uuid(), stepId: z.uuid() };
 const jsonObject = z.record(z.string(), z.json());
 const resultSchema = z.strictObject({ ...scope, identity: miniToolConsumptionIdentitySchema, outcome: z.enum(["done", "failed"]), result: z.unknown(), error: jsonObject.optional(),
   presentation: z.strictObject({
-    prepared: z.strictObject({ toolInputId: z.string().regex(/^[a-f0-9]{64}$/), preparedKey: z.string().min(1) }).optional(),
     retire: z.array(z.string().min(1)).optional(),
     pin: z.array(z.string().min(1)).optional(),
   }).optional() });

@@ -10,7 +10,7 @@ import * as domain from "@domain/index.js";
 import type { MiniToolConsumptionRecord, MiniToolSettlement, MiniToolSettlementClaim } from "@domain/mini-tool/consumption.types.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 
-interface Fixture { taskId: string; stepId: string; fact: MiniToolConsumptionRecord; settlement: MiniToolSettlement }
+interface Fixture { taskId: string; stepId: string; fact: MiniToolConsumptionRecord; settlement: MiniToolSettlement; plan: unknown }
 interface Claim {
   taskId: string; claim: MiniToolSettlementClaim; leaseUntil: string;
   parent: { status: string; consumptionSetComplete: boolean };
@@ -20,6 +20,7 @@ interface Snapshot { task: { status: string; result: { settlement: MiniToolSettl
 let pg: ReturnType<typeof createPgClient>;
 const PAST = "2026-10-24T09:03:03.100001Z";
 const FUTURE = "2099-01-01T00:00:00.000000Z";
+const RAW = { wallMs: 1000, cpuUsec: null };
 const MANIFEST = { outputs: [{ outputIndex: 0, registeredUrl: "https://assets.test.invalid/kept.mp4" }] };
 
 beforeAll(() => {
@@ -42,7 +43,7 @@ async function invoke<T>(name: string, input: unknown): Promise<T> {
 }
 
 /**
- * Seed the independent oracle's failed parent and one actual provider identity.
+ * Seed the independent oracle's failed parent and one container job pending on its report.
  * @param taskId - Optional fixed identity for the independent cursor tie-break cases.
  * @returns Its original persistent facts.
  * @throws {Error} When fixture insertion fails.
@@ -50,13 +51,16 @@ async function invoke<T>(name: string, input: unknown): Promise<T> {
 async function seed(taskId: string = crypto.randomUUID()): Promise<Fixture> {
   const stepId = crypto.randomUUID();
   const userId = crypto.randomUUID(); const studioId = crypto.randomUUID(); const projectId = crypto.randomUUID();
-  const identity = { kind: "provider", stepId } as const;
-  // A model step that ended with one cost still pending on its lookup, due now (inner#1306 §11.4).
+  const inputId = crypto.randomUUID();
+  const plan = { schemaVersion: 2, jobId: `original:${taskId}`, containerClass: "MiniToolContainerStd1", deadlineAt: Date.parse("2026-10-24T11:03:03.100001Z"),
+    limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
+    inputs: [{ inputId, storageKey: "original/input.mp4" }],
+    outputs: [{ outputIndex: 0, storageKey: "original/frame.png", contentType: "image/png", recipe: { kind: "frame", inputId, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frameIndex: 42, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }] };
+  const identity = { kind: "container", containerClass: plan.containerClass, jobId: plan.jobId, chunkIndex: 0 } as const;
   const fact: MiniToolConsumptionRecord = {
     schemaVersion: 1, consumptionKey: await miniToolConsumptionKey({ taskId, stepId, identity }), identity,
-    state: "pending", creditMultiplier: 2, chargeTo: "user", costUsd: null, costSource: null, raw: null, credits: null, containerPricing: null,
-    servedBy: "wavespeed", costs: [], waiting: [{ lookup: { upstream: "wavespeed", predictionId: `prediction-${taskId}` } }],
-    known: 0, attempts: 0, windowEndsAt: Date.parse(FUTURE), nextLookupAt: Date.parse(PAST),
+    state: "pending", creditMultiplier: 2, chargeTo: "user", costUsd: null, costSource: null, raw: null, credits: null,
+    containerPricing: { configVersion: "first-price", size: { vcpu: 0.5, memory_gib: 4, disk_gb: 8 }, prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 } },
   };
   const settlement: MiniToolSettlement = { version: 7, state: "waiting", pendingConsumptionKeys: [fact.consumptionKey], nextAttemptAt: PAST, leaseToken: null, leaseUntil: null, lastError: null, consumptionSetComplete: true };
   await pg`INSERT INTO users (id,email,email_verified) VALUES (${userId},${`${userId}@example.test`},true)`;
@@ -66,8 +70,8 @@ async function seed(taskId: string = crypto.randomUUID()): Promise<Fixture> {
     (${taskId},${userId},${projectId},${crypto.randomUUID()},'mini_tool_analysis','append','mini_tool','failed',
     ${pg.json({ deadlineAt: "2026-10-24T11:03:03.100001Z" })},${pg.json({ manifest: MANIFEST, settlement: { ...settlement } })})`;
   await pg`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,status,output) VALUES
-    (${stepId},${taskId},0,'generate','sam3-video-rle','done',${pg.json({ miniToolConsumption: { ...fact } })})`;
-  return { taskId, stepId, fact, settlement };
+    (${stepId},${taskId},0,'container_job',${plan.containerClass},'done',${pg.json({ miniToolConsumption: { ...fact }, miniToolPlanJob: plan })})`;
+  return { taskId, stepId, fact, settlement, plan };
 }
 
 /**
@@ -107,7 +111,7 @@ async function claim(f: Fixture, version = 7): Promise<Claim | null> {
 }
 
 /**
- * Write back the model step's lookup with one known billed cost.
+ * Confirm the container job's computed cost under the lookup's lease.
  * @param f - The original expense.
  * @param current - The lookup's original lease.
  * @param costUsd - Explicit confirmed expense including zero.
@@ -115,27 +119,26 @@ async function claim(f: Fixture, version = 7): Promise<Claim | null> {
  * @throws {Error} When answer validation, the lease or persistence fails.
  */
 async function confirm(f: Fixture, current: Claim, costUsd = 0.000055): Promise<MiniToolConsumptionRecord> {
-  return invoke("recordMiniToolConsumptionLookup", { taskId: f.taskId, stepId: f.stepId, claim: current.claim, costs: [{ state: "known", usd: costUsd, source: "billing" }] });
+  return invoke("confirmMiniToolConsumption", { taskId: f.taskId, stepId: f.stepId, identity: f.fact.identity, claim: current.claim, costUsd, costSource: "computed", raw: RAW });
 }
 
 /**
- * The fixture's consumption once its lookup answered a known cost.
+ * The fixture's consumption once its report's cost is known.
  * @param f - The original expense.
- * @param usd - The billed cost.
+ * @param usd - The computed cost.
  * @returns The known consumption.
  */
 function knownFact(f: Fixture, usd = 0.000055): MiniToolConsumptionRecord {
-  return { ...f.fact, state: "known", costUsd: usd, known: usd, nextLookupAt: null,
-    waiting: f.fact.waiting!.map((held) => ({ ...held, cost: { state: "known" as const, usd, source: "billing" as const } })) };
+  return { ...f.fact, state: "known", costUsd: usd, costSource: "computed", raw: RAW };
 }
 
 /**
- * A model step's lookup answering every waiting cost with one known amount.
- * @param usd - The billed cost.
+ * A container report's lookup answering one computed cost.
+ * @param usd - The computed cost.
  * @returns The answer.
  */
 function lookedUp(usd: number): domain.MiniToolConsumptionLookup {
-  return { state: "looked_up", costs: [{ state: "known", usd, source: "billing" }] };
+  return { state: "known", costUsd: usd, costSource: "computed", raw: RAW };
 }
 
 interface DueCursor { taskId: string; dueAt: string }
@@ -336,11 +339,6 @@ describe("persistent mini-tool lookup cycles", () => {
     expect((await snapshot(f)).usage).toBe(0);
   });
 
-  it("refuses a model step's cost through the container confirmation", async () => {
-    const f = await seed(); const current = (await claim(f))!; const before = await snapshot(f);
-    await expect(invoke("confirmMiniToolConsumption", { taskId: f.taskId, stepId: f.stepId, identity: f.fact.identity, claim: current.claim, costUsd: 0.000055, costSource: "computed", raw: { wallMs: 1000 } })).rejects.toThrow();
-    expect(await snapshot(f)).toEqual(before);
-  });
 
   it("rolls back confirmation when its step write waits beyond the SQL lease", async () => {
     const f = await seed(); const current = (await claim(f))!;
@@ -430,12 +428,13 @@ describe("persistent mini-tool lookup cycles", () => {
 
   it("persists known before usage, then invalidates the old cycle on recording", async () => {
     const f = await seed(); const current = (await claim(f))!;
-    expect(await confirm(f, current)).toEqual({ ...knownFact(f), attempts: 1 });
+    expect(await confirm(f, current)).toEqual(knownFact(f));
     const known = await snapshot(f); expect(known.usage).toBe(0); expect(known.task.result.settlement).toMatchObject({ version: 7, state: "checking", leaseToken: current.claim.leaseToken });
     await domain.recordMiniToolConsumption({ taskId: f.taskId, stepId: f.stepId, identity: f.fact.identity, claim: current.claim });
     const recorded = await snapshot(f); expect(recorded.usage).toBe(1); expect(recorded.fact.state).toBe("recorded");
     expect(recorded.task.result.settlement).toMatchObject({ version: 8, state: "waiting", pendingConsumptionKeys: [], leaseToken: null, leaseUntil: null });
-    await expect(confirm(f, current, 99)).rejects.toThrow(); expect(await snapshot(f)).toEqual(recorded);
+    // The old cycle's lease no longer holds, so a late confirmation changes nothing.
+    await confirm(f, current, 99); expect(await snapshot(f)).toEqual(recorded);
   });
 
   it("accepts explicit zero without inventing usage before recording", async () => {
@@ -450,8 +449,8 @@ describe("persistent mini-tool lookup cycles", () => {
     if (kind === "version") current.claim.version = 6;
     if (kind === "token") current.claim.leaseToken = "other-token";
     const before = await snapshot(f);
-    await expect(invoke("recordMiniToolConsumptionLookup", { taskId: f.taskId, stepId: kind === "step" ? crypto.randomUUID() : f.stepId, claim: current.claim,
-      costs: [{ state: "known", usd: 0.000055, source: "billing" }] })).rejects.toThrow();
+    await invoke("confirmMiniToolConsumption", { taskId: f.taskId, stepId: kind === "step" ? crypto.randomUUID() : f.stepId, identity: f.fact.identity, claim: current.claim,
+      costUsd: 0.000055, costSource: "computed", raw: RAW }).catch(() => undefined);
     expect(await snapshot(f)).toEqual(before);
   });
 
@@ -506,11 +505,11 @@ describe("durable expense recovery orchestration", () => {
   });
 
   it("keeps an unpriced answer pending and schedules its persisted retry period", async () => {
-    const f = await seed(); const lookup = vi.fn(async (): Promise<domain.MiniToolConsumptionLookup> => ({ state: "looked_up", costs: [{ state: "pending", lookup: f.fact.waiting![0]!.lookup }] }));
+    const f = await seed(); const lookup = vi.fn(async (): Promise<domain.MiniToolConsumptionLookup> => ({ state: "pending", reason: "report-unpriced" }));
     const result = await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
-    expect(lookup).toHaveBeenCalledExactlyOnceWith({ consumption: f.fact, lastAttempt: false });
+    expect(lookup).toHaveBeenCalledExactlyOnceWith({ consumption: f.fact, plan: f.plan });
     expect(result).toMatchObject({ charge: null, nextWake: { taskId: f.taskId, settlementVersion: 8, dueAt: expect.any(String) } });
-    const after = await snapshot(f); expect(after.fact).toMatchObject({ state: "pending", attempts: 1, known: 0 }); expect(after.usage).toBe(0);
+    const after = await snapshot(f); expect(after.fact).toEqual(f.fact); expect(after.usage).toBe(0);
     expect(after.task.result.settlement).toMatchObject({ state: "waiting", version: 8, pendingConsumptionKeys: [f.fact.consumptionKey], leaseToken: null });
     expect(after.task.result.manifest).toEqual(MANIFEST); expect(after.task.status).toBe("failed");
   });
@@ -543,7 +542,7 @@ describe("durable expense recovery orchestration", () => {
     expect(result.failure).toBe(error); expect(result.nextWake).toMatchObject({ taskId: f.taskId, settlementVersion: 8 });
     const after = await snapshot(f); expect(after.fact).toEqual(f.fact); expect(after.usage).toBe(0);
     expect(after.task.result.settlement).toMatchObject({ state: "waiting", version: 8, lastError: error.message });
-    // The step's lookup was overdue; the failed cycle still waits its retry delay rather than coming back at once.
+    // The failed cycle waits its retry delay rather than coming back at once.
     expect(Date.parse(after.task.result.settlement.nextAttemptAt!)).toBeGreaterThan(Date.now());
   });
 
@@ -595,13 +594,13 @@ describe("durable expense recovery orchestration", () => {
 
   it("records only one known expense per claim and rounds the complete parent once", async () => {
     const f = await seed(); const lookup = vi.fn(); const otherStep = crypto.randomUUID();
-    const identity = { kind: "provider", stepId: otherStep } as const;
+    const identity = { ...f.fact.identity, jobId: `second:${f.taskId}` } as const;
     const secondKey = await miniToolConsumptionKey({ taskId: f.taskId, stepId: otherStep, identity });
     const first = knownFact(f);
     const second = { ...first, identity, consumptionKey: secondKey };
     await pg`UPDATE task_upstream_steps SET output=${pg.json({ miniToolConsumption: first })} WHERE id=${f.stepId}`;
     await pg`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,status,output) VALUES
-      (${otherStep},${f.taskId},1,'generate','sam3-video-rle','done',${pg.json({ miniToolConsumption: second })})`;
+      (${otherStep},${f.taskId},1,'container_job','MiniToolContainerStd1','done',${pg.json({ miniToolConsumption: second })})`;
     await setPeriod(f, { pendingConsumptionKeys: [f.fact.consumptionKey, secondKey] });
     await domain.runMiniToolSettlement({ taskId: f.taskId, settlementVersion: 7 }, lookup);
     expect((await snapshot(f)).task.result.settlement).toMatchObject({ version: 8, pendingConsumptionKeys: [secondKey] });

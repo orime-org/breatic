@@ -33,7 +33,6 @@ import {
 } from "@breatic/shared";
 import { MINI_TOOLS, type MiniToolMedium } from "@breatic/shared/mini-tools";
 import { SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
-import { eraseModelLimits } from "@domain/mini-tool/tracking-range.js";
 
 /**
  * The guide's sections, grouped by where in the product they apply, each
@@ -112,39 +111,6 @@ type Creatable = (typeof CREATABLE)[number];
  */
 function quoted(message: string): string {
   return `"${message}"`;
-}
-
-/**
- * The erase range the deployment's model takes, opening the sentence about the marked frame.
- * @returns The opening, up to the word before "frame".
- * @throws {Error} When `config/mini-tools.yaml` cannot be read.
- */
-function eraseRange(): string {
-  const erase = getMiniToolsConfig().executions["video.erase"];
-  const limits = erase === undefined ? null : eraseModelLimits(erase.model);
-  return limits === null ? "The" : `Erase takes a range of ${String(limits.minSeconds)}–${String(limits.maxSeconds)} s, and the`;
-}
-
-/**
- * The source duration and output size video expansion takes in this deployment.
- * @returns The clause, empty where the deployment offers no expansion.
- * @throws {Error} When `config/mini-tools.yaml` cannot be read.
- */
-function expandLimits(): string {
-  const expand = getMiniToolsConfig().executions["video.expand"];
-  return expand === undefined
-    ? ""
-    : `; it takes videos up to ${String(expand.max_duration_seconds)} s, and the expanded video's long side can be at most ${String(expand.max_target_side)} px`;
-}
-
-/**
- * How many people and dialogue rows one lip-sync run takes in this deployment.
- * @returns The sentence with its trailing space, empty where the deployment offers no lip-sync.
- * @throws {Error} When `config/mini-tools.yaml` cannot be read.
- */
-function lipSyncLimits(): string {
-  const lipSync = getMiniToolsConfig().executions["video.lip-sync"];
-  return lipSync === undefined ? "" : `A run takes up to ${String(lipSync.max_people)} people and ${String(lipSync.max_dialogues)} dialogue rows. `;
 }
 
 /**
@@ -1005,7 +971,7 @@ export function renderProductGuide(): string {
       "followed by the model's name; or a tool's own icon and name, with nothing after it. A done row offers " +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
-      `hand or for a ${quoted(t("canvas.miniTool.video.remove-bg.label"))}, ${quoted(t("canvas.miniTool.video.extract-frames.label"))} or ` +
+      `hand or for a ${quoted(t("canvas.miniTool.video.extract-frames.label"))} or ` +
       `${quoted(t("canvas.miniTool.video.split.label"))} result that can run again and was not retried already (a retried result runs again from ` +
       `its newest row), and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
       `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
@@ -1249,46 +1215,6 @@ export function renderProductGuide(): string {
       "closing the panel does not cancel accepted work. A video longer than can be prepared shows " +
       `${quoted(t("canvas.miniTool.videoUI.tooLongToPrepare"))} and other unusable content shows ` +
       `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))}, both without Retry.`,
-    `In ${quoted(t("canvas.miniTool.video.erase.label"))}, the filmstrip at the top dims what lies outside the range and ` +
-      "pressing it moves the playhead; set the range by dragging the two handles under it or with " +
-      `${quoted(t("canvas.miniTool.videoUI.rangeStart"))} and ${quoted(t("canvas.miniTool.videoUI.rangeEnd"))}. Choose ` +
-      `${quoted(t("canvas.miniTool.videoUI.rectangle"))} or ${quoted(t("canvas.miniTool.videoUI.point"))} and mark ` +
-      "the target on the video itself; the round arrow after them in the panel, or the one at the top right of the video, " +
-      `clears the selection. ${quoted(t("canvas.miniTool.videoUI.trackObject"))}, at the right of that row, tracks the ` +
-      "selection; the text box at the bottom can describe the object to track. Once tracked, the box turns green and " +
-      "follows the object frame by frame, and can still be moved or resized, which changes the selection; the chip at " +
-      `the bottom left of the video reads ${quoted(t("canvas.miniTool.videoUI.tracked"))} and the line above the ` +
-      `selection modes reads ${quoted(t("canvas.miniTool.videoUI.trackingReview"))}; after the selection or range changes it reads ` +
-      `${quoted(t("canvas.miniTool.videoUI.trackingStale"))} until the selection is tracked again. A tracking that failed ` +
-      `says why under that row, and ${quoted(t("canvas.miniTool.videoUI.retryTracking"))} tracks the selection again ` +
-      "when that can help. " + eraseRange() + " frame the selection was marked on must lie inside the " +
-      "range; Track selection and Run stay unavailable, with a toast saying why, until both hold. A failed erase or " +
-      "expansion lists on its output node what failed, by step or by window, and what to do next; " +
-      `${quoted(t("canvas.miniTool.videoUI.retryFailedItems"))} is offered only when retrying can succeed and the run was not retried already. ` +
-      "Video expansion uses the frame around the " +
-      "fixed source, with the same ratio buttons and exposed-background dragging as picture expansion" + expandLimits() + ". Neither erase nor expansion works on a " +
-      "video with transparency, such as a background removal result.",
-    `In ${quoted(t("canvas.miniTool.video.lip-sync.label"))}, ${quoted(t("canvas.miniTool.videoUI.dialoguePairs"))} ` +
-      `has one compact row per dialogue: ${quoted(t("canvas.miniTool.videoUI.targetPerson"))} on the left, ` +
-      `${quoted(t("canvas.miniTool.videoUI.dialogueAudio"))} in the middle and ` +
-      `${quoted(t("canvas.miniTool.videoUI.dialogueStartTime"))} in seconds on the right. The dropdown and slot initially say ` +
-      `${quoted(t("canvas.miniTool.videoUI.choosePerson"))} and ${quoted(t("canvas.miniTool.videoUI.chooseDialogueAudio"))}. ` +
-      `${quoted(t("canvas.miniTool.videoUI.redetectPeople"))} identifies people again (after a failed identification the same button offers to retry it); choose a person for each row. ` +
-      "Once a run's people limit is reached, other people are dimmed in the person dropdown with the limit beside them. " +
-      "Once people are identified, each is outlined on the video node with its number; pressing an outline puts that person in the row " +
-      "being edited (the first row, the row last focused, or a newly added row), only that row's person is drawn selected, " +
-      "and a person over the limit is dimmed there too. " +
-      "Pick an audio slot, then an audio node on the canvas. Pressing the same slot again leaves selection; " +
-      "Escape also leaves selection, keeping its current audio, and the top-right X clears that audio. " +
-      "A filled slot shows its truncated filename; hover it to listen in the preview. " +
-      `${quoted(t("canvas.miniTool.videoUI.addDialogue"))} adds a row, including another dialogue for the same person. ` +
-      "The bin at the end of a dialogue row removes it. Times use the source video's clock and retain silence " +
-      "inside each audio. The bottom row holds the lip-sync model on the left and, on the right, a pill offering Cut off, " +
-      "Silence, Loop, Bounce and Remap for matching the result length. Run stays unavailable, with a toast giving the range, while the result is " +
-      "outside the model's duration range or the used part of the video is outside what person tracking takes. " + lipSyncLimits() +
-      "A failed run lists one line per person with why it failed and what to do next, " +
-      "and a line for a failed shared step; retry is offered only when every failure can clear on a retry and the run was not retried already, " +
-      "and it reruns only the failed people.",
     `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.first"))}, ` +
       `${quoted(t("canvas.miniTool.videoUI.last"))} and ${quoted(t("canvas.miniTool.videoUI.current"))} sit side by side in one row, ` +
       "and stay choosable while the frame table is still being read; only Run waits for it. " +
@@ -1306,27 +1232,8 @@ export function renderProductGuide(): string {
       "seconds can be edited in its own numbered row, and the bin beside a cut removes it. A bar below has one numbered " +
       "button per segment, as wide as its share of the video; clicking one plays exactly that segment in the node's player, " +
       `with ${quoted(t("canvas.miniTool.videoUI.stopPreview"))} beside its range while it plays. ` +
-      "The segment count reflects the complete split plan" + splitLimit() + ".",
-    `In ${quoted(t("canvas.miniTool.video.transitions.label"))}, the timeline holds two clips: the current video and one ` +
-      `video picked under ${quoted(t("canvas.miniTool.videoUI.videoInputs"))}; picking another replaces it and resets its trim, ` +
-      "and Run asks for a video while none is picked. Under the slot the panel lists the clips in timeline order with " +
-      "their trimmed lengths. Picking a video opens the timeline, and once a video is picked " +
-      `${quoted(t("canvas.miniTool.videoUI.editTimeline"))} opens it again; press ${quoted(t("canvas.miniTool.videoUI.swapClips"))} to swap ` +
-      `their order; the transition stays between them. Select a clip under ${quoted(t("canvas.miniTool.videoUI.selectedClip"))} and edit ` +
-      `${quoted(t("canvas.miniTool.videoUI.inPoint"))} and ${quoted(t("canvas.miniTool.videoUI.outPoint"))}, or drag either end of a clip on the track, to trim it. ` +
-      `Under ${quoted(t("canvas.miniTool.videoUI.transitionBetween"))}, ${quoted(t("canvas.miniTool.videoUI.transition"))} offers ${quoted(t("canvas.miniTool.videoUI.transitionCut"))}, ` +
-      `${quoted(t("canvas.miniTool.videoUI.transitionFade"))}, ${quoted(t("canvas.miniTool.videoUI.transitionWipeLeft"))} and ` +
-      `${quoted(t("canvas.miniTool.videoUI.transitionWipeRight"))}; any type but Cut lasts at most half the shorter clip, ` +
-      `set with ${quoted(t("canvas.miniTool.videoUI.transitionDuration"))}, and clips too short for one leave only Cut. ` +
-      "Picking a shorter video turns the transition into Cut when it no longer fits. A problem with the picked video shows " +
-      `on the panel as the current video's does, with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))} to repair it. ` +
-      `${quoted(t("canvas.miniTool.videoUI.preview"))} plays the result and ${quoted(t("canvas.miniTool.videoUI.pause"))} ` +
-      `pauses it, and the round arrow before it goes back to the start; ${quoted(t("canvas.miniTool.videoUI.export"))} makes one new video node from the timeline. To join more clips, run the tool again on the exported result.`,
-    `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
-      "Removing a video's background keeps the transparent source available for download and downstream tools. Its panel shows " +
-      "a filmstrip of the video with the player's position on it; clicking the strip moves the player there. " +
-      `${quoted(t("canvas.miniTool.videoUI.preserveAudio"))} is always on, and once any of its results is ready ` +
-      `${quoted(t("canvas.miniTool.videoUI.resultsReady"))} opens the newest ready result on a checkerboard to play and seek.`,
+      "The segment count reflects the complete split plan" + splitLimit() + ". " +
+      `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}.`,
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
       "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +

@@ -9,21 +9,21 @@
 import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createPgClient, initCore, loadLocales } from "@breatic/core";
-import { hashMiniToolValue, miniToolExecutionRecordSchema, type MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
+import { hashMiniToolValue, miniToolExecutionRecordSchema, type MiniToolConsumptionIdentity, type MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
 import {
-  completeMiniToolConsumptionSet, recordMiniToolConsumptionLookup,
+  completeMiniToolConsumptionSet,
   miniToolDeliveryService, miniToolExecutionService, miniToolSettlementSchema, recordMiniToolConsumption,
   recordMiniToolStepResult, settleMiniToolCharge, upstreamStepRepo,
   type MiniToolDeliveryAck, type MiniToolDeliveryContext, type MiniToolDeliveryState, type MiniToolExecutionCompletion,
 } from "@domain/index.js";
 import { executionSnapshot, seedExecution, storeExecutionFixture, type ExecutionFixture } from "./execution-lifecycle-fixtures.js";
-import { claimExecutionSettlement, executionIdentity } from "./execution-step-fixtures.js";
+import { claimExecutionSettlement, confirmExecutionCost, executionIdentity } from "./execution-step-fixtures.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 
 let pg: ReturnType<typeof createPgClient>;
 const ERROR = { code: "original_failure", message: "Original computation failed" };
 const PRIVATE_ERROR = "delivery_history_failed";
-interface OriginalIdentity { stepId: string; identity: { kind: "provider"; stepId: string } }
+interface OriginalIdentity { stepId: string; identity: MiniToolConsumptionIdentity }
 beforeAll(() => {
   initCore({ ...process.env, PAYMENT_ENABLED: "false", CREDIT_MULTIPLIER: "1" }); loadLocales();
   pg = createPgClient(inject("DATABASE_URL"), { name: "planned-delivery-fixture", max: 8 });
@@ -86,13 +86,13 @@ async function earlierRun(f: ExecutionFixture): Promise<ExecutionFixture> {
   await storeExecutionFixture(pg, result, result.record);
   return result;
 }
-/** Persist the original returned provider result and canonical receipt, without a transfer.
+/** Persist the original container job's done result and canonical receipt, without a transfer.
  * @throws {Error} When the actual result or receipt transaction fails.
  */
 async function returned(f: ExecutionFixture): Promise<OriginalIdentity> {
   const { stepId, identity } = await executionIdentity(f); const original = { stepId, identity };
-  await recordMiniToolStepResult({ taskId: f.taskId, stepId: original.stepId, identity: original.identity, outcome: "done", result: ["https://provider.example.test/original.webm"] },
-    { kind: "generate", parse: () => ({ providerURL: "https://provider.example.test/original.webm" }) });
+  await recordMiniToolStepResult({ taskId: f.taskId, stepId: original.stepId, identity: original.identity, outcome: "done", result: { state: "done" } },
+    { kind: "container_job", parse: () => ({ state: "done" }) });
   await upstreamStepRepo.recordInline(original.stepId, { "miniToolAsset:0": f.registered.assetId }, 0);
   return original;
 }
@@ -101,7 +101,7 @@ async function returned(f: ExecutionFixture): Promise<OriginalIdentity> {
  */
 async function priced(f: ExecutionFixture, original: OriginalIdentity, record: boolean): Promise<void> {
   const claim = await claimExecutionSettlement(pg, f);
-  await recordMiniToolConsumptionLookup({ taskId: f.taskId, stepId: original.stepId, claim: claim.claim, costs: [{ state: "known", usd: 0.3, source: "billing" }] });
+  await confirmExecutionCost(f, original, claim.claim, 0.3);
   if (record) await recordMiniToolConsumption({ taskId: f.taskId, ...original, claim: claim.claim });
 }
 /** Bind an internal publication receipt to the original registered winner, not a temporary URL.

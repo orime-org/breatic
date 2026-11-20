@@ -160,28 +160,20 @@ async function seed(options: SeedOptions = {}): Promise<Fixture> {
   const facts: { stepId: string; consumption: Consumption }[] = [];
   for (const [position, credits] of values.entries()) {
     const stepId = crypto.randomUUID();
-    const identity: MiniToolConsumptionIdentity = options.platform
-      ? { kind: "container", containerClass: "MiniToolContainerStd1", jobId: `presentation-${taskId}-${position}`, chunkIndex: position }
-      : { kind: "provider", stepId };
+    const identity: MiniToolConsumptionIdentity = { kind: "container", containerClass: "MiniToolContainerStd1", jobId: `presentation-${taskId}-${position}`, chunkIndex: position };
     const state = states[position]!;
     const costUsd = state === "pending" ? null : options.platform ? 0.00001256 : credits / 200;
     facts.push({ stepId, consumption: {
       schemaVersion: 1, consumptionKey: await miniToolConsumptionKey({ taskId, stepId, identity }), identity,
       state, creditMultiplier: 2, chargeTo: options.platform ? "platform" : "user",
-      costUsd, costSource: state === "pending" || identity.kind === "provider" ? null : "computed",
-      raw: costUsd === null || identity.kind === "provider" ? null : { wallMs: 1000, cpuUsec: 100000 },
+      costUsd, costSource: state === "pending" ? null : "computed",
+      raw: costUsd === null ? null : { wallMs: 1000, cpuUsec: 100000 },
       credits: state === "recorded" ? options.platform ? 0 : credits : null,
-      containerPricing: identity.kind === "provider" ? null : {
+      containerPricing: {
         configVersion: "cloudflare-2026-10-07",
         size: { vcpu: 0.5, memory_gib: 4, disk_gb: 8 },
         prices: { vcpu_second_usd: 0.00002, memory_gib_second_usd: 0.0000025, disk_gb_second_usd: 0.00000007 },
       },
-      // A model step's cost wait (inner#1306 §11.4): its one billed answer, known or still pending.
-      ...(identity.kind === "provider" ? {
-        servedBy: "wavespeed", attempts: 0, windowEndsAt: 4070908800000, nextLookupAt: state === "pending" ? 0 : null, known: costUsd ?? 0,
-        costs: costUsd === null ? [] : [{ state: "known" as const, usd: costUsd, source: "billing" as const }],
-        waiting: costUsd === null ? [{ lookup: { upstream: "wavespeed", predictionId: `parent-${taskId}-${position}` } }] : [],
-      } : {}),
     } });
   }
   const manifest = status === "completed"
@@ -212,7 +204,7 @@ async function seed(options: SeedOptions = {}): Promise<Fixture> {
   await rawPg`
     INSERT INTO tasks (id, user_id, project_id, space_id, task_type, mode, source, status, model, params, result, completed_at)
     VALUES (${taskId}, ${userId}, ${options.missingProject ? null : projectId}, ${spaceId}, 'mini_tool_analysis', 'append', 'mini_tool', ${status},
-      'wavespeed-ai/sam3-video-rle', ${rawPg.json({ immutablePlan: "kept", deadlineAt: DEADLINE })},
+      'pyscenedetect-content', ${rawPg.json({ immutablePlan: "kept", deadlineAt: DEADLINE })},
       ${rawPg.json({ manifest, preserved: { original: true }, settlement: { ...settlement } })}, ${terminal ? T0 : null}::text::timestamptz)
   `;
   await rawPg`
@@ -227,19 +219,16 @@ async function seed(options: SeedOptions = {}): Promise<Fixture> {
   for (const [position, { stepId, consumption }] of facts.entries()) {
     await rawPg`
       INSERT INTO task_upstream_steps (id, task_id, position, kind, endpoint, status, prediction_id, output)
-      VALUES (${stepId}, ${taskId}, ${position}, ${consumption.identity.kind === "provider" ? "generate" : "container_job"},
-        ${consumption.identity.kind === "provider" ? "wavespeed-ai/sam3-video-rle" : "presentation_prepare"}, 'done',
+      VALUES (${stepId}, ${taskId}, ${position}, 'container_job', 'presentation_prepare', 'done',
         ${null},
         ${rawPg.json({ preservedOutput: { original: true }, miniToolConsumption: { ...consumption } })})
     `;
     if (consumption.state === "recorded") {
       await rawPg`
         INSERT INTO agent_usage_records (operation_key, feature, source, actor_user_id, project_id, model, provider, request_count, cost_usd, cost_source, credits)
-        VALUES (${consumption.consumptionKey}, 'mini_tool', ${consumption.identity.kind === "provider" ? "model" : "container"},
-          ${userId}, ${options.missingProject ? null : projectId},
-          ${consumption.identity.kind === "provider" ? "wavespeed-ai/sam3-video-rle" : "cloudflare-container:presentation_prepare"},
-          ${consumption.identity.kind === "provider" ? "wavespeed" : "cloudflare"}, 1,
-          ${String(consumption.costUsd)}, ${consumption.costSource ?? "generation_lookup"}, ${String(consumption.credits)})
+        VALUES (${consumption.consumptionKey}, 'mini_tool', 'container',
+          ${userId}, ${options.missingProject ? null : projectId}, 'cloudflare-container:presentation_prepare', 'cloudflare', 1,
+          ${String(consumption.costUsd)}, ${consumption.costSource ?? "computed"}, ${String(consumption.credits)})
       `;
     }
   }

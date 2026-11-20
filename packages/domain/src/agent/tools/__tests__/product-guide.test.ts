@@ -127,68 +127,6 @@ describe("frame extraction in the guide after the interval mode is removed", () 
   });
 });
 
-/**
- * The guide's paragraph about one video tool: the text from that tool's "In <label>," opening to the next blank line or
- * the next "In " paragraph opening.
- * @param labelKey - The tool's label key.
- * @returns The paragraph, empty when the guide has none.
- */
-function toolParagraph(labelKey: string): string {
-  const guide = renderProductGuide();
-  const at = guide.indexOf(`In "${t(labelKey)}",`);
-  if (at < 0) return "";
-  const rest = guide.slice(at);
-  const end = rest.slice(1).search(/\n|\. In "/);
-  return end < 0 ? rest : rest.slice(0, end + 2);
-}
-
-// inner#1306 test plan §97 (canvas design §4 转场 row, invariant 11.2; frames-split §5.4 last paragraph; product-guide-sync):
-// the transitions timeline now holds exactly the current video and one picked input, which the reader can swap and trim;
-// there is no asset list, adding, duplicating, removing or reordering by steps; the transition is Cut or one of three that
-// last at most half the shorter clip; more clips take another run on the exported result.
-describe("transitions in the guide after the two-clip timeline", () => {
-  it("PG01 quotes none of the removed timeline controls", () => {
-    const paragraph = toolParagraph("canvas.miniTool.video.transitions.label");
-    expect(paragraph).not.toBe("");
-    for (const key of ["addToTimeline", "duplicateClip", "removeClip", "timelineAssets", "earlier", "later"]) {
-      expect(paragraph).not.toContain(`"${t(`canvas.miniTool.videoUI.${key}`)}"`);
-    }
-  });
-
-  it("PG02 says the timeline holds two clips the reader can swap, and how long a transition may be", () => {
-    const paragraph = toolParagraph("canvas.miniTool.video.transitions.label").toLowerCase();
-    expect(paragraph).toMatch(/two clips/);
-    expect(paragraph).toMatch(/swap/);
-    expect(paragraph).toMatch(/half/);
-    expect(paragraph).toMatch(/shorter/);
-  });
-
-  it("says a shorter picked video turns the transition into Cut and its problem shows with Retry", () => {
-    const paragraph = toolParagraph("canvas.miniTool.video.transitions.label");
-    expect(paragraph).toMatch(/shorter video turns the transition into Cut/);
-    expect(paragraph).toMatch(/problem with the picked video shows on the panel/);
-    expect(paragraph).toContain(`"${t("canvas.miniTool.videoUI.retryPreview")}"`);
-  });
-});
-
-// inner#1306 test plan §97 (canvas design §4 对口型 row; execution design §9.3, §9.4; frames-split §7.11): the lip-sync panel
-// gains a model picker, runs only within the model's duration range, takes at most two people and eight dialogue rows, and
-// shows failures per person with a retry only when every failure is retryable.
-describe("lip-sync in the guide after the model picker and per-person failures", () => {
-  it("PG03 tells the reader to choose a model and the limits a run must meet", () => {
-    const paragraph = toolParagraph("canvas.miniTool.video.lip-sync.label").toLowerCase();
-    expect(paragraph).toMatch(/model/);
-    expect(paragraph).toMatch(/two people|2 people/);
-    expect(paragraph).toMatch(/eight|8 dialogue/);
-  });
-
-  it("PG04 explains per-person failure lines and when retrying is offered", () => {
-    const paragraph = toolParagraph("canvas.miniTool.video.lip-sync.label").toLowerCase();
-    expect(paragraph).toMatch(/(each|per) person/);
-    expect(paragraph).toMatch(/retry/);
-  });
-});
-
 describe("the guide as a tool", () => {
   it("is registered, and reaches a chat turn", () => {
     expect(Object.keys(TOOL_MAP)).toContain(GET_PRODUCT_GUIDE);

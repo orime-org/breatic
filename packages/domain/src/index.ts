@@ -61,7 +61,6 @@ export * as taskService from "@domain/task/task.service.js";
 export * as taskRepo from "@domain/task/task.repo.js";
 export * as miniToolAnalysisService from "@domain/mini-tool/analysis.service.js";
 export { readMiniToolExecutionPlan, type MiniToolExecutionPlan } from "@domain/mini-tool/execution-plan.service.js";
-export { lipsyncPersonStepKeys, lipsyncSharedStepKeys, lipsyncStepKey, type LipSyncPersonStep } from "@domain/mini-tool/lipsync-admission.js";
 export {
   acceptMiniToolExecution,
   quoteMiniToolExecution,
@@ -69,10 +68,7 @@ export {
   type MiniToolExecutionAdmission,
   type MiniToolExecutionTaskParams,
 } from "@domain/mini-tool/execution-admission.service.js";
-export { transitionSlotTime, transitionSourceWindow } from "@domain/mini-tool/transition-source-window.js";
 export * as miniToolSceneAnalysis from "@domain/mini-tool/scene-analysis.js";
-export * as miniToolPeopleAnalysis from "@domain/mini-tool/people-analysis.js";
-export type { MiniToolDisplayPeople, MiniToolPeopleAnalysisResult, MiniToolRegisteredAnalysisJob } from "@domain/mini-tool/people-analysis.js";
 export { recordMiniToolConsumption, confirmMiniToolConsumption } from "@domain/mini-tool/consumption.service.js";
 export { openMiniToolConsumption, completeMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 export { openMiniToolPlanJob, type OpenMiniToolPlanJobInput, type OpenMiniToolPlanJobResult } from "@domain/mini-tool/planned-job.service.js";
@@ -360,12 +356,6 @@ export type {
 // ── Mail (notification mail sent by the worker) ──
 export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.js";
 export { recordMiniToolStepResult, type MiniToolStepJson, type MiniToolStepResultParser, type RecordMiniToolStepResultInput } from "@domain/mini-tool/upstream-step.service.js";
-export {
-  getStepTicket, storeStepTicket, markStepSending, clearStepSending, appendMiniToolStepDeliveredCosts, recordStepSendNotAccepted,
-  endMiniToolModelStep, listUnresolvedMiniToolModelSteps, recordMiniToolConsumptionLookup, lastMiniToolConsumptionLookup,
-  type EndMiniToolModelStepInput, type MiniToolModelStepEnd, type UnresolvedMiniToolModelStep, type RecordMiniToolConsumptionLookupInput,
-} from "@domain/mini-tool/model-step.service.js";
-export { admitModelCall, miniToolModelRoute, modelSecondsRange, type MiniToolModelRoute } from "@domain/mini-tool/model-call-admission.js";
 export { miniToolStepStateSchema } from "@domain/mini-tool/upstream-step.types.js";
 
 export * as miniToolExecutionService from "@domain/mini-tool/execution.service.js";

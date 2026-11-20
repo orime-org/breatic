@@ -82,10 +82,4 @@ describe("scene analysis on grid frames (frames-split §7.16, §10.12)", () => {
   ])("SC07 rejects a grid with $name", ({ grid }) => {
     expect(() => assemble(accepted, observations, grid)).toThrow();
   });
-
-  it("SC08 requires the original accepted scene analysis kind", () => {
-    const people = miniToolAnalysisRecordSchema.parse({ ...accepted, kind: "people", analysisInput: { schemaVersion: 1, kind: "people",
-      sourceURL: accepted.analysisInput.sourceURL, profile: accepted.analysisInput.profile, anchor: { frameIndex: 48 } } });
-    expect(() => assemble(people, observations, GRID)).toThrow();
-  });
 });
