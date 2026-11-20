@@ -3,20 +3,16 @@
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as sharedModule from "@breatic/shared";
-import type * as domainModule from "@breatic/domain";
 import type * as coreModule from "@breatic/core";
 import type { MiniToolConsumptionRecord } from "@breatic/domain";
 import type { MiniToolPlanJobRequest } from "@breatic/shared";
 
-const { send, read, submit, costLookup, warn } = vi.hoisted(() => ({ send: vi.fn(), read: vi.fn(), submit: vi.fn(), costLookup: vi.fn(), warn: vi.fn() }));
+const { send, read, submit } = vi.hoisted(() => ({ send: vi.fn(), read: vi.fn(), submit: vi.fn() }));
 vi.mock("@breatic/shared", async (original) => ({
   ...await original<typeof sharedModule>(), httpRequest: send, readMiniToolPlanJob: read, submitMiniToolPlanJob: submit,
 }));
-vi.mock("@breatic/domain", async (original) => ({
-  ...await original<typeof domainModule>(), provider: () => ({ cost: { lookup: costLookup } }),
-}));
 vi.mock("@breatic/core", async (original) => ({
-  ...await original<typeof coreModule>(), logger: { ...(await original<typeof coreModule>()).logger, warn },
+  ...await original<typeof coreModule>(),
   env: { INGEST_BASE_URL: "https://ingest.test.invalid", INGEST_SHARED_SECRET: "test-secret" },
   // Only the poll interval is read live: it bounds the container's reporting window; prices are frozen with the consumption.
   getMiniToolsConfig: () => ({ poll_interval_ms: 5000,
@@ -35,13 +31,6 @@ const plan: MiniToolPlanJobRequest = {
   inputs: [{ inputId, storageKey: "source/video.mp4" }],
   outputs: [{ outputIndex: 8, storageKey: "result/frame-8.png", contentType: "image/png", recipe: { kind: "frame", inputId, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1.92, allKeyframes: false } }, frameIndex: 42, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }],
 };
-const LOOKUP_A = { upstream: "wavespeed", predictionId: "p-a" };
-const LOOKUP_B = { upstream: "wavespeed", predictionId: "p-b" };
-const provider: MiniToolConsumptionRecord = {
-  schemaVersion: 1, consumptionKey: "1".repeat(64), identity: { kind: "provider", stepId: "30000000-0000-4000-8000-000000000001" },
-  state: "pending", creditMultiplier: 2, chargeTo: "user", costUsd: null, costSource: null, raw: null, credits: null, containerPricing: null,
-  servedBy: "wavespeed", costs: [], waiting: [{ lookup: LOOKUP_A }, { lookup: LOOKUP_B }], known: 0, attempts: 1, windowEndsAt: 1792920000000, nextLookupAt: 1792910000000,
-};
 const container: MiniToolConsumptionRecord = {
   schemaVersion: 1, consumptionKey: "1".repeat(64), identity: { kind: "container", containerClass: plan.containerClass, jobId: plan.jobId, chunkIndex: 1 },
   state: "pending", creditMultiplier: 2, chargeTo: "user", costUsd: null, costSource: null, raw: null, credits: null,
@@ -54,40 +43,10 @@ beforeEach(() => {
 });
 
 describe("original mini-tool expense lookup", () => {
-  // inner#1306 execution design §11.4: a model step's waiting costs are asked of provider, each once, in order.
-  it("asks provider about each waiting cost once and answers them in order", async () => {
-    costLookup.mockResolvedValueOnce({ state: "known", usd: 0.2, source: "billing" }).mockResolvedValueOnce({ state: "pending", lookup: LOOKUP_B });
-    expect(await lookupMiniToolConsumption({ consumption: provider, lastAttempt: false }, bound)).toEqual({ state: "looked_up",
-      costs: [{ state: "known", usd: 0.2, source: "billing" }, { state: "pending", lookup: LOOKUP_B }] });
-    expect(costLookup.mock.calls).toEqual([[LOOKUP_A, { lastAttempt: false }], [LOOKUP_B, { lastAttempt: false }]]);
-    expect(send).not.toHaveBeenCalled();
-  });
-
-  it("asks with lastAttempt on the last lookup and logs a cost no upstream can name", async () => {
-    costLookup.mockResolvedValue({ state: "missing", reason: "never billed" });
-    await lookupMiniToolConsumption({ consumption: provider, lastAttempt: true }, bound);
-    expect(costLookup).toHaveBeenCalledWith(LOOKUP_A, { lastAttempt: true });
-    expect(warn).toHaveBeenCalledWith(expect.anything(), "cost_unavailable");
-  });
-
-  it("does not ask again about a waiting cost an earlier lookup answered", async () => {
-    costLookup.mockResolvedValue({ state: "known", usd: 0.1, source: "billing" });
-    const answered = { ...provider, waiting: [{ lookup: LOOKUP_A, cost: { state: "known" as const, usd: 0.3, source: "billing" as const } }, { lookup: LOOKUP_B }] };
-    expect(await lookupMiniToolConsumption({ consumption: answered }, bound)).toEqual({ state: "looked_up",
-      costs: [{ state: "known", usd: 0.3, source: "billing" }, { state: "known", usd: 0.1, source: "billing" }] });
-    expect(costLookup).toHaveBeenCalledTimes(1);
-  });
-
-  it("keeps a failed lookup for the settlement's retry", async () => {
-    const error = new Error("network down");
-    costLookup.mockRejectedValue(error);
-    await expect(lookupMiniToolConsumption({ consumption: provider }, bound)).rejects.toBe(error);
-  });
-
   it.each(["known", "recorded"] as const)("does not query an already %s fact", async (state) => {
     const consumption = { ...container, state, costUsd: 0.25, costSource: "computed" as const, raw: { original: true }, credits: state === "recorded" ? 50 : null };
     expect(await lookupMiniToolConsumption({ consumption, plan }, bound)).toEqual({ state: "known", costUsd: 0.25, costSource: "computed", raw: { original: true } });
-    expect(send).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled(); expect(costLookup).not.toHaveBeenCalled();
+    expect(send).not.toHaveBeenCalled(); expect(read).not.toHaveBeenCalled();
   });
 
   it.each([null, { schemaVersion: 2, state: "starting" }, { schemaVersion: 2, state: "running" },
@@ -129,7 +88,7 @@ describe("original mini-tool expense lookup", () => {
   it.each(["done", "failed"])("charges an ended %s attempt without CPU time at its provisioned vCPU over its wall time", async (state) => {
     const usage = { wallMs: 1000, cpuUsec: null };
     read.mockResolvedValue({ schemaVersion: 2, state, outputs: [], ...(state === "failed" ? { reason: "internal" } : {}), usage });
-    const policy = container.containerPricing!;
+    const policy = container.containerPricing;
     expect(await lookupMiniToolConsumption({ consumption: container, plan }, bound)).toMatchObject({
       state: "known", costUsd: containerCostUsd(usage, policy.size, policy.prices), costSource: "computed",
     });
@@ -143,7 +102,7 @@ describe("original mini-tool expense lookup", () => {
   });
 
   it.each([undefined, { ...plan, jobId: "another-job" }, { ...plan, containerClass: "AnotherContainer" }])("rejects missing or mismatched container authority before IO", async (request) => {
-    await expect(lookupMiniToolConsumption({ consumption: container, plan: request }, bound)).rejects.toThrow();
+    await expect(lookupMiniToolConsumption({ consumption: container, plan: request as MiniToolPlanJobRequest }, bound)).rejects.toThrow();
     expect(read).not.toHaveBeenCalled(); expect(submit).not.toHaveBeenCalled();
   });
 

@@ -5,7 +5,7 @@
  * The extract-frames, split and video focus crop runners (inner#1306 test plan §67.3 W01–W03, §68 F01; frames-split design
  * §5.4 用户运行的两层编码 and 作业身份, §5.5, §7.11 逐项结果, §7.15, §7.16, §7.17 「唯一写点：worker的配方构造」, §10.8 作业 and 失败与提交).
  *
- * A planned extract-frames, split or focus crop pickup enters through `runMiniToolExecutionTask` (as the removal does) and
+ * A planned extract-frames, split or focus crop pickup enters through `runMiniToolExecutionTask` and
  * runs the frozen plan: it reads the frozen version's grid, tool source and source keyframe statistics, uses the frozen
  * `layout` as it is (D5-1), writes each output's job recipe with `frameRecipeOf` / `segmentRecipesOf` and the frozen
  * `container.encode` (D5-2), and submits each batch as a `run-batch` job through `advanceRegisteredMiniToolPlanJob` with
@@ -39,7 +39,7 @@ import { runMiniToolExecutionTask } from "../run-execution-task.js";
 
 const h = vi.hoisted(() => ({
   start: vi.fn(), plan: vi.fn(), list: vi.fn(), ensure: vi.fn(), inline: vi.fn(), grants: vi.fn(), findById: vi.fn(), findCoverOf: vi.fn(),
-  advance: vi.fn(), finish: vi.fn(), deadline: vi.fn(), removal: vi.fn(), progress: vi.fn(), openPlan: vi.fn(), advancePlan: vi.fn(), record: vi.fn(),
+  advance: vi.fn(), finish: vi.fn(), deadline: vi.fn(), progress: vi.fn(), openPlan: vi.fn(), advancePlan: vi.fn(), record: vi.fn(),
   readDelivery: vi.fn(), deliver: vi.fn(), wake: vi.fn(),
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
@@ -64,9 +64,6 @@ vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", async (original) => ({
 // §93 D6 (design §7.11, §10.8): delivery after a progress commit; the delivery workers are mocked, the wrapper is real.
 vi.mock("@worker/handlers/mini-tool/delivery-worker.js", () => ({ deliverMiniToolOutput: h.deliver, wakePendingMiniToolDelivery: h.wake }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
-// A run's end abandons its unresolved model steps through the step store; these runs hold no model step.
-vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: async () => undefined }));
-vi.mock("@worker/handlers/mini-tool/run-remove-background.js", () => ({ runMiniToolRemoveBackground: h.removal }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
 
 const TASK = "50000000-0000-4000-8000-000000000001";
@@ -312,7 +309,6 @@ beforeEach(() => {
   vi.resetAllMocks();
   steps = []; grantSequence = 0; scripted = new Map(); staleProgress = 0; version = frozenVersion();
   h.deadline.mockResolvedValue(DEADLINE);
-  h.removal.mockRejectedValue(new Error("A frames or split run must not take the removal runner"));
   h.list.mockImplementation(async () => steps);
   h.ensure.mockImplementation(async (_taskId: string, planned: StepPlan) => {
     for (const [position, entry] of planned.entries()) {
@@ -360,7 +356,6 @@ describe("extract-frames and split run the frozen plan (§93 D5-1, D5-2, D5-4, D
   it("VT01 extract-frames: one run-batch job of the frozen batch, each frame recipe on the frozen grid, every output delivered", async () => {
     serve(plan("video.extract-frames"));
     const completion = await drive();
-    expect(h.removal).not.toHaveBeenCalled();
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1)]);
     const [request] = submitted();
     expect(request).toMatchObject({ containerClass: "MiniToolContainerStd4", deadlineAt: DEADLINE, limits: LIMITS });

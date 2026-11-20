@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The shared chunk list of the model runs (`advanceChunks`, model-run-steps.ts; frames-split design §5.4 parallel stage), the
- * one rule the erase and expand composites, the lip-sync composite and the chunked model-input preparation advance through:
+ * The shared chunk list (`advanceChunks`, container-steps.ts; frames-split design §5.4 parallel stage), the one rule an
+ * oversized split segment's chunks advance through:
  *
  * - every chunk advances in each pickup, and a pickup in which any chunk still runs settles nothing (StillRunning), so a
  *   running chunk's object is recorded and pinned with the run before the list ends;
@@ -19,7 +19,7 @@ import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
 import type { OpenMiniToolPlanJobInput } from "@breatic/domain";
 import type { MiniToolPlanJobRequest } from "@breatic/shared";
-import { advanceChunks, advanceRegistered, type ContainerStep, type ModelStepRun } from "@worker/handlers/mini-tool/model-run-steps.js";
+import { advanceChunks, advanceRegistered, type ContainerRun, type ContainerStep } from "@worker/handlers/mini-tool/container-steps.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { DeadlinePassed } from "@breatic/shared";
 
@@ -40,7 +40,7 @@ vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceReg
 const TASK = "50000000-0000-4000-8000-000000000001";
 const INPUT = "00000000-0000-4000-8000-000000000001";
 const DEADLINE = Date.now() + 3_600_000;
-const RUN: ModelStepRun = { taskId: TASK, projectId: "10000000-0000-4000-8000-000000000001", sourceKey: "video/source.mp4", log: "test",
+const RUN: ContainerRun = { taskId: TASK, projectId: "10000000-0000-4000-8000-000000000001", sourceKey: "video/source.mp4", log: "test",
   container: { containerClass: "MiniToolContainerStd4", limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunkRetries: 1 } };
 
 type Steps = Awaited<ReturnType<typeof domainModule.upstreamStepRepo.listSteps>>;
@@ -57,9 +57,13 @@ let submitted: Set<string>;
  * @returns The step.
  */
 function chunk(k: number): ContainerStep {
-  return { stepKey: `composite:${k}`, contentType: "video/mp4", failed: (reason) => ({ failed: `chunk ${k}: ${reason}` }),
-    build: () => Promise.resolve({ recipe: { kind: "rle_join", inputs: [{ inputId: INPUT, order: "forward", frameCount: 10 }], width: 320, height: 180 },
-      inputs: [{ inputId: INPUT, storageKey: `track/${k}.json` }] }) };
+  return { contentType: "video/mp4", jobId: (attempt) => jobOf(k, attempt), outputKey: (jobId) => `work/${jobId}.mp4`,
+    failed: (reason) => ({ failed: `chunk ${k}: ${reason}` }),
+    build: () => Promise.resolve({ recipe: { kind: "chunk_encode", inputId: INPUT,
+      grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 30, realFrameCount: 30 },
+      source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frames: { start: k * 10, end: k * 10 + 10 },
+      target: { width: 320, height: 180, displayRect: null, colorMatrix: "bt709", toneMap: "none", alpha: "none", crf: 18, preset: "medium" } },
+    inputs: [{ inputId: INPUT, storageKey: "video/source.mp4" }] }) };
 }
 
 /**
@@ -128,7 +132,7 @@ beforeEach(() => {
   });
 });
 
-describe("the shared chunk list (frames-split §5.4 parallel stage; execution design §10.4, §10.5 composite rows)", () => {
+describe("the shared chunk list (frames-split §5.4 parallel stage)", () => {
   it("CL01 a chunk failed for good waits for its running sibling, whose object is pinned, and no chunk opens a new attempt after it", async () => {
     // Pickup 1: every chunk's first attempt runs.
     for (const k of [0, 1, 2]) jobs.set(jobOf(k, 1), "running");
@@ -176,8 +180,8 @@ describe("the shared chunk list (frames-split §5.4 parallel stage; execution de
 });
 
 // The job ingest ends at its deadline reports `expired` (ingest transition.ts): a step whose attempt ended so ends expired,
-// as one whose next attempt is due after the deadline does, so its run shows its tool's timeout reason (§9.4, §10.4, §10.5).
-describe("a container step ingest ended at its deadline ends expired (execution design §9.4, §10.4, §10.5)", () => {
+// as one whose next attempt is due after the deadline does.
+describe("a container step ingest ended at its deadline ends expired", () => {
   it("CL05 a chunk whose last attempt ingest expired ends the list with the expiry mark", async () => {
     jobs.set(jobOf(0, 1), "failed");
     jobs.set(jobOf(0, 2), "running");
@@ -200,14 +204,14 @@ describe("a container step ingest ended at its deadline ends expired (execution 
       const reason = input.request.jobId.endsWith(":a2") ? "expired" : "tool_failed";
       return { request: input.request, report: { schemaVersion: 2, state: "failed", reason, outputs: [], usage: null }, assets: [] };
     });
-    const planned = { stepKey: "stitch", namePrefix: "ERASE", container: "mp4" as const, build: chunk(0).build };
+    const planned = { stepKey: "stitch", namePrefix: "SPLIT", container: "mp4" as const, build: chunk(0).build };
     expect(await advanceRegistered(RUN, planned, "60000000-0000-4000-8000-000000000001", DEADLINE)).toEqual({ failed: "expired", expired: true });
   });
 
   it("CL08 a registered stitch that can no longer be submitted or waited for ends with the expiry mark instead of throwing", async () => {
     h.grants.mockImplementation(async () => [{ storageKey: "derived/out.mp4", contentType: "video/mp4", coverKey: "derived/out.cover.jpg" }]);
     h.registered.mockRejectedValue(new DeadlinePassed());
-    const planned = { stepKey: "stitch", namePrefix: "ERASE", container: "mp4" as const, build: chunk(0).build };
+    const planned = { stepKey: "stitch", namePrefix: "SPLIT", container: "mp4" as const, build: chunk(0).build };
     expect(await advanceRegistered(RUN, planned, "60000000-0000-4000-8000-000000000001", DEADLINE)).toEqual({ failed: "expired", expired: true });
   });
 

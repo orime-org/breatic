@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { getMiniToolsConfig } from "@breatic/core";
-import { miniToolPeopleAnalysis, miniToolSceneAnalysis, openContainerOutputs, upstreamStepRepo,
-  type miniToolAnalysisService } from "@breatic/domain";
-import { assertBeforeDeadline, DeadlinePassed, MINI_TOOL_JOB_MAX_OUTPUTS, miniToolPlanJobRequestSchema,
-  type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
-import { chunkVideoOutputs, miniToolAnalysisRecordSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
-import { originalInputOf, peopleRecipeOf, sceneCutsRecipeOf, toolInputOf } from "@worker/handlers/video-presentation-recipes.js";
+import { miniToolSceneAnalysis, openContainerOutputs, upstreamStepRepo, type miniToolAnalysisService } from "@breatic/domain";
+import { assertBeforeDeadline, DeadlinePassed, miniToolPlanJobRequestSchema, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
+import { miniToolAnalysisRecordSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
+import { sceneCutsRecipeOf, toolInputOf } from "@worker/handlers/video-presentation-recipes.js";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { advanceRegisteredMiniToolPlanJob, type RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { planReadUntil } from "@worker/handlers/mini-tool/advance-plan-job.js";
@@ -107,61 +105,21 @@ async function analysisJson(analysis: AnalysisJob, outputIndex: number): Promise
 }
 
 /**
- * The people recipe a stored people job carries (the anchor's grid frame and PNG target).
- * @param job - The people job.
- * @returns Its recipe.
- * @throws {Error} When the job is not a people job.
- */
-function peopleRecipe(job: RegisteredMiniToolPlanJob): Extract<MiniToolPlanRecipe, { kind: "people" }> {
-  const recipe = job.request.outputs[0]?.recipe;
-  if (recipe?.kind !== "people") throw new Error("People analysis requires its people recipe on the anchor frame");
-  return recipe;
-}
-
-/**
- * Advance the accepted people or scene analysis through its original container steps, its recipes on the frozen version's
- * grid (§7.16, §7.17); scene cuts come back as grid frame numbers (§7.17 scene_cuts row).
+ * Advance the accepted scene analysis through its original container step, its recipe on the frozen version's grid (§7.16,
+ * §7.17); scene cuts come back as grid frame numbers (§7.17 scene_cuts row).
  * @param execution - The original SQL-owned execution identity, source and context.
  * @param deadlineAt - The task's unchanged computation deadline.
  * @returns The complete owned result after its registered dependencies are available.
  * @throws {Error} When an original step, artifact or analysis cannot be completed.
  */
-export async function runMiniToolContainerAnalysis(
-  execution: Execution, deadlineAt: number,
-): Promise<Extract<MiniToolAnalysisResult, { kind: "people" | "scene_cuts" }>> {
+export async function runMiniToolContainerAnalysis(execution: Execution, deadlineAt: number): Promise<MiniToolAnalysisResult> {
   const record = miniToolAnalysisRecordSchema.parse(execution.record);
   const input = record.analysisInput;
-  const inputId = record.binding.assetId;
-  if (input.kind === "tracked_mask") throw new Error("Tracked masks require their original provider analysis executor");
   const version = execution.params.analysis.presentations.source;
-  const { sourceKey } = execution.params;
-  if (input.kind === "scene_cuts") {
-    // The detector reads the range's grid frames from the tool source, bound under the binding's id (§7.17 scene_cuts row).
-    const tool = toolInputOf(version, sourceKey, inputId);
-    const initial = await advanceAnalysisJob(execution, deadlineAt, 0, () => Promise.resolve([
-      { outputIndex: 0, modality: "text", recipe: sceneCutsRecipeOf(version, tool, input.range, input.profile) },
-    ]), undefined, () => Promise.resolve(tool.inputs.slice(0, 1)));
-    return miniToolSceneAnalysis.assembleMiniToolSceneAnalysis(record, await analysisJson(initial, 0), { fps: version.display.fps, frameCount: version.display.frameCount });
-  }
-  // The anchor and its thumbnails read the original under the binding's id, the source the people assembly checks.
-  const original = originalInputOf(version, sourceKey, inputId);
+  // The detector reads the range's grid frames from the tool source, bound under the binding's id (§7.17 scene_cuts row).
+  const tool = toolInputOf(version, execution.params.sourceKey, record.binding.assetId);
   const initial = await advanceAnalysisJob(execution, deadlineAt, 0, () => Promise.resolve([
-    { outputIndex: 0, modality: "text", recipe: peopleRecipeOf(version, original, input.anchor.frameIndex, input.profile) },
-  ]));
-  const anchor = peopleRecipe(initial.job);
-  const observations = miniToolPeopleAnalysis.readMiniToolDisplayPeople(record, await analysisJson(initial, 0), anchor.target);
-  const groups = chunkVideoOutputs(observations.candidates, MINI_TOOL_JOB_MAX_OUTPUTS);
-  const jobs: RegisteredMiniToolPlanJob[] = [];
-  for (const [index, candidates] of groups.entries()) {
-    // Each crop is the stored anchor recipe's grid frame and PNG target, cropped in the display geometry the detector measured.
-    const outputs: AnalysisOutput[] = candidates.map((candidate) => ({
-      outputIndex: candidate.detectionIndex, modality: "image", recipe: {
-        kind: "frame", inputId: anchor.inputId, grid: anchor.grid, source: anchor.source, frameIndex: anchor.frameIndex, target: anchor.target,
-        crop: { sourceWidth: observations.width, sourceHeight: observations.height, rect: candidate.pixelCrop },
-      },
-    }));
-    const next = await advanceAnalysisJob(execution, initial.job.request.deadlineAt, index + 1, () => Promise.resolve(outputs), initial.job.request);
-    jobs.push(next.job);
-  }
-  return miniToolPeopleAnalysis.assembleMiniToolPeopleAnalysis(record, sourceKey, observations, jobs);
+    { outputIndex: 0, modality: "text", recipe: sceneCutsRecipeOf(version, tool, input.range, input.profile) },
+  ]), undefined, () => Promise.resolve(tool.inputs.slice(0, 1)));
+  return miniToolSceneAnalysis.assembleMiniToolSceneAnalysis(record, await analysisJson(initial, 0), { fps: version.display.fps, frameCount: version.display.frameCount });
 }

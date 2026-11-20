@@ -4,7 +4,7 @@
 import { assetRepo, ingestReportService, miniToolStepStateSchema, openMiniToolPlanJob, recordMiniToolStepResult, upstreamStepRepo,
   type OpenMiniToolPlanJobInput } from "@breatic/domain";
 import { readMiniToolPlanJobReport, type StudioAssetEntity, type MiniToolPlanJobRequest } from "@breatic/shared";
-import { miniToolAnalysisArtifactSchema } from "@breatic/shared/mini-tools";
+import { z } from "zod";
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import type { EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
@@ -65,11 +65,11 @@ export async function advanceRegisteredMiniToolPlanJob(input: OpenMiniToolPlanJo
       if (outcome.status !== "registered" && outcome.status !== "already_registered") {
         throw new Error(`Planned output registration failed: ${outcome.status}`);
       }
-      assetId = miniToolAnalysisArtifactSchema.shape.assetId.parse(outcome.assetId);
+      assetId = z.uuid().parse(outcome.assetId);
       await upstreamStepRepo.recordInline(input.stepId, { [cacheKey]: assetId }, 0);
       step = { ...step, output: { ...step.output, [cacheKey]: assetId } };
     } else {
-      assetId = miniToolAnalysisArtifactSchema.shape.assetId.parse(step.output[cacheKey]);
+      assetId = z.uuid().parse(step.output[cacheKey]);
     }
     const asset = await assetRepo.findById(assetId);
     if (asset === null || asset.deletedAt !== null) throw new Error("Registered planned output is unavailable");

@@ -8,14 +8,14 @@
  * Each pickup writes every output's job recipe on the frozen version's grid and tool source (§7.16) with the frozen
  * encode, and advances the frozen layout as it is: each batch is a `run-batch` job registered through
  * `advanceRegisteredMiniToolPlanJob`, whose next attempt carries only the outputs not yet written, up to the frozen
- * `chunkRetries`; an oversized segment runs its frozen chunk windows as `run-chunk` work objects (the model-input
- * preparation path) and one registered `run-stitch` that retires them. The caller commits what each pickup finished.
+ * `chunkRetries`; an oversized segment runs its frozen chunk windows as `run-chunk` work objects
+ * (`container-steps.ts`) and one registered `run-stitch` that retires them. The caller commits what each pickup finished.
  */
 
 import { assetRepo, openContainerOutputs, type AcceptedMiniToolExecution } from "@breatic/domain";
 import { DeadlinePassed, miniToolPlanJobRequestSchema, videoPresentationWorkKeyFor, type MiniToolPlanRecipe, type StudioAssetEntity } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, videoContainerJobId, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
-import { advanceChunks, advanceRegistered, jobStep } from "@worker/handlers/mini-tool/model-run-steps.js";
+import { advanceChunks, advanceRegistered, jobStep } from "@worker/handlers/mini-tool/container-steps.js";
 import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { chunkInputId, frameRecipeOf, segmentRecipesOf, toolInputOf, type ToolInput } from "@worker/handlers/video-presentation-recipes.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
@@ -175,7 +175,7 @@ async function advanceEncode(execution: VideoTool, encode: VideoTool["layout"]["
   const recipe = execution.outputs[outputIndex]!.recipe;
   if (recipe.kind !== "segment") throw new Error("Only a segment is encoded in chunks");
   const { recipes, inputs } = segmentRecipesOf(execution.presentations.source, execution.sourceKey, recipe.range, execution.container.encode, encode.chunks);
-  // Each chunk is a work object on the model-input preparation path (§93 D5-10), never registered: a done output is pinned
+  // Each chunk is a work object (container-steps.ts, §93 D5-10), never registered: a done output is pinned
   // with the run, a failed attempt's output retired with its result, the next attempt run under its own id.
   let chunks: Awaited<ReturnType<typeof advanceChunks>>;
   try {

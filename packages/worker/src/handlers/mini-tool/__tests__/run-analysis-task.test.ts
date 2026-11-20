@@ -7,15 +7,14 @@ import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
 import type { MiniToolAnalysisJob, miniToolAnalysisService } from "@breatic/domain";
 import { DeadlinePassed } from "@breatic/shared";
-import { miniToolAnalysisRecordSchema, miniToolAnalysisResultSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
+import { miniToolAnalysisRecordSchema, type MiniToolAnalysisResult } from "@breatic/shared/mini-tools";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
-import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { runMiniToolAnalysisTask } from "../run-analysis-task.js";
 import { FROZEN_PRESENTATION } from "./frozen-presentation.js";
 
 const h = vi.hoisted(() => ({ start: vi.fn(), finish: vi.fn(), deadline: vi.fn(), execute: vi.fn(),
-  extend: vi.fn(), delay: vi.fn(), error: vi.fn(), warn: vi.fn(), abandon: vi.fn(), stream: {} }));
+  extend: vi.fn(), delay: vi.fn(), error: vi.fn(), warn: vi.fn(), stream: {} }));
 vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
   return { ...actual, getStreamRedis: () => h.stream, getWorkerConfig: () => ({ lock_duration_ms: 600000 }),
@@ -27,31 +26,30 @@ vi.mock("@breatic/domain", async (original) => {
 });
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
 vi.mock("@worker/handlers/mini-tool/analysis-completion.js", () => ({ finishMiniToolAnalysisAndNotify: h.finish }));
-vi.mock("@worker/handlers/mini-tool/run-end.js", () => ({ abandonUnresolvedModelSteps: h.abandon }));
 
 const TASK = "10000000-0000-4000-8000-000000000001";
 const DEADLINE = 1792927200000;
 const record = miniToolAnalysisRecordSchema.parse({
   schemaVersion: 1, draftId: "20000000-0000-4000-8000-000000000001", revision: "30000000-0000-4000-8000-000000000001",
-  analysisRunId: TASK, acceptedAt: "2026-10-25T01:02:03.123456Z", kind: "people", inputFingerprint: "a".repeat(64),
+  analysisRunId: TASK, acceptedAt: "2026-10-25T01:02:03.123456Z", kind: "scene_cuts", inputFingerprint: "a".repeat(64),
   binding: { assetId: "40000000-0000-4000-8000-000000000001", contentHash: "b".repeat(64), canonicalURL: "https://assets.test.invalid/original.mp4",
     kind: "video", mediaInfo: { width: 400, height: 200, duration: 12, mimeType: "video/mp4" } },
-  analysisInput: { schemaVersion: 1, kind: "people", sourceURL: "https://assets.test.invalid/original.mp4", anchor: { frameIndex: 1 },
+  analysisInput: { schemaVersion: 1, kind: "scene_cuts", sourceURL: "https://assets.test.invalid/original.mp4", range: { start: 0, end: 5 },
     profile: { id: "original-profile", version: "original", weightsHash: null, params: {} } },
   status: "running", result: null, error: null, usage: [], artifactUnavailable: false,
 });
-const result: Extract<MiniToolAnalysisResult, { kind: "people" }> = { schemaVersion: 1, kind: "people", draftId: record.draftId,
+const result: MiniToolAnalysisResult = { schemaVersion: 1, kind: "scene_cuts", draftId: record.draftId,
   revision: record.revision, analysisRunId: TASK, acceptedAt: record.acceptedAt, binding: record.binding, analysisInput: record.analysisInput,
-  inputFingerprint: record.inputFingerprint, anchor: { frameIndex: 1 }, people: [] };
+  inputFingerprint: record.inputFingerprint, fps: { numerator: 25, denominator: 1 }, frameCount: 300, cuts: [] };
 const execution: miniToolAnalysisService.MiniToolAnalysisExecution = { record,
   context: { taskId: TASK, userId: "50000000-0000-4000-8000-000000000001", projectId: "60000000-0000-4000-8000-000000000001",
     spaceId: "70000000-0000-4000-8000-000000000001", hostNodeId: "80000000-0000-4000-8000-000000000001" },
   params: { sourceKey: "original/sql-source.mp4", requestFingerprint: "c".repeat(64), credits: 0, analysis: {
     schemaVersion: 1, analysisRunId: TASK, projectId: "60000000-0000-4000-8000-000000000001", spaceId: "70000000-0000-4000-8000-000000000001",
-    hostNodeId: "80000000-0000-4000-8000-000000000001", draftId: record.draftId, revision: record.revision, kind: "people",
+    hostNodeId: "80000000-0000-4000-8000-000000000001", draftId: record.draftId, revision: record.revision, kind: "scene_cuts",
     source: { nodeId: "80000000-0000-4000-8000-000000000001", canonicalURL: record.binding.canonicalURL, mediaInfo: record.binding.mediaInfo },
     binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
-    ...FROZEN_PRESENTATION, chargeTo: "platform",
+    ...FROZEN_PRESENTATION, chargeTo: "user",
   } } };
 
 /** Build a queue envelope whose non-authoritative source differs from the SQL original. @returns The delivery. */
@@ -61,31 +59,10 @@ function job(attemptsMade = 0): Job<MiniToolAnalysisJob> {
       hostNodeId: "queue-host", sourceKey: "different/queue-source.mp4", params: {}, source: "mini_tool" } } as unknown as Job<MiniToolAnalysisJob>;
 }
 
-/** Build a tracked analysis. @returns The original record and valid typed result. @throws {Error} When the fixture is invalid. */
-function trackedFixture(): { original: miniToolAnalysisService.MiniToolAnalysisExecution; result: MiniToolAnalysisResult } {
-  const original = structuredClone(execution);
-  const input = { schemaVersion: 1, kind: "tracked_mask", sourceURL: record.binding.canonicalURL, profile: record.analysisInput.profile,
-    anchor: { frameIndex: 1 }, range: { start: 0, end: 1 },
-    region: { box: { x: 0.1, y: 0.1, width: 0.2, height: 0.3 }, points: [] }, trackingPrompt: "selected object" } as const;
-  original.record = miniToolAnalysisRecordSchema.parse({ ...record, kind: "tracked_mask", analysisInput: input });
-  original.params.analysis = { ...original.params.analysis, kind: "tracked_mask", analysisInput: original.record.analysisInput };
-  const metadata = { width: 400, height: 200, frameCount: 4, fps: { numerator: 4, denominator: 1 } };
-  const computed = miniToolAnalysisResultSchema.parse({
-    schemaVersion: 1, kind: "tracked_mask", draftId: record.draftId, revision: record.revision, analysisRunId: TASK,
-    acceptedAt: record.acceptedAt, binding: record.binding, analysisInput: input, inputFingerprint: record.inputFingerprint,
-    ...metadata, anchor: input.anchor, regionFingerprint: "d".repeat(64),
-    artifactRefs: ["rle"].map((role, index) => ({
-      role, assetId: `90000000-0000-4000-8000-00000000000${index + 1}`, canonicalURL: `https://assets.test.invalid/${role}`,
-      contentHash: "e".repeat(64), kind: "document", mimeType: "text/plain", size: 100, frameMetadata: null,
-    })),
-  });
-  return { original, result: computed };
-}
-
 beforeEach(() => {
   vi.resetAllMocks(); vi.spyOn(Date, "now").mockReturnValue(DEADLINE - 1);
   h.start.mockResolvedValue(structuredClone(execution)); h.execute.mockResolvedValue(result); h.deadline.mockResolvedValue(DEADLINE);
-  h.extend.mockResolvedValue(1); h.finish.mockResolvedValue(undefined); h.abandon.mockResolvedValue(undefined);
+  h.extend.mockResolvedValue(1); h.finish.mockResolvedValue(undefined);
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -187,67 +164,5 @@ describe("original analysis task pickup", () => {
     (stage === "start" ? h.start : h.deadline).mockRejectedValue(error);
     await expect(runMiniToolAnalysisTask(job(), "token", h.execute)).rejects.toBe(error);
     expect(h.execute).not.toHaveBeenCalled(); expect(h.finish).not.toHaveBeenCalled();
-  });
-});
-
-// Execution design §10.3: the tracked mask executor throws a typed failure naming its code and step, and the pickup stores
-// exactly that as the analysis error on the first attempt; a passed deadline is the timeout code.
-describe("tracked mask failures (execution design §10.3)", () => {
-  const STEPS = "@worker/handlers/mini-tool/model-run-steps.js";
-  /** The typed failure, loaded by name so the cases above run before it exists. @returns Its constructor. */
-  const failed = async (): Promise<new (failure: { code: string; step: string }) => Error> =>
-    ((await import(/* @vite-ignore */ STEPS)) as { TrackedMaskFailed: new (failure: { code: string; step: string }) => Error }).TrackedMaskFailed;
-
-  it.each([
-    [{ code: "empty_foreground", step: "join" }],
-    [{ code: "model_rejected", step: "track" }],
-    [{ code: "failed", step: "prepare" }],
-  ] as const)("TM01 stores %j as the analysis error without another attempt", async (failure) => {
-    const { original } = trackedFixture(); h.start.mockResolvedValue(original);
-    h.execute.mockRejectedValue(new (await failed())(failure));
-    expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: failure.code });
-    expect(h.finish.mock.calls[0]?.[1]).toEqual({ kind: "error", error: failure });
-  });
-
-  // As an execution's wait (run-execution-task): a provider step still running once the reporting window has closed is
-  // never waited for again, and the analysis ends with the timeout code.
-  it("TM03 a tracking step still running after the reporting window ends the analysis with the timeout code instead of waiting", async () => {
-    const { original } = trackedFixture(); h.start.mockResolvedValue(original);
-    vi.mocked(Date.now).mockReturnValue(planReportingEnd(DEADLINE) + 1);
-    h.execute.mockRejectedValue(new StillRunning(planReportingEnd(DEADLINE) + 5000));
-    expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: "timeout" });
-    expect(h.delay).not.toHaveBeenCalled();
-    expect(h.finish.mock.calls[0]?.[1]).toMatchObject({ kind: "error", error: { code: "timeout" } });
-  });
-
-  it("TM02 a passed deadline ends a tracked mask analysis with the timeout code", async () => {
-    const { original } = trackedFixture(); h.start.mockResolvedValue(original);
-    h.execute.mockRejectedValue(new DeadlinePassed());
-    expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ failed: true, reason: "timeout" });
-    expect(h.finish.mock.calls[0]?.[1]).toMatchObject({ kind: "error", error: { code: "timeout" } });
-  });
-});
-
-// Execution design §11.4 run end: every model step still unresolved is abandoned before the final state is written.
-describe("an analysis run's end", () => {
-  it("abandons its unresolved model steps before writing a failure, as a timeout past the deadline", async () => {
-    const order: string[] = [];
-    h.abandon.mockImplementation(() => { order.push("abandon"); return Promise.resolve(); });
-    h.finish.mockImplementation(() => { order.push("finish"); return Promise.resolve(); });
-    vi.mocked(Date.now).mockReturnValue(DEADLINE); h.execute.mockRejectedValue(new DeadlinePassed());
-    await runMiniToolAnalysisTask(job(2), "token", h.execute);
-    expect(order).toEqual(["abandon", "finish"]);
-    expect(h.abandon).toHaveBeenCalledExactlyOnceWith(TASK, "deadline");
-  });
-
-  it("abandons them before writing a result", async () => {
-    await runMiniToolAnalysisTask(job(), "token", h.execute);
-    expect(h.abandon).toHaveBeenCalledExactlyOnceWith(TASK, "failed");
-  });
-
-  it("abandons nothing while a step still runs", async () => {
-    h.execute.mockRejectedValue(new StillRunning(DEADLINE - 1)); h.delay.mockResolvedValue(undefined);
-    await expect(runMiniToolAnalysisTask(job(), "token", h.execute)).rejects.toBeInstanceOf(DelayedError);
-    expect(h.abandon).not.toHaveBeenCalled();
   });
 });

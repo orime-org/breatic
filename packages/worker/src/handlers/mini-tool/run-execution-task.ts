@@ -4,25 +4,16 @@
 import { DelayedError, type Job } from "bullmq";
 import { AppError, getMiniToolsConfig, getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
 import { failureOutcome, miniToolExecutionService,
-  type MiniToolExecution, type MiniToolExecutionCompletion, type MiniToolExecutionJob } from "@breatic/domain";
-import { DeadlinePassed, type StudioAssetEntity } from "@breatic/shared";
-import { miniToolExecutionOutputSchema, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
+  type MiniToolExecutionCompletion, type MiniToolExecutionJob } from "@breatic/domain";
+import { DeadlinePassed } from "@breatic/shared";
 import { isTerminalAttempt, verifyJobLockOwnership } from "@worker/handlers/dispatch.js";
 import { commitMiniToolExecutionProgress, finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
 import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { runMiniToolRemoveBackground } from "@worker/handlers/mini-tool/run-remove-background.js";
 import { runMiniToolVideoTool, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
-import { runMiniToolLipSync } from "@worker/handlers/mini-tool/run-lip-sync.js";
-import { runMiniToolTransitions } from "@worker/handlers/mini-tool/run-transitions.js";
-import { runMiniToolErase } from "@worker/handlers/mini-tool/run-erase.js";
-import { runMiniToolExpand } from "@worker/handlers/mini-tool/run-expand.js";
-import { modelRunFailure, type ModelRunAt } from "@worker/handlers/mini-tool/model-run-steps.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
-import { MediaRunFailed } from "@worker/handlers/media-run.js";
 import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
-import { abandonUnresolvedModelSteps } from "@worker/handlers/mini-tool/run-end.js";
 
 /**
  * Run one planned pickup through its original SQL-owned lifecycle.
@@ -35,8 +26,6 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
   const taskId = job.data.taskId;
   let phase = "entry";
   let returned = false;
-  // Why the run ends, for the steps it abandons: its deadline, or anything else.
-  let endReason: "deadline" | "failed" = "failed";
   let ctx: Record<string, unknown> = { taskId, jobId: job.id, phase };
   try {
     const current = await miniToolExecutionService.startMiniToolExecution(taskId, job.id ?? taskId);
@@ -53,42 +42,26 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
     } else {
       const deadlineAt = await taskDeadline(taskId, task.createdAt);
       phase = "computation";
-      // Where a model run stands, so a throw still ends it with its tool's own reason (§9.4, §10.4, §10.5).
-      const at: ModelRunAt = { position: null };
       // What this pickup settled so far, kept when a later step throws: an output registered here is never shown failed.
       const settled: VideoToolPickup = { results: new Map(), waiting: false };
       // No run-level deadline check: a pickup after the deadline still reads every job submitted before it, while each step
       // whose next attempt is due after it ends expired; only a wait is bounded, by the reporting window below.
       try {
-        if (execution.tool !== "video.remove-bg") {
-          // Lip-sync walks its steps per pickup like the frames runner (DD §7.2, §7.3); its one output ends registered or with
-          // the one §9.4 reason as its error, which the terminal commit carries as the run's error.
-          // Erase and expand walk theirs the same way and end with their own reason (execution design §10.4, §10.5).
-          const pickup = execution.tool === "video.lip-sync" ? await runMiniToolLipSync(execution, task.userId, deadlineAt, at)
-            : execution.tool === "video.transitions" ? await runMiniToolTransitions(execution, task.userId, deadlineAt)
-              : execution.tool === "video.erase" ? await runMiniToolErase(execution, task.userId, deadlineAt, at)
-                : execution.tool === "video.expand" ? await runMiniToolExpand(execution, task.userId, deadlineAt, at) : await runMiniToolVideoTool(execution, task.userId, deadlineAt, settled);
-          const outputs = execution.outputs.map((output, index) => ({ ...output, result: pickup.results.get(output.outputIndex) ?? record.outputs[index]?.result ?? null, late: false }));
-          // Each poll commits what finished non-terminally; the one terminal commit waits for every output (design §7.11, line 622).
-          if (pickup.waiting || outputs.some((output) => output.result === null)) {
-            const committed = record.outputs.map((output) => output.result?.status === "registered" ? output.result : null);
-            const registeredNow = outputs.map((output) => output.result?.status === "registered" ? output.result : null);
-            if (registeredNow.some((result, index) => result !== null && committed[index] === null)) {
-              record = (await commitMiniToolExecutionProgress(taskId, { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
-                outputs: outputs.map((output, index) => ({ ...output, result: registeredNow[index] ?? null })) })).record;
-            }
-            throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
+        const pickup = await runMiniToolVideoTool(execution, task.userId, deadlineAt, settled);
+        const outputs = execution.outputs.map((output, index) => ({ ...output, result: pickup.results.get(output.outputIndex) ?? record.outputs[index]?.result ?? null, late: false }));
+        // Each poll commits what finished non-terminally; the one terminal commit waits for every output (design §7.11, line 622).
+        if (pickup.waiting || outputs.some((output) => output.result === null)) {
+          const committed = record.outputs.map((output) => output.result?.status === "registered" ? output.result : null);
+          const registeredNow = outputs.map((output) => output.result?.status === "registered" ? output.result : null);
+          if (registeredNow.some((result, index) => result !== null && committed[index] === null)) {
+            record = (await commitMiniToolExecutionProgress(taskId, { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
+              outputs: outputs.map((output, index) => ({ ...output, result: registeredNow[index] ?? null })) })).record;
           }
-          const failed = outputs.find((output) => output.result?.status === "failed");
-          completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion, outputs,
-            error: failed?.result?.status === "failed" ? failed.result.error : null };
-        } else {
-          const output = await runMiniToolRemoveBackground(taskId, deadlineAt, (job.attemptsMade ?? 0) + (job.stalledCounter ?? 0) > 0, (stepId) => {
-            ctx = { ...ctx, stepId };
-          });
-          completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
-            outputs: [registeredOutput(current, output)], error: null };
+          throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
         }
+        const failed = outputs.find((output) => output.result?.status === "failed");
+        completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion, outputs,
+          error: failed?.result?.status === "failed" ? failed.result.error : null };
       } catch (thrown) {
         // A step still running once the reporting window has closed is never read again: the run ends expired.
         if (thrown instanceof StillRunning && Date.now() < planReportingEnd(deadlineAt)) {
@@ -96,16 +69,11 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           await job.moveToDelayed(thrown.resumeAt, token);
           throw new DelayedError();
         }
-        // Each model step keeps where its upstream stands (its ticket, or its return), so a retry resends nothing that
-        // went out: a throw goes back to the queue until its attempts are used (execution design §11.2 retry row).
+        // A throw goes back to the queue until its attempts are used.
         const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
         if (!isTerminalAttempt(job) && !verdictStands(error)) throw error;
-        endReason = error instanceof DeadlinePassed ? "deadline" : "failed";
-        logger.error({ err: thrown, ctx: { ...ctx, phase: error instanceof MediaRunFailed ? "provider" : phase } }, "mini_tool_execution_computation_failed");
-        const tool = execution.tool;
-        const failure: NonNullable<MiniToolExecutionCompletion["error"]> = tool === "video.erase" || tool === "video.expand" || tool === "video.lip-sync"
-          ? { ...modelRunFailure(tool, at.position, error instanceof DeadlinePassed) }
-          : error instanceof DeadlinePassed ? { code: "expired" }
+        logger.error({ err: thrown, ctx: { ...ctx, phase } }, "mini_tool_execution_computation_failed");
+        const failure: NonNullable<MiniToolExecutionCompletion["error"]> = error instanceof DeadlinePassed ? { code: "expired" }
             : error instanceof AppError || error instanceof MiniToolStepFailed ? { code: "mini_tool_failed", message: error.message }
               : { code: "internal" };
         // Only outputs not yet committed or registered in this pickup fail; a committed result is never rewritten (design line 622).
@@ -117,8 +85,6 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
           }),
           error: failure };
       }
-      // The run ends here: every model step still unresolved is abandoned before its final state is written (§11.4).
-      await abandonUnresolvedModelSteps(taskId, endReason);
     }
     phase = "ownership";
     if (!await verifyJobLockOwnership(job, token, getWorkerConfig().lock_duration_ms)) {
@@ -133,23 +99,4 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
     if (returned) return { failed: true, reason: phase };
     throw err;
   }
-}
-
-/**
- * Keep the actual registered rows separate from the source's measured media.
- * @param current - The original accepted mapping and parent.
- * @param stored - The canonical registered winner and its cover.
- * @param stored.asset - The actual primary registered asset.
- * @param stored.cover - Its registered cover, when present.
- * @returns The complete original slot with actual canonical media.
- * @throws {Error} When the registered observation violates the public media contract.
- */
-function registeredOutput(current: MiniToolExecution, stored: { asset: StudioAssetEntity; cover: StudioAssetEntity | null }): MiniToolExecutionOutput {
-  const { asset, cover } = stored;
-  return miniToolExecutionOutputSchema.parse({ ...current.execution.outputs[0], late: false, result: {
-    status: "registered", assetId: asset.id, canonicalURL: asset.fileUrl, kind: asset.kind, contentHash: asset.contentHash,
-    mimeType: asset.mimeType, size: asset.sizeBytes, width: asset.width, height: asset.height, duration: asset.durationSeconds,
-    cover: cover === null ? null : { assetId: cover.id, canonicalURL: cover.fileUrl, kind: cover.kind,
-      contentHash: cover.contentHash, mimeType: cover.mimeType, size: cover.sizeBytes, width: cover.width, height: cover.height },
-  } });
 }

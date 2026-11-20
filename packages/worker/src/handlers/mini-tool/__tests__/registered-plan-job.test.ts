@@ -28,12 +28,12 @@ const plan: MiniToolPlanJobRequest = {
   schemaVersion: 2, jobId: "original-analysis/chunk:0", containerClass: "OriginalClass", deadlineAt: 1792927200000,
   limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 },
   inputs: [{ inputId, storageKey: "original/video.mp4" }],
-  // §93 D5 (frames-split design §7.17 scene_cuts row 「去掉inspect_video步骤」, people anchor row): the text outputs are people
-  // detections on a grid frame, not the removed inspect_video recipe.
-  outputs: [8, 9].map((outputIndex) => ({ outputIndex, storageKey: `declared/${outputIndex}.txt`, contentType: "text/plain", recipe: { kind: "people", inputId,
-    grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1.92, allKeyframes: false } }, frameIndex: 0,
-    target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" },
-    profile: { id: "opencv-yunet-2023mar", version: "2023mar", weightsHash: null, params: {} } } })),
+  // §93 D5 (frames-split design §7.17 scene_cuts row 「去掉inspect_video步骤」): the text outputs are scene detections over grid
+  // frames, not the removed inspect_video recipe.
+  outputs: [8, 9].map((outputIndex) => ({ outputIndex, storageKey: `declared/${outputIndex}.txt`, contentType: "text/plain", recipe: { kind: "scene_cuts", inputId,
+    grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 96, realFrameCount: 96 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1.92, allKeyframes: false } },
+    frames: { start: 0, end: 96 }, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none" },
+    profile: { id: "pyscenedetect-content", version: "0.7.2", weightsHash: null, params: {} } } })),
 };
 const input = { taskId, stepId, chunkIndex: 0, chargeTo: "platform", request: plan } as const;
 const identity = { kind: "container", containerClass: plan.containerClass, jobId: plan.jobId, chunkIndex: 0 } as const;

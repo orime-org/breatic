@@ -41,64 +41,17 @@ function catalog(): Map<string, FullModel> {
 }
 
 const modelTools = MINI_TOOLS.filter((tool) => tool.run.kind === "model");
-const plannedClaims = {
-  "video.remove-bg": ["video", "background_color", "output_container_and_codec", "preserve_audio"],
-} as const;
-// Erase and expand fill every request field of their model in the worker's step runner (execution design §10.4, §10.5).
-const modelRunClaims = {
-  "video.erase": ["video", "mask_video", "copy_audio"],
-  "video.expand": ["video", "mask_video", "image", "task", "duration", "size", "num_inference_steps", "guidance_scale", "flow_shift", "context_scale", "seed"],
-} as const;
 const plannedContainerClasses = {
   "video.extract-frames": "MiniToolContainerStd4",
   "video.split": "MiniToolContainerStd4",
   // A video focus crop takes one grid frame on standard-4 (frames-split §5.5 configuration row).
   "video.focus-crop": "MiniToolContainerStd4",
-  "video.lip-sync": "MiniToolContainerStd4",
-  // Transitions encode and stitch on standard-4; their window chunks run on the GL class (frames-split §5.4 dispatch row).
-  "video.transitions": "MiniToolContainerStd4",
 } as const;
 
-/**
- * The model each erase or expand execution configures under `model.name`.
- * @returns Configured operation-to-model names.
- * @throws {Error} When the execution configuration cannot be loaded.
- */
-function modelRunExecutions(): Record<string, string> {
-  return Object.fromEntries(Object.entries(getMiniToolsConfig().executions).flatMap(([operation, execution]) =>
-    "model" in execution && typeof execution.model === "object" ? [[operation, execution.model.name]] : []));
-}
-
-/**
- * Enumerate only model-backed planned executions; the container branch has its own closed-set assertion.
- * @returns Configured operation-to-model names without treating containers as models.
- * @throws {Error} When the execution configuration cannot be loaded.
- */
-function plannedModelExecutions(): Record<string, string> {
-  return Object.fromEntries(Object.entries(getMiniToolsConfig().executions).flatMap(([operation, execution]) => "model" in execution && typeof execution.model === "string" ? [[operation, execution.model]] : []));
-}
-
 describe("model tools against the catalog", () => {
-  it("binds every planned execution model to its declared parameter owner", () => {
-    const executions = plannedModelExecutions();
-    expect(Object.keys(executions).sort()).toEqual(Object.keys(plannedClaims).sort());
-    for (const [operation, keys] of Object.entries(plannedClaims)) {
-      const tool = MINI_TOOLS.find((candidate) => candidate.id === operation);
-      expect(tool?.run.kind).toBe("planned");
-      const model = getFullModelConfig("video").models.find((candidate) => candidate.name === executions[operation]);
-      expect(model?.takes_prompt).toBe(false);
-      for (const key of keys) expect(model?.params?.[key]?.fill, `${operation}.${key}`).toBe("tool");
-      expect(model?.params?.video?.accepts).toBe("video");
-      expect(model?.params?.video?.type === "list").toBe(false);
-      for (const [key, value] of Object.entries({ background_color: "Transparent", output_container_and_codec: "webm_vp9", preserve_audio: true })) {
-        expect(model?.params?.[key]?.default, `${operation}.${key}`).toBe(value);
-        expect(model?.params?.[key]?.values, `${operation}.${key}`).toEqual([value]);
-      }
-    }
-  });
   it("binds every planned container execution to its declared registry and Std4 class", () => {
     const config = getMiniToolsConfig();
-    const executions = Object.entries(config.executions).filter(([, execution]) => !("model" in execution));
+    const executions = Object.entries(config.executions);
     expect(executions.map(([operation]) => operation).sort()).toEqual(Object.keys(plannedContainerClasses).sort());
     for (const [operation, execution] of executions) {
       // A focus crop is a planned request with no panel tool of its own (frames-split §5.5 plan shape row).
@@ -109,7 +62,6 @@ describe("model tools against the catalog", () => {
       expect(execution).toMatchObject({ container_class: plannedContainerClasses[operation as keyof typeof plannedContainerClasses],
         precheck_seconds: expect.any(Number), ...(operation === "video.focus-crop" ? {} : { max_outputs: expect.any(Number) }) });
     }
-    expect(config.executions["video.transitions"]).toMatchObject({ window_container_class: "MiniToolContainerGl", max_outputs: 1 });
     expect(config.executions["video.focus-crop"]).toEqual({ container_class: config.executions["video.extract-frames"].container_class,
       precheck_seconds: config.executions["video.extract-frames"].precheck_seconds });
     expect(config.classes.MiniToolContainerStd4).toMatchObject({ vcpu: 4, memory_gib: 12 });
@@ -190,14 +142,6 @@ describe("model tools against the catalog", () => {
         claimed.add(`${name}.${key}`);
       }
     }
-    const executions = plannedModelExecutions();
-    for (const [operation, keys] of Object.entries(plannedClaims)) {
-      const name = executions[operation];
-      for (const key of keys) claimed.add(`${name}.${key}`);
-    }
-    const runs = modelRunExecutions();
-    expect(Object.keys(runs).sort()).toEqual(Object.keys(modelRunClaims).sort());
-    for (const [operation, keys] of Object.entries(modelRunClaims)) for (const key of keys) claimed.add(`${runs[operation]}.${key}`);
     const unclaimed: string[] = [];
     for (const model of catalog().values()) {
       for (const [key, spec] of Object.entries(model.params ?? {})) {

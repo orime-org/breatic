@@ -24,11 +24,10 @@ const TASK = "10000000-0000-4000-8000-000000000001";
 const DEADLINE = 1792927200000;
 
 /** Build a valid SQL source independent of the delivery's source and destination. @returns The original accepted analysis. */
-function originalExecution(kind: "people" | "scene_cuts"): miniToolAnalysisService.MiniToolAnalysisExecution {
+function originalExecution(kind: "scene_cuts"): miniToolAnalysisService.MiniToolAnalysisExecution {
   const profile = { id: "original-profile", version: "original", weightsHash: null, params: {} };
   const url = "https://assets.test.invalid/original.mp4";
-  const input = kind === "people" ? { schemaVersion: 1, kind, sourceURL: url, profile, anchor: { frameIndex: 1 } }
-    : { schemaVersion: 1, kind, sourceURL: url, profile, range: { start: 0, end: 5 } };
+  const input = { schemaVersion: 1, kind, sourceURL: url, profile, range: { start: 0, end: 5 } };
   const record = miniToolAnalysisRecordSchema.parse({ schemaVersion: 1, kind, analysisRunId: TASK,
     draftId: "20000000-0000-4000-8000-000000000001", revision: "30000000-0000-4000-8000-000000000001",
     acceptedAt: "2026-10-25T01:02:03.123456Z", inputFingerprint: "a".repeat(64), analysisInput: input,
@@ -42,7 +41,7 @@ function originalExecution(kind: "people" | "scene_cuts"): miniToolAnalysisServi
     analysisRunId: TASK, draftId: record.draftId, revision: record.revision, kind,
     source: { nodeId: context.hostNodeId, canonicalURL: url, mediaInfo: record.binding.mediaInfo },
     binding: record.binding, analysisInput: record.analysisInput, inputFingerprint: record.inputFingerprint,
-    ...FROZEN_PRESENTATION, chargeTo: kind === "people" ? "platform" : "user",
+    ...FROZEN_PRESENTATION, chargeTo: "user",
   } } };
 }
 
@@ -51,10 +50,10 @@ beforeEach(() => {
 });
 
 describe("tasks queue analysis discriminator", () => {
-  it.each(["people", "scene_cuts"] as const)("routes %s through the original analysis lifecycle and its SQL executor", async (kind) => {
+  it.each(["scene_cuts"] as const)("routes %s through the original analysis lifecycle and its SQL executor", async (kind) => {
     const original = originalExecution(kind);
     const job = { id: "original-job", name: MINI_TOOL_ANALYSIS_JOB, data: { taskId: TASK, userId: "queue-user", projectId: "queue-project",
-      spaceId: "queue-space", hostNodeId: "queue-host", params: { analysis: { kind: "tracked_mask" } }, sourceKey: "different/queue-source.mp4" } } as unknown as Job<MiniToolAnalysisJob>;
+      spaceId: "queue-space", hostNodeId: "queue-host", params: { analysis: { kind: "other" } }, sourceKey: "different/queue-source.mp4" } } as unknown as Job<MiniToolAnalysisJob>;
     h.analysis.mockImplementation(async (_job: Job<MiniToolAnalysisJob>, _token: string, execute: MiniToolAnalysisExecutor) => {
       expect(await execute(original, DEADLINE)).toEqual({ computed: true });
       return { analysisRunId: TASK, status: "completed" };

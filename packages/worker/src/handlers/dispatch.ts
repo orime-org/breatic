@@ -20,7 +20,6 @@ import { runContainerJob } from "@worker/handlers/container/run-container-job.js
 import { runMiniToolAnalysisTask } from "@worker/handlers/mini-tool/run-analysis-task.js";
 import { runMiniToolExecutionTask } from "@worker/handlers/mini-tool/run-execution-task.js";
 import { runMiniToolContainerAnalysis } from "@worker/handlers/mini-tool/run-container-analysis.js";
-import { runMiniToolTrackedMaskAnalysis } from "@worker/handlers/mini-tool/run-tracked-mask.js";
 import { runMiniToolDeliveryJob } from "@worker/handlers/mini-tool/delivery-worker.js";
 import { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@breatic/core";
 import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
@@ -93,7 +92,6 @@ import {
   transcribeQuestion,
 } from "@worker/handlers/transcribe-question.js";
 import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
-import { EXTENSION_OF_TYPE } from "@worker/handlers/extension-of-type.js";
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
 
 /** The task types that run a catalog model. */
@@ -389,9 +387,7 @@ export async function runTask(
   const analyticsConsent = "analyticsConsent" in job.data ? job.data.analyticsConsent : undefined;
   return await runWithConsent(analyticsConsent ?? NO_CONSENT, () => {
     if (job.name === MINI_TOOL_ANALYSIS_JOB) {
-      // A tracked mask runs its own steps (execution design §10.3); people and scene cuts are container analyses.
-      return runMiniToolAnalysisTask(job as Job<MiniToolAnalysisJob>, token, (execution, deadlineAt) => execution.record.kind === "tracked_mask"
-        ? runMiniToolTrackedMaskAnalysis(execution, deadlineAt) : runMiniToolContainerAnalysis(execution, deadlineAt));
+      return runMiniToolAnalysisTask(job as Job<MiniToolAnalysisJob>, token, runMiniToolContainerAnalysis);
     }
     if ("executionKind" in job.data) {
       if (job.name !== "execute-mini-tool" || job.data.executionKind !== "planned" || job.data.source !== "mini_tool") {
@@ -1793,6 +1789,23 @@ export function declaredOutputType(model: string | undefined, toolId: string | u
   const runModel = model ?? (spec === undefined ? undefined : modelOf(spec));
   return runModel === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), runModel)?.output_type;
 }
+
+/**
+ * The extension a result is stored under when its model declares the type it
+ * returns (inner#1305), one per media type an upload may be.
+ */
+const EXTENSION_OF_TYPE: Readonly<Record<string, string>> = {
+  "image/png": ".png",
+  "image/jpeg": ".jpg",
+  "image/webp": ".webp",
+  "video/mp4": ".mp4",
+  "video/webm": ".webm",
+  "video/quicktime": ".mov",
+  "audio/mpeg": ".mp3",
+  "audio/wav": ".wav",
+  "audio/mp4": ".m4a",
+  "audio/webm": ".webm",
+};
 
 
 

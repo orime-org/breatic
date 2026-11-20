@@ -65,11 +65,13 @@ describe("durable mini-tool expense worker wiring", () => {
   it("routes a wake through SQL recovery and reads costs under a fresh bounded lifetime", async () => {
     const process = await boot(); wire.add.mockClear();
     const lookupInput: domainModule.MiniToolConsumptionLookupInput = { consumption: {
-      schemaVersion: 1, consumptionKey: "1".repeat(64), identity: { kind: "provider", stepId: "30000000-0000-4000-8000-000000000001" },
-      state: "pending", creditMultiplier: 2, chargeTo: "user", costUsd: null, costSource: null, raw: null, credits: null, containerPricing: null,
-      servedBy: "wavespeed", costs: [], waiting: [{ lookup: { upstream: "wavespeed", predictionId: "original-prediction" } }], known: 0, attempts: 0,
-      windowEndsAt: 1792920000000, nextLookupAt: 1792910000000,
-    }, lastAttempt: false };
+      schemaVersion: 1, consumptionKey: "1".repeat(64), identity: { kind: "container", containerClass: "MiniToolContainerStd4", jobId: "task:T/chunk:0", chunkIndex: 0 },
+      state: "pending", creditMultiplier: 2, chargeTo: "user", costUsd: null, costSource: null, raw: null, credits: null,
+      containerPricing: { configVersion: "first-policy", size: { vcpu: 4, memory_gib: 12, disk_gb: 20 },
+        prices: { vcpu_second_usd: 0.001, memory_gib_second_usd: 0.002, disk_gb_second_usd: 0.003 } },
+    }, plan: { schemaVersion: 2, jobId: "task:T/chunk:0", containerClass: "MiniToolContainerStd4", deadlineAt: 1792920000000,
+      limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, inputs: [], outputs: [],
+      count: { kind: "grid_count", inputId: "20000000-0000-4000-8000-000000000001", gridStart: { numerator: 0, denominator: 1 }, fps: { numerator: 25, denominator: 1 }, gridEnd: null } } };
     wire.lookup.mockResolvedValue({ state: "pending", reason: "billing-delayed" });
     wire.run.mockImplementation(async (_scope: unknown, lookup: domainModule.MiniToolSettlementLookup) => {
       await lookup(lookupInput);

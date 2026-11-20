@@ -75,7 +75,7 @@ function plan(tool: "video.extract-frames" | "video.split", chargeTo: "platform"
  * @param chargeTo - The payer admission froze.
  * @returns The execution.
  */
-function analysis(kind: "people" | "scene_cuts", chargeTo: "platform" | "user"): miniToolAnalysisService.MiniToolAnalysisExecution {
+function analysis(kind: "scene_cuts", chargeTo: "platform" | "user"): miniToolAnalysisService.MiniToolAnalysisExecution {
   return { context: { taskId: TASK, userId: USER, projectId: PROJECT, spaceId: SPACE, hostNodeId: "50000000-0000-4000-8000-000000000012" },
     record: { kind, binding: { assetId: SOURCE } },
     params: { sourceKey: "video/source.mp4", credits: 0, requestFingerprint: "c".repeat(64), analysis: { kind, chargeTo } } } as unknown as miniToolAnalysisService.MiniToolAnalysisExecution;
@@ -122,8 +122,8 @@ describe("the analysis runner opens each job with the payer frozen in the analys
     h.advance.mockImplementation(async (input: OpenMiniToolPlanJobInput) => ({ request: input.request, report: { schemaVersion: 2, state: "done", outputs: [], usage: { wallMs: 1, cpuUsec: 1 } }, assets: [] }));
   });
 
-  it("A03: a people analysis frozen as user-paid (the set changed before admission) opens its job with chargeTo user", async () => {
-    await advanceAnalysisJob(analysis("people", "user"), DEADLINE, 0, async () => []);
+  it("A03: a scene_cuts analysis frozen as user-paid opens its job with chargeTo user", async () => {
+    await advanceAnalysisJob(analysis("scene_cuts", "user"), DEADLINE, 0, async () => []);
     expect(chargedTo()).toBe("user");
   });
 

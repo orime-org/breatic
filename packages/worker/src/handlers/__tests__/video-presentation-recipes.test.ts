@@ -12,7 +12,7 @@ import { describe, expect, it } from "vitest";
 import { miniToolPlanRecipeSchema } from "@breatic/shared";
 import { frozenVersion } from "../mini-tool/__tests__/frozen-presentation.js";
 import {
-  AUDIO_INPUT_ID, chunkInputId, frameRecipeOf, peopleRecipeOf, sceneCutsRecipeOf, segmentRecipesOf, SOURCE_INPUT_ID, toolInputOf,
+  AUDIO_INPUT_ID, chunkInputId, frameRecipeOf, sceneCutsRecipeOf, segmentRecipesOf, SOURCE_INPUT_ID, toolInputOf,
 } from "../video-presentation-recipes.js";
 
 
@@ -90,14 +90,7 @@ describe("frames, focus crops and segments (§7.17 frame and segment rows; §5.5
   });
 });
 
-describe("analysis recipes (§7.17 人物检测锚帧 and scene_cuts rows)", () => {
-  it("W01 the people detector reads the anchor's grid frame", () => {
-    const version = frozenVersion();
-    const recipe = peopleRecipeOf(version, toolInputOf(version, "k", "70000000-0000-4000-8000-000000000001"), 7, PROFILE);
-    expect(recipe).toMatchObject({ kind: "people", inputId: "70000000-0000-4000-8000-000000000001", frameIndex: 7, grid: GRID, profile: PROFILE });
-    expect(() => miniToolPlanRecipeSchema.parse(recipe)).not.toThrow();
-  });
-
+describe("analysis recipes (§7.17 scene_cuts row)", () => {
   it("W01 the scene detector reads the range's grid frames, with no inspect step", () => {
     const version = frozenVersion();
     const recipe = sceneCutsRecipeOf(version, toolInputOf(version, "k"), { start: 10, end: 60 }, PROFILE);

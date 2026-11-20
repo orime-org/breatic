@@ -17,11 +17,11 @@ vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof share
 import { BodyTooLarge, DeadlinePassed, EmptyBody } from "@breatic/shared";
 import { readMiniToolAnalysisJson } from "../read-analysis-json.js";
 
-const payload = { schemaVersion: 1, kind: "people", anchor: { frameIndex: 1, pts: 0.25 }, width: 400, height: 200, candidates: [] };
+const payload = { schemaVersion: 1, kind: "scene_cuts", cuts: [{ frameIndex: 1, detectionScore: 0.5 }] };
 const body = JSON.stringify(payload);
 const asset: StudioAssetEntity = {
   id: "10000000-0000-4000-8000-000000000001", studioId: "20000000-0000-4000-8000-000000000001",
-  contentHash: "b".repeat(64), storageKey: "original-winner/people.txt", fileUrl: "https://assets.test.invalid/original-winner/people.txt",
+  contentHash: "b".repeat(64), storageKey: "original-winner/scenes.txt", fileUrl: "https://assets.test.invalid/original-winner/scenes.txt",
   sizeBytes: new TextEncoder().encode(body).byteLength, mimeType: "text/plain", kind: "document", source: "upload",
   producedByUserId: "30000000-0000-4000-8000-000000000001", generationTaskId: null,
   width: null, height: null, durationSeconds: null, createdAt: new Date("2026-10-24T00:00:00Z"), deletedAt: null,

@@ -64,7 +64,6 @@ import { miniToolExecutionService, type MiniToolAnalysisJob, type MiniToolExecut
 import { MINI_TOOL_ANALYSIS_JOB } from "@breatic/shared/mini-tools";
 import { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@breatic/core";
 import { finishMiniToolAnalysisAndNotify } from "@worker/handlers/mini-tool/analysis-completion.js";
-import { abandonUnresolvedModelSteps } from "@worker/handlers/mini-tool/run-end.js";
 import { finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
@@ -115,8 +114,6 @@ export async function cleanupFailedJobNodes(
   if (!job.finishedOn) return 0;
 
   if (job.name === MINI_TOOL_ANALYSIS_JOB) {
-    // The run ends here: every model step it left unresolved is abandoned before its final state (§11.4 run end).
-    await abandonUnresolvedModelSteps(job.data.taskId, "failed");
     await finishMiniToolAnalysisAndNotify(job.data.taskId, {
       kind: "error", error: { code: "analysis_failed", message: reason },
     }, streamRedis);
@@ -131,7 +128,6 @@ export async function cleanupFailedJobNodes(
     const terminal = current.record.status === "completed" || current.record.status === "failed";
     const failure = { code: "internal" };
     if (!terminal) logger.error({ err: new Error(reason), ctx: { taskId: job.data.taskId, reason } }, "mini_tool_execution_terminal_queue_failed");
-    if (!terminal) await abandonUnresolvedModelSteps(job.data.taskId, "failed");
     await finishMiniToolExecutionAndNotify(job.data.taskId, {
       planFingerprint: current.execution.planFingerprint, expectedVersion: current.record.resultVersion,
       // A result a progress commit already registered is never rewritten (design line 622); only the rest fail.

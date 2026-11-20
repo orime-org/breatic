@@ -175,20 +175,6 @@ export function segmentTarget(version: VideoPresentationVersion, encode: { crf: 
 }
 
 /**
- * A model input's target (§5.3 model-input row): the display size on even sides, opaque, the frozen encode.
- * @param version - The frozen selected version.
- * @param encode - The frozen crf and preset.
- * @param encode.crf - The crf.
- * @param encode.preset - The preset.
- * @returns The target.
- * @throws {never} Never.
- */
-export function modelInputTarget(version: VideoPresentationVersion, encode: { crf: number; preset: MiniToolPlanTarget['preset'] }): MiniToolPlanTarget {
-  const { colorMatrix, toneMap } = planColorOf(version);
-  return { width: evenSide(version.display.width), height: evenSide(version.display.height), displayRect: null, colorMatrix, toneMap, alpha: 'none', crf: encode.crf, preset: encode.preset };
-}
-
-/**
  * A still's PNG target: display geometry, the plan's colour and depth, straight alpha for a transparent version.
  * @param version - The frozen selected version.
  * @returns The target.
@@ -212,19 +198,6 @@ export function frameRecipeOf(version: VideoPresentationVersion, input: ToolInpu
   const { width, height } = version.display;
   return { inputs: input.inputs.slice(0, 1), recipe: { kind: 'frame', inputId: input.inputId, grid: input.grid, source: input.source, frameIndex, target: frameTarget(version),
     ...(crop === undefined ? {} : { crop: { sourceWidth: width, sourceHeight: height, rect: crop } }) } };
-}
-
-/**
- * The people detector on the anchor's grid frame.
- * @param version - The frozen selected version.
- * @param input - The tool input it reads.
- * @param frameIndex - The anchor's grid frame.
- * @param profile - The frozen detector profile.
- * @returns The recipe.
- * @throws {never} Never.
- */
-export function peopleRecipeOf(version: VideoPresentationVersion, input: ToolInput, frameIndex: number, profile: MiniToolPlanDetectorProfile): MiniToolPlanRecipe {
-  return { kind: 'people', inputId: input.inputId, grid: input.grid, source: input.source, frameIndex, target: frameTarget(version), profile };
 }
 
 /**
