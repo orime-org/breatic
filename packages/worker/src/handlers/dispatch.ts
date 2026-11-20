@@ -29,10 +29,10 @@ import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
 import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, publishSpaceTasksChanged } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
-import { getStorageAdapter, getRawEnvVar, getUnderstandConfig, getAgentConfig } from "@breatic/core";
+import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { costsOf, type Cost } from "@breatic/provider";
 import { failureOutcome, taskRepo, taskService, upstreamStepRepo, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
-import { creditHoldService, creditLotService, creditsForUsd, toChargeCredits } from "@breatic/domain";
+import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
   assetRepo,
@@ -69,7 +69,6 @@ import type { BackendUploadContext } from "@breatic/domain";
 import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
 import { MINI_TOOL_ANALYSIS_JOB, catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
 import type { NodeTaskCountsEvent, NodeTaskResult, TaskFailureReason } from "@breatic/shared";
-import { env } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { abandonedCosts, runModelTask } from "@worker/handlers/model-task.js";
 import { MediaRunFailed, type MediaRunDone } from "@worker/handlers/media-run.js";

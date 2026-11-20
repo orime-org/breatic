@@ -19,7 +19,6 @@
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
 import type * as coreModule from "@breatic/core";
-import type * as sharedModule from "@breatic/shared";
 
 const mockMarkFailed = vi.hoisted(() => vi.fn(async () => true));
 const mockRecordFailure = vi.hoisted(() => vi.fn());

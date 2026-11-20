@@ -15,7 +15,6 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
-import type * as coreModule from "@breatic/core";
 import type { StoredAsset } from "@breatic/domain";
 
 const h = vi.hoisted(() => {
