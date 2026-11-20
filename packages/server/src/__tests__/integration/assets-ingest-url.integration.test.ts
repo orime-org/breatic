@@ -31,6 +31,8 @@ import { Queue } from "bullmq";
 import {
   initCore,
   getRedis,
+  getStreamRedis,
+  taskEventsStreamKey,
   setSession,
   sessionCookieName,
   loadLocales,
@@ -175,6 +177,28 @@ describe("POST /assets/ingest-url — what it takes", () => {
     } finally {
       add.mockRestore();
     }
+  });
+});
+
+describe("POST /assets/ingest-url — a Document body block (breatic#1574)", () => {
+  it("records the block on the grant and announces processing to the block's Document", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const spaceId = crypto.randomUUID();
+    const uploadId = crypto.randomUUID();
+
+    const res = await submit(cookie, { project_id: projectId, space_id: spaceId, upload_id: uploadId });
+
+    expect(res.status).toBe(201);
+    const grants = await sql<{ document_upload_id: string | null }[]>`
+      SELECT document_upload_id FROM upload_grants WHERE project_id = ${projectId}
+    `;
+    expect(grants).toEqual([{ document_upload_id: uploadId }]);
+    const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+    const events = raw.map(([, f]) => JSON.parse(f[f.indexOf("payload") + 1]!) as Record<string, unknown>)
+      .filter((e) => e.type === "document-upload" && e.uploadId === uploadId);
+    expect(events).toEqual([expect.objectContaining({
+      docName: `project-${projectId}/document-${spaceId}`, state: "processing", deadline: expect.any(Number),
+    })]);
   });
 });
 

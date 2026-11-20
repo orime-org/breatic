@@ -21,7 +21,7 @@ import {
   getStorageConfig,
   logger,
 } from "@breatic/core";
-import { extFromUrl, ingestReportService, labelForUrl } from "@breatic/domain";
+import { announceDocumentUploadProcessing, extFromUrl, ingestReportService, labelForUrl } from "@breatic/domain";
 import { INGEST_NOT_STARTED } from "@breatic/shared";
 
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
@@ -45,6 +45,8 @@ export interface UrlIngestRequest {
   readonly spaceId: string;
   /** The node the result goes to; absent for a document body's block. */
   readonly nodeId?: string;
+  /** The Document body block the result goes to, by its `uploadId` (breatic#1574). */
+  readonly documentUploadId?: string;
   readonly userId: string;
 }
 
@@ -73,7 +75,7 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
  * @throws {Error} When the job cannot be queued; the upload is settled as not started first.
  */
 export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedUpload> {
-  const { url, projectId, spaceId, nodeId, userId } = request;
+  const { url, projectId, spaceId, nodeId, documentUploadId, userId } = request;
   await projectService.assertAccess(projectId, userId, "editor");
   await assertStorageAllowance(projectId, "upload");
 
@@ -88,7 +90,7 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
       taskType: "url",
       ext: extFromUrl(url),
       expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
-      context: { ...(nodeId !== undefined && { nodeId }), spaceId, source: "url" },
+      context: { ...(nodeId !== undefined && { nodeId }), ...(documentUploadId !== undefined && { documentUploadId }), spaceId, source: "url" },
     },
     {
       // Every task has the same two hours (inner#1367); the transfer is
@@ -129,6 +131,13 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
     // second chance to notice: the request is about to throw.
     noteIngestSideEffects(opened.key, settled);
     throw err;
+  }
+  // A Document block shows every member the wait; its ending arrives with the fetch, so losing this only costs that
+  // display (breatic#1574).
+  try {
+    await announceDocumentUploadProcessing(opened.key);
+  } catch (err) {
+    logger.error({ err, key: opened.key, projectId }, "document_upload_processing_publish_failed");
   }
   return opened;
 }

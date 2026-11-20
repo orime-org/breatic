@@ -51,6 +51,7 @@ import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/sh
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
+import { announceDocumentUploadAsset, announceDocumentUploadFailure, documentTargetOf } from "@domain/asset/document-upload-events.js";
 import { referenceUploadAsset, settleUploadTerminal, type UploadTerminal } from "@domain/asset/upload-terminal.service.js";
 import type {
   UploadGrant,
@@ -659,8 +660,10 @@ async function recordRegisteredUploadHistory(
  */
 async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}): Promise<IngestReportOutcome> {
   const { grant } = terminal;
+  const documentTarget = documentTargetOf(grant);
   if (terminal.state === "void") {
     const reason = grant.failureReason ?? "aborted";
+    if (documentTarget !== null) await announceDocumentUploadFailure(documentTarget, reason);
     const countsPublishFailed = await announceFailure(grant, reason);
     const scene = await settleSceneUpload(grant, { outcome: "failed", errorMessage: reason });
     const refusal: IngestReportOutcome = reason === "empty" || reason === "over_cap"
@@ -670,6 +673,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
   }
   const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
   if (asset === null) return { status: "stale", ...sideEffects };
+  if (documentTarget !== null) await announceDocumentUploadAsset(documentTarget, asset);
   const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
   const coverUrl = cover?.fileUrl ?? null;
   const history = await recordRegisteredUploadHistory(grant, asset, coverUrl);

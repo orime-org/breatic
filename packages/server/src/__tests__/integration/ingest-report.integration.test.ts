@@ -77,6 +77,7 @@ import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/que
 import {
   canvasSpaceDocName,
   INGEST_FAILURE_HEADER,
+  readTaskFailure,
   signSessionToken,
   uprightKeyFor,
   UPLOAD_STATUS_MAX_KEYS,
@@ -328,6 +329,85 @@ async function eventsFor(docName: string): Promise<
       result: e.result as Record<string, unknown> | undefined,
     }));
 }
+
+/** Every Document upload event on the stream for `docName`, oldest first. */
+async function documentEventsFor(docName: string): Promise<Record<string, unknown>[]> {
+  const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+  return raw
+    .map(([, fields]) => {
+      const idx = fields.indexOf("payload");
+      return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+    })
+    .filter((e): e is Record<string, unknown> => e !== null && e.type === "document-upload" && e.docName === docName);
+}
+
+describe("a Document body upload (breatic#1574)", () => {
+  it("announces processing when the bytes are handed over and the result when they land", async () => {
+    const seed = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const key = await mintTicket(seed, { upload_id: uploadId });
+
+    await report(completed(key));
+
+    const events = (await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`))
+      .filter((e) => e.uploadId === uploadId);
+    expect(events.map((e) => e.state)).toEqual(["processing", "completed"]);
+    expect(typeof events[0]!.deadline).toBe("number");
+    expect(typeof (events[1]!.result as { url?: unknown }).url).toBe("string");
+  });
+
+  it("announces the failure with its cause when the Worker could not finish", async () => {
+    const seed = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const key = await mintTicket(seed, { upload_id: uploadId });
+
+    await report({ storage_key: key, outcome: "aborted" });
+
+    const events = (await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`))
+      .filter((e) => e.uploadId === uploadId);
+    const grants = await sql<{ failure_reason: string | null }[]>`
+      SELECT failure_reason FROM upload_grants WHERE storage_key = ${key}
+    `;
+    // The grant keeps the raw code; the block is told the cause it normalises to.
+    expect(events.at(-1)).toMatchObject({ state: "failed", reason: readTaskFailure(grants[0]!.failure_reason).reason });
+  });
+
+  it("announces a dedup hit's result at the ticket, with no upload", async () => {
+    const seed = await seedEditor();
+    const sha = crypto.randomBytes(32).toString("hex");
+    await report(completed(await mintTicket(seed), { sha256: sha }));
+    const uploadId = crypto.randomUUID();
+
+    const res = await app.request("/api/v1/assets/upload-ticket", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: seed.cookie },
+      body: JSON.stringify({
+        filename: "again.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
+        size: 4096, client_hash: sha, upload_id: uploadId,
+      }),
+    });
+    expect(res.status).toBe(200);
+
+    const events = (await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`))
+      .filter((e) => e.uploadId === uploadId);
+    expect(events.map((e) => e.state)).toEqual(["completed"]);
+    expect(typeof (events[0]!.result as { url?: unknown }).url).toBe("string");
+  });
+
+  it("refuses an upload id together with a node", async () => {
+    const seed = await seedEditor();
+    const res = await app.request("/api/v1/assets/upload-ticket", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: seed.cookie },
+      body: JSON.stringify({
+        filename: "x.png", content_type: "image/png", project_id: seed.projectId, space_id: seed.spaceId,
+        size: 4096, client_hash: crypto.randomBytes(32).toString("hex"),
+        upload_id: crypto.randomUUID(), node_id: crypto.randomUUID(),
+      }),
+    });
+    expect(res.status).toBe(422);
+  });
+});
 
 describe("a finish this server drove — a completed upload", () => {
   // The hash is what the ledger keys on, so a success that names none would

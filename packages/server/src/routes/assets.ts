@@ -45,6 +45,7 @@ import {
   mostOutputsOf,
 } from "@breatic/shared/mini-tools";
 import {
+  announceDocumentUploadProcessing,
   assetService,
   ingestReportService,
   mediaReadService,
@@ -194,6 +195,8 @@ const uploadTicketFields = z.object({
   /** Where the bytes land. Absent for a focus crop, which has no node. */
   node_id: z.string().uuid().optional(),
   space_id: z.string().uuid().optional(),
+  /** The Document body block the bytes land in, by its `uploadId`; it names `space_id` and no node (breatic#1574). */
+  upload_id: z.string().uuid().optional(),
   /** The name a 3D model is imported under, shown on its task row (inner#1690). */
   label: SceneObjectValuesSchema.shape.name.optional(),
   /**
@@ -231,6 +234,7 @@ const uploadTicketSchema = z
       purpose: z.literal("studio_avatar"),
       node_id: z.never().optional(),
       space_id: z.never().optional(),
+      upload_id: z.never().optional(),
       label: z.never().optional(),
     }),
   ])
@@ -243,6 +247,10 @@ const uploadTicketSchema = z
         path: ["tool_name"],
         message: "a mini-tool upload names its tool, and only a mini-tool upload does",
       });
+    }
+    // A Document block is the one place a body upload lands: its Space, and no node or purpose.
+    if (body.upload_id !== undefined && (body.space_id === undefined || body.node_id !== undefined || body.purpose !== undefined || body.source !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["upload_id"], message: "a Document block upload names its Space and nothing else to land on", params: REQUEST_SHAPE_PARAMS });
     }
     if (body.purpose === "scene_model") {
       if (!isSceneModelMediaType(body.content_type)) {
@@ -359,6 +367,8 @@ const ingestUrlSchema = z.object({
   url: userUrlSchema,
   project_id: z.string().uuid(),
   space_id: z.string().uuid(),
+  /** The Document body block the fetched bytes land in, by its `uploadId` (breatic#1574). */
+  upload_id: z.string().uuid().optional(),
 });
 
 /**
@@ -380,6 +390,7 @@ assets.post(
       url: body.url,
       projectId: body.project_id,
       spaceId: body.space_id,
+      ...(body.upload_id !== undefined && { documentUploadId: body.upload_id }),
       userId: user.id,
     });
     return c.json({ data: { storage_key: key } }, 201);
@@ -606,6 +617,13 @@ assets.post(
         }),
       );
       return c.json({ error: { message: t("server.error.internal") } }, 502);
+    }
+    // A Document block shows every member the wait; its ending arrives with the finish, so losing this only costs
+    // that display (breatic#1574).
+    try {
+      await announceDocumentUploadProcessing(storageKey);
+    } catch (err) {
+      logger.error({ err, key: storageKey }, "document_upload_processing_publish_failed");
     }
     return c.json({ data: { storageKey } }, 202);
   },

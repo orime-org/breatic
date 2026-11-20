@@ -74,6 +74,7 @@ export async function issueUploadGrant(params: UploadTarget & {
   expiresAt: Date;
   context: {
     nodeId?: string | null;
+    documentUploadId?: string | null;
     spaceId?: string | null;
     source?: string | null;
     toolName?: string | null;

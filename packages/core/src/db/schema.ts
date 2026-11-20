@@ -3445,6 +3445,8 @@ export const uploadGrants = pgTable(
     finalizingUploadId: text("finalizing_upload_id"),
     /** Node these bytes land on. Absent for a focus crop, which has no node. */
     nodeId: uuid("node_id"),
+    /** The Document body block these bytes land in, by its `uploadId` (breatic#1574). */
+    documentUploadId: text("document_upload_id"),
     /**
      * Project the node belongs to, checked against the user's access at ticket
      * time. Null for a studio's avatar, which belongs to no project.

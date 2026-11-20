@@ -61,6 +61,8 @@ export interface UploadGrant {
   expiresAt: Date;
   /** Node these bytes land on. Null for a focus crop, which has no node. */
   nodeId: string | null;
+  /** The Document body block these bytes land in, by its `uploadId`. */
+  documentUploadId: string | null;
   projectId: string | null;
   spaceId: string | null;
   source: string | null;
@@ -112,6 +114,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     failureReason: row.failureReason,
     expiresAt: row.expiresAt,
     nodeId: row.nodeId,
+    documentUploadId: row.documentUploadId,
     projectId: row.projectId,
     spaceId: row.spaceId,
     source: row.source,
@@ -139,6 +142,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  * @param input.expiresAt - When the ticket stops being usable.
  * @param input.context - Where these bytes are going and what started them.
  * @param input.context.nodeId - Node the bytes land on, when there is one.
+ * @param input.context.documentUploadId - The Document body block the bytes land in, when there is one.
  * @param input.context.projectId - Project that node belongs to.
  * @param input.context.spaceId - Canvas space holding that node.
  * @param input.context.source - What started this upload.
@@ -163,6 +167,7 @@ export async function issueGrant(input: {
   expiresAt: Date;
   context: {
     nodeId?: string | null;
+    documentUploadId?: string | null;
     projectId?: string | null;
     spaceId?: string | null;
     source?: string | null;
@@ -183,6 +188,7 @@ export async function issueGrant(input: {
       declaredSize: input.declaredSize,
       expiresAt: input.expiresAt,
       nodeId: input.context.nodeId ?? null,
+      documentUploadId: input.context.documentUploadId ?? null,
       projectId: input.context.projectId ?? null,
       spaceId: input.context.spaceId ?? null,
       source: input.context.source ?? null,
