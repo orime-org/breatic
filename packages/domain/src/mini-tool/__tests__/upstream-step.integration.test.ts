@@ -89,7 +89,7 @@ async function snapshot(f: Fixture): Promise<Snapshot> {
  * @throws {Error} When the send or the end cannot be saved.
  */
 async function identify(f: Fixture, cost: "pending" | "known" = "pending"): Promise<void> {
-  await markStepSending(f.taskId, f.stepId, DEADLINE);
+  await markStepSending(f.taskId, f.stepId, DEADLINE, "wavespeed");
   await endMiniToolModelStep({ taskId: f.taskId, stepId: f.stepId, end: { kind: "returned", link: "https://provider.test.invalid/out.json" },
     costs: [cost === "known" ? { state: "known", usd: 0.2, source: "billing" } : { state: "pending", lookup: { upstream: "wavespeed", predictionId: "prediction-original" } }], servedBy: "wavespeed" });
 }
@@ -156,7 +156,7 @@ describe("operation-typed results keep execution, plans and expenses separate", 
     await expect(done(f, { ...RESULT, miniToolConsumption: { state: "pending" }, miniToolPlanJob: { replaced: true } })).rejects.toThrow(); expect(await snapshot(f)).toEqual(before);
   });
   it("requires the model step's end before saving an operation result", async () => {
-    const f = await seed(); await markStepSending(f.taskId, f.stepId, DEADLINE); const before = await snapshot(f); await expect(done(f)).rejects.toThrow(); expect(await snapshot(f)).toEqual(before);
+    const f = await seed(); await markStepSending(f.taskId, f.stepId, DEADLINE, "wavespeed"); const before = await snapshot(f); await expect(done(f)).rejects.toThrow(); expect(await snapshot(f)).toEqual(before);
     await endMiniToolModelStep({ taskId: f.taskId, stepId: f.stepId, end: { kind: "returned", link: "https://provider.test.invalid/out.json" }, costs: [], servedBy: "wavespeed" });
     await done(f); expect((await snapshot(f)).step.status).toBe("done");
   });

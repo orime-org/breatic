@@ -63,7 +63,7 @@ export async function runMiniToolRemoveBackground(
     throw new MiniToolStepFailed(ended?.message ?? ended?.category ?? "failed");
   }
   const answered = await runModelStep(task.id, step, {
-    model: execution.model,
+    model: execution.model, route: execution.route,
     // The model reads the prepared input; a failed-output retry names the original run's preparation in its body.
     input: async () => {
       const prepared = await prepareModelInput(execution, deadlineAt, execution.body.video.job.slice(0, -":prep:0".length));

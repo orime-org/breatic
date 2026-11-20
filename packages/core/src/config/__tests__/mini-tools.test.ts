@@ -8,6 +8,14 @@ import { getMiniToolsConfig, miniToolsConfigSchema } from "@core/config/mini-too
 import { workerConcurrencyFor } from "@core/config/worker.js";
 
 describe("getMiniToolsConfig", () => {
+  // inner#1306 execution design §11.5: the upstream every video mini-tool model call takes, the one its models and recipes
+  // were measured on, is a deployment parameter frozen into each run's plan.
+  it("names the upstream video mini-tool model calls take, and refuses a config without it", () => {
+    expect(getMiniToolsConfig().model_upstream).toBe("wavespeed");
+    const { model_upstream: _named, ...rest } = getMiniToolsConfig();
+    expect(miniToolsConfigSchema.safeParse(rest).success).toBe(false);
+  });
+
   it("loads and defaults the durable settlement discovery and query settings", () => {
     const expected = { lease_ms: 60000, retry_ms: 30000, lookup_timeout_ms: 15000, discovery_interval_ms: 30000, discovery_page_size: 100 };
     const configured = getMiniToolsConfig() as unknown as Record<string, unknown>;

@@ -84,7 +84,7 @@ describe("model steps under any order of events and the run's end", () => {
         const version = (versions.get(c.step) ?? 0) + 1; versions.set(c.step, version);
         if (c.kind === "send") {
           await storeStepTicket(f.taskId, stepId, { version, phase: "send" });
-          await markStepSending(f.taskId, stepId, DEADLINE); sent.add(c.step);
+          await markStepSending(f.taskId, stepId, DEADLINE, "wavespeed"); sent.add(c.step);
         } else if (c.kind === "running") {
           if (!sent.has(c.step)) continue;
           await storeStepTicket(f.taskId, stepId, { version, phase: "running" });

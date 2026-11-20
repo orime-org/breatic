@@ -29,16 +29,17 @@ beforeEach(() => {
 
 describe("abandoning a run's unresolved model steps", () => {
   it("ends each unresolved step with what its abandon hands over", async () => {
-    h.unresolved.mockResolvedValue([{ stepId: "s1", ticket: { version: 3 } }, { stepId: "s2", ticket: null }]);
+    // s1 was sent to the upstream its run's frozen route named; s2 was never sent.
+    h.unresolved.mockResolvedValue([{ stepId: "s1", ticket: { version: 3 }, upstream: "frozen-upstream" }, { stepId: "s2", ticket: null, upstream: null }]);
     await abandonUnresolvedModelSteps(TASK, "failed");
     expect(h.abandon).toHaveBeenCalledTimes(1);
     expect(h.abandon).toHaveBeenCalledWith({ version: 3 });
-    expect(h.end).toHaveBeenCalledWith({ taskId: TASK, stepId: "s1", end: expect.objectContaining({ kind: "failed", category: "failed" }), costs: [PENDING], servedBy: "wavespeed" });
+    expect(h.end).toHaveBeenCalledWith({ taskId: TASK, stepId: "s1", end: expect.objectContaining({ kind: "failed", category: "failed" }), costs: [PENDING], servedBy: "frozen-upstream" });
     expect(h.end).toHaveBeenCalledWith({ taskId: TASK, stepId: "s2", end: expect.objectContaining({ kind: "failed", category: "failed" }), costs: [], servedBy: null });
   });
 
   it("ends them timeout when the run's deadline ended it", async () => {
-    h.unresolved.mockResolvedValue([{ stepId: "s1", ticket: { version: 1 } }]);
+    h.unresolved.mockResolvedValue([{ stepId: "s1", ticket: { version: 1 }, upstream: "frozen-upstream" }]);
     await abandonUnresolvedModelSteps(TASK, "deadline");
     expect(h.end).toHaveBeenCalledWith(expect.objectContaining({ end: expect.objectContaining({ category: "timeout" }) }));
   });

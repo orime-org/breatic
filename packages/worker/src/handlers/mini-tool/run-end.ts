@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { endMiniToolModelStep, listUnresolvedMiniToolModelSteps, MINI_TOOL_MODEL_ROUTE } from "@breatic/domain";
+import { endMiniToolModelStep, listUnresolvedMiniToolModelSteps } from "@breatic/domain";
 import { mediaRunner } from "@worker/handlers/model-task.js";
 
 /**
@@ -17,7 +17,7 @@ export async function abandonUnresolvedModelSteps(taskId: string, reason: "deadl
   for (const step of await listUnresolvedMiniToolModelSteps(taskId)) {
     const costs = step.ticket === null ? [] : mediaRunner().abandon(step.ticket).costs;
     await endMiniToolModelStep({ taskId, stepId: step.stepId, end: { kind: "failed", category, error: { code: category, message: "The run ended before this step did" } },
-      // A model step runs only on the frozen route's upstream, which abandon does not name.
-      costs, servedBy: step.ticket === null ? null : MINI_TOOL_MODEL_ROUTE.upstream });
+      // Abandon does not name who served; the step recorded the upstream it was sent to.
+      costs, servedBy: step.ticket === null ? null : step.upstream });
   }
 }

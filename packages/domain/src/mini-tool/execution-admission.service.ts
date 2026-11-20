@@ -27,7 +27,7 @@ import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
-import { admitModelCall, MINI_TOOL_MODEL_ROUTE } from "@domain/mini-tool/model-call-admission.js";
+import { admitModelCall, miniToolModelRoute, type MiniToolModelRoute } from "@domain/mini-tool/model-call-admission.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
 import * as pinRepo from "@domain/presentation/presentation-pin.repo.js";
@@ -57,7 +57,7 @@ type FrozenToolInput = {
 };
 /** The original server-owned execution stored under tasks.params.miniToolExecution. */
 export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | (FrozenToolInput & (
-  | { tool: "video.remove-bg"; route: typeof MINI_TOOL_MODEL_ROUTE;
+  | { tool: "video.remove-bg"; route: MiniToolModelRoute;
     body: Omit<PreparedVideoRemoveBackground["params"], "video"> & { video: PreparedModelInputRef };
     /** The model's own quote, frozen apart from the preparation so a failed-output retry quotes generate alone. */
     modelCredits: number;
@@ -70,7 +70,7 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number };
     /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */
     outputSeconds: number[] }
-  | { tool: "video.lip-sync"; generator: LipSyncGenerator; route: typeof MINI_TOOL_MODEL_ROUTE; timeline: LipsyncTimeline; usedRange: { start: 0; end: number };
+  | { tool: "video.lip-sync"; generator: LipSyncGenerator; route: MiniToolModelRoute; timeline: LipsyncTimeline; usedRange: { start: 0; end: number };
     /** The rows with their registered audio durations, the people they name and the tracking model (DD §7.1). */
     dialogues: VideoExecutionDialogue[]; persons: LipSyncPerson[]; tracking: { model: string }; cropSize: number;
     /** The composite's face feather, a fraction of each face's shorter side, frozen from config/mini-tools.yaml (DD §7.2 step 6). */
@@ -81,7 +81,7 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     sharedStepKeys: Record<string, string>;
     /** The raw disk budget computed once at admission (execution design paragraph before §9.4); jobs read only this value. */
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number; rawDiskBytes: number } }
-  | { tool: "video.erase"; route: typeof MINI_TOOL_MODEL_ROUTE;
+  | { tool: "video.erase"; route: MiniToolModelRoute;
     /** The tracking analysis the run reads and its RLE (execution design §10.4 request row). */
     tracking: EraseTracking;
     /** The range's presentation frames and the model grid over them (§10.4 model grid row). */
@@ -92,7 +92,7 @@ export type AcceptedMiniToolExecution = ExecutionPlan & (TransitionsExecution | 
     /** Each step's frozen quote, by step name (§10.4 quote row): a retry holds those not done on the original chain. */
     stepCredits: Record<string, number>;
     container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number } }
-  | ({ tool: "video.expand"; route: typeof MINI_TOOL_MODEL_ROUTE;
+  | ({ tool: "video.expand"; route: MiniToolModelRoute;
     /** The even target layout (§10.5 geometry row), the resolved prompt, the frozen seed and the windows on the presentation. */
     layout: VideoExpandLayout; prompt: string; seed: number; windows: ModelWindow[]; modelFps: number; modelCredits: number;
     composite: FrameWindow[]; stageJobs: MiniToolStageJobs[]; stepKeys: Record<string, string>;
@@ -465,7 +465,7 @@ async function prepareRemoval(request: Extract<MiniToolPlannedRequest, { tool: "
   assertWithinParallelCap(plannedStageJobs({ preparation: layout.chunks }), config);
   const preparation = { ...containerPolicy(settings.preparation.container_class, settings.preparation.precheck_seconds, config), chunks: layout.chunks,
     chunkRetries: config.encoding.chunk_retries, encode: { crf: config.presentation.crf, preset: config.presentation.preset } };
-  return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model, route: MINI_TOOL_MODEL_ROUTE,
+  return { ...common, tool: request.tool, binding: prepared.binding, sourceKey: prepared.sourceKey, model: prepared.model, route: miniToolModelRoute(),
     body: { ...prepared.params, video: { kind: "prepared", inputId: "source", job: `${request.run_id}:prep:0` } },
     presentationRef: request.presentation_ref, presentations: { source: version }, versionIds: { source: version.versionId }, preparation,
     chargeTo: miniToolChargeTo(request.tool), modelCredits, credits: modelCredits + containerCredits(preparation, layout.seconds) };
@@ -510,7 +510,7 @@ async function prepareLipSync(request: Extract<MiniToolPlannedRequest, { tool: "
   const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config), startSeconds: config.encoding.encoder.start_seconds,
     encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries, rawDiskBytes };
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, presentations: { source: version },
-    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: model.name, route: MINI_TOOL_MODEL_ROUTE, container, layout, stageJobs, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
+    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: model.name, route: miniToolModelRoute(), container, layout, stageJobs, timeline, usedRange, dialogues, persons, cropSize: model.crop_size,
     faceFeather: settings.face_feather,
     tracking: { model: settings.tracking.model },
     generator: { backend: "wavespeed-crop" as const, modelId: model.name, schemaFingerprint: model.schema_fingerprint, providerSyncMode: model.accepts_sync_mode ? "cut_off" as const : null },
@@ -641,7 +641,7 @@ async function prepareErase(request: Extract<MiniToolPlannedRequest, { tool: "vi
       { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second }) }],
   ]);
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, presentations: { source: version },
-    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: settings.model.name, route: MINI_TOOL_MODEL_ROUTE, tracking, range: { start: first, end: first + count }, grid,
+    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: settings.model.name, route: miniToolModelRoute(), tracking, range: { start: first, end: first + count }, grid,
     asyncRejection: settings.model.async_rejection, matte: settings.matte, modelCredits, composite, stageJobs, container, stepCredits,
     credits: Math.max(stepsCredits(Object.values(stepCredits)), MIN_TASK_CREDIT_COST) };
   // Step keys are frozen over the plan's fingerprint before them, as lip-sync's are (§10.7), so a retry finds every done step.
@@ -704,7 +704,7 @@ async function prepareExpand(request: Extract<MiniToolPlannedRequest, { tool: "v
     ["stitch", { seconds: estimateAudioEncodeSeconds(videoSeconds, { startSeconds: rates.startSeconds, aacEncodeSecondsPerSecond: config.encoding.encoder.aac_encode_seconds_per_second }) }],
   ]);
   const plan = { ...common, tool: request.tool, binding, sourceKey, presentationRef: request.presentation_ref, presentations: { source: version },
-    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: settings.model.name, route: MINI_TOOL_MODEL_ROUTE, layout, ...box, prompt, seed: randomInt(0, 2 ** 31 - 1), windows,
+    versionIds: { source: version.versionId }, chargeTo: miniToolChargeTo(request.tool), model: settings.model.name, route: miniToolModelRoute(), layout, ...box, prompt, seed: randomInt(0, 2 ** 31 - 1), windows,
     modelFps: settings.model.model_fps, modelCredits, composite, stageJobs, container, stepCredits, credits: Math.max(stepsCredits(Object.values(stepCredits)), MIN_TASK_CREDIT_COST) };
   const keyed = await hashMiniToolValue(plan);
   return { ...plan, stepKeys: Object.fromEntries(Object.keys(stepCredits).map((step) => [step, lipsyncStepKey(keyed, null, step)])) };

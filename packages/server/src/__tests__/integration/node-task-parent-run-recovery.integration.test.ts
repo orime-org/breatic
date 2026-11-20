@@ -121,7 +121,7 @@ async function completedPending(f: ExecutionFixture): Promise<void> {
   if (!step) throw new Error("Missing original controlled model step");
   const parent = await taskRepo.getTaskById(f.taskId); if (parent === null) throw new Error("Missing admitted parent");
   // The model step's send and its returned answer with a cost still pending (inner#1306 §11.2, §11.4).
-  await markStepSending(f.taskId, step.id, parent.createdAt.getTime() + getNodeTaskConfig().default_budget_ms);
+  await markStepSending(f.taskId, step.id, parent.createdAt.getTime() + getNodeTaskConfig().default_budget_ms, "wavespeed");
   await endMiniToolModelStep({ taskId: f.taskId, stepId: step.id, end: { kind: "returned", link: "https://provider.example.test/parent.webm" },
     costs: [{ state: "pending", lookup: { upstream: "wavespeed", predictionId: `parent-${f.taskId}` } }], servedBy: "wavespeed" });
   await upstreamStepRepo.recordInline(step.id, { "miniToolAsset:0": f.registered.assetId }, 0);

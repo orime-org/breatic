@@ -42,7 +42,7 @@ export async function executionIdentity(f: ExecutionFixture, save = true): Promi
   const [s] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.model, itemIndex: 0 }]);
   if (!s) throw new Error("Fixture step disappeared");
   const task = await taskRepo.getMiniToolExecutionTask(f.taskId); if (!task) throw new Error("Missing fixture task");
-  await markStepSending(f.taskId, s.id, task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms);
+  await markStepSending(f.taskId, s.id, task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms, "wavespeed");
   if (save) {
     await endMiniToolModelStep({ taskId: f.taskId, stepId: s.id, end: { kind: "returned", link: "https://provider.example.test/fixture.webm" },
       costs: [{ state: "pending", lookup: { upstream: "wavespeed", predictionId: PREDICTION_ID } }], servedBy: "wavespeed" });

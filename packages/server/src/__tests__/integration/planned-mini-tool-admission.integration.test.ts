@@ -169,7 +169,7 @@ async function workerFacts(f: Fixture, completed: boolean): Promise<void> {
   const [s] = await upstreamStepRepo.ensureSteps(f.body.run_id, [{ kind: "generate", endpoint: entered.execution.model, itemIndex: 0 }]); if (!s) throw new Error("Missing controlled worker step");
   const deadlineAt = entered.task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms;
   // The model step's send and its returned answer with a cost still pending (inner#1306 §11.2, §11.4).
-  await markStepSending(f.body.run_id, s.id, deadlineAt);
+  await markStepSending(f.body.run_id, s.id, deadlineAt, "wavespeed");
   await endMiniToolModelStep({ taskId: f.body.run_id, stepId: s.id, end: { kind: "returned", link: "https://provider.example.test/controlled-result.webm" },
     costs: [{ state: "pending", lookup: { upstream: "wavespeed", predictionId: "controlled-ack-prediction" } }], servedBy: "wavespeed" });
   if (!completed) return;
@@ -454,7 +454,7 @@ async function holdExecution(f: ExecutionFixture): Promise<void> {
 async function executionIdentity(f: ExecutionFixture, saveId: boolean): Promise<{ stepId: string; consumptionKey: string }> {
   const [s] = await upstreamStepRepo.ensureSteps(f.taskId, [{ kind: "generate", endpoint: f.plan.model, itemIndex: 0 }]); if (!s) throw new Error("Missing admission fixture step");
   const task = await taskRepo.getMiniToolExecutionTask(f.taskId); if (!task) throw new Error("Missing admission fixture task");
-  await markStepSending(f.taskId, s.id, task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms);
+  await markStepSending(f.taskId, s.id, task.createdAt.getTime() + getNodeTaskConfig().default_budget_ms, "wavespeed");
   if (saveId) await returnStep(f.taskId, s.id);
   return { stepId: s.id, consumptionKey: await miniToolConsumptionKey({ taskId: f.taskId, stepId: s.id, identity: { kind: "provider", stepId: s.id } }) };
 }

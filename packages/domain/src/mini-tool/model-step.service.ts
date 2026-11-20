@@ -43,7 +43,8 @@ export interface EndMiniToolModelStepInput {
 }
 
 /** A model step a run's end must abandon: its ticket, if it holds one. */
-export interface UnresolvedMiniToolModelStep { stepId: string; ticket: ({ version: number } & Record<string, unknown>) | null }
+/** A model step the run left unresolved: its ticket and the upstream it was sent to, both null when it was never sent. */
+export interface UnresolvedMiniToolModelStep { stepId: string; ticket: ({ version: number } & Record<string, unknown>) | null; upstream: string | null }
 
 /**
  * The configured first delay and number of lookups.
@@ -111,14 +112,16 @@ export async function storeStepTicket(taskId: string, stepId: string, ticket: { 
 /**
  * Mark a model step's send in flight, before the paid request goes out: refused once the task ended or its bill is
  * closed, and past the deadline by the database clock; the first send opens the task's settlement. No consumption is
- * opened here; the step's end opens it.
+ * opened here; the step's end opens it. The upstream the send goes to is recorded with the mark, so a run that ends
+ * before the step does still names who served what its abandon hands over.
  * @param taskId - The owning task.
  * @param stepId - The step.
  * @param deadlineAt - The run's deadline, in epoch milliseconds.
+ * @param upstream - The upstream of the run's frozen route.
  * @throws {DeadlinePassed} When the deadline has passed.
  * @throws {Error} When the task owns no such step, has ended or its call set is closed.
  */
-export async function markStepSending(taskId: string, stepId: string, deadlineAt: number): Promise<void> {
+export async function markStepSending(taskId: string, stepId: string, deadlineAt: number, upstream: string): Promise<void> {
   const passed = await db.transaction(async (tx): Promise<boolean> => {
     const { task, step } = await owned(taskId, stepId, tx);
     if ((task.status !== "pending" && task.status !== "running") || closed(task) || modelStepEnded(step)) {
@@ -126,7 +129,7 @@ export async function markStepSending(taskId: string, stepId: string, deadlineAt
     }
     const now = await taskRepo.miniToolSettlementDatabaseNow(task.id, tx);
     if (Date.parse(now) >= deadlineAt) return true;
-    await stepRepo.setStepSending(task.id, step.id, now, tx);
+    await stepRepo.setStepSending(task.id, step.id, { at: now, upstream }, tx);
     if (task.result.settlement === undefined) {
       await taskRepo.storeMiniToolSettlement(task.id, miniToolSettlementSchema.parse({
         version: 0, state: "waiting", consumptionSetComplete: false, pendingConsumptionKeys: [],
@@ -184,7 +187,8 @@ export async function recordStepSendNotAccepted(taskId: string, stepId: string):
  */
 export async function listUnresolvedMiniToolModelSteps(taskId: string): Promise<UnresolvedMiniToolModelStep[]> {
   return (await stepRepo.listSteps(taskId)).flatMap((step) => (isUnresolvedModelStep(step)
-    ? [{ stepId: step.id, ticket: (step.output.providerTicket as UnresolvedMiniToolModelStep["ticket"] | undefined) ?? null }]
+    ? [{ stepId: step.id, ticket: (step.output.providerTicket as UnresolvedMiniToolModelStep["ticket"] | undefined) ?? null,
+      upstream: typeof step.output.providerUpstream === "string" ? step.output.providerUpstream : null }]
     : []));
 }
 

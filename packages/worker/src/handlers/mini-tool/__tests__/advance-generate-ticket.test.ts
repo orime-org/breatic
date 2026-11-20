@@ -50,6 +50,7 @@ const RUN: ModelStepRun = { taskId: TASK, projectId: "10000000-0000-4000-8000-00
   container: { containerClass: "MiniToolContainerStd4", limits: { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 }, chunkRetries: 1 } };
 const PLANNED: GenerateStep = {
   model: "bria-video-eraser-mask", itemIndex: 0, stepKey: "erase:0", contentType: "video/mp4", rejection: { path: "code", equals: 1401 },
+  route: { mode: "upstream", upstream: "frozen-upstream" },
   input: () => Promise.resolve({ prompt: "", params: { video: "https://cdn.example/v.mp4", mask_video: "https://cdn.example/m.mp4", copy_audio: false } }),
 };
 
@@ -73,10 +74,10 @@ beforeEach(() => {
 });
 
 describe("a model step through its ticket", () => {
-  it("runs the step's ticket on the step row with the frozen WaveSpeed route", async () => {
+  it("runs the step's ticket on the step row with the route frozen into its run's plan", async () => {
     h.run.mockRejectedValue(new StillRunning(Date.now() + 1000));
     await expect(advanceGenerate(RUN, PLANNED, "u", DEADLINE)).rejects.toBeInstanceOf(StillRunning);
-    expect(h.run).toHaveBeenCalledWith(expect.objectContaining({ taskId: STEP, model: PLANNED.model, route: { mode: "upstream", upstream: "wavespeed" }, deadlineAt: DEADLINE }), expect.anything());
+    expect(h.run).toHaveBeenCalledWith(expect.objectContaining({ taskId: STEP, model: PLANNED.model, route: { mode: "upstream", upstream: "frozen-upstream" }, deadlineAt: DEADLINE }), expect.anything());
     expect(h.end).not.toHaveBeenCalled();
   });
 

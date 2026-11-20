@@ -322,6 +322,11 @@ ops:
 # MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1, which the job contract can carry.
 join_max_clips: 20
 
+# The upstream every video mini-tool model call takes: the one the tools' models
+# and recipes were measured on (inner#1306). Admission freezes it into each run's
+# plan, so a change reaches only runs admitted after it.
+model_upstream: "wavespeed"
+
 # The audio cut band draws the source's waveform from the peaks file beside it
 # (inner#1305 §4.4). An audio without one yet is decoded in the browser only
 # under both of these: the length bounds the memory the decode holds (decoding

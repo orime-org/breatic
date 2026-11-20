@@ -50,7 +50,7 @@ async function seed(steps = 1): Promise<Fixture> {
     const stepId = crypto.randomUUID(); stepIds.push(stepId);
     await pg`INSERT INTO task_upstream_steps (id,task_id,position,kind,endpoint,status,output)
       VALUES (${stepId},${taskId},${i},'generate','bria-video-eraser-mask','pending',${pg.json({})})`;
-    await markStepSending(taskId, stepId, DEADLINE);
+    await markStepSending(taskId, stepId, DEADLINE, "wavespeed");
     await endMiniToolModelStep({ taskId, stepId, end: { kind: "returned", link: `https://out.example/${i}.mp4` },
       costs: [{ state: "pending", lookup: lookupOf(`p-${i}`) }], servedBy: "wavespeed" });
   }

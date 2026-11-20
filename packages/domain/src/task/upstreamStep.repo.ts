@@ -304,19 +304,19 @@ export async function storeStepTicket(taskId: string, stepId: string, ticket: { 
 }
 
 /**
- * Set or clear a model step's send mark.
+ * Set or clear a model step's send mark; a send also records the upstream it goes to, which clearing keeps.
  * @param taskId - The owning task.
  * @param stepId - The step.
- * @param at - The database instant of the send as text, or null to clear it.
+ * @param send - The database instant of the send as text and its upstream, or null to clear the mark.
  * @param tx - The transaction, when one is open.
  * @returns Whether the task owns the step.
  */
-export async function setStepSending(taskId: string, stepId: string, at: string | null, tx?: DbTx): Promise<boolean> {
-  const output = at === null
+export async function setStepSending(taskId: string, stepId: string, send: { at: string; upstream: string } | null, tx?: DbTx): Promise<boolean> {
+  const output = send === null
     ? sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) - 'providerSendingAt'`
-    : sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${sql.param({ providerSendingAt: at }, taskUpstreamSteps.output)}`;
+    : sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${sql.param({ providerSendingAt: send.at, providerUpstream: send.upstream }, taskUpstreamSteps.output)}`;
   const rows = await (tx ?? db).update(taskUpstreamSteps).set({
-    output, ...(at === null ? {} : { status: sql`CASE WHEN ${taskUpstreamSteps.status} = 'pending' THEN 'submitted' ELSE ${taskUpstreamSteps.status} END` }),
+    output, ...(send === null ? {} : { status: sql`CASE WHEN ${taskUpstreamSteps.status} = 'pending' THEN 'submitted' ELSE ${taskUpstreamSteps.status} END` }),
     updatedAt: sql`clock_timestamp()`,
   }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId))).returning({ id: taskUpstreamSteps.id });
   return rows.length === 1;

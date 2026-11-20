@@ -292,6 +292,10 @@ export const miniToolsConfigSchema = z
       .min(2)
       .max(MINI_TOOL_JOB_MAX_EXTRA_INPUTS + 1)
       .default(20),
+    // The upstream every video mini-tool model call takes: the one the tools' models and recipes were measured on
+    // (inner#1306 execution design §11.5). Admission freezes it into each run's plan. No default: it names a deployment's
+    // upstream.
+    model_upstream: z.string().min(1),
   })
   .superRefine((config, ctx) => {
     if (!(config.presentation.container_class in config.classes)) {

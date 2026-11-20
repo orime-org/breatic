@@ -43,7 +43,7 @@ const runContainer = z.strictObject({ ...container, startSeconds: z.number().non
   encode: z.strictObject({ crf: z.number().int().min(0).max(51), preset: x264PresetSchema }), chunkRetries: index });
 const rect = z.strictObject({ x: z.number().int(), y: z.number().int(), width: z.number().int().positive(), height: z.number().int().positive() });
 /** The route a model tool's calls take, frozen at admission (inner#1306 execution design §11.2 route row). */
-const modelRoute = z.strictObject({ mode: z.literal("upstream"), upstream: z.literal("wavespeed") });
+const modelRoute = z.strictObject({ mode: z.literal("upstream"), upstream: z.string().min(1) });
 /** The recipe kind each tool's outputs carry. */
 const RECIPE_KIND = { "video.split": "segment", "video.remove-bg": "remove-bg", "video.lip-sync": "lip-sync", "video.extract-frames": "frame", "video.focus-crop": "frame",
   "video.transitions": "transitions", "video.erase": "erase", "video.expand": "expand" } as const;

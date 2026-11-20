@@ -12,6 +12,7 @@ import { createPgClient, initCore } from "@breatic/core";
 import { DeadlinePassed } from "@breatic/shared";
 import {
   getStepTicket, storeStepTicket, markStepSending, clearStepSending, appendMiniToolStepDeliveredCosts, endMiniToolModelStep,
+  listUnresolvedMiniToolModelSteps,
 } from "@domain/index.js";
 
 const DEADLINE = 4070908800000;
@@ -75,9 +76,16 @@ describe("a model step's ticket", () => {
     expect((await getStepTicket(f.taskId, f.stepId)).ticket).toEqual({ version: 2, phase: "running" });
   });
 
+  it("records the upstream a step is sent to, which its unresolved listing gives back", async () => {
+    const f = await seed();
+    await storeStepTicket(f.taskId, f.stepId, { version: 1 });
+    await markStepSending(f.taskId, f.stepId, DEADLINE, "frozen-upstream");
+    expect(await listUnresolvedMiniToolModelSteps(f.taskId)).toEqual([{ stepId: f.stepId, ticket: { version: 1 }, upstream: "frozen-upstream" }]);
+  });
+
   it("carries a send mark between marking and clearing", async () => {
     const f = await seed();
-    await markStepSending(f.taskId, f.stepId, DEADLINE);
+    await markStepSending(f.taskId, f.stepId, DEADLINE, "wavespeed");
     expect((await getStepTicket(f.taskId, f.stepId)).sendingAt).toBeInstanceOf(Date);
     await clearStepSending(f.taskId, f.stepId);
     expect((await getStepTicket(f.taskId, f.stepId)).sendingAt).toBeNull();
@@ -86,7 +94,7 @@ describe("a model step's ticket", () => {
   it("refuses a step of another task", async () => {
     const f = await seed(); const other = await seed();
     await expect(storeStepTicket(other.taskId, f.stepId, { version: 1 })).rejects.toThrow();
-    await expect(markStepSending(other.taskId, f.stepId, DEADLINE)).rejects.toThrow();
+    await expect(markStepSending(other.taskId, f.stepId, DEADLINE, "wavespeed")).rejects.toThrow();
     await expect(getStepTicket(other.taskId, f.stepId)).rejects.toThrow();
   });
 });
@@ -94,7 +102,7 @@ describe("a model step's ticket", () => {
 describe("marking a model step's send", () => {
   it("opens the task's settlement on the first send and opens no consumption", async () => {
     const f = await seed();
-    await markStepSending(f.taskId, f.stepId, DEADLINE);
+    await markStepSending(f.taskId, f.stepId, DEADLINE, "wavespeed");
     const [task] = await pg<{ result: { settlement?: { state: string } } }[]>`SELECT result FROM tasks WHERE id=${f.taskId}`;
     expect(task?.result.settlement?.state).toBe("waiting");
     expect((await stepRow(f)).output.miniToolConsumption).toBeUndefined();
@@ -102,19 +110,19 @@ describe("marking a model step's send", () => {
 
   it("refuses a send once the task is billed", async () => {
     const f = await seed(true);
-    await expect(markStepSending(f.taskId, f.stepId, DEADLINE)).rejects.toThrow();
+    await expect(markStepSending(f.taskId, f.stepId, DEADLINE, "wavespeed")).rejects.toThrow();
     expect((await getStepTicket(f.taskId, f.stepId)).sendingAt).toBeNull();
   });
 
   it("refuses a send once the task's consumption set is complete", async () => {
     const f = await seed();
     await pg`UPDATE tasks SET result=${pg.json({ settlement: { version: 1, state: "waiting", consumptionSetComplete: true, pendingConsumptionKeys: [], nextAttemptAt: null, leaseToken: null, leaseUntil: null, lastError: null } })} WHERE id=${f.taskId}`;
-    await expect(markStepSending(f.taskId, f.stepId, DEADLINE)).rejects.toThrow();
+    await expect(markStepSending(f.taskId, f.stepId, DEADLINE, "wavespeed")).rejects.toThrow();
   });
 
   it("refuses a send past the deadline by the database clock", async () => {
     const f = await seed();
-    await expect(markStepSending(f.taskId, f.stepId, Date.now() - 1000)).rejects.toBeInstanceOf(DeadlinePassed);
+    await expect(markStepSending(f.taskId, f.stepId, Date.now() - 1000, "wavespeed")).rejects.toBeInstanceOf(DeadlinePassed);
     expect((await getStepTicket(f.taskId, f.stepId)).sendingAt).toBeNull();
   });
 });
@@ -122,7 +130,7 @@ describe("marking a model step's send", () => {
 describe("ending a model step", () => {
   it("writes a returned step with its link, its costs and a known consumption, and clears the send mark", async () => {
     const f = await seed();
-    await markStepSending(f.taskId, f.stepId, DEADLINE);
+    await markStepSending(f.taskId, f.stepId, DEADLINE, "wavespeed");
     await endMiniToolModelStep({ taskId: f.taskId, stepId: f.stepId, end: { kind: "returned", link: "https://out.example/a.mp4" }, costs: [KNOWN], servedBy: "wavespeed" });
     const row = await stepRow(f);
     expect(row.status).toBe("submitted");
