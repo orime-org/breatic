@@ -403,6 +403,10 @@ export {
   paymentGrantRequestSchema,
   type PaymentGrantAnswer,
   type PaymentGrantRequest,
+  lotRefundFactsSchema,
+  refundLotFactsRequestSchema,
+  type LotRefundFacts,
+  type RefundLotFactsRequest,
 } from "@core/commerce/contract.js";
 export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
 export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";

@@ -1165,16 +1165,8 @@ export async function listLotsByUser(
       // Both ways of drawing on it count — a generation and the repayment of
       // a studio's debt — which is what `SPENDING_ENTRY_TYPES` names.
       // Served by `credit_ledger_lot_idx`.
-      everSpent: sql<boolean>`EXISTS (
-        SELECT 1 FROM ${creditLedger}
-        WHERE ${creditLedger.lotId} = ${creditLots.id}
-          AND ${inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES)}
-      )`,
-      everRestored: sql<boolean>`EXISTS (
-        SELECT 1 FROM ${creditLedger}
-        WHERE ${creditLedger.lotId} = ${creditLots.id}
-          AND ${creditLedger.entryType} = 'refund_reversed'
-      )`,
+      everSpent: everSpentSql(),
+      everRestored: everRestoredSql(),
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
@@ -1216,6 +1208,75 @@ export async function listLotsByUser(
     everSpent: row.everSpent,
     everRestored: row.everRestored,
     cursorAt: row.cursorAt,
+  }));
+}
+
+/**
+ * The enclosing row's lot id, table-qualified. Drizzle drops the table name
+ * from columns of a single-table select, and inside a subquery on
+ * `credit_ledger` a bare `id` would resolve to the ledger's own id.
+ */
+const OUTER_LOT_ID = sql`${creditLots}.${sql.identifier("id")}`;
+
+/**
+ * Whether anything was ever drawn from the lot in the enclosing row, as a
+ * correlated `EXISTS`; served by `credit_ledger_lot_idx`.
+ * @returns The SQL fragment.
+ */
+function everSpentSql(): SQL<boolean> {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM ${creditLedger}
+    WHERE ${creditLedger.lotId} = ${OUTER_LOT_ID}
+      AND ${inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES)}
+  )`;
+}
+
+/**
+ * Whether credits were ever restored to the lot in the enclosing row after a
+ * refund failed, as a correlated `EXISTS`.
+ * @returns The SQL fragment.
+ */
+function everRestoredSql(): SQL<boolean> {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM ${creditLedger}
+    WHERE ${creditLedger.lotId} = ${OUTER_LOT_ID}
+      AND ${creditLedger.entryType} = 'refund_reversed'
+  )`;
+}
+
+/** One live lot's facts a refund decision reads (inner#1993 §3.3 `refund-lots/facts`). */
+export interface LotRefundFactsRow extends CreditLotEntity {
+  refundRequestedAt: Date | null;
+  ledgerSum: string;
+  everSpent: boolean;
+  everRestored: boolean;
+  designated: boolean;
+}
+
+/**
+ * Read many live lots' refund facts at once; ids of deleted or unknown lots
+ * are left out.
+ * @param lotIds - The lots.
+ * @returns One row per live lot, in no particular order.
+ */
+export async function readLotRefundFacts(lotIds: string[]): Promise<LotRefundFactsRow[]> {
+  if (lotIds.length === 0) return [];
+  const rows = await db
+    .select({
+      lot: creditLots,
+      ledgerSum: sql<string>`(SELECT COALESCE(SUM(${creditLedger.amount}), 0)::text FROM ${creditLedger} WHERE ${creditLedger.lotId} = ${OUTER_LOT_ID})`,
+      everSpent: everSpentSql(),
+      everRestored: everRestoredSql(),
+    })
+    .from(creditLots)
+    .where(and(inArray(creditLots.id, lotIds), isNull(creditLots.deletedAt)));
+  return rows.map((row) => ({
+    ...toLotEntity(row.lot),
+    refundRequestedAt: row.lot.refundRequestedAt,
+    ledgerSum: row.ledgerSum,
+    everSpent: row.everSpent,
+    everRestored: row.everRestored,
+    designated: row.lot.designatedStudioId !== null,
   }));
 }
 

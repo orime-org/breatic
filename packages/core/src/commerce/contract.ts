@@ -42,3 +42,28 @@ export type PaymentGrantRequest = z.infer<typeof paymentGrantRequestSchema>;
 /** The answer to a payment grant: the lot and when it was granted. */
 export const paymentGrantAnswerSchema = z.object({ lotId: uuid, grantedAt: instant }).strict();
 export type PaymentGrantAnswer = z.infer<typeof paymentGrantAnswerSchema>;
+
+/** `POST /internal/v1/commerce/refund-lots/facts`: read lots' refund facts. */
+export const refundLotFactsRequestSchema = z.object({ lotIds: z.array(uuid).min(1).max(100) }).strict();
+export type RefundLotFactsRequest = z.infer<typeof refundLotFactsRequestSchema>;
+
+/** One lot's facts a refund decision reads. */
+export const lotRefundFactsSchema = z
+  .object({
+    lotId: uuid,
+    userId: uuid,
+    sourceId: uuid,
+    sourceKind: z.string(),
+    lifecycle: z.string(),
+    purchasedCredits: z.string(),
+    remainingCredits: z.string(),
+    refundAttempts: z.number().int().nonnegative(),
+    refundRequestedAt: instant.nullable(),
+    ledgerSum: z.string(),
+    everSpent: z.boolean(),
+    everRestored: z.boolean(),
+    designated: z.boolean(),
+    createdAt: instant,
+  })
+  .strict();
+export type LotRefundFacts = z.infer<typeof lotRefundFactsSchema>;
