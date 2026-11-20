@@ -101,10 +101,8 @@ const EXPORT = "web_animation_export" as const;
 /** One of the three kinds of web-animation execution. */
 export type WebAnimationExecutionKind = typeof CREATE | typeof MODIFY | typeof EXPORT;
 
-const OriginSchema = z.enum(["timeline", "web_animation_space"]);
-
 /** Where an execution was asked for: a Motion Space, or a Timeline before #1490. */
-export type WebAnimationExecutionOrigin = z.infer<typeof OriginSchema>;
+export type WebAnimationExecutionOrigin = "timeline" | "web_animation_space";
 
 const engine = z.literal("deepseek");
 /** The frame ratios a web animation is made at. */
