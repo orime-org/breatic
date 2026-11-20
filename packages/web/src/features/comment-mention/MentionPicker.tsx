@@ -53,13 +53,15 @@ function useCaret(boxRef: React.RefObject<HTMLTextAreaElement | null>, text: str
     const read = (): void => {
       setCaret(box.selectionStart);
     };
+    // Typing reaches here through `text`, after the words are stored: a read
+    // on the box's own input event re-renders a box whose words live in a
+    // store before the store holds the new key, and React puts the old words
+    // back, dropping that key.
     read();
-    box.addEventListener('input', read);
     box.addEventListener('keyup', read);
     box.addEventListener('click', read);
     box.addEventListener('focus', read);
     return (): void => {
-      box.removeEventListener('input', read);
       box.removeEventListener('keyup', read);
       box.removeEventListener('click', read);
       box.removeEventListener('focus', read);
