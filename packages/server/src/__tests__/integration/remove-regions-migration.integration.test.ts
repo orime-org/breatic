@@ -45,33 +45,34 @@ async function run(tx: Tx, statements: string[]): Promise<void> {
 }
 
 /**
- * The migrations folder cut at 0125, the last migration before regions.
+ * A migrations folder ending at the specified journal entry.
+ * @param lastIndex - The last migration to include.
  * @returns The folder's path.
  */
-async function beforeRegionsFolder(): Promise<string> {
+async function migrationsThrough(lastIndex: number): Promise<string> {
   const cache = resolve(migrationDir, "../../../../../node_modules/.cache");
   await mkdir(cache, { recursive: true });
-  fixtureRoot = await mkdtemp(resolve(cache, "remove-regions-"));
-  const folder = resolve(fixtureRoot, "before-regions");
+  fixtureRoot ??= await mkdtemp(resolve(cache, "remove-regions-"));
+  const folder = resolve(fixtureRoot, `through-${lastIndex}`);
   await cp(migrationDir, folder, { recursive: true });
   const journal = JSON.parse(await readFile(resolve(migrationDir, "meta/_journal.json"), "utf8")) as { entries: { idx: number }[] };
-  await writeFile(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter((e) => e.idx <= 125) }));
+  await writeFile(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter((e) => e.idx <= lastIndex) }));
   return folder;
 }
 
 /**
  * Migrate a database of its own and read its schema.
- * @param migrationsFolder - The migrations to run; the full set when omitted.
+ * @param migrationsFolder - The migrations to run.
  * @returns The schema it ends with.
  */
-async function migratedSchema(migrationsFolder?: string): Promise<unknown> {
+async function migratedSchema(migrationsFolder: string): Promise<unknown> {
   const name = `remove_regions_${randomUUID().replaceAll("-", "")}`;
   await sql.unsafe(`CREATE DATABASE "${name}"`);
   const url = new URL(inject("DATABASE_URL"));
   url.pathname = `/${name}`;
   const db = postgres(url.toString(), { max: 1, prepare: false, onnotice: () => {} });
   try {
-    await migrateDatabase(url.toString(), migrationsFolder === undefined ? {} : { migrationsFolder });
+    await migrateDatabase(url.toString(), { migrationsFolder });
     return await schemaOf(db);
   } finally {
     await db.end({ timeout: 3 });
@@ -149,9 +150,9 @@ async function rowsOf(tx: Tx, studioId: string): Promise<unknown> {
 }
 
 describe("migration 0127 removes regions", () => {
-  it("leaves a fully migrated database with the schema it had before 0126", async () => {
-    const beforeRegions = await migratedSchema(await beforeRegionsFolder());
-    expect(await migratedSchema()).toEqual(beforeRegions);
+  it("leaves a database migrated through 0127 with the schema it had before 0126", async () => {
+    const beforeRegions = await migratedSchema(await migrationsThrough(125));
+    expect(await migratedSchema(await migrationsThrough(127))).toEqual(beforeRegions);
   });
 
   it("refuses a Studio transfer in the accepting state", async () => {
