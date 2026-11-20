@@ -276,10 +276,6 @@ export const coreConfigSchema = z.object({
   // previous key is still accepted until it is blanked.
   COMMERCE_API_SECRET: z.string().default(""),
   COMMERCE_API_SECRET_PREVIOUS: z.string().default(""),
-  STRIPE_SECRET_KEY: z.string().default(""),
-  STRIPE_WEBHOOK_SECRET: z.string().default(""),
-  STRIPE_WEBHOOK_ACCOUNT_ID: z.preprocess(blankToUndefined, z.string().max(255).regex(/^acct_[A-Za-z0-9]+$/).optional()),
-  STRIPE_WEBHOOK_ENDPOINT_ID: z.preprocess(blankToUndefined, z.string().max(255).regex(/^we_[A-Za-z0-9]+$/).optional()),
   CREDIT_MULTIPLIER: numeric(z.coerce.number().positive().default(1.0)),
 
   // ── Internal API (back office) ───────────────────
@@ -407,26 +403,6 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);
-
-  // Startup safety check - Stripe secrets must be present (and
-  // non-whitespace) when payments are on. Both default to "" so the
-  // app boots with PAYMENT_ENABLED=false; if enabled and empty,
-  // webhook signature verification fails confusingly at runtime.
-  // Fail fast at init with a clear message instead.
-  if (config.PAYMENT_ENABLED) {
-    if (!config.STRIPE_SECRET_KEY.trim()) {
-      throw new Error(
-        "FATAL: PAYMENT_ENABLED=true requires STRIPE_SECRET_KEY to be set " +
-        "(non-empty, non-whitespace). Refusing to start.",
-      );
-    }
-    if (!config.STRIPE_WEBHOOK_SECRET.trim()) {
-      throw new Error(
-        "FATAL: PAYMENT_ENABLED=true requires STRIPE_WEBHOOK_SECRET to be set " +
-        "(non-empty, non-whitespace). Refusing to start.",
-      );
-    }
-  }
 
   // Selling without charging would take money for credits nothing deducts; a
   // billing service with no key or no listener to call back cannot deliver

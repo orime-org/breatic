@@ -16,7 +16,7 @@ ruleTester.run("schema-timestamps", schemaTimestamps, {
     },
     // Allowlisted: nothing ever soft-deletes a payment.
     {
-      code: `export const payments = pgTable("payments", { ...timestamps });`,
+      code: `export const paymentReceipts = pgTable("payment_receipts", { ...timestamps });`,
     },
     {
       code: `export const uploadGrants = pgTable("upload_grants", { createdAt: timestamp("created_at") });`,
@@ -47,7 +47,7 @@ ruleTester.run("schema-timestamps", schemaTimestamps, {
     },
     // The allowlist covers deleted_at only — created_at has no exemption.
     {
-      code: `export const payments = pgTable("payments", { id: uuid("id") });`,
+      code: `export const paymentReceipts = pgTable("payment_receipts", { id: uuid("id") });`,
       errors: [{ messageId: "missingCreatedAt" }],
     },
     // updatedAt is not created_at.

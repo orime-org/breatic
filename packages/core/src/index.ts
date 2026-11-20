@@ -76,7 +76,6 @@ export type {
   RunProjectMediaBackfillInput,
 } from "@core/asset/project-media-backfill.js";
 export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
-export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
 export { getMiniToolsConfig, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
@@ -94,17 +93,6 @@ export {
   subscriptionClock,
 } from "@core/config/membership.js";
 export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
-export {
-  getSubscriptionPlans,
-  getSubscriptionPlan,
-  findOfferByPriceId,
-  getStripeCallTimeoutMs,
-  resetSubscriptionConfigCache,
-} from "@core/config/subscription.js";
-export type {
-  SubscriptionPlan,
-  SubscriptionPlans,
-} from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
 export { getAgentConfig, memoryReserveTokens, MEMORY_TITLE_MAX_CHARS, MEMORY_CONTENT_MAX_CHARS } from "@core/config/loader.js";
 
@@ -251,7 +239,6 @@ export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, Enterprise
 // ceilings above are read here too, and a subscription whose paid period ran
 // out says the tier on the account is stale.
 export {
-  hasPaidMembership,
   listSubscriptions,
   recordFirstActive,
   upsertSubscription,

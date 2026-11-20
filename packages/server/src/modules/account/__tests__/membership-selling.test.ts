@@ -31,7 +31,7 @@ vi.mock("@server/modules/commerce/commerce-client.js", () => ({
   userPath: (userId: string, sub: string) => `/users/${userId}${sub}`,
 }));
 
-vi.mock("@server/modules/subscription/subscription-panel.js", () => ({
+vi.mock("@server/modules/account/subscription-panel.js", () => ({
   readStoredSubscriptionSummary: vi.fn(),
 }));
 
@@ -45,7 +45,7 @@ vi.mock("@server/modules/studio/studio.repo.js", () => ({
 
 import { getMembershipForUser } from "@breatic/core";
 import { requestCommerce } from "@server/modules/commerce/commerce-client.js";
-import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
+import { readStoredSubscriptionSummary } from "@server/modules/account/subscription-panel.js";
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";

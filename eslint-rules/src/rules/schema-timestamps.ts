@@ -16,17 +16,13 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ["creditCompensations", "immutable funding evidence; deleting a receipt hides the provenance of credits already issued"],
   ["creditGifts", "immutable registration claim or operator funding evidence; removing a registration claim would permit a second grant"],
   ["creditGrantOperations", "immutable original grant decisions retain their idempotency keys permanently; deleting a decision would permit duplicate funding"],
-  ["referralCodes", "a code is only disabled, re-enabled or removed; bindings and future commissions point at it permanently"],
-  ["referralBindings", "a binding is permanent by the promoter terms; commissions are computed from it"],
-  ["referralOperations", "immutable back-office decisions retain their idempotency keys permanently; deleting one would let a replay act twice"],
-  ["payments", "append-only financial record; deleting one breaks the audit trail"],
   ["paymentReceipts", "immutable receipt of a completed payment (0128, inner#1993); a lot's source points at it, so removing one hides where credits already issued came from"],
   ["commerceRequests", "immutable record of a billing-service write and its answer (0128, inner#1993); removing one would let a replay of the same key act a second time"],
   ["commerceOutbox", "internal transactional-outbox queue (0128, inner#1993), like projectLifecycleOutbox: appended in a business transaction, marked sent by the relay, retained as an audit trail"],
   ["commerceOutboxDeadLetters", "outbox rows refused for good (0128, inner#1993), kept for a person to resolve; a deleted one is an event that silently never happened"],
   [
     "membershipTierChanges",
-    "append-only ledger of tier moves, the same carve-out as payments above: the column on users holds the current tier and every change to it is appended here, so deleting a row leaves a history that no longer adds up to the value on the account",
+    "append-only ledger of tier moves: the column on users holds the current tier and every change to it is appended here, so deleting a row leaves a history that no longer adds up to the value on the account",
   ],
   [
     "creditSources",
@@ -83,38 +79,6 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   [
     "projectEdits",
     "one row per project saying when it was last edited, moved forward in place: a row for a deleted project is filtered out by the studio list's join, so a leftover row is harmless. The same carve-out as projectLastOpened; its mutable column is last_edited_at, so there is no updated_at either",
-  ],
-  [
-    "purchaseConsents",
-    "legal evidence of what a buyer agreed to at checkout (0066): it is kept for as long as the payment it describes, and soft-deleting it is the evidence disappearing — which is the one thing this table exists to prevent",
-  ],
-  [
-    "purchaseMailOutbox",
-    "the record of whether one purchase's confirmation email went out (0066): it lives and dies with that payment and has no delete of its own, and the resend control reads its status, so a row that could vanish would leave a buyer with no way to ask for the letter again",
-  ],
-  [
-    "creditRefundOperations",
-    "one disposition of a credit pack's refund request (0094, inner#1410): the record of who decided to move a buyer's money and what came of it. It lives as long as the payment it disposes of, and a disposition that could vanish would let the same refund be approved, and paid out, a second time",
-  ],
-  [
-    "creditRefundOperationEvents",
-    "append-only step log of a refund disposition (0094): each row is something that already happened to a buyer's money, the same carve-out as creditLedger",
-  ],
-  [
-    "creditRefunds",
-    "the product's copy of what Stripe says about one refund (0094): it mirrors a record Stripe never deletes, and the lot's booking and every later decision read it, so a row that could vanish would hide money that left",
-  ],
-  [
-    "refundMailOutbox",
-    "the record of each refund email to a buyer (0094): the same carve-out as purchaseMailOutbox — it lives with its disposition, and the resend control reads its status",
-  ],
-  [
-    "creditRefundReconcileStatus",
-    "one row of the daily refund reconcile's progress (0094): an internal progress marker with nothing a user could delete",
-  ],
-  [
-    "stripeWebhookEvents",
-    "append-only record of which Stripe events have been processed; the primary key is the idempotency guard, so deleting a row is exactly what would let that event be replayed",
   ],
   [
     "uploadGrants",

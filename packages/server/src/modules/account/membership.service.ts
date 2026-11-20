@@ -32,7 +32,7 @@ import {
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 import { requestCommerce, userPath } from "@server/modules/commerce/commerce-client.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
+import { readStoredSubscriptionSummary } from "@server/modules/account/subscription-panel.js";
 
 type Prices = Readonly<Record<string, Readonly<Record<BillingPeriod, TierPrice | null>>>>;
 

@@ -68,15 +68,9 @@ const PG_DRIVER_LOCAL = "credit-lot-refund-transitions-test-driver";
 let sql: ReturnType<typeof postgres>;
 
 beforeAll(() => {
-  // Refunds only exist where payments do. The placeholder keys get past the
-  // startup check that pairs them with PAYMENT_ENABLED; the lot transitions
-  // reach Stripe zero times.
-  initCore({
-    ...process.env,
-    PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-  });
+  // Refunds only exist where credits are charged for. The lot transitions
+  // reach the billing service zero times.
+  initCore({ ...process.env, CHARGING_ENABLED: "true" });
   loadLocales();
   sql = postgres(inject("DATABASE_URL"), {
     max: 6,
@@ -108,8 +102,8 @@ async function seedBuyer(): Promise<string> {
 async function seedLot(userId: string, credits: number | string): Promise<string> {
   const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (id, user_id, amount_cents, total_cents, status, credits_granted)
-    VALUES (${sourceId}, ${userId}, 1000, 1080, 'completed', ${Number(credits)}) RETURNING id
+    INSERT INTO payment_receipts (id, user_id, amount_cents, total_cents, currency, credits_granted, ordered_at)
+    VALUES (${sourceId}, ${userId}, 1000, 1080, 'usd', ${Number(credits)}, now()) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,

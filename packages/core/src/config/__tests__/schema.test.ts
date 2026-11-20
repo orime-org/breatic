@@ -518,8 +518,7 @@ describe("parseConfig — internal API", () => {
     ).not.toThrow();
   });
 
-  // Same refusal, and the same wording, as PAYMENT_ENABLED without its Stripe
-  // secrets: the error has to name the variable the operator must set.
+  // The error has to name the variable the operator must set.
   it.each([
     ["unset", undefined],
     ["empty", ""],
@@ -580,7 +579,6 @@ describe("parseConfig — variables left from the multi-region release", () => {
 });
 
 describe("parseConfig — charging and selling switches", () => {
-  const STRIPE = { STRIPE_SECRET_KEY: "sk_test_x", STRIPE_WEBHOOK_SECRET: "whsec_x" };
   const SELLING = {
     CHARGING_ENABLED: "true",
     COMMERCE_API_URL: "http://commerce.internal:3500",
@@ -600,16 +598,16 @@ describe("parseConfig — charging and selling switches", () => {
 
   // Self-hosted deployments and five self-host documents still use the old name.
   it("falls back to PAYMENT_ENABLED when CHARGING_ENABLED is unset or blank", () => {
-    expect(parseConfig(baseEnv({ PAYMENT_ENABLED: "true", ...STRIPE })).CHARGING_ENABLED).toBe(true);
+    expect(parseConfig(baseEnv({ PAYMENT_ENABLED: "true" })).CHARGING_ENABLED).toBe(true);
     expect(
-      parseConfig(baseEnv({ PAYMENT_ENABLED: "true", CHARGING_ENABLED: "  ", ...STRIPE })).CHARGING_ENABLED,
+      parseConfig(baseEnv({ PAYMENT_ENABLED: "true", CHARGING_ENABLED: "  " })).CHARGING_ENABLED,
     ).toBe(true);
     expect(parseConfig(baseEnv({ PAYMENT_ENABLED: "false" })).CHARGING_ENABLED).toBe(false);
   });
 
   it("takes CHARGING_ENABLED over PAYMENT_ENABLED when both are set", () => {
     expect(
-      parseConfig(baseEnv({ PAYMENT_ENABLED: "true", CHARGING_ENABLED: "false", ...STRIPE })).CHARGING_ENABLED,
+      parseConfig(baseEnv({ PAYMENT_ENABLED: "true", CHARGING_ENABLED: "false" })).CHARGING_ENABLED,
     ).toBe(false);
     expect(parseConfig(baseEnv({ PAYMENT_ENABLED: "false", CHARGING_ENABLED: "true" })).CHARGING_ENABLED).toBe(true);
   });

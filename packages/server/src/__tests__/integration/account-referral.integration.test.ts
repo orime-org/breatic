@@ -1,148 +1,90 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+/**
+ * A later referral binding (inner#1993 §3.2, §8.4): the product checks the
+ * body, sends the account's pending sign-up binding first, then forwards the
+ * request to the billing service, which decides it. Where nothing is sold
+ * the route does not exist.
+ */
+
 import { randomUUID } from "node:crypto";
-import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
-import { initCore, loadLocales } from "@breatic/core";
+import { describe, expect, it, vi } from "vitest";
 
-const stripe = { checkout: { sessions: { list: vi.fn(), expire: vi.fn() } } };
-vi.mock("@server/infra/stripe.js", () => ({ getStripeClient: () => stripe }));
+vi.mock("ai", () => ({
+  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
+  streamText: () => ({ fullStream: (async function* () {})(), text: Promise.resolve(""), usage: Promise.resolve({ totalTokens: 0 }) }),
+  stepCountIs: (_n: number) => () => false,
+  tool: (config: Record<string, unknown>) => config,
+}));
 
-import { bindLater, readAccountReferral } from "@server/modules/referral/referral.service";
+import { initCore } from "@breatic/core";
+import { initSellingCore, insertAccount, loginCookie, useCommerceApp } from "./commerce-harness.js";
 
-let sql: ReturnType<typeof postgres>;
-
-beforeAll(() => {
-  initCore(process.env);
-  loadLocales();
-  sql = postgres(inject("DATABASE_URL"), { max: 2, prepare: false, connection: { application_name: "account-referral-test" } });
-});
-afterAll(async () => { await sql?.end({ timeout: 1 }); });
-beforeEach(() => {
-  vi.clearAllMocks();
-  stripe.checkout.sessions.list.mockResolvedValue({ data: [] });
-  stripe.checkout.sessions.expire.mockResolvedValue({});
-});
+const suite = useCommerceApp("account-referral");
 
 /**
- * Inserts an account.
- * @param customer - A Stripe customer id to store, if any.
- * @returns Its id.
+ * Ask for a later binding as a signed-in account.
+ * @param userId - The account.
+ * @param body - The JSON body.
+ * @param key - The idempotency key.
+ * @returns The response.
  */
-async function account(customer: string | null = null): Promise<string> {
-  const id = randomUUID();
-  await sql`insert into users(id,email,stripe_customer_id) values(${id},${`${id}@example.test`},${customer})`;
-  return id;
+async function bind(userId: string, body: unknown, key = `k-${randomUUID()}`): Promise<Response> {
+  return suite.app.request("/api/v1/account/referral/binding", {
+    method: "POST",
+    headers: { cookie: await loginCookie(userId), "content-type": "application/json", "idempotency-key": key },
+    body: JSON.stringify(body),
+  });
 }
 
-/**
- * Makes an account an approved promoter with a code in the given status.
- * @param status - The code's status.
- * @returns The promoter and the code.
- */
-async function promoter(status: "active" | "disabled" | "removed" = "active"): Promise<{ userId: string; code: string }> {
-  const userId = await account();
-  const code = `R${randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
-  const [app] = await sql<{ id: string }[]>`insert into promoter_applications
-    (user_id,status,country,channels,plan,terms_version,terms_accepted_at,decided_at,decided_by)
-    values(${userId},'approved','US',${sql.json(["x"])},'p','2026-11-07',now(),now(),'admin_7') returning id`;
-  await sql`insert into referral_codes(code,promoter_id,application_id,status,removed_at)
-    values(${code},${userId},${app!.id},${status},${status === "removed" ? new Date() : null})`;
-  return { userId, code };
-}
+describe("a later referral binding", () => {
+  it("forwards straight to the user's endpoint when nothing is pending, and sends the answer back", async () => {
+    const userId = await insertAccount(suite.sql);
+    const key = `k-${randomUUID()}`;
+    suite.reply = () => ({ status: 200, body: { data: { bound: true } } });
 
-describe("readAccountReferral", () => {
-  it("offers a fresh account the backfill and the application", async () => {
-    const userId = await account();
-    expect(await readAccountReferral(userId, "2026-11-07")).toEqual({
-      firstPeriodDiscountPercent: 20,
-      binding: null,
-      canBind: true,
-      program: { open: true, termsVersion: "2026-11-07" },
-      promoter: { state: "none" },
-    });
+    const res = await bind(userId, { code: "OTHER" }, key);
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { bound: true } });
+    expect(suite.received).toEqual([
+      { method: "POST", path: `/v1/users/${userId}/referral/binding?locale=en`, signer: "product", idempotencyKey: key, body: { code: "OTHER" } },
+    ]);
   });
 
-  it("shows a bound account its code and pending discount, and no backfill", async () => {
-    const { code } = await promoter();
-    const userId = await account();
-    await bindLater(userId, code);
-    const view = await readAccountReferral(userId, "");
-    expect(view.binding).toEqual({ code, discountPending: true });
-    expect(view.canBind).toBe(false);
-    expect(view.program).toEqual({ open: false, termsVersion: "" });
+  it("answers 503 and forwards nothing while the pending sign-up binding cannot be sent", async () => {
+    const userId = await insertAccount(suite.sql);
+    const [row] = await suite.sql<{ id: string }[]>`
+      INSERT INTO commerce_outbox(aggregate_key,type,payload)
+      VALUES (${`referral:${userId}`},'referral_binding',${suite.sql.json({ userId, code: "FRIEND", source: "signup_typed", requestedAt: new Date().toISOString() })})
+      RETURNING id`;
+    suite.reply = () => ({ status: 503, body: {} });
+
+    const res = await bind(userId, { code: "OTHER" });
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: { reason: "billing_unavailable" } });
+    expect(suite.received.map((r) => r.path.split("?")[0])).toEqual([`/v1/inbox/${row!.id}`]);
   });
 
-  it("shows a promoter their code, link and status, including after removal", async () => {
-    for (const status of ["active", "disabled", "removed"] as const) {
-      const { userId, code } = await promoter(status);
-      const view = await readAccountReferral(userId, "2026-11-07");
-      expect(view.promoter).toMatchObject({ state: "approved", code, codeStatus: status });
-      expect((view.promoter as { link: string }).link).toMatch(new RegExp(`/register\\?ref=${code}$`));
+  it("refuses an empty code without asking the billing service", async () => {
+    const userId = await insertAccount(suite.sql);
+
+    const res = await bind(userId, { code: "" });
+
+    expect(res.status).toBe(422);
+    expect(suite.received).toEqual([]);
+  });
+
+  it("answers 404 where nothing is sold", async () => {
+    const userId = await insertAccount(suite.sql);
+    initCore(process.env);
+    try {
+      expect((await bind(userId, { code: "OTHER" })).status).toBe(404);
+    } finally {
+      initSellingCore(suite.billingUrl);
     }
-  });
-
-  it("shows a pending applicant when they applied, and a rejected one the note", async () => {
-    const userId = await account();
-    await sql`insert into promoter_applications(user_id,status,country,channels,plan,terms_version,terms_accepted_at)
-      values(${userId},'pending','US',${sql.json(["x"])},'p','2026-11-07',now())`;
-    expect((await readAccountReferral(userId, "2026-11-07")).promoter).toMatchObject({ state: "pending" });
-    await sql`update promoter_applications set status='rejected',decided_at=now(),decided_by='admin_7',applicant_note='Links broken' where user_id=${userId}`;
-    expect((await readAccountReferral(userId, "2026-11-07")).promoter).toMatchObject({ state: "rejected", note: "Links broken" });
-  });
-});
-
-describe("bindLater", () => {
-  it("binds with source later and expires the account's open membership checkouts", async () => {
-    const { code } = await promoter();
-    const userId = await account(`cus_${randomUUID().slice(0, 8)}`);
-    stripe.checkout.sessions.list.mockResolvedValue({
-      data: [{ id: "cs_sub", mode: "subscription" }, { id: "cs_pack", mode: "payment" }],
-    });
-    expect(await bindLater(userId, code)).toEqual({ ok: true });
-    const [row] = await sql`select source from referral_bindings where user_id = ${userId}`;
-    expect(row!.source).toBe("later");
-    expect(stripe.checkout.sessions.expire).toHaveBeenCalledTimes(1);
-    expect(stripe.checkout.sessions.expire).toHaveBeenCalledWith("cs_sub", {}, expect.objectContaining({ maxNetworkRetries: 0 }));
-  });
-
-  it("leaves a discounted membership checkout open: it was made after the binding", async () => {
-    const { code } = await promoter();
-    const userId = await account(`cus_${randomUUID().slice(0, 8)}`);
-    stripe.checkout.sessions.list.mockResolvedValue({
-      data: [
-        { id: "cs_discounted", mode: "subscription", discounts: [{ coupon: "referral-first-period-20", promotion_code: null }] },
-        { id: "cs_full", mode: "subscription", discounts: [] },
-        { id: "cs_pack", mode: "payment", discounts: [] },
-      ],
-    });
-    expect(await bindLater(userId, code)).toEqual({ ok: true });
-    expect(stripe.checkout.sessions.expire.mock.calls.map((c) => c[0])).toEqual(["cs_full"]);
-  });
-
-  it("keeps the binding when expiring the checkouts fails", async () => {
-    const { code } = await promoter();
-    const userId = await account(`cus_${randomUUID().slice(0, 8)}`);
-    stripe.checkout.sessions.list.mockRejectedValue(new Error("Stripe down"));
-    expect(await bindLater(userId, code)).toEqual({ ok: true });
-    expect(await sql`select 1 from referral_bindings where user_id = ${userId}`).toHaveLength(1);
-  });
-
-  it("still expires the other full-price checkouts when one expire fails", async () => {
-    const { code } = await promoter();
-    const userId = await account(`cus_${randomUUID().slice(0, 8)}`);
-    stripe.checkout.sessions.list.mockResolvedValue({
-      data: [{ id: "cs_team", mode: "subscription", discounts: [] }, { id: "cs_pro", mode: "subscription", discounts: [] }],
-    });
-    stripe.checkout.sessions.expire.mockRejectedValueOnce(new Error("Stripe timeout"));
-    expect(await bindLater(userId, code)).toEqual({ ok: true });
-    expect(stripe.checkout.sessions.expire.mock.calls.map((c) => c[0])).toEqual(["cs_team", "cs_pro"]);
-  });
-
-  it("touches no checkout when the code is refused", async () => {
-    const userId = await account(`cus_${randomUUID().slice(0, 8)}`);
-    expect(await bindLater(userId, "NOSUCHCODE")).toEqual({ ok: false, reason: "invalid_code" });
-    expect(stripe.checkout.sessions.list).not.toHaveBeenCalled();
+    expect(suite.received).toEqual([]);
   });
 });

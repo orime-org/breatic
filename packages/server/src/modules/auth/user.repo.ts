@@ -235,41 +235,6 @@ export async function updateUser(
 }
 
 /**
- * Read which Stripe customer an account pays through.
- * @param userId - The account to look up.
- * @returns Its Stripe customer id, or null when it has never paid us.
- */
-export async function getStripeCustomerId(
-  userId: string,
-): Promise<string | null> {
-  const rows = await db
-    .select({ stripeCustomerId: users.stripeCustomerId })
-    .from(users)
-    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
-    .limit(1);
-  return rows[0]?.stripeCustomerId ?? null;
-}
-
-/**
- * Record which Stripe customer an account pays through.
- *
- * Written before the first Checkout Session exists, which is what makes a
- * later subscription event identifiable: those events carry the customer and
- * nothing of ours.
- * @param userId - The account.
- * @param stripeCustomerId - Stripe's id for its customer.
- */
-export async function setStripeCustomerId(
-  userId: string,
-  stripeCustomerId: string,
-): Promise<void> {
-  await db
-    .update(users)
-    .set({ stripeCustomerId, updatedAt: new Date() })
-    .where(eq(users.id, userId));
-}
-
-/**
  * The Agent model an account last picked (#1363); a new conversation starts on it.
  * @param userId - The account.
  * @returns The model, or null before the first pick.
@@ -294,30 +259,6 @@ export async function setAgentModel(userId: string, agentModel: string, tx?: DbT
     .update(users)
     .set({ agentModel, updatedAt: new Date() })
     .where(eq(users.id, userId));
-}
-
-/**
- * Read which account a Stripe customer belongs to.
- *
- * The identification chain for every subscription event: the event names a
- * customer, and this turns it back into an account.
- * @param stripeCustomerId - The customer named on a Stripe object.
- * @returns The account id, or null when no live account claims it.
- */
-export async function findUserIdByStripeCustomerId(
-  stripeCustomerId: string,
-): Promise<string | null> {
-  const rows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(
-      and(
-        eq(users.stripeCustomerId, stripeCustomerId),
-        isNull(users.deletedAt),
-      ),
-    )
-    .limit(1);
-  return rows[0]?.id ?? null;
 }
 
 /**

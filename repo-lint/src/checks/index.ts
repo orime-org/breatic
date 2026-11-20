@@ -21,6 +21,7 @@ import { noFfmpegBindingDeps } from "#repo-lint/checks/no-ffmpeg-binding-deps";
 import { noGplBlocknoteAddons } from "#repo-lint/checks/no-gpl-blocknote-addons";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
+import { noBillingInProduct } from "#repo-lint/checks/no-billing-in-product";
 import { noticeCoversDependencies } from "#repo-lint/checks/notice-covers-dependencies";
 import { noticeTravelsWithTheBundle } from "#repo-lint/checks/notice-travels-with-the-bundle";
 import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
@@ -62,6 +63,7 @@ export const CHECKS: readonly Check[] = [
   noGplBlocknoteAddons,
   noHardcodedSecrets,
   noPrivateRepoPath,
+  noBillingInProduct,
   noticeCoversDependencies,
   noticeTravelsWithTheBundle,
   noSilentSkip,

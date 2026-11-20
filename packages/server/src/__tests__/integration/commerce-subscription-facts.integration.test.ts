@@ -15,7 +15,7 @@ import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { closeDb, initCore, type SubscriptionFactRequest } from "@breatic/core";
 import type * as Core from "@breatic/core";
-import type * as SettleTier from "@server/modules/subscription/settle-tier.js";
+import type * as SettleTier from "@server/modules/account/settle-tier.js";
 import { applySubscriptionFact } from "@server/modules/commerce/commerce-subscription-facts.service.js";
 
 const track = vi.hoisted(() => vi.fn());
@@ -27,7 +27,7 @@ vi.mock("@breatic/core", async (original) => ({
   trackServerEvent: track,
   enqueueAdsConversion: enqueue,
 }));
-vi.mock("@server/modules/subscription/settle-tier.js", async (original) => ({
+vi.mock("@server/modules/account/settle-tier.js", async (original) => ({
   ...(await original<typeof SettleTier>()),
   sendMembershipEndedMail: endedMail,
 }));

@@ -9,8 +9,9 @@
  * The order is rate limit (by connection address, fail closed) → body size
  * (64 KiB, 413) → signature headers → ±300 s window → HMAC under either
  * secret → nonce `SET NX EX 602` (fail closed) → the authorisation table.
- * Every refusal here must leave the database and Stripe untouched: a refused
- * request that wrote something is a request that got in. Every request, let
+ * Every refusal here must leave the database untouched: a refused request
+ * that wrote something is a request that got in. The product endpoints the
+ * cases aim at are the back office's credit grants (a read and a write). Every request, let
  * through or refused, logs one `internal_api_request` line (acceptance #14).
  *
  * Redis outages are injected at the one client the server shares
@@ -63,16 +64,6 @@ vi.mock("@server/config/limits.js", async (importOriginal) => ({
   getRequestBodyLingerSeconds: () => linger.seconds,
 }));
 
-vi.mock("@server/infra/stripe.js", async () => {
-  const { fakeStripe } = await import("./fake-stripe-refunds.js");
-  return {
-    getStripeClient: () => fakeStripe.client,
-    verifyWebhookSignature: () => {
-      throw new Error("not used by this suite");
-    },
-  };
-});
-
 import { randomUUID } from "node:crypto";
 import { readFileSync } from "node:fs";
 import http from "node:http";
@@ -80,7 +71,6 @@ import { resolve } from "node:path";
 import { getRedis } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { getRateLimit } from "@server/config/rate-limits.js";
-import { fakeStripe } from "./fake-stripe-refunds.js";
 import {
   ADMIN,
   PREVIOUS_SECRET,
@@ -88,12 +78,19 @@ import {
   call,
   freshKey,
   freshNonce,
-  mailsSettled,
   nonceKey,
-  paths,
   useInternalApp,
 } from "./internal-api-harness.js";
-import { PAID_CENTS, reId, refundObject, seedRefundLot, worldOf } from "./credit-refund-fixtures.js";
+import {
+  GRANT_ADMIN,
+  fundingState,
+  grantBody,
+  grantKey,
+  grantPath,
+  profilePath,
+  seedPersonal,
+  type PersonalFixture,
+} from "./operator-credit-grant-fixtures.js";
 import { expectNextOnNewConnection, expectWholeAnswerThenCloseAtBodyEnd } from "./refused-connection.js";
 
 // Registered before the suite's own hooks, so the fault mode is reset before
@@ -119,17 +116,27 @@ beforeAll(() => {
   sql = suite.sql;
 });
 
+/** An account id no row has: the request passes the gate and finds nothing. */
+const NO_ACCOUNT = "00000000-0000-4000-8000-000000000000";
+
 /**
- * A lot waiting for a decision, known to the fake Stripe with no refunds.
- * @returns The seeded lot.
+ * An account with a personal Studio that a credit grant could fund.
+ * @returns The seeded account.
  */
-async function pendingLot() {
-  const lot = await seedRefundLot(sql, "refund_pending");
-  fakeStripe.register(lot.paymentIntentId, PAID_CENTS);
-  return lot;
+async function grantAccount(): Promise<PersonalFixture> {
+  return seedPersonal(sql, "internal-api-gate");
 }
 
-const REJECT_BODY = { reason: "Buyer asked twice; policy says no." };
+/**
+ * A refusal must leave the account unfunded and the request key unclaimed.
+ * @param fx - The account under test.
+ * @param key - The request key that must not have been claimed.
+ */
+async function expectGrantUntouched(fx: PersonalFixture, key: string): Promise<void> {
+  expect(await fundingState(sql, fx)).toMatchObject({ sources: 0, lots: 0, operations: 0 });
+  expect(await sql`SELECT key FROM credit_grant_operations WHERE key = ${key}`).toEqual([]);
+}
+
 const ENTERPRISE_BODY = {
   targetTier: "enterprise",
   expiresAt: "2099-10-26T00:00:00.000Z",
@@ -179,8 +186,6 @@ async function expectEnterpriseUntouched(userId: string, key: string): Promise<v
   expect(await sql`SELECT user_id FROM enterprise_memberships WHERE user_id = ${userId}`).toEqual([]);
   expect(await sql`SELECT key FROM enterprise_membership_operations WHERE target_user_id = ${userId} OR key = ${key}`).toEqual([]);
   expect(await sql`SELECT id FROM membership_tier_changes WHERE user_id = ${userId}`).toEqual([]);
-  expect(fakeStripe.listCalls).toEqual([]);
-  expect(fakeStripe.createCalls).toEqual([]);
 }
 
 /**
@@ -240,36 +245,35 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
   ];
 
   it.each(refusals)("refuses $name at the $step step", async ({ step, opts }) => {
-    const lot = await pendingLot();
-    const before = await worldOf(sql, lot);
+    const fx = await grantAccount();
+    const key = grantKey();
     const resolved = { nonce: freshNonce(), ...(typeof opts === "function" ? opts() : opts) };
 
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), {
-      body: REJECT_BODY,
-      idempotencyKey: freshKey("reject"),
+    const res = await call(running.baseUrl, grantPath(fx.userId), {
+      body: grantBody(fx),
+      idempotencyKey: key,
+      admin: GRANT_ADMIN,
       ...resolved,
     });
 
     expect(res.status).toBe(401);
     expect(res.json).toEqual({ code: "unauthorized" });
-    expect(await worldOf(sql, lot)).toEqual(before);
-    expect(fakeStripe.listCalls).toEqual([]);
-    expect(fakeStripe.createCalls).toEqual([]);
-    await expectOneRejectionLine(step, paths.reject(lot.lotId));
+    await expectGrantUntouched(fx, key);
+    await expectOneRejectionLine(step, grantPath(fx.userId));
     // Every step here comes before the nonce's SET, so the nonce stays unspent.
     expect(await getRedis().exists(nonceKey(resolved.nonce))).toBe(0);
   });
 
   it("refuses a replayed nonce even when everything else is identical, and the first request's effects stay single", async () => {
-    const lot = await pendingLot();
-    const first = await call(running.baseUrl, paths.reject(lot.lotId), {
-      body: REJECT_BODY,
-      idempotencyKey: freshKey("reject"),
+    const fx = await grantAccount();
+    const first = await call(running.baseUrl, grantPath(fx.userId), {
+      body: grantBody(fx),
+      idempotencyKey: grantKey(),
+      admin: GRANT_ADMIN,
     });
     expect(first.status).toBe(200);
-    expect(first.json.result).toBe("rejected");
-    await mailsSettled(sql, lot);
-    const after = await worldOf(sql, lot);
+    expect(first.json.status).toBe("applied");
+    const after = await fundingState(sql, fx);
     await vi.waitFor(() => expect(linesOf("info", "internal_api_request")).toHaveLength(1), { timeout: 2_000, interval: 10 });
     logged.info.mockClear();
     logged.warn.mockClear();
@@ -278,10 +282,9 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
 
     expect(again.status).toBe(401);
     expect(again.json).toEqual({ code: "unauthorized" });
-    expect(await worldOf(sql, lot)).toEqual(after);
-    expect(after.ops).toHaveLength(1);
-    expect(fakeStripe.listCalls).toHaveLength(1);
-    await expectOneRejectionLine("nonce", paths.reject(lot.lotId));
+    expect(await fundingState(sql, fx)).toEqual(after);
+    expect(after).toMatchObject({ sources: 1, lots: 1, operations: 1 });
+    await expectOneRejectionLine("nonce", grantPath(fx.userId));
   });
 
   // The window is inclusive on floored seconds, so a timestamp S is accepted
@@ -289,11 +292,11 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
   // moment the key is set. The key was set between `sent` and the read, so
   // what is left plus what has passed is at least the full TTL.
   it("stores the nonce under {env}:server:internal-nonce:<nonce> for 602 seconds", async () => {
-    const lot = await pendingLot();
+    const fx = await grantAccount();
     const nonce = freshNonce();
     const sent = Date.now();
 
-    const res = await call(running.baseUrl, paths.preview(lot.lotId), { nonce });
+    const res = await call(running.baseUrl, profilePath(fx.userId), { nonce });
 
     expect(res.status).toBe(200);
     const leftMs = await getRedis().pttl(nonceKey(nonce));
@@ -303,77 +306,80 @@ describe("signature (§4.2): each failed step is 401 and writes nothing", () => 
   });
 
   it("accepts a request signed with the previous secret during rotation", async () => {
-    const lot = await pendingLot();
+    const fx = await grantAccount();
+    const key = grantKey();
 
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), {
-      body: REJECT_BODY,
-      idempotencyKey: freshKey("reject"),
+    const res = await call(running.baseUrl, grantPath(fx.userId), {
+      body: grantBody(fx),
+      idempotencyKey: key,
+      admin: GRANT_ADMIN,
       secret: PREVIOUS_SECRET,
     });
 
     expect(res.status).toBe(200);
-    expect(res.json).toMatchObject({ lotId: lot.lotId, kind: "reject", status: "succeeded", result: "rejected", requestedBy: ADMIN });
+    expect(res.json).toMatchObject({ status: "applied", personalStudioId: fx.studioId, operation: { key, accountId: fx.userId, adminId: GRANT_ADMIN } });
   });
 
   it("the honest request every refusal above was built from is accepted", async () => {
-    const lot = await pendingLot();
+    const fx = await grantAccount();
 
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), {
-      body: REJECT_BODY,
-      idempotencyKey: freshKey("reject"),
+    const res = await call(running.baseUrl, grantPath(fx.userId), {
+      body: grantBody(fx),
+      idempotencyKey: grantKey(),
+      admin: GRANT_ADMIN,
       secret: SECRET,
     });
 
     expect(res.status).toBe(200);
-    expect(res.json).toMatchObject({ kind: "reject", status: "succeeded", result: "rejected" });
+    expect(res.json).toMatchObject({ status: "applied", grantedCredits: "100.000000" });
   });
 });
 
 describe("Redis unavailable is 503, never let through (§4.2, §4.4)", () => {
   it("the rate-limit step answers 503 unavailable when Redis cannot count — before the signature is even read", async () => {
-    const lot = await pendingLot();
-    const before = await worldOf(sql, lot);
+    const fx = await grantAccount();
+    const key = grantKey();
     redisFault.mode = "limiter_rejects";
 
-    const signed = await call(running.baseUrl, paths.reject(lot.lotId), {
-      body: REJECT_BODY,
-      idempotencyKey: freshKey("reject"),
+    const signed = await call(running.baseUrl, grantPath(fx.userId), {
+      body: grantBody(fx),
+      idempotencyKey: key,
+      admin: GRANT_ADMIN,
     });
-    const unsigned = await call(running.baseUrl, paths.reject(lot.lotId), { body: REJECT_BODY, unsigned: true });
+    const unsigned = await call(running.baseUrl, grantPath(fx.userId), { body: grantBody(fx), idempotencyKey: key, unsigned: true });
 
     expect(signed.status).toBe(503);
     expect(signed.json).toEqual({ code: "unavailable" });
     expect(unsigned.status).toBe(503);
     expect(unsigned.json).toEqual({ code: "unavailable" });
-    expect(await worldOf(sql, lot)).toEqual(before);
-    expect(fakeStripe.listCalls).toEqual([]);
+    await expectGrantUntouched(fx, key);
   });
 
   it("the nonce step answers 503 unavailable when SET fails, writes nothing, and the same signed bytes go through once Redis is back", async () => {
-    const lot = await pendingLot();
-    const before = await worldOf(sql, lot);
+    const fx = await grantAccount();
+    const key = grantKey();
     redisFault.mode = "commands_reject";
 
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), {
-      body: REJECT_BODY,
-      idempotencyKey: freshKey("reject"),
+    const res = await call(running.baseUrl, grantPath(fx.userId), {
+      body: grantBody(fx),
+      idempotencyKey: key,
+      admin: GRANT_ADMIN,
     });
 
     expect(res.status).toBe(503);
     expect(res.json).toEqual({ code: "unavailable" });
-    expect(await worldOf(sql, lot)).toEqual(before);
-    expect(fakeStripe.listCalls).toEqual([]);
+    await expectGrantUntouched(fx, key);
 
     redisFault.mode = "none";
     const retried = await res.replay();
     expect(retried.status).toBe(200);
-    expect(retried.json).toMatchObject({ kind: "reject", result: "rejected" });
+    expect(retried.json).toMatchObject({ status: "applied", operation: { key } });
   });
 
   it("an unsigned request while only the nonce store is down is still 401, not 503: the nonce step comes after the HMAC", async () => {
     redisFault.mode = "commands_reject";
 
-    const res = await call(running.baseUrl, paths.preview("00000000-0000-4000-8000-000000000000"), { unsigned: true });
+    const res = await call(running.baseUrl, profilePath(NO_ACCOUNT), { unsigned: true });
 
     expect(res.status).toBe(401);
     expect(res.json).toEqual({ code: "unauthorized" });
@@ -407,11 +413,13 @@ describe("enterprise endpoints use the shared signature gate", () => {
 describe("authorisation table (§4.3)", () => {
   it.each([
     ["GET", "/internal/v1/health"],
-    ["POST", "/internal/v1/credit-lots/00000000-0000-4000-8000-000000000000/refund/delete"],
-    ["GET", "/internal/v1/credit-lots/00000000-0000-4000-8000-000000000000/refund/approve"],
-    ["POST", "/internal/v2/credit-lots/00000000-0000-4000-8000-000000000000/refund/approve"],
-    // v9 removed refund-again: it is no longer in the table.
-    ["POST", "/internal/v1/credit-lots/00000000-0000-4000-8000-000000000000/refund/refund-again"],
+    ["POST", `${grantPath(NO_ACCOUNT)}/delete`],
+    ["GET", grantPath(NO_ACCOUNT)],
+    ["POST", grantPath(NO_ACCOUNT).replace("/v1/", "/v2/")],
+    // The refund endpoints moved to the billing service (inner#1993): they are no longer in the table.
+    ["GET", `/internal/v1/credit-lots/${NO_ACCOUNT}/refund`],
+    ["POST", `/internal/v1/credit-lots/${NO_ACCOUNT}/refund/approve`],
+    ["POST", `/internal/v1/refund-operations/${NO_ACCOUNT}/mail/resend`],
     ["GET", "/api/v1/credits/lots"],
   ] as const)("a correctly signed %s %s that is not in the table is 403 forbidden", async (method, path) => {
     const res = await call(running.baseUrl, path, {
@@ -421,7 +429,6 @@ describe("authorisation table (§4.3)", () => {
 
     expect(res.status).toBe(403);
     expect(res.json).toEqual({ code: "forbidden" });
-    expect(fakeStripe.listCalls).toEqual([]);
   });
 
   // A route that mounts `validate()` before its handler is listed once per
@@ -438,15 +445,6 @@ describe("authorisation table (§4.3)", () => {
 
     expect(registered).toEqual(
       [
-        "GET /internal/v1/credit-lots/:lotId/refund",
-        "POST /internal/v1/credit-lots/:lotId/refund/approve",
-        "POST /internal/v1/credit-lots/:lotId/refund/reject",
-        "POST /internal/v1/credit-lots/:lotId/refund/settle",
-        "POST /internal/v1/credit-lots/:lotId/refund/send-back",
-        "POST /internal/v1/credit-lots/:lotId/refund/retry",
-        "POST /internal/v1/credit-lots/:lotId/refund/resolved-outside",
-        "POST /internal/v1/credit-lots/:lotId/refund/restore-credits",
-        "POST /internal/v1/refund-operations/:operationId/mail/resend",
         "GET /internal/v1/accounts/:userId/enterprise-membership",
         "GET /internal/v1/enterprise-membership-operations/:key",
         "POST /internal/v1/accounts/:userId/enterprise-membership",
@@ -504,7 +502,7 @@ describe("authorisation table (§4.3)", () => {
 describe("rate limit by connection address (§4.4)", () => {
   it("answers 429 { code: rate_limited } with Retry-After once the window's budget is spent, counting unsigned requests too", async () => {
     const { max, windowSeconds } = getRateLimit("internal-api");
-    const probe = paths.preview("00000000-0000-4000-8000-000000000000");
+    const probe = profilePath(NO_ACCOUNT);
 
     for (let i = 0; i < max; i += 1) {
       const res = await call(running.baseUrl, probe, { unsigned: true });
@@ -531,8 +529,8 @@ describe("the public app has no internal surface (§4.1, acceptance #1)", () => 
     const app = createApp();
 
     expect(app.routes.filter((r) => r.path.includes("internal"))).toEqual([]);
-    const direct = await app.request("/internal/v1/credit-lots/00000000-0000-4000-8000-000000000000/refund");
-    const underApi = await app.request("/api/v1/internal/v1/credit-lots/00000000-0000-4000-8000-000000000000/refund");
+    const direct = await app.request(profilePath(NO_ACCOUNT));
+    const underApi = await app.request(`/api/v1${profilePath(NO_ACCOUNT)}`);
     expect(direct.status).toBe(404);
     expect(underApi.status).toBe(404);
   });
@@ -569,16 +567,14 @@ describe("the public app has no internal surface (§4.1, acceptance #1)", () => 
 describe("request body size (§4.6): over 64 KiB is 413 before the signature is read", () => {
   /** 64 KiB plus one byte of well-formed JSON. */
   const OVERSIZE = `{"reason":"${"x".repeat(64 * 1024 + 1 - '{"reason":""}'.length)}"}`;
-  const NO_LOT = "00000000-0000-4000-8000-000000000000";
 
   it("the oversize body is exactly 65537 bytes", () => {
     expect(Buffer.byteLength(OVERSIZE)).toBe(65_537);
   });
 
   it.each([
-    ["an approval", paths.approve(NO_LOT)],
-    ["a rejection", paths.reject(NO_LOT)],
-    ["a mail resend", paths.resend(NO_LOT)],
+    ["a credit grant", grantPath(NO_ACCOUNT)],
+    ["a maintenance reclaim operation", "/internal/v1/maintenance/reclaim/operations"],
     ["a path outside the table", "/internal/v1/health"],
   ])("an unsigned oversize POST to %s is 413 invalid_body", async (_name, path) => {
     const res = await call(running.baseUrl, path, { rawBody: OVERSIZE, unsigned: true });
@@ -588,21 +584,21 @@ describe("request body size (§4.6): over 64 KiB is 413 before the signature is 
   });
 
   it("a correctly signed oversize body is 413 too, writes no nonce and touches nothing", async () => {
-    const lot = await pendingLot();
-    const before = await worldOf(sql, lot);
+    const fx = await grantAccount();
+    const key = grantKey();
     const nonce = freshNonce();
 
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), {
+    const res = await call(running.baseUrl, grantPath(fx.userId), {
       rawBody: OVERSIZE,
-      idempotencyKey: freshKey("reject"),
+      idempotencyKey: key,
+      admin: GRANT_ADMIN,
       nonce,
     });
 
     expect(res.status).toBe(413);
     expect(res.json).toEqual({ code: "invalid_body" });
     expect(await getRedis().exists(nonceKey(nonce))).toBe(0);
-    expect(await worldOf(sql, lot)).toEqual(before);
-    expect(fakeStripe.listCalls).toEqual([]);
+    await expectGrantUntouched(fx, key);
   });
 
   it.each([true, false])("an enterprise oversize POST is 413 before authentication (unsigned=%s) and writes nothing", async (unsigned) => {
@@ -622,19 +618,16 @@ describe("request body size (§4.6): over 64 KiB is 413 before the signature is 
     await expectEnterpriseUntouched(userId, key);
   });
 
-  // The largest honest body: a 500-character reason and 100 refund ids of 255
-  // characters each, about 26 KB. The limit must leave it room.
-  it("a signed body of the largest honest size gets past the gate", async () => {
-    const lot = await pendingLot();
-    const confirmedRefundIds = Array.from({ length: 100 }, (_, i) => `re_${String(i).padStart(3, "0")}${"x".repeat(249)}`);
-    const rawBody = JSON.stringify({ reason: "r".repeat(500), confirmedRefundIds });
-    expect(Buffer.byteLength(rawBody)).toBeGreaterThan(26_000);
+  // The largest credit grant the schema accepts: a 500-character reason and
+  // the upper-bound amount. The limit must leave it room.
+  it("a signed credit grant of the largest valid size gets past the gate and is applied", async () => {
+    const fx = await grantAccount();
+    const body = grantBody(fx, { credits: "99999999999999.99", reason: "r".repeat(500) });
 
-    const res = await call(running.baseUrl, paths.approve(lot.lotId), { rawBody, idempotencyKey: freshKey("approve") });
+    const res = await call(running.baseUrl, grantPath(fx.userId), { body, idempotencyKey: grantKey(), admin: GRANT_ADMIN });
 
-    expect(res.status).not.toBe(413);
-    expect(res.status).not.toBe(401);
-    expect(res.json?.code).not.toBe("invalid_body");
+    expect(res.status).toBe(200);
+    expect(res.json).toMatchObject({ status: "applied", grantedCredits: "99999999999999.990000" });
   });
 
   // inner#1782 test spec I1–I5: how a refusal closes its connection.
@@ -683,36 +676,34 @@ describe("request body size (§4.6): over 64 KiB is 413 before the signature is 
   });
 });
 
+// The back office's write endpoints; the commerce writes answer only the
+// billing service's signer and are covered by its own suites.
 describe("body contract of every write endpoint (§4.5, §4.6)", () => {
-  const NO_LOT = "00000000-0000-4000-8000-000000000000";
+  const OPERATION_KEY = `bo-${NO_ACCOUNT}`;
   const writes = [
-    ["approve", paths.approve(NO_LOT)],
-    ["reject", paths.reject(NO_LOT)],
-    ["settle", paths.settle(NO_LOT)],
-    ["send-back", paths.sendBack(NO_LOT)],
-    ["retry", paths.retry(NO_LOT)],
-    ["resolved-outside", paths.resolvedOutside(NO_LOT)],
-    ["restore-credits", paths.restoreCredits(NO_LOT)],
-    ["mail resend", paths.resend(NO_LOT)],
+    ["credit grant", grantPath(NO_ACCOUNT)],
+    ["enterprise membership", enterprisePath(NO_ACCOUNT)],
+    ["maintenance reclaim preview", "/internal/v1/maintenance/reclaim/preview"],
+    ["maintenance reclaim operation", "/internal/v1/maintenance/reclaim/operations"],
+    ["maintenance reclaim control", `/internal/v1/maintenance/reclaim/operations/${OPERATION_KEY}/control`],
+    ["maintenance reclaim resume", `/internal/v1/maintenance/reclaim/operations/${OPERATION_KEY}/resume`],
   ] as const;
 
   it.each(writes)("%s: a body that is not JSON is 400 invalid_body", async (_name, path) => {
-    const res = await call(running.baseUrl, path, { rawBody: "{ not json", idempotencyKey: freshKey("bad") });
+    const res = await call(running.baseUrl, path, { rawBody: "{ not json", idempotencyKey: grantKey() });
 
     expect(res.status).toBe(400);
     expect(res.json.code).toBe("invalid_body");
-    expect(fakeStripe.listCalls).toEqual([]);
   });
 
   // The detail is the internal API's own sentence, not the public app's
   // "Invalid input" that validate() throws with (§4.6).
   it.each(writes)("%s: a JSON body that fails the schema is 422 invalid_body with the server.internal.invalid_body sentence", async (_name, path) => {
-    const res = await call(running.baseUrl, path, { body: { unexpected: true }, idempotencyKey: freshKey("bad") });
+    const res = await call(running.baseUrl, path, { body: { unexpected: true }, idempotencyKey: grantKey() });
 
     expect(res.status).toBe(422);
     expect(res.json).toEqual({ code: "invalid_body", detail: t("server.internal.invalid_body") });
     expect(res.json.detail).not.toBe(t("server.error.validation"));
-    expect(fakeStripe.listCalls).toEqual([]);
   });
 
   it.each([
@@ -729,17 +720,14 @@ describe("body contract of every write endpoint (§4.5, §4.6)", () => {
     await expectEnterpriseUntouched(userId, key);
   });
 
-  // Whatever maps the schema failure to the internal sentence must leave the
-  // key check's own sentence alone.
-  it("a valid body with a malformed idempotency key is 422 invalid_body with the server.internal.invalid_idempotency_key sentence", async () => {
-    const lot = await pendingLot();
-    const before = await worldOf(sql, lot);
+  it.each(["has a space", "bo-labelled-00000000-0000-4000-8000-000000000000"])("a valid credit grant with the malformed idempotency key %s is 422 invalid_body and writes nothing", async (key) => {
+    const fx = await grantAccount();
 
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: REJECT_BODY, idempotencyKey: "has a space" });
+    const res = await call(running.baseUrl, grantPath(fx.userId), { body: grantBody(fx), idempotencyKey: key, admin: GRANT_ADMIN });
 
     expect(res.status).toBe(422);
-    expect(res.json).toEqual({ code: "invalid_body", detail: t("server.internal.invalid_idempotency_key") });
-    expect(await worldOf(sql, lot)).toEqual(before);
+    expect(res.json).toEqual({ code: "invalid_body" });
+    await expectGrantUntouched(fx, key);
   });
 });
 
@@ -769,43 +757,43 @@ describe("one structured log line per request (acceptance #14)", () => {
   }
 
   it("an accepted write logs who, what, which key and the status", async () => {
-    const lot = await pendingLot();
-    const key = freshKey("reject");
+    const fx = await grantAccount();
+    const key = grantKey();
+    const body = grantBody(fx);
 
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: REJECT_BODY, idempotencyKey: key });
-    await mailsSettled(sql, lot);
+    const res = await call(running.baseUrl, grantPath(fx.userId), { body, idempotencyKey: key, admin: GRANT_ADMIN });
 
     expect(res.status).toBe(200);
     const line = await theOneLine();
     expect(line).toMatchObject({
-      adminId: ADMIN,
+      adminId: GRANT_ADMIN,
       method: "POST",
-      path: paths.reject(lot.lotId),
+      path: grantPath(fx.userId),
       idempotencyKey: key,
       status: 200,
-      reason: REJECT_BODY.reason,
+      reason: body.reason,
     });
     expect(line["code"]).toBeUndefined();
   });
 
   it("an accepted read logs no idempotency key, no reason and no code", async () => {
-    const lot = await pendingLot();
+    const fx = await grantAccount();
 
-    const res = await call(running.baseUrl, `${paths.preview(lot.lotId)}?probe=1`);
+    const res = await call(running.baseUrl, `${profilePath(fx.userId)}?probe=1`);
 
     expect(res.status).toBe(200);
     const line = await theOneLine();
-    expect(line).toMatchObject({ adminId: ADMIN, method: "GET", path: paths.preview(lot.lotId), status: 200 });
+    expect(line).toMatchObject({ adminId: ADMIN, method: "GET", path: profilePath(fx.userId), status: 200 });
     expect(line["idempotencyKey"]).toBeUndefined();
     expect(line["reason"]).toBeUndefined();
     expect(line["code"]).toBeUndefined();
   });
 
   it("an unsigned request is 401 and its line names no admin and no reason, and carries code unauthorized", async () => {
-    const key = freshKey("reject");
-    const path = paths.reject("00000000-0000-4000-8000-000000000000");
+    const key = grantKey();
+    const path = grantPath(NO_ACCOUNT);
 
-    const res = await call(running.baseUrl, path, { body: REJECT_BODY, idempotencyKey: key, unsigned: true });
+    const res = await call(running.baseUrl, path, { body: { reason: "probe" }, idempotencyKey: key, unsigned: true });
 
     expect(res.status).toBe(401);
     const line = await theOneLine();
@@ -831,82 +819,37 @@ describe("one structured log line per request (acceptance #14)", () => {
   });
 
   // Hono answers HEAD with the GET route of the same path, so a HEAD on the
-  // preview path would run the preview (a Stripe read that writes copies).
-  // HEAD is in no row of the table, so it is 403 like any other undeclared
-  // pair. A HEAD answer carries no body on the wire; the line's code is the
-  // body's code.
-  it("a signed HEAD on the preview path is 403, runs no preview and is logged with code forbidden", async () => {
-    const lot = await pendingLot();
-    const before = await worldOf(sql, lot);
+  // profile path would run the profile read. HEAD is in no row of the table,
+  // so it is 403 like any other undeclared pair. A HEAD answer carries no body
+  // on the wire; the line's code is the body's code.
+  it("a signed HEAD on the profile path is 403 and is logged with code forbidden", async () => {
+    const fx = await grantAccount();
 
     // `call` types only the methods the table uses; HEAD is signed the same way.
-    const res = await call(running.baseUrl, paths.preview(lot.lotId), { method: "HEAD" as unknown as "GET" });
+    const res = await call(running.baseUrl, profilePath(fx.userId), { method: "HEAD" as unknown as "GET" });
 
     expect(res.status).toBe(403);
-    expect(fakeStripe.listCalls).toEqual([]);
-    expect(await worldOf(sql, lot)).toEqual(before);
     expect(await theOneLine()).toMatchObject({
       adminId: ADMIN,
       method: "HEAD",
-      path: paths.preview(lot.lotId),
+      path: profilePath(fx.userId),
       status: 403,
       code: "forbidden",
     });
   });
 
-  it("a write refused at a precondition is 409 and still logged with its reason and code lot_state_changed", async () => {
-    const lot = await seedRefundLot(sql, "active");
-    fakeStripe.register(lot.paymentIntentId, PAID_CENTS);
-    const key = freshKey("reject");
-
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: REJECT_BODY, idempotencyKey: key });
-
-    expect(res.status).toBe(409);
-    expect(await theOneLine()).toMatchObject({
-      adminId: ADMIN,
-      method: "POST",
-      path: paths.reject(lot.lotId),
-      idempotencyKey: key,
-      status: 409,
-      reason: REJECT_BODY.reason,
-      code: "lot_state_changed",
-    });
-  });
-
-  // A refused write stores nothing (§4.6), so this line is the only place
-  // the operator's reason and the refusal's code are kept.
-  it("a write Stripe blocks is 409 and logged with its reason and code stripe_blocks", async () => {
-    const lot = await seedRefundLot(sql, "refund_pending");
-    fakeStripe.register(lot.paymentIntentId, PAID_CENTS, [refundObject(reId("x"), "pending", 300)]);
-    const key = freshKey("reject");
-
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: REJECT_BODY, idempotencyKey: key });
-
-    expect(res.status).toBe(409);
-    expect(res.json.code).toBe("stripe_blocks");
-    expect(await theOneLine()).toMatchObject({
-      adminId: ADMIN,
-      method: "POST",
-      path: paths.reject(lot.lotId),
-      idempotencyKey: key,
-      status: 409,
-      reason: REJECT_BODY.reason,
-      code: "stripe_blocks",
-    });
-  });
-
   it("a write with a malformed body is 422 and still logged with code invalid_body and no reason", async () => {
-    const lot = await pendingLot();
-    const key = freshKey("reject");
+    const fx = await grantAccount();
+    const key = grantKey();
 
-    const res = await call(running.baseUrl, paths.reject(lot.lotId), { body: { reason: "" }, idempotencyKey: key });
+    const res = await call(running.baseUrl, grantPath(fx.userId), { body: grantBody(fx, { reason: "" }), idempotencyKey: key, admin: GRANT_ADMIN });
 
     expect(res.status).toBe(422);
     const line = await theOneLine();
     expect(line).toMatchObject({
-      adminId: ADMIN,
+      adminId: GRANT_ADMIN,
       method: "POST",
-      path: paths.reject(lot.lotId),
+      path: grantPath(fx.userId),
       idempotencyKey: key,
       status: 422,
       code: "invalid_body",
@@ -916,7 +859,7 @@ describe("one structured log line per request (acceptance #14)", () => {
 
   it("a rate-limited request is 429 and its line names no admin and carries code rate_limited", async () => {
     const { max } = getRateLimit("internal-api");
-    const probe = paths.preview("00000000-0000-4000-8000-000000000000");
+    const probe = profilePath(NO_ACCOUNT);
     for (let i = 0; i < max; i += 1) {
       expect((await call(running.baseUrl, probe, { unsigned: true })).status).toBe(401);
     }

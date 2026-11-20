@@ -186,9 +186,6 @@ catalogs:
     postgres:
       specifier: ^4.1.0
       version: 4.1.0
-    stripe:
-      specifier: ^21.0.1
-      version: 21.0.1
     testcontainers:
       specifier: ^11.14.0
       version: 11.14.0
@@ -486,9 +483,6 @@ importers:
       postgres:
         specifier: 'catalog:'
         version: 4.1.0
-      stripe:
-        specifier: 'catalog:'
-        version: 21.0.1(@types/node@24.19.1)
       undici:
         specifier: 7.29.0
         version: 7.29.0
@@ -811,9 +805,6 @@ importers:
       resumable-stream:
         specifier: 2.2.13
         version: 2.2.13(patch_hash=a6derv6as3qqzweehvxg35zcli)
-      stripe:
-        specifier: 'catalog:'
-        version: 21.0.1(@types/node@24.19.1)
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
@@ -10812,15 +10803,6 @@ packages:
 
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
-
-  stripe@21.0.1:
-    resolution: {integrity: sha512-ocv0j7dWttswDWV2XL/kb6+yiLpDXNXL3RQAOB5OB2kr49z0cEatdQc12+zP/j5nrXk6rAsT4N3y/NUvBbK7Pw==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/node': '>=18'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
 
   strtok3@10.3.5:
     resolution: {integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==}
@@ -21989,10 +21971,6 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
-
-  stripe@21.0.1(@types/node@24.19.1):
-    optionalDependencies:
-      '@types/node': 24.19.1
 
   strtok3@10.3.5:
     dependencies:

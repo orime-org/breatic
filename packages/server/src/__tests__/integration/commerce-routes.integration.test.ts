@@ -90,7 +90,7 @@ describe("commerce routes", () => {
 
   it("lets only the billing service in, and only here", async () => {
     expect((await call(suite.baseUrl, `/internal/v1/commerce/accounts/${randomUUID()}`)).status).toBe(403);
-    expect((await call(suite.baseUrl, `/internal/v1/credit-lots/${randomUUID()}/refund`, { admin: "commerce", secret: COMMERCE_SECRET })).status).toBe(403);
+    expect((await call(suite.baseUrl, `/internal/v1/accounts/${randomUUID()}/credit-grants/profile`, { admin: "commerce", secret: COMMERCE_SECRET })).status).toBe(403);
   });
 
   it("counts the billing service's requests against its own limit", async () => {

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 
-export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export {
   Environment,
@@ -44,7 +43,6 @@ export type {
   ConversationAttachmentEntity,
   ProjectAgentInstructionsEntity,
   AssetKind,
-  PaymentEntity,
   CreditLotEntity,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,

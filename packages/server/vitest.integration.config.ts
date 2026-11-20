@@ -30,12 +30,12 @@ export default defineConfig({
     // summary's skip count says what this green did not cover. A sub-gate is
     // run on purpose with `-t @needs-<service>`, which replaces this pattern.
     testNamePattern: /^(?!.*@needs-)/,
-    // globalSetup lays down the payment configs only this package's suites
+    // globalSetup lays down the deployment config only this package's suites
     // read — first, because it is cheap and a fixture that cannot be copied
     // fails the run before a minute goes into pulling images — then starts
     // the testcontainers BEFORE any test module is imported.
     globalSetup: [
-      "./src/__tests__/integration/payment-configs.ts",
+      "./src/__tests__/integration/credits-config.ts",
       "@breatic/integration-tests/containers",
     ],
     // setupFiles runs inside the worker process. Re-applies env vars from globalSetup.

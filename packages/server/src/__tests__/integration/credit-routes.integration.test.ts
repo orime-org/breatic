@@ -142,8 +142,8 @@ async function seedLot(
 ): Promise<string> {
   const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${sourceId}, ${fx.userId}, 1000, 'completed', ${credits}) RETURNING id
+    INSERT INTO payment_receipts (id, user_id, amount_cents, currency, credits_granted, ordered_at)
+    VALUES (${sourceId}, ${fx.userId}, 1000, 'usd', ${credits}, now()) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,

@@ -13,9 +13,9 @@ import { getUserById } from "@server/modules/auth/user.repo.js";
 import { answerOnce } from "@server/modules/commerce/commerce-request.service.js";
 import type { StoredAnswer } from "@server/modules/commerce/commerce-request.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
-import { sendMembershipEndedMail } from "@server/modules/subscription/settle-tier.js";
-import { reportSubscriptionStarted } from "@server/modules/subscription/subscription-analytics.js";
+import { applySubscriptionWrite } from "@server/modules/account/apply-subscription.js";
+import { sendMembershipEndedMail } from "@server/modules/account/settle-tier.js";
+import { reportSubscriptionStarted } from "@server/modules/account/subscription-analytics.js";
 
 const ROUTE = "/internal/v1/commerce/subscription-facts/:deliveryId";
 

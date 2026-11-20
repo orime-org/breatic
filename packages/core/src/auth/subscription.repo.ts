@@ -16,10 +16,10 @@
  * converges on one row per Stripe subscription.
  */
 
-import { and, desc, eq, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, isNull, lte, sql, type SQL } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import type { BillingPeriod, MembershipTier } from "@breatic/shared";
-import { db, type DbTx } from "@core/db/client.js";
+import type { db, DbTx } from "@core/db/client.js";
 import { subscriptions } from "@core/db/schema.js";
 import type {
   StripeSubscriptionStatus,
@@ -246,22 +246,6 @@ export async function recordFirstActive(stripeSubscriptionId: string, firstActiv
     .set({ firstActiveAt })
     .where(and(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId), isNull(subscriptions.firstActiveAt)))
     .returning({ id: subscriptions.id });
-  return rows.length > 0;
-}
-
-/**
- * Whether an account has ever paid for a membership: one of its subscriptions
- * reached its first activation. Referral codes bind and discount only before.
- * @param userId - The account.
- * @param tx - The caller's transaction, when the answer must hold under its locks.
- * @returns True once any subscription carries `first_active_at`.
- */
-export async function hasPaidMembership(userId: string, tx?: DbTx): Promise<boolean> {
-  const rows = await (tx ?? db)
-    .select({ id: subscriptions.id })
-    .from(subscriptions)
-    .where(and(eq(subscriptions.userId, userId), isNull(subscriptions.deletedAt), isNotNull(subscriptions.firstActiveAt)))
-    .limit(1);
   return rows.length > 0;
 }
 

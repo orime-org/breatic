@@ -7,7 +7,7 @@ import { describe, expect, it } from "vitest";
 import { db, getMembershipConfig, getMembershipReadingForUser, fingerprint } from "@breatic/core";
 import { tierLimitsSchema } from "@breatic/shared";
 import type { SubscriptionWrite } from "@breatic/core";
-import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
+import { applySubscriptionWrite } from "@server/modules/account/apply-subscription.js";
 import { call, useInternalApp } from "./internal-api-harness.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 

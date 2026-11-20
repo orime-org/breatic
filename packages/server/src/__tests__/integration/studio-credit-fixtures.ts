@@ -86,8 +86,8 @@ export async function seedStudioFixture(sql: Sql, label: string): Promise<Studio
 export async function seedDesignatedLot(sql: Sql, fx: StudioFixture, credits: number): Promise<string> {
   const sourceId = await openPaymentSource(sql);
   await sql`
-    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${sourceId}, ${fx.userId}, 1000, 'completed', ${credits})
+    INSERT INTO payment_receipts (id, user_id, amount_cents, currency, credits_granted, ordered_at)
+    VALUES (${sourceId}, ${fx.userId}, 1000, 'usd', ${credits}, now())
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: sourceId,
