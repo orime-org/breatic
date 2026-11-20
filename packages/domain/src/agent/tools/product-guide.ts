@@ -1994,17 +1994,18 @@ export function renderProductGuide(): string {
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
       "drop marker shows (a line between blocks, or a caret in the words of a table cell outside a code " +
       `block), or pasted at the caret, replacing the selection. ${documentPasteRules().map((rule) => rule.sentence).join(" ")} ` +
-      "Pictures, videos and audio inside copied web pages or Markdown come in with the text, and dragging " +
-      "a web page's content in does the same. Each picture, video or audio that still has to be fetched " +
-      "or uploaded first shows as a dashed box with a spinner and, for a file, its name and how far its upload has got; " +
-      "everyone working on the document sees the box, and it becomes the picture, video or audio for everyone " +
-      "when the upload is done. One Cmd+Z takes the whole paste or drop away, boxes included, and redo brings " +
+      "Media inside copied web pages or Markdown comes in with the text, and dragging " +
+      "a web page's content in does the same. Each one that still has to be fetched " +
+      "or uploaded shows as a dashed box with a spinner and, for a file, its name and upload progress; " +
+      "everyone working on the document sees the box, and it becomes the media for everyone " +
+      "when done. One Cmd+Z takes the whole paste or drop away, boxes included; redo brings " +
       "it back without uploading again. An upload that fails turns the box red with the reason, with " +
       `${quoted(t("spaces.document.media.retry"))} when trying again can help, and ` +
-      `${quoted(t("spaces.document.media.remove"))}. If the uploader closes the page while it is being ` +
+      `${quoted(t("spaces.document.media.remove"))}. If the uploader leaves while it is being ` +
       `sent, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
       `${quoted(t("spaces.document.media.remove"))} it. What cannot be pasted (a canvas node with nothing in ` +
-      "it yet, an address the page cannot fetch) is left out, and a message says how many. Hovering a picture, video or " +
+      "it yet, an address the page cannot fetch) is left out, and a message says how many. Media copied from another " +
+      "document mid-upload is left out too, with a message to copy it again later. Hovering a picture, video or " +
       "audio, or clicking it, shows a row of icons above it (under it in a table cell at the view's top): " +
       "left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
