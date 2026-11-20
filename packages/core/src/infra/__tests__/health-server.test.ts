@@ -176,4 +176,16 @@ describe("startHealthServer", () => {
     expect(text).toContain("db_up 1");
     await stop();
   });
+
+  it("listens only on the host it is given, and on every address without one", async () => {
+    const pinned = startHealthServer({ port: 0, host: "127.0.0.1", serviceName: "test", checks: [] });
+    await new Promise((r) => pinned.server.once("listening", r));
+    expect((pinned.server.address() as AddressInfo).address).toBe("127.0.0.1");
+    await pinned.stop();
+
+    const open = startHealthServer({ port: 0, serviceName: "test", checks: [] });
+    await new Promise((r) => open.server.once("listening", r));
+    expect((open.server.address() as AddressInfo).address).toBe("::");
+    await open.stop();
+  });
 });
