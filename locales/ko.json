@@ -27,7 +27,8 @@
       "refund_still_designated": "이 구매는 Studio에 배정되어 있습니다. 먼저 배정을 해제하세요.",
       "refund_already_spent": "이 구매의 크레딧을 사용했으므로 환불할 수 없습니다.",
       "refund_window_closed": "이 구매의 환불 기간이 종료되었습니다.",
-      "refund_state_changed": "이 구매의 환불 상태가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요."
+      "refund_state_changed": "이 구매의 환불 상태가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요.",
+      "refund_offline_contract": "기업 크레딧 환불은 계약 담당자에게 문의하세요."
     },
     "auth": {
       "invalid_credentials": "이메일 또는 비밀번호가 올바르지 않습니다",
@@ -4134,10 +4135,12 @@
     },
     "source": {
       "payment": "충전",
-      "gift": "체험 크레딧",
+      "gift": "선물 크레딧",
       "operatorGift": "선물 크레딧",
-      "compensation": "보상",
-      "discount": "할인"
+      "compensation": "선물 크레딧",
+      "discount": "할인",
+      "trial": "체험 크레딧",
+      "enterprise": "기업 크레딧"
     },
     "pinnedToPersonalStudio": "개인 Studio에서만 사용",
     "lifecycle": {
@@ -4201,6 +4204,7 @@
     "refundsEmpty": "아직 크레딧 패키지를 구매하지 않았습니다",
     "askRefund": "환불 신청",
     "refundTitle": "환불 규정",
+    "onlinePurchaseRefundTitle": "온라인 구매 크레딧 환불 규정",
     "buy": {
       "taxNotice": "표시 가격은 세금이 포함되지 않습니다. 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액이며, 결제 페이지에 최종 금액이 표시됩니다.",
       "assignNotice": "크레딧은 Studio에 지정해야 사용할 수 있습니다.",
@@ -4242,11 +4246,19 @@
     "refundReason": {
       "spent": "이미 사용함",
       "expired": "30일 경과",
-      "restored": "크레딧 복원됨"
+      "restored": "크레딧 복원됨",
+      "offlineContract": "기업 크레딧 환불은 계약 담당자에게 문의하세요."
     },
     "refundHint": {
       "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
     },
+    "sourceDetail": {
+      "registration": "가입 선물",
+      "operator": "운영자 선물",
+      "compensation": "보상",
+      "enterprise": "기업 구매"
+    },
+    "contractReference": "계약 {contract}",
     "refusal": {
       "spendCap": "이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요."
     },

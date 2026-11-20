@@ -93,13 +93,40 @@ Refusal key lookups include soft-deleted refusal rows, so their keys remain owne
 
 ### Exact credit amounts and operator grants
 
-Credit balances, lots, holds, debts and ledger arithmetic use BigInt millionths through the shared `credit-amount.ts` contract (inner#1411). PostgreSQL retains `numeric(20,6)`; database and HTTP amounts serialize to canonical six-place decimal strings. Aggregates have no single-row magnitude limit. Vendor quotes remain numbers and enter one decimal coefficient/exponent half-up quantizer before whole-cent settlement; counts and cash cents remain numbers. `formatCredits` groups the BigInt integer amount and rounds its magnitude away from zero to credit cents. Chart weights alone narrow an exact ratio to a finite number.
+Credit balances, lots, holds, debts and ledger arithmetic use BigInt millionths through the shared `credit-amount.ts` contract. PostgreSQL retains `numeric(20,6)`; database and HTTP amounts serialize to canonical six-place decimal strings. Aggregates have no single-row magnitude limit. Vendor quotes remain numbers and enter one decimal coefficient/exponent half-up quantizer before whole-cent settlement; counts and cash cents remain numbers. `formatCredits` groups the BigInt integer amount and rounds its magnitude away from zero to credit cents. Chart weights alone narrow an exact ratio to a finite number.
 
 The six public credit readers require `amountFormat=decimal-v1` before business reads or payment reconciliation. Their shared runtime schemas also parse replies in Web; designation replies use the same full lot view. A missing or unsupported marker returns 422 with `request_shape`. Existing stale-release handling offers Update only when a nonempty current build differs from a successfully read latest build. A new page rejects an old server's number-valued reply as a reading failure. Server, Node worker and Web must deploy matching contracts; a rollback retains this decimal contract when expanded amounts already exist.
 
-Signed internal operator grants accept compensation or gift quantities from 0.01 through 99999999999999.99, with at most two decimal places. The product resolves and locks the account's personal Studio, records the immutable original operation, creates the source receipt and lot, and repays the Studio debt with the same `min(debt, lot remaining)` function purchased designation uses, all in one transaction. Gift receipts distinguish registration from operator funding; account lot and acquisition views carry `giftOrigin`, and all five locales name them separately. Purchased-only designation and cash-refund eligibility keep their existing order and rules.
+Signed internal operator grants accept compensation or gift quantities from 0.01 through 99999999999999.99, with at most two decimal places. The product resolves and locks the account's personal Studio, records the immutable original operation, creates the source receipt and lot, and repays the Studio debt with the same `min(debt, lot remaining)` function purchased designation uses, all in one transaction. Gift receipts distinguish registration from operator funding; account lot and acquisition views carry `giftOrigin`.
+
+The shared Web source formatter preserves the recorded funding facts across acquisition, assignment, refund and Studio credit views. Its five-locale categories and receipt details are:
+
+| Recorded source | Category | Receipt detail |
+|---|---|---|
+| `gift`, `giftOrigin=registration` | Trial credits | Registration gift |
+| `gift`, `giftOrigin=operator` | Gift credits | Operator gift |
+| `compensation` | Gift credits | Compensation |
+| `enterprise` | Enterprise credits | Business purchase and the original contract reference |
+
+An unrecorded gift origin keeps the Gift credits category and has no inferred receipt subtype. Online purchases retain their Purchase label. Registration and operator grants are fixed to the personal Studio selected by their creation path. Payment and enterprise lots can be assigned to a personal or team Studio the account administers, reassigned or released; assigning them uses the same debt-repayment function. The refund view labels its published terms as online credit purchase refund rules; an enterprise row directs the user to the contract representative through `offline_contract`.
 
 A pre-existing manual gift can be adopted only through the migration-only `legacyGiftConfirmation` option after its private receipt and current funding facts have been verified. Its source and lot identities, original amount and time, current balance, ledger and holds stay unchanged. The receipt remains `origin=operator`; `legacy_confirmation` records the current confirmation and its evidence digest while the unknown original reason, operator and operation key remain null. This branch is mutually exclusive with registration claims and newly audited operator grants. The migration uses a dedicated connection, fails closed without an exact single confirmation, and rolls all pending entries back on failure. Existing installations receive the same metadata constraint through the following migration; their previously recorded migration hashes and timestamps are retained.
+
+### Enterprise credit purchases
+
+Corporate payments collected under an offline agreement are entered through the signed internal listener. The request targets an account with current, complete enterprise membership. The product reads the account's current contract and membership revision before confirmation and checks them again while holding the account lock. `PAYMENT_ENABLED` also controls purchase eligibility.
+
+| Method and path | Result |
+|---|---|
+| `GET /internal/v1/accounts/:userId/enterprise-credit-purchases/profile` | Current account, enterprise state, revision, contract, expiry and purchase eligibility; HTTP `404` for an absent live account. |
+| `POST /internal/v1/accounts/:userId/enterprise-credit-purchases` | An immutable `applied` or `refused` creation decision, both HTTP `200`. |
+| `GET /internal/v1/enterprise-credit-purchase-operations/:key` | The originally stored creation decision; HTTP `404` for an unknown key. |
+
+The strict write schema contains `credits`, a required `reason`, `expectedEnterpriseRevision` and `expectedContractNumber`. Quantities use the same two-decimal range as operator grants. The contract reference is trimmed and contains 1–128 characters; the reason is trimmed and contains 1–500 characters. Both reject NUL. The positive integer revision and contract must match the locked live agreement. The `Idempotency-Key` is `bo-<UUID>`, and the signed administrator identity supplies the original operator.
+
+The transaction locks the original operation key, replays a matching fingerprint, and then locks the account. Reusing the key for another fingerprint returns HTTP `409 idempotency_conflict`. An applied decision creates the `enterprise` source, its `credit_enterprise_purchases` receipt, an initially unassigned account lot, its opening ledger entry and the original operation in one transaction. The result retains the contract, source and lot identities and exact initial balance. Later assignment and balance changes are read from the current lot.
+
+An absent account, ordinary membership, missing agreement, expired membership, changed revision or contract, or disabled payments is stored as a finite refused result. Matching retries and operation lookups preserve that original decision and operator. Infrastructure errors propagate and roll back the transaction. Migration `0129_enterprise_credit_purchases.sql` extends the source-kind constraint and creates the receipt and operation tables; the deployment's read-only back office role receives SELECT on those tables through its grants. Deployment connection requirements are in [the existing connection guide](../self-host/DEPLOYMENT-CONNECTIONS.md#back-office-internal-api).
 
 ### Credit admission and monthly spend limits
 

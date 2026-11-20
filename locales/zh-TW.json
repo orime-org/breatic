@@ -27,7 +27,8 @@
       "refund_still_designated": "這筆已指定給某個 Studio，請先解除指定。",
       "refund_already_spent": "這筆的點數已經用過，不能退款。",
       "refund_window_closed": "這筆的退款期限已過。",
-      "refund_state_changed": "這筆的退款狀態已經變了，請重新整理後再試。"
+      "refund_state_changed": "這筆的退款狀態已經變了，請重新整理後再試。",
+      "refund_offline_contract": "企業點數退款請聯絡合約負責人。"
     },
     "auth": {
       "invalid_credentials": "電子郵件或密碼錯誤",
@@ -4134,10 +4135,12 @@
     },
     "source": {
       "payment": "儲值",
-      "gift": "體驗點數",
+      "gift": "贈送點數",
       "operatorGift": "贈送點數",
-      "compensation": "補償",
-      "discount": "優惠"
+      "compensation": "贈送點數",
+      "discount": "優惠",
+      "trial": "體驗點數",
+      "enterprise": "企業點數"
     },
     "pinnedToPersonalStudio": "只能用在你的個人 Studio",
     "lifecycle": {
@@ -4201,6 +4204,7 @@
     "refundsEmpty": "還沒有買過點數包",
     "askRefund": "申請退款",
     "refundTitle": "退款規則",
+    "onlinePurchaseRefundTitle": "線上購買點數退款規則",
     "buy": {
       "taxNotice": "標價不含稅，實付金額為標價加上當地稅額，結帳頁會顯示最終金額。",
       "assignNotice": "點數需要指定給某個 Studio 才能使用。",
@@ -4242,11 +4246,19 @@
     "refundReason": {
       "spent": "已經用過",
       "expired": "超過 30 天",
-      "restored": "點數已恢復"
+      "restored": "點數已恢復",
+      "offlineContract": "企業點數退款請聯絡合約負責人。"
     },
     "refundHint": {
       "assigned": "解除指定後可以申請退款"
     },
+    "sourceDetail": {
+      "registration": "註冊贈送",
+      "operator": "營運贈送",
+      "compensation": "補償",
+      "enterprise": "企業購買"
+    },
+    "contractReference": "合約 {contract}",
     "refusal": {
       "spendCap": "本月花費已達上限。請聯絡 Studio Admin。"
     },
