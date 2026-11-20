@@ -22,7 +22,7 @@ let active: Awaited<ReturnType<typeof createCollabServer>>;
 const clients: ActivityClient[] = [];
 
 beforeAll(async () => {
-  active = await createCollabServer({ port: 0, collabRedisUrl: inject("REDIS_COLLAB_URL"),
+  active = await createCollabServer({ port: 0, address: "127.0.0.1", collabRedisUrl: inject("REDIS_COLLAB_URL"),
     redisKeyPrefix: `activity-assembly-${randomUUID()}`, shutdownDeadline: () => undefined });
   await active.server.listen();
 });

@@ -39,16 +39,11 @@ async function fetchJson(port: number, path: string) {
   return { status: res.status, body };
 }
 
-function pickPort(): number {
-  // 0 → kernel assigns; we listen then ask AddressInfo for the
-  // real port. Avoids cross-test port collisions in CI.
-  return 0;
-}
-
 describe("startHealthServer", () => {
   it("returns 200 + status=ok when every check resolves truthy", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [
         { name: "pg", check: async () => true },
@@ -72,7 +67,8 @@ describe("startHealthServer", () => {
 
   it("returns 503 + status=fail when any check resolves falsy", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [
         { name: "pg", check: async () => true },
@@ -92,7 +88,8 @@ describe("startHealthServer", () => {
 
   it("returns 503 + per-check timeout when a check hangs past the timeout window", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [
         {
@@ -119,7 +116,8 @@ describe("startHealthServer", () => {
 
   it("returns 503 + error tag when a check throws", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [
         {
@@ -148,7 +146,8 @@ describe("startHealthServer", () => {
 
   it("returns 404 for /metrics when no onMetrics hook is supplied", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [{ name: "pg", check: async () => true }],
     });
@@ -161,7 +160,8 @@ describe("startHealthServer", () => {
 
   it("serves /metrics as 200 text when an onMetrics hook is supplied", async () => {
     const { server, stop } = startHealthServer({
-      port: pickPort(),
+      port: 0,
+      host: "127.0.0.1",
       serviceName: "test",
       checks: [{ name: "pg", check: async () => true }],
       onMetrics: async () => "http_requests_total 1\ndb_up 1\n",
