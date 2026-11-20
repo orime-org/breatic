@@ -63,7 +63,7 @@ miniTools.post(
     taskId,
     projectId: body.project_id,
     userId: user.id,
-    credits: () => (run.keys === undefined ? Promise.resolve(run.credits) : creditsToHold(run.keys, body.project_id, user.id, () => Promise.resolve(run.credits))),
+    credits: () => creditsToHold(run.keys, body.project_id, user.id, () => Promise.resolve(run.credits)),
     create: () => admitGeneration(
       user.id, body.project_id, body.space_id, taskType, "append", run.params, run.model, "mini_tool", taskId,
       run.keys === undefined ? undefined : taskKeyRows(run.keys),

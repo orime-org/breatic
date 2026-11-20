@@ -71,17 +71,17 @@ export function taskKeyRows(keys: RunKeys): TaskKeyRows {
 }
 
 /**
- * What a run is held for: its estimate on our keys; nothing on the payer's, where a charged language-model step on our
- * keys only needs a balance above zero, as every charged language-model call does.
- * @param keys - The run's keys.
+ * What a run is held for: its estimate on our keys, or when it carries no keys; nothing on the payer's, where a charged
+ * language-model step on our keys only needs a balance above zero, as every charged language-model call does.
+ * @param keys - The run's keys; null or undefined when it carries none.
  * @param projectId - The Project; its Studio pays.
  * @param userId - Who submits it.
  * @param estimate - The run's estimate.
  * @returns The credits to hold, or null to hold nothing.
  * @throws {AppError} 402 when a charged language-model step on our keys meets a balance at zero.
  */
-export async function creditsToHold(keys: RunKeys, projectId: string, userId: string, estimate: () => Promise<number>): Promise<number | null> {
-  if (keys.media.keyId === null) return estimate();
+export async function creditsToHold(keys: RunKeys | null | undefined, projectId: string, userId: string, estimate: () => Promise<number>): Promise<number | null> {
+  if (keys === null || keys === undefined || keys.media.keyId === null) return estimate();
   if (keys.llmCharged && keys.llm?.keyId === null) await precheckCredits(projectId, userId, SMALLEST_CREDIT);
   return null;
 }

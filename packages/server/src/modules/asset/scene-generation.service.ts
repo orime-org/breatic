@@ -189,7 +189,6 @@ export async function checkSubmission(projectId: string, submission: SceneGenera
  */
 export async function estimateOf(checked: CheckedSubmission, projectId: string, userId: string): Promise<number | null> {
   const { plan, keys } = checked;
-  if (keys === undefined) return estimateTaskCredits(plan.entry.name, { params: plan.params, prompt: plan.prompt ?? undefined });
   return creditsToHold(keys, projectId, userId, () => estimateTaskCredits(plan.entry.name, { params: plan.params, prompt: plan.prompt ?? undefined }));
 }
 

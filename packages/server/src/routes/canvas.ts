@@ -323,10 +323,7 @@ canvas.post(
       }
       return { runKeys, route };
     },
-    credits: ({ runKeys, route }) =>
-      runKeys === null
-        ? estimateTaskCredits(body.model, estimateInput, route)
-        : creditsToHold(runKeys, projectId, user.id, () => estimateTaskCredits(body.model, estimateInput, route)),
+    credits: ({ runKeys, route }) => creditsToHold(runKeys, projectId, user.id, () => estimateTaskCredits(body.model, estimateInput, route)),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
