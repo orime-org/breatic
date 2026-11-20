@@ -8,7 +8,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
-import { GENERATION_TEMPLATES, templateNodeWords, type GenerationTemplate } from '@shared/canvas/generation-templates.js';
+import { GENERATION_TEMPLATES, templateNodeWords, type GenerationTemplate, type TemplateGenerateNode } from '@shared/canvas/generation-templates.js';
 import { expandTemplate } from '@shared/canvas/template-expansion.js';
 import {
   TEMPLATE_STYLE_SETS,
@@ -43,16 +43,21 @@ function styleWordsProblems(template: GenerationTemplate): string[] {
   return problems;
 }
 
+/** The fixture's video anchor, taking the shot part. */
+const SHOT_NODE: TemplateGenerateNode = { key: 'shot', role: 'generate', type: 'video', mode: 'i2v', model: 'fixture-video', params: {}, styleWords: 'shot' };
+
+/** The fixture's still, taking the still part. */
+const STILL_NODE: TemplateGenerateNode = { key: 'still', role: 'generate', type: 'image', mode: 'i2i', model: 'fixture-image', params: {}, styleWords: 'still' };
+
+/** The fixture's node that takes no style words. */
+const PLAIN_NODE: TemplateGenerateNode = { key: 'plain', role: 'generate', type: 'image', mode: 't2i', model: 'fixture-image', params: {} };
+
 /** A two-node template: a still the anchor's first frame comes from, both taking film styles. */
 const STYLED: GenerationTemplate = {
   id: 'styled-fixture',
   anchor: 'shot',
   styles: 'film-styles',
-  nodes: [
-    { key: 'shot', role: 'generate', type: 'video', mode: 'i2v', model: 'fixture-video', params: {}, styleWords: 'shot' },
-    { key: 'still', role: 'generate', type: 'image', mode: 'i2i', model: 'fixture-image', params: {}, styleWords: 'still' },
-    { key: 'plain', role: 'generate', type: 'image', mode: 't2i', model: 'fixture-image', params: {} },
-  ],
+  nodes: [SHOT_NODE, STILL_NODE, PLAIN_NODE],
   edges: [{ from: 'still', to: 'shot', into: 'image' }],
   inputs: [{ key: 'subject', type: 'image', feeds: ['still'] }],
   steps: [],
@@ -116,11 +121,10 @@ describe('template style sets', () => {
   });
 
   it('reports a part the set lacks, a part on a shot list, and style words with no set or no node to take them', () => {
-    const [shot, still, plain] = STYLED.nodes;
-    expect(styleWordsProblems({ ...STYLED, nodes: [{ ...shot!, styleWords: 'hit' }, still!, plain!] })).toHaveLength(1);
-    expect(styleWordsProblems({ ...STYLED, nodes: [{ ...shot!, shots: [{ seconds: 5 }] }, still!, plain!] })).toHaveLength(1);
+    expect(styleWordsProblems({ ...STYLED, nodes: [{ ...SHOT_NODE, styleWords: 'hit' }, STILL_NODE, PLAIN_NODE] })).toHaveLength(1);
+    expect(styleWordsProblems({ ...STYLED, nodes: [{ ...SHOT_NODE, shots: [{ seconds: 5 }] }, STILL_NODE, PLAIN_NODE] })).toHaveLength(1);
     expect(styleWordsProblems({ ...STYLED, styles: undefined })).toHaveLength(2);
-    expect(styleWordsProblems({ ...STYLED, nodes: [plain!] })).toHaveLength(1);
+    expect(styleWordsProblems({ ...STYLED, nodes: [PLAIN_NODE] })).toHaveLength(1);
   });
 });
 
