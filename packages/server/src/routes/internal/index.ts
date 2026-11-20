@@ -27,7 +27,6 @@ import { RefundRefusal } from "@server/modules/credit-refund/refusal.js";
 import { registerMaintenanceRoutes } from "@server/routes/internal/maintenance.js";
 import { registerCreditGrantRoutes } from "@server/routes/internal/credit-grant.js";
 import { registerEnterpriseMembershipRoutes } from "@server/routes/internal/enterprise-membership.js";
-import { registerReferralRoutes } from "@server/routes/internal/referral.js";
 import { registerDeploymentVersionRoute } from "@server/routes/internal/deployment-version.js";
 import { registerCommerceRoutes } from "@server/routes/internal/commerce.js";
 
@@ -194,7 +193,6 @@ export function registerInternalRoutes(app: Hono): void {
   registerEnterpriseMembershipRoutes(app);
   registerCreditGrantRoutes(app);
   registerMaintenanceRoutes(app);
-  registerReferralRoutes(app);
   registerDeploymentVersionRoute(app);
   registerCommerceRoutes(app);
 }
