@@ -68,7 +68,10 @@ beforeEach(() => {
   vi.spyOn(HTMLMediaElement.prototype, 'readyState', 'get').mockReturnValue(4);
   vi.spyOn(HTMLVideoElement.prototype, 'videoWidth', 'get').mockReturnValue(96);
   vi.spyOn(HTMLVideoElement.prototype, 'videoHeight', 'get').mockReturnValue(64);
-  vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(function (this: HTMLMediaElement): void { queueMicrotask(() => { this.dispatchEvent(new Event('loadedmetadata')); this.dispatchEvent(new Event('loadeddata')); queueMicrotask(() => presentFrame(this as HTMLVideoElement, 0)); }); });
+  // The resource fetch and first decode finish in a later task (HTML "queue a media element task" for loadedmetadata and
+  // loadeddata), so script that runs on in microtasks after load(), as VAP's parser chain does before it asks for a frame
+  // callback, still sees the first frame presented.
+  vi.spyOn(HTMLMediaElement.prototype, 'load').mockImplementation(function (this: HTMLMediaElement): void { setTimeout(() => { this.dispatchEvent(new Event('loadedmetadata')); this.dispatchEvent(new Event('loadeddata')); presentFrame(this as HTMLVideoElement, 0); }, 0); });
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   // A play presents the frame at the current time, as playback does in Chromium; VAP plays its element to start drawing.
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockImplementation(function (this: HTMLMediaElement): Promise<void> {
