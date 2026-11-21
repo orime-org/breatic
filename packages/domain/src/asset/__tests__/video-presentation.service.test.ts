@@ -25,8 +25,8 @@ import { videoEncoderRates } from '../video-encoder-rates.js';
 const { loadProjectRole, findLiveByStorageKey, findById, keyFromUrl, publicUrl } = vi.hoisted(() => ({
   loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
 }));
-const { videoPresentationAtIngest, queueAdd, fillMediaNumbers, createUsageRecorder, recordServiceCall, settle } = vi.hoisted(() => ({
-  videoPresentationAtIngest: vi.fn(), queueAdd: vi.fn(), fillMediaNumbers: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(),
+const { videoPresentationAtIngest, queueAdd, fillMediaNumbers, createUsageRecorder, recordServiceCall, settle, selectPin } = vi.hoisted(() => ({
+  videoPresentationAtIngest: vi.fn(), queueAdd: vi.fn(), fillMediaNumbers: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), selectPin: vi.fn(),
 }));
 vi.mock('@breatic/core', async (original) => {
   const actual = await original<typeof coreModule>();
@@ -42,6 +42,7 @@ vi.mock('@breatic/core', async (original) => {
 });
 vi.mock('@breatic/shared', async (original) => ({ ...await original<Record<string, unknown>>(), videoPresentationAtIngest }));
 vi.mock('@domain/asset/asset.repo.js', async (original) => ({ ...await original<Record<string, unknown>>(), findLiveByStorageKey, findById, fillMediaNumbers }));
+vi.mock('@domain/presentation/presentation-pin.service.js', async (original) => ({ ...await original<Record<string, unknown>>(), select: selectPin }));
 vi.mock('@domain/credit/usage-recorder.js', async (original) => ({ ...await original<Record<string, unknown>>(), createUsageRecorder }));
 
 const canonicalURL = 'https://assets.example.test/video/canonical.webm';
@@ -129,6 +130,7 @@ beforeEach(() => {
   queueAdd.mockResolvedValue(undefined);
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
   settle.mockResolvedValue(0);
+  selectPin.mockResolvedValue(undefined);
 });
 
 afterEach(() => {
@@ -311,6 +313,28 @@ describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 �
     const got = await resolveVideoPresentation(input);
     expect(sent().map((request) => request.action)).toEqual(['read']);
     expect(got.presentation).toEqual(bundle);
+  });
+});
+
+// frames-split §7.15 pinned row and single-writer row: the discovery read is a write point of Mv, redone by versionId so that
+// a selected pin row a stale worker sync left on another version follows the selected bundle P again.
+describe('the discovery read keeps the selected pin on P (inner#1306 §7.15 Mv)', () => {
+  it('SP01 a read that answers a selected version moves the selected pin onto it, with its objects', async () => {
+    ingest(snapshot({ presentation: bundle }));
+    await resolveVideoPresentation(input);
+    expect(selectPin).toHaveBeenCalledWith({ canonicalKey: asset.storageKey, toolInputId: T, versionId: bundle.versionId, objectKeys: [bundle.playback.carrier.storageKey] });
+  });
+
+  it('SP02 a repair that answers a selected version moves the selected pin onto it', async () => {
+    ingest(snapshot(), snapshot({ presentation: bundle, preparation: prep('repair-job', 'plan') }));
+    await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'retry-press' });
+    expect(selectPin).toHaveBeenCalledWith(expect.objectContaining({ canonicalKey: asset.storageKey, versionId: bundle.versionId }));
+  });
+
+  it('SP03 a read with nothing selected touches no pin', async () => {
+    ingest(snapshot({ preparation: prep('in-flight', 'plan') }));
+    await resolveVideoPresentation(input);
+    expect(selectPin).not.toHaveBeenCalled();
   });
 });
 

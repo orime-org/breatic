@@ -9,6 +9,7 @@ import { t, videoPresentationAtIngest, videoPresentationAwaitsServer, videoPrese
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding } from '@breatic/shared';
 import { findById, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
 import { videoEncoderRates } from '@domain/asset/video-encoder-rates.js';
+import { select as selectPresentationPin, versionObjectKeys } from '@domain/presentation/presentation-pin.service.js';
 
 /** An authorized read of a canonical registered video. */
 export interface ResolveVideoPresentationInput { projectId: string; userId: string; canonicalURL: string }
@@ -203,12 +204,28 @@ function response(binding: VideoPresentationSourceBinding, snapshot: VideoPresen
  * @returns Registered identity with nullable trusted presentation.
  * @throws {NotFoundError} When project read access is absent.
  * @throws {ValidationError} When the URL has no live registered video.
- * @throws {Error} When ingest, queueing or its trusted response fails.
+ * @throws {Error} When ingest, queueing, its trusted response or the selected pin's persistence fails.
  */
 export async function resolveVideoPresentation(input: ResolveVideoPresentationInput): Promise<VideoPresentationResponse> {
   await assertAccess(input);
   const { row, binding } = await registeredSource(input.canonicalURL);
-  return response(binding, await readThenAdmit(row, {}));
+  return followSelected(row, response(binding, await readThenAdmit(row, {})));
+}
+
+/**
+ * Redo Mv by versionId from a validated answer (frames-split §7.15): the discovery read is a write point of the selected
+ * pin, so a selected row a stale worker sync left on another version follows P again. The same version changes nothing.
+ * @param row - The registered source.
+ * @param answered - The validated response.
+ * @returns The response, once the selected pin follows its presentation.
+ * @throws {Error} When persistence fails.
+ */
+async function followSelected(row: StudioAssetEntity, answered: VideoPresentationResponse): Promise<VideoPresentationResponse> {
+  const selected = answered.presentation;
+  if (selected !== null) {
+    await selectPresentationPin({ canonicalKey: row.storageKey, toolInputId: selected.toolInputId, versionId: selected.versionId, objectKeys: versionObjectKeys(selected) });
+  }
+  return answered;
 }
 
 /**
@@ -242,7 +259,7 @@ export async function repairVideoPresentation(input: RepairVideoPresentationInpu
   const { row, binding } = await registeredSource(input.canonicalURL);
   if (binding.contentHash !== input.sourceFingerprint) throw new VideoPresentationSourceChanged(binding);
   const snapshot = await accept(row, { repair: true, requestId: input.requestId, userId: input.userId, projectId: input.projectId });
-  return response(binding, snapshot);
+  return followSelected(row, response(binding, snapshot));
 }
 
 /**
