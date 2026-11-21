@@ -13,7 +13,7 @@
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { _electron as electron, expect, test, type ElectronApplication, type Page } from "playwright/test";
+import { _electron as electron, chromium, expect, test, type ElectronApplication, type Page } from "playwright/test";
 
 const SERVER = process.env.BREATIC_E2E_SERVER ?? "http://localhost:8100";
 const MAIN = join(import.meta.dirname, "..", "dist", "main", "index.cjs");
@@ -130,3 +130,51 @@ test("a configured server that cannot be reached opens the unreachable state", a
   await expect(connect.getByRole("heading", { name: "Connect to breatic" })).toBeVisible();
   await app.close();
 });
+
+test("browser sign-in hands the account to the client through a breatic:// link", async () => {
+  const userData = freshData();
+  writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
+  const { email, password } = account();
+  const app = await launch(userData);
+  const page = await windowWhere(app, (url) => url.startsWith(SERVER));
+  await expect(page).toHaveURL(/\/login/);
+  // The system browser is a separate Chromium here; record what the client asks it to open.
+  await app.evaluate(({ shell }) => {
+    const opened: string[] = [];
+    (globalThis as { opened?: string[] }).opened = opened;
+    shell.openExternal = async (url: string) => {
+      opened.push(url);
+    };
+  });
+  await page.getByRole("button", { name: "Continue with Google" }).click();
+  await expect(page.getByText("Finish signing in in your browser")).toBeVisible();
+  await expect.poll(() => app.evaluate(() => (globalThis as { opened?: string[] }).opened?.length ?? 0)).toBe(1);
+  const signInUrl = await app.evaluate(() => (globalThis as { opened?: string[] }).opened![0]!);
+  expect(new URL(signInUrl).pathname).toBe("/desktop/sign-in");
+
+  const browser = await chromium.launch();
+  const tab = await browser.newPage({ locale: "en-US" });
+  const links: string[] = [];
+  tab.on("request", (request) => {
+    if (request.url().startsWith("breatic:")) links.push(request.url());
+  });
+  await tab.goto(signInUrl);
+  await expect(tab).toHaveURL(/\/login/);
+  await tab.getByLabel("Email").fill(email);
+  await tab.getByRole("textbox", { name: "Password" }).fill(password);
+  await tab.getByRole("button", { name: "Sign in" }).click();
+  // Signing in switches the page to the account's own language, so the confirm
+  // step is found by the account it names and its first button, Continue.
+  await expect(tab.getByText(email)).toBeVisible({ timeout: 30_000 });
+  await tab.getByRole("main").getByRole("button").first().click();
+  await expect.poll(() => links.length).toBeGreaterThan(0);
+  await browser.close();
+
+  // macOS delivers the link through open-url; Windows and Linux through the launch arguments.
+  await app.evaluate(({ app: electronApp }, link) => {
+    electronApp.emit("open-url", { preventDefault: () => undefined }, link);
+  }, links[0]!);
+  await expect(page).toHaveURL(/\/studio/, { timeout: 30_000 });
+  await app.close();
+});
+
