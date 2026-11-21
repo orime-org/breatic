@@ -9,9 +9,7 @@
  */
 
 import { Hono } from "hono";
-import { z } from "zod";
-import { storableText, validate } from "@breatic/core";
-import { PROMOTER_CHANNEL_INPUT_MAX, PROMOTER_CHANNELS_MAX, PROMOTER_PLAN_INPUT_MAX, REFERRAL_CODE_INPUT_MAX } from "@breatic/shared";
+import { promoterApplicationBodySchema, referralBindingBodySchema, validate } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -27,14 +25,6 @@ const referral = new Hono<{ Variables: AuthVariables }>();
 referral.use(requireAuth);
 referral.use(requireSelling);
 
-const bindingBody = z.object({ code: z.string().min(1).max(REFERRAL_CODE_INPUT_MAX) });
-const applicationBody = z.object({
-  country: z.string().regex(/^[A-Z]{2}$/),
-  channels: z.array(storableText(z.string().trim().min(1).max(PROMOTER_CHANNEL_INPUT_MAX))).min(1).max(PROMOTER_CHANNELS_MAX),
-  plan: storableText(z.string().trim().min(1).max(PROMOTER_PLAN_INPUT_MAX)),
-  termsVersion: z.string().min(1).max(32),
-});
-
 /** `GET /account/referral` — what the membership panel's referral sections show. */
 referral.get("/", rateLimitFor("referral-read", "user"), async (c) =>
   forwardToCommerce(c, { method: "GET", path: userPath(c.get("user").id, "/referral"), quick: true }),
@@ -48,7 +38,7 @@ referral.post(
   "/binding",
   rateLimitFor("referral-bind", "user"),
   validate("header", idempotencyKeyHeaderSchema),
-  validate("json", bindingBody),
+  validate("json", referralBindingBodySchema),
   runOnce("referral"),
   async (c) => {
     const userId = c.get("user").id;
@@ -67,7 +57,7 @@ referral.post(
   "/applications",
   rateLimitFor("promoter-apply", "user"),
   validate("header", idempotencyKeyHeaderSchema),
-  validate("json", applicationBody),
+  validate("json", promoterApplicationBodySchema),
   runOnce("referral"),
   async (c) =>
     forwardToCommerce(c, {

@@ -8,15 +8,28 @@
  */
 
 import { z } from "zod";
-import { ANALYTICS_EVENT_NAMES, BILLING_PERIODS, ConsentSnapshotSchema, MEMBERSHIP_TIERS, SIGNUP_REFERRAL_SOURCES, type AnalyticsEventName } from "@breatic/shared";
+import {
+  ANALYTICS_EVENT_NAMES,
+  BILLING_PERIODS,
+  ConsentSnapshotSchema,
+  MEMBERSHIP_TIERS,
+  PROMOTER_CHANNEL_INPUT_MAX,
+  PROMOTER_CHANNELS_MAX,
+  PROMOTER_PLAN_INPUT_MAX,
+  REFERRAL_CODE_INPUT_MAX,
+  SIGNUP_REFERRAL_SOURCES,
+  type AnalyticsEventName,
+} from "@breatic/shared";
 import { ADS_CONVERSIONS } from "@core/ads/ads-types.js";
 import { STRIPE_SUBSCRIPTION_STATUSES } from "@core/auth/subscription-state.js";
+import { storableText } from "@core/util/storable-text.js";
 
 /**
  * The `error.reason` of a 503 the billing service answers when it is up but
  * the product could not take its call back (a grant or a subscription fact a
- * user is waiting on, §5.5). The product passes such an answer to the browser
- * unchanged; any other 5xx means the billing service itself is unavailable.
+ * user is waiting on, §5.5). The product passes it to the browser unchanged,
+ * as it does every answer in the public error shape the billing service's
+ * /v1 handlers write.
  */
 export const PRODUCT_UNAVAILABLE_REASON = "product_unavailable";
 
@@ -322,6 +335,17 @@ export const membershipPanelAnswerSchema = z
   })
   .strict();
 export type MembershipPanelAnswer = z.infer<typeof membershipPanelAnswerSchema>;
+
+/** `POST /account/referral/binding`, forwarded as it came: the code to attach. */
+export const referralBindingBodySchema = z.object({ code: z.string().min(1).max(REFERRAL_CODE_INPUT_MAX) });
+
+/** `POST /account/referral/applications`, forwarded as it came: a promoter application. */
+export const promoterApplicationBodySchema = z.object({
+  country: z.string().regex(/^[A-Z]{2}$/),
+  channels: z.array(storableText(z.string().trim().min(1).max(PROMOTER_CHANNEL_INPUT_MAX))).min(1).max(PROMOTER_CHANNELS_MAX),
+  plan: storableText(z.string().trim().min(1).max(PROMOTER_PLAN_INPUT_MAX)),
+  termsVersion: z.string().min(1).max(32),
+});
 
 /** `POST /v1/referral-codes/check`: whether a sign-up's code is active. */
 export const referralCodeCheckRequestSchema = z.object({ code: z.string().min(1).max(64) }).strict();

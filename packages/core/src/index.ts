@@ -403,6 +403,8 @@ export {
   conversionAnswerSchema,
   referralCodeCheckAnswerSchema,
   referralCodeCheckRequestSchema,
+  referralBindingBodySchema,
+  promoterApplicationBodySchema,
   membershipPanelAnswerSchema,
   type MembershipPanelAnswer,
   KEYSET_INSTANT,
