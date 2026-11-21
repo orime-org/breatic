@@ -118,11 +118,49 @@ async function landingTime(file: string): Promise<number | null> {
 
 let landings = 0;
 
+/** One seek attempt on a window: the input arguments, the graph head ending at `[g]`, where it records its landing and its seek. */
+interface GridAttempt { input: string[]; graph: string; landing: string; position: number | null }
+
 /**
- * Decode a window of grid frames from a tool source (§7.16, §4.1): the source is input 0, opened at the seek position; the
- * graph splits off the first decoded frame to record its time and places every frame on the grid, ending at `[g]` on the
- * window's frames (time base 1/fps, slot k0 first). A first frame past the seek frame, or none, means the seek landed late:
- * the command runs again with the back-off doubled, until it decodes from the start.
+ * The FFmpeg input and graph head of one seek attempt (§7.16, §4.1): the source is input 0, opened at the attempt's seek
+ * position; the graph splits off the first decoded frame to record its time and places every frame on the grid, ending at
+ * `[g]` on the window's frames (time base 1/fps, slot k0 first).
+ * @param window - The tool source and its frames.
+ * @param facts - The source's facts.
+ * @param directory - Where the landing record goes.
+ * @param attempt - The attempt, from 0; each one doubles the back-off.
+ * @returns The attempt.
+ * @throws {RangeError} When the run directory is not a plain path.
+ */
+function gridAttempt(window: GridWindow, facts: Pick<SourceFacts, "decoder">, directory: string, attempt: number): GridAttempt {
+  const { grid, keyframes } = readGrid(window);
+  const position = gridSeekPosition({ grid, keyframes, startFrame: window.frames.start }, attempt);
+  landings += 1;
+  const landing = join(directory, `landing-${landings}.txt`);
+  if (!PLAIN_PATH.test(landing)) throw new RangeError("The run directory is not a plain path");
+  const input = [...HEAD, "-copyts", "-seek_timestamp", "1", "-noaccurate_seek", ...(position === null ? [] : ["-ss", position.toFixed(6)]), ...facts.decoder, "-i", window.file];
+  const graph = `[0:v:0]split=2[gd][gl];[gl]trim=end_frame=1,metadata=mode=add:key=landing:value=1,metadata=mode=print:file=${landing},nullsink;` +
+    `[gd]${gridFilterChain({ gridStart: grid.gridStart, fps: grid.fps, startFrame: window.frames.start, endFrame: window.frames.end })},setpts=PTS-STARTPTS[g]`;
+  return { input, graph, landing, position };
+}
+
+/**
+ * Whether an attempt that ran landed late: a first frame past the seek frame, or none.
+ * @param window - The tool source and its frames.
+ * @param attempt - The attempt that ran.
+ * @returns Whether it must run again with the back-off doubled.
+ * @throws {never} Never.
+ */
+async function landedLate(window: GridWindow, attempt: GridAttempt): Promise<boolean> {
+  if (attempt.position === null) return false;
+  const { grid } = readGrid(window);
+  const seekFrame = Math.min(window.frames.start, grid.realFrameCount - 1);
+  return gridLandingLate({ fps: grid.fps, gridStart: grid.gridStart, seekFrame }, await landingTime(attempt.landing));
+}
+
+/**
+ * Decode a window of grid frames from a tool source (§7.16, §4.1) through `gridAttempt`'s input and graph head. A late
+ * landing means the command runs again with the back-off doubled, until it decodes from the start.
  * @param window - The tool source and its frames.
  * @param facts - The source's facts.
  * @param directory - Where the landing record goes.
@@ -134,18 +172,30 @@ let landings = 0;
  */
 export async function decodeGridWindow(window: GridWindow, facts: Pick<SourceFacts, "decoder">, directory: string, run: Run,
   command: (input: string[], graph: string) => string[]): Promise<void> {
-  const { grid, keyframes } = readGrid(window);
-  const seekFrame = Math.min(window.frames.start, grid.realFrameCount - 1);
   for (let attempt = 0; ; attempt += 1) {
-    const position = gridSeekPosition({ grid, keyframes, startFrame: window.frames.start }, attempt);
-    landings += 1;
-    const landing = join(directory, `landing-${landings}.txt`);
-    if (!PLAIN_PATH.test(landing)) throw new RangeError("The run directory is not a plain path");
-    const input = [...HEAD, "-copyts", "-seek_timestamp", "1", "-noaccurate_seek", ...(position === null ? [] : ["-ss", position.toFixed(6)]), ...facts.decoder, "-i", window.file];
-    const graph = `[0:v:0]split=2[gd][gl];[gl]trim=end_frame=1,metadata=mode=add:key=landing:value=1,metadata=mode=print:file=${landing},nullsink;` +
-      `[gd]${gridFilterChain({ gridStart: grid.gridStart, fps: grid.fps, startFrame: window.frames.start, endFrame: window.frames.end })},setpts=PTS-STARTPTS[g]`;
-    await runPlanCommand("ffmpeg", command(input, graph), run);
-    if (position === null || !gridLandingLate({ fps: grid.fps, gridStart: grid.gridStart, seekFrame }, await landingTime(landing))) return;
+    const tried = gridAttempt(window, facts, directory, attempt);
+    await runPlanCommand("ffmpeg", command(tried.input, tried.graph), run);
+    if (!await landedLate(window, tried)) return;
+  }
+}
+
+/**
+ * Settle a window's seek before its frames are streamed (§7.16): each attempt decodes only the first frame and records
+ * where it landed, so a decode whose output cannot be taken back runs once, from an attempt that lands in time.
+ * @param window - The tool source and its frames.
+ * @param facts - The source's facts.
+ * @param directory - Where the landing records go.
+ * @param run - The lifetime and IO bounds.
+ * @returns The input arguments and graph head of the attempt that lands in time.
+ * @throws {RangeError} When the run directory is not a plain path.
+ * @throws {Error} When FFmpeg fails.
+ */
+async function settleGridWindow(window: GridWindow, facts: Pick<SourceFacts, "decoder">, directory: string, run: Run): Promise<Pick<GridAttempt, "input" | "graph">> {
+  for (let attempt = 0; ; attempt += 1) {
+    const tried = gridAttempt(window, facts, directory, attempt);
+    if (tried.position === null) return tried;
+    await runPlanCommand("ffmpeg", [...tried.input, "-filter_complex", tried.graph, "-map", "[g]", "-frames:v", "1", "-f", "null", "-"], run);
+    if (!await landedLate(window, tried)) return tried;
   }
 }
 
@@ -454,13 +504,11 @@ async function detectScenes(recipe: Extract<PresentationRecipe, { kind: "scene_c
   const file = local(request.inputs, recipe.inputId);
   const facts = await sourceFacts(file, run);
   const count = recipe.frames.end - recipe.frames.start;
-  const raw = join(request.directory, "scene-frames.bgr");
-  await decodeGridWindow({ file, grid: recipe.grid, source: recipe.source, frames: recipe.frames }, facts, request.directory, run, (input, graph) => [
-    ...input, "-filter_complex", `${graph};[g]${decodedPicture(recipe.target.colorMatrix, facts.range, width, height, { format: "bgr24" })}[v]`,
-    "-map", "[v]", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "bgr24", raw,
-  ]);
+  // A minute of 1080p frames as raw BGR outgrows the class's disk, so the frames reach the detector only through a pipe.
+  const { input, graph } = await settleGridWindow({ file, grid: recipe.grid, source: recipe.source, frames: recipe.frames }, facts, request.directory, run);
   const result = await detect("scene_cuts", recipe.profile, { width, height, count,
-    args: [...HEAD.filter((arg) => arg !== "-y"), "-f", "rawvideo", "-pix_fmt", "bgr24", "-s", `${width}x${height}`, "-i", raw, "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"] },
+    args: [...input, "-filter_complex", `${graph};[g]${decodedPicture(recipe.target.colorMatrix, facts.range, width, height, { format: "bgr24" })}[v]`,
+      "-map", "[v]", "-fps_mode", "passthrough", "-f", "rawvideo", "-pix_fmt", "bgr24", "pipe:1"] },
   request.directory, request.signal, request.limits);
   const fps = valueOf(recipe.grid.fps);
   const frames = Array.from({ length: count }, (_unused, at) => ({ frameIndex: recipe.frames.start + at, pts: (recipe.frames.start + at) / fps }));
