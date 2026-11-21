@@ -35,6 +35,8 @@ export interface VideoToolControlsProps<K extends VideoToolId = VideoToolId> {
   /** Whether a new analysis cannot start, as while the draft is stale (frames-split §7.13). */
   analysisDisabled?: boolean;
   analysisCreditText?: string;
+  /** Whether the split cuts outside the grid are marked invalid: only once Apply to this video found them (demo rebind). */
+  outsideMarked?: boolean;
   onInvalidChange?: (key: string, invalid: boolean) => void;
   onSeek?: (time: number) => void;
   /** Plays exactly one source range in the node's player (canvas design §4 split row preview). */
@@ -54,6 +56,8 @@ interface NumericProps {
   disabled: boolean;
   onChange: (value: number) => void;
   onInvalidChange?: (key: string, invalid: boolean) => void;
+  /** Shows the stored value unmarked even outside the limits; typed text is still checked. */
+  storedUnmarked?: boolean;
   /** Called when the field loses focus; with it, Enter also leaves the field. */
   onSettle?: () => void;
 }
@@ -94,7 +98,7 @@ export function VideoNumericInput(props: NumericProps): React.JSX.Element {
     return () => onInvalidChange?.(testId, false);
   }, [onInvalidChange, testId, invalid]);
   const { onSettle } = props;
-  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={onSettle} onKeyDown={(event) => {
+  return <Input type='text' inputMode='decimal' autoComplete='off' value={text} aria-label={props.label} data-testid={props.testId} aria-invalid={invalid && !(props.storedUnmarked === true && shown === persisted)} disabled={props.disabled} className='h-[var(--control-height)] min-w-0 px-2 text-xs tabular-nums md:text-xs' onBlur={onSettle} onKeyDown={(event) => {
     if (event.key === 'Enter' && onSettle !== undefined) event.currentTarget.blur();
   }} onChange={(event) => setText(event.currentTarget.value)} />;
 }
@@ -385,11 +389,12 @@ function VideoCutEditor(props: VideoToolControlsProps & { grid: VideoPlanGrid })
           if (event.key === 'Delete' || event.key === 'Backspace') { event.preventDefault(); event.stopPropagation(); commit(handles.filter((_, position) => position !== index)); }
           else if (['ArrowLeft', 'ArrowRight', 'ArrowUp', 'ArrowDown'].includes(event.key)) { event.preventDefault(); event.stopPropagation(); step(index, event.key === 'ArrowLeft' || event.key === 'ArrowDown'); }
         }}><span className='h-full border-l border-status-selected' /><span className='absolute bottom-0 rounded-chrome-sm bg-popover px-1 text-xs text-foreground'>{index + 1}</span></Button>)}
+      {outside.map((cut, index) => <span key={cut} data-testid={`video-cut-outside-marker-${index}`} className={`pointer-events-none absolute inset-y-0 right-0 border-r ${props.outsideMarked === true ? 'border-status-error' : 'border-status-selected'}`} />)}
     </VideoPlaybackStrip>
     <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: segments.length - 1, segments: segments.length })}</span><AddCutButton grid={grid} starts={snapped} presentedTime={props.presentedTime} liveClock={props.liveClock} disabled={props.disabled} onAdd={add} /></div>
     {rows.length === 0 && outside.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{rows.map(({ id, value: cut }, index) => <div key={id} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cutRowSeconds(cut)} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => type(id, value)} onSettle={settle} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => remove(id)}><Trash2 className='size-3.5' /></Button></div>)}
-      {/* A cut outside the grid shows its stored time, marked invalid, until the user moves or removes it (demo decision D9). */}
-      {outside.map((cut, index) => <div key={cut} className='flex items-center gap-2'><span className='text-xs'>{rows.length + index + 1}</span><VideoNumericInput value={cutRowSeconds(gridSeconds(grid, cut))} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${rows.length + index + 1}`} testId={`video-cut-outside-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onChange={(value) => { outsideTyped.current.set(cut, value); }} onSettle={() => { const time = outsideTyped.current.get(cut); if (time !== undefined) replaceOutside(cut, time); }} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' data-testid={`video-cut-outside-remove-${index}`} disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => replaceOutside(cut, null)}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
+      {/* A cut outside the grid shows its stored time until the user moves or removes it, marked invalid once Apply to this video found it (demo decision D9). */}
+      {outside.map((cut, index) => <div key={cut} className='flex items-center gap-2'><span className='text-xs'>{rows.length + index + 1}</span><VideoNumericInput value={cutRowSeconds(gridSeconds(grid, cut))} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${rows.length + index + 1}`} testId={`video-cut-outside-${index}`} min={0} exclusiveMin max={duration} exclusiveMax storedUnmarked={props.outsideMarked !== true} disabled={props.disabled} onChange={(value) => { outsideTyped.current.set(cut, value); }} onSettle={() => { const time = outsideTyped.current.get(cut); if (time !== undefined) replaceOutside(cut, time); }} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' data-testid={`video-cut-outside-remove-${index}`} disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => replaceOutside(cut, null)}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
     <div className='flex min-h-8 overflow-hidden rounded-chrome border border-border'>{segments.map((segment) => <Button key={segment.outputIndex} variant={null} size={null} data-testid={`video-segment-${segment.outputIndex}`} disabled={props.onPlayRange === undefined} className='min-w-0 rounded-none border-r border-border bg-accent px-1 py-2 text-xs last:border-r-0 hover-enabled:bg-accent-strong' style={{ flexGrow: segment.end - segment.start, flexBasis: 0 }} onClick={() => preview(segment.start, segment.end)}>{segment.outputIndex + 1}</Button>)}</div>
     {previewing === null ? null : <div data-testid='video-segment-preview' className='flex items-center justify-between gap-2 text-xs text-muted-foreground'><span className='tabular-nums'>{t('canvas.miniTool.videoUI.segmentPreview', { start: secondsLabel(previewing.start), end: secondsLabel(previewing.end) })}</span><Button variant='outline' size='compact' onClick={() => playback.current?.stop()}>{t('canvas.miniTool.videoUI.stopPreview')}</Button></div>}
     {playFailed ? <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}

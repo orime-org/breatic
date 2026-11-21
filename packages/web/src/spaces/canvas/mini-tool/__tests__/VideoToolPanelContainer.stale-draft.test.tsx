@@ -116,14 +116,20 @@ describe('a stale video tool draft (frames-split §7.13 Dv stale)', () => {
   });
 
   // Demo decision D9: a value outside the updated video is neither cut nor dropped; the user adjusts it first.
-  it('keeps a draft with a cut outside the selected grid stale, marks the cut and says to adjust it, without throwing', () => {
+  it('keeps a draft with a cut outside the selected grid stale, marks the cut once Apply finds it and says to adjust it, without throwing', () => {
     const draft = mount('video.split', { cuts: [25, 130] }, earlier);
     const outside = screen.getByTestId('video-cut-outside-0');
-    expect(outside).toHaveAttribute('aria-invalid', 'true');
+    const marker = screen.getByTestId('video-cut-outside-marker-0');
+    // Shown unmarked until the press finds it, its strip marker at the end in the selected colour (demo rebind).
+    expect(outside).toHaveAttribute('aria-invalid', 'false');
     expect(outside).toHaveValue('5.2');
+    expect(marker).toHaveClass('border-status-selected');
+    expect(marker).not.toHaveClass('border-status-error');
     fireEvent.click(screen.getByRole('button', { name: t('canvas.miniTool.videoUI.applyToVideo') }));
     expect(toast.warning).toHaveBeenCalledExactlyOnceWith(t('canvas.miniTool.videoUI.settingsOutOfRange'));
     expect(stored('video.split')).toEqual({ state: 'stale', draft });
+    expect(screen.getByTestId('video-cut-outside-0')).toHaveAttribute('aria-invalid', 'true');
+    expect(screen.getByTestId('video-cut-outside-marker-0')).toHaveClass('border-status-error');
     fireEvent.click(screen.getByTestId('video-cut-outside-remove-0'));
     expect(stored('video.split')).toMatchObject({ state: 'stale', draft: { params: { cuts: [25] } } });
     fireEvent.click(screen.getByRole('button', { name: t('canvas.miniTool.videoUI.applyToVideo') }));
@@ -135,6 +141,24 @@ describe('a stale video tool draft (frames-split §7.13 Dv stale)', () => {
     // The first remove button is the row of the cut inside the grid.
     fireEvent.click(screen.getAllByRole('button', { name: t('canvas.miniTool.videoUI.removeCut') })[0]!);
     expect(stored('video.split')).toMatchObject({ state: 'stale', draft: { params: { cuts: [130] } } });
+  });
+
+  it('clears the mark Apply put on a cut outside the grid once the cuts are edited, keeping that cut', () => {
+    mount('video.split', { cuts: [25, 130] }, earlier);
+    fireEvent.click(screen.getByRole('button', { name: t('canvas.miniTool.videoUI.applyToVideo') }));
+    expect(screen.getByTestId('video-cut-outside-0')).toHaveAttribute('aria-invalid', 'true');
+    fireEvent.click(screen.getAllByRole('button', { name: t('canvas.miniTool.videoUI.removeCut') })[0]!);
+    expect(stored('video.split')).toMatchObject({ state: 'stale', draft: { params: { cuts: [130] } } });
+    expect(screen.getByTestId('video-cut-outside-0')).toHaveAttribute('aria-invalid', 'false');
+    expect(screen.getByTestId('video-cut-outside-marker-0')).toHaveClass('border-status-selected');
+    expect(screen.getByTestId('mini-tool-run')).toBeDisabled();
+  });
+
+  it('still marks a time typed into a cut row outside the grid that is not a number', () => {
+    mount('video.split', { cuts: [130] }, earlier);
+    const outside = screen.getByTestId('video-cut-outside-0');
+    fireEvent.change(outside, { target: { value: 'x' } });
+    expect(outside).toHaveAttribute('aria-invalid', 'true');
   });
 
   it('moves a cut outside the grid inside it once a valid time is typed and the field is left', () => {
