@@ -238,16 +238,13 @@ export async function upsertSubscription(
  * @param stripeSubscriptionId - Stripe's id for it.
  * @param firstActiveAt - When it was first paid for, or null while it never was.
  * @param tx - The transaction the snapshot was stored in.
- * @returns True when this call stamped it.
  */
-export async function recordFirstActive(stripeSubscriptionId: string, firstActiveAt: Date | null, tx: DbTx): Promise<boolean> {
-  if (firstActiveAt === null) return false;
-  const rows = await tx
+export async function recordFirstActive(stripeSubscriptionId: string, firstActiveAt: Date | null, tx: DbTx): Promise<void> {
+  if (firstActiveAt === null) return;
+  await tx
     .update(subscriptions)
     .set({ firstActiveAt })
-    .where(and(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId), isNull(subscriptions.firstActiveAt)))
-    .returning({ id: subscriptions.id });
-  return rows.length > 0;
+    .where(and(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId), isNull(subscriptions.firstActiveAt)));
 }
 
 /**

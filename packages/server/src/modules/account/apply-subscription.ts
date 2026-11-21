@@ -29,8 +29,6 @@ export interface AppliedSubscription {
   readonly tier: MembershipTier;
   /** The paid tier that ended, when this ended one and an email is owed. */
   readonly endedFrom: MembershipTier | null;
-  /** This write was the subscription's first activation; a start is reported after commit. */
-  readonly started: boolean;
 }
 
 /**
@@ -45,8 +43,7 @@ export interface AppliedSubscription {
  * @param input.referenceId - Identifies this change in the tier ledger.
  * @param input.firstActiveAt - When the subscription was first paid for, or null while it never was.
  * @param input.tx - The caller's transaction.
- * @returns The tier now in force, whether an email is owed, and whether this
- *   write was the subscription's first activation.
+ * @returns The tier now in force and whether an email is owed.
  * @throws {Error} if the account does not exist or a write fails.
  */
 export async function applySubscriptionWrite(input: {
@@ -59,7 +56,7 @@ export async function applySubscriptionWrite(input: {
   const { userId, write, referenceId, tx } = input;
   await lockAccountRow(userId, tx);
   await upsertSubscription(tx, write);
-  const started = await recordFirstActive(write.stripeSubscriptionId, input.firstActiveAt, tx);
+  await recordFirstActive(write.stripeSubscriptionId, input.firstActiveAt, tx);
 
   const reading = subscriptionSituation(
     await listSubscriptions(tx, userId),
@@ -67,5 +64,5 @@ export async function applySubscriptionWrite(input: {
   );
   const tier = tierForSituation(reading.situation, reading.record);
   const settled = await settleTier({ userId, toTier: tier, referenceId, tx });
-  return { tier, endedFrom: settled.endedFrom, started };
+  return { tier, endedFrom: settled.endedFrom };
 }
