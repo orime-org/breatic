@@ -4168,7 +4168,7 @@
     "getKey": "到 {upstream} 取得 key",
     "runsModels": "這家能跑的模型",
     "runsNone": "這裡沒有能用它跑的模型。",
-    "openrouterNote": "所有語言模型呼叫（含網頁動畫）都用這把 key，不扣點數。",
+    "openrouterNote": "所有語言模型呼叫（含網頁動畫）都用這把 key，不扣點數；網頁動畫的渲染仍扣點數。",
     "replaceTitle": "替換 {upstream} 的 key",
     "replaceBody": "儲存前會先檢測新 key 能不能連通。替換後，正在用舊 key 的任務可能會中斷或失敗。舊 key 若已洩露，請同時到 {upstream} 作廢它。",
     "deleteTitle": "要刪除 {upstream} 的 key 嗎？",

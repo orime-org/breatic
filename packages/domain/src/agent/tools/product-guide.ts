@@ -1009,11 +1009,13 @@ export function renderProductGuide(): string {
       "dialog where an account adds its own keys for upstreams (one OpenRouter key runs every language model; " +
       "keys for other upstreams run picture, video, sound and 3D models) and picks, model by model, which upstream " +
       "with a key runs it. A studio's runs use the keys of whoever pays for it: the owner's own on a personal " +
-      "studio, the Studio Admin's on a team studio. A run on such a key takes no credits, but an Agent message " +
-      "still needs credits above zero, since web search, image search and page reading are paid in credits; with " +
-      "none the message is turned away and says so. When the key fails, the " +
-      "run fails and its task or the Agent's reply says which upstream and whose key it was, and what to do: top " +
-      "up at that upstream or change the key in that dialog, or, on the Studio Admin's key, ask the Studio Admin. " +
+      "studio, the Studio Admin's on a team studio. A run on such a key takes no credits for its model calls, but an " +
+      "Agent message or a web animation run still needs credits above zero, since web search, image search and page " +
+      "reading, and a web animation's rendering, are paid in credits; with none the message or run is turned away " +
+      "and says so. When the key fails, the run fails and its task or the Agent's reply says which upstream and " +
+      "whose key it was, and what to do: change the key or top up at that upstream, pick another upstream for the " +
+      "model in that dialog, run it again when its key was replaced, or try again later when the upstream is " +
+      "limiting requests or cannot be reached; on the Studio Admin's key, ask the Studio Admin. " +
       "Such a run never moves to the platform's keys.",
     "Clicking the mode lists the modes this node's type offers; picking one changes which models are offered. " +
       "Clicking the model's name lists the current mode's models, each with its maker's icon, its name and a line " +

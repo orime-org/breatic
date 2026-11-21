@@ -390,6 +390,14 @@ describe('ByokDialog', () => {
       expect(within(dialog).getByTestId('byok-detail-openrouter')).toHaveTextContent(/every language model.*web animation/i);
     });
 
+    it('says a web animation on an OpenRouter key still takes credits for its rendering', async () => {
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await user.click(await within(dialog).findByTestId('byok-upstream-openrouter'));
+
+      expect(within(dialog).getByTestId('byok-detail-openrouter')).toHaveTextContent(/rendering still uses credits/i);
+    });
+
     it('names the models an upstream runs the way the generation panel does, a shared name joined by its variant', async () => {
       serve(view(TWIN_VIEW), TWIN_CATALOG);
       const dialog = await mount();

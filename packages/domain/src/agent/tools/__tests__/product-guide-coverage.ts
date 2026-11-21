@@ -55,7 +55,7 @@ interface Excluded {
 
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
-  "server.credit.agent_tools_need_credits": { described: /web search, image search and page reading are paid in credits/ },
+  "server.credit.agent_tools_need_credits": { described: /web search, image search and page reading, and a web animation's rendering, are paid in credits/ },
   // inner#1968: waiting for a running-task slot, and the spend-limit refusals.
   "canvas.task.waitReason": { described: /starts by itself when an earlier one ends|waits its turn/ },
   "canvas.task.waitReasonOther": { described: /a row someone else started says so of that person/ },
