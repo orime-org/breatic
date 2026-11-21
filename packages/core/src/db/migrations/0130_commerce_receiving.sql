@@ -1,5 +1,6 @@
 -- What the product keeps when payments are taken by the billing service
--- (inner#1993 §4.2, §4.6). Only adds; the billing tables stay until 0129.
+-- (inner#1993 §4.2, §4.6). Only adds; the billing tables stay until the
+-- migration that drops them after the cutover (inner#1993 §9).
 --
 -- payment_receipts: the product's own record of a completed payment, written
 -- when the billing service grants it, shaped like credit_gifts and

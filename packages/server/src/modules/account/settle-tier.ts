@@ -4,8 +4,8 @@
 /**
  * Settle ordinary subscription tiers through one shared path.
  *
- * Webhooks, checkout confirmation, subscription-panel actions and checkout
- * rechecks arrive through applySubscriptionWrite. A membership reading first
+ * Every subscription fact the billing service delivers reaches it through
+ * applySubscriptionWrite. A membership reading first
  * protects active or unresolved enterprise membership and self-hosted origins.
  * An actual pro/team-to-base change writes the ended bell in the transaction;
  * its email is sent after commit. Enterprise-to-base expiry does not produce
