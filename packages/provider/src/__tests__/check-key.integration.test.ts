@@ -98,6 +98,25 @@ describe("checkKey on WaveSpeed", () => {
   });
 });
 
+describe("checkKey on any status", () => {
+  it.each([
+    [404, { connected: false, reason: "refused" }],
+    [408, { connected: false, reason: "unavailable" }],
+    [503, { connected: false, reason: "unavailable" }],
+    [429, { connected: false, reason: "rate_limited" }],
+  ] as const)("answers %i as %o", async (status, expected) => {
+    const { checkKey } = started();
+    fakes.wavespeed.answer(() => ({ status, body: {} }));
+    expect(await checkKey("wavespeed", "user-ws")).toEqual(expected);
+  });
+
+  it("refuses an upstream the configuration does not name, sending nothing", async () => {
+    const { checkKey } = started();
+    await expect(checkKey("nope", "user-key")).rejects.toThrow("provider cannot check keys of upstream nope");
+    expect(Object.values(fakes).flatMap((f) => f.seen)).toHaveLength(0);
+  });
+});
+
 describe("checkKey on fal", () => {
   /**
    * fal answering its balance and its billing events.
@@ -128,6 +147,14 @@ describe("checkKey on fal", () => {
     const { checkKey } = started();
     falAnswers({ status: 403, body: { detail: "Forbidden" } }, { status: 403, body: { detail: "Forbidden" } });
     expect(await checkKey("fal", "user-fal")).toMatchObject({ connected: true, balance: "forbidden", costsReadable: false });
+  });
+
+  it("says nothing about reading costs when the billing probe cannot be answered", async () => {
+    const { checkKey } = started();
+    falAnswers({ status: 200, body: { username: "u", credits: { current_balance: 1, currency: "USD" } } }, { status: 503, body: {} });
+    const checked = await checkKey("fal", "user-fal");
+    expect(checked).toMatchObject({ connected: true, balance: { amount: 1, currency: "USD" } });
+    expect(checked).not.toHaveProperty("costsReadable");
   });
 
   it("answers not connected for a key it refuses", async () => {
