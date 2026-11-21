@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { budgetDeadlineFrom, ConflictError, NotFoundError, ValidationError, createQueue, defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from '@breatic/core';
 import { t, videoPresentationAtIngest, videoPresentationAwaitsServer, videoPresentationResponseSchema,
   videoPresentationSourceBindingSchema,
@@ -122,12 +122,13 @@ function priceOf(containerClass: string): VideoPresentationPricing {
  * @param options - Any parent deadline and explicit repair attribution.
  * @returns The snapshot after admission.
  * @throws {Error} When ingest admission or queueing fails.
+ * @throws {AggregateError} When queueing fails and failing the accepted candidate at ingest fails too.
  */
 async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promise<VideoPresentationIngestSnapshot> {
   const storage = await getStorageAdapter();
   const config = getMiniToolsConfig();
   const settings = config.presentation;
-  const proposed = { jobId: `video-presentation-${options.requestId ?? randomUUID()}`, deadlineAt: options.parentDeadlineAt ?? budgetDeadlineFrom(Date.now()) };
+  const proposed = { jobId: presentationJobId(options.requestId), deadlineAt: options.parentDeadlineAt ?? budgetDeadlineFrom(Date.now()) };
   const request: VideoPresentationIngestRequest = {
     action: 'accept', storageKey: row.storageKey, sourceFingerprint: row.contentHash, ...proposed,
     original: originalOf(row), contentType: row.mimeType, repair: options.repair === true,
@@ -156,8 +157,29 @@ async function accept(row: StudioAssetEntity, options: AdmissionOptions): Promis
     probe: { sampleFrames: settings.probe_sample_frames, singleFrameDurationMs: settings.single_frame_duration_ms, maxFps: settings.max_fps },
   };
   const snapshot = await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, request);
-  await enqueue(row, snapshot);
+  try {
+    await enqueue(row, snapshot);
+  } catch (err) {
+    // Only the queued job advances a candidate: one the queue refused would wait for it until D, so it fails now.
+    if (snapshot.preparation?.jobId === proposed.jobId) {
+      await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
+        action: 'fail', storageKey: row.storageKey, sourceFingerprint: row.contentHash, ...proposed, code: 'presentation_failed',
+      }).catch((failure: unknown) => { throw new AggregateError([err, failure], 'The queue refused the accepted presentation job and failing it at ingest failed'); });
+    }
+    throw err;
+  }
   return snapshot;
+}
+
+/**
+ * The job id of one admission: a repair press keeps its id across delivery retries, digested so that no client string
+ * reaches the queue's job id (BullMQ refuses most ids containing ':').
+ * @param requestId - The press identity of an explicit repair.
+ * @returns The job id.
+ * @throws {never} Never.
+ */
+function presentationJobId(requestId: string | undefined): string {
+  return `video-presentation-${requestId === undefined ? randomUUID() : createHash('sha256').update(requestId).digest('hex').slice(0, 32)}`;
 }
 
 /**

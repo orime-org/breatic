@@ -366,6 +366,35 @@ describe('repair returns the same response (inner#1306 §3.5 web→server repair
     expect(a.preparation).toEqual(b.preparation);
     expect(new Set(queueAdd.mock.calls.map(([, job]) => (job as { jobId: string }).jobId))).toEqual(new Set(['repair-job']));
   });
+
+  it('RP04 the job id is derived from the press key on the server: queue-safe for any key, the same for the same press', async () => {
+    await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'press:with:colons' });
+    const first = acceptSent().jobId!;
+    vi.clearAllMocks();
+    await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'press:with:colons' });
+    const replay = acceptSent().jobId!;
+    vi.clearAllMocks();
+    await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'another-press' });
+    expect(first).toMatch(/^video-presentation-[0-9a-f]{32}$/);
+    expect(replay).toBe(first);
+    expect(acceptSent().jobId).not.toBe(first);
+  });
+
+  it('RP05 a queue refusal after ingest accepted the proposed job fails that candidate at ingest and rethrows', async () => {
+    const refusal = new Error('queue refused');
+    queueAdd.mockRejectedValue(refusal);
+    await expect(repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'repair-press' })).rejects.toBe(refusal);
+    const accept = acceptSent();
+    expect(sent().at(-1)).toEqual({ action: 'fail', storageKey: asset.storageKey, sourceFingerprint: H, jobId: accept.jobId, deadlineAt: accept.deadlineAt, code: 'presentation_failed' });
+  });
+
+  it('RP06 a queue refusal for a job ingest already held does not fail it', async () => {
+    const refusal = new Error('queue refused');
+    queueAdd.mockRejectedValue(refusal);
+    ingest(snapshot(), snapshot({ preparation: prep('repair-job', 'plan') }));
+    await expect(repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'repair-press' })).rejects.toBe(refusal);
+    expect(sent().map((request) => request.action)).toEqual(['accept']);
+  });
 });
 
 describe('queueing and recovery after admission (inner#1306 §5.1 step 1, §7.1.1 recovery waits for usage)', () => {
