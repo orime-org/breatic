@@ -13,6 +13,7 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { videoPresentationKeyFor } from '@breatic/shared';
+import { presentationSnapshot } from '@ingest/video-presentation-store.js';
 import { admission, bundle, D, H, planned, source, storedDescriptor, T, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
 
 describe('W §7.1–§7.4 store persistence and write points', () => {
@@ -141,6 +142,11 @@ describe('X §7.1 a candidate nobody advances any more is settled (failure sourc
   });
 });
 
+/** The store methods that settle attempts after the candidate ended, which MachineStore does not name. */
+interface SettlingStore {
+  recordChunkUsage: (ref: { storageKey: string; sourceFingerprint: string; jobId: string }, unit: { kind: 'presentation-chunk'; chunk: number }, attempt: number, usage: number) => Promise<boolean>;
+  prepareAnswer: (ref: { storageKey: string; sourceFingerprint: string; jobId: string }, now: number) => Promise<{ capability: unknown; preparation: { failure: string | null } | null }>;
+}
 type Attempts = { attempts: { attempt: number; state: string; failure: string | null; usage: number | null; usageRecorded: boolean }[] };
 
 /**
@@ -185,6 +191,47 @@ describe('E §7.1.1 Exp: a candidate that ends closes its open units', () => {
       const view = await store.read(key, H, D - 1);
       expect(view.chunks['video-presentation:job-a:chunk:1']).toMatchObject({ state: 'failed', failure: 'expired' });
       expect(await attemptsOf(store, key, 1)).toEqual([expect.objectContaining({ attempt: 1, state: 'failed', failure: 'expired', usage: null, usageRecorded: false })]);
+    });
+  });
+
+  it('E02 the worker\'s prepare past D fails the candidate expired and closes its open units, as a read does', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await twoOpenChunks(store, key);
+      const answer = await (store as unknown as SettlingStore).prepareAnswer({ storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, D);
+      expect(answer.capability).toBe(null);
+      expect(answer.preparation?.failure).toBe('expired');
+      expect((await store.read(key, H, D - 1)).chunks['video-presentation:job-a:chunk:1']).toMatchObject({ state: 'failed', failure: 'expired' });
+    });
+  });
+
+  it('E03 an expired attempt\'s late usage is recorded by the job id alone; a still pending attempt is refused', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const a = await twoOpenChunks(store, key);
+      const ref = { storageKey: key, sourceFingerprint: H, jobId: 'job-a' };
+      const settling = store as unknown as SettlingStore;
+      expect(await settling.recordChunkUsage(ref, { kind: 'presentation-chunk', chunk: 1 }, 1, 700)).toBe(false);
+      await store.abandon(ref);
+      expect(await settling.recordChunkUsage(ref, { kind: 'presentation-chunk', chunk: 1 }, 1, 700)).toBe(true);
+      expect(await settling.recordChunkUsage(ref, { kind: 'presentation-chunk', chunk: 1 }, 1, 700)).toBe(true);
+      expect(await attemptsOf(store, key, 1)).toEqual([expect.objectContaining({ attempt: 1, state: 'failed', usage: 700, usageRecorded: true })]);
+      // An attempt whose usage the DO already holds keeps it.
+      expect(await settling.recordChunkUsage(ref, { kind: 'presentation-chunk', chunk: 0 }, 2, 999)).toBe(true);
+      expect((await attemptsOf(store, key, 0)).find((item) => item.attempt === 2)).toMatchObject({ usage: 5, usageRecorded: true });
+      expect(a.jobId).toBe('job-a');
+    });
+  });
+
+  it('E04 the snapshot says attempt usage is outstanding while a measured attempt is unrecorded, and stops once it is', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      await twoOpenChunks(store, key);
+      const ref = { storageKey: key, sourceFingerprint: H, jobId: 'job-a' };
+      await store.abandon(ref);
+      expect(presentationSnapshot(await store.read(key, H, D - 1) as unknown as Parameters<typeof presentationSnapshot>[0], key, H)).toMatchObject({ attemptUsageOutstanding: true });
+      for (const attempt of [1, 2, 3]) expect(await (store as unknown as SettlingStore).recordChunkUsage(ref, { kind: 'presentation-chunk', chunk: 0 }, attempt, 5)).toBe(true);
+      expect(presentationSnapshot(await store.read(key, H, D - 1) as unknown as Parameters<typeof presentationSnapshot>[0], key, H)).not.toHaveProperty('attemptUsageOutstanding');
     });
   });
 });

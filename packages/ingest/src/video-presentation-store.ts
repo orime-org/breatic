@@ -26,7 +26,7 @@ import {
   type PresentationRouteStage, type VideoCarrierIdentity, type VideoCarrierRoute, type VideoCarrierStage, type VideoEncodeChunk, type VideoStageKeys,
 } from '@shared/mini-tools/video-encode-plan.js';
 import {
-  advancePresentationCandidate, advancePresentationChunk, advanceSelectedPresentation, NO_PRESENTATION_CANDIDATE, NO_PRESENTATION_CHUNK,
+  advancePresentationCandidate, advancePresentationChunk, advanceSelectedPresentation, NO_PRESENTATION_CANDIDATE, NO_PRESENTATION_CHUNK, presentationChunksUsageRecorded,
   type PresentationCandidate, type PresentationCandidateEvent, type PresentationChunk, type PresentationChunkIdentity, type PresentationSelection,
 } from '@ingest/video-presentation-state.js';
 import type { PresentationProbeAnswerParsed } from '@ingest/presentation-run-contract.js';
@@ -89,6 +89,8 @@ export interface PresentationView {
   usageFact?: VideoPresentationUsageFact;
   /** P is invalid(V) and V's publisher is current: `readmit` when it was admitted without readmitOf, else `presentation_invalid` (§3.5). */
   invalidPublisher?: 'readmit' | 'presentation_invalid';
+  /** A measured attempt of the current job is not yet recorded: its recovery waits for it as for usageFact (§7.1.1). */
+  attemptUsageOutstanding?: true;
 }
 
 /** The latest published version V a job may reuse (§7.1): ready, or invalid(V) during the automatic readmit. */
@@ -244,6 +246,7 @@ export function presentationSnapshot(view: Partial<PresentationView>, storageKey
     },
     readmit: view.invalidPublisher === 'readmit',
     ...(view.usageFact === undefined ? {} : { usageFact: view.usageFact }),
+    ...(view.attemptUsageOutstanding === true ? { attemptUsageOutstanding: true } : {}),
   };
 }
 
@@ -379,8 +382,10 @@ export class VideoPresentationStore {
     return this.gate(async () => {
       const state = await this.load();
       const found = state === undefined ? undefined : this.findRef(state, identity);
-      // The discovery read's readmit fact is not the worker's: the prepare answer carries the snapshot without it.
-      const { readmit: _readmit, ...snapshot } = presentationSnapshot(this.view(state), identity.storageKey, identity.sourceFingerprint);
+      // Past D the worker only settles attempts, so it is answered the ended candidate a read past D would leave.
+      if (state !== undefined && await this.expire(state, now)) await this.save(state);
+      // The discovery read's facts are not the worker's: it reads readmit and the outstanding attempts from the units.
+      const { readmit: _readmit, attemptUsageOutstanding: _outstanding, ...snapshot } = presentationSnapshot(this.view(state), identity.storageKey, identity.sourceFingerprint);
       const job = found?.job;
       const admission = job?.admission;
       const capability = job === undefined || now >= admission!.deadlineAt ? null : { token: job.token, deadlineAt: admission!.deadlineAt };
@@ -794,6 +799,35 @@ export class VideoPresentationStore {
   }
 
   /**
+   * Record one closed attempt's usage after its candidate ended (§7.1.1 attempt table): a late Done records the measured
+   * usage on a failed attempt that has none, then Rec marks it recorded. Named by the job id alone, as `abandon` is: past D
+   * the worker holds no capability. A pending attempt is refused; it has no usage yet.
+   * @param identity - The job reference.
+   * @param unit - The unit.
+   * @param attempt - The attempt number.
+   * @param usage - Its measured wall time in milliseconds.
+   * @returns Whether the attempt's usage is now recorded.
+   * @throws {Error} When durable storage fails.
+   */
+  recordChunkUsage(identity: PresentationJobRef, unit: PresentationChunkUnit, attempt: number, usage: number): Promise<boolean> {
+    return this.gate(async () => {
+      const state = await this.load();
+      const found = state === undefined ? undefined : this.findRef(state, identity);
+      const key = unitKey(identity.jobId, unit);
+      const chunk = found?.job.chunks[key];
+      const item = chunk?.attempts.find((entry) => entry.attempt === attempt);
+      if (found === undefined || chunk === undefined || item === undefined || item.state === 'pending') return false;
+      const chunkIdentity = { ...unit, jobId: identity.jobId };
+      const measured = item.usage === null ? advancePresentationChunk(chunk, { kind: 'Done', attempt, usage }, chunkIdentity).next : chunk;
+      const step = advancePresentationChunk(measured, { kind: 'Rec', attempt }, chunkIdentity);
+      if (step.rejected) return false;
+      found.job.chunks[key] = step.next;
+      await this.save(state!);
+      return true;
+    });
+  }
+
+  /**
    * Read the current facts, checking the stored descriptor against R2; an unfinished current job past D fails `expired`.
    * @param storageKey - Registered canonical key.
    * @param sourceFingerprint - Registered SHA-256.
@@ -805,11 +839,7 @@ export class VideoPresentationStore {
     return this.gate(async () => {
       const state = await this.load();
       if (state?.sourceFingerprint !== sourceFingerprint) return this.view(undefined);
-      // Only the worker's job advances a candidate, so one past D is over even when no job is left to say so (§7.1).
-      const current = state.current;
-      if (current !== null && now >= current.admission.deadlineAt) {
-        await this.candidateEvent(state, current, { kind: 'Er', jobId: current.admission.jobId, code: 'expired' });
-      }
+      await this.expire(state, now);
       if (state.selected.kind === 'ready') {
         const head = await this.bucket.head(videoPresentationKeyFor(storageKey));
         if (head === null || head.etag !== state.descriptorETag) {
@@ -875,6 +905,22 @@ export class VideoPresentationStore {
       }
     }
     if (step.effects.some((effect) => effect.kind === 'publish')) await this.commitPresentationVersion(state, job);
+  }
+
+  /**
+   * Fail an unfinished current candidate past D `expired`: only the worker's job advances a candidate, so one past D is over
+   * even when no job is left to say so (§7.1).
+   * @param state - The state.
+   * @param now - The current time.
+   * @returns Whether the candidate changed.
+   * @throws {Error} When publication fails.
+   */
+  private async expire(state: PresentationState, now: number): Promise<boolean> {
+    const current = state.current;
+    if (current === null || !(now >= current.admission.deadlineAt)) return false;
+    const before = current.candidate;
+    await this.candidateEvent(state, current, { kind: 'Er', jobId: current.admission.jobId, code: 'expired' });
+    return current.candidate !== before;
   }
 
   /**
@@ -1028,6 +1074,7 @@ export class VideoPresentationStore {
       chunks: Object.assign({}, ...jobs.map((job) => job.chunks)) as Record<string, PresentationChunk>,
       usage: state?.usage ?? {},
       ...(invalidPublisher === null ? {} : { invalidPublisher }),
+      ...(current === null || presentationChunksUsageRecorded(Object.values(current.chunks)) ? {} : { attemptUsageOutstanding: true as const }),
       // Usage is billed at the basic price: the presentation job's own container is basic (§5.1 step 2).
       ...(usage !== undefined && !usage.acknowledged && pricing !== undefined && actorUserId !== undefined ? {
         usageFact: { jobId: current!.admission.jobId, actorUserId, projectId: projectId ?? null, usage: { wallMs: usage.wallMs, cpuUsec: usage.cpuUsec }, pricing: pricing.basic },

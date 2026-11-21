@@ -225,7 +225,7 @@ beforeEach(() => {
     sent.push({ path, method, body });
     if (path === '/video-presentation') {
       if (body?.action === 'prepare') return Response.json(answer);
-      if (body?.action === 'advance_stage' || body?.action === 'report_chunk') return Response.json({ accepted: true });
+      if (body?.action === 'advance_stage' || body?.action === 'report_chunk' || body?.action === 'record_chunk_usage') return Response.json({ accepted: true });
       // The snapshot carries the DO's readmit fact (required since §93 D6).
       return Response.json({ sourceBinding: { storageKey: KEY, sourceFingerprint: H }, presentation: null, preparation: null, readmit: false });
     }
@@ -568,7 +568,7 @@ describe('attempt results, retries and usage (inner#1306 §7.1.1, §7.6, E2-7)',
       units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'failed', 'failed') } });
     reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'failed', { wallMs: 1000, cpuUsec: null }));
     await expect(advance()(data)).resolves.not.toThrow();
-    expect(actions('report_chunk').some((body) => (body.report as { kind: string }).kind === 'Rec')).toBe(true);
+    expect(actions('record_chunk_usage')).toEqual([expect.objectContaining({ unit: { kind: 'presentation-chunk', chunk: 0 }, attempt: 1, usage: 1000 })]);
   });
 
   it('AT06c an ended attempt whose report read starts 1 ms before the reporting window ends still records its usage', async () => {
@@ -592,7 +592,7 @@ describe('attempt results, retries and usage (inner#1306 §7.1.1, §7.6, E2-7)',
         return served(input, init);
       });
       await expect(advance()(data)).resolves.not.toThrow();
-      expect(actions('report_chunk').some((body) => (body.report as { kind: string }).kind === 'Rec')).toBe(true);
+      expect(actions('record_chunk_usage')).toEqual([expect.objectContaining({ attempt: 1, usage: 1000 })]);
     } finally {
       vi.useRealTimers();
     }
@@ -648,6 +648,60 @@ describe('the deadline bounds the job (inner#1306 §5.1 step 1, §5.4 预算, E2
       preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null } });
     await advance()(data).catch(() => undefined);
     expect(actions('fail')).toEqual([expect.objectContaining({ storageKey: KEY, sourceFingerprint: H, jobId: JOB, deadlineAt: D, code: 'expired' })]);
+    expect(submitted()).toEqual([]);
+  });
+});
+
+// frames-split §7.1.1 (Exp row; invariant: recovery waits until every measured attempt is recorded) and §7.6: once the candidate
+// failed, was archived or passed D, the job only reads its attempts' job reports, records each ended attempt's usage once and
+// sends it with the job id alone; a missing job is nothing to record and nothing is ever submitted.
+describe('an ended candidate settles its attempts read-only (inner#1306 §7.1.1 Exp, §7.6)', () => {
+  const open = (state = 'open', attemptState = 'pending'): Record<string, Unit> => ({
+    [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'done', 'done', 1, true),
+    [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), state, attemptState),
+  });
+  const past = (): Record<string, unknown> => prepareAnswer({ capability: null, plan: null, work: { kind: 'none' }, units: open('failed', 'failed'),
+    preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: 'expired' } });
+
+  it.each([
+    ['a failed candidate', { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: 'tool_failed' }],
+    ['an archived candidate', { targetPolicyVersion: 1, jobId: 'video-presentation-b', stage: 'plan', failure: null }],
+  ])('EN01 %s never submits a pending attempt: a job it cannot read is nothing to record', async (_name, preparation) => {
+    answer = prepareAnswer({ units: open(), preparation });
+    await expect(advance()(data)).resolves.not.toThrow();
+    expect(submitted()).toEqual([]);
+    expect(createUsageRecorder).not.toHaveBeenCalled();
+  });
+
+  it('EN02 past D an ended attempt\'s usage is recorded once at the frozen standard-4 price and sent with the job id alone', async () => {
+    answer = past();
+    const usage = { wallMs: 60_000, cpuUsec: 120_000_000 };
+    reports.set(subJob('chunk', 1, 1), finished(subJob('chunk', 1, 1), 'done', usage));
+    await expect(advance()(data)).resolves.not.toThrow();
+    expect(createUsageRecorder).toHaveBeenCalledTimes(1);
+    expect(createUsageRecorder).toHaveBeenCalledWith(expect.objectContaining({ operationKey: subJob('chunk', 1, 1), multiplier: 0, actorUserId: ACTOR }));
+    expect(recordServiceCall).toHaveBeenCalledWith(expect.objectContaining({ costUsd: containerCostUsd(usage, PRICING.standard4.size, PRICING.standard4.prices) }));
+    expect(actions('record_chunk_usage')).toEqual([{ action: 'record_chunk_usage', storageKey: KEY, sourceFingerprint: H, jobId: JOB,
+      unit: { kind: 'presentation-chunk', chunk: 1 }, attempt: 1, usage: usage.wallMs }]);
+    const sentUsage = vi.mocked(fetch).mock.calls.findIndex(([, init]) => typeof init?.body === 'string' && init.body.includes('"record_chunk_usage"'));
+    expect(settle.mock.invocationCallOrder[0]).toBeLessThan((vi.mocked(fetch).mock.invocationCallOrder[sentUsage])!);
+    expect(submitted()).toEqual([]);
+  });
+
+  it('EN03 past D an attempt whose container still runs keeps the job waiting', async () => {
+    answer = past();
+    reports.set(subJob('chunk', 1, 1), { schemaVersion: 2, state: 'running' });
+    await expect(advance()(data)).rejects.toBeInstanceOf(StillRunning);
+    expect(createUsageRecorder).not.toHaveBeenCalled();
+  });
+
+  it('EN04 at D the job fails `expired`, then settles the attempt in flight read-only', async () => {
+    D = Date.now() - 1;
+    answer = prepareAnswer({ units: open(), preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null } });
+    reports.set(subJob('chunk', 1, 1), finished(subJob('chunk', 1, 1), 'failed', { wallMs: 2000, cpuUsec: null }));
+    await expect(advance()(data)).resolves.not.toThrow();
+    expect(indexOf((call) => call.body?.action === 'fail')).toBeLessThan(indexOf((call) => call.body?.action === 'record_chunk_usage'));
+    expect(actions('record_chunk_usage')).toEqual([expect.objectContaining({ attempt: 1, usage: 2000 })]);
     expect(submitted()).toEqual([]);
   });
 });

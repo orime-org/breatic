@@ -90,7 +90,7 @@ function originalOf(row: StudioAssetEntity): VideoPresentation['original'] | nul
 
 /**
  * Queue the job ingest accepted while it still has work: a preparation in flight, or a finished one whose measured
- * usage is not yet recorded.
+ * usage, its own or a sub-job attempt's, is not yet recorded (§7.1.1).
  * @param row - The canonical registered winner, including dedup winners.
  * @param snapshot - Durable admission facts from its canonical-key owner.
  * @returns Nothing once queued.
@@ -98,7 +98,8 @@ function originalOf(row: StudioAssetEntity): VideoPresentation['original'] | nul
  */
 async function enqueue(row: StudioAssetEntity, snapshot: VideoPresentationIngestSnapshot): Promise<void> {
   const preparation = snapshot.preparation;
-  if (preparation === null || (preparation.failure !== null && snapshot.usageFact?.jobId !== preparation.jobId)) return;
+  const usageOutstanding = snapshot.usageFact?.jobId === preparation?.jobId || snapshot.attemptUsageOutstanding === true;
+  if (preparation === null || (preparation.failure !== null && !usageOutstanding)) return;
   queue ??= createQueue(VIDEO_PRESENTATION_QUEUE);
   const job: VideoPresentationJob = { assetId: row.id, sourceFingerprint: row.contentHash, jobId: preparation.jobId };
   await queue.add('prepare', job, { ...defaultJobOpts(), jobId: preparation.jobId });

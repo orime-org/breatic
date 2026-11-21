@@ -10,13 +10,15 @@
  * class under §5.4 ids, their output key from the shared key function; each attempt's measured usage is recorded once
  * as a platform expense keyed by its full job id, then marked with `report_chunk Rec`. The DO assembles and publishes
  * the bundle; the worker only forwards the job DO's measured output receipts and syncs the presentation pins from each answer. At D the job fails `expired`.
+ * Once the candidate failed, was archived or passed D, a pickup only reads its attempts' job reports and records the usage
+ * of each that ended (§7.1.1 Exp); it submits nothing more.
  */
 
 import { DelayedError, type Job, type Queue } from 'bullmq';
 import { defaultJobOpts, env, getMiniToolsConfig, logger } from '@breatic/core';
 import { assetRepo, containerCostUsd, createUsageRecorder, syncPresentationPins, type VideoPresentationJob } from '@breatic/domain';
 import {
-  prepareVideoPresentationAtIngest, readMiniToolPlanJob, stepVideoPresentationAtIngest, untilDeadline, videoPresentationAtIngest,
+  prepareVideoPresentationAtIngest, readMiniToolPlanJob, readMiniToolPlanJobById, stepVideoPresentationAtIngest, untilDeadline, videoPresentationAtIngest,
   videoPresentationWorkKeyFor, type MiniToolPlanJobReport, type MiniToolPlanJobRequest, type VideoPresentationChunkReport,
   type VideoPresentationChunkUnit, type VideoPresentationPrepareAnswer, type VideoPresentationPricing,
 } from '@breatic/shared';
@@ -156,7 +158,7 @@ function doneOutput(pickup: Pickup, unit: VideoPresentationChunkUnit): string | 
 
 /**
  * Record one measured container usage as a platform expense (multiplier 0) under its operation key.
- * @param pickup - The pickup.
+ * @param frozen - The job's frozen attribution.
  * @param operationKey - The full job id, or `video-presentation:<jobId>` for the basic execution.
  * @param usage - The measured usage.
  * @param usage.wallMs - Wall time in milliseconds.
@@ -165,8 +167,8 @@ function doneOutput(pickup: Pickup, unit: VideoPresentationChunkUnit): string | 
  * @returns Nothing once settled.
  * @throws {Error} When persistence fails.
  */
-async function recordUsage(pickup: Pickup, operationKey: string, usage: { wallMs: number; cpuUsec: number | null }, pricing: VideoPresentationPricing): Promise<void> {
-  const recorder = createUsageRecorder({ operationKey, feature: 'mini_tool', actorUserId: pickup.frozen.actorUserId, projectId: pickup.frozen.projectId,
+async function recordUsage(frozen: Pickup['frozen'], operationKey: string, usage: { wallMs: number; cpuUsec: number | null }, pricing: VideoPresentationPricing): Promise<void> {
+  const recorder = createUsageRecorder({ operationKey, feature: 'mini_tool', actorUserId: frozen.actorUserId, projectId: frozen.projectId,
     multiplier: 0, onMissingCost: () => { throw new Error('Presentation expense requires actual measured usage'); } });
   recorder.recordServiceCall({ source: 'container', service: 'video-presentation', provider: 'cloudflare', requests: 1,
     costUsd: containerCostUsd(usage, pricing.size, pricing.prices), costSource: 'computed' });
@@ -255,8 +257,38 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
     // started or vanished unmeasured; there is nothing to record and nothing to wait for.
     if (usage === undefined) { again = true; continue; }
     if (usage === null) continue;
-    await recordUsage(pickup, attempt.jobId, usage, pickup.frozen.pricing.standard4);
+    await recordUsage(pickup.frozen, attempt.jobId, usage, pickup.frozen.pricing.standard4);
     await reportUnit(pickup, unit, { kind: 'Rec', attempt: attempt.attempt });
+  }
+  return again;
+}
+
+/**
+ * Settle an ended candidate's attempts read-only (§7.1.1 Exp, §7.6): each attempt not yet recorded is read from its job
+ * report alone, never submitted; one that ended with measured usage is recorded once and sent with the job id, as past D
+ * there is no capability. A job the class does not hold never ran and has nothing to record.
+ * @param identity - The presentation job.
+ * @param frozen - Its frozen attribution and prices.
+ * @param units - The DO's units.
+ * @returns Whether an attempt is still running and the job must come back for it.
+ * @throws {Error} When ingest, the job report or usage persistence fails.
+ */
+async function settleEnded(identity: Pickup['identity'], frozen: Pickup['frozen'], units: VideoPresentationPrepareAnswer['units']): Promise<boolean> {
+  let again = false;
+  for (const [key, state] of Object.entries(units)) {
+    const unit = unitOf(identity.jobId, key);
+    if (unit === null) continue;
+    for (const attempt of state.attempts) {
+      if (attempt.usageRecorded) continue;
+      const report = await readMiniToolPlanJobById(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, frozen.pricing.standard4.containerClass, attempt.jobId);
+      if (report === null) continue;
+      if (report.state === 'starting' || report.state === 'running') { again = true; continue; }
+      if (report.usage === null) continue;
+      await recordUsage(frozen, attempt.jobId, report.usage, frozen.pricing.standard4);
+      await stepVideoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, {
+        action: 'record_chunk_usage', ...identity, unit, attempt: attempt.attempt, usage: report.usage.wallMs,
+      });
+    }
   }
   return again;
 }
@@ -328,18 +360,33 @@ export async function advanceVideoPresentation(data: VideoPresentationJob): Prom
   const answer = await prepareVideoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'prepare', ...identity });
   // Candidate and selected pins follow what the DO answered, before anything this pickup sends (§7.15 single writer).
   await syncPresentationPins(data.jobId, answer);
-  if (answer.capability === null || answer.frozen === null) return;
+  if (answer.frozen === null) return;
+  const frozen = answer.frozen;
+  /**
+   * The wait that moves the job back to the delayed queue for one poll interval.
+   * @returns It.
+   * @throws {never} Never.
+   */
+  const resume = (): StillRunning => new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
+  if (answer.capability === null) {
+    if (await settleEnded(identity, frozen, answer.units)) throw resume();
+    return;
+  }
   const capability = { ...identity, deadlineAt: answer.capability.deadlineAt, token: answer.capability.token };
-  const pickup: Pickup = { identity, capability, answer, frozen: answer.frozen };
+  const pickup: Pickup = { identity, capability, answer, frozen };
   const fact = answer.usageFact;
   if (fact !== undefined && fact.jobId === data.jobId) {
-    await recordUsage(pickup, `video-presentation:${data.jobId}`, fact.usage, fact.pricing);
+    await recordUsage(frozen, `video-presentation:${data.jobId}`, fact.usage, fact.pricing);
     await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'ack_usage', ...identity, deadlineAt: capability.deadlineAt });
   }
   const current = answer.preparation?.jobId === data.jobId;
-  const failed = !current || answer.preparation?.failure !== null;
-  if (!failed && Date.now() >= capability.deadlineAt) {
+  let ended = !current || answer.preparation?.failure !== null;
+  if (!ended && Date.now() >= capability.deadlineAt) {
     await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'fail', ...identity, deadlineAt: capability.deadlineAt, code: 'expired' });
+    ended = true;
+  }
+  if (ended) {
+    if (await settleEnded(identity, frozen, answer.units)) throw resume();
     return;
   }
   let again = false;
@@ -347,8 +394,8 @@ export async function advanceVideoPresentation(data: VideoPresentationJob): Prom
     const unit = unitOf(data.jobId, key);
     if (unit !== null && await settleUnit(pickup, unit, state)) again = true;
   }
-  if (!again && !failed) again = await nextStep(pickup);
-  if (again) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
+  if (!again) again = await nextStep(pickup);
+  if (again) throw resume();
 }
 
 /**

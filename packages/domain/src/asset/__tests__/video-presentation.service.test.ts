@@ -429,6 +429,12 @@ describe('queueing and recovery after admission (inner#1306 §5.1 step 1, §7.1.
     await resolveVideoPresentation(input);
     expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'failed-job' }), expect.objectContaining({ jobId: 'failed-job' }));
   });
+
+  it('Q02 a failed preparation with a sub-job attempt\'s measured usage not yet recorded is queued for recovery', async () => {
+    ingest(snapshot({ preparation: prep('failed-job', 'encode', 'expired'), attemptUsageOutstanding: true }));
+    await resolveVideoPresentation(input);
+    expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'failed-job' }), expect.objectContaining({ jobId: 'failed-job' }));
+  });
 });
 
 // §93 D6 (frames-split design §3.5 web→server and server/worker→ingest rows, §7.2 invalid×New): a discovery read admits on its

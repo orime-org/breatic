@@ -4,7 +4,7 @@
 import type { UntilDeadline } from "@shared/http/deadline.js";
 import { askWorker, UploadHttpError } from "@shared/upload/ingest-client.js";
 import {
-  miniToolPlanJobRequestSchema, readMiniToolPlanJobReport,
+  miniToolPlanJobReportSchema, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport,
   type MiniToolPlanJobReport, type MiniToolPlanJobRequest,
 } from "@shared/upload/mini-tool-plan-job.js";
 
@@ -48,6 +48,30 @@ export async function readMiniToolPlanJob(
       method: "GET", headers: { "x-ingest-secret": secret },
     }, { replaySafe: true, ...(bound !== undefined && { bound }) });
     return readMiniToolPlanJobReport(request, answer);
+  } catch (error) {
+    if (error instanceof UploadHttpError && error.status === 404) return null;
+    throw error;
+  }
+}
+
+/**
+ * Read an existing plan job's report by its class and id alone, when the request that declared its outputs is no longer at
+ * hand (a presentation candidate past its deadline answers no plan): the report's shape is checked, its outputs are not
+ * matched to a request, so a caller takes only its state and measured usage from it.
+ * @param baseUrl - The ingest Worker's configured address.
+ * @param secret - The internal credential shared with that Worker.
+ * @param containerClass - The class the job was submitted to.
+ * @param jobId - The job's id.
+ * @returns The report, or null only when this class has no such job.
+ * @throws {UploadHttpError} When the Worker refuses for any reason other than HTTP404.
+ * @throws {Error} When the response or transport is invalid.
+ */
+export async function readMiniToolPlanJobById(baseUrl: string, secret: string, containerClass: string, jobId: string): Promise<MiniToolPlanJobReport | null> {
+  try {
+    const answer = await askWorker<unknown>(`${baseUrl}/jobs/${encodeURIComponent(containerClass)}/${encodeURIComponent(jobId)}`, {
+      method: "GET", headers: { "x-ingest-secret": secret },
+    }, { replaySafe: true });
+    return miniToolPlanJobReportSchema.parse(answer);
   } catch (error) {
     if (error instanceof UploadHttpError && error.status === 404) return null;
     throw error;

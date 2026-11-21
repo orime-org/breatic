@@ -175,6 +175,19 @@ export class MediaContainer extends Container<MediaEnv> {
   abandonPresentation(identity: PresentationJobRef): Promise<PresentationView> { return this.presentationStore().abandon(identity); }
 
   /**
+   * Record one closed attempt's late usage after its candidate ended.
+   * @param identity - The job reference.
+   * @param unit - The unit.
+   * @param attempt - The attempt number.
+   * @param usage - Its measured wall time in milliseconds.
+   * @returns Whether it is recorded.
+   * @throws {Error} When storage fails.
+   */
+  recordPresentationChunkUsage(identity: PresentationJobRef, unit: PresentationChunkUnit, attempt: number, usage: number): Promise<boolean> {
+    return this.presentationStore().recordChunkUsage(identity, unit, attempt, usage);
+  }
+
+  /**
    * Acknowledge one already-recorded platform usage fact.
    * @param identity - Its original source and job identity.
    * @returns The store view.

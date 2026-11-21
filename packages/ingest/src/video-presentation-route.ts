@@ -56,6 +56,10 @@ export async function videoPresentationRoute(request: Request, env: VideoPresent
         const { action: _action, ...ref } = body;
         return answer(await instance.abandonPresentation(ref));
       }
+      case 'record_chunk_usage': {
+        const { action: _action, unit, attempt, usage, ...ref } = body;
+        return Response.json({ accepted: await instance.recordPresentationChunkUsage(ref, unit, attempt, usage) });
+      }
       case 'ack_usage': {
         const { action: _action, ...identity } = body;
         return answer(await instance.acknowledgePresentationUsage(identity));

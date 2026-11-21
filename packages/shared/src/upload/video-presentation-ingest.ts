@@ -58,6 +58,8 @@ export interface VideoPresentationIngestSnapshot {
   /** The DO's fact that a discovery read may readmit once: P is invalid(V) and V's publisher, admitted without readmitOf, is current. */
   readmit: boolean;
   usageFact?: VideoPresentationUsageFact;
+  /** A measured sub-job attempt of the preparation is not yet recorded; recovery keeps its job queued (§7.1.1). */
+  attemptUsageOutstanding?: true;
 }
 const usage = z.strictObject({ wallMs: z.number().finite().nonnegative(), cpuUsec: z.number().finite().nonnegative().nullable() });
 export const videoPresentationPricingSchema: z.ZodType<VideoPresentationPricing> = z.strictObject({
@@ -97,6 +99,7 @@ export const videoPresentationIngestSnapshotSchema: z.ZodType<VideoPresentationI
   preparation: videoPresentationIngestPreparationSchema.nullable(),
   readmit: z.boolean(),
   usageFact: z.strictObject({ jobId: z.string().min(1), actorUserId: z.uuid(), projectId: z.uuid().nullable(), usage, pricing: videoPresentationPricingSchema }).optional(),
+  attemptUsageOutstanding: z.literal(true).optional(),
 }).superRefine((value, ctx) => checkSelectedVideoPresentation(value, value.sourceBinding.sourceFingerprint, ctx));
 
 const storageKey = z.string().min(1).max(500);
@@ -175,6 +178,9 @@ export const videoPresentationIngestRequestSchema = z.discriminatedUnion('action
   // The worker's job gave up for good (§7.1 failure sources): it knows only the job id, and the DO picks the code.
   z.strictObject({ action: z.literal('abandon'), ...identity }),
   z.strictObject({ action: z.literal('ack_usage'), ...identity, deadlineAt }),
+  // A closed attempt's late usage once its candidate ended (§7.1.1 attempt table): named by the job id alone, as past D the
+  // worker holds no capability.
+  z.strictObject({ action: z.literal('record_chunk_usage'), ...identity, unit: videoPresentationChunkUnitSchema, attempt: attemptNumber, usage: z.number().nonnegative().finite() }),
 ]);
 /** A parsed internal request. */
 export type VideoPresentationIngestRequest = z.infer<typeof videoPresentationIngestRequestSchema>;
@@ -301,7 +307,7 @@ export async function prepareVideoPresentationAtIngest(baseURL: string, secret: 
  * @returns Whether the DO accepted it.
  * @throws {Error} When ingest refuses or answers malformed.
  */
-export async function stepVideoPresentationAtIngest(baseURL: string, secret: string, request: Extract<VideoPresentationIngestRequest, { action: 'advance_stage' | 'report_chunk' }>): Promise<boolean> {
+export async function stepVideoPresentationAtIngest(baseURL: string, secret: string, request: Extract<VideoPresentationIngestRequest, { action: 'advance_stage' | 'report_chunk' | 'record_chunk_usage' }>): Promise<boolean> {
   return z.strictObject({ accepted: z.boolean() }).parse(await askPresentation(baseURL, secret, request)).accepted;
 }
 
@@ -316,7 +322,7 @@ export async function stepVideoPresentationAtIngest(baseURL: string, secret: str
 export async function videoPresentationAtIngest(
   baseURL: string,
   secret: string,
-  request: Exclude<VideoPresentationIngestRequest, { action: 'prepare' | 'advance_stage' | 'report_chunk' }>,
+  request: Exclude<VideoPresentationIngestRequest, { action: 'prepare' | 'advance_stage' | 'report_chunk' | 'record_chunk_usage' }>,
 ): Promise<VideoPresentationIngestSnapshot> {
   return readVideoPresentationIngestSnapshot(await askPresentation(baseURL, secret, request));
 }

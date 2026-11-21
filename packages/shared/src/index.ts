@@ -1085,7 +1085,7 @@ export {
   type MiniToolPlanJobReport,
   type MiniToolPlanAccess,
 } from "@shared/upload/mini-tool-plan-job.js";
-export { submitMiniToolPlanJob, readMiniToolPlanJob } from "@shared/upload/mini-tool-plan-client.js";
+export { submitMiniToolPlanJob, readMiniToolPlanJob, readMiniToolPlanJobById } from "@shared/upload/mini-tool-plan-client.js";
 export { containerUsageSchema, type ContainerUsage } from "@shared/upload/container-usage.js";
 // The encoding those credentials use, exported for the session token the
 // Worker signs with the same secret. `btoa` refuses anything outside latin1,

@@ -117,3 +117,28 @@ describe("planned job transport over the actual shared ingest client", () => {
     expect(send).toHaveBeenCalledOnce();
   });
 });
+
+// frames-split §7.1.1 Exp and §7.6: past D a presentation job holds no plan, yet each ended attempt's usage is still read.
+describe("a planned job read by its class and id alone", () => {
+  type ById = (baseUrl: string, secret: string, containerClass: string, jobId: string) => Promise<MiniToolPlanJobReport | null>;
+  const byId = (): ById => {
+    const entry: unknown = Reflect.get(shared, "readMiniToolPlanJobById");
+    expect(entry, "shared exports readMiniToolPlanJobById").toBeTypeOf("function");
+    return entry as ById;
+  };
+
+  it("reads the escaped identity and answers the report's state and usage without a request to match outputs to", async () => {
+    send.mockResolvedValue(Response.json(done));
+    expect(await byId()(baseUrl, "test-secret", "MediaContainer", "task:T/chunk:1")).toMatchObject({ state: "done", usage });
+    expect(send).toHaveBeenCalledExactlyOnceWith(`${baseUrl}/jobs/MediaContainer/task%3AT%2Fchunk%3A1`, {
+      method: "GET", headers: { "x-ingest-secret": "test-secret" },
+    }, { replaySafe: true });
+  });
+
+  it("answers null for a job the class does not hold and refuses a malformed report", async () => {
+    send.mockResolvedValueOnce(new Response(null, { status: 404 }));
+    expect(await byId()(baseUrl, "test-secret", "MediaContainer", "job")).toBeNull();
+    send.mockResolvedValueOnce(Response.json({ ...done, schemaVersion: 3 }));
+    await expect(byId()(baseUrl, "test-secret", "MediaContainer", "job")).rejects.toThrow();
+  });
+});

@@ -157,6 +157,16 @@ describe('staged presentation actions at the ingest boundary (inner#1306 §90 E2
     expect(abandonPresentation).not.toHaveBeenCalled();
   });
 
+  it('RA08 record_chunk_usage calls recordPresentationChunkUsage with the job identity alone, and refuses a token (§7.1.1 attempt table)', async () => {
+    const recordPresentationChunkUsage = vi.fn(async () => true);
+    const unit = { kind: 'presentation-chunk', chunk: 1 };
+    const response = await route({ action: 'record_chunk_usage', ...identity, unit, attempt: 2, usage: 700 }, { recordPresentationChunkUsage });
+    expect(response.status).toBe(200);
+    expect(recordPresentationChunkUsage).toHaveBeenCalledWith(identity, unit, 2, 700);
+    expect(await response.json()).toEqual({ accepted: true });
+    expect((await route({ action: 'record_chunk_usage', ...capability, unit, attempt: 2, usage: 700 }, { recordPresentationChunkUsage })).status).toBe(400);
+  });
+
   it.each([
     ['run', { action: 'run', ...identity, deadlineAt: accept.deadlineAt }],
     ['expire', { action: 'expire', ...identity, deadlineAt: accept.deadlineAt }],
