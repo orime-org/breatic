@@ -8,10 +8,13 @@
  * nothing and says why.
  */
 
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import * as Y from "yjs";
 import { SCENE_FORMAT_VERSION, SCENE_LOOK_MAX_PARTS, type SceneLookPictureEvent } from "@breatic/shared";
 import { applySceneLookPicture } from "@collab/services/scene-look-picture.js";
+
+const logs = vi.hoisted(() => ({ warn: vi.fn(), info: vi.fn(), error: vi.fn() }));
+vi.mock("@breatic/core", () => ({ createLogger: () => logs }));
 
 const OBJECT = "0b8c7f1a-3e2d-4a5b-8c9d-0e1f2a3b4c5d";
 const START = "4b7f3c1e-2d0a-4c6b-9f1e-8a5b2c3d4e5f";
@@ -83,8 +86,10 @@ describe("applySceneLookPicture", () => {
     expect(applySceneLookPicture(locked, EVENT)).toBe("objectGone");
     expect(mapOf(locked)).toBeUndefined();
 
+    expect(logs.warn).not.toHaveBeenCalled();
     const broken = scene({ look: { "3": { map: START } } });
     expect(applySceneLookPicture(broken, EVENT)).toBe("objectGone");
+    expect(logs.warn).toHaveBeenCalledWith(expect.objectContaining({ objectId: OBJECT }), "scene_look_object_unreadable");
   });
 
   it("writes nothing into a document that is not a ready scene", () => {

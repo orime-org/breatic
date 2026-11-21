@@ -3,17 +3,24 @@
 
 /**
  * Task lifecycle events, from the cross-service stream into the Space
- * documents they belong to (#186, inner#1497 §6.1, #1568).
+ * documents they belong to (#186, inner#1497 §6.1, #1568, inner#1693).
  *
  * Data path:
  *   server / worker → Redis stream → consumer group (one round per document) →
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
- *   (canvas) or applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES)
+ *   (canvas), applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES) or
+ *   applySceneLookPicture (a 3D object's part picture)
  *
- * A change version is written only into a live Space document.
+ * A change version and a part picture are written only into a live Space
+ * document.
  *
- * Collab executes; it does not judge. Which task moved, what the counts now
- * are, whether a result rides along — the server decided all of it.
+ * For node counts and change versions collab executes and does not judge:
+ * which task moved, what the counts now are, whether a result rides along —
+ * the server decided all of it. For a stored part picture collab judges with
+ * `judgeSceneLookPicture`, the rule the editor shares, whether the picture
+ * still goes on its part; once per upload it tells the uploader how it
+ * settled, through `settleSceneLook`, and marks the upload applied so a
+ * redelivered event neither writes nor tells again.
  *
  * Several collab instances read the stream as one consumer group, so each
  * event is held by one of them at a time; an event not acknowledged goes to
@@ -25,9 +32,10 @@
  * version each node carries, and for other Space types the version their
  * document holds.
  *
- * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts and the
+ * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts, the
  * content document of a Space type in `SPACE_TASKS_TYPES` for change
- * versions, one doc per Space. Any other doc name is skipped.
+ * versions and `project-{pid}/3d-{spaceId}` for part pictures, one doc per
+ * Space. Any other doc name is skipped.
  */
 
 import { setTimeout as delay } from "node:timers/promises";
@@ -130,8 +138,8 @@ function outcomeForAll(batch: DocBatch, outcome: EntryOutcome): Map<string, Entr
 /**
  * Coordination keys of one document.
  * @param keyPrefix - `REDIS_KEY_PREFIX`.
- * @param docName - The canvas document.
- * @returns Lease, waiter, hand-over and counts-version keys.
+ * @param docName - The Space document.
+ * @returns Lease, waiter, hand-over, counts-version and applied part picture keys.
  */
 function docKeys(
   keyPrefix: string,
@@ -177,8 +185,8 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
 }
 
 /**
- * Read one entry as a task event: a node's counts for a canvas document, or a change version for a document of a
- * Space type listed in `SPACE_TASKS_TYPES`.
+ * Read one entry as a task event: a node's counts for a canvas document, a change version for a document of a Space
+ * type listed in `SPACE_TASKS_TYPES`, or a stored part picture for a 3D document.
  * @param entry - The stream entry.
  * @returns The event, or why it is skipped.
  */
@@ -390,6 +398,8 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     for (const { event, outcome } of settled) {
       const parsed = parseDocName(event.docName);
       if (parsed === null || parsed.kind !== "3d") continue;
+      logger.info({ docName: event.docName, objectId: event.objectId, part: event.part, uploadKey: event.uploadKey, outcome },
+        "scene_look_picture_settled");
       try {
         await deps.settleSceneLook({
           projectId: parsed.projectId, spaceId: parsed.spaceId, objectId: event.objectId, part: event.part,

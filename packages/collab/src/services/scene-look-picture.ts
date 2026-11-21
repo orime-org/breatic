@@ -16,6 +16,9 @@ import {
   SCENE_FORMAT_VERSION, SCENE_LOOK_KEY_PREFIX, getSceneRootMap, judgeSceneLookPicture, readSceneRecord,
   type SceneLookPictureEvent, type SceneLookPictureOutcome, type SceneObject,
 } from "@breatic/shared";
+import { createLogger } from "@breatic/core";
+
+const logger = createLogger("scene-look-picture");
 
 /**
  * The object as the editor would read it, or undefined when the scene holds no readable one.
@@ -28,7 +31,8 @@ function readObject(records: Y.Map<unknown>, id: string): SceneObject | undefine
   if (!(value instanceof Y.Map)) return undefined;
   try {
     return readSceneRecord(id, Object.fromEntries(value.entries()));
-  } catch {
+  } catch (err) {
+    logger.warn({ err, objectId: id }, "scene_look_object_unreadable");
     return undefined;
   }
 }
@@ -44,7 +48,8 @@ export function applySceneLookPicture(doc: Y.Doc, event: SceneLookPictureEvent):
   try {
     if (getSceneRootMap(doc, "scene").get("formatVersion") !== SCENE_FORMAT_VERSION) return "objectGone";
     records = getSceneRootMap(doc, "objects");
-  } catch {
+  } catch (err) {
+    logger.warn({ err, docName: event.docName }, "scene_look_scene_unreadable");
     return "objectGone";
   }
   const outcome = judgeSceneLookPicture({
