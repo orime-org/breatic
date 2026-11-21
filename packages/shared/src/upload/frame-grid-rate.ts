@@ -204,7 +204,7 @@ function gapsOf(ticks: readonly number[]): number[] {
  * @returns The snapped rate, or null when none is close enough.
  * @throws {never} Pure arithmetic.
  */
-export function snapFrameRate(rate: number): FrameRate | null {
+function snapFrameRate(rate: number): FrameRate | null {
   for (const [value, exact] of SPECIAL_RATES) if (Math.abs(value / rate - 1) <= 0.0005) return exact;
   return closestCommonRate(rate);
 }
@@ -235,7 +235,7 @@ function closestCommonRate(rate: number): FrameRate | null {
  * @returns Frames per second.
  * @throws {never} Pure arithmetic.
  */
-export function medianFrameRate(ticks: readonly number[], ticksPerSecond: number): number {
+function medianFrameRate(ticks: readonly number[], ticksPerSecond: number): number {
   const gaps = gapsOf(ticks).sort((a, b) => a - b);
   const n = gaps.length;
   return (ticksPerSecond / gaps[(n - 1) >> 1]! + ticksPerSecond / gaps[n >> 1]!) / 2;
@@ -249,7 +249,7 @@ export function medianFrameRate(ticks: readonly number[], ticksPerSecond: number
  * @returns Counted gaps ÷ their total seconds, or null when no gap counts.
  * @throws {never} Pure arithmetic.
  */
-export function trimmedMeanFrameRate(ticks: readonly number[], ticksPerSecond: number): number | null {
+function trimmedMeanFrameRate(ticks: readonly number[], ticksPerSecond: number): number | null {
   let previous = ticks[0]!;
   let total = 0;
   let count = 0;

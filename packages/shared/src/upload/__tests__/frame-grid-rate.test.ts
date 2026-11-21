@@ -9,9 +9,6 @@ import fc from "fast-check";
 import {
   chooseFrameGridRate,
   isVariableFrameRate,
-  medianFrameRate,
-  snapFrameRate,
-  trimmedMeanFrameRate,
   type FrameGridRate,
   type FrameGridRateInput,
   type FrameRate,
@@ -29,6 +26,16 @@ interface PacketSample {
 }
 
 const MAX_FPS = 120;
+
+/**
+ * The packet scan of a stream with no average rate and no `r_frame_rate`, timed in microseconds.
+ * @param gaps - Adjacent packet gaps in microseconds, in packet order.
+ * @returns The rate rule's result.
+ */
+function scanOf(gaps: readonly number[]): FrameGridRate {
+  const ticks = gaps.reduce<number[]>((times, gap) => [...times, times[times.length - 1]! + gap], [0]);
+  return chooseFrameGridRate({ rFrameRate: null, avgFrameRate: null, ticksPerSecond: { numerator: 1_000_000, denominator: 1 }, ticks, maxFps: MAX_FPS });
+}
 
 /** Parses an ffprobe-style rational ("30000/1001" or "30") into a reduced frame rate. */
 function rational(text: string): FrameRate {
@@ -134,8 +141,9 @@ describe("frame-grid rate rule (frame-grid design §4.1)", () => {
   });
 
   it("G08: the median of an even number of gaps averages the rates of the middle two", () => {
-    // Gaps 1, 2, 3, 4 ticks at 1000 ticks/s: middle gaps 2 and 3 give 500 and 333.33 fps.
-    expect(medianFrameRate([0, 1, 3, 6, 10], 1000)).toBeCloseTo((500 + 1000 / 3) / 2, 9);
+    // Middle gaps 30 ms and 40 ms give 33.33 and 25 fps, averaging 29.17, which snaps to nothing; the trimmed mean of
+    // 26.67 snaps to nothing either, so the median is rounded to 29.
+    expect(scanOf([20_000, 30_000, 40_000, 60_000])).toEqual({ fps: { numerator: 29, denominator: 1 }, step: "rounded", scanReason: "avgInvalid" });
   });
 
   it("G09: the trimmed mean is taken when it snaps higher than the median", () => {
@@ -145,8 +153,11 @@ describe("frame-grid rate rule (frame-grid design §4.1)", () => {
   });
 
   it("G09: the trimmed mean skips gaps under 1/240 s and leaves out gaps over 0.1 s", () => {
-    // 2 ms folds into the next gap, 234 ms is left out: three 33 ms gaps remain.
-    expect(trimmedMeanFrameRate([0, 2, 33, 66, 300, 333], 1000)).toBeCloseTo(3 / 0.099, 9);
+    // The 2 ms gap folds into the next one and the five 150 ms gaps are left out: four gaps of about 16.66 ms give 60.
+    // Counting the 2 ms gap gives 75 and counting the idle gaps gives 11, neither of which snaps, and the median of
+    // 33.27 fps does not snap either, so only the trimmed-mean rules give 60.
+    expect(scanOf([2_000, 14_600, 16_700, 16_650, 16_690, 150_000, 150_000, 150_000, 150_000, 150_000]))
+      .toEqual({ fps: { numerator: 60, denominator: 1 }, step: "trimmedMean", scanReason: "avgInvalid" });
   });
 
   it("G10: a trimmed mean that snaps lower keeps the median on the stalled recordings", () => {
@@ -161,10 +172,23 @@ describe("frame-grid rate rule (frame-grid design §4.1)", () => {
   });
 
   it("G12: rates snap to common rates", () => {
-    expect(snapFrameRate(24)).toEqual({ numerator: 24, denominator: 1 });
-    expect(snapFrameRate(29.98992)).toEqual({ numerator: 30, denominator: 1 });
-    expect(snapFrameRate(29.96726)).toEqual({ numerator: 30000, denominator: 1001 });
-    expect(snapFrameRate(26.5)).toBeNull();
+    // The middle gap sets the median; the other gaps keep the trimmed mean near 27 fps, which snaps to nothing.
+    /**
+     * The scan result for a median gap of `gap` microseconds.
+     * @param gap - The middle gap.
+     * @returns The rate and step.
+     */
+    const median = (gap: number): Pick<FrameGridRate, "fps" | "step"> => {
+      const { fps, step } = scanOf([20_000, 25_000, gap, 50_000, 56_815]);
+      return { fps, step };
+    };
+    expect(median(41_667)).toEqual({ fps: { numerator: 24, denominator: 1 }, step: "medianSnapped" });
+    // 29.9895 fps is 0.065% from 30000/1001 and 0.035% from 30.
+    expect(median(33_345)).toEqual({ fps: { numerator: 30, denominator: 1 }, step: "medianSnapped" });
+    // 29.967 fps is within 0.05% of 30000/1001.
+    expect(median(33_370)).toEqual({ fps: { numerator: 30000, denominator: 1001 }, step: "medianSnapped" });
+    // 26.5 fps is more than 2.5% from 25 and 30, so it is rounded.
+    expect(median(37_736)).toEqual({ fps: { numerator: 26, denominator: 1 }, step: "rounded" });
   });
 
   it("G13: fewer than two distinct timestamps give 25", () => {

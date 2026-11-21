@@ -864,7 +864,7 @@ export {
 } from "@shared/upload/upload-status.js";
 export { uprightKeyFor, type UprightCopy } from "@shared/upload/upright.js";
 export {
-  chooseFrameGridRate, isVariableFrameRate, medianFrameRate, needsEditFile, snapFrameRate, sourceDecodeKey, trimmedMeanFrameRate,
+  chooseFrameGridRate, isVariableFrameRate, needsEditFile, sourceDecodeKey,
   SOURCE_DECODE_KEYS,
   type DecodeKeySource, type EditFileFacts, type FrameGridRate, type FrameGridRateInput, type FrameGridRateStep,
   type FrameGridScanReason, type FrameRate, type SourceDecodeKey, type VariableFrameRateFacts,
