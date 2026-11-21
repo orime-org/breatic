@@ -4,6 +4,7 @@
 /**
  * Generation models tool — which models back one mode of one node, and how.
  */
+import { ACCOUNT_LLM_UPSTREAM } from "@breatic/provider";
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
@@ -29,7 +30,8 @@ import {
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
-import { resolveKeys, runDescribesInput } from "@domain/provider/provider-keys.js";
+import { payerKeyPlan, runDescribesInput } from "@domain/provider/provider-keys.js";
+import type { StudioKeyPlan } from "@domain/provider/account-keys.service.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import { proposalModelEntry } from "@domain/agent/tools/proposal-dialogue.js";
 import { gateWords, nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
@@ -66,15 +68,14 @@ export const studioToolContextSchema: z.ZodType<StudioToolContext> = z.object({ 
 /**
  * Whether a model runs on the Studio payer's own key (inner#1953), and if so whether describing its inputs takes
  * credits because the language model runs on ours.
- * @param studioId - The studio the turn runs in; our keys when absent.
+ * @param plan - The payer's plan (`payerKeyPlan`), read once per tool call; null on our keys.
  * @param model - The model.
  * @param params - The params a run sends.
  * @returns Undefined on our keys, else whether describing takes credits.
  */
-export async function payerKeyRun(studioId: string | undefined, model: string, params: Readonly<Record<string, unknown>>): Promise<{ describedOnCredits: boolean } | undefined> {
-  if (studioId === undefined) return undefined;
-  if ((await resolveKeys({ studioId }, { kind: "media", model })).keyId === null) return undefined;
-  return { describedOnCredits: runDescribesInput(model, params) && (await resolveKeys({ studioId }, { kind: "llm" })).keyId === null };
+export function payerKeyRun(plan: StudioKeyPlan | null, model: string, params: Readonly<Record<string, unknown>>): { describedOnCredits: boolean } | undefined {
+  if (plan === null || !Object.hasOwn(plan.models, model)) return undefined;
+  return { describedOnCredits: runDescribesInput(model, params) && !plan.upstreams.includes(ACCOUNT_LLM_UPSTREAM) };
 }
 
 /**
@@ -464,10 +465,11 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     }
     const answer = nodeType === undefined ? sceneModelsForMode(mode) : modelsForMode(nodeType, mode);
     if (!answer.available) return answer;
+    const plan = await payerKeyPlan(context?.studioId);
     const models = await Promise.all(
       answer.models.map(async (model): Promise<PricedModelInfo> => {
         const taken = params === undefined || nodeType === undefined ? undefined : takenParams(model, nodeType, mode, params);
-        const payer = await payerKeyRun(context?.studioId, model.name, taken?.kept ?? {});
+        const payer = payerKeyRun(plan, model.name, taken?.kept ?? {});
         if (payer === undefined) return priceModel(model, await lowestValues(model), taken);
         // Runnable on the payer's key wherever the deployment holds none of its keys.
         const { missingKeys: _deploymentKeys, ...runnable } = model;

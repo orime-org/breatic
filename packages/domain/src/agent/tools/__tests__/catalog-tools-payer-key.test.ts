@@ -15,12 +15,12 @@ import { setLocale } from "@breatic/shared";
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 import type * as Catalog from "@domain/model-catalog/model-catalog.js";
 import type * as Keys from "@domain/provider/provider-keys.js";
+import { payerKeyPlan } from "@domain/provider/provider-keys.js";
 
 import { TOOL_MAP } from "../index.js";
 import { renderGenerationModelsForModel, type PricedModelsForMode } from "../generation-models.js";
 
 const h = vi.hoisted(() => ({ mediaOnPayer: new Set<string>(), describes: new Set<string>(), llmOnPayer: false }));
-const ACCOUNT_KEYS = { owner: "account", keyOf: () => "acct" } as const;
 
 vi.mock("@domain/model-catalog/model-catalog.js", async (importOriginal) => {
   const original = await importOriginal<typeof Catalog>();
@@ -31,12 +31,15 @@ vi.mock("@domain/provider/provider-keys.js", async (importOriginal) => {
   return {
     ...original,
     runDescribesInput: (model: string) => h.describes.has(model),
-    resolveKeys: vi.fn(async (_payer: unknown, purpose: { kind: string; model?: string }) => {
-      const onPayer = purpose.kind === "llm" ? h.llmOnPayer : h.mediaOnPayer.has(purpose.model ?? "");
-      return onPayer
-        ? { keys: ACCOUNT_KEYS, route: { mode: "default" }, keyId: "key-row", payerUserId: "admin-1" }
-        : { keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null, payerUserId: null };
+    // The listing tools read the payer's plan, which opens no key; resolveKeys opens one and is left to the runs.
+    resolveKeys: vi.fn(async () => {
+      throw new Error("a listing tool opened the payer's key");
     }),
+    payerKeyPlan: vi.fn(async () => ({
+      payerUserId: "admin-1",
+      upstreams: h.llmOnPayer ? ["openrouter"] : [],
+      models: Object.fromEntries([...h.mediaOnPayer].map((model) => [model, "fal"])),
+    })),
   };
 });
 
@@ -70,6 +73,7 @@ beforeEach(() => {
   h.mediaOnPayer.clear();
   h.describes.clear();
   h.llmOnPayer = false;
+  vi.mocked(payerKeyPlan).mockClear();
 });
 
 afterAll(() => {
@@ -121,6 +125,16 @@ describe("list_generation_models on the Studio payer's own keys", () => {
     const answer = await imageModels();
     if (!answer.available) throw new Error("t2i has no models");
     expect(answer.models.every((m) => m.price?.credits === 5)).toBe(true);
+  });
+});
+
+describe("the payer's plan behind the catalog tools", () => {
+  it("is read once per call, however many models or nodes it answers for", async () => {
+    await imageModels();
+    expect(vi.mocked(payerKeyPlan)).toHaveBeenCalledTimes(1);
+    vi.mocked(payerKeyPlan).mockClear();
+    await executeOf("get_generation_template")({ id: "carried-object-transition" }, CONTEXT);
+    expect(vi.mocked(payerKeyPlan)).toHaveBeenCalledTimes(1);
   });
 });
 

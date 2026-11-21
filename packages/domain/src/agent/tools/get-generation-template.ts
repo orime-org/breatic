@@ -20,6 +20,7 @@ import { modelsForMode } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
 import { lowestValues, payerKeyRun, payerKeyWords, studioToolContextSchema, type StudioToolContext } from "@domain/agent/tools/generation-models.js";
 import { templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
+import { payerKeyPlan } from "@domain/provider/provider-keys.js";
 import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
 
 /** How to send a template once read, in the words the agent reads. */
@@ -169,7 +170,8 @@ function amount(price: TemplatePrice): string {
  */
 async function applyCost(template: GenerationTemplate, studioId: string | undefined): Promise<string> {
   const nodes = await nodeSettings(template);
-  const payer = new Map(await Promise.all(nodes.map(async (node) => [node.key, await payerKeyRun(studioId, node.model, node.own)] as const)));
+  const plan = await payerKeyPlan(studioId);
+  const payer = new Map(nodes.map((node) => [node.key, payerKeyRun(plan, node.model, node.own)] as const));
   const onCredits = nodes.filter((node) => payer.get(node.key) === undefined);
   const final = await priceOf(onCredits.map((node) => ({ model: node.model, params: node.own })));
   const onPayer = nodes.flatMap((node) => {

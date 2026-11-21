@@ -12,7 +12,7 @@ import { accountProviderKeysRepo, getConfig, openProviderKey, projectsRepo, prov
 import { AccountKeyFailure, type KeySet, type Route } from "@breatic/provider";
 import { describesInput } from "@breatic/provider/pricing";
 import { provider } from "@domain/provider/instance.js";
-import { providerKeyById, studioProviderKey, type KeyPurpose } from "@domain/provider/account-keys.service.js";
+import { providerKeyById, studioKeyPlan, studioProviderKey, type KeyPurpose, type StudioKeyPlan } from "@domain/provider/account-keys.service.js";
 import { PROMPT_REWRITTEN_MODELS } from "@domain/provider/prompt-rewritten-models.js";
 
 /** Who pays for a call: a Studio, or the Studio a Project belongs to. */
@@ -73,6 +73,16 @@ export async function resolveKeys(payer: KeyPayer, purpose: KeyPurpose): Promise
     keyId: found.keyId,
     payerUserId: found.payerUserId,
   };
+}
+
+/**
+ * What a Studio's payer brought, read the way `resolveKeys` decides it but without opening a key: for a caller that
+ * only needs to know whether its calls would run on the payer's keys.
+ * @param studioId - The Studio; none means our keys.
+ * @returns The payer's plan, or null when bring-your-own-key is off or the Studio has no live payer.
+ */
+export async function payerKeyPlan(studioId: string | undefined): Promise<StudioKeyPlan | null> {
+  return studioId === undefined || ring() === null ? null : studioKeyPlan(studioId);
 }
 
 /**
