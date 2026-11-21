@@ -112,13 +112,14 @@ const probeSampleFramesDefault = 1;
 // A single-frame source is shown this long (design §4.2.1).
 const singleFrameDurationMsDefault = 5000;
 const x264Preset = z.enum(["ultrafast", "superfast", "veryfast", "faster", "fast", "medium", "slow", "slower", "veryslow"]);
-// The edit file (frames-split §4.2, §8.2): crf 15 / medium H.264, ProRes 4444; the size factor and cap are provisional
-// until measured on the §8.1 samples.
+// The edit file (frames-split §4.2, §8.2): crf 15 / medium H.264, ProRes 4444; the size factor is provisional until measured
+// on the §8.1 samples. The cap is the standard-4 disk (20 GB) less a 4 GB working margin, so an admitted edit file fits where
+// it is downloaded whole (config/mini-tools.yaml).
 const editDefaults = { crf: 15, preset: "medium" as const, prores_profile: "4444", bytes_per_pixel: 0.5 };
 const presentationDefaults = {
   container_class: "MediaContainer", policy_version: 1, probe_sample_frames: probeSampleFramesDefault, single_frame_duration_ms: singleFrameDurationMsDefault,
   max_fps: 120, playback_gop_seconds: 2, probe_output_max_bytes: 67_108_864, max_source_bytes: 2_147_483_648, max_packed_bytes: 1_073_741_824,
-  max_edit_bytes: 21_474_836_480, crf: 18, preset: "medium" as const, edit: editDefaults, carrier: carrierDefaults,
+  max_edit_bytes: 16_000_000_000, crf: 18, preset: "medium" as const, edit: editDefaults, carrier: carrierDefaults,
 };
 
 const analysisProfileSchema = z.strictObject({

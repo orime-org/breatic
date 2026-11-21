@@ -8,6 +8,7 @@ import { parse } from 'yaml';
 import { MONOREPO_ROOT } from '../env.js';
 import { getMiniToolsConfig, miniToolsConfigSchema } from '../mini-tools.js';
 import { getStorageConfig, storageConfigSchema } from '../storage.js';
+import { editFileSizeFailure } from '@breatic/shared/mini-tools';
 
 
 describe('platform presentation container configuration (inner#1306)', () => {
@@ -21,7 +22,7 @@ describe('platform presentation container configuration (inner#1306)', () => {
       max_fps: 120, playback_gop_seconds: 2, probe_output_max_bytes: 67108864,
       max_source_bytes: getStorageConfig().upload.max_upload_bytes, max_packed_bytes: 1073741824, crf: 18, preset: 'medium',
       // frames-split §4.2 and §8.2: the edit file's size cap and encode settings.
-      max_edit_bytes: 21474836480, edit: { crf: 15, preset: 'medium', prores_profile: '4444', bytes_per_pixel: 0.5 },
+      max_edit_bytes: 16000000000, edit: { crf: 15, preset: 'medium', prores_profile: '4444', bytes_per_pixel: 0.5 },
     // Design §4.3 and §8.2 (S6b): short side at most 1080, SDR BT.709 labels. The standard-4 class is
     // encoding.encoder.container_class alone (S6e E1): one key per fact.
     carrier: { max_short_side: 1080, color: { primaries: 'bt709', transfer: 'bt709', matrix: 'bt709', range: 'tv' } } });
@@ -64,7 +65,19 @@ describe('platform presentation container configuration (inner#1306)', () => {
     const config = structuredClone(getMiniToolsConfig()) as unknown as { presentation: Record<string, unknown> };
     for (const key of ['max_fps', 'playback_gop_seconds', 'probe_output_max_bytes', 'max_edit_bytes', 'edit']) delete config.presentation[key];
     expect(miniToolsConfigSchema.parse(config).presentation).toMatchObject({ max_fps: 120, playback_gop_seconds: 2, probe_output_max_bytes: 67108864,
-      max_edit_bytes: 21474836480, edit: { crf: 15, preset: 'medium', prores_profile: '4444', bytes_per_pixel: 0.5 } });
+      max_edit_bytes: 16000000000, edit: { crf: 15, preset: 'medium', prores_profile: '4444', bytes_per_pixel: 0.5 } });
+  });
+
+  // ING-3: the edit stitch downloads every edit chunk and a later tool run downloads the whole edit file, both on the standard-4
+  // disk (20 GB, decimal); the cap leaves that disk a 4 GB working margin, so an edit file that passes admission also fits there.
+  it('FG-C03 caps the edit file at the standard-4 disk less its 4 GB working margin, and refuses a larger estimate up front', () => {
+    const config = getMiniToolsConfig();
+    const disk = config.classes.MiniToolContainerStd4!.disk_gb * 1_000_000_000;
+    expect(config.presentation.max_edit_bytes).toBe(disk - 4_000_000_000);
+    // A 1080p edit file of 17,400 frames (about 9.7 minutes at 30 fps) is estimated at 18.04 GB: under 20 GiB, over the cap.
+    const estimate = { frameCount: 17_400, width: 1920, height: 1080, bytesPerPixel: config.presentation.edit.bytes_per_pixel, measuredBytes: null };
+    expect(editFileSizeFailure({ ...estimate, maxEditBytes: config.presentation.max_edit_bytes })).toBe('edit_over_cap');
+    expect(editFileSizeFailure({ ...estimate, frameCount: 15_000, maxEditBytes: config.presentation.max_edit_bytes }), 'an estimate under the cap is admitted').toBeNull();
   });
 
   it('rejects a presentation class whose actual instance size is not configured', () => {
