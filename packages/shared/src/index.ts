@@ -1201,7 +1201,7 @@ export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH
   SCENE_LIGHT_TYPES, VIEWFINDER_RATIOS, DEFAULT_VIEWFINDER_RATIO, SCENE_FREE_RATIO_MIN, SCENE_FREE_RATIO_MAX, SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_DEFAULT,
   SCENE_SPOT_ANGLE_MIN, SCENE_SPOT_ANGLE_MAX, SCENE_SPOT_ANGLE_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LIGHT_COLOR_DEFAULT, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
   SceneColorSchema, SCENE_CAMERA_KEYS, SCENE_LIGHT_KEYS, isSceneCamera, isSceneLight, compareDirectorRecords, nextDirectorNumber, isSceneModelFile,
-  readSceneRecord, judgeSceneLookPicture } from "@shared/scene.js";
+  readSceneRecord, judgeSceneLookPicture, SCENE_LOOK_PICTURE_SETTLEMENTS } from "@shared/scene.js";
 export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneLook, SceneLookPart, SceneLookField, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig, SceneCaptureConfig,
   SceneLightType, ViewfinderRatio, SceneModelFile, SceneCameraObject, SceneLightObject, SceneDirectorConfig,
   SceneLookPictureOutcome, SceneLookPictureRefusal, SceneLookPictureSettlement } from "@shared/scene.js";

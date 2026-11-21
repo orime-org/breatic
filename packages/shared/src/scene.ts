@@ -507,8 +507,11 @@ export type SceneLookPictureOutcome = 'write' | 'done' | 'objectGone' | 'partCha
 /** Why an uploaded picture was not put on its part. */
 export type SceneLookPictureRefusal = Exclude<SceneLookPictureOutcome, 'write' | 'done'>;
 
+/** How collab settles an uploaded picture: put on its part (or already there), or why not. */
+export const SCENE_LOOK_PICTURE_SETTLEMENTS = ['written', 'objectGone', 'partChanged', 'partLimit'] as const satisfies readonly ('written' | SceneLookPictureRefusal)[];
+
 /** How collab settled an uploaded picture: put on its part (or already there), or why not. */
-export type SceneLookPictureSettlement = 'written' | SceneLookPictureRefusal;
+export type SceneLookPictureSettlement = (typeof SCENE_LOOK_PICTURE_SETTLEMENTS)[number];
 
 /**
  * Whether an uploaded picture goes on the part the upload started from. The part may still hold the picture it held at

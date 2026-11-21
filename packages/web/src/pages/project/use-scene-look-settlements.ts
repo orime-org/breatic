@@ -4,11 +4,10 @@
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { SCENE_LOOK_SETTLED_SIGNAL, type SceneLookSettledSignal } from '@breatic/shared';
+import { SCENE_LOOK_PICTURE_SETTLEMENTS, SCENE_LOOK_SETTLED_SIGNAL, type SceneLookSettledSignal } from '@breatic/shared';
 import { pageSceneLookUploads } from '@web/spaces/three-d/scene-look-uploads';
 
-/** How collab settles a part picture: written, or why not. */
-const OUTCOMES: ReadonlySet<string> = new Set(['written', 'objectGone', 'partChanged', 'partLimit']);
+const OUTCOMES: ReadonlySet<string> = new Set(SCENE_LOOK_PICTURE_SETTLEMENTS);
 
 /**
  * Whether a stateless payload settles a part picture this user uploaded in this project.
