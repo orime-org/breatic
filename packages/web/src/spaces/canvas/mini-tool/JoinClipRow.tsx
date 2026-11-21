@@ -13,6 +13,7 @@ import { Button } from '@web/components/ui/button';
 import { useTranslation } from '@web/i18n/use-translation';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 
 /** How far the pointer travels before a press becomes a drag (px), as on the Space tab strip. */
@@ -72,6 +73,7 @@ const JoinTile = React.memo(function JoinTile({
   // `attributes` stays unused, as on the Space tab strip: its role and tab
   // stop describe a keyboard reorder the row does not offer.
   const { setNodeRef, listeners, transform, transition, isDragging, active } = useSortable({ id: clip.nodeId });
+  const { projectId } = useCanvasContext();
   const Icon = accepts === 'video' ? Film : Music;
   return (
     <div
@@ -91,6 +93,7 @@ const JoinTile = React.memo(function JoinTile({
         kind={accepts === 'video' ? 'video' : 'audio'}
         src={clip.url}
         poster={accepts === 'video' ? clip.cover : undefined}
+        projectId={projectId}
         followCanvas
         suppressed={active !== null}
       >

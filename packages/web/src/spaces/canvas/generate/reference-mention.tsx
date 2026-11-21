@@ -33,6 +33,7 @@ import { createReferenceMentionRangeHighlight } from '@web/features/reference-me
 import { SPEAKER_ATTR } from '@web/spaces/canvas/generate/dialogue-line';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import type { MediaFullscreenSource } from '@web/spaces/canvas/nodes/_shared/MediaFullscreen';
 import { dialogueText, type NodeType } from '@breatic/shared';
 import { PreviewImg } from '@web/components/PreviewImg';
@@ -296,6 +297,7 @@ function ReferenceMentionChip({
   // reads apart from a live node reference everywhere (user 2026-07-17).
   const isFocus = sourceId != null && sourceId.startsWith(FOCUS_REF_PREFIX);
   const options = extension.options as ReferenceMentionOptions;
+  const { projectId } = useCanvasContext();
   const isVisual = kind === 'image' || kind === 'video';
   // A visual chip with no thumbnail shows a static "not yet filled" hint. It is
   // attr-backed (the F sync writes the live thumbnail, so this re-computes on the
@@ -346,6 +348,7 @@ function ReferenceMentionChip({
       emptyHint={staticEmptyHint}
       resolveOnOpen={kind === 'text' ? resolveTextHover : undefined}
       fullscreen={isVisual ? resolveFullscreen : undefined}
+      projectId={projectId}
       // The preview is NOT dimmed, in either mode. Its job is to say what this
       // chip IS; whether the mode can use it is said by the chip body's own
       // grey-out and by the rail (user 2026-08-13). Greying it made the one

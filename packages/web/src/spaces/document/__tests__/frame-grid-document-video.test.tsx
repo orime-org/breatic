@@ -76,6 +76,17 @@ describe('U05 a Document video block plays through Qp (§7.8, §7.9)', () => {
     expect(container.querySelector(`video[src="${ORIGINAL}"]`)).toBeNull();
   });
 
+  it('U05: full screen opened from the block plays the selected playback file', async () => {
+    const bundle = presentedBundle(ORIGINAL, { playback: { kind: 'native', carrier: { storageKey: 'document/playback.mp4', url: PLAYBACK, etag: '"p"', size: 4096, sha256: 'b'.repeat(64), contentType: 'video/mp4' }, displayRect: null } });
+    mount(presentedResponse(presentedBinding(ORIGINAL), { presentation: bundle }));
+    await act(async () => { await Promise.resolve(); });
+    fireEvent.click(screen.getAllByTestId('doc-media-fullscreen')[0]!);
+    await act(async () => { await Promise.resolve(); });
+    const layer = screen.getByTestId('media-fullscreen');
+    expect(layer.querySelector(`video[src="${PLAYBACK}"]`)).not.toBeNull();
+    expect(layer.querySelector(`video[src="${ORIGINAL}"]`)).toBeNull();
+  });
+
   it('U05: preparing, an original the browser cannot play shows "Preparing video…" instead of a player error', () => {
     const container = mount(presentedResponse(presentedBinding(ORIGINAL), { preparation: presentedPreparation(null) }));
     const original = container.querySelector(`video[src="${ORIGINAL}"]`);

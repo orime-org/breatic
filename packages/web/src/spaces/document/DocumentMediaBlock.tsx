@@ -372,6 +372,7 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     },
   });
   const openFullscreenOn = fullscreen.open;
+  const projectId = useDocumentProjectId();
   const openFullscreen = React.useCallback((): void => {
     if (type === 'audio') return;
     const held = document.activeElement;
@@ -385,8 +386,8 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
             : held instanceof HTMLElement
               ? held
               : null;
-    openFullscreenOn({ kind: type, src: props.url, size: storedSize });
-  }, [actions, panelShown, props.url, storedSize, type, openFullscreenOn]);
+    openFullscreenOn({ kind: type, src: props.url, size: storedSize, ...(projectId === null ? {} : { projectId }) });
+  }, [actions, panelShown, props.url, storedSize, type, openFullscreenOn, projectId]);
   // Above the media, unless the scroller has no room there — then on the
   // media itself, along its top, or in a table cell under it (`below`). In
   // the body never under it: below the media sit its caption and the next
@@ -635,7 +636,6 @@ export const DocumentMediaBlock = React.memo(function DocumentMediaBlock({
     });
   };
 
-  const projectId = useDocumentProjectId();
   const body =
     type === 'image' ? (
       <DocumentMediaImage

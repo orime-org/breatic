@@ -18,6 +18,7 @@ import {
 } from '@breatic/shared';
 import { getNodeIcon } from '@web/spaces/canvas/lib/node-icon';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import { PreviewImg } from '@web/components/PreviewImg';
 
 /**
@@ -118,6 +119,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
   pendingFocus = [],
 }: ReferenceRailProps): React.JSX.Element | null {
   const t = useTranslation();
+  const { projectId } = useCanvasContext();
   const usabilityCtx: ReferenceUsabilityContext = React.useMemo(
     () => ({
       referenceKinds,
@@ -215,6 +217,7 @@ export const ReferenceRail = React.memo(function ReferenceRail({
                 ref.mediaUrl
               }
               poster={ref.thumbnail}
+              projectId={projectId}
               text={ref.textContent}
               alt={ref.sourceNodeName}
               emptyHint={emptyHint}

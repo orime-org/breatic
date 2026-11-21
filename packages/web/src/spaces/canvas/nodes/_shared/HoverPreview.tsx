@@ -180,11 +180,13 @@ export function HoverPreview({
 
   const isMedia = kind === 'audio' || kind === 'video';
   const showsPicture = !body && (kind === 'image' || kind === 'video') && Boolean(src);
-  const fullscreenSource: MediaFullscreenSource | null = !showsPicture
+  const chosen: MediaFullscreenSource | null = !showsPicture
     ? null
     : fullscreen === undefined
       ? { kind: kind as 'image' | 'video', src: src!, poster }
       : (typeof fullscreen === 'function' ? resolvedFullscreen : fullscreen) ?? null;
+  // Full screen opens in the preview's Project, so a registered video plays its selected version there too.
+  const fullscreenSource = chosen && projectId ? { ...chosen, projectId: chosen.projectId ?? projectId } : chosen;
 
   /** Closes the card and opens full screen where the preview player is. */
   const openFullscreen = (): void => {
@@ -197,7 +199,7 @@ export function HoverPreview({
   if (body) {
     content = body;
   } else if (isMedia && src) {
-    content = kind === 'video' && projectId !== undefined ? <PresentedMediaPlayer ref={player} projectId={projectId} retry={false} src={src} poster={poster} variant='preview' />
+    content = kind === 'video' && projectId ? <PresentedMediaPlayer ref={player} projectId={projectId} retry={false} src={src} poster={poster} variant='preview' />
       : <MediaPlayer ref={player} modality={kind} src={src} poster={poster} variant='preview' />;
   } else if (kind === 'image' && src) {
     // Filling the preview's width, height following its aspect, sharp corners

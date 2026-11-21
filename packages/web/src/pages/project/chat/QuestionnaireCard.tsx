@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
+import { useParams } from 'react-router-dom';
 import { ChevronDown, ChevronUp, Music, Play } from 'lucide-react';
 import { ASK_USER_OTHER_MAX_CHARS, getLocale } from '@breatic/shared';
 import type { AskUserAnswer, AskUserQuestion } from '@breatic/shared';
@@ -11,6 +12,7 @@ import { Checkbox } from '@web/components/ui/checkbox';
 import { Input } from '@web/components/ui/input';
 import { RadioGroup, RadioGroupItem } from '@web/components/ui/radio-group';
 import { useTranslation } from '@web/i18n/use-translation';
+import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
@@ -382,6 +384,7 @@ function MediaTile({
   children: React.ReactNode;
 }): React.JSX.Element {
   const media = option.media;
+  const projectId = projectUuidFromRouteParam(useParams().projectId ?? '');
   const still = media?.kind === 'image' ? media.url : media?.kind === 'video' ? media.poster : undefined;
   return (
     <label
@@ -398,6 +401,7 @@ function MediaTile({
         kind={media?.kind ?? 'image'}
         src={media?.url}
         poster={media?.kind === 'video' ? media.poster : undefined}
+        projectId={projectId}
         alt={option.label}
         side='top'
       >

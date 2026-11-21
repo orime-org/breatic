@@ -165,7 +165,7 @@ export const VideoNode = React.memo(function VideoNode({
         content={
           <NodeMediaInset
             onFullscreen={() =>
-              fullscreen.open({ kind: 'video', src: data.content ?? '', poster: data.coverUrl, size })
+              fullscreen.open({ kind: 'video', src: data.content ?? '', poster: data.coverUrl, size, projectId })
             }
           >
             <Player

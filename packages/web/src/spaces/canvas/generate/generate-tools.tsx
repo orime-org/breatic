@@ -27,6 +27,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { STYLE_SLOT } from '@web/spaces/canvas/generate/style-slot';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
+import { useCanvasContext } from '@web/spaces/canvas/canvas-context';
 import type { HoverPreviewKind } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { PreviewImg } from '@web/components/PreviewImg';
 
@@ -298,6 +299,7 @@ export function SlotTool({
   // promises something the user can never get (a slot the active model or
   // mode takes no source for).
   const hoverable = !disabled;
+  const { projectId } = useCanvasContext();
   const button = (
     <Button
       type='button'
@@ -365,6 +367,7 @@ export function SlotTool({
         // A poster is a still, so only a video has use for one; an image's
         // thumbnail IS its asset and audio has neither.
         poster={hoverable && pick?.kind === 'video' ? pick.thumbnail : undefined}
+        projectId={projectId}
         // What an empty slot needs said is which asset to go pick. It travels
         // as the card's hint, the same prop the rail uses to say what an empty
         // reference is waiting for.
