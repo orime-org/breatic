@@ -123,3 +123,35 @@ describe("the canvas generation feature", () => {
     expect(rows[0]).toMatchObject({ feature: "canvas_generation", credits: 0, keyId: KEY_ID });
   });
 });
+
+describe("a missing cost and the undercharge it reports (inner#1953)", () => {
+  /**
+   * A recorder on a key row that records which rows it reported as undercharged.
+   * @param keyId - The account key row, or null for ours.
+   * @returns The recorder, its rows and the reported rows.
+   */
+  function reporting(keyId: string | null): { recorder: ReturnType<typeof createUsageRecorder>; rows: UsageRow[]; missing: UsageRow[] } {
+    const rows: UsageRow[] = [];
+    const missing: UsageRow[] = [];
+    const recorder = createUsageRecorder({
+      operationKey: "turn:c1:3", feature: "chat_turn", actorUserId: "u1", projectId: "p1", pricing: PRICING, multiplier: 2,
+      write: async (row) => void rows.push(row), onMissingCost: (row) => void missing.push(row), keyId,
+    });
+    return { recorder, rows, missing };
+  }
+
+  it("writes the account's missing cost at 0 and reports nothing, since nothing was owed", async () => {
+    const { recorder, rows, missing } = reporting(KEY_ID);
+    recorder.recordModelCall({ source: "model", model: "m", upstream: "fal", cost: { state: "missing", reason: "no billing permission", payer: "account" } as never });
+    await recorder.settleForCharge();
+    expect(rows[0]).toMatchObject({ costSource: "missing", credits: 0, keyId: KEY_ID });
+    expect(missing).toEqual([]);
+  });
+
+  it("still reports a missing cost our keys paid beside the account's", async () => {
+    const { recorder, missing } = reporting(KEY_ID);
+    recorder.recordModelCall({ source: "model", model: "m", upstream: "openrouter", cost: { state: "missing", reason: "lost", payer: "deployment" } as never });
+    await recorder.settleForCharge();
+    expect(missing).toEqual([expect.objectContaining({ costSource: "missing", keyId: null })]);
+  });
+});

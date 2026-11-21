@@ -160,7 +160,8 @@ export interface UsageRecorderOptions {
   /**
    * Called for a row whose cost the service should have reported and did not.
    * The row is still written, at zero; this is how the caller, which can log,
-   * hears that it undercharged.
+   * hears that it undercharged. A row an account's own key paid is charged
+   * nothing either way, so its missing cost is written without this call.
    */
   onMissingCost: (row: UsageRow) => void;
   /**
@@ -238,7 +239,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
   const append = (row: UsageRow): void => {
     credits += row.credits;
     pending.push(write(row).catch((err: unknown) => void failures.push(err)));
-    if (row.costSource === "missing") options.onMissingCost(row);
+    if (row.costSource === "missing" && row.keyId === null) options.onMissingCost(row);
   };
 
   /**
