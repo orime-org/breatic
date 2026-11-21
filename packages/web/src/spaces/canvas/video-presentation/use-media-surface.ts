@@ -14,6 +14,8 @@ export interface MediaSurfaceOptions {
   active: boolean;
   createRenderer?: VideoRendererFactory;
   onPresentedFrame?: (frame: PresentedMediaFrame) => void;
+  /** Called when the page pool releases the renderer; without it a new renderer starts at once. */
+  onEvicted?: () => void;
 }
 /** Resource state plus an explicit retry action. */
 export interface MediaSurfaceApi extends MediaSurfaceSnapshot { retry: () => void }
@@ -28,15 +30,18 @@ const DETACHED: MediaSurfaceSnapshot = { status: 'detached', binding: null, erro
  * @param options.active - Whether the owning Space or preview is visible.
  * @param options.createRenderer - Renderer factory, injectable for lifecycle tests.
  * @param options.onPresentedFrame - Synchronous consumer of the committed drawable frame.
+ * @param options.onEvicted - Takes over after the page pool releases the renderer; a new one starts when it is absent.
  * @returns Current resource state and a retry command.
  * @throws {never} Resource failures are reported in the snapshot.
  */
-export function useMediaSurface({ host, container, source, active, createRenderer = createVideoRenderer, onPresentedFrame }: MediaSurfaceOptions): MediaSurfaceApi {
+export function useMediaSurface({ host, container, source, active, createRenderer = createVideoRenderer, onPresentedFrame, onEvicted }: MediaSurfaceOptions): MediaSurfaceApi {
   const [snapshot, setSnapshot] = React.useState<MediaSurfaceSnapshot>(DETACHED);
   const [attempt, setAttempt] = React.useState(0);
   const sourceEpoch = React.useRef(0);
   const onPresentedFrameRef = React.useRef(onPresentedFrame);
   React.useEffect(() => { onPresentedFrameRef.current = onPresentedFrame; }, [onPresentedFrame]);
+  const onEvictedRef = React.useRef(onEvicted);
+  React.useEffect(() => { onEvictedRef.current = onEvicted; }, [onEvicted]);
   const retry = React.useCallback((): void => setAttempt((value) => value + 1), []);
 
   React.useEffect(() => {
@@ -135,6 +140,14 @@ export function useMediaSurface({ host, container, source, active, createRendere
           setSnapshot({ status: 'failed', binding: null, error: 'webgl-context-lost' });
         },
         contextRestored: () => { if (live && contextLost) retry(); },
+        evicted: () => {
+          if (!live || terminal) return;
+          terminal = true;
+          release();
+          setSnapshot(DETACHED);
+          if (onEvictedRef.current) onEvictedRef.current();
+          else retry();
+        },
       });
       if (released) resource.dispose();
     } catch {

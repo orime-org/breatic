@@ -24,6 +24,18 @@ import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-f
 import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/use-node-resolution';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
+import type { CanvasSessionState } from '@web/stores/canvas-session';
+
+/**
+ * Whether a canvas surface uses a video node's live frames: a tool panel open on it or a focus crop on it.
+ * @param state - The canvas session.
+ * @param nodeId - The node.
+ * @returns True while one does.
+ * @throws {never} Never.
+ */
+export function videoSurfaceDemanded(state: CanvasSessionState, nodeId: string): boolean {
+  return (state.miniTool !== null && state.panelHostId === nodeId) || state.focusCrop?.nodeId === nodeId;
+}
 
 /**
  * Resolves one project-authorized source through the existing account query client.
@@ -141,6 +153,7 @@ export const VideoNode = React.memo(function VideoNode({
   const focusPicking = useCanvasSession(
     (s) => s.pickSession?.purpose === 'focus',
   );
+  const demanded = useCanvasSession((s) => videoSurfaceDemanded(s, nodeId ?? ''));
   const player = React.useRef<MediaPlayerHandle>(null);
   const fullscreen = useMediaFullscreen({ name: data.name ?? '', currentSrc: data.content, player });
   const size =
@@ -180,6 +193,7 @@ export const VideoNode = React.memo(function VideoNode({
               duration={data.duration}
               onDimensions={setResolution}
               controlsHidden={focusPicking}
+              restsOnCover={!demanded}
             />
             {fullscreen.layer}
           </NodeMediaInset>
