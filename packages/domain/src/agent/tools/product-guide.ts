@@ -379,8 +379,8 @@ export function renderProductGuide(): string {
       "to rename it: Enter or clicking away saves, Esc or an empty name keeps the old one. A locked space shows a " +
       `small padlock after its name, and trying to rename it shows ${quoted(t("spaces.rename.locked"))} ` +
       "Locking a space only stops it being renamed or deleted; what is in it stays editable. Hovering a tab " +
-      "also shows a small X at its right end, which closes the tab; the space stays in the project. While an " +
-      `upload in that space is still running, closing it shows ${quoted(t("canvas.close.operationInProgress"))} ` +
+      "also shows a small X at its right end, which closes the tab; the space stays in the project. While this page " +
+      `is still sending an upload into that space, closing it shows ${quoted(t("canvas.close.operationInProgress"))} ` +
       "Drag a tab sideways to reorder the tabs. When the tabs do not fit, arrows at either end scroll them. Just " +
       "right of the tabs a crosshair button scrolls the current tab into view; it is greyed while that tab is " +
       "already in view.",
@@ -2296,8 +2296,8 @@ export function renderProductGuide(): string {
       "Once a space is past its hard ceiling, the notice says it is over its limit and only deleting a whole node, " +
       `clip, model or passage works: ${quoted(t("spaces.sizeCap.over"))} While a space is full, an Agent proposal is ` +
       `not placed (${quoted(t("spaces.sizeCap.proposal"))}), text read from a dropped file is not added ` +
-      `(${quoted(t("spaces.sizeCap.text"))}), a file already uploaded into a document waits with ` +
-      `${quoted(t("spaces.sizeCap.wait"))} and finishes by itself once content is deleted, and an upload that ` +
+      `(${quoted(t("spaces.sizeCap.text"))}), a picture, video or audio pasted into a document from our own ` +
+      `storage waits with ${quoted(t("spaces.sizeCap.wait"))} and finishes by itself once content is deleted, and an upload that ` +
       `could not start fails with ${quoted(t("spaces.sizeCap.reason"))} and can be retried. Adding media to a ` +
       "timeline or importing a 3D model shows the same sentence inside its dialog as a refused edit: " +
       `${quoted(t("spaces.sizeCap.add"))} Past the hard ceiling, the timeline's dialog shows ` +

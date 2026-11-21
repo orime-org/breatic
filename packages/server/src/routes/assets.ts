@@ -368,14 +368,14 @@ const ingestUrlSchema = z.object({
   project_id: z.string().uuid(),
   space_id: z.string().uuid(),
   /** The Document body block the fetched bytes land in, by its `uploadId` (breatic#1574). */
-  upload_id: z.string().uuid().optional(),
+  upload_id: z.string().uuid(),
 });
 
 /**
- * `POST /assets/ingest-url` — fetch an address into storage with no node
- * behind it (inner#1351 + inner#1390). The canvas lane's gates and job; the
- * browser asks `GET /assets/upload-status` how it ended, under the key this
- * answers.
+ * `POST /assets/ingest-url` — fetch an address into a Document body block
+ * (inner#1351 + inner#1390). The canvas lane's gates and job; the server
+ * announces the ending to the block `upload_id` names and collab writes it
+ * (breatic#1574).
  */
 assets.post(
   "/ingest-url",
@@ -390,7 +390,7 @@ assets.post(
       url: body.url,
       projectId: body.project_id,
       spaceId: body.space_id,
-      ...(body.upload_id !== undefined && { documentUploadId: body.upload_id }),
+      documentUploadId: body.upload_id,
       userId: user.id,
     });
     return c.json({ data: { storage_key: key } }, 201);

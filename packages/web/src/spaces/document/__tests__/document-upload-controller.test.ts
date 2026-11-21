@@ -69,9 +69,10 @@ interface World {
  * Opens an editor holding one paragraph, a synced peer doc, and a controller
  * attached to the body.
  * @param attach - Whether to attach the body right away.
+ * @param name - The body's document name, when the test needs one.
  * @returns The world.
  */
-function open(attach = true): World {
+function open(attach = true, name?: string): World {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const peer = new Y.Doc();
@@ -108,6 +109,7 @@ function open(attach = true): World {
   const body: AttachedBody = {
     spaceId: SPACE,
     doc,
+    ...(name !== undefined && { name }),
     writeAccess: () => access.value,
     onChange: (listener) => {
       access.listeners.add(listener);
@@ -506,6 +508,29 @@ describe('failure and retry', () => {
     expectEverywhere(world, [PENDING('u2'), PENDING('u2', 'Copy')]);
     for (const node of serverAttrs(world.doc)) expect(node).toEqual({});
     expect(world.controller.entry('u2')?.phase).toBe('uploading');
+  });
+
+  it('a retry names the Document on a block whose name was refused when it started (breatic#1574)', async () => {
+    const home = 'project-p/document-s';
+    const world = open(true, home);
+    pastePending(world, 'u1');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    world.uploads.get('u1')!.resolve({ ok: false, failure: { reason: 'spaceFull', retryable: true } });
+    await settle();
+
+    world.controller.retry('u1', 'u2');
+
+    const homes: unknown[] = [];
+    const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+      el.toArray().forEach((child) => {
+        if (!(child instanceof Y.XmlElement)) return;
+        if (child.nodeName === 'image') homes.push(child.getAttribute('uploadHome'));
+        walk(child);
+      });
+    };
+    walk(documentBodyFragment(world.doc));
+    // Collab writes only a block that names its Document.
+    expect(homes).toEqual([home]);
   });
 });
 

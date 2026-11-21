@@ -119,7 +119,7 @@ async function submit(cookie: string, body: Record<string, unknown>): Promise<Re
   return app.request("/api/v1/assets/ingest-url", {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
-    body: JSON.stringify({ url: SOURCE, space_id: crypto.randomUUID(), ...body }),
+    body: JSON.stringify({ url: SOURCE, space_id: crypto.randomUUID(), upload_id: crypto.randomUUID(), ...body }),
   });
 }
 
@@ -182,6 +182,14 @@ describe("POST /assets/ingest-url — what it takes", () => {
 });
 
 describe("POST /assets/ingest-url — a Document body block (breatic#1574)", () => {
+  it("refuses a fetch that names no block, whose result would have nowhere to land", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const res = await submit(cookie, { project_id: projectId, upload_id: undefined });
+
+    expect(res.status).toBe(422);
+  });
+
   it("records the block on the grant and announces processing to the block's Document", async () => {
     const { projectId, cookie } = await seedEditor();
     const spaceId = crypto.randomUUID();

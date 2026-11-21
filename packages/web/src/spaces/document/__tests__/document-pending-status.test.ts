@@ -112,6 +112,13 @@ describe('what collab wrote onto the block (breatic#1574)', () => {
     expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim: null, block: retryable })).toMatchObject({ retry: false });
   });
 
+  it('failed while this page is still sending: no retry until this page can run it again', () => {
+    const block = { state: 'failed' as const, failure: 'unreachable' as const, retryable: true, foreign: false };
+    expect(
+      pendingStatus({ entry: { phase: 'uploading', progress: 0.5 }, access: 'granted', refused: false, claim: null, block }),
+    ).toMatchObject({ kind: 'serverFailed', retry: false });
+  });
+
   it('handed off with nothing written yet: uploading', () => {
     expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block: { state: '', foreign: false } })).toEqual({
       kind: 'processing',

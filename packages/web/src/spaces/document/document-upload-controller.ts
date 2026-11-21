@@ -162,6 +162,16 @@ export function stampUploadHome(doc: Y.Doc, uploadId: string, home: string): voi
   });
 }
 
+/**
+ * Whether this page can run an upload again from what it holds: the server has the upload, or this page's own
+ * attempt failed in a way running it again can change.
+ * @param entry - This page's record of the upload.
+ * @returns True when a retry runs.
+ */
+export function canRetry(entry: UploadEntry): boolean {
+  return entry.phase === 'handedOff' || (entry.phase === 'failed' && entry.failure.retryable);
+}
+
 /** One upload's whole record. */
 interface UploadRecord {
   /** Where the bytes come from; let go once the upload has finished. */
@@ -396,9 +406,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     },
     retry(uploadId, nextId) {
       const record = records.get(uploadId);
-      if (record === undefined || record.source === null) return;
-      if (record.state.phase === 'uploading' || record.state.phase === 'done') return;
-      if (record.state.phase === 'failed' && !record.state.failure.retryable) return;
+      if (record === undefined || record.source === null || !canRetry(record.state)) return;
       for (const { body } of watched) {
         const blocks = pendingElements(documentBodyFragment(body.doc)).filter(({ uploadId: id }) => id === uploadId);
         if (blocks.length === 0) continue;
@@ -407,6 +415,8 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
             for (const { element } of blocks) {
               element.setAttribute('uploadId', nextId);
               for (const attr of SERVER_ATTRS) element.removeAttribute(attr);
+              // The name may have been refused when the upload started (a full Space); collab writes only a named block.
+              if (body.name && !element.getAttribute(UPLOAD_HOME_ATTR)) element.setAttribute(UPLOAD_HOME_ATTR, body.name);
             }
           }, UPLOAD_WRITE_ORIGIN);
         });

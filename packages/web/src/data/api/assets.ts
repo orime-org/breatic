@@ -130,9 +130,9 @@ export const assetsApi = {
   },
 
   /**
-   * Have the ingest Worker fetch an address into storage with no node behind
-   * it (inner#1351 + inner#1390 design §4.1). How it ends is asked through
-   * {@link assetsApi.fetchUploadStatus} under the key this answers.
+   * Have the ingest Worker fetch an address into a Document body block
+   * (inner#1351 + inner#1390 design §4.1). The server announces how it ends
+   * to the block and collab writes it (breatic#1574).
    * @param body - The address and where it lands.
    * @param body.url - The `https:` address.
    * @param body.project_id - The project it lands in.
@@ -141,7 +141,7 @@ export const assetsApi = {
    * @returns The storage key its finish is queued under.
    * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 429 / 507, or 500 when the fetch could not be queued.
    */
-  ingestUrl(body: { url: string; project_id: string; space_id: string; upload_id?: string }): Promise<{ storage_key: string }> {
+  ingestUrl(body: { url: string; project_id: string; space_id: string; upload_id: string }): Promise<{ storage_key: string }> {
     return apiPost<{ storage_key: string }>('/assets/ingest-url', body);
   },
 

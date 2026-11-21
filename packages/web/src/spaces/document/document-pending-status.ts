@@ -12,7 +12,7 @@ import type { PendingFailureReason } from '@breatic/shared';
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import type { UploadClaim } from '@web/lib/upload-claims';
-import type { UploadEntry, UploadFailure } from '@web/spaces/document/document-upload-controller';
+import { canRetry, type UploadEntry, type UploadFailure } from '@web/spaces/document/document-upload-controller';
 
 /** What a pending block shows. */
 export type PendingStatus =
@@ -71,11 +71,10 @@ export interface PendingFacts {
 export function pendingStatus(facts: PendingFacts): PendingStatus {
   const { entry, block } = facts;
   if (block?.foreign === true) return { kind: 'notFinished' };
-  // A page holds the source of an upload it ran and has not finished.
-  const holdsSource = entry !== undefined && entry.phase !== 'done';
   if (block?.state === 'failed') {
     const failure: UploadFailure = { reason: block.failure ?? 'failed', retryable: block.retryable ?? true };
-    return { kind: 'serverFailed', failure, retry: holdsSource && failure.retryable };
+    // A Retry is offered only where this page would run it.
+    return { kind: 'serverFailed', failure, retry: entry !== undefined && canRetry(entry) && failure.retryable };
   }
   if (block?.state === 'processing') return { kind: 'processing' };
   if (entry !== undefined) {

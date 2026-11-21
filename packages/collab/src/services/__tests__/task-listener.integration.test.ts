@@ -937,6 +937,25 @@ describe("Document upload events (breatic#1574)", () => {
     expect(await readImage(c.docName)).toMatchObject({ url: "https://cdn.example/a.png" });
   }, 90_000);
 
+  it("writes nothing for an upload no block in the Document waits for", async () => {
+    const c = await newDocumentUploadCase();
+    const ids = await publishDocumentUpload(c, [{ ...COMPLETED, uploadId: "someone-else" }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readImage(c.docName)).toMatchObject({ url: "", uploadId: "u1", uploadState: "" });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("lands the same block for an ending delivered twice and a processing that arrives after it", async () => {
+    const c = await newDocumentUploadCase();
+    const ids = await publishDocumentUpload(c, [COMPLETED, COMPLETED, { uploadId: "u1", state: "processing" }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    const image = await readImage(c.docName);
+    expect(image).toMatchObject({ url: "https://cdn.example/a.png", mediaWidth: 8, mediaHeight: 6, uploadId: "" });
+    expect(image).not.toHaveProperty("uploadState");
+  });
+
   it("leaves a deleted Document's stored content as it was", async () => {
     const c = await newDocumentUploadCase();
     expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);

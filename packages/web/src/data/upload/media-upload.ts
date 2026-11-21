@@ -310,7 +310,8 @@ type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
 /**
  * The half after the ticket: settle a dedup hit or an open our server could
  * not make, or send the bytes, have the finish queued and, for an upload with
- * no node, wait for its ending.
+ * no node, wait for its ending; a Document body block (`onHandedOff`) ends at
+ * the queued finish, its ending written into the block by collab.
  * @param file - The file.
  * @param answer - What the ticket request answered for it.
  * @param cfg - The upload knobs.
