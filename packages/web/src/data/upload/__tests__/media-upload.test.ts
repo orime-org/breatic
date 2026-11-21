@@ -105,16 +105,12 @@ describe('runMediaUpload — a Document body block (breatic#1574)', () => {
   const context = { projectId: 'p1', spaceId: 's1', uploadId: 'u1' };
 
   it('asks for its ticket naming the block, and ends at the queued finish without waiting for the ending', async () => {
-    const deps = makeUploadDeps({
-      requestTicket: vi.fn().mockResolvedValue(TICKET_NO_NODE),
-      sendToIngest: vi.fn().mockResolvedValue({ storageKey: TICKET.storageKey, deadline: 9 }),
-      onHandedOff: vi.fn(),
-    });
+    const deps = makeUploadDeps({ requestTicket: vi.fn().mockResolvedValue(TICKET_NO_NODE), onHandedOff: vi.fn() });
 
     await runMediaUpload(file, context, deps);
 
     expect(deps.requestTicket).toHaveBeenCalledWith(expect.objectContaining({ uploadId: 'u1', spaceId: 's1' }), undefined);
-    expect(deps.onHandedOff).toHaveBeenCalledExactlyOnceWith(9);
+    expect(deps.onHandedOff).toHaveBeenCalledOnce();
     expect(deps.waitForEnding).not.toHaveBeenCalled();
     expect(deps.onSuccess).not.toHaveBeenCalled();
   });
@@ -122,12 +118,12 @@ describe('runMediaUpload — a Document body block (breatic#1574)', () => {
   it('ends at a dedup hit, which the server announced to the block', async () => {
     const deps = makeUploadDeps({
       onHandedOff: vi.fn(),
-      requestTicket: vi.fn().mockResolvedValue({ alreadyExists: true, assetId: 'a', fileUrl: 'https://cdn/a.png', kind: 'image', deadline: 7 }),
+      requestTicket: vi.fn().mockResolvedValue({ alreadyExists: true, assetId: 'a', fileUrl: 'https://cdn/a.png', kind: 'image' }),
     });
 
     await runMediaUpload(file, context, deps);
 
-    expect(deps.onHandedOff).toHaveBeenCalledExactlyOnceWith(7);
+    expect(deps.onHandedOff).toHaveBeenCalledOnce();
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.sendToIngest).not.toHaveBeenCalled();
   });

@@ -57,7 +57,7 @@ function media(fragment: Y.XmlFragment): Record<string, unknown>[] {
 
 // The shape the editor writes: every declared prop, empty strings included.
 const pending = { uploadId: "u1", uploadHome: HOME, url: "", uploadState: "", uploadFailure: "" };
-const processing: DocumentUploadEvent = { type: "document-upload", docName: HOME, uploadId: "u1", state: "processing", deadline: 5000 };
+const processing: DocumentUploadEvent = { type: "document-upload", docName: HOME, uploadId: "u1", state: "processing" };
 const completed: DocumentUploadEvent = {
   type: "document-upload", docName: HOME, uploadId: "u1", state: "completed",
   result: { url: "https://cdn.example/a.png", mediaWidth: 640, mediaHeight: 480 },
@@ -65,10 +65,10 @@ const completed: DocumentUploadEvent = {
 const failed: DocumentUploadEvent = { type: "document-upload", docName: HOME, uploadId: "u1", state: "failed", reason: "source_unreachable" };
 
 describe("applyDocumentUpload", () => {
-  it("marks a pending block as processing with its deadline", () => {
+  it("marks a pending block as processing", () => {
     const { fragment } = body([pending]);
     applyDocumentUpload(fragment, processing);
-    expect(media(fragment)[0]).toMatchObject({ uploadState: "processing", uploadDeadline: 5000, url: "" });
+    expect(media(fragment)[0]).toMatchObject({ uploadState: "processing", url: "" });
   });
 
   it("writes the result into every matching block and clears the upload attributes", () => {
@@ -78,7 +78,6 @@ describe("applyDocumentUpload", () => {
     for (const attrs of media(fragment)) {
       expect(attrs).toMatchObject({ url: "https://cdn.example/a.png", mediaWidth: 640, mediaHeight: 480, uploadId: "" });
       expect(attrs.uploadState).toBeUndefined();
-      expect(attrs.uploadDeadline).toBeUndefined();
       expect(attrs.uploadFailure).toBeUndefined();
       expect(attrs.uploadRetryable).toBeUndefined();
     }

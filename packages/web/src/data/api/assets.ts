@@ -141,8 +141,8 @@ export const assetsApi = {
    * @returns The storage key its finish is queued under.
    * @throws {import('@web/data/api/types').ApiException} On 400 / 403 / 429 / 507, or 500 when the fetch could not be queued.
    */
-  ingestUrl(body: { url: string; project_id: string; space_id: string; upload_id?: string }): Promise<{ storage_key: string; deadline?: number }> {
-    return apiPost<{ storage_key: string; deadline?: number }>('/assets/ingest-url', body);
+  ingestUrl(body: { url: string; project_id: string; space_id: string; upload_id?: string }): Promise<{ storage_key: string }> {
+    return apiPost<{ storage_key: string }>('/assets/ingest-url', body);
   },
 
   /**

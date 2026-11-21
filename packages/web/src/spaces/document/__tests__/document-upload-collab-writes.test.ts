@@ -155,16 +155,16 @@ function fromCollab(
 const RESULT = { url: 'https://cdn.example/a.png', mediaWidth: 640, mediaHeight: 480 };
 
 describe('collab writing onto a pending block the editor made', () => {
-  it('marks it as processing with its deadline', async () => {
+  it('marks it as processing', async () => {
     const { doc } = await bodyWithPastedPicture();
 
-    expect(fromCollab(doc, { state: 'processing', deadline: 5000 })).toBe(1);
-    expect(image(doc)).toMatchObject({ uploadState: 'processing', uploadDeadline: 5000 });
+    expect(fromCollab(doc, { state: 'processing' })).toBe(1);
+    expect(image(doc)).toMatchObject({ uploadState: 'processing' });
   });
 
   it('lands the result outside every undo step: a local undo afterwards leaves the address', async () => {
     const { handle, doc } = await bodyWithPastedPicture();
-    fromCollab(doc, { state: 'processing', deadline: 5000 });
+    fromCollab(doc, { state: 'processing' });
     fromCollab(doc, { state: 'completed', result: RESULT });
     expect(image(doc)).toMatchObject({ url: RESULT.url, uploadId: '' });
 
@@ -177,9 +177,9 @@ describe('collab writing onto a pending block the editor made', () => {
     expect(image(doc)).toMatchObject({ url: RESULT.url, uploadId: '' });
   });
 
-  it('a block deleted before its result and undone back after it returns as processing with its deadline', async () => {
+  it('a block deleted before its result and undone back after it returns as processing', async () => {
     const { handle, doc } = await bodyWithPastedPicture();
-    fromCollab(doc, { state: 'processing', deadline: 5000 });
+    fromCollab(doc, { state: 'processing' });
     const target = targetOf(doc);
     const id = (handle.editor.document as { id: string; type: string }[]).find((block) => block.type === 'image')!.id;
     handle.editor.removeBlocks([id]);
@@ -190,6 +190,6 @@ describe('collab writing onto a pending block the editor made', () => {
     expect(fromCollab(doc, { state: 'completed', result: RESULT }, target)).toBe(0);
     handle.undoManager.undo();
 
-    expect(image(doc)).toMatchObject({ url: '', uploadState: 'processing', uploadDeadline: 5000 });
+    expect(image(doc)).toMatchObject({ url: '', uploadState: 'processing' });
   });
 });

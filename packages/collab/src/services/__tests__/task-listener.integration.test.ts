@@ -922,7 +922,7 @@ describe("Document upload events (breatic#1574)", () => {
 
   it("writes the processing state and then the result into the block waiting for the upload", async () => {
     const c = await newDocumentUploadCase();
-    const ids = await publishDocumentUpload(c, [{ uploadId: "u1", state: "processing", deadline: 123 }, COMPLETED]);
+    const ids = await publishDocumentUpload(c, [{ uploadId: "u1", state: "processing" }, COMPLETED]);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
     expect(await readImage(c.docName)).toMatchObject({ url: "https://cdn.example/a.png", mediaWidth: 8, mediaHeight: 6, uploadId: "" });

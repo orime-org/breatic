@@ -102,7 +102,7 @@ export interface DocumentSchema {
  * date did not move would be refused wherever an older one is published.
  */
 export const DOCUMENT_SCHEMA: DocumentSchema = {
-  publishedAt: "2026-11-20T08:00:00Z",
+  publishedAt: "2026-11-21T02:00:00Z",
 
   // Attribute names are here because adding an attribute to a node both sides
   // already know (a heading gaining an alignment, say) leaves no trace in the
@@ -119,7 +119,6 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "name",
       "quoted",
       "showPreview",
-      "uploadDeadline",
       "uploadFailure",
       "uploadHome",
       "uploadId",
@@ -165,7 +164,6 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "quoted",
       "showPreview",
       "textAlignment",
-      "uploadDeadline",
       "uploadFailure",
       "uploadHome",
       "uploadId",
@@ -235,7 +233,6 @@ export const DOCUMENT_SCHEMA: DocumentSchema = {
       "quoted",
       "showPreview",
       "textAlignment",
-      "uploadDeadline",
       "uploadFailure",
       "uploadHome",
       "uploadId",

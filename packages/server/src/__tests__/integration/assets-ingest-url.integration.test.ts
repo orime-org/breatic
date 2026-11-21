@@ -198,10 +198,8 @@ describe("POST /assets/ingest-url — a Document body block (breatic#1574)", () 
     const events = raw.map(([, f]) => JSON.parse(f[f.indexOf("payload") + 1]!) as Record<string, unknown>)
       .filter((e) => e.type === "document-upload" && e.uploadId === uploadId);
     expect(events).toEqual([expect.objectContaining({
-      docName: `project-${projectId}/document-${spaceId}`, state: "processing", deadline: expect.any(Number),
+      docName: `project-${projectId}/document-${spaceId}`, state: "processing",
     })]);
-    // The page holds the same deadline as the block.
-    expect(((await res.json()) as { data: Record<string, unknown> }).data.deadline).toBe(events[0]!.deadline);
   });
 });
 

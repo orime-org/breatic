@@ -516,9 +516,9 @@ describe('handing the upload to the server (breatic#1574)', () => {
     world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await settle();
     expect(world.register.mock.calls).toEqual([[SPACE, 'u1']]);
-    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true, deadline: 5 });
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
     await settle();
-    expect(world.controller.entry('u1')).toEqual({ phase: 'handedOff', deadline: 5 });
+    expect(world.controller.entry('u1')).toEqual({ phase: 'handedOff' });
     expect(world.unregister.mock.calls).toEqual([[SPACE, 'u1']]);
     expectEverywhere(world, [PENDING('u1')]);
   });
@@ -550,7 +550,7 @@ function serverAttrs(doc: Y.Doc): Record<string, unknown>[] {
       if (!(child instanceof Y.XmlElement)) return;
       if (child.nodeName === 'image') {
         const a = child.getAttributes() as Record<string, unknown>;
-        out.push(Object.fromEntries(['uploadState', 'uploadDeadline', 'uploadFailure', 'uploadRetryable'].filter((k) => a[k] !== undefined).map((k) => [k, a[k]])));
+        out.push(Object.fromEntries(['uploadState', 'uploadFailure', 'uploadRetryable'].filter((k) => a[k] !== undefined).map((k) => [k, a[k]])));
       }
       walk(child);
     });

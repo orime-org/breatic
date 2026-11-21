@@ -200,9 +200,9 @@ export interface MediaUploadDeps {
   onProgress?: (fraction: number) => void;
   /**
    * A Document body block's upload is over for the page once the server has it (a dedup hit, or a queued finish):
-   * the server announces the ending and collab writes the block (breatic#1574). Told the deadline the server named.
+   * the server announces the ending and collab writes the block (breatic#1574).
    */
-  onHandedOff?: (deadline?: number) => void;
+  onHandedOff?: () => void;
   /**
    * The server answered: an opened upload or one it could not open, either of
    * which opened the upload's task row, or a copy the studio already holds.
@@ -332,7 +332,7 @@ async function deliverTicket(
   signal?.throwIfAborted();
   if (isAlreadyStored(answer) && sinks.onHandedOff !== undefined) {
     // The server announced the hit to the block's Document.
-    sinks.onHandedOff(answer.deadline);
+    sinks.onHandedOff();
     return;
   }
   if (isAlreadyStored(answer)) {
@@ -375,7 +375,7 @@ async function deliverTicket(
   }
 
   if (sinks.onHandedOff !== undefined) {
-    sinks.onHandedOff(queued.deadline);
+    sinks.onHandedOff();
     return;
   }
   sinks.onRegistering?.();
@@ -533,12 +533,6 @@ export function uploadMedia(
   });
 }
 
-/** What handing a Document body block's upload to the server leaves the page (breatic#1574). */
-export interface HandOff {
-  /** When the server stops waiting for it, in epoch ms; absent when it did not say. */
-  readonly deadline?: number;
-}
-
 /**
  * Run the pipeline against the real network for a Document body block, whose
  * result the server writes into the block (breatic#1574): it ends once the
@@ -546,14 +540,14 @@ export interface HandOff {
  * @param file - The file to upload.
  * @param context - Where it lands, naming the block's `uploadId`.
  * @param onProgress - Told the share of the file that has landed, after each part.
- * @returns Once the server has it, with the deadline it named.
+ * @returns Once the server has it.
  * @throws {UploadFailedError} When the server could not be handed the upload.
  */
 export function handOffDocumentMedia(
   file: File,
   context: UploadContext & { uploadId: string },
   onProgress?: (fraction: number) => void,
-): Promise<HandOff> {
+): Promise<void> {
   return new Promise((resolve, reject) => {
     void runMediaUpload(file, context, {
       getUploadConfig: assetsApi.fetchUploadConfig,
@@ -561,11 +555,9 @@ export function handOffDocumentMedia(
       requestTicket: assetsApi.requestUploadTicket,
       sendToIngest: sendFileAndFinish,
       ...(onProgress !== undefined && { onProgress }),
-      onHandedOff: (deadline) => {
-        resolve(deadline === undefined ? {} : { deadline });
-      },
+      onHandedOff: resolve,
       onSuccess: () => {
-        resolve({});
+        resolve();
       },
       onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
     }).catch(reject);

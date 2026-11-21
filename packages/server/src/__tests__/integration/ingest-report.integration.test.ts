@@ -194,8 +194,6 @@ const FINISH_UPLOAD_ID = "r2-upload-id";
 
 /** What the last finish request asked the Worker for. */
 let lastFinishBody: Record<string, unknown> = {};
-/** What the finish route answered the page last. */
-let lastFinishAnswer: { data: Record<string, unknown> } = { data: {} };
 const ONE_PART = [{ partNumber: 1, etag: "etag-1" }];
 
 /**
@@ -282,7 +280,6 @@ async function report(
       },
     );
     if (res.status !== 202) throw new Error(`the finish route answered ${res.status}`);
-    lastFinishAnswer = (await res.json()) as { data: Record<string, unknown> };
     return await runQueuedFinish(storageKey);
   } finally {
     vi.unstubAllGlobals();
@@ -386,10 +383,7 @@ describe("a Document body upload (breatic#1574)", () => {
     const events = (await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`))
       .filter((e) => e.uploadId === uploadId);
     expect(events.map((e) => e.state)).toEqual(["processing", "completed"]);
-    expect(typeof events[0]!.deadline).toBe("number");
     expect(typeof (events[1]!.result as { url?: unknown }).url).toBe("string");
-    // The page that handed the bytes over holds the same deadline as the block.
-    expect(lastFinishAnswer.data.deadline).toBe(events[0]!.deadline);
   });
 
   it("announces the failure with its cause when the Worker could not finish", async () => {
@@ -423,9 +417,6 @@ describe("a Document body upload (breatic#1574)", () => {
       }),
     });
     expect(res.status).toBe(200);
-    const answer = (await res.json()) as { data: Record<string, unknown> };
-    // Two hours from the hit, as an upload with no node is given from its grant.
-    expect(answer.data.deadline).toBeGreaterThan(Date.now() + 60 * 60 * 1000);
 
     const events = (await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`))
       .filter((e) => e.uploadId === uploadId);
@@ -456,7 +447,7 @@ describe("a Document body upload (breatic#1574)", () => {
     expect(events.map((e) => e.state)).toEqual(["processing", "completed"]);
   });
 
-  it("still takes the bytes when the wait could not be shown, naming no deadline", async () => {
+  it("still takes the bytes when the wait could not be shown", async () => {
     const seed = await seedEditor();
     const uploadId = crypto.randomUUID();
     const key = await mintTicket(seed, { upload_id: uploadId });
@@ -469,7 +460,6 @@ describe("a Document body upload (breatic#1574)", () => {
       refused.mockRestore();
     }
 
-    expect(lastFinishAnswer.data).not.toHaveProperty("deadline");
     const events = (await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`))
       .filter((e) => e.uploadId === uploadId);
     expect(events.map((e) => e.state)).toEqual(["completed"]);

@@ -21,7 +21,7 @@
 import { formatNameOf, type PastePair } from '@breatic/shared';
 
 import { ApiException } from '@web/data/api/types';
-import { UploadFailedError, type HandOff, type UploadFailureReason } from '@web/data/upload/media-upload';
+import { UploadFailedError, type UploadFailureReason } from '@web/data/upload/media-upload';
 import { STORAGE_FULL_STATUS } from '@web/data/upload/upload-retry';
 import { uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
 import { routeAddress } from '@web/spaces/document/document-media-address';
@@ -36,9 +36,9 @@ import type {
 /** What the sources need from the network and the clock. */
 export interface UploadSourceDeps {
   /** Hands a block's file to the server; rejects with `UploadFailedError`. */
-  uploadFile: (file: File, uploadId: string, onProgress: (share: number) => void) => Promise<HandOff>;
+  uploadFile: (file: File, uploadId: string, onProgress: (share: number) => void) => Promise<void>;
   /** Asks the ingest Worker to fetch an address into a block. */
-  ingest: (url: string, uploadId: string) => Promise<HandOff>;
+  ingest: (url: string, uploadId: string) => Promise<void>;
   /** Registers addresses of ours into this project's Studio (`/canvas/paste`). */
   register: (input: { urls: string[]; pairs: PastePair[] }) => Promise<Readonly<Record<string, string | null>>>;
   /** Our public prefix, or null when it cannot be read. */
@@ -77,14 +77,8 @@ const FILE_FAILURE_REASON: Readonly<Record<UploadFailureReason, PendingFailureRe
   transfer: 'failed',
 };
 
-/**
- * The server has the upload: it announces the ending and collab writes the block.
- * @param handOff - What the server named with it.
- * @returns The outcome.
- */
-function handedOff(handOff: HandOff): UploadOutcome {
-  return { ok: true, handedOff: true, ...(handOff.deadline !== undefined && { deadline: handOff.deadline }) };
-}
+/** The server has the upload: it announces the ending and collab writes the block. */
+const HANDED_OFF: UploadOutcome = { ok: true, handedOff: true };
 
 /**
  * A failure.
@@ -147,7 +141,8 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
    */
   const uploadFile = async (file: File, uploadId: string, onProgress: (share: number) => void): Promise<UploadOutcome> => {
     try {
-      return handedOff(await deps.uploadFile(file, uploadId, onProgress));
+      await deps.uploadFile(file, uploadId, onProgress);
+      return HANDED_OFF;
     } catch (err) {
       const reason = err instanceof UploadFailedError ? err.reason : 'upload';
       return fail(FILE_FAILURE_REASON[reason], uploadRetryCanChange(reason));
@@ -158,12 +153,13 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
    * Sends one ingest request, waiting out a 429 as often as it comes.
    * @param url - The address.
    * @param uploadId - The block's upload.
-   * @returns What the server named once it took it.
+   * @returns Once the server took it.
    */
-  const ingest = async (url: string, uploadId: string): Promise<HandOff> => {
+  const ingest = async (url: string, uploadId: string): Promise<void> => {
     for (;;) {
       try {
-        return await deps.ingest(url, uploadId);
+        await deps.ingest(url, uploadId);
+        return;
       } catch (err) {
         if (!(err instanceof ApiException) || err.status !== RATE_LIMITED_STATUS) throw err;
         await deps.sleep((err.retryAfterSeconds ?? FALLBACK_WAIT_SECONDS) * 1000);
@@ -182,10 +178,11 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
     // The next address goes once this one has been taken, however it ended.
     line = sent.catch(() => undefined);
     try {
-      return handedOff(await sent);
+      await sent;
     } catch (err) {
       return refusal(err);
     }
+    return HANDED_OFF;
   };
 
   /** Registers this task's addresses of ours in one request. */

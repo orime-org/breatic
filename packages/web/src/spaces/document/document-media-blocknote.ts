@@ -110,7 +110,6 @@ function propsOf(node: PMNode): MediaBlockProps {
     uploadId: typeof attrs['uploadId'] === 'string' ? attrs['uploadId'] : '',
     ...(typeof attrs['uploadHome'] === 'string' && attrs['uploadHome'] !== '' && { uploadHome: attrs['uploadHome'] }),
     ...(typeof attrs['uploadState'] === 'string' && attrs['uploadState'] !== '' && { uploadState: attrs['uploadState'] }),
-    ...(typeof attrs['uploadDeadline'] === 'number' && { uploadDeadline: attrs['uploadDeadline'] }),
     ...(typeof attrs['uploadFailure'] === 'string' && attrs['uploadFailure'] !== '' && { uploadFailure: attrs['uploadFailure'] }),
     ...(typeof attrs['uploadRetryable'] === 'boolean' && { uploadRetryable: attrs['uploadRetryable'] }),
     ...(typeof attrs['previewWidth'] === 'number' && { previewWidth: attrs['previewWidth'] }),

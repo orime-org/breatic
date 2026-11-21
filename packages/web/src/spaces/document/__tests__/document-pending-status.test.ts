@@ -89,22 +89,16 @@ describe('reading a claim out of awareness', () => {
 });
 
 describe('what collab wrote onto the block (breatic#1574)', () => {
-  const processing = { state: 'processing' as const, deadline: 1000, foreign: false };
+  const processing = { state: 'processing' as const, foreign: false };
 
-  it('processing before its deadline: uploading for everyone, whoever claims what', () => {
+  it('processing: processing for everyone, whoever claims what, until the server ends it', () => {
     for (const claim of [null, 'failed'] as const) {
-      expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim, block: processing, now: 999 })).toEqual({
+      expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim, block: processing })).toEqual({
         kind: 'processing',
       });
     }
-  });
-
-  it('processing past its deadline: failed, retried only where the source is held', () => {
-    expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim: null, block: processing, now: 1001 })).toEqual({
-      kind: 'serverFailed', failure: { reason: 'failed', retryable: true }, retry: false,
-    });
-    expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block: processing, now: 1001 })).toEqual({
-      kind: 'serverFailed', failure: { reason: 'failed', retryable: true }, retry: true,
+    expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block: processing })).toEqual({
+      kind: 'processing',
     });
   });
 
@@ -118,23 +112,14 @@ describe('what collab wrote onto the block (breatic#1574)', () => {
     expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim: null, block: retryable })).toMatchObject({ retry: false });
   });
 
-  it('handed off with nothing written yet: processing until the deadline the server named, then timed out', () => {
-    const entry = { phase: 'handedOff' as const, deadline: 1000 };
-    const block = { state: '' as const, foreign: false };
-    expect(pendingStatus({ entry, access: 'granted', refused: false, claim: null, block, now: 1000 })).toEqual({ kind: 'processing' });
-    expect(pendingStatus({ entry, access: 'granted', refused: false, claim: null, block, now: 1001 })).toEqual({
-      kind: 'serverFailed', failure: { reason: 'failed', retryable: true }, retry: true,
-    });
-  });
-
-  it('handed off with no deadline named and nothing written: not finished', () => {
+  it('handed off with nothing written yet: uploading', () => {
     expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block: { state: '', foreign: false } })).toEqual({
-      kind: 'notFinished',
+      kind: 'processing',
     });
   });
 
   it('a block whose upload belongs to another Document: not finished, whatever is claimed', () => {
-    expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim: 'uploading', block: { ...processing, foreign: true }, now: 0 })).toEqual({
+    expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim: 'uploading', block: { ...processing, foreign: true } })).toEqual({
       kind: 'notFinished',
     });
   });

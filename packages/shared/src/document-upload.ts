@@ -48,8 +48,6 @@ export interface DocumentUploadEvent {
   /** The block's `uploadId`. */
   uploadId: string;
   state: "processing" | "completed" | "failed";
-  /** On `processing`: epoch ms after which the block reads as timed out. */
-  deadline?: number;
   /** On `completed`. */
   result?: DocumentUploadResult;
   /** On `failed`: the normalised cause. */
@@ -60,8 +58,6 @@ export interface DocumentUploadEvent {
 export const UPLOAD_HOME_ATTR = "uploadHome";
 /** Block attribute: `processing` or `failed`, written by collab. */
 export const UPLOAD_STATE_ATTR = "uploadState";
-/** Block attribute: epoch ms after which a `processing` block reads as timed out. */
-export const UPLOAD_DEADLINE_ATTR = "uploadDeadline";
 /** Block attribute: the {@link PendingFailureReason} of a `failed` block. */
 export const UPLOAD_FAILURE_ATTR = "uploadFailure";
 /** Block attribute: whether a `failed` block's upload can be run again. */
@@ -150,7 +146,6 @@ export function landDocumentUpload(block: Y.XmlElement, result: DocumentUploadRe
   if (result.mediaHeight !== undefined) block.setAttribute("mediaHeight", result.mediaHeight as never);
   block.setAttribute("uploadId", "");
   block.removeAttribute(UPLOAD_STATE_ATTR);
-  block.removeAttribute(UPLOAD_DEADLINE_ATTR);
   block.removeAttribute(UPLOAD_FAILURE_ATTR);
   block.removeAttribute(UPLOAD_RETRYABLE_ATTR);
 }
@@ -175,7 +170,6 @@ export function applyDocumentUpload(fragment: Y.XmlFragment, event: DocumentUplo
     for (const block of blocks) {
       if (event.state === "processing") {
         block.setAttribute(UPLOAD_STATE_ATTR, "processing");
-        block.setAttribute(UPLOAD_DEADLINE_ATTR, event.deadline as never);
       } else if (event.state === "completed" && event.result !== undefined) {
         landDocumentUpload(block, event.result);
       } else if (event.state === "failed") {

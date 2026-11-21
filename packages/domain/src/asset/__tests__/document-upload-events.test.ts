@@ -22,7 +22,6 @@ vi.mock("@breatic/core", async (importOriginal) => ({
 vi.mock("@domain/asset/upload-grant.repo.js", () => ({
   findGrantByKey: vi.fn(async (key: string) => grants.byKey.get(key) ?? null),
 }));
-vi.mock("@domain/asset/upload-deadline.js", () => ({ uploadDeadline: vi.fn(async () => 7200) }));
 
 const {
   announceDocumentUploadAsset,
@@ -66,20 +65,20 @@ describe("a Document block's upload", () => {
     expect(documentTargetOf({ projectId: "p", spaceId: "s", documentUploadId: "u1" })).toEqual(TARGET);
   });
 
-  it("tells the block its bytes were handed over and hands the deadline back to the caller", async () => {
+  it("tells the block its bytes were handed over", async () => {
     grants.byKey.set("k1", { projectId: "p", spaceId: "s", documentUploadId: "u1", storageKey: "k1", createdAt: new Date() });
 
-    await expect(announceDocumentUploadProcessing("k1")).resolves.toBe(7200);
+    await announceDocumentUploadProcessing("k1");
     expect(published.events).toEqual([{
-      type: "document-upload", docName: "project-p/document-s", uploadId: "u1", state: "processing", deadline: 7200,
+      type: "document-upload", docName: "project-p/document-s", uploadId: "u1", state: "processing",
     }]);
   });
 
-  it("publishes nothing and names no deadline for an upload with no Document block", async () => {
+  it("publishes nothing for an upload with no Document block", async () => {
     grants.byKey.set("k2", { projectId: "p", spaceId: "s", documentUploadId: null, storageKey: "k2", createdAt: new Date() });
 
-    await expect(announceDocumentUploadProcessing("k2")).resolves.toBeNull();
-    await expect(announceDocumentUploadProcessing("missing")).resolves.toBeNull();
+    await announceDocumentUploadProcessing("k2");
+    await announceDocumentUploadProcessing("missing");
     expect(published.events).toEqual([]);
   });
 });

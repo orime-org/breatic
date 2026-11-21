@@ -152,15 +152,14 @@ describe('what tells it something changed', () => {
 });
 
 describe('after the hand-off', () => {
-  it('claims nothing: the block carries what the server wrote', async () => {
+  it('still claims the upload, so every member reads the same wait until the server ends it', async () => {
     const { doc, open, awareness, settle } = rig();
     pending(doc, 'u1');
     open.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     await flush();
-    expect(awareness.getLocalState()?.['uploads']).toEqual({ u1: 'uploading' });
-    settle.get('u1')!({ ok: true, handedOff: true, deadline: 5 });
+    settle.get('u1')!({ ok: true, handedOff: true });
     await flush();
-    expect(awareness.getLocalState()?.['uploads']).toEqual({});
+    expect(awareness.getLocalState()?.['uploads']).toEqual({ u1: 'uploading' });
   });
 });
 

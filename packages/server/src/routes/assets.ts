@@ -346,8 +346,6 @@ function ticketBody(outcome: Exclude<TicketOutcome, { kind: "refused" }>): Recor
         // The picture's size, read off it when it was stored (inner#1367).
         width: outcome.width,
         height: outcome.height,
-        // A Document block's deadline, from the hit (breatic#1574).
-        ...(outcome.deadline !== undefined && { deadline: outcome.deadline }),
       }
     : {
         uploadId: outcome.uploadId,
@@ -388,14 +386,14 @@ assets.post(
   async (c) => {
     const user = c.get("user");
     const body = c.req.valid("json");
-    const { key, deadline } = await startUrlIngest({
+    const { key } = await startUrlIngest({
       url: body.url,
       projectId: body.project_id,
       spaceId: body.space_id,
       ...(body.upload_id !== undefined && { documentUploadId: body.upload_id }),
       userId: user.id,
     });
-    return c.json({ data: { storage_key: key, ...(deadline !== undefined && { deadline }) } }, 201);
+    return c.json({ data: { storage_key: key } }, 201);
   },
 );
 
@@ -621,14 +619,13 @@ assets.post(
       return c.json({ error: { message: t("server.error.internal") } }, 502);
     }
     // A Document block shows every member the wait; its ending arrives with the finish, so losing this only costs
-    // that display (breatic#1574). The page that handed the bytes over is told the same deadline.
-    let deadline: number | null = null;
+    // that display (breatic#1574).
     try {
-      deadline = await announceDocumentUploadProcessing(storageKey);
+      await announceDocumentUploadProcessing(storageKey);
     } catch (err) {
       logger.error({ err, key: storageKey }, "document_upload_processing_publish_failed");
     }
-    return c.json({ data: { storageKey, ...(deadline !== null && { deadline }) } }, 202);
+    return c.json({ data: { storageKey } }, 202);
   },
 );
 

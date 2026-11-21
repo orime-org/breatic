@@ -20,9 +20,9 @@ export type PendingStatus =
   | { readonly kind: 'uploading'; readonly progress: number | null }
   /** This page ran it and it failed. */
   | { readonly kind: 'failed'; readonly failure: UploadFailure }
-  /** The server has it and has not ended it. */
+  /** The server has it and has not ended it; whether it ran out of time is the server's to settle, as on a canvas node. */
   | { readonly kind: 'processing' }
-  /** The server ended it as failed, or it ran past its deadline; `retry` where this page holds the source and it can help. */
+  /** The server ended it as failed; `retry` where this page holds the source and it can help. */
   | { readonly kind: 'serverFailed'; readonly failure: UploadFailure; readonly retry: boolean }
   /** This page has the result and was demoted to read-only. */
   | { readonly kind: 'waitingDemoted' }
@@ -41,16 +41,11 @@ export type PendingStatus =
 export interface PendingBlockFacts {
   /** `processing` or `failed`, written by collab; empty before the server took the upload. */
   readonly state: '' | 'processing' | 'failed';
-  /** Epoch ms after which a `processing` block reads as timed out. */
-  readonly deadline?: number;
   readonly failure?: PendingFailureReason;
   readonly retryable?: boolean;
   /** The upload belongs to another Document: copied with its Project, it never ends here. */
   readonly foreign: boolean;
 }
-
-/** A block that ran past its deadline: the upload expired, which running it again can change. */
-const TIMED_OUT: UploadFailure = { reason: 'failed', retryable: true };
 
 /** What {@link pendingStatus} decides from. */
 export interface PendingFacts {
@@ -66,8 +61,6 @@ export interface PendingFacts {
   readonly full?: boolean;
   /** What collab wrote onto the block; absent where the block is not read. */
   readonly block?: PendingBlockFacts;
-  /** Now, in epoch ms, against the block's deadline. */
-  readonly now?: number;
 }
 
 /**
@@ -84,19 +77,9 @@ export function pendingStatus(facts: PendingFacts): PendingStatus {
     const failure: UploadFailure = { reason: block.failure ?? 'failed', retryable: block.retryable ?? true };
     return { kind: 'serverFailed', failure, retry: holdsSource && failure.retryable };
   }
-  if (block?.state === 'processing') {
-    if (block.deadline !== undefined && (facts.now ?? 0) > block.deadline) {
-      return { kind: 'serverFailed', failure: TIMED_OUT, retry: holdsSource };
-    }
-    return { kind: 'processing' };
-  }
+  if (block?.state === 'processing') return { kind: 'processing' };
   if (entry !== undefined) {
-    if (entry.phase === 'handedOff') {
-      // Until collab writes the block, the deadline the server named this page reads the same way the block's would.
-      if (entry.deadline === undefined) return { kind: 'notFinished' };
-      if ((facts.now ?? 0) > entry.deadline) return { kind: 'serverFailed', failure: TIMED_OUT, retry: holdsSource };
-      return { kind: 'processing' };
-    }
+    if (entry.phase === 'handedOff') return { kind: 'processing' };
     if (entry.phase === 'failed') return { kind: 'failed', failure: entry.failure };
     if (entry.phase === 'done' && facts.access === 'denied') {
       return facts.refused ? { kind: 'waitingRefused' } : { kind: 'waitingDemoted' };

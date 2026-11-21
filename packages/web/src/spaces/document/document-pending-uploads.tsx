@@ -55,30 +55,10 @@ function blockFactsOf(props: MediaBlockProps, docName: string | null): PendingBl
   const state = props.uploadState === 'processing' || props.uploadState === 'failed' ? props.uploadState : '';
   return {
     state,
-    ...(props.uploadDeadline !== undefined && { deadline: props.uploadDeadline }),
     ...(props.uploadFailure !== undefined && props.uploadFailure !== '' && { failure: props.uploadFailure as PendingBlockFacts['failure'] }),
     ...(props.uploadRetryable !== undefined && { retryable: props.uploadRetryable }),
     foreign: props.uploadHome !== undefined && docName !== null && props.uploadHome !== docName,
   };
-}
-
-/**
- * Now, moved on once when a deadline passes, so a block that runs out reads as timed out without any other change.
- * @param deadline - The block's deadline, when it has one.
- * @returns Now, in epoch ms.
- */
-function useNowPast(deadline: number | undefined): number {
-  const [now, setNow] = React.useState(() => Date.now());
-  React.useEffect(() => {
-    if (deadline === undefined || now > deadline) return undefined;
-    const timer = setTimeout(() => {
-      setNow(Date.now());
-    }, deadline - now + 1);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [deadline, now]);
-  return now;
 }
 
 /**
@@ -88,19 +68,12 @@ function useNowPast(deadline: number | undefined): number {
  */
 function usePendingStatus(props: MediaBlockProps): PendingStatus {
   const store = React.useContext(PendingUploadsContext);
-  const handedOffDeadline = React.useCallback((): number | undefined => {
-    const entry = store.factsOf(props.uploadId).entry;
-    return entry?.phase === 'handedOff' ? entry.deadline : undefined;
-  }, [store, props.uploadId]);
-  // The block's deadline once collab wrote it; until then the one the server named this page.
-  const pageDeadline = React.useSyncExternalStore(store.subscribe, handedOffDeadline);
-  const now = useNowPast(props.uploadDeadline ?? pageDeadline);
   const block = blockFactsOf(props, store.docName);
   const blockKey = JSON.stringify(block);
   const snapshot = React.useCallback(
     (): string =>
-      JSON.stringify(pendingStatus({ ...store.factsOf(props.uploadId), block: JSON.parse(blockKey) as PendingBlockFacts, now })),
-    [store, props.uploadId, blockKey, now],
+      JSON.stringify(pendingStatus({ ...store.factsOf(props.uploadId), block: JSON.parse(blockKey) as PendingBlockFacts })),
+    [store, props.uploadId, blockKey],
   );
   const key = React.useSyncExternalStore(store.subscribe, snapshot);
   return React.useMemo(() => JSON.parse(key) as PendingStatus, [key]);

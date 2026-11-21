@@ -109,8 +109,6 @@ export interface UploadAlreadyStored {
   height: number | null;
   /** A 3D model's task row, opened already holding the model (inner#1690). */
   taskId?: string;
-  /** A Document body block's deadline, in epoch ms (breatic#1574). */
-  deadline?: number;
 }
 
 /**

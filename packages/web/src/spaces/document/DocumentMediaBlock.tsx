@@ -57,7 +57,6 @@ export interface MediaBlockProps {
   readonly uploadHome?: string;
   /** What collab wrote: `processing` or `failed` (breatic#1574). */
   readonly uploadState?: string;
-  readonly uploadDeadline?: number;
   readonly uploadFailure?: string;
   readonly uploadRetryable?: boolean;
   /** Image and video only. */
