@@ -143,6 +143,14 @@ describe("checkKey on fal", () => {
     expect(deploymentKeys).not.toHaveBeenCalled();
   });
 
+  it("reads a fal balance with no currency as USD, and one with no balance as unsupported", async () => {
+    const { checkKey } = started();
+    falAnswers({ status: 200, body: { credits: { current_balance: 3 } } }, { status: 200, body: { billing_events: [] } });
+    expect(await checkKey("fal", "user-fal")).toMatchObject({ connected: true, balance: { amount: 3, currency: "USD" } });
+    falAnswers({ status: 200, body: { credits: { currency: "EUR" } } }, { status: 200, body: { billing_events: [] } });
+    expect(await checkKey("fal", "user-fal")).toMatchObject({ connected: true, balance: "unsupported" });
+  });
+
   it("answers a default API key's 403 on the balance as connected with a forbidden balance, and says when it cannot read costs", async () => {
     const { checkKey } = started();
     falAnswers({ status: 403, body: { detail: "Forbidden" } }, { status: 403, body: { detail: "Forbidden" } });
