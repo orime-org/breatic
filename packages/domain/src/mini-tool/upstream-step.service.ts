@@ -26,11 +26,10 @@ export interface RecordMiniToolStepResultInput {
   taskId: string; stepId: string; identity: MiniToolConsumptionIdentity;
   outcome: "done" | "failed"; result: unknown; error?: Record<string, MiniToolStepJson>;
   /**
-   * Presentation pins written with a newly stored preparation result (§7.15 prepared row, release points): the final prepared
-   * output the run now keeps, outputs it no longer needs (a failed attempt's, chunks after their stitch), and intermediates
-   * appended to the run's execution pin, or an analysis's analysis pin.
+   * Presentation pins written with a newly stored result (§7.15 release points): outputs the run no longer needs (a failed
+   * attempt's, chunks after their stitch), and intermediates appended to the run's execution pin, or an analysis's analysis pin.
    */
-  presentation?: { prepared?: { toolInputId: string; preparedKey: string }; retire?: string[]; pin?: string[] };
+  presentation?: { retire?: string[]; pin?: string[] };
 }
 
 /**
