@@ -56,6 +56,7 @@ describe('LeaveProjectGuard (#1787)', () => {
     blocker.reset.mockClear();
     capturedCondition = null;
     useSpaceOperationsStore.setState({ operations: {} });
+    resetRunOnceForTests();
   });
 
   it('renders nothing (no dialog) while not blocked', () => {
@@ -87,7 +88,6 @@ describe('LeaveProjectGuard (#1787)', () => {
     const unload = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(true);
-    resetRunOnceForTests();
   });
 
   it('lets a press whose answer sends the page away leave without asking', async () => {
@@ -100,7 +100,6 @@ describe('LeaveProjectGuard (#1787)', () => {
     const unload = new Event('beforeunload', { cancelable: true });
     window.dispatchEvent(unload);
     expect(unload.defaultPrevented).toBe(false);
-    resetRunOnceForTests();
   });
 
   it('lets the landing after leaving the project through, even with front-end ops in flight', () => {
