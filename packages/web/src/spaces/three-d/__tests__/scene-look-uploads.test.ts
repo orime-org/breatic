@@ -285,6 +285,27 @@ describe('SceneLookUploads', () => {
     expect(h.uploads.get(SPACE, ID, '0')).toBeDefined();
   });
 
+  it('says why for an ended upload a new upload on the part replaced before anything released it', async () => {
+    const SECOND = '99999999-9999-4999-8999-999999999999';
+    const { doc, session } = editor();
+    let open: SceneSession | undefined = undefined;
+    const h = harness(() => open);
+    const first = h.uploads.start(startFor());
+    await settle();
+    h.finish();
+    await first;
+    // Opened again showing another picture on the part: collab will not write, and nothing has read the row yet.
+    look(doc, '0', { map: OTHER_IMAGE });
+    open = session;
+    const second = h.uploads.start(startFor());
+    await settle();
+    h.uploads.settled({ spaceId: SPACE, objectId: ID, part: '0', picture: UPLOADED, outcome: 'partChanged' });
+    expect(h.notify).toHaveBeenCalledWith({ key: 'spaces.threeD.look.partChanged', severity: 'warning' });
+    h.finish(SECOND);
+    await second;
+    expect(h.notify).toHaveBeenCalledTimes(1);
+  });
+
   it('keeps waiting while the Space is closed or still loading, and says why when collab settles it', async () => {
     const { session } = editor();
     const loading = new SceneSession(new Y.Doc(), NAME);

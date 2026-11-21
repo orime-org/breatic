@@ -352,7 +352,11 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
       const key = keyOf(input.spaceId, input.objectId, input.part);
       // One upload per part: its row shows the progress and offers no picture choice until it ends.
       const held = entries.get(key);
-      if (held && waiting(held)) return;
+      if (held) {
+        if (waiting(held)) return;
+        // An upload whose outcome the open Space already shows is over: free it as get() would, so its reason still comes.
+        release(key, held);
+      }
       const operationId = crypto.randomUUID();
       // The part's picture as the user saw it when starting; collab writes only while the part still holds it or none.
       const starting = deps.session(input.name);
