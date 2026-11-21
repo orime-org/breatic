@@ -213,7 +213,7 @@ export type FinalizeRefusal = "no_grant" | "in_flight" | "already_registered";
  * finish that follows decides off it whether to read the media now (#299).
  */
 export type FinalizeClaim =
-  | { granted: true; assetSource: GrantAssetSource | null }
+  | ({ granted: true; assetSource: GrantAssetSource | null } & Pick<UploadGrant, "projectId" | "spaceId" | "documentUploadId">)
   | { granted: false; reason: FinalizeRefusal };
 
 /**
@@ -264,11 +264,20 @@ export async function claimFinalize(params: {
         ),
       ),
     )
-    .returning({ assetSource: uploadGrants.assetSource });
+    .returning({
+      assetSource: uploadGrants.assetSource,
+      projectId: uploadGrants.projectId,
+      spaceId: uploadGrants.spaceId,
+      documentUploadId: uploadGrants.documentUploadId,
+    });
   if (won.length === 1) {
+    const row = won[0]!;
     return {
       granted: true,
-      assetSource: (won[0]!.assetSource ?? null) as GrantAssetSource | null,
+      assetSource: (row.assetSource ?? null) as GrantAssetSource | null,
+      projectId: row.projectId,
+      spaceId: row.spaceId,
+      documentUploadId: row.documentUploadId,
     };
   }
 

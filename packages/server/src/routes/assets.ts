@@ -46,6 +46,7 @@ import {
 } from "@breatic/shared/mini-tools";
 import {
   announceDocumentUploadProcessing,
+  documentTargetOf,
   assetService,
   ingestReportService,
   mediaReadService,
@@ -621,8 +622,9 @@ assets.post(
     }
     // A Document block shows every member the wait; its ending arrives with the finish, so losing this only costs
     // that display (breatic#1574).
+    const documentTarget = documentTargetOf(claim);
     try {
-      await announceDocumentUploadProcessing(storageKey);
+      if (documentTarget !== null) await announceDocumentUploadProcessing(documentTarget);
     } catch (err) {
       logger.error({ err, key: storageKey }, "document_upload_processing_publish_failed");
     }

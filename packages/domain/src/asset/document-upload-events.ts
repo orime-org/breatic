@@ -20,7 +20,7 @@ import {
   type DocumentUploadEvent,
   type StudioAssetEntity,
 } from "@breatic/shared";
-import { findGrantByKey, type UploadGrant } from "@domain/asset/upload-grant.repo.js";
+import type { UploadGrant } from "@domain/asset/upload-grant.repo.js";
 
 /** Where a Document upload's result goes. */
 export interface DocumentUploadTarget {
@@ -61,14 +61,11 @@ async function publish(target: DocumentUploadTarget, fields: Omit<DocumentUpload
 /**
  * Tell the block its bytes were handed over. Whether the upload ran out of time is the server's to settle, as on a
  * canvas node: the block reads as processing until its ending arrives.
- * @param storageKey - The key the upload's grant was opened on.
- * @returns Nothing; a key with no Document block publishes nothing.
- * @throws {Error} When reading the grant or publishing fails.
+ * @param target - The block.
+ * @returns Nothing.
+ * @throws {Error} When publishing fails.
  */
-export async function announceDocumentUploadProcessing(storageKey: string): Promise<void> {
-  const grant = await findGrantByKey(storageKey);
-  const target = grant === null ? null : documentTargetOf(grant);
-  if (grant === null || target === null) return;
+export async function announceDocumentUploadProcessing(target: DocumentUploadTarget): Promise<void> {
   await publish(target, { state: "processing" });
 }
 

@@ -136,7 +136,7 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
   // A Document block shows every member the wait; its ending arrives with the fetch, so losing this only costs that
   // display (breatic#1574).
   try {
-    await announceDocumentUploadProcessing(opened.key);
+    if (documentUploadId !== undefined) await announceDocumentUploadProcessing({ projectId, spaceId, uploadId: documentUploadId });
   } catch (err) {
     logger.error({ err, key: opened.key, projectId }, "document_upload_processing_publish_failed");
   }

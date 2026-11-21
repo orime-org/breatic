@@ -9,7 +9,6 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as core from "@breatic/core";
 
 const published = vi.hoisted(() => ({ events: [] as unknown[] }));
-const grants = vi.hoisted(() => ({ byKey: new Map<string, unknown>() }));
 
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<typeof core>()),
@@ -17,10 +16,6 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   publishDocumentUploadEvent: vi.fn(async (_redis: unknown, event: unknown) => {
     published.events.push(event);
   }),
-}));
-
-vi.mock("@domain/asset/upload-grant.repo.js", () => ({
-  findGrantByKey: vi.fn(async (key: string) => grants.byKey.get(key) ?? null),
 }));
 
 const {
@@ -34,7 +29,6 @@ const TARGET = { projectId: "p", spaceId: "s", uploadId: "u1" };
 
 beforeEach(() => {
   published.events = [];
-  grants.byKey.clear();
 });
 
 describe("a Document block's upload", () => {
@@ -66,19 +60,9 @@ describe("a Document block's upload", () => {
   });
 
   it("tells the block its bytes were handed over", async () => {
-    grants.byKey.set("k1", { projectId: "p", spaceId: "s", documentUploadId: "u1", storageKey: "k1", createdAt: new Date() });
-
-    await announceDocumentUploadProcessing("k1");
+    await announceDocumentUploadProcessing(TARGET);
     expect(published.events).toEqual([{
       type: "document-upload", docName: "project-p/document-s", uploadId: "u1", state: "processing",
     }]);
-  });
-
-  it("publishes nothing for an upload with no Document block", async () => {
-    grants.byKey.set("k2", { projectId: "p", spaceId: "s", documentUploadId: null, storageKey: "k2", createdAt: new Date() });
-
-    await announceDocumentUploadProcessing("k2");
-    await announceDocumentUploadProcessing("missing");
-    expect(published.events).toEqual([]);
   });
 });

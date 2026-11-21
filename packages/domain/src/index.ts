@@ -250,7 +250,7 @@ export {
 //    upload, our worker finishes its own — one function, one place) ──
 export * as ingestReportService from "@domain/asset/ingest-report.service.js";
 export { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
-export { announceDocumentUploadAsset, announceDocumentUploadProcessing } from "@domain/asset/document-upload-events.js";
+export { announceDocumentUploadAsset, announceDocumentUploadProcessing, documentTargetOf } from "@domain/asset/document-upload-events.js";
 export type {
   IngestReport,
   IngestReportOutcome,

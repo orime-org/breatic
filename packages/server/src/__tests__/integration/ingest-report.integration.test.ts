@@ -373,6 +373,15 @@ async function askTicket(cookie: string, body: Record<string, unknown>): Promise
 }
 
 describe("a Document body upload (breatic#1574)", () => {
+  it("announces nothing to the Document for an upload that names no block", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+
+    await report(completed(key));
+
+    expect(await documentEventsFor(`project-${seed.projectId}/document-${seed.spaceId}`)).toEqual([]);
+  });
+
   it("announces processing when the bytes are handed over and the result when they land", async () => {
     const seed = await seedEditor();
     const uploadId = crypto.randomUUID();
