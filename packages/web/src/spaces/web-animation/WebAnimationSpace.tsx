@@ -198,8 +198,10 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
   const [open, setOpen] = React.useState(false);
   // A press while the button waits opens nothing: the menu opens on pointer down, which the waiting button does not swallow.
   const openMenu = React.useCallback((next: boolean): void => setOpen(next && !waiting), [waiting]);
+  // With no Canvas the button stays clickable, so its click can say why it cannot place (packages/web/AGENTS.md 'Disabled controls').
+  const sayNoCanvas = React.useCallback((): void => { toast.warning(t('spaces.webAnimation.noCanvas')); }, [t]);
   if (canvases.length === 0) {
-    return <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.noCanvas')} icon={PLACE_ICON} disabled />;
+    return <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.noCanvas')} icon={PLACE_ICON} unavailable onClick={sayNoCanvas} />;
   }
   return <DropdownMenu open={open} onOpenChange={openMenu}>
     <DropdownMenuTrigger asChild>

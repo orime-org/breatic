@@ -15,6 +15,7 @@ import { CountChip } from '@web/components/CountChip';
 import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { cn } from '@web/lib/utils';
 
 /**
  * A time in a result as the play bar, the annotation panel and the cards show it: minutes, seconds and tenths.
@@ -54,6 +55,7 @@ interface BarButtonProps {
   /** A count shown at its top right; zero shows none. */
   count?: number;
   disabled?: boolean;
+  unavailable?: boolean;
   loading?: boolean;
   /** Drawn as a filled circle, for the bar's main control (Play). */
   filled?: boolean;
@@ -69,20 +71,21 @@ interface BarButtonProps {
  * @param props.pressed - Whether it is on, for a switch.
  * @param props.count - A count at its top right.
  * @param props.disabled - Whether it is unavailable.
+ * @param props.unavailable - Whether it exists but a condition is unmet: dimmed, still clickable so its click can say why.
  * @param props.loading - Whether its press is waiting.
  * @param props.filled - Whether it is drawn as a filled circle.
  * @returns The button.
  * @throws {never} Never.
  */
 export const BarButton = React.memo(React.forwardRef<HTMLButtonElement, BarButtonProps>(function BarButton(
-  { testId, label, icon, onClick, pressed, count = 0, disabled = false, loading = false, filled = false, ...rest },
+  { testId, label, icon, onClick, pressed, count = 0, disabled = false, unavailable = false, loading = false, filled = false, ...rest },
   ref,
 ): React.JSX.Element {
   return <Tooltip>
     <TooltipTrigger asChild>
       <span className='relative inline-flex'>
-        <Button ref={ref} {...rest} data-testid={testId} type='button' variant={filled ? 'default' : 'ghost'} size='icon' aria-label={label} aria-pressed={pressed} disabled={disabled} loading={loading}
-          onClick={onClick} icon={icon} className={filled ? 'size-8 rounded-full' : 'size-8 aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong'} />
+        <Button ref={ref} {...rest} data-testid={testId} type='button' variant={filled ? 'default' : 'ghost'} size='icon' aria-label={label} aria-pressed={pressed} aria-disabled={unavailable || undefined} disabled={disabled} loading={loading}
+          onClick={onClick} icon={icon} className={cn(filled ? 'size-8 rounded-full' : 'size-8 aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong', unavailable && 'opacity-50')} />
         {count > 0 && <CountChip count={count} className='pointer-events-none absolute -right-1.5 -top-1.5 min-w-[18px] text-center text-2xs' />}
       </span>
     </TooltipTrigger>

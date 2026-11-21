@@ -1772,6 +1772,20 @@ describe('putting an export on a Canvas', () => {
     vi.mocked(placeVideoOnCanvas).mockReset().mockResolvedValue({ status: 'placed', nodeId: 'node-1' });
   });
 
+  it('says why it cannot place when the Project has no Canvas, and opens no menu', async () => {
+    vi.mocked(toast.warning).mockClear();
+    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
+    listing([{ ...exported(done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')), resultAssetId: '50000000-0000-4000-8000-000000000001' }]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    const button = screen.getByTestId('motion-action-place-on-canvas');
+    expect(button).not.toBeDisabled();
+    expect(button).toHaveAttribute('aria-disabled', 'true');
+    await userEvent.setup().click(button);
+    expect(toast.warning).toHaveBeenCalledWith(t('spaces.webAnimation.noCanvas'));
+    expect(screen.queryByRole('menu')).toBeNull();
+  });
+
   it('lists the canvases as menu items under its label, in a menu capped at the room above the bar', async () => {
     vi.mocked(getSceneControls).mockReset().mockResolvedValue(CONTROLS as never);
     const user = await onExportWithCanvas();
