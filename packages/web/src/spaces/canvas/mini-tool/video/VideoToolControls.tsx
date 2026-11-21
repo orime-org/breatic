@@ -319,7 +319,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { grid: VideoPlanGrid })
     onChange({ ...draft, params: { ...draft.params, cuts: splitCuts(grid.frameCount, next.map((row) => gridFrameCovering(grid, row.value))) } });
   }, [onChange, draft, grid, handles]);
   return <div className='grid gap-2' data-testid='video-cut-editor'>
-    <VideoPlaybackStrip src={draft.source.canonicalURL} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek}>
+    <VideoPlaybackStrip src={draft.source.canonicalURL} source={props.previewSource ?? null} duration={duration} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} presentedTime={props.presentedTime} liveClock={props.liveClock} onSeek={props.onSeek}>
       {handles.map(({ id }, index) => <Button key={id} variant={null} size={null} data-testid={`video-cut-handle-${index}`} disabled={props.disabled} className='absolute inset-y-0 z-10 w-6 -translate-x-1/2 rounded-none' style={{ left: `${(dragging?.index === index ? dragging.time : snapped[index]!) * 100 / duration}%` }}
         onPointerDown={(event) => {
           if (event.button !== 0 || props.disabled) return;

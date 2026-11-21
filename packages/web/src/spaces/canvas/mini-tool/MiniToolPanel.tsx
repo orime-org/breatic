@@ -53,7 +53,7 @@ import { DrawingControls } from '@web/spaces/canvas/mini-tool/DrawingControls';
 import { MarkControls } from '@web/spaces/canvas/mini-tool/MarkControls';
 import { signedReading } from '@web/spaces/canvas/mini-tool/signed-reading';
 import { EXPAND_RATIOS, type ExpandRatio } from '@web/spaces/canvas/mini-tool/expand-frame';
-import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
+import { PresentedFilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
 import { MINI_TOOL_ICONS } from '@web/spaces/canvas/mini-tool/tool-icons';
 import { isJoinTool, joinClipsOf, joinCrossfadeCap, joinShortestClip, joinTotalSeconds } from '@web/spaces/canvas/mini-tool/join';
 import { JoinClipRow } from '@web/spaces/canvas/mini-tool/JoinClipRow';
@@ -831,7 +831,7 @@ function LocalParamControl({ param, spec, params, onParams, source, slots }: Loc
           {/* The band shows what stays: the cut-away ends dimmed, the kept span framed. */}
           <div data-testid='mini-tool-range-band' className='relative h-9 overflow-hidden rounded-chrome-sm bg-muted'>
             {source.url !== undefined && source.width !== undefined && source.height !== undefined ? (
-              <FilmStrip src={source.url} duration={duration} aspect={source.width / source.height} />
+              <PresentedFilmStrip src={source.url} duration={duration} aspect={source.width / source.height} />
             ) : spec.source === 'audio' && source.url !== undefined ? (
               <AudioBandWaveform url={source.url} duration={source.duration} sizeBytes={source.sizeBytes} />
             ) : null}

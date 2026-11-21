@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { cleanup as cleanupAll, fireEvent, render, screen, within } from '@testing-library/react';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, it, expect, vi } from 'vitest';
 import { ADJUST_RANGES, defaultAdjustValue, setLocale, type ModelEntry, type ParamDescriptor } from '@breatic/shared';
 
@@ -81,10 +82,13 @@ function mount(over: Partial<MiniToolPanelProps> = {}): MiniToolPanelProps {
     onClose: vi.fn(),
     ...over,
   };
+  // The range bar reads the video's presentation through the account query client, as in the app.
   render(
-    <TooltipProvider>
-      <MiniToolPanel {...props} />
-    </TooltipProvider>,
+    <QueryClientProvider client={new QueryClient()}>
+      <TooltipProvider>
+        <MiniToolPanel {...props} />
+      </TooltipProvider>
+    </QueryClientProvider>,
   );
   return props;
 }

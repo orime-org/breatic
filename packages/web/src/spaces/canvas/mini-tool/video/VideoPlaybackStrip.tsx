@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { FilmStrip } from '@web/spaces/canvas/mini-tool/FilmStrip';
+import type { VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 
 /** The source player's live clock, which the strip reads every animation frame while the source plays. */
 export interface VideoPlaybackLiveClock {
@@ -15,6 +16,8 @@ export interface VideoPlaybackLiveClock {
 export interface VideoPlaybackStripProps {
   /** The source video. */
   src: string;
+  /** The selected version, whose playback file the filmstrip decodes. */
+  source: VideoPresentationSource | null;
   /** The strip's length in seconds. */
   duration: number;
   /** The source's width over its height. */
@@ -102,7 +105,7 @@ export function useShownTime(clock: VideoPlaybackLiveClock | undefined, presente
  * @throws {never} Never.
  */
 export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.Element {
-  const { src, duration, aspect, onSeek, children } = props;
+  const { src, source, duration, aspect, onSeek, children } = props;
   const presentedTime = useShownTime(props.liveClock, props.presentedTime);
   const track = React.useRef<HTMLDivElement>(null);
   /**
@@ -118,7 +121,7 @@ export function VideoPlaybackStrip(props: VideoPlaybackStripProps): React.JSX.El
   };
   return <div className='nodrag nowheel grid gap-1.5' data-testid='video-playback-strip'>
     <div ref={track} data-testid='video-playback-track' className='relative h-12 select-none overflow-hidden rounded-chrome border border-border bg-muted' onPointerDown={seekAt}>
-      <FilmStrip src={src} duration={duration} aspect={aspect} />
+      <FilmStrip src={src} source={source} duration={duration} aspect={aspect} />
       {presentedTime === null ? null : <span data-testid='video-playback-head' className='pointer-events-none absolute inset-y-0 border-l border-primary' style={{ left: percent(presentedTime, duration) }}><span className='absolute -left-1 top-0 size-2 bg-primary' /></span>}
       {children}
     </div>

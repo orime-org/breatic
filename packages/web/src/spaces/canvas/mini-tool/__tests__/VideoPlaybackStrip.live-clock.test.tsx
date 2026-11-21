@@ -64,7 +64,7 @@ describe('the playback strip live clock (FM5)', () => {
     const { element, setPaused } = fakeElement();
     let now = 1;
     const clock: VideoPlaybackLiveClock = { element, read: () => now };
-    render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' duration={10} aspect={16 / 9} presentedTime={1} liveClock={clock} />);
+    render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' source={null} duration={10} aspect={16 / 9} presentedTime={1} liveClock={clock} />);
     expect(head()).toBe('10%');
     setPaused(false);
     fireEvent(element, new Event('play'));
@@ -80,7 +80,7 @@ describe('the playback strip live clock (FM5)', () => {
   it('starts following when mounted on a source already playing', () => {
     const { element, setPaused } = fakeElement();
     setPaused(false);
-    render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element, read: () => 3 }} />);
+    render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' source={null} duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element, read: () => 3 }} />);
     tick();
     expect(head()).toBe('30%');
   });
@@ -88,7 +88,7 @@ describe('the playback strip live clock (FM5)', () => {
   it('stops the loop on pause and shows the presented time it is given', () => {
     const { element, setPaused } = fakeElement();
     const clock: VideoPlaybackLiveClock = { element, read: () => 6 };
-    const { rerender } = render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' duration={10} aspect={16 / 9} presentedTime={1} liveClock={clock} />);
+    const { rerender } = render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' source={null} duration={10} aspect={16 / 9} presentedTime={1} liveClock={clock} />);
     setPaused(false);
     fireEvent(element, new Event('play'));
     tick();
@@ -96,13 +96,13 @@ describe('the playback strip live clock (FM5)', () => {
     setPaused(true);
     fireEvent(element, new Event('pause'));
     expect(frames.size).toBe(0);
-    rerender(<VideoPlaybackStrip src='https://media.example.test/a.mp4' duration={10} aspect={16 / 9} presentedTime={6.5} liveClock={clock} />);
+    rerender(<VideoPlaybackStrip src='https://media.example.test/a.mp4' source={null} duration={10} aspect={16 / 9} presentedTime={6.5} liveClock={clock} />);
     expect(head()).toBe('65%');
   });
 
   it('stops the loop when playback ends', () => {
     const { element, setPaused } = fakeElement();
-    render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element, read: () => 2 }} />);
+    render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' source={null} duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element, read: () => 2 }} />);
     setPaused(false);
     fireEvent(element, new Event('play'));
     tick();
@@ -114,7 +114,7 @@ describe('the playback strip live clock (FM5)', () => {
 
   it('cancels the loop on unmount', () => {
     const { element, setPaused } = fakeElement();
-    const { unmount } = render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element, read: () => 2 }} />);
+    const { unmount } = render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' source={null} duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element, read: () => 2 }} />);
     setPaused(false);
     fireEvent(element, new Event('play'));
     expect(frames.size).toBe(1);
@@ -126,11 +126,11 @@ describe('the playback strip live clock (FM5)', () => {
   it('cancels the old source loop when the source changes', () => {
     const first = fakeElement();
     const second = fakeElement();
-    const { rerender } = render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element: first.element, read: () => 2 }} />);
+    const { rerender } = render(<VideoPlaybackStrip src='https://media.example.test/a.mp4' source={null} duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element: first.element, read: () => 2 }} />);
     first.setPaused(false);
     fireEvent(first.element, new Event('play'));
     expect(frames.size).toBe(1);
-    rerender(<VideoPlaybackStrip src='https://media.example.test/b.mp4' duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element: second.element, read: () => 2 }} />);
+    rerender(<VideoPlaybackStrip src='https://media.example.test/b.mp4' source={null} duration={10} aspect={16 / 9} presentedTime={1} liveClock={{ element: second.element, read: () => 2 }} />);
     expect(frames.size).toBe(0);
     expect(head()).toBe('10%');
   });

@@ -10,15 +10,18 @@ export interface VideoThumbnail { frameIndex: number; url: string }
 export interface VideoThumbnailState { status: 'loading' | 'ready' | 'failed'; frames: readonly VideoThumbnail[] }
 
 /**
- * Capture selected grid frames using the same native/alpha renderer as playback (frames-split §4.3): each card seeks its
- * frame's midpoint (i + 0.5) / fps and captures on the frame callback that presents that frame, never on `seeked` alone.
- * @param source - The panel's current playback source.
- * @param frames - Selected grid frame numbers, in requested order.
+ * Present selected grid frames one by one through the renderer playback uses, native and alpha-packed alike (frames-split
+ * §4.3): each frame seeks its midpoint (i + 0.5) / fps and is handed over on the frame callback that presents it, never on
+ * `seeked` alone.
+ * @param source - The selected version's playback source.
+ * @param frames - Grid frame numbers, in the order to present them.
  * @param signal - This attachment's cancellation lifetime.
- * @returns PNG captures of the actual composited surfaces.
- * @throws {Error} When rendering, pixel access or cancellation fails.
+ * @param draw - Receives each frame's number and the composited surface while it shows that frame.
+ * @returns Resolves once every frame was drawn.
+ * @throws {Error} When rendering, drawing or cancellation fails.
  */
-async function readThumbnails(source: VideoPresentationSource, frames: readonly number[], signal: AbortSignal): Promise<VideoThumbnail[]> {
+export async function presentGridFrames(source: VideoPresentationSource, frames: readonly number[], signal: AbortSignal,
+  draw: (frameIndex: number, surface: HTMLVideoElement | HTMLCanvasElement) => void): Promise<void> {
   const host = document.createElement('div');
   let video: HTMLVideoElement | null = null;
   let surface: HTMLVideoElement | HTMLCanvasElement | null = null;
@@ -58,12 +61,6 @@ async function readThumbnails(source: VideoPresentationSource, frames: readonly 
     signal.throwIfAborted();
     const element = video! as HTMLVideoElement;
     const image = surface! as HTMLVideoElement | HTMLCanvasElement;
-    const canvas = document.createElement('canvas');
-    canvas.width = source.presentation.display.width;
-    canvas.height = source.presentation.display.height;
-    const context = canvas.getContext('2d');
-    if (context === null) throw new Error('Thumbnail canvas unavailable');
-    const result: VideoThumbnail[] = [];
     for (const selected of frames) {
       signal.throwIfAborted();
       await new Promise<void>((resolve, reject) => {
@@ -71,9 +68,7 @@ async function readThumbnails(source: VideoPresentationSource, frames: readonly 
         capture = (): void => {
           if (signal.aborted || element.seeking) return;
           try {
-            context.clearRect(0, 0, canvas.width, canvas.height);
-            context.drawImage(image, 0, 0, canvas.width, canvas.height);
-            result.push({ frameIndex: selected, url: canvas.toDataURL('image/png') });
+            draw(selected, image);
             capture = null; rejectCapture = null; resolve();
           } catch (error) { reject(error); }
         };
@@ -83,11 +78,33 @@ async function readThumbnails(source: VideoPresentationSource, frames: readonly 
       });
     }
     signal.throwIfAborted();
-    return result;
   } finally {
     signal.removeEventListener('abort', abort);
     renderer.dispose();
   }
+}
+
+/**
+ * Capture selected grid frames as PNGs of the composited surface (frames-split §4.3).
+ * @param source - The panel's current playback source.
+ * @param frames - Selected grid frame numbers, in requested order.
+ * @param signal - This attachment's cancellation lifetime.
+ * @returns PNG captures of the actual composited surfaces.
+ * @throws {Error} When rendering, pixel access or cancellation fails.
+ */
+async function readThumbnails(source: VideoPresentationSource, frames: readonly number[], signal: AbortSignal): Promise<VideoThumbnail[]> {
+  const canvas = document.createElement('canvas');
+  canvas.width = source.presentation.display.width;
+  canvas.height = source.presentation.display.height;
+  const context = canvas.getContext('2d');
+  if (context === null) throw new Error('Thumbnail canvas unavailable');
+  const result: VideoThumbnail[] = [];
+  await presentGridFrames(source, frames, signal, (frameIndex, image) => {
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    context.drawImage(image, 0, 0, canvas.width, canvas.height);
+    result.push({ frameIndex, url: canvas.toDataURL('image/png') });
+  });
+  return result;
 }
 
 /**
