@@ -50,10 +50,25 @@ class RenderStopped extends Error {
 /** The producer as this runner calls it; it is installed in the image, beside the bundle. */
 interface Producer {
   createRenderJob(options: { width: number; height: number; fps: number; quality: string; format: "mp4" }): unknown;
-  executeRenderJob(job: unknown, projectDir: string, outputPath: string): Promise<unknown>;
+  executeRenderJob(job: unknown, projectDir: string, outputPath: string, onProgress?: (...args: unknown[]) => void): Promise<unknown>;
 }
 
 const PRODUCER_MODULE = "@hyperframes/producer";
+
+/**
+ * The producer's progress callback, reporting the fraction it carries each time the whole percent moves.
+ * @param report - Receives the fraction, 0 to 1.
+ * @returns The callback the producer is given; it reads the first argument that is a fraction.
+ */
+export function wholePercentProgress(report: (fraction: number) => void): (...args: unknown[]) => void {
+  let reported = -1;
+  return (...args) => {
+    const fraction = args.find((arg): arg is number => typeof arg === "number" && arg >= 0 && arg <= 1);
+    if (fraction === undefined || Math.floor(fraction * 100) === reported) return;
+    reported = Math.floor(fraction * 100);
+    report(fraction);
+  };
+}
 
 /**
  * Judge the rendered video against the export: exactly the frozen frame count, width and height.
@@ -172,12 +187,14 @@ export async function runWebAnimationRender(job: WebAnimationRenderRunBody, sett
     // The package's stylesheet names `../fonts/v<n>/`, which the producer's server serves from the project's root.
     await cp(join(settings.fontsDir, `v${job.fontSetVersion}`), join(project, "fonts", `v${job.fontSetVersion}`), { recursive: true });
 
-    await post(job.progressUrl, { phase: "rendering" });
+    await post(job.progressUrl, { phase: "rendering", progress: 0 });
     const producer = (await import(PRODUCER_MODULE)) as Producer;
     const videoPath = join(work, "out.mp4");
     try {
       const render = producer.createRenderJob({ width: job.width, height: job.height, fps: job.fps.num / job.fps.den, quality: job.quality, format: "mp4" });
-      await producer.executeRenderJob(render, project, videoPath);
+      await producer.executeRenderJob(render, project, videoPath, wholePercentProgress((progress) => {
+        void post(job.progressUrl, { phase: "rendering", progress });
+      }));
     } catch (err) {
       throw new RenderStopped("render_failed", String(err));
     }
@@ -189,7 +206,7 @@ export async function runWebAnimationRender(job: WebAnimationRenderRunBody, sett
     await runCommand(settings.ffmpegBin, ["-v", "error", "-i", videoPath, "-frames:v", "1", coverPath]);
     const cover = await probeImage(settings.ffprobeBin, coverPath);
 
-    await post(job.progressUrl, { phase: "saving" });
+    await post(job.progressUrl, { phase: "saving", progress: 1 });
     await put(job.videoUrl, await readFile(videoPath), "video/mp4");
     await put(job.coverUrl, await readFile(coverPath), "image/png");
     report = { ok: true, failureReason: null, cpuUsec: null, video: { width: video.width, height: video.height, durationSeconds: video.durationSeconds }, cover };

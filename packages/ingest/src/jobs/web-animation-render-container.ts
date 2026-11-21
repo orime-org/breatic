@@ -62,6 +62,7 @@ interface RenderRecord {
   request: WebAnimationRenderJobRequest | null;
   markerUntil: number | null;
   phase: WebAnimationRenderJobReport["phase"];
+  progress: number | null;
   outputs: RenderOutput[];
   media: { video: { width: number; height: number; durationSeconds: number } | null; cover: { width: number; height: number } | null };
   startedAt: number | null;
@@ -117,7 +118,7 @@ export async function storeWebAnimationRenderOutput(
  */
 function blank(state: RenderRecord["state"], request: WebAnimationRenderJobRequest | null): RenderRecord {
   return {
-    state, request, markerUntil: null, phase: null, outputs: [], media: { video: null, cover: null },
+    state, request, markerUntil: null, phase: null, progress: null, outputs: [], media: { video: null, cover: null },
     startedAt: null, endedAt: null, cpuUsec: null, failureReason: null,
   };
 }
@@ -148,6 +149,7 @@ function reportOf(record: RenderRecord | null, now: number): WebAnimationRenderJ
   return {
     state: record.state,
     phase: record.phase,
+    progress: record.progress,
     container: record.startedAt === null ? null : { wallMs: (record.endedAt ?? now) - record.startedAt, cpuUsec: record.cpuUsec },
     video: record.state !== "done" || video === undefined || record.media.video === null
       ? null
@@ -237,12 +239,13 @@ export class WebAnimationRenderContainer extends Container<WebAnimationRenderEnv
   }
 
   /**
-   * The renderer's phase.
+   * The renderer's phase and how far it got.
    * @param phase - The phase.
+   * @param progress - How far it got, 0 to 1.
    * @returns Nothing.
    */
-  async notePhase(phase: "rendering" | "saving"): Promise<void> {
-    await this.update((held) => (held.state === "running" ? { ...held, phase } : held));
+  async noteProgress(phase: "rendering" | "saving", progress: number): Promise<void> {
+    await this.update((held) => (held.state === "running" ? { ...held, phase, progress } : held));
   }
 
   /**
@@ -258,7 +261,7 @@ export class WebAnimationRenderContainer extends Container<WebAnimationRenderEnv
   async noteFinished(report: { ok: boolean; failureReason: string | null; cpuUsec: number | null; video: RenderRecord["media"]["video"]; cover: RenderRecord["media"]["cover"] }): Promise<void> {
     const ended = await this.update((held) => {
       if (held.state !== "running") return held;
-      const withRun = { ...held, cpuUsec: report.cpuUsec, media: { video: report.video, cover: report.cover } };
+      const withRun = { ...held, cpuUsec: report.cpuUsec, media: { video: report.video, cover: report.cover }, progress: report.ok ? 1 : held.progress };
       const stored = [held.request?.videoKey, held.request?.coverKey].every((key) => held.outputs.some((output) => output.key === key));
       if (report.ok && stored && report.video !== null) return end(withRun, "done", null, Date.now());
       return end(withRun, "failed", report.ok ? "save_failed" : (report.failureReason ?? "render_failed"), Date.now());
@@ -452,8 +455,9 @@ async function jobReport(request: Request, env: WebAnimationRenderEnv, ctx: Outb
   const job = jobObject(env, ctx);
   if (path === WEB_ANIMATION_PROGRESS_PATH) {
     const phase = body.phase === "rendering" || body.phase === "saving" ? body.phase : null;
-    if (phase === null) return new Response("Unreadable progress", { status: 400 });
-    await job.notePhase(phase);
+    const progress = typeof body.progress === "number" ? Math.min(Math.max(body.progress, 0), 1) : null;
+    if (phase === null || progress === null) return new Response("Unreadable progress", { status: 400 });
+    await job.noteProgress(phase, progress);
     return new Response(null, { status: 200 });
   }
   if (path === WEB_ANIMATION_REPORT_PATH && typeof body.ok === "boolean") {

@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { judgeWebAnimationRender, markCompositionsWithoutTimeline } from "../web-animation-render.js";
+import { judgeWebAnimationRender, markCompositionsWithoutTimeline, wholePercentProgress } from "../web-animation-render.js";
 
 const EXPECTED = { durationFrames: 144, width: 1080, height: 1920 };
 
@@ -43,5 +43,21 @@ describe("markCompositionsWithoutTimeline", () => {
     expect(markCompositionsWithoutTimeline(html)).toBe(
       "<body><section data-no-timeline data-composition-id='main'><div data-no-timeline class=a data-composition-id=b></div><i data-composition-id=\"c\" data-no-timeline></i></section></body>",
     );
+  });
+});
+
+describe("wholePercentProgress", () => {
+  it("reports the renderer's fraction once per whole percent and ignores what is not a fraction", () => {
+    const sent: number[] = [];
+    const sink = wholePercentProgress((fraction) => sent.push(fraction));
+    for (const value of [0.001, 0.004, 0.012, 0.0125, "frame 3", 1.5, 0.5, 0.509, 1]) sink(value);
+    expect(sent).toEqual([0.001, 0.012, 0.5, 1]);
+  });
+
+  it("reads the fraction wherever the renderer puts it among its arguments", () => {
+    const sent: number[] = [];
+    const sink = wholePercentProgress((fraction) => sent.push(fraction));
+    sink({ stage: "capture" }, 0.25);
+    expect(sent).toEqual([0.25]);
   });
 });

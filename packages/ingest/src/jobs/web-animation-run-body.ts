@@ -62,6 +62,8 @@ export interface WebAnimationRenderRunBody {
 /** What the render runner posts to the progress path. */
 export interface WebAnimationRenderProgressBody {
   phase: "rendering" | "saving";
+  /** How far the renderer got, 0 to 1. */
+  progress: number;
 }
 
 /** What the render runner posts to the report path; the media fields are what ffprobe measured of what it wrote. */
