@@ -185,6 +185,8 @@ const rowCommon = {
   slotWaitSince: isoTime.nullable(),
   /** The running-task limit it waits under, or null (inner#1968). */
   slotWaitLimit: z.number().int().positive().nullable(),
+  /** How far a running export's render got, as a whole percent; null otherwise. */
+  progress: z.number().int().min(0).max(100).nullable(),
 };
 
 /**

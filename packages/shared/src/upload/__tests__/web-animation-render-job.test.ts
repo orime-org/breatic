@@ -96,27 +96,32 @@ describe("render jobs", () => {
 
 describe("render reports", () => {
   it("carry a done render's video and cover as the ingest Worker measured them", () => {
-    const done = { state: "done", phase: null, container: { wallMs: 90_000, cpuUsec: 300_000_000 }, video, failureReason: null };
+    const done = { state: "done", phase: null, progress: 1, container: { wallMs: 90_000, cpuUsec: 300_000_000 }, video, failureReason: null };
     expect(webAnimationRenderJobReportSchema.parse(done)).toEqual(done);
   });
 
-  it("carry the rendering phase while running", () => {
-    const running = { state: "running", phase: "rendering", container: null, video: null, failureReason: null };
+  it("carry the rendering phase and how far it got while running", () => {
+    const running = { state: "running", phase: "rendering", progress: 0.4, container: null, video: null, failureReason: null };
     expect(webAnimationRenderJobReportSchema.parse(running)).toEqual(running);
   });
 
   it.each(["render_failed", "frame_mismatch", "save_failed"])("carry the failure %s", (reason) => {
-    const failed = { state: "failed", phase: null, container: { wallMs: 1_000, cpuUsec: null }, video: null, failureReason: reason };
+    const failed = { state: "failed", phase: null, progress: null, container: { wallMs: 1_000, cpuUsec: null }, video: null, failureReason: reason };
     expect(webAnimationRenderJobReportSchema.parse(failed)).toEqual(failed);
   });
 
   it("refuse a done report without its video", () => {
-    const done = { state: "done", phase: null, container: { wallMs: 90_000, cpuUsec: null }, video: null, failureReason: null };
+    const done = { state: "done", phase: null, progress: 1, container: { wallMs: 90_000, cpuUsec: null }, video: null, failureReason: null };
     expect(webAnimationRenderJobReportSchema.safeParse(done).success).toBe(false);
   });
 
   it("refuse a stopping state, which a render never reaches: a cancel ends it at once", () => {
-    const stopping = { state: "stopping", phase: "rendering", container: null, video: null, failureReason: null };
+    const stopping = { state: "stopping", phase: "rendering", progress: 0.4, container: null, video: null, failureReason: null };
     expect(webAnimationRenderJobReportSchema.safeParse(stopping).success).toBe(false);
+  });
+
+  it("refuse a progress outside 0 to 1", () => {
+    const running = { state: "running", phase: "rendering", progress: 1.5, container: null, video: null, failureReason: null };
+    expect(webAnimationRenderJobReportSchema.safeParse(running).success).toBe(false);
   });
 });

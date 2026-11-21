@@ -24,6 +24,7 @@ const common = {
   actorUserId: "60000000-0000-4000-8000-000000000009",
   slotWaitSince: null,
   slotWaitLimit: null,
+  progress: null,
   usageCredits: 0.3,
   createdAt: "2026-11-15T08:00:00.000000Z",
 };
@@ -81,6 +82,14 @@ describe("WebAnimationRowViewSchema", () => {
   it("accepts an export row whose source is a create, without a base", () => {
     const row = { ...exportRow, source: { executionId: id(1), request: "A logo" } };
     expect(WebAnimationRowViewSchema.parse(row)).toEqual(row);
+  });
+
+  it("accepts a running export row with how far its render got, as a whole percent", () => {
+    expect(WebAnimationRowViewSchema.parse({ ...exportRow, status: "running", phase: "rendering", progress: 40 })).toMatchObject({ progress: 40 });
+  });
+
+  it("refuses a progress outside 0 to 100 or not a whole percent", () => {
+    for (const progress of [-1, 101, 40.5]) expect(WebAnimationRowViewSchema.safeParse({ ...exportRow, progress }).success).toBe(false);
   });
 
   it("refuses a modify row without its base", () => {

@@ -182,6 +182,8 @@ export const webAnimationRenderJobReportSchema = z.object({
   // No `stopping`: a render has no open model call to wait for, so a cancel ends it at once.
   state: z.enum(["running", "done", "failed", "cancelled", "expired", "cancelled_before_submit"]),
   phase: z.enum(["rendering", "saving"]).nullable(),
+  /** How far the renderer got, 0 to 1; null before it starts. */
+  progress: z.number().min(0).max(1).nullable(),
   container: z.object({ wallMs: z.number().nonnegative(), cpuUsec: z.number().nonnegative().nullable() }).nullable(),
   video: z.object({
     ...measured,

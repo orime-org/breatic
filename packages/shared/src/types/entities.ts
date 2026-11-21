@@ -988,6 +988,8 @@ export interface TimelineExecution {
   slotWaitSince?: string | null;
   /** The running-task limit it waits under, as the gate last judged it (inner#1968); null when it never waited. Absent from an older server. */
   slotWaitLimit?: number | null;
+  /** How far a running export's render got, as a whole percent (#1490). */
+  progress?: number | null;
   createdAt: string;
   updatedAt: string;
 }
