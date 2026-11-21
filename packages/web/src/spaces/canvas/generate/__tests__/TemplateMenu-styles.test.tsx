@@ -106,7 +106,7 @@ async function arrive(ok: boolean): Promise<void> {
           styleSet: {
             'film-styles': {
               category: { painting: 'Painting', print: 'Print' },
-              style: { oil: { name: 'Oil' }, woodcut: { name: 'Woodcut' }, flash: { name: 'Flash' }, invert: { name: 'Invert' } },
+              style: { oil: { name: 'Reportage pen-and-wash sketch' }, woodcut: { name: 'Woodcut' }, flash: { name: 'Flash' }, invert: { name: 'Invert' } },
             },
           },
         },
@@ -132,8 +132,24 @@ describe('TemplateMenu with a styled template', () => {
     expect(screen.getByTestId('generate-template-style-category-painting')).toHaveTextContent('Painting');
     expect(screen.getByTestId('generate-template-style-category-print')).toHaveTextContent('Print');
     const oil = screen.getByTestId('generate-template-style-oil');
-    expect(oil).toHaveTextContent('Oil');
+    expect(oil).toHaveTextContent('Reportage pen-and-wash sketch');
     expect(oil.querySelector('img')?.getAttribute('src')).toBe('/template-styles/film-styles/oil.webp');
+  });
+
+  it('rules a line above every category after the first', async () => {
+    openStyles(GROUPED);
+    await arrive(true);
+    const above = (id: string): Element | null | undefined =>
+      screen.getByTestId(`generate-template-style-category-${id}`).parentElement?.previousElementSibling;
+    expect(above('painting')).toBeNull();
+    expect(above('print')).toHaveAttribute('role', 'separator');
+  });
+
+  it('keeps a hyphenated word of a style name on one line', async () => {
+    openStyles(GROUPED);
+    await arrive(true);
+    const whole = [...screen.getByTestId('generate-template-style-oil').querySelectorAll('.whitespace-nowrap')].map((el) => el.textContent);
+    expect(whole).toEqual(['pen-and-wash']);
   });
 
   it('lists a set with no categories and no thumbnails as one column of names', async () => {

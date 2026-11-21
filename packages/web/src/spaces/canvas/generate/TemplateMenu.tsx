@@ -20,12 +20,14 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuSub,
   DropdownMenuSubContent,
   DropdownMenuSubTrigger,
   DropdownMenuTrailing,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
+import { cn } from '@web/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
@@ -82,34 +84,42 @@ const TemplateStyleChoices = React.memo(function TemplateStyleChoices({
     : set.categories.map((category) => ({ category, styles: set.styles.filter((style) => style.category === category) }));
   return (
     <>
-      {groups.map(({ category, styles }) => (
-        <div key={category ?? ''}>
-          {category !== undefined && (
-            <DropdownMenuLabel data-testid={`generate-template-style-category-${category}`}>
-              {t(`canvas.template.styleSet.${set.id}.category.${category}`)}
-            </DropdownMenuLabel>
-          )}
-          <div className={set.thumbnails ? 'grid grid-cols-2 gap-1' : undefined}>
-            {styles.map((style) => (
-              <DropdownMenuItem
-                key={style.id}
-                data-testid={`generate-template-style-${style.id}`}
-                onSelect={() => onPick(template, style.id)}
-                className={set.thumbnails ? 'flex-col items-start gap-1 p-1.5' : undefined}
+      {groups.map(({ category, styles }, index) => (
+        <React.Fragment key={category ?? ''}>
+          {index > 0 && <DropdownMenuSeparator />}
+          <div>
+            {category !== undefined && (
+              <DropdownMenuLabel
+                data-testid={`generate-template-style-category-${category}`}
+                className={cn('sticky top-0 z-10 bg-popover', set.thumbnails && 'px-1.5')}
               >
-                {set.thumbnails && (
-                  <img
-                    src={`/template-styles/${set.id}/${style.id}.webp`}
-                    alt=''
-                    loading='lazy'
-                    className='aspect-[4/3] w-full rounded-sm bg-muted object-cover'
-                  />
-                )}
-                <span className={set.thumbnails ? 'text-xs' : undefined}>{t(templateStyleKey(set.id, style.id, 'name'))}</span>
-              </DropdownMenuItem>
-            ))}
+                {t(`canvas.template.styleSet.${set.id}.category.${category}`)}
+              </DropdownMenuLabel>
+            )}
+            <div className={set.thumbnails ? 'grid grid-cols-2 gap-1' : undefined}>
+              {styles.map((style) => (
+                <DropdownMenuItem
+                  key={style.id}
+                  data-testid={`generate-template-style-${style.id}`}
+                  onSelect={() => onPick(template, style.id)}
+                  className={set.thumbnails ? 'flex-col items-start gap-1 p-1.5' : undefined}
+                >
+                  {set.thumbnails && (
+                    <img
+                      src={`/template-styles/${set.id}/${style.id}.webp`}
+                      alt=''
+                      loading='lazy'
+                      className='aspect-[4/3] w-full rounded-content-xs bg-muted object-cover'
+                    />
+                  )}
+                  <span className={set.thumbnails ? 'text-xs' : undefined}>
+                    {keepHyphenatedWordsWhole(t(templateStyleKey(set.id, style.id, 'name')))}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+            </div>
           </div>
-        </div>
+        </React.Fragment>
       ))}
     </>
   );
