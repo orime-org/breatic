@@ -3,8 +3,9 @@
 
 /**
  * Purchase history (inner#1993 §3.2 #5): the product's own lots (bought,
- * gifted) merged, newest first, with the payments the billing service holds
- * that opened no lot yet, one keyset across both; whether a bought row's
+ * gifted) and the completed payments it has a receipt for but no live lot,
+ * merged, newest first, with the payments the billing service holds that the
+ * product has no receipt for yet, one keyset across both; whether a bought row's
  * letter can be sent again is the billing service's answer. A deployment
  * that sells nothing answers its own lots only.
  */
@@ -93,6 +94,20 @@ async function lot(userId: string, kind: "payment" | "gift", at: string): Promis
 }
 
 /**
+ * A completed payment the product has a receipt for but no lot.
+ * @param userId - Whose.
+ * @param at - When it was ordered.
+ * @returns Its id.
+ */
+async function receiptOnly(userId: string, at: string): Promise<string> {
+  const id = randomUUID();
+  await suite.sql`INSERT INTO credit_sources(id,kind) VALUES (${id},'payment')`;
+  await recordPaymentReceipt(suite.sql, { id, userId, amountCents: 1000, taxCents: 90, totalCents: 1090, credits: 1000 });
+  await suite.sql`UPDATE payment_receipts SET ordered_at = ${at} WHERE id = ${id}`;
+  return id;
+}
+
+/**
  * Read one page.
  * @param userId - The account.
  * @param query - The query string.
@@ -125,6 +140,49 @@ describe("purchase history", () => {
     expect(second.body.data!.items[0]).toMatchObject({ sourceKind: "gift", giftOrigin: "registration", paymentId: null, canResend: false });
     expect(second.body.data!.nextCursor).toBeNull();
     expect(gifted).toBeTruthy();
+  });
+
+  it("lists a completed payment whose lot is gone or never opened, once each, across a page boundary", async () => {
+    const userId = await insertAccount(suite.sql);
+    const live = await lot(userId, "payment", "2026-11-20 11:00:00.000000+00");
+    const noLot = await receiptOnly(userId, "2026-11-20 10:00:00.000000+00");
+    const deletedLot = await lot(userId, "payment", "2026-11-20 09:00:00.000000+00");
+    await suite.sql`UPDATE credit_lots SET deleted_at = now() WHERE source_id = ${deletedLot}`;
+    await lot(userId, "gift", "2026-11-20 08:00:00.000000+00");
+    suite.reply = billingHistory([], new Set([noLot]));
+
+    const first = await page(userId, "?limit=2");
+    const second = await page(userId, `?limit=2&cursor=${first.body.data!.nextCursor!}`);
+
+    expect(first.body.data!.items.map((r) => r["rowId"])).toEqual([live, noLot]);
+    expect(first.body.data!.items[1]).toMatchObject({
+      sourceKind: "payment", paymentId: noLot, status: "completed", lifecycle: null, remainingCredits: null, totalCents: 1090, canResend: true,
+    });
+    expect(second.body.data!.items.map((r) => r["rowId"])).toEqual([deletedLot, expect.any(String)]);
+    expect(second.body.data!.items[0]).toMatchObject({ sourceKind: "payment", paymentId: deletedLot, status: "completed", lifecycle: null, canResend: false });
+    expect(second.body.data!.items[1]).toMatchObject({ sourceKind: "gift" });
+    expect(second.body.data!.nextCursor).toBeNull();
+  });
+
+  it("asks the billing service about the returned page only, never the look-ahead row", async () => {
+    const userId = await insertAccount(suite.sql);
+    await suite.sql`
+      WITH ids AS (SELECT gen_random_uuid() AS id, n FROM generate_series(1, 101) AS n),
+      src AS (INSERT INTO credit_sources(id,kind) SELECT id, 'payment' FROM ids),
+      rec AS (INSERT INTO payment_receipts(id,user_id,amount_cents,currency,credits_granted,ordered_at)
+        SELECT id, ${userId}, 100, 'usd', 100, now() - make_interval(mins => n) FROM ids)
+      INSERT INTO credit_lots(source_id,source_kind,user_id,purchased_credits,remaining_credits,lifecycle)
+      SELECT id, 'payment', ${userId}, 100, 100, 'active' FROM ids`;
+    suite.reply = billingHistory([], new Set());
+
+    const res = await page(userId, "?limit=100");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data!.items).toHaveLength(100);
+    const asked = suite.received.filter((r) => r.path.includes("/payment/mail-status")).map((r) => (r.body as { paymentIds: string[] }).paymentIds);
+    expect(asked).toHaveLength(1);
+    expect(asked[0]).toHaveLength(100);
+    expect(new Set(asked[0])).toEqual(new Set(res.body.data!.items.map((r) => r["paymentId"])));
   });
 
   it("answers 503 billing_unavailable when the billing service cannot answer", async () => {

@@ -17,6 +17,7 @@ import {
   PROMOTER_CHANNELS_MAX,
   PROMOTER_PLAN_INPUT_MAX,
   REFERRAL_CODE_INPUT_MAX,
+  REQUEST_SHAPE_PARAMS,
   SIGNUP_REFERRAL_SOURCES,
   type AnalyticsEventName,
 } from "@breatic/shared";
@@ -159,9 +160,20 @@ export const subscriptionStartedSchema = z
   .strict();
 export type SubscriptionStarted = z.infer<typeof subscriptionStartedSchema>;
 
-/** `PUT /internal/v1/commerce/subscription-facts/:deliveryId`: store a subscription fact. */
+/**
+ * `PUT /internal/v1/commerce/subscription-facts/:deliveryId`: store a
+ * subscription fact. `referenceId` is what the tier ledger row the fact may
+ * write points at: the Stripe event id, or the user action or recheck that
+ * read the subscription (`checkout:<sessionId>`, `action:cancel:<subId>`, …).
+ */
 export const subscriptionFactRequestSchema = z
-  .object({ userId: uuid, fact: subscriptionFactSchema, notices: z.array(subscriptionNoticeSchema).max(10), started: subscriptionStartedSchema.nullable() })
+  .object({
+    userId: uuid,
+    fact: subscriptionFactSchema,
+    notices: z.array(subscriptionNoticeSchema).max(10),
+    started: subscriptionStartedSchema.nullable(),
+    referenceId: z.string().min(1).max(255),
+  })
   .strict();
 export type SubscriptionFactRequest = z.infer<typeof subscriptionFactRequestSchema>;
 
@@ -183,14 +195,31 @@ export const refundTellSchema = z.discriminatedUnion("kind", [
 ]);
 export type RefundTell = z.infer<typeof refundTellSchema>;
 
+/** What a settled refund paid back: the amount reported to analytics. */
+export const refundSettledSchema = z.object({ amountCents: cents, currency: z.string().regex(/^[A-Za-z]{3}$/) }).strict();
+export type RefundSettled = z.infer<typeof refundSettledSchema>;
+
 /**
  * `POST /internal/v1/commerce/refund-steps/:operationId/:step`: move the lot
  * one edge. `referenceId` is what the ledger row the edge writes points at:
- * the Stripe refund for `settle`, the disposition otherwise.
+ * the Stripe refund for `settle`, the disposition otherwise. `settled` is
+ * what a `settle` step paid back, whether the buyer is told or not, and null
+ * on every other step.
  */
 export const refundStepRequestSchema = z
-  .object({ lotId: uuid, step: z.enum(REFUND_STEPS), referenceId: z.string().min(1).max(255), tell: refundTellSchema.nullable() })
-  .strict();
+  .object({
+    lotId: uuid,
+    step: z.enum(REFUND_STEPS),
+    referenceId: z.string().min(1).max(255),
+    settled: refundSettledSchema.nullable(),
+    tell: refundTellSchema.nullable(),
+  })
+  .strict()
+  .refine((request) => (request.step === "settle") === (request.settled !== null), {
+    message: "settled is required on a settle step and null on every other",
+    path: ["settled"],
+    params: REQUEST_SHAPE_PARAMS,
+  });
 export type RefundStepRequest = z.infer<typeof refundStepRequestSchema>;
 
 /** The answer to a refund step: whether the edge applied, and the lot after it. */

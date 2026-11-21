@@ -85,6 +85,7 @@ function request(userId: string, subscriptionId: string, overrides: Partial<Subs
     },
     notices: [],
     started: null,
+    referenceId: "evt_test",
   };
 }
 
@@ -100,6 +101,16 @@ describe("applySubscriptionFact", () => {
       { status: "active", tier: "pro", first_active_at: new Date("2026-11-20T09:59:00.000Z"), stripe_item_id: null },
     ]);
     expect(await sql`SELECT membership_tier FROM users WHERE id = ${userId}`).toEqual([{ membership_tier: "pro" }]);
+  });
+
+  it("writes the reference the billing service sent on the tier ledger row", async () => {
+    const userId = await account();
+
+    await applySubscriptionFact(randomUUID(), { ...request(userId, `sub_${randomUUID()}`), referenceId: "evt_1QxTierMove" });
+
+    expect(await sql`SELECT from_tier, to_tier, reference_id FROM membership_tier_changes WHERE user_id = ${userId}`).toEqual([
+      { from_tier: "base", to_tier: "pro", reference_id: "evt_1QxTierMove" },
+    ]);
   });
 
   it("records the first payment from an older snapshot the projection skips", async () => {

@@ -22,7 +22,7 @@ const ROUTE = "/internal/v1/commerce/subscription-facts/:deliveryId";
 /**
  * Store one subscription fact once per delivery.
  * @param deliveryId - The billing service's outbox row the fact was sent from.
- * @param request - The fact, its notices and, on a first activation, the start to report.
+ * @param request - The fact, its notices, the reference its tier ledger row points at and, on a first activation, the start to report.
  * @returns 200 `{ tier, endedFrom }`; 404 `account_not_found`; 422 for a reused key.
  * @throws {Error} When the database fails; nothing is stored, so the redelivery applies it.
  */
@@ -53,7 +53,8 @@ export async function applySubscriptionFact(deliveryId: string, request: Subscri
           payableInvoiceUrl: null,
           observedAt: new Date(fact.observedAt),
         },
-        referenceId: `fact:${deliveryId}`,
+        // The Stripe event or user action the billing service read the fact for.
+        referenceId: request.referenceId,
         firstActiveAt: fact.firstActiveAt === null ? null : new Date(fact.firstActiveAt),
         tx,
       });

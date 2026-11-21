@@ -1314,8 +1314,10 @@ export interface LotHistoryRow {
   totalCents: number | null;
   currency: string;
   creditsGranted: string;
-  remainingCredits: string;
-  lifecycle: string;
+  /** Null for a completed payment with no live lot. */
+  remainingCredits: string | null;
+  /** Null for a completed payment with no live lot. */
+  lifecycle: string | null;
   designatedStudioId: string | null;
   designatedStudioName: string | null;
   /** When the lot was ordered (bought) or granted. */
@@ -1326,9 +1328,15 @@ export interface LotHistoryRow {
 
 /**
  * The product's half of purchase history (inner#1993 §3.2 #5): one account's
- * live lots, newest first, a bought one dated by its order and carrying its
- * receipt. The billing service answers the other half, the payments that
- * opened no lot, on the same keyset.
+ * live lots and its payment receipts, full-joined, newest first. A bought lot
+ * is dated by its order and carries its receipt; a receipt with no live lot
+ * (a soft-deleted lot, or a payment that never opened one) comes back on its
+ * own, as the in-product history did. The billing service answers the other
+ * half, the payments the product has no receipt for, on the same keyset.
+ *
+ * Each side is narrowed to the account before the join: a predicate above a
+ * full join names neither side alone, so Postgres would read both tables
+ * whole.
  * @param userId - Whose history.
  * @param limit - The page size; one more row is read to tell whether more exist.
  * @param cursor - The previous page's last `(cursorAt, rowId)`.
@@ -1339,37 +1347,33 @@ export async function listLotHistory(
   limit: number,
   cursor: { createdAt: string; id: string } | null,
 ): Promise<LotHistoryRow[]> {
-  const rowAt = sql`COALESCE(${paymentReceipts.orderedAt}, ${creditLots.createdAt})`;
-  const rowId = sql`COALESCE(${paymentReceipts.id}, ${creditLots.id})`;
+  const myLots = db.select().from(creditLots).where(and(eq(creditLots.userId, userId), isNull(creditLots.deletedAt))).as("my_lots");
+  const myReceipts = db.select().from(paymentReceipts).where(eq(paymentReceipts.userId, userId)).as("my_receipts");
+  const rowAt = sql`COALESCE(${myReceipts.orderedAt}, ${myLots.createdAt})`;
+  const rowId = sql`COALESCE(${myReceipts.id}, ${myLots.id})`;
   const liveStudio = sql`CASE WHEN ${studios.deletedAt} IS NULL THEN`;
   return db
     .select({
       rowId: sql<string>`${rowId}`,
-      sourceKind: creditLots.sourceKind,
-      sourceId: creditLots.sourceId,
-      paymentId: paymentReceipts.id,
-      amountCents: paymentReceipts.amountCents,
-      taxCents: paymentReceipts.taxCents,
-      totalCents: paymentReceipts.totalCents,
-      currency: sql<string>`COALESCE(${paymentReceipts.currency}, 'usd')`,
-      creditsGranted: sql<string>`${creditLots.purchasedCredits}::text`,
-      remainingCredits: sql<string>`${creditLots.remainingCredits}::text`,
-      lifecycle: creditLots.lifecycle,
+      sourceKind: sql<string>`COALESCE(${myLots.sourceKind}, ${myReceipts.sourceKind})`,
+      sourceId: sql<string>`COALESCE(${myLots.sourceId}, ${myReceipts.id})`,
+      paymentId: myReceipts.id,
+      amountCents: myReceipts.amountCents,
+      taxCents: myReceipts.taxCents,
+      totalCents: myReceipts.totalCents,
+      currency: sql<string>`COALESCE(${myReceipts.currency}, 'usd')`,
+      creditsGranted: sql<string>`COALESCE(${myLots.purchasedCredits}, ${myReceipts.creditsGranted})::text`,
+      remainingCredits: sql<string | null>`${myLots.remainingCredits}::text`,
+      lifecycle: sql<string | null>`${myLots.lifecycle}`,
       designatedStudioId: sql<string | null>`${liveStudio} ${studios.id} ELSE NULL END`,
       designatedStudioName: sql<string | null>`${liveStudio} ${studios.name} ELSE NULL END`,
       createdAt: sql`${rowAt}`.mapWith(creditLots.createdAt),
       cursorAt: sql<string>`to_char(${rowAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US"+00"')`,
     })
-    .from(creditLots)
-    .leftJoin(paymentReceipts, eq(paymentReceipts.id, creditLots.sourceId))
-    .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
-    .where(
-      and(
-        eq(creditLots.userId, userId),
-        isNull(creditLots.deletedAt),
-        cursor === null ? undefined : sql`(${rowAt}, ${rowId}) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`,
-      ),
-    )
+    .from(myLots)
+    .fullJoin(myReceipts, eq(myReceipts.id, myLots.sourceId))
+    .leftJoin(studios, eq(studios.id, myLots.designatedStudioId))
+    .where(cursor === null ? undefined : sql`(${rowAt}, ${rowId}) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`)
     .orderBy(sql`${rowAt} DESC`, sql`${rowId} DESC`)
     .limit(limit + 1);
 }

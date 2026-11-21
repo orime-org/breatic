@@ -15,6 +15,11 @@
  * on a later pass (an outbox with backoff skips it until its next attempt is
  * due, so the other rows go first). Core does not log; every failure is
  * reported to the caller.
+ *
+ * Wake and poll: a process that has just committed a row calls `wake()`, which
+ * starts a pass at once (or, when one is running, one more right after it);
+ * the interval is the fallback that picks up retries that came due and rows
+ * other processes wrote. Both run the same claim, so no row is sent twice.
  */
 
 /** What one `forwardNext` call did. */
@@ -49,20 +54,26 @@ export interface RelayLoopDeps {
 export interface RelayLoop {
   /** Schedule no further pass; a pass in flight finishes its current row. */
   stop(): void;
+  /** Run a pass now, or right after the running one; nothing after `stop()`. */
+  wake(): void;
 }
 
 /**
  * Start draining an outbox; the first pass runs at once.
  * @param deps - The row work, the timing and the log sink.
- * @returns A handle whose `stop()` ends the loop.
+ * @returns A handle whose `stop()` ends the loop and whose `wake()` runs a pass now.
  */
 export function startRelayLoop(deps: RelayLoopDeps): RelayLoop {
   let stopped = false;
+  let running = false;
+  let wokenDuringPass = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
 
-  /** One pass, then the next one scheduled. */
+  /** One pass, then the next one: at once when woken meanwhile, else after the interval. */
   async function pass(): Promise<void> {
     if (stopped) return;
+    running = true;
+    wokenDuringPass = false;
     try {
       for (let i = 0; i < deps.batchSize && !stopped; i++) {
         const forwarded = await deps.forwardNext();
@@ -78,7 +89,8 @@ export function startRelayLoop(deps: RelayLoopDeps): RelayLoop {
     } catch (err) {
       deps.report({ kind: "pass_failed", err });
     } finally {
-      if (!stopped) timer = setTimeout(() => void pass(), deps.intervalMs);
+      running = false;
+      if (!stopped) timer = setTimeout(() => void pass(), wokenDuringPass ? 0 : deps.intervalMs);
     }
   }
 
@@ -88,6 +100,15 @@ export function startRelayLoop(deps: RelayLoopDeps): RelayLoop {
     stop(): void {
       stopped = true;
       if (timer) clearTimeout(timer);
+    },
+    wake(): void {
+      if (stopped) return;
+      if (running) {
+        wokenDuringPass = true;
+        return;
+      }
+      if (timer) clearTimeout(timer);
+      void pass();
     },
   };
 }

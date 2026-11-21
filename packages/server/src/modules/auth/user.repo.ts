@@ -55,17 +55,6 @@ export async function getUserById(userId: string, tx?: DbTx): Promise<UserEntity
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
-/**
- * Whether an account was ever created, deleted accounts included.
- * @param userId - The account.
- * @param tx - The enclosing transaction.
- * @returns True when a row exists for it.
- */
-export async function accountEverExisted(userId: string, tx: DbTx): Promise<boolean> {
-  const rows = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
-  return rows.length > 0;
-}
-
 /** An account's facts the billing service reads, deleted accounts included. */
 export interface AccountFacts {
   userId: string;
@@ -75,12 +64,14 @@ export interface AccountFacts {
 }
 
 /**
- * Read an account's facts, whether or not it is deleted.
+ * Read an account's facts, whether or not it is deleted; null is the one
+ * answer to "did this account ever exist".
  * @param userId - The account.
+ * @param tx - The enclosing transaction, if any.
  * @returns Its facts, or null when no such account ever existed.
  */
-export async function readAccountFacts(userId: string): Promise<AccountFacts | null> {
-  const [row] = await db
+export async function readAccountFacts(userId: string, tx?: DbTx): Promise<AccountFacts | null> {
+  const [row] = await (tx ?? db)
     .select({ userId: users.id, email: users.email, locale: users.locale, deletedAt: users.deletedAt })
     .from(users)
     .where(eq(users.id, userId))

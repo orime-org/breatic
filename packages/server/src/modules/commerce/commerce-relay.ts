@@ -7,6 +7,10 @@
  * `product`, while the row is held: an answered row is marked sent; a
  * permanent failure or a refusal moves it to the dead letters; an unavailable
  * billing service puts it back with a backoff until `relay_max_attempts`.
+ *
+ * Whoever commits a row in this process calls {@link wakeCommerceRelay}
+ * after the commit, so the row goes out at once; the relay's interval only
+ * catches retries that came due and rows other processes wrote.
  */
 
 import {
@@ -74,7 +78,7 @@ export async function forwardNextCommerceEvent(): Promise<RelayForward | null> {
  * @returns How it went: sent, put back with its error, or dead-lettered.
  * @throws {Error} When the outbox write itself fails.
  */
-export async function deliverRow(row: commerceOutboxRepo.CommerceOutboxRow, tx: DbTx): Promise<RelayForward> {
+async function deliverRow(row: commerceOutboxRepo.CommerceOutboxRow, tx: DbTx): Promise<RelayForward> {
     const config = getCommerceConfig();
     const attempts = row.attempts + 1;
     let answered: unknown;
@@ -109,13 +113,16 @@ export async function deliverRow(row: commerceOutboxRepo.CommerceOutboxRow, tx: 
     return { id: row.id };
 }
 
+/** The relay this process started, if any. */
+let running: RelayLoop | null = null;
+
 /**
  * Start the relay; run it only when the deployment sells through a billing service.
  * @returns A handle whose `stop()` ends the loop.
  */
 export function startCommerceRelay(): RelayLoop {
   const config = getCommerceConfig();
-  return startRelayLoop({
+  running = startRelayLoop({
     forwardNext: forwardNextCommerceEvent,
     intervalMs: config.relay_interval_ms,
     batchSize: config.relay_batch,
@@ -125,4 +132,14 @@ export function startCommerceRelay(): RelayLoop {
       else logger.warn({ err: event.err, outboxId: event.id }, "commerce_outbox_forward_failed");
     },
   });
+  return running;
+}
+
+/**
+ * Tell this process's relay that a row was committed, so it sends it now.
+ * Call it only after the transaction that appended the row has committed; it
+ * does nothing where no relay runs (nothing sold, or a process without one).
+ */
+export function wakeCommerceRelay(): void {
+  running?.wake();
 }

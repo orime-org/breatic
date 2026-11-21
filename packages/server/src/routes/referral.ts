@@ -16,7 +16,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { requireSelling } from "@server/middleware/require-selling.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { userPath } from "@server/modules/commerce/commerce-client.js";
-import { flushReferralBinding } from "@server/modules/commerce/referral-flush.service.js";
+import { awaitReferralBinding } from "@server/modules/commerce/referral-wait.service.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { forwardToCommerce, idempotencyKeyOf } from "@server/routes/commerce-forward.js";
 
@@ -26,18 +26,14 @@ referral.use(requireAuth);
 referral.use(requireSelling);
 
 /** `GET /account/referral` — what the membership panel's referral sections show. */
-referral.get("/", rateLimitFor("referral-read", "user"), async (c) => {
-  // A sign-up's binding may still wait for the relay; sending it first lets
-  // a fresh account see the code it signed up with (inner#1993 §8.4).
-  const userId = c.get("user").id;
-  await flushReferralBinding(userId);
-  return forwardToCommerce(c, { method: "GET", path: userPath(userId, "/referral"), quick: true });
-}
+referral.get("/", rateLimitFor("referral-read", "user"), async (c) =>
+  forwardToCommerce(c, { method: "GET", path: userPath(c.get("user").id, "/referral"), quick: true }),
 );
 
 /**
  * `POST /account/referral/binding` — attach a code before the first
- * membership payment. The code the account signed up with is decided first.
+ * membership payment. The code the account signed up with is decided first:
+ * the relay delivers it while this waits.
  */
 referral.post(
   "/binding",
@@ -47,7 +43,7 @@ referral.post(
   runOnce("referral"),
   async (c) => {
     const userId = c.get("user").id;
-    await flushReferralBinding(userId);
+    await awaitReferralBinding(userId);
     return forwardToCommerce(c, {
       method: "POST",
       path: userPath(userId, "/referral/binding"),

@@ -171,6 +171,7 @@ describe("the billing contract, product side", () => {
         fc.record({ properties: fc.record({ tier, interval: period, amountCents: cents, currency }), consent, click, transactionId: text(64) }),
         { nil: null },
       ),
+      referenceId: text(255),
     });
     await fc.assert(
       fc.asyncProperty(fc.uuid(), request, async (deliveryId, body) =>
@@ -210,7 +211,8 @@ describe("the billing contract, product side", () => {
     );
     await fc.assert(
       fc.asyncProperty(fc.uuid(), fc.constantFrom(...REFUND_STEPS), lotId(), text(255), tell, async (operationId, step, lot, referenceId, told) => {
-        const answer = await commerce(`/refund-steps/${operationId}/${step}`, { body: { lotId: lot, step, referenceId, tell: told } });
+        const settled = step === "settle" ? { amountCents: 100, currency: "usd" } : null;
+        const answer = await commerce(`/refund-steps/${operationId}/${step}`, { body: { lotId: lot, step, referenceId, settled, tell: told } });
         expectContractAnswer(answer, refundStepAnswerSchema);
         // A lot no longer where the edge starts is refused with the lot as it stands.
         if (answer.status === 409) expect(refundStepAnswerSchema.parse(answer.json).status).toBe("refused");

@@ -21,6 +21,7 @@ import { validate, env, logger, ForbiddenError } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import { creditViewService } from "@server/modules";
 import { callCommerce, userPath } from "@server/modules/commerce/commerce-client.js";
+import { wakeCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
 import * as studioCreditDesignation from "@server/modules/studio/studioCreditDesignation.service.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import {
@@ -163,6 +164,8 @@ credits.post(
       lotId: c.req.valid("param").id,
       requestingUserId: user.id,
     });
+    // The request committed its lot's lifecycle to the outbox.
+    wakeCommerceRelay();
     return c.json({ data });
   },
 );

@@ -110,4 +110,51 @@ describe("startRelayLoop", () => {
     expect(forwardNext).toHaveBeenCalledTimes(2);
     loop.stop();
   });
+
+  it("starts a pass at once when woken during the wait", async () => {
+    const forwardNext = forwards(null);
+    const loop = startRelayLoop({ forwardNext, intervalMs: 5000, batchSize: 10, report: vi.fn() });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(forwardNext).toHaveBeenCalledTimes(1);
+    loop.wake();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(forwardNext).toHaveBeenCalledTimes(2);
+    // The wake replaced the pending wait: the next pass is a full interval after the woken one.
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(forwardNext).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(forwardNext).toHaveBeenCalledTimes(3);
+    loop.stop();
+  });
+
+  it("runs exactly one more pass right after the running one when woken during it", async () => {
+    let release: () => void = () => {};
+    const forwardNext = vi
+      .fn<() => Promise<RelayForward | null>>()
+      .mockImplementationOnce(() => new Promise((resolve) => { release = () => resolve(null); }))
+      .mockResolvedValue(null);
+    const loop = startRelayLoop({ forwardNext, intervalMs: 5000, batchSize: 10, report: vi.fn() });
+    await vi.advanceTimersByTimeAsync(0);
+    loop.wake();
+    loop.wake();
+    expect(forwardNext).toHaveBeenCalledTimes(1);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(forwardNext).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(4999);
+    expect(forwardNext).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(forwardNext).toHaveBeenCalledTimes(3);
+    loop.stop();
+  });
+
+  it("does nothing when woken after stop", async () => {
+    const forwardNext = forwards(null);
+    const loop = startRelayLoop({ forwardNext, intervalMs: 1000, batchSize: 10, report: vi.fn() });
+    await vi.advanceTimersByTimeAsync(0);
+    loop.stop();
+    loop.wake();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(forwardNext).toHaveBeenCalledTimes(1);
+  });
 });

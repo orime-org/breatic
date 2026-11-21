@@ -242,6 +242,15 @@ describe("Google sign-in with a referral code", () => {
     expect(await bindingOfEmail(email)).toEqual({ code: "FRIEND-4", source: "signup_link" });
   });
 
+  it("says a code carried into a new account is pending when the billing service cannot be asked, and keeps it", async () => {
+    suite.reply = () => ({ status: 503, body: {} });
+    const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
+    const res = await googleSignIn(crypto.randomUUID(), email, { referralCode: "friend-6", referralSource: "signup_link" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { created: boolean; referral?: string } }).data).toMatchObject({ created: true, referral: "pending" });
+    expect(await bindingOfEmail(email)).toEqual({ code: "friend-6", source: "signup_link" });
+  });
+
   it("says a code carried into an existing account was not applied, and asks and appends nothing", async () => {
     const sub = crypto.randomUUID();
     const email = `ref-google-${crypto.randomUUID()}@gmail.com`;

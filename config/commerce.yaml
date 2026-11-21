@@ -10,12 +10,19 @@
 call_timeout_ms: 30000
 quick_call_timeout_ms: 3000
 
+# A request that waits for the relay to deliver a row (a membership checkout
+# or a later referral binding waiting on the sign-up binding) reads the row
+# this often, for at most quick_call_timeout_ms.
+wait_poll_ms: 100
+
 # How long the membership panel keeps the prices it read from the billing
 # service; a failed read falls back to them.
 catalog_cache_seconds: 300
 
-# How long the relay waits between passes, and the most rows one pass sends.
-relay_interval_ms: 2000
+# The relay is woken as soon as a row commits; this is the fallback wait
+# between passes (retries that came due, rows the worker wrote), and the most
+# rows one pass sends.
+relay_interval_ms: 5000
 relay_batch: 100
 
 # How long one delivery to the billing service may take. The row stays locked

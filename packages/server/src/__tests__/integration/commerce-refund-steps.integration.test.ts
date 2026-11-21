@@ -71,7 +71,7 @@ describe("applyRefundStep", () => {
   it("starts an approval and answers the lot after it", async () => {
     const { lotId } = await lot("refund_pending");
 
-    const answer = await step({ lotId, step: "mark_refunding", referenceId: randomUUID(), tell: null });
+    const answer = await step({ lotId, step: "mark_refunding", referenceId: randomUUID(), settled: null, tell: null });
 
     expect(answer).toMatchObject({ httpStatus: 200, body: { status: "applied", lot: { lotId, lifecycle: "refunding" } } });
   });
@@ -80,7 +80,7 @@ describe("applyRefundStep", () => {
     const { lotId, userId } = await lot("refunding");
     const refundId = `re_${randomUUID()}`;
 
-    const answer = await step({ lotId, step: "settle", referenceId: refundId, tell: { kind: "refund_completed", amountCents: 1000, currency: "usd" } });
+    const answer = await step({ lotId, step: "settle", referenceId: refundId, settled: { amountCents: 1000, currency: "usd" }, tell: { kind: "refund_completed", amountCents: 1000, currency: "usd" } });
 
     expect(answer).toMatchObject({ httpStatus: 200, body: { status: "applied", lot: { lifecycle: "refunded", ledgerSum: "0.000000" } } });
     expect(await sql`SELECT amount::text, reference_id FROM credit_ledger WHERE lot_id = ${lotId} AND entry_type = 'refund'`).toEqual([
@@ -96,11 +96,30 @@ describe("applyRefundStep", () => {
     );
   });
 
+  it("reports a settle the buyer is not told about, from the settled amount, once", async () => {
+    const { lotId, userId } = await lot("refunding");
+    const operationId = randomUUID();
+    const request: RefundStepRequest = { lotId, step: "settle", referenceId: `re_${randomUUID()}`, settled: { amountCents: 750, currency: "eur" }, tell: null };
+
+    const first = await step(request, operationId);
+    const again = await step(request, operationId);
+
+    expect(first).toMatchObject({ httpStatus: 200, body: { status: "applied", lot: { lifecycle: "refunded" } } });
+    expect(again).toEqual(first);
+    expect(await sql`SELECT 1 FROM notifications WHERE user_id = ${userId}`).toHaveLength(0);
+    expect(track).toHaveBeenCalledTimes(1);
+    expect(track).toHaveBeenCalledWith(
+      "refund_completed",
+      { userId, insertId: `refund:${lotId}`, properties: { credits: 1000, amount_cents: 750, currency: "eur" } },
+      { analytics: true, ads: false },
+    );
+  });
+
   it("rejects a request with a zero row naming the disposition and tells the buyer", async () => {
     const { lotId, userId } = await lot("refund_pending");
     const operationId = randomUUID();
 
-    await step({ lotId, step: "reject", referenceId: operationId, tell: { kind: "refund_rejected" } }, operationId);
+    await step({ lotId, step: "reject", referenceId: operationId, settled: null, tell: { kind: "refund_rejected" } }, operationId);
 
     expect(await sql`SELECT lifecycle, refund_attempts FROM credit_lots WHERE id = ${lotId}`).toEqual([{ lifecycle: "active", refund_attempts: 1 }]);
     expect(await sql`SELECT amount::text, reference_id FROM credit_ledger WHERE lot_id = ${lotId} AND entry_type = 'refund_rejected'`).toEqual([
@@ -112,14 +131,14 @@ describe("applyRefundStep", () => {
 
   it("sends an approval back and restores a settled lot", async () => {
     const back = await lot("refunding");
-    expect(await step({ lotId: back.lotId, step: "send_back", referenceId: randomUUID(), tell: null })).toMatchObject({
+    expect(await step({ lotId: back.lotId, step: "send_back", referenceId: randomUUID(), settled: null, tell: null })).toMatchObject({
       body: { status: "applied", lot: { lifecycle: "refund_pending" } },
     });
 
     const settled = await lot("refunding");
-    await step({ lotId: settled.lotId, step: "settle", referenceId: `re_${randomUUID()}`, tell: null });
+    await step({ lotId: settled.lotId, step: "settle", referenceId: `re_${randomUUID()}`, settled: { amountCents: 1000, currency: "usd" }, tell: null });
     const operationId = randomUUID();
-    const restored = await step({ lotId: settled.lotId, step: "restore", referenceId: operationId, tell: { kind: "refund_restored" } }, operationId);
+    const restored = await step({ lotId: settled.lotId, step: "restore", referenceId: operationId, settled: null, tell: { kind: "refund_restored" } }, operationId);
 
     expect(restored).toMatchObject({ body: { status: "applied", lot: { lifecycle: "active", ledgerSum: "1000.000000", everRestored: true } } });
     expect(await sql`SELECT type FROM notifications WHERE user_id = ${settled.userId}`).toEqual([{ type: "credit.refund_restored" }]);
@@ -128,7 +147,7 @@ describe("applyRefundStep", () => {
   it("refuses a lot that has moved on, writes nothing, and answers every repeat the same", async () => {
     const { lotId, userId } = await lot("active");
     const operationId = randomUUID();
-    const request: RefundStepRequest = { lotId, step: "settle", referenceId: `re_${randomUUID()}`, tell: { kind: "refund_completed", amountCents: 1000, currency: "usd" } };
+    const request: RefundStepRequest = { lotId, step: "settle", referenceId: `re_${randomUUID()}`, settled: { amountCents: 1000, currency: "usd" }, tell: { kind: "refund_completed", amountCents: 1000, currency: "usd" } };
 
     const first = await step(request, operationId);
     const again = await step(request, operationId);
@@ -143,7 +162,7 @@ describe("applyRefundStep", () => {
   it("answers a repeat of an applied step from the first and moves the lot once", async () => {
     const { lotId, userId } = await lot("refund_pending");
     const operationId = randomUUID();
-    const request: RefundStepRequest = { lotId, step: "reject", referenceId: operationId, tell: { kind: "refund_rejected" } };
+    const request: RefundStepRequest = { lotId, step: "reject", referenceId: operationId, settled: null, tell: { kind: "refund_rejected" } };
 
     const first = await step(request, operationId);
 
@@ -153,7 +172,7 @@ describe("applyRefundStep", () => {
   });
 
   it("answers 404 for a lot that does not exist", async () => {
-    expect(await step({ lotId: randomUUID(), step: "mark_refunding", referenceId: randomUUID(), tell: null })).toEqual({
+    expect(await step({ lotId: randomUUID(), step: "mark_refunding", referenceId: randomUUID(), settled: null, tell: null })).toEqual({
       httpStatus: 404,
       body: { code: "lot_not_found" },
     });

@@ -7,7 +7,7 @@
  * appends it to the outbox for the billing service to bind. A code the
  * billing service calls inactive refuses the sign-up on the paths that refuse
  * and is dropped on the one that skips; a billing service out of reach keeps
- * the code for it to decide on delivery.
+ * the code for it to decide on delivery, and the sign-up hears "pending".
  */
 
 import { randomUUID } from "node:crypto";
@@ -20,8 +20,9 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-import { initCore, referralBindingEventSchema } from "@breatic/core";
+import { getCommerceConfig, initCore, referralBindingEventSchema } from "@breatic/core";
 import { SignupReferralRefused, createAccount } from "@server/modules/auth/auth.service.js";
+import { startCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
 import { initSellingCore, useCommerceApp } from "./commerce-harness.js";
 
 const suite = useCommerceApp("commerce-signup-referral");
@@ -79,12 +80,12 @@ describe("sign-up referral codes", () => {
     expect(await bindings(userId)).toEqual([]);
   });
 
-  it("keeps the code for the billing service to decide when it cannot be asked", async () => {
+  it("keeps the code for the billing service to decide when it cannot be asked, and says it is pending", async () => {
     suite.reply = () => ({ status: 503, body: {} });
 
     const { userId, referral } = await signUp("reject");
 
-    expect(referral).toBe("not_applied");
+    expect(referral).toBe("pending");
     expect(await bindings(userId)).toEqual([{ userId, code: "friend-2026", source: "signup_typed", requestedAt: expect.any(String) }]);
   });
 
@@ -102,5 +103,29 @@ describe("sign-up referral codes", () => {
     expect(suite.received).toEqual([]);
     const options = await suite.app.request("/api/v1/auth/options");
     expect(await options.json()).toMatchObject({ data: { referralEnabled: true } });
+  });
+
+  it("wakes a started relay once the account commits, so the binding is delivered long before the next poll", async () => {
+    expect(getCommerceConfig().relay_interval_ms).toBe(5000);
+    suite.reply = (req) =>
+      req.path.startsWith("/v1/inbox/") ? { status: 200, body: { result: "applied" } } : { status: 200, body: { active: true, code: "FRIEND-2026" } };
+    const relay = startCommerceRelay();
+    try {
+      // Let the first pass, which runs at start, finish whatever earlier files left.
+      await vi.waitFor(async () => {
+        const [r] = await suite.sql<{ n: number }[]>`SELECT count(*)::int AS n FROM commerce_outbox WHERE sent_at IS NULL AND next_attempt_at <= now()`;
+        expect(r!.n).toBe(0);
+      }, { timeout: 4000, interval: 50 });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+
+      const startedAt = Date.now();
+      const { userId } = await signUp("reject");
+      await vi.waitFor(async () => {
+        expect(await suite.sql`SELECT sent_at IS NOT NULL AS sent FROM commerce_outbox WHERE aggregate_key = ${`referral:${userId}`}`).toEqual([{ sent: true }]);
+      }, { timeout: 1000, interval: 20 });
+      expect(Date.now() - startedAt).toBeLessThan(1000);
+    } finally {
+      relay.stop();
+    }
   });
 });

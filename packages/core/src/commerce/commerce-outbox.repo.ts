@@ -8,13 +8,14 @@
  * sent, retries it later or moves it to the dead letters.
  *
  * Nothing is appended while the deployment sells nothing: no relay runs then,
- * and a row nobody sends would only pile up. The daily lot-mirror reconcile
- * resends every lot's current lifecycle once selling starts.
+ * and a row nobody sends would only pile up. Once selling starts, the daily
+ * lot-mirror reconcile resends every bought lot that is not active, and the
+ * active ones changed within `lot_mirror_reconcile_window_days`.
  */
 
-import { eq, sql } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { env } from "@core/config/env.js";
-import type { DbTx } from "@core/db/client.js";
+import { db, type DbTx } from "@core/db/client.js";
 import { commerceOutbox, commerceOutboxDeadLetters } from "@core/db/schema.js";
 import type { CommerceOutboxType } from "@core/commerce/contract.js";
 
@@ -136,20 +137,20 @@ function toRow(row: RawRow): CommerceOutboxRow {
 }
 
 /**
- * Lock an account's unsent referral binding, waiting for a relay that holds
- * it to finish (inner#1993 §8.4, the flush before a checkout or a later
- * binding). Postgres re-checks `sent_at IS NULL` on the row it waited for, so
- * a row the relay just sent comes back as none.
+ * Whether an account's referral binding still waits in the outbox (inner#1993
+ * §5.5): a plain read, so a user waiting on it never holds the row nor
+ * touches its attempts. A sent row, a row moved to the dead letters and no
+ * row at all all answer false.
  * @param userId - The account.
- * @param tx - The flush's transaction.
- * @returns The row, or null when none is waiting.
+ * @returns True while an unsent binding is there.
  */
-export async function lockUnsentReferralBinding(userId: string, tx: DbTx): Promise<CommerceOutboxRow | null> {
-  const rows = await tx.execute<RawRow>(sql`
-    SELECT id, seq::text AS seq, aggregate_key, type, payload, attempts, last_error, created_at
-    FROM commerce_outbox WHERE aggregate_key = ${`referral:${userId}`} AND sent_at IS NULL
-    ORDER BY seq LIMIT 1 FOR UPDATE`);
-  return rows[0] === undefined ? null : toRow(rows[0]);
+export async function hasUnsentReferralBinding(userId: string): Promise<boolean> {
+  const rows = await db
+    .select({ id: commerceOutbox.id })
+    .from(commerceOutbox)
+    .where(and(eq(commerceOutbox.aggregateKey, `referral:${userId}`), isNull(commerceOutbox.sentAt)))
+    .limit(1);
+  return rows.length > 0;
 }
 
 /**
@@ -177,7 +178,10 @@ export async function markRetry(id: string, attempts: number, delaySeconds: numb
 }
 
 /**
- * Move a claimed row to the dead letters; it is never sent again.
+ * Move a claimed row to the dead letters; it is never sent again. The row
+ * leaves this table (the one hard delete here) and lives on, same id, seq
+ * and payload, in `commerce_outbox_dead_letters`, so an aggregate's history
+ * is the two tables read together.
  * @param row - The row.
  * @param attempts - Attempts made, this one included.
  * @param lastError - Why the last attempt failed.

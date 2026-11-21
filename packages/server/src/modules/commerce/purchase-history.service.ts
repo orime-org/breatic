@@ -3,8 +3,9 @@
 
 /**
  * Purchase history (inner#1993 §3.2 #5): how an account came by its credits,
- * newest first. The product holds every lot (bought, gifted, compensated);
- * the billing service holds the payments that opened none yet (clearing,
+ * newest first. The product holds every lot (bought, gifted, compensated)
+ * and the receipt of every payment it granted, lot or not; the billing
+ * service holds the payments the product has no receipt for yet (clearing,
  * failed, abandoned) and whether each purchase's letter can be sent again.
  * Both halves are read on one keyset and merged.
  */
@@ -27,6 +28,8 @@ import { requestCommerce, userPath } from "@server/modules/commerce/commerce-cli
 interface Keyed {
   row: PurchaseRow;
   cursorAt: string;
+  /** A payment the product holds the receipt of: its resend state is asked of the billing service. */
+  receipt: boolean;
 }
 
 /**
@@ -47,7 +50,8 @@ export async function readPurchaseHistory(userId: string, rawLimit: string | und
   const merged = env.SELLING ? [...local, ...(await unlandedRows(userId, size, cursor === null ? null : rawCursor!))] : local;
   merged.sort((a, b) => compareDesc(a, b));
   const taken = merged.slice(0, size + 1);
-  if (env.SELLING) await fillCanResend(userId, taken);
+  // Only the rows the page returns; the extra one only tells whether more exist.
+  if (env.SELLING) await fillCanResend(userId, taken.slice(0, size));
   return toPage(taken, size, (k) => k.row, (k) => ({ cursorAt: k.cursorAt, id: k.row.rowId }));
 }
 
@@ -63,7 +67,7 @@ function compareDesc(a: Keyed, b: Keyed): number {
 }
 
 /**
- * The product's half: its lots.
+ * The product's half: its lots and the receipts that have no live lot.
  * @param userId - The account.
  * @param size - The page size.
  * @param cursor - Where the previous page ended.
@@ -76,6 +80,7 @@ async function localRows(userId: string, size: number, cursor: { createdAt: stri
   return rows.map((r) => {
     return {
       cursorAt: r.cursorAt,
+      receipt: r.paymentId !== null,
       row: {
         rowId: r.rowId,
         sourceKind: r.sourceKind as CreditSourceKind,
@@ -86,8 +91,8 @@ async function localRows(userId: string, size: number, cursor: { createdAt: stri
         taxCents: r.taxCents,
         currency: r.currency,
         creditsGranted: credits(r.creditsGranted),
-        remainingCredits: credits(r.remainingCredits),
-        lifecycle: r.lifecycle as CreditLotLifecycle,
+        remainingCredits: r.remainingCredits === null ? null : credits(r.remainingCredits),
+        lifecycle: r.lifecycle as CreditLotLifecycle | null,
         designatedStudioId: r.designatedStudioId,
         designatedStudioName: r.designatedStudioName,
         status: r.paymentId === null ? null : "completed",
@@ -113,6 +118,7 @@ async function unlandedRows(userId: string, size: number, rawCursor: string | nu
   );
   return answer.data.map((p) => ({
     cursorAt: p.cursorAt,
+    receipt: false,
     row: {
       rowId: p.paymentId,
       sourceKind: "payment",
@@ -140,7 +146,7 @@ async function unlandedRows(userId: string, size: number, rawCursor: string | nu
  * @throws {UnavailableError} When the billing service cannot answer.
  */
 async function fillCanResend(userId: string, rows: Keyed[]): Promise<void> {
-  const local = rows.filter((k) => k.row.paymentId !== null && k.row.lifecycle !== null);
+  const local = rows.filter((k) => k.receipt);
   if (local.length === 0) return;
   const answer = mailStatusAnswerSchema.parse(
     await requestCommerce({

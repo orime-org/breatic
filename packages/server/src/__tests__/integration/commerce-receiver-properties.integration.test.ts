@@ -149,6 +149,7 @@ describe("subscription-facts", () => {
       },
       notices: [],
       started: null,
+      referenceId: "evt_property",
     };
   }
 
@@ -215,7 +216,7 @@ describe("refund-steps", () => {
       VALUES (${sourceId},'payment',${userId},1000,1000,${edge.from}) RETURNING id`;
     await sql`INSERT INTO credit_ledger(payer_user_id,lot_id,entry_type,amount) VALUES (${userId},${row!.id},'topup','1000')`;
     if (edge.settledFirst) {
-      const settled = await applyRefundStep(randomUUID(), "settle", { lotId: row!.id, step: "settle", referenceId: `re_${randomUUID()}`, tell: null });
+      const settled = await applyRefundStep(randomUUID(), "settle", { lotId: row!.id, step: "settle", referenceId: `re_${randomUUID()}`, settled: { amountCents: 1000, currency: "usd" }, tell: null });
       expect(settled.httpStatus).toBe(200);
     }
     return { lotId: row!.id, userId };
@@ -247,14 +248,15 @@ describe("refund-steps", () => {
               : edge.step === "restore"
                 ? { kind: "refund_restored" as const }
                 : null;
+        const settled = edge.step === "settle" ? { amountCents: 1000, currency: "usd" } : null;
         const once = await lotFor(edge);
         const onceOperation = randomUUID();
-        const onceAnswer = await applyRefundStep(onceOperation, edge.step, { lotId: once.lotId, step: edge.step, referenceId: onceOperation, tell });
+        const onceAnswer = await applyRefundStep(onceOperation, edge.step, { lotId: once.lotId, step: edge.step, referenceId: onceOperation, settled, tell });
         expect(onceAnswer.httpStatus).toBe(200);
 
         const lot = await lotFor(edge);
         const operationId = randomUUID();
-        const request = { lotId: lot.lotId, step: edge.step, referenceId: operationId, tell };
+        const request = { lotId: lot.lotId, step: edge.step, referenceId: operationId, settled, tell };
         const answers = await repeat(times, mode, () => applyRefundStep(operationId, edge.step, request));
 
         for (const answer of answers) expect(answer).toEqual(answers[0]);

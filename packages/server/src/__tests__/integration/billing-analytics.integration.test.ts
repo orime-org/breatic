@@ -132,6 +132,39 @@ describe("credit purchases", () => {
   });
 });
 
+describe("credit purchases whose consent was erased", () => {
+  it("replays the stored grant for a retry whose conversion changed, granting and reporting nothing more", async () => {
+    const userId = await account();
+    const paymentId = randomUUID();
+    const transactionId = `purchase:${paymentId}`;
+
+    const request = grant(userId, { consent: { analytics: true, ads: true }, click: recentClick(), transactionId });
+
+    const first = await grantPayment(paymentId, request);
+    // The account was erased before the retry: the billing service dropped the order's consent and click.
+    const again = await grantPayment(paymentId, { ...request, conversion: { consent: { analytics: false, ads: false }, click: null, transactionId } });
+
+    expect(first.httpStatus).toBe(200);
+    expect(again).toEqual(first);
+    expect(await sql`SELECT count(*)::int AS n FROM credit_lots WHERE source_id = ${paymentId}`).toEqual([{ n: 1 }]);
+    expect(sent.filter((e) => e.event_type === "credit_purchase_completed")).toHaveLength(1);
+  });
+
+  it("grants a first delivery that arrives with the consent erased and queues no conversion", async () => {
+    const userId = await account();
+    const paymentId = randomUUID();
+    const transactionId = `purchase:${paymentId}`;
+
+    const answer = await grantPayment(paymentId, grant(userId, { consent: { analytics: false, ads: false }, click: null, transactionId }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(answer.httpStatus).toBe(200);
+    expect(await sql`SELECT count(*)::int AS n FROM credit_lots WHERE source_id = ${paymentId}`).toEqual([{ n: 1 }]);
+    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId })).toBeNull();
+    expect(sent).toEqual([]);
+  });
+});
+
 describe("subscriptions", () => {
   it("reports the start once, under the consent the billing service sent, and queues its conversion", async () => {
     const userId = await account();
@@ -159,6 +192,7 @@ describe("subscriptions", () => {
         click: recentClick(),
         transactionId,
       },
+      referenceId: "evt_started",
     };
     const delivery = randomUUID();
 

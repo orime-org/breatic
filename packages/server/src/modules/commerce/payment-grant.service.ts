@@ -10,7 +10,8 @@
 
 import { enqueueAdsConversion, fingerprint, logger, trackServerEvent, type PaymentGrantRequest } from "@breatic/core";
 import { creditLotRepo, creditLotService, creditSourceRepo } from "@breatic/domain";
-import { accountEverExisted } from "@server/modules/auth/user.repo.js";
+import { readAccountFacts } from "@server/modules/auth/user.repo.js";
+import { wakeCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
 import { answerOnce } from "@server/modules/commerce/commerce-request.service.js";
 import type { StoredAnswer } from "@server/modules/commerce/commerce-request.repo.js";
 import * as paymentReceiptRepo from "@server/modules/commerce/payment-receipt.repo.js";
@@ -73,10 +74,14 @@ function reportPurchase(paymentId: string, request: PaymentGrantRequest): void {
  */
 export async function grantPayment(paymentId: string, request: PaymentGrantRequest): Promise<StoredAnswer> {
   let granted = false;
+  // `conversion` is left out of the hash: an account's erasure drops it from
+  // the order, so a retry may carry less of it, while who is granted what is
+  // decided by the rest (inner#1993 §3.3).
+  const { conversion: _conversion, ...intent } = request;
   const answer = await answerOnce(
-    { key: `grant:${paymentId}`, kind: "grant", hash: fingerprint("POST", ROUTE, paymentId, request) },
+    { key: `grant:${paymentId}`, kind: "grant", hash: fingerprint("POST", ROUTE, paymentId, intent) },
     async (tx) => {
-      if (!(await accountEverExisted(request.userId, tx))) {
+      if ((await readAccountFacts(request.userId, tx)) === null) {
         return { status: "refused", httpStatus: 404, body: { code: "account_not_found" } };
       }
       await creditSourceRepo.claimSource({ id: paymentId, kind: "payment" }, tx);
@@ -108,6 +113,9 @@ export async function grantPayment(paymentId: string, request: PaymentGrantReque
       return { status: "applied", httpStatus: 200, body: { lotId: lot.id, grantedAt: lot.createdAt.toISOString() } };
     },
   );
-  if (granted) reportPurchase(paymentId, request);
+  if (granted) {
+    wakeCommerceRelay();
+    reportPurchase(paymentId, request);
+  }
   return answer;
 }

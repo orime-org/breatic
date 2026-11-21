@@ -6,7 +6,9 @@
  * §3.3 `refund-steps`, §8.2): the lot is locked, moved along one of the five
  * refund edges and its bell notice written, once per operation and step. A
  * lot no longer where the edge starts is refused with 409 and left as it is;
- * that refusal is stored and answers every repeat.
+ * that refusal is stored and answers every repeat. An applied `settle` is
+ * reported to analytics from its `settled` amount, whether the buyer is told
+ * or not.
  */
 
 import {
@@ -16,11 +18,13 @@ import {
   logger,
   trackServerEvent,
   type DbTx,
+  type RefundSettled,
   type RefundStep,
   type RefundStepRequest,
 } from "@breatic/core";
 import { creditLotRepo, creditLotService } from "@breatic/domain";
 import type { CreditLotEntity } from "@breatic/shared";
+import { wakeCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
 import { answerOnce } from "@server/modules/commerce/commerce-request.service.js";
 import type { StoredAnswer } from "@server/modules/commerce/commerce-request.repo.js";
 import { toLotRefundFacts } from "@server/modules/commerce/commerce-refund-lots.service.js";
@@ -75,14 +79,17 @@ async function tellBuyer(lot: CreditLotEntity, tell: NonNullable<RefundStepReque
 /**
  * Send `refund_completed` under the account's latest reported consent.
  * @param lot - The settled lot.
- * @param amountCents - What went back to the buyer.
- * @param currency - In which currency.
+ * @param settled - What went back to the buyer.
  */
-async function reportRefundCompleted(lot: CreditLotEntity, amountCents: number, currency: string): Promise<void> {
+async function reportRefundCompleted(lot: CreditLotEntity, settled: RefundSettled): Promise<void> {
   try {
     trackServerEvent(
       "refund_completed",
-      { userId: lot.userId, insertId: `refund:${lot.id}`, properties: { credits: Number(lot.purchasedCredits), amount_cents: amountCents, currency } },
+      {
+        userId: lot.userId,
+        insertId: `refund:${lot.id}`,
+        properties: { credits: Number(lot.purchasedCredits), amount_cents: settled.amountCents, currency: settled.currency },
+      },
       await accountOnlyConsent(lot.userId),
     );
   } catch (err) {
@@ -94,12 +101,12 @@ async function reportRefundCompleted(lot: CreditLotEntity, amountCents: number, 
  * Take one refund step once per operation and step.
  * @param operationId - The billing service's refund operation.
  * @param step - The step, also named in the request.
- * @param request - The lot, the step, its ledger reference and what to tell the buyer.
+ * @param request - The lot, the step, its ledger reference, what a settle paid back and what to tell the buyer.
  * @returns 200 applied or 409 refused, each with the lot after; 404 `lot_not_found`; 422 for a reused key.
  * @throws {Error} When the database fails; nothing is stored, so a retry takes the step again.
  */
 export async function applyRefundStep(operationId: string, step: RefundStep, request: RefundStepRequest): Promise<StoredAnswer> {
-  let settled: CreditLotEntity | null = null;
+  let moved: CreditLotEntity | null = null;
   const answer = await answerOnce(
     { key: `refund:${operationId}:${step}`, kind: "refund", hash: fingerprint("POST", ROUTE, `${operationId}:${step}`, request) },
     async (tx) => {
@@ -115,12 +122,15 @@ export async function applyRefundStep(operationId: string, step: RefundStep, req
         return { status: "refused", httpStatus: 409, body: { status: "refused", code: "lot_state_changed", lot: toLotRefundFacts(facts!) } };
       }
       if (request.tell !== null) await tellBuyer(lot, request.tell, tx);
-      if (step === "settle") settled = lot;
+      moved = lot;
       const [facts] = await creditLotRepo.readLotRefundFacts([request.lotId]);
       return { status: "applied", httpStatus: 200, body: { status: "applied", lot: toLotRefundFacts(facts!) } };
     },
   );
-  const { tell } = request;
-  if (settled !== null && tell?.kind === "refund_completed") await reportRefundCompleted(settled, tell.amountCents, tell.currency);
+  if (moved !== null) {
+    // The edge committed the lot's lifecycle to the outbox.
+    wakeCommerceRelay();
+    if (step === "settle" && request.settled !== null) await reportRefundCompleted(moved, request.settled);
+  }
   return answer;
 }

@@ -60,6 +60,7 @@ describe("commerce routes", () => {
           },
           notices: [],
           started: null,
+          referenceId: "evt_route",
         },
       }),
     ).toMatchObject({ status: 404, json: unknown });
@@ -73,7 +74,7 @@ describe("commerce routes", () => {
     ).toMatchObject({ status: 404, json: unknown });
     expect(
       await commerce(`/refund-steps/${randomUUID()}/mark_refunding`, {
-        body: { lotId: randomUUID(), step: "mark_refunding", referenceId: "op", tell: null },
+        body: { lotId: randomUUID(), step: "mark_refunding", referenceId: "op", settled: null, tell: null },
       }),
     ).toMatchObject({ status: 404, json: { code: "lot_not_found" } });
   });
@@ -84,10 +85,13 @@ describe("commerce routes", () => {
       json: { code: "invalid_body" },
     });
     expect(
-      await commerce(`/refund-steps/${randomUUID()}/settle`, { body: { lotId: randomUUID(), step: "reject", referenceId: "op", tell: null } }),
+      await commerce(`/refund-steps/${randomUUID()}/settle`, { body: { lotId: randomUUID(), step: "reject", referenceId: "op", settled: null, tell: null } }),
     ).toMatchObject({ status: 422, json: { code: "invalid_body" } });
     expect(
-      await commerce(`/refund-steps/${randomUUID()}/settle`, { body: { lotId: randomUUID(), step: "settle", referenceId: "o\u0000p", tell: null } }),
+      await commerce(`/refund-steps/${randomUUID()}/settle`, { body: { lotId: randomUUID(), step: "settle", referenceId: "o\u0000p", settled: { amountCents: 1, currency: "usd" }, tell: null } }),
+    ).toMatchObject({ status: 422, json: { code: "invalid_body" } });
+    expect(
+      await commerce(`/refund-steps/${randomUUID()}/settle`, { body: { lotId: randomUUID(), step: "settle", referenceId: "re", settled: null, tell: null } }),
     ).toMatchObject({ status: 422, json: { code: "invalid_body" } });
   });
 

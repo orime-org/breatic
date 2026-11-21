@@ -3,8 +3,8 @@
 
 /**
  * The forwarded endpoints that do more than forward (inner#1993 §3.2): a
- * membership checkout and a later referral binding send the account's
- * pending binding first; a membership confirm answers the product's own
+ * membership checkout and a later referral binding wait for the relay to
+ * deliver the account's pending binding first, sending nothing themselves; a membership confirm answers the product's own
  * panel; the credits overview asks the billing service to retry ungranted
  * payments and answers regardless; the membership panel quotes the billing
  * service's prices and falls back to the last ones it quoted.
@@ -21,6 +21,7 @@ vi.mock("ai", () => ({
 }));
 
 import { CREDIT_AMOUNT_FORMAT } from "@breatic/shared";
+import { startCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
 import { insertAccount, loginCookie, useCommerceApp, type BillingRequest } from "./commerce-harness.js";
 
 const suite = useCommerceApp("commerce-account-flows");
@@ -66,38 +67,50 @@ function pathOf(req: BillingRequest): string {
 }
 
 describe("the pending referral binding goes first", () => {
-  it("sends it before a membership checkout", async () => {
+  it("waits for the relay to deliver it before a membership checkout", async () => {
     const userId = await insertAccount(suite.sql);
     const outboxId = await pendingBinding(userId);
     suite.reply = (req) => (pathOf(req).startsWith("/v1/inbox/") ? { status: 200, body: { result: "applied" } } : { status: 200, body: { data: { url: "https://checkout" } } });
+    const relay = startCommerceRelay();
+    try {
+      const res = await send(userId, "POST", "/account/subscription/checkout", { tier: "pro", period: "month", return_url: "https://app.example.test/m" });
 
-    const res = await send(userId, "POST", "/account/subscription/checkout", { tier: "pro", period: "month", return_url: "https://app.example.test/m" });
-
-    expect(res).toMatchObject({ status: 200, json: { data: { url: "https://checkout" } } });
-    expect(suite.received.map(pathOf)).toEqual([`/v1/inbox/${outboxId}`, `/v1/users/${userId}/subscription/checkout`]);
+      expect(res).toMatchObject({ status: 200, json: { data: { url: "https://checkout" } } });
+    } finally {
+      relay.stop();
+    }
+    const mine = suite.received.map(pathOf).filter((p) => p === `/v1/inbox/${outboxId}` || p.startsWith(`/v1/users/${userId}/`));
+    expect(mine).toEqual([`/v1/inbox/${outboxId}`, `/v1/users/${userId}/subscription/checkout`]);
     expect(await suite.sql`SELECT sent_at IS NOT NULL AS sent FROM commerce_outbox WHERE id = ${outboxId}`).toEqual([{ sent: true }]);
   });
 
-  it("refuses the checkout with 503 while the binding cannot be sent, and keeps it for the relay", async () => {
+  it("refuses the checkout with 503 once the wait runs out, sending nothing itself and counting no attempt", async () => {
     const userId = await insertAccount(suite.sql);
     const outboxId = await pendingBinding(userId);
+    const [before] = await suite.sql<{ next: string }[]>`SELECT next_attempt_at::text AS next FROM commerce_outbox WHERE id = ${outboxId}`;
     suite.reply = () => ({ status: 503, body: {} });
 
     const res = await send(userId, "POST", "/account/subscription/checkout", { tier: "pro", period: "month", return_url: "https://app.example.test/m" });
 
     expect(res).toMatchObject({ status: 503, json: { error: { reason: "billing_unavailable" } } });
-    expect(suite.received.map(pathOf)).toEqual([`/v1/inbox/${outboxId}`]);
-    expect(await suite.sql`SELECT sent_at IS NULL AS unsent, attempts FROM commerce_outbox WHERE id = ${outboxId}`).toEqual([{ unsent: true, attempts: 1 }]);
+    expect(suite.received).toEqual([]);
+    expect(await suite.sql`SELECT sent_at IS NULL AS unsent, attempts, next_attempt_at::text AS next FROM commerce_outbox WHERE id = ${outboxId}`).toEqual([
+      { unsent: true, attempts: 0, next: before!.next },
+    ]);
   });
 
-  it("sends it before a later binding", async () => {
+  it("waits for the relay to deliver it before a later binding", async () => {
     const userId = await insertAccount(suite.sql);
     const outboxId = await pendingBinding(userId);
     suite.reply = (req) => (pathOf(req).startsWith("/v1/inbox/") ? { status: 200, body: { result: "applied" } } : { status: 200, body: { data: { bound: true } } });
-
-    await send(userId, "POST", "/account/referral/binding", { code: "OTHER" });
-
-    expect(suite.received.map(pathOf)).toEqual([`/v1/inbox/${outboxId}`, `/v1/users/${userId}/referral/binding`]);
+    const relay = startCommerceRelay();
+    try {
+      await send(userId, "POST", "/account/referral/binding", { code: "OTHER" });
+    } finally {
+      relay.stop();
+    }
+    const mine = suite.received.map(pathOf).filter((p) => p === `/v1/inbox/${outboxId}` || p.startsWith(`/v1/users/${userId}/`));
+    expect(mine).toEqual([`/v1/inbox/${outboxId}`, `/v1/users/${userId}/referral/binding`]);
   });
 });
 

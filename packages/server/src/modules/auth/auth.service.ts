@@ -45,7 +45,8 @@ import {
   ValidationError,
   db,
 } from "@breatic/core";
-import { checkReferralCode } from "@server/modules/commerce/referral-check.service.js";
+import { wakeCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
+import { checkReferralCode, type ReferralCodeCheck } from "@server/modules/commerce/referral-check.service.js";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { Attribution, ReportedConsent, SignupReferralSource, UserEntity } from "@breatic/shared";
 
@@ -57,8 +58,15 @@ export interface SignupReferral {
   source: SignupReferralSource;
 }
 
-/** What became of a sign-up's referral code: none given, bound, or not used. */
-export type SignupReferralOutcome = "applied" | "not_applied" | null;
+/**
+ * What became of a sign-up's referral code: none given, bound, not used, or
+ * kept for the billing service to decide because it could not be asked
+ * (inner#1993 §8.4 S3).
+ */
+export type SignupReferralOutcome = "applied" | "pending" | "not_applied" | null;
+
+/** What a sign-up hears for each answer of the code check. */
+const OUTCOME_OF = { active: "applied", unknown: "pending", inactive: "not_applied" } as const satisfies Record<ReferralCodeCheck["status"], SignupReferralOutcome>;
 
 /** A sign-up refused because the referral code it carried is not valid; nothing was created. */
 export class SignupReferralRefused extends ValidationError {
@@ -105,7 +113,7 @@ export async function createAccount(
   // Asked before the account's transaction opens: the transaction never waits on the network.
   const checked = wanted === undefined ? null : await checkReferralCode(wanted.code);
   if (checked?.status === "inactive" && wanted!.onRefused === "reject") throw new SignupReferralRefused();
-  const outcome: SignupReferralOutcome = checked === null ? null : checked.status === "active" ? "applied" : "not_applied";
+  const outcome: SignupReferralOutcome = checked === null ? null : OUTCOME_OF[checked.status];
   // An unknown code is kept: the billing service decides it when the row arrives.
   const binding = checked === null || checked.status === "inactive" ? null : { code: checked.status === "active" ? checked.code : wanted!.code, source: wanted!.source };
   let user: UserEntity;
@@ -121,6 +129,7 @@ export async function createAccount(
     if (isUniqueViolation(err)) throw new ConflictError(t("server.auth.email_taken"));
     throw err;
   }
+  if (binding !== null) wakeCommerceRelay();
   trackServerEvent("signup_completed", {
     userId: user.id,
     insertId: `signup:${user.id}`,

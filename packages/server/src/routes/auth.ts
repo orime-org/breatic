@@ -233,7 +233,8 @@ auth.post("/register/resend", rateLimitFor("register-resend"), async (c) => {
  * writes the account (address verified) and signs it in.
  * @param c - Hono context with validated `signupVerifySchema` body and the ticket cookie
  * @returns `201` `{ user, referral? }` + session cookie; the ticket cookie is
- *   cleared. `referral` says whether the code the sign-up carried was bound.
+ *   cleared. `referral` says what became of the code the sign-up carried:
+ *   `applied`, `pending` (kept for the billing service to decide) or `not_applied`.
  * @throws {NotFoundError} `404` when no email backend is enabled
  * @throws {AppError} `400` wrong code · `410` sign-up gone · `422` code used up · `409` address taken
  */
