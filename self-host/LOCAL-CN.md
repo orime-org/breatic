@@ -85,6 +85,8 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。每家上游读的环境变量名写在 `config/provider/upstreams.yaml` 的 `key_env`；图像、视频等生成模型至少要配上它在 `config/provider/media/<类型>.yaml` 里列出的一家上游的密钥，例如 `WAVESPEED_API_KEY` 或 `FAL_KEY`。
 
+要让用户填自己的上游 key（账号菜单里的 BYOK 设置），按 `.env.docker` 的说明配置 `PROVIDER_KEY_SECRET_ID` 和 `PROVIDER_KEY_SECRETS`；用户保存的 key 用它们加密后存储。用某个主密钥加密的 key 还在库里时，这个主密钥要一直留在列表里，否则那些 key 无法再解开。两项都留空时 BYOK 设置关闭，所有调用都用上面配置的密钥。
+
 <a id="cloudflare"></a>
 ## 4. 正式部署 Cloudflare 上传服务
 
