@@ -7,8 +7,7 @@ import { Scan } from 'lucide-react';
 
 import { VIEWFINDER_RATIOS, type SceneCameraObject, type SceneCaptureConfig, type ViewfinderRatio } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
-import { Anchor as PopoverAnchor } from '@radix-ui/react-popover';
-import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { useTranslation } from '@web/i18n/use-translation';

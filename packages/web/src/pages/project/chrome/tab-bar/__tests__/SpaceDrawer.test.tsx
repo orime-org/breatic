@@ -5,12 +5,11 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import * as React from 'react';
-import { Anchor as PopoverAnchor } from '@radix-ui/react-popover';
 
 import { SPACE_NAME_MAX_LEN } from '@breatic/shared';
 
 import { SpaceDrawer } from '@web/pages/project/chrome/tab-bar/SpaceDrawer';
-import { Popover, PopoverContent } from '@web/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent } from '@web/components/ui/popover';
 import { toast } from '@web/lib/toast';
 import { useUIStore } from '@web/stores/ui';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
