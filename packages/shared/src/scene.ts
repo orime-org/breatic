@@ -195,7 +195,7 @@ const LOOK_OFFSET = z.number().finite().min(-SCENE_LOOK_OFFSET_MAX).max(SCENE_LO
 /** A part's picture: an asset id, or `'none'` to turn the model's own picture off. */
 export const SceneLookMapSchema = z.union([z.string().uuid(), z.literal('none')]);
 
-/** The fields one part may change; each is optional and absent means the model's own value. */
+/** The fields one part may change; each is optional and absent means the model's own value, except that an absent colour on a part showing a user picture reads as {@link SCENE_LOOK_PICTURE_COLOR}. */
 const SceneLookPartSchema = z.object({
   color: SceneColorSchema,
   roughness: unit,

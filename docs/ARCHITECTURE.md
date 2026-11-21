@@ -873,7 +873,8 @@ the model's own textures; a picture over the budget is not shown, the part
 keeps its own colour and the scene's model notice says so. A picture uploaded from the computer goes up with the ticket
 purpose `scene_look`, naming the object, the part and the picture the part
 held when the upload started; the browser only sends the bytes. When the
-upload is registered (or the studio already held the bytes), the server puts a
+upload is registered (by the worker's `upload-finish` job, or by the server
+when the studio already held the bytes at ticket time), that service puts a
 `scene-look-picture` event on the task-events stream, collab writes the
 picture onto the part through `judgeSceneLookPicture` and announces the
 outcome on `scene-look:settled`, and the uploader's page

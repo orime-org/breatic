@@ -4,7 +4,7 @@
 /**
  * Cross-process control-plane events (Redis pub/sub on DB2).
  *
- * Four fire-and-forget notification paths:
+ * Six fire-and-forget notification paths:
  *
  *   - `activity:new`      — server or worker publishes after writing an
  *                           activity row; every collab instance relays
@@ -12,6 +12,14 @@
  *   - `credits:changed`   — server or worker publishes after a charge made
  *                           in the project commits; every collab instance
  *                           relays it on the meta doc. Per project.
+ *   - `space-tasks:changed` — server or worker publishes when a 3D Space's
+ *                           task list gains, settles, expires or removes a
+ *                           row; every collab instance relays it on the meta
+ *                           doc. Per project.
+ *   - `scene-look:settled` — collab's task listener publishes how an
+ *                           uploaded 3D part picture was settled; every
+ *                           collab instance relays it on the meta doc. Per
+ *                           project.
  *   - `connections:close` — collab's lifecycle consumer publishes after
  *                           a duplicate / archive / restore; every collab
  *                           instance closes its connections to the

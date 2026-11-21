@@ -33,7 +33,7 @@
  * now happen inside `space-rpc.ts` as collab stateless RPC, so no
  * Redis round-trip is needed.
  *
- * One `psubscribe` on `{prefix}:project:*` covers all three channels.
+ * One `psubscribe` on `{prefix}:project:*` covers all five channels.
  *
  * Membership changes do not come through here: `member-change-sync.ts` hears
  * them from the trigger on `project_members`.

@@ -1768,7 +1768,7 @@ export function renderProductGuide(): string {
       "Clearing the selection closes its properties panel. The properties button is available with a selection. " +
       `For one object it shows ${quoted(t("spaces.threeD.name"))}, ${quoted(t("spaces.threeD.position"))}, ` +
       `${quoted(t("spaces.threeD.rotation"))} and ${quoted(t("spaces.threeD.scale"))}, with X, Y and Z boxes. ` +
-      `For one person, box or imported model it also has an ${quoted(t("spaces.threeD.look.title"))} section; the 3D appearance section of this guide covers it. ` +
+      `For one ${quoted(t("spaces.threeD.figure"))}, ${quoted(t("spaces.threeD.box"))}, imported model or generated model it also has an ${quoted(t("spaces.threeD.look.title"))} section; the 3D appearance section of this guide covers it. ` +
       "Position is in metres, rotation in degrees, and scale values must be positive. Enter or leaving a box applies it; " +
       "switching to another Space keeps unfinished input and validation errors. Return and reopen Properties to continue. " +
       "Closing the panel, opening another panel or overlay, or changing the selection ends that temporary input. " +
@@ -1816,7 +1816,7 @@ export function renderProductGuide(): string {
       `with no reload button, and says ${quoted(t("spaces.threeD.unsupportedOld"))}`,
     "",
     "## 3D appearance",
-    `For one person, box or imported model, the properties panel has a ${quoted(t("spaces.threeD.look.title"))} section below the position, rotation and scale boxes and above ${quoted(t("spaces.threeD.pose.title"))}; cameras, lights and several selected objects have none. ` +
+    `For one ${quoted(t("spaces.threeD.figure"))}, ${quoted(t("spaces.threeD.box"))}, imported model or generated model, the properties panel has a ${quoted(t("spaces.threeD.look.title"))} section below the position, rotation and scale boxes and above ${quoted(t("spaces.threeD.pose.title"))}; cameras, lights and several selected objects have none. ` +
       `Its title row has ${quoted(t("spaces.threeD.look.resetAll"))} at the right, greyed while the object has no changes. Below it is one row per part of the model: a small swatch of the part's colour, or of its image, ` +
       `the part's name from the model (a part without a name, or with the name of an earlier part, is called Part followed by its place in the list), and a dot on parts that were changed. ` +
       `Parts are listed in the model's order; ${quoted(t("spaces.threeD.look.defaultPart"))} holds whatever has no material of its own and comes last. Built-in models name every part by number. ` +
