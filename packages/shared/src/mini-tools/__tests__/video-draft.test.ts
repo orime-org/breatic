@@ -24,10 +24,11 @@ interface AnalysisRef {
   analysisRunId: string;
   inputFingerprint: string;
 }
-type DraftReading = { state: "absent" } | { state: "supported"; draft: Draft } | { state: "unsupported" | "invalid"; value: unknown };
+type DraftReading = { state: "absent" } | { state: "supported" | "stale"; draft: Draft } | { state: "unsupported" | "invalid"; value: unknown };
+interface PresentationRef { source: { toolInputId: string; planSha256: string } }
 interface DraftApi {
   videoToolDraftSchema: (toolId: VideoToolId) => { parse: (value: unknown) => Draft; safeParse: (value: unknown) => { success: boolean } };
-  readVideoToolDraft: (toolId: VideoToolId, value: unknown) => DraftReading;
+  readVideoToolDraft: (toolId: VideoToolId, value: unknown, presentationRef?: PresentationRef) => DraftReading;
   videoToolAnalysisRefSchema: { parse: (value: unknown) => AnalysisRef; safeParse: (value: unknown) => { success: boolean } };
   videoToolDraftAssetUrls: (draft: Draft) => string[];
   videoToolAnalysisRefs: (data: Readonly<Record<string, unknown>>) => AnalysisRef[];
@@ -176,5 +177,43 @@ describe("persistent video tool draft contract", () => {
         unrelated: first,
       })).toEqual([first, second]);
     });
+  });
+});
+
+// frames-split §7.13 Dv: every draft holds the selected version's presentationRef, and a draft whose ref is not the selected
+// one's is stale: its values stay, but they are not read as frame numbers of the new grid.
+describe("a draft's presentationRef (frames-split §7.13 Dv)", () => {
+  const selected: PresentationRef = { source: { toolInputId: "a".repeat(64), planSha256: "b".repeat(64) } };
+
+  it.each(toolIds)("stores the presentationRef with the parameters of %s", (toolId) => {
+    const draft = { ...draftFor(toolId), presentationRef: selected };
+    expect(api.videoToolDraftSchema(toolId).parse(draft)).toEqual(draft);
+    expect(api.videoToolDraftSchema(toolId).safeParse({ ...draft, presentationRef: { source: { toolInputId: "x", planSha256: "b".repeat(64) } } }).success).toBe(false);
+  });
+
+  it.each(toolIds)("reads %s as current only under the selected version's toolInputId and planSha256", (toolId) => {
+    const draft = { ...draftFor(toolId), presentationRef: selected };
+    expect(api.readVideoToolDraft(toolId, draft, selected)).toEqual({ state: "supported", draft });
+    expect(api.readVideoToolDraft(toolId, draft, { source: { ...selected.source, planSha256: "c".repeat(64) } })).toEqual({ state: "stale", draft });
+    expect(api.readVideoToolDraft(toolId, draft, { source: { ...selected.source, toolInputId: "c".repeat(64) } })).toEqual({ state: "stale", draft });
+  });
+
+  it("reads a saved draft without a presentationRef as stale, keeping its values", () => {
+    const draft = draftFor("video.split");
+    expect(api.readVideoToolDraft("video.split", draft, selected)).toEqual({ state: "stale", draft });
+  });
+
+  it("classifies by schema alone while no version is selected", () => {
+    const draft = draftFor("video.split");
+    expect(api.readVideoToolDraft("video.split", draft)).toEqual({ state: "supported", draft });
+  });
+
+  it("is stale for any ref other than the selected one", () => {
+    const hex = fc.stringMatching(/^[a-f0-9]{64}$/);
+    fc.assert(fc.property(hex, hex, (toolInputId, planSha256) => {
+      const stored = { source: { toolInputId, planSha256 } };
+      const reading = api.readVideoToolDraft("video.split", { ...draftFor("video.split"), presentationRef: stored }, selected);
+      return reading.state === (toolInputId === selected.source.toolInputId && planSha256 === selected.source.planSha256 ? "supported" : "stale");
+    }));
   });
 });

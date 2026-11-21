@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { miniToolAnalysisInputSchema } from "@shared/mini-tools/analysis-input.js";
-import { miniToolPresentationRefSchema } from "@shared/mini-tools/planned-request-schema.js";
+import { miniToolPresentationRefSchema } from "@shared/mini-tools/video-draft.js";
 import { videoToolSourceRefSchema } from "@shared/mini-tools/video-draft.js";
 
 /** The existing tasks lane's discriminator for analysis execution and recovery. */

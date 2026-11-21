@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { miniToolRequestSchema, type MiniToolRequest } from "@shared/mini-tools/request-schema.js";
-import { focusCropRectSchema, videoFocusCropDraftSchema, videoToolAnalysisRefSchema, videoToolDraftSchema } from "@shared/mini-tools/video-draft.js";
+import { focusCropRectSchema, miniToolPresentationRefSchema, videoFocusCropDraftSchema, videoToolAnalysisRefSchema, videoToolDraftSchema } from "@shared/mini-tools/video-draft.js";
 
 const index = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 const range = z.strictObject({ start: index, end: index }).refine((value) => value.end > value.start);
@@ -16,12 +16,6 @@ export const miniToolExecutionRecipeSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("frame"), frameIndex: index, crop: focusCropRectSchema.optional() }),
   z.strictObject({ kind: z.literal("segment"), range }),
 ]);
-const hash = z.string().regex(/^[a-f0-9]{64}$/);
-const toolInputRef = z.strictObject({ toolInputId: hash, planSha256: hash });
-/** The tool input each request input was planned against (§7.11, §7.13); the single-input tools name theirs `source`. */
-export const miniToolPresentationRefSchema = z.strictObject({ source: toolInputRef });
-/** A single-input tool's ref. */
-export type MiniToolPresentationRef = z.infer<typeof miniToolPresentationRefSchema>;
 const common = { project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(), analysis_refs: z.array(videoToolAnalysisRefSchema), presentation_ref: miniToolPresentationRefSchema };
 const destination = { outputIndex: index, nodeId: z.uuid() };
 const frames = z.strictObject({

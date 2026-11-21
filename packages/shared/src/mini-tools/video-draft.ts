@@ -33,6 +33,13 @@ export const videoToolInputSchema = z.strictObject({
   sourceNodeId: z.string().uuid().optional(),
 });
 
+const hash = z.string().regex(/^[a-f0-9]{64}$/);
+const toolInputRef = z.strictObject({ toolInputId: hash, planSha256: hash });
+/** The tool input each request input was planned against (§7.11, §7.13); the single-input tools name theirs `source`. */
+export const miniToolPresentationRefSchema = z.strictObject({ source: toolInputRef });
+/** A single-input tool's ref. */
+export type MiniToolPresentationRef = z.infer<typeof miniToolPresentationRefSchema>;
+
 const gridFrame = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
 /** A video focus crop's rectangle in P.display pixels (frames-split §5.5 admission row). */
 export const focusCropRectSchema = z.strictObject({
@@ -47,17 +54,21 @@ const commonDraftShape = {
   inputs: z.array(videoToolInputSchema).refine((inputs) => new Set(inputs.map((input) => input.inputId)).size === inputs.length),
 };
 
+// The selected version the parameters were set on (frames-split §7.13): their frame numbers belong to its grid. Drafts saved
+// before it was stored have none and read as stale, so the user rebinds them to the current version.
+const panelDraftShape = { ...commonDraftShape, presentationRef: miniToolPresentationRefSchema.optional() };
+
 const draftSchemas = {
   // The current frame is the player's grid frame number (frames-split §4.3, §10.7).
   "video.extract-frames": z.strictObject({
-    ...commonDraftShape,
+    ...panelDraftShape,
     params: z.strictObject({
       mode: z.enum(["first", "last", "current"]),
       frameIndex: gridFrame,
     }),
   }),
   "video.split": z.strictObject({
-    ...commonDraftShape,
+    ...panelDraftShape,
     // Cuts are grid frame numbers (frames-split §10.7 split row).
     params: z.strictObject({ cuts: z.array(gridFrame), sensitivity: z.number().optional() }),
   }),
@@ -83,7 +94,7 @@ export type VideoToolInput = z.infer<typeof videoToolInputSchema>;
 
 export type VideoToolDraftReading<K extends VideoToolId = VideoToolId> =
   | { state: "absent" }
-  | { state: "supported"; draft: VideoToolDraftById[K] }
+  | { state: "supported" | "stale"; draft: VideoToolDraftById[K] }
   | { state: "unsupported" | "invalid"; value: unknown };
 
 /**
@@ -97,17 +108,24 @@ export function videoToolDraftSchema<K extends VideoToolId>(toolId: K): z.ZodTyp
 }
 
 /**
- * Classifies persisted data while retaining unsupported values for explicit rebuild.
+ * Classifies persisted data while retaining unsupported values for explicit rebuild. Against a selected version, a draft
+ * set on another version's toolInputId or plan, or saved with no presentationRef, is stale: it keeps its values, which are
+ * frame numbers of a grid that is no longer shown (frames-split §7.13 Dv). A new playback file alone keeps both, so it
+ * leaves the draft current.
  * @param toolId - The tool whose scalar is being read.
  * @param value - Its stored raw value.
- * @returns A supported draft or its original reading state.
+ * @param presentationRef - The selected version's ref; without one only the format is judged.
+ * @returns A supported (current) or stale draft, or its original reading state.
  * @throws {never} Never.
  */
-export function readVideoToolDraft<K extends VideoToolId>(toolId: K, value: unknown): VideoToolDraftReading<K> {
+export function readVideoToolDraft<K extends VideoToolId>(toolId: K, value: unknown, presentationRef?: MiniToolPresentationRef): VideoToolDraftReading<K> {
   if (value === undefined) return { state: "absent" };
   if (value !== null && typeof value === "object" && "version" in value && typeof value.version === "number" && Number.isInteger(value.version) && value.version !== 1) return { state: "unsupported", value };
   const parsed = videoToolDraftSchema(toolId).safeParse(value);
-  return parsed.success ? { state: "supported", draft: parsed.data } : { state: "invalid", value };
+  if (!parsed.success) return { state: "invalid", value };
+  const held = parsed.data.presentationRef?.source;
+  const stale = presentationRef !== undefined && (held?.toolInputId !== presentationRef.source.toolInputId || held.planSha256 !== presentationRef.source.planSha256);
+  return { state: stale ? "stale" : "supported", draft: parsed.data };
 }
 
 /**
