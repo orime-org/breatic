@@ -1056,6 +1056,8 @@
       "editProposalMarks": "Replace the text in braces. Orange notes are not sent to the model.",
       "notePrefix": "Note: ",
       "integerBlank": "Blank for auto",
+      "ownKeyLabel": "Your key",
+      "studioKeyLabel": "Studio key",
       "usesOwnKey": "Uses your key, no credits",
       "usesStudioKey": "Uses the Studio's key, no credits",
       "usesOwnKeyDescribing": "Uses your key; describing elements takes credits",

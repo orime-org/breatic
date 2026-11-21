@@ -87,8 +87,8 @@ describe('TranscribePanelContainer', () => {
   });
 
   it.each([
-    ['self', 'Uses your key, no credits'],
-    ['admin', 'Uses the Studio\'s key, no credits'],
+    ['self', 'Your key'],
+    ['admin', 'Studio key'],
   ] as const)('says whose key runs it when the %s payer\'s OpenRouter key does (inner#1953)', async (payer, words) => {
     keyPlan.current = { payer, payerUserId: null, llm: { usesAccountKey: true }, models: {}, upstreamNames: {} } satisfies KeyPlan;
     render(tree(vi.fn()));

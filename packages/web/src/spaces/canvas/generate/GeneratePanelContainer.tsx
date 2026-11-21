@@ -265,7 +265,7 @@ function GeneratePanelBody({
   // The run as the click sends it: a model taking no prompt sends none, whatever the box last held. Priced, and
   // asked why no upstream here takes it (#1521), for the button and the click.
   const estimateInput = imageEstimateInput(vm, vm.promptRequired ? extractPromptText(promptText) : '');
-  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
+  const { creditText, creditDetail, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on
   // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
   // models array would defeat ModelPicker's React.memo each frame of any node
@@ -761,6 +761,7 @@ function GeneratePanelBody({
       subjectImageUrl={subjectImageUrl}
       referenceKinds={referenceKinds}
       creditText={creditText}
+      creditDetail={creditDetail}
       executeRefusal={executeRefusal}
       promptSlot={promptSlot}
       onExit={closeActivePanel}

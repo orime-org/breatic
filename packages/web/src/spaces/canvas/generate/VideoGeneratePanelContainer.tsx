@@ -432,7 +432,7 @@ function VideoGeneratePanelBody({
   // prompt. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
   const sentPrompt = !vm.promptRequired ? '' : shotRun ? (shotRun.writtenPrompt ?? '') : promptText;
   const estimateInput = videoEstimateInput(vm, extractPromptText(sentPrompt), shotRun?.params);
-  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
+  const { creditText, creditDetail, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
@@ -1007,6 +1007,7 @@ function VideoGeneratePanelBody({
       model={vm.model}
       params={stableParams}
       creditText={creditText}
+      creditDetail={creditDetail}
       mode={mode}
       referenceKinds={referenceKinds}
       onToggleMode={onToggleMode}

@@ -154,38 +154,44 @@ describe('useRunCheck — the key plan (inner#1953)', () => {
     serve({ payer: 'self', llm: { usesAccountKey: false }, models: { midjourney: ON_FAL } });
     const { result } = renderHook(() => useRunCheck(MIDJOURNEY, { params: {} }, 1, PROJECT), { wrapper: wrapper() });
 
-    await waitFor(() => expect(result.current.creditText).toBe('Uses your key, no credits'));
+    await waitFor(() => expect(result.current.creditText).toBe('Your key'));
+    expect(result.current.creditDetail).toBe('Uses your key, no credits');
   });
 
   it('says the run uses the Studio’s key and no credits when the key is the admin’s', async () => {
     serve({ payer: 'admin', llm: { usesAccountKey: false }, models: { midjourney: ON_FAL } });
     const { result } = renderHook(() => useRunCheck(MIDJOURNEY, { params: {} }, 1, PROJECT), { wrapper: wrapper() });
 
-    await waitFor(() => expect(result.current.creditText).toBe('Uses the Studio\'s key, no credits'));
+    await waitFor(() => expect(result.current.creditText).toBe('Studio key'));
+    expect(result.current.creditDetail).toBe('Uses the Studio\'s key, no credits');
   });
 
   it('says the description of an element takes credits when the language model runs on our keys', async () => {
     serve({ payer: 'self', llm: { usesAccountKey: false }, models: { describing: ON_WAVESPEED } });
     const { result } = renderHook(() => useRunCheck(DESCRIBING, WITH_ELEMENT, 1, PROJECT), { wrapper: wrapper() });
 
-    await waitFor(() => expect(result.current.creditText).toBe('Uses your key; describing elements takes credits'));
+    await waitFor(() => expect(result.current.creditText).toBe('Your key'));
+    expect(result.current.creditDetail).toBe('Uses your key; describing elements takes credits');
   });
 
   it('says the same of the Studio’s key when the key is the admin’s', async () => {
     serve({ payer: 'admin', llm: { usesAccountKey: false }, models: { describing: ON_WAVESPEED } });
     const { result } = renderHook(() => useRunCheck(DESCRIBING, WITH_ELEMENT, 1, PROJECT), { wrapper: wrapper() });
 
-    await waitFor(() => expect(result.current.creditText).toBe('Uses the Studio\'s key; describing elements takes credits'));
+    await waitFor(() => expect(result.current.creditText).toBe('Studio key'));
+    expect(result.current.creditDetail).toBe('Uses the Studio\'s key; describing elements takes credits');
   });
 
   it('takes no credits when the payer’s OpenRouter key runs the description, or the run has no element', async () => {
     serve({ payer: 'self', llm: { usesAccountKey: true }, models: { describing: ON_WAVESPEED } });
     const onPayerLlm = renderHook(() => useRunCheck(DESCRIBING, WITH_ELEMENT, 1, PROJECT), { wrapper: wrapper() });
-    await waitFor(() => expect(onPayerLlm.result.current.creditText).toBe('Uses your key, no credits'));
+    await waitFor(() => expect(onPayerLlm.result.current.creditText).toBe('Your key'));
+    expect(onPayerLlm.result.current.creditDetail).toBe('Uses your key, no credits');
 
     serve({ payer: 'self', llm: { usesAccountKey: false }, models: { describing: ON_WAVESPEED } });
     const noElement = renderHook(() => useRunCheck(DESCRIBING, { params: {} }, 1, PROJECT), { wrapper: wrapper() });
-    await waitFor(() => expect(noElement.result.current.creditText).toBe('Uses your key, no credits'));
+    await waitFor(() => expect(noElement.result.current.creditText).toBe('Your key'));
+    expect(noElement.result.current.creditDetail).toBe('Uses your key, no credits');
   });
 
   it('judges refusals on the payer’s upstream with the plan’s availability, even where the deployment has no key for it', async () => {

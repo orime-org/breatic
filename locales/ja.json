@@ -1043,6 +1043,8 @@
       "editProposalMarks": "波括弧の中身を書き換えてください。オレンジ色の注意事項はモデルに送られません。",
       "notePrefix": "注意事項：",
       "integerBlank": "空欄で自動",
+      "ownKeyLabel": "あなたのキー",
+      "studioKeyLabel": "Studio のキー",
       "usesOwnKey": "あなたのキーを使用、クレジット消費なし",
       "usesStudioKey": "Studio のキーを使用、クレジット消費なし",
       "usesOwnKeyDescribing": "あなたのキーを使用、要素の説明はクレジットを消費",

@@ -330,7 +330,7 @@ function OpenMiniToolPanel({
   );
   const estimateInput = React.useMemo(() => miniToolEstimateInput(spec, snapshot), [spec, snapshot]);
   // Priced, and asked why no upstream here takes it (#1521), said by the press.
-  const { creditText: estimate, refusalText } = useRunCheck(entry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
+  const { creditText: estimate, creditDetail: estimateDetail, refusalText } = useRunCheck(entry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   const mode = creditMode(spec);
   const creditText =
     mode === 'free'
@@ -338,6 +338,8 @@ function OpenMiniToolPanel({
       : mode === 'usage'
         ? t('canvas.miniTool.panel.usage')
         : (estimate ?? '');
+  // Only a priced run can be on the payer's key; free and usage-billed tools say their own sentence.
+  const creditDetail = mode === 'free' || mode === 'usage' ? undefined : estimateDetail;
 
   const drawingSteps = draft?.drawing?.steps;
   const inked = React.useMemo(() => {
@@ -467,6 +469,7 @@ function OpenMiniToolPanel({
         prompt={prompt}
         onPrompt={setMiniToolPrompt}
         creditText={creditText}
+        creditDetail={creditDetail}
         refusal={refusal}
         onRun={onRunPress}
         onClose={closeActivePanel}

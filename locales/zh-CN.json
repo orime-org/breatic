@@ -1043,6 +1043,8 @@
       "editProposalMarks": "请替换大括号里的内容。橙色的注意事项不会发给模型。",
       "notePrefix": "注意事项：",
       "integerBlank": "留空为自动",
+      "ownKeyLabel": "你的 key",
+      "studioKeyLabel": "Studio 的 key",
       "usesOwnKey": "用你的 key，不扣积分",
       "usesStudioKey": "用 Studio 的 key，不扣积分",
       "usesOwnKeyDescribing": "用你的 key；描述元素用积分",

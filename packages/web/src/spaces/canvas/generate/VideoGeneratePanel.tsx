@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { ArrowUp, Star, X } from 'lucide-react';
+import { CreditLine } from '@web/spaces/canvas/_shared/CreditLine';
+import { ArrowUp, X } from 'lucide-react';
 import * as React from 'react';
 
 import type { GenerationTemplate, ModelEntry, ReferenceKind } from '@breatic/shared';
@@ -41,6 +42,8 @@ interface VideoGeneratePanelProps {
   params: Readonly<Record<string, unknown>>;
   /** The run's estimate as printed beside the star; undefined until it resolves. */
   creditText: string | undefined;
+  /** On the payer's key, the full sentence its short name stands for (inner#1953). */
+  creditDetail?: string;
   /** The active generation mode. */
   mode: string;
   /** Switch generation mode. */
@@ -171,6 +174,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   model,
   params,
   creditText,
+  creditDetail,
   mode,
   onToggleMode,
   modeOptions,
@@ -286,15 +290,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {creditText !== undefined && (
-            <span
-              data-testid='generate-video-credit'
-              className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-            >
-              <Star className='h-3.5 w-3.5' aria-hidden='true' />
-              {creditText}
-            </span>
-          )}
+          {creditText !== undefined && <CreditLine text={creditText} detail={creditDetail} testId='generate-video-credit' />}
           <Button
             type='button'
             variant={null}

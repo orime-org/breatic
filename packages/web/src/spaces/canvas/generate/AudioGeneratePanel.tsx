@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { ArrowUp, Star, X } from 'lucide-react';
+import { CreditLine } from '@web/spaces/canvas/_shared/CreditLine';
+import { ArrowUp, X } from 'lucide-react';
 import * as React from 'react';
 import type * as Y from 'yjs';
 
@@ -58,6 +59,8 @@ interface AudioGeneratePanelProps {
   currentModel: ModelEntry | undefined;
   /** The run's estimate as printed beside the star; undefined until it resolves. */
   creditText: string | undefined;
+  /** On the payer's key, the full sentence its short name stands for (inner#1953). */
+  creditDetail?: string;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
   modelTakesPrompt: boolean;
   /** Whether this run takes the prompt (`promptTaken`); beside a lyrics box, the style box is drawn only then. */
@@ -169,6 +172,7 @@ interface AudioGeneratePanelProps {
  * @param root0.model - The selected model id.
  * @param root0.currentModel - That model's catalog entry.
  * @param root0.creditText - The run's estimate as printed beside the star.
+ * @param root0.creditDetail - On the payer's key, the full sentence its short name stands for.
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
  * @param root0.promptShown - Whether this run takes the prompt; beside a lyrics box, the style box is drawn only then.
  * @param root0.mode - The selected mode.
@@ -215,6 +219,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   model,
   currentModel,
   creditText,
+  creditDetail,
   modelTakesPrompt,
   promptShown,
   mode,
@@ -432,15 +437,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {creditText !== undefined && (
-            <span
-              data-testid='generate-audio-rate'
-              className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-            >
-              <Star className='h-3.5 w-3.5' aria-hidden='true' />
-              {creditText}
-            </span>
-          )}
+          {creditText !== undefined && <CreditLine text={creditText} detail={creditDetail} testId='generate-audio-rate' />}
           <Button
             type='button'
             variant={null}

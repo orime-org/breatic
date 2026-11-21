@@ -34,16 +34,26 @@ export async function rereadByok(client: QueryClient): Promise<void> {
   await client.invalidateQueries({ queryKey: BYOK_VIEW_KEY });
 }
 
+/** What a run on the payer's own key shows in place of a credit figure: the key's short name, and the full sentence. */
+export interface OwnKeyCredit {
+  text: string;
+  detail: string;
+}
+
 /**
  * What a run on the payer's own key says in place of a credit figure (inner#1953): whose key it is to the viewer, and
- * that describing its elements still takes credits when the language model runs on ours.
+ * in the full sentence that describing its elements still takes credits when the language model runs on ours.
  * @param payer - Whose keys pay: the viewer's own, or the Studio Admin's.
  * @param t - The translator.
  * @param describing - Whether the run's description step is charged in credits.
- * @returns The sentence.
+ * @returns The short name and the sentence.
  */
-export function ownKeyText(payer: KeyPlan['payer'], t: ReturnType<typeof useTranslation>, describing = false): string {
-  return t(`canvas.generatePanel.${payer === 'admin' ? 'usesStudioKey' : 'usesOwnKey'}${describing ? 'Describing' : ''}`);
+export function ownKeyCredit(payer: KeyPlan['payer'], t: ReturnType<typeof useTranslation>, describing = false): OwnKeyCredit {
+  const whose = payer === 'admin' ? 'Studio' : 'Own';
+  return {
+    text: t(`canvas.generatePanel.${payer === 'admin' ? 'studioKeyLabel' : 'ownKeyLabel'}`),
+    detail: t(`canvas.generatePanel.uses${whose}Key${describing ? 'Describing' : ''}`),
+  };
 }
 
 /**

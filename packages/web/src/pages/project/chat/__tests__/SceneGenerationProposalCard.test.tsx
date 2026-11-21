@@ -12,6 +12,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -71,7 +72,9 @@ function draw(proposal: SceneGenerationProposal, listening: boolean): ReturnType
   useSceneProposals.getState().setListening(listening);
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <SceneGenerationProposalCard proposal={proposal} />
+      <TooltipProvider>
+        <SceneGenerationProposalCard proposal={proposal} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
@@ -112,7 +115,7 @@ describe('a model the Studio\'s payer runs on their own key (inner#1953)', () =>
       <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
         <MemoryRouter initialEntries={[`/project/demo-${PROJECT}`]}>
           <Routes>
-            <Route path='/project/:projectId' element={<SceneGenerationProposalCard proposal={TEXT_TO_3D} />} />
+            <Route path='/project/:projectId' element={<TooltipProvider><SceneGenerationProposalCard proposal={TEXT_TO_3D} /></TooltipProvider>} />
           </Routes>
         </MemoryRouter>
       </QueryClientProvider>,
@@ -120,8 +123,8 @@ describe('a model the Studio\'s payer runs on their own key (inner#1953)', () =>
   }
 
   it.each([
-    ['self', 'Uses your key, no credits'],
-    ['admin', 'Uses the Studio\'s key, no credits'],
+    ['self', 'Your key'],
+    ['admin', 'Studio key'],
   ] as const)('says whose key runs it for a %s payer, with no credit figure', async (payer, words) => {
     drawOnKey(payer);
 

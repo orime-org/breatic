@@ -1043,6 +1043,8 @@
       "editProposalMarks": "請替換大括號裡的內容。橘色的注意事項不會傳給模型。",
       "notePrefix": "注意事項：",
       "integerBlank": "留空為自動",
+      "ownKeyLabel": "你的 key",
+      "studioKeyLabel": "Studio 的 key",
       "usesOwnKey": "用你的 key，不扣點數",
       "usesStudioKey": "用 Studio 的 key，不扣點數",
       "usesOwnKeyDescribing": "用你的 key；描述元素用點數",

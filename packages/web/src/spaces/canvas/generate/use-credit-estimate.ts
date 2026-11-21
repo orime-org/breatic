@@ -6,7 +6,7 @@ import * as React from 'react';
 import { inputRefusalText, type InputRefusalShape, type ModelEntry, type RunRoute } from '@breatic/shared';
 import type { CreditEstimate, EstimateInput } from '@breatic/shared/pricing';
 
-import { ownKeyText, useKeyPlan } from '@web/features/byok/byok-query';
+import { ownKeyCredit, useKeyPlan } from '@web/features/byok/byok-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { creditEstimateText } from '@web/spaces/canvas/generate/credit-estimate-text';
 
@@ -92,8 +92,10 @@ export function useRunAnswer(
 
 /** What a generation entry shows and says about one run as set up. */
 export interface RunCheck {
-  /** What prints beside the star; undefined until the estimate resolves. */
+  /** What prints beside the star, or the short name of the payer's key; undefined until the estimate resolves. */
   creditText: string | undefined;
+  /** On the payer's key (inner#1953), the full sentence its short name stands for; undefined on credits. */
+  creditDetail: string | undefined;
   /** What a press says when no upstream here takes the run (#1521), in the user's language. */
   refusalText: string | undefined;
   /** The last refusal sentence rendered, for a click handler that reads it outside render. */
@@ -140,14 +142,15 @@ export function useRunCheck(
     latestRefusal.current = refusalText;
   }, [refusalText]);
   let creditText: string | undefined;
+  let creditDetail: string | undefined;
   if (onKey !== undefined) {
     // The media is on the payer's key; describing its inputs is charged while the language model runs on ours.
     const describedOnCredits = describes && plan.data?.llm.usesAccountKey !== true;
-    creditText = ownKeyText(plan.data?.payer ?? 'self', t, describedOnCredits);
+    ({ text: creditText, detail: creditDetail } = ownKeyCredit(plan.data?.payer ?? 'self', t, describedOnCredits));
   } else if (project === undefined || !plan.isPending) {
     // Nothing prints until the plan says whose key runs it, so a figure never flashes before "no credits". A plan
     // that failed to load prices on the platform key, which the server charges by when it cannot read one either.
     creditText = estimate ? creditEstimateText(estimate, t) : undefined;
   }
-  return { creditText, refusalText, latestRefusal };
+  return { creditText, creditDetail, refusalText, latestRefusal };
 }
