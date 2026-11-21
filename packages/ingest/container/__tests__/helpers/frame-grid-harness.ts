@@ -304,6 +304,22 @@ const reports = new Map<string, JobOutcome["report"]>();
 let attempts = 0;
 
 /**
+ * A job input as the Worker serves it (`serveOneObject`): the whole object with its length and `accept-ranges: bytes`, or
+ * the asked byte range as 206, which the loopback reader resumes and seeks with.
+ * @param bytes - The object.
+ * @param init - The request, for its Range header.
+ * @returns The answer.
+ */
+export function servedObject(bytes: Uint8Array, init?: RequestInit): Response {
+  const asked = /^bytes=(\d+)-(\d*)$/u.exec(new Headers(init?.headers).get("range") ?? "");
+  if (asked === null) return new Response(bytes, { status: 200, headers: { "content-length": String(bytes.byteLength), "accept-ranges": "bytes" } });
+  const start = Number(asked[1]);
+  const end = asked[2] === "" ? bytes.byteLength - 1 : Math.min(Number(asked[2]), bytes.byteLength - 1);
+  return new Response(bytes.subarray(start, end + 1), { status: 206, headers: {
+    "content-length": String(end + 1 - start), "accept-ranges": "bytes", "content-range": `bytes ${start}-${end}/${bytes.byteLength}` } });
+}
+
+/**
  * Stub the container's fetch: GETs read served files, PUTs are kept per URL, POSTed reports per attempt id. Call in
  * `beforeEach`.
  */
@@ -319,8 +335,7 @@ export function stubContainerFetch(): void {
     }
     const path = served.get(url);
     if (path === undefined) return new Response(null, { status: 404 });
-    const bytes = await readFile(path);
-    return new Response(bytes, { status: 200, headers: { "content-length": String(bytes.byteLength) } });
+    return servedObject(await readFile(path), init);
   }));
 }
 

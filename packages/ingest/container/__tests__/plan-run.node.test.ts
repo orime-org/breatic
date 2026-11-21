@@ -50,14 +50,14 @@ beforeEach(() => {
 afterEach(() => { vi.unstubAllGlobals(); vi.restoreAllMocks(); });
 
 describe("planned local owner with IO and recipes mocked, not actual media", () => {
-  it("retains input aliases, downloads each actual URL once, and preserves output indices", async () => {
+  it("reads each bound tool source through a loopback reader of its own URL, downloads none, and preserves output indices", async () => {
     await runPlanJob(JOB);
-    expect(download).toHaveBeenCalledTimes(2);
+    expect(download).not.toHaveBeenCalled();
     const calls = vi.mocked(executePresentationRecipe).mock.calls;
     expect(calls).toHaveLength(2);
     expect(calls.map(([request]) => request.recipe)).toEqual(JOB.outputs.map((output) => output.recipe));
-    expect(calls[0]![0].inputs.get(ALIAS)).toBe(vi.mocked(download).mock.calls[0]![1]);
-    expect(calls[1]![0].inputs.get(B)).toBe(vi.mocked(download).mock.calls[1]![1]);
+    expect(calls[0]![0].inputs.get(ALIAS)).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/source-a$/u);
+    expect(calls[1]![0].inputs.get(B)).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/source-b$/u);
     const options = vi.mocked(fetch).mock.calls[0]![1]!;
     expect(JSON.parse(String(options.body))).toEqual({ schemaVersion: 2, attemptId: JOB.attemptId, ok: true, cpuUsec: 123, outputs: JOB.outputs.map((output) => ({ outputIndex: output.outputIndex, storageKey: output.key, ...MEDIA })) });
   });
@@ -126,12 +126,12 @@ describe("a grid count job reports its count and writes no object (§7.17 grid_c
   const COUNT = { kind: "grid_count", inputId: A, gridStart: { numerator: 0, denominator: 1 }, fps: { numerator: 25, denominator: 1 }, gridEnd: null } as const;
   const COUNTED = { lastVideoTime: { numerator: 49, denominator: 25 }, sourceFrames: 50 };
 
-  it("GC10 downloads the counted input once, writes nothing and reports the count", async () => {
+  it("GC10 reads the counted input through a loopback reader, writes nothing and reports the count", async () => {
     vi.mocked(countPresentationGrid).mockResolvedValue(COUNTED);
     await runPlanJob({ ...JOB, outputs: [], count: COUNT });
-    expect(download).toHaveBeenCalledTimes(1);
+    expect(download).not.toHaveBeenCalled();
     expect(vi.mocked(countPresentationGrid).mock.calls[0]![0]).toMatchObject({ recipe: COUNT, limits: JOB.limits });
-    expect(vi.mocked(countPresentationGrid).mock.calls[0]![0].inputs.get(A)).toBe(vi.mocked(download).mock.calls[0]![1]);
+    expect(vi.mocked(countPresentationGrid).mock.calls[0]![0].inputs.get(A)).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/source-a$/u);
     expect(put).not.toHaveBeenCalled();
     expect(executePresentationRecipe).not.toHaveBeenCalled();
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toEqual({ schemaVersion: 2, attemptId: JOB.attemptId, ok: true, cpuUsec: 123, outputs: [], count: COUNTED });

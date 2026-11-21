@@ -40,7 +40,7 @@ export type Run = { signal: AbortSignal; stdoutBytes: number; stderrTailBytes: n
 export interface PresentationRecipeRequest {
   /** Any admitted recipe. */
   recipe: PresentationRecipe;
-  /** Downloaded files by bound input id. */
+  /** Where each bound input is read: a downloaded file, or the loopback URL a served object is read through. */
   inputs: ReadonlyMap<string, string>;
   output: string;
   directory: string;
@@ -50,7 +50,9 @@ export interface PresentationRecipeRequest {
   upload: (body: Readable) => Promise<void>;
 }
 
-const HEAD = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file"];
+// A tool source is read through the loopback reader (`readServedObject`) over HTTP; chunks and records are local files.
+const READ_PROTOCOLS = "file,http,tcp";
+const HEAD = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", READ_PROTOCOLS];
 const ZERO: FrameRate = { numerator: 0, denominator: 1 };
 // Paths a filter option names verbatim: mkdtemp and our own file names keep to these.
 const PLAIN_PATH = /^[\w./-]+$/u;
@@ -61,13 +63,13 @@ export interface SourceFacts { audio: boolean; mono: boolean; decoder: string[];
 /**
  * Probe a source for its audio, the decoder options a VP9 or VP8 stream with alpha needs (only libvpx reads the alpha plane),
  * its range and whether its decoded frames are subsampled with an odd side.
- * @param source - The downloaded source.
+ * @param source - Where the source is read.
  * @param run - The lifetime and IO bounds.
  * @returns The facts.
  * @throws {Error} When ffprobe fails.
  */
 export async function sourceFacts(source: string, run: Run): Promise<SourceFacts> {
-  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_entries",
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", READ_PROTOCOLS, "-show_entries",
     "stream=codec_type,codec_name,channels,width,height,pix_fmt,color_range:stream_tags", "-of", "json", source], run)).toString("utf8")) as {
     streams?: { codec_type?: string; codec_name?: string; channels?: number; width?: number; height?: number; pix_fmt?: string; color_range?: string; tags?: Record<string, string> }[] };
   const video = (answer.streams ?? []).find((stream) => stream.codec_type === "video");
@@ -260,15 +262,15 @@ async function checkWritten(file: string, frames: MiniToolPlanFrames, run: Run):
 }
 
 /**
- * A bound input's downloaded file.
- * @param files - The downloaded inputs by id.
+ * Where a bound input is read.
+ * @param files - The bound inputs by id.
  * @param inputId - The input.
- * @returns Its path.
- * @throws {Error} When it was not downloaded.
+ * @returns Its file or loopback URL.
+ * @throws {Error} When it is not bound.
  */
 export function local(files: ReadonlyMap<string, string>, inputId: string): string {
   const file = files.get(inputId);
-  if (file === undefined) throw new Error("Presentation recipe names an input that was not downloaded");
+  if (file === undefined) throw new Error("Presentation recipe names an input that is not bound");
   return file;
 }
 
@@ -382,7 +384,7 @@ export async function countPresentationGrid(request: GridCountRequest): Promise<
   const run = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
   const file = local(request.inputs, request.recipe.inputId);
   const facts = await sourceFacts(file, run);
-  const base = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0", "-show_entries", "stream=time_base",
+  const base = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", READ_PROTOCOLS, "-select_streams", "v:0", "-show_entries", "stream=time_base",
     "-of", "json", file], run)).toString("utf8")) as { streams?: { time_base?: string }[] };
   const tick = /^(\d+)\/(\d+)$/u.exec(base.streams?.[0]?.time_base ?? "");
   if (tick === null) throw new Error("The counted video has no time base");

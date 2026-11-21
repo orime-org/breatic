@@ -23,7 +23,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 import { resolveVideoColorMatrix } from '@ingest/container/physical-video-probe.js';
 import { packedCarrierWidth } from '@shared/mini-tools/video-encode-plan.js';
-import { gridOf, type GridFacts } from './helpers/frame-grid-harness.js';
+import { gridOf, servedObject, type GridFacts } from './helpers/frame-grid-harness.js';
 import { coverArgs, coverDecoderArgs, probeArgs, readProbeOutput } from '@ingest/probe-command.js';
 
 const run = promisify(execFile);
@@ -286,8 +286,7 @@ beforeEach(() => {
     }
     const path = served.get(url);
     if (path === undefined) return new Response(null, { status: 404 });
-    const bytes = await readFile(path);
-    return new Response(bytes, { status: 200, headers: { 'content-length': String(bytes.byteLength) } });
+    return servedObject(await readFile(path), init);
   }));
 });
 

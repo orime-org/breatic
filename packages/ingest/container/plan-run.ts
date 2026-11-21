@@ -11,6 +11,7 @@ import type { PlanContainerCount, PlanContainerOutput, MediaOfOutput } from "@in
 import { countPresentationGrid, executePresentationRecipe, type PlanLimits } from "@ingest/container/presentation-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
 import { download, put, putStream } from "@ingest/container/mini-tool-run.js";
+import { readServedObject } from "@ingest/container/served-object-read.js";
 import { cpuUsec } from "@ingest/container/run-steps.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -26,6 +27,53 @@ export interface PlanRunBody {
   count?: Extract<MiniToolPlanRecipe, { kind: "grid_count" }>;
   reportUrl: string;
 }
+/**
+ * The inputs a recipe reads through the loopback reader: every bound input except a stitch's chunks, which the concat
+ * demuxer reads as local files and which together are no larger than the edit file the stitch writes.
+ * @param recipe - The recipe.
+ * @returns The input ids read in place.
+ * @throws {never} Never.
+ */
+function servedInputs(recipe: MiniToolPlanRecipe): string[] {
+  const chunks = new Set(recipe.kind === "stitch" ? recipe.chunks.map((chunk) => chunk.inputId) : []);
+  return miniToolPlanRecipeInputs(recipe).filter((id) => !chunks.has(id));
+}
+
+/**
+ * Run a read with each served input open through its own loopback reader (`readServedObject`), the way long-media
+ * segments read their source: FFmpeg keeps its seeks, a dropped connection resumes with a Range request, and an answer
+ * that cannot be completed fails the read whatever FFmpeg's exit says.
+ * @param served - The input ids and the URLs the Worker serves them at, in order.
+ * @param signal - The read's lifetime.
+ * @param read - The read, given each input's loopback URL by id.
+ * @returns What the read returned.
+ * @throws {Error} `The stream read failed: ...` when a source answer could not be completed; what the read throws otherwise.
+ */
+async function withServedInputs<T>(served: readonly { id: string; url: string }[], signal: AbortSignal, read: (local: Map<string, string>) => Promise<T>): Promise<T> {
+  /**
+   * Open the next input inside the previous one's reader.
+   * @param at - The next input's position.
+   * @param local - The loopback URLs opened so far.
+   * @returns What the read returned.
+   */
+  const open = (at: number, local: Map<string, string>): Promise<T> => {
+    const next = served[at];
+    if (next === undefined) return read(local);
+    return readServedObject(next.url, signal, (url) => open(at + 1, new Map([...local, [next.id, url]])));
+  };
+  return open(0, new Map());
+}
+
+/**
+ * Whether an error is the loopback reader's failed source read (`readServedObject`), which is ours, not the file's.
+ * @param error - The error.
+ * @returns True for a source read that could not be completed.
+ * @throws {never} Never.
+ */
+function sourceReadFailed(error: unknown): boolean {
+  return error instanceof Error && error.message.startsWith("The stream read failed");
+}
+
 /**
  * Attempt the independently optional cover without invalidating an already stored main object.
  * @param output - Its explicit cover capability and completed main file.
@@ -79,7 +127,7 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
     const workDirectory = await mkdtemp(join(tmpdir(), "mini-tool-plan-"));
     directory = workDirectory;
     /**
-     * Download a bound input once per invocation.
+     * Download a stitch chunk once per invocation.
      * @param inputId - The bound input.
      * @returns Its local file.
      * @throws {Error} When the download fails, reported as internal.
@@ -97,8 +145,9 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
     };
     if (job.count !== undefined) {
       // §7.17 grid_count: decode the one input and report the count; no object is written.
-      const inputs = new Map([[job.count.inputId, await fetchInput(job.count.inputId)]]);
-      counted = await countPresentationGrid({ recipe: job.count, inputs, directory, signal, limits: job.limits });
+      const count = job.count;
+      try { counted = await withServedInputs([{ id: count.inputId, url: bindings.get(count.inputId)! }], signal, (inputs) => countPresentationGrid({ recipe: count, inputs, directory: workDirectory, signal, limits: job.limits })); }
+      catch (error) { if (sourceReadFailed(error)) reason = "internal"; throw error; }
     }
     for (const output of job.outputs) {
       outputIndex = output.outputIndex;
@@ -106,8 +155,9 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
       const recipe = output.recipe;
       const file = join(directory, `output-${output.outputIndex}`);
       // Every recipe carries the grid frame numbers the worker wrote from the frozen plan; the container reads no frame table (§7.17).
-      const inputs = new Map<string, string>();
-      for (const id of named(recipe)) inputs.set(id, await fetchInput(id));
+      const served = servedInputs(recipe);
+      const chunks = new Map<string, string>();
+      for (const id of named(recipe)) if (!served.includes(id)) chunks.set(id, await fetchInput(id));
       // A recipe that streams its output uploads it while it runs; every other recipe leaves its output file to send here.
       let streamed = false;
       let streamFailure: unknown;
@@ -123,14 +173,18 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
         catch (error) { streamFailure = error; throw error; }
       };
       let metadata: MediaOfOutput;
-      try { metadata = await executePresentationRecipe({ inputs, output: file, directory, signal, limits: job.limits, recipe, upload }); }
-      catch (error) { if (error === streamFailure) reason = "internal"; throw error; }
+      try {
+        metadata = await withServedInputs(served.map((id) => ({ id, url: bindings.get(id)! })), signal,
+          (opened) => executePresentationRecipe({ inputs: new Map([...chunks, ...opened]), output: file, directory: workDirectory, signal, limits: job.limits, recipe, upload }));
+      } catch (error) { if (error === streamFailure || sourceReadFailed(error)) reason = "internal"; throw error; }
       if (!streamed) {
         try { await put(output.url, file, signal); }
         catch (error) { reason = "internal"; throw error; }
       }
       const cover = !streamed && output.coverUrl !== undefined && metadata.width !== null
         ? await writeCover({ coverUrl: output.coverUrl, file }, directory, signal, job.limits) : null;
+      // A stored output leaves the disk before the next one is encoded, so the run directory holds one output at a time.
+      await rm(file, { force: true });
       completed.push({ outputIndex: output.outputIndex, storageKey: output.key, ...metadata, cover });
     }
     ok = true;

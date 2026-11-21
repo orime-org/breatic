@@ -21,7 +21,7 @@ import { runAnalysisPipeline } from '@ingest/container/analysis-pipeline.js';
 import type * as frameGrid from '@shared/upload/frame-grid.js';
 import { runPlanJob, type PlanRunBody } from '@ingest/container/plan-run.js';
 import { resolveVideoColorMatrix } from '@ingest/container/physical-video-probe.js';
-import { FIXTURES, expectSlot, gridOf, oracleFrames, type GridFacts } from './helpers/frame-grid-harness.js';
+import { FIXTURES, expectSlot, gridOf, oracleFrames, servedObject, type GridFacts } from './helpers/frame-grid-harness.js';
 
 vi.mock('@ingest/container/analysis-pipeline.js', () => ({ runAnalysisPipeline: vi.fn() }));
 // CS04 makes the first seek land late, as a container whose CLI seek overshoots does, so the back-off must run.
@@ -80,8 +80,7 @@ beforeEach(() => {
     if (init?.method === 'PUT') { written = new Uint8Array(await new Response(init.body).arrayBuffer()); return new Response(null, { status: 200 }); }
     if (init?.method === 'POST') { reports.push(JSON.parse(String(init.body)) as { ok: boolean }); return new Response(null, { status: 200 }); }
     if (url !== 'http://inputs.test/source') return new Response(null, { status: 404 });
-    const bytes = await readFile(served);
-    return new Response(bytes, { status: 200, headers: { 'content-length': String(bytes.byteLength) } });
+    return servedObject(await readFile(served), init);
   }));
 });
 

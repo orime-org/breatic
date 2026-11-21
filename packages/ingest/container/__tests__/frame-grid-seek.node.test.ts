@@ -149,7 +149,8 @@ describe("R03 a seek near the start of a hard sample (§7.16)", () => {
     calls.length = 0;
     const slots = [0, 3, 4, 5, 15, 40, 77, read.grid.frameCount - 1];
     await readFrames("elst.mp4", slots);
-    const decodes = calls.filter((call) => call.program === "ffmpeg" && call.args.some((arg) => arg.endsWith("source-0")));
+    // The tool source is read through the loopback reader, so its decodes name a loopback URL as their input.
+    const decodes = calls.filter((call) => call.program === "ffmpeg" && call.args.some((arg) => arg.startsWith("http://127.0.0.1:")));
     const fps = 25;
     const keyframes = [-0.36, 0.12, 0.6, 1.08, 1.56, 2.04, 2.52, 3.0, 3.48, 3.96];
     // The first decode of each output: where it starts decoding (the keyframe at or before -ss, or the first one without).
