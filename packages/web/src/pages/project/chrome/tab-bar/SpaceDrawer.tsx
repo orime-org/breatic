@@ -35,7 +35,7 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { SPACE_NAME_MAX_LEN, spacesNewestFirst } from '@breatic/shared';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
-import { SPACE_TYPE_ICON } from '@web/pages/project/space-type';
+import { SPACE_TYPE_ICON } from '@web/spaces/space-type-icon';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useInlineEditExit } from '@web/lib/inline-edit-exit';
 import { useHeldName } from '@web/lib/use-held-name';

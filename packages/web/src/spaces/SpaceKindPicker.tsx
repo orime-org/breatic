@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box, ChevronLeft, ChevronRight, Clapperboard, Clock, FileText, Palette } from 'lucide-react';
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import * as React from 'react';
 
 import { Badge } from '@web/components/ui/badge';
@@ -11,6 +11,7 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { endsAfter, scrollTargetFor, startsBefore, type Span } from '@web/lib/strip-scroll';
 import { cn } from '@web/lib/utils';
+import { SPACE_TYPE_ICON } from '@web/spaces/space-type-icon';
 import { type SpaceType } from '@breatic/shared';
 
 import { useTranslation } from '@web/i18n/use-translation';
@@ -31,7 +32,6 @@ interface SpaceKindPickerProps {
 
 interface TypeCardMeta {
   type: SpaceType;
-  icon: typeof Palette;
   titleKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline' | 'spaces.kind.threeD' | 'spaces.kind.webAnimation';
   descriptionKey: 'spaces.kind.canvasSub' | 'spaces.kind.documentSub' | 'spaces.kind.timelineSub' | 'spaces.kind.threeDSub' | 'spaces.kind.webAnimationSub';
 }
@@ -39,26 +39,22 @@ interface TypeCardMeta {
 const TYPE_CARDS: ReadonlyArray<TypeCardMeta> = [
   {
     type: 'canvas',
-    icon: Palette,
     titleKey: 'spaces.kind.canvas',
     descriptionKey: 'spaces.kind.canvasSub',
   },
   {
     type: 'document',
-    icon: FileText,
     titleKey: 'spaces.kind.document',
     descriptionKey: 'spaces.kind.documentSub',
   },
-  { type: '3d', icon: Box, titleKey: 'spaces.kind.threeD', descriptionKey: 'spaces.kind.threeDSub' },
+  { type: '3d', titleKey: 'spaces.kind.threeD', descriptionKey: 'spaces.kind.threeDSub' },
   {
     type: 'timeline',
-    icon: Clock,
     titleKey: 'spaces.kind.timeline',
     descriptionKey: 'spaces.kind.timelineSub',
   },
   {
     type: 'web_animation',
-    icon: Clapperboard,
     titleKey: 'spaces.kind.webAnimation',
     descriptionKey: 'spaces.kind.webAnimationSub',
   },
@@ -227,7 +223,7 @@ export function SpaceKindPicker({
             data-testid={`${idPrefix}-segmented`}
           >
             {TYPE_CARDS.map((card) => {
-              const Icon = card.icon;
+              const Icon = SPACE_TYPE_ICON[card.type];
               const selected = value === card.type;
               const option = (
                 <Button

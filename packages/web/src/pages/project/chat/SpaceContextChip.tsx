@@ -7,7 +7,8 @@ import type { SpaceType } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
-import { SPACE_TYPE_ICON, spaceContentReadable } from '@web/pages/project/space-type';
+import { spaceContentReadable } from '@web/pages/project/space-type';
+import { SPACE_TYPE_ICON } from '@web/spaces/space-type-icon';
 
 /** The chip's props; the composer takes all of them or none. */
 export interface SpaceContextChipProps {

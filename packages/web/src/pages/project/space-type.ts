@@ -1,17 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { Box, Clapperboard, Clock, FileText, Palette } from 'lucide-react';
 import type { SpaceType } from '@breatic/shared';
-
-/** Each Space type's icon on its tab and on the chat's Space chip. */
-export const SPACE_TYPE_ICON: Record<SpaceType, typeof FileText> = {
-  canvas: Palette,
-  document: FileText,
-  timeline: Clock,
-  '3d': Box,
-  web_animation: Clapperboard,
-};
 
 /**
  * Whether a Space of this type has content the Agent can be sent. A timeline's
