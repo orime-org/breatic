@@ -27,7 +27,7 @@ import {
 } from '@shared/mini-tools/video-encode-plan.js';
 import {
   advancePresentationCandidate, advancePresentationChunk, advanceSelectedPresentation, NO_PRESENTATION_CANDIDATE, NO_PRESENTATION_CHUNK,
-  type PresentationCandidate, type PresentationCandidateEvent, type PresentationChunk, type PresentationSelection,
+  type PresentationCandidate, type PresentationCandidateEvent, type PresentationChunk, type PresentationChunkIdentity, type PresentationSelection,
 } from '@ingest/video-presentation-state.js';
 import type { PresentationProbeAnswerParsed } from '@ingest/presentation-run-contract.js';
 import type { PresentationGridInput, PresentationSourceFacts } from '@ingest/presentation-run-types.js';
@@ -184,6 +184,24 @@ function unitKey(jobId: string, unit: PresentationChunkUnit): string {
     case 'presentation-edit': return `video-presentation:${jobId}:edit:${unit.chunk}`;
     case 'presentation-edit-stitch': return `video-presentation:${jobId}:edit-stitch`;
   }
+}
+
+/**
+ * The unit a chunk key names, the inverse of `unitKey`.
+ * @param jobId - The main job.
+ * @param key - The unit key.
+ * @returns The unit's job identity, or null for a key of another shape.
+ * @throws {never} Never.
+ */
+function unitIdentityOf(jobId: string, key: string): PresentationChunkIdentity | null {
+  const prefix = `video-presentation:${jobId}:`;
+  if (!key.startsWith(prefix)) return null;
+  const suffix = key.slice(prefix.length);
+  if (suffix === 'count') return { kind: 'presentation-count', jobId };
+  if (suffix === 'stitch') return { kind: 'presentation-stitch', jobId };
+  if (suffix === 'edit-stitch') return { kind: 'presentation-edit-stitch', jobId };
+  const chunk = suffix.match(/^(chunk|edit):(\d+)$/);
+  return chunk === null ? null : { kind: chunk[1] === 'edit' ? 'presentation-edit' : 'presentation-chunk', jobId, chunk: Number(chunk[2]) };
 }
 
 /**
@@ -849,6 +867,13 @@ export class VideoPresentationStore {
    */
   private async applyCandidateStep(state: PresentationState, job: JobRecord, step: ReturnType<typeof advancePresentationCandidate>): Promise<void> {
     job.candidate = step.next;
+    // A failed or archived candidate never publishes: its open units close (Exp), so nothing is submitted for them (§7.1.1).
+    if (job.candidate.state === 'failed' || job.candidate.archived) {
+      for (const [key, chunk] of Object.entries(job.chunks)) {
+        const unit = unitIdentityOf(job.admission.jobId, key);
+        if (unit !== null) job.chunks[key] = advancePresentationChunk(chunk, { kind: 'Exp' }, unit).next;
+      }
+    }
     if (step.effects.some((effect) => effect.kind === 'publish')) await this.commitPresentationVersion(state, job);
   }
 

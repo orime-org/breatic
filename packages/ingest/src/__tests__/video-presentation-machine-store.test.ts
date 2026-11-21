@@ -13,7 +13,7 @@
 import { env } from 'cloudflare:test';
 import { describe, expect, it } from 'vitest';
 import { videoPresentationKeyFor } from '@breatic/shared';
-import { admission, bundle, D, H, planned, source, storedDescriptor, T, withStore } from './helpers/machine-store.js';
+import { admission, bundle, D, H, planned, source, storedDescriptor, T, withStore, type Identity, type MachineStore } from './helpers/machine-store.js';
 
 describe('W §7.1–§7.4 store persistence and write points', () => {
   it('W01 the candidate, its frozen route and pinned toolInputId persist across store instances', async () => {
@@ -137,6 +137,54 @@ describe('X §7.1 a candidate nobody advances any more is settled (failure sourc
       const view = await store.abandon({ storageKey: key, sourceFingerprint: H, jobId: 'job-a' });
       expect(view.candidate).toMatchObject({ state: 'accepted', jobId: 'job-b', failure: null });
       expect((await store.abandon({ storageKey: key, sourceFingerprint: H, jobId: 'job-z' })).candidate).toMatchObject({ state: 'accepted', jobId: 'job-b' });
+    });
+  });
+});
+
+type Attempts = { attempts: { attempt: number; state: string; failure: string | null; usage: number | null; usageRecorded: boolean }[] };
+
+/**
+ * Plan a job and open both playback chunks, chunk 0 with no retry left after three failures.
+ * @param store - The store.
+ * @param key - The source key.
+ * @returns The job's capability.
+ */
+async function twoOpenChunks(store: MachineStore, key: string): Promise<Identity> {
+  const a = await planned(store, key, 'job-a');
+  for (const chunk of [0, 1]) expect(await store.reportChunk(a, { kind: 'presentation-chunk', chunk }, { kind: 'Sub' })).toBe(true);
+  for (const attempt of [1, 2, 3]) await store.reportChunk(a, { kind: 'presentation-chunk', chunk: 0 }, { kind: 'Fail', attempt, code: 'tool_failed', usage: 5 });
+  return a;
+}
+
+/**
+ * The attempts of one unit of job-a.
+ * @param store - The store.
+ * @param key - The source key.
+ * @param chunk - The playback chunk.
+ * @returns Its attempts.
+ */
+async function attemptsOf(store: MachineStore, key: string, chunk: number): Promise<Attempts['attempts']> {
+  return ((await store.read(key, H, D - 1)).chunks[`video-presentation:job-a:chunk:${chunk}`] as unknown as Attempts).attempts;
+}
+
+// frames-split §7.1.1 Exp row: the candidate's end turns every open unit failed(expired), its pending attempts with it, so
+// nothing is submitted for it any more; an attempt closed that way still has its late measured usage recorded (§7.6).
+describe('E §7.1.1 Exp: a candidate that ends closes its open units', () => {
+  it.each([
+    ['a chunk using up its retries', async (store: MachineStore, _key: string, a: Identity): Promise<void> => {
+      await store.reportChunk(a, { kind: 'presentation-chunk', chunk: 0 }, { kind: 'Fail', attempt: 4, code: 'tool_failed', usage: 5 });
+    }],
+    ['abandon', async (store: MachineStore, key: string): Promise<void> => { await store.abandon({ storageKey: key, sourceFingerprint: H, jobId: 'job-a' }); }],
+    ['a read past D', async (store: MachineStore, key: string): Promise<void> => { await store.read(key, H, D); }],
+    ['a new admission archiving it', async (store: MachineStore, key: string): Promise<void> => { await store.accept(admission(key, 'job-b')); }],
+  ])('E01 %s turns the open sibling unit failed(expired) with its pending attempt', async (_name, end) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const a = await twoOpenChunks(store, key);
+      await end(store, key, a);
+      const view = await store.read(key, H, D - 1);
+      expect(view.chunks['video-presentation:job-a:chunk:1']).toMatchObject({ state: 'failed', failure: 'expired' });
+      expect(await attemptsOf(store, key, 1)).toEqual([expect.objectContaining({ attempt: 1, state: 'failed', failure: 'expired', usage: null, usageRecorded: false })]);
     });
   });
 });
