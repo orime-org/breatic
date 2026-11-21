@@ -193,7 +193,7 @@ const uploadTicketFields = z.object({
    * bytes that really landed.
    */
   client_hash: z.string().regex(SHA256_HEX),
-  /** Where the bytes land. Absent for a focus crop, which has no node. */
+  /** Where the bytes land. Absent for an upload with no node: a focus crop, or a Document body block (`upload_id`). */
   node_id: z.string().uuid().optional(),
   space_id: z.string().uuid().optional(),
   /** The Document body block the bytes land in, by its `uploadId`; it names `space_id` and no node (breatic#1574). */

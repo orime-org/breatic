@@ -23,8 +23,9 @@
  * database; what keeps the next holder from writing over a peer's update it
  * has not received yet is the hand-over record, the state vector the previous
  * holder stored; what keeps an older event from undoing a newer one is the
- * version each node carries, and for other Space types the version their
- * document holds.
+ * version each node carries, for other Space types the version their document
+ * holds, and for a Document upload the block itself: an address once written
+ * never changes and `processing` never replaces an ending (`applyDocumentUpload`).
  *
  * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts,
  * `project-{pid}/document-{spaceId}` for Document uploads and the content

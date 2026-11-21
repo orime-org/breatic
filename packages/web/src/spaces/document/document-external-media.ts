@@ -122,7 +122,7 @@ export interface PastedMediaOptions {
    * known as ours is left out instead.
    */
   readonly start?: (uploadId: string, source: UploadSource) => void;
-  /** This body's document name: a pending block whose upload belongs to another Document is left out (breatic#1574). */
+  /** This body's document name: a pending block whose `uploadHome` is not this name is left out (breatic#1574). */
   readonly docName?: string | null;
   /** Told how many pending blocks of another Document a paste left out. */
   readonly onStillUploading?: (count: number) => void;

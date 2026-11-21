@@ -656,7 +656,7 @@ async function recordRegisteredUploadHistory(
  * @param terminal - The result of serialized database arbitration.
  * @param sideEffects - Best-effort work whose failures the caller must log.
  * @returns The same canonical result for completions and their later replays.
- * @throws {Error} When history recovery or success publication cannot finish.
+ * @throws {Error} When history recovery, success publication or a Document block's failure publication cannot finish.
  */
 async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}): Promise<IngestReportOutcome> {
   const { grant } = terminal;
@@ -702,7 +702,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
  * @param report - What happened to this upload.
  * @returns What was decided, for the route to answer with.
  * @throws {NotFoundError} When the key names no grant we ever issued.
- * @throws {Error} When registration, association, terminal commitment or success publication fails.
+ * @throws {Error} When registration, association, terminal commitment, success publication or a Document block's failure publication fails.
  */
 export async function applyIngestReport(
   report: IngestReport,

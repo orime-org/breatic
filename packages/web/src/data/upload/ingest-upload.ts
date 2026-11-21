@@ -62,9 +62,9 @@ export type UploadTargetParams =
 export type UploadContext = UploadTargetParams & {
   /** The node the bytes land on, when this upload has one. */
   nodeId?: string;
-  /** The space that node lives in. */
+  /** The space that node or Document block lives in. */
   spaceId?: string;
-  /** The Document body block the bytes land in, by its `uploadId`: the server writes it (breatic#1574). */
+  /** The Document body block the bytes land in, by its `uploadId`: the server announces the ending and collab writes the block (breatic#1574). */
   uploadId?: string;
   /** `mini_tool` for a mini-tool product. */
   source?: 'mini_tool';

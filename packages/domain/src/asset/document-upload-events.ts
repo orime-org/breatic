@@ -7,8 +7,10 @@
  * The block's address lives in the Document's Yjs document, so the backend
  * publishes and collab writes, the way a canvas node receives its upload
  * (`settleUploadTask`, `settleDedupHit`). An event carrying the ending is the
- * only way the ending reaches the block, so failing to publish it throws and
- * the caller's finish runs again; the `processing` event only shows the wait
+ * only way the ending reaches the block, so failing to publish it throws: an
+ * upload finish job runs again, an address fetch job (one attempt) fails, and a
+ * request (a dedup hit, or a fetch or finish that could not be queued) fails
+ * and leaves the page to show the failure; the `processing` event only shows the wait
  * to the other members, and its loss is the caller's to log.
  */
 

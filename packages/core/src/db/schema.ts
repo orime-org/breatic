@@ -3443,7 +3443,7 @@ export const uploadGrants = pgTable(
      * this would reopen the key to the very write it exists to stop.
      */
     finalizingUploadId: text("finalizing_upload_id"),
-    /** Node these bytes land on. Absent for a focus crop, which has no node. */
+    /** Node these bytes land on. Absent for an upload with no node: a focus crop, or a Document body block (`documentUploadId`). */
     nodeId: uuid("node_id"),
     /** The Document body block these bytes land in, by its `uploadId` (breatic#1574). */
     documentUploadId: text("document_upload_id"),

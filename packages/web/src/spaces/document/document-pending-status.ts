@@ -41,7 +41,7 @@ export interface PendingBlockFacts {
   readonly state: '' | 'processing' | 'failed';
   readonly failure?: PendingFailureReason;
   readonly retryable?: boolean;
-  /** The upload belongs to another Document: copied with its Project, it never ends here. */
+  /** The block's `uploadHome` is not this Document (another Document's, or empty on a block written before breatic#1574): collab never writes its ending here. */
   readonly foreign: boolean;
 }
 

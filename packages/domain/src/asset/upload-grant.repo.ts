@@ -59,7 +59,7 @@ export interface UploadGrant {
   failureReason: string | null;
   /** How long the browser has to start the upload. */
   expiresAt: Date;
-  /** Node these bytes land on. Null for a focus crop, which has no node. */
+  /** Node these bytes land on. Null for an upload with no node: a focus crop, or a Document body block (`documentUploadId`). */
   nodeId: string | null;
   /** The Document body block these bytes land in, by its `uploadId`. */
   documentUploadId: string | null;
@@ -144,7 +144,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  * @param input.context.nodeId - Node the bytes land on, when there is one.
  * @param input.context.documentUploadId - The Document body block the bytes land in, when there is one.
  * @param input.context.projectId - Project that node belongs to.
- * @param input.context.spaceId - Canvas space holding that node.
+ * @param input.context.spaceId - The Space holding that node, or the Document holding the block `documentUploadId` names.
  * @param input.context.source - What started this upload.
  * @param input.context.toolName - Mini-tool that produced the bytes, if any.
  * @param input.context.derived - True when the bytes came out of another asset.

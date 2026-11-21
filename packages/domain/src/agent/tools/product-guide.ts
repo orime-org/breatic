@@ -2000,8 +2000,8 @@ export function renderProductGuide(): string {
       "everyone working on the document sees the box, and it becomes the media for everyone " +
       "when done. One Cmd+Z takes the whole paste or drop away, boxes included; redo brings " +
       "it back without uploading again. An upload that fails turns the box red with the reason, with " +
-      `${quoted(t("spaces.document.media.retry"))} when trying again can help, and ` +
-      `${quoted(t("spaces.document.media.remove"))}. If the uploader leaves while it is being ` +
+      `${quoted(t("spaces.document.media.retry"))} for the uploader when it can help, and ` +
+      `${quoted(t("spaces.document.media.remove"))}. If the uploader leaves before it is ` +
       `sent, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
       `${quoted(t("spaces.document.media.remove"))} it. What cannot be pasted (a canvas node with nothing in ` +
       "it yet, an address the page cannot fetch) is left out, and a message says how many. Media copied from another " +

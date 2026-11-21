@@ -52,7 +52,7 @@ export type UploadTarget =
  * @param params.expiresAt - When the grant stops being usable.
  * @param params.context - Node, space, and provenance for the report to use.
  * @param params.context.nodeId - Node the bytes land on, when there is one.
- * @param params.context.spaceId - Canvas space holding that node.
+ * @param params.context.spaceId - The Space holding that node, or the Document holding the block `documentUploadId` names.
  * @param params.context.source - What started this upload.
  * @param params.context.toolName - Mini-tool that produced the bytes, if any.
  * @param params.context.derived - True when the bytes came out of another asset.

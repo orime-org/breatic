@@ -216,8 +216,8 @@ export interface MediaUploadDeps {
    * What the server filed the content as. A node ignores
    * it: the server writes the node's content through Yjs, and pinning anything
    * here would be a second writer for the one field that has one (design
-   * §6.6). An upload with no node behind it has no other channel and this is
-   * what it reads.
+   * §6.6). An upload with no node and no Document block behind it has no other
+   * channel and this is what it reads.
    */
   onSuccess: (stored: StoredUpload) => void;
   /**
@@ -248,8 +248,11 @@ export interface MediaUploadDeps {
  * Finishing runs on the server as a job (inner#1367 §4.2a). An upload with a
  * node behind it is over for the page once that job is queued: the server
  * writes the node through Yjs, and only a finish that did not register comes
- * back here, through `onFailure`, when the status query has its ending. An
- * upload with no node waits for that ending and reads its result from it.
+ * back here, through `onFailure`, when the status query has its ending. A
+ * Document body block (`onHandedOff`) is over for the page once the server has
+ * the bytes or already holds them: the server announces the ending and collab
+ * writes the block (breatic#1574). Any other upload with no node waits for that
+ * ending and reads its result from it.
  * @param file - The media file to upload.
  * @param context - Where it lands and what it is for.
  * @param deps - Injected config / hash / network / result callbacks.
