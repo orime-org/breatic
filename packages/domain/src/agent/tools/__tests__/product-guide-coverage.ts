@@ -56,6 +56,7 @@ interface Excluded {
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.analysisFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
+  "canvas.miniTool.videoUI.detectionSuperseded": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.videoUI.mediaError": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.videoUI.cutPoint": { excluded: REASONS.SCREEN_READER, look: /each cut's seconds can be edited in its own numbered row/ },
   "canvas.miniTool.videoUI.connectionUnavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
