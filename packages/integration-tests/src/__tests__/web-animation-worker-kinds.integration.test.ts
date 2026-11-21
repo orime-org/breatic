@@ -209,6 +209,16 @@ describe("an export", () => {
     expect(await read(fx.execution.id)).toMatchObject({ phase: "rendering", progress: 73 });
   });
 
+  it("writes back the whole percent the container reported, including those a float product lands just below", async () => {
+    const { fx } = await seedExport("running");
+    const ingest = installFakeIngest(fx);
+    for (const percent of [29, 57, 58]) {
+      ingest.read = () => json(renderReport("running", { progress: percent / 100 }));
+      await pickUp(fx);
+      expect(await read(fx.execution.id)).toMatchObject({ phase: "rendering", progress: percent });
+    }
+  });
+
   it("shows no percent once the render saves its video", async () => {
     const { fx } = await seedExport("running");
     const ingest = installFakeIngest(fx);

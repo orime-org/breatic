@@ -209,8 +209,9 @@ async function running(pickup: RenderPickup): Promise<void> {
     const stopped = await renderJobs.cancel(request.jobId, { deadlineAt: request.deadlineAt }, endsAt);
     if (stopped.kind === "report" && ended(stopped.report)) return finish(pickup, stopped.report);
   } else if (report !== null && report.phase !== null) {
-    // The percent shows only while it renders; saving has none.
-    const progress = report.phase === "rendering" && report.progress !== null ? Math.floor(report.progress * 100) : null;
+    // The percent shows only while it renders; saving has none. The container sends each whole percent over 100, and
+    // rounding gives that whole percent back (0.29 * 100 is 28.999999999999996).
+    const progress = report.phase === "rendering" && report.progress !== null ? Math.round(report.progress * 100) : null;
     if (report.phase !== row.phase || progress !== row.progress) await move(row, { type: "progress", fence: row.fence, phase: report.phase, progress });
   }
   throw new StillRunning(Date.now() + getTimelineConfig().web_animation.poll_interval_ms);
