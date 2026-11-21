@@ -42,7 +42,7 @@ Who can reach the port is decided by where it is published. Before changing the 
 
 **The error handler decides the response by who caused the error: only `AppError` (ours) and `HTTPException` (Hono could not read the body) map to their own status; everything else is a 500 plus `logger.error`.** An exception's type says something failed to parse, not whose input it was; our own config yaml is parsed lazily inside requests.
 
-**Routes never parse request bodies themselves; they mount `validate(target, schema)` from `middleware/validate.ts`.** `breatic/no-untranslated-error-message` and `breatic/no-raw-body-parse` enforce both rules.
+**Routes never parse request bodies themselves; they mount `validate(target, schema)` from `@breatic/core` (`packages/core/src/http/validate.ts`).** `breatic/no-untranslated-error-message` and `breatic/no-raw-body-parse` enforce both rules.
 
 Check: will a user read this sentence? Then it must come from `t()`.
 

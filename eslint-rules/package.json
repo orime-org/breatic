@@ -12,10 +12,12 @@
     "lint": "eslint ."
   },
   "devDependencies": {
-    "eslint": "catalog:",
     "@types/node": "catalog:",
     "@typescript-eslint/rule-tester": "8.67.0",
     "@typescript-eslint/utils": "8.67.0",
+    "eslint": "catalog:",
+    "eslint-plugin-drizzle": "catalog:",
+    "eslint-plugin-jsdoc": "catalog:",
     "globals": "catalog:",
     "vitest": "catalog:"
   },

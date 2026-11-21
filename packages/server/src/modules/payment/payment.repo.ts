@@ -332,19 +332,15 @@ export interface AcquisitionHistoryRow {
 /**
  * One keyset page of how this account came by its credits, newest first.
  *
- * A full join, because either side can be the whole row. A lot with no
- * payment is credits somebody was granted; a payment with no lot is a
- * checkout that opened none — still clearing, or abandoned — and showing
- * those is what this screen has always been for. Starting from either table
- * alone drops one of the two.
+ * A full join preserves both funding records: a lot without an online
+ * payment comes from a grant or enterprise purchase; a payment without a
+ * lot is a checkout that opened none, either still clearing or abandoned.
  *
  * Both sides are narrowed to this account before they meet, which is what
  * keeps a page off the whole of both tables.
  *
- * Both halves of the cursor fall back to whichever side exists. The comment
- * this replaces warned that keying on the lot would collapse the ordering on
- * exactly the rows that have no lot; keying on the payment now does the same
- * to the rows that have no payment, and `COALESCE` is what holds for both.
+ * Both halves of the cursor use COALESCE to take their value from whichever
+ * side exists, preserving ordering for lots and online checkouts.
  * Row ids from the two tables cannot collide, so the pair stays unique.
  *
  * A purchase is dated by its checkout. For a delayed payment method the

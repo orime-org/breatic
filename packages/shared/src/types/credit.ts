@@ -21,7 +21,7 @@ import type { CreditLotLifecycle } from "@shared/types/entities.js";
 /**
  * What a lot of credits can come from.
  *
- * The same four words are the `credit_sources_kind_check` list in 0079. An
+ * These values match the database's `credit_sources_kind_check`. An
  * integration test inserts every one of these, so a fifth added here without a
  * migration widening that constraint fails there rather than at runtime.
  *
@@ -35,6 +35,7 @@ export const CREDIT_SOURCE_KINDS = [
   "compensation",
   "gift",
   "discount",
+  "enterprise",
 ] as const;
 
 /** One of {@link CREDIT_SOURCE_KINDS}. */
@@ -43,23 +44,20 @@ export type CreditSourceKind = (typeof CREDIT_SOURCE_KINDS)[number];
 /**
  * Whether a lot's credits were bought, which is what decides where they may go.
  *
- * Three rules read this one question — a lot that was not bought cannot be
- * re-designated, cannot be refunded, and prints its origin instead of a price.
- * Written once so the three cannot drift: bought credits are the buyer's to
- * move and to reclaim, granted ones stay where they were granted.
+ * Purchased credits may be designated by their holder. Refund eligibility
+ * is evaluated separately, using the original funding channel.
  * @param kind - What the lot's receipt says it is.
  * @returns True when someone paid for these credits.
  */
 export function isPurchased(kind: CreditSourceKind): boolean {
-  return kind === "payment";
+  return kind === "payment" || kind === "enterprise";
 }
 
 /**
  * The kinds nobody paid for, for readers that ask in SQL.
  *
- * Derived rather than listed, so a fifth kind joins it by being added to
- * {@link CREDIT_SOURCE_KINDS} and answering {@link isPurchased} — a query
- * naming the bought kind itself would be the same rule written twice.
+ * Deriving this list from {@link CREDIT_SOURCE_KINDS} and {@link isPurchased}
+ * keeps SQL readers aligned with the purchase classification.
  */
 export const GRANTED_SOURCE_KINDS: readonly CreditSourceKind[] =
   CREDIT_SOURCE_KINDS.filter((kind) => !isPurchased(kind));
@@ -81,8 +79,8 @@ export interface CreditPage<T> {
  * what this screen has always existed to show and what stops it being built
  * from the lots alone.
  *
- * So a null here is never a missing value. No `paymentId` means nobody paid;
- * no `remainingCredits` means no credits opened.
+ * A missing `paymentId` identifies a source outside online payment; a missing
+ * `remainingCredits` means no credit lot opened.
  */
 export interface PurchaseRow {
   /**
@@ -98,9 +96,11 @@ export interface PurchaseRow {
   sourceKind: CreditSourceKind;
   /** The gift receipt provenance; absent for other source kinds. */
   giftOrigin?: "registration" | "operator" | null;
-  /** The payment behind this row; null when nobody paid. */
+  /** The original corporate contract reference for an enterprise source. */
+  contractNumber?: string | null;
+  /** The online payment behind this row, when one exists. */
   paymentId: string | null;
-  /** The listed price, before tax. Null on a row nobody paid for. */
+  /** The online listed price before tax; null without an online payment. */
   amountCents: number | null;
   /**
    * What Stripe worked out this purchase comes to, tax included.
@@ -132,7 +132,7 @@ export interface PurchaseRow {
    */
   designatedStudioId: string | null;
   designatedStudioName: string | null;
-  /** Where the payment stands. Null on a row nobody paid for. */
+  /** The online payment status; null without an online payment. */
   status: string | null;
   createdAt: string;
   /**
@@ -202,6 +202,8 @@ export interface CreditLotView {
   sourceKind: CreditSourceKind;
   /** The gift receipt provenance; absent for other source kinds. */
   giftOrigin?: "registration" | "operator" | null;
+  /** The original corporate contract reference for an enterprise source. */
+  contractNumber?: string | null;
   purchasedCredits: CreditDecimal;
   remainingCredits: CreditDecimal;
   /**
@@ -227,7 +229,7 @@ export interface CreditLotView {
    * What the buyer paid for it, tax included, in the smallest unit of
    * `currency`. The same figure the acquisition history prints for it.
    *
-   * Null on credits nobody paid for, along with the currency beside it.
+   * Null with its currency when this source has no online payment.
    */
   paidCents: number | null;
   currency: string | null;
@@ -257,6 +259,10 @@ export interface CreditLotView {
  */
 export interface StudioLotView {
   id: string;
+  /** The immutable funding source and its recorded provenance. */
+  sourceKind?: CreditSourceKind;
+  giftOrigin?: "registration" | "operator" | null;
+  contractNumber?: string | null;
   purchasedCredits: CreditDecimal;
   remainingCredits: CreditDecimal;
   createdAt: string;
@@ -425,15 +431,17 @@ const amount = nonnegativeCreditDecimalSchema;
 
 export const purchaseRowSchema = z.object({
   rowId: id, sourceKind: z.enum(CREDIT_SOURCE_KINDS), giftOrigin: z.enum(["registration", "operator"]).nullable().optional(), paymentId: id.nullable(), amountCents: cash, totalCents: cash, taxCents: cash,
+  contractNumber: nullableText.optional(),
   currency: z.string(), creditsGranted: amount, remainingCredits: amount.nullable(), lifecycle: lifecycle.nullable(),
   designatedStudioId: id.nullable(), designatedStudioName: nullableText, status: nullableText, createdAt: z.string(), canResend: z.boolean(),
 });
 export const creditLotViewSchema = z.object({
   id, sourceKind: z.enum(CREDIT_SOURCE_KINDS), giftOrigin: z.enum(["registration", "operator"]).nullable().optional(), purchasedCredits: amount, remainingCredits: amount,
+  contractNumber: nullableText.optional(),
   designatedStudioId: id.nullable(), designatedStudioName: nullableText, designated: z.boolean(), paidCents: cash, currency: nullableText,
   lifecycle, refundAttempts: z.number().int().nonnegative(), everSpent: z.boolean(), everRestored: z.boolean(), createdAt: z.string(),
 });
-export const studioLotViewSchema = z.object({ id, purchasedCredits: amount, remainingCredits: amount, createdAt: z.string(), buyerName: nullableText });
+export const studioLotViewSchema = z.object({ id, sourceKind: z.enum(CREDIT_SOURCE_KINDS).optional(), giftOrigin: z.enum(["registration", "operator"]).nullable().optional(), contractNumber: nullableText.optional(), purchasedCredits: amount, remainingCredits: amount, createdAt: z.string(), buyerName: nullableText });
 export const creditLedgerViewSchema = z.object({
   id, kind: z.enum(["generation", "debt_repayment", "unbilled"]), actorUserId: id.nullable(), actorName: nullableText,
   studioId: id.nullable(), studioName: nullableText, projectId: id.nullable(), projectName: nullableText,

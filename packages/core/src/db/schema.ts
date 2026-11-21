@@ -44,6 +44,7 @@ import type {
 } from "@breatic/shared";
 import type { AdsConversionJob } from "@core/ads/ads-types.js";
 import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-grant-contract.js";
+import type { EnterpriseCreditPurchaseResult, EnterpriseCreditPurchaseWrite } from "@core/credit/enterprise-credit-purchase-contract.js";
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
 import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
@@ -811,11 +812,23 @@ export const tasks = pgTable(
      * uncovered part written as debt.
      */
     billedCredits: doublePrecision("billed_credits"),
+    /** First time the running-task gate held this task back (inner#1968); never changed after. */
+    slotWaitSince: timestamp("slot_wait_since", { withTimezone: true }),
+    /** When the gate last judged this waiting task. */
+    slotCheckedAt: timestamp("slot_checked_at", { withTimezone: true }),
+    /** The running-task limit the gate used at that judgement. */
+    slotWaitLimit: integer("slot_wait_limit"),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
     index("tasks_user_id_idx").on(table.userId),
+    index("tasks_user_running_idx")
+      .on(table.userId, table.startedAt)
+      .where(sql`${table.status} = 'running'`),
+    index("tasks_user_slot_wait_idx")
+      .on(table.userId, table.slotWaitLimit, table.createdAt)
+      .where(sql`${table.status} = 'pending' AND ${table.slotWaitSince} IS NOT NULL`),
     index("tasks_project_id_idx").on(table.projectId),
     index("tasks_project_space_idx").on(table.projectId, table.spaceId),
     index("tasks_task_type_idx").on(table.taskType),
@@ -1043,6 +1056,12 @@ export const nodeTasks = pgTable(
      * Null while a task runs.
      */
     settledAt: timestamp("settled_at", { withTimezone: true }),
+    /**
+     * Set while the task waits for a running-task slot (inner#1968), cleared
+     * when it is let through. The status stays `running` meanwhile; the two
+     * deadline harvests skip a waiting row.
+     */
+    waitingSince: timestamp("waiting_since", { withTimezone: true }),
 
     // The conservative allowance: within it the task certainly finishes, and
     // past it something outside what we promise has gone wrong.
@@ -1169,7 +1188,7 @@ export const creditSources = pgTable(
   "credit_sources",
   {
     id: uuid("id").primaryKey(),
-    /** One of `payment` / `compensation` / `gift` / `discount`. CHECK in 0079. */
+    /** A credit source kind, constrained by the product migration. */
     kind: varchar("kind", { length: 16 }).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
@@ -1189,6 +1208,31 @@ export const creditGrantOperations = pgTable("credit_grant_operations", {
   result: jsonb("result").$type<CreditGrantResult>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
+
+/** Original enterprise purchase decisions retain keys after membership changes. */
+export const enterpriseCreditPurchaseOperations = pgTable("enterprise_credit_purchase_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull(),
+  requestedBy: uuid("requested_by").notNull(),
+  requestBody: jsonb("request_body").$type<EnterpriseCreditPurchaseWrite>().notNull(),
+  result: jsonb("result").$type<EnterpriseCreditPurchaseResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Corporate purchase evidence shares the original source identity permanently. */
+export const creditEnterprisePurchases = pgTable("credit_enterprise_purchases", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("enterprise").notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  contractNumber: text("contract_number").notNull(),
+  reason: text("reason").notNull(),
+  operationKey: text("operation_key").notNull().unique(),
+  requestedBy: uuid("requested_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [foreignKey({ name: "credit_enterprise_purchases_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
 
 /** One promoter application; partial unique indexes and CHECKs live in 0118 (inner#1868). */
 export const promoterApplications = pgTable("promoter_applications", {
@@ -2139,6 +2183,11 @@ export const creditChargeRequests = pgTable(
     // What the settlement's ledger rows carry as their reference.
     referenceId: varchar("reference_id", { length: 255 }).notNull(),
     projectId: uuid("project_id").references(() => projects.id, { onDelete: "restrict" }),
+    // The studio the charge is counted against (0128, inner#1968): backfilled
+    // from the project, and written on every new request that has a project. The
+    // monthly spend limits sum spending by it; which studio pays still follows
+    // the project.
+    studioId: uuid("studio_id").references(() => studios.id, { onDelete: "restrict" }),
     // Above zero. CHECK in 0121.
     amount: numeric("amount", { precision: 20, scale: 6 }).notNull(),
     description: text("description"),
@@ -2160,6 +2209,41 @@ export const creditChargeRequests = pgTable(
     index("credit_charge_requests_pending_idx")
       .on(table.updatedAt)
       .where(sql`${table.status} = 'pending'`),
+    index("credit_charge_requests_studio_created_idx").on(table.studioId, table.createdAt),
+    index("credit_charge_requests_release_hold_idx")
+      .on(table.releaseHold)
+      .where(sql`${table.status} = 'pending' AND ${table.releaseHold} IS NOT NULL`),
+  ],
+);
+
+// ── 8g. Spend limits (0128, inner#1968) ──────────────────────────────
+
+/** A studio's monthly spend limits: the per-member default and the studio total. Null means not set. */
+export const studioSpendLimits = pgTable("studio_spend_limits", {
+  studioId: uuid("studio_id").primaryKey().references(() => studios.id, { onDelete: "restrict" }),
+  memberDefaultCredits: numeric("member_default_credits", { precision: 20, scale: 6 }),
+  studioMonthlyCredits: numeric("studio_monthly_credits", { precision: 20, scale: 6 }),
+  updatedByUserId: uuid("updated_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  ...timestamps,
+  deletedAt: timestamp("deleted_at", { withTimezone: true }),
+});
+
+/** One member's monthly spend limit in a studio, overriding the default; null means unlimited. */
+export const studioMemberSpendLimits = pgTable(
+  "studio_member_spend_limits",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    studioId: uuid("studio_id").notNull().references(() => studios.id, { onDelete: "restrict" }),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    monthlyCredits: numeric("monthly_credits", { precision: 20, scale: 6 }),
+    updatedByUserId: uuid("updated_by_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    uniqueIndex("studio_member_spend_limits_live_key")
+      .on(table.studioId, table.userId)
+      .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -2325,6 +2409,12 @@ export const timelineExecutions = pgTable(
     failureReason: text("failure_reason"),
     billedCredits: numeric("billed_credits"),
     billedAt: timestamp("billed_at", { withTimezone: true }),
+    /** First time the running-task gate held this execution back (inner#1968). */
+    slotWaitSince: timestamp("slot_wait_since", { withTimezone: true }),
+    /** When the gate last judged it. */
+    slotCheckedAt: timestamp("slot_checked_at", { withTimezone: true }),
+    /** The limit the gate used at that judgement. */
+    slotWaitLimit: integer("slot_wait_limit"),
     ...timestamps,
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
@@ -2335,6 +2425,12 @@ export const timelineExecutions = pgTable(
     index("timeline_executions_space_idx")
       .on(table.projectId, table.spaceId, table.status, desc(table.createdAt))
       .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_executions_actor_running_idx")
+      .on(table.actorUserId, table.deadlineAt)
+      .where(sql`${table.status} IN ('running', 'cancelling')`),
+    index("timeline_executions_actor_slot_wait_idx")
+      .on(table.actorUserId, table.slotWaitLimit, table.createdAt)
+      .where(sql`${table.status} = 'queued' AND ${table.slotWaitSince} IS NOT NULL`),
     index("timeline_executions_open_idx")
       .on(table.createdAt)
       .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
@@ -3525,6 +3621,8 @@ export const enterpriseMemberships = pgTable("enterprise_memberships", {
   studioMembers: integer("studio_members").notNull(),
   projectMembers: integer("project_members").notNull(),
   storageBytes: bigint("storage_bytes", { mode: "number" }).notNull(),
+  // 0128 (inner#1968); CHECK there: 1 to 30.
+  runningTasksPerUser: integer("running_tasks_per_user").default(10).notNull(),
   fallbackTier: varchar("fallback_tier", { length: 16 }).notNull(),
   revision: integer("revision").notNull(),
   ...timestamps,

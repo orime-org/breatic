@@ -54,7 +54,6 @@ import { MenuTick } from '@web/spaces/document/MenuTick';
 import {
   TYPE_MENU_WIDTH,
   itemWithin,
-  rulesAfter,
   whenOutOfReach,
 } from '@web/spaces/document/document-block-menu-parts';
 import {
@@ -92,8 +91,7 @@ import { useDocumentMediaPick } from '@web/spaces/document/DocumentMediaPicker';
 import type { MediaBlockType } from '@web/spaces/document/document-media-types';
 import { DocumentInsertChoices } from '@web/spaces/document/DocumentInsertChoices';
 import { useRowNow } from '@web/spaces/document/use-row-now';
-import { columnsOutOfReach } from '@web/spaces/document/document-column-entry';
-import { blockInTableCell } from '@web/spaces/document/document-table-nodes';
+import { insertReach, reachFromKey, reachKey, ruleBetween } from '@web/spaces/document/document-insert-entries';
 import { openTableFullscreen } from '@web/spaces/document/document-table-fullscreen';
 import { copyTableLine, cutTableLine, firstCellOf } from '@web/spaces/document/document-table-line-clipboard';
 import { toast } from '@web/lib/toast';
@@ -266,6 +264,10 @@ export function DocumentBlockMenu({
 
   const rowNow = useRowNow(editor, block.id);
   const projectId = useDocumentProjectId();
+  // Insert below adds a row under this one (design 5.2, `below`); one set per
+  // value so the memoised rows bail between renders.
+  const belowKey = reachKey(insertReach(editor.prosemirrorState.doc, block.id, 'below'));
+  const belowReach = React.useMemo(() => reachFromKey(belowKey), [belowKey]);
 
   /**
    * The range standing for this row, read off the document as it is now.
@@ -391,10 +393,8 @@ export function DocumentBlockMenu({
                   const ItemIcon = item.Icon;
                   const reachable =
                     item.id === 'quote' ? faces.quotable : faces.holdsText;
-                  const ruled = rulesAfter(
-                    item.id,
-                    BLOCK_TYPE_ITEMS[index + 1]?.id,
-                  );
+                  const next = BLOCK_TYPE_ITEMS[index + 1]?.id;
+                  const ruled = next !== undefined && ruleBetween(item.id, next);
                   return (
                     <React.Fragment key={item.id}>
                       <DropdownMenuItem
@@ -440,8 +440,7 @@ export function DocumentBlockMenu({
                 <DocumentInsertChoices
                   onPick={onInsertBelow}
                   onPickMedia={onInsertMediaBelow}
-                  tableUnreachable={blockInTableCell(editor.prosemirrorState.doc, block.id)}
-                  columnsUnreachable={columnsOutOfReach(editor.prosemirrorState.doc, block.id)}
+                  unreachable={belowReach}
                 />
               </DropdownMenuSubContent>
             </DropdownMenuSub>

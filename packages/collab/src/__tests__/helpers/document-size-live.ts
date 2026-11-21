@@ -377,7 +377,7 @@ export type Instance = Awaited<ReturnType<typeof createCollabServer>>;
  * @returns The instance.
  */
 export async function startInstance(create: typeof createCollabServer, redisUrl: string, redisKeyPrefix: string = `document-size-${randomUUID()}`): Promise<Instance> {
-  const instance = await create({ port: 0, collabRedisUrl: redisUrl, redisKeyPrefix, shutdownDeadline: () => undefined });
+  const instance = await create({ port: 0, address: "127.0.0.1", collabRedisUrl: redisUrl, redisKeyPrefix, shutdownDeadline: () => undefined });
   await instance.server.listen();
   return instance;
 }

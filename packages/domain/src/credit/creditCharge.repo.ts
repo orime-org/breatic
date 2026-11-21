@@ -66,6 +66,10 @@ export async function insertPending(input: NewChargeRequest, tx: DbTx): Promise<
       referenceId: input.referenceId,
       actorUserId: input.actorUserId,
       projectId: input.projectId,
+      // Written on every request with a project (inner#1968): the project's studio,
+      // read without a deleted filter so a project deleted mid-run cannot
+      // roll back the delivery this row commits with.
+      studioId: input.projectId === null ? null : sql`(SELECT studio_id FROM projects WHERE id = ${input.projectId})`,
       amount: String(input.amount),
       description: input.description ?? null,
       // Cut to the ledger's widths (`credit_ledger.model` / `provider`): a

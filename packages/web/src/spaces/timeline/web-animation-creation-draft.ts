@@ -33,7 +33,7 @@ export type CreationDraftEvent =
   | { type: 'execute'; actionId: string }
   | { type: 'close' }
   | { type: 'accepted'; executionId: string }
-  | { type: 'refused'; error: string };
+  | { type: 'refused'; error: string | null };
 
 const CLOSED: CreationDraftState = { status: 'closed' };
 

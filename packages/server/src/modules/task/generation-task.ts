@@ -19,7 +19,7 @@ import { randomUUID } from "node:crypto";
 import { getNodeTaskConfig, AppError, logger } from "@breatic/core";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { creditHoldService, nodeTaskService, taskService } from "@breatic/domain";
-import { CreditsHeldError, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
+import { reserveForRun } from "@server/modules/credit/credit-precheck.service.js";
 import { assertAccess } from "@server/modules/project/project.service.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
 import { t } from "@breatic/shared";
@@ -84,6 +84,11 @@ export async function openGenerationTasks(opts: {
         { err, nodeId, taskId: opts.taskId, projectId: opts.projectId },
         "node_task_open_failed",
       );
+      // The rows already open belong to a run that is not happening; left
+      // running they would count it until the two-hour harvest.
+      await failOpenedTasks(opts.projectId, opts.spaceId, rows, "internal").catch((settleErr: unknown) => {
+        logger.error({ err: settleErr, taskId: opts.taskId, projectId: opts.projectId }, "node_task_open_cleanup_failed");
+      });
       throw new AppError(503, t("canvas.task.couldNotStart"));
     }
     await publishCountsQuietly(docName, nodeId, opened.counts);
@@ -93,14 +98,13 @@ export async function openGenerationTasks(opts: {
 }
 
 /**
- * Settle rows this request opened as failed, for a run it then refused.
+ * Settle rows this request opened as failed, for a run that then failed
+ * before its job was queued.
  *
- * The node was on the canvas before the request went out, so the refusal is
- * said where the node can show it: the row settles `failed` carrying the
- * cause, and the node's count moves with it (downstream-node-creation
- * decision, stage 4). Publishing is quiet for the same reason opening it is —
- * a refusal that also loses its broadcast is still a refusal, and the user
- * sees it on the next read of the list.
+ * The row settles `failed` carrying the cause, and the node's count moves with
+ * it; a row left running would count a run that is not happening. Publishing
+ * is quiet for the same reason opening it is — the user sees the outcome on
+ * the next read of the list.
  * @param projectId - Owning project.
  * @param spaceId - The space, so an event can name the document.
  * @param rows - What `openGenerationTasks` opened.
@@ -124,16 +128,50 @@ export async function failOpenedTasks(
 }
 
 /**
- * Start a run whose result nodes are already on the canvas: open their rows,
- * check the credits, queue the job and keep its id. The rows open before the
- * credit check so a refusal is said where the node can show it.
+ * Hold a rowed run's estimate under the id its task row will carry, then
+ * write that row (inner#1968, design 3.10): a refusal, by the balance or by a
+ * monthly spend limit, leaves no task row and no node row behind, the same
+ * order the canvas generation takes. Every way out releases what was held;
+ * once the row exists, {@link startRowedRun} settles the run.
+ * @param opts - The run.
+ * @param opts.taskId - The id the task row takes.
+ * @param opts.projectId - Owning project.
+ * @param opts.userId - Who started it.
+ * @param opts.credits - The run's estimate.
+ * @param opts.create - Writes the task row.
+ * @returns The task row.
+ * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the estimate.
+ * @throws {AppError} 402 when the studio cannot cover the estimate; whatever writing the row throws.
+ */
+export async function holdRowedRun<T>(opts: {
+  taskId: string;
+  projectId: string;
+  userId: string;
+  credits: () => Promise<number>;
+  create: () => Promise<T>;
+}): Promise<T> {
+  await reserveForRun(opts.projectId, opts.userId, opts.taskId, await opts.credits());
+  try {
+    return await opts.create();
+  } catch (err) {
+    await creditHoldService.releaseHold(opts.taskId).catch((releaseErr: unknown) =>
+      logger.error({ err: releaseErr, taskId: opts.taskId, projectId: opts.projectId }, "credit_hold_release_failed"),
+    );
+    throw err;
+  }
+}
+
+/**
+ * Start a run whose result nodes are already on the canvas and whose credits
+ * {@link holdRowedRun} already holds: open their rows, queue the job and keep
+ * its id. The hold comes before any row, so a refusal opens none (inner#1968,
+ * design 3.10 U9).
  *
  * Once a row is open, any failure settles both accounts of the run — the task
  * and its rows — each on its own, so neither settlement takes the other down:
  * a task left `pending` is one no worker picks up and no sweep ends, and a row
- * left `running` counts a run that is not happening. `no_credits` and
- * `credits_held` are the causes the user can act on; anything else is ours,
- * and the log carries it.
+ * left `running` counts a run that is not happening. The cause is ours, and
+ * the log carries it.
  * @param opts - The run.
  * @param opts.taskId - The task this run belongs to.
  * @param opts.projectId - Owning project.
@@ -142,12 +180,11 @@ export async function failOpenedTasks(
  * @param opts.userId - Who started it.
  * @param opts.action - What the rows say this run is.
  * @param opts.label - What the rows name it by.
- * @param opts.credits - The run's estimate, held until the worker charges the run or it ends.
  * @param opts.enqueue - Queues the job, past the point of no return.
  * @param opts.logTag - Prefix of this lane's log events.
  * @param opts.logContext - Extra fields on the failure log.
- * @returns `"pending"` once queued, `"failed"` when refused after a row opened.
- * @throws {Error} The refusal itself, when no row opened to carry it.
+ * @returns `"pending"` once queued, `"failed"` when it failed after a row opened.
+ * @throws {Error} The failure itself, when no row opened to carry it.
  */
 export async function startRowedRun(opts: {
   taskId: string;
@@ -157,7 +194,6 @@ export async function startRowedRun(opts: {
   userId: string;
   action: Exclude<NodeTaskAction, "upload">;
   label: string;
-  credits: () => Promise<number>;
   enqueue: () => Promise<{ id?: string | undefined }>;
   logTag: string;
   logContext?: Record<string, unknown>;
@@ -174,19 +210,12 @@ export async function startRowedRun(opts: {
       action: opts.action,
       label: opts.label,
     });
-    await reserveForRun(projectId, opts.userId, taskId, await opts.credits());
     const job = await opts.enqueue();
     await recordJobId(taskId, job.id, projectId, opts.logTag);
     return "pending";
   } catch (err) {
-    const reason: TaskFailureReason =
-      err instanceof CreditsHeldError
-        ? "credits_held"
-        : err instanceof AppError && err.statusCode === 402
-          ? "no_credits"
-          : "internal";
-    await settleUnqueuedRun(taskId, projectId, reason, () => failOpenedTasks(projectId, spaceId, rows, reason), opts.logTag);
-    logger.warn({ err, taskId, projectId, reason, ...opts.logContext }, `${opts.logTag}_run_failed`);
+    await settleUnqueuedRun(taskId, projectId, "internal", () => failOpenedTasks(projectId, spaceId, rows, "internal"), opts.logTag);
+    logger.error({ err, taskId, projectId, ...opts.logContext }, `${opts.logTag}_run_failed`);
     // An open row is the answer — it holds the cause and the node shows it.
     // With none, opening it is what failed, and the rejection carries the cause.
     if (rows.length > 0) return "failed";

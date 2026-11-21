@@ -304,7 +304,7 @@ describe("CanvasNodeFields", () => {
 // ── NodeEvent alias ────────────────────────────────────────────────
 
 describe("NodeEvent", () => {
-  // One member since #186: a node's four task counts are the whole of what
+  // One member since #186: a node's task counts are the whole of what
   // the backend writes to the canvas. `type` stays on the wire so a consumer
   // reading a stream it does not recognise says so instead of guessing.
   it("is the union of the events collab consumes", () => {

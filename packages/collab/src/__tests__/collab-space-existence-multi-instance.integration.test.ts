@@ -83,6 +83,7 @@ async function startInstance(name: string): Promise<Hocuspocus> {
   }
   const wsServer = new Server({
     port: 0,
+    address: "127.0.0.1",
     quiet: true,
     stopOnSignals: false,
     debounce: 50,

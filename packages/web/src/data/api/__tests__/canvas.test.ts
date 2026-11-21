@@ -98,7 +98,7 @@ describe('canvasApi.listNodeHistory — paginated node history (#1619)', () => {
   });
 });
 
-describe('canvasApi node tasks — the rows behind a node\'s four counts (#186)', () => {
+describe('canvasApi node tasks — the rows behind a node\'s task counts (#186)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });

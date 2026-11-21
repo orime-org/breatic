@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { creditSourceLabelKey } from '@web/features/credits/credit-source-label';
+import { creditSourceText } from '@web/features/credits/credit-source-label';
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -161,8 +161,8 @@ const PurchaseLine = React.memo(function PurchaseLine({
   // figure from the moment the buyer typed their address. Carrying one says
   // nothing about whether the money moved, which is why `over` is asked first.
   const charged = purchase.totalCents;
-  // A row nobody paid for has no state a payment can be in, so neither the
-  // "ended without a charge" question nor the badge applies to it.
+  // Online payment status controls the ended-charge check and badge.
+  // Grants and enterprise purchases have no online payment status.
   const over = purchase.status !== null && OVER.has(purchase.status);
   const statusKey =
     purchase.status === null ? undefined : STATUS_LABEL[purchase.status];
@@ -201,11 +201,10 @@ const PurchaseLine = React.memo(function PurchaseLine({
                 the figure a buyer matches against a statement; or, before
                 Stripe has one, the pre-tax price said plainly, which tells
                 them more than nothing does. */}
-          {/* Credits nobody paid for have no price to print, so the cell
-                says where they came from instead — the one thing about the
-                row a user cannot work out from the rest of it. */}
+          {/* Without an online listed price, the source label identifies
+                grant or enterprise funding in the amount cell. */}
           {purchase.amountCents === null
-            ? t(creditSourceLabelKey(purchase))
+            ? creditSourceText(purchase, t)
             : over
               ? t('credits.purchase.notCharged')
               : charged !== null

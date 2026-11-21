@@ -29,7 +29,7 @@ import { emitNodeTaskCounts } from "@breatic/domain";
 import type { NodeTaskCounts } from "@breatic/shared";
 
 /**
- * Publish a node's four counts, and carry on if that fails.
+ * Publish a node's task counts, and carry on if that fails.
  *
  * Only for events carrying nothing but the numbers. An event carrying a
  * task's content is the one way that content reaches the node, so it goes
@@ -38,7 +38,7 @@ import type { NodeTaskCounts } from "@breatic/shared";
  * than optional.
  * @param docName - Canvas doc the node lives in.
  * @param nodeId - The node these counts belong to.
- * @param counts - All four, freshly counted from `node_tasks`.
+ * @param counts - All of them, freshly counted from `node_tasks`.
  */
 export async function publishCountsQuietly(
   docName: string,

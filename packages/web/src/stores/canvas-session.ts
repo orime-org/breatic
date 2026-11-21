@@ -287,14 +287,15 @@ export interface CanvasSessionState {
    */
   historyFocus: string | null;
   /**
-   * Which of a node's four task states the open list is showing (#186 §7.1),
+   * Which of a node's task lists the open list is showing (#186 §7.1): one
+   * state, or the running tasks that wait for a free slot (inner#1968);
    * null whenever the task list is not the open panel.
    *
    * The list answers one state at a time, so which one was asked for belongs
    * beside the host rather than inside the panel: the counts column outside
-   * the node reads it to show which of its four buttons is pressed.
+   * the node reads it to show which of its buttons is pressed.
    */
-  taskPanelStatus: 'running' | 'done' | 'failed' | 'expired' | null;
+  taskPanelStatus: 'running' | 'waiting' | 'done' | 'failed' | 'expired' | null;
   /**
    * Which opening of a panel this is. Every opener takes a new number, so what
    * belongs to one opening ends with it: the prompt editor built for it, and a
@@ -438,7 +439,7 @@ export interface CanvasSessionState {
    */
   openTaskPanel: (
     nodeId: string,
-    status: 'running' | 'done' | 'failed' | 'expired',
+    status: 'running' | 'waiting' | 'done' | 'failed' | 'expired',
   ) => void;
   /**
    * Expand one annotation's sticky (#1881 §8.7.3, replaces any open panel).

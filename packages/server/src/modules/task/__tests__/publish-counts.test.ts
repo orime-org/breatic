@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Publishing four numbers that nobody is waiting on (#186, design §4.6.4).
+ * Publishing counts that nobody is waiting on (#186, design §4.6.4).
  *
  * A node's task counts go out on the cross-service stream so that everyone
  * else with this canvas open sees them move. The request that caused the
@@ -52,7 +52,7 @@ beforeEach(() => {
 });
 
 describe("publishing a node's counts as a courtesy", () => {
-  it("sends the four numbers and no content", async () => {
+  it("sends the counts and no content", async () => {
     await publishCountsQuietly(DOC, NODE, COUNTS);
 
     expect(emit).toHaveBeenCalledWith({}, DOC, NODE, COUNTS, undefined);

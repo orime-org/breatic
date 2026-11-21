@@ -78,8 +78,19 @@ beforeAll(() => {
   });
 });
 
+/** Accounts written with a tier the constraint refuses; later suites read every live account. */
+const badTierIds: string[] = [];
+
 afterAll(async () => {
-  await sql?.end({ timeout: 1 });
+  try {
+    if (badTierIds.length > 0) {
+      await withTierCheckLifted(async () => {
+        await sql`UPDATE users SET deleted_at = now() WHERE id = ANY(${badTierIds}::uuid[])`;
+      });
+    }
+  } finally {
+    await sql?.end({ timeout: 1 });
+  }
 });
 
 /**
@@ -195,6 +206,7 @@ async function insertUserWithBadTier(tier: string): Promise<string> {
       VALUES (${`tier-bad-${seq++}@example.test`}, true, ${tier})
       RETURNING id
     `;
+    badTierIds.push(u!.id);
     return u!.id;
   });
 }
@@ -320,15 +332,15 @@ describe("getStudioStorageQuota", () => {
     ).rejects.toThrow();
   });
 
-  it("answers null for the enterprise tier rather than throwing", async () => {
-    // Enterprise ceilings are negotiated per customer and are in no config
-    // file, so there is no number to answer with. Storage is the one ceiling
-    // whose ratified product rule is to let it through (user 2026-08-19), and
-    // a rule cannot be applied to an exception — hence a value, not a throw.
+  it("answers null for the enterprise tier without an agreement rather than throwing", async () => {
+    // Enterprise ceilings are negotiated per customer and live in its
+    // agreement, in no config file, so an account without one has no number
+    // to answer with. Storage's rule for it is to let it through, and a rule
+    // cannot be applied to an exception, hence a value, not a throw; the
+    // running-task limit falls back to 10 (`runningTaskLimitForStudio`).
     //
-    // The other five ceilings still throw, deliberately: what enterprise
-    // means for them has never been decided, and inventing an answer here
-    // would decide it silently.
+    // The limits lookup still throws for it, deliberately: inventing the
+    // other ceilings here would decide them silently.
     const { personalStudioId } = await insertUser("enterprise");
     const quota = await getStudioStorageQuota(personalStudioId);
     expect(quota.storageBytes).toBeNull();
@@ -358,22 +370,23 @@ describe("getStudioStorageQuota", () => {
  * The functions that turn a tier into numbers. Everything above resolves a
  * tier; these price it, and they are the only place that conversion happens.
  *
- * Why it matters that there are so few such places: all six ceilings go
+ * Why it matters that there are so few such places: all seven ceilings go
  * through them — team studios, projects per studio, the two kinds of member
- * cap, the concurrent-connection one tested below (#88), and storage (#89,
- * through `getStudioStorageQuota` above). Written as "look up the tier, then
- * index the config" at every one of them, that pair of steps would end up
- * copied six to eight times — and the enterprise tier, whose ceilings are
- * negotiated per customer and will be read from the database, would then have
- * to be threaded through every copy. Miss one and that customer is quietly
+ * cap, the concurrent-connection one tested below (#88), storage (#89,
+ * through `getStudioStorageQuota` above) and running tasks per person
+ * (inner#1968). Written as "look up the tier, then index the config" at every
+ * one of them, that pair of steps would be copied at each, and the enterprise
+ * tier, whose ceilings are negotiated per customer and read from its
+ * agreement in the database, would have to be threaded through every copy. Miss one and that customer is quietly
  * held to the standard tier on that one path, with no error.
  */
 describe("getMembershipForUser", () => {
-  it("returns that account's own tier and its six ceilings from one reading", async () => {
+  it("returns that account's own tier and its seven ceilings from one reading", async () => {
     const { userId } = await insertUser("pro");
     await expect(getMembershipForUser(userId)).resolves.toEqual({
       tier: "pro",
       limits: getMembershipLimits("pro"),
+      storageLimitBytes: getMembershipLimits("pro").storage_bytes,
     });
   });
 
@@ -382,6 +395,7 @@ describe("getMembershipForUser", () => {
     await expect(getMembershipForUser(userId)).resolves.toEqual({
       tier: "enterprise",
       limits: null,
+      storageLimitBytes: null,
     });
   });
 
@@ -453,9 +467,9 @@ describe("getLimitsForStudio", () => {
  *
  * It goes through `getLimitsForStudio` rather than joining its own way to the
  * tier. That is not tidiness: those two functions are where the negotiated
- * enterprise tier will be read from the database, and a call point that walks
- * its own path would keep quietly answering from the config file after that
- * lands — with a number that looks perfectly valid.
+ * enterprise tier is read from the database, and a call point that walked its
+ * own path would quietly answer from the config file — with a number that
+ * looks perfectly valid.
  */
 describe("getProjectConcurrentEditorLimit", () => {
   it("answers with the tier of the studio that owns the project", async () => {

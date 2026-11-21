@@ -45,34 +45,38 @@ async function run(tx: Tx, statements: string[]): Promise<void> {
 }
 
 /**
- * The migrations folder cut at 0125, the last migration before regions.
+ * The migrations folder cut at one migration: 0125 is the last before
+ * regions, 0127 the one that removes them. Later migrations are not part of
+ * what these cases compare.
+ * @param lastIdx - The last journal index kept.
  * @returns The folder's path.
  */
-async function beforeRegionsFolder(): Promise<string> {
+async function migrationsUpTo(lastIdx: number): Promise<string> {
   const cache = resolve(migrationDir, "../../../../../node_modules/.cache");
   await mkdir(cache, { recursive: true });
-  fixtureRoot = await mkdtemp(resolve(cache, "remove-regions-"));
-  const folder = resolve(fixtureRoot, "before-regions");
+  fixtureRoot ??= await mkdtemp(resolve(cache, "remove-regions-"));
+  const folder = resolve(fixtureRoot, `up-to-${String(lastIdx)}`);
   await cp(migrationDir, folder, { recursive: true });
   const journal = JSON.parse(await readFile(resolve(migrationDir, "meta/_journal.json"), "utf8")) as { entries: { idx: number }[] };
-  await writeFile(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter((e) => e.idx <= 125) }));
+  await writeFile(resolve(folder, "meta/_journal.json"), JSON.stringify({ ...journal, entries: journal.entries.filter((e) => e.idx <= lastIdx) }));
   return folder;
 }
 
 /**
- * Migrate a database of its own and read its schema.
- * @param migrationsFolder - The migrations to run; the full set when omitted.
- * @returns The schema it ends with.
+ * Run a body against a database of its own, migrated through one migration.
+ * @param lastIdx - The last journal index to run.
+ * @param body - What to do with the database.
+ * @returns What the body returns.
  */
-async function migratedSchema(migrationsFolder?: string): Promise<unknown> {
+async function onDatabaseUpTo<T>(lastIdx: number, body: (db: Db) => Promise<T>): Promise<T> {
   const name = `remove_regions_${randomUUID().replaceAll("-", "")}`;
   await sql.unsafe(`CREATE DATABASE "${name}"`);
   const url = new URL(inject("DATABASE_URL"));
   url.pathname = `/${name}`;
   const db = postgres(url.toString(), { max: 1, prepare: false, onnotice: () => {} });
   try {
-    await migrateDatabase(url.toString(), migrationsFolder === undefined ? {} : { migrationsFolder });
-    return await schemaOf(db);
+    await migrateDatabase(url.toString(), { migrationsFolder: await migrationsUpTo(lastIdx) });
+    return await body(db);
   } finally {
     await db.end({ timeout: 3 });
     await sql.unsafe(`DROP DATABASE "${name}" WITH (FORCE)`);
@@ -96,19 +100,23 @@ async function schemaOf(db: Db | Tx): Promise<unknown> {
 }
 
 /**
- * Put the database back where 0126 left it, run the body, and roll everything back.
+ * On a database migrated through 0127, put it back where 0126 left it, run
+ * the body, and roll everything back.
  * @param body - What to do on the 0126 schema.
  */
-async function onRegionsSchema(body: (tx: Tx) => Promise<void>): Promise<void> {
-  await sql
-    .begin(async (tx) => {
-      await run(tx, await statementsOf("0126_regions.sql"));
-      await body(tx);
-      throw new Rollback();
-    })
-    .catch((err: unknown) => {
-      if (!(err instanceof Rollback)) throw err;
-    });
+async function onRegionsSchema(body: (tx: Tx, schema: unknown) => Promise<void>): Promise<void> {
+  await onDatabaseUpTo(127, async (db) => {
+    const schema = await schemaOf(db);
+    await db
+      .begin(async (tx) => {
+        await run(tx, await statementsOf("0126_regions.sql"));
+        await body(tx, schema);
+        throw new Rollback();
+      })
+      .catch((err: unknown) => {
+        if (!(err instanceof Rollback)) throw err;
+      });
+  });
 }
 
 /**
@@ -149,9 +157,9 @@ async function rowsOf(tx: Tx, studioId: string): Promise<unknown> {
 }
 
 describe("migration 0127 removes regions", () => {
-  it("leaves a fully migrated database with the schema it had before 0126", async () => {
-    const beforeRegions = await migratedSchema(await beforeRegionsFolder());
-    expect(await migratedSchema()).toEqual(beforeRegions);
+  it("leaves a database migrated through 0127 with the schema it had before 0126", async () => {
+    const beforeRegions = await onDatabaseUpTo(125, schemaOf);
+    expect(await onDatabaseUpTo(127, schemaOf)).toEqual(beforeRegions);
   });
 
   it("refuses a Studio transfer in the accepting state", async () => {
@@ -164,8 +172,7 @@ describe("migration 0127 removes regions", () => {
   });
 
   it("keeps a database's business rows and its schema across 0126 and 0127", async () => {
-    const schema = await schemaOf(sql);
-    await onRegionsSchema(async (tx) => {
+    await onRegionsSchema(async (tx, schema) => {
       const { studioId } = await seed(tx);
       const before = await rowsOf(tx, studioId);
       await run(tx, await statementsOf("0127_remove_regions.sql"));
