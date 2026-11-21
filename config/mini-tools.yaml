@@ -115,9 +115,10 @@ presentation:
   # The edit file tools read when the original cannot be read frame-accurately: all-intra H.264 or ProRes 4444.
   # bytes_per_pixel estimates its size before it is written; it is provisional until measured.
   # max_edit_bytes comes from the standard-4 disk (classes.MiniToolContainerStd4.disk_gb, 20 GB, decimal) less a
-  # 4 GB working margin. The edit stitch downloads every edit chunk to that disk, and a later tool run downloads the
-  # whole edit file; the margin holds the container image, which shares the instance disk, and the records and outputs
-  # a run writes beside the edit file. So an edit file admitted by its estimate also fits wherever it is read whole.
+  # 4 GB working margin. The edit stitch downloads every edit chunk, and every video execution and analysis downloads the
+  # whole tool source, which is the edit file when there is one; the margin holds the container image, which shares the
+  # instance disk, and the records and outputs a run writes beside the edit file. So each of those operations runs on a
+  # class whose disk holds this cap plus the margin.
   max_edit_bytes: 16000000000
   edit:
     crf: 15
@@ -265,7 +266,7 @@ quote_debounce_ms: 300
 # The worker consumes the accepted profile; later config changes apply to new runs.
 analyses:
   scene_cuts:
-    container_class: "MiniToolContainerStd1"
+    container_class: "MiniToolContainerStd4"
     precheck_seconds: 300
     profile:
       id: "pyscenedetect-content"
