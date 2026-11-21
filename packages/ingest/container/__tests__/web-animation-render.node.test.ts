@@ -47,17 +47,19 @@ describe("markCompositionsWithoutTimeline", () => {
 });
 
 describe("wholePercentProgress", () => {
-  it("reports the renderer's fraction once per whole percent and ignores what is not a fraction", () => {
+  // The producer calls its progress sink as (job, stage) and keeps the whole percent, 0 to 100, on job.progress.
+  it("reports the producer's job progress as a fraction once per whole percent", () => {
     const sent: number[] = [];
     const sink = wholePercentProgress((fraction) => sent.push(fraction));
-    for (const value of [0.001, 0.004, 0.012, 0.0125, "frame 3", 1.5, 0.5, 0.509, 1]) sink(value);
-    expect(sent).toEqual([0.001, 0.012, 0.5, 1]);
+    for (const progress of [0, 0, 25, 25, 26, 90, 99, 100]) sink({ progress }, "Encoding");
+    expect(sent).toEqual([0, 0.25, 0.26, 0.9, 0.99, 1]);
   });
 
-  it("reads the fraction wherever the renderer puts it among its arguments", () => {
+  it("ignores a job that carries no finite progress", () => {
     const sent: number[] = [];
     const sink = wholePercentProgress((fraction) => sent.push(fraction));
-    sink({ stage: "capture" }, 0.25);
-    expect(sent).toEqual([0.25]);
+    sink({}, "Preparing");
+    sink({ progress: Number.NaN }, "Preparing");
+    expect(sent).toEqual([]);
   });
 });

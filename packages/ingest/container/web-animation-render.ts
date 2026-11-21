@@ -47,26 +47,37 @@ class RenderStopped extends Error {
   }
 }
 
-/** The producer as this runner calls it; it is installed in the image, beside the bundle. */
+/** The part of the producer's render job this runner reads: the whole percent done, 0 to 100. */
+interface ProducerJob {
+  progress?: unknown;
+}
+
+/**
+ * The producer as this runner calls it, in the shapes @hyperframes/producer declares (`createRenderJob(config)`,
+ * `executeRenderJob(job, projectDir, outputPath, progressSink)` with `ProgressCallback = (job, message) => void`).
+ * The frame size comes from the composition itself, so the config names only the frame rate, quality and format.
+ */
 interface Producer {
-  createRenderJob(options: { width: number; height: number; fps: number; quality: string; format: "mp4" }): unknown;
-  executeRenderJob(job: unknown, projectDir: string, outputPath: string, onProgress?: (...args: unknown[]) => void): Promise<unknown>;
+  createRenderJob(config: { fps: number; quality: string; format: "mp4" }): ProducerJob;
+  executeRenderJob(job: ProducerJob, projectDir: string, outputPath: string, progressSink?: (job: ProducerJob, message: string) => void): Promise<void>;
 }
 
 const PRODUCER_MODULE = "@hyperframes/producer";
 
 /**
- * The producer's progress callback, reporting the fraction it carries each time the whole percent moves.
- * @param report - Receives the fraction, 0 to 1.
- * @returns The callback the producer is given; it reads the first argument that is a fraction.
+ * The producer's progress sink, reporting the job's progress each time its whole percent moves.
+ * @param report - Receives the progress as a fraction, 0 to 1.
+ * @returns The sink the producer is given; it reads `job.progress`, which the producer keeps as a whole percent.
  */
-export function wholePercentProgress(report: (fraction: number) => void): (...args: unknown[]) => void {
+export function wholePercentProgress(report: (fraction: number) => void): (job: ProducerJob, message: string) => void {
   let reported = -1;
-  return (...args) => {
-    const fraction = args.find((arg): arg is number => typeof arg === "number" && arg >= 0 && arg <= 1);
-    if (fraction === undefined || Math.floor(fraction * 100) === reported) return;
-    reported = Math.floor(fraction * 100);
-    report(fraction);
+  return (job) => {
+    const percent = job.progress;
+    if (typeof percent !== "number" || !Number.isFinite(percent)) return;
+    const whole = Math.min(100, Math.max(0, Math.floor(percent)));
+    if (whole === reported) return;
+    reported = whole;
+    report(whole / 100);
   };
 }
 
@@ -191,7 +202,7 @@ export async function runWebAnimationRender(job: WebAnimationRenderRunBody, sett
     const producer = (await import(PRODUCER_MODULE)) as Producer;
     const videoPath = join(work, "out.mp4");
     try {
-      const render = producer.createRenderJob({ width: job.width, height: job.height, fps: job.fps.num / job.fps.den, quality: job.quality, format: "mp4" });
+      const render = producer.createRenderJob({ fps: job.fps.num / job.fps.den, quality: job.quality, format: "mp4" });
       await producer.executeRenderJob(render, project, videoPath, wholePercentProgress((progress) => {
         void post(job.progressUrl, { phase: "rendering", progress });
       }));
