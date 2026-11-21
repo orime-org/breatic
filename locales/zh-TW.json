@@ -39,6 +39,7 @@
       "not_authenticated": "未登入",
       "google_oauth_unconfigured": "本伺服器未開啟 Google 登入",
       "invalid_google_credential": "無法驗證你的 Google 帳號",
+      "desktop_exchange_invalid": "這個登入連結已失效，請重新登入。",
       "google_email_unverified": "你的 Google 帳號電子郵件未驗證",
       "google_link_requires_email_login": "請使用電子郵件登入此帳號，Google 無法安全關聯此信箱。",
       "reset_link_sent": "若該電子郵件已註冊,重設連結已寄送。",

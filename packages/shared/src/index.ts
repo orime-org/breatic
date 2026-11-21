@@ -318,6 +318,8 @@ export {
   emailSchema,
   registerSchema,
   googleAuthSchema,
+  desktopHandoffSchema,
+  desktopExchangeSchema,
   REFERRAL_CODE_INPUT_MAX,
   PROMOTER_CHANNELS_MAX,
   PROMOTER_CHANNEL_INPUT_MAX,

@@ -25,6 +25,7 @@ export * as sceneGenerationService from "@server/modules/asset/scene-generation.
 export { holdRun } from "@server/modules/task/generation-task.js";
 export * as transferReferenceService from "@server/modules/asset/transfer-reference.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
+export * as desktopHandoffService from "@server/modules/auth/desktop-handoff.service.js";
 export * as invitationService from "@server/modules/invitation/invitation.service.js";
 export * as recoveryCodeService from "@server/modules/auth/recovery-code.service.js";
 export * as signupCodeService from "@server/modules/auth/signup-code.service.js";

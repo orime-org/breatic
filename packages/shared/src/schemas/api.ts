@@ -220,6 +220,22 @@ export const googleAuthSchema = z.object({
 });
 export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 
+/** A SHA-256 digest in base64url without padding: 32 bytes are 43 characters. */
+const sha256Base64Url = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+
+/**
+ * The desktop client's sign-in through the system browser (#1599). The browser,
+ * signed in, asks for a one-time code bound to the challenge the client made.
+ */
+export const desktopHandoffSchema = z.object({ challenge: sha256Base64Url });
+
+/**
+ * The client page trades the code and the verifier behind the challenge for a
+ * session. The verifier's length follows RFC 7636 §4.1; any other content is a
+ * wrong verifier, answered like one.
+ */
+export const desktopExchangeSchema = z.object({ code: sha256Base64Url, verifier: z.string().min(43).max(128) });
+
 // ── Chat ─────────────────────────────────────────────────────────────
 
 /** Longer than any node or file id; the id is stored with the message. */

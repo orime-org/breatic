@@ -26,6 +26,7 @@ export const authConfigSchema = z.object({
       resend_cooldown_seconds: positiveInt.default(60),
     })
     .default({ ttl_seconds: 600, max_attempts_per_code: 5, resend_cooldown_seconds: 60 }),
+  desktop_handoff: z.object({ ttl_seconds: positiveInt.default(300) }).default({ ttl_seconds: 300 }),
 });
 
 /** The sign-up code settings, in the units the service works in. */
@@ -36,6 +37,7 @@ export interface SignupCodeConfig {
 }
 
 let _cached: SignupCodeConfig | null = null;
+let _desktopHandoffTtl: number | null = null;
 
 /**
  * Whether an email sign-up must prove the address with a code. True for the
@@ -53,12 +55,32 @@ export function emailVerificationEnabled(): boolean {
  */
 export function getSignupCodeConfig(): SignupCodeConfig {
   if (_cached) return _cached;
-  const raw = readFileSync(resolve(MONOREPO_ROOT, "config", "auth.yaml"), "utf-8");
-  const { signup_code: c } = authConfigSchema.parse(parse(raw) as unknown);
+  const { signup_code: c } = readAuthConfig();
   _cached = {
     ttlSeconds: c.ttl_seconds,
     maxAttemptsPerCode: c.max_attempts_per_code,
     resendCooldownSeconds: c.resend_cooldown_seconds,
   };
   return _cached;
+}
+
+/**
+ * Read and validate `config/auth.yaml`.
+ * @returns The parsed settings, defaults filled in.
+ * @throws {z.ZodError} if a value is malformed.
+ * @throws {Error} if the file cannot be read.
+ */
+function readAuthConfig(): z.infer<typeof authConfigSchema> {
+  const raw = readFileSync(resolve(MONOREPO_ROOT, "config", "auth.yaml"), "utf-8");
+  return authConfigSchema.parse(parse(raw) as unknown);
+}
+
+/**
+ * How long a desktop sign-in handoff code stays redeemable (#1599).
+ * @returns Seconds (memoized after the first read).
+ * @throws {z.ZodError} if the value is malformed.
+ */
+export function getDesktopHandoffTtlSeconds(): number {
+  _desktopHandoffTtl ??= readAuthConfig().desktop_handoff.ttl_seconds;
+  return _desktopHandoffTtl;
 }

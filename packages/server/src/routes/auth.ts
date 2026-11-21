@@ -14,11 +14,19 @@ import { frontendOrigin, validate, env, NotFoundError, UnauthorizedError, trackS
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
 
-import { registerSchema, signupVerifySchema, loginSchema, googleAuthSchema, setupStudioSchema } from "@server/routes/schemas.js";
+import {
+  registerSchema,
+  signupVerifySchema,
+  loginSchema,
+  googleAuthSchema,
+  setupStudioSchema,
+  desktopHandoffSchema,
+  desktopExchangeSchema,
+} from "@server/routes/schemas.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { authService, invitationService, signupCodeService, studioService } from "@server/modules";
+import { authService, desktopHandoffService, invitationService, signupCodeService, studioService } from "@server/modules";
 import { randomUUID } from "node:crypto";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
@@ -425,6 +433,59 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
   return c.json({
     data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) }, created, ...(referral ? { referral } : {}) },
   });
+});
+
+/**
+ * `POST /auth/desktop-handoff` - hand a signed-in browser's account to the
+ * desktop client (#1599). The browser page calls it only after the user
+ * pressed Continue, so a program that opens the page cannot take the account
+ * silently (RFC 8252 §8.6).
+ * @param c - Hono context with the challenge in the body
+ * @returns `200` with `{ data: { code } }`
+ * @throws {AppError} `401` without a session; `429` past `desktop-handoff` in `config/rate-limits.yaml`
+ */
+auth.post(
+  "/desktop-handoff",
+  requireAuth,
+  rateLimitForAll([{ action: "desktop-handoff", keyBy: "user" }]),
+  validate("json", desktopHandoffSchema),
+  async (c) => {
+    const user = c.get("user");
+    const code = await desktopHandoffService.issueDesktopHandoff(user.id, c.req.valid("json").challenge);
+    logger.info({ userId: user.id }, "desktop_handoff_issued");
+    return c.json({ data: { code } });
+  },
+);
+
+/**
+ * `POST /auth/desktop-exchange` - the desktop client trades a handoff code and
+ * the verifier behind its challenge for a session of its own (#1599). The
+ * session token leaves in the cookie; the user is shaped like the Google
+ * sign-in answer.
+ * @param c - Hono context with code and verifier in the body
+ * @returns `200` with `{ data: { user: { ...user, personalStudio } } }`
+ * @throws {AppError} `401` for an unknown, spent or expired code, a wrong verifier or a deleted account
+ */
+auth.post("/desktop-exchange", rateLimitFor("desktop-exchange"), validate("json", desktopExchangeSchema), async (c) => {
+  const { code, verifier } = c.req.valid("json");
+  const outcome = await desktopHandoffService.redeemDesktopHandoff(code, verifier);
+  if (!outcome.ok) {
+    logger.warn({ reason: outcome.reason }, "desktop_exchange_refused");
+    throw new UnauthorizedError(t("server.auth.desktop_exchange_invalid"));
+  }
+  const { user, token } = outcome;
+  setSessionCookie(c, token);
+  const [shown, studio] = await Promise.all([
+    authService.withTierInForce(user),
+    studioService.getPersonalStudio(user.id),
+  ]);
+  logger.info({ userId: user.id, method: "desktop_handoff" }, "user_logged_in");
+  trackServerEvent("login_completed", {
+    userId: user.id,
+    insertId: `login:${randomUUID()}`,
+    properties: { method: "desktop_handoff" },
+  });
+  return c.json({ data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } } });
 });
 
 /**

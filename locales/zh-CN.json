@@ -44,6 +44,7 @@
       "not_authenticated": "未登录",
       "google_oauth_unconfigured": "本服务器未开启 Google 登录",
       "invalid_google_credential": "无法验证你的 Google 账号",
+      "desktop_exchange_invalid": "这个登录链接已失效，请重新登录。",
       "google_email_unverified": "你的 Google 账号邮箱未验证",
       "google_link_requires_email_login": "请使用邮箱登录此账号，Google 无法安全关联此邮箱。",
       "reset_link_sent": "如果该邮箱已注册,重置链接已发送。",

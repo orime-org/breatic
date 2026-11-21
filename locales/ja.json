@@ -39,6 +39,7 @@
       "not_authenticated": "認証されていません",
       "google_oauth_unconfigured": "このサーバーでは Google サインインは利用できません",
       "invalid_google_credential": "Google アカウントを確認できませんでした",
+      "desktop_exchange_invalid": "このサインインリンクは無効になりました。もう一度サインインしてください。",
       "google_email_unverified": "Google アカウントのメールアドレスが確認されていません",
       "google_link_requires_email_login": "このアカウントにはメールでログインしてください。Google アカウントを安全に連携できません。",
       "reset_link_sent": "そのメールアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
