@@ -30,6 +30,14 @@ import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
  */
 export type GrantAssetSource = StudioAssetEntity["source"] | "transfer";
 
+/** The 3D object part a picture upload is for (inner#1693 design 6.3). */
+export interface SceneLookTarget {
+  objectId: string;
+  part: string;
+  /** The part's `map` when the upload started, or null for none. */
+  startMap: string | null;
+}
+
 /**
  * A row of the upload-grant ledger.
  *
@@ -44,14 +52,6 @@ export type GrantAssetSource = StudioAssetEntity["source"] | "transfer";
  * the one the Worker computes over the bytes that really landed; a column
  * holding the client's claim would be a column someone reads by mistake.
  */
-/** The 3D object part a picture upload is for (inner#1693 design 6.3). */
-export interface SceneLookTarget {
-  objectId: string;
-  part: string;
-  /** The part's `map` when the upload started, or null for none. */
-  startMap: string | null;
-}
-
 export interface UploadGrant {
   id: string;
   userId: string;

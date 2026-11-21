@@ -107,6 +107,7 @@ export type {
 } from "@domain/asset/backend-upload.service.js";
 export type {
   UploadGrant,
+  SceneLookTarget,
   FinalizeClaim,
   FinalizeRefusal,
 } from "@domain/asset/upload-grant.repo.js";

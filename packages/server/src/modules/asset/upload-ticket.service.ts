@@ -24,6 +24,7 @@ import {
   uploadDeadlineByKey,
   UploadOpenFailed,
   uploadTicketService,
+  type SceneLookTarget,
 } from "@breatic/domain";
 import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction } from "@breatic/shared";
 
@@ -58,7 +59,7 @@ export interface TicketItem {
  * @param item - The file.
  * @returns The object, part and starting picture, or null.
  */
-function sceneLookOf(item: TicketItem): { objectId: string; part: string; startMap: string | null } | null {
+function sceneLookOf(item: TicketItem): SceneLookTarget | null {
   if (item.purpose !== "scene_look" || item.object_id === undefined || item.part === undefined) return null;
   return { objectId: item.object_id, part: item.part, startMap: item.start_map ?? null };
 }
