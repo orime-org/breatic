@@ -877,7 +877,7 @@ export function renderProductGuide(): string {
       "opens a list under that heading of creative goals; pointing at a goal opens the templates for it, each a " +
       `name with a line under it. ${templateMenuLine("image", "A picture node")} ${templateMenuLine("video", "A video node")} ` +
       `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
-      `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. A template with styles ` +
+      `deployment lacks reads ${quoted(t("canvas.template.unavailable"))}, cannot be picked and opens no list. Any other template with styles ` +
       "is not picked itself: pointing at it opens one more list, its styles, under headings with a small picture for each " +
       `where it has them; while they load it reads ${quoted(t("common.loading"))} and when they cannot be loaded it reads ` +
       `${quoted(t("canvas.template.styleLoadFailed"))} and picking applies nothing. Picking a style applies the template and ` +
