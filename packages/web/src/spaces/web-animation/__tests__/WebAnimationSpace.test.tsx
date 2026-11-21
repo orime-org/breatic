@@ -1645,6 +1645,45 @@ describe('creating a web animation', () => {
     expect(screen.getByTestId('web-animation-prompt')).toHaveValue('A dot');
     expect(screen.getByTestId('web-animation-execute')).not.toHaveAttribute('aria-busy', 'true');
   });
+
+  it('shows a refusal in the dialog, with no toast, while the Space is on screen', async () => {
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockRejectedValue(new ApiException({ status: 422, message: 'Too long', fromServer: true }));
+    vi.mocked(toast.error).mockClear();
+    show();
+    const user = userEvent.setup();
+    await executeNew(user, 'A dot');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too long');
+    expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('toasts a refusal that arrives after the Space tab was closed', async () => {
+    let refuse: (err: Error) => void = () => undefined;
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockReturnValue(new Promise((_resolve, reject) => { refuse = reject; }) as never);
+    vi.mocked(toast.error).mockClear();
+    show();
+    const user = userEvent.setup();
+    await executeNew(user, 'A dot');
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledOnce());
+    cleanup();
+    await act(async () => { refuse(new ApiException({ status: 422, message: 'Too long', fromServer: true })); });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Too long'));
+  });
+
+  it('toasts a refusal that arrives while the Space is hidden, and shows it in the dialog when the Space is back', async () => {
+    let refuse: (err: Error) => void = () => undefined;
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockReturnValue(new Promise((_resolve, reject) => { refuse = reject; }) as never);
+    vi.mocked(toast.error).mockClear();
+    const setMode = showInActivity();
+    const user = userEvent.setup();
+    await executeNew(user, 'A dot');
+    await waitFor(() => expect(timelineApi.acceptExecution).toHaveBeenCalledOnce());
+    setMode('hidden');
+    await act(async () => { refuse(new ApiException({ status: 422, message: 'Too long', fromServer: true })); });
+    await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Too long'));
+    setMode('visible');
+    expect(await screen.findByRole('alert')).toHaveTextContent('Too long');
+    expect(screen.getByTestId('web-animation-prompt')).toHaveValue('A dot');
+  });
 });
 
 describe('the creation dialog\'s settings', () => {

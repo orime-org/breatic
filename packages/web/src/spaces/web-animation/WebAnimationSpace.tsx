@@ -445,6 +445,13 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // Reads this Space's lists again; a button that changed them waits for this read, so it stops waiting only once the
   // result is on screen.
   const refresh = React.useCallback((): Promise<void> => queryClient.invalidateQueries({ queryKey: spaceTasksQueryKey(projectId, spaceId) }), [queryClient, projectId, spaceId]);
+  // A press outlives this Space body: closing its tab or hiding it cleans the effects up, and a refusal that arrives then
+  // is told in a toast; the draft still keeps it, so a hidden Space shows it again when it comes back.
+  const onScreen = React.useRef(false);
+  React.useEffect(() => {
+    onScreen.current = true;
+    return (): void => { onScreen.current = false; };
+  }, []);
   // `intent` is what the button waits on, and a press while it waits sends nothing; `actionId` is fresh for every press
   // that does send.
   const accept = React.useCallback((request: WebAnimationAcceptRequest, intent: string, actionId: string, onRefused?: (message: string | null) => void): void => {
@@ -460,6 +467,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     }).then((outcome) => {
       // A press let go without an answer gives the draft back with the unknown result; an export has nothing to give back.
       if (outcome.kind === 'released') {
+        if (onRefused !== undefined && !onScreen.current) toast.error(t('common.runOnce.unknownResult'));
         onRefused?.(t('common.runOnce.unknownResult'));
         return;
       }
@@ -468,7 +476,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         // comes back with its input (inner#1968, design 3.3a).
         const capped = refusalSentence(outcome.error);
         const message = capped ?? serverMessage(outcome.error, t('common.runOnce.unknownResult'));
-        if (onRefused === undefined || capped !== null) toast.error(message);
+        if (onRefused === undefined || capped !== null || !onScreen.current) toast.error(message);
         onRefused?.(capped === null ? message : null);
         return;
       }
