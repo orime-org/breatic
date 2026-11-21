@@ -24,28 +24,33 @@ const ANALYSIS_METADATA_WRITE = Symbol('mini-tool-analysis-metadata');
 /** Origin of a draft write the user did not make (the draft a tool opens with, an anchor an automatic analysis freezes), which canvas undo does not track. */
 const DRAFT_SEED_WRITE = Symbol('mini-tool-draft-seed');
 
+/** What became of one scene result: applied, superseded by an edit made while it ran, or not for this draft at all. */
+export type SceneAnalysisOutcome = 'applied' | 'superseded' | 'ignored';
+
 /**
- * Applies one accepted scene result without repeating it after parameter undo.
+ * Applies one accepted scene result without repeating it after parameter undo. A result whose draft was edited while it ran
+ * is not applied, because the user's later edit wins, and is reported as superseded so the panel can say so.
  * @param doc - The live canvas document.
  * @param nodeId - The host video node.
  * @param record - The immutable accepted result.
- * @returns Whether one guarded parameter edit was committed.
+ * @returns Whether the result was applied, superseded by a later edit of its draft, or ignored.
  * @throws {never} Invalid or superseded records leave the document unchanged.
  */
-export function commitVideoSceneAnalysis(doc: Y.Doc, nodeId: string, record: unknown): boolean {
+export function commitVideoSceneAnalysis(doc: Y.Doc, nodeId: string, record: unknown): SceneAnalysisOutcome {
   const parsed = miniToolAnalysisRecordSchema.safeParse(record);
-  if (!parsed.success) return false;
+  if (!parsed.success) return 'ignored';
   const accepted = parsed.data;
-  if (accepted.kind !== 'scene_cuts' || accepted.status !== 'completed' || accepted.artifactUnavailable || accepted.result?.kind !== 'scene_cuts') return false;
+  if (accepted.kind !== 'scene_cuts' || accepted.status !== 'completed' || accepted.artifactUnavailable || accepted.result?.kind !== 'scene_cuts') return 'ignored';
   const data = nodeDataMap(doc, nodeId);
   const reading = readVideoToolDraft(doc, nodeId, 'video.split');
-  if (data === null || data.get('locked') === true || reading.state !== 'supported') return false;
+  if (data === null || data.get('locked') === true || reading.state !== 'supported') return 'ignored';
   const draft = reading.draft;
-  if (draft.draftId !== accepted.draftId || draft.revision !== accepted.revision || draft.source.canonicalURL !== accepted.binding.canonicalURL || data.get('content') !== draft.source.canonicalURL) return false;
+  if (draft.draftId !== accepted.draftId || draft.source.canonicalURL !== accepted.binding.canonicalURL || data.get('content') !== draft.source.canonicalURL) return 'ignored';
   const references = videoToolAnalysisRefs(Object.fromEntries(data.entries()));
-  if (!references.some((reference) => reference.toolId === 'video.split' && reference.draftId === draft.draftId && reference.analysisRunId === accepted.analysisRunId && reference.inputFingerprint === accepted.inputFingerprint)) return false;
+  if (!references.some((reference) => reference.toolId === 'video.split' && reference.draftId === draft.draftId && reference.analysisRunId === accepted.analysisRunId && reference.inputFingerprint === accepted.inputFingerprint)) return 'ignored';
   const key = `${SCENE_ANALYSIS_APPLIED_PREFIX}${accepted.analysisRunId}`;
-  if (data.get(key) === true) return false;
+  if (data.get(key) === true) return 'ignored';
+  if (draft.revision !== accepted.revision) return 'superseded';
   const next = videoToolDraftSchema('video.split').parse({ ...draft, revision: newId(), params: { ...draft.params, cuts: accepted.result.cuts.map((cut) => cut.frameIndex) } });
   const name = docNameOf(doc);
   return name !== null && writeSpaceDoc(name, { kind: 'add' }, () => {
@@ -53,7 +58,7 @@ export function commitVideoSceneAnalysis(doc: Y.Doc, nodeId: string, record: unk
       data.set(key, true);
       data.set('miniToolDraft:video.split', next);
     }, CANVAS_UNDO);
-  }).ok;
+  }).ok ? 'applied' : 'ignored';
 }
 
 /**

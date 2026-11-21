@@ -1558,6 +1558,7 @@
         "segmentPreview": "預覽 · {start} – {end}",
         "stopPreview": "停止預覽",
         "detectionError": "場景偵測失敗，請重新偵測。",
+        "detectionSuperseded": "場景偵測已在先前的編輯上完成。如需使用，請重新偵測。",
         "outputCapExceeded": "最多 {cap} 個產物，目前 {count} 個",
         "outputCount": "{count} 個產物",
         "viewerMode": "Viewer 模式",

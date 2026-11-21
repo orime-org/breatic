@@ -1558,6 +1558,7 @@
         "segmentPreview": "预览 · {start} – {end}",
         "stopPreview": "停止预览",
         "detectionError": "场景检测失败，请重新检测。",
+        "detectionSuperseded": "场景检测已在之前的编辑上完成。如需使用，请重新检测。",
         "outputCapExceeded": "最多 {cap} 个产物，当前 {count} 个",
         "outputCount": "{count} 个产物",
         "viewerMode": "Viewer 模式",

@@ -43,6 +43,12 @@ function analysisRecords(queries: readonly UseQueryResult<MiniToolAnalysisRecord
   return { records: queries.flatMap((query) => query.data === undefined ? [] : [query.data]), pending: queries.some((query) => query.isPending), failed: queries.some((query) => query.isError), fetching: queries.some((query) => query.isFetching) };
 }
 
+/**
+ * Scene detections this page saw unfinished. A detection superseded by an edit is said once, when it finishes; one that had
+ * already finished when the page opened says nothing, since its Detect again button already shows it was not used.
+ */
+const watchedSceneRuns = new Set<string>();
+
 /** Authoritative presentation facts supplied by the video node owner. */
 export interface VideoToolPresentation {
   panelState?: VideoToolPanelState;
@@ -292,10 +298,12 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   }, [current, disabled, presentation, change, doc, nodeId, toolId, projectId, spaceId, startAnalysis]);
   React.useEffect(() => {
     if (toolId !== 'video.split' || current === null || disabled) return;
+    for (const record of matchingRecords) if (record.kind === 'scene_cuts' && (record.status === 'pending' || record.status === 'running')) watchedSceneRuns.add(record.analysisRunId);
     const success = latestMiniToolAnalysis(matchingRecords.filter((record) => record.kind === 'scene_cuts' && record.status === 'completed' && record.result?.kind === 'scene_cuts'));
     if (success?.result?.kind !== 'scene_cuts') return;
-    commitVideoSceneAnalysis(doc, nodeId, success);
-  }, [matchingRecords, current, disabled, toolId, doc, nodeId]);
+    // The user's edit made while it ran wins; the result is said once, for a run this page saw running.
+    if (commitVideoSceneAnalysis(doc, nodeId, success) === 'superseded' && watchedSceneRuns.delete(success.analysisRunId)) toast.info(t('canvas.miniTool.videoUI.detectionSuperseded'));
+  }, [matchingRecords, current, disabled, toolId, doc, nodeId, t]);
   /**
    * Marks transient invalid text without putting it in the persisted schema.
    * @throws {never} Never.

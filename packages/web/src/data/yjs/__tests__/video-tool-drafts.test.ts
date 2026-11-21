@@ -39,7 +39,7 @@ interface DraftApi {
   commitVideoToolDraft: (doc: Y.Doc, nodeId: string, toolId: ToolId, draft: Draft) => boolean;
   commitVideoToolAnalysisRef: (doc: Y.Doc, nodeId: string, ref: AnalysisRef) => boolean;
   clearVideoToolDraft: (doc: Y.Doc, nodeId: string, toolId: ToolId) => boolean;
-  commitVideoSceneAnalysis: (doc: Y.Doc, nodeId: string, record: unknown) => boolean;
+  commitVideoSceneAnalysis: (doc: Y.Doc, nodeId: string, record: unknown) => 'applied' | 'superseded' | 'ignored';
 }
 
 // The public-entry assertion remains collectable before this module exists.
@@ -395,11 +395,11 @@ describe('durable scene result application', () => {
     doc.on('afterTransaction', (transaction) => origins.push(transaction.origin));
     const record = completedScene();
     const before = structuredClone(record);
-    expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe(true);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe('applied');
     expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [43, 85] } } });
     expect(origins).toEqual([CANVAS_UNDO]);
     expect(undo.undoStack).toHaveLength(1);
-    expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe(false);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe('ignored');
     expect(undo.undoStack).toHaveLength(1);
     expect(record).toEqual(before);
   });
@@ -408,16 +408,16 @@ describe('durable scene result application', () => {
     const doc = sceneSpace();
     const original = splitDraft({ cuts: [] });
     const undo = undoManager(doc);
-    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(true);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe('applied');
     undo.undo();
     expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: original });
-    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(false);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe('ignored');
     undo.redo();
     expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [43, 85] } } });
     undo.undo();
     undo.destroy();
     const remounted = undoManager(doc);
-    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(false);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe('ignored');
     expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: original });
     expect(remounted.undoStack).toHaveLength(0);
   });
@@ -425,20 +425,20 @@ describe('durable scene result application', () => {
   it('lets a newly accepted run apply after the previous result was undone', () => {
     const doc = sceneSpace();
     const undo = undoManager(doc);
-    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(true);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe('applied');
     undo.undo();
     api.commitVideoToolAnalysisRef(doc, hostId, analysisRef({ analysisRunId: secondRunId }));
-    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene(secondRunId))).toBe(true);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene(secondRunId))).toBe('applied');
     expect(undo.undoStack).toHaveLength(1);
     expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toMatchObject({ state: 'supported', draft: { params: { cuts: [43, 85] } } });
   });
 
-  it('retains a manual edit made before the accepted result arrives', () => {
+  it('retains a manual edit made before the accepted result arrives and reports the result superseded', () => {
     const doc = sceneSpace();
     const edited = splitDraft({ cuts: [30] }, { revision: secondRevision });
     api.commitVideoToolDraft(doc, hostId, 'video.split', edited);
     const undo = undoManager(doc);
-    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(false);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe('superseded');
     expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: edited });
     expect(undo.undoStack).toHaveLength(0);
   });
@@ -447,10 +447,10 @@ describe('durable scene result application', () => {
     const doc = sceneSpace();
     const peer = collaborator(doc);
     const undo = undoManager(doc);
-    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe(true);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, completedScene())).toBe('applied');
     undo.undo();
     merge(doc, peer);
-    expect(api.commitVideoSceneAnalysis(peer, hostId, completedScene())).toBe(false);
+    expect(api.commitVideoSceneAnalysis(peer, hostId, completedScene())).toBe('ignored');
     expect(api.readVideoToolDraft(peer, hostId, 'video.split')).toEqual({ state: 'supported', draft: splitDraft({ cuts: [] }) });
   });
 
@@ -463,7 +463,7 @@ describe('durable scene result application', () => {
     if (condition === 'unavailable artifacts') record.artifactUnavailable = true;
     if (condition === 'failed analysis') { record.status = 'failed'; record.result = null; record.error = { code: 'analysis_failed' }; }
     const undo = undoManager(doc);
-    expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe(false);
+    expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe('ignored');
     expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: splitDraft({ cuts: [] }) });
     expect(undo.undoStack).toHaveLength(0);
   });

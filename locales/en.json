@@ -1558,6 +1558,7 @@
         "segmentPreview": "Preview · {start} – {end}",
         "stopPreview": "Stop preview",
         "detectionError": "Detection failed. Try detecting scenes again.",
+        "detectionSuperseded": "Scene detection finished on an earlier edit. Detect again to use it.",
         "outputCapExceeded": "Up to {cap} outputs; this plan makes {count}",
         "outputCount": "{count, plural, one {# output} other {# outputs}}",
         "viewerMode": "Viewer mode",

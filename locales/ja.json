@@ -1558,6 +1558,7 @@
         "segmentPreview": "プレビュー · {start} – {end}",
         "stopPreview": "プレビューを停止",
         "detectionError": "シーン検出に失敗しました。再度検出してください。",
+        "detectionSuperseded": "シーン検出は以前の編集に対して完了しました。使うには再検出してください。",
         "outputCapExceeded": "最大 {cap} 件、現在 {count} 件",
         "outputCount": "{count} 出力",
         "viewerMode": "Viewer モード",
