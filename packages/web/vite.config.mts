@@ -70,6 +70,20 @@ export default defineConfig(({ command, mode }) => {
           });
         },
       },
+      {
+        // The desktop client checks an address by this file before connecting
+        // (#1599), so the dev server answers it too. Development builds never
+        // poll it for releases.
+        name: 'breatic-dev-version',
+        apply: 'serve',
+        configureServer(server) {
+          server.middlewares.use('/app-version.json', (_req, res) => {
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Cache-Control', 'no-store');
+            res.end(JSON.stringify({ version: 'dev' }) + '\n');
+          });
+        },
+      },
       // Tailwind 4 vite plugin — processes `@import "tailwindcss"` +
       // `@theme {}` directives in CSS and generates utility classes.
       // Replaces the v3 PostCSS plugin path. No JS config: there is no

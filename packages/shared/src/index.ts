@@ -314,6 +314,7 @@ export type {
 
 // ── Desktop client links (#1599) ───────────────────────────────────
 export { ASSET_DOWNLOAD_PARAM, APP_ROUTE_PREFIXES, isAppPath } from "@shared/desktop-links.js";
+export { DESKTOP_SIGN_IN_LINK, type BrowserSignInResult, type DesktopBridge } from "@shared/desktop-bridge.js";
 
 // ── API Schemas ─────────────────────────────────────────────────────
 export {

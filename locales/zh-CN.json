@@ -2600,6 +2600,23 @@
       "haveCode": "有推广码？",
       "invalid": "推广码无效。改一下，或清空后继续。",
       "googleOnly": "用 Google 新注册时使用"
+    },
+    "desktop": {
+      "continueWithGoogle": "用 Google 继续",
+      "waitingBrowser": "请在浏览器中完成登录",
+      "cancel": "取消",
+      "exchangeFailed": "登录没有完成，请重试。",
+      "title": "登录 breatic 桌面版",
+      "signingInAs": "以 {email} 的身份登录",
+      "continue": "继续",
+      "switchAccount": "换个账号",
+      "processing": "正在登录 breatic 桌面版…",
+      "handedTitle": "已回到 breatic 桌面版",
+      "handedBody": "可以关掉这个页面了。桌面版没有打开的话，点下面的按钮。",
+      "openApp": "打开 breatic 桌面版",
+      "errorTitle": "没能登录桌面版",
+      "errorBody": "这个登录链接无效或已过期。回到桌面版，再点一次「用 Google 继续」。",
+      "retry": "重试"
     }
   },
   "roleTag": {

@@ -172,6 +172,14 @@ export const authApi = {
   google(body: { credential: string; attribution?: Attribution | null } & SignupReferralFields) {
     return apiPost<GoogleLoginResponse>('/auth/google', body);
   },
+  // The browser side of the desktop client's sign-in (#1599): a one-time code bound to the client's challenge.
+  desktopHandoff(body: { challenge: string }) {
+    return apiPost<{ code: string }>('/auth/desktop-handoff', body);
+  },
+  // The desktop client's side: trade the code and the verifier behind the challenge for a session.
+  desktopExchange(body: { code: string; verifier: string }) {
+    return apiPost<LoginResponse>('/auth/desktop-exchange', body);
+  },
   me() {
     return apiGet<AuthUser>('/auth/me');
   },

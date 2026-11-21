@@ -2600,6 +2600,23 @@
       "haveCode": "추천 코드가 있나요?",
       "invalid": "추천 코드가 유효하지 않습니다. 수정하거나 비운 뒤 계속하세요.",
       "googleOnly": "Google로 새로 가입할 때 사용됩니다"
+    },
+    "desktop": {
+      "continueWithGoogle": "Google로 계속하기",
+      "waitingBrowser": "브라우저에서 로그인을 완료하세요",
+      "cancel": "취소",
+      "exchangeFailed": "로그인이 완료되지 않았습니다. 다시 시도하세요.",
+      "title": "breatic 데스크톱에 로그인",
+      "signingInAs": "{email}(으)로 로그인",
+      "continue": "계속",
+      "switchAccount": "다른 계정 사용",
+      "processing": "breatic 데스크톱에 로그인하는 중…",
+      "handedTitle": "breatic 데스크톱으로 돌아왔습니다",
+      "handedBody": "이 페이지를 닫아도 됩니다. 데스크톱 앱이 열리지 않았다면 아래 버튼을 누르세요.",
+      "openApp": "breatic 데스크톱 열기",
+      "errorTitle": "데스크톱 앱에 로그인하지 못했습니다",
+      "errorBody": "이 로그인 링크가 유효하지 않거나 만료되었습니다. 데스크톱 앱으로 돌아가 ‘Google로 계속하기’를 다시 누르세요.",
+      "retry": "다시 시도"
     }
   },
   "roleTag": {

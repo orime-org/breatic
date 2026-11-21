@@ -26,6 +26,8 @@ import { toast } from '@web/lib/toast';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useSignupReferral } from '@web/features/referral/use-signup-referral';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
+import { DesktopGoogleSignIn } from '@web/pages/auth/DesktopGoogleSignIn';
+import { getDesktopBridge } from '@web/lib/desktop-bridge';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 
 declare const __GOOGLE_CLIENT_ID__: string;
@@ -374,12 +376,16 @@ export default function RegisterPage(): React.JSX.Element {
               <span>{t('auth.or')}</span>
               <div className='h-px flex-1 bg-border' />
             </div>
-            <GoogleSignIn
-              key={getLocale()}
-              clientId={__GOOGLE_CLIENT_ID__}
-              busy={submitting || referral.field === 'loading'}
-              onCredential={handleGoogleCredential}
-            />
+            {getDesktopBridge() ? (
+              <DesktopGoogleSignIn referralCode={referral.value || null} next={next} busy={submitting} />
+            ) : (
+              <GoogleSignIn
+                key={getLocale()}
+                clientId={__GOOGLE_CLIENT_ID__}
+                busy={submitting || referral.field === 'loading'}
+                onCredential={handleGoogleCredential}
+              />
+            )}
           </div>
         ) : null}
       </AuthCardShell>

@@ -2600,6 +2600,23 @@
       "haveCode": "Have a referral code?",
       "invalid": "This referral code is not valid. Change it, or clear it to continue.",
       "googleOnly": "Used when signing up with Google"
+    },
+    "desktop": {
+      "continueWithGoogle": "Continue with Google",
+      "waitingBrowser": "Finish signing in in your browser",
+      "cancel": "Cancel",
+      "exchangeFailed": "Sign-in did not finish. Try again.",
+      "title": "Sign in to breatic desktop",
+      "signingInAs": "Signing in as {email}",
+      "continue": "Continue",
+      "switchAccount": "Use another account",
+      "processing": "Signing in to breatic desktop…",
+      "handedTitle": "Back in breatic desktop",
+      "handedBody": "You can close this page. If the desktop app did not open, use the button below.",
+      "openApp": "Open breatic desktop",
+      "errorTitle": "Couldn't sign in to the desktop app",
+      "errorBody": "This sign-in link is invalid or has expired. Go back to the desktop app and press Continue with Google again.",
+      "retry": "Try again"
     }
   },
   "roleTag": {

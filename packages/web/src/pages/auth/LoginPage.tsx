@@ -5,6 +5,8 @@ import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { getLocale, REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
+import { DesktopGoogleSignIn } from '@web/pages/auth/DesktopGoogleSignIn';
+import { getDesktopBridge } from '@web/lib/desktop-bridge';
 
 import { authApi } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
@@ -308,7 +310,11 @@ export default function LoginPage(): React.JSX.Element {
             <div className='h-px flex-1 bg-border' />
           </div>
           {referralRow()}
-          <GoogleSignIn key={getLocale()} clientId={__GOOGLE_CLIENT_ID__} busy={submitting || referral.field === 'loading'} onCredential={handleGoogleCredential} />
+          {getDesktopBridge() ? (
+            <DesktopGoogleSignIn referralCode={referral.value || null} next={next} busy={submitting} />
+          ) : (
+            <GoogleSignIn key={getLocale()} clientId={__GOOGLE_CLIENT_ID__} busy={submitting || referral.field === 'loading'} onCredential={handleGoogleCredential} />
+          )}
         </div>
       ) : null}
     </AuthCardShell>

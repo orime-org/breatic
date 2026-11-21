@@ -33,6 +33,7 @@ export const routeImports = {
   registerPage: () => import('@web/pages/auth/RegisterPage'),
   recoveryCodePage: () => import('@web/pages/auth/RecoveryCodePage'),
   slugSetupPage: () => import('@web/pages/auth/SlugSetupPage'),
+  desktopSignInPage: () => import('@web/pages/auth/DesktopSignInPage'),
   forgotPasswordPage: () => import('@web/pages/auth/ForgotPasswordPage'),
   resetPasswordPage: () => import('@web/pages/auth/ResetPasswordPage'),
   notFoundPage: () => import('@web/pages/NotFoundPage'),
