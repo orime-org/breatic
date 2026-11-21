@@ -504,7 +504,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
 
   // New and Modify (design §5.1).
   const [draft, dispatchDraft] = React.useReducer(transitionCreationDraft, CREATION_DRAFT_CLOSED);
-  const [retryDialog, setRetryDialog] = React.useState(false);
   const openDialog = React.useCallback((input: Partial<CreationDraftInput>, retry = false): void => {
     if (readOnly) return;
     if (limits === undefined) {
@@ -516,8 +515,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       return;
     }
     const aspect = limits.aspects.find(isWebAnimationAspect) ?? '16:9';
-    setRetryDialog(retry);
-    dispatchDraft({ type: 'open', input: { base: null, prompt: '', engine: DEFAULT_WEB_ANIMATION_ENGINE, aspect, durationSeconds: limits.durationSeconds.default, ...input } });
+    dispatchDraft({ type: 'open', input: { base: null, prompt: '', engine: DEFAULT_WEB_ANIMATION_ENGINE, aspect, durationSeconds: limits.durationSeconds.default, ...input }, retry });
   }, [readOnly, limits, limitsFailed, refetchLimits, t]);
   const openNew = React.useCallback((): void => openDialog({}), [openDialog]);
   const editDraft = React.useCallback((patch: Partial<CreationDraftInput>): void => dispatchDraft({ type: 'edit', patch }), []);
@@ -750,7 +748,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>
-    {draft.status !== 'closed' && draft.open && limits !== undefined && <WebAnimationDialog projectId={projectId} spaceId={spaceId} draft={draft} retry={retryDialog} limits={limits} baseRow={baseRow} baseRead={baseRead}
+    {draft.status !== 'closed' && draft.open && limits !== undefined && <WebAnimationDialog projectId={projectId} spaceId={spaceId} draft={draft} limits={limits} baseRow={baseRow} baseRead={baseRead}
       onEdit={editDraft} onExecute={execute} onClose={closeDraft} />}
   </div>;
 }

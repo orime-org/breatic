@@ -45,7 +45,7 @@ const baseRow = {
 function show(input: Partial<CreationDraftInput>, base?: WebAnimationRowView): ReturnType<typeof vi.fn> {
   const full: CreationDraftInput = { base: null, prompt: '', engine: 'deepseek', aspect: '16:9', durationSeconds: 4, ...input };
   const onEdit = vi.fn();
-  render(<WebAnimationDialog projectId={PROJECT} spaceId={SPACE} draft={{ status: 'drafting', open: true, input: full, error: null }} retry={false}
+  render(<WebAnimationDialog projectId={PROJECT} spaceId={SPACE} draft={{ status: 'drafting', open: true, input: full, error: null, retry: false }}
     limits={LIMITS as never} baseRow={base} baseRead={{ failed: false, retrying: false, retry: vi.fn() }} onEdit={onEdit} onExecute={vi.fn()} onClose={vi.fn()} />);
   return onEdit;
 }

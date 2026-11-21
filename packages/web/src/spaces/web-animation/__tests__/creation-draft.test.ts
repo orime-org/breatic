@@ -33,12 +33,12 @@ function run(state: CreationDraftState, ...events: CreationDraftEvent[]): Creati
   return events.reduce(transitionCreationDraft, state);
 }
 
-const drafting = run(CLOSED, { type: 'open', input: INPUT });
+const drafting = run(CLOSED, { type: 'open', input: INPUT, retry: false });
 const submitting = run(drafting, { type: 'execute', actionId: ACTION });
 
 describe('transitionCreationDraft', () => {
   it('opens a draft from closed with the given input', () => {
-    expect(drafting).toEqual({ status: 'drafting', open: true, input: INPUT, error: null });
+    expect(drafting).toEqual({ status: 'drafting', open: true, input: INPUT, error: null, retry: false });
   });
 
   it.each<CreationDraftEvent>([
@@ -53,8 +53,8 @@ describe('transitionCreationDraft', () => {
 
   it('edits a draft, keeps it when opened again and closes it', () => {
     const edited = run(drafting, { type: 'edit', patch: { aspect: '9:16', durationSeconds: 8 } });
-    expect(edited).toEqual({ status: 'drafting', open: true, input: { ...INPUT, aspect: '9:16', durationSeconds: 8 }, error: null });
-    expect(run(edited, { type: 'open', input: { ...INPUT, prompt: 'other' } })).toEqual(edited);
+    expect(edited).toEqual({ status: 'drafting', open: true, input: { ...INPUT, aspect: '9:16', durationSeconds: 8 }, error: null, retry: false });
+    expect(run(edited, { type: 'open', input: { ...INPUT, prompt: 'other' }, retry: false })).toEqual(edited);
     expect(run(edited, { type: 'close' })).toEqual(CLOSED);
   });
 
@@ -64,19 +64,19 @@ describe('transitionCreationDraft', () => {
   });
 
   it('fixes the input and the action id on Execute', () => {
-    expect(submitting).toEqual({ status: 'submitting', open: true, input: INPUT, actionId: ACTION });
+    expect(submitting).toEqual({ status: 'submitting', open: true, input: INPUT, actionId: ACTION, retry: false });
   });
 
   it('keeps the fixed input and joins the same action while submitting', () => {
     expect(run(submitting, { type: 'edit', patch: { prompt: 'changed' } })).toEqual(submitting);
     expect(run(submitting, { type: 'execute', actionId: OTHER_ACTION })).toEqual(submitting);
-    expect(run(submitting, { type: 'open', input: { ...INPUT, prompt: 'other' } })).toEqual(submitting);
+    expect(run(submitting, { type: 'open', input: { ...INPUT, prompt: 'other' }, retry: false })).toEqual(submitting);
   });
 
   it('lets a submission go on when the dialog closes, and closes the draft on acceptance', () => {
     const hidden = run(submitting, { type: 'close' });
-    expect(hidden).toEqual({ status: 'submitting', open: false, input: INPUT, actionId: ACTION });
-    expect(run(hidden, { type: 'open', input: { ...INPUT, prompt: 'other' } })).toEqual(submitting);
+    expect(hidden).toEqual({ status: 'submitting', open: false, input: INPUT, actionId: ACTION, retry: false });
+    expect(run(hidden, { type: 'open', input: { ...INPUT, prompt: 'other' }, retry: false })).toEqual(submitting);
     expect(run(hidden, { type: 'accepted', actionId: ACTION })).toEqual(CLOSED);
     expect(run(submitting, { type: 'accepted', actionId: ACTION })).toEqual(CLOSED);
   });
@@ -85,11 +85,20 @@ describe('transitionCreationDraft', () => {
     const hidden = run(submitting, { type: 'close' });
     expect(run(hidden, { type: 'accepted', actionId: OTHER_ACTION })).toEqual(hidden);
     expect(run(submitting, { type: 'accepted', actionId: OTHER_ACTION })).toEqual(submitting);
-    expect(run(hidden, { type: 'accepted', actionId: OTHER_ACTION }, { type: 'refused', error: 'no' })).toEqual({ status: 'drafting', open: true, input: INPUT, error: 'no' });
+    expect(run(hidden, { type: 'accepted', actionId: OTHER_ACTION }, { type: 'refused', error: 'no' })).toEqual({ status: 'drafting', open: true, input: INPUT, error: 'no', retry: false });
+  });
+
+  it('keeps whether the dialog runs a failed run again with the draft it belongs to', () => {
+    const again = run(CLOSED, { type: 'open', input: INPUT, retry: true });
+    const hiddenAgain = run(again, { type: 'execute', actionId: ACTION }, { type: 'close' });
+    expect(run(hiddenAgain, { type: 'open', input: INPUT, retry: false })).toMatchObject({ status: 'submitting', open: true, retry: true });
+    expect(run(hiddenAgain, { type: 'refused', error: 'no' })).toMatchObject({ status: 'drafting', retry: true });
+    const hiddenNew = run(drafting, { type: 'execute', actionId: ACTION }, { type: 'close' });
+    expect(run(hiddenNew, { type: 'open', input: INPUT, retry: true })).toMatchObject({ status: 'submitting', retry: false });
   });
 
   it('brings a refused submission back as a draft with the input and the reason', () => {
-    expect(run(submitting, { type: 'refused', error: 'Not enough credits.' })).toEqual({ status: 'drafting', open: true, input: INPUT, error: 'Not enough credits.' });
+    expect(run(submitting, { type: 'refused', error: 'Not enough credits.' })).toEqual({ status: 'drafting', open: true, input: INPUT, error: 'Not enough credits.', retry: false });
   });
 
   it('gives a new action id to the Execute after a refusal', () => {
@@ -101,7 +110,7 @@ describe('transitionCreationDraft', () => {
     const event = fc.oneof(
       fc.record({ type: fc.constant('edit' as const), patch: fc.record({ prompt: fc.string() }) }),
       fc.record({ type: fc.constant('execute' as const), actionId: fc.uuid() }),
-      fc.record({ type: fc.constant('open' as const), input: fc.constant({ ...INPUT, prompt: 'other' }) }),
+      fc.record({ type: fc.constant('open' as const), input: fc.constant({ ...INPUT, prompt: 'other' }), retry: fc.boolean() }),
       fc.constant({ type: 'close' as const }),
     );
     fc.assert(fc.property(fc.array(event, { maxLength: 12 }), (events) => {

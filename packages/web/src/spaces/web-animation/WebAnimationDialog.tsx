@@ -25,7 +25,6 @@ interface WebAnimationDialogProps {
   projectId: string;
   spaceId: string;
   draft: Exclude<CreationDraftState, { status: 'closed' }>;
-  retry: boolean;
   limits: TimelineClientLimits['webAnimation'];
   /** The result a modification starts from, once read. */
   baseRow: WebAnimationRowView | undefined;
@@ -46,7 +45,6 @@ interface WebAnimationDialogProps {
  * @param props.projectId - The Project, through which the preview is read.
  * @param props.spaceId - The Space, for field ids.
  * @param props.draft - The open draft.
- * @param props.retry - Whether it runs a failed, cancelled or expired execution again.
  * @param props.limits - The configured bounds.
  * @param props.baseRow - The result a modification starts from, once read.
  * @param props.baseRead - Whether reading it failed, and its retry.
@@ -56,7 +54,7 @@ interface WebAnimationDialogProps {
  * @returns The dialog.
  * @throws {never} Never.
  */
-export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, baseRow, baseRead, onEdit, onExecute, onClose }: WebAnimationDialogProps): React.JSX.Element {
+export function WebAnimationDialog({ projectId, spaceId, draft, limits, baseRow, baseRead, onEdit, onExecute, onClose }: WebAnimationDialogProps): React.JSX.Element {
   const t = useTranslation();
   const returnFocus = useReturnFocus(true);
   const submitting = draft.status === 'submitting';
@@ -86,7 +84,7 @@ export function WebAnimationDialog({ projectId, spaceId, draft, retry, limits, b
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent onCloseAutoFocus={returnFocus}>
       <DialogHeader>
-        <DialogTitle>{t(modifying ? 'spaces.webAnimation.dialog.modifyTitle' : retry ? 'timeline.webAnimation.dialog.retryTitle' : 'timeline.webAnimation.dialog.title')}</DialogTitle>
+        <DialogTitle>{t(modifying ? 'spaces.webAnimation.dialog.modifyTitle' : draft.retry ? 'timeline.webAnimation.dialog.retryTitle' : 'timeline.webAnimation.dialog.title')}</DialogTitle>
         {!modifying && <DialogDescription>{t('timeline.webAnimation.dialog.description')}</DialogDescription>}
       </DialogHeader>
       <form noValidate onSubmit={submit}>
