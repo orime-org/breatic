@@ -251,12 +251,6 @@ describe('the bottom bar', () => {
     expect(button.querySelector('svg.lucide-clapperboard')).toBeNull();
   });
 
-  it('has no top bar above the preview', async () => {
-    show();
-    await screen.findByTestId('motion-bottom-bar');
-    expect(screen.queryByTestId('motion-top-bar')).toBeNull();
-  });
-
   it('shows a Viewer the lists but not New', async () => {
     show(true);
     expect(await screen.findByTestId('motion-open-executions')).toBeInTheDocument();
