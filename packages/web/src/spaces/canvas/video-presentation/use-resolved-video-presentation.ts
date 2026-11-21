@@ -48,13 +48,15 @@ export function useResolvedVideoPresentation(projectId: string, canonicalURL: st
   const query = useQuery(videoPresentationQuery({ projectId, canonicalURL, active }));
   const selected = query.data?.presentation ?? null;
   const manifest = useQuery(manifestQuery(selected, active));
+  // Keyed on the facts the source is built from, so another change in the response keeps the renderer (§7.8 Replace).
+  const canonical = query.data?.sourceBinding.canonicalURL;
+  const fingerprint = query.data?.sourceBinding.contentHash;
   const source = React.useMemo<VideoPresentationSource | null>(() => {
-    const data = query.data;
-    if (data === undefined || selected === null) return null;
-    const base = { canonicalURL: data.sourceBinding.canonicalURL, sourceFingerprint: data.sourceBinding.contentHash, presentation: selected };
+    if (canonical === undefined || fingerprint === undefined || selected === null) return null;
+    const base = { canonicalURL: canonical, sourceFingerprint: fingerprint, presentation: selected };
     if (selected.playback.kind === 'native') return { ...base, manifest: null };
     return manifest.data === undefined ? null : { ...base, manifest: manifest.data };
-  }, [query.data, selected, manifest.data]);
+  }, [canonical, fingerprint, selected, manifest.data]);
   // Nothing selected and the target candidate failed (§7.12 step 2), or the manifest is not this version's.
   const failure = query.isError ? 'presentation-query-failed' : manifest.isError ? 'invalid-alpha-manifest'
     : query.data?.presentation === null ? query.data.preparation?.failure ?? null : null;

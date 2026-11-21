@@ -7,7 +7,7 @@ import { renderHook, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { useResolvedVideoPresentation } from '../use-resolved-video-presentation';
 import { videoPresentationQuery } from '../video-presentation-query';
-import { PRESENTED, presentedBinding, presentedBundle, presentedResponse } from '@web/test-utils/video-presentation';
+import { PRESENTED, presentedBinding, presentedBundle, presentedPreparation, presentedResponse } from '@web/test-utils/video-presentation';
 
 // §96 (frames-split design §3.5 alpha manifest row, §7.8): a selected alpha-packed bundle plays from its manifest object,
 // which names the packed carrier and the logical colour and alpha rectangles. The resolver reads the manifest the bundle's
@@ -81,5 +81,21 @@ describe('an alpha-packed selected version plays from its manifest (§96; design
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => expect(result.current.failure).not.toBeNull());
     expect(result.current.source).toBeNull();
+  });
+});
+
+describe('the source keeps its identity while the selected version is unchanged (frames-split §7.8 Replace)', () => {
+  it('RV03 a response whose preparation changes beside the same selected P keeps the same source object', async () => {
+    const options = videoPresentationQuery({ projectId, canonicalURL: url, active: true });
+    client.setQueryDefaults(options.queryKey, { staleTime: Infinity });
+    const binding = presentedBinding(url);
+    client.setQueryData(options.queryKey, presentedResponse(binding, { presentation: presentedBundle(url), preparation: presentedPreparation(null, 'plan') }));
+    const { result, rerender } = resolve();
+    const first = result.current.source;
+    expect(first).not.toBeNull();
+    client.setQueryData(options.queryKey, presentedResponse(binding, { presentation: presentedBundle(url), preparation: presentedPreparation(null, 'encode') }));
+    rerender();
+    await waitFor(() => expect(result.current.query.data?.preparation?.stage).toBe('encode'));
+    expect(result.current.source).toBe(first);
   });
 });
