@@ -22,6 +22,7 @@ import {
   videoPresentationVersionSchema,
 } from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
+import { createPresentationContainerPort } from '@ingest/presentation-container-port.js';
 import {
   admission, D, digest, DISPLAY, EDIT_PLAN, ENCODING, H, KEYFRAMES, PLAN, PLAN_CONTENT, PRICING, PRODUCER, PROFILE, PUBLIC_BASE, source, withStore, type Identity, type MachineStore,
 } from './helpers/machine-store.js';
@@ -361,6 +362,16 @@ describe('the plan and route inside one basic execution (inner#1306 §5.1 step 2
       expect(answer.presentation).toBe(null);
       expect(answer.preparation).toMatchObject({ jobId: 'job-a', stage: 'plan', failure: null });
       expect((await store.read(key, H)).usage['job-a']).toMatchObject({ wallMs: USAGE.wallMs, cpuUsec: USAGE.cpuUsec });
+    });
+  });
+
+  it('PR04b the production port\'s measured probe usage reaches the answer as the usage fact the worker records', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const answer = await withDigest(planned());
+      const port = createPresentationContainerPort(async () => answer, admission(key, 'job-a'), 'http://source.local/video');
+      const got = await admitAndPrepare(store, key, 'job-a', port) as Answer & { usageFact?: Record<string, unknown> };
+      expect(got.usageFact).toMatchObject({ jobId: 'job-a', usage: { wallMs: expect.any(Number), cpuUsec: null }, pricing: PRICING.basic });
     });
   });
 

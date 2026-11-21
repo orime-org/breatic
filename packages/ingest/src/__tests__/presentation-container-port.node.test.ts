@@ -106,3 +106,25 @@ describe('probe through the contract (§5.1 step 2)', () => {
     expect(send).not.toHaveBeenCalled();
   });
 });
+
+describe('the probe\'s measured usage (§7.6 F row: the basic execution\'s real wall time is a platform expense)', () => {
+  it('PO06 reports nothing before the probe and the probe\'s own wall time after it, with CPU time unknown', async () => {
+    const answer = await planned();
+    const clock = vi.spyOn(Date, 'now');
+    clock.mockReturnValue(1_000);
+    const measured = port(async () => { clock.mockReturnValue(4_250); return answer; });
+    expect(await measured.usage()).toBe(null);
+    await measured.probe(CAPABILITY);
+    expect(await measured.usage()).toEqual({ wallMs: 3_250, cpuUsec: null });
+    clock.mockRestore();
+  });
+
+  it('PO07 a probe the container answered as failed still ran, and its wall time is reported', async () => {
+    const clock = vi.spyOn(Date, 'now');
+    clock.mockReturnValue(1_000);
+    const measured = port(async () => { clock.mockReturnValue(1_400); return { kind: 'failed', code: 'classification_unknown' }; });
+    await measured.probe(CAPABILITY);
+    expect(await measured.usage()).toEqual({ wallMs: 400, cpuUsec: null });
+    clock.mockRestore();
+  });
+});

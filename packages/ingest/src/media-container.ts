@@ -215,9 +215,10 @@ export class MediaContainer extends Container<MediaEnv> {
       if (storageKey === undefined || admission === null) throw new Error('The presentation job is no longer held');
       return createPresentationContainerPort((body) => send(storageKey, body), admission, mediaObjectUrl(storageKey));
     };
+    let probed: PresentationContainerPort | null = null;
     return {
-      probe: async (capability) => (await portFor(capability)).probe(capability),
-      usage: async () => null,
+      probe: async (capability) => (probed = await portFor(capability)).probe(capability),
+      usage: async () => probed?.usage() ?? null,
     };
   }
 

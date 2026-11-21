@@ -23,6 +23,8 @@ export type PresentationRunSend = (body: PresentationRunRequest) => Promise<unkn
  * @throws {never} Constructing it starts no IO.
  */
 export function createPresentationContainerPort(send: PresentationRunSend, admission: VideoPresentationAdmission, sourceURL: string): PresentationContainerPort {
+  // The container reports no usage of its own: the basic execution is billed by the probe's wall time (§7.6 F row).
+  let usage: { wallMs: number; cpuUsec: null } | null = null;
   return {
     /**
      * Probe the source in the container.
@@ -34,12 +36,14 @@ export function createPresentationContainerPort(send: PresentationRunSend, admis
       const { limits, encoding, probe } = admission;
       if (capability.jobId !== admission.jobId || capability.sourceFingerprint !== admission.sourceFingerprint) throw new Error('The capability belongs to another job');
       if (limits === undefined || encoding === undefined || probe === undefined) throw new Error('The admission lacks the frozen probe facts');
-      const answer = presentationProbeAnswerSchema.parse(await send({ action: 'probe', jobId: admission.jobId, sourceFingerprint: admission.sourceFingerprint,
-        deadlineAt: admission.deadlineAt, sourceURL, limits, encoding, probe }));
+      const started = Date.now();
+      const sent = await send({ action: 'probe', jobId: admission.jobId, sourceFingerprint: admission.sourceFingerprint, deadlineAt: admission.deadlineAt, sourceURL, limits, encoding, probe });
+      usage = { wallMs: Date.now() - started, cpuUsec: null };
+      const answer = presentationProbeAnswerSchema.parse(sent);
       if (answer.kind === 'failed') return answer;
       if (await videoPresentationPlanSha256(answer.plan) !== answer.planSha256) throw new Error('The probe answered a digest of another plan');
       return answer;
     },
-    usage: async () => null,
+    usage: async () => usage,
   };
 }
