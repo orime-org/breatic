@@ -42,7 +42,8 @@ import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/Scene
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
 import type { SceneCameraView, SceneFrameCapture, SceneModelAcquire, SceneModelState, ScenePilotControl, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { SceneLookPictures, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
-import { pageLookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
+import { pageLookPictureAccess } from '@web/spaces/three-d/look-picture-size';
+import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
@@ -104,6 +105,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const placeFailedText = t('spaces.threeD.taskList.placeFailed');
   const lockText = t('spaces.threeD.lock');
   const unlockText = t('spaces.threeD.unlock');
+  const pictureAccess = React.useMemo(() => pageLookPictureAccess(projectId), [projectId]);
   const controls = useQuery({ queryKey: ['scene-controls', projectId, userId],
     queryFn: ({ signal }) => getSceneControls(projectId, signal) });
   const [mode, setMode] = React.useState<SceneTransformMode>('translate');
@@ -121,7 +123,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [lookReports, setLookReports] = React.useState<ReadonlyMap<string, SceneLookReport | 'loading' | 'failed'>>(new Map());
   const [lookPictures, setLookPictures] = React.useState<ReadonlyMap<string, SceneLookPictures>>(new Map());
   const [selectedPart, setSelectedPart] = React.useState<string | null>(null);
-  const lookTextures = React.useMemo(() => pageLookTextureCache(projectId), [projectId]);
   const onLookReport = React.useCallback((id: string, report: SceneLookReport | 'loading' | 'failed'): void => {
     setLookReports((previous) => previous.get(id) === report ? previous : new Map(previous).set(id, report));
   }, []);
@@ -845,7 +846,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const viewportFallback = React.useMemo(() => <div className='grid h-full place-items-center text-sm'>{loadingText}</div>, [loadingText]);
   const panelContent = React.useMemo(() => panel === 'properties'
     ? <React.Suspense fallback={inspectorFallback}>
-      <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField} DirectorFields={SceneDirectorFields}
+      <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField} DirectorFields={SceneDirectorFields} LookPanel={SceneLookPanel}
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
         skeletonStates={skeletonStates} jointMode={jointMode} onJointModeChange={changeJointMode} look={lookInputs} />
     </React.Suspense>
@@ -880,7 +881,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   overviewHost={overviewHost} mode={mode} readOnly={!mutable} view={view.current} focusRevision={focusRevision} cancelRevision={snapshot.cancelRevision}
                   remotePeers={snapshot.remotePeers} scaleSensitivity={controls.data.scaleSensitivity} importLimits={controls.data.import} modelRetryRevision={modelRetryRevision}
                   jointMode={jointMode} selectedJoint={selectedJoint} onJointSelect={setSelectedJoint} onSkeletonState={onSkeletonState}
-                  selectedPart={selectedPart} onSelectPart={onSelectPart} lookTextures={lookTextures} onLookReport={onLookReport} onLookPictures={onLookPictures}
+                  selectedPart={selectedPart} onSelectPart={onSelectPart} lookPictures={pictureAccess} onLookReport={onLookReport} onLookPictures={onLookPictures}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
                   onViewChange={onViewChange} onUserCameraMove={stopFollowing} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}

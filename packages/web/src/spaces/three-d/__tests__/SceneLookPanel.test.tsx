@@ -20,16 +20,16 @@ import { evictSceneSession, getSceneSession, type SceneSession } from '@web/data
 import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
 import type { SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
-import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
+import { uploadBytes } from '@web/spaces/three-d/texture-upload-bytes';
 
 const toast = vi.hoisted(() => ({ warning: vi.fn(), error: vi.fn(), success: vi.fn(), info: vi.fn() }));
 vi.mock('@web/lib/toast', () => ({ toast }));
 type SizeOf = () => Promise<{ width: number; height: number; type: string } | null>;
 const sizes = vi.hoisted(() => new Map<string, SizeOf>());
 const caps = vi.hoisted(() => [] as number[]);
-vi.mock('@web/spaces/three-d/viewport/look-texture-cache', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('@web/spaces/three-d/viewport/look-texture-cache')>()),
-  pageLookTextureCache: () => {
+vi.mock('@web/spaces/three-d/look-picture-size', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/spaces/three-d/look-picture-size')>()),
+  pageLookPictureSizes: () => {
     const read = (assetId: string, maxBytes: number): ReturnType<SizeOf> => {
       caps.push(maxBytes);
       return sizes.get(assetId)?.() ?? Promise.resolve(null);

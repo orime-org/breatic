@@ -214,6 +214,14 @@ export default defineConfig(({ command, mode }) => {
             if (/[\\/]src[\\/]spaces[\\/]three-d[\\/]viewfinder[\\/]viewfinder-ratio\.ts$/.test(id)) {
               return 'viewfinder-ratio';
             }
+            // The eager appearance panel and the lazy viewport both judge part pictures against the texture budget; the modules import only @breatic/shared at runtime.
+            if (/[\\/]src[\\/]spaces[\\/]three-d[\\/](look-texture-budget|texture-upload-bytes)\.ts$/.test(id)) {
+              return 'look-texture-budget';
+            }
+            // The canvas panels and the lazy 3D inspector both keep a value stable by content; the module imports only React.
+            if (/[\\/]src[\\/]lib[\\/]use-content-stable\.ts$/.test(id)) {
+              return 'use-content-stable';
+            }
             // Shared overlay code and icons stay independent of the route that opens them.
             if (/[\\/]src[\\/]lib[\\/]overlay-focus\.ts$/.test(id)
               || /[\\/]node_modules[\\/]lucide-react[\\/]dist[\\/]esm[\\/]icons[\\/](upload|triangle-alert|folder-open)\.m?js$/.test(id)) {

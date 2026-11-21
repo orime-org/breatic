@@ -17,7 +17,7 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import { validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { validateModelTextureBytes, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
-import type { ImageSize } from '@web/spaces/three-d/model-texture-metadata';
+import type { ImageSize } from '@web/spaces/three-d/texture-upload-bytes';
 import type { GltfDocument } from '@web/spaces/three-d/model-package';
 
 // jsdom has no Worker; the mocked client runs the same package reader the worker runs.

@@ -12,7 +12,7 @@ import {
 import { describe, expect, it, vi } from 'vitest';
 
 import * as looks from '@web/spaces/three-d/viewport/look-materials';
-import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
+import { uploadBytes } from '@web/spaces/three-d/texture-upload-bytes';
 
 const IMAGE = '66666666-6666-4666-8666-666666666666';
 const THEME = '#5f5f5f';

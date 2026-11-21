@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { SCENE_LOOK_DEFAULT_PART, type SceneLook } from '@breatic/shared';
+import type { SceneLook } from '@breatic/shared';
 
-import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
+import { uploadBytes } from '@web/spaces/three-d/texture-upload-bytes';
 
 /** Why a part picture cannot be shown. */
 export type LookTextureReason = 'bytes' | 'unknown';
@@ -60,12 +60,13 @@ export function picturesOf(look: SceneLook): string[] {
 }
 
 /**
- * A part's place in panel order: its material index, the default part after every index.
+ * A part's place in panel order: its material index, the default part (the one key that is not an index) after every
+ * index. The module stays free of runtime imports, so the eager panel and the lazy viewport share its chunk alone.
  * @param part - A part key.
  * @returns Its sort rank.
  */
 export function lookPartRank(part: string): number {
-  return part === SCENE_LOOK_DEFAULT_PART ? Number.POSITIVE_INFINITY : Number(part);
+  return /^\d+$/u.test(part) ? Number(part) : Number.POSITIVE_INFINITY;
 }
 
 /**

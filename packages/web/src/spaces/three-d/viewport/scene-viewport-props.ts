@@ -5,6 +5,7 @@ import type { SceneDirectorConfig, SceneImportLimits, SceneModelFile, SceneObjec
 import type { SceneEnvironmentValues } from '@web/data/yjs/scene-document';
 import type { LightsPlan } from '@web/spaces/three-d/viewport/director-lights';
 import type { MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
+import type { LookPictureAccess } from '@web/spaces/three-d/look-picture-size';
 import type { LookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
 import type { SceneLookPictures, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
 
@@ -66,7 +67,9 @@ export interface SceneViewportProps {
   selectedPart?: string | null;
   /** A plain click on the only selected object picked this part (design 5.6). */
   onSelectPart?: (part: string) => void;
-  /** Part pictures for this Project. */
+  /** The page's way to this Project's part pictures; the lazy viewport keeps their textures. */
+  lookPictures?: LookPictureAccess | null;
+  /** Part pictures for this Project, given to the runtime by the viewport component. */
   lookTextures?: LookTextureCache | null;
   /** Told each model's parts when it loads, or that it is loading or failed. */
   onLookReport?: (id: string, report: SceneLookReport | 'loading' | 'failed') => void;

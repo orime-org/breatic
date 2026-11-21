@@ -7,7 +7,7 @@ import {
 
 import { SCENE_LOOK_OFFSET_MAX, SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_REPEAT_MIN, SCENE_LOOK_ROTATION_MAX, type SceneLook, type SceneLookPart } from '@breatic/shared';
 
-import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
+import { uploadBytes } from '@web/spaces/three-d/texture-upload-bytes';
 
 /** A part's own state when its model loaded: what a field shows when unset and what a reset writes back. */
 export interface LookPartEntry {

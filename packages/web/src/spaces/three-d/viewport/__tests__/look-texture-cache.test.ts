@@ -10,6 +10,7 @@ import { Texture } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 
 import * as cacheModule from '@web/spaces/three-d/viewport/look-texture-cache';
+import * as sizeModule from '@web/spaces/three-d/look-picture-size';
 
 const CAP = 8 * 1024 * 1024;
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -48,7 +49,6 @@ function deps(width = 512, height = 256): Deps & { cancelled: () => boolean } {
 
 type Cache = {
   size: (assetId: string, maxBytes: number) => Promise<{ width: number; height: number; type: string } | null>;
-  read: (assetId: string, maxBytes: number) => Promise<{ width: number; height: number; type: string } | null>;
   acquire: (assetId: string, maxEdge?: number) => Promise<Texture>;
   release: (assetId: string, clone: Texture) => void;
 };
@@ -60,9 +60,11 @@ type Cache = {
  * @throws {AssertionError} When LookTextureCache is not exported.
  */
 function create(d: Deps): Cache {
-  const Ctor = (cacheModule as Record<string, unknown>).LookTextureCache as (new (deps: Deps) => Cache) | undefined;
+  const Ctor = (cacheModule as Record<string, unknown>).LookTextureCache as (new (deps: unknown) => Cache) | undefined;
   expect(Ctor, 'LookTextureCache must be exported').toBeTypeOf('function');
-  return new Ctor!(d);
+  // The page's header sizes come in beside the transport, as the editor hands them to the viewport.
+  const sizes = new sizeModule.LookPictureSizes({ resolve: d.resolve, open: d.open });
+  return new Ctor!({ sizes, resolve: d.resolve, download: d.download, decode: d.decode });
 }
 
 describe('LookTextureCache', () => {
@@ -86,9 +88,9 @@ describe('LookTextureCache', () => {
   it('rejects a read that failed and reads again next time', async () => {
     const d = deps(512, 256);
     d.open.mockRejectedValueOnce(new Error('network'));
-    const cache = create(d);
-    await expect(cache.read(A, CAP)).rejects.toThrow('network');
-    expect(await cache.read(A, CAP)).toEqual({ width: 512, height: 256, type: 'png' });
+    const sizes = new sizeModule.LookPictureSizes({ resolve: d.resolve, open: d.open });
+    await expect(sizes.read(A, CAP)).rejects.toThrow('network');
+    expect(await sizes.read(A, CAP)).toEqual({ width: 512, height: 256, type: 'png' });
     expect(d.open).toHaveBeenCalledTimes(2);
   });
 
@@ -180,7 +182,7 @@ describe('readPictureSize', () => {
     return { stream, pulled: () => pulled };
   }
   const read = (): ((stream: ReadableStream<Uint8Array>, maxBytes: number) => Promise<{ width: number; height: number; type: string } | null>) => {
-    const candidate = (cacheModule as Record<string, unknown>).readPictureSize;
+    const candidate = (sizeModule as Record<string, unknown>).readPictureSize;
     expect(candidate, 'readPictureSize must be exported').toBeTypeOf('function');
     return candidate as never;
   };

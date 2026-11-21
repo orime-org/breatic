@@ -9,7 +9,7 @@
 import { describe, expect, it } from 'vitest';
 
 import * as budget from '@web/spaces/three-d/look-texture-budget';
-import { uploadBytes } from '@web/spaces/three-d/model-texture-metadata';
+import { uploadBytes } from '@web/spaces/three-d/texture-upload-bytes';
 
 const A = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 const B = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
@@ -41,6 +41,13 @@ function check(): Check {
 function sizes(entries: Record<string, number | null>): Map<string, { width: number; height: number } | null> {
   return new Map(Object.entries(entries).map(([id, edge]) => [id, edge === null ? null : { width: edge, height: edge }]));
 }
+
+describe('lookPartRank', () => {
+  it('orders parts by material index, numerically, with the default part after every index', () => {
+    const parts = ['d', '10', '2', '0', '9999'];
+    expect([...parts].sort((x, y) => budget.lookPartRank(x) - budget.lookPartRank(y))).toEqual(['0', '2', '10', '9999', 'd']);
+  });
+});
 
 describe('checkLookTextures', () => {
   it('accepts pictures that fit beside the model textures', () => {

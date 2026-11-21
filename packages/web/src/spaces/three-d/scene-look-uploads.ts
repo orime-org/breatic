@@ -17,7 +17,7 @@ import { toast } from '@web/lib/toast';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { uploadFailureMessageKey } from '@web/spaces/canvas/upload-failure';
 import { checkLookWrite, type LookTextureLimits, type LookTextureReason } from '@web/spaces/three-d/look-texture-budget';
-import { pageLookTextureCache, readPictureSize, type LookPictureSize } from '@web/spaces/three-d/viewport/look-texture-cache';
+import { pageLookPictureSizes, readPictureSize, type LookPictureSize } from '@web/spaces/three-d/look-picture-size';
 
 /** A message for the uploader. */
 export interface LookUploadNotice {
@@ -438,7 +438,7 @@ export function pageSceneLookUploads(queryClient: QueryClient): SceneLookUploads
     unregister: (spaceId, operationId) => useSpaceOperationsStore.getState().unregister(spaceId, operationId),
     invalidateImages: (projectId) => { void queryClient.invalidateQueries({ queryKey: projectImagesQueryKey(projectId) }); },
     readLocalSize: (file, maxBytes) => readPictureSize(file.stream(), maxBytes),
-    size: (projectId, assetId, maxBytes) => pageLookTextureCache(projectId).size(assetId, maxBytes),
+    size: (projectId, assetId, maxBytes) => pageLookPictureSizes(projectId).size(assetId, maxBytes),
     session: peekSceneSession,
   });
   return pageUploads;

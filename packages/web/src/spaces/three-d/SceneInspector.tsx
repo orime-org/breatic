@@ -15,7 +15,7 @@ import { Switch } from '@web/components/ui/switch';
 import { POSE_PRESETS, POSE_PRESET_NAMES } from '@web/spaces/three-d/viewport/pose-presets';
 import type { SceneSkeletonState } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { SceneLookPictures, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
-import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
+import type { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
 
 /** What the appearance section needs from the editor (inner#1693). */
 export interface SceneLookInputs {
@@ -122,6 +122,7 @@ const NO_LOOK: SceneLook = {};
  * @param root0.spaceId - Space that owns field blur and visibility.
  * @param root0.Field - Eager field control keeping shared input helpers outside this lazy geometry module.
  * @param root0.DirectorFields - The eager camera and light fields, passed in for the same reason.
+ * @param root0.LookPanel - The eager appearance section, passed in for the same reason.
  * @param root0.fieldDrafts - Temporary input retained by the owning editor.
  * @param root0.onFieldDraftChange - Updates the current object's temporary field input.
  * @param root0.skeletonStates - What each loaded object's skeleton allows.
@@ -131,7 +132,7 @@ const NO_LOOK: SceneLook = {};
  * @returns The current selection inspector.
  * @throws {never} Command refusals are reported by the session owner.
  */
-export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, DirectorFields, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange, look }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField; DirectorFields: typeof SceneDirectorFields; look?: SceneLookInputs }): React.JSX.Element {
+export const SceneInspector = React.memo(function SceneInspector({ session, snapshot, readObjects, namedPeers, spaceId, Field, DirectorFields, LookPanel, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, onJointModeChange, look }: Pick<SceneEditorProps, 'session' | 'snapshot' | 'readObjects' | 'namedPeers' | 'spaceId'> & SceneFieldDraftOwner & ScenePoseInputs & { Field: typeof SceneField; DirectorFields: typeof SceneDirectorFields; LookPanel: typeof SceneLookPanel; look?: SceneLookInputs }): React.JSX.Element {
   const t = useTranslation();
   const selected = snapshot.objects.filter((object) => snapshot.selectedIds.includes(object.id));
   const mutable = snapshot.canEdit && selected.length > 0 && selected.every((object) => !object.locked);
@@ -195,7 +196,7 @@ export const SceneInspector = React.memo(function SceneInspector({ session, snap
       </fieldset>)}
       <DirectorFields object={object} session={session} canEdit={snapshot.canEdit} spaceId={spaceId} Field={Field} compact={false}
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
-      {look && isSceneModelFile(object.model) ? <SceneLookPanel key={object.id} session={session} objectId={object.id} look={objectLook} report={look.reports.get(object.id) ?? 'loading'}
+      {look && isSceneModelFile(object.model) ? <LookPanel key={object.id} session={session} objectId={object.id} look={objectLook} report={look.reports.get(object.id) ?? 'loading'}
         projectId={look.projectId} spaceId={spaceId} limits={look.limits} mutable={mutable} selectedPart={look.selectedPart} onSelectPart={look.onSelectPart}
         showing={look.pictures.get(object.id)?.shown ?? NO_PICTURES} fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} /> : null}
       {skeleton ? <PoseSection objectId={object.id} state={skeleton} mutable={mutable} session={session}

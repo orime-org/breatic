@@ -3,6 +3,7 @@
 
 import { imageDimensionsFromData } from 'image-dimensions';
 import type { SceneImportLimits } from '@breatic/shared';
+import { uploadBytes, type ImageSize } from '@web/spaces/three-d/texture-upload-bytes';
 import type { ModelPackage } from '@web/spaces/three-d/model-package';
 import { loadedImageUri, readModelResource, resolveModelDependency } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
@@ -43,13 +44,6 @@ function readImageView(read: ImageRead, index: number): Uint8Array<ArrayBuffer> 
   return readModelResource(model, buffer.uri, location, read.decoded).subarray(offset, offset + view.byteLength);
 }
 
-/** An image's declared pixel dimensions. */
-export interface ImageSize {
-  width: number;
-  height: number;
-  /** A KTX2 image's declared mip levels, bounded by its full chain; absent for other images. */
-  levels?: number;
-}
 
 /**
  * Read one image's declared dimensions and hold them to the edge budget.
@@ -125,27 +119,6 @@ function lookup(value: unknown, table: Readonly<Record<string, number>>, fallbac
   return table[String(value)] ? String(value) : fallback;
 }
 
-/**
- * Count the bytes a texture uploads with every mip level it carries or generates.
- * Uncompressed images upload RGBA; KTX2 images count the largest desktop Basis transcode (ASTC 4x4, BC7, BC6H, ETC2 RGBA and BC3 all
- * take 16 bytes per 4x4 block), so every device reaches the same verdict. A device with none of those formats decodes to RGBA and
- * uploads more than this estimate.
- * @param size - The texture's declared dimensions and, for KTX2, its declared levels.
- * @param mipmaps - Whether an uncompressed texture generates mipmaps.
- * @returns The byte count.
- * @throws {never} Never.
- */
-export function uploadBytes(size: ImageSize, mipmaps: boolean): number {
-  let { width, height } = size;
-  const levels = size.levels ?? (mipmaps ? Math.floor(Math.log2(Math.max(width, height))) + 1 : 1);
-  let total = 0;
-  for (let level = 0; level < levels; level++) {
-    total += size.levels === undefined ? width * height * 4 : Math.ceil(width / 4) * Math.ceil(height / 4) * 16;
-    width = Math.max(1, Math.floor(width / 2));
-    height = Math.max(1, Math.floor(height / 2));
-  }
-  return total;
-}
 
 /**
  * Hold the texture bytes every browser that can open the model uploads to the cumulative budget, from the declarations alone,

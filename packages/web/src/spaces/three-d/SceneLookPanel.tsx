@@ -14,7 +14,7 @@ import { SceneLookSection, type SceneLookGesture } from '@web/spaces/three-d/Sce
 import { checkLookWrite, picturesOf } from '@web/spaces/three-d/look-texture-budget';
 import { isLookImageType, lookLimitNotice, pageSceneLookUploads, pictureReadFailedNotice, unsupportedPictureNotice, type LookUploadNotice } from '@web/spaces/three-d/scene-look-uploads';
 import { takeStepKey } from '@web/spaces/three-d/slider-step-key';
-import { pageLookTextureCache } from '@web/spaces/three-d/viewport/look-texture-cache';
+import { pageLookPictureSizes } from '@web/spaces/three-d/look-picture-size';
 import type { SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
 import type { SceneViewImage } from '@web/stores/scene-proposals';
 
@@ -121,7 +121,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const showingPictures = React.useMemo(() => new Set(showing), [showing]);
   const queryClient = useQueryClient();
   const uploads = React.useMemo(() => pageSceneLookUploads(queryClient), [queryClient]);
-  const textures = React.useMemo(() => pageLookTextureCache(projectId), [projectId]);
+  const textures = React.useMemo(() => pageLookPictureSizes(projectId), [projectId]);
   const uploadVersion = React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const [pickerPart, setPickerPart] = React.useState<string | null>(null);
   const isChecking = React.useCallback(
