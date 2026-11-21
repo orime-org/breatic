@@ -196,7 +196,7 @@ function webClipView(clip: TimelineWebAnimationClip, web: Parameters<typeof time
   const origin = source ?? execution;
   const named = origin === undefined ? { title: null, request: null, baseRequest: null, origin: null }
     : { title: requestTitle(origin, t),
-      request: origin.request, baseRequest: origin.base?.request ?? null, origin: { spaceId: origin.spaceId, executionId: origin.executionId, origin: origin.origin } };
+      request: origin.request, baseRequest: origin.base?.request ?? null, origin: { executionId: origin.executionId } };
   if (source !== undefined) return { state: 'ready', ...named, status: null, phase: null, failureReason: null };
   if (execution === undefined) return { state: 'unresolved', ...named, status: null, phase: null, failureReason: null };
   return {
@@ -544,18 +544,13 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const canOpenInMotion = !readOnly || hasMotionSpace;
   const selectedOrigin = selectedWeb?.origin ?? null;
   /**
-   * Open the Motion Space that made the selected copy's execution, with it selected; one made in a Timeline before
-   * Motion opens in the newest Motion Space, whose group of those holds it.
+   * Open the newest Motion Space with the selected copy's execution selected. Only a copy placed before Motion can fail,
+   * so its execution was made in a Timeline and sits in that Space's group of those.
    * @throws {never} Never.
    */
   const openSelectedInMotion = React.useCallback((): void => {
     if (selectedOrigin === null) return;
-    useSpaceOpenRequestStore.getState().dispatch({
-      type: 'request',
-      request: selectedOrigin.origin === 'web_animation_space'
-        ? { type: 'web_animation', spaceId: selectedOrigin.spaceId, select: selectedOrigin.executionId }
-        : { type: 'web_animation', select: selectedOrigin.executionId },
-    });
+    useSpaceOpenRequestStore.getState().dispatch({ type: 'request', request: { type: 'web_animation', select: selectedOrigin.executionId } });
   }, [selectedOrigin]);
   const selectedWebCopy = React.useMemo(() => selectedWeb === undefined ? null : {
     request: selectedWeb.request,

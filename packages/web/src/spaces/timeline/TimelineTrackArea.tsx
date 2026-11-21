@@ -48,7 +48,7 @@ export interface TimelineWebClipView {
   /** For a modification, the request of the result it started from. */
   baseRequest: string | null;
   /** The Space and execution that made it. */
-  origin: { spaceId: string; executionId: string; origin: 'timeline' | 'web_animation_space' } | null;
+  origin: { executionId: string } | null;
   status: TimelineExecutionStatus | null;
   phase: 'writing' | 'validating' | 'saving' | 'rendering' | null;
   failureReason: string | null;

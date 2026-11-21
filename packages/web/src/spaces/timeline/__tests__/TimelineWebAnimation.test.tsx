@@ -565,14 +565,14 @@ describe('a copy whose execution failed', () => {
     getDoc(docName.projectMeta(PROJECT)).getMap('spaces').set(MOTION_SPACE, entry);
   }
 
-  it('shows why it failed and offers Open in Motion, which asks for that Space with the execution selected', async () => {
+  it('shows why it failed and offers Open in Motion, which asks for the newest Motion Space with the execution selected', async () => {
     seed([webClip(failed, 'v2', 0, 48, waitingFor(EXEC_FAILED))]);
     showTimeline();
     await userEvent.click(await screen.findByTestId(`timeline-clip-${failed}`));
     const panel = screen.getByTestId('timeline-side-panel');
     await waitFor(() => expect(panel).toHaveTextContent(t('timeline.webAnimation.failure.stopped')));
     await userEvent.click(within(panel).getByTestId('timeline-web-open-in-motion'));
-    expect(useSpaceOpenRequestStore.getState().state).toEqual({ status: 'requesting', request: { type: 'web_animation', spaceId: MOTION_SPACE, select: EXEC_FAILED } });
+    expect(useSpaceOpenRequestStore.getState().state).toEqual({ status: 'requesting', request: { type: 'web_animation', select: EXEC_FAILED } });
   });
 
   it('hides Open in Motion from a Viewer when the Project has no Motion Space, since a Viewer cannot make one', async () => {

@@ -1603,9 +1603,9 @@ export function renderProductGuide(): string {
       "followed by its own change. The selected copy's panel shows the whole request and, for a modification, a line naming the request it was modified from. " +
       "A copy placed in a Timeline before Motion existed can be bound to a web animation that never finished; while it runs the copy is dashed, " +
       "and once it failed, was cancelled or expired the copy is red, and its panel says why and offers " +
-      `${quoted(t("timeline.webAnimation.openInMotion"))}, which opens the Motion Space that made it with that run highlighted under ${quoted(t("spaces.webAnimation.failed"))}, where ` +
-      `${quoted(t("timeline.webAnimation.retry"))} opens the dialog filled in as before; a copy made in a Timeline before Motion existed opens in the newest Motion Space ` +
-      `(one named Motion is made when the Project has none), with the run highlighted under ${quoted(t("spaces.webAnimation.madeInTimeline"))}. ` +
+      `${quoted(t("timeline.webAnimation.openInMotion"))}, which opens the newest Motion Space (one named Motion is made when the Project has none) with that run ` +
+      `highlighted under ${quoted(t("spaces.webAnimation.failed"))} in ${quoted(t("spaces.webAnimation.madeInTimeline"))}, where ` +
+      `${quoted(t("timeline.webAnimation.retry"))} opens the dialog filled in as before. ` +
       "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy bound to a web animation that has not finished, or ended without a result, is noted at the top right of the " +
       "preview with its track and its status, a copy whose page is still loading shows nothing and is noted there as loading, " +
       "and a copy whose page cannot be loaded is noted there as unavailable with " +
