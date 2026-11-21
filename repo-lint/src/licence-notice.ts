@@ -22,11 +22,11 @@ import type { LicensedPackage } from "#repo-lint/licence-coverage";
 /** Whatever upstream chose to call its licence file. */
 const LICENCE_FILE = /^(licen[cs]e|copying|notice)/i;
 
-/** Where the notice lives, from which vite copies it into the bundle. */
-export const SHIPPED_NOTICE = "packages/web/public/third-party-licences.txt";
-
 /**
- * The workspace package whose production closure the notice covers.
+ * Each artefact that ships third-party code, with the workspace closure its
+ * notice covers and where the notice lives: the web bundle (vite copies the
+ * file from `public`) and the desktop installer (electron-builder copies it
+ * from `resources`).
  *
  * The trailing `...` is pnpm's "this package and its dependencies" selector,
  * which follows the `workspace:*` link into `@breatic/shared`. Without it the
@@ -34,7 +34,26 @@ export const SHIPPED_NOTICE = "packages/web/public/third-party-licences.txt";
  * and asking for its notice in binary redistribution — reach the bundle
  * unlisted.
  */
-export const NOTICE_COVERS = "@breatic/web...";
+export const SHIPPED_NOTICES = [
+  {
+    covers: "@breatic/web...",
+    path: "packages/web/public/third-party-licences.txt",
+    artefact: { name: "the breatic front end", nativeLeftOut: "no browser receives them" },
+  },
+  {
+    covers: "@breatic/desktop...",
+    path: "packages/desktop/resources/third-party-licences.txt",
+    artefact: { name: "the breatic desktop client", nativeLeftOut: "the installer bundles their JavaScript alone" },
+  },
+] as const;
+
+/** Which artefact a notice describes, in the words its header uses. */
+export interface NoticeArtefact {
+  /** What the notice covers, e.g. "the breatic front end". */
+  name: string;
+  /** Why platform-bound native binaries are not listed. */
+  nativeLeftOut: string;
+}
 
 /** Where the standard texts sit, for packages that ship none of their own. */
 const TEXTS = fileURLToPath(new URL("./licence-texts/", import.meta.url));
@@ -174,11 +193,13 @@ function standardText(licence: string, name: string): string {
  * a clock reading would make every regeneration differ from the committed
  * copy, which is the one thing the check comparing them cannot tolerate.
  * @param groups - What `pnpm licenses list --json` reported.
+ * @param artefact - Which artefact the notice travels with.
  * @returns The notice.
  * @throws {Error} When a licence has neither a file on disk nor a standard text.
  */
 export function buildLicenceNotice(
   groups: Record<string, LicensedPackage[]>,
+  artefact: NoticeArtefact = SHIPPED_NOTICES[0].artefact,
 ): string {
   const entries = Object.values(groups)
     .flat()
@@ -216,13 +237,13 @@ export function buildLicenceNotice(
     "THIRD-PARTY LICENCES",
     "",
     "This page carries the licence of every third-party package in the",
-    "production dependency closure of the breatic front end. It is generated",
+    `production dependency closure of ${artefact.name}. It is generated`,
     "from the installed packages themselves, so the words below are the words",
     "each author shipped. Where a package declared a licence without shipping",
     "its text, the standard text of that licence stands in its place and the",
     "copyright holder is the one named at the package's home page. Packages",
     "that install on one platform alone are left out: their bytes are native",
-    "binaries, and no browser receives them.",
+    `binaries, and ${artefact.nativeLeftOut}.`,
     "",
     `Packages ${entries.length}, distinct licence texts ${texts.size}`,
     "",
