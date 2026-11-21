@@ -100,3 +100,21 @@ describe("running-task gate settings", () => {
     expect(JSON.stringify(result.error?.issues)).toMatch(/slot_wait_max_delay_ms/);
   });
 });
+
+// #1580 test spec C-01: the deadline sweep's interval lives in config/worker.yaml.
+describe("deadline sweep", () => {
+  it("reads the sweep's interval from config/worker.yaml", () => {
+    const shipped = parse(readFileSync(resolve(MONOREPO_ROOT, "config/worker.yaml"), "utf-8")) as { deadline_sweep: { interval_ms: number } };
+    expect(getWorkerConfig().deadline_sweep.interval_ms).toBe(shipped.deadline_sweep.interval_ms);
+  });
+
+  it("defaults the interval to 30 seconds when the file leaves it out", () => {
+    expect(workerConfigSchema.parse({}).deadline_sweep.interval_ms).toBe(30_000);
+  });
+
+  it("refuses an interval that is not a positive integer", () => {
+    for (const interval_ms of [0, -1, 1.5]) {
+      expect(workerConfigSchema.safeParse({ deadline_sweep: { interval_ms } }).success).toBe(false);
+    }
+  });
+});
