@@ -10,7 +10,7 @@
 
 import { describe, it, expect, vi } from 'vitest';
 
-import { createFileUploads, type FileUploadsDeps } from '@web/spaces/document/document-uploads';
+import { createFileUploads, uploadLandsIn, type FileUploadsDeps } from '@web/spaces/document/document-uploads';
 
 /**
  * A file of a given type and size.
@@ -75,6 +75,14 @@ describe('admission', () => {
 });
 
 describe('the blocks', () => {
+  it('name the Document they were made in, so their result is written into them (breatic#1574)', () => {
+    const deps: FileUploadsDeps = { maxUploadBytes: () => 1000, refuse: vi.fn(), start: vi.fn(), home: 'project-p/document-s' };
+
+    const prepared = createFileUploads(deps).prepare([file('a.png', 'image/png')]);
+
+    expect((prepared!.blocks[0] as { props: Record<string, unknown> }).props['uploadHome']).toBe('project-p/document-s');
+  });
+
   it('are pending blocks of each file\'s kind, named after it, each with its own upload', () => {
     const { files } = uploads();
 
@@ -107,5 +115,16 @@ describe('the blocks', () => {
     const ids = (prepared.blocks as Built[]).map((block) => block.props.uploadId);
     expect(deps.start).toHaveBeenNthCalledWith(1, ids[0], { kind: 'file', file: a });
     expect(deps.start).toHaveBeenNthCalledWith(2, ids[1], { kind: 'file', file: b });
+  });
+});
+
+describe('uploadLandsIn', () => {
+  it('matches collab: a block lands only in the Document its home names, and anywhere while the Document is unknown', () => {
+    expect(uploadLandsIn('doc-a', 'doc-a')).toBe(true);
+    expect(uploadLandsIn('doc-a', 'doc-b')).toBe(false);
+    expect(uploadLandsIn(undefined, 'doc-a')).toBe(false);
+    expect(uploadLandsIn('', 'doc-a')).toBe(false);
+    expect(uploadLandsIn(undefined, null)).toBe(true);
+    expect(uploadLandsIn('doc-a', undefined)).toBe(true);
   });
 });
