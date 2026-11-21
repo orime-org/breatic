@@ -63,8 +63,8 @@ export type GateOutcome<S> =
 type Judged<S> =
   | { kind: "busy" }
   | { kind: "ended" }
-  | { kind: "started"; started: S; places: TaskRowPlace[]; space: boolean }
-  | { kind: "waiting"; delayMs: number; places: TaskRowPlace[]; space: boolean };
+  | { kind: "started"; started: S; places: TaskRowPlace[]; announce: boolean }
+  | { kind: "waiting"; delayMs: number; places: TaskRowPlace[]; announce: boolean };
 
 /**
  * Wait a moment.
@@ -155,17 +155,15 @@ async function renewHoldings(creditHold: string, always: boolean, tx: DbTx): Pro
 /**
  * Tell the canvas that rows changed: each node's counts, and the Space's list
  * for a 3D Space's own row.
- * @param places - The node task rows that changed.
- * @param space - A 3D Space whose list changed, beside those rows.
+ * @param places - The task rows that changed.
  * @returns The signals that failed.
  */
-async function publish(places: readonly TaskRowPlace[], space: { projectId: string; spaceId: string } | null): Promise<unknown[]> {
+async function publish(places: readonly TaskRowPlace[]): Promise<unknown[]> {
   const sends: Promise<void>[] = places.map(async (place) => {
     if (place.nodeId === null) return publishSpaceTasksChanged(place.projectId, place.spaceId);
     const counts = await nodeTaskRepo.countsFor(place.projectId, place.nodeId);
     return emitNodeTaskCounts(getStreamRedis(), canvasSpaceDocName(place.projectId, place.spaceId), place.nodeId, counts, undefined);
   });
-  if (space !== null) sends.push(publishSpaceTasksChanged(space.projectId, space.spaceId));
   return (await Promise.allSettled(sends)).flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
 }
 
@@ -183,7 +181,7 @@ async function failRows(taskId: string, errorMessage: string, sceneReason: TaskF
   for (const place of await nodeTaskRepo.listRunningForTask(taskId)) {
     if (place.nodeId === null) {
       await sceneTaskService.settleById(place.id, { outcome: "failed", errorMessage: sceneReason });
-      failures.push(...(await publish([], { projectId: place.projectId, spaceId: place.spaceId })));
+      failures.push(...(await publish([place])));
       continue;
     }
     const settled = await nodeTaskService.settle({ taskId: place.id, outcome: "failed", errorMessage });
@@ -215,13 +213,13 @@ async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number
       if (startedAt === null) return { kind: "ended" };
       const places = await nodeTaskRepo.startWaiting(row.id, tx);
       await renewHoldings(row.id, true, tx);
-      return { kind: "started", started: startedAt, places, space: false };
+      return { kind: "started", started: startedAt, places, announce: false };
     }
     await taskRepo.markSlotWait(row.id, jobId, tx);
     await taskRepo.noteSlotCheck(row.id, limit, getWorkerConfig().slot_wait_stale_ms, tx);
     const places = await nodeTaskRepo.markWaiting(row.id, tx);
     await renewHoldings(row.id, false, tx);
-    return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places, space: false };
+    return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places, announce: false };
   });
 }
 
@@ -244,11 +242,11 @@ async function judgeExecution(row: { id: string; actorUserId: string; createdAt:
       const budgetMs = getNodeTaskConfig().default_budget_ms;
       const claimed = await timelineExecutionRepo.transition({ id: row.id, event: { type: "claim", budgetMs } }, tx);
       if (!claimed.applied) return { kind: "ended" };
-      return { kind: "started", started: claimed.row, places: [], space: true };
+      return { kind: "started", started: claimed.row, places: [], announce: true };
     }
     const first = await timelineExecutionRepo.markSlotWait(row.id, tx);
     await timelineExecutionRepo.noteSlotCheck(row.id, limit, getWorkerConfig().slot_wait_stale_ms, tx);
-    return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places: [], space: first };
+    return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places: [], announce: first };
   });
 }
 
@@ -322,8 +320,8 @@ async function settleJudgement<S>(
 ): Promise<GateOutcome<S>> {
   if (judged.kind === "busy") throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
   if (judged.kind === "ended") return { outcome: "ended", publishFailures: [] };
-  const failures = await publish(judged.places, null);
-  if (judged.space && execution !== null) {
+  const failures = await publish(judged.places);
+  if (judged.announce && execution !== null) {
     try {
       await announceExecutionChange(execution);
     } catch (err) {
