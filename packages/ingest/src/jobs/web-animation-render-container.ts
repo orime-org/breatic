@@ -25,6 +25,7 @@ import {
   WEB_ANIMATION_PROGRESS_PATH,
   WEB_ANIMATION_REPORT_PATH,
   WEB_ANIMATION_RUN_PATH,
+  type WebAnimationRenderReportBody,
   type WebAnimationRenderRunBody,
 } from "@ingest/jobs/web-animation-run-body.js";
 import { hashStoredObject, sniffStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
@@ -64,7 +65,7 @@ interface RenderRecord {
   phase: WebAnimationRenderJobReport["phase"];
   progress: number | null;
   outputs: RenderOutput[];
-  media: { video: { width: number; height: number; durationSeconds: number } | null; cover: { width: number; height: number } | null };
+  media: Pick<WebAnimationRenderReportBody, "video" | "cover">;
   startedAt: number | null;
   endedAt: number | null;
   cpuUsec: number | null;
@@ -258,7 +259,7 @@ export class WebAnimationRenderContainer extends Container<WebAnimationRenderEnv
    * @param report.cover - What it measured of the cover.
    * @returns Nothing.
    */
-  async noteFinished(report: { ok: boolean; failureReason: string | null; cpuUsec: number | null; video: RenderRecord["media"]["video"]; cover: RenderRecord["media"]["cover"] }): Promise<void> {
+  async noteFinished(report: WebAnimationRenderReportBody): Promise<void> {
     const ended = await this.update((held) => {
       if (held.state !== "running") return held;
       const withRun = { ...held, cpuUsec: report.cpuUsec, media: { video: report.video, cover: report.cover }, progress: report.ok ? 1 : held.progress };
