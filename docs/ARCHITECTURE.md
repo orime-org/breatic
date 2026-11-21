@@ -864,10 +864,13 @@ or `none`, which turns the model's own picture off. The runtime
 (`viewport/scene-look-runtime.ts`) applies the look to each instance's own
 materials, gives a triangle mesh without UVs generated ones (`look-uv.ts`) and
 lights the scene with a prefiltered environment (`scene-environment.ts`) so
-metal reads as metal. Pictures come from one page-wide `LookTextureCache` per
-Project: their size is read from the file header (at most
-`max_picture_header_bytes`), a picture past `max_texture_edge` or the device's
-texture size is scaled down when decoded, and `checkLookTextures` counts each
+metal reads as metal. A picture's size is read from its file header (at most
+`max_picture_header_bytes`) and kept in the page-wide `LookPictureSizes` per
+Project (`look-picture-size.ts`, which loads no three.js, so the eager
+appearance panel uses it without pulling three.js into the project page); the
+lazy viewport decodes pictures into its `LookTextureCache`, built from the
+sizes, resolver and download the editor hands it. A picture past
+`max_texture_edge` or the device's texture size is scaled down when decoded, and `checkLookTextures` counts each
 distinct picture once against the object's `max_texture_bytes` together with
 the model's own textures; a picture over the budget is not shown, the part
 keeps its own colour and the scene's model notice says so. A picture uploaded from the computer goes up with the ticket
