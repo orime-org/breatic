@@ -2405,6 +2405,8 @@ export const timelineExecutions = pgTable(
     /** Where it was asked for: `web_animation_space`, or `timeline` before #1490 (0130). */
     origin: text("origin").notNull(),
     phase: text("phase"),
+    /** How far a running export's render got, as a whole percent (0130, #1490). */
+    progress: smallint("progress"),
     steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
     attempt: integer("attempt").notNull().default(0),
     fence: uuid("fence"),

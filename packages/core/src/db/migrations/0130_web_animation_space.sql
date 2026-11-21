@@ -18,6 +18,10 @@ ALTER TABLE timeline_executions DROP CONSTRAINT timeline_executions_phase_check;
 ALTER TABLE timeline_executions ADD CONSTRAINT timeline_executions_phase_check
   CHECK (phase IS NULL OR phase IN ('writing', 'validating', 'saving', 'rendering'));--> statement-breakpoint
 
+-- How far a running export's render got, as a whole percent; null for other kinds and phases.
+ALTER TABLE timeline_executions ADD COLUMN progress smallint
+  CONSTRAINT timeline_executions_progress_check CHECK (progress IS NULL OR progress BETWEEN 0 AND 100);--> statement-breakpoint
+
 ALTER TABLE timeline_executions ALTER COLUMN engine DROP NOT NULL;--> statement-breakpoint
 ALTER TABLE timeline_executions DROP CONSTRAINT timeline_executions_engine_check;--> statement-breakpoint
 ALTER TABLE timeline_executions ADD CONSTRAINT timeline_executions_engine_check CHECK (

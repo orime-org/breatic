@@ -145,5 +145,5 @@ export const creationJobs = jobCalls<WebAnimationJobRequest, WebAnimationJobRepo
 export const renderJobs = jobCalls<WebAnimationRenderJobRequest, WebAnimationRenderJobReport>(
   WEB_ANIMATION_RENDER_CONTAINER_CLASS,
   webAnimationRenderJobReportSchema,
-  { state: "cancelled_before_submit", phase: null, container: null, video: null, failureReason: null },
+  { state: "cancelled_before_submit", phase: null, progress: null, container: null, video: null, failureReason: null },
 );

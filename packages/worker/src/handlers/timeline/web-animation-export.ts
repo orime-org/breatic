@@ -46,7 +46,7 @@ interface RenderPickup extends Held {
 type EndedRender = Ended<WebAnimationRenderJobReport>;
 
 /** An ended report that carries nothing, for a job the Worker cannot run. */
-const DISABLED: EndedRender = { state: "failed", phase: null, container: null, video: null, failureReason: "feature_disabled" };
+const DISABLED: EndedRender = { state: "failed", phase: null, progress: null, container: null, video: null, failureReason: "feature_disabled" };
 
 /**
  * The render job an export runs, fixed from its frozen input and its source version.
@@ -208,8 +208,10 @@ async function running(pickup: RenderPickup): Promise<void> {
   if (Date.now() >= endsAt) {
     const stopped = await renderJobs.cancel(request.jobId, { deadlineAt: request.deadlineAt }, endsAt);
     if (stopped.kind === "report" && ended(stopped.report)) return finish(pickup, stopped.report);
-  } else if (report !== null && report.phase !== null && report.phase !== row.phase) {
-    await move(row, { type: "progress", fence: row.fence, phase: report.phase });
+  } else if (report !== null && report.phase !== null) {
+    // The percent shows only while it renders; saving has none.
+    const progress = report.phase === "rendering" && report.progress !== null ? Math.floor(report.progress * 100) : null;
+    if (report.phase !== row.phase || progress !== (row.progress ?? null)) await move(row, { type: "progress", fence: row.fence, phase: report.phase, progress });
   }
   throw new StillRunning(Date.now() + getTimelineConfig().web_animation.poll_interval_ms);
 }

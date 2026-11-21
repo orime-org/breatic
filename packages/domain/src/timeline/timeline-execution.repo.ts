@@ -27,7 +27,8 @@ export type TimelineExecutionEvent =
   | { type: "cancel" }
   | { type: "cancelAck" }
   | { type: "deadline" }
-  | { type: "progress"; fence: string | null; phase: NonNullable<TimelineExecution["phase"]> };
+  /** `progress`: a running export's render as a whole percent; null in a phase that has none. */
+  | { type: "progress"; fence: string | null; phase: NonNullable<TimelineExecution["phase"]>; progress?: number | null };
 
 /** The fields an accepted execution is inserted with; `status` starts at the column's default, `queued`. */
 export interface NewTimelineExecution {
@@ -75,6 +76,7 @@ export const columns = {
   engine: t.engine,
   status: t.status,
   phase: t.phase,
+  progress: t.progress,
   steps: t.steps,
   attempt: t.attempt,
   fence: t.fence,
@@ -244,7 +246,7 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
         set: { status: "expired", fence: null },
       };
     case "progress":
-      return { where: and(eq(t.status, "running"), event.fence === null ? sql`false` : eq(t.fence, event.fence)), set: { phase: event.phase } };
+      return { where: and(eq(t.status, "running"), event.fence === null ? sql`false` : eq(t.fence, event.fence)), set: { phase: event.phase, progress: event.progress ?? null } };
   }
 }
 

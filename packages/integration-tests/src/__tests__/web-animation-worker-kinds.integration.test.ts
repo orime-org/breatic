@@ -138,7 +138,7 @@ async function seedExport(state: "queued" | "running"): Promise<{ fx: ExecutionF
  * @returns It.
  */
 function renderReport(state: string, overrides: Record<string, unknown> = {}): Record<string, unknown> {
-  return { state, phase: state === "running" ? "rendering" : null, container: { wallMs: 90_000, cpuUsec: 300_000_000 }, video: null, failureReason: null, ...overrides };
+  return { state, phase: state === "running" ? "rendering" : null, progress: state === "done" ? 1 : 0.4, container: { wallMs: 90_000, cpuUsec: 300_000_000 }, video: null, failureReason: null, ...overrides };
 }
 
 describe("a modification", () => {
@@ -196,7 +196,27 @@ describe("an export", () => {
     const ingest = installFakeIngest(fx);
     ingest.read = () => json(renderReport("running"));
     await pickUp(fx);
-    expect(await read(fx.execution.id)).toMatchObject({ status: "running", phase: "rendering" });
+    expect(await read(fx.execution.id)).toMatchObject({ status: "running", phase: "rendering", progress: 40 });
+  });
+
+  it("writes how far the render got whenever the whole percent moves, in the same phase", async () => {
+    const { fx } = await seedExport("running");
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(renderReport("running", { progress: 0.4 }));
+    await pickUp(fx);
+    ingest.read = () => json(renderReport("running", { progress: 0.734 }));
+    await pickUp(fx);
+    expect(await read(fx.execution.id)).toMatchObject({ phase: "rendering", progress: 73 });
+  });
+
+  it("shows no percent once the render saves its video", async () => {
+    const { fx } = await seedExport("running");
+    const ingest = installFakeIngest(fx);
+    ingest.read = () => json(renderReport("running"));
+    await pickUp(fx);
+    ingest.read = () => json(renderReport("running", { phase: "saving", progress: 1 }));
+    await pickUp(fx);
+    expect(await read(fx.execution.id)).toMatchObject({ phase: "saving", progress: null });
   });
 
   it("registers a done render's video, succeeds with the asset and records only the container", async () => {
