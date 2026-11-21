@@ -273,7 +273,7 @@ export function mad(a: Buffer, b: Buffer): number {
 
 /**
  * Expect a produced picture to be the oracle's slot: within conversion noise of it and no farther from it than from any
- * other slot (repeated slots of a pad or a hold tie).
+ * other slot whose picture differs from it by more than that noise (repeated slots of a pad or a hold tie).
  * @param actual - The produced picture.
  * @param oracle - The oracle's pictures.
  * @param slot - The expected slot.
@@ -281,7 +281,11 @@ export function mad(a: Buffer, b: Buffer): number {
  */
 export function expectSlot(actual: Buffer, oracle: readonly Buffer[], slot: number, label: string): void {
   const own = mad(actual, oracle[slot]!);
-  const nearest = oracle.map((frame, at) => ({ at, distance: mad(actual, frame) })).sort((a, b) => a.distance - b.distance)[0]!;
+  // Only source frames told apart from this slot's by more than the noise can be nearer: near-still footage repeats a
+  // picture within the noise across slots, and an encoded slot then lands as close to the repeat as to its own.
+  const nearest = oracle.map((frame, at) => ({ at, distance: mad(actual, frame) }))
+    .filter(({ at, distance }) => at === slot || distance >= own || mad(oracle[at]!, oracle[slot]!) > NOISE)
+    .sort((a, b) => a.distance - b.distance)[0]!;
   expect(own, `${label}: slot ${slot} differs by ${own}; nearest is slot ${nearest.at} at ${nearest.distance}`).toBeLessThanOrEqual(Math.min(NOISE, nearest.distance + 1e-9));
 }
 
