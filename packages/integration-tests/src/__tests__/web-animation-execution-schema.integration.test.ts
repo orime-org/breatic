@@ -136,6 +136,13 @@ describe("timeline_executions — the three kinds", () => {
     await expect(sql`UPDATE timeline_executions SET kind = 'web_animation_delete' WHERE id = ${row.id}`).rejects.toThrow(/check/i);
   });
 
+  it("stores a render's progress as a whole percent from 0 to 100", async () => {
+    const row = await inserted(await seedProject(), "web_animation_export");
+    await sql`UPDATE timeline_executions SET progress = 100 WHERE id = ${row.id}`;
+    await expect(sql`UPDATE timeline_executions SET progress = 101 WHERE id = ${row.id}`).rejects.toThrow(/check/i);
+    await expect(sql`UPDATE timeline_executions SET progress = -1 WHERE id = ${row.id}`).rejects.toThrow(/check/i);
+  });
+
   it("accepts the rendering phase", async () => {
     const row = await inserted(await seedProject(), "web_animation_export");
     await sql`UPDATE timeline_executions SET phase = 'rendering' WHERE id = ${row.id}`;

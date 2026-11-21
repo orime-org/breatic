@@ -197,7 +197,10 @@ describe("timeline_executions table", () => {
       WHERE table_schema = current_schema() AND table_name = 'timeline_executions' ORDER BY column_name`;
     expect(rows.map((row) => row.column_name)).toEqual([
       "action_id", "actor_user_id", "attempt", "billed_at", "billed_credits", "created_at", "deadline_at", "deleted_at",
-      "engine", "failure_reason", "fence", "id", "input", "input_hash", "kind", "origin", "phase", "project_id", "result_asset_id",
+      "engine", "failure_reason", "fence", "id", "input", "input_hash", "kind", "origin", "phase",
+      // #1490: how far a running export's render got.
+      "progress",
+      "project_id", "result_asset_id",
       "result_source_version_id",
       // inner#1968: the running-task gate's wait.
       "slot_checked_at", "slot_wait_limit", "slot_wait_since",
