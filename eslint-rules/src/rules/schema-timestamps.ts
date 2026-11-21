@@ -18,7 +18,7 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ["creditGrantOperations", "immutable original grant decisions retain their idempotency keys permanently; deleting a decision would permit duplicate funding"],
   ["paymentReceipts", "immutable receipt of a completed payment (0130, inner#1993); a lot's source points at it, so removing one hides where credits already issued came from"],
   ["commerceRequests", "immutable record of a billing-service write and its answer (0130, inner#1993); removing one would let a replay of the same key act a second time"],
-  ["commerceOutbox", "internal transactional-outbox queue (0130, inner#1993), like projectLifecycleOutbox: appended in a business transaction, marked sent by the relay, retained as an audit trail"],
+  ["commerceOutbox", "internal transactional-outbox queue (0130, inner#1993), like projectLifecycleOutbox: appended in a business transaction, then either marked sent by the relay and kept, or moved with its id, seq and payload to commerceOutboxDeadLetters"],
   ["commerceOutboxDeadLetters", "outbox rows refused for good (0130, inner#1993), kept for a person to resolve; a deleted one is an event that silently never happened"],
   ["enterpriseCreditPurchaseOperations", "immutable corporate purchase decisions retain the original key permanently to prevent duplicate funding"],
   ["creditEnterprisePurchases", "immutable corporate purchase receipts outlive their credit lots and retain the original contract evidence"],
