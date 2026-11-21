@@ -45,6 +45,7 @@ models:
 
   - name: "gpt-image-2.5-sunburst-text-to-image"
     display_name: "GPT Image 2.5 Sunburst"
+    variant: "Text-to-Image"
     mode: "t2i"
     takes_prompt: true
     tier: "recommended"
@@ -382,6 +383,7 @@ models:
 
   - name: "seedream-v5.5-text-to-image"
     display_name: "Seedream 5.5"
+    variant: "Text-to-Image"
     mode: "t2i"
     takes_prompt: true
     tier: "optional"
@@ -439,6 +441,7 @@ models:
 
   - name: "gpt-image-2.5-sunburst-edit"
     display_name: "GPT Image 2.5 Sunburst"
+    variant: "Edit"
     mode: ["edit", "i2i"]
     takes_prompt: true
     tier: "recommended"
@@ -572,6 +575,7 @@ models:
 
   - name: "seedream-v5.5-edit"
     display_name: "Seedream 5.5"
+    variant: "Edit"
     mode: ["i2i", "edit"]
     takes_prompt: true
     tier: "optional"
