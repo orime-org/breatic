@@ -535,6 +535,28 @@ describe('handing the upload to the server (breatic#1574)', () => {
     expect(world.controller.entry('u1')).toBeUndefined();
   });
 
+  it('lets the upload go when collab lands its block before the hand-off answer arrives', async () => {
+    const world = open();
+    pastePending(world, 'u1');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    await settle();
+    world.peer.transact(() => {
+      const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+        el.toArray().forEach((child) => {
+          if (!(child instanceof Y.XmlElement)) return;
+          if (child.nodeName === 'image') landDocumentUpload(child, { url: URL_Z });
+          walk(child);
+        });
+      };
+      walk(documentBodyFragment(world.peer));
+    });
+    await settle();
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
+    await settle();
+
+    expect(world.controller.entry('u1')).toBeUndefined();
+  });
+
   it('ends this page\'s part: nothing is written, the source is kept and the tab-close guard lets go', async () => {
     const world = open();
     pastePending(world, 'u1');

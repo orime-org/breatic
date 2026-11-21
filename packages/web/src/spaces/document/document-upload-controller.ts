@@ -227,7 +227,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     });
   };
 
-  /** The blocks each handed-off upload was last seen pending in, to tell when it settled. */
+  /** The blocks each upload in flight or handed off was last seen pending in, to tell when it settled. */
   const handedOffBlocks = new Map<string, Set<Y.XmlElement>>();
 
   /**
@@ -238,6 +238,10 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
   const releaseSettled = (): void => {
     for (const [uploadId, blocks] of handedOffBlocks) {
       const record = records.get(uploadId);
+      // Collab can land a block before the hand-off answer arrives (a dedup
+      // hit is announced first), so blocks are kept from the start and judged
+      // once the record is handed off.
+      if (record?.state.phase === 'uploading') continue;
       if (record === undefined || record.state.phase !== 'handedOff') {
         handedOffBlocks.delete(uploadId);
         continue;
@@ -262,7 +266,8 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     const { body } = entry;
     const pending = pendingElements(documentBodyFragment(body.doc));
     for (const { element, uploadId } of pending) {
-      if (records.get(uploadId)?.state.phase !== 'handedOff') continue;
+      const phase = records.get(uploadId)?.state.phase;
+      if (phase !== 'uploading' && phase !== 'handedOff') continue;
       const seen = handedOffBlocks.get(uploadId) ?? new Set<Y.XmlElement>();
       seen.add(element);
       handedOffBlocks.set(uploadId, seen);
