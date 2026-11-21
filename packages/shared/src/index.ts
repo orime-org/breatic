@@ -870,10 +870,10 @@ export {
   type FrameGridScanReason, type FrameRate, type SourceDecodeKey, type VariableFrameRateFacts,
 } from "@shared/upload/frame-grid-rate.js";
 export {
-  GRID_RULES_VERSION, audioGridEnd, decodePrerollFrames, gridFilterChain, gridFrameTime, gridLandingLate, gridRangeFrames, gridRangeTimes,
+  GRID_RULES_VERSION, audioGridEnd, decodePrerollFrames, gridFilterChain, gridLandingLate,
   gridSeekPosition, planFrameGrid, sourceKeyframeStats,
-  type AudioLastPacket, type DecodePrerollInput, type FrameGrid, type FrameGridInput, type GridFrameRange, type GridLanding,
-  type GridSeekInput, type GridTimeRange, type SeekGrid, type SourceKeyframeStats, type SourcePacket,
+  type AudioLastPacket, type DecodePrerollInput, type FrameGrid, type FrameGridInput, type GridLanding,
+  type GridSeekInput, type SeekGrid, type SourceKeyframeStats, type SourcePacket,
 } from "@shared/upload/frame-grid.js";
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the user is whoever opens the list, in their own language.

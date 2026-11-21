@@ -4,9 +4,6 @@
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import {
-  gridFrameTime,
-  gridRangeFrames,
-  gridRangeTimes,
   gridSeekPosition,
   planFrameGrid,
 } from "../frame-grid.js";
@@ -24,11 +21,6 @@ const fpsArb = fc.constantFrom(...FPS);
 /** A rational's value. */
 function value(r: FrameRate): number {
   return r.numerator / r.denominator;
-}
-
-/** Exact a/b === c/d by cross-multiplication. */
-function same(a: FrameRate, b: FrameRate): boolean {
-  return BigInt(a.numerator) * BigInt(b.denominator) === BigInt(b.numerator) * BigInt(a.denominator);
 }
 
 /** Milliseconds as an exact rational. */
@@ -88,14 +80,6 @@ describe("frame grid rules, property tests (frame-grid design §4.1)", () => {
 });
 
 describe("frame-number conversion, property tests (frame-grid design §7.16)", () => {
-  it("N01: grid frame i is at exactly i/fps", () => {
-    fc.assert(
-      fc.property(fpsArb, fc.integer({ min: 0, max: 10_000_000 }), (fps, i) => {
-        expect(same(gridFrameTime(i, fps), { numerator: i * fps.denominator, denominator: fps.numerator })).toBe(true);
-      }),
-    );
-  });
-
   it("N01: the decode start is never later than the target frame's source time", () => {
     fc.assert(
       fc.property(
@@ -125,18 +109,6 @@ describe("frame-number conversion, property tests (frame-grid design §7.16)", (
           }
         },
       ),
-    );
-  });
-
-  it("N01: a frame range and its grid-time range convert into each other", () => {
-    fc.assert(
-      fc.property(fpsArb, fc.integer({ min: 0, max: 1_000_000 }), fc.integer({ min: 1, max: 100_000 }), (fps, start, length) => {
-        const range = { start, end: start + length };
-        const times = gridRangeTimes(range, fps);
-        expect(same(times.start, gridFrameTime(range.start, fps))).toBe(true);
-        expect(same(times.end, gridFrameTime(range.end, fps))).toBe(true);
-        expect(gridRangeFrames(times, fps)).toEqual(range);
-      }),
     );
   });
 });

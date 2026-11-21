@@ -8,7 +8,6 @@ import {
   audioGridEnd,
   decodePrerollFrames,
   gridFilterChain,
-  gridFrameTime,
   gridLandingLate,
   gridSeekPosition,
   planFrameGrid,
@@ -262,11 +261,6 @@ describe("source keyframe statistics (frame-grid design §3.2 item 7, §7.16)", 
 describe("frame-number conversion (frame-grid design §7.16)", () => {
   const elst: SourceKeyframeStats = { earliestKeyframeTime: -0.36, maxKeyframeInterval: 0.48, allKeyframes: false };
   const grid25 = { fps: { numerator: 25, denominator: 1 }, gridStart: ZERO, realFrameCount: 105 };
-
-  it("N01: grid frame i is at exactly i/fps", () => {
-    expect(gridFrameTime(3, { numerator: 30000, denominator: 1001 })).toEqual({ numerator: 1001, denominator: 10000 });
-    expect(gridFrameTime(0, { numerator: 30, denominator: 1 })).toEqual({ numerator: 0, denominator: 1 });
-  });
 
   it("N02: a seek position before the earliest keyframe packet plus the largest keyframe interval gives no -ss", () => {
     // Threshold -0.36 + 0.48 = 0.12 s; frame 3 seeks to 2/25 = 0.08 s.

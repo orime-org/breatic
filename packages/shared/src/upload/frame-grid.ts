@@ -79,18 +79,6 @@ export interface SourceKeyframeStats {
   allKeyframes: boolean;
 }
 
-/** A grid frame range [start, end). */
-export interface GridFrameRange {
-  start: number;
-  end: number;
-}
-
-/** A grid time range [start, end) in exact seconds. */
-export interface GridTimeRange {
-  start: FrameRate;
-  end: FrameRate;
-}
-
 /** The grid facts a seek needs. */
 export interface SeekGrid {
   fps: FrameRate;
@@ -312,42 +300,6 @@ export function gridFilterChain(input: { gridStart: FrameRate; fps: FrameRate; s
     `fps=${input.fps.numerator}/${input.fps.denominator}:start_time=0:round=near:eof_action=pass`,
     `trim=start_frame=${input.startFrame}:end_frame=${input.endFrame}`,
   ].join(',');
-}
-
-/**
- * Grid time of frame i: exactly i / fps (§7.16).
- * @param frame - Grid frame number.
- * @param fps - Grid frame rate.
- * @returns The reduced rational time in seconds.
- * @throws {Error} When fps has a zero part.
- */
-export function gridFrameTime(frame: number, fps: FrameRate): FrameRate {
-  const rate = exact(fps);
-  if (rate.n === 0n) throw new Error('frame rate must be non-zero');
-  return toRational({ n: BigInt(frame) * rate.d * (rate.n < 0n ? -1n : 1n), d: rate.n < 0n ? -rate.n : rate.n });
-}
-
-/**
- * A frame range [k0, k1) as grid time [k0/fps, k1/fps).
- * @param range - Grid frame range.
- * @param fps - Grid frame rate.
- * @returns The exact grid time range.
- * @throws {Error} When fps has a zero part.
- */
-export function gridRangeTimes(range: GridFrameRange, fps: FrameRate): GridTimeRange {
-  return { start: gridFrameTime(range.start, fps), end: gridFrameTime(range.end, fps) };
-}
-
-/**
- * A grid time range back to frame numbers; a time off the grid goes to the nearest slot, a half away from zero.
- * @param times - Grid time range.
- * @param fps - Grid frame rate.
- * @returns The grid frame range.
- * @throws {Error} When a rational has a zero denominator.
- */
-export function gridRangeFrames(times: GridTimeRange, fps: FrameRate): GridFrameRange {
-  const rate = exact(fps);
-  return { start: Number(roundNear(mul(exact(times.start), rate))), end: Number(roundNear(mul(exact(times.end), rate))) };
 }
 
 /**
