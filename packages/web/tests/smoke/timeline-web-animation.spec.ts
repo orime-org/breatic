@@ -10,7 +10,6 @@
  * mid-run previewing the result. Each case spends one real model run, so every check that needs a finished result
  * shares the one run its case makes.
  */
-import { spawn } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
@@ -22,6 +21,7 @@ import { dataOf } from '../helpers/api';
 import { YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
 import { MOTION_RUN_MS, acceptedRowId, executeInMotion, motionDetails, motionListTab, waitMotionFinished } from '../helpers/motion';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
+import { runRepoScript } from '../helpers/repo-script';
 import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, openSpaceById, visibleSpace } from '../helpers/space';
 import {
@@ -963,11 +963,10 @@ test('a run cancelled from In progress moves to Failed as Cancelled, is not offe
 
     // The Timeline is never offered a cancelled run.
     await openTimeline(page, spaceId);
-    const listed = page.waitForResponse((response) => new URL(response.url()).pathname === '/api/v1/timeline/results' && response.ok());
     await visibleSpace(page).getByTestId('timeline-add-web-animation').click();
-    await listed;
     const picker = page.getByTestId('timeline-web-animation-picker');
-    await expect(picker).toBeVisible();
+    // Once the list has been read (its empty state or a row of another case shows), the cancelled run is not in it.
+    await expect(picker.getByText('This Project has no web animations yet').or(picker.locator('[data-testid^="timeline-picker-row-"]')).first()).toBeVisible();
     await expect(picker.getByTestId(`timeline-picker-row-${id}`)).toHaveCount(0);
     await picker.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(picker).toHaveCount(0);
@@ -1002,18 +1001,8 @@ test('a run cancelled from In progress moves to Failed as Cancelled, is not offe
  * @throws {Error} When the script fails or moves another number of runs.
  */
 async function fileAsTimelineMade(projectId: string, timelineId: string, executionIds: string[]): Promise<void> {
-  const output = await new Promise<string>((resolveOutput, reject) => {
-    const child = spawn('pnpm', ['exec', 'tsx', '--tsconfig', 'packages/server/tsconfig.json', 'scripts/seed-smoke-timeline-made-runs.ts'], {
-      cwd: resolve(__dirname, '../../../..'), stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000,
-    });
-    let stdout = ''; let stderr = '';
-    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-    child.on('error', reject);
-    child.on('close', (code) => { if (code === 0) resolveOutput(stdout); else reject(new Error(`Filing the runs as Timeline-made failed (${code}): ${stderr}`)); });
-    child.stdin.end(JSON.stringify({ projectId, timelineSpaceId: timelineId, executionIds }));
-  });
-  expect((JSON.parse(output) as { moved: number }).moved).toBe(executionIds.length);
+  const filed = await runRepoScript<{ moved: number }>('scripts/seed-smoke-timeline-made-runs.ts', { projectId, timelineSpaceId: timelineId, executionIds }, 'Filing the runs as Timeline-made');
+  expect(filed.moved).toBe(executionIds.length);
 }
 
 /**
