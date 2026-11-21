@@ -229,7 +229,8 @@ async function seek(c: Canvas, file: string, fraction: number): Promise<number> 
 }
 
 /**
- * Open a tool from a node's Tools submenu.
+ * Open a tool from a node's Tools submenu and wait until its controls work: the node plays its original while the
+ * presentation is still being prepared, and the panel enables its controls only once a version is selected.
  * @param c - The canvas.
  * @param file - The source.
  * @param tool - The tool id.
@@ -242,6 +243,7 @@ async function openTool(c: Canvas, file: string, tool: string): Promise<void> {
   await c.page.getByTestId(`node-menu-tool-${tool}`).click();
   await expect(c.page.getByRole('menu')).toHaveCount(0, { timeout: 5_000 });
   await expect(c.page.getByTestId('mini-tool-panel-title')).toBeVisible();
+  await expect(c.page.getByTestId('mini-tool-panel').getByText('Preparing video…')).toHaveCount(0, { timeout: 5 * 60_000 });
 }
 
 /**
@@ -438,7 +440,8 @@ test('split: two cut points give three videos that add up to the source @needs-i
     }
     await expect(secondCut).toHaveValue('1.5');
     await secondCut.press('Tab');
-    await expect(firstCut).toHaveValue('1.5');
+    // A row shows the millisecond start of the grid frame its time lands in: 1.5 s is inside frame 37 at 25 fps.
+    await expect(firstCut).toHaveValue('1.48');
     await expect(secondCut).toHaveValue(firstBefore);
     // The first ArrowLeft on a handle moves it one frame back.
     const handle0 = c.page.getByTestId('video-cut-handle-0');
@@ -513,7 +516,7 @@ test('split: a 30 fps video previews a segment between frames and keeps typed ro
     await c.page.mouse.down();
     await c.page.mouse.move(track.x + track.width + 40, dragged.y + dragged.height / 2, { steps: 8 });
     await c.page.mouse.up();
-    await expect(c.page.getByTestId('video-cut-1')).toHaveValue(/^5\.96666\d$/);
+    await expect(c.page.getByTestId('video-cut-1')).toHaveValue('5.967');
     // A row left showing text that is no number keeps Run blocked after another row is removed.
     const runButton = c.page.getByTestId('mini-tool-run');
     await expect(runButton).toBeEnabled();
