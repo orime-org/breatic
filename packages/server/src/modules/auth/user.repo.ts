@@ -55,6 +55,17 @@ export async function getUserById(userId: string, tx?: DbTx): Promise<UserEntity
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
+/**
+ * Whether an account was ever created, deleted accounts included.
+ * @param userId - The account.
+ * @param tx - The enclosing transaction.
+ * @returns True when a row exists for it.
+ */
+export async function accountEverExisted(userId: string, tx: DbTx): Promise<boolean> {
+  const rows = await tx.select({ id: users.id }).from(users).where(eq(users.id, userId)).limit(1);
+  return rows.length > 0;
+}
+
 /** An account's facts the billing service reads, deleted accounts included. */
 export interface AccountFacts {
   userId: string;

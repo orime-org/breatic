@@ -7,7 +7,7 @@
  * and its lot in one transaction, answers the lot and when it was granted, and
  * answers the same for any repeat. A payment whose lot already exists is
  * answered with that lot; a receipt with other figures under the same id is a
- * conflict; an account that does not exist is refused.
+ * conflict; an account that never existed is refused, a deleted one is not.
  */
 
 import { randomUUID } from "node:crypto";
@@ -110,6 +110,19 @@ describe("grantPayment", () => {
 
     expect(answer).toEqual({ httpStatus: 409, body: { code: "receipt_conflict" } });
     expect(await sql`SELECT count(*)::int AS n FROM credit_lots WHERE source_id = ${paymentId}`).toEqual([{ n: 0 }]);
+  });
+
+  it("grants a deleted account's payment", async () => {
+    const userId = await account();
+    await sql`UPDATE users SET deleted_at = now() WHERE id = ${userId}`;
+    const paymentId = randomUUID();
+
+    const answer = await grantPayment(paymentId, request(userId));
+
+    expect(answer.httpStatus).toBe(200);
+    const body = answer.body as { lotId: string };
+    expect(await sql`SELECT id FROM credit_lots WHERE source_id = ${paymentId}`).toEqual([{ id: body.lotId }]);
+    expect(await sql`SELECT user_id FROM payment_receipts WHERE id = ${paymentId}`).toEqual([{ user_id: userId }]);
   });
 
   it("refuses an account that does not exist", async () => {

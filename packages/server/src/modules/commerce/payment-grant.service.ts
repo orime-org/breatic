@@ -10,7 +10,7 @@
 
 import { enqueueAdsConversion, fingerprint, logger, trackServerEvent, type PaymentGrantRequest } from "@breatic/core";
 import { creditLotRepo, creditLotService, creditSourceRepo } from "@breatic/domain";
-import { getUserById } from "@server/modules/auth/user.repo.js";
+import { accountEverExisted } from "@server/modules/auth/user.repo.js";
 import { answerOnce } from "@server/modules/commerce/commerce-request.service.js";
 import type { StoredAnswer } from "@server/modules/commerce/commerce-request.repo.js";
 import * as paymentReceiptRepo from "@server/modules/commerce/payment-receipt.repo.js";
@@ -68,7 +68,7 @@ function reportPurchase(paymentId: string, request: PaymentGrantRequest): void {
  * Grant a payment once, answering the lot it opened.
  * @param paymentId - The payment, which is also its credit source's id.
  * @param request - What was paid and for how many credits.
- * @returns 200 with the lot and when it was granted; 404 `account_not_found`; 409 `receipt_conflict`; 422 for a reused key.
+ * @returns 200 with the lot and when it was granted, a deleted account's included; 404 `account_not_found` for an account that never existed; 409 `receipt_conflict`; 422 for a reused key.
  * @throws {Error} When the database fails.
  */
 export async function grantPayment(paymentId: string, request: PaymentGrantRequest): Promise<StoredAnswer> {
@@ -76,7 +76,7 @@ export async function grantPayment(paymentId: string, request: PaymentGrantReque
   const answer = await answerOnce(
     { key: `grant:${paymentId}`, kind: "grant", hash: fingerprint("POST", ROUTE, paymentId, request) },
     async (tx) => {
-      if ((await getUserById(request.userId, tx)) === null) {
+      if (!(await accountEverExisted(request.userId, tx))) {
         return { status: "refused", httpStatus: 404, body: { code: "account_not_found" } };
       }
       await creditSourceRepo.claimSource({ id: paymentId, kind: "payment" }, tx);
