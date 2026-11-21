@@ -218,4 +218,9 @@ describe("the billing contract, product side", () => {
       RUNS,
     );
   });
+
+  it("refuses the billing service's own listener's signer here", async () => {
+    const answer = await call(suite.baseUrl, `/internal/v1/commerce/accounts/${randomUUID()}`, { admin: "product", secret: COMMERCE_SECRET });
+    expect(answer.status).toBe(401);
+  });
 });
