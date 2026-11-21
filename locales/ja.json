@@ -2610,7 +2610,6 @@
       "signingInAs": "{email} としてサインイン",
       "continue": "続行",
       "switchAccount": "別のアカウントを使う",
-      "processing": "breatic デスクトップにサインインしています…",
       "handedTitle": "breatic デスクトップに戻りました",
       "handedBody": "このページは閉じてかまいません。デスクトップアプリが開かない場合は、下のボタンを押してください。",
       "openApp": "breatic デスクトップを開く",
