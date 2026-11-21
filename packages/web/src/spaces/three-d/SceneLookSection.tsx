@@ -318,7 +318,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
         {checking ? <span className='text-xs text-muted-foreground' data-testid='scene-look-checking'>{t('spaces.threeD.look.checking')}</span>
           : uploadPercent !== null && uploadPercent !== undefined
             ? <>
-              <span className='grid size-8 place-items-center rounded-chrome-sm border border-swatch-border text-2xs tabular-nums text-muted-foreground'
+              <span className='grid h-8 min-w-8 place-items-center rounded-chrome-sm border border-swatch-border px-1 text-2xs tabular-nums text-muted-foreground'
                 data-testid='scene-look-uploading'>{`${uploadPercent}%`}</span>
               <span className='text-xs text-muted-foreground'>{t('spaces.threeD.taskList.running')}</span>
             </>
