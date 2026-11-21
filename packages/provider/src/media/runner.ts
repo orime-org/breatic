@@ -941,6 +941,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         ...signal,
       }, undefined, llmKeys);
     } catch (error) {
+      // What the description was billed rides on the error, marked with whose keys sent it, as a media submit's is.
+      markCostsOf(error, paid);
       // The same rules as a media submit: a lasting answer fails the run, a passing one is retried by the caller.
       if (error instanceof NoUpstreamAvailable) {
         if (error.reasons.every((r) => r.kind !== "failed" || lasting(r.failure))) return failed({ ...ticket, costs: [...ticket.costs, ...error.costs.map(paid)] }, error);

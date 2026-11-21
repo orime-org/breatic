@@ -7,7 +7,7 @@ import fc from "fast-check";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
 import type { Cost } from "../../cost.js";
-import { SendNotAccepted, UpstreamRequestRejected } from "../../errors.js";
+import { costsOf, SendNotAccepted, UpstreamRequestRejected } from "../../errors.js";
 import type { KeySet } from "../../index.js";
 import { createProvider, type Provider } from "../../provider.js";
 import { accountKeys, deploymentKeyOf, keyFailureOf, malformedKeyArb, printableKeyArb, settled, textOf } from "../../__tests__/keys-harness.js";
@@ -237,6 +237,22 @@ describe("the ticket records whose keys each step runs on (critical path)", () =
     const described = expectState(await runner.send(stored(planned.ticket), { ...live(), keys, llmKeys }), "send");
     expect(described.step.kind).toBe("element");
     expect(auths(or)).toEqual(["Bearer acct-or"]);
+  });
+
+  it.each([
+    ["our keys beside the account's media keys", undefined, "deployment"],
+    ["the account's own LLM key", accountKeys({ openrouter: "acct-or" }), "account"],
+  ] as const)("marks what a description thrown back has billed with whose keys paid it, on %s", async (_label, llmKeys, payer) => {
+    const { runner } = started();
+    or.answer(() => ({
+      status: 200,
+      body: { id: "gen-1", usage: { cost: 0.0007 }, choices: [{ index: 0, message: { role: "assistant", content: "" }, finish_reason: "error", error: { code: 502, message: "Upstream died" } }] },
+    }));
+    const keys = accountKeys({ wavespeed: "acct-ws" });
+    const planned = expectState(await runner.plan("kling-elements", { prompt: "{{ref:elements:1}} walks", params: { elements: [imageUrl] } }, { mode: "default" }, planOptions(keys, llmKeys) as never), "send");
+    const error = await runner.send(stored(planned.ticket), { ...live(), keys, ...(llmKeys === undefined ? {} : { llmKeys }) }).catch((e: unknown) => e);
+    expect(error).toBeInstanceOf(SendNotAccepted);
+    expect(costsOf(error)).toEqual([expect.objectContaining({ state: "known", usd: 0.0007, payer })]);
   });
 
   it("refuses a billing lookup of an accepted prediction handed another owner's keys, and asks with the account's key otherwise", async () => {
