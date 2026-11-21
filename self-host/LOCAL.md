@@ -263,7 +263,7 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 
 Replace every `YOUR_...` value. The shared secret must exactly match the Cloudflare secret, and both sides must name the same bucket. Do not interchange the public read URL and S3 endpoint. Omit trailing slashes from base URLs and never commit credentials.
 
-If you enable web animation, also set `WEB_ANIMATION_PREVIEW_BASE_URL` to the HTTPS address that serves the Worker's preview route, ideally a domain of its own, and `INGEST_KEY_SEAL_PUBLIC_KEY` to the public half of a key pair whose private half goes into the Worker with `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` (`.env.docker` shows how to make it). The Worker holds no model key: each run's keys travel sealed with the job, so the model key (such as `OPENROUTER_API_KEY`) is set on the server only.
+If you enable web animation, also set `WEB_ANIMATION_PREVIEW_BASE_URL` to the HTTPS address that serves the Worker's preview route, ideally a domain of its own, and `INGEST_KEY_SEAL_PUBLIC_KEY` to the public half of a key pair whose private half goes into the Worker with `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` (`.env.docker` shows how to make it). The Worker holds no model key: each run's keys travel sealed with the job, so the model key (such as `OPENROUTER_API_KEY`) is set only in the application's `.env`, which the worker reads at each submit, and never in the Worker.
 
 The Worker does not need to call back into the local application. Personal use therefore does not require router port forwarding, a tunnel or a public domain for the application.
 

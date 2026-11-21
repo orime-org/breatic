@@ -111,8 +111,9 @@ function generationSent(legacy: LegacyRows): boolean {
  * @throws {StillRunning} When the run is running upstream, or no reading place is free for a description.
  * @throws {MediaRunFailed} When provider answered the run failed.
  * @throws {DeadlinePassed} When the deadline passed before a step could be sent, or cut a call.
- * @throws {AccountKeyFailure} `account_key_missing` when a key row the task holds was replaced or deleted; nothing is
- *   sent, and our keys are never used instead.
+ * @throws {AccountKeyFailure} `account_key_missing` when the media key row was replaced or deleted, or the language-model
+ *   row was and a step (the prompt rewrite or a description) asks for its key; nothing is sent, and our keys are never
+ *   used instead.
  * @throws {Error} When the model is not in the catalog, a text param is longer than its cap or shorter than its least
  *   length once cleaned, or the task's route is not one `routeSchema` accepts.
  */

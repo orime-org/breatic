@@ -149,7 +149,7 @@ export function useRunCheck(
     ({ text: creditText, detail: creditDetail } = ownKeyCredit(plan.data?.payer ?? 'self', t, describedOnCredits));
   } else if (project === undefined || !plan.isPending) {
     // Nothing prints until the plan says whose key runs it, so a figure never flashes before "no credits". A plan
-    // that failed to load prices on the platform key, which the server charges by when it cannot read one either.
+    // that failed to load prices on the platform key; the server still runs the call on the keys it resolves.
     creditText = estimate ? creditEstimateText(estimate, t) : undefined;
   }
   return { creditText, creditDetail, refusalText, latestRefusal };

@@ -248,7 +248,8 @@ export type MessagePart =
      * turn the server stopped because it was shutting down (inner#1717). The
      * account-key reasons are a turn on the payer's own key that failed
      * (inner#1953): the key was refused, its row is gone, or its upstream could
-     * not be reached; the user is told to top up or replace the key.
+     * not be reached; the user is told which upstream and whose key, and what to do: change or top up the key, pick
+     * another upstream, or run it again later.
      */
     reason?: "too_long" | "shutdown" | ChatKeyFailureReason;
     /** The upstream whose key failed, for an account-key reason. */

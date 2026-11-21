@@ -38,7 +38,7 @@ export function toolFailed(forModel: string, userKey: FailureLine, cause?: unkno
 const ACCOUNT_KEY_FACTS: Readonly<Record<string, string>> = {
   invalid: "refused the key as invalid; asking again will not help until the key is replaced in BYOK settings",
   no_balance: "says the key's account has no balance left; asking again will not help until that account is topped up",
-  model_not_found: "says this key cannot use the model this step needs, which that account's own settings decide; asking again will not help",
+  model_not_found: "says it does not offer the model this step needs on this key; asking again will not help",
   rate_limited: "is rate-limiting the key; asking again after a short wait may work",
 };
 

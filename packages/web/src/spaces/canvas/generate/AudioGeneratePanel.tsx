@@ -57,7 +57,7 @@ interface AudioGeneratePanelProps {
    * needed, and a second lookup is a second chance to answer differently.
    */
   currentModel: ModelEntry | undefined;
-  /** The run's estimate as printed beside the star; undefined until it resolves. */
+  /** The run's estimate as printed beside the star, or the short name of the payer's key beside the key mark; undefined until it resolves. */
   creditText: string | undefined;
   /** On the payer's key, the full sentence its short name stands for (inner#1953). */
   creditDetail?: string;
@@ -171,7 +171,7 @@ interface AudioGeneratePanelProps {
  * @param root0.models - The tts and audio models to offer.
  * @param root0.model - The selected model id.
  * @param root0.currentModel - That model's catalog entry.
- * @param root0.creditText - The run's estimate as printed beside the star.
+ * @param root0.creditText - The run's estimate as printed beside the star, or the short name of the payer's key.
  * @param root0.creditDetail - On the payer's key, the full sentence its short name stands for.
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
  * @param root0.promptShown - Whether this run takes the prompt; beside a lyrics box, the style box is drawn only then.

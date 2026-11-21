@@ -40,7 +40,7 @@ interface VideoGeneratePanelProps {
   model: string;
   /** What a submission would carry, forwarded to the picker. */
   params: Readonly<Record<string, unknown>>;
-  /** The run's estimate as printed beside the star; undefined until it resolves. */
+  /** The run's estimate as printed beside the star, or the short name of the payer's key beside the key mark; undefined until it resolves. */
   creditText: string | undefined;
   /** On the payer's key, the full sentence its short name stands for (inner#1953). */
   creditDetail?: string;

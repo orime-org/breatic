@@ -50,7 +50,7 @@ export interface MessagesPlan {
   candidates: MessagesCandidate[];
 }
 
-/** A refusal of the payer's own key that asking again cannot change, read by the upstream's own reader (inner#1953). */
+/** A failure of the payer's own key or its upstream, read by the upstream's own reader (inner#1953); `lasting` says whether asking again can change it. */
 export interface AccountKeyRefusal {
   upstream: string;
   kind: AccountKeyFailureKind;
