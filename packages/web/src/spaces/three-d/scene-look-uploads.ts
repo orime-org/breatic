@@ -394,6 +394,11 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
     },
     settled(settlement) {
       const key = keyOf(settlement.spaceId, settlement.objectId, settlement.part);
+      // An earlier upload whose row is already freed claims its picture first, even while a later one on the part sends.
+      if (ended.delete(`${key}\n${settlement.picture}`)) {
+        tell(settlement.outcome);
+        return;
+      }
       const entry = entries.get(key);
       if (entry !== undefined && entry.picture === undefined) {
         // A picture the studio already held is announced while its ticket is still being answered.
@@ -404,7 +409,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
         entries.delete(key);
         tell(settlement.outcome);
         changed();
-      } else if (ended.delete(`${key}\n${settlement.picture}`)) tell(settlement.outcome);
+      }
     },
     subscribe(listener) {
       listeners.add(listener);
