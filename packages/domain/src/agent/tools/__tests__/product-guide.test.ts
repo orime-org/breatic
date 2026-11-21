@@ -1010,7 +1010,7 @@ describe("what the guide says about each surface", () => {
   it("says what the read-only notice counts and what the leave prompt covers", () => {
     const wrong = section("When something is wrong");
     expect(wrong).toMatch(/every browser tab that has the space open counts, the user's own included/);
-    expect(wrong).toMatch(/local Canvas or Document edits have not synced/);
+    expect(wrong).toMatch(/local Canvas, Document or Motion edits \(such as an annotation\) have not synced/);
     expect(wrong).toMatch(/background Space tabs of the current Project/);
     expect(wrong).toMatch(/connection banner's refresh button asks/);
     expect(wrong).toMatch(/browser's own refresh or tab close uses its native confirmation/);
