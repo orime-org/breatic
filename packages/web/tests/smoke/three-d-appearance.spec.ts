@@ -301,6 +301,9 @@ test('a picture from the computer uploads onto the part it was chosen for @needs
   const id = await sceneWithBox(page, 'scene-look-upload');
   try {
     await page.getByTestId('scene-look-part-0').click();
+    // A step of the user's own, which undo takes back once the picture is on.
+    await setPartColor(page, '#336699');
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: { color: '#336699' } }]);
     await roomForUploads(1);
     await page.getByTestId('scene-look-choose-image').click();
     await page.getByTestId('scene-image-picker-local').click();
@@ -313,12 +316,17 @@ test('a picture from the computer uploads onto the part it was chosen for @needs
       const [look] = await committedLooks(page, id);
       return typeof look?.['0']?.map === 'string' && look['0'].map !== 'none';
     }, { timeout: 60_000 }).toBe(true);
-    // The picture shows on the part at white, its colours its own.
-    await expect.poll(async () => (await rendered(page))[0].parts['0'], { timeout: 60_000 }).toMatchObject({ map: true, color: '#ffffff' });
+    await expect.poll(async () => (await rendered(page))[0].parts['0'].map, { timeout: 60_000 }).toBe(true);
     await expect(page.getByTestId('scene-look-remove-image')).toBeVisible();
 
     const [uploaded] = await committedLooks(page, id);
     const assetId = uploaded?.['0']?.map as string;
+
+    // Collab put the picture on, so it is in nobody's undo: undo takes back the colour and leaves the picture.
+    await visibleSpace(page).getByRole('button', { name: 'Undo', exact: true }).click();
+    await expect.poll(() => committedLooks(page, id)).toEqual([{ 0: { map: assetId } }]);
+    // With no colour of its own, the picture shows on the part at white, its colours its own.
+    await expect.poll(async () => (await rendered(page))[0].parts['0'], { timeout: 60_000 }).toMatchObject({ map: true, color: '#ffffff' });
 
     await page.getByTestId('scene-look-remove-image').click();
     await expect.poll(() => committedLooks(page, id)).toEqual([{}]);

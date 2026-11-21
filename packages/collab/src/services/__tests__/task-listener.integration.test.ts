@@ -264,6 +264,9 @@ async function readRestored(docName: string): Promise<{ note: unknown; version: 
   }
 }
 
+/** How the listeners settled every part picture, in order. */
+const settlements: Omit<SceneLookSettledControlEvent, "type" | "ts">[] = [];
+
 /**
  * Start a listener on one instance.
  * @param c - The case.
@@ -272,9 +275,6 @@ async function readRestored(docName: string): Promise<{ note: unknown; version: 
  * @param settings - Overrides.
  * @returns The listener.
  */
-/** How the listeners settled every part picture, in order. */
-const settlements: Omit<SceneLookSettledControlEvent, "type" | "ts">[] = [];
-
 function listen(
   c: Case,
   hocuspocus: Hocuspocus,
@@ -929,8 +929,8 @@ describe("stored 3D part pictures (inner#1693 design 6.3)", () => {
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
-  it("applies one upload once, even when its event comes again after the part went back to its starting picture", async () => {
-    const { c, event } = await sceneCase(START);
+  it("applies and settles one upload once, even when its event comes again after the part went back to its starting picture", async () => {
+    const { c, event, spaceId } = await sceneCase(START);
     const first = await publishPictures(c, [event]);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, first));
@@ -938,6 +938,7 @@ describe("stored 3D part pictures (inner#1693 design 6.3)", () => {
     const again = await publishPictures(c, [event]);
     await until(() => handled(c.streamKey, again));
     expect(await partMap(c.docName)).toBe(START);
+    expect(settlements.filter((r) => r.spaceId === spaceId)).toHaveLength(1);
   });
 
   it("writes nothing on a part someone gave another picture, and tells the uploader why", async () => {

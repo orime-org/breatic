@@ -366,3 +366,17 @@ describe('picking twice for one part', () => {
     expect(lookOf(doc)).toEqual({ 0: { map: OTHER } });
   });
 });
+
+describe('a part row waiting for its uploaded picture', () => {
+  it('hands the section a new upload lookup when the look changes, so a waiting row reads again once the picture shows', () => {
+    const { doc, rerender } = panel();
+    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { color: '#ff0000' } } as never, Symbol(), true, NAME);
+    rerender();
+    const before = captured.section!.uploadPercentOf;
+    rerender();
+    expect(captured.section!.uploadPercentOf).toBe(before);
+    applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: NEW } } as never, Symbol(), true, NAME);
+    rerender();
+    expect(captured.section!.uploadPercentOf).not.toBe(before);
+  });
+});

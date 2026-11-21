@@ -989,6 +989,19 @@ describe("a finish this server drove — a picture uploaded for a 3D part (inner
     expect(events).toHaveLength(2);
     expect(new Set(events.map((e) => e.uploadKey))).toEqual(new Set([key]));
   });
+
+  it("refuses a success whose part picture event was lost", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { purpose: "scene_look", object_id: crypto.randomUUID(), part: "3", start_map: null });
+
+    const xadd = vi
+      .spyOn(getStreamRedis(), "xadd")
+      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
+    // The job throws, so the queue delivers it again and the picture is announced then.
+    await expect(report(completed(key))).rejects.toThrow();
+    xadd.mockRestore();
+    expect(await sceneLookEventsFor(`project-${seed.projectId}/3d-${seed.spaceId}`)).toEqual([]);
+  });
 });
 
 describe("a finish this server drove — an upload the backend opened", () => {
