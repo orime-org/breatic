@@ -101,7 +101,7 @@ export const DocumentPendingMedia = React.memo(function DocumentPendingMedia({
         : percent === null
           ? t(STATUS_MESSAGE[status.kind])
           : t('spaces.document.media.uploadingPercent', { percent });
-  const retry = (status.kind === 'failed' && status.failure.retryable) || (status.kind === 'serverFailed' && status.retry);
+  const retry = (status.kind === 'failed' || status.kind === 'serverFailed') && status.retry;
   const remove = status.kind === 'failed' || status.kind === 'serverFailed' || status.kind === 'notFinished';
 
   return (

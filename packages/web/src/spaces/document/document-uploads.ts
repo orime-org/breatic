@@ -33,6 +33,7 @@ export interface PendingBlock {
     readonly caption: string;
     readonly mediaWidth?: number;
     readonly mediaHeight?: number;
+    readonly uploadHome?: string;
   };
 }
 
@@ -45,6 +46,7 @@ export interface PendingBlock {
  * @param size - Its pixel size, when known before the upload ends.
  * @param size.mediaWidth - Its width.
  * @param size.mediaHeight - Its height.
+ * @param home - The Document it is made in, the only one its result is written into (breatic#1574).
  * @returns The block.
  */
 export function pendingBlock(
@@ -53,8 +55,9 @@ export function pendingBlock(
   name: string,
   caption: string,
   size: { mediaWidth?: number; mediaHeight?: number } = {},
+  home?: string,
 ): PendingBlock {
-  return { type, props: { url: '', uploadId, name, caption, ...size } };
+  return { type, props: { url: '', uploadId, name, caption, ...size, ...(home !== undefined && { uploadHome: home }) } };
 }
 
 /** What the file entries need from the page. */
@@ -70,6 +73,8 @@ export interface FileUploadsDeps {
    * (inner#1790): asked before any file is admitted. Left out, it always can.
    */
   readonly canAdd?: () => boolean;
+  /** The body's document name, written on every block it makes (breatic#1574). */
+  readonly home?: string;
 }
 
 /** Admitted files: their blocks, and what starts their uploads once the blocks are in. */
@@ -119,7 +124,7 @@ export function createFileUploads(deps: FileUploadsDeps): FileUploads {
           continue;
         }
         const type = fileToNodeSpec(file).nodeType as MediaBlockType;
-        admitted.push({ file, block: pendingBlock(type, newId(), file.name, '') });
+        admitted.push({ file, block: pendingBlock(type, newId(), file.name, '', {}, deps.home) });
       }
       if (admitted.length === 0) return null;
       return {

@@ -210,6 +210,7 @@ function createDocumentEditor(
   const clearListeners = new Set<() => void>();
   const evictListeners = new Set<() => void>();
   const target = inputs.uploadTarget;
+  const home = target === undefined ? undefined : docName.documentSpace(target.projectId, target.spaceId);
   const uploads =
     target === undefined
       ? null
@@ -225,6 +226,7 @@ function createDocumentEditor(
           toast.warning(t(key, params));
         },
         start: uploads.start,
+        ...(home !== undefined && { home }),
         // A pending block is an add, and its upload is a request whose
         // result lands in the body: neither starts while the Space cannot
         // take one (inner#1790, design 5.2).
@@ -267,6 +269,7 @@ function createDocumentEditor(
     ...(uploads !== null && {
       onCanvasPaste: {
         start: uploads.start,
+        ...(home !== undefined && { home }),
         notPasted: (count: number) => {
           toast.warning(t('spaces.document.media.notPasted', { count }));
         },

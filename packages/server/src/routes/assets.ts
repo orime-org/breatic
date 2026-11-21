@@ -591,7 +591,8 @@ assets.post(
 
     // Finishing lasts as long as the Worker takes, bounded by the upload's two
     // hours, so it runs as a job and the browser learns the ending from the
-    // status query (inner#1367 §4.2a). The key is the job id: a browser that
+    // status query (inner#1367 §4.2a), or, for a Document body block, from
+    // collab writing it into the block (breatic#1574). The key is the job id: a browser that
     // did not hear 202 sends this again, and a job with that id already queued
     // or kept takes no second one.
     try {

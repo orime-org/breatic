@@ -10,8 +10,9 @@
  * ingest Worker, never by us.
  *
  * Two lanes start here. The canvas names the node the result goes to and
- * reads the outcome off that node's task list; the document body names no
- * node and reads the outcome from the upload status query under the key.
+ * reads the outcome off that node's task list; a Document body names its
+ * block's upload_id, and the server announces the outcome on the task-events
+ * stream for collab to write into the block (breatic#1574).
  */
 
 import {
@@ -119,8 +120,8 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
       { ...defaultJobOpts(), attempts: 1 },
     );
   } catch (err) {
-    // A node's row is already on every open canvas, and a body's block is
-    // asking the status query; either way the upload has to read as ended.
+    // A node's row is already on every open canvas, and a body's block waits
+    // for the server's ending; either way the upload has to read as ended.
     logger.error({ err, key: opened.key, projectId }, "url_ingest_enqueue_failed");
     const settled = await ingestReportService.applyIngestReport({
       storageKey: opened.key,

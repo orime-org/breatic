@@ -132,6 +132,54 @@ describe("applyDocumentUpload", () => {
   });
 });
 
+describe("applyDocumentUpload over any body", () => {
+  it("writes only the blocks waiting for the upload and leaves every other block as it was", () => {
+    const spec = fc.record({
+      kind: fc.constantFrom("image", "video", "audio"),
+      uploadId: fc.constantFrom("u1", "u2"),
+      uploadHome: fc.constantFrom(HOME, "project-p/document-other", ""),
+      url: fc.constantFrom("", "https://cdn.example/kept.png"),
+      nested: fc.boolean(),
+    });
+    fc.assert(
+      fc.property(fc.array(spec, { maxLength: 6 }), fc.constantFrom(processing, completed, failed), (specs, event) => {
+        const doc = new Y.Doc();
+        const group = new Y.XmlElement("blockGroup");
+        documentBodyFragment(doc).insert(0, [group]);
+        const elements: { element: Y.XmlElement; waits: boolean }[] = [];
+        for (const { kind, nested, ...attrs } of specs) {
+          const media = new Y.XmlElement(kind);
+          for (const [key, value] of Object.entries({ ...attrs, uploadState: "", uploadFailure: "" })) media.setAttribute(key, value);
+          const container = new Y.XmlElement("blockContainer");
+          if (nested) {
+            // A media block nested under a paragraph's row.
+            const paragraph = new Y.XmlElement("paragraph");
+            const children = new Y.XmlElement("blockGroup");
+            const inner = new Y.XmlElement("blockContainer");
+            inner.insert(0, [media]);
+            children.insert(0, [inner]);
+            container.insert(0, [paragraph, children]);
+          } else {
+            container.insert(0, [media]);
+          }
+          group.insert(group.length, [container]);
+          elements.push({ element: media, waits: attrs.uploadId === "u1" && attrs.uploadHome === HOME && attrs.url === "" });
+        }
+        const before = elements.map(({ element }) => ({ ...element.getAttributes() }));
+
+        const wrote = applyDocumentUpload(documentBodyFragment(doc), event);
+
+        expect(wrote).toBe(elements.filter(({ waits }) => waits).length);
+        elements.forEach(({ element, waits }, i) => {
+          if (!waits) expect(element.getAttributes()).toEqual(before[i]);
+          else if (event.state === "completed") expect(element.getAttribute("url")).toBe("https://cdn.example/a.png");
+          else expect(element.getAttribute("uploadState")).toBe(event.state);
+        });
+      }),
+    );
+  });
+});
+
 describe("documentUploadFailure", () => {
   it("maps a fetch cause to the body's reason and retryability", () => {
     expect(documentUploadFailure("unsupported_type")).toEqual({ reason: "unsupportedType", retryable: false });

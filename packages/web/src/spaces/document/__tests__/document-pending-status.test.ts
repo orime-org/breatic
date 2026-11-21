@@ -25,7 +25,7 @@ describe('on the uploader\'s page', () => {
   it('failed: the failure, which says whether a retry can help', () => {
     expect(
       pendingStatus({ entry: { phase: 'failed', failure: FAILURE }, access: 'granted', refused: false, claim: null }),
-    ).toEqual({ kind: 'failed', failure: FAILURE });
+    ).toEqual({ kind: 'failed', failure: FAILURE, retry: FAILURE.retryable });
   });
 
   it('done while the page may write: still uploading until the write lands', () => {

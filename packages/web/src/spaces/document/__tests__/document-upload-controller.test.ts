@@ -20,13 +20,12 @@ import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent, landDocumentUpload } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
 import {
   createUploadController,
-  stampUploadHome,
   type AttachedBody,
   type UploadOutcome,
   type UploadController,
@@ -510,31 +509,32 @@ describe('failure and retry', () => {
     expect(world.controller.entry('u2')?.phase).toBe('uploading');
   });
 
-  it('a retry names the Document on a block whose name was refused when it started (breatic#1574)', async () => {
-    const home = 'project-p/document-s';
-    const world = open(true, home);
-    pastePending(world, 'u1');
-    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
-    world.uploads.get('u1')!.resolve({ ok: false, failure: { reason: 'spaceFull', retryable: true } });
-    await settle();
-
-    world.controller.retry('u1', 'u2');
-
-    const homes: unknown[] = [];
-    const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
-      el.toArray().forEach((child) => {
-        if (!(child instanceof Y.XmlElement)) return;
-        if (child.nodeName === 'image') homes.push(child.getAttribute('uploadHome'));
-        walk(child);
-      });
-    };
-    walk(documentBodyFragment(world.doc));
-    // Collab writes only a block that names its Document.
-    expect(homes).toEqual([home]);
-  });
 });
 
 describe('handing the upload to the server (breatic#1574)', () => {
+  it('lets the upload go once collab has landed its block: nothing is left to retry', async () => {
+    const world = open();
+    pastePending(world, 'u1');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
+    await settle();
+    expect(world.controller.entry('u1')).toEqual({ phase: 'handedOff' });
+
+    world.peer.transact(() => {
+      const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+        el.toArray().forEach((child) => {
+          if (!(child instanceof Y.XmlElement)) return;
+          if (child.nodeName === 'image') landDocumentUpload(child, { url: URL_Z });
+          walk(child);
+        });
+      };
+      walk(documentBodyFragment(world.peer));
+    });
+    await settle();
+
+    expect(world.controller.entry('u1')).toBeUndefined();
+  });
+
   it('ends this page\'s part: nothing is written, the source is kept and the tab-close guard lets go', async () => {
     const world = open();
     pastePending(world, 'u1');
@@ -548,19 +548,6 @@ describe('handing the upload to the server (breatic#1574)', () => {
     expectEverywhere(world, [PENDING('u1')]);
   });
 
-  it('names the Document the upload belongs to on its blocks only, outside every undo step', () => {
-    const world = open();
-    pastePending(world, 'u1');
-    world.manager.stopCapturing();
-    pastePending(world, 'u9', 'Other');
-    world.manager.stopCapturing();
-    stampUploadHome(world.doc, 'u1', 'project-p/document-s');
-    expect(homes(world.peer)).toEqual(['project-p/document-s', undefined]);
-    // The one undo takes the second paste away, not the name.
-    undo(world);
-    expect(yImages(world.doc)).toEqual([PENDING('u1')]);
-    expect(homes(world.doc)).toEqual(['project-p/document-s']);
-  });
 });
 
 /**
@@ -576,27 +563,6 @@ function serverAttrs(doc: Y.Doc): Record<string, unknown>[] {
       if (child.nodeName === 'image') {
         const a = child.getAttributes() as Record<string, unknown>;
         out.push(Object.fromEntries(['uploadState', 'uploadFailure', 'uploadRetryable'].filter((k) => a[k] !== undefined).map((k) => [k, a[k]])));
-      }
-      walk(child);
-    });
-  };
-  walk(documentBodyFragment(doc));
-  return out;
-}
-
-/**
- * The `uploadHome` of each image in a doc.
- * @param doc - The doc.
- * @returns Their homes, in order.
- */
-function homes(doc: Y.Doc): (string | undefined)[] {
-  const out: (string | undefined)[] = [];
-  const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
-    el.toArray().forEach((child) => {
-      if (!(child instanceof Y.XmlElement)) return;
-      if (child.nodeName === 'image') {
-        const home = child.getAttribute('uploadHome');
-        out.push(typeof home === 'string' && home !== '' ? home : undefined);
       }
       walk(child);
     });

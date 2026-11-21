@@ -98,6 +98,20 @@ interface Medium {
 /**
  * Every media block in the document, nested ones included.
  * @param editor - The editor.
+ * @returns The Document each one names as its home.
+ */
+function homes(editor: Editor): unknown[] {
+  const out: unknown[] = [];
+  editor.prosemirrorView!.state.doc.descendants((node) => {
+    if (['image', 'video', 'audio'].includes(node.type.name)) out.push(node.attrs['uploadHome']);
+    return true;
+  });
+  return out;
+}
+
+/**
+ * The media blocks in a body.
+ * @param editor - The editor.
  * @returns Their props.
  */
 function media(editor: Editor): Medium[] {
@@ -234,7 +248,18 @@ describe('media that stay as they are', () => {
     await settled();
 
     expect(media(editor)).toEqual([{ type: 'image', url: '', uploadId: 'u1', caption: 'Hero' }]);
+    // Collab writes only a block that names its Document.
+    expect(homes(editor)).toEqual(['doc-a']);
     expect(stillUploading).not.toHaveBeenCalled();
+  });
+
+  it('a medium fetched in from an address names the Document it is pasted into', async () => {
+    const editor = open(OURS, sink(), { docName: 'doc-a', onStillUploading: vi.fn() });
+
+    pasteFormats(editor, { 'text/html': '<img src="https://elsewhere.example/a.png">' });
+    await settled();
+
+    expect(homes(editor)).toEqual(['doc-a']);
   });
 });
 

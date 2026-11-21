@@ -97,8 +97,8 @@ describe('the frame', () => {
 
 describe('a failure', () => {
   it.each<[PendingStatus, string]>([
-    [{ kind: 'failed', failure: FAILURE }, 'cover.png · Upload failed'],
-    [{ kind: 'failed', failure: { reason: 'tooLarge', retryable: false } }, 'cover.png · Exceeds the upload size limit'],
+    [{ kind: 'failed', failure: FAILURE, retry: true }, 'cover.png · Upload failed'],
+    [{ kind: 'failed', failure: { reason: 'tooLarge', retryable: false }, retry: false }, 'cover.png · Exceeds the upload size limit'],
     [{ kind: 'peerFailed' }, 'cover.png · Upload failed'],
   ])('%o names the file and the reason in one line', (status, said) => {
     draw(status);
@@ -107,7 +107,7 @@ describe('a failure', () => {
   });
 
   it('says the reason alone when the block has a caption', () => {
-    draw({ kind: 'failed', failure: FAILURE }, 'Hero');
+    draw({ kind: 'failed', failure: FAILURE, retry: true }, 'Hero');
     expect(screen.getByTestId('doc-pending-failure').textContent).toBe('Upload failed');
   });
 
@@ -121,7 +121,7 @@ describe('a failure', () => {
     ['empty', 'The file is empty'],
     ['unreachable', 'The address won’t open'],
   ])('%s says %s', (reason, said) => {
-    draw({ kind: 'failed', failure: { reason, retryable: false } }, 'Hero');
+    draw({ kind: 'failed', failure: { reason, retryable: false }, retry: false }, 'Hero');
     expect(screen.getByTestId('doc-pending-failure').textContent).toBe(said);
   });
 });
@@ -150,8 +150,8 @@ describe('its buttons', () => {
 
   it.each<[PendingStatus, string[]]>([
     [{ kind: 'uploading', progress: null }, []],
-    [{ kind: 'failed', failure: FAILURE }, ['doc-pending-retry', 'doc-pending-remove']],
-    [{ kind: 'failed', failure: { ...FAILURE, retryable: false } }, ['doc-pending-remove']],
+    [{ kind: 'failed', failure: FAILURE, retry: true }, ['doc-pending-retry', 'doc-pending-remove']],
+    [{ kind: 'failed', failure: { ...FAILURE, retryable: false }, retry: false }, ['doc-pending-remove']],
     [{ kind: 'waitingDemoted' }, []],
     [{ kind: 'waitingRefused' }, []],
     [{ kind: 'peerUploading' }, []],
@@ -166,7 +166,7 @@ describe('its buttons', () => {
   });
 
   it('retry and remove call back', () => {
-    const { onRetry, onRemove } = draw({ kind: 'failed', failure: FAILURE });
+    const { onRetry, onRemove } = draw({ kind: 'failed', failure: FAILURE, retry: true });
     fireEvent.click(screen.getByTestId('doc-pending-retry'));
     fireEvent.click(screen.getByTestId('doc-pending-remove'));
     expect(onRetry).toHaveBeenCalledTimes(1);

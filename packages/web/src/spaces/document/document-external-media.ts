@@ -223,7 +223,7 @@ export function documentPastedMediaExtension(
         const uploadId = newId();
         queued.push({ uploadId, url: url as string });
         settle();
-        return { ...props, url: '', uploadId };
+        return { ...props, url: '', uploadId, ...(options?.docName != null && { uploadHome: options.docName }) };
       },
       leaveOut: (count) => {
         if (count <= 0) return;

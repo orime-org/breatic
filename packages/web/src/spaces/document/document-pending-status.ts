@@ -19,7 +19,7 @@ export type PendingStatus =
   /** This page is running it; `progress` is the share sent when known. */
   | { readonly kind: 'uploading'; readonly progress: number | null }
   /** This page ran it and it failed. */
-  | { readonly kind: 'failed'; readonly failure: UploadFailure }
+  | { readonly kind: 'failed'; readonly failure: UploadFailure; readonly retry: boolean }
   /** The server has it and has not ended it; whether it ran out of time is the server's to settle, as on a canvas node. */
   | { readonly kind: 'processing' }
   /** The server ended it as failed; `retry` where this page holds the source and it can help. */
@@ -79,7 +79,7 @@ export function pendingStatus(facts: PendingFacts): PendingStatus {
   if (block?.state === 'processing') return { kind: 'processing' };
   if (entry !== undefined) {
     if (entry.phase === 'handedOff') return { kind: 'processing' };
-    if (entry.phase === 'failed') return { kind: 'failed', failure: entry.failure };
+    if (entry.phase === 'failed') return { kind: 'failed', failure: entry.failure, retry: canRetry(entry) };
     if (entry.phase === 'done' && facts.access === 'denied') {
       return facts.refused ? { kind: 'waitingRefused' } : { kind: 'waitingDemoted' };
     }

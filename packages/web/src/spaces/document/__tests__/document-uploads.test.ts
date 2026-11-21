@@ -75,6 +75,14 @@ describe('admission', () => {
 });
 
 describe('the blocks', () => {
+  it('name the Document they were made in, so their result is written into them (breatic#1574)', () => {
+    const deps: FileUploadsDeps = { maxUploadBytes: () => 1000, refuse: vi.fn(), start: vi.fn(), home: 'project-p/document-s' };
+
+    const prepared = createFileUploads(deps).prepare([file('a.png', 'image/png')]);
+
+    expect((prepared!.blocks[0] as { props: Record<string, unknown> }).props['uploadHome']).toBe('project-p/document-s');
+  });
+
   it('are pending blocks of each file\'s kind, named after it, each with its own upload', () => {
     const { files } = uploads();
 
