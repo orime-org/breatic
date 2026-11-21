@@ -4521,5 +4521,32 @@
       "videoLoading": "{track}：影片載入中…",
       "videoUnavailable": "{track}：影片不可用"
     }
+  },
+  "desktop": {
+    "connect": {
+      "title": "連線到 breatic",
+      "continue": "繼續",
+      "connecting": "正在連線…",
+      "unreachableTitle": "連不上 breatic",
+      "retry": "重試",
+      "change": "換個伺服器"
+    },
+    "errors": {
+      "scheme": "區域網路或公網位址需要 HTTPS，請依自架指南設定",
+      "unreachable": "連不上這個位址",
+      "notBreatic": "這個位址不是 breatic 伺服器",
+      "certificate": "這台伺服器的憑證不受信任，請依自架指南在這台電腦上信任憑證"
+    },
+    "menu": {
+      "file": "檔案",
+      "switchServer": "切換伺服器…",
+      "back": "上一頁",
+      "forward": "下一頁"
+    },
+    "leave": {
+      "message": "有尚未儲存的變更，確定要離開嗎？",
+      "leave": "離開",
+      "stay": "留下"
+    }
   }
 }

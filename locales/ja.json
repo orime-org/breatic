@@ -4521,5 +4521,32 @@
       "videoLoading": "{track}：動画を読み込み中…",
       "videoUnavailable": "{track}：動画を利用できません"
     }
+  },
+  "desktop": {
+    "connect": {
+      "title": "breatic に接続",
+      "continue": "続行",
+      "connecting": "接続しています…",
+      "unreachableTitle": "breatic に接続できません",
+      "retry": "再試行",
+      "change": "別のサーバーを使う"
+    },
+    "errors": {
+      "scheme": "LAN またはインターネットのアドレスには HTTPS が必要です。セルフホストガイドに従って設定してください。",
+      "unreachable": "このアドレスに接続できません",
+      "notBreatic": "このアドレスは breatic サーバーではありません",
+      "certificate": "このサーバーの証明書は信頼されていません。セルフホストガイドに従ってこのコンピューターで信頼してください。"
+    },
+    "menu": {
+      "file": "ファイル",
+      "switchServer": "サーバーを切り替え…",
+      "back": "戻る",
+      "forward": "進む"
+    },
+    "leave": {
+      "message": "保存されていない変更があります。移動しますか？",
+      "leave": "移動する",
+      "stay": "とどまる"
+    }
   }
 }

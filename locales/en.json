@@ -4521,5 +4521,32 @@
       "videoLoading": "{track}: video loading…",
       "videoUnavailable": "{track}: video unavailable"
     }
+  },
+  "desktop": {
+    "connect": {
+      "title": "Connect to breatic",
+      "continue": "Continue",
+      "connecting": "Connecting…",
+      "unreachableTitle": "Can't reach breatic",
+      "retry": "Retry",
+      "change": "Use another server"
+    },
+    "errors": {
+      "scheme": "A LAN or internet address needs HTTPS. Set it up as the self-hosting guide describes.",
+      "unreachable": "Can't reach this address",
+      "notBreatic": "This address is not a breatic server",
+      "certificate": "This server's certificate is not trusted. Trust it on this computer as the self-hosting guide describes."
+    },
+    "menu": {
+      "file": "File",
+      "switchServer": "Switch server…",
+      "back": "Back",
+      "forward": "Forward"
+    },
+    "leave": {
+      "message": "You have unsaved changes. Leave anyway?",
+      "leave": "Leave",
+      "stay": "Stay"
+    }
   }
 }

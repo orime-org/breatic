@@ -4521,5 +4521,32 @@
       "videoLoading": "{track}: 동영상 불러오는 중…",
       "videoUnavailable": "{track}: 동영상을 사용할 수 없음"
     }
+  },
+  "desktop": {
+    "connect": {
+      "title": "breatic에 연결",
+      "continue": "계속",
+      "connecting": "연결하는 중…",
+      "unreachableTitle": "breatic에 연결할 수 없습니다",
+      "retry": "다시 시도",
+      "change": "다른 서버 사용"
+    },
+    "errors": {
+      "scheme": "LAN 또는 인터넷 주소에는 HTTPS가 필요합니다. 셀프 호스팅 가이드에 따라 설정하세요.",
+      "unreachable": "이 주소에 연결할 수 없습니다",
+      "notBreatic": "이 주소는 breatic 서버가 아닙니다",
+      "certificate": "이 서버의 인증서를 신뢰할 수 없습니다. 셀프 호스팅 가이드에 따라 이 컴퓨터에서 인증서를 신뢰하세요."
+    },
+    "menu": {
+      "file": "파일",
+      "switchServer": "서버 전환…",
+      "back": "뒤로",
+      "forward": "앞으로"
+    },
+    "leave": {
+      "message": "저장되지 않은 변경 사항이 있습니다. 나가시겠습니까?",
+      "leave": "나가기",
+      "stay": "머무르기"
+    }
   }
 }

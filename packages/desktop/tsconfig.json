@@ -1,0 +1,30 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "outDir": "./dist",
+    "types": [
+      "node"
+    ],
+    "lib": [
+      "ES2023",
+      "DOM"
+    ],
+    "baseUrl": ".",
+    "paths": {
+      "@desktop/*": [
+        "./src/*"
+      ],
+      "@shared/*": [
+        "../shared/src/*"
+      ],
+      "@locales/*": [
+        "../../locales/*"
+      ]
+    }
+  },
+  "include": [
+    "src/**/*.ts",
+    "tsup.config.ts",
+    "vitest.config.ts"
+  ]
+}

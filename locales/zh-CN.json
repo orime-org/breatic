@@ -4521,5 +4521,32 @@
       "videoLoading": "{track}：视频加载中…",
       "videoUnavailable": "{track}：视频不可用"
     }
+  },
+  "desktop": {
+    "connect": {
+      "title": "连接到 breatic",
+      "continue": "继续",
+      "connecting": "正在连接…",
+      "unreachableTitle": "连不上 breatic",
+      "retry": "重试",
+      "change": "换个服务器"
+    },
+    "errors": {
+      "scheme": "局域网或公网地址需要 HTTPS，请按自部署指南配置",
+      "unreachable": "连不上这个地址",
+      "notBreatic": "这个地址不是 breatic 服务器",
+      "certificate": "这台服务器的证书不受信任，请按自部署指南在这台电脑上信任证书"
+    },
+    "menu": {
+      "file": "文件",
+      "switchServer": "切换服务器…",
+      "back": "后退",
+      "forward": "前进"
+    },
+    "leave": {
+      "message": "有未保存的改动，确定离开吗？",
+      "leave": "离开",
+      "stay": "留下"
+    }
   }
 }
