@@ -312,6 +312,9 @@ export type {
   ApiError,
 } from "@shared/types/api.js";
 
+// ── Desktop client links (#1599) ───────────────────────────────────
+export { ASSET_DOWNLOAD_PARAM, APP_ROUTE_PREFIXES, isAppPath } from "@shared/desktop-links.js";
+
 // ── API Schemas ─────────────────────────────────────────────────────
 export {
   normalizeEmail,
