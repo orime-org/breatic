@@ -975,7 +975,7 @@ export interface TimelineExecution {
   attempt: number;
   /** The id of the attempt allowed to finish it; null when no attempt holds it. */
   fence: string | null;
-  /** The two-hour budget's end, set once at acceptance. */
+  /** The two-hour budget's end: set at acceptance, and counted again from the claim for a run that waited for a running slot. */
   deadlineAt: string;
   resultSourceVersionId: string | null;
   /** An export's registered video. */

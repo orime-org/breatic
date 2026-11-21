@@ -8,8 +8,9 @@
  * made from, with that result's frame and length, and the runner starts from it. An export runs its render job
  * (`web-animation-export.ts`).
  *
- * A pickup takes the row with a new attempt and fence (claim from queued, retry from running) and never moves the
- * original deadline. The container job is fixed once, in the row's steps, before its first submission, so every
+ * A pickup takes the row with a new attempt and fence (claim from queued, retry from running). The deadline is the one
+ * acceptance set, except that a row which waited for a running slot counts its two hours from the claim (inner#1968).
+ * The container job is fixed once, in the row's steps, before its first submission, so every
  * attempt submits the same job; each pickup reads the job before deciding to submit it. While the job runs the
  * pickup goes back to the queue.
  *
@@ -65,7 +66,7 @@ import { creationJobs, type IngestAnswer } from "@worker/handlers/timeline/web-a
 /** The step that fixes an execution's container job, written before its first submission. */
 interface JobStep {
   kind: "container_job";
-  /** The job as it is submitted; its `deadlineAt` is the execution's original deadline in epoch ms. */
+  /** The job as it is submitted; its `deadlineAt` is the execution's deadline when the job was fixed, in epoch ms. */
   request: WebAnimationJobRequest;
 }
 
