@@ -297,17 +297,20 @@ function VideoCutEditor(props: VideoToolControlsProps & { grid: VideoPlanGrid })
     if (neighbour >= 1 && neighbour < grid.frameCount) commit(moveTo(index, gridSeconds(grid, neighbour)));
   };
   /**
-   * Plays one segment in the node's player and shows it until it ends; a refused play says the media is unavailable.
-   * @param start - The segment start.
-   * @param end - The segment end.
+   * Plays one segment in the node's player and shows it until it ends; a refused play says the media is unavailable. The
+   * playback runs from its first frame's midpoint and rests on its last frame's midpoint, as every frame jump does
+   * (frames-split §4.3): a seek to a frame boundary can show the neighbouring segment's frame.
+   * @param first - The segment's first grid frame.
+   * @param end - The grid frame boundary that ends it.
    * @throws {never} A refused play is shown.
    */
-  const preview = (start: number, end: number): void => {
+  const preview = (first: number, end: number): void => {
     playback.current?.stop();
-    const next = props.onPlayRange?.(start, end);
+    const start = gridSeconds(grid, first);
+    const next = props.onPlayRange?.(frameMidpointSeconds(first, grid.fps), frameMidpointSeconds(end - 1, grid.fps));
     if (next === undefined) return;
     playback.current = next;
-    setPreviewing({ start, end });
+    setPreviewing({ start, end: gridSeconds(grid, end) });
     setPlayFailed(false);
     next.done.then(() => { if (playback.current === next) { playback.current = null; setPreviewing(null); } },
       () => { if (playback.current === next) { playback.current = null; setPreviewing(null); setPlayFailed(true); } });
@@ -349,7 +352,7 @@ function VideoCutEditor(props: VideoToolControlsProps & { grid: VideoPlanGrid })
     </VideoPlaybackStrip>
     <div className='flex items-center justify-between gap-2'><span data-testid='video-cut-count' className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.cutSummary', { cuts: segments.length - 1, segments: segments.length })}</span><AddCutButton grid={grid} starts={snapped} presentedTime={props.presentedTime} liveClock={props.liveClock} disabled={props.disabled} onAdd={add} /></div>
     {rows.length === 0 ? <p className='text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.noCuts')}</p> : <ScrollArea className='max-h-48' viewportClassName='max-h-48'><div className='grid gap-2'>{rows.map(({ id, value: cut }, index) => <div key={id} className='flex items-center gap-2'><span className='text-xs'>{index + 1}</span><VideoNumericInput value={cutRowSeconds(cut)} label={`${t('canvas.miniTool.videoUI.cutPoint')} ${index + 1}`} testId={`video-cut-${index}`} min={0} exclusiveMin max={duration} exclusiveMax disabled={props.disabled} onInvalidChange={props.onInvalidChange} onChange={(value) => type(id, value)} onSettle={settle} /><span className='text-xs'>s</span><Button variant='ghost' size='compact' disabled={props.disabled} aria-label={t('canvas.miniTool.videoUI.removeCut')} onMouseDown={(event) => event.preventDefault()} onClick={() => remove(id)}><Trash2 className='size-3.5' /></Button></div>)}</div></ScrollArea>}
-    <div className='flex min-h-8 overflow-hidden rounded-chrome border border-border'>{segments.map((segment) => <Button key={segment.outputIndex} variant={null} size={null} data-testid={`video-segment-${segment.outputIndex}`} disabled={props.onPlayRange === undefined} className='min-w-0 rounded-none border-r border-border bg-accent px-1 py-2 text-xs last:border-r-0 hover-enabled:bg-accent-strong' style={{ flexGrow: segment.end - segment.start, flexBasis: 0 }} onClick={() => preview(gridSeconds(grid, segment.start), gridSeconds(grid, segment.end))}>{segment.outputIndex + 1}</Button>)}</div>
+    <div className='flex min-h-8 overflow-hidden rounded-chrome border border-border'>{segments.map((segment) => <Button key={segment.outputIndex} variant={null} size={null} data-testid={`video-segment-${segment.outputIndex}`} disabled={props.onPlayRange === undefined} className='min-w-0 rounded-none border-r border-border bg-accent px-1 py-2 text-xs last:border-r-0 hover-enabled:bg-accent-strong' style={{ flexGrow: segment.end - segment.start, flexBasis: 0 }} onClick={() => preview(segment.start, segment.end)}>{segment.outputIndex + 1}</Button>)}</div>
     {previewing === null ? null : <div data-testid='video-segment-preview' className='flex items-center justify-between gap-2 text-xs text-muted-foreground'><span className='tabular-nums'>{t('canvas.miniTool.videoUI.segmentPreview', { start: secondsLabel(previewing.start), end: secondsLabel(previewing.end) })}</span><Button variant='outline' size='compact' onClick={() => playback.current?.stop()}>{t('canvas.miniTool.videoUI.stopPreview')}</Button></div>}
     {playFailed ? <p className='text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}
   </div>;

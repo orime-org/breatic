@@ -22,8 +22,8 @@ export interface SourceRangePlayback {
  * so a start such as 31/30 reads back as 1.033333 while that seek is in flight. The start seek of an earlier
  * playback of the same player also lands on this one's events, so seek events are not counted.
  * @param binding - The node's media binding.
- * @param start - The range start in seconds.
- * @param end - The range end in seconds.
+ * @param start - The range start in seconds; a frame range passes its first frame's midpoint (frames-split §4.3).
+ * @param end - The seconds the playback stops at and rests on; a frame range passes its last frame's midpoint.
  * @returns The playback.
  * @throws {never} A refused play rejects `done`.
  */

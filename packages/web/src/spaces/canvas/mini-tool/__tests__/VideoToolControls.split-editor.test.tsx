@@ -251,13 +251,14 @@ describe('segment preview (canvas design §4 split row preview; demo CutEditor)'
     expect(screen.queryByTestId('video-segment-3')).toBeNull();
   });
 
-  it('plays exactly that range, shows it with Stop preview, and stops on press', async () => {
+  it('plays that segment from its first frame midpoint to its last frame midpoint, shows it with Stop preview, and stops on press', async () => {
     const stop = vi.fn();
     let finish: () => void = () => undefined;
     const onPlayRange = vi.fn(() => ({ stop, done: new Promise<void>((resolve) => { finish = resolve; }) }));
     mount({ onPlayRange });
     fireEvent.click(screen.getByTestId('video-segment-1'));
-    expect(onPlayRange).toHaveBeenCalledExactlyOnceWith(1, 3);
+    // Frames 25 to 74 of the 25 fps grid: every frame jump goes to the frame midpoint (frames-split §4.3).
+    expect(onPlayRange).toHaveBeenCalledExactlyOnceWith(25.5 / 25, 74.5 / 25);
     expect(screen.getByTestId('video-segment-preview')).toHaveTextContent('Preview · 1.00 s – 3.00 s');
     fireEvent.click(screen.getByRole('button', { name: 'Stop preview' }));
     expect(stop).toHaveBeenCalledOnce();
