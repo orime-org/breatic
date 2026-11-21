@@ -58,6 +58,8 @@ const AnnotationItem = React.memo(function AnnotationItem({ item, author, active
 /** The annotation panel's props. */
 interface MotionAnnotationsPanelProps {
   threads: readonly ThreadData[];
+  /** How many live threads are unresolved, as the bar's badge counts them. */
+  openCount: number;
   /** Result ids in the execution list's order. */
   order: readonly string[];
   /** A result's row: on a loaded page, or the shown one. */
@@ -77,6 +79,7 @@ interface MotionAnnotationsPanelProps {
  * group by time; Open leaves resolved threads out, All shows them struck through.
  * @param props - The threads and the panel's state.
  * @param props.threads - The Space's threads.
+ * @param props.openCount - How many live threads are unresolved.
  * @param props.order - Result ids in the execution list's order.
  * @param props.rowOf - A result's row, for group titles.
  * @param props.activeThreadId - The thread whose card is open.
@@ -88,13 +91,12 @@ interface MotionAnnotationsPanelProps {
  * @returns The panel.
  * @throws {never} Never.
  */
-export const MotionAnnotationsPanel = React.memo(function MotionAnnotationsPanel({ threads, order, rowOf, activeThreadId, filter, onFilter, viewportRef, onOpen, onClose }: MotionAnnotationsPanelProps): React.JSX.Element {
+export const MotionAnnotationsPanel = React.memo(function MotionAnnotationsPanel({ threads, openCount, order, rowOf, activeThreadId, filter, onFilter, viewportRef, onOpen, onClose }: MotionAnnotationsPanelProps): React.JSX.Element {
   const t = useTranslation();
   const showOpen = React.useCallback((): void => onFilter('open'), [onFilter]);
   const showAll = React.useCallback((): void => onFilter('all'), [onFilter]);
   const groups = React.useMemo(() => annotationGroups(threads, { order, filter }), [threads, order, filter]);
   const live = threads.filter((thread) => thread.deletedAt === undefined);
-  const openCount = live.filter((thread) => !thread.resolved).length;
   const authorIds = React.useMemo(() => groups.flatMap((group) => group.threads.map((item) => item.thread.comments[0]?.userId ?? '')).filter(Boolean), [groups]);
   const profiles = useUserProfiles(authorIds);
   return <MotionPanel testId='motion-panel-annotations' title={t('spaces.webAnimation.annotations')} onClose={onClose}>

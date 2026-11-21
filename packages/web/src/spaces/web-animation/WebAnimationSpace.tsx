@@ -482,7 +482,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         onRefused?.(capped === null ? message : null);
         return;
       }
-      const { row: accepted } = outcome.result;
+      const accepted = outcome.result;
       // The preview keeps its result unless the answer is a succeeded row; the list opens on the row (design §7.3).
       if (accepted.status === 'succeeded') showResult(() => select({ type: 'accepted', row: accepted }));
       else select({ type: 'accepted', row: accepted });
@@ -650,7 +650,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   return <div ref={setSpaceElement} data-testid='motion-space' className='relative isolate h-full overflow-hidden bg-muted'>
     {panels.panel === 'executions' && <MotionExecutionsPanel lists={lists} tab={panels.tab} selectedId={selectedId} markedId={panels.marked} spaceId={spaceId} readOnly={readOnly}
       waitingLimits={limitsWaiting} onTab={pickTab} onPick={pickRow} onCancel={cancel} onRetry={retryRow} onClose={closePanel} />}
-    {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} order={order} rowOf={rowById} activeThreadId={activeThread?.thread.id ?? null}
+    {panels.panel === 'annotations' && <MotionAnnotationsPanel threads={threads} openCount={annotations.unresolvedCount} order={order} rowOf={rowById} activeThreadId={activeThread?.thread.id ?? null}
       filter={annotations.filter} onFilter={annotations.setFilter} viewportRef={annotations.viewportRef} onOpen={openThread} onClose={closePanel} />}
     <div ref={setPreviewArea} data-testid='motion-preview-area' className={cn('absolute bottom-[4.5rem] left-6 top-6 flex items-center justify-center', panelOpen ? 'right-[22rem]' : 'right-6')}
       style={{ containerType: 'size' }}>
