@@ -27,6 +27,8 @@ import type { SocketState } from '@web/data/yjs/use-socket';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '@web/spaces/canvas/video-presentation/types';
 import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
+import { createVideoRenderer } from '@web/spaces/canvas/video-presentation/create-video-renderer';
+import { alphaManifestQuery } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
 import { presentedBinding, presentedBundle, presentedPreparation, presentedResponse } from '@web/test-utils/video-presentation';
 
 import type * as RequestModule from '@web/data/api/request';
@@ -41,12 +43,16 @@ vi.mock('@web/data/api/request', async (importOriginal) => ({
 }));
 vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (importOriginal) => ({
   ...(await importOriginal<typeof RendererModule>()),
-  createVideoRenderer: vi.fn((host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks) => {
-    const element = document.createElement('video');
+  // Plays through the element it is given, as the real renderer does: a native version shows that element, an alpha-packed
+  // one keeps it hidden and shows the composited canvas.
+  createVideoRenderer: vi.fn((host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks, given?: HTMLVideoElement) => {
+    const element = given ?? document.createElement('video');
     element.setAttribute('src', source.presentation.playback.carrier.url);
-    host.append(element);
-    queueMicrotask(() => callbacks.ready(element, element));
-    return { dispose: () => element.remove() };
+    const surface = source.presentation.playback.kind === 'native' ? element : document.createElement('canvas');
+    if (surface instanceof HTMLCanvasElement) surface.setAttribute('data-testid', 'alpha-surface');
+    host.append(surface);
+    queueMicrotask(() => callbacks.ready(element, surface));
+    return { dispose: () => { element.remove(); surface.remove(); } };
   }),
 }));
 
@@ -84,12 +90,13 @@ async function mount(response: VideoPresentationResponse): Promise<HTMLElement> 
     <TimelineSpace projectId={PROJECT} spaceId={SPACE} readOnly={false} myRole='editor' />
   </SpaceConnectionContext.Provider></TooltipProvider></QueryClientProvider>);
   const preview = await screen.findByTestId('timeline-preview');
-  await waitFor(() => expect(preview.querySelector('video')).not.toBeNull());
+  await waitFor(() => expect(preview.querySelector('video, canvas')).not.toBeNull());
   return preview;
 }
 
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  vi.mocked(createVideoRenderer).mockClear();
   vi.mocked(timelineApi.resolveAsset).mockResolvedValue(ASSET);
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
   vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
@@ -123,5 +130,23 @@ describe('U05 the Timeline preview plays through Qp (§7.8, §7.9)', () => {
     if (original !== null) fireEvent.error(original);
     expect(await screen.findByText('Couldn\'t prepare the video')).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /retry/i })).toBeInTheDocument();
+  });
+
+  it('U05: a selected alpha-packed version plays through the canvas renderer, its composited surface in the layer', async () => {
+    const packed = { storageKey: 'timeline-packed.mp4', url: 'https://cdn.example/timeline-packed.mp4', etag: '"k"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
+    const bundle = presentedBundle(ASSET.fileUrl, { playback: { kind: 'alpha-packed', carrier: packed, manifest: { ...packed, storageKey: 'timeline-alpha.json', url: 'https://cdn.example/timeline-alpha.json', contentType: 'application/json' } } });
+    const manifest = { schemaVersion: 1 as const, packed, packedWidth: 196, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 100, y: 0, width: 96, height: 64 } };
+    const manifestKey = alphaManifestQuery(bundle, true).queryKey;
+    client.setQueryDefaults(manifestKey, { staleTime: Infinity });
+    client.setQueryData(manifestKey, manifest);
+    const preview = await mount(presentedResponse(presentedBinding(ASSET.fileUrl), { presentation: bundle }));
+    await act(async () => { await Promise.resolve(); });
+    const calls = vi.mocked(createVideoRenderer).mock.calls;
+    expect(calls.map(([, source]) => source.presentation.playback.kind)).toEqual(['alpha-packed']);
+    expect(calls[0]![1].manifest).toEqual(manifest);
+    expect(calls[0]![3]).toBeInstanceOf(HTMLVideoElement);
+    expect(preview.querySelector('[data-testid="alpha-surface"]')).not.toBeNull();
+    expect(preview.querySelector(`video[src="${ASSET.fileUrl}"]`)).toBeNull();
+    expect(screen.queryByText(/video unavailable/)).toBeNull();
   });
 });

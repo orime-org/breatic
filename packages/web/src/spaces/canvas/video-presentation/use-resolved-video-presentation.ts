@@ -22,7 +22,7 @@ export interface ResolvedVideoPresentation {
  * @returns Options that read nothing unless the version is alpha-packed.
  * @throws {never} Constructing options starts no request.
  */
-function manifestQuery(version: VideoPresentationVersion | null, active: boolean): UseQueryOptions<AlphaPackedManifest, Error, AlphaPackedManifest, readonly unknown[]> {
+export function alphaManifestQuery(version: VideoPresentationVersion | null, active: boolean): UseQueryOptions<AlphaPackedManifest, Error, AlphaPackedManifest, readonly unknown[]> {
   const alpha = version?.playback.kind === 'alpha-packed' ? version : null;
   return {
     queryKey: ['video-presentation-manifest', 1, alpha?.versionId ?? '', alpha?.playback.kind === 'alpha-packed' ? alpha.playback.manifest : null],
@@ -47,7 +47,7 @@ function manifestQuery(version: VideoPresentationVersion | null, active: boolean
 export function useResolvedVideoPresentation(projectId: string, canonicalURL: string, active: boolean): ResolvedVideoPresentation {
   const query = useQuery(videoPresentationQuery({ projectId, canonicalURL, active }));
   const selected = query.data?.presentation ?? null;
-  const manifest = useQuery(manifestQuery(selected, active));
+  const manifest = useQuery(alphaManifestQuery(selected, active));
   // Keyed on the facts the source is built from, so another change in the response keeps the renderer (§7.8 Replace).
   const canonical = query.data?.sourceBinding.canonicalURL;
   const fingerprint = query.data?.sourceBinding.contentHash;

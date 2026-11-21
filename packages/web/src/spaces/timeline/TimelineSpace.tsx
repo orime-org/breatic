@@ -455,9 +455,13 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     // Cached data stays usable when a refetch fails; only a read that never returned data fails the layer (#1410 design §6.2).
     const state = asset?.data !== undefined ? 'ready' as const : asset?.isError === true ? 'failed' as const : 'loading' as const;
     const original = state === 'ready' ? asset?.data?.fileUrl ?? null : null;
-    // A selected version plays its playback file; until then the original plays for display (§7.8 detached × Attach).
-    const fileUrl = original === null ? null : presentations.get(original)?.playbackUrl ?? original;
-    return { clipId: clip.id, fileUrl, coverUrl: asset?.data?.coverUrl ?? null, state };
+    // A selected version plays through the canvas renderer; until then the original plays for display (§7.8, §7.14).
+    const presented = original === null ? undefined : presentations.get(original);
+    const presentation = presented?.source ?? null;
+    // A selected alpha-packed version waits for its manifest, and fails with it, never falling back to the original.
+    const waiting = presented?.selected === true && presentation === null;
+    const shown = waiting ? (presented.failure === null ? 'loading' as const : 'failed' as const) : state;
+    return { clipId: clip.id, fileUrl: waiting ? null : original, presentation, coverUrl: asset?.data?.coverUrl ?? null, state: shown };
   });
   const videoSignature = JSON.stringify(videoSpecs);
   // The layer set keeps its identity while its content is unchanged, so playing on does not resync the elements.
@@ -468,7 +472,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     document, readyClipIds: readyIds, frame, onFrame: setFrame, videoLayers, enabled: true, preview,
     webLayers, webPending, webLoadTimeoutMs: webLimits?.playerLoadTimeoutMs,
   });
-  const { seek, retryVideo, retryWeb, videoElement, videoStates } = playback;
+  const { seek, retryVideo, retryWeb, videoSurface, videoStates } = playback;
   /**
    * A layer's base box in canvas pixels: its registered size contained in the canvas (#1410 design §2).
    * @param clip - The layer's clip.
@@ -505,7 +509,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     const host = videoHost.current;
     if (host === null) return;
     for (const clip of videoClips) {
-      const element = videoElement(clip.id);
+      const element = videoSurface(clip.id);
       if (element === undefined) continue;
       if (element.parentElement !== host) host.append(element);
       const index = visible.indexOf(clip);

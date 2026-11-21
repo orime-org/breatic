@@ -89,11 +89,12 @@ function guardFrameCallbacks(video: HTMLVideoElement, callbacks: VideoRendererCa
  * @param host - Effect-owned host.
  * @param carrierURL - The selected native version's carrier.
  * @param callbacks - Current instance notifications.
+ * @param given - The element to play through, when the host owns its transport; a new one otherwise.
  * @returns Resource cleanup.
  * @throws {never} Native decode failures are reported through callbacks.
  */
-function createNativeRenderer(host: HTMLElement, carrierURL: string, callbacks: VideoRendererCallbacks): VideoRendererResource {
-  const video = document.createElement('video');
+function createNativeRenderer(host: HTMLElement, carrierURL: string, callbacks: VideoRendererCallbacks, given?: HTMLVideoElement): VideoRendererResource {
+  const video = given ?? document.createElement('video');
   video.crossOrigin = 'anonymous';
   video.playsInline = true;
   video.preload = 'metadata';
@@ -170,10 +171,11 @@ function vapConfig(manifest: AlphaPackedManifest, size: PresentedSize): Record<s
  * @param host - Effect-owned host.
  * @param source - Current canonical asset and verified owned manifest.
  * @param callbacks - Current instance notifications.
+ * @param given - The element to play through, when the host owns its transport; a new one otherwise.
  * @returns Cleanup that also covers the library's asynchronous initialization.
  * @throws {never} Initialization failures are reported through callbacks.
  */
-function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks): VideoRendererResource {
+function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks, given?: HTMLVideoElement): VideoRendererResource {
   const manifest = alphaPackedManifestSchema.safeParse(source.manifest);
   if (!manifest.success || !alphaPackedManifestMatchesVersion(manifest.data, source.presentation)) {
     callbacks.error('invalid-alpha-manifest');
@@ -183,7 +185,7 @@ function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource,
   const root = document.createElement('div');
   root.style.cssText = 'width:100%;height:100%';
   host.append(root);
-  const video = document.createElement('video');
+  const video = given ?? document.createElement('video');
   let live = true;
   let suspended = false;
   let settled = false;
@@ -356,15 +358,17 @@ function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource,
  * @param host - Effect-owned presentation host.
  * @param source - The selected version and, when alpha-packed, its verified manifest.
  * @param callbacks - Identity-checked resource notifications.
+ * @param video - The element to play through, for a host that drives the transport itself (a Timeline layer); a new one
+ *   otherwise.
  * @returns Cleanup for every resource, including partially initialized ones.
  * @throws {never} Resource errors are reported through callbacks.
  */
-export function createVideoRenderer(host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks): VideoRendererResource {
+export function createVideoRenderer(host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks, video?: HTMLVideoElement): VideoRendererResource {
   const version = videoPresentationVersionSchema.safeParse(source.presentation);
   if (!version.success || version.data.sourceFingerprint !== source.sourceFingerprint) {
     callbacks.error('invalid-presentation');
     return { dispose: () => {} };
   }
   const { playback } = version.data;
-  return playback.kind === 'native' ? createNativeRenderer(host, playback.carrier.url, callbacks) : createAlphaRenderer(host, source, callbacks);
+  return playback.kind === 'native' ? createNativeRenderer(host, playback.carrier.url, callbacks, video) : createAlphaRenderer(host, source, callbacks, video);
 }
