@@ -633,6 +633,60 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
   });
 });
 
+// A retry run stores only the retried outputs, each under its original output index (execution-plan.service.ts), so the
+// runner reads an output by its index and never by its position in the stored outputs.
+describe("a retry run of outputs other than the first", () => {
+  const SPLIT3: Recipe[] = [{ kind: "segment", range: { start: 0, end: 32 } }, { kind: "segment", range: { start: 32, end: 64 } }, { kind: "segment", range: { start: 64, end: 96 } }];
+  const FRAMES3: Recipe[] = [{ kind: "frame", frameIndex: 0 }, { kind: "frame", frameIndex: 32 }, { kind: "frame", frameIndex: 64 }];
+  const NODES3 = [...NODES, "40000000-0000-4000-8000-000000000003"];
+  /**
+   * A retry plan of some outputs of a three-output run, each kept under its original output index.
+   * @param tool - The tool.
+   * @param recipes - The original run's three recipes.
+   * @param retried - The retried output indices.
+   * @param layout - The frozen layout over those indices.
+   * @returns The plan.
+   */
+  function retryPlan(tool: Tool, recipes: Recipe[], retried: number[], layout: { batches: number[][]; encodes: { outputIndex: number; chunks: { start: number; end: number }[] }[] }): Record<string, unknown> {
+    const base = plan(tool, layout, 2, recipes);
+    return { ...base, targetNodeIds: retried.map((index) => NODES3[index]!), outputSeconds: retried.map(() => 1),
+      outputs: retried.map((outputIndex) => ({ outputIndex, nodeId: NODES3[outputIndex]!, recipe: recipes[outputIndex]! })) };
+  }
+
+  it("VR01 split: retrying outputs 1 and 2 encodes each over its own range and registers it to its own index", async () => {
+    serve(retryPlan("video.split", SPLIT3, [1, 2], { batches: [[1, 2]], encodes: [] }));
+    const completion = await drive();
+    const [request] = submitted();
+    expect(request!.outputs.map(({ outputIndex, recipe }) => ({ outputIndex, recipe }))).toEqual([
+      { outputIndex: 1, recipe: segmentRecipesOf(version, SOURCE_KEY, { start: 32, end: 64 }, ENCODE, [{ start: 32, end: 64 }]).recipes[0] },
+      { outputIndex: 2, recipe: segmentRecipesOf(version, SOURCE_KEY, { start: 64, end: 96 }, ENCODE, [{ start: 64, end: 96 }]).recipes[0] },
+    ]);
+    expect(completion!.outputs.map((output) => ({ outputIndex: output.outputIndex, status: output.result?.status })))
+      .toEqual([{ outputIndex: 1, status: "registered" }, { outputIndex: 2, status: "registered" }]);
+    expect(completion!.outputs.map((output) => (output.result as { assetId?: string }).assetId))
+      .toEqual(request!.outputs.map((output) => asset(output.storageKey, true).id));
+  });
+
+  it("VR02 extract-frames: retrying output 1 reads its own grid frame and registers it to index 1", async () => {
+    serve(retryPlan("video.extract-frames", FRAMES3, [1], { batches: [[1]], encodes: [] }));
+    const completion = await drive();
+    const [request] = submitted();
+    expect(request!.outputs.map(({ outputIndex, recipe }) => ({ outputIndex, recipe })))
+      .toEqual([{ outputIndex: 1, recipe: frameRecipeOf(version, toolInputOf(version, SOURCE_KEY), 32).recipe }]);
+    expect(completion!.outputs.map((output) => ({ outputIndex: output.outputIndex, status: output.result?.status }))).toEqual([{ outputIndex: 1, status: "registered" }]);
+  });
+
+  it("VR03 split: retrying an oversized output 2 chunks its own range and stitches it to index 2", async () => {
+    const chunks = [{ start: 64, end: 80 }, { start: 80, end: 96 }];
+    serve(retryPlan("video.split", SPLIT3, [2], { batches: [], encodes: [{ outputIndex: 2, chunks }] }));
+    const completion = await drive();
+    const { recipes } = segmentRecipesOf(version, SOURCE_KEY, { start: 64, end: 96 }, ENCODE, chunks);
+    expect(h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.outputs[0]!.recipe)).toEqual(recipes.slice(0, 2));
+    expect(submitted().map((request) => request.outputs.map((output) => output.outputIndex))).toEqual([[2]]);
+    expect(completion!.outputs.map((output) => ({ outputIndex: output.outputIndex, status: output.result?.status }))).toEqual([{ outputIndex: 2, status: "registered" }]);
+  });
+});
+
 // §93 D5-12 (frames-split design §7.17 segment row 「透明源输出VP9+透明+Opus的WebM并保留奇数尺寸」, §4.3): a transparent source's
 // split output is a VP9 WebM with alpha, so its grant, declared content type and registration are WebM; an opaque one stays
 // MP4. This round's choice of the grant input (may be vetoed): `{ modality: "video", namePrefix, container: "webm" }`.

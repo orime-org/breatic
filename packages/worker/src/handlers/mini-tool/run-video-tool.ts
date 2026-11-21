@@ -80,6 +80,20 @@ function grantOf(recipe: MiniToolPlanRecipe): { modality: "image" | "video"; nam
 }
 
 /**
+ * An output's recipe by its output index: a retry run stores only the retried outputs, each under its original index, so
+ * the index is not the output's position.
+ * @param execution - The run.
+ * @param outputIndex - The output.
+ * @returns Its recipe.
+ * @throws {Error} When the run plans no such output.
+ */
+function recipeOf(execution: VideoTool, outputIndex: number): VideoTool["outputs"][number]["recipe"] {
+  const output = execution.outputs.find((item) => item.outputIndex === outputIndex);
+  if (output === undefined) throw new Error("A layout names an output the run does not plan");
+  return output.recipe;
+}
+
+/**
  * The job recipe of a planned output (§7.16, §7.17): a grid frame's PNG, cropped for a video focus crop (§5.5), or a segment
  * over its grid frames with the frozen encode, read from the frozen version's tool source.
  * @param execution - The run.
@@ -89,7 +103,7 @@ function grantOf(recipe: MiniToolPlanRecipe): { modality: "image" | "video"; nam
  * @throws {MiniToolStepFailed} When the frozen version cannot build the recipe.
  */
 function plannedOutput(execution: VideoTool, outputIndex: number): PlannedOutput {
-  const recipe = execution.outputs[outputIndex]!.recipe;
+  const recipe = recipeOf(execution, outputIndex);
   const version = execution.presentations.source;
   if (recipe.kind === "frame") return { outputIndex, ...frameRecipeOf(version, toolInputOf(version, execution.sourceKey), recipe.frameIndex, recipe.crop) };
   if (recipe.kind !== "segment") throw new Error("A frames or split run plans only frames and segments");
@@ -172,7 +186,7 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
 async function advanceEncode(execution: VideoTool, encode: VideoTool["layout"]["encodes"][number], userId: string, deadlineAt: number,
   pickup: VideoToolPickup): Promise<void> {
   const { outputIndex } = encode;
-  const recipe = execution.outputs[outputIndex]!.recipe;
+  const recipe = recipeOf(execution, outputIndex);
   if (recipe.kind !== "segment") throw new Error("Only a segment is encoded in chunks");
   const { recipes, inputs } = segmentRecipesOf(execution.presentations.source, execution.sourceKey, recipe.range, execution.container.encode, encode.chunks);
   // Each chunk is a work object (container-steps.ts, §93 D5-10), never registered: a done output is pinned
