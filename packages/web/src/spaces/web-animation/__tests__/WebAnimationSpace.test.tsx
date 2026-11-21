@@ -1232,6 +1232,20 @@ describe('the execution list\'s three tabs', () => {
     expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
   });
 
+  it('shows how far a running export has rendered beside its step, and no percent once it saves the video', async () => {
+    const source = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
+    const rendering = { ...exported(source), status: 'running', phase: 'rendering', progress: 40 };
+    const saving = { ...exported(source), id: RUNNING, actionId: RUNNING, status: 'running', phase: 'saving', progress: null };
+    listing([source], { running: [rendering, saving] });
+    show();
+    const panel = await openTab('inProgress');
+    const row = await within(panel).findByTestId(`motion-row-${EXPORT}`);
+    expect(row).toHaveTextContent(`${t('timeline.webAnimation.phase.rendering')} · 40%`);
+    const savingRow = await within(panel).findByTestId(`motion-row-${RUNNING}`);
+    expect(savingRow).toHaveTextContent(t('timeline.webAnimation.step.savingVideo'));
+    expect(savingRow.textContent).not.toContain('%');
+  });
+
   // inner#1968: a run waiting for a running slot wears the canvas's hourglass and says why, as every task list does.
   it.each([['u1', 'canvas.task.waitReasonLimit'], ['u9', 'canvas.task.waitReasonOtherLimit']])(
     'marks a run waiting for a running slot with the hourglass and why, for a run started by %s', async (actorUserId, reason) => {

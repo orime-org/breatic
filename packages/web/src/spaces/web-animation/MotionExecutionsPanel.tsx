@@ -74,14 +74,17 @@ function rowSummary(row: WebAnimationRowView, t: (key: string, params?: Record<s
 }
 
 /**
- * Where a row in progress stands: the step it is on while it runs, otherwise its status word (Queued, Cancelling).
+ * Where a row in progress stands: the step it is on while it runs, with how far a render got, otherwise its status
+ * word (Queued, Cancelling).
  * @param row - The row.
  * @param t - The translator.
  * @returns The words.
  * @throws {never} Never.
  */
 function rowStep(row: WebAnimationRowView, t: (key: string) => string): string {
-  return row.status === 'running' && row.phase !== null ? t(phaseKey(row.kind, row.phase)) : t(`timeline.webAnimation.status.${row.status}`);
+  if (row.status !== 'running' || row.phase === null) return t(`timeline.webAnimation.status.${row.status}`);
+  const step = t(phaseKey(row.kind, row.phase));
+  return row.progress === null ? step : `${step} · ${new Intl.NumberFormat(getLocale(), { style: 'percent' }).format(row.progress / 100)}`;
 }
 
 /** A row's title and summary. */
