@@ -444,7 +444,7 @@ describe('ByokDialog', () => {
 
     it.each([
       ['unsupported', 'This upstream does not report a balance.'],
-      ['forbidden', 'This key cannot read the balance.'],
+      ['forbidden', 'This key can\'t read the balance. Use a key with billing access to see it.'],
       ['no_cap', 'This key has no spending limit.'],
     ] as const)('says a %s balance in its own sentence, and neither of the others', async (state, sentence) => {
       serve(view({ keys: [{ ...WAVESPEED_KEY, lastBalanceState: state, lastBalanceAmount: null }] }));
@@ -452,21 +452,57 @@ describe('ByokDialog', () => {
       const detail = await within(dialog).findByTestId('byok-detail-wavespeed');
 
       expect(detail).toHaveTextContent(sentence);
-      for (const other of ['This upstream does not report a balance.', 'This key cannot read the balance.', 'This key has no spending limit.']) {
+      for (const other of ['This upstream does not report a balance.', 'This key can\'t read the balance. Use a key with billing access to see it.', 'This key has no spending limit.']) {
         if (other !== sentence) expect(detail).not.toHaveTextContent(other);
       }
     });
 
-    it('says a key that cannot read actual costs cannot, and says nothing of it otherwise', async () => {
+    it('says a key that cannot read actual costs cannot, and what to do, and says nothing of it otherwise', async () => {
       const user = userEvent.setup();
-      serve(view({ keys: [WAVESPEED_KEY, { ...FAL_KEY, lastConnected: true, lastFailure: null, lastBalanceState: 'forbidden', costsReadable: false }] }));
+      serve(view({ keys: [WAVESPEED_KEY, { ...FAL_KEY, lastConnected: true, lastFailure: null, lastBalanceState: 'known', lastBalanceAmount: '3.00', lastBalanceCurrency: 'USD', costsReadable: false }] }));
       const dialog = await mount();
       const wavespeed = await within(dialog).findByTestId('byok-detail-wavespeed');
-      expect(wavespeed).not.toHaveTextContent('This key cannot read actual costs.');
+      expect(wavespeed).not.toHaveTextContent('can\'t read actual costs');
 
       await user.click(within(dialog).getByTestId('byok-upstream-fal'));
 
-      expect(within(dialog).getByTestId('byok-detail-fal')).toHaveTextContent('This key cannot read actual costs.');
+      expect(within(dialog).getByTestId('byok-detail-fal')).toHaveTextContent('This key can\'t read actual costs. Use a key with billing access to see them.');
+    });
+
+    it('says a key that can read neither the balance nor the costs in one sentence with what to do', async () => {
+      const user = userEvent.setup();
+      serve(view({ keys: [WAVESPEED_KEY, { ...FAL_KEY, lastConnected: true, lastFailure: null, lastBalanceState: 'forbidden', costsReadable: false }] }));
+      const dialog = await mount();
+      await user.click(await within(dialog).findByTestId('byok-upstream-fal'));
+      const detail = within(dialog).getByTestId('byok-detail-fal');
+
+      expect(detail).toHaveTextContent('This key can\'t read the balance or actual costs. Use a key with billing access to see them.');
+      expect(detail).not.toHaveTextContent('This key can\'t read the balance. Use a key with billing access to see it.');
+      expect(detail).not.toHaveTextContent('This key can\'t read actual costs. Use a key with billing access to see them.');
+    });
+
+    it('says a check made today as today, without the date, and an older one without the year', async () => {
+      const today = new Date();
+      today.setHours(9, 5, 0, 0);
+      const older = new Date(today.getTime() - 3 * 24 * 3600 * 1000);
+      serve(view({ keys: [{ ...WAVESPEED_KEY, lastCheckedAt: today.toISOString() }, { ...FAL_KEY, lastCheckedAt: older.toISOString() }] }));
+      const user = userEvent.setup();
+      const dialog = await mount();
+      const wavespeed = await within(dialog).findByTestId('byok-detail-wavespeed');
+
+      expect(wavespeed).toHaveTextContent(/Checked today 9:05/);
+      await user.click(within(dialog).getByTestId('byok-upstream-fal'));
+      const fal = within(dialog).getByTestId('byok-detail-fal');
+      expect(fal).toHaveTextContent('Checked ');
+      expect(fal).not.toHaveTextContent(String(older.getFullYear()));
+    });
+
+    it('links to the upstream\'s key page in neutral ink, marked as opening another site', async () => {
+      const dialog = await mount();
+      const link = within(await within(dialog).findByTestId('byok-detail-wavespeed')).getByRole('link', { name: /Get a key from WaveSpeed/ });
+
+      expect(link.className).not.toContain('content-link');
+      expect(link.querySelector('svg')).not.toBeNull();
     });
 
     it('says nothing failed when the key checked was already deleted in another tab, and the key leaves the list', async () => {
@@ -702,6 +738,15 @@ describe('ByokDialog', () => {
         await user.click(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }));
 
         await waitFor(() => expect(rowOrder(dialog).indexOf('fal')).toBeGreaterThan(rowOrder(dialog).indexOf('google')));
+      });
+
+      it('asks with a destructive confirm button, as other removals do', async () => {
+        const user = userEvent.setup();
+        const dialog = await mount();
+        await user.click(await within(dialog).findByTestId('byok-upstream-fal'));
+        await user.click(within(within(dialog).getByTestId('byok-detail-fal')).getByRole('button', { name: 'Delete' }));
+
+        expect(within(await screen.findByRole('alertdialog')).getByRole('button', { name: 'Delete' }).className).toContain('status-error');
       });
 
       it('warns that tasks using it will be interrupted and lists the models that go back to the platform key', async () => {

@@ -3,6 +3,7 @@
 
 import * as React from 'react';
 import { useIsMutating, useMutation, useMutationState, useQueryClient, type QueryClient } from '@tanstack/react-query';
+import { ExternalLink } from 'lucide-react';
 import { getLocale, modelLabel, type ModelEntry, type ModelModality } from '@breatic/shared';
 
 import {
@@ -15,6 +16,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from '@web/components/ui/alert-dialog';
+import { FieldError } from '@web/components/FieldError';
 import { Badge } from '@web/components/ui/badge';
 import { Button } from '@web/components/ui/button';
 import {
@@ -393,7 +395,7 @@ function KeyField({
         </div>
         {children}
       </div>
-      {error !== null ? <p id={errorId} className='text-xs text-status-error-foreground'>{error}</p> : null}
+      {error !== null ? <FieldError id={errorId}>{error}</FieldError> : null}
     </div>
   );
 }
@@ -435,9 +437,9 @@ function UpstreamDetail({
       href={upstream.keyUrl}
       target='_blank'
       rel='noreferrer'
-      className='w-fit text-xs text-content-link underline underline-offset-2'
+      className='inline-flex w-fit items-center gap-0.5 text-xs underline underline-offset-2'
     >
-      {t('byok.getKey', { upstream: upstream.name })}
+      {t('byok.getKey', { upstream: upstream.name })}<ExternalLink className='h-3 w-3' aria-hidden='true' />
     </a>
   );
 
@@ -488,28 +490,47 @@ function UpstreamDetail({
  */
 function SavedKeyState({ saved, kind }: { saved: ByokSavedKey; kind: ByokUpstreamKind }): React.JSX.Element {
   const t = useTranslation();
-  const checkedAt = new Date(saved.lastCheckedAt).toLocaleString(getLocale(), { dateStyle: 'medium', timeStyle: 'short' });
-  const balance = saved.lastConnected ? balanceText(saved, kind, t) : null;
+  const checked = checkedText(saved.lastCheckedAt, t);
+  const costsUnreadable = saved.costsReadable === false;
+  // A key that reads neither says so once, with what to do.
+  const bothUnreadable = saved.lastConnected && saved.lastBalanceState === 'forbidden' && costsUnreadable;
+  const balance = !saved.lastConnected ? null : bothUnreadable ? t('byok.balanceAndCostsUnreadable') : balanceText(saved, kind, t);
   return (
-    <>
+    <div className='flex flex-col gap-1.5'>
       <div className='flex flex-wrap items-center gap-2 text-xs'>
         <code className='font-mono text-foreground-secondary'>{saved.displayHint}</code>
         <Badge
           variant={saved.lastConnected ? 'outline' : 'destructive'}
           className={cn(
             'rounded-chrome-sm px-1.5 py-px font-medium',
-            saved.lastConnected && 'border-status-success-border bg-status-success-bg text-status-success-foreground',
+            saved.lastConnected && 'border-status-success-border bg-status-success-bg text-foreground',
           )}
         >
           {saved.lastConnected ? t('byok.connected') : t('byok.notConnected')}
         </Badge>
-        <span className='text-muted-foreground'>{t('byok.lastChecked', { time: checkedAt })}</span>
+        <span className='text-muted-foreground'>{checked}</span>
       </div>
       {balance === null ? null : <p className='text-xs text-muted-foreground'>{balance}</p>}
-      {saved.costsReadable === false ? <p className='text-xs text-muted-foreground'>{t('byok.costsUnreadable')}</p> : null}
+      {costsUnreadable && !bothUnreadable ? <p className='text-xs text-muted-foreground'>{t('byok.costsUnreadable')}</p> : null}
       {saved.lastConnected ? null : <p className='text-xs text-status-error-foreground'>{failureText(saved.lastFailure, t)}</p>}
-    </>
+    </div>
   );
+}
+
+/**
+ * When a key was last checked, in the user's locale: the time alone for a check made today, the date with no year
+ * otherwise.
+ * @param at - The check's instant, ISO.
+ * @param t - The translator.
+ * @returns The sentence.
+ */
+function checkedText(at: string, t: Translate): string {
+  const when = new Date(at);
+  const locale = getLocale();
+  if (when.toDateString() === new Date().toDateString()) {
+    return t('byok.lastCheckedToday', { time: when.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' }) });
+  }
+  return t('byok.lastChecked', { time: when.toLocaleString(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) });
 }
 
 /**
@@ -633,6 +654,7 @@ function SavedKeyActions({
           <AlertDialogFooter>
             <AlertDialogCancel disabled={remove.isPending}>{t('common.cancel')}</AlertDialogCancel>
             <AlertDialogAction
+              variant='destructive'
               loading={remove.isPending}
               onClick={(event) => {
                 // Stays open while the request is out; success closes it.
