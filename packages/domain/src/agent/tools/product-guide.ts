@@ -999,10 +999,11 @@ export function renderProductGuide(): string {
       "when no estimate is available; and the round button with an upward arrow. On the picture panel a model " +
       `with no settings shows the pill as ${quoted(t("canvas.generatePanel.imageParams"))}; on the video and ` +
       "sound panels such a model shows no pill. When the studio runs the model on a key its payer brought, the " +
-      `estimate reads ${quoted(t("canvas.generatePanel.usesOwnKey"))} for the payer and ` +
-      `${quoted(t("canvas.generatePanel.usesStudioKey"))} for everyone else, and the run takes no credits. A run that ` +
+      `estimate shows a key mark with ${quoted(t("canvas.generatePanel.ownKeyLabel"))} for the payer and ` +
+      `${quoted(t("canvas.generatePanel.studioKeyLabel"))} for everyone else, and the run takes no credits; hovering it ` +
+      `reads ${quoted(t("canvas.generatePanel.usesOwnKey"))} or ${quoted(t("canvas.generatePanel.usesStudioKey"))}. A run that ` +
       "first describes its elements on a language model (Kling O3 with elements) pays for that description in credits " +
-      `unless the payer also brought an OpenRouter key; it then reads ${quoted(t("canvas.generatePanel.usesOwnKeyDescribing"))} ` +
+      `unless the payer also brought an OpenRouter key; hovering it then reads ${quoted(t("canvas.generatePanel.usesOwnKeyDescribing"))} ` +
       `or ${quoted(t("canvas.generatePanel.usesStudioKeyDescribing"))}.`,
     `Bringing your own keys: ${quoted(t("byok.heading"))} in the account menu on the studio pages opens a ` +
       "dialog where an account adds its own keys for upstreams (one OpenRouter key runs every language model; " +
