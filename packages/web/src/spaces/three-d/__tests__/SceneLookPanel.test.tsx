@@ -36,6 +36,12 @@ vi.mock('@web/spaces/three-d/viewport/look-texture-cache', async (importOriginal
     };
     return { read, size: (assetId: string, maxBytes: number) => read(assetId, maxBytes).catch(() => null) };
   },
+  readPictureSize: async () => ({ width: 64, height: 64, type: 'png' }),
+}));
+const uploadMedia = vi.hoisted(() => vi.fn());
+vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/upload/media-upload')>()),
+  uploadMedia,
 }));
 const captured = vi.hoisted(() => ({ section: null as null | Record<string, unknown>, picker: null as null | Record<string, unknown> }));
 vi.mock('@web/spaces/three-d/SceneLookSection', () => ({ SceneLookSection: (props: Record<string, unknown>) => { captured.section = props; return null; } }));
@@ -368,15 +374,17 @@ describe('picking twice for one part', () => {
 });
 
 describe('a part row waiting for its uploaded picture', () => {
-  it('hands the section a new upload lookup when the look changes, so a waiting row reads again once the picture shows', () => {
+  it('shows the upload until the stored picture shows on the part, then offers the part again', async () => {
+    uploadMedia.mockResolvedValue({ assetId: NEW, url: 'https://assets.example.test/u.png' });
     const { doc, rerender } = panel();
-    applySceneCommand(doc, { type: 'look', id: ID, part: '1', set: { color: '#ff0000' } } as never, Symbol(), true, NAME);
-    rerender();
-    const before = captured.section!.uploadPercentOf;
-    rerender();
-    expect(captured.section!.uploadPercentOf).toBe(before);
+    act(() => { (captured.section!.onChoosePicture as (part: string) => void)('0'); });
+    // jsdom's File has no stream(); the header read is mocked above.
+    const file = Object.assign(new File(['x'], 'pattern.png', { type: 'image/png' }), { stream: () => new ReadableStream() });
+    await act(async () => { (captured.picker!.onPickFile as (file: File) => void)(file); });
+    await flush();
+    expect((captured.section!.uploadPercentOf as (part: string) => number | null)('0')).toBe(100);
     applySceneCommand(doc, { type: 'look', id: ID, part: '0', set: { map: NEW } } as never, Symbol(), true, NAME);
     rerender();
-    expect(captured.section!.uploadPercentOf).not.toBe(before);
+    expect((captured.section!.uploadPercentOf as (part: string) => number | null)('0')).toBeNull();
   });
 });
