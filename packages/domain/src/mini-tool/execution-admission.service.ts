@@ -205,9 +205,10 @@ function frameWorkSeconds(version: VideoPresentationVersion, rates: VideoEncoder
  * @param config - The acceptance snapshot.
  * @param tool - The tool.
  * @returns The layout and each output's work seconds.
+ * @throws {AppError} When an output that cannot be chunked alone exceeds the share.
  * @throws {RangeError} When the work or the configuration is out of range.
  */
-function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], version: VideoPresentationVersion,
+export function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], version: VideoPresentationVersion,
   config: MiniToolsConfig, tool: "video.extract-frames" | "video.split" | "video.focus-crop"): { layout: FramesExecutionLayout; works: number[] } {
   const rates = videoEncoderRates(config);
   const spans = outputs.map(({ recipe }) => ("frameIndex" in recipe ? { first: recipe.frameIndex, count: 1 } : "range" in recipe ? { first: recipe.range.start, count: recipe.range.end - recipe.range.start } : { first: 0, count: 1 }));
@@ -215,6 +216,8 @@ function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], version
   const share = shareSeconds(config);
   const perJob = tool === "video.focus-crop" ? 1 : config.executions[tool].max_outputs_per_job;
   const { batches, oversized } = batchVideoRunOutputs(works, { maxOutputsPerJob: perJob, shareSeconds: share, fixedSeconds: rates.startSeconds });
+  // Only a segment is encoded in chunks; any other output over one share has no layout that fits (§5.4 limit row).
+  if (oversized.some((index) => outputs[index]!.recipe.kind !== "segment")) throw runTooLong(config);
   const encodes = oversized.map((index) => {
     const { first, count } = spans[index]!;
     const chunks = planVideoEncodeChunks({ frameCount: count, frameSeconds: frameWorkSeconds(version, rates), prerollFrames: prerollOf(version), targetSeconds: share - rates.startSeconds })
@@ -232,8 +235,17 @@ function runLayout(outputs: MiniToolPlannedRequest["outputs"][number][], version
  * @throws {AppError} When a stage exceeds the cap.
  */
 function assertWithinParallelCap(stages: readonly MiniToolStageJobs[], config: MiniToolsConfig): void {
-  const max = config.encoding.max_parallel_chunks;
-  if (stages.some((stage) => stage.jobs > max)) throw new AppError(400, t("server.mini_tool.runTooLong", { max }));
+  if (stages.some((stage) => stage.jobs > config.encoding.max_parallel_chunks)) throw runTooLong(config);
+}
+
+/**
+ * The refusal of a run that cannot be laid out within the parallel cap and the chunk share (frames-split §5.4).
+ * @param config - The acceptance snapshot.
+ * @returns The error.
+ * @throws {never} Never.
+ */
+function runTooLong(config: MiniToolsConfig): AppError {
+  return new AppError(400, t("server.mini_tool.runTooLong", { max: config.encoding.max_parallel_chunks }));
 }
 
 /**
