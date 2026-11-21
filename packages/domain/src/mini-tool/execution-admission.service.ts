@@ -269,7 +269,7 @@ async function prepare(request: MiniToolPlannedRequest): Promise<ExecutionProjec
   let outputs: MiniToolPlannedRequest["outputs"][number][];
   try {
     outputs = request.tool === "video.extract-frames"
-      ? planVideoFrames(grid, request.draft.params, maxOutputs).map(({ outputIndex, frameIndex }) => ({ outputIndex, nodeId: request.outputs[outputIndex]?.nodeId ?? "", recipe: { kind: "frame" as const, frameIndex } }))
+      ? planVideoFrames(grid, request.draft.params).map(({ outputIndex, frameIndex }) => ({ outputIndex, nodeId: request.outputs[outputIndex]?.nodeId ?? "", recipe: { kind: "frame" as const, frameIndex } }))
       : planVideoSplit(grid, request.draft.params.cuts).map(({ outputIndex, start, end }) => ({ outputIndex, nodeId: request.outputs[outputIndex]?.nodeId ?? "", recipe: { kind: "segment" as const, range: { start, end } } }));
   } catch (error) {
     if (!(error instanceof RangeError || error instanceof z.ZodError)) throw error;

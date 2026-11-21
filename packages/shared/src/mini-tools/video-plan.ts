@@ -29,13 +29,11 @@ const frameRequestSchema = z.strictObject({
  * grid frame; one output each.
  * @param source - The selected P's grid.
  * @param request - The selected frame mode and, for the current frame, its grid frame number.
- * @param maxOutputs - Optional caller-configured admission ceiling, validated; one output always fits it.
  * @returns The frame output with its stable index.
- * @throws {z.ZodError} When the grid, selection or ceiling is invalid.
+ * @throws {z.ZodError} When the grid or selection is invalid.
  * @throws {RangeError} When the current frame lies outside the grid.
  */
-export function planVideoFrames(source: VideoPlanGrid, request: VideoFrameRequest, maxOutputs?: number): VideoFrameOutput[] {
-  if (maxOutputs !== undefined) z.number().int().positive().max(Number.MAX_SAFE_INTEGER).parse(maxOutputs);
+export function planVideoFrames(source: VideoPlanGrid, request: VideoFrameRequest): VideoFrameOutput[] {
   const grid = gridSchema.parse(source);
   const selection = frameRequestSchema.parse(request);
   const frameIndex = selection.mode === "first" ? 0 : selection.mode === "last" ? grid.frameCount - 1 : selection.frameIndex!;
@@ -60,4 +58,3 @@ export function planVideoSplit(source: VideoPlanGrid, cuts: readonly number[]): 
   const boundaries = [0, ...inner, grid.frameCount];
   return boundaries.slice(0, -1).map((start, outputIndex) => ({ outputIndex, start, end: boundaries[outputIndex + 1]! }));
 }
-
