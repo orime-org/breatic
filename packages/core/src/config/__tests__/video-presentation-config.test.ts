@@ -82,15 +82,11 @@ describe('platform presentation container configuration (inner#1306)', () => {
 
   // Every video execution, every analysis and the encoder read the tool source whole, and the tool source is the edit file
   // when there is one, so each of their classes must hold a capped edit file plus the cap's 4 GB working margin.
-  it('FG-C04 runs every operation that reads the edit file whole on a class whose disk holds the cap and its margin', () => {
+  // Video executions and analyses read the tool source through the loopback reader; only the edit stitch downloads it.
+  it('FG-C04 runs the edit stitch, which downloads every edit chunk, on a class whose disk holds the cap and its margin', () => {
     const config = getMiniToolsConfig();
-    const readers = [
-      ...Object.entries(config.executions).map(([name, spec]) => [`executions.${name}`, spec.container_class] as const),
-      ...Object.entries(config.analyses).map(([name, spec]) => [`analyses.${name}`, spec.container_class] as const),
-      ['encoding.encoder', config.encoding.encoder.container_class] as const,
-    ];
-    const short = readers.filter(([, name]) => config.classes[name]!.disk_gb * 1_000_000_000 < config.presentation.max_edit_bytes + 4_000_000_000);
-    expect(short, 'operations whose class cannot hold a capped edit file').toEqual([]);
+    const disk = config.classes[config.encoding.encoder.container_class]!.disk_gb * 1_000_000_000;
+    expect(disk, 'the encoder class holds a capped edit file and its margin').toBeGreaterThanOrEqual(config.presentation.max_edit_bytes + 4_000_000_000);
   });
 
   it('rejects a presentation class whose actual instance size is not configured', () => {
