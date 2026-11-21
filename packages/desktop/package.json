@@ -7,11 +7,11 @@
   "main": "dist/main/index.js",
   "scripts": {
     "build": "tsup",
-    "dev": "tsup && BREATIC_SERVER_URL=${BREATIC_SERVER_URL:-http://localhost:8100} electron .",
+    "start": "tsup && BREATIC_SERVER_URL=${BREATIC_SERVER_URL:-http://localhost:8100} electron .",
     "dist": "tsup && node scripts/stage-app.mjs && electron-builder --config electron-builder.config.mjs",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "test": "vitest run"
   },
   "dependencies": {
     "@breatic/shared": "workspace:*",
