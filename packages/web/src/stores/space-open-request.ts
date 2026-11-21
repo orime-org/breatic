@@ -4,8 +4,8 @@
 /**
  * One request to open, or make and open, a Motion Space (#1490 design §8.5, §13.5). The Timeline's "make in Motion"
  * entry and "Open in Motion" ask for the newest Motion Space; a canvas video's "Open source animation" names its Space.
- * The one writer is `transitionSpaceOpenRequest`: the project page resolves a request and runs the effects, and the
- * Motion Space it opened takes the selection and says it handled it.
+ * The one writer is `transitionSpaceOpenRequest`: the project page resolves a request whenever the state is
+ * `requesting`, runs the effects, and the Motion Space it opened takes the selection and says it handled it.
  */
 
 import { create } from 'zustand';
@@ -41,7 +41,6 @@ export type SpaceOpenRequestEvent =
 
 /** What the project page does next. */
 export type SpaceOpenRequestEffect =
-  | { type: 'resolve'; request: SpaceOpenRequest }
   | { type: 'open_tab'; spaceId: string }
   | { type: 'create'; spaceType: 'web_animation'; name: string }
   | { type: 'toast_source_space_gone' };
@@ -69,7 +68,7 @@ export function transitionSpaceOpenRequest(state: SpaceOpenRequestState, event: 
   if (event.type === 'reset') return { state: NONE, effects: [] };
   if (event.type === 'request') {
     if (state.status === 'creating') return { state: { ...state, next: event.request }, effects: [] };
-    return { state: { status: 'requesting', request: event.request }, effects: [{ type: 'resolve', request: event.request }] };
+    return { state: { status: 'requesting', request: event.request }, effects: [] };
   }
   switch (state.status) {
     case 'none':
@@ -83,7 +82,7 @@ export function transitionSpaceOpenRequest(state: SpaceOpenRequestState, event: 
       if (event.type === 'create_failed') return { state: NONE, effects: [] };
       if (event.type !== 'created') return stay;
       if (state.next !== null) {
-        return { state: { status: 'requesting', request: state.next }, effects: [{ type: 'open_tab', spaceId: event.spaceId }, { type: 'resolve', request: state.next }] };
+        return { state: { status: 'requesting', request: state.next }, effects: [{ type: 'open_tab', spaceId: event.spaceId }] };
       }
       return { state: { status: 'opened', request: state.request, spaceId: event.spaceId }, effects: [{ type: 'open_tab', spaceId: event.spaceId }] };
     case 'opened':

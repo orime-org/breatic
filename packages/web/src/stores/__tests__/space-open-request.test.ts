@@ -28,7 +28,7 @@ const OPENED: SpaceOpenRequestState = { status: 'opened', request: newest, space
 
 describe('transitionSpaceOpenRequest — no request', () => {
   it('takes a request', () => {
-    expect(transitionSpaceOpenRequest(NONE, { type: 'request', request: newest })).toEqual({ state: REQUESTING, effects: [{ type: 'resolve', request: newest }] });
+    expect(transitionSpaceOpenRequest(NONE, { type: 'request', request: newest })).toEqual({ state: REQUESTING, effects: [] });
   });
 
   it.each([
@@ -41,7 +41,7 @@ describe('transitionSpaceOpenRequest — no request', () => {
 
 describe('transitionSpaceOpenRequest — requesting', () => {
   it('replaces the request with a newer one', () => {
-    expect(transitionSpaceOpenRequest(REQUESTING, { type: 'request', request: other })).toEqual({ state: { status: 'requesting', request: other }, effects: [{ type: 'resolve', request: other }] });
+    expect(transitionSpaceOpenRequest(REQUESTING, { type: 'request', request: other })).toEqual({ state: { status: 'requesting', request: other }, effects: [] });
   });
 
   it('opens the Space that exists', () => {
@@ -72,7 +72,7 @@ describe('transitionSpaceOpenRequest — creating', () => {
     const queued = transitionSpaceOpenRequest(CREATING, { type: 'request', request: other });
     expect(queued).toEqual({ state: { status: 'creating', request: newest, next: other }, effects: [] });
     expect(transitionSpaceOpenRequest(queued.state, { type: 'created', spaceId: N })).toEqual({
-      state: { status: 'requesting', request: other }, effects: [{ type: 'open_tab', spaceId: N }, { type: 'resolve', request: other }],
+      state: { status: 'requesting', request: other }, effects: [{ type: 'open_tab', spaceId: N }],
     });
   });
 
