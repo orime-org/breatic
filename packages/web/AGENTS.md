@@ -126,7 +126,7 @@ Invoke `/ui-demo-fidelity` ([skill](../../.claude/skills/ui-demo-fidelity/SKILL.
 
 | Kind | Words |
 |---|---|
-| Entities / types | `Studio` `Project` `Collection` `Space` `Work` `Canvas` `Document` `Timeline` `Agent` |
+| Entities / types | `Studio` `Project` `Collection` `Space` `Work` `Canvas` `Document` `Timeline` `Motion` `Agent` |
 | Roles | `Owner` `Editor` `Viewer` `Admin` `Maintainer` `Guest` |
 | Field | `Slug` (capitalised as a label; slug values stay lowercase because they are URL parts) |
 
