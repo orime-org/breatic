@@ -15,6 +15,7 @@ const shared: Options = {
   external: ["electron"],
   sourcemap: true,
   clean: false,
+  define: { __DEFAULT_SERVER_URL__: JSON.stringify(process.env.BREATIC_DEFAULT_SERVER_URL ?? "") },
   esbuildOptions(options) {
     options.alias = {
       "@desktop": resolve(import.meta.dirname, "src"),

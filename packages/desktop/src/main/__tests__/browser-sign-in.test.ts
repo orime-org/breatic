@@ -16,7 +16,7 @@ import crypto from "node:crypto";
 
 import { createBrowserSignIn, parseSignInLink } from "@desktop/main/browser-sign-in.js";
 
-const SERVER = "https://breatic.ai";
+const SERVER = "https://app.example.com";
 let now = 0;
 const openExternal = vi.fn(async (_url: string) => undefined);
 
@@ -54,7 +54,7 @@ function link(code: string, challenge: string): string {
 describe("start", () => {
   it("opens the browser on the server's desktop sign-in page with a fresh challenge", async () => {
     const { opened, challenge } = await started(flow());
-    expect(opened.origin + opened.pathname).toBe("https://breatic.ai/desktop/sign-in");
+    expect(opened.origin + opened.pathname).toBe("https://app.example.com/desktop/sign-in");
     expect(challenge).toMatch(/^[A-Za-z0-9_-]{43}$/);
     expect(opened.searchParams.has("ref")).toBe(false);
   });
@@ -137,7 +137,7 @@ describe("parseSignInLink", () => {
 
   it.each([
     "breatic://other?code=a&challenge=b",
-    "https://breatic.ai/sign-in?code=a&challenge=b",
+    "https://app.example.com/sign-in?code=a&challenge=b",
     "breatic://sign-in?code=a",
     `breatic://sign-in?code=${"c".repeat(43)}&challenge=short`,
     "not a url",

@@ -3,7 +3,7 @@
 
 /** What the connect window and the main process say to each other (#1599). */
 
-import type { DesktopStrings } from "@desktop/main/strings.js";
+import type { DesktopText } from "@desktop/main/strings.js";
 
 /** Why connecting did not happen. `cancelled`: the user chose to stay on a page with unsaved work. */
 export type ConnectReason = "scheme" | "unreachable" | "not_breatic" | "certificate" | "cancelled";
@@ -14,7 +14,7 @@ export interface ConnectInitial {
   url: string;
   reason: ConnectReason | null;
   lang: string;
-  strings: DesktopStrings;
+  text: DesktopText;
 }
 
 /** The answer to a connect request. */

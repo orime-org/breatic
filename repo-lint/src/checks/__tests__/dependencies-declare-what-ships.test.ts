@@ -37,6 +37,28 @@ describe("dependencies-declare-what-ships", () => {
     expect(findings[0]?.file).toBe("packages/web/package.json");
   });
 
+  it("lets the desktop client keep electron in devDependencies, where electron-builder requires it", () => {
+    const findings = dependenciesDeclareWhatShips.run(
+      fakeContext({
+        "packages/desktop/package.json": manifest([], ["electron"]),
+        "packages/desktop/src/preload/app.ts": "import { contextBridge } from 'electron';",
+      }),
+    );
+
+    expect(findings).toEqual([]);
+  });
+
+  it("still reports electron in a devDependency of any other package", () => {
+    const findings = dependenciesDeclareWhatShips.run(
+      fakeContext({
+        "packages/web/package.json": manifest([], ["electron"]),
+        "packages/web/src/x.ts": "import { app } from 'electron';",
+      }),
+    );
+
+    expect(findings).toHaveLength(1);
+  });
+
   it("reports a stylesheet importing from devDependencies, which no JavaScript linter sees", () => {
     const findings = dependenciesDeclareWhatShips.run(
       fakeContext({

@@ -17,6 +17,10 @@ const bridge: DesktopBridge = {
   isBrowserSignInPending: () => ipcRenderer.invoke("sign-in:pending") as Promise<boolean>,
   takeBrowserSignInResult: () => ipcRenderer.invoke("sign-in:take") as Promise<BrowserSignInResult | null>,
   onBrowserSignInResult: (listener) => {
+    /**
+     * Forward the client's notice to the page's listener.
+     * @returns Nothing.
+     */
     const handler = (): void => listener();
     ipcRenderer.on("sign-in:arrived", handler);
     return () => {

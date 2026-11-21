@@ -21,17 +21,30 @@ import { createLogger } from "@desktop/main/logger.js";
 import { buildMenuTemplate } from "@desktop/main/menu.js";
 import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure } from "@desktop/main/navigation.js";
 import { checkServer, normalizeServerUrl, readServerConfig, resolveServerUrl, writeServerConfig } from "@desktop/main/server-config.js";
-import { stringsFor } from "@desktop/main/strings.js";
+import { desktopText } from "@desktop/main/strings.js";
 
-/** The address an official build offers on first launch. */
-const DEFAULT_SERVER_URL = "https://breatic.ai";
+/**
+ * The address offered on first launch. Which host a build talks to is a
+ * deployment decision, so it is injected at build time from
+ * `BREATIC_DEFAULT_SERVER_URL`; a build without one offers an empty field.
+ */
+declare const __DEFAULT_SERVER_URL__: string;
+const DEFAULT_SERVER_URL = __DEFAULT_SERVER_URL__;
 /** How long a browser sign-in waits; the server's handoff code lives as long (`config/auth.yaml`). */
 const SIGN_IN_TTL_MS = 5 * 60_000;
 /** Permissions the web app asks for; every other request is refused. */
 const ALLOWED_PERMISSIONS = new Set(["clipboard-read", "clipboard-sanitized-write", "notifications", "fullscreen", "media"]);
 
 const here = dirname(fileURLToPath(import.meta.url));
+/**
+ * Where the chosen server is kept.
+ * @returns The path of `config.json` in the app's data directory.
+ */
 const configFile = (): string => join(app.getPath("userData"), "config.json");
+/**
+ * Where the main window's size and place are kept.
+ * @returns The path of `window-state.json` in the app's data directory.
+ */
 const windowStateFile = (): string => join(app.getPath("userData"), "window-state.json");
 const isDev = !app.isPackaged;
 
@@ -124,11 +137,16 @@ function registerScheme(): void {
 
 /** Build the menu in the operating system's language. */
 function buildMenu(): void {
-  const strings = stringsFor(app.getLocale());
+  const text = desktopText(app.getLocale());
   const template = buildMenuTemplate({
     platform: process.platform,
     isDev,
-    labels: strings.menu,
+    labels: {
+      file: text["desktop.menu.file"],
+      switchServer: text["desktop.menu.switchServer"],
+      back: text["desktop.menu.back"],
+      forward: text["desktop.menu.forward"],
+    },
     onSwitchServer: () => openConnect({ mode: "connect", url: serverOrigin ?? DEFAULT_SERVER_URL, reason: null }),
     onBack: () => {
       const history = BrowserWindow.getFocusedWindow()?.webContents.navigationHistory;
@@ -261,7 +279,7 @@ function createMainWindow(): BrowserWindow {
  */
 function openConnect(initial: { mode: "connect" | "unreachable"; url: string; reason: ConnectReason | null }): void {
   const lang = app.getLocale();
-  connectInitial = { ...initial, lang, strings: stringsFor(lang) };
+  connectInitial = { ...initial, lang, text: desktopText(lang) };
   if (connectWindow) {
     void connectWindow.webContents.reload();
     connectWindow.focus();
@@ -356,9 +374,15 @@ function attachPolicies(contents: WebContents): void {
     };
   });
   contents.on("will-prevent-unload", (event) => {
-    const strings = stringsFor(app.getLocale()).leave;
+    const text = desktopText(app.getLocale());
     const owner = BrowserWindow.fromWebContents(contents);
-    const options = { type: "question" as const, buttons: [strings.leave, strings.stay], defaultId: 1, cancelId: 1, message: strings.message };
+    const options = {
+      type: "question" as const,
+      buttons: [text["desktop.leave.leave"], text["desktop.leave.stay"]],
+      defaultId: 1,
+      cancelId: 1,
+      message: text["desktop.leave.message"],
+    };
     const choice = owner ? dialog.showMessageBoxSync(owner, options) : dialog.showMessageBoxSync(options);
     // preventDefault lets the page go, ignoring its beforeunload.
     if (choice === 0) event.preventDefault();

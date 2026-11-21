@@ -5,9 +5,9 @@
 
 import { describe, it, expect } from "vitest";
 
-import { stringsFor } from "@desktop/main/strings.js";
+import { desktopText } from "@desktop/main/strings.js";
 
-describe("stringsFor", () => {
+describe("desktopText", () => {
   it.each([
     ["zh-CN", "连接到 breatic"],
     ["zh-TW", "連線到 breatic"],
@@ -17,6 +17,11 @@ describe("stringsFor", () => {
     ["en-US", "Connect to breatic"],
     ["fr-FR", "Connect to breatic"],
   ])("speaks %s", (locale, title) => {
-    expect(stringsFor(locale).connect.title).toBe(title);
+    expect(desktopText(locale)["desktop.connect.title"]).toBe(title);
+  });
+
+  it("has the same keys in every language", () => {
+    const keys = Object.keys(desktopText("en")).sort();
+    for (const locale of ["zh-CN", "zh-TW", "ja", "ko"]) expect(Object.keys(desktopText(locale)).sort()).toEqual(keys);
   });
 });

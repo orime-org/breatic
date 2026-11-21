@@ -27,8 +27,8 @@ import {
 
 describe("normalizeServerUrl", () => {
   it.each([
-    ["https://breatic.ai", "https://breatic.ai"],
-    ["https://breatic.ai/studio?x=1", "https://breatic.ai"],
+    ["https://app.example.com", "https://app.example.com"],
+    ["https://app.example.com/studio?x=1", "https://app.example.com"],
     ["  https://192.168.1.50  ", "https://192.168.1.50"],
     ["https://team.example.com:8443/", "https://team.example.com:8443"],
     ["http://localhost:8100", "http://localhost:8100"],
@@ -38,7 +38,7 @@ describe("normalizeServerUrl", () => {
     expect(normalizeServerUrl(input)).toEqual({ ok: true, origin });
   });
 
-  it.each(["http://192.168.1.50", "http://breatic.ai", "ftp://breatic.ai", "breatic.ai", "", "not a url", "file:///etc/passwd"])(
+  it.each(["http://192.168.1.50", "http://app.example.com", "ftp://app.example.com", "app.example.com", "", "not a url", "file:///etc/passwd"])(
     "refuses %s",
     (input) => {
       expect(normalizeServerUrl(input)).toEqual({ ok: false, reason: "scheme" });
@@ -62,9 +62,9 @@ describe("checkServer", () => {
   }
 
   it("accepts a server publishing a version and keeps the origin the check ended on", async () => {
-    const fetchFn = answering('{"version":"v1"}', "https://breatic.ai/app-version.json");
-    expect(await checkServer("https://www.breatic.ai", fetchFn)).toEqual({ ok: true, origin: "https://breatic.ai" });
-    expect(fetchFn).toHaveBeenCalledWith("https://www.breatic.ai/app-version.json", expect.objectContaining({ signal: expect.any(AbortSignal) }));
+    const fetchFn = answering('{"version":"v1"}', "https://app.example.com/app-version.json");
+    expect(await checkServer("https://www.app.example.com", fetchFn)).toEqual({ ok: true, origin: "https://app.example.com" });
+    expect(fetchFn).toHaveBeenCalledWith("https://www.app.example.com/app-version.json", expect.objectContaining({ signal: expect.any(AbortSignal) }));
   });
 
   it.each([
@@ -105,9 +105,9 @@ describe("config file", () => {
 
   it("reads what it wrote", () => {
     const at = join(dir(), "config.json");
-    writeServerConfig(at, "https://breatic.ai");
-    expect(readServerConfig(at)).toBe("https://breatic.ai");
-    expect(JSON.parse(readFileSync(at, "utf-8"))).toEqual({ serverUrl: "https://breatic.ai" });
+    writeServerConfig(at, "https://app.example.com");
+    expect(readServerConfig(at)).toBe("https://app.example.com");
+    expect(JSON.parse(readFileSync(at, "utf-8"))).toEqual({ serverUrl: "https://app.example.com" });
   });
 
   it.each([
@@ -124,14 +124,14 @@ describe("config file", () => {
 
 describe("resolveServerUrl", () => {
   it("lets BREATIC_SERVER_URL override the saved address", () => {
-    expect(resolveServerUrl({ envUrl: "http://localhost:8100", savedUrl: "https://breatic.ai" })).toEqual({
+    expect(resolveServerUrl({ envUrl: "http://localhost:8100", savedUrl: "https://app.example.com" })).toEqual({
       origin: "http://localhost:8100",
       fromEnv: true,
     });
   });
 
   it("uses the saved address", () => {
-    expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://breatic.ai" })).toEqual({ origin: "https://breatic.ai", fromEnv: false });
+    expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://app.example.com" })).toEqual({ origin: "https://app.example.com", fromEnv: false });
   });
 
   it("has nothing on the first launch", () => {

@@ -33,7 +33,7 @@ describe("buildMenuTemplate", () => {
       expect(items.some((item) => item.role === role), role).toBe(true);
     }
     const switchItem = items.find((item) => item.label === "Switch server…");
-    switchItem?.click?.({} as never, undefined, {} as never);
+    switchItem?.click?.({} as never, undefined, {});
     expect(onSwitchServer).toHaveBeenCalled();
   });
 
@@ -52,7 +52,7 @@ describe("buildMenuTemplate", () => {
     const items = flatten(buildMenuTemplate({ platform, isDev: false, labels, onSwitchServer: vi.fn(), onBack, onForward: vi.fn() }));
     expect(items.find((item) => item.label === "Back")?.accelerator).toBe(back);
     expect(items.find((item) => item.label === "Forward")?.accelerator).toBe(forward);
-    items.find((item) => item.label === "Back")?.click?.({} as never, undefined, {} as never);
+    items.find((item) => item.label === "Back")?.click?.({} as never, undefined, {});
     expect(onBack).toHaveBeenCalled();
   });
 

@@ -18,7 +18,7 @@ describe("findDeepLink", () => {
   });
 
   it("has nothing when no argument is a breatic link", () => {
-    expect(findDeepLink(["/usr/bin/breatic", "https://breatic.ai"])).toBeNull();
+    expect(findDeepLink(["/usr/bin/breatic", "https://app.example.com"])).toBeNull();
   });
 });
 

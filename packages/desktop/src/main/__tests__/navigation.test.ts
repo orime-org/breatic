@@ -16,24 +16,24 @@ import { describe, it, expect } from "vitest";
 
 import { decideNavigation, decideWindowOpen, isServerLoadFailure } from "@desktop/main/navigation.js";
 
-const SERVER = "https://breatic.ai";
+const SERVER = "https://app.example.com";
 
 describe("decideNavigation", () => {
   it.each([
-    ["an app page", "https://breatic.ai/studio/ada", "https://breatic.ai/login", "allow"],
-    ["the sign-in page", "https://breatic.ai/login?next=%2Fstudio", "https://breatic.ai/studio", "allow"],
-    ["Stripe checkout", "https://checkout.stripe.com/c/pay/cs_1", "https://breatic.ai/studio/ada/settings", "allow"],
-    ["a Stripe invoice", "https://invoice.stripe.com/i/acct_1/x", "https://breatic.ai/studio/ada", "allow"],
+    ["an app page", "https://app.example.com/studio/ada", "https://app.example.com/login", "allow"],
+    ["the sign-in page", "https://app.example.com/login?next=%2Fstudio", "https://app.example.com/studio", "allow"],
+    ["Stripe checkout", "https://checkout.stripe.com/c/pay/cs_1", "https://app.example.com/studio/ada/settings", "allow"],
+    ["a Stripe invoice", "https://invoice.stripe.com/i/acct_1/x", "https://app.example.com/studio/ada", "allow"],
     ["a payment method leaving Stripe", "https://www.paypal.com/checkoutnow?token=1", "https://checkout.stripe.com/c/pay/cs_1", "allow"],
-    ["the way back from Stripe", "https://breatic.ai/studio/ada?checkout=done", "https://www.paypal.com/x", "allow"],
-    ["the official terms page", "https://breatic.ai/terms/", "https://breatic.ai/login", "external"],
-    ["the official home page", "https://breatic.ai/", "https://breatic.ai/studio", "external"],
-    ["another site", "https://example.com/", "https://breatic.ai/studio", "external"],
-    ["a plain-http page from an app page", "http://example.com/", "https://breatic.ai/studio", "external"],
-    ["an email link", "mailto:support@breatic.ai", "https://breatic.ai/login", "external"],
-    ["a local file", "file:///etc/passwd", "https://breatic.ai/studio", "deny"],
-    ["script", "javascript:alert(1)", "https://breatic.ai/studio", "deny"],
-    ["a Stripe look-alike", "https://stripe.com.evil.test/pay", "https://breatic.ai/studio", "external"],
+    ["the way back from Stripe", "https://app.example.com/studio/ada?checkout=done", "https://www.paypal.com/x", "allow"],
+    ["the official terms page", "https://app.example.com/terms/", "https://app.example.com/login", "external"],
+    ["the official home page", "https://app.example.com/", "https://app.example.com/studio", "external"],
+    ["another site", "https://example.com/", "https://app.example.com/studio", "external"],
+    ["a plain-http page from an app page", "http://example.com/", "https://app.example.com/studio", "external"],
+    ["an email link", "mailto:support@app.example.com", "https://app.example.com/login", "external"],
+    ["a local file", "file:///etc/passwd", "https://app.example.com/studio", "deny"],
+    ["script", "javascript:alert(1)", "https://app.example.com/studio", "deny"],
+    ["a Stripe look-alike", "https://stripe.com.evil.test/pay", "https://app.example.com/studio", "external"],
     ["plain http while on Stripe", "http://example.com/", "https://checkout.stripe.com/c/pay/cs_1", "external"],
   ])("%s → %s", (_label, url, currentUrl, expected) => {
     expect(decideNavigation({ url, currentUrl, serverOrigin: SERVER })).toBe(expected);
@@ -46,13 +46,13 @@ describe("decideNavigation", () => {
 
 describe("decideWindowOpen", () => {
   it.each([
-    ["an asset download", "https://assets.breatic.ai/a/b.png?download=1", "download"],
-    ["a same-origin asset download", "https://breatic.ai/files/x.mp4?download=1", "download"],
-    ["an app page in a new tab", "https://breatic.ai/studio/ada", "window"],
-    ["the official tutorials", "https://breatic.ai/tutorials/", "external"],
-    ["an asset preview", "https://assets.breatic.ai/a/b.png", "external"],
+    ["an asset download", "https://assets.app.example.com/a/b.png?download=1", "download"],
+    ["a same-origin asset download", "https://app.example.com/files/x.mp4?download=1", "download"],
+    ["an app page in a new tab", "https://app.example.com/studio/ada", "window"],
+    ["the official tutorials", "https://app.example.com/tutorials/", "external"],
+    ["an asset preview", "https://assets.app.example.com/a/b.png", "external"],
     ["another site", "https://docs.example.com/", "external"],
-    ["an email link", "mailto:support@breatic.ai", "external"],
+    ["an email link", "mailto:support@app.example.com", "external"],
     ["a local file", "file:///tmp/x", "deny"],
     ["a download over another scheme", "file:///tmp/x?download=1", "deny"],
   ])("%s → %s", (_label, url, expected) => {
@@ -62,12 +62,12 @@ describe("decideWindowOpen", () => {
 
 describe("isServerLoadFailure", () => {
   it("is a main-frame load of the server that failed", () => {
-    expect(isServerLoadFailure({ url: "https://breatic.ai/studio", serverOrigin: SERVER, isMainFrame: true, errorCode: -105 })).toBe(true);
+    expect(isServerLoadFailure({ url: "https://app.example.com/studio", serverOrigin: SERVER, isMainFrame: true, errorCode: -105 })).toBe(true);
   });
 
   it.each([
-    ["a cancelled load", { url: "https://breatic.ai/studio", isMainFrame: true, errorCode: -3 }],
-    ["a frame inside the page", { url: "https://breatic.ai/studio", isMainFrame: false, errorCode: -105 }],
+    ["a cancelled load", { url: "https://app.example.com/studio", isMainFrame: true, errorCode: -3 }],
+    ["a frame inside the page", { url: "https://app.example.com/studio", isMainFrame: false, errorCode: -105 }],
     ["a Stripe page", { url: "https://checkout.stripe.com/x", isMainFrame: true, errorCode: -105 }],
   ])("is not %s", (_label, failure) => {
     expect(isServerLoadFailure({ ...failure, serverOrigin: SERVER })).toBe(false);

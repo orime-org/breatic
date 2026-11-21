@@ -4,7 +4,8 @@
 /**
  * The client's own words (connect window, menu, leave dialog) in the
  * operating system's language (#1599). They live in the root `locales/*.json`
- * beside the web app's, under `desktop`.
+ * beside the web app's, under `desktop`, and are read by their full key, as
+ * the web app reads its own.
  */
 
 import { desktop as en } from "@locales/en.json";
@@ -13,19 +14,49 @@ import { desktop as ko } from "@locales/ko.json";
 import { desktop as zhCN } from "@locales/zh-CN.json";
 import { desktop as zhTW } from "@locales/zh-TW.json";
 
-/** The words of one language. */
-export type DesktopStrings = typeof en;
+/** Every dotted key under a section, e.g. `desktop.connect.title`. */
+type Leaves<T, P extends string> = {
+  [K in keyof T & string]: T[K] extends string ? `${P}.${K}` : Leaves<T[K], `${P}.${K}`>;
+}[keyof T & string];
+
+/** A key of the client's own words. */
+export type DesktopKey = Leaves<typeof en, "desktop">;
+
+/** Every key with its text, as the connect window receives it. */
+export type DesktopText = Record<DesktopKey, string>;
 
 /**
- * The strings for the operating system's language.
+ * The section for the operating system's language.
  * @param locale - `app.getLocale()`, e.g. `zh-TW`, `en-US`.
- * @returns The strings, English for a language the product does not ship.
+ * @returns The section, English for a language the product does not ship.
  */
-export function stringsFor(locale: string): DesktopStrings {
+function sectionFor(locale: string): typeof en {
   const lower = locale.toLowerCase();
   if (lower === "zh-tw" || lower === "zh-hk" || lower.startsWith("zh-hant")) return zhTW;
   if (lower.startsWith("zh")) return zhCN;
   if (lower.startsWith("ja")) return ja;
   if (lower.startsWith("ko")) return ko;
   return en;
+}
+
+/**
+ * Every key of the client's words with its text in a language.
+ * @param locale - `app.getLocale()`.
+ * @returns The flat table.
+ */
+export function desktopText(locale: string): DesktopText {
+  const table: Record<string, string> = {};
+  /**
+   * Walk a section, recording each string under its dotted key.
+   * @param node - The section or a nested object.
+   * @param prefix - The key so far.
+   */
+  const walk = (node: object, prefix: string): void => {
+    for (const [name, value] of Object.entries(node)) {
+      if (typeof value === "string") table[`${prefix}.${name}`] = value;
+      else if (typeof value === "object" && value !== null) walk(value, `${prefix}.${name}`);
+    }
+  };
+  walk(sectionFor(locale), "desktop");
+  return table as DesktopText;
 }
