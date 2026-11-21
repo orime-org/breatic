@@ -338,6 +338,38 @@ describe('SceneLookSection', () => {
     expect((screen.getByTestId('scene-look-offset-0') as HTMLInputElement).value).toBe('0');
   });
 
+  it('shows each slider value with two decimals and the glow intensity on its own row', () => {
+    renderSection({ selectedPart: '1', gesture: OPEN_GESTURE, parts: [PARTS[0]!, { ...PARTS[1]!, metalness: 1, roughness: 0.15, emissiveIntensity: 2 }, PARTS[2]!] as typeof PARTS });
+    const value = (testId: string): string | null | undefined => screen.getByTestId(testId).parentElement?.lastElementChild?.textContent;
+    expect(value('scene-look-gloss')).toBe('0.85');
+    expect(value('scene-look-metalness')).toBe('1.00');
+    expect(value('scene-look-transmission')).toBe('0.00');
+    expect(value('scene-look-emission-intensity')).toBe('2.00');
+    expect(screen.getByText(t('spaces.threeD.look.emissionIntensity'))).toBeTruthy();
+  });
+
+  it('writes the colour and glow values beside their swatches', () => {
+    renderSection({ selectedPart: '1', gesture: OPEN_GESTURE, look: { 1: { color: '#3a7bd5' } } });
+    const fields = screen.getByTestId('scene-look-part-fields');
+    expect(fields.textContent).toContain('#3A7BD5');
+    expect(fields.textContent).toContain('#000000');
+  });
+
+  it('shows a waiting upload as a placeholder with its percent and that it is uploading', () => {
+    renderSection({ selectedPart: '1', uploadPercentOf: (part) => (part === '1' ? 100 : null) });
+    expect(screen.getByTestId('scene-look-uploading').textContent).toBe('100%');
+    expect(screen.getByTestId('scene-look-uploading').parentElement?.textContent).toContain(t('spaces.threeD.taskList.running'));
+  });
+
+  it('tints the part row\'s picture with the part\'s colour, as the scene does', () => {
+    const own = [{ ...PARTS[0]!, thumbnail: 'data:image/png;base64,own' }, ...PARTS.slice(1)] as typeof PARTS;
+    renderSection({ parts: own, look: { 0: { color: '#3a7bd5' } } });
+    const swatch = screen.getByTestId('scene-look-part-0').querySelector('span') as HTMLElement;
+    expect(swatch.style.backgroundImage).toContain('data:image/png;base64,own');
+    expect(swatch.style.backgroundColor).toBe('rgb(58, 123, 213)');
+    expect(swatch.style.backgroundBlendMode).toBe('multiply');
+  });
+
   it('shows a running upload on its part row while no part is expanded', () => {
     renderSection({ uploadPercentOf: (part) => (part === '1' ? 40 : null) });
     expect(screen.getByTestId('scene-look-upload-1').textContent).toBe('40%');

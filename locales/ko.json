@@ -3133,6 +3133,7 @@
         "opacity": "불투명도",
         "transmission": "투과",
         "emission": "발광",
+        "emissionIntensity": "발광 강도",
         "resetPart": "이 파트 초기화",
         "imageFailed": "일부 파트의 이미지를 불러오지 못했습니다.",
         "imageOverLimit": "일부 파트의 이미지가 이 오브젝트의 이미지 한도를 넘어 표시되지 않습니다.",

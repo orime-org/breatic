@@ -141,10 +141,12 @@ function LookSlider({ label, labelId, value, min = 0, max = 1, step = 0.01, disa
   label: string; labelId: string; value: number; min?: number; max?: number; step?: number; disabled: boolean; suffix?: string; testId: string;
   gesture?: SceneLookGesture; onPreview: (value: number) => void;
 }): React.JSX.Element {
+  // A fixed number of decimals keeps the column still while dragging; a value that rounds to zero shows no minus sign.
+  const digits = step < 1 ? 2 : 0;
   return <Row label={label} labelId={labelId}>
     <Slider aria-labelledby={labelId} className='w-28' min={min} max={max} step={step} value={[value]} disabled={disabled || !gesture} data-testid={testId}
       onValueChange={([next]) => { if (next !== undefined) onPreview(next); }} onPointerDown={gesture?.begin} onKeyDown={gesture?.stepKey} onPointerUp={gesture?.commit} />
-    <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{`${Number(value.toFixed(step < 1 ? 2 : 0))}${suffix}`}</span>
+    <span className='w-10 text-right text-xs tabular-nums text-muted-foreground'>{`${(Number(value.toFixed(digits)) || 0).toFixed(digits)}${suffix}`}</span>
   </Row>;
 }
 
@@ -193,13 +195,22 @@ function LookPair({ label, labelId, value, accepts, disabled, testId, draftKey, 
     pair[index] = next;
     return onCommit(pair);
   }), [x, y, accepts, onCommit]);
-  return <div className='space-y-1'>
-    <span id={labelId} className='text-xs text-muted-foreground'>{label}</span>
-    <div className='grid grid-cols-2 gap-1'>{(['X', 'Y'] as const).map((axis, index) => <SceneField key={`${draftKey}:${index}`} label={axis} numeric
+  return <Row label={label} labelId={labelId}>
+    {(['X', 'Y'] as const).map((axis, index) => <SceneField key={`${draftKey}:${index}`} label={axis} numeric inline
       value={String(value[index])} disabled={disabled} spaceId={spaceId} testId={`${testId}-${index}`}
       draftKey={`${draftKey}:${index}`} draft={drafts.get(`${draftKey}:${index}`)} onFieldDraftChange={onFieldDraftChange}
-      onCommit={commits[index]!} />)}</div>
-  </div>;
+      onCommit={commits[index]!} />)}
+  </Row>;
+}
+
+/**
+ * A colour's value, written before its swatch.
+ * @param root0 - Props.
+ * @param root0.value - The colour.
+ * @returns The value.
+ */
+function HexValue({ value }: { value: string }): React.JSX.Element {
+  return <span className='text-xs tabular-nums text-muted-foreground'>{value.toUpperCase()}</span>;
 }
 
 /** No user picture is shown. */
@@ -259,6 +270,8 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
   // A material number past the stored key format cannot carry a look.
   const storable = !row || isSceneLookPartKey(row.key);
   const disabled = !mutable || !storable;
+  const color = stored.color ?? (storedUserPicture && showingPictures.has(stored.map!) ? SCENE_LOOK_PICTURE_COLOR : row?.color ?? '');
+  const emissive = stored.emissive ?? row?.emissive ?? SCENE_LOOK_EMISSIVE_DEFAULT;
   /**
    * Preview a dragged field of the selected part.
    * @param fields - The dragged values.
@@ -282,7 +295,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
               active ? 'border-active-border' : 'border-transparent hover-enabled:bg-accent')}
             onClick={() => onSelectPart(active ? null : part.key)}>
             <span className='size-4 shrink-0 rounded-chrome-sm border border-swatch-border bg-cover bg-center'
-              style={picture ? { backgroundImage: `url(${picture})` } : { backgroundColor: color }} />
+              style={picture ? { backgroundImage: `url(${picture})`, backgroundColor: color, backgroundBlendMode: 'multiply' } : { backgroundColor: color }} />
             <span className='min-w-0 flex-1 truncate'>{labels[index]}</span>
             {uploading !== null && uploading !== undefined
               ? <span className='shrink-0 tabular-nums text-muted-foreground' data-testid={`scene-look-upload-${part.key}`}>{`${uploading}%`}</span>
@@ -293,17 +306,22 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
     </ul>
     {row ? <div className='space-y-2 rounded-content-sm border border-border p-3' data-testid='scene-look-part-fields'>
       {storable ? null : <p className='text-xs text-muted-foreground'>{t('spaces.threeD.look.partNotEditable')}</p>}
-      <div className='grid grid-cols-3 gap-1'>{PRESET_NAMES.map((name) => <Button key={name} variant='outline' size='compact' disabled={disabled || restricted}
+      <div className='flex flex-wrap gap-1'>{PRESET_NAMES.map((name) => <Button key={name} variant='outline' size='compact' disabled={disabled || restricted}
         data-testid={`scene-look-preset-${name}`} onClick={() => write(row.key, PRESETS[name])}>{t(`spaces.threeD.look.presets.${name}`)}</Button>)}</div>
       <Row label={t('spaces.threeD.look.color')} labelId={`${ids}-color`}>
-        <SceneColorField value={stored.color ?? (storedUserPicture && showingPictures.has(stored.map!) ? SCENE_LOOK_PICTURE_COLOR : row.color)} disabled={disabled || !gesture} labelId={`${ids}-color`} spaceId={spaceId}
+        <HexValue value={color} />
+        <SceneColorField value={color} disabled={disabled || !gesture} labelId={`${ids}-color`} spaceId={spaceId}
           onPressStart={gesture?.begin ?? NO_PRESS} onPreview={previewColor}
           onCommit={gesture?.commit ?? NOTHING} onCancel={gesture?.cancel ?? NOTHING} onWrite={writeColor} />
       </Row>
       <Row label={t('spaces.threeD.look.image')} labelId={`${ids}-image`}>
         {checking ? <span className='text-xs text-muted-foreground' data-testid='scene-look-checking'>{t('spaces.threeD.look.checking')}</span>
           : uploadPercent !== null && uploadPercent !== undefined
-            ? <span className='text-xs tabular-nums text-muted-foreground' data-testid='scene-look-uploading'>{`${uploadPercent}%`}</span>
+            ? <>
+              <span className='grid size-8 place-items-center rounded-chrome-sm border border-swatch-border text-2xs tabular-nums text-muted-foreground'
+                data-testid='scene-look-uploading'>{`${uploadPercent}%`}</span>
+              <span className='text-xs text-muted-foreground'>{t('spaces.threeD.taskList.running')}</span>
+            </>
             : <>
               {fieldPicture ? <img src={fieldPicture} alt='' className='size-8 rounded-chrome-sm border border-swatch-border object-cover' /> : null}
               <Button variant='outline' size='compact' disabled={disabled || row.line} data-testid='scene-look-choose-image'
@@ -331,17 +349,16 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
       <LookSlider label={t('spaces.threeD.look.transmission')} labelId={`${ids}-transmission`} value={stored.transmission ?? row.transmission ?? 0} disabled={disabled || restricted}
         testId='scene-look-transmission' gesture={gesture} onPreview={(transmission) => preview({ transmission })} />
       <Row label={t('spaces.threeD.look.emission')} labelId={`${ids}-emission`}>
-        <SceneColorField value={stored.emissive ?? row.emissive ?? SCENE_LOOK_EMISSIVE_DEFAULT} disabled={disabled || restricted || !gesture} labelId={`${ids}-emission`} spaceId={spaceId}
+        <HexValue value={emissive} />
+        <SceneColorField value={emissive} disabled={disabled || restricted || !gesture} labelId={`${ids}-emission`} spaceId={spaceId}
           onPressStart={gesture?.begin ?? NO_PRESS} onPreview={previewEmissive}
           onCommit={gesture?.commit ?? NOTHING} onCancel={gesture?.cancel ?? NOTHING} onWrite={writeEmissive} />
-        <Slider aria-labelledby={`${ids}-emission`} className='w-20' min={0} max={10} step={0.1} value={[stored.emissiveIntensity ?? row.emissiveIntensity ?? 1]}
-          disabled={disabled || restricted || !gesture} data-testid='scene-look-emission-intensity'
-          onValueChange={([value]) => { if (value !== undefined) preview({ emissiveIntensity: value }); }}
-          onPointerDown={gesture?.begin} onKeyDown={gesture?.stepKey} onPointerUp={gesture?.commit} />
       </Row>
+      <LookSlider label={t('spaces.threeD.look.emissionIntensity')} labelId={`${ids}-emission-intensity`} value={stored.emissiveIntensity ?? row.emissiveIntensity ?? 1} max={10} step={0.1}
+        disabled={disabled || restricted} testId='scene-look-emission-intensity' gesture={gesture} onPreview={(emissiveIntensity) => preview({ emissiveIntensity })} />
       {row.unlit ? <p className='text-xs text-muted-foreground' data-testid='scene-look-unlit-note'>{t('spaces.threeD.look.unlitNote')}</p> : null}
       {row.line ? <p className='text-xs text-muted-foreground' data-testid='scene-look-line-note'>{t('spaces.threeD.look.lineNote')}</p> : null}
-      <Button variant='outline' size='compact' className='w-full' disabled={disabled || Object.keys(stored).length === 0} data-testid='scene-look-reset-part'
+      <Button variant='outline' size='compact' disabled={disabled || Object.keys(stored).length === 0} data-testid='scene-look-reset-part'
         onClick={() => write(row.key, Object.fromEntries(Object.keys(stored).map((field) => [field, null])))}>{t('spaces.threeD.look.resetPart')}</Button>
     </div> : null}
   </section>;

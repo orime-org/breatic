@@ -3133,6 +3133,7 @@
         "opacity": "不透明度",
         "transmission": "透過",
         "emission": "発光",
+        "emissionIntensity": "発光強度",
         "resetPart": "このパーツをリセット",
         "imageFailed": "一部のパーツの画像を読み込めませんでした。",
         "imageOverLimit": "一部のパーツの画像がこのオブジェクトの画像の上限を超えるため表示されていません。",

@@ -68,7 +68,7 @@ const PoseSection = React.memo(function PoseSection({ objectId, state, mutable, 
         <span id={labelId} className='text-xs'>{t('spaces.threeD.pose.jointMode')}</span>
         <Switch aria-labelledby={labelId} checked={jointMode} disabled={!mutable} data-testid='scene-pose-joint-mode' onCheckedChange={onJointModeChange} />
       </div>
-      <Button variant='outline' size='compact' className='w-full' disabled={!mutable} data-testid='scene-pose-reset'
+      <Button variant='outline' size='compact' disabled={!mutable} data-testid='scene-pose-reset'
         onClick={() => session.execute({ type: 'pose', id: objectId, set: {}, replace: true })}>{t('spaces.threeD.pose.reset')}</Button>
     </>}
   </section>;

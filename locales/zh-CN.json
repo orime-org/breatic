@@ -3133,6 +3133,7 @@
         "opacity": "透明度",
         "transmission": "透光",
         "emission": "发光",
+        "emissionIntensity": "发光强度",
         "resetPart": "恢复这个部位",
         "imageFailed": "有部位的图片没有加载出来。",
         "imageOverLimit": "有部位的图片超出了这个对象的图片上限，没有显示。",

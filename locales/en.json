@@ -3133,6 +3133,7 @@
         "opacity": "Opacity",
         "transmission": "Transmission",
         "emission": "Glow",
+        "emissionIntensity": "Glow intensity",
         "resetPart": "Reset this part",
         "imageFailed": "Some part images did not load.",
         "imageOverLimit": "Some part images would take this object over its image limit and are not shown.",
