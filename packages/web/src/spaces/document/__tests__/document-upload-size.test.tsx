@@ -86,17 +86,19 @@ interface ImageAttrs {
 }
 
 /**
- * Builds a body holding one pending image block (`uploadId: 'up1'`, empty `url`).
+ * Builds a body holding one pending image block (`uploadId: 'up1'`, empty `url`) made in Document `home`.
  * @param source - The source document.
+ * @param home - The Document the block was made in.
  * @param uploadId - The upload the block waits for.
  */
-function pendingBody(source: Y.Doc, uploadId = 'up1'): void {
+function pendingBody(source: Y.Doc, home: string, uploadId = 'up1'): void {
   const group = new Y.XmlElement('blockGroup');
   const container = new Y.XmlElement('blockContainer');
   container.setAttribute('id', `b-${uploadId}`);
   const image = new Y.XmlElement('image');
   image.setAttribute('url', '');
   image.setAttribute('uploadId', uploadId);
+  image.setAttribute('uploadHome', home);
   image.setAttribute('name', 'shot.png');
   image.setAttribute('caption', '');
   container.insert(0, [image]);
@@ -153,7 +155,7 @@ function open(): World {
   const spaceId = `s${seq++}`;
   const name = docName.documentSpace(PID, spaceId);
   const doc = getDoc(name);
-  loadRemote(doc, (source) => pendingBody(source));
+  loadRemote(doc, (source) => pendingBody(source, name));
   const runs: Run[] = [];
   const run = vi.fn(
     () =>
@@ -219,12 +221,13 @@ async function finish(world: World, index = world.runs.length - 1): Promise<void
 /**
  * Renders the pending block for `up1` over the link's store.
  * @param link - The body's link.
+ * @param home - The Document the block was made in.
  */
-function renderBlock(link: BodyUploads): void {
+function renderBlock(link: BodyUploads, home: string): void {
   render(
     <PendingUploadsContext.Provider value={link.pending}>
       <DocumentPendingMediaBlock
-        props={{ url: '', name: 'shot.png', caption: '', uploadId: 'up1' }}
+        props={{ url: '', name: 'shot.png', caption: '', uploadId: 'up1', uploadHome: home }}
         actions={{ remove: vi.fn() } as unknown as MediaBlockActions}
       />
     </PendingUploadsContext.Provider>,
@@ -398,7 +401,7 @@ describe('DU-02 an upload finishing while the Space is full is kept and waits', 
     world.link.start('up1', { kind: 'file', file: new File(['x'], 'shot.png', { type: 'image/png' }) });
     await settle();
     pushSize(world.name, P_FULL);
-    renderBlock(world.link);
+    renderBlock(world.link, world.name);
 
     await finish(world);
 
@@ -449,7 +452,7 @@ describe.each([
     await settle();
     if (code === 'Z') startDocResync(world.name);
     else enterSize(world.name, code);
-    renderBlock(world.link);
+    renderBlock(world.link, world.name);
 
     await finish(world);
 
@@ -473,7 +476,7 @@ describe('DU-05 an upload that finished during a rebuild lands in the rebuilt do
     world.link.detach();
     destroyDoc(world.name, world.doc);
     const fresh = getDoc(world.name);
-    loadRemote(fresh, (source) => pendingBody(source));
+    loadRemote(fresh, (source) => pendingBody(source, world.name));
     attachBody(world.controller, world.spaceId, fresh, world.access);
     const writes = countLocalUpdates(fresh);
 
@@ -579,7 +582,7 @@ describe('DU-09 a pasted outside link is not fetched while the Space is full', (
     const spaceId = `s${seq++}`;
     const name = docName.documentSpace(PID, spaceId);
     const doc = getDoc(name);
-    loadRemote(doc, (source) => pendingBody(source));
+    loadRemote(doc, (source) => pendingBody(source, name));
     const link = openPageBodyUploads({ projectId: PID, spaceId }, doc, name, undefined);
     links.push(link);
     return { spaceId, name, link };
@@ -595,7 +598,7 @@ describe('DU-09 a pasted outside link is not fetched while the Space is full', (
     render(
       <PendingUploadsContext.Provider value={link.pending}>
         <DocumentPendingMediaBlock
-          props={{ url: '', name: 'x.jpg', caption: '', uploadId: 'up1' }}
+          props={{ url: '', name: 'x.jpg', caption: '', uploadId: 'up1', uploadHome: name }}
           actions={{ remove: vi.fn() } as unknown as MediaBlockActions}
         />
       </PendingUploadsContext.Provider>,

@@ -212,9 +212,7 @@ function createDocumentEditor(
   const target = inputs.uploadTarget;
   const home = target === undefined ? undefined : docName.documentSpace(target.projectId, target.spaceId);
   const uploads =
-    target === undefined
-      ? null
-      : openPageBodyUploads(target, doc, docName.documentSpace(target.projectId, target.spaceId), inputs.provider);
+    target === undefined || home === undefined ? null : openPageBodyUploads(target, doc, home, inputs.provider);
   const files: FileUploads | null =
     uploads === null
       ? null
@@ -230,7 +228,7 @@ function createDocumentEditor(
         // A pending block is an add, and its upload is a request whose
         // result lands in the body: neither starts while the Space cannot
         // take one (inner#1790, design 5.2).
-        canAdd: () => target === undefined || checkAdd(docName.documentSpace(target.projectId, target.spaceId)).ok,
+        canAdd: () => home === undefined || checkAdd(home).ok,
       });
   if (uploads !== null) {
     // Fetched now so a paste can tell our media from outside links the moment
@@ -260,7 +258,7 @@ function createDocumentEditor(
       onLeftOut: (count) => {
         toast.warning(t('spaces.document.media.leftOut', { count }));
       },
-      ...(target !== undefined && { docName: docName.documentSpace(target.projectId, target.spaceId) }),
+      ...(home !== undefined && { docName: home }),
       onStillUploading: (count) => {
         toast.warning(t('spaces.document.media.stillUploading', { count }));
       },

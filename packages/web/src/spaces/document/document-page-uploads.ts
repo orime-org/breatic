@@ -115,7 +115,7 @@ function pageController(): UploadController {
   if (controller === null) {
     const operations = useSpaceOperationsStore.getState();
     controller = createUploadController({
-      // `start` records an upload's target before it runs (see openPageBodyUploads).
+      // openBodyUploads' onUploadId records every id an upload runs under, start and retry alike, before it runs.
       run: (uploadId, source, onProgress) => runnerFor(targets.get(uploadId)!)(uploadId, source, onProgress),
       register: (spaceId, uploadId) => {
         operations.register(spaceId, uploadId);

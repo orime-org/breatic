@@ -19,6 +19,7 @@ import {
   type PendingFacts,
   type PendingStatus,
 } from '@web/spaces/document/document-pending-status';
+import { uploadLandsIn } from '@web/spaces/document/document-uploads';
 
 /** What a body's pending blocks read from. */
 export interface PendingUploadsStore {
@@ -57,7 +58,7 @@ function blockFactsOf(props: MediaBlockProps, docName: string | null): PendingBl
     state,
     ...(props.uploadFailure !== undefined && props.uploadFailure !== '' && { failure: props.uploadFailure as PendingBlockFacts['failure'] }),
     ...(props.uploadRetryable !== undefined && { retryable: props.uploadRetryable }),
-    foreign: props.uploadHome !== undefined && docName !== null && props.uploadHome !== docName,
+    foreign: !uploadLandsIn(props.uploadHome, docName),
   };
 }
 

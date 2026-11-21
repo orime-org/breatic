@@ -38,6 +38,7 @@ import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document
 import { readTransfer } from '@web/spaces/document/document-paste-read';
 import { putContent, selectPlaced, type JudgeMedium } from '@web/spaces/document/document-put';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
+import { uploadLandsIn } from '@web/spaces/document/document-uploads';
 
 /** The key the pasted-media extension registers under. */
 export const PASTED_MEDIA_KEY = 'documentPastedMedia';
@@ -204,9 +205,7 @@ export function documentPastedMediaExtension(
       judge: (props) => {
         if (pendingUploadId(props) !== null) {
           // Its result is written only into the Document it was started in; anywhere else it would never end.
-          const home = props['uploadHome'];
-          const here = options?.docName;
-          if (typeof home === 'string' && home !== '' && here != null && home !== here) {
+          if (!uploadLandsIn(props['uploadHome'], options?.docName)) {
             stillUploading += 1;
             settle();
             return null;

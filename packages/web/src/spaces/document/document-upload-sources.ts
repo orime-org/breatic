@@ -29,7 +29,6 @@ import type {
   PendingFailureReason,
   UploadControllerDeps,
   UploadOutcome,
-  UploadResult,
   UploadSource,
 } from '@web/spaces/document/document-upload-controller';
 
@@ -91,18 +90,12 @@ function fail(reason: PendingFailureReason, retryable: boolean): UploadOutcome {
 }
 
 /**
- * A success from what the server filed.
+ * An address answered on the spot.
  * @param url - The stored address.
- * @param width - Its pixel width, when it has one.
- * @param height - Its pixel height, when it has one.
  * @returns The outcome.
  */
-function done(url: string, width?: number | null, height?: number | null): UploadOutcome {
-  const result: UploadResult = {
-    url,
-    ...(typeof width === 'number' && typeof height === 'number' && { mediaWidth: width, mediaHeight: height }),
-  };
-  return { ok: true, result };
+function done(url: string): UploadOutcome {
+  return { ok: true, result: { url } };
 }
 
 /**

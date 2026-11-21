@@ -38,6 +38,17 @@ export interface PendingBlock {
 }
 
 /**
+ * Whether an upload's result reaches a block here, by collab's rule: only a block
+ * whose `uploadHome` is this Document's name is written.
+ * @param home - The block's `uploadHome`.
+ * @param here - This Document's name, when known.
+ * @returns True where the result lands, or while the Document is not known.
+ */
+export function uploadLandsIn(home: unknown, here: string | null | undefined): boolean {
+  return here == null || home === here;
+}
+
+/**
  * A pending media block.
  * @param type - Its media type.
  * @param uploadId - The upload behind it.

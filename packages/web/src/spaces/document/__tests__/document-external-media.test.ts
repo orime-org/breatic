@@ -284,6 +284,20 @@ describe('a pending block whose upload belongs to another Document (breatic#1574
     expect(s.onLeftOut).not.toHaveBeenCalled();
     expect(s.start).not.toHaveBeenCalled();
   });
+
+  it('is left out when it names no Document at all, since collab never writes such a block', async () => {
+    const source = open(OURS);
+    source.replaceBlocks(source.document, [{ type: 'image', props: { url: '', uploadId: 'u1', caption: 'Hero' } }] as never);
+    const html = await source.blocksToFullHTML(source.document);
+    const stillUploading = vi.fn();
+    const editor = open(OURS, sink(), { docName: 'doc-b', onStillUploading: stillUploading });
+
+    pasteFormats(editor, { 'blocknote/html': html });
+    await settled();
+
+    expect(media(editor)).toEqual([]);
+    expect(stillUploading).toHaveBeenCalledExactlyOnceWith(1);
+  });
 });
 
 describe('while our addresses are not known yet', () => {

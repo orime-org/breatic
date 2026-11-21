@@ -22,11 +22,7 @@ import { checkAdd } from '@web/data/yjs/space-write';
 import { claimIn } from '@web/lib/upload-claims';
 import type { PendingUploadsStore } from '@web/spaces/document/document-pending-uploads';
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
-import {
-  type ClaimChannel,
-  type UploadController,
-  type UploadSource,
-} from '@web/spaces/document/document-upload-controller';
+import type { ClaimChannel, UploadController, UploadSource } from '@web/spaces/document/document-upload-controller';
 
 /** The awareness a body publishes claims in and reads others' from. */
 export interface BodyAwareness extends ClaimChannel {

@@ -228,7 +228,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
   };
 
   /** The blocks each upload in flight or handed off was last seen pending in, to tell when it settled. */
-  const handedOffBlocks = new Map<string, Set<Y.XmlElement>>();
+  const trackedBlocks = new Map<string, Set<Y.XmlElement>>();
 
   /**
    * Lets go of a handed-off upload once nothing can run it again: its block
@@ -236,20 +236,20 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
    * again cannot change. The source would otherwise stay for the page's life.
    */
   const releaseSettled = (): void => {
-    for (const [uploadId, blocks] of handedOffBlocks) {
+    for (const [uploadId, blocks] of trackedBlocks) {
       const record = records.get(uploadId);
       // Collab can land a block before the hand-off answer arrives (a dedup
       // hit is announced first), so blocks are kept from the start and judged
       // once the record is handed off.
       if (record?.state.phase === 'uploading') continue;
       if (record === undefined || record.state.phase !== 'handedOff') {
-        handedOffBlocks.delete(uploadId);
+        trackedBlocks.delete(uploadId);
         continue;
       }
       const elements = [...blocks];
       if (elements.some((element) => Boolean(element.getAttribute('url')))) {
         records.delete(uploadId);
-        handedOffBlocks.delete(uploadId);
+        trackedBlocks.delete(uploadId);
       } else if (elements.some((element) => element.getAttribute(UPLOAD_STATE_ATTR) === 'failed' && (element.getAttribute(UPLOAD_RETRYABLE_ATTR) as unknown) === false)) {
         record.source = null;
       }
@@ -268,9 +268,9 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     for (const { element, uploadId } of pending) {
       const phase = records.get(uploadId)?.state.phase;
       if (phase !== 'uploading' && phase !== 'handedOff') continue;
-      const seen = handedOffBlocks.get(uploadId) ?? new Set<Y.XmlElement>();
+      const seen = trackedBlocks.get(uploadId) ?? new Set<Y.XmlElement>();
       seen.add(element);
-      handedOffBlocks.set(uploadId, seen);
+      trackedBlocks.set(uploadId, seen);
     }
     releaseSettled();
     /**
