@@ -61,14 +61,3 @@ export function planVideoSplit(source: VideoPlanGrid, cuts: readonly number[]): 
   return boundaries.slice(0, -1).map((start, outputIndex) => ({ outputIndex, start, end: boundaries[outputIndex + 1]! }));
 }
 
-/**
- * Groups a complete ordered output plan by the caller's per-job capacity.
- * @param outputs - Every planned output, retaining its global identity.
- * @param chunkSize - The existing container's configured capacity.
- * @returns Ordered chunks whose concatenation is the complete output sequence.
- * @throws {z.ZodError} When the per-job capacity is invalid.
- */
-export function chunkVideoOutputs<T>(outputs: readonly T[], chunkSize: number): T[][] {
-  const capacity = z.number().int().positive().parse(chunkSize);
-  return Array.from({ length: Math.ceil(outputs.length / capacity) }, (_, index) => outputs.slice(index * capacity, (index + 1) * capacity));
-}

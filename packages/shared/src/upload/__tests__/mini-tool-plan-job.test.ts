@@ -5,7 +5,6 @@ import fc from "fast-check";
 import { describe, expect, it } from "vitest";
 import { miniToolJobRequestSchema, MINI_TOOL_JOB_MAX_OUTPUTS } from "../mini-tool-job.js";
 import { miniToolPlanAccess, miniToolPlanJobRequestSchema, miniToolPlanRecipeSchema, readMiniToolPlanJobReport, sameMiniToolPlanJob } from "../mini-tool-plan-job.js";
-import { chunkVideoOutputs } from "../../mini-tools/video-plan.js";
 
 const INPUT_A = "20000000-0000-4000-8000-000000000001";
 const INPUT_B = "20000000-0000-4000-8000-000000000002";
@@ -28,6 +27,16 @@ const base = { schemaVersion: 2, jobId: "task:10000000-0000-4000-8000-0000000000
 const legacy = { jobId: "legacy", containerClass: "MiniToolContainerStd1", deadlineAt: DEADLINE, op: "cut", params: { range: { start: 0, end: 1 } }, input: { storageKey: "fixtures/source-a.mp4" }, outputs: [{ storageKey: "results/legacy.mp4", contentType: "video/mp4" }] };
 const profile = { id: "pyscenedetect-content", version: "0.7.2", weightsHash: null, params: { threshold: 27, minSceneLength: 15 } };
 
+/**
+ * Consecutive slices of at most `size` items, the way a run's outputs are spread over jobs.
+ * @param items - The complete ordered outputs.
+ * @param size - Outputs per job.
+ * @returns The slices in order.
+ */
+function slices<T>(items: readonly T[], size: number): T[][] {
+  return Array.from({ length: Math.ceil(items.length / size) }, (_, index) => items.slice(index * size, (index + 1) * size));
+}
+
 /** A measured output, with its global index independent from report ordering. */
 function measured(output: typeof outputs[number]): Record<string, unknown> {
   return { outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "c".repeat(64), sizeBytes: 123, contentType: output.contentType, width: 32, height: 18, durationSeconds: null, cover: null, upright: null };
@@ -43,7 +52,7 @@ describe("planned media job requests", () => {
   });
 
   it("retains all seventeen global indices and recipes across three valid chunks", () => {
-    const chunks = chunkVideoOutputs(outputs, MINI_TOOL_JOB_MAX_OUTPUTS);
+    const chunks = slices(outputs, MINI_TOOL_JOB_MAX_OUTPUTS);
     expect(chunks.map((chunk) => chunk.map((output) => output.outputIndex))).toEqual([[0, 1, 2, 3, 4, 5, 6, 7], [8, 9, 10, 11, 12, 13, 14, 15], [16]]);
     const requests = chunks.map((chunk, index) => miniToolPlanJobRequestSchema.parse({ ...base, jobId: `task:T:chunk:${index}`, outputs: chunk }));
     expect(requests).toEqual(chunks.map((chunk, index) => ({ ...base, jobId: `task:T:chunk:${index}`, outputs: chunk })));
@@ -161,7 +170,7 @@ describe("planned media job requests", () => {
   it("retains every output under arbitrary legal chunk boundaries", () => {
     fc.assert(fc.property(fc.integer({ min: 1, max: 40 }), (count) => {
       const complete = Array.from({ length: count }, (_, outputIndex) => ({ ...outputs[0]!, outputIndex, storageKey: `results/${outputIndex}.png`, coverKey: undefined, recipe: frameAt(INPUT_A, outputIndex) }));
-      const chunks = chunkVideoOutputs(complete, MINI_TOOL_JOB_MAX_OUTPUTS);
+      const chunks = slices(complete, MINI_TOOL_JOB_MAX_OUTPUTS);
       const accepted = chunks.map((chunk, index) => miniToolPlanJobRequestSchema.parse({ ...base, jobId: `task:T:${index}`, outputs: chunk }));
       expect(accepted).toEqual(chunks.map((chunk, index) => ({ ...base, jobId: `task:T:${index}`, outputs: chunk })));
       expect(chunks.flat()).toEqual(complete);
