@@ -4,12 +4,13 @@
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import type { Readable } from "node:stream";
 import { miniToolPlanRecipeInputs, type MiniToolPlanRecipe } from "@shared/upload/mini-tool-plan-types.js";
 import type { ContainerFailure } from "@shared/mini-tools/types.js";
 import type { PlanContainerCount, PlanContainerOutput, MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { countPresentationGrid, executePresentationRecipe, type PlanLimits } from "@ingest/container/presentation-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
-import { download, put } from "@ingest/container/mini-tool-run.js";
+import { download, put, putStream } from "@ingest/container/mini-tool-run.js";
 import { cpuUsec } from "@ingest/container/run-steps.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pngSize } from "@ingest/png-size.js";
@@ -107,11 +108,28 @@ export async function runPlanJob(job: PlanRunBody): Promise<void> {
       // Every recipe carries the grid frame numbers the worker wrote from the frozen plan; the container reads no frame table (§7.17).
       const inputs = new Map<string, string>();
       for (const id of named(recipe)) inputs.set(id, await fetchInput(id));
-      const request = { inputs, output: file, directory, signal, limits: job.limits };
-      const metadata = await executePresentationRecipe({ ...request, recipe });
-      try { await put(output.url, file, signal); }
-      catch (error) { reason = "internal"; throw error; }
-      const cover = output.coverUrl !== undefined && metadata.width !== null
+      // A recipe that streams its output uploads it while it runs; every other recipe leaves its output file to send here.
+      let streamed = false;
+      let streamFailure: unknown;
+      /**
+       * Upload this output while its recipe writes it.
+       * @param body - The output stream.
+       * @returns Nothing once stored.
+       * @throws {Error} When the write fails.
+       */
+      const upload = async (body: Readable): Promise<void> => {
+        streamed = true;
+        try { await putStream(output.url, body, signal); }
+        catch (error) { streamFailure = error; throw error; }
+      };
+      let metadata: MediaOfOutput;
+      try { metadata = await executePresentationRecipe({ inputs, output: file, directory, signal, limits: job.limits, recipe, upload }); }
+      catch (error) { if (error === streamFailure) reason = "internal"; throw error; }
+      if (!streamed) {
+        try { await put(output.url, file, signal); }
+        catch (error) { reason = "internal"; throw error; }
+      }
+      const cover = !streamed && output.coverUrl !== undefined && metadata.width !== null
         ? await writeCover({ coverUrl: output.coverUrl, file }, directory, signal, job.limits) : null;
       completed.push({ outputIndex: output.outputIndex, storageKey: output.key, ...metadata, cover });
     }

@@ -62,6 +62,18 @@ export async function put(url: string, file: string, signal?: AbortSignal): Prom
   if (!answered.ok) throw new Error(`the write of ${url} was answered ${answered.status}`);
 }
 
+/**
+ * Send a stream to the Worker while its producer still writes it; its length is known only once it ends.
+ * @param url - Where it goes.
+ * @param body - The stream.
+ * @param signal - The original planned deadline.
+ * @throws {Error} When the write is not answered 200 or the stream fails.
+ */
+export async function putStream(url: string, body: Readable, signal: AbortSignal): Promise<void> {
+  const answered = await fetch(url, { method: "PUT", signal, body: Readable.toWeb(body) as ReadableStream<Uint8Array>, duplex: "half" });
+  if (!answered.ok) throw new Error(`the write of ${url} was answered ${answered.status}`);
+}
+
 /** The operations that lay clips end to end by their lengths. */
 const JOINS: ReadonlySet<ContainerOp> = new Set<ContainerOp>(["join", "audio_join"]);
 

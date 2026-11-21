@@ -1,18 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
+import { Readable } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
 import { countPresentationGrid, executePresentationRecipe } from "@ingest/container/presentation-recipes.js";
 import { runPlanCommand } from "@ingest/container/plan-command.js";
-import { download, put } from "@ingest/container/mini-tool-run.js";
+import { download, put, putStream } from "@ingest/container/mini-tool-run.js";
 import { cpuUsec } from "@ingest/container/run-steps.js";
 
 // Frames-split design §7.17 (「唯一写点：worker的配方构造」): every job recipe is written on grid frame numbers and runs as a
 // presentation recipe; the download, alias and lifetime facts are asserted on the presentation executor.
 vi.mock("@ingest/container/presentation-recipes.js", async (original) => ({ ...await original<Record<string, unknown>>(), executePresentationRecipe: vi.fn(), countPresentationGrid: vi.fn() }));
 vi.mock("@ingest/container/plan-command.js", () => ({ runPlanCommand: vi.fn() }));
-vi.mock("@ingest/container/mini-tool-run.js", () => ({ download: vi.fn(), put: vi.fn() }));
+vi.mock("@ingest/container/mini-tool-run.js", () => ({ download: vi.fn(), put: vi.fn(), putStream: vi.fn() }));
 vi.mock("@ingest/container/run-steps.js", () => ({ cpuUsec: vi.fn() }));
 
 const NOW = 1700000000000;
@@ -140,5 +141,31 @@ describe("a grid count job reports its count and writes no object (§7.17 grid_c
     vi.mocked(countPresentationGrid).mockRejectedValue(new Error("The counted video decoded no frame"));
     await runPlanJob({ ...JOB, outputs: [], count: COUNT });
     expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toEqual({ schemaVersion: 2, attemptId: JOB.attemptId, ok: false, cpuUsec: 123, outputs: [], reason: "tool_failed" });
+  });
+});
+
+// ING-3: the edit stitch uploads its output while FFmpeg writes it; the job sends nothing again and names the side that failed.
+describe("an output its recipe streams (ING-3)", () => {
+  const streaming = { ...JOB, outputs: [{ ...JOB.outputs[0]!, coverUrl: "http://r2.local/cover-8?attempt=current" }] };
+
+  it("PS01 is uploaded once through the stream, never again from a local file, and gets no cover", async () => {
+    vi.mocked(putStream).mockResolvedValue();
+    vi.mocked(executePresentationRecipe).mockImplementation(async (request) => { await request.upload(Readable.from([Buffer.from("edit")])); return MEDIA; });
+    await runPlanJob(streaming);
+    expect(putStream).toHaveBeenCalledExactlyOnceWith(streaming.outputs[0]!.url, expect.any(Readable), vi.mocked(executePresentationRecipe).mock.calls[0]![0].signal);
+    expect(put).not.toHaveBeenCalled();
+    expect(runPlanCommand, "no cover is read from a local file").not.toHaveBeenCalled();
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toMatchObject({ ok: true, outputs: [{ outputIndex: 8, ...MEDIA }] });
+  });
+
+  it("PS02 a failed upload reports internal; a recipe that fails and cuts its upload off reports tool_failed", async () => {
+    vi.mocked(putStream).mockRejectedValue(new Error("the write was answered 502"));
+    vi.mocked(executePresentationRecipe).mockImplementation(async (request) => { await request.upload(Readable.from([])); return MEDIA; });
+    await runPlanJob(streaming);
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toMatchObject({ ok: false, reason: "internal" });
+    vi.mocked(fetch).mockClear();
+    vi.mocked(executePresentationRecipe).mockImplementation(async (request) => { await request.upload(Readable.from([])).catch(() => undefined); throw new Error("grid_mismatch"); });
+    await runPlanJob(streaming);
+    expect(JSON.parse(String(vi.mocked(fetch).mock.calls[0]![1]?.body))).toMatchObject({ ok: false, reason: "tool_failed" });
   });
 });

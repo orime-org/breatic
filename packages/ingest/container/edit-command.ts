@@ -94,11 +94,12 @@ export function editEncode(tier: EditFileTier, settings: EditSettings, fps: Fram
 }
 
 /**
- * The muxer an edit stitch writes for a tier: MOV for ProRes, MP4 otherwise.
+ * The muxer an edit stitch writes for a tier: MOV for ProRes, MP4 otherwise, fragmented so the file is written front to back
+ * and goes to its upload as it is written; a moov written last would need the whole file on disk first.
  * @param tier - The edit tier.
  * @returns The muxer arguments.
  * @throws {never} Never.
  */
 export function editMuxer(tier: EditFileTier): string[] {
-  return tier === 'edit_prores' ? ['-f', 'mov'] : ['-movflags', '+faststart', '-f', 'mp4'];
+  return ['-movflags', '+frag_keyframe+empty_moov', '-f', tier === 'edit_prores' ? 'mov' : 'mp4'];
 }

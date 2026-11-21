@@ -11,6 +11,7 @@
  */
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
+import { PassThrough, type Readable } from "node:stream";
 import { PACKED_PLANE_GAP, checkGridFrames } from "@shared/mini-tools/video-encode-plan.js";
 import { gridFilterChain, gridLandingLate, gridSeekPosition, type SourceKeyframeStats } from "@shared/upload/frame-grid.js";
 import type { FrameRate } from "@shared/upload/frame-grid-rate.js";
@@ -18,7 +19,7 @@ import type {
   MiniToolPlanEditEncode, MiniToolPlanEditStitch, MiniToolPlanFrames, MiniToolPlanGrid, MiniToolPlanRecipe, MiniToolPlanStitch, MiniToolPlanToolSource,
 } from "@shared/upload/mini-tool-plan-types.js";
 import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
-import { runPlanCommand } from "@ingest/container/plan-command.js";
+import { runPlanCommand, startPlanCommand } from "@ingest/container/plan-command.js";
 import { BT709_TAGS, audioOutput, decodedPicture, picture, placement, videoOutput } from "@ingest/container/playback-command.js";
 import { editEncode, editMuxer, editPicture } from "@ingest/container/edit-command.js";
 import { alphaDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
@@ -45,6 +46,8 @@ export interface PresentationRecipeRequest {
   directory: string;
   signal: AbortSignal;
   limits: PlanLimits;
+  /** Write the output to its object while the recipe writes it; a recipe that calls it leaves no local output. */
+  upload: (body: Readable) => Promise<void>;
 }
 
 const HEAD = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", "file"];
@@ -402,17 +405,21 @@ export async function countPresentationGrid(request: GridCountRequest): Promise<
  * the codec's extradata (H.264 avcC with its SPS and PPS, VP9 codec private).
  * @param chunks - The downloaded chunk files.
  * @param run - The lifetime and IO bounds.
- * @returns Nothing when every chunk has the first one's headers.
+ * @returns The chunks' picture size when every chunk has the first one's headers.
  * @throws {Error} When a chunk's headers differ or ffprobe fails.
  */
-async function sameCodecHeaders(chunks: readonly string[], run: Run): Promise<void> {
+async function sameCodecHeaders(chunks: readonly string[], run: Run): Promise<{ width: number; height: number }> {
   let first: string | null = null;
+  let size = { width: 0, height: 0 };
   for (const chunk of chunks) {
-    const headers = JSON.stringify(JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0",
-      "-show_entries", "stream=codec_name,profile,width,height,pix_fmt,extradata:stream_tags=alpha_mode", "-show_data", "-of", "json", chunk], run)).toString("utf8")).streams);
-    if (first === null) first = headers;
+    const streams = (JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-select_streams", "v:0",
+      "-show_entries", "stream=codec_name,profile,width,height,pix_fmt,extradata:stream_tags=alpha_mode", "-show_data", "-of", "json", chunk], run)).toString("utf8")) as
+      { streams?: { width?: number; height?: number }[] }).streams;
+    const headers = JSON.stringify(streams);
+    if (first === null) { first = headers; size = { width: Number(streams?.[0]?.width), height: Number(streams?.[0]?.height) }; }
     else if (headers !== first) throw new Error("Stitch chunks have different codec headers");
   }
+  return size;
 }
 
 /**
@@ -428,26 +435,21 @@ async function concatList(chunks: readonly { file: string; frames: number }[], f
 }
 
 /**
- * Join chunks by stream copy (§5.4 stitching row, §7.17 stitch row): a single-source stitch adds the original's audio over the
- * chunks' grid frames; an edit stitch writes the edit file with no audio in its tier's container.
+ * Join playback chunks by stream copy (§5.4 stitching row, §7.17 stitch row), adding the original's audio over the chunks'
+ * grid frames.
  * @param recipe - The stitch.
  * @param request - Its files and lifetime.
  * @param run - The lifetime and IO bounds.
  * @returns Nothing once written.
  * @throws {Error} When the chunks' headers differ, an input is missing or FFmpeg fails.
  */
-async function stitch(recipe: MiniToolPlanStitch | MiniToolPlanEditStitch, request: PresentationRecipeRequest, run: Run): Promise<void> {
+async function stitch(recipe: MiniToolPlanStitch, request: PresentationRecipeRequest, run: Run): Promise<void> {
   const files = recipe.chunks.map((chunk) => local(request.inputs, chunk.inputId));
   await sameCodecHeaders(files, run);
   const list = join(request.directory, "stitch.txt");
   await concatList(recipe.chunks.map((chunk, at) => ({ file: files[at]!, frames: chunk.frames.end - chunk.frames.start })), recipe.grid.fps, list);
   const args = [...HEAD, "-f", "concat", "-safe", "0", "-i", list];
   const window = { start: recipe.chunks[0]!.frames.start, end: recipe.chunks.at(-1)!.frames.end };
-  if ("edit" in recipe) {
-    await runPlanCommand("ffmpeg", [...args, "-map", "0:v:0", "-c:v", "copy", "-an", ...editMuxer(recipe.edit.profile), request.output], run);
-    await checkWritten(request.output, { start: 0, end: window.end - window.start }, run);
-    return;
-  }
   let graph: string | null = null;
   if (recipe.audio) {
     const source = local(request.inputs, recipe.inputId);
@@ -460,6 +462,47 @@ async function stitch(recipe: MiniToolPlanStitch | MiniToolPlanEditStitch, reque
     ...(recipe.target.format === "webm-vp9" ? ["-f", "webm"] : ["-movflags", "+faststart", "-f", "mp4"]), request.output);
   await runPlanCommand("ffmpeg", args, run);
   await checkWritten(request.output, { start: 0, end: window.end - window.start }, run);
+}
+
+/**
+ * Join edit chunks by stream copy into the edit file (§4.2, §5.4 stitching row, §7.17 stitch row), no audio, in its tier's
+ * container. The file goes to its upload as FFmpeg writes it, because the disk already holds every chunk and has no room
+ * for a second copy of the edit file; the frame count is FFmpeg's own count of the packets it muxed.
+ * @param recipe - The edit stitch.
+ * @param request - Its files, lifetime and upload.
+ * @param run - The lifetime and IO bounds.
+ * @returns The edit file's size and duration.
+ * @throws {Error} When the chunks' headers differ, an input is missing, FFmpeg or the upload fails, or the frames are not the window's.
+ */
+async function stitchEdit(recipe: MiniToolPlanEditStitch, request: PresentationRecipeRequest, run: Run): Promise<Omit<MediaOfOutput, "cover">> {
+  const files = recipe.chunks.map((chunk) => local(request.inputs, chunk.inputId));
+  const size = await sameCodecHeaders(files, run);
+  const list = join(request.directory, "stitch.txt");
+  await concatList(recipe.chunks.map((chunk, at) => ({ file: files[at]!, frames: chunk.frames.end - chunk.frames.start })), recipe.grid.fps, list);
+  const progress = join(request.directory, "stitch-progress.txt");
+  const count = recipe.chunks.at(-1)!.frames.end - recipe.chunks[0]!.frames.start;
+  const ffmpeg = startPlanCommand("ffmpeg", [...HEAD, "-f", "concat", "-safe", "0", "-i", list, "-map", "0:v:0", "-c:v", "copy", "-an",
+    "-progress", progress, ...editMuxer(recipe.edit.profile), "pipe:1"], run, { stdout: true });
+  // The upload ends only after FFmpeg exited cleanly with the window's frames, so a failed stitch never completes its object.
+  const body = new PassThrough();
+  ffmpeg.stdout!.pipe(body, { end: false });
+  let uploadFailure: unknown;
+  const uploaded = request.upload(body).catch((error: unknown) => { uploadFailure = error; ffmpeg.stop(); });
+  try {
+    await ffmpeg.done;
+    const muxed = [...(await readFile(progress, "utf8")).matchAll(/^frame=(\d+)$/gmu)].at(-1)?.[1];
+    if (checkGridFrames({ start: 0, end: count }, Number(muxed)) !== null) throw new Error("grid_mismatch");
+  } catch (error) {
+    // An upload that failed first stopped FFmpeg and is the cause; otherwise the stitch failed and the upload is cut off.
+    const cause = uploadFailure ?? error;
+    body.destroy(new Error("The edit stitch stopped before its upload ended", { cause: error }));
+    await uploaded;
+    throw cause;
+  }
+  body.end();
+  await uploaded;
+  if (uploadFailure !== undefined) throw uploadFailure;
+  return { ...size, durationSeconds: (count * recipe.grid.fps.denominator) / recipe.grid.fps.numerator };
 }
 
 /**
@@ -562,11 +605,13 @@ export async function executePresentationRecipe(request: PresentationRecipeReque
     case "scene_cuts": await detectScenes(recipe, request, run); return NO_MEDIA;
     case "grid_count": throw new Error("A grid count is the job's count, never an output (§7.17 grid_count)");
     case "edit_encode": await encodeEditChunk(recipe, request, run); break;
-    case "stitch": await stitch(recipe, request, run); break;
+    case "stitch":
+      if ("edit" in recipe) return { ...await stitchEdit(recipe, request, run), cover: null };
+      await stitch(recipe, request, run); break;
     default: await renderWindow(recipe, request, run);
   }
   const metadata = await readVideoMetadata(request.output, request, recipe.kind);
-  if (recipe.kind !== "stitch" || "edit" in recipe || recipe.target.alpha !== "packed") return { ...metadata, cover: null };
+  if (recipe.kind !== "stitch" || recipe.target.alpha !== "packed") return { ...metadata, cover: null };
   const { rect, planeWidth } = placement(recipe.target);
   return { ...metadata, cover: null, packing: { packedWidth: recipe.target.width, packedHeight: recipe.target.height,
     colorRect: rect, alphaRect: { ...rect, x: rect.x + planeWidth + PACKED_PLANE_GAP } } };
