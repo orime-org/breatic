@@ -179,6 +179,13 @@ describe("what the guide says", () => {
     );
   });
 
+  it("says the Space type row scrolls with the wheel and its arrow buttons, and names no arrow-key route", () => {
+    expect(webSource("spaces/SpaceKindPicker.tsx")).not.toMatch(/ArrowLeft|ArrowRight/);
+    const row = renderProductGuide().split("scrolls sideways")[1]?.split("Hovering them")[0] ?? "";
+    expect(row).toMatch(/faded edge with an arrow button.*mouse wheel scrolls the row/s);
+    expect(row).not.toMatch(/arrow keys/);
+  });
+
   it("says a reference is wired, then chosen from the prompt's list", () => {
     // Three halves, each of which has been the whole sentence at some point and
     // read as complete: the edge that offers the node, the @ that opens the

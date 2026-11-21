@@ -389,7 +389,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ${quoted(t("spaces.kind.document"))}, ` +
       `${quoted(t("spaces.kind.threeD"))}, ${quoted(t("spaces.kind.timeline"))} or ${quoted(t("spaces.kind.webAnimation"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
       "The five cards show an icon and name in one row that starts at the left and scrolls sideways: a faded edge with an arrow button shows on a side that has more cards, " +
-      "the mouse wheel scrolls the row, and the left and right arrow keys move the selection. " +
+      "and the mouse wheel scrolls the row. " +
       `Hovering them shows ${quoted(t("spaces.kind.canvasSub"))}, ` +
       `${quoted(t("spaces.kind.documentSub"))}, ${quoted(t("spaces.kind.threeDSub"))}, ${quoted(t("spaces.kind.timelineSub"))} and ${quoted(t("spaces.kind.webAnimationSub"))}, respectively. ` +
       `The ${quoted(t("spaces.kind.threeD"))}, ${quoted(t("spaces.kind.timeline"))} and ${quoted(t("spaces.kind.webAnimation"))} cards have a ${quoted(t("spaces.kind.developmentBadge"))} badge at their top right to mark them as in development. ` +
