@@ -24,6 +24,8 @@ export interface NodeHistoryPanelProps {
   total: number;
   /** The host node's modality. */
   modality: HistoryModality;
+  /** The node's Project, for the rows' video previews. */
+  projectId: string;
   /** Id of the row to tag "current" (the node's live content), or null. */
   currentEntryId: string | null;
   /** Id of the row a task row's View opened the history at, once loaded. */
@@ -58,6 +60,7 @@ export interface NodeHistoryPanelProps {
  * @param root0.entries - Loaded rows.
  * @param root0.total - Total rows for the header count.
  * @param root0.modality - Host node modality.
+ * @param root0.projectId - The node's Project.
  * @param root0.currentEntryId - Row id to tag "current", or null.
  * @param root0.focusedEntryId - Row id to outline and scroll to, or null.
  * @param root0.isLoading - First page still loading → skeleton.
@@ -74,6 +77,7 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
   entries,
   total,
   modality,
+  projectId,
   currentEntryId,
   focusedEntryId,
   isLoading,
@@ -197,6 +201,7 @@ export const NodeHistoryPanel = React.memo(function NodeHistoryPanel({
                   key={entry.id}
                   entry={entry}
                   modality={modality}
+                  projectId={projectId}
                   isCurrent={entry.id === currentEntryId}
                   isFocused={entry.id === focusedEntryId}
                   onRestore={onRestore}

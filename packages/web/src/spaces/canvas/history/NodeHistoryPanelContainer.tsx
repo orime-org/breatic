@@ -253,6 +253,7 @@ function OpenNodeHistoryPanel({
         entries={history.entries}
         total={history.total}
         modality={modality}
+        projectId={projectId}
         currentEntryId={currentId}
         focusedEntryId={focusLoaded ? focus : null}
         isLoading={isPending}

@@ -6,7 +6,7 @@
  * history and the project activity panel; §7.9 last paragraph): a video hover preview reads the same presentation query
  * Qp as the canvas node. With a selected version P it plays P's playback file; with nothing selected and an original the
  * browser cannot play, it shows the cover and "Preparing video…"; a failed candidate shows only the reason, no Retry.
- * How the preview learns its Project is not fixed by the design; this file passes it as a `projectId` prop.
+ * The preview learns its Project from a `projectId` prop, which both callers pass.
  */
 
 import * as React from 'react';
@@ -21,12 +21,17 @@ import type { VideoPresentationSource, VideoRendererCallbacks } from '@web/space
 import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 import { presentedBinding, presentedBundle, presentedPreparation, presentedResponse } from '@web/test-utils/video-presentation';
 
+import type { NodeHistoryEntry } from '@web/data/api/canvas';
+import { NodeHistoryRow } from '@web/spaces/canvas/history/NodeHistoryRow';
+import { ProjectActivityButton } from '@web/pages/project/chrome/tab-bar/ProjectActivityButton';
 import type * as RequestModule from '@web/data/api/request';
 import type * as RendererModule from '@web/spaces/canvas/video-presentation/create-video-renderer';
 vi.mock('@web/data/api/request', async (importOriginal) => ({
   ...(await importOriginal<typeof RequestModule>()),
   apiGet: vi.fn(() => new Promise<never>(() => undefined)),
 }));
+const { listActivities } = vi.hoisted(() => ({ listActivities: vi.fn() }));
+vi.mock('@web/data/api/activities', () => ({ activitiesApi: { list: listActivities } }));
 vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (importOriginal) => ({
   ...(await importOriginal<typeof RendererModule>()),
   createVideoRenderer: vi.fn((host: HTMLElement, source: VideoPresentationSource, callbacks: VideoRendererCallbacks) => {
@@ -91,5 +96,50 @@ describe('U05 a video hover preview plays through Qp (§7.8, §7.9)', () => {
     if (original !== null) fireEvent.error(original);
     expect(screen.getByText('Couldn\'t prepare the video')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /retry/i })).toBeNull();
+  });
+});
+
+describe('U05 callers: the node history and the project activity panel pass their Project (§7.8 surface list)', () => {
+  /**
+   * Seeds Qp with a selected version whose playback file differs from the original.
+   * @throws {never} Never.
+   */
+  function seedSelected(): void {
+    const bundle = presentedBundle(ORIGINAL, { playback: { kind: 'native', carrier: { storageKey: 'hover/playback.mp4', url: PLAYBACK, etag: '"p"', size: 4096, sha256: 'b'.repeat(64), contentType: 'video/mp4' }, displayRect: null } });
+    client.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: ORIGINAL, active: true }).queryKey, presentedResponse(presentedBinding(ORIGINAL), { presentation: bundle }));
+  }
+
+  /**
+   * Hovers a trigger past the open delay and lets the renderer report ready.
+   * @param trigger - The preview trigger.
+   * @returns The opened card's content.
+   */
+  async function hover(trigger: HTMLElement): Promise<HTMLElement> {
+    fireEvent.pointerEnter(trigger, { pointerType: 'mouse' });
+    act(() => { vi.advanceTimersByTime(HOVER_OPEN_DELAY_MS + 10); });
+    await act(async () => { await Promise.resolve(); });
+    return screen.getByTestId('hover-preview-content');
+  }
+
+  it('U05: a video row of the node history plays the selected playback file', async () => {
+    seedSelected();
+    const entry: NodeHistoryEntry = { id: 'h1', operatorName: null, entryType: 'generation', status: 'success', content: ORIGINAL, thumbnailUrl: COVER, errorMessage: null, metadata: {},
+      mediaWidth: 320, mediaHeight: 180, duration: 2, mimeType: 'video/quicktime', size: 1024, createdAt: '2026-11-21T00:00:00.000Z' };
+    render(<QueryClientProvider client={client}><TooltipProvider><NodeHistoryRow entry={entry} modality='video' projectId={PROJECT} isCurrent={false} isFocused={false} onRestore={() => undefined} /></TooltipProvider></QueryClientProvider>);
+    const card = await hover(screen.getByTestId('node-history-row').firstElementChild as HTMLElement);
+    expect(card.querySelector(`video[src="${PLAYBACK}"]`)).not.toBeNull();
+    expect(card.querySelector(`video[src="${ORIGINAL}"]`)).toBeNull();
+  });
+
+  it('U05: an uploaded video in the project activity panel plays the selected playback file', async () => {
+    seedSelected();
+    listActivities.mockResolvedValue({ items: [{ id: 'a-1', projectId: PROJECT, actorUserId: 'u-1', actorName: 'Yuki', type: 'asset:uploaded', spaceId: null, nodeId: null, taskId: null,
+      payload: { kind: 'video', fileUrl: ORIGINAL, thumbnailUrl: COVER }, restored: false, createdAt: Date.now() - 60_000 }], nextCursor: null });
+    render(<QueryClientProvider client={client}><TooltipProvider><ProjectActivityButton projectId={PROJECT} /></TooltipProvider></QueryClientProvider>);
+    fireEvent.click(screen.getByTestId('project-activity-trigger'));
+    await act(async () => { await vi.advanceTimersByTimeAsync(50); });
+    const card = await hover(screen.getByTestId('project-activity-thumb-a-1'));
+    expect(card.querySelector(`video[src="${PLAYBACK}"]`)).not.toBeNull();
+    expect(card.querySelector(`video[src="${ORIGINAL}"]`)).toBeNull();
   });
 });

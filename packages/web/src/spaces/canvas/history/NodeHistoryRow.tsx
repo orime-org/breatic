@@ -80,6 +80,8 @@ export interface NodeHistoryRowProps {
   entry: NodeHistoryEntry;
   /** The host node's modality (image renders the URL; video/audio branch). */
   modality: HistoryModality;
+  /** The node's Project: a video row's hover preview plays through its presentation query. */
+  projectId: string;
   /** Whether this row is the node's current content (tagged, not restorable). */
   isCurrent: boolean;
   /**
@@ -177,6 +179,7 @@ function previewFor(
  * @param root0 - Component props.
  * @param root0.entry - The history row.
  * @param root0.modality - The host node's modality.
+ * @param root0.projectId - The node's Project.
  * @param root0.isCurrent - Whether this row is the node's current content.
  * @param root0.isFocused - Whether a task row's View opened the history here.
  * @param root0.onRestore - Restore this entry onto the node.
@@ -185,6 +188,7 @@ function previewFor(
 export const NodeHistoryRow = React.memo(function NodeHistoryRow({
   entry,
   modality,
+  projectId,
   isCurrent,
   isFocused,
   onRestore,
@@ -260,6 +264,7 @@ export const NodeHistoryRow = React.memo(function NodeHistoryRow({
           src={preview.src}
           text={preview.text}
           poster={preview.poster}
+          projectId={projectId}
           fullscreen={preview.fullscreen}
           alt=''
           followCanvas
