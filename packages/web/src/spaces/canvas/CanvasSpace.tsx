@@ -4313,8 +4313,8 @@ function CanvasSpaceInner({
   const retryVideoSource = React.useCallback((): void => { repairVideoSource(videoURL); }, [repairVideoSource, videoURL]);
   const videoRetrying = repairingVideoSources.has(videoURL);
   const videoFacts = React.useMemo(() => ({
-    response: videoResolved.query.data, retrying: videoRetrying, onRetry: retryVideoSource, previewSource: videoResolved.source,
-  }), [videoResolved.query.data, videoResolved.source, videoRetrying, retryVideoSource]);
+    response: videoResolved.query.data, readFailed: videoResolved.query.isError, retrying: videoRetrying, onRetry: retryVideoSource, previewSource: videoResolved.source,
+  }), [videoResolved.query.data, videoResolved.query.isError, videoResolved.source, videoRetrying, retryVideoSource]);
   useVideoFocusCropSettlement(projectId, spaceId, nodes);
   const retryFocusSource = React.useCallback((): void => { repairVideoSource(focusVideoURL); }, [repairVideoSource, focusVideoURL]);
   // A video focus source follows the panel derivation (§5.5 interface states row); the node shows its selected version.
@@ -4325,6 +4325,7 @@ function CanvasSpaceInner({
     const shown = response?.presentation?.versionId ?? null;
     return { sourceState: deriveVideoToolPanelState({ sourceURL: focusVideoURL, presentationStatus: focusVideo.query.isError ? 'failed' : response === undefined ? 'loading' : 'ready', response,
       resourceVersionId: shown, toolInputId: response?.presentation?.toolInputId ?? null, retrying }), sourceFailure: response?.presentation === null ? response.preparation?.failure ?? null : null,
+    sourceReadFailed: focusVideo.query.isError && response === undefined,
     onRetrySource: retryFocusSource, retryingSource: retrying };
   }, [focusVideoURL, focusVideo.query.data, focusVideo.query.isError, repairingVideoSources, retryFocusSource]);
   const videoRuntime = useCanvasVideoBindings(videoHost, videoURL || null, videoFacts);

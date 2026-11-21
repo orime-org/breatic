@@ -26,6 +26,7 @@ const Bar = FocusCropControls as unknown as React.FC<{
   onBackToPick: () => void;
   sourceState: SourceState;
   onRetrySource: () => void;
+  sourceReadFailed?: boolean;
 }>;
 const VIDEO: { id: string } & MediaNodeData = { id: 'n1', kind: 'video', src: 'https://cdn/clip.mp4' };
 
@@ -34,10 +35,10 @@ const VIDEO: { id: string } & MediaNodeData = { id: 'n1', kind: 'video', src: 'h
  * @param sourceState - The source's derived state.
  * @returns The spies.
  */
-function renderBar(sourceState: SourceState): { onConfirm: ReturnType<typeof vi.fn>; onRetrySource: ReturnType<typeof vi.fn> } {
+function renderBar(sourceState: SourceState, sourceReadFailed = false): { onConfirm: ReturnType<typeof vi.fn>; onRetrySource: ReturnType<typeof vi.fn> } {
   const onConfirm = vi.fn(() => true);
   const onRetrySource = vi.fn();
-  render(cropCanvas([VIDEO], <Bar onConfirm={onConfirm} onBackToPick={vi.fn()} sourceState={sourceState} onRetrySource={onRetrySource} />));
+  render(cropCanvas([VIDEO], <Bar onConfirm={onConfirm} onBackToPick={vi.fn()} sourceState={sourceState} onRetrySource={onRetrySource} sourceReadFailed={sourceReadFailed} />));
   const video = screen.getByTestId('media-element') as HTMLVideoElement;
   Object.defineProperty(video, 'duration', { configurable: true, get: () => 10 });
   Object.defineProperty(video, 'currentTime', { configurable: true, get: () => 4, set: () => undefined });
@@ -71,6 +72,14 @@ describe('F04: the focus bar while the source video has no selected version (des
     expect(onRetrySource).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByTestId('focus-crop-confirm'));
     expect(onConfirm).not.toHaveBeenCalled();
+  });
+
+  it('F04: a failed presentation read says the source is unavailable and offers the retry that rereads it', () => {
+    const { onRetrySource } = renderBar('retryable', true);
+    expect(screen.getByTestId('focus-crop-source-state')).toHaveTextContent('Source video unavailable');
+    expect(screen.getByTestId('focus-crop-source-state')).not.toHaveTextContent(/prepare the video/);
+    fireEvent.click(screen.getByTestId('focus-crop-source-retry'));
+    expect(onRetrySource).toHaveBeenCalledTimes(1);
   });
 
   it('F04: a content failure shows the video as unusable, with no retry', () => {

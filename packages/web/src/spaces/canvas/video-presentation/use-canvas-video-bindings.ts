@@ -26,6 +26,8 @@ export interface VideoToolPanelStateInput {
 /** Current authorized source facts passed by the Canvas query owner. */
 export interface CanvasVideoSourceFacts {
   response: VideoPresentationResponse | undefined;
+  /** Whether the latest read of this source failed. */
+  readFailed: boolean;
   retrying: boolean;
   onRetry: () => void;
   previewSource: VideoPresentationSource | null;
@@ -51,8 +53,9 @@ function failedState(code: string): VideoToolPanelState {
  */
 export function deriveVideoToolPanelState(input: VideoToolPanelStateInput): VideoToolPanelState {
   const response = input.response;
-  // Step 1: no current read for this source.
-  if (input.presentationStatus !== 'ready' || response === undefined || response.sourceBinding.canonicalURL !== input.sourceURL) return 'waiting-presentation';
+  // Step 1: no current read for this source. A failed read offers the Retry that rereads it; a reread that failed beside a
+  // held response leaves that response in force.
+  if (response === undefined || response.sourceBinding.canonicalURL !== input.sourceURL) return input.presentationStatus === 'failed' && !input.retrying ? 'retryable' : 'waiting-presentation';
   const selected = response.presentation;
   // Step 2: nothing selected; the target candidate's failure decides, otherwise it is still being prepared.
   if (selected === null) {
@@ -63,6 +66,16 @@ export function deriveVideoToolPanelState(input: VideoToolPanelStateInput): Vide
   if (input.resourceVersionId !== selected.versionId) return 'waiting-presentation';
   // Step 4: the binding names P's tool input; a target preparation beside P changes nothing.
   return input.toolInputId === selected.toolInputId ? 'usable' : 'waiting-presentation';
+}
+
+/**
+ * Whether the panel waits on a failed read rather than on a candidate: the read failed and no response is held (§7.12 step 1).
+ * @param facts - The current read facts.
+ * @returns Whether the read failure is what the panel shows.
+ * @throws {never} Never.
+ */
+function readFailedOf(facts: CanvasVideoSourceFacts): boolean {
+  return facts.readFailed && facts.response === undefined;
 }
 
 /** One input's derived state, for a panel over several inputs. */
@@ -168,19 +181,19 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
       // The version the page shows is its runtime source key's third part (§3.3, §7.12 step 3).
       const resourceVersionId = snapshot?.status === 'ready' ? shownVersionOf(binding.sourceKey) : null;
       const selected = facts?.response?.sourceBinding.canonicalURL === canonicalURL ? facts.response.presentation : null;
-      const panelState = facts === undefined ? undefined : deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: snapshot?.status === 'failed' ? 'failed' : 'ready', response: facts.response, resourceVersionId,
+      const panelState = facts === undefined ? undefined : deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: facts.readFailed ? 'failed' : 'ready', response: facts.response, resourceVersionId,
         toolInputId: resourceVersionId !== null && resourceVersionId === selected?.versionId ? selected.toolInputId : null, retrying: facts.retrying });
       presentations.set(hostId, { status: snapshot?.status === 'failed' ? 'failed' : 'ready', sourceURL: canonicalURL, sourceEpoch: binding.sourceEpoch, seekEpoch: binding.getSeekEpoch(), presentedTime: frame?.mediaTime ?? null, grid: selected !== null && panelState === 'usable' ? { fps: selected.display.fps, frameCount: selected.display.frameCount } : null, getPresentedFrame: actualFrame, onSeek: binding.seek, onPlayRange: (start, end) => playSourceRange(live, start, end),
-        ...(facts === undefined ? {} : { panelState, failure: facts.response?.presentation === null ? facts.response.preparation?.failure ?? null : null, retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource }),
+        ...(facts === undefined ? {} : { panelState, failure: facts.response?.presentation === null ? facts.response.preparation?.failure ?? null : null, readFailed: readFailedOf(facts), retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource }),
         ...(selected ? { presentationRef: { source: { toolInputId: selected.toolInputId, planSha256: selected.planSha256 } },
           display: { width: selected.display.width, height: selected.display.height, duration: gridDuration(selected.display) } } : {}),
       });
     } else if (hostId !== null && canonicalURL !== null && facts !== undefined) {
       // No surface shows a selected version yet (the node plays the original for display, §7.8): the panel still shows
       // why it waits, or the candidate's failure and its Retry (§7.12 steps 1–3).
-      const panelState = deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: 'ready', response: facts.response, resourceVersionId: null, toolInputId: null, retrying: facts.retrying });
+      const panelState = deriveVideoToolPanelState({ sourceURL: canonicalURL, presentationStatus: facts.readFailed ? 'failed' : 'ready', response: facts.response, resourceVersionId: null, toolInputId: null, retrying: facts.retrying });
       presentations.set(hostId, { status: 'loading', sourceURL: canonicalURL, sourceEpoch: 0, seekEpoch: 0, presentedTime: null, grid: null, getPresentedFrame: () => null,
-        panelState, failure: facts.response?.presentation === null ? facts.response.preparation?.failure ?? null : null, retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource });
+        panelState, failure: facts.response?.presentation === null ? facts.response.preparation?.failure ?? null : null, readFailed: readFailedOf(facts), retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource });
     }
     return { bindings, presentations, onVideoBinding, onVideoFrame };
   }, [hostId, canonicalURL, snapshot, binding, facts, onVideoBinding, onVideoFrame, revision]);

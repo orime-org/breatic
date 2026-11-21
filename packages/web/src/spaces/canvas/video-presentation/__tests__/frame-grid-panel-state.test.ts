@@ -77,6 +77,15 @@ describe('U01 the panel derivation over the frame grid (§7.12 steps 1–4)', ()
     expect(derive({ ...usable, sourceURL: 'https://assets.example.test/video/other.mp4' })).toBe('waiting-presentation');
   });
 
+  it('U01: step 1 a read that failed with no response held is retryable, and waits while its Retry rereads', () => {
+    expect(derive({ ...usable, presentationStatus: 'failed', response: undefined })).toBe('retryable');
+    expect(derive({ ...usable, presentationStatus: 'failed', response: undefined, retrying: true })).toBe('waiting-presentation');
+  });
+
+  it('U01: step 1 a reread that failed beside a held response keeps deriving from that response', () => {
+    expect(derive({ ...usable, presentationStatus: 'failed' })).toBe('usable');
+  });
+
   it('U01: step 2 nothing selected and the candidate not failed, or a retry pressed, waits for the presentation', () => {
     expect(derive({ ...usable, response: read(null), resourceVersionId: null, toolInputId: null })).toBe('waiting-presentation');
     expect(derive(unselected(null))).toBe('waiting-presentation');

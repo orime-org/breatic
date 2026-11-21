@@ -9,6 +9,9 @@ import { useResolvedVideoPresentation } from '../use-resolved-video-presentation
 import { videoPresentationQuery } from '../video-presentation-query';
 import { PRESENTED, presentedBinding, presentedBundle, presentedPreparation, presentedResponse } from '@web/test-utils/video-presentation';
 
+const { apiGet } = vi.hoisted(() => ({ apiGet: vi.fn() }));
+vi.mock('@web/data/api/request', async (original) => ({ ...await original<Record<string, unknown>>(), apiGet }));
+
 // §96 (frames-split design §3.5 alpha manifest row, §7.8): a selected alpha-packed bundle plays from its manifest object,
 // which names the packed carrier and the logical colour and alpha rectangles. The resolver reads the manifest the bundle's
 // receipt measures, holds it to the version (`alphaPackedManifestMatchesVersion`: its packed object is the version's carrier)
@@ -61,6 +64,7 @@ function resolve(): ReturnType<typeof renderHook<ReturnType<typeof useResolvedVi
 beforeEach(() => {
   client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   fetchMock.mockReset();
+  apiGet.mockReset().mockRejectedValue(new Error('unexpected read'));
   vi.stubGlobal('fetch', fetchMock);
 });
 afterEach(() => { client.clear(); vi.unstubAllGlobals(); });
@@ -81,6 +85,24 @@ describe('an alpha-packed selected version plays from its manifest (§96; design
     await waitFor(() => expect(fetchMock).toHaveBeenCalled());
     await waitFor(() => expect(result.current.failure).not.toBeNull());
     expect(result.current.source).toBeNull();
+  });
+});
+
+describe('a read error is not a candidate failure (frames-split §7.9 last paragraph)', () => {
+  it('RV01 a failed presentation read leaves failure null, so the original keeps playing with no failure over it', async () => {
+    apiGet.mockRejectedValue(new Error('read failed'));
+    const { result } = resolve();
+    await waitFor(() => expect(result.current.query.isError).toBe(true));
+    expect(result.current.failure).toBeNull();
+    expect(result.current.source).toBeNull();
+  });
+
+  it('RV02 a failed target candidate with nothing selected is the candidate failure', async () => {
+    const options = videoPresentationQuery({ projectId, canonicalURL: url, active: true });
+    client.setQueryDefaults(options.queryKey, { staleTime: Infinity });
+    client.setQueryData(options.queryKey, presentedResponse(presentedBinding(url), { preparation: presentedPreparation('expired') }));
+    const { result } = resolve();
+    expect(result.current.failure).toBe('expired');
   });
 });
 

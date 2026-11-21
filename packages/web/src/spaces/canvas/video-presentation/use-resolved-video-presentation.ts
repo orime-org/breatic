@@ -57,8 +57,9 @@ export function useResolvedVideoPresentation(projectId: string, canonicalURL: st
     if (selected.playback.kind === 'native') return { ...base, manifest: null };
     return manifest.data === undefined ? null : { ...base, manifest: manifest.data };
   }, [canonical, fingerprint, selected, manifest.data]);
-  // Nothing selected and the target candidate failed (§7.12 step 2), or the manifest is not this version's.
-  const failure = query.isError ? 'presentation-query-failed' : manifest.isError ? 'invalid-alpha-manifest'
+  // Nothing selected and the target candidate failed (§7.12 step 2), or the manifest is not this version's. A read that
+  // failed is not a candidate failure: the original keeps playing and the read's own Retry rereads it.
+  const failure = manifest.isError ? 'invalid-alpha-manifest'
     : query.data?.presentation === null ? query.data.preparation?.failure ?? null : null;
   return { query, source, failure };
 }

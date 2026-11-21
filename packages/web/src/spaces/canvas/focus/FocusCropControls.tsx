@@ -107,6 +107,8 @@ interface FocusCropControlsProps {
   sourceState?: VideoToolPanelState;
   /** The candidate's failure code behind a `retryable` or `unsupported` state. */
   sourceFailure?: string | null;
+  /** Whether a `retryable` state is the source's presentation read failing; its Retry rereads it. */
+  sourceReadFailed?: boolean;
   /** The existing source repair, for a temporary failure. */
   onRetrySource?: () => void;
   /** Whether that repair is still waiting. */
@@ -146,12 +148,13 @@ export function handOffFocusToPickBanner(barRoot: Element | null, canvasRoot: Pa
  * @param root0.onConfirm - Receives the confirmed natural-pixel crop.
  * @param root0.sourceState - A video source's derived state; absent for an image.
  * @param root0.sourceFailure - The candidate failure behind it.
+ * @param root0.sourceReadFailed - Whether a retryable state is the presentation read failing.
  * @param root0.onRetrySource - Repairs a temporarily failed source.
  * @param root0.retryingSource - Whether that repair waits.
  * @param root0.onBackToPick - Returns to the pick state (Cancel / bare Esc).
  * @returns The bar, or null when no node is being cropped.
  */
-export function FocusCropControls({ onConfirm, onBackToPick, sourceState, sourceFailure = null, onRetrySource, retryingSource = false }: FocusCropControlsProps): React.JSX.Element | null {
+export function FocusCropControls({ onConfirm, onBackToPick, sourceState, sourceFailure = null, sourceReadFailed = false, onRetrySource, retryingSource = false }: FocusCropControlsProps): React.JSX.Element | null {
   const { spaceId } = useCanvasContext();
   const t = useTranslation();
   const store = useCanvasSessionStore();
@@ -360,7 +363,7 @@ export function FocusCropControls({ onConfirm, onBackToPick, sourceState, source
           <div data-testid='focus-crop-source-state' className='flex items-center justify-between gap-2'>
             {sourceState === 'waiting-presentation' ? <span data-testid='focus-crop-source-waiting' className='text-muted-foreground'>{t('canvas.miniTool.videoUI.preparingVideo')}</span> : null}
             {sourceState === 'retryable' ? <>
-              <span className='text-status-error-foreground'>{t('canvas.miniTool.videoUI.preparationFailed')}</span>
+              <span className='text-status-error-foreground'>{t(sourceReadFailed ? 'canvas.miniTool.videoUI.sourceUnavailable' : 'canvas.miniTool.videoUI.preparationFailed')}</span>
               <Button variant='outline' size='compact' data-testid='focus-crop-source-retry' loading={retryingSource} onClick={onRetrySource}>{t('canvas.task.action.retry')}</Button>
             </> : null}
             {sourceState === 'unsupported' ? <span data-testid='focus-crop-source-unsupported' className='text-status-error-foreground'>{t(sourceFailure === 'too_long' ? 'canvas.miniTool.videoUI.tooLongToPrepare' : 'canvas.miniTool.videoUI.ledgerUnsupported')}</span> : null}
