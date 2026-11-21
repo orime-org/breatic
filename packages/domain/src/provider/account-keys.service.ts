@@ -51,7 +51,9 @@ export interface StudioKeyPlan {
  * @returns True while the upstream runs the model.
  */
 export function choiceHolds(model: string, upstream: string): boolean {
-  return (provider().config.models[model] ?? []).some((binding) => binding.upstream === upstream);
+  const { models } = provider().config;
+  // Read only the configuration's own model names, never an Object.prototype member.
+  return Object.hasOwn(models, model) && models[model]!.some((binding) => binding.upstream === upstream);
 }
 
 /**
