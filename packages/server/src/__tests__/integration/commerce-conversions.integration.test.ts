@@ -5,11 +5,13 @@
  * Events the billing service reports through the product (inner#1993 §3.3
  * `conversions`): each is sent to analytics and, when it carries one, queued
  * as an ad conversion, once per insert id; `consent: "account"` follows the
- * account's latest reported consent.
+ * account's latest reported consent. An account that does not exist or was
+ * deleted is refused and nothing is reported.
  */
 
 import { randomUUID } from "node:crypto";
-import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import postgres from "postgres";
+import { afterAll, afterEach, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import { closeDb, initCore, type ConversionReport } from "@breatic/core";
 import type * as Core from "@breatic/core";
 import { reportConversion } from "@server/modules/commerce/commerce-conversions.service.js";
@@ -25,8 +27,14 @@ vi.mock("@breatic/core", async (original) => ({
   accountOnlyConsent: accountConsent,
 }));
 
-beforeAll(() => {
+let sql: ReturnType<typeof postgres>;
+/** The account the reports are about unless a case names another. */
+let userId: string;
+
+beforeAll(async () => {
   initCore(process.env);
+  sql = postgres(inject("DATABASE_URL"), { max: 2, prepare: false, connection: { application_name: "commerce-conversions-test" } });
+  userId = await account();
 });
 
 afterEach(() => {
@@ -34,8 +42,19 @@ afterEach(() => {
 });
 
 afterAll(async () => {
+  await sql?.end({ timeout: 1 });
   await closeDb();
 });
+
+/**
+ * One account.
+ * @returns Its id.
+ */
+async function account(): Promise<string> {
+  const id = randomUUID();
+  await sql`INSERT INTO users(id,email) VALUES (${id},${`${id}@example.test`})`;
+  return id;
+}
 
 /**
  * A renewal report.
@@ -45,7 +64,7 @@ afterAll(async () => {
 function report(overrides: Partial<ConversionReport> = {}): ConversionReport {
   return {
     name: "subscription_renewed",
-    userId: randomUUID(),
+    userId,
     insertId: `evt_${randomUUID()}`,
     properties: { tier: "pro", interval: "month", amount_cents: 2000, currency: "usd" },
     consent: { analytics: true, ads: true },
@@ -103,5 +122,24 @@ describe("reportConversion", () => {
     await expect(reportConversion(r)).rejects.toThrow("redis down");
     expect((await reportConversion(r)).httpStatus).toBe(200);
     expect(enqueue).toHaveBeenCalledTimes(2);
+  });
+
+  it.each([
+    { name: "a deleted account", deleted: true },
+    { name: "an account that does not exist", deleted: false },
+  ])("refuses $name and reports nothing", async ({ deleted }) => {
+    let id: string = randomUUID();
+    if (deleted) {
+      id = await account();
+      await sql`UPDATE users SET deleted_at = now() WHERE id = ${id}`;
+    }
+    const r = report({ userId: id, consent: "account", ads: { conversion: "subscription", transactionId: "sub:d", click: null, value: null } });
+
+    expect(await reportConversion(r)).toEqual({ httpStatus: 404, body: { code: "account_not_found" } });
+    expect(await reportConversion(r)).toEqual({ httpStatus: 404, body: { code: "account_not_found" } });
+    expect(accountConsent).not.toHaveBeenCalled();
+    expect(track).not.toHaveBeenCalled();
+    expect(enqueue).not.toHaveBeenCalled();
+    expect(await sql`SELECT status FROM commerce_requests WHERE key = ${`conv:${r.insertId}`}`).toEqual([{ status: "refused" }]);
   });
 });

@@ -47,7 +47,7 @@ describe("commerce routes", () => {
       await commerce("/conversions", {
         body: { name: "subscription_renewed", userId: nobody, insertId: `evt_${randomUUID()}`, properties: {}, consent: "account", ads: null },
       }),
-    ).toMatchObject({ status: 200, json: { tracked: false, adsQueued: false } });
+    ).toMatchObject({ status: 404, json: unknown });
     expect(
       await commerce(`/subscription-facts/${randomUUID()}`, {
         method: "PUT",
