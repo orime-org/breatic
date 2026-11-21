@@ -48,9 +48,11 @@ for (const path of ['/usr/share/doc/breatic/THIRD-PARTY.md', '/usr/share/chromiu
 const harness = spawnSync(dshBin, ['--help'], { encoding: 'utf8', timeout: 30_000, env: { ...process.env, HOME: home } });
 assert.equal(harness.status, 0, harness.stderr);
 assert.match(harness.stdout, /dsh|deepseek/i);
-const versions = (await readdir(fontsDir)).filter((name) => /^v\d+$/.test(name));
-assert.equal(versions.length, 1);
-const fontRoot = join(fontsDir, versions[0]);
+// Every font set from v1 to the configured one ships, so a modification of an older result reopens with its own set.
+const versions = (await readdir(fontsDir)).filter((name) => /^v\d+$/.test(name)).map((name) => Number(name.slice(1))).sort((x, y) => x - y);
+assert.ok(versions.length > 0);
+assert.deepEqual(versions, versions.map((_, index) => index + 1));
+const fontRoot = join(fontsDir, `v${String(versions.at(-1))}`);
 const faces = JSON.parse(await readFile(join(fontRoot, 'faces.json'), 'utf8'));
 assert.deepEqual([...new Set(faces.map((face) => face.family))].sort(), ['Inter', 'Noto Sans JP', 'Noto Sans KR', 'Noto Sans SC', 'Noto Sans TC', 'Noto Serif SC']);
 for (const face of faces) {

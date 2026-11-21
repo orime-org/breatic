@@ -53,11 +53,12 @@ for (const bin of [process.env.WEB_ANIMATION_FFMPEG_BIN, process.env.WEB_ANIMATI
   assert.equal(version.status, 0, version.stderr);
 }
 
-// The one font set, laid out as the creation container's.
+// Every font set from v1 to the configured one, laid out as the creation container's.
 const fontsDir = process.env.WEB_ANIMATION_FONTS_DIR;
-const versions = (await readdir(fontsDir)).filter((name) => /^v\d+$/.test(name));
-assert.equal(versions.length, 1);
-const faces = JSON.parse(await readFile(join(fontsDir, versions[0], 'faces.json'), 'utf8'));
+const versions = (await readdir(fontsDir)).filter((name) => /^v\d+$/.test(name)).map((name) => Number(name.slice(1))).sort((x, y) => x - y);
+assert.ok(versions.length > 0);
+assert.deepEqual(versions, versions.map((_, index) => index + 1));
+const faces = JSON.parse(await readFile(join(fontsDir, `v${String(versions.at(-1))}`, 'faces.json'), 'utf8'));
 assert.ok(faces.length > 0);
 
 // The service answers on its port and refuses what is not a run.
