@@ -943,10 +943,6 @@ describe("a finish this server drove — a completed upload", () => {
   });
 });
 
-// The event that settles a successful upload is the only way its content
-// reaches the node. Answering 2xx while that event was lost would end the
-// delivery with nothing left to carry the result, so the report is refused
-// and the Worker's own retry is what tries again.
 /** Every 3D part picture event on the stream for `docName`, oldest first. */
 async function sceneLookEventsFor(docName: string): Promise<Record<string, unknown>[]> {
   const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
@@ -1155,6 +1151,10 @@ describe("a finish this server drove — a backend upload that landed empty", ()
   });
 });
 
+// The event that settles a successful upload is the only way its content
+// reaches the node. Answering 2xx while that event was lost would end the
+// delivery with nothing left to carry the result, so the report is refused
+// and the Worker's own retry is what tries again.
 describe("a finish this server drove — an event that could not be published", () => {
   it("refuses a success whose content event was lost", async () => {
     const seed = await seedEditor();

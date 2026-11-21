@@ -941,6 +941,17 @@ describe("stored 3D part pictures (inner#1693 design 6.3)", () => {
     expect(settlements.filter((r) => r.spaceId === spaceId)).toHaveLength(1);
   });
 
+  it("tells the uploader the picture was written when the part already holds it", async () => {
+    const { c, event, spaceId } = await sceneCase(PICTURE);
+    const ids = await publishPictures(c, [event]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await partMap(c.docName)).toBe(PICTURE);
+    expect(settlements.filter((r) => r.spaceId === spaceId)).toEqual([
+      { projectId: PID, spaceId, objectId: OBJECT, part: "3", picture: PICTURE, userId: "uploader", outcome: "written" },
+    ]);
+  });
+
   it("writes nothing on a part someone gave another picture, and tells the uploader why", async () => {
     const { c, event, spaceId } = await sceneCase(OTHER);
     const ids = await publishPictures(c, [event]);
