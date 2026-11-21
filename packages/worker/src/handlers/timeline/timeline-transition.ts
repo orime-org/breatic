@@ -3,8 +3,8 @@
 
 /**
  * Moving a Timeline execution from the worker (inner#1711 design §5.2): every transition applied through {@link move}
- * is announced to the execution's Space (#1490 design §4.7). A pickup's retry is the one transition written without
- * it, since a new attempt changes nothing the user sees.
+ * is announced to the execution's Space (#1490 design §4.7). A pickup's retry is written without it, since a new
+ * attempt changes nothing the user sees; the claim is written and announced by the running-task gate.
  */
 
 import { announceExecutionChange, logger } from "@breatic/core";
