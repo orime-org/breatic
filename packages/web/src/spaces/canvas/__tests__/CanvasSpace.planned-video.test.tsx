@@ -44,7 +44,8 @@ const SOURCE = '30000000-0000-4000-8000-000000000003';
 const URL = 'https://assets.example.test/canonical.webm';
 // The selected version's grid: 7 frames at 25 fps, 0.28 s.
 const GRID: VideoPlanGrid = { fps: { numerator: 25, denominator: 1 }, frameCount: 7 };
-const DRAFT: VideoToolDraftById['video.split'] = { version: 1, draftId: '30000000-0000-4000-8000-000000000004', revision: '30000000-0000-4000-8000-000000000005', source: { nodeId: SOURCE, canonicalURL: URL, mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } }, inputs: [], params: { cuts: [] } };
+// The draft is set on the selected version (frames-split §7.13), so it is current and runs.
+const DRAFT: VideoToolDraftById['video.split'] = { version: 1, draftId: '30000000-0000-4000-8000-000000000004', revision: '30000000-0000-4000-8000-000000000005', source: { nodeId: SOURCE, canonicalURL: URL, mediaInfo: { width: 400, height: 200, duration: 0.28, mimeType: 'video/webm' } }, inputs: [], params: { cuts: [] }, presentationRef: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } } };
 const SOURCE_BINDING: VideoPresentationSourceBinding = { assetId: '30000000-0000-4000-8000-000000000007', contentHash: 'a'.repeat(64), canonicalURL: URL, kind: 'video', mediaInfo: DRAFT.source.mediaInfo };
 const clients: QueryClient[] = [];
 

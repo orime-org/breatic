@@ -1207,7 +1207,11 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.rebuildDraft"))}. A changed source shows ` +
       `${quoted(t("canvas.miniTool.videoUI.sourceChanged"))} with ${quoted(t("canvas.miniTool.videoUI.useCurrentSource"))}; ` +
       "review the settings after switching to the current source. A source that cannot be read shows " +
-      `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))}.`,
+      `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))}. Settings saved on an earlier version of the same video ` +
+      `keep their values and show ${quoted(t("canvas.miniTool.videoUI.videoUpdated"))} at the top of the panel with ` +
+      `${quoted(t("canvas.miniTool.videoUI.applyToVideo"))}; until it is pressed the tool cannot run or detect scenes. A cut ` +
+      "past the updated video's end shows its time in a red row to move or remove first; pressing the button before that shows " +
+      `${quoted(t("canvas.miniTool.videoUI.settingsOutOfRange"))}`,
     `While a video is being prepared, its tools show ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} and ` +
       "cannot run yet; the node plays the original meanwhile when the browser can. If preparing fails for a reason " +
       `that may pass, the panel shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))} with ` +
@@ -1217,7 +1221,7 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))}, both without Retry.`,
     `In ${quoted(t("canvas.miniTool.video.extract-frames.label"))}, ${quoted(t("canvas.miniTool.videoUI.first"))}, ` +
       `${quoted(t("canvas.miniTool.videoUI.last"))} and ${quoted(t("canvas.miniTool.videoUI.current"))} sit side by side in one row, ` +
-      "and stay choosable while the video is being prepared; only Run waits for it. " +
+      "and, once the tool has settings for this video, stay choosable while it is being prepared; only Run waits for it. " +
       `Current requires an actually displayed frame. Until one is available, ` +
       `${quoted(t("canvas.miniTool.videoUI.currentFrameUnavailable"))} explains why Current cannot run; ` +
       `the other modes can still run. ` +

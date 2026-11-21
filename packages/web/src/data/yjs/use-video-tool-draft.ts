@@ -4,7 +4,7 @@
 import * as React from 'react';
 import type * as Y from 'yjs';
 import { CANVAS_NODES_KEY } from '@breatic/shared';
-import type { VideoToolDraftReading, VideoToolId } from '@breatic/shared/mini-tools';
+import type { MiniToolPresentationRef, VideoToolDraftReading, VideoToolId } from '@breatic/shared/mini-tools';
 
 import { nodeDataMap } from '@web/data/yjs/canvas-space';
 import { docName, getDoc } from '@web/data/yjs/manager';
@@ -20,13 +20,14 @@ interface DraftSubscription<K extends VideoToolId> {
  * @param doc - The canonical live canvas document.
  * @param nodeId - The host node.
  * @param toolId - The tool being observed.
+ * @param presentationRef - The selected version's ref the draft is judged against.
  * @returns A stable snapshot reader and an attachment-scoped subscription.
  * @throws {never} Never.
  */
-function draftSubscription<K extends VideoToolId>(doc: Y.Doc, nodeId: string, toolId: K): DraftSubscription<K> {
+function draftSubscription<K extends VideoToolId>(doc: Y.Doc, nodeId: string, toolId: K, presentationRef: MiniToolPresentationRef | undefined): DraftSubscription<K> {
   const key = `miniToolDraft:${toolId}`;
   let current: unknown = nodeDataMap(doc, nodeId)?.get(key);
-  let snapshot = readVideoToolDraft(doc, nodeId, toolId);
+  let snapshot = readVideoToolDraft(doc, nodeId, toolId, presentationRef);
 
   /**
    * Reuses the parsed snapshot while the authoritative scalar is unchanged.
@@ -37,7 +38,7 @@ function draftSubscription<K extends VideoToolId>(doc: Y.Doc, nodeId: string, to
     const value: unknown = nodeDataMap(doc, nodeId)?.get(key);
     if (value !== current) {
       current = value;
-      snapshot = readVideoToolDraft(doc, nodeId, toolId);
+      snapshot = readVideoToolDraft(doc, nodeId, toolId, presentationRef);
     }
     return snapshot;
   };
@@ -85,7 +86,8 @@ function draftSubscription<K extends VideoToolId>(doc: Y.Doc, nodeId: string, to
  * @param spaceId - The canvas Space.
  * @param nodeId - The host node.
  * @param toolId - The video tool being edited.
- * @returns The current supported snapshot or its stored format state.
+ * @param presentationRef - The selected version's ref, stable while it names the same version; a draft bound elsewhere reads stale.
+ * @returns The current supported or stale snapshot, or its stored format state.
  * @throws {never} Never.
  */
 export function useVideoToolDraft<K extends VideoToolId>(
@@ -93,8 +95,9 @@ export function useVideoToolDraft<K extends VideoToolId>(
   spaceId: string,
   nodeId: string,
   toolId: K,
+  presentationRef?: MiniToolPresentationRef,
 ): VideoToolDraftReading<K> {
   const doc = getDoc(docName.canvasSpace(projectId, spaceId));
-  const subscription = React.useMemo(() => draftSubscription(doc, nodeId, toolId), [doc, nodeId, toolId]);
+  const subscription = React.useMemo(() => draftSubscription(doc, nodeId, toolId, presentationRef), [doc, nodeId, toolId, presentationRef]);
   return React.useSyncExternalStore(subscription.subscribe, subscription.getSnapshot, subscription.getSnapshot);
 }

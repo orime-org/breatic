@@ -9,6 +9,7 @@ import {
   videoToolAnalysisRefSchema,
   videoToolAnalysisRefs,
   videoToolDraftSchema,
+  type MiniToolPresentationRef,
   type VideoToolAnalysisRef,
   type VideoToolDraftById,
   type VideoToolDraftReading,
@@ -66,15 +67,45 @@ export function commitVideoSceneAnalysis(doc: Y.Doc, nodeId: string, record: unk
  * @param doc - The live canvas document.
  * @param nodeId - The host node.
  * @param toolId - The tool whose snapshot is being read.
- * @returns The supported snapshot or its original format state.
+ * @param presentationRef - The selected version's ref, against which a draft bound elsewhere reads stale.
+ * @returns The supported or stale snapshot, or its original format state.
  * @throws {never} Never.
  */
 export function readVideoToolDraft<K extends VideoToolId>(
   doc: Y.Doc,
   nodeId: string,
   toolId: K,
+  presentationRef?: MiniToolPresentationRef,
 ): VideoToolDraftReading<K> {
-  return readStoredVideoToolDraft(toolId, nodeDataMap(doc, nodeId)?.get(`miniToolDraft:${toolId}`));
+  return readStoredVideoToolDraft(toolId, nodeDataMap(doc, nodeId)?.get(`miniToolDraft:${toolId}`), presentationRef);
+}
+
+/**
+ * Binds the stored draft, values unchanged, to the selected version as a new draft (frames-split §7.13 Rebind): a new
+ * draftId and revision under the selected presentationRef, and the analysis references of the old draft dropped, as one
+ * undo step. The caller has checked the values against the selected grid.
+ * @param doc - The live canvas document.
+ * @param nodeId - The host node.
+ * @param toolId - The tool being rebound.
+ * @param presentationRef - The selected version's ref.
+ * @param revision - The revision the user saw; a draft changed since is not rebound.
+ * @returns Whether the draft was rebound.
+ * @throws {never} A missing, malformed or changed draft is left unchanged.
+ */
+export function rebindVideoToolDraft(doc: Y.Doc, nodeId: string, toolId: VideoToolId, presentationRef: MiniToolPresentationRef, revision: string): boolean {
+  const data = nodeDataMap(doc, nodeId);
+  const reading = readVideoToolDraft(doc, nodeId, toolId);
+  if (data === null || reading.state !== 'supported' || reading.draft.revision !== revision) return false;
+  const next = videoToolDraftSchema(toolId).parse({ ...reading.draft, draftId: newId(), revision: newId(), presentationRef: structuredClone(presentationRef) });
+  const references = videoToolAnalysisRefs(Object.fromEntries(data.entries()))
+    .filter((reference) => reference.draftId === reading.draft.draftId && reference.toolId === toolId);
+  const name = docNameOf(doc);
+  return name !== null && writeSpaceDoc(name, { kind: 'add' }, () => {
+    doc.transact(() => {
+      for (const reference of references) data.delete(`miniToolAnalysis:${reference.analysisRunId}`);
+      data.set(`miniToolDraft:${toolId}`, next);
+    }, CANVAS_UNDO);
+  }).ok;
 }
 
 /**

@@ -17,7 +17,10 @@ interface Draft {
   source: { nodeId: string; canonicalURL: string; mediaInfo: { width: number; height: number; duration: number; mimeType: string } };
   params: Record<string, unknown>;
   inputs: { inputId: string; url: string; cover?: string; sourceNodeId?: string }[];
+  presentationRef?: PresentationRef;
 }
+
+interface PresentationRef { source: { toolInputId: string; planSha256: string } }
 
 interface AnalysisRef {
   version: 1;
@@ -30,12 +33,13 @@ interface AnalysisRef {
 
 type DraftReading =
   | { state: 'absent' }
-  | { state: 'supported'; draft: Draft }
+  | { state: 'supported' | 'stale'; draft: Draft }
   | { state: 'unsupported'; value: unknown }
   | { state: 'invalid'; value: unknown };
 
 interface DraftApi {
-  readVideoToolDraft: (doc: Y.Doc, nodeId: string, toolId: ToolId) => DraftReading;
+  readVideoToolDraft: (doc: Y.Doc, nodeId: string, toolId: ToolId, presentationRef?: PresentationRef) => DraftReading;
+  rebindVideoToolDraft: (doc: Y.Doc, nodeId: string, toolId: ToolId, presentationRef: PresentationRef, revision: string) => boolean;
   commitVideoToolDraft: (doc: Y.Doc, nodeId: string, toolId: ToolId, draft: Draft) => boolean;
   commitVideoToolAnalysisRef: (doc: Y.Doc, nodeId: string, ref: AnalysisRef) => boolean;
   clearVideoToolDraft: (doc: Y.Doc, nodeId: string, toolId: ToolId) => boolean;
@@ -466,5 +470,64 @@ describe('durable scene result application', () => {
     expect(api.commitVideoSceneAnalysis(doc, hostId, record)).toBe('ignored');
     expect(api.readVideoToolDraft(doc, hostId, 'video.split')).toEqual({ state: 'supported', draft: splitDraft({ cuts: [] }) });
     expect(undo.undoStack).toHaveLength(0);
+  });
+});
+
+// frames-split §7.13 Dv: the draft's presentationRef is written with its parameters, a draft whose ref is not the selected
+// version's reads stale, and Rebind binds it to the selected version as a new draft.
+describe('a draft bound to a selected version (frames-split §7.13 Dv)', () => {
+  const before: PresentationRef = { source: { toolInputId: 'a'.repeat(64), planSha256: 'b'.repeat(64) } };
+  const after: PresentationRef = { source: { toolInputId: 'c'.repeat(64), planSha256: 'd'.repeat(64) } };
+
+  it('commits the presentationRef with the parameters in the same revision and one undo step', () => {
+    const { doc } = space();
+    const undo = undoManager(doc);
+    const draft = splitDraft({ cuts: [30] }, { presentationRef: before });
+    expect(api.commitVideoToolDraft(doc, hostId, 'video.split', draft)).toBe(true);
+    expect(dataOf(doc).get('miniToolDraft:video.split')).toEqual(draft);
+    expect(undo.undoStack).toHaveLength(1);
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split', before)).toEqual({ state: 'supported', draft });
+  });
+
+  it('reads a draft set on another version as stale and keeps its values', () => {
+    const { doc } = space();
+    const draft = splitDraft({ cuts: [30] }, { presentationRef: before });
+    api.commitVideoToolDraft(doc, hostId, 'video.split', draft);
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split', after)).toEqual({ state: 'stale', draft });
+    expect(dataOf(doc).get('miniToolDraft:video.split')).toEqual(draft);
+  });
+
+  it('reads a saved draft without a presentationRef as stale', () => {
+    const { doc } = space();
+    const draft = splitDraft({ cuts: [30] });
+    api.commitVideoToolDraft(doc, hostId, 'video.split', draft);
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split', after)).toEqual({ state: 'stale', draft });
+  });
+
+  it('rebinds a stale draft it still holds to the selected version as a new draft, dropping its analysis references, in one undo step', () => {
+    const { doc } = space();
+    const draft = splitDraft({ cuts: [30] }, { presentationRef: before });
+    api.commitVideoToolDraft(doc, hostId, 'video.split', draft);
+    api.commitVideoToolAnalysisRef(doc, hostId, analysisRef());
+    const undo = undoManager(doc);
+    expect(api.rebindVideoToolDraft(doc, hostId, 'video.split', after, secondRevision)).toBe(false);
+    expect(undo.undoStack).toHaveLength(0);
+    expect(api.rebindVideoToolDraft(doc, hostId, 'video.split', after, firstRevision)).toBe(true);
+    const reading = api.readVideoToolDraft(doc, hostId, 'video.split', after);
+    expect(reading).toMatchObject({ state: 'supported', draft: { params: { cuts: [30] }, source: draft.source, presentationRef: after } });
+    if (reading.state !== 'supported') throw new Error('Expected a current draft');
+    expect(reading.draft.draftId).not.toBe(draftId);
+    expect(reading.draft.revision).not.toBe(firstRevision);
+    expect(dataOf(doc).has(`miniToolAnalysis:${firstRunId}`)).toBe(false);
+    expect(undo.undoStack).toHaveLength(1);
+    undo.undo();
+    expect(api.readVideoToolDraft(doc, hostId, 'video.split', after)).toEqual({ state: 'stale', draft });
+    expect(dataOf(doc).has(`miniToolAnalysis:${firstRunId}`)).toBe(true);
+  });
+
+  it('rebinds nothing when the host or its draft is missing', () => {
+    const { doc } = space();
+    expect(api.rebindVideoToolDraft(doc, hostId, 'video.split', after, firstRevision)).toBe(false);
+    expect(api.rebindVideoToolDraft(doc, '10000000-0000-4000-8000-000000000099', 'video.split', after, firstRevision)).toBe(false);
   });
 });

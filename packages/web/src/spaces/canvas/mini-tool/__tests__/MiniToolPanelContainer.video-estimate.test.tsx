@@ -95,7 +95,7 @@ describe('split shows the server quote, not "Free" (frames-split §10.8)', () =>
     });
     const doc = getDoc(docName.canvasSpace(projectId, spaceId));
     addNode(projectId, spaceId, { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { content: sourceURL, name: 'Source', locked: false, createdAt: 0, createdBy: 'test', attachments: [] } });
-    const initial = createVideoToolDraft(toolId, source);
+    const initial = createVideoToolDraft(toolId, source, PRESENTATION_REF);
     commitVideoToolDraft(doc, nodeId, toolId, { ...initial, params: { ...initial.params, cuts: [50] } });
     canvasSessions.of(spaceId).getState().openMiniTool(nodeId, toolId, { sourceContent: sourceURL, params: {} });
     const node: CanvasNodeView = { id: nodeId, type: 'video', position: { x: 0, y: 0 }, data: { handling: false, content: sourceURL, ...mediaInfo } };
