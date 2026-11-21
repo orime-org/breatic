@@ -86,7 +86,9 @@ beforeEach(() => {
   const gl = new Proxy({}, { get(_target, key) {
     if (key === 'drawArrays') return glDraw;
     if (typeof key === 'string' && key === key.toUpperCase()) return 1;
-    if (!functions.has(key)) functions.set(key, vi.fn(() => key === 'getShaderParameter' || key === 'getProgramParameter' ? true : key === 'getAttribLocation' ? 0 : {}));
+    // getExtension answers as WebGL does: the named extension object, or null for one this platform lacks.
+    if (!functions.has(key)) functions.set(key, key === 'getExtension' ? vi.fn((name: string) => (name === 'WEBGL_lose_context' ? { loseContext: vi.fn() } : null))
+      : vi.fn(() => key === 'getShaderParameter' || key === 'getProgramParameter' ? true : key === 'getAttribLocation' ? 0 : {}));
     return functions.get(key);
   } });
   (vi.spyOn(HTMLCanvasElement.prototype, 'getContext') as unknown as MockInstance<(contextId: string) => unknown>).mockImplementation((kind: string) => (kind === '2d' ? { drawImage: (surface: CanvasImageSource) => drawn.push(surface), clearRect: vi.fn() } : gl));

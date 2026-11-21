@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createVideoRenderer } from '../create-video-renderer';
+import { createVideoRenderer, MAX_LIVE_ALPHA_RENDERERS } from '../create-video-renderer';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '../types';
 import { PRESENTED, presentedBundle, presentedDisplay } from '@web/test-utils/video-presentation';
 
@@ -48,10 +48,11 @@ class FakeVap {
     });
     return this;
   }
+  lost = 0;
   initWebGL(): WebGLRenderingContext {
     this.canvas = document.createElement('canvas');
     this.options!.container.append(this.canvas);
-    return {} as WebGLRenderingContext;
+    return { getExtension: (name: string) => (name === 'WEBGL_lose_context' ? { loseContext: () => { this.lost++; } } : null) } as unknown as WebGLRenderingContext;
   }
   initTexture(): void {}
   initVideoTexture(): void {}
@@ -140,5 +141,51 @@ describe('approved native and VAP rendering boundary', () => {
     resource.dispose();
     expect(element.hasAttribute('src')).toBe(false);
     expect(host.querySelector('video')).toBeNull();
+  });
+});
+
+// W9: Chromium keeps at most 16 live WebGL contexts per page and evicts the oldest; a context leaves that count only when
+// it is lost or garbage-collected, so every alpha renderer loses its own and the page keeps a bounded pool of them.
+describe('WebGL contexts of alpha renderers', () => {
+  it('loses the WebGL context VAP created once it is disposed', async () => {
+    const resource = createVideoRenderer(host, source, callbacks);
+    await settle();
+    const owned = player;
+    expect(owned.lost).toBe(0);
+    resource.dispose();
+    expect(owned.destroyed).toBe(1);
+    expect(owned.lost).toBe(1);
+  });
+
+  it('keeps at most the pool size alive, releasing the least recently used one, which loses its context and is told', async () => {
+    const made: { resource: { dispose: () => void }; player: FakeVap; evicted: ReturnType<typeof vi.fn> }[] = [];
+    const open = async (): Promise<(typeof made)[number]> => {
+      const evicted = vi.fn();
+      const resource = createVideoRenderer(host, source, { ...callbacks, evicted });
+      await settle();
+      const entry = { resource, player, evicted };
+      made.push(entry);
+      return entry;
+    };
+    for (let i = 0; i < MAX_LIVE_ALPHA_RENDERERS; i++) await open();
+    expect(made.every((entry) => entry.evicted.mock.calls.length === 0)).toBe(true);
+    // The first one is used again, so the second is now the least recently used.
+    made[0]!.player.video.dispatchEvent(new Event('play'));
+    await open();
+    expect(made[1]!.evicted).toHaveBeenCalledOnce();
+    expect(made[1]!.player.destroyed).toBe(1);
+    expect(made[1]!.player.lost).toBe(1);
+    expect(made.filter((entry) => entry.evicted.mock.calls.length > 0)).toHaveLength(1);
+    for (const entry of made) entry.resource.dispose();
+  });
+
+  it('tells an owner without an eviction handler that its context is gone', async () => {
+    const made: { dispose: () => void }[] = [];
+    const first = { ...callbacks, contextLost: vi.fn() };
+    made.push(createVideoRenderer(host, source, first));
+    await settle();
+    for (let i = 0; i < MAX_LIVE_ALPHA_RENDERERS; i++) { made.push(createVideoRenderer(host, source, callbacks)); await settle(); }
+    expect(first.contextLost).toHaveBeenCalledOnce();
+    for (const resource of made) resource.dispose();
   });
 });

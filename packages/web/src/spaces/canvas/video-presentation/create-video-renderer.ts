@@ -167,6 +167,51 @@ function vapConfig(manifest: AlphaPackedManifest, size: PresentedSize): Record<s
 }
 
 /**
+ * Chromium keeps at most 16 live WebGL contexts per page and drops the oldest; the page's other WebGL users (3D viewport, its
+ * mini map, model import preview and preparation, camera angle sphere) hold up to 5, and a released three.js context counts
+ * until garbage collection.
+ */
+export const MAX_LIVE_ALPHA_RENDERERS = 8;
+/** One live alpha renderer in the page pool. */
+interface AlphaPoolEntry { idle: () => boolean; release: () => void }
+/** The page's live alpha renderers, least recently used first. */
+const liveAlphaRenderers: AlphaPoolEntry[] = [];
+
+/**
+ * Takes a renderer out of the page pool.
+ * @param entry - The renderer.
+ * @throws {never} Never.
+ */
+function leaveAlphaPool(entry: AlphaPoolEntry): void {
+  const at = liveAlphaRenderers.indexOf(entry);
+  if (at >= 0) liveAlphaRenderers.splice(at, 1);
+}
+
+/**
+ * Marks a renderer as the most recently used.
+ * @param entry - The renderer.
+ * @throws {never} Never.
+ */
+function touchAlphaPoolEntry(entry: AlphaPoolEntry): void {
+  leaveAlphaPool(entry);
+  liveAlphaRenderers.push(entry);
+}
+
+/**
+ * Admits a renderer, first releasing the least recently used ones (paused before playing) past the pool size.
+ * @param entry - The new renderer.
+ * @throws {never} Owners handle their own release.
+ */
+function joinAlphaPool(entry: AlphaPoolEntry): void {
+  while (liveAlphaRenderers.length >= MAX_LIVE_ALPHA_RENDERERS) {
+    const victim = liveAlphaRenderers.find((held) => held.idle()) ?? liveAlphaRenderers[0]!;
+    leaveAlphaPool(victim);
+    victim.release();
+  }
+  liveAlphaRenderers.push(entry);
+}
+
+/**
  * Creates the approved packed-alpha renderer while retaining canonical identity.
  * @param host - Effect-owned host.
  * @param source - Current canonical asset and verified owned manifest.
@@ -193,6 +238,7 @@ function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource,
   let destroyRequested = false;
   let player: VapPlayer | undefined;
   let canvas: HTMLCanvasElement | null = null;
+  let gl: WebGLRenderingContext | null = null;
   let bound = false;
   const restoreFrameCallbacks = guardFrameCallbacks(video, callbacks);
   const playDescriptor = Object.getOwnPropertyDescriptor(video, 'play');
@@ -270,7 +316,13 @@ function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource,
     if (!settled || !player) return;
     canvas?.removeEventListener('webglcontextlost', contextLost);
     canvas?.removeEventListener('webglcontextrestored', contextRestored);
-    if (!destroyed) { destroyed = true; player.destroy(); }
+    if (!destroyed) {
+      destroyed = true;
+      player.destroy();
+      // Removing the canvas keeps its context counted until garbage collection; losing it frees the page slot now.
+      gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    }
+    gl = null;
     canvas = null;
     player = undefined;
   }
@@ -297,7 +349,7 @@ function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource,
       try { return operation(); }
       catch (error) { settled = true; if (live) callbacks.error('webgl-initialization-failed'); destroy(); throw error; }
     }
-    instance.initWebGL = (): WebGLRenderingContext => initializing(initialize);
+    instance.initWebGL = (): WebGLRenderingContext => { gl = initializing(initialize); return gl; };
     instance.initTexture = (): void => initializing(initializeTextures);
     instance.initVideoTexture = (): void => initializing(initializeVideoTexture);
     instance.drawFrame = (now: number, info: unknown): void => {
@@ -332,9 +384,16 @@ function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource,
     instance.play({ container: root, src: manifest.data.packed.url, config: vapConfig(manifest.data, size), width: size.width, height: size.height, loop: false, mute: false, accurate: true, precache: false, onLoadError: mediaError });
   }).catch(() => { if (live) callbacks.error('renderer-initialization-failed'); });
 
-  return { dispose: () => {
+  /**
+   * Releases every resource of this renderer once.
+   * @throws {never} Never.
+   */
+  function dispose(): void {
     if (!live) return;
     live = false;
+    leaveAlphaPool(entry);
+    video.removeEventListener('play', used);
+    video.removeEventListener('seeking', used);
     video.pause();
     player?.cancelRequestAnimation();
     restoreFrameCallbacks.dispose();
@@ -350,7 +409,17 @@ function createAlphaRenderer(host: HTMLElement, source: VideoPresentationSource,
     video.load();
     video.remove();
     root.remove();
-  } };
+  }
+  const entry: AlphaPoolEntry = { idle: () => video.paused, release: () => { dispose(); (callbacks.evicted ?? callbacks.contextLost)(); } };
+  /**
+   * Marks this renderer as just used, so the pool releases others first.
+   * @throws {never} Never.
+   */
+  function used(): void { touchAlphaPoolEntry(entry); }
+  video.addEventListener('play', used);
+  video.addEventListener('seeking', used);
+  joinAlphaPool(entry);
+  return { dispose };
 }
 
 /**

@@ -88,6 +88,8 @@ export interface VideoRendererCallbacks {
   error: (code: string) => void;
   contextLost: () => void;
   contextRestored: () => void;
+  /** The page pool released this renderer for a newer one; without it the owner is told through contextLost. */
+  evicted?: () => void;
 }
 
 /** A single renderer's resource cleanup. */
