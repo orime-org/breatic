@@ -77,6 +77,7 @@ import { Queue } from "bullmq";
 import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import {
   canvasSpaceDocName,
+  FOCUS_IMAGE_UPLOAD_EVENT_TYPE,
   INGEST_FAILURE_HEADER,
   readTaskFailure,
   signSessionToken,
@@ -3372,5 +3373,73 @@ describe("the upload's ending, told to its uploader (#1580)", () => {
     expect(ended!.status).toMatchObject({ key, state: "completed" });
     const events = (await eventsFor(`project-${seed.projectId}/canvas-${seed.spaceId}`)).filter((e) => e.nodeId === nodeId);
     expect(events.length).toBeGreaterThan(0);
+  });
+});
+
+
+// #1580 test spec D-12 to D-15: a registered focus crop is handed to collab
+// with the address off the registered record; nothing else is.
+describe("a focus crop's registration, handed to collab (#1580)", () => {
+  /** Every focus-image event on the stream for `docName`, oldest first. */
+  async function focusEvents(docName: string): Promise<Record<string, unknown>[]> {
+    const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+    return raw
+      .map(([, fields]) => {
+        const idx = fields.indexOf("payload");
+        return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+      })
+      .filter((e): e is Record<string, unknown> => e !== null && e.type === FOCUS_IMAGE_UPLOAD_EVENT_TYPE && e.docName === docName);
+  }
+
+  /** A focus-crop ticket on the seed's Space. */
+  async function cropTicket(seed: Awaited<ReturnType<typeof seedEditor>>, over: Record<string, unknown> = {}): Promise<{
+    key: string; focus: Record<string, unknown>;
+  }> {
+    const focus = { nodeId: crypto.randomUUID(), id: crypto.randomUUID(), name: "Source", width: 640, height: 480 };
+    const key = await mintTicket(seed, { derived: true, focusImage: focus, ...over });
+    return { key, focus };
+  }
+
+  it("D-12 hands a registered crop to collab with the registered address", async () => {
+    const seed = await seedEditor();
+    const { key, focus } = await cropTicket(seed);
+    await report(completed(key));
+    const events = await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    expect(events).toHaveLength(1);
+    const [asset] = await sql<{ file_url: string }[]>`
+      SELECT a.file_url FROM upload_grants g JOIN studio_assets a ON a.id = g.asset_id WHERE g.storage_key = ${key}
+    `;
+    expect(events[0]).toMatchObject({
+      nodeId: focus.nodeId,
+      image: { id: focus.id, name: focus.name, width: focus.width, height: focus.height, url: asset!.file_url },
+    });
+  });
+
+  it("D-13 uses the address of the row a duplicate landed on", async () => {
+    const seed = await seedEditor();
+    const sha = crypto.randomBytes(32).toString("hex");
+    const first = await mintTicket(seed);
+    await report(completed(first, { sha256: sha }));
+    const { key } = await cropTicket(seed);
+    await report(completed(key, { sha256: sha }));
+    const [winner] = await sql<{ file_url: string }[]>`
+      SELECT a.file_url FROM upload_grants g JOIN studio_assets a ON a.id = g.asset_id WHERE g.storage_key = ${first}
+    `;
+    const events = await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    expect(events.at(-1)).toMatchObject({ image: { url: winner!.file_url } });
+  });
+
+  it("D-14 hands nothing to collab for a voided crop", async () => {
+    const seed = await seedEditor();
+    const { key } = await cropTicket(seed);
+    await report({ storage_key: key, outcome: "aborted" });
+    expect(await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId))).toEqual([]);
+  });
+
+  it("D-15 hands nothing to collab for an upload that is not a focus crop", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key));
+    expect(await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId))).toEqual([]);
   });
 });
