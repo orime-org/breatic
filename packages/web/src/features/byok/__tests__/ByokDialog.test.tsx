@@ -150,7 +150,7 @@ function entry(name: string, displayName: string, modality: string, upstreams: s
 
 const CATALOG = {
   image: [
-    entry('seedream-5', 'Seedream 5.0', 'image', ['wavespeed', 'fal']),
+    { ...entry('seedream-5', 'Seedream 5.0', 'image', ['wavespeed', 'fal']), icon: 'seedream' },
     entry('nano-banana-pro', 'Nano Banana Pro', 'image', ['google', 'wavespeed']),
     entry('imagen-4-ultra', 'Imagen 4 Ultra', 'image', ['google', 'sandbase']),
   ],
@@ -830,6 +830,26 @@ describe('ByokDialog', () => {
   });
 
   describe('models tab', () => {
+    it('shows each model\'s brand mark beside its name, as the generation panel\'s picker does', async () => {
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await openModels(user, dialog);
+
+      expect(within(within(dialog).getByTestId('byok-model-seedream-5')).getByTestId('model-icon-seedream')).toBeInTheDocument();
+    });
+
+    it('shows the platform key in muted ink and a chosen upstream in normal ink', async () => {
+      const user = userEvent.setup();
+      serve(view({ models: [{ model: 'seedream-5', upstream: 'fal' }] }));
+      const dialog = await mount();
+      await openModels(user, dialog);
+
+      const chosen = within(within(dialog).getByTestId('byok-model-seedream-5')).getByRole('combobox');
+      const platform = within(within(dialog).getByTestId('byok-model-nano-banana-pro')).getByRole('combobox');
+      expect(chosen.classList.contains('text-muted-foreground')).toBe(false);
+      expect(platform.classList.contains('text-muted-foreground')).toBe(true);
+    });
+
     it('lists only models a keyed upstream can run, under modality tabs', async () => {
       const user = userEvent.setup();
       const dialog = await mount();

@@ -13,6 +13,7 @@ import { Tabs, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { byokApi, type ByokView } from '@web/data/api/byok';
 import { rereadByok } from '@web/features/byok/byok-query';
 import { BYOK_MODALITIES } from '@web/features/byok/ByokUpstreamTab';
+import { ModelIcon } from '@web/components/ModelIcon';
 import { useTranslation } from '@web/i18n/use-translation';
 import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
@@ -157,13 +158,15 @@ const ModelRow = React.memo(function ModelRow({
 
   return (
     <div className='flex items-center gap-3 py-2' data-testid={`byok-model-${entry.name}`}>
+      <ModelIcon name={entry.icon} className='h-4 w-4 shrink-0' />
       <span className='min-w-0 truncate text-sm'>{label}</span>
       <div className='ml-auto w-60 shrink-0'>
         <Select
           value={shown}
           onValueChange={(next) => set.mutate(next === PLATFORM ? null : next)}
         >
-          <SelectTrigger>
+          {/* The default recedes, so the models moved onto the account's keys stand out in a long list. */}
+          <SelectTrigger className={shown === PLATFORM ? 'text-muted-foreground' : undefined}>
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
