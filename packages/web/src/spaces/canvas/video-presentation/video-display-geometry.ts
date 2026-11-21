@@ -12,6 +12,32 @@ export interface VideoDisplayGeometry {
   src: string;
 }
 
+/** Each canonical display surface's native video: the surface is what shows, the video is the clock it shows. */
+const displayVideos = new WeakMap<Element, HTMLVideoElement>();
+
+/**
+ * Marks a surface as the canonical display of a source and records the native video it shows. An alpha-packed surface
+ * is a canvas drawn from a video kept out of the document, so the video is found through the surface.
+ * @param surface - The element on screen: the native video itself, or the packed renderer's canvas.
+ * @param video - The binding's native video element.
+ * @param src - The canonical source URL.
+ * @throws {never} Never.
+ */
+export function bindVideoDisplay(surface: HTMLElement, video: HTMLVideoElement, src: string): void {
+  surface.setAttribute('data-canonical-video-display', src);
+  displayVideos.set(surface, video);
+}
+
+/**
+ * The native video a canonical display surface shows.
+ * @param surface - An element carrying `data-canonical-video-display`.
+ * @returns The video, or null when the surface is not bound.
+ * @throws {never} Never.
+ */
+export function videoOfDisplay(surface: Element): HTMLVideoElement | null {
+  return displayVideos.get(surface) ?? null;
+}
+
 /**
  * Reads display geometry without consulting a hidden packed decoder.
  * @param wrapper - The positioned canvas node wrapper.

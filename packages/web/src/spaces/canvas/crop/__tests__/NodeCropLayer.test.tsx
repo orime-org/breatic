@@ -11,6 +11,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { canvasSessions } from '@web/stores/canvas-session';
 import {
+  ALPHA_VIDEOS,
   IMG_BOX,
   cropCanvas,
   draw,
@@ -146,5 +147,19 @@ describe('NodeCropLayer for a crop tool', () => {
     expect(screen.queryByTestId('mini-tool-crop-layer')).toBeNull();
     act(() => store().openMiniTool('other', 'image.crop', { sourceContent: 'x', params: {} }));
     expect(screen.queryByTestId('mini-tool-crop-layer')).toBeNull();
+  });
+});
+
+describe('NodeCropLayer for the video crop tool on a transparent video (frames-split §7.8)', () => {
+  it('measures the box on the display canvas and writes a drawn box back in source pixels', () => {
+    const ALPHA = { id: 'n1', kind: 'alpha-video' as const, src: 'https://cdn/alpha.webm' };
+    render(cropCanvas([ALPHA], null));
+    const video = ALPHA_VIDEOS.get(ALPHA.src)!;
+    Object.defineProperty(video, 'videoWidth', { configurable: true, value: 800 });
+    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 600 });
+    act(() => store().openMiniTool('n1', 'video.crop', { sourceContent: ALPHA.src, params: { aspect: 'free', rect: null } }));
+    expect(rectSize('mini-tool-crop')).toEqual({ left: 0, top: 0, width: 400, height: 300 });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 }, 'mini-tool-crop');
+    expect(store().miniTool?.params.rect).toEqual({ x: 100, y: 100, w: 200, h: 160 });
   });
 });

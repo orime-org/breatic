@@ -20,7 +20,7 @@ import {
 import { toast } from '@web/lib/toast';
 import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { fromFraction, toFraction } from '@web/spaces/canvas/crop/crop-geometry';
-import { cropSourceSelector, intrinsicSize, isCropSource, originalSrc, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
+import { cropMediaOf, cropSourceSelector, intrinsicSize, originalSrc, type CropSourceEl } from '@web/spaces/canvas/focus/crop-source';
 import { formatSeconds } from '@web/spaces/canvas/lib/duration';
 import type { VideoToolPanelState } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import { isFreeEscape } from '@web/spaces/canvas/use-escape-in-space';
@@ -162,11 +162,12 @@ export function FocusCropControls({ onConfirm, onBackToPick, sourceState, source
   const frame = focus?.frame ?? null;
 
   // The node's media, looked up each time its crop box reports: a remount
-  // hands the box a new element and the box writes a new frame for it.
+  // hands the box a new element and the box writes a new frame for it. A
+  // video's time and frame clock are its native element's, also behind a
+  // transparent video's display canvas.
   const sourceEl = React.useMemo((): CropSourceEl | null => {
     if (nodeId === null || frame === null) return null;
-    const el = canvasRootOf(spaceId).querySelector(cropSourceSelector(nodeId));
-    return isCropSource(el) ? el : null;
+    return cropMediaOf(canvasRootOf(spaceId).querySelector(cropSourceSelector(nodeId)))?.source ?? null;
   }, [frame, nodeId, spaceId]);
 
   // The timeline's own value: WHERE THE USER PUT THE HANDLE, seeded from the
@@ -308,15 +309,16 @@ export function FocusCropControls({ onConfirm, onBackToPick, sourceState, source
   /** Confirm the current marquee: map to natural pixels and hand off. */
   const onConfirmClick = (): void => {
     if (rect === null || !isCropUsable(rect, box, frame.natural)) return;
-    const el = canvasRootOf(spaceId).querySelector(cropSourceSelector(focus.nodeId));
+    const media = cropMediaOf(canvasRootOf(spaceId).querySelector(cropSourceSelector(focus.nodeId)));
     // The content may have changed between the last layout and this click:
     // never crop new content at the old marquee's coordinates (round-2).
-    if (isCropSource(el) && originalSrc(el) !== focus.content) {
+    if (media !== null && originalSrc(media.shown) !== focus.content) {
       clearMarquee();
       toast.warning(t('canvas.generatePanel.focusSourceChanged'));
       return;
     }
-    if (!isCropSource(el) || intrinsicSize(el).width === 0) {
+    const el = media?.source ?? null;
+    if (el === null || intrinsicSize(el).width === 0) {
       // Not decodable yet (a bitmap still loading, a broken URL, a video whose
       // metadata has not arrived — the opening state of every video): say so,
       // and keep the marquee so a retry confirms the same selection (A7a).

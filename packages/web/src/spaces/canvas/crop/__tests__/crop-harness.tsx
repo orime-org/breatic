@@ -21,6 +21,7 @@ import { NodeAdjustLayer } from '@web/spaces/canvas/mini-tool/NodeAdjustLayer';
 import { NodeExpandLayer } from '@web/spaces/canvas/mini-tool/NodeExpandLayer';
 import { NodeGridLayer } from '@web/spaces/canvas/mini-tool/NodeGridLayer';
 import { NodeMarkLayer } from '@web/spaces/canvas/mini-tool/NodeMarkLayer';
+import { bindVideoDisplay } from '@web/spaces/canvas/video-presentation/video-display-geometry';
 
 /** The media's box on screen, and its layout size unless {@link LAYOUT} says otherwise. Mutable. */
 export const IMG_BOX = { left: 100, top: 50, width: 400, height: 300 };
@@ -30,8 +31,28 @@ export const LAYOUT: { width?: number; height?: number } = {};
 
 /** One media node of the test canvas. */
 export interface MediaNodeData extends Record<string, unknown> {
-  kind: 'img' | 'video';
+  /** `alpha-video` is a transparent video: the packed renderer's canvas on screen, its native video out of the document. */
+  kind: 'img' | 'video' | 'alpha-video';
   src: string;
+}
+
+/** Each `alpha-video` node's native video, by source URL, as the packed renderer keeps it outside the document. */
+export const ALPHA_VIDEOS = new Map<string, HTMLVideoElement>();
+
+/**
+ * The packed renderer's display canvas, bound to a native video kept out of the document, as `MediaPlayer` binds it.
+ * @param props - Component props.
+ * @param props.src - The canonical source URL.
+ * @returns The canvas.
+ */
+function AlphaSurface({ src }: { src: string }): React.JSX.Element {
+  const attach = React.useCallback((canvas: HTMLCanvasElement | null): void => {
+    if (canvas === null) return;
+    const video = document.createElement('video');
+    ALPHA_VIDEOS.set(src, video);
+    bindVideoDisplay(canvas, video, src);
+  }, [src]);
+  return <canvas ref={attach} data-testid='media-element' />;
 }
 
 /**
@@ -44,7 +65,7 @@ function MediaNode({ id, data }: NodeProps<Node<MediaNodeData>>): React.JSX.Elem
   const [wrapper, setWrapper] = React.useState<HTMLDivElement | null>(null);
   return (
     <div ref={setWrapper} className='relative'>
-      {data.kind === 'video' ? (
+      {data.kind === 'alpha-video' ? <AlphaSurface src={data.src} /> : data.kind === 'video' ? (
         // eslint-disable-next-line jsx-a11y/media-has-caption -- mirrors MediaPlayer's own element.
         <video data-testid='media-element' src={data.src} />
       ) : (
@@ -126,13 +147,14 @@ const observers = new Set<Watcher>();
  */
 export function installLayout(): void {
   observers.clear();
+  ALPHA_VIDEOS.clear();
   delete LAYOUT.width;
   delete LAYOUT.height;
   IMG_BOX.left = 100;
   IMG_BOX.top = 50;
   IMG_BOX.width = 400;
   IMG_BOX.height = 300;
-  const isMedia = (el: Element): boolean => el.tagName === 'IMG' || el.tagName === 'VIDEO';
+  const isMedia = (el: Element): boolean => el.tagName === 'IMG' || el.tagName === 'VIDEO' || (el.tagName === 'CANVAS' && el.hasAttribute('data-canonical-video-display'));
   vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
     const media = isMedia(this);
     return {

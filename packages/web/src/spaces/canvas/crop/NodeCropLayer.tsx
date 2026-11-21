@@ -122,7 +122,7 @@ export function NodeCropLayer({ nodeId, wrapper }: NodeCropLayerProps): React.JS
   const toBoxPoint = React.useCallback(
     (clientX: number, clientY: number): { x: number; y: number } => {
       if (geometry === null) return { x: 0, y: 0 };
-      const shown = geometry.el.getBoundingClientRect();
+      const shown = geometry.shown.getBoundingClientRect();
       return {
         x: ((clientX - shown.left) * geometry.box.width) / shown.width,
         y: ((clientY - shown.top) * geometry.box.height) / shown.height,

@@ -7,6 +7,7 @@ import { presentedSizeOf, runtimeSourceKeyOf, type VideoPresentationSource, type
 import { Camera, Play, Pause, Volume2, VolumeX } from 'lucide-react';
 
 import { VideoPresentationSurface } from '@web/spaces/canvas/video-presentation/VideoPresentationSurface';
+import { bindVideoDisplay } from '@web/spaces/canvas/video-presentation/video-display-geometry';
 import { VideoPreparationNotice, type VideoPreparationState } from '@web/spaces/canvas/video-presentation/VideoPreparationNotice';
 import { useTranslation } from '@web/i18n/use-translation';
 import { Button } from '@web/components/ui/button';
@@ -260,7 +261,7 @@ export function MediaPlayer({
         if (previousElement.current !== null) { original.element.volume = previousElement.current.volume; original.element.muted = previousElement.current.muted; }
         previousElement.current = original.element;
       }
-      original.surface.setAttribute('data-canonical-video-display', src);
+      bindVideoDisplay(original.surface, original.element, src);
       original.surface.setAttribute('data-testid', 'media-element');
       if (adapted.current?.original !== original) {
         const owned: MediaSurfaceBinding = {
