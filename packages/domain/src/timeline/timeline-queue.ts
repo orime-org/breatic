@@ -13,7 +13,7 @@ import { defaultJobOpts, type createQueue } from "@breatic/core";
 export const TIMELINE_QUEUE = "timeline";
 
 /** The name of an execution's job. */
-export const TIMELINE_EXECUTION_JOB = "timeline-execution";
+const TIMELINE_EXECUTION_JOB = "timeline-execution";
 
 /** What an execution's job carries: only its id; the row holds everything else. */
 export interface TimelineExecutionJobData {
