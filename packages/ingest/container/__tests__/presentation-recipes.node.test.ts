@@ -15,7 +15,7 @@
  * (D-5). The edge is faked at `fetch`.
  */
 import { execFile } from 'node:child_process';
-import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { copyFile, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
@@ -33,6 +33,7 @@ interface Report { ok: boolean; outputs: { outputIndex: number; packing?: { pack
 interface Stream { codec_type: string; codec_name: string; width?: number; height?: number; pix_fmt?: string; color_primaries?: string; color_transfer?: string; color_space?: string; color_range?: string; time_base: string; sample_rate?: string; duration?: string; side_data_list?: { side_data_type: string; rotation?: number }[] }
 interface Packet { pts_time: string; duration_time: string; flags: string }
 
+const COMMITTED = new URL('./fixtures/presentation/', import.meta.url);
 const LIMITS = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
 const TARGET = { width: 320, height: 180, displayRect: null, colorMatrix: 'bt709', toneMap: 'none', alpha: 'none', crf: 18, preset: 'medium' };
 const SOURCE = '10000000-0000-4000-8000-000000000001';
@@ -261,7 +262,9 @@ beforeAll(async () => {
     await make(`sdr-${format}-even.mkv`, ['-f', 'lavfi', '-i', 'testsrc2=s=160x96:r=25:d=0.4', '-vf', `format=${format},setparams=colorspace=bt709:range=tv`, '-c:v', 'ffv1']);
     await make(`sdr-${format}-odd.mkv`, ['-i', join(dir, `sdr-${format}-even.mkv`), '-vf', 'crop=159:95:0:0:exact=1', '-c:v', 'ffv1']);
   }
-  for (const name of ['cfr.mp4', 'untagged.mp4', 'odd.mp4', 'rot90.mp4', 'palette.mov',
+  // HEVC with an alpha layer only VideoToolbox encodes, so the clip is committed (its provenance file says how it was made).
+  await copyFile(new URL('hevc-alpha.mov', COMMITTED), join(dir, 'hevc-alpha.mov'));
+  for (const name of ['hevc-alpha.mov', 'cfr.mp4', 'untagged.mp4', 'odd.mp4', 'rot90.mp4', 'palette.mov',
     'banner.mov', 'greys-bframes.mkv', 'tagged601.mp4', 'red-untagged.mp4', 'alpha.mov', 'alpha.webm', 'sdr-yuv420p-even.mkv',
     'sdr-yuv420p-odd.mkv']) grids.set(name, await gridOf(join(dir, name), { numerator: 25, denominator: 1 }));
 }, 120_000);
@@ -348,6 +351,16 @@ describe('chunk_encode (§5.4 切块、块的时间; §7.17)', () => {
     expect([video.codec_name, video.pix_fmt, video.width, video.height]).toEqual(['h264', 'yuv420p', 132, 36]);
     // The right plane, after the 4-column gap, is the alpha as grey: 64 stored as limited-range luma 16 + 64 * 219 / 255 ≈ 71.
     for (const mean of await lumaMeans(file!, { x: 68, y: 0, width: 64, height: 36 })) expect(Math.abs(mean - 71)).toBeLessThan(6);
+  });
+
+  // The alpha layer of an HEVC source is a second layer the decoder must be asked for: a pack that read only the base
+  // layer, or a source whose alpha layer cannot be decoded, comes out with a black (fully transparent) alpha plane.
+  it('CE08b packs the alpha layer of an HEVC source: its opaque alpha plane stays opaque', async () => {
+    const [file] = await produce({ [SOURCE]: join(dir, 'hevc-alpha.mov') }, [chunk('hevc-alpha.mov', 0, 10, { ...TARGET, width: packedCarrierWidth(160), height: 96, alpha: 'packed' })]);
+    // Opaque is 255, stored as limited-range luma 235.
+    const means = await lumaMeans(file!, { x: packedCarrierWidth(160) - 160, y: 0, width: 160, height: 96 });
+    expect(means).toHaveLength(10);
+    for (const mean of means) expect(mean).toBeGreaterThan(225);
   });
 
   // An RGB-coded source (PNG in MOV) packs with the matrix its own plan resolves; the scaler converts RGB frames with no
