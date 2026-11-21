@@ -134,6 +134,44 @@ describe("forwarded endpoints", () => {
     expect(await res.json()).toEqual(waiting);
   });
 
+  it.each([
+    { status: 403, body: { error: { code: 403, message: "That payment belongs to another account." } } },
+    { status: 500, body: { error: { code: 500, message: "We could not confirm the change yet.", reason: "change_unconfirmed" } } },
+    { status: 503, body: { error: { code: 503, message: "We could not confirm your checkout yet.", reason: "checkout_unconfirmed" } } },
+    { status: 503, body: { error: { code: 503, message: "This price is not set up yet.", reason: "price_not_configured" } } },
+  ])("passes on the billing service's own $status answer as it gave it", async ({ status, body }) => {
+    const userId = await insertAccount(suite.sql);
+    suite.reply = () => ({ status, body });
+
+    const res = await send(userId, "POST", "/payment/confirm", { session_id: "cs_test_1" });
+
+    expect(res.status).toBe(status);
+    expect(await res.json()).toEqual(body);
+  });
+
+  it("answers 503 billing_unavailable when the listener refuses the product's signature", async () => {
+    const userId = await insertAccount(suite.sql);
+    suite.reply = () => ({ status: 401, body: { code: "unauthorized" } });
+
+    const res = await send(userId, "GET", "/payment/tiers");
+
+    expect(res.status).toBe(503);
+    expect(await res.json()).toMatchObject({ error: { code: 503, reason: "billing_unavailable" } });
+  });
+
+  it("answers 503 billing_unavailable when the billing service does not answer", async () => {
+    const userId = await insertAccount(suite.sql);
+    initSellingCore("http://127.0.0.1:1");
+    try {
+      const res = await send(userId, "GET", "/payment/tiers");
+
+      expect(res.status).toBe(503);
+      expect(await res.json()).toMatchObject({ error: { code: 503, reason: "billing_unavailable" } });
+    } finally {
+      initSellingCore(suite.billingUrl);
+    }
+  });
+
   it("answers 404 and calls nothing where no billing service is configured", async () => {
     const userId = await insertAccount(suite.sql);
     initCore(process.env);

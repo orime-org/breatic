@@ -3,23 +3,26 @@
 
 /**
  * Hands a user's request to the billing service and its answer back
- * (inner#1993 §3.2): a definite answer, refusals included, goes back as it
- * came; a billing service out of reach is a 503 `billing_unavailable`.
+ * (inner#1993 §3.2): a definite answer, and any answer its /v1 handlers
+ * wrote whatever the status, goes back as it came; a billing service out of
+ * reach is a 503 `billing_unavailable`.
  */
 
 import type { Context } from "hono";
-import { PRODUCT_UNAVAILABLE_REASON, SignedCallError, isUnavailable, logger, type SignedCallResult } from "@breatic/core";
+import { SignedCallError, isUnavailable, logger, type SignedCallResult } from "@breatic/core";
 import { billingUnavailable, callCommerce, type CommerceCall } from "@server/modules/commerce/commerce-client.js";
 
 /**
- * Whether the billing service answered 503 because the product could not
- * take its call, which is the user's answer to pass on, not an outage.
+ * Whether the answer was written by the billing service's /v1 handlers: the
+ * public error shape `{ error: { code, message } }`. Its listener's own
+ * refusals (signature, rate limit, body size) carry `{ code }` instead, and
+ * a proxy or crashed process carries neither.
  * @param err - The billing service's refusal.
- * @returns True for a 503 carrying `PRODUCT_UNAVAILABLE_REASON`.
+ * @returns True for an answer to pass on to the user as it came.
  */
-function waitsOnProduct(err: SignedCallError): boolean {
-  const error = (err.body as { error?: { reason?: unknown } } | null)?.error;
-  return err.status === 503 && error?.reason === PRODUCT_UNAVAILABLE_REASON;
+function isBillingAnswer(err: SignedCallError): boolean {
+  const error = (err.body as { error?: unknown } | null)?.error;
+  return typeof error === "object" && error !== null && "code" in error && typeof (error as { message?: unknown }).message === "string";
 }
 
 /**
@@ -34,7 +37,7 @@ export async function callCommerceOrAnswer(c: Context, call: CommerceCall): Prom
   try {
     return { answer: await callCommerce(call) };
   } catch (err) {
-    if (err instanceof SignedCallError && err.status !== null && (!isUnavailable(err) || waitsOnProduct(err))) {
+    if (err instanceof SignedCallError && err.status !== null && (!isUnavailable(err) || isBillingAnswer(err))) {
       return { response: c.json(err.body ?? {}, err.status as 400) };
     }
     logger.error({ err, path: call.path }, "commerce_forward_unavailable");
