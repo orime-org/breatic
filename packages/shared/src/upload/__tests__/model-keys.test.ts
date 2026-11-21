@@ -33,6 +33,12 @@ describe("sealModelKeys / openModelKeys", () => {
     );
   });
 
+  it("opens an upstream whose name is an Object.prototype member as an own entry", async () => {
+    const keys: Record<string, string> = JSON.parse('{"__proto__":"k1","constructor":"k2"}');
+    const opened = await openModelKeys(await sealModelKeys(keys, publicKey), privateKey);
+    expect(Object.entries(opened)).toEqual([["__proto__", "k1"], ["constructor", "k2"]]);
+  });
+
   it("writes a compact JWE with RSA-OAEP-256 and A256GCM that does not carry a key in the clear", async () => {
     const sealed = await sealModelKeys({ openrouter: "sk-or-v1-secret-value" }, publicKey);
 

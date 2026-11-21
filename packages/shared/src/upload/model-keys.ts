@@ -68,7 +68,10 @@ export async function openModelKeys(sealed: string, privateKeyPem: string): Prom
     // Dropped on purpose: no cause of a failed open is passed on, so nothing about the keys can reach a log.
     throw new ModelKeysUnreadable();
   }
-  const read = z.record(z.string(), z.string()).safeParse(payload);
-  if (!read.success) throw new ModelKeysUnreadable();
-  return read.data;
+  if (!z.record(z.string(), z.string()).safeParse(payload).success) throw new ModelKeysUnreadable();
+  // Rebuilt from the parsed text's own entries: an upstream named `__proto__` stays an entry, which assigning it into
+  // a new object (as the schema's output does) would turn into a prototype.
+  const entries = Object.entries(payload as object);
+  if (!entries.every(([, key]) => typeof key === "string")) throw new ModelKeysUnreadable();
+  return Object.fromEntries(entries);
 }
