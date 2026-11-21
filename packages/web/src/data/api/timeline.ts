@@ -4,8 +4,7 @@
 import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineWebResolution } from '@breatic/shared';
 import type { z } from 'zod';
 import type { WebAnimationExecutionRequestSchema, WebAnimationRowView } from '@breatic/shared/space-content';
-import { apiGet, apiPost, request, runOnceRequest } from '@web/data/api/request';
-import type { ApiEnvelope } from '@web/data/api/types';
+import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 
 /** What a Motion Space submits: one kinded request, keyed by the Project. */
 export type WebAnimationAcceptBody = z.input<typeof WebAnimationExecutionRequestSchema> & { projectId: string };
@@ -14,12 +13,6 @@ export type WebAnimationAcceptBody = z.input<typeof WebAnimationExecutionRequest
 export type WebAnimationAcceptRequest = WebAnimationAcceptBody extends infer Body
   ? Body extends unknown ? Omit<Body, 'projectId' | 'spaceId' | 'actionId'> : never
   : never;
-
-/** What accepting answered: the row, and whether this press created it (201) or found it (200). */
-export interface AcceptedWebAnimation {
-  row: WebAnimationRowView;
-  created: boolean;
-}
 
 /** One page of a Motion list; a Space list's first page also says how many rows each group holds. */
 export interface SpaceExecutionPage {
@@ -109,12 +102,11 @@ export const timelineApi = {
    * Accept a create, modify or export once; a resend with the same key answers the same row.
    * @param body - The request.
    * @param key - The press's `Idempotency-Key`.
-   * @returns The row, and whether this press created it.
+   * @returns The row.
    * @throws {ApiException} When it is refused or the request fails.
    */
-  async acceptExecution(body: WebAnimationAcceptBody, key: string): Promise<AcceptedWebAnimation> {
-    const res = await request.post<ApiEnvelope<WebAnimationRowView>>('/timeline/executions', body, runOnceRequest(key));
-    return { row: res.data.data, created: res.status === 201 };
+  acceptExecution(body: WebAnimationAcceptBody, key: string): Promise<WebAnimationRowView> {
+    return apiPost('/timeline/executions', body, runOnceRequest(key));
   },
   /**
    * Ask an execution to stop.

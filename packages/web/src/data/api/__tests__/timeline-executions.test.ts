@@ -11,14 +11,13 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { apiGet, apiPost, request } from '@web/data/api/request';
+import { apiGet, apiPost } from '@web/data/api/request';
 import { timelineApi } from '@web/data/api/timeline';
 
 vi.mock('@web/data/api/request', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/request')>()),
   apiGet: vi.fn(),
   apiPost: vi.fn(),
-  request: { post: vi.fn() },
 }));
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
@@ -40,7 +39,6 @@ function headersOf(config: unknown): Record<string, unknown> {
 beforeEach(() => {
   vi.mocked(apiGet).mockReset().mockResolvedValue([]);
   vi.mocked(apiPost).mockReset().mockResolvedValue({});
-  vi.mocked(request.post).mockReset().mockResolvedValue({ status: 201, data: { data: { id: EXECUTION } } });
 });
 
 describe('timelineApi executions', () => {
@@ -62,22 +60,17 @@ describe('timelineApi executions', () => {
     expect(apiGet).toHaveBeenCalledWith(`/timeline/executions/${EXECUTION}`, expect.objectContaining({ params: { projectId: PROJECT, spaceId: SPACE } }));
   });
 
-  it('accepts a kinded request with the run-once key and says a 201 created the row', async () => {
+  it('accepts a kinded request with the run-once key and answers the row', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ id: EXECUTION });
     const body = {
       projectId: PROJECT, spaceId: SPACE, actionId: KEY, kind: 'web_animation_create' as const, prompt: 'A title slides in',
       engine: 'deepseek' as const, aspect: '16:9' as const, durationSeconds: 4,
     };
-    await expect(timelineApi.acceptExecution(body, KEY)).resolves.toEqual({ row: { id: EXECUTION }, created: true });
-    const [url, sentBody, config] = vi.mocked(request.post).mock.calls[0] ?? [];
+    await expect(timelineApi.acceptExecution(body, KEY)).resolves.toEqual({ id: EXECUTION });
+    const [url, sentBody, config] = vi.mocked(apiPost).mock.calls[0] ?? [];
     expect(url).toBe('/timeline/executions');
     expect(sentBody).toEqual(body);
     expect(headersOf(config)['Idempotency-Key']).toBe(KEY);
-  });
-
-  it('says a 200 answered a row that already existed', async () => {
-    vi.mocked(request.post).mockResolvedValue({ status: 200, data: { data: { id: EXECUTION } } });
-    const body = { projectId: PROJECT, spaceId: SPACE, actionId: KEY, kind: 'web_animation_export' as const, sourceVersionId: SOURCE };
-    await expect(timelineApi.acceptExecution(body, KEY)).resolves.toEqual({ row: { id: EXECUTION }, created: false });
   });
 
   it('cancels with the asking Project and the run-once key the route requires', async () => {

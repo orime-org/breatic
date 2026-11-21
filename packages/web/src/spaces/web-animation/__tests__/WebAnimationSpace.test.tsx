@@ -1181,7 +1181,7 @@ describe('the execution list\'s three tabs', () => {
     listing([shown]);
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
       vi.mocked(timelineApi.listSpaceExecutions).mockReturnValue(new Promise(() => {}));
-      return { row: { ...exported(shown), status: 'queued', resultAssetId: null }, created: true } as never;
+      return { ...exported(shown), status: 'queued', resultAssetId: null } as never;
     });
     show();
     fireEvent.click(await screen.findByTestId('motion-action-export'));
@@ -1303,7 +1303,7 @@ describe('the execution list\'s three tabs', () => {
     listing([shown]);
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
       listing([shown], { running: [made] });
-      return { row: made, created: true } as never;
+      return made as never;
     });
     show();
     await userEvent.setup().click(await screen.findByTestId('motion-action-export'));
@@ -1348,7 +1348,7 @@ describe('the marked row of the execution list', () => {
     listing([shown]);
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
       listing([shown], { running: [made] });
-      return { row: made, created: true } as never;
+      return made as never;
     });
     const calls = rowAt(EXPORT, 1000);
     show();
@@ -1405,7 +1405,7 @@ describe('the marked row of the execution list', () => {
     listing([shown]);
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
       listing([shown], { running: [made] });
-      return { row: made, created: true } as never;
+      return made as never;
     });
     const calls = rowAt(EXPORT, 100);
     show();
@@ -1558,7 +1558,7 @@ describe('exporting a result', () => {
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
       // From now on the server answers the result with its export.
       vi.mocked(timelineApi.getExecution).mockResolvedValue({ ...far, export: { executionId: EXPORT, status: 'queued' } } as never);
-      return { row: { ...exported(far), status: 'queued' }, created: true } as never;
+      return { ...exported(far), status: 'queued' } as never;
     });
     show();
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
@@ -1594,7 +1594,7 @@ describe('creating a web animation', () => {
   }
 
   it('closes the dialog when the answer replays the press\'s own execution', async () => {
-    vi.mocked(timelineApi.acceptExecution).mockReset().mockResolvedValue({ row: inProgressRow(RUNNING, 'A dot'), created: false } as never);
+    vi.mocked(timelineApi.acceptExecution).mockReset().mockResolvedValue(inProgressRow(RUNNING, 'A dot') as never);
     show();
     const user = userEvent.setup();
     await executeNew(user, 'A dot');
@@ -1607,7 +1607,7 @@ describe('creating a web animation', () => {
     listing([shown]);
     let refuse: (err: Error) => void = () => undefined;
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async (body: { kind: string }) => {
-      if (body.kind === 'web_animation_export') return { row: { ...exported(shown), status: 'queued' }, created: true } as never;
+      if (body.kind === 'web_animation_export') return { ...exported(shown), status: 'queued' } as never;
       return new Promise((_resolve, reject) => { refuse = reject; }) as never;
     });
     show();
@@ -1647,7 +1647,7 @@ describe('creating a web animation', () => {
     expect(screen.getByTestId('web-animation-prompt')).toBeDisabled();
     // The account changes while the request is out, which lets every press go.
     act(() => useCurrentUserStore.setState({ user: { id: 'u2' } as never }));
-    await act(async () => { answer({ row: inProgressRow(RUNNING, 'A dot'), created: true }); });
+    await act(async () => { answer(inProgressRow(RUNNING, 'A dot')); });
     expect(await screen.findByRole('alert')).toHaveTextContent(t('common.runOnce.unknownResult'));
     expect(screen.getByTestId('web-animation-prompt')).toBeEnabled();
     expect(screen.getByTestId('web-animation-prompt')).toHaveValue('A dot');
@@ -1948,11 +1948,13 @@ describe('the bar\'s own look', () => {
     show();
     const bar = await screen.findByTestId('motion-bottom-bar');
     expect(bar).toHaveClass('bg-popover', 'shadow');
-    expect(bar).not.toHaveClass('bg-card', 'shadow-md');
+    expect(bar).not.toHaveClass('bg-card');
+    expect(bar).not.toHaveClass('shadow-md');
     await userEvent.setup().click(screen.getByTestId('motion-open-executions'));
     const panel = await screen.findByTestId('motion-panel-executions');
     expect(panel).toHaveClass('bg-popover', 'shadow');
-    expect(panel).not.toHaveClass('bg-card', 'shadow-md');
+    expect(panel).not.toHaveClass('bg-card');
+    expect(panel).not.toHaveClass('shadow-md');
   });
 });
 
