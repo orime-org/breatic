@@ -1219,6 +1219,31 @@ export const creditGrantOperations = pgTable("credit_grant_operations", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 });
 
+/** Original enterprise purchase decisions retain keys after membership changes. */
+export const enterpriseCreditPurchaseOperations = pgTable("enterprise_credit_purchase_operations", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  targetUserId: uuid("target_user_id").notNull(),
+  requestedBy: uuid("requested_by").notNull(),
+  requestBody: jsonb("request_body").$type<EnterpriseCreditPurchaseWrite>().notNull(),
+  result: jsonb("result").$type<EnterpriseCreditPurchaseResult>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** Corporate purchase evidence shares the original source identity permanently. */
+export const creditEnterprisePurchases = pgTable("credit_enterprise_purchases", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("enterprise").notNull(),
+  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
+  contractNumber: text("contract_number").notNull(),
+  reason: text("reason").notNull(),
+  operationKey: text("operation_key").notNull().unique(),
+  requestedBy: uuid("requested_by").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, table => [foreignKey({ name: "credit_enterprise_purchases_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
+
 // ── Accounts' own provider keys (inner#1953) ─────────────────────────
 
 /**
@@ -1269,30 +1294,6 @@ export const accountModelUpstreams = pgTable(
     uniqueIndex("account_model_upstreams_live_key").on(table.userId, table.model).where(sql`${table.deletedAt} IS NULL`),
   ],
 );
-/** Original enterprise purchase decisions retain keys after membership changes. */
-export const enterpriseCreditPurchaseOperations = pgTable("enterprise_credit_purchase_operations", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  key: text("key").notNull().unique(),
-  requestHash: varchar("request_hash", { length: 64 }).notNull(),
-  targetUserId: uuid("target_user_id").notNull(),
-  requestedBy: uuid("requested_by").notNull(),
-  requestBody: jsonb("request_body").$type<EnterpriseCreditPurchaseWrite>().notNull(),
-  result: jsonb("result").$type<EnterpriseCreditPurchaseResult>().notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
-
-/** Corporate purchase evidence shares the original source identity permanently. */
-export const creditEnterprisePurchases = pgTable("credit_enterprise_purchases", {
-  id: uuid("id").primaryKey(),
-  sourceKind: varchar("source_kind", { length: 16 }).default("enterprise").notNull(),
-  targetUserId: uuid("target_user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
-  credits: numeric("credits", { precision: 20, scale: 6 }).notNull(),
-  contractNumber: text("contract_number").notNull(),
-  reason: text("reason").notNull(),
-  operationKey: text("operation_key").notNull().unique(),
-  requestedBy: uuid("requested_by").notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-}, table => [foreignKey({ name: "credit_enterprise_purchases_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
 
 /** One promoter application; partial unique indexes and CHECKs live in 0118 (inner#1868). */
 export const promoterApplications = pgTable("promoter_applications", {
