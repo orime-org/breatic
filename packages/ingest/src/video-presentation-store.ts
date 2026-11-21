@@ -31,7 +31,6 @@ import {
 } from '@ingest/video-presentation-state.js';
 import type { PresentationProbeAnswerParsed } from '@ingest/presentation-run-contract.js';
 import type { PresentationGridInput, PresentationSourceFacts } from '@ingest/presentation-run-types.js';
-import { hashStoredObject } from '@ingest/stored-object.js';
 import { noteFailure } from '@ingest/error-monitoring.js';
 
 /** Backend-authorized admission of one canonical source's presentation work, frozen at the first accept. */
@@ -156,6 +155,19 @@ type FoundJob = { kind: 'current' | 'archived'; job: JobRecord };
 // ponytail: one storage value holds the whole key's state, archive included; split per job if a key's archive grows past the value limit.
 // v3: the frame-grid shape replaced the unpublished ledger shape in place; older state reads as absent and is readmitted (§3.4).
 const STATE_KEY = 'video-presentation-v3';
+
+/** A stored object as R2 holds it: its etag, size and SHA-256. */
+interface StoredMeasure { etag: string; size: number; sha256: string }
+
+/**
+ * Lowercase hex of a digest.
+ * @param bytes - The digest.
+ * @returns Its hex.
+ * @throws {never} Never.
+ */
+function hex(bytes: ArrayBuffer): string {
+  return [...new Uint8Array(bytes)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+}
 
 /**
  * The unit key of a chunk report: its container job id without the attempt.
@@ -413,13 +425,14 @@ export class VideoPresentationStore {
    * @returns Whether the stage was recorded.
    * @throws {Error} When durable storage or R2 fails.
    */
-  advanceStage(identity: PresentationCapability, stage: string): Promise<boolean> {
+  async advanceStage(identity: PresentationCapability, stage: string): Promise<boolean> {
+    const carrier = stage === 'publish' ? await this.carrierOutside(identity) : null;
     return this.gate(async () => {
       const state = await this.load();
       const found = state === undefined ? undefined : this.find(state, identity, identity.token);
       if (state === undefined || found?.kind !== 'current') return false;
       if (stage === 'publish') {
-        const verified = await this.publishWork(state, found.job);
+        const verified = await this.publishWork(state, found.job, carrier);
         await this.save(state);
         return verified;
       }
@@ -430,32 +443,55 @@ export class VideoPresentationStore {
   }
 
   /**
-   * The SHA-256 of a stored object: R2's own checksum when the write supplied one, otherwise measured by reading it back.
-   * Job outputs are written without one (multipart or streamed puts).
-   * @param head - The object's head.
-   * @returns The lowercase hex digest.
+   * Measure a stored object before entering the serial gate: R2's own checksum when the write supplied one, otherwise its
+   * bytes read back (job outputs are multipart and carry none). Reading gigabytes inside blockConcurrencyWhile would outlast
+   * its 30 s limit and reset the Durable Object.
+   * @param storageKey - The object's key.
+   * @returns The etag, size and digest of the bytes measured, or null when the object is missing.
    * @throws {Error} When R2 fails.
    */
-  private async storedSha256(head: R2Object): Promise<string> {
-    const stored = head.checksums.sha256;
-    return stored === undefined ? hashStoredObject(this.bucket, head.key) : [...new Uint8Array(stored)].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+  private async measureOutside(storageKey: string): Promise<StoredMeasure | null> {
+    const head = await this.bucket.head(storageKey);
+    if (head === null) return null;
+    if (head.checksums.sha256 !== undefined) return { etag: head.etag, size: head.size, sha256: hex(head.checksums.sha256) };
+    const object = await this.bucket.get(storageKey);
+    if (object === null) return null;
+    const digest = new crypto.DigestStream('SHA-256');
+    await object.body.pipeTo(digest);
+    return { etag: object.etag, size: object.size, sha256: hex(await digest.digest) };
   }
 
   /**
-   * Measure a receipt a job reported against the object R2 holds.
+   * Measure a receipt a job reported against the object R2 holds, inside the gate: by R2's own checksum, or by the digest
+   * measured outside the gate while the object's etag and size are still the ones measured.
    * @param receipt - The reported key, size, type and digest.
    * @param receipt.storageKey - The key.
    * @param receipt.sizeBytes - The reported size.
    * @param receipt.contentType - The reported type.
    * @param receipt.sha256 - The reported digest.
-   * @returns The measured object, or null when R2 disagrees.
+   * @param outside - The measurement taken before the gate, or null.
+   * @returns The measured object, or null when R2 disagrees or the object changed since it was measured.
    * @throws {Error} When R2 fails.
    */
-  private async measure(receipt: { storageKey: string; sizeBytes: number; contentType: string; sha256: string }): Promise<{ etag: string; size: number; sha256: string } | null> {
+  private async measure(receipt: { storageKey: string; sizeBytes: number; contentType: string; sha256: string }, outside: StoredMeasure | null): Promise<StoredMeasure | null> {
     const head = await this.bucket.head(receipt.storageKey);
     if (head === null || head.size !== receipt.sizeBytes || head.httpMetadata?.contentType !== receipt.contentType) return null;
-    const sha256 = await this.storedSha256(head);
+    const sha256 = head.checksums.sha256 !== undefined ? hex(head.checksums.sha256)
+      : outside !== null && outside.etag === head.etag && outside.size === head.size ? outside.sha256 : null;
     return sha256 === receipt.sha256 ? { etag: head.etag, size: head.size, sha256 } : null;
+  }
+
+  /**
+   * Measure, before the gate, the carrier the current job's stitch reported, for its publish.
+   * @param identity - The job's capability.
+   * @returns The measurement, or null when the job reported no carrier.
+   * @throws {Error} When durable storage or R2 fails.
+   */
+  private async carrierOutside(identity: PresentationCapability): Promise<StoredMeasure | null> {
+    const state = await this.load();
+    const job = state === undefined ? undefined : this.find(state, identity, identity.token)?.job;
+    const receipt = job?.receipts?.[unitKey(identity.jobId, { kind: 'presentation-stitch' })]?.find((output) => output.role === 'carrier');
+    return receipt === undefined ? null : this.measureOutside(receipt.storageKey);
   }
 
   /**
@@ -464,10 +500,11 @@ export class VideoPresentationStore {
    * computes its versionId and submits it as verified.
    * @param state - The state.
    * @param job - The current job.
+   * @param measuredCarrier - The carrier measured before the gate, or null.
    * @returns Whether the candidate is now verified.
    * @throws {Error} When R2 fails.
    */
-  private async publishWork(state: PresentationState, job: JobRecord): Promise<boolean> {
+  private async publishWork(state: PresentationState, job: JobRecord, measuredCarrier: StoredMeasure | null): Promise<boolean> {
     const facts = job.prepared;
     const { candidate, admission } = job;
     if (facts === undefined || candidate.state !== 'building' || candidate.stage !== 'stitch' || facts.route === 'reuse') return false;
@@ -486,7 +523,7 @@ export class VideoPresentationStore {
       }
       edit = reused;
     }
-    const measured = await this.measure(receipt);
+    const measured = await this.measure(receipt, measuredCarrier);
     if (measured === null) return false;
     const carrier = { storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), ...measured, contentType: receipt.contentType };
     const toolSource = { edit, keyframes: facts.source.keyframes, sourceDecodeKey: facts.source.sourceDecodeKey };
@@ -524,7 +561,7 @@ export class VideoPresentationStore {
     const storageKey = `${carrier.storageKey}.manifest.json`;
     const contentType = 'application/json';
     const bytes = new TextEncoder().encode(JSON.stringify(parsed.data));
-    const sha256 = [...new Uint8Array(await crypto.subtle.digest('SHA-256', bytes))].map((byte) => byte.toString(16).padStart(2, '0')).join('');
+    const sha256 = hex(await crypto.subtle.digest('SHA-256', bytes));
     const object = await this.bucket.put(storageKey, bytes, { httpMetadata: { contentType }, sha256 });
     return { storageKey, url: this.objectURL(admission, storageKey), etag: object.etag, size: bytes.byteLength, sha256, contentType };
   }
@@ -595,7 +632,9 @@ export class VideoPresentationStore {
    * @returns Whether the report was accepted.
    * @throws {Error} When durable storage or R2 fails.
    */
-  reportChunk(identity: PresentationCapability, unit: PresentationChunkUnit, report: PresentationChunkReport): Promise<boolean> {
+  async reportChunk(identity: PresentationCapability, unit: PresentationChunkUnit, report: PresentationChunkReport): Promise<boolean> {
+    const reported = report.kind === 'Done' && unit.kind === 'presentation-edit-stitch' ? report.receipts?.[0] : undefined;
+    const editFile = reported?.role === 'edit' ? await this.measureOutside(reported.storageKey) : null;
     return this.gate(async () => {
       const state = await this.load();
       const found = state === undefined ? undefined : this.find(state, identity, identity.token);
@@ -620,7 +659,7 @@ export class VideoPresentationStore {
       let edit: VideoPresentationEditReceipt | undefined;
       if (completes && unit.kind === 'presentation-edit-stitch' && found.kind === 'current') {
         const output = report.receipts?.[0];
-        const measured = output?.role === 'edit' ? await this.measure(output) : null;
+        const measured = output?.role === 'edit' ? await this.measure(output, editFile) : null;
         const editProfileVersion = job.prepared?.versions.editProfileVersion;
         if (output?.role !== 'edit' || measured === null || editProfileVersion == null) return false;
         edit = { storageKey: output.storageKey, url: this.objectURL(job.admission, output.storageKey), ...measured, contentType: output.contentType, editProfileVersion, tier: output.tier };

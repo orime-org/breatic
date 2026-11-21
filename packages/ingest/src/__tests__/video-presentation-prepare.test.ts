@@ -13,7 +13,7 @@
  * receipt against R2, computes the versionId and commits. A replay of a started job never probes again.
  */
 
-import { env } from 'cloudflare:test';
+import { env, runInDurableObject } from 'cloudflare:test';
 import { describe, expect, it, vi } from 'vitest';
 import * as shared from '@breatic/shared';
 import { videoContainerJobId } from '@breatic/shared/mini-tools';
@@ -22,6 +22,7 @@ import {
   videoPresentationVersionSchema,
 } from '@breatic/shared';
 import * as storeModule from '@ingest/video-presentation-store.js';
+import { VideoPresentationStore } from '@ingest/video-presentation-store.js';
 import { createPresentationContainerPort } from '@ingest/presentation-container-port.js';
 import {
   admission, D, digest, DISPLAY, EDIT_PLAN, ENCODING, H, KEYFRAMES, PLAN, PLAN_CONTENT, PRICING, PRODUCER, PROFILE, PUBLIC_BASE, source, withStore, type Identity, type MachineStore,
@@ -852,6 +853,81 @@ describe('done receipts stored and answered per unit (§5.1 step 4; §3.5 alpha 
       expect(again.units['video-presentation:job-a:stitch']!.state).toBe('open');
       await store.advanceStage(capability, 'publish');
       expect((await store.read(key, H)).selected.kind).not.toBe('ready');
+    });
+  });
+});
+
+/** What a watched store saw: the objects read inside the serial gate, and a hook run on entering it. */
+interface Watch { readInside: string[]; beforeGate: (() => Promise<void>) | null }
+
+/**
+ * Run work against a real store whose bucket reports every object body read while the serial gate is held.
+ * @param key - The storage key naming the object.
+ * @param work - The work, given the store and the watch.
+ * @returns The work's result.
+ */
+async function withWatchedStore<R>(key: string, work: (store: MachineStore, watch: Watch) => Promise<R>): Promise<R> {
+  const stub = env.PRESENTATION_STATE_TEST.get(env.PRESENTATION_STATE_TEST.idFromName(key));
+  const watch: Watch = { readInside: [], beforeGate: null };
+  let inside = false;
+  const bucket = new Proxy(env.BUCKET, {
+    get(target, name) {
+      const value = Reflect.get(target, name) as unknown;
+      if (typeof value !== 'function') return value;
+      return (...args: unknown[]): unknown => {
+        if (name === 'get' && inside) watch.readInside.push(String(args[0]));
+        return (value as (...given: unknown[]) => unknown).apply(target, args);
+      };
+    },
+  });
+  return runInDurableObject(stub, async (_instance, state) => {
+    const store = new VideoPresentationStore(state.storage, bucket, async (inner) => {
+      const hook = watch.beforeGate;
+      watch.beforeGate = null;
+      if (hook !== null) await hook();
+      return state.blockConcurrencyWhile(async () => {
+        inside = true;
+        try { return await inner(); } finally { inside = false; }
+      });
+    });
+    return work(store as unknown as MachineStore, watch);
+  });
+}
+
+// ING-4 (frames-split §7.1.1, §5.1 step 4): blockConcurrencyWhile resets the DO after 30 s, so the edit file and the carrier
+// (multipart job outputs R2 keeps no SHA-256 for) are hashed before the gate; inside it only their head is checked.
+describe('stored objects are hashed outside the serial gate (inner#1306 §5.1 step 4, §4.2)', () => {
+  it('HG01 the edit stitch Done and the publish read no object body while the gate is held', async () => {
+    const key = await source();
+    await withWatchedStore(key, async (store, watch) => {
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned({ edit: true })));
+      const capability = capabilityOf(key, answer);
+      await editStitched(store, key, capability, answer);
+      await encodeAndOpenStitch(store, key, capability);
+      await stitchAndPublish(store, key, capability);
+      expect((await store.read(key, H)).presentation).not.toBe(null);
+      expect(watch.readInside).toEqual([]);
+    });
+  });
+
+  it('HG02 an edit file rewritten between the outside hash and the gate is refused, and the report taken on retry', async () => {
+    const key = await source();
+    await withWatchedStore(key, async (store, watch) => {
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned({ edit: true })));
+      const capability = capabilityOf(key, answer);
+      await counted(store, capability);
+      expect(await store.advanceStage(capability, 'edit')).toBe(true);
+      for (const [chunk] of (answer.work as Extract<Work, { kind: 'edit' }>).editChunks.entries()) await finish(store, capability, { kind: 'presentation-edit', chunk });
+      expect(await store.advanceStage(capability, 'edit_stitch')).toBe(true);
+      const bytes = new Uint8Array([7, 7, 7, 7]);
+      const written = await writeOutput(workKey(key, videoContainerJobId({ kind: 'presentation-edit-stitch', jobId: 'job-a', attempt: 1 })), bytes);
+      const unit = { kind: 'presentation-edit-stitch' };
+      const done: Report = { kind: 'Done', attempt: 1, usage: 1000, receipts: [{ role: 'edit', ...written.receipt, tier: 'edit_h264_intra_8bit_420' }] };
+      expect(await reportUnit(store, capability, unit, { kind: 'Sub' })).toBe(true);
+      // The same bytes written again: the size and digest still match, only the etag says the object changed.
+      watch.beforeGate = async (): Promise<void> => { await env.BUCKET.put(written.receipt.storageKey, bytes, { httpMetadata: { contentType: 'video/mp4' } }); };
+      expect(await reportUnit(store, capability, unit, done)).toBe(false);
+      expect(await reportUnit(store, capability, unit, done)).toBe(true);
     });
   });
 });
