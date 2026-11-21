@@ -16,7 +16,7 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { canonicalMiniToolValue } from '../../mini-tools/canonical-value.js';
 import {
-  alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, verifyVideoPresentationPlan, videoPresentationPlanSha256, videoPresentationRefSchema,
+  alphaPackedManifestMatchesVersion, alphaPackedManifestSchema, alphaPackedPlanes, verifyVideoPresentationPlan, videoPresentationPlanSha256, videoPresentationRefSchema,
   videoPresentationToolInputId, videoPresentationVersionId, videoPresentationVersionSchema,
 } from '../video-presentation-version.js';
 
@@ -281,6 +281,42 @@ describe('M §3.5 alpha-packed manifest', () => {
   ])('M03 rejects %s', (_, value) => {
     expect(alphaPackedManifestSchema.safeParse(manifest()).success).toBe(true);
     expect(alphaPackedManifestSchema.safeParse(value).success).toBe(false);
+  });
+});
+
+describe('MG §3.5, §8.2 the manifest rectangles are the packed carrier\'s own planes, scaled like any carrier', () => {
+  /**
+   * A manifest of the given planes over the alpha version's packed carrier.
+   * @param planes - The packed size and the two rectangles.
+   * @returns The manifest.
+   */
+  const over = (planes: Value): Value => ({ schemaVersion: 1, packed: carrier('job-1.packed.mp4'), ...planes });
+  /**
+   * An alpha-packed version of the given display size.
+   * @param width - Display width.
+   * @param height - Display height.
+   * @returns The version.
+   */
+  const alphaOf = (width: number, height: number): Value => ({ ...alphaVersion(), display: display(width, height) });
+  const uhd = { packedWidth: 3844, packedHeight: 1080, colorRect: { x: 0, y: 0, width: 1920, height: 1080 }, alphaRect: { x: 1924, y: 0, width: 1920, height: 1080 } };
+
+  it.each([
+    ['a 3840x2160 display', 3840, 2160, uhd],
+    ['a 1440x1440 display', 1440, 1440, { packedWidth: 2164, packedHeight: 1080, colorRect: { x: 0, y: 0, width: 1080, height: 1080 }, alphaRect: { x: 1084, y: 0, width: 1080, height: 1080 } }],
+    ['an odd 97x65 display, padded and unscaled', 97, 65, { packedWidth: 200, packedHeight: 66, colorRect: { x: 0, y: 0, width: 97, height: 65 }, alphaRect: { x: 102, y: 0, width: 97, height: 65 } }],
+  ] as const)('MG01 the planes of %s under the 1080 cap', (_, width, height, planes) => {
+    expect(alphaPackedManifestMatchesVersion(over(planes) as never, alphaOf(width, height) as never)).toBe(true);
+    expect(alphaPackedPlanes({ width, height }, 1080)).toEqual(planes);
+  });
+
+  it.each([
+    ['display-size rectangles in a 1080 carrier', { ...uhd, colorRect: { x: 0, y: 0, width: 3840, height: 2160 }, alphaRect: { x: 1924, y: 0, width: 3840, height: 2160 } }],
+    ['planes of another aspect', { ...uhd, colorRect: { x: 0, y: 0, width: 1920, height: 1000 }, alphaRect: { x: 1924, y: 0, width: 1920, height: 1000 } }],
+    ['a packed width without the plane gap', { ...uhd, packedWidth: 3840, alphaRect: { x: 1920, y: 0, width: 1920, height: 1080 } }],
+    ['an alpha plane off the gap', { ...uhd, alphaRect: { x: 1922, y: 0, width: 1920, height: 1080 } }],
+    ['a packed height past the plane', { ...uhd, packedHeight: 1088 }],
+  ] as const)('MG02 a 3840x2160 alpha version refuses %s', (_, planes) => {
+    expect(alphaPackedManifestMatchesVersion(over(planes) as never, alphaOf(3840, 2160) as never)).toBe(false);
   });
 });
 

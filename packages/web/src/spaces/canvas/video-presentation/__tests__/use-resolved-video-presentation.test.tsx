@@ -18,7 +18,7 @@ const url = 'https://assets.example.test/video/alpha.webm';
 const carrier = { storageKey: 'video/alpha.webm.packed.mp4', url: 'https://assets.example.test/video/alpha.webm.packed.mp4', etag: '"packed"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
 const manifestURL = 'https://assets.example.test/video/alpha.webm.manifest.json';
 const manifest = { schemaVersion: 1,
-  packed: carrier, packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } };
+  packed: carrier, packedWidth: 196, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 100, y: 0, width: 96, height: 64 } };
 const fetchMock = vi.fn<typeof fetch>();
 let client: QueryClient;
 

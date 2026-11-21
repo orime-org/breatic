@@ -11,7 +11,7 @@
 
 import { z } from 'zod';
 import { hashMiniToolValue } from '@shared/mini-tools/canonical-value.js';
-import { EDIT_FILE_TIERS } from '@shared/mini-tools/video-encode-plan.js';
+import { EDIT_FILE_TIERS, PACKED_PLANE_GAP, packedCarrierWidth, videoCarrierGeometry } from '@shared/mini-tools/video-encode-plan.js';
 import { SOURCE_DECODE_KEYS } from '@shared/upload/frame-grid-rate.js';
 import { checkPackedGeometry, pixel, rect } from '@shared/upload/video-presentation.js';
 
@@ -104,8 +104,54 @@ export const alphaPackedManifestSchema = z.strictObject({
 /** A parsed alpha-packed manifest. */
 export type AlphaPackedManifest = z.infer<typeof alphaPackedManifestSchema>;
 
+/** The packed frame and the two plane rectangles of an alpha-packed carrier, in the manifest's field names. */
+export type AlphaPackedPlanes = Pick<AlphaPackedManifest, 'packedWidth' | 'packedHeight' | 'colorRect' | 'alphaRect'>;
+
 /**
- * Whether a manifest belongs to this alpha-packed version: the packed object is the carrier and the rectangles have the display size.
+ * The planes an alpha-packed carrier of this display has (§3.5, §8.2): each plane is the carrier geometry under the short-side
+ * cap, the picture is its padded display rectangle or the whole plane, and the alpha plane follows the colour plane after the
+ * plane gap. The rectangles are the carrier's own pixels; the renderer scales them to the display size.
+ * @param display - The display size.
+ * @param display.width - Display width in pixels.
+ * @param display.height - Display height in pixels.
+ * @param maxShortSide - The carrier short-side cap.
+ * @returns The packed size and the two rectangles.
+ * @throws {RangeError} When a side or the cap is not a positive integer.
+ */
+export function alphaPackedPlanes(display: { width: number; height: number }, maxShortSide: number): AlphaPackedPlanes {
+  const plane = videoCarrierGeometry(display, maxShortSide);
+  const colorRect = plane.displayRect ?? { x: 0, y: 0, width: plane.width, height: plane.height };
+  return { packedWidth: packedCarrierWidth(plane.width), packedHeight: plane.height, colorRect, alphaRect: { ...colorRect, x: colorRect.x + plane.width + PACKED_PLANE_GAP } };
+}
+
+/**
+ * Whether these planes are the ones {@link alphaPackedPlanes} gives for the display under the cap.
+ * @param planes - Reported or stored packed planes.
+ * @param display - The display size.
+ * @param display.width - Display width in pixels.
+ * @param display.height - Display height in pixels.
+ * @param maxShortSide - The carrier short-side cap.
+ * @returns Whether every field matches.
+ * @throws {RangeError} When a side or the cap is not a positive integer.
+ */
+export function alphaPackedPlanesMatch(planes: AlphaPackedPlanes, display: { width: number; height: number }, maxShortSide: number): boolean {
+  const expected = alphaPackedPlanes(display, maxShortSide);
+  /**
+   * Whether two rectangles are equal.
+   * @param a - One rectangle.
+   * @param b - The other.
+   * @returns Whether every field matches.
+   * @throws {never} Never.
+   */
+  const same = (a: AlphaPackedPlanes['colorRect'], b: AlphaPackedPlanes['colorRect']): boolean => a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height;
+  return planes.packedWidth === expected.packedWidth && planes.packedHeight === expected.packedHeight &&
+    same(planes.colorRect, expected.colorRect) && same(planes.alphaRect, expected.alphaRect);
+}
+
+/**
+ * Whether a manifest belongs to this alpha-packed version: the packed object is the carrier and the planes are the carrier
+ * geometry of the display. The version does not carry the short-side cap, so the cap is the colour plane's short side: a
+ * scaled plane's short side is the cap, and an unscaled plane's is the display's, which leaves it unscaled.
  * @param manifest - A parsed manifest.
  * @param version - A parsed version.
  * @returns Whether they match.
@@ -114,9 +160,8 @@ export type AlphaPackedManifest = z.infer<typeof alphaPackedManifestSchema>;
 export function alphaPackedManifestMatchesVersion(manifest: AlphaPackedManifest, version: VideoPresentationVersion): boolean {
   if (version.playback.kind !== 'alpha-packed') return false;
   const carrier = version.playback.carrier;
-  const { width, height } = version.display;
   return (['storageKey', 'url', 'etag', 'size', 'sha256', 'contentType'] as const).every(key => manifest.packed[key] === carrier[key]) &&
-    [manifest.colorRect, manifest.alphaRect].every(area => area.width === width && area.height === height);
+    alphaPackedPlanesMatch(manifest, version.display, Math.min(manifest.colorRect.width, manifest.colorRect.height));
 }
 
 /** An accepted execution's presentationRef: input id to the tool input it was planned against. */

@@ -784,16 +784,20 @@ describe('the candidate writer\'s ordering and attempt rules (inner#1306 §7.1.1
 });
 
 describe('done receipts stored and answered per unit (§5.1 step 4; §3.5 alpha manifest)', () => {
-  const GEOMETRY = { packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 96, y: 0, width: 95, height: 63 } };
+  // The 95x63 display pads to 96x64 planes with the picture at the origin; the alpha plane follows after the plane gap.
+  const GEOMETRY = { packedWidth: 196, packedHeight: 64, colorRect: { x: 0, y: 0, width: 95, height: 63 }, alphaRect: { x: 100, y: 0, width: 95, height: 63 } };
+  // A 3840x2160 display's carrier is scaled to the 1080 short side: 1920x1080 planes (§8.2).
+  const UHD_GEOMETRY = { packedWidth: 3844, packedHeight: 1080, colorRect: { x: 0, y: 0, width: 1920, height: 1080 }, alphaRect: { x: 1924, y: 0, width: 1920, height: 1080 } };
 
   /**
    * A granted encode job with every chunk done and its stitch attempt 1 open, its packed carrier written to R2.
    * @param store - The store.
    * @param key - The source key.
+   * @param options - What differs in the probe.
    * @returns The capability and the carrier.
    */
-  async function packedStitch(store: MachineStore, key: string): Promise<{ capability: Identity; carrier: Awaited<ReturnType<typeof writeOutput>> }> {
-    const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned()));
+  async function packedStitch(store: MachineStore, key: string, options: ProbeOptions = {}): Promise<{ capability: Identity; carrier: Awaited<ReturnType<typeof writeOutput>> }> {
+    const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned(options)));
     const capability = capabilityOf(key, answer);
     await counted(store, capability);
     await encodeAndOpenStitch(store, key, capability);
@@ -837,6 +841,39 @@ describe('done receipts stored and answered per unit (§5.1 step 4; §3.5 alpha 
       expect(version.versionId).toBe(await expectedVersionId(1, await toolInputOf(), carrier.receipt));
       const again = checked(await prepareFn()(store, { storageKey: key, sourceFingerprint: H, jobId: 'job-a' }, fakePort(planned()), Date.now()));
       expect(again.units['video-presentation:job-a:stitch']!.receipts).toEqual([...receipts, { role: 'manifest', storageKey: manifestReceipt.storageKey, sha256: manifestReceipt.sha256, sizeBytes: manifestReceipt.size, contentType: 'application/json' }]);
+    });
+  });
+
+  it('RD04 a 3840x2160 transparent source publishes with the manifest of its 1080 carrier planes', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const { capability, carrier } = await packedStitch(store, key, { width: 3840, height: 2160 });
+      const receipts = [{ role: 'carrier', packing: 'alpha-packed', ...carrier.receipt, geometry: UHD_GEOMETRY }];
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts })).toBe(true);
+      expect(await store.advanceStage(capability, 'publish')).toBe(true);
+      const view = await store.read(key, H);
+      expect(view.selected.kind).toBe('ready');
+      const version = videoPresentationVersionSchema.parse(view.presentation);
+      expect(version.display).toMatchObject({ width: 3840, height: 2160 });
+      const manifestReceipt = (version.playback as Extract<typeof version.playback, { kind: 'alpha-packed' }>).manifest;
+      const object = await env.BUCKET.get(manifestReceipt.storageKey);
+      const manifest = alphaPackedManifestSchema.parse(JSON.parse(await object!.text()));
+      expect(manifest).toMatchObject(UHD_GEOMETRY);
+      expect(alphaPackedManifestMatchesVersion(manifest, version)).toBe(true);
+    });
+  });
+
+  it.each([
+    ['display-size planes', { packedWidth: 7684, packedHeight: 2160, colorRect: { x: 0, y: 0, width: 3840, height: 2160 }, alphaRect: { x: 3844, y: 0, width: 3840, height: 2160 } }],
+    ['planes without the plane gap', { ...UHD_GEOMETRY, packedWidth: 3840, alphaRect: { x: 1920, y: 0, width: 1920, height: 1080 } }],
+  ])('RD05 a 3840x2160 stitch reporting %s does not publish', async (_name, geometry) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const { capability, carrier } = await packedStitch(store, key, { width: 3840, height: 2160 });
+      const receipts = [{ role: 'carrier', packing: 'alpha-packed', ...carrier.receipt, geometry }];
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts })).toBe(true);
+      await store.advanceStage(capability, 'publish');
+      expect((await store.read(key, H)).selected.kind).not.toBe('ready');
     });
   });
 

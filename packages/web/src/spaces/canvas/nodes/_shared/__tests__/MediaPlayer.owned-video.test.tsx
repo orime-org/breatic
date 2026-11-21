@@ -14,11 +14,13 @@ import { QueryClientProvider, queryClient } from '@web/app/providers/QueryClient
 import { videoPresentationQuery } from '../../../video-presentation/video-presentation-query';
 import type { VideoPresentationResponse } from '@breatic/shared';
 import type { VideoPresentationSource, VideoRendererCallbacks } from '../../../video-presentation/types';
+import type * as RendererModule from '../../../video-presentation/create-video-renderer';
+import type * as QueryModule from '../../../video-presentation/video-presentation-query';
 import { PRESENTED, presentedBundle, presentedDisplay } from '@web/test-utils/video-presentation';
 
 const driver = vi.hoisted(() => ({ sessions: [] as { element: HTMLVideoElement; surface: HTMLCanvasElement; callbacks: VideoRendererCallbacks; dispose: ReturnType<typeof vi.fn> }[] }));
 vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../video-presentation/create-video-renderer')>()),
+  ...(await importOriginal<typeof RendererModule>()),
   createVideoRenderer: vi.fn((host: HTMLElement, _source: VideoPresentationSource, callbacks: VideoRendererCallbacks) => {
     const element = document.createElement('video');
     const surface = document.createElement('canvas'); surface.width = 160; surface.height = 240;
@@ -45,7 +47,7 @@ function alphaSource(canonicalURL: string, fingerprint: string, versionId: strin
     display: presentedDisplay(160, 240, 250),
     playback: { kind: 'alpha-packed', carrier: packed, manifest: { ...packed, storageKey: 'manifest.json', url: 'https://assets.example.test/manifest.json', contentType: 'application/json' } } }),
   manifest: { schemaVersion: 1, packed,
-    packedWidth: 320, packedHeight: 240, colorRect: { x: 0, y: 0, width: 160, height: 240 }, alphaRect: { x: 160, y: 0, width: 160, height: 240 } } };
+    packedWidth: 324, packedHeight: 240, colorRect: { x: 0, y: 0, width: 160, height: 240 }, alphaRect: { x: 164, y: 0, width: 160, height: 240 } } };
 }
 const source = alphaSource('https://assets.example.test/canonical.webm', PRESENTED.fingerprint, PRESENTED.versionId);
 
@@ -62,7 +64,7 @@ describe('canonical owned video in the existing player', () => {
     const onDimensions = vi.fn(); const onBinding = vi.fn();
     const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} onVideoBinding={onBinding} onDimensions={onDimensions} />);
     expect(driver.sessions).toHaveLength(1);
-    const owned = driver.sessions[0]!;
+    const owned = driver.sessions[0];
     act(() => owned.callbacks.ready(owned.element, owned.surface));
     const binding = onBinding.mock.calls.at(-1)![0].binding;
     expect(binding.element).toBe(owned.element);
@@ -86,10 +88,10 @@ describe('canonical owned video in the existing player', () => {
     const frames = vi.fn(); const bindings = vi.fn();
     const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} onVideoBinding={bindings} onPresentedFrame={frames} />);
     expect(driver.sessions).toHaveLength(1);
-    const first = driver.sessions[0]!;
+    const first = driver.sessions[0];
     first.element.currentTime = 7;
     act(() => { first.callbacks.ready(first.element, first.surface); first.callbacks.frame(0.417, first.callbacks.getSeekEpoch()); expect(frames).toHaveBeenCalledOnce(); });
-    expect(frames.mock.calls[0]![0]).toMatchObject({ mediaTime: 0.417, surface: first.surface });
+    expect(frames.mock.calls[0][0]).toMatchObject({ mediaTime: 0.417, surface: first.surface });
     const binding = bindings.mock.calls.at(-1)![0].binding;
     expect(binding.getPresentedFrame().mediaTime).toBe(0.417);
     act(() => binding.seek(2));
@@ -106,13 +108,13 @@ describe('canonical owned video in the existing player', () => {
     const bindings = vi.fn();
     const view = render(<MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} onVideoBinding={bindings} />);
     expect(driver.sessions).toHaveLength(1);
-    const first = driver.sessions[0]!;
+    const first = driver.sessions[0];
     act(() => first.callbacks.ready(first.element, first.surface));
     act(() => { first.element.volume = 0.3; first.element.muted = true; first.element.dispatchEvent(new Event('volumechange')); });
     const other = alphaSource('https://assets.example.test/replaced.webm', 'b'.repeat(64), 'c'.repeat(64));
     view.rerender(<MediaPlayer modality='video' src={other.canonicalURL} videoSource={other} onVideoBinding={bindings} />);
     expect(driver.sessions).toHaveLength(2);
-    const next = driver.sessions[1]!;
+    const next = driver.sessions[1];
     act(() => next.callbacks.ready(next.element, next.surface));
     expect(next.element.volume).toBe(0.3);
     expect(next.element.muted).toBe(true);
@@ -131,8 +133,8 @@ describe('canonical owned video in the existing player', () => {
     const frames = vi.fn();
     const view = render(<React.StrictMode><MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} active onPresentedFrame={frames} /></React.StrictMode>);
     expect(driver.sessions).toHaveLength(2);
-    expect(driver.sessions[0]!.dispose).toHaveBeenCalledOnce();
-    const current = driver.sessions[1]!;
+    expect(driver.sessions[0].dispose).toHaveBeenCalledOnce();
+    const current = driver.sessions[1];
     act(() => current.callbacks.ready(current.element, current.surface));
     view.rerender(<React.StrictMode><MediaPlayer modality='video' src={source.canonicalURL} videoSource={source} active={false} onPresentedFrame={frames} /></React.StrictMode>);
     expect(current.dispose).toHaveBeenCalledOnce();
@@ -143,7 +145,7 @@ describe('canonical owned video in the existing player', () => {
 
 
 vi.mock('@web/spaces/canvas/video-presentation/video-presentation-query', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../../../video-presentation/video-presentation-query')>()),
+  ...(await importOriginal<typeof QueryModule>()),
   videoPresentationQuery: vi.fn((input: { projectId: string; canonicalURL: string; active: boolean }) => ({
     queryKey: ['video-presentation', 1, input.projectId, input.canonicalURL], enabled: input.active,
     queryFn: async (): Promise<VideoPresentationResponse> => ({
@@ -162,7 +164,7 @@ describe('actual VideoNode authorized presentation bridge', () => {
     render(<QueryClientProvider><TooltipProvider><CanvasContext.Provider value={{ projectId: 'project', spaceId: 'space', readOnly: true, myRole: 'viewer', caretProvider: null }}><CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: vi.fn(), deleteNode: vi.fn(), activateNodeUpload: vi.fn(), beginGroupResize: vi.fn(), reportGroupResize: vi.fn(), commitGroupResize: vi.fn(), onVideoBinding: binding, onVideoFrame: frame }}><NodeIdContext.Provider value='node'><VideoNode data={data} /></NodeIdContext.Provider></CanvasActionsContext.Provider></CanvasContext.Provider></TooltipProvider></QueryClientProvider>);
     await waitFor(() => expect(videoPresentationQuery).toHaveBeenCalledWith({ projectId: 'project', canonicalURL: source.canonicalURL, active: true }));
     await waitFor(() => expect(driver.sessions).toHaveLength(1));
-    const owned = driver.sessions[0]!;
+    const owned = driver.sessions[0];
     act(() => { owned.callbacks.ready(owned.element, owned.surface); owned.callbacks.frame(0.417, owned.callbacks.getSeekEpoch()); });
     expect(binding).toHaveBeenCalledWith('node', source.canonicalURL, expect.objectContaining({ status: 'ready', binding: expect.objectContaining({ element: owned.element, surface: owned.surface }) }));
     expect(frame).toHaveBeenCalledWith('node', source.canonicalURL, expect.objectContaining({ mediaTime: 0.417, surface: owned.surface }));

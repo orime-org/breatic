@@ -18,7 +18,7 @@ const display = presentedDisplay(96, 64, 25);
 const alphaBundle = presentedBundle(CANONICAL, { display, playback: { kind: 'alpha-packed', carrier: packed,
   manifest: { ...packed, storageKey: 'video/fixture/original.webm.manifest.json', url: 'https://assets.test.invalid/video/fixture/original.webm.manifest.json', contentType: 'application/json' } } });
 const manifest = { schemaVersion: 1 as const,
-  packed, packedWidth: 192, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } };
+  packed, packedWidth: 196, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 100, y: 0, width: 96, height: 64 } };
 const source = { canonicalURL: CANONICAL, sourceFingerprint: H, presentation: alphaBundle, manifest } as unknown as VideoPresentationSource;
 const carrierURL = 'https://assets.test.invalid/video/fixture/original.webm.carrier.mp4';
 const nativeSource = { canonicalURL: CANONICAL, sourceFingerprint: H, manifest: null,
@@ -79,7 +79,7 @@ describe('approved native and VAP rendering boundary', () => {
     expect(vap).toHaveBeenCalledTimes(1);
     expect(nativePlay).toHaveBeenCalledTimes(0);
     expect(player.options?.src).toBe(manifest.packed.url);
-    expect(player.options?.config).toMatchObject({ info: { w: 96, h: 64, videoW: 192, videoH: 64, rgbFrame: [0, 0, 96, 64], aFrame: [96, 0, 96, 64] } });
+    expect(player.options?.config).toMatchObject({ info: { w: 96, h: 64, videoW: 196, videoH: 64, rgbFrame: [0, 0, 96, 64], aFrame: [100, 0, 96, 64] } });
     expect(source.canonicalURL).toBe(CANONICAL);
     player.drawFrame(0, { mediaTime: 0.125 });
     expect(player.draws).toBe(1);
@@ -92,11 +92,21 @@ describe('approved native and VAP rendering boundary', () => {
   });
 
   it('maps exactly the manifest fields into the VAP config, from no other field', async () => {
-    const moved = { ...manifest, packed: { ...packed, url: 'https://assets.test.invalid/video/fixture/moved.packed.mp4' }, packedWidth: 192, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 96, y: 0, width: 96, height: 64 } };
-    const resource = createVideoRenderer(host, { ...source, presentation: { ...alphaBundle, playback: { ...alphaBundle.playback, carrier: moved.packed } }, manifest: moved } as unknown as VideoPresentationSource, callbacks);
+    const moved = { ...manifest, packed: { ...packed, url: 'https://assets.test.invalid/video/fixture/moved.packed.mp4' }, packedWidth: 196, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 100, y: 0, width: 96, height: 64 } };
+    const resource = createVideoRenderer(host, { ...source, presentation: { ...alphaBundle, playback: { ...alphaBundle.playback, carrier: moved.packed } }, manifest: moved }, callbacks);
     await settle();
     expect(player.options?.src).toBe(moved.packed.url);
-    expect(player.options?.config).toMatchObject({ info: { videoW: moved.packedWidth, videoH: moved.packedHeight, rgbFrame: [0, 0, 96, 64], aFrame: [96, 0, 96, 64] } });
+    expect(player.options?.config).toMatchObject({ info: { videoW: moved.packedWidth, videoH: moved.packedHeight, rgbFrame: [0, 0, 96, 64], aFrame: [100, 0, 96, 64] } });
+    resource.dispose();
+  });
+
+  it('draws a carrier scaled to the 1080 short side at the 3840x2160 display size (§8.2)', async () => {
+    const uhdBundle = { ...alphaBundle, display: presentedDisplay(3840, 2160, 25) };
+    const scaled = { ...manifest, packedWidth: 3844, packedHeight: 1080, colorRect: { x: 0, y: 0, width: 1920, height: 1080 }, alphaRect: { x: 1924, y: 0, width: 1920, height: 1080 } };
+    const resource = createVideoRenderer(host, { ...source, presentation: uhdBundle, manifest: scaled }, callbacks);
+    await settle();
+    expect(callbacks.error).toHaveBeenCalledTimes(0);
+    expect(player.options?.config).toMatchObject({ info: { w: 3840, h: 2160, videoW: 3844, videoH: 1080, rgbFrame: [0, 0, 1920, 1080], aFrame: [1924, 0, 1920, 1080] } });
     resource.dispose();
   });
 
@@ -111,7 +121,7 @@ describe('approved native and VAP rendering boundary', () => {
 
   it('refuses a manifest of another packed object or of the wrong size without mounting VAP', async () => {
     for (const other of [{ ...manifest, packed: { ...packed, sha256: 'b'.repeat(64) } }, { ...manifest, colorRect: { x: 0, y: 0, width: 48, height: 32 }, alphaRect: { x: 96, y: 0, width: 48, height: 32 } }]) {
-      const resource = createVideoRenderer(host, { ...source, manifest: other } as unknown as VideoPresentationSource, callbacks);
+      const resource = createVideoRenderer(host, { ...source, manifest: other }, callbacks);
       await settle();
       resource.dispose();
     }

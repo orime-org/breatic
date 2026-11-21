@@ -17,7 +17,7 @@ import {
   type VideoPresentationPrepareAnswer, type VideoPresentationProcessLimits, type VideoPresentationUsageFact, type VideoPresentationVersion,
 } from '@breatic/shared';
 import type { VideoPresentation, VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
-import type { VideoPresentationEditReceipt, VideoPresentationPlan } from '@shared/upload/video-presentation-version.js';
+import { alphaPackedPlanesMatch, type VideoPresentationEditReceipt, type VideoPresentationPlan } from '@shared/upload/video-presentation-version.js';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
 import { decodePrerollFrames, planFrameGrid } from '@shared/upload/frame-grid.js';
 import {
@@ -551,10 +551,11 @@ export class VideoPresentationStore {
     const carrier = { storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), ...measured, contentType: receipt.contentType };
     const toolSource = { edit, keyframes: facts.source.keyframes, sourceDecodeKey: facts.source.sourceDecodeKey };
     let playback: VideoPresentationVersion['playback'];
+    const maxShortSide = admission.encoding?.carrier.maxShortSide ?? Number.MAX_SAFE_INTEGER;
     if (receipt.geometry === undefined) {
-      playback = { kind: 'native', carrier, displayRect: videoCarrierGeometry(facts.display, admission.encoding?.carrier.maxShortSide ?? Number.MAX_SAFE_INTEGER).displayRect };
+      playback = { kind: 'native', carrier, displayRect: videoCarrierGeometry(facts.display, maxShortSide).displayRect };
     } else {
-      const manifest = await this.writeManifest(admission, facts.display, carrier, receipt.geometry);
+      const manifest = await this.writeManifest(admission, facts.display, maxShortSide, carrier, receipt.geometry);
       if (manifest === null) return false;
       playback = { kind: 'alpha-packed', carrier, manifest };
       const { storageKey, sha256, size, contentType } = manifest;
@@ -570,17 +571,20 @@ export class VideoPresentationStore {
   /**
    * Write the alpha-packed manifest (§3.5): the measured packed carrier and the geometry its job reported, at the carrier key
    * plus `.manifest.json`. It names no version, so the carrier reuse route takes it as it is; P binds it by its measured hash.
+   * The rectangles are the carrier's own planes, scaled to the short-side cap like any carrier (§8.2).
    * @param admission - The job's admission.
-   * @param display - The display grid the planes must match.
+   * @param display - The display grid the carrier was encoded for.
+   * @param maxShortSide - The frozen carrier short-side cap.
    * @param carrier - The measured packed carrier.
    * @param geometry - The packed geometry.
-   * @returns The manifest's measured receipt, or null when the geometry does not fit the display.
+   * @returns The manifest's measured receipt, or null when the geometry is not the carrier geometry of the display.
    * @throws {Error} When R2 fails.
    */
-  private async writeManifest(admission: VideoPresentationAdmission, display: VideoPresentationDisplay, carrier: Extract<VideoPresentationVersion['playback'], { kind: 'alpha-packed' }>['carrier'],
+  private async writeManifest(admission: VideoPresentationAdmission, display: VideoPresentationDisplay, maxShortSide: number,
+    carrier: Extract<VideoPresentationVersion['playback'], { kind: 'alpha-packed' }>['carrier'],
     geometry: NonNullable<Extract<VideoPresentationOutputReceipt, { role: 'carrier' }>['geometry']>): Promise<Extract<VideoPresentationVersion['playback'], { kind: 'alpha-packed' }>['manifest'] | null> {
     const parsed = alphaPackedManifestSchema.safeParse({ schemaVersion: 1, packed: carrier, ...geometry });
-    if (!parsed.success || [parsed.data.colorRect, parsed.data.alphaRect].some((area) => area.width !== display.width || area.height !== display.height)) return null;
+    if (!parsed.success || !alphaPackedPlanesMatch(parsed.data, display, maxShortSide)) return null;
     const storageKey = `${carrier.storageKey}.manifest.json`;
     const contentType = 'application/json';
     const bytes = new TextEncoder().encode(JSON.stringify(parsed.data));

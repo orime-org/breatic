@@ -64,7 +64,7 @@ describe('effect-owned video surface lifecycle', () => {
     const { result, rerender } = mount();
     ready();
     const epoch = result.current.binding!.sourceEpoch;
-    rerender({ source: { ...source, canonicalURL: 'https://assets.example/b.mp4', sourceFingerprint: 'b'.repeat(64), presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64), 'https://assets.example/b.mp4') } as unknown as VideoPresentationSource, active: true });
+    rerender({ source: { ...source, canonicalURL: 'https://assets.example/b.mp4', sourceFingerprint: 'b'.repeat(64), presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64), 'https://assets.example/b.mp4') }, active: true });
     expect(sessions[0].dispose).toHaveBeenCalledTimes(1);
     expect(result.current.status).toBe('loading');
     ready(0);
@@ -118,7 +118,7 @@ describe('effect-owned video surface lifecycle', () => {
   // what remains is that a bundle of another source never reaches a renderer.
   it('does not create a renderer for a bundle of another source', () => {
     const { rerender } = mount(false);
-    rerender({ source: { ...source, presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64)) } as unknown as VideoPresentationSource, active: true });
+    rerender({ source: { ...source, presentation: bundleOf(PRESENTED.versionId, 'b'.repeat(64)) }, active: true });
     expect(createRenderer).toHaveBeenCalledTimes(0);
   });
 
@@ -131,7 +131,7 @@ describe('effect-owned video surface lifecycle', () => {
     const { result, rerender } = mount();
     ready();
     expect(result.current.binding?.sourceKey).toBe(oldKey);
-    rerender({ source: { ...source, presentation: bundleOf(next) } as unknown as VideoPresentationSource, active: true });
+    rerender({ source: { ...source, presentation: bundleOf(next) }, active: true });
     expect(result.current.binding?.sourceKey ?? oldKey).toBe(oldKey);
     ready(1);
     expect(result.current.binding?.sourceKey).toBe(JSON.stringify([CANONICAL, PRESENTED.fingerprint, next]));
@@ -194,7 +194,7 @@ describe('effect-owned video surface lifecycle', () => {
     // A 17-frame grid at 8 fps lasts 17/8 = 2.125 s (P.display, §3.5).
     const clockBundle = presentedBundle(CANONICAL, { display: { ...presentedDisplay(160, 96, 17), fps: { numerator: 8, denominator: 1 } }, original: { width: 160, height: 96, duration: 2.125 },
       ...(state === 'alpha_ready' ? { playback: { kind: 'alpha-packed' as const, carrier: packed, manifest: { ...packed, storageKey: 'video/packed.json', url: 'https://assets.example/packed.json', contentType: 'application/json' } } } : {}) });
-    const clockSource = { ...source, presentation: clockBundle, manifest: state === 'alpha_ready' ? { schemaVersion: 1, packed, packedWidth: 320, packedHeight: 96, colorRect: { x: 0, y: 0, width: 160, height: 96 }, alphaRect: { x: 160, y: 0, width: 160, height: 96 } } : null } as unknown as VideoPresentationSource;
+    const clockSource = { ...source, presentation: clockBundle, manifest: state === 'alpha_ready' ? { schemaVersion: 1, packed, packedWidth: 324, packedHeight: 96, colorRect: { x: 0, y: 0, width: 160, height: 96 }, alphaRect: { x: 164, y: 0, width: 160, height: 96 } } : null } as unknown as VideoPresentationSource;
     const { result } = renderHook(() => useMediaSurface({ host: hostRef, source: clockSource, active: true, createRenderer }));
     const session = sessions[0];
     Object.defineProperty(session.element, 'duration', { value: duration });
