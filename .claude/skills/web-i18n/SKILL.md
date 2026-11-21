@@ -1,6 +1,6 @@
 ---
 name: web-i18n
-description: Use before adding or changing UI copy or keys in the root `locales/*.json`, writing ICU messages, translating product nouns that must stay in English (the do-not-translate list), labelling generation-panel controls and their values, or changing the language switcher, in packages/web or anywhere that renders those catalogs.
+description: Use before adding or changing UI copy or keys in the root `locales/*.json` or `locales/template-styles/*.json`, writing ICU messages, translating product nouns that must stay in English (the do-not-translate list), labelling generation-panel controls and their values, or changing the language switcher, in packages/web or anywhere that renders those catalogs.
 ---
 
 # Web i18n traps and details

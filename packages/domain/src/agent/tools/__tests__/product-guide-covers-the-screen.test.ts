@@ -50,9 +50,29 @@ const ROUTE_TABLE = join(WEB, "app/route-imports.ts");
  */
 const WHOLE = ["shared/src", "server/src", "domain/src", "core/src"];
 
-const catalog = JSON.parse(
-  readFileSync(resolve(PACKAGES, "../locales/en.json"), "utf8"),
-) as Record<string, unknown>;
+/**
+ * Two nested catalogs as one, the second's leaves added beside the first's.
+ * @param base - The catalog merged into.
+ * @param extra - The catalog merged in.
+ * @returns A new catalog.
+ */
+function mergeCatalogs(base: Record<string, unknown>, extra: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(extra)) {
+    const prev = out[key];
+    out[key] =
+      typeof prev === "object" && prev !== null && typeof value === "object" && value !== null
+        ? mergeCatalogs(prev as Record<string, unknown>, value as Record<string, unknown>)
+        : value;
+  }
+  return out;
+}
+
+// The template style words (inner#1817) sit in their own catalog and join the English one at run time.
+const catalog = mergeCatalogs(
+  JSON.parse(readFileSync(resolve(PACKAGES, "../locales/en.json"), "utf8")) as Record<string, unknown>,
+  JSON.parse(readFileSync(resolve(PACKAGES, "../locales/template-styles/en.json"), "utf8")) as Record<string, unknown>,
+);
 
 /**
  * Every message in the English catalog, by id.

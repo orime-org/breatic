@@ -332,6 +332,25 @@ if (inEntry.length > 0) {
   problems.push(`the entry closure holds locale chunks: ${inEntry.join(', ')}`);
 }
 
+// The template style words (inner#1817) are one `import()` chunk per locale,
+// named `template-styles-<code>` in vite.config.mts, fetched only when a
+// template menu opens; they stay out of the entry closure and its budget.
+const styleChunks = readdirSync(path.join(LOCALES, 'template-styles'))
+  .filter((f) => f.endsWith('.json'))
+  .map((f) => {
+    const code = f.slice(0, -'.json'.length);
+    const hits = files.filter((c) => c.startsWith(`template-styles-${code}-`) && c.endsWith('.js'));
+    if (hits.length !== 1) {
+      problems.push(`template styles ${code}: ${hits.length} chunks named template-styles-${code} (${hits.join(', ') || 'none'})`);
+    }
+    return hits[0];
+  })
+  .filter((chunk) => chunk !== undefined);
+const stylesInEntry = styleChunks.filter((chunk) => entryDownloads.has(chunk));
+if (stylesInEntry.length > 0) {
+  problems.push(`the entry closure holds template style chunks: ${stylesInEntry.join(', ')}`);
+}
+
 // English is the fallback every `t()` reaches for, so it has to be in what the
 // entry imports statically; following no dynamic edge is what tells an English
 // catalog moved behind `import()` apart from one still in the entry.

@@ -428,6 +428,7 @@ export {
   getLocale,
   getActiveLocale,
   getAvailableLocales,
+  mergeLocaleMessages,
   setLocaleMessages,
   setEveryLocaleMessages,
   EVERY_LOCALE_KEYS,
@@ -956,6 +957,15 @@ export {
   type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
+export {
+  TEMPLATE_STYLE_SETS,
+  templateStyleKey,
+  templateStyleSet,
+  templateStylesOf,
+  type TemplateStyle,
+  type TemplateStyleSet,
+  type TemplateStyleSetId,
+} from "@shared/canvas/template-styles.js";
 export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
 export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
 export {
