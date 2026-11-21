@@ -11,7 +11,9 @@ import { defineConfig, type Options } from "tsup";
  */
 const shared: Options = {
   bundle: true,
-  noExternal: [/.*/],
+  // Electron is the runtime and must stay an import; noExternal wins over
+  // external in tsup, so the pattern itself leaves it out.
+  noExternal: [/^(?!electron$).*/],
   external: ["electron"],
   sourcemap: true,
   clean: false,
@@ -25,7 +27,9 @@ const shared: Options = {
 };
 
 export default defineConfig([
-  { ...shared, entry: { "main/index": "src/main/index.ts" }, format: "esm", platform: "node", target: "node22", outDir: "dist", clean: true },
+  // CommonJS: bundled CommonJS dependencies (pino) require Node built-ins at
+  // runtime, which an ES module bundle cannot do.
+  { ...shared, entry: { "main/index": "src/main/index.ts" }, format: "cjs", platform: "node", target: "node22", outDir: "dist", outExtension: () => ({ js: ".cjs" }), clean: true },
   { ...shared, entry: { "preload/app": "src/preload/app.ts" }, format: "cjs", platform: "node", target: "node22", outDir: "dist", outExtension: () => ({ js: ".cjs" }) },
   { ...shared, entry: { "connect/preload": "src/connect/preload.ts" }, format: "cjs", platform: "node", target: "node22", outDir: "dist", outExtension: () => ({ js: ".cjs" }) },
   {

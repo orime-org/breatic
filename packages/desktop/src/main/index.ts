@@ -12,8 +12,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, net, session, shell, type Ip
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 import { createBrowserSignIn } from "@desktop/main/browser-sign-in.js";
 import type { ConnectAnswer, ConnectInitial, ConnectReason } from "@desktop/main/connect-protocol.js";
 import { appImageDesktopEntry, DEEP_LINK_SCHEME, findDeepLink } from "@desktop/main/deep-link.js";
@@ -35,7 +34,7 @@ const SIGN_IN_TTL_MS = 5 * 60_000;
 /** Permissions the web app asks for; every other request is refused. */
 const ALLOWED_PERMISSIONS = new Set(["clipboard-read", "clipboard-sanitized-write", "notifications", "fullscreen", "media"]);
 
-const here = dirname(fileURLToPath(import.meta.url));
+const here = __dirname;
 /**
  * Where the chosen server is kept.
  * @returns The path of `config.json` in the app's data directory.

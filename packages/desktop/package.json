@@ -4,14 +4,15 @@
   "private": true,
   "description": "breatic desktop client for macOS, Windows and Linux",
   "type": "module",
-  "main": "dist/main/index.js",
+  "main": "dist/main/index.cjs",
   "scripts": {
     "build": "tsup",
     "start": "tsup && BREATIC_SERVER_URL=${BREATIC_SERVER_URL:-http://localhost:8100} electron .",
     "dist": "tsup && node scripts/stage-app.mjs && electron-builder --config electron-builder.config.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "test:e2e": "tsup && playwright test"
   },
   "dependencies": {
     "@breatic/shared": "workspace:*",
@@ -21,6 +22,7 @@
     "@types/node": "catalog:",
     "electron": "45.3.2",
     "electron-builder": "26.18.0",
+    "playwright": "^1.62.1",
     "tsup": "catalog:",
     "vitest": "catalog:"
   }

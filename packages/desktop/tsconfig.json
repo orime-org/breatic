@@ -24,7 +24,9 @@
   },
   "include": [
     "src/**/*.ts",
+    "e2e/**/*.ts",
     "tsup.config.ts",
-    "vitest.config.ts"
+    "vitest.config.ts",
+    "playwright.config.ts"
   ]
 }
