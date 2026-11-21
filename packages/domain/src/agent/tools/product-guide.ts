@@ -1609,7 +1609,8 @@ export function renderProductGuide(): string {
       "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy bound to a web animation that has not finished, or ended without a result, is noted at the top right of the " +
       "preview with its track and its status, a copy whose page is still loading shows nothing and is noted there as loading, " +
       "and a copy whose page cannot be loaded is noted there as unavailable with " +
-      `${quoted(t("timeline.retry"))}. Viewers see the copies and their panels, without ${quoted(t("timeline.webAnimation.add"))}.`,
+      `${quoted(t("timeline.retry"))}. Viewers see the copies and their panels, without ${quoted(t("timeline.webAnimation.add"))}, and see ` +
+      `${quoted(t("timeline.webAnimation.openInMotion"))} only when the Project already has a Motion Space.`,
     "## Motion spaces",
     `A Space of the ${quoted(t("spaces.kind.webAnimation"))} type makes web animations: animated web pages written by a model, played on a clock and exported as video. ` +
       "The selected web animation fills the Space. Every control is on one floating bar at the bottom, as icon buttons named on hover: play and the time first, then a " +

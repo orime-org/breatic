@@ -1212,6 +1212,11 @@ describe("Motion Spaces and the Timeline's web animations (#1490)", () => {
     expect(timeline).not.toContain(q("spaces.webAnimation.executions"));
   });
 
+  it("offers a Viewer Open in Motion only where the Timeline shows it: when the Project has a Motion Space", () => {
+    expect(webSource("spaces/timeline/TimelineSpace.tsx")).toContain("const canOpenInMotion = !readOnly || hasMotionSpace;");
+    expect(section("Timeline spaces")).toContain(`and see ${q("timeline.webAnimation.openInMotion")} only when the Project already has a Motion Space`);
+  });
+
   it("names the canvas menu item that opens a video's source animation", () => {
     expect(renderProductGuide()).toContain(q("canvas.nodeMenu.openSourceAnimation"));
   });
