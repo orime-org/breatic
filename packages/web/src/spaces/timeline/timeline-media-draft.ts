@@ -16,6 +16,8 @@ import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
+import { gridDuration } from '@web/spaces/canvas/video-presentation/frame-grid-time';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 /** The current material form held by an open document. */
 export interface TimelineMediaDraftSnapshot {
@@ -103,6 +105,25 @@ function decodeDuration(fileUrl: string, signal: AbortSignal): Promise<number> {
     video.src = fileUrl;
     video.load();
   });
+}
+
+/**
+ * A registered video's length as every surface plays it: the selected version's grid length (frames-split §7.8), or,
+ * while nothing is selected, the original's decoded metadata.
+ * @param queryClient - The account query client holding the presentation read.
+ * @param projectId - The Project.
+ * @param fileUrl - The registered original.
+ * @param signal - The material attempt's cancellation.
+ * @returns The finite positive duration in seconds.
+ * @throws {Error} When nothing is selected and the original cannot report a usable duration.
+ * @throws {DOMException} When the material attempt is canceled.
+ */
+async function presentedDuration(queryClient: QueryClient, projectId: string, fileUrl: string, signal: AbortSignal): Promise<number> {
+  // A read that failed leaves the original as the only length there is to measure.
+  const read = await queryClient.ensureQueryData(videoPresentationQuery({ projectId, canonicalURL: fileUrl, active: true })).catch(() => undefined);
+  signal.throwIfAborted();
+  const selected = read?.presentation ?? null;
+  return selected === null ? decodeDuration(fileUrl, signal) : gridDuration(selected.display);
 }
 
 /**
@@ -252,7 +273,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
           const asset = await inputs.queryClient.fetchQuery({ queryKey: timelineAssetKey(inputs.projectId, assetId), queryFn: ({ signal }) => timelineApi.resolveAsset(inputs.projectId, assetId, signal), staleTime: 0 });
           if (active !== attempt) return;
           failure = 'metadata_unavailable';
-          material = { kind: 'project', asset, decodedDurationSeconds: asset.durationSeconds === null ? await decodeDuration(asset.fileUrl, controller.signal) : undefined };
+          material = { kind: 'project', asset, decodedDurationSeconds: asset.durationSeconds === null ? await presentedDuration(inputs.queryClient, inputs.projectId, asset.fileUrl, controller.signal) : undefined };
         }
         if (active !== attempt || controller.signal.aborted) return;
         if (!attempt.canApply) { publish({ errorKey: 'permission_changed' }); return; }
