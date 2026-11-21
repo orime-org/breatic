@@ -46,7 +46,7 @@ import { join } from "node:path";
 import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
-import { canvasSpaceDocName, spaceTasksChangedChannel } from "@breatic/shared";
+import { canvasSpaceDocName, spaceTasksChangedChannel, webAnimationSpaceDocName } from "@breatic/shared";
 import { createQueue, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
 import { nodeTaskService, runningSlotService, sceneTaskService, taskService, type TimelineExecutionJobData, timelineExecutionRepo } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
@@ -1187,6 +1187,40 @@ describe("G the node's counts event says how many wait", () => {
     await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
     expect(await pick(t.taskId)).toEqual({ started: true });
     expect((await countsEvents(p, t.nodeId!)).at(-1)).toMatchObject({ running: 1, waiting: 0 });
+  });
+});
+
+describe("G a Motion execution's wait and start reach its own Space document", () => {
+  it("the first wait and the claim each put one change on the Motion document, and no stateless signal", async () => {
+    const p = await person();
+    await running(p, 2);
+    const id = await execution(p, "queued");
+    const docName = webAnimationSpaceDocName(p.projectId, p.spaceId);
+    /**
+     * The space-tasks-version events the stream carries for this Motion Space.
+     * @returns How many.
+     */
+    const changes = async (): Promise<number> => {
+      const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+      return raw
+        .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
+        .filter((e) => e.type === "space-tasks-version" && e.docName === docName).length;
+    };
+    const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, p.projectId);
+    const publish = vi.spyOn(getStreamRedis(), "publish");
+    try {
+      const before = await changes();
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await changes()).toBe(before + 1);
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await changes()).toBe(before + 1);
+      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+      expect(await pick(id, "timeline_executions")).toEqual({ started: true });
+      expect(await changes()).toBe(before + 2);
+      expect(publish.mock.calls.filter(([published]) => published === channel)).toHaveLength(0);
+    } finally {
+      publish.mockRestore();
+    }
   });
 });
 

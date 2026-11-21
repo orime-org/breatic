@@ -17,6 +17,7 @@
  */
 
 import {
+  announceExecutionChange,
   db,
   getMembershipReadingForUser,
   getNodeTaskConfig,
@@ -153,9 +154,9 @@ async function renewHoldings(creditHold: string, always: boolean, tx: DbTx): Pro
 
 /**
  * Tell the canvas that rows changed: each node's counts, and the Space's list
- * for a 3D Space's own row or a Timeline execution.
+ * for a 3D Space's own row.
  * @param places - The node task rows that changed.
- * @param space - A Space whose list changed, beside those rows.
+ * @param space - A 3D Space whose list changed, beside those rows.
  * @returns The signals that failed.
  */
 async function publish(places: readonly TaskRowPlace[], space: { projectId: string; spaceId: string } | null): Promise<unknown[]> {
@@ -304,20 +305,31 @@ export async function claimWithinLimit(executionId: string): Promise<GateOutcome
   if (row === undefined) throw new Error(`Timeline execution ${executionId} does not exist`);
   if (row.status !== "queued") return { outcome: "ended", publishFailures: [] };
   const judged = await judgeExecution(row, await limitFor(row.projectId, row.actorUserId));
-  return settleJudgement(judged, { projectId: row.projectId, spaceId: row.spaceId });
+  return settleJudgement(judged, row);
 }
 
 /**
- * Signal what the judgement changed, then answer it.
+ * Signal what the judgement changed, then answer it. An execution's claim or first wait is written into the document
+ * of the Space it belongs to, the way every other change of an execution is.
  * @param judged - The judgement.
- * @param space - The Space whose list a Timeline execution sits in.
+ * @param execution - The execution judged, or null for a task.
  * @returns The outcome when the row does not wait.
  * @throws {StillRunning} When it waits.
  */
-async function settleJudgement<S>(judged: Judged<S>, space: { projectId: string; spaceId: string } | null): Promise<GateOutcome<S>> {
+async function settleJudgement<S>(
+  judged: Judged<S>,
+  execution: Pick<TimelineExecution, "projectId" | "spaceId" | "origin"> | null,
+): Promise<GateOutcome<S>> {
   if (judged.kind === "busy") throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
   if (judged.kind === "ended") return { outcome: "ended", publishFailures: [] };
-  const failures = await publish(judged.places, judged.space ? space : null);
+  const failures = await publish(judged.places, null);
+  if (judged.space && execution !== null) {
+    try {
+      await announceExecutionChange(execution);
+    } catch (err) {
+      failures.push(err);
+    }
+  }
   if (judged.kind === "waiting") throw new StillRunning(Date.now() + judged.delayMs, failures);
   return { outcome: "started", started: judged.started, publishFailures: failures };
 }
