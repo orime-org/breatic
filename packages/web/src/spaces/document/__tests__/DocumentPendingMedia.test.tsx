@@ -134,7 +134,7 @@ describe('what the server wrote (breatic#1574)', () => {
   });
 
   it('a server failure says its reason as a failure', () => {
-    draw({ kind: 'serverFailed', failure: { reason: 'unreachable', retryable: true }, retry: false });
+    draw({ kind: 'failed', failure: { reason: 'unreachable', retryable: true }, retry: false });
     expect(screen.getByTestId('doc-pending-failure')).toBeTruthy();
   });
 });
@@ -158,8 +158,8 @@ describe('its buttons', () => {
     [{ kind: 'peerFailed' }, []],
     [{ kind: 'notFinished' }, ['doc-pending-remove']],
     [{ kind: 'processing' }, []],
-    [{ kind: 'serverFailed', failure: FAILURE, retry: true }, ['doc-pending-retry', 'doc-pending-remove']],
-    [{ kind: 'serverFailed', failure: FAILURE, retry: false }, ['doc-pending-remove']],
+    [{ kind: 'failed', failure: FAILURE, retry: true }, ['doc-pending-retry', 'doc-pending-remove']],
+    [{ kind: 'failed', failure: FAILURE, retry: false }, ['doc-pending-remove']],
   ])('%o → %o', (status, expected) => {
     draw(status);
     expect(buttons()).toEqual(expected);

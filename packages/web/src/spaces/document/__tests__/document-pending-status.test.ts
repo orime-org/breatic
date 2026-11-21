@@ -105,7 +105,7 @@ describe('what collab wrote onto the block (breatic#1574)', () => {
   it('failed: its reason, and a retry only when it can help and the source is held', () => {
     const block = { state: 'failed' as const, failure: 'unsupportedType' as const, retryable: false, foreign: false };
     expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block })).toEqual({
-      kind: 'serverFailed', failure: { reason: 'unsupportedType', retryable: false }, retry: false,
+      kind: 'failed', failure: { reason: 'unsupportedType', retryable: false }, retry: false,
     });
     const retryable = { state: 'failed' as const, failure: 'unreachable' as const, retryable: true, foreign: false };
     expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block: retryable })).toMatchObject({ retry: true });
@@ -116,7 +116,7 @@ describe('what collab wrote onto the block (breatic#1574)', () => {
     const block = { state: 'failed' as const, failure: 'unreachable' as const, retryable: true, foreign: false };
     expect(
       pendingStatus({ entry: { phase: 'uploading', progress: 0.5 }, access: 'granted', refused: false, claim: null, block }),
-    ).toMatchObject({ kind: 'serverFailed', retry: false });
+    ).toMatchObject({ kind: 'failed', retry: false });
   });
 
   it('handed off with nothing written yet: uploading', () => {

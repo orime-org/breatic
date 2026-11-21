@@ -45,7 +45,7 @@ const FRAME =
  * status added to `PendingStatus` does not compile until it is placed here or
  * read as a failure.
  */
-const STATUS_MESSAGE: Readonly<Record<Exclude<PendingStatus['kind'], 'failed' | 'serverFailed' | 'peerFailed'>, string>> = {
+const STATUS_MESSAGE: Readonly<Record<Exclude<PendingStatus['kind'], 'failed' | 'peerFailed'>, string>> = {
   uploading: 'spaces.document.media.uploading',
   processing: 'spaces.document.media.uploading',
   peerUploading: 'spaces.document.media.uploading',
@@ -92,17 +92,17 @@ export const DocumentPendingMedia = React.memo(function DocumentPendingMedia({
       ? Math.round(status.progress * 100)
       : null;
   const named = caption === '';
-  const failed = status.kind === 'failed' || status.kind === 'serverFailed' || status.kind === 'peerFailed';
+  const failed = status.kind === 'failed' || status.kind === 'peerFailed';
   const said =
-    status.kind === 'failed' || status.kind === 'serverFailed'
+    status.kind === 'failed'
       ? t(FAILURE_MESSAGE[status.failure.reason])
       : status.kind === 'peerFailed'
         ? t(FAILURE_MESSAGE.failed)
         : percent === null
           ? t(STATUS_MESSAGE[status.kind])
           : t('spaces.document.media.uploadingPercent', { percent });
-  const retry = (status.kind === 'failed' || status.kind === 'serverFailed') && status.retry;
-  const remove = status.kind === 'failed' || status.kind === 'serverFailed' || status.kind === 'notFinished';
+  const retry = status.kind === 'failed' && status.retry;
+  const remove = status.kind === 'failed' || status.kind === 'notFinished';
 
   return (
     // An inline-size container is held to the width it is given, as

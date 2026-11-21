@@ -18,12 +18,10 @@ import { canRetry, type UploadEntry, type UploadFailure } from '@web/spaces/docu
 export type PendingStatus =
   /** This page is running it; `progress` is the share sent when known. */
   | { readonly kind: 'uploading'; readonly progress: number | null }
-  /** This page ran it and it failed. */
+  /** It failed, here or on the server; `retry` where this page holds the source and running it again can help. */
   | { readonly kind: 'failed'; readonly failure: UploadFailure; readonly retry: boolean }
   /** The server has it and has not ended it; whether it ran out of time is the server's to settle, as on a canvas node. */
   | { readonly kind: 'processing' }
-  /** The server ended it as failed; `retry` where this page holds the source and it can help. */
-  | { readonly kind: 'serverFailed'; readonly failure: UploadFailure; readonly retry: boolean }
   /** This page has the result and was demoted to read-only. */
   | { readonly kind: 'waitingDemoted' }
   /** This page has the result and the server refused it. */
@@ -74,7 +72,7 @@ export function pendingStatus(facts: PendingFacts): PendingStatus {
   if (block?.state === 'failed') {
     const failure: UploadFailure = { reason: block.failure ?? 'failed', retryable: block.retryable ?? true };
     // A Retry is offered only where this page would run it.
-    return { kind: 'serverFailed', failure, retry: entry !== undefined && canRetry(entry) && failure.retryable };
+    return { kind: 'failed', failure, retry: entry !== undefined && canRetry(entry) && failure.retryable };
   }
   if (block?.state === 'processing') return { kind: 'processing' };
   if (entry !== undefined) {
