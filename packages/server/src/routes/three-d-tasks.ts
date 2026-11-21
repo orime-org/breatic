@@ -38,8 +38,8 @@ threeDTasks.post(
     const held = await holdRun({
       projectId,
       userId,
-      // inner#1953: the keys of whoever pays for the Studio, settled once here; the task records their rows.
-      check: async () => sceneGenerationService.checkSubmission(projectId, body, await mediaRunKeys(projectId, body.model, body.params)),
+      // inner#1953: the keys of whoever pays for the Studio, settled once the model takes the run; the task records their rows.
+      check: () => sceneGenerationService.checkSubmission(projectId, body, (model, params) => mediaRunKeys(projectId, model, params)),
       credits: (checked) => sceneGenerationService.estimateOf(checked, projectId, userId),
     });
     const answer = await sceneGenerationService.startSceneGeneration(userId, projectId, spaceId, body, held);

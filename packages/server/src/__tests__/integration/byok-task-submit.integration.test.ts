@@ -548,6 +548,18 @@ describe("a 3D generation", () => {
     expect(await taskRowText(taskId)).not.toContain(WAVESPEED_KEY);
   });
 
+  it("refuses a submission its model cannot take before it reads the payer's key, so a key that cannot be opened here changes nothing", async () => {
+    const fx = await seed(0);
+    const sealedElsewhere = sealProviderKey(WAVESPEED_KEY, { current: "gone", keys: { gone: crypto.randomBytes(32) } });
+    await accountProviderKeysRepo.saveKey({ userId: fx.userId, upstream: "wavespeed", ciphertext: sealedElsewhere, displayHint: "hint" });
+    await accountModelUpstreamsRepo.setModelUpstream(fx.userId, T23D, "wavespeed");
+
+    const res = await post(fx, `/projects/${fx.projectId}/three-d/${fx.spaceId}/generations`, { mode: "i23d", model: T23D, params: {}, origin: "space" });
+
+    expect(res.status, await res.clone().text()).toBe(422);
+    expect(await taskCount(fx.userId)).toBe(0);
+  });
+
   it("holds the estimate on our keys, and refuses what the credits cannot cover, as before", async () => {
     const funded = await seed(100_000);
     const { taskId } = await acceptedTask(await SUBMIT.threeD(funded));

@@ -156,12 +156,17 @@ export interface CheckedSubmission {
  * to an image of the project.
  * @param projectId - The project.
  * @param submission - What is asked for.
- * @param keys - The keys of whoever pays for the Studio (inner#1953), settled by the caller; our keys when absent.
+ * @param keysFor - Settles the keys of whoever pays for the Studio (inner#1953) for the model and params the checked
+ *   run resolved, called only once the model is known to take the submission; our keys when absent.
  * @returns The resolved run and its views.
  * @throws {ValidationError} 422 naming the rule broken, or the view slot that does not resolve.
  * @throws {AppError} 503 when no upstream here can serve the model, naming the variables it needs.
  */
-export async function checkSubmission(projectId: string, submission: SceneGenerationBody, keys?: RunKeys): Promise<CheckedSubmission> {
+export async function checkSubmission(
+  projectId: string,
+  submission: SceneGenerationBody,
+  keysFor?: (model: string, params: Readonly<Record<string, unknown>>) => Promise<RunKeys>,
+): Promise<CheckedSubmission> {
   const views = submission.image_asset_ids ?? [];
   const plan = planSceneGeneration({
     mode: submission.mode,
@@ -171,6 +176,7 @@ export async function checkSubmission(projectId: string, submission: SceneGenera
     imageCount: views.length,
   });
   if (!plan.ok) throw new ValidationError(problemMessage(plan.problem));
+  const keys = keysFor === undefined ? undefined : await keysFor(plan.entry.name, plan.params);
   const route = keys === undefined ? undefined : runRoute(keys, undefined);
   const onAccount = keys === undefined ? undefined : accountKeys(keys.media);
   // A model no upstream here can serve is refused before anything is held or queued.
