@@ -19,22 +19,14 @@ for kind in backend web; do
 done
 # The four container images keep their single-platform manifests unchanged;
 # Cloudflare requires amd64.
-media="ghcr.io/$REPOSITORY-ingest-media"
-media_digest=$(cat digests/ingestMedia-amd64)
-docker buildx imagetools create --prefer-index=false --tag "$media:$TAG" "$media@$media_digest"
-[[ "$(docker buildx imagetools inspect "$media:$TAG" --format '{{.Manifest.Digest}}')" == "$media_digest" ]] || exit 1
-webreader="ghcr.io/$REPOSITORY-ingest-web-reader"
-webreader_digest=$(cat digests/ingestWebReader-amd64)
-docker buildx imagetools create --prefer-index=false --tag "$webreader:$TAG" "$webreader@$webreader_digest"
-[[ "$(docker buildx imagetools inspect "$webreader:$TAG" --format '{{.Manifest.Digest}}')" == "$webreader_digest" ]] || exit 1
-animation="ghcr.io/$REPOSITORY-ingest-web-animation"
-animation_digest=$(cat digests/ingestWebAnimation-amd64)
-docker buildx imagetools create --prefer-index=false --tag "$animation:$TAG" "$animation@$animation_digest"
-[[ "$(docker buildx imagetools inspect "$animation:$TAG" --format '{{.Manifest.Digest}}')" == "$animation_digest" ]] || exit 1
-render="ghcr.io/$REPOSITORY-ingest-web-animation-render"
-render_digest=$(cat digests/ingestWebAnimationRender-amd64)
-docker buildx imagetools create --prefer-index=false --tag "$render:$TAG" "$render@$render_digest"
-[[ "$(docker buildx imagetools inspect "$render:$TAG" --format '{{.Manifest.Digest}}')" == "$render_digest" ]] || exit 1
-node scripts/release.mjs manifest "$TAG" "$REVISION" "$REPOSITORY" "$(cat backend-ref)" "$(cat web-ref)" "$media@$media_digest" "$webreader@$webreader_digest" "$animation@$animation_digest" "$render@$render_digest" release.json
+refs=()
+for pair in ingestMedia:ingest-media ingestWebReader:ingest-web-reader ingestWebAnimation:ingest-web-animation ingestWebAnimationRender:ingest-web-animation-render; do
+  image="ghcr.io/$REPOSITORY-${pair#*:}"
+  digest=$(cat "digests/${pair%%:*}-amd64")
+  docker buildx imagetools create --prefer-index=false --tag "$image:$TAG" "$image@$digest"
+  [[ "$(docker buildx imagetools inspect "$image:$TAG" --format '{{.Manifest.Digest}}')" == "$digest" ]] || exit 1
+  refs+=("$image@$digest")
+done
+node scripts/release.mjs manifest "$TAG" "$REVISION" "$REPOSITORY" "$(cat backend-ref)" "$(cat web-ref)" "${refs[@]}" release.json
 gh release upload "$TAG" release.json
 gh release edit "$TAG" --draft=false --latest=false
