@@ -106,3 +106,12 @@ describe("keyScope", () => {
     expect(keyScope("openrouter", "sk-a")).not.toContain("sk-a");
   });
 });
+
+describe("a model name that is not in the configuration", () => {
+  it("has no pricing rules, whatever its name, an Object.prototype member's included", () => {
+    const { provider } = started();
+    for (const name of ["constructor", "__proto__", "toString", "valueOf", "nope"]) {
+      expect(provider.pricingRules(name), name).toEqual({ model: name, upstreams: [] });
+    }
+  });
+});

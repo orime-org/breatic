@@ -108,10 +108,11 @@ export function createProvider(options: ProviderOptions): Provider {
    * @param model - Our model id.
    * @returns The rules.
    */
+  // The model name may come from a request: read only the records' own keys, never an Object.prototype member.
   const pricingRules = (model: string): PricingRules => ({
     model,
-    ...(config.rejects[model] === undefined ? {} : { rejects: config.rejects[model] }),
-    upstreams: (config.models[model] ?? []).map(pricingOf),
+    ...(Object.hasOwn(config.rejects, model) ? { rejects: config.rejects[model] } : {}),
+    upstreams: Object.hasOwn(config.models, model) ? config.models[model]!.map(pricingOf) : [],
   });
   return {
     config,
