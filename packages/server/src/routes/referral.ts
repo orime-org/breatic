@@ -26,8 +26,13 @@ referral.use(requireAuth);
 referral.use(requireSelling);
 
 /** `GET /account/referral` — what the membership panel's referral sections show. */
-referral.get("/", rateLimitFor("referral-read", "user"), async (c) =>
-  forwardToCommerce(c, { method: "GET", path: userPath(c.get("user").id, "/referral"), quick: true }),
+referral.get("/", rateLimitFor("referral-read", "user"), async (c) => {
+  // A sign-up's binding may still wait for the relay; sending it first lets
+  // a fresh account see the code it signed up with (inner#1993 §8.4).
+  const userId = c.get("user").id;
+  await flushReferralBinding(userId);
+  return forwardToCommerce(c, { method: "GET", path: userPath(userId, "/referral"), quick: true });
+}
 );
 
 /**

@@ -88,3 +88,23 @@ describe("a later referral binding", () => {
     expect(suite.received).toEqual([]);
   });
 });
+
+describe("the referral panel read", () => {
+  it("sends the pending sign-up binding before it reads, so a fresh sign-up sees its code", async () => {
+    const userId = await insertAccount(suite.sql);
+    const [row] = await suite.sql<{ id: string }[]>`
+      INSERT INTO commerce_outbox(aggregate_key,type,payload)
+      VALUES (${`referral:${userId}`},'referral_binding',${suite.sql.json({ userId, code: "FRIEND", source: "signup_link", requestedAt: new Date().toISOString() })})
+      RETURNING id`;
+    suite.reply = (req) =>
+      req.path.startsWith("/v1/inbox/")
+        ? { status: 200, body: { result: "applied" } }
+        : { status: 200, body: { data: { code: "FRIEND" } } };
+
+    const res = await suite.app.request("/api/v1/account/referral", { headers: { cookie: await loginCookie(userId) } });
+
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ data: { code: "FRIEND" } });
+    expect(suite.received.map((r) => r.path.split("?")[0])).toEqual([`/v1/inbox/${row!.id}`, `/v1/users/${userId}/referral`]);
+  });
+});
