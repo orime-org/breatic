@@ -1,0 +1,39 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * Lay out what electron-builder packs (#1599). The build bundles every
+ * dependency except Electron, so the app directory holds only the built files
+ * and a manifest naming no dependencies: electron-builder then collects no
+ * node_modules, which it cannot do from a pnpm workspace anyway.
+ */
+
+import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+const app = join(root, "build", "app");
+const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+
+rmSync(app, { recursive: true, force: true });
+mkdirSync(app, { recursive: true });
+cpSync(join(root, "dist"), join(app, "dist"), { recursive: true });
+writeFileSync(
+  join(app, "package.json"),
+  `${JSON.stringify(
+    {
+      name: "breatic",
+      productName: "breatic",
+      version: manifest.version,
+      description: manifest.description,
+      author: "Orime, Inc.",
+      license: "AGPL-3.0-only",
+      type: "module",
+      main: "dist/main/index.js",
+    },
+    null,
+    2,
+  )}\n`,
+);
+process.stdout.write(`staged ${app}\n`);
