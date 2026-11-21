@@ -62,6 +62,7 @@ import {
   getStorageConfig,
   createQueue,
   createPgClient,
+  uploadEndedChannelName,
 } from "@breatic/core";
 import {
   backendUploadService,
@@ -3229,5 +3230,147 @@ describe("Project association and upload terminal arbitration", () => {
         expect(tasks).toEqual([{ status: consumed ? "done" : "failed" }]);
       },
     ), { numRuns: 12 });
+  });
+});
+
+// #1580 test spec area B: the page learns an upload ended from a message
+// published at the terminal exit, sent to the uploader alone and carrying the
+// same status the status read answers.
+describe("the upload's ending, told to its uploader (#1580)", () => {
+  type Ended = { type: string; userId: string; status: Record<string, unknown> };
+  let subscriber: ReturnType<ReturnType<typeof getStreamRedis>["duplicate"]>;
+  const heard: Ended[] = [];
+
+  beforeAll(async () => {
+    subscriber = getStreamRedis().duplicate();
+    subscriber.on("message", (_channel: string, message: string) => {
+      heard.push(JSON.parse(message) as Ended);
+    });
+    await subscriber.subscribe(uploadEndedChannelName());
+  });
+
+  afterAll(async () => {
+    await subscriber?.quit();
+  });
+
+  /** What was heard for this key, oldest first. */
+  function endingsOf(key: string): Ended[] {
+    return heard.filter((e) => e.status.key === key);
+  }
+
+  /** Wait until `count` endings for `key` were heard. */
+  async function heardFor(key: string, count = 1): Promise<Ended[]> {
+    await vi.waitFor(() => expect(endingsOf(key).length).toBeGreaterThanOrEqual(count));
+    return endingsOf(key);
+  }
+
+  it("B-01 tells the uploader a completed upload with its result, equal to the status read", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key));
+    const [ended] = await heardFor(key);
+    expect(ended!.type).toBe("upload:ended");
+    expect(ended!.userId).toBe(seed.userId);
+    expect(ended!.status).toMatchObject({ key, state: "completed" });
+    expect(Object.keys(ended!.status.result as object).sort()).toEqual(["assetId", "fileUrl", "height", "kind", "width"]);
+    const [read] = await uploadStatusService.statusOf(seed.userId, [key]);
+    expect(ended!.status).toEqual(read);
+  });
+
+  it("B-02 tells a failed assembly as failed with the grant's reason", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report({ storage_key: key, outcome: "aborted" });
+    const [ended] = await heardFor(key);
+    expect(ended!.status).toMatchObject({ key, state: "failed" });
+    expect(typeof ended!.status.reason).toBe("string");
+  });
+
+  it.each([
+    ["over_cap", { size_bytes: 3 * 1024 * 1024 * 1024 }],
+    ["empty", { size_bytes: 0 }],
+  ])("B-04 tells a refusal as failed with %s", async (reason, over) => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key, over));
+    const [ended] = await heardFor(key);
+    expect(ended!.status).toEqual({ key, state: "failed", reason });
+  });
+
+  it("B-06 tells it again when a registered upload is reported again", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    const body = completed(key);
+    await report(body);
+    await heardFor(key);
+    await report(body);
+    const endings = await heardFor(key, 2);
+    expect(endings[1]!.status).toEqual(endings[0]!.status);
+  });
+
+  it("B-11 tells no one but the uploader", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key));
+    const endings = await heardFor(key);
+    expect(endings.every((e) => e.userId === seed.userId)).toBe(true);
+  });
+
+  it("B-12 tells it only after the grant's ending is committed", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    let committedWhenHeard: boolean | null = null;
+    const onMessage = (_channel: string, message: string): void => {
+      const e = JSON.parse(message) as Ended;
+      if (e.status.key !== key || committedWhenHeard !== null) return;
+      void sql<{ consumed_at: Date | null }[]>`SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}`.then(
+        (rows) => {
+          committedWhenHeard = rows[0]!.consumed_at !== null;
+        },
+      );
+    };
+    subscriber.on("message", onMessage);
+    try {
+      await report(completed(key));
+      await vi.waitFor(() => expect(committedWhenHeard).not.toBeNull());
+      expect(committedWhenHeard).toBe(true);
+    } finally {
+      subscriber.off("message", onMessage);
+    }
+  });
+
+  it("B-13 tells nothing for a dedup hit at the ticket, which answers the result itself", async () => {
+    const seed = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const first = await mintTicket(seed, { client_hash: hash });
+    await report(completed(first, { sha256: hash }));
+    await heardFor(first);
+    const before = heard.length;
+    const res = await app.request("/api/v1/assets/upload-ticket", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: seed.cookie },
+      body: JSON.stringify({
+        filename: "shot.png", content_type: "image/png", project_id: seed.projectId,
+        space_id: seed.spaceId, size: 4096, client_hash: hash,
+      }),
+    });
+    const payload = (await res.json()) as { data: { kind?: string; fileUrl?: string } };
+    expect(payload.data.fileUrl).toEqual(expect.any(String));
+    const another = await seedEditor();
+    const sentinel = await mintTicket(another);
+    await report(completed(sentinel));
+    await heardFor(sentinel);
+    expect(heard.slice(before).filter((e) => e.userId === seed.userId)).toEqual([]);
+  });
+
+  it("B-14 tells the uploader of a canvas node upload too, alongside the node's counts event", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    await report(completed(key));
+    const [ended] = await heardFor(key);
+    expect(ended!.status).toMatchObject({ key, state: "completed" });
+    const events = (await eventsFor(`project-${seed.projectId}/canvas-${seed.spaceId}`)).filter((e) => e.nodeId === nodeId);
+    expect(events.length).toBeGreaterThan(0);
   });
 });
