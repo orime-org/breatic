@@ -47,8 +47,8 @@ export interface TimelineWebClipView {
   request: string | null;
   /** For a modification, the request of the result it started from. */
   baseRequest: string | null;
-  /** The Space and execution that made it. */
-  origin: { executionId: string } | null;
+  /** The execution that made it. */
+  originExecutionId: string | null;
   status: TimelineExecutionStatus | null;
   phase: 'writing' | 'validating' | 'saving' | 'rendering' | null;
   failureReason: string | null;

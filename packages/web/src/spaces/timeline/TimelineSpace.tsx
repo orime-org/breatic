@@ -194,9 +194,9 @@ function webClipView(clip: TimelineWebAnimationClip, web: Parameters<typeof time
   const source = sourceId === null ? undefined : web.sources[sourceId];
   const execution = operationId === null ? undefined : web.executions[operationId];
   const origin = source ?? execution;
-  const named = origin === undefined ? { title: null, request: null, baseRequest: null, origin: null }
+  const named = origin === undefined ? { title: null, request: null, baseRequest: null, originExecutionId: null }
     : { title: requestTitle(origin, t),
-      request: origin.request, baseRequest: origin.base?.request ?? null, origin: { executionId: origin.executionId } };
+      request: origin.request, baseRequest: origin.base?.request ?? null, originExecutionId: origin.executionId };
   if (source !== undefined) return { state: 'ready', ...named, status: null, phase: null, failureReason: null };
   if (execution === undefined) return { state: 'unresolved', ...named, status: null, phase: null, failureReason: null };
   return {
@@ -542,7 +542,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const selectedWeb = selected?.kind === 'web-animation' ? webClips.get(selected.id) : undefined;
   // A Viewer can open a Motion Space but cannot make one.
   const canOpenInMotion = !readOnly || hasMotionSpace;
-  const selectedOrigin = selectedWeb?.origin ?? null;
+  const selectedOrigin = selectedWeb?.originExecutionId ?? null;
   /**
    * Open the newest Motion Space with the selected copy's execution selected. Only a copy placed before Motion can fail,
    * so its execution was made in a Timeline and sits in that Space's group of those.
@@ -550,7 +550,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
    */
   const openSelectedInMotion = React.useCallback((): void => {
     if (selectedOrigin === null) return;
-    useSpaceOpenRequestStore.getState().dispatch({ type: 'request', request: { type: 'web_animation', select: selectedOrigin.executionId } });
+    useSpaceOpenRequestStore.getState().dispatch({ type: 'request', request: { type: 'web_animation', select: selectedOrigin } });
   }, [selectedOrigin]);
   const selectedWebCopy = React.useMemo(() => selectedWeb === undefined ? null : {
     request: selectedWeb.request,
