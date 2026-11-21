@@ -984,12 +984,12 @@ export interface TimelineExecution {
   /** Credits charged, as Postgres renders the numeric. */
   billedCredits: string | null;
   billedAt: string | null;
-  /** First time the running-task gate held it back (inner#1968); null when it never waited. Absent from an older server. */
-  slotWaitSince?: string | null;
-  /** The running-task limit it waits under, as the gate last judged it (inner#1968); null when it never waited. Absent from an older server. */
-  slotWaitLimit?: number | null;
+  /** First time the running-task gate held it back (inner#1968); null when it never waited. */
+  slotWaitSince: string | null;
+  /** The running-task limit it waits under, as the gate last judged it (inner#1968); null when it never waited. */
+  slotWaitLimit: number | null;
   /** How far a running export's render got, as a whole percent (#1490). */
-  progress?: number | null;
+  progress: number | null;
   createdAt: string;
   updatedAt: string;
 }

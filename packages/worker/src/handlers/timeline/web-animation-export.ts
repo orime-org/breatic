@@ -211,7 +211,7 @@ async function running(pickup: RenderPickup): Promise<void> {
   } else if (report !== null && report.phase !== null) {
     // The percent shows only while it renders; saving has none.
     const progress = report.phase === "rendering" && report.progress !== null ? Math.floor(report.progress * 100) : null;
-    if (report.phase !== row.phase || progress !== (row.progress ?? null)) await move(row, { type: "progress", fence: row.fence, phase: report.phase, progress });
+    if (report.phase !== row.phase || progress !== row.progress) await move(row, { type: "progress", fence: row.fence, phase: report.phase, progress });
   }
   throw new StillRunning(Date.now() + getTimelineConfig().web_animation.poll_interval_ms);
 }
