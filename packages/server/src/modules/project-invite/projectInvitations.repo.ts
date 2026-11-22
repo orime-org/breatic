@@ -34,7 +34,7 @@ import type {
   PendingProjectInvitationSummary,
 } from "@breatic/shared";
 import type { RecipientInvitation, EmailInvitationCandidate } from "@server/modules/invitation/invitation.types.js";
-import { mintShareToken } from "@server/utils/share-token.js";
+import { mintShareToken } from "@breatic/domain";
 
 /**
  * The membership-relevant fields of a just-accepted invite, returned by

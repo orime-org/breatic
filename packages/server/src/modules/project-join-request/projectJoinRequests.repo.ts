@@ -24,7 +24,7 @@ import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, projectJoinRequests } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
-import { mintShareToken } from "@server/utils/share-token.js";
+import { mintShareToken } from "@breatic/domain";
 import { failedReasonAtNow } from "@server/modules/decision/decision.repo.js";
 
 /** Where a request sits in its lifecycle. */

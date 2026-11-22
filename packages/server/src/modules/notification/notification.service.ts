@@ -20,10 +20,10 @@
  * Spec: access-permission design (2026-05-28) § 7.
  */
 
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { DbTx } from "@server/modules/notification/notification.repo.js";
+import type { DbTx } from "@breatic/core";
 import type { BillingPeriod, DecisionGrantRole, NotificationEntity } from "@breatic/shared";
 
 export type { NotificationEntity };

@@ -38,6 +38,7 @@ import {
   listenLiveUpdates,
   projectsRepo,
   publishAssetPeaksReady,
+  publishNotificationsChanged,
   publishUploadEnded,
   type Redis,
 } from "@breatic/core";
@@ -296,6 +297,15 @@ describe("a bell change", () => {
     await notify({ k: "notifications", u: s.U });
     await drainBells();
     expect(told(onCanvas)).toEqual([]);
+  });
+});
+
+describe("a bell change no row write makes", () => {
+  it("C-28 reaches the person on the other instance when told through core", async () => {
+    const s = await scenario();
+    const onI2 = await open(I2, s.U, projectMetaDocName(s.P1));
+    await publishNotificationsChanged(s.U);
+    expect(await arrived(onI2, "notifications:changed")).toEqual([{ t: "notifications:changed" }]);
   });
 });
 

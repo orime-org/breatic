@@ -21,7 +21,7 @@ import type { SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
 import { failedReasonAtNow } from "@server/modules/decision/decision.repo.js";
 import {

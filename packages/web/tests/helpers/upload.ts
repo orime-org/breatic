@@ -146,7 +146,7 @@ export async function storedPicture(target: Page, url: string): Promise<StoredPi
   return { orientation: header.orientation, ...shown };
 }
 
-/** What a finished upload registered as, as the status query delivers it. */
+/** What a finished upload registered as, as the `upload:ended` message delivers it. */
 export interface DeliveredUpload {
   assetId: string;
   fileUrl: string;

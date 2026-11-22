@@ -582,6 +582,29 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
 }
 
 /**
+ * Move every running 3D Space row, in any Space, that outran its budget to `expired` (#1580), as
+ * {@link harvestExpiredInSpace} does for one Space; the deadline sweep runs it so a list nobody reads still ends.
+ * @returns The Spaces whose rows it moved, each once.
+ */
+export async function harvestExpiredScenes(): Promise<{ projectId: string; spaceId: string }[]> {
+  const rows = await db
+    .update(nodeTasks)
+    .set({ status: "expired", errorMessage: "expired", settledAt: sql`now()` })
+    .where(
+      and(
+        isNull(nodeTasks.nodeId),
+        isNull(nodeTasks.deletedAt),
+        eq(nodeTasks.status, "running"),
+        notWaitingForSlot(),
+        sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
+      ),
+    )
+    .returning({ projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId });
+  const seen = new Map(rows.map((row) => [`${row.projectId}/${row.spaceId}`, row]));
+  return [...seen.values()];
+}
+
+/**
  * List a 3D Space's live rows, newest first.
  * @param projectId - Owning project.
  * @param spaceId - The Space.

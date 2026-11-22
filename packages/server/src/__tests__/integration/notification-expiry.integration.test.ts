@@ -29,7 +29,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 
 try {
   initCore(process.env);

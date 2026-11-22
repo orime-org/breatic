@@ -17,11 +17,11 @@
  * See spec: access-permission design (2026-05-28) § 7.
  */
 
-import { and, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { notifications } from "@breatic/core";
 import { REQUEST_NOTIFICATION_TYPES, type NotificationEntity } from "@breatic/shared";
-import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
+import type { DbTx } from "@breatic/core";
 
 /**
  * Allowed notification types. Mirrors the SQL CHECK constraint on
@@ -51,7 +51,7 @@ export type NotificationType =
 
 REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
 
-export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
+export type { DbTx } from "@breatic/core";
 
 /**
  * Input for {@link create} — the fields a caller supplies. The repo
@@ -344,4 +344,19 @@ export async function findById(
     .where(and(eq(notifications.id, id), isNull(notifications.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * The people with a notification still there that comes due in `(from, to]` (#1580): read or not, it leaves their
+ * bell, so their pages are told.
+ * @param from - The window's open lower end.
+ * @param to - The window's closed upper end.
+ * @returns Their ids, each once.
+ */
+export async function listRecipientsDueBetween(from: Date, to: Date): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ userId: notifications.userId })
+    .from(notifications)
+    .where(and(isNull(notifications.deletedAt), gt(notifications.expiresAt, from), lte(notifications.expiresAt, to)));
+  return rows.map((row) => row.userId);
 }

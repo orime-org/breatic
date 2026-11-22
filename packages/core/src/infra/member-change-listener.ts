@@ -118,6 +118,9 @@ function readPayload<T>(schema: z.ZodType<T>, raw: string): T | null {
  * @param probeChannel - The channel `probe` round-trips on.
  * @param schema - What a valid payload is.
  * @param handlers - Where values, (re)starts and unreadable payloads go.
+ * @param handlers.onValue - A valid payload.
+ * @param handlers.onListening - Listening started, the first time and after every reconnect.
+ * @param handlers.onInvalid - A payload that is not valid; the raw text.
  * @returns The running listener, once the first LISTEN has been answered.
  * @throws {Error} When the first LISTEN fails (the database is unreachable).
  */
@@ -213,4 +216,28 @@ export async function listenLiveUpdates(handlers: LiveUpdatesHandlers): Promise<
     onListening: handlers.onListening,
     onInvalid: handlers.onInvalid,
   });
+}
+
+/**
+ * Tell a person's pages their bell changed, as the notifications trigger does (#1580): for a change no row write
+ * makes, a notification coming due.
+ * @param userId - The person.
+ * @returns Nothing.
+ * @throws {Error} When the database refuses the notify.
+ */
+export async function publishNotificationsChanged(userId: string): Promise<void> {
+  const update: LiveUpdate = { k: "notifications", u: userId };
+  await rawPg.notify(LIVE_UPDATES_CHANNEL, JSON.stringify(update));
+}
+
+/**
+ * Tell a Studio's Project pages its credits changed, as the credit-table triggers do (#1580): for a change no row
+ * write makes, a hold coming due.
+ * @param studioId - The Studio.
+ * @returns Nothing.
+ * @throws {Error} When the database refuses the notify.
+ */
+export async function publishStudioCreditsChanged(studioId: string): Promise<void> {
+  const update: LiveUpdate = { k: "credits", s: studioId };
+  await rawPg.notify(LIVE_UPDATES_CHANNEL, JSON.stringify(update));
 }

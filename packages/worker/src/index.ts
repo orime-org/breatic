@@ -159,6 +159,7 @@ import {
 } from "@worker/handlers/long-media-dispatch.js";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
+import { DEADLINE_SWEEP_QUEUE, sweepDeadlines } from "@worker/handlers/deadline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
@@ -319,6 +320,22 @@ export function startWorker(): void {
     { name: timelineSweepJob, data: {}, opts: defaultJobOpts() },
   ).catch((err: unknown) => {
     logger.error({ err }, "timeline_sweep_schedule_failed");
+  });
+
+  // What came due behind open pages (#1580): notifications, credit holds,
+  // Project transfers and 3D rows, told on the same channels as the writes.
+  const deadlineSweepQueue = createQueue(DEADLINE_SWEEP_QUEUE);
+  const deadlineSweep = createWorker<Record<string, never>>(DEADLINE_SWEEP_QUEUE, () => sweepDeadlines());
+  deadlineSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "deadline_sweep_failed");
+  });
+  const deadlineSweepJob = "deadline-sweep";
+  void deadlineSweepQueue.upsertJobScheduler(
+    deadlineSweepJob,
+    { every: getWorkerConfig().deadline_sweep.interval_ms },
+    { name: deadlineSweepJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "deadline_sweep_schedule_failed");
   });
 
   // Its own queue, because `runTask` is a generation: past the dispatch it
@@ -596,6 +613,7 @@ export function startWorker(): void {
         () => worker.close(),
         () => timelineWorker.close(),
         () => timelineSweep.close(),
+        () => deadlineSweep.close(),
         () => creditChargeSweep.close(),
         () => slotWaitSweep.close(),
         () => timelineEvents.close(),

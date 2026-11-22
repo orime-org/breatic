@@ -256,9 +256,17 @@ describe("project transfers that come due", () => {
  * @returns The row id.
  */
 async function sceneRow(projectId: string, spaceId: string, userId: string, startedAt: Date, waiting = false): Promise<string> {
+  // A row waiting for a running slot always belongs to a task still pending in the queue.
+  const [task] = waiting
+    ? await sql<{ id: string }[]>`
+        insert into tasks (user_id, project_id, space_id, task_type, mode, model, status, params, created_at)
+        values (${userId}, ${projectId}, ${spaceId}, '3d', 'append', 'tripo-h3.1-t23d', 'pending', '{}'::jsonb, ${startedAt})
+        returning id
+      `
+    : [undefined];
   const [row] = await sql<{ id: string }[]>`
-    insert into node_tasks (project_id, space_id, node_id, kind, action, status, started_by_user_id, started_at, waiting_since, budget_ms, label, origin)
-    values (${projectId}, ${spaceId}, null, 'generation', 'generate', 'running', ${userId}, ${startedAt}, ${waiting ? startedAt : null},
+    insert into node_tasks (project_id, space_id, node_id, task_id, kind, action, status, started_by_user_id, started_at, waiting_since, budget_ms, label, origin)
+    values (${projectId}, ${spaceId}, null, ${task?.id ?? null}, 'generation', 'generate', 'running', ${userId}, ${startedAt}, ${waiting ? startedAt : null},
       ${getNodeTaskConfig().default_budget_ms}, 'tripo-h3.1-t23d', 'space')
     returning id
   `;
@@ -413,13 +421,49 @@ describe("PT-7 a transfer coming due while it is decided", () => {
         const decided = (sweepFirst ? b : a).status === "fulfilled";
         expect((sweepFirst ? a : b).status).toBe("fulfilled");
         const [after] = await sql<{ status: string; failed_reason: string | null }[]>`select status, failed_reason from project_transfers where id = ${row!.id}`;
+        // It left pending; a decision that went through was not overwritten as expired (a refused one may have ended it
+        // its own way, or left it to the sweep).
         expect(after!.status).not.toBe("pending");
-        expect(after!.status === "failed" && after!.failed_reason === "expired").toBe(!decided);
+        if (decided) expect(after!.status === "failed" && after!.failed_reason === "expired").toBe(false);
         const [bell] = await sql<{ read_at: Date | null; deleted_at: Date | null }[]>`select read_at, deleted_at from notifications where id = ${note!.id}`;
         expect(bell!.read_at !== null || bell!.deleted_at !== null).toBe(true);
       }),
       { numRuns: 100 },
     );
     await writeDeadlineWatermark(new Date());
+  });
+});
+
+// #1580 C-18 and C-23: a round that fails keeps nothing of the transfer it was
+// ending and leaves the watermark, so the next round does it all again.
+describe("a round that fails", () => {
+  it("rolls the transfer back with its bell entry, leaves the watermark, and the next round catches up", async () => {
+    const owner = await user();
+    const to = await user();
+    const { projectId } = await studioWithProject(owner);
+    const now = new Date();
+    const noteId = await notice(to, new Date(now.getTime() - MINUTE));
+    const [row] = await sql<{ id: string }[]>`
+      insert into project_transfers (project_id, from_user_id, to_user_id, status, expires_at, share_token, notification_id)
+      values (${projectId}, ${owner}, ${to}, 'pending', ${new Date(now.getTime() - MINUTE)}, ${randomUUID()}, ${noteId}) returning id
+    `;
+    const w0 = new Date(now.getTime() - 10 * MINUTE);
+    await sql.unsafe(`create or replace function pt_c18_refuse() returns trigger language plpgsql as $$
+      begin if new.id = '${noteId}' and new.read_at is not null then raise exception 'c18 refuses'; end if; return new; end $$`);
+    await sql.unsafe("create trigger pt_c18_refuse before update on notifications for each row execute function pt_c18_refuse()");
+    try {
+      await writeDeadlineWatermark(w0);
+      await expect(sweepDeadlines({ now })).rejects.toThrow();
+      const [still] = await sql<{ status: string }[]>`select status from project_transfers where id = ${row!.id}`;
+      expect(still!.status).toBe("pending");
+      expect((await readDeadlineWatermark())?.getTime()).toBe(w0.getTime());
+    } finally {
+      await sql.unsafe("drop trigger if exists pt_c18_refuse on notifications");
+      await sql.unsafe("drop function if exists pt_c18_refuse()");
+    }
+    const got = await round(null, new Date(now.getTime() + 1000));
+    const [ended] = await sql<{ status: string; failed_reason: string | null }[]>`select status, failed_reason from project_transfers where id = ${row!.id}`;
+    expect(ended).toEqual({ status: "failed", failed_reason: "expired" });
+    expect(bellFor(got, to)).toBe(true);
   });
 });

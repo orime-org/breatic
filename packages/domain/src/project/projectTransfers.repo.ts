@@ -36,7 +36,7 @@
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, projectTransfers } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { mintShareToken } from "@server/utils/share-token.js";
+import { mintShareToken } from "@domain/request/share-token.js";
 import type { RequestFailedReason } from "@breatic/shared";
 
 /** Where a transfer sits in its lifecycle. */
@@ -71,43 +71,37 @@ export interface LiveProjectTransfer {
 }
 
 /**
- * Fail a timed-out pending on one project as `expired`, freeing its slot.
+ * Fail the pending transfers that are due as `expired`, freeing each Project's slot.
  *
- * Only ever touches EXPIRED pendings: a live one must still trip the index,
- * because a second simultaneous offer for the same project is a real duplicate
- * and refusing it is the point.
- *
- * `decided_at` stays null. It records that a PERSON ended this offer; nobody
- * did here, and the moment it died is already `expires_at`.
- * Returns the bell entries of the rows it reaped. The reaper is the one settle
- * path that cannot retire them itself — this is a repo, and the bell lives in
- * another module's table — so it hands them up to the service, which does.
- * Skipping that leaves an entry announcing a offer that is over, and the
- * invariant "a settled offer has no live bell entry" would then rest on an
- * unrelated filter in the unread query rather than on this write.
- * @param projectId - The project being offered.
- * @param tx - The enclosing transaction, shared with the insert that follows.
- * @returns The notification ids of the rows reaped (empty when none were).
+ * Only ever touches DUE pendings: a live one must still trip the index, because a second simultaneous offer for the
+ * same Project is a real duplicate and refusing it is the point. `decided_at` stays null. The bell entries these rows
+ * announced are handed back for the caller to take down in the same transaction (`expireDueTransfers`).
+ * @param scope - Which transfers: one Project's, or every Project's when absent.
+ * @param scope.projectId - The Project, when only its transfers count.
+ * @param scope.now - The instant they are judged at; the database's own time when absent.
+ * @param tx - The enclosing transaction.
+ * @returns How many it failed, and the bell entries they had.
  */
 export async function expireStalePending(
-  projectId: string,
+  scope: { projectId?: string; now?: Date },
   tx: DbTx,
-): Promise<string[]> {
+): Promise<{ count: number; notificationIds: string[] }> {
   const rows = await tx
     .update(projectTransfers)
     .set({ status: "failed", failedReason: "expired" })
     .where(
       and(
-        eq(projectTransfers.projectId, projectId),
+        scope.projectId === undefined ? undefined : eq(projectTransfers.projectId, scope.projectId),
         eq(projectTransfers.status, "pending"),
         isNull(projectTransfers.deletedAt),
-        lte(projectTransfers.expiresAt, sql`now()`),
+        lte(projectTransfers.expiresAt, scope.now ?? sql`now()`),
       ),
     )
     .returning({ notificationId: projectTransfers.notificationId });
-  return rows
-    .map((r) => r.notificationId)
-    .filter((id): id is string => id !== null);
+  return {
+    count: rows.length,
+    notificationIds: rows.map((r) => r.notificationId).filter((id): id is string => id !== null),
+  };
 }
 
 /** A freshly filed transfer, and the bell entries its reap left to take down. */
@@ -151,7 +145,7 @@ export async function createPending(input: {
    * @throws {Error} 23505 from the insert, or a missing returned row.
    */
   const run = async (tx: DbTx): Promise<CreatedProjectTransfer> => {
-    const retiredNotificationIds = await expireStalePending(input.projectId, tx);
+    const retiredNotificationIds = (await expireStalePending({ projectId: input.projectId }, tx)).notificationIds;
     const rows = await tx
       .insert(projectTransfers)
       .values({

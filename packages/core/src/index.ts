@@ -175,6 +175,8 @@ export {
   type MemberChangeListener,
   LIVE_UPDATES_CHANNEL,
   listenLiveUpdates,
+  publishNotificationsChanged,
+  publishStudioCreditsChanged,
   type LiveUpdate,
   type LiveUpdatesHandlers,
   type LiveUpdatesListener,

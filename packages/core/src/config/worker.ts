@@ -49,6 +49,13 @@ export const workerConfigSchema = z.object({
     })
     .strict()
     .prefault({}),
+  /** The sweep that tells pages what came due (#1580): notifications, holds, Project transfers, 3D rows. */
+  deadline_sweep: z
+    .object({
+      interval_ms: z.number().int().positive().default(30_000),
+    })
+    .strict()
+    .prefault({}),
 }).refine(
   // A waiter is judged at most every slot_wait_max_delay_ms and its check time
   // is rewritten only once older than a third of slot_wait_stale_ms; past this
