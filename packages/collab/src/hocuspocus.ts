@@ -60,6 +60,7 @@ import * as Y from "yjs";
 import {
   parseDocName,
   SpaceRpcRequestSchema,
+  confirmsSync,
   SyncConfirmRequestSchema,
   DocSizeSeenSchema,
   type ProjectRole,
@@ -75,7 +76,7 @@ import {
 } from "@collab/hooks/presence-wiring.js";
 import { createLivenessHandler } from "@collab/services/socket-liveness.js";
 import { keepDocumentSchemaPublished } from "@collab/services/document-schema-publisher.js";
-import { confirmsSync, replySyncConfirmation } from "@collab/services/sync-receipt.js";
+import { replySyncConfirmation } from "@collab/services/sync-receipt.js";
 import { isMetaWriteAttempt } from "@collab/hooks/meta-write-attempt-log.js";
 import {
   createPersistenceExtension,

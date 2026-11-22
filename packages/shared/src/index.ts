@@ -461,6 +461,7 @@ export type { FollowingDeclaration, FollowingEntry } from "@shared/following-tab
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {
+  confirmsSync,
   SyncConfirmRequestSchema,
   SyncConfirmedResponseSchema,
 } from "@shared/sync-receipt.js";

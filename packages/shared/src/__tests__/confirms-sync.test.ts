@@ -8,7 +8,7 @@
 
 import { describe, expect, it } from "vitest";
 
-import { confirmsSync } from "@collab/services/sync-receipt.js";
+import { confirmsSync } from "../index.js";
 
 describe("confirmsSync", () => {
   it.each(["canvas", "document", "web_animation"] as const)("answers a sync confirmation on a %s document", (kind) => {
