@@ -16,6 +16,14 @@
  *   one PR head, written by maintainers.
  * Anything this script cannot decide fails and waits for such a clearance.
  *
+ * Shapes maintainers write (numbers are numbers, times are ISO 8601 instants):
+ *   review-required.json  {"accounts": [{"id": 1001, "login": "alice", "reason": "corporate" | "notice",
+ *                          "recordedAt": "...", "coverageRestartAt": "..." (optional)}]}
+ *   reviews.json          {"reviews": [{"pullRequest": 7, "headSha": "<full 40-character sha>",
+ *                          "identity": {"id": 1001} | {"email": "a@example.com"}, "reason": "...",
+ *                          "reviewer": "...", "reviewedAt": "..."}]}
+ * The check output prints the reviews.json entry for each person still waiting.
+ *
  * The required check `CLA signed` (GitHub Actions, app 15368) is written here
  * through the Checks API, updated in place when one already exists on the head.
  */
@@ -126,7 +134,7 @@ export function collectCompare(pages) {
  * @returns {boolean} True when they match.
  */
 function sameIdentity(cleared, person) {
-  if (person.id !== null) return cleared.id === person.id;
+  if (person.id !== null) return Number(cleared.id) === person.id;
   return typeof cleared.email === 'string' && cleared.email.toLowerCase() === person.email?.toLowerCase();
 }
 
@@ -136,7 +144,7 @@ function sameIdentity(cleared, person) {
  * @returns {{ok: boolean, reason: string}} The verdict and why.
  */
 function judgePerson({ person, pull, openerAllowlisted, signatures, reviewRequired, reviews, version }) {
-  if (reviews.some((r) => r.pullRequest === pull.number && r.headSha === pull.headSha && sameIdentity(r.identity, person))) {
+  if (reviews.some((r) => Number(r.pullRequest) === pull.number && r.headSha === pull.headSha && sameIdentity(r.identity ?? {}, person))) {
     return { ok: true, reason: 'cleared by a maintainer review for this head' };
   }
   const allowlisted = person.id !== null && ALLOWLIST.some((a) => a.id === person.id);
@@ -146,11 +154,13 @@ function judgePerson({ person, pull, openerAllowlisted, signatures, reviewRequir
 
   const valid = signatures.filter((s) => s.id === person.id && s.version === version.id && s.sha256 === version.sha256);
   if (valid.length === 0) return { ok: false, reason: `has not accepted ${version.id}` };
-  const applies = (s) => s.pullRequest === pull.number || s.acceptedAt < pull.createdAt;
-  const required = reviewRequired.find((r) => r.id === person.id);
+  const at = Date.parse;
+  const applies = (s) => s.pullRequest === pull.number || at(s.acceptedAt) < at(pull.createdAt);
+  const required = reviewRequired.find((r) => Number(r.id) === person.id);
   if (required) {
-    const restart = required.coverageRestartAt;
-    if (restart && pull.createdAt > restart && valid.some((s) => s.acceptedAt > restart && applies(s))) {
+    // An unreadable restart time parses to NaN, and every comparison with NaN is false.
+    const restart = at(required.coverageRestartAt);
+    if (at(pull.createdAt) > restart && valid.some((s) => at(s.acceptedAt) > restart && applies(s))) {
       return { ok: true, reason: `accepted ${version.id} after coverage restarted` };
     }
     return { ok: false, reason: `a maintainer has to review (${required.reason})` };
@@ -211,8 +221,9 @@ function nameOf(identity) {
  * @param {object} version The version.
  * @returns {{conclusion: string, title: string, summary: string}} The check run fields.
  */
-export function checkRunOutput(verdict, version) {
-  const lines = verdict.people.map((p) => `- ${p.ok ? 'passed' : 'not yet'}: ${nameOf(p.identity)} — ${p.reason}`);
+export function checkRunOutput(verdict, version, pull) {
+  const entry = (identity) => JSON.stringify({ pullRequest: pull?.number, headSha: pull?.headSha, identity: identity.id !== null ? { id: identity.id } : { email: identity.email } });
+  const lines = verdict.people.map((p) => `- ${p.ok ? 'passed' : 'not yet'}: ${nameOf(p.identity)} — ${p.reason}` + (p.ok || !pull ? '' : `\n  a maintainer's reviews.json entry after checking: \`${entry(p.identity)}\``));
   return {
     conclusion: verdict.ok ? 'success' : 'failure',
     title: verdict.ok ? `Everyone has accepted ${version.id}` : `Waiting on ${version.id} acceptance or a maintainer review`,
@@ -259,10 +270,10 @@ export function signRequestComment(verdict, version, repository) {
  * @returns {Promise<{status: number, json: any}>} The status and parsed body.
  * @throws {Error} On a status other than 2xx, 404 or 409.
  */
-async function api(token, path, { method = 'GET', body } = {}) {
+async function api(token, path, { method = 'GET', body, accept = 'application/vnd.github+json' } = {}) {
   const response = await fetch(`https://api.github.com${path}`, {
     method,
-    headers: { authorization: `Bearer ${token}`, accept: 'application/vnd.github+json', 'x-github-api-version': '2022-11-28' },
+    headers: { authorization: `Bearer ${token}`, accept, 'x-github-api-version': '2022-11-28' },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   const json = response.status === 204 ? null : await response.json();
@@ -281,9 +292,11 @@ async function api(token, path, { method = 'GET', body } = {}) {
  * @returns {Promise<{data: object, sha: string | null}>} Contents and blob sha.
  */
 async function readRecords(token, repository, path, empty) {
-  const { status, json } = await api(token, `/repos/${repository}/contents/${path}?ref=${RECORDS_BRANCH}`);
+  const { status, json } = await api(token, `/repos/${repository}/contents/${path}?ref=${RECORDS_BRANCH}`, { accept: 'application/vnd.github.object' });
   if (status === 404) return { data: empty, sha: null };
-  return { data: JSON.parse(Buffer.from(json.content, 'base64').toString('utf8')), sha: json.sha };
+  // Above 1 MB the contents API leaves `content` empty; the blob API serves up to 100 MB.
+  const content = json.encoding === 'none' ? (await api(token, `/repos/${repository}/git/blobs/${json.sha}`)).json.content : json.content;
+  return { data: JSON.parse(Buffer.from(content, 'base64').toString('utf8')), sha: json.sha };
 }
 
 /**
@@ -293,7 +306,7 @@ async function readRecords(token, repository, path, empty) {
  * @param {string} repository `owner/name`.
  * @param {object} version The version.
  * @param {object} record The record.
- * @returns {Promise<void>} Resolves once written.
+ * @returns {Promise<object>} The signature file as written.
  * @throws {Error} When five attempts all lose the race.
  */
 async function appendSignature(token, repository, version, record) {
@@ -305,7 +318,7 @@ async function appendSignature(token, repository, version, record) {
       method: 'PUT',
       body: { message: `Record ${record.login}'s acceptance of ${version.id} in #${record.pullRequest}`, content, branch: RECORDS_BRANCH, ...(sha && { sha }) },
     });
-    if (status !== 409) return;
+    if (status !== 409) return data;
   }
   throw new Error('could not record the acceptance after 5 attempts');
 }
@@ -337,10 +350,23 @@ async function prCommits(token, repository, pull) {
  */
 async function writeCheck(token, repository, headSha, output) {
   const { json } = await api(token, `/repos/${repository}/commits/${headSha}/check-runs?check_name=${encodeURIComponent(CHECK_NAME)}`);
-  const existing = json.check_runs.find((run) => run.app?.id === ACTIONS_APP_ID);
   const body = { status: 'completed', conclusion: output.conclusion, output: { title: output.title, summary: output.summary } };
-  if (existing) await api(token, `/repos/${repository}/check-runs/${existing.id}`, { method: 'PATCH', body });
-  else await api(token, `/repos/${repository}/check-runs`, { method: 'POST', body: { name: CHECK_NAME, head_sha: headSha, ...body } });
+  for (const request of checkRunRequests(json.check_runs, headSha)) {
+    await api(token, `/repos/${repository}${request.path}`, { method: request.method, body: { ...request.body, ...body } });
+  }
+}
+
+/**
+ * Which `CLA signed` runs to write on a head: every GitHub Actions run of that
+ * name, updated in place, or one new run when there is none.
+ * @param {{id: number, app?: {id: number}}[]} existingRuns The head's runs named `CLA signed`.
+ * @param {string} headSha The PR head.
+ * @returns {{method: string, path: string, body: object}[]} The requests.
+ */
+export function checkRunRequests(existingRuns, headSha) {
+  const mine = existingRuns.filter((run) => run.app?.id === ACTIONS_APP_ID);
+  if (mine.length === 0) return [{ method: 'POST', path: '/check-runs', body: { name: CHECK_NAME, head_sha: headSha } }];
+  return mine.map((run) => ({ method: 'PATCH', path: `/check-runs/${run.id}`, body: {} }));
 }
 
 /**
@@ -353,8 +379,12 @@ async function writeCheck(token, repository, headSha, output) {
  * @returns {Promise<void>} Resolves once written.
  */
 async function writeComment(token, repository, number, body, ok) {
-  const { json } = await api(token, `/repos/${repository}/issues/${number}/comments?per_page=100`);
-  const existing = json.find((c) => c.body?.startsWith(COMMENT_MARKER));
+  let existing;
+  for (let page = 1; !existing; page += 1) {
+    const { json } = await api(token, `/repos/${repository}/issues/${number}/comments?per_page=100&page=${page}`);
+    existing = json.find((c) => c.user?.login === 'github-actions[bot]' && c.body?.startsWith(COMMENT_MARKER));
+    if (json.length < 100) break;
+  }
   if (existing) await api(token, `/repos/${repository}/issues/comments/${existing.id}`, { method: 'PATCH', body: { body } });
   else if (!ok) await api(token, `/repos/${repository}/issues/${number}/comments`, { method: 'POST', body: { body } });
 }
@@ -394,6 +424,7 @@ export async function main(env) {
   };
   const commits = await prCommits(token, repository, pull);
 
+  let signatureData = null;
   if (comment) {
     const signer = { id: comment.user.id, login: comment.user.login };
     const record = acceptanceRecord({
@@ -404,11 +435,11 @@ export async function main(env) {
       version,
       repository,
     });
-    await appendSignature(token, repository, version, record);
+    signatureData = await appendSignature(token, repository, version, record);
   }
 
   const [signatures, reviewRequired, reviews] = await Promise.all([
-    readRecords(token, repository, version.signatures, { signatures: [] }),
+    signatureData ? { data: signatureData } : readRecords(token, repository, version.signatures, { signatures: [] }),
     readRecords(token, repository, 'signatures/v2/review-required.json', { accounts: [] }),
     readRecords(token, repository, 'signatures/v2/reviews.json', { reviews: [] }),
   ]);
@@ -420,7 +451,7 @@ export async function main(env) {
     reviews: reviews.data.reviews,
     version,
   });
-  await writeCheck(token, repository, pull.headSha, checkRunOutput(verdict, version));
+  await writeCheck(token, repository, pull.headSha, checkRunOutput(verdict, version, pull));
   await writeComment(token, repository, number, signRequestComment(verdict, version, repository), verdict.ok);
 }
 

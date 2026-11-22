@@ -8,6 +8,7 @@ import {
   ALLOWLIST,
   acceptanceRecord,
   checkRunOutput,
+  checkRunRequests,
   currentVersion,
   isAcceptance,
   isMaintainerRecheck,
@@ -188,6 +189,32 @@ test('case 19: after a notice, a maintainer-set restart time lets later pull req
   const again = signed(ALICE, { pullRequest: 6, acceptedAt: '2026-12-06T00:00:00Z' });
   assert.equal(judge({ signatures: [again], reviewRequired: required }).ok, true);
   assert.equal(judge({ pull: pr({ createdAt: '2026-12-04T00:00:00Z' }), signatures: [again], reviewRequired: required }).ok, false);
+  const before = signed(ALICE, { pullRequest: 3, acceptedAt: '2026-12-01T00:00:00Z' });
+  assert.equal(judge({ signatures: [before], reviewRequired: required }).ok, false);
+});
+
+test('case 19: restart times are compared as instants, and an unreadable one needs a review', () => {
+  // 2026-12-05T00:00:00-08:00 is 08:00Z, so a PR opened at 05:00Z is before the restart.
+  const offset = [{ id: ALICE.id, reason: 'notice', coverageRestartAt: '2026-12-05T00:00:00-08:00' }];
+  const again = signed(ALICE, { acceptedAt: '2026-12-06T00:00:00Z' });
+  assert.equal(judge({ pull: pr({ createdAt: '2026-12-05T05:00:00Z' }), signatures: [again], reviewRequired: offset }).ok, false);
+  assert.equal(judge({ pull: pr({ createdAt: '2026-12-05T09:00:00Z' }), signatures: [again], reviewRequired: offset }).ok, true);
+  const unreadable = [{ id: ALICE.id, reason: 'notice', coverageRestartAt: 'next week' }];
+  assert.equal(judge({ signatures: [again], reviewRequired: unreadable }).ok, false);
+});
+
+test('maintainer records match when numbers were written as strings', () => {
+  const required = [{ id: String(ALICE.id), reason: 'corporate' }];
+  assert.equal(judge({ signatures: [signed(ALICE)], reviewRequired: required }).ok, false);
+  const review = { pullRequest: '7', headSha: 'h1', identity: { id: String(ALICE.id) } };
+  assert.equal(judge({ signatures: [signed(ALICE)], reviewRequired: required, reviews: [review] }).ok, true);
+});
+
+test('case 18: every Actions run named CLA signed on the head is updated in place, and one is created only when none exists', () => {
+  const runs = [{ id: 1, app: { id: 15368 } }, { id: 2, app: { id: 999 } }, { id: 3, app: { id: 15368 } }];
+  assert.deepEqual(checkRunRequests(runs, 'h1').map((r) => `${r.method} ${r.path}`), ['PATCH /check-runs/1', 'PATCH /check-runs/3']);
+  const created = checkRunRequests([{ id: 2, app: { id: 999 } }], 'h1');
+  assert.deepEqual(created, [{ method: 'POST', path: '/check-runs', body: { name: 'CLA signed', head_sha: 'h1' } }]);
 });
 
 test('only a maintainer comment of "recheck" re-judges', () => {
@@ -202,4 +229,14 @@ test('the check output names each person and why they passed or not', () => {
   assert.equal(conclusion, 'failure');
   assert.match(summary, /alice/);
   assert.match(summary, /bob/);
+});
+
+test('the check output prints the reviews.json entry a maintainer can paste for each person still waiting', () => {
+  const ghost = { id: null, login: null, email: 'ghost@x' };
+  const pull = pr({ headSha: 'a'.repeat(40) });
+  const verdict = judge({ pull, people: [ALICE, BOB, ghost], signatures: [signed(ALICE)] });
+  const { summary } = checkRunOutput(verdict, V2, pull);
+  assert.ok(summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { id: BOB.id } })));
+  assert.ok(summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { email: 'ghost@x' } })));
+  assert.ok(!summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { id: ALICE.id } })));
 });

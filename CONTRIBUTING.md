@@ -226,3 +226,15 @@ documents in a pull request. A green `CLA signed` check means an acceptance
 record exists for each person on the pull request. Corporate rights and
 stop-coverage notices are reviewed by a maintainer before merging. Works you
 create with Breatic are not contributions.
+
+For maintainers: the records live on the `cla-signatures` branch under
+`signatures/v2/`. Accounts that always need a review go into
+`review-required.json` as
+`{"accounts": [{"id": 1001, "login": "alice", "reason": "corporate", "recordedAt": "2026-12-01T00:00:00Z"}]}`,
+with `"reason": "notice"` and an optional `"coverageRestartAt"` instant for a
+stop-coverage notice. A review clears one person for one head commit and goes
+into `reviews.json` as
+`{"reviews": [{"pullRequest": 7, "headSha": "<full 40-character sha>", "identity": {"id": 1001}, "reason": "...", "reviewer": "...", "reviewedAt": "..."}]}`,
+using `{"email": "..."}` as the identity for an author with no account. The
+failing check prints the entry for each person still waiting; after saving it,
+comment `recheck` on the pull request.
