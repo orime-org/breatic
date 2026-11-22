@@ -28,7 +28,7 @@ vi.mock("node:fs", async (importOriginal) => {
   return { ...actual, readFileSync };
 });
 
-import { subscriptionClock } from "@core/config/subscription.js";
+import { subscriptionClock } from "@core/config/membership.js";
 import { subscriptionSituation } from "@core/auth/subscription-state.js";
 
 describe("subscriptionClock without config/subscription.yaml (#307, inner#1636)", () => {

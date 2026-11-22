@@ -31,10 +31,13 @@ import { Queue } from "bullmq";
 import {
   initCore,
   getRedis,
+  getStreamRedis,
+  taskEventsStreamKey,
   setSession,
   sessionCookieName,
   loadLocales,
 } from "@breatic/core";
+import { ingestReportService } from "@breatic/domain";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
 
@@ -116,7 +119,7 @@ async function submit(cookie: string, body: Record<string, unknown>): Promise<Re
   return app.request("/api/v1/assets/ingest-url", {
     method: "POST",
     headers: { "content-type": "application/json", cookie },
-    body: JSON.stringify({ url: SOURCE, space_id: crypto.randomUUID(), ...body }),
+    body: JSON.stringify({ url: SOURCE, space_id: crypto.randomUUID(), upload_id: crypto.randomUUID(), ...body }),
   });
 }
 
@@ -150,6 +153,18 @@ describe("POST /assets/ingest-url — what it takes", () => {
     expect(await rowsFor(projectId)).toEqual({ grants: 1, nodeTasks: 0 });
   });
 
+  // Spec R-05 (inner#1968): no Idempotency-Key asked for, and no
+  // Idempotency-Status answered.
+  it("R-05 takes an address sent without an Idempotency-Key, and answers no Idempotency-Status", async () => {
+    const { userId, projectId, cookie } = await seedEditor();
+    await sql`UPDATE users SET membership_tier = 'pro' WHERE id = ${userId}`;
+
+    const res = await submit(cookie, { project_id: projectId });
+
+    expect(res.status).toBe(201);
+    expect(res.headers.get("Idempotency-Status")).toBeNull();
+  });
+
   it("queues the fetch with no node to write to", async () => {
     const { projectId, cookie } = await seedEditor();
     const add = vi.spyOn(Queue.prototype, "add");
@@ -163,6 +178,73 @@ describe("POST /assets/ingest-url — what it takes", () => {
     } finally {
       add.mockRestore();
     }
+  });
+});
+
+describe("POST /assets/ingest-url — a Document body block (breatic#1574)", () => {
+  it("refuses a fetch that names no block, whose result would have nowhere to land", async () => {
+    const { projectId, cookie } = await seedEditor();
+
+    const res = await submit(cookie, { project_id: projectId, upload_id: undefined });
+
+    expect(res.status).toBe(422);
+  });
+
+  it("records the block on the grant and announces processing to the block's Document", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const spaceId = crypto.randomUUID();
+    const uploadId = crypto.randomUUID();
+
+    const res = await submit(cookie, { project_id: projectId, space_id: spaceId, upload_id: uploadId });
+
+    expect(res.status).toBe(201);
+    const grants = await sql<{ document_upload_id: string | null }[]>`
+      SELECT document_upload_id FROM upload_grants WHERE project_id = ${projectId}
+    `;
+    expect(grants).toEqual([{ document_upload_id: uploadId }]);
+    const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+    const events = raw.map(([, f]) => JSON.parse(f[f.indexOf("payload") + 1]!) as Record<string, unknown>)
+      .filter((e) => e.type === "document-upload" && e.uploadId === uploadId);
+    expect(events).toEqual([expect.objectContaining({
+      docName: `project-${projectId}/document-${spaceId}`, state: "processing",
+    })]);
+  });
+});
+
+describe("POST /assets/ingest-url — a Document block's fetch ending (breatic#1574)", () => {
+  /**
+   * Every Document upload event for one block, oldest first.
+   * @param uploadId - The block's upload.
+   * @returns Their payloads.
+   */
+  async function eventsOf(uploadId: string): Promise<Record<string, unknown>[]> {
+    const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+    return raw.map(([, f]) => JSON.parse(f[f.indexOf("payload") + 1]!) as Record<string, unknown>)
+      .filter((e) => e.type === "document-upload" && e.uploadId === uploadId);
+  }
+
+  it("hands the block the fetched picture", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const res = await submit(cookie, { project_id: projectId, upload_id: uploadId });
+    const key = ((await res.json()) as { data: { storage_key: string } }).data.storage_key;
+
+    await ingestReportService.applyIngestReport({
+      storageKey: key, outcome: "completed", sha256: crypto.randomBytes(32).toString("hex"), sizeBytes: 4096, contentType: "image/png",
+    });
+
+    expect((await eventsOf(uploadId)).map((e) => e.state)).toEqual(["processing", "completed"]);
+  });
+
+  it("tells the block the fetch failed", async () => {
+    const { projectId, cookie } = await seedEditor();
+    const uploadId = crypto.randomUUID();
+    const res = await submit(cookie, { project_id: projectId, upload_id: uploadId });
+    const key = ((await res.json()) as { data: { storage_key: string } }).data.storage_key;
+
+    await ingestReportService.applyIngestReport({ storageKey: key, outcome: "aborted" });
+
+    expect((await eventsOf(uploadId)).map((e) => e.state)).toEqual(["processing", "failed"]);
   });
 });
 

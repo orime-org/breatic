@@ -3,10 +3,9 @@
 
 import { Hono } from 'hono';
 import { z } from 'zod';
-import { logger } from '@breatic/core';
+import { logger, validate } from '@breatic/core';
 import { videoPresentationService, VideoPresentationSourceChanged } from '@breatic/domain';
 import { requireAuth, type AuthVariables } from '@server/middleware/auth.js';
-import { validate } from '@server/middleware/validate.js';
 import { rateLimitFor } from '@server/middleware/rate-limit.js';
 import { runOnce } from '@server/middleware/run-once.js';
 import { idempotencyKeyHeaderSchema } from '@server/routes/schemas.js';

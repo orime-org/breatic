@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * What the block handle's menus share: where a rule goes between block type
- * rows, how a row out of the command's reach is drawn, and how wide the menus
- * listing block types are.
+ * What the block handle's menus share: how a row out of the command's reach
+ * is drawn, and how wide the menus listing block types are. Where a rule goes
+ * between rows is `ruleBetween` in `document-insert-entries.ts`.
  *
  * The handle menu (`DocumentBlockMenu.tsx`) and the plus menu
  * (`DocumentInsertChoices.tsx`) both draw rows this way.
@@ -16,10 +16,6 @@ import type {
   DropdownMenuItem,
   DropdownMenuSubTrigger,
 } from '@web/components/ui/dropdown-menu';
-import {
-  DIMENSION_OF_ROW,
-  type BlockTypeId,
-} from '@web/spaces/document/document-block-ticks';
 import { UNAVAILABLE_KEYBOARD_FOCUS_ONLY } from '@web/spaces/document/document-unavailable-control';
 
 /**
@@ -30,21 +26,6 @@ import { UNAVAILABLE_KEYBOARD_FOCUS_ONLY } from '@web/spaces/document/document-u
  * these rows. Longer labels still widen it.
  */
 export const TYPE_MENU_WIDTH = 'min-w-[10rem]';
-
-/**
- * Whether a rule goes after this row.
- *
- * Drawn wherever the order crosses from one of the three dimensions to the
- * next, which is how the bubble bar's own type menu groups the same rows. Read
- * off `DIMENSION_OF_ROW` so a row added to a group lands inside its rules by
- * saying which group it is in — the one place that already has to say so.
- * @param id - The row being drawn.
- * @param next - The row after it, or undefined at the end of the list.
- * @returns True when a rule belongs between the two.
- */
-export function rulesAfter(id: BlockTypeId, next: BlockTypeId | undefined): boolean {
-  return next !== undefined && DIMENSION_OF_ROW[id] !== DIMENSION_OF_ROW[next];
-}
 
 /**
  * The keys Radix opens a submenu with, reading left to right.

@@ -11,7 +11,8 @@
  * In server rather than core because only this service receives webhooks.
  */
 
-import { stripeWebhookEvents } from "@breatic/core";
+import { inArray } from "drizzle-orm";
+import { db, stripeWebhookEvents } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
 /**
@@ -32,4 +33,17 @@ export async function claimWebhookEvent(
     .onConflictDoNothing()
     .returning();
   return inserted.length > 0;
+}
+
+/**
+ * Which of these event ids have been claimed.
+ * @param eventIds - The ids to look up.
+ * @returns The claimed ones.
+ */
+export async function listClaimedEventIds(eventIds: readonly string[]): Promise<string[]> {
+  const rows = await db
+    .select({ eventId: stripeWebhookEvents.eventId })
+    .from(stripeWebhookEvents)
+    .where(inArray(stripeWebhookEvents.eventId, [...eventIds]));
+  return rows.map((row) => row.eventId);
 }

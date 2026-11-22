@@ -50,6 +50,7 @@ async function startInstance(name: string): Promise<Hocuspocus> {
   if (!collabUrl) throw new Error("REDIS_COLLAB_URL missing from the integration env");
   const wsServer = new Server({
     port: 0,
+    address: "127.0.0.1",
     quiet: true,
     stopOnSignals: false,
     debounce: 50,

@@ -26,7 +26,7 @@ afterEach(cleanup);
 /**
  * A wire node of the given medium carrying these task counts and no content.
  * @param type - The medium.
- * @param counts - The node's four task counts.
+ * @param counts - The node's task counts.
  * @returns The wire fields.
  */
 function fields(
@@ -57,7 +57,7 @@ const STATES: ReadonlyArray<[string, NodeTaskCounts]> = [
 /**
  * Render one medium's node from the projection of these counts.
  * @param type - The medium.
- * @param counts - The node's four task counts.
+ * @param counts - The node's task counts.
  * @returns The shell element.
  */
 function renderNode(

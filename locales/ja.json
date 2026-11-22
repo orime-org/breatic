@@ -27,7 +27,8 @@
       "refund_still_designated": "この購入は Studio に割り当てられています。先に割り当てを解除してください。",
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
       "refund_window_closed": "この購入の返金期限は終了しました。",
-      "refund_state_changed": "この購入の返金状況が変わりました。再読み込みしてからもう一度お試しください。"
+      "refund_state_changed": "この購入の返金状況が変わりました。再読み込みしてからもう一度お試しください。",
+      "refund_offline_contract": "企業クレジットの返金は契約担当者にお問い合わせください。"
     },
     "auth": {
       "invalid_credentials": "メールアドレスまたはパスワードが正しくありません",
@@ -232,7 +233,8 @@
       "storage_full": {
         "subject": "ストレージがいっぱいです",
         "lead": "ストレージがいっぱいのため、<b>{studio}</b> でのアップロードと生成が拒否されました。ストレージはこの Studio だけでなく、あなたが管理するすべての Studio の合計で数えられます。",
-        "footer": "メンバーシップをアップグレードすると容量が増えます。"
+        "footer": "メンバーシップをアップグレードすると容量が増えます。",
+        "footer_enterprise": "保存容量は契約で定められています。変更はお問い合わせください。"
       },
       "password_reset": {
         "subject": "パスワードのリセット",
@@ -366,6 +368,10 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
+    },
+    "spend_cap": {
+      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。追加が必要な場合はStudioのAdminに連絡してください。",
+      "studio": "このStudioの今月の利用額が上限に達しました。StudioのAdminに連絡してください。"
     }
   },
   "chat": {
@@ -1130,13 +1136,15 @@
     },
     "task": {
       "stillRunning": "このタスクはまだ実行中です。",
+      "alreadyStarted": "このタスクはすでに開始しているため、キャンセルできません。",
       "expired": "このタスクは時間切れになりました。",
       "couldNotStart": "このタスクを開始できませんでした。もう一度お試しください。",
       "status": {
         "running": "実行中",
         "done": "完了",
         "failed": "失敗",
-        "expired": "時間切れ"
+        "expired": "時間切れ",
+        "waiting": "待機中"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1174,6 +1182,7 @@
         "tool_failed": "ツールでこのファイルを処理できませんでした。",
         "no_audio_track": "{kind, select, audio {この音声から音を読み取れません。} other {この動画には音声トラックがありません。}}",
         "cut_short": "長すぎて最後まで文字起こしできませんでした。",
+        "cancelled": "キャンセルしました。",
         "input_refused": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。",
         "model_not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。"
       },
@@ -1182,7 +1191,15 @@
         "generate": "生成",
         "understand": "内容を読み取る",
         "transcribe": "文字起こし"
-      }
+      },
+      "waitReason": "同時に実行できるタスク数の上限に達しています。前のタスクが終わると自動で開始します。",
+      "you": "あなた",
+      "cancelFailed": "このタスクをキャンセルできませんでした。",
+      "waitReasonLimit": "同時に実行できるタスクの上限（{limit} 件）に達しています。前のタスクが終わると自動で開始します。",
+      "waitReasonOther": "開始した人の同時実行タスク数が上限に達しています。その人の前のタスクが終わると自動で開始します。",
+      "waitReasonOtherLimit": "開始した人の同時実行タスクが上限（{limit} 件）に達しています。その人の前のタスクが終わると自動で開始します。",
+      "waitReasonEach": "{count, plural, =1 {この待機中のタスクは、開始した人の同時実行タスク数が上限を下回ると自動で開始します。} other {待機中の各タスクは、開始した人の同時実行タスク数が上限を下回ると自動で開始します。}}",
+      "waitReasonEachLimit": "{count, plural, =1 {この待機中のタスクは、開始した人の同時実行タスクが上限（{limit} 件）を下回ると自動で開始します。} other {待機中の各タスクは、開始した人の同時実行タスクが上限（{limit} 件）を下回ると自動で開始します。}}"
     },
     "panel": {
       "hostDeletedByPeer": "コラボレーターがノードを削除しました。"
@@ -1576,6 +1593,7 @@
       "title": "テンプレート",
       "empty": "テンプレートはありません",
       "unavailable": "利用できません",
+      "styleLoadFailed": "スタイルを読み込めませんでした。ページを再読み込みしてからもう一度お試しください。",
       "goal": {
         "character": "キャラクター設定と一貫性",
         "comics-storyboards": "漫画と絵コンテ",
@@ -1586,6 +1604,7 @@
         "social-hooks": "SNS フック",
         "talking": "トークと対話",
         "posters": "ポスター・グラフィック",
+        "film-styles": "名作の画風",
         "speed": "モーション・スピード",
         "sound": "音楽・効果音・ボイス"
       },
@@ -2341,6 +2360,68 @@
             "note": "先に写真を入れてから生成してください"
           }
         }
+      },
+      "film-style-still": {
+        "name": "名作画風の一枚",
+        "description": "あなたの主体を古典的な画風の一場面に描き直す",
+        "prompt": "[📎 主体] を下の画風の横長の一場面として描き直す。顔、形、服装はひと目でわかるまま。周りの場所はここに書いた場面で、それをこの画風で描く：{✏️ 場面、例：夕暮れの風の強い港に立っている}。透かしは入れない。文字は下の画風が求める場合にだけ入れる。",
+        "input": {
+          "subject": {
+            "name": "主体",
+            "note": "先にあなたの主体の画像を入れてから、生成してください"
+          }
+        }
+      },
+      "film-style-shot": {
+        "name": "画風ショット",
+        "description": "画風の一枚を作り、その画風自身のカメラで動かす",
+        "prompt": "(💡 先に画風の一枚を生成し、最初のフレームに設定してください)5秒、音ありのショット。最初のフレームから始まり、どのフレームでも下の画風の見た目を保つ：素材、色、質感が別の素材に変わらない。動くもの：{✏️ 動くもの、例：コートが風にあおられ、カモメが頭上を旋回する}。下の画風が求める文字のほかは、画面に文字は入れない。",
+        "node": {
+          "still": {
+            "name": "画風の一枚",
+            "prompt": "[📎 主体] を下の画風の横長の一場面として描き直す。顔、形、服装はひと目でわかるまま。周りの場所はここに書いた場面で、それをこの画風で描く：{✏️ 場面、例：夕暮れの風の強い港に立っている}。透かしは入れない。文字は下の画風が求める場合にだけ入れる。"
+          }
+        },
+        "input": {
+          "subject": {
+            "name": "主体",
+            "note": "先にあなたの主体の画像を入れてから、画風の一枚を生成してください"
+          }
+        }
+      },
+      "era-walkthrough-montage": {
+        "name": "時代をめぐる",
+        "description": "一人のキャラクターが映画の四つの時代を歩き抜ける",
+        "prompt": "(💡 先に無声映画の時代を生成してください)(💡 先にワイドスクリーンのカラーを生成してください)(💡 先に90年代のフィルムを生成してください)(💡 先に現代を生成してください)12秒、横長、音ありの動画。[📎 キャラクター] が映画の四つの時代を順に歩き抜け、それぞれ約3秒：[📎 無声映画の時代]、次に [📎 ワイドスクリーンのカラー]、次に [📎 90年代のフィルム]、次に [📎 現代]。各時代の質感はそれぞれの画像のとおり。ひと続きの歩み：キャラクターが扉、カーテン、光のフレアを通り抜けるたびに次の時代へ移り、ハードカットはしない。音：各時代の音楽を順に、{✏️ 音楽、例：ピアノのラグ、豊かなオーケストラ、ギターのリフ、現代的なシンセのパルス}。画面に文字は入れない。",
+        "node": {
+          "silent": {
+            "name": "無声映画の時代",
+            "prompt": "[📎 キャラクター] が1920年代の無声映画の一場面にいる横長の一枚：顔と髪型は画像のとおり、服装はその時代のもの。白黒、細かい粒子、かすかなちらつき、丸い暗いビネット。{✏️ 場所、例：路面電車の走る街の通り}。文字は入れない。"
+          },
+          "widescreen": {
+            "name": "ワイドスクリーンのカラー",
+            "prompt": "[📎 キャラクター] が1950年代のワイドスクリーンのカラー大作の一場面にいる横長の一枚：顔と髪型は画像のとおり、服装はその時代のもの。鮮やかな赤とティール、場所に空が見えるなら描かれた空の背景、つややかな撮影所の照明。{✏️ 場所、例：グランドホテルの大階段}。文字は入れない。"
+          },
+          "nineties": {
+            "name": "90年代のフィルム",
+            "prompt": "[📎 キャラクター] が35mmフィルムで撮られた1990年代の映画の一場面にいる横長の一枚：顔と髪型は画像のとおり、服装はその時代のもの。暖かい粒子、自然光、少し落ち着いた色。{✏️ 場所、例：夜のネオンのダイナー}。文字は入れない。"
+          },
+          "today": {
+            "name": "現代",
+            "prompt": "[📎 キャラクター] が現代のデジタルシネマの一場面にいる横長の一枚：顔と髪型は画像のとおり、服装は今のもの。くっきりした細部、浅い被写界深度、クールで現代的な色調。{✏️ 場所、例：ガラス張りのビルのロビー}。文字は入れない。"
+          }
+        },
+        "input": {
+          "character": {
+            "name": "キャラクター",
+            "note": "先にキャラクターの画像を入れてから、四つの時代を生成してください"
+          }
+        }
+      },
+      "style-sound-bed": {
+        "name": "時代のサウンドベッド",
+        "description": "古典的な画風の時代と素材に合う歌詞のない音楽",
+        "prompt": "30秒のサウンドベッド、歌詞なし、雰囲気：{✏️ 雰囲気、例：明るく遊び心のある}。"
       },
       "vehicle-speed-cutlist": {
         "name": "車両スピード・カットリスト",
@@ -3102,6 +3183,9 @@
       },
       "columns": {
         "unavailable": "ここには列を追加できません"
+      },
+      "slashMenu": {
+        "empty": "一致する項目がありません"
       }
     },
     "readOnlyReconnect": "再接続",
@@ -3629,7 +3713,42 @@
         "colProject": "Project",
         "colModel": "モデル",
         "colAmount": "クレジット",
-        "loadError": "クレジット情報を読み込めませんでした。ページを再読み込みしてください。"
+        "loadError": "クレジット情報を読み込めませんでした。ページを再読み込みしてください。",
+        "spendCap": {
+          "title": "利用上限",
+          "studioMonthly": "Studio の月間合計上限",
+          "studioMonthlyHint": "全員の合計。各自の上限とは別です",
+          "memberDefault": "1 人あたりの月間上限の既定値",
+          "memberDefaultHint": "個別に設定していない人に適用されます",
+          "notSet": "設定しない",
+          "perMonth": "毎月",
+          "studioSpent": "今月の Studio 利用額",
+          "resetsAt": "リセット",
+          "saved": "利用上限を保存しました。",
+          "saveFailed": "利用上限を保存できませんでした。もう一度お試しください。",
+          "invalidAmount": "0〜{max} クレジットの範囲で、小数点以下 2 桁までで入力してください。",
+          "loadError": "利用上限を読み込めませんでした。",
+          "retry": "もう一度試す",
+          "save": "保存",
+          "colMember": "メンバー",
+          "colRelation": "関係",
+          "colSpent": "今月の利用額",
+          "colEffective": "適用中の上限",
+          "relationStudioMember": "Studio メンバー",
+          "relationProjectCollaborator": "Project 協力者",
+          "relationFormer": "退出済み（閲覧のみ）",
+          "unlimited": "無制限",
+          "zero": "0（クレジット使用不可）",
+          "amount": "{amount} クレジット",
+          "spentOfLimit": "{spent} / {limit} クレジット",
+          "sourceOverride": "個別",
+          "sourceDefault": "既定",
+          "atCap": "上限到達",
+          "override": "個別に設定…",
+          "useDefault": "既定を使う（{fallback}）",
+          "overrideTitle": "個別の上限 · {name}",
+          "overrideHint": "この人にだけ適用され、既定値より優先されます（現在の既定値：{fallback}）。"
+        }
       },
       "members": {
         "invite": "メンバーを招待",
@@ -3985,7 +4104,8 @@
       "projectsPerStudio": "Studio ごとの Project 上限",
       "studioMembers": "Studio ごとのメンバー上限",
       "projectMembers": "Project ごとのメンバー上限",
-      "concurrentEditors": "1 Document の同時編集数"
+      "concurrentEditors": "1 Document の同時編集数",
+      "runningTasksPerUser": "同時に実行できるタスク数"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count} 件",
@@ -3994,9 +4114,10 @@
     "overLimitTag": "超過",
     "overLimit": {
       "storage": "ストレージが上限を超えています。既存のコンテンツはそのまま使えますが、新しいアップロードと生成はできません。容量を増やすにはアップグレードしてください。",
+      "storageEnterprise": "保存容量が契約の上限を超えています。既存の内容はそのまま使えますが、新しいアップロードや生成はできません。変更はお問い合わせください。",
       "teamStudios": "チーム Studio の数が上限を超えています。既存のものはこれまでどおり使えますが、新しくは作成できません。必要な場合はアップグレードしてください。"
     },
-    "enterpriseQuota": "利用上限は個別契約で定められているため、ここには表示されません。",
+    "enterpriseQuota": "その他の利用上限は個別契約で定められているため、ここには表示されません。",
     "compare": "プラン比較",
     "contactEnterprise": "より大きな規模や個別の商用条件が必要ですか。メールでご相談ください:",
     "contactSelfHosted": "商用ライセンスや個別のサポート条件が必要ですか。メールでご相談ください:",
@@ -4056,7 +4177,8 @@
       "added": "登録しました。メンバーシップを選ぶと最初の期間が {percent}% 割引になります。",
       "loadFailed": "紹介情報を読み込めませんでした。",
       "retry": "再試行"
-    }
+    },
+    "quotaUnlimited": "{used} / 無制限"
   },
   "promoter": {
     "heading": "プロモータープログラム",
@@ -4126,10 +4248,12 @@
     },
     "source": {
       "payment": "購入",
-      "gift": "体験クレジット",
+      "gift": "ギフトクレジット",
       "operatorGift": "ギフトクレジット",
-      "compensation": "補償",
-      "discount": "割引"
+      "compensation": "ギフトクレジット",
+      "discount": "割引",
+      "trial": "体験クレジット",
+      "enterprise": "企業クレジット"
     },
     "pinnedToPersonalStudio": "個人 Studio でのみ使用",
     "lifecycle": {
@@ -4139,7 +4263,7 @@
       "refunded": "返金済み"
     },
     "billingOff": {
-      "title": "この環境ではクレジットを消費しません",
+      "title": "セルフホストではクレジットを消費しません",
       "body": "生成しても差し引かれず、購入も不要です。使用量は記録されます。"
     },
     "total": "アカウント合計",
@@ -4164,7 +4288,7 @@
     "allStudios": "すべての Studio",
     "filterByStudio": "Studio で絞り込む",
     "ledgerEmpty": "消費の記録はまだありません。",
-    "ledgerBillingOff": "この環境ではクレジットを消費しません。以下は使用量の記録です。",
+    "ledgerBillingOff": "セルフホストではクレジットを消費しません。以下は使用量の記録です。",
     "colDay": "日付",
     "colWho": "使った人",
     "colStudio": "Studio",
@@ -4193,6 +4317,7 @@
     "refundsEmpty": "まだクレジットパックを購入していません",
     "askRefund": "返金を申請",
     "refundTitle": "返金ルール",
+    "onlinePurchaseRefundTitle": "オンライン購入クレジットの返金ルール",
     "buy": {
       "taxNotice": "表示価格は税抜きです。お支払い額は表示価格にお住まいの地域の税額を加えたもので、決済ページに最終金額が表示されます。",
       "assignNotice": "クレジットは Studio に割り当てると使えるようになります。",
@@ -4234,10 +4359,25 @@
     "refundReason": {
       "spent": "使用済み",
       "expired": "30 日超過",
-      "restored": "クレジットに戻しました"
+      "restored": "クレジットに戻しました",
+      "offlineContract": "企業クレジットの返金は契約担当者にお問い合わせください。"
     },
     "refundHint": {
       "assigned": "割り当てを解除すると返金を申請できます"
+    },
+    "sourceDetail": {
+      "registration": "登録ギフト",
+      "operator": "運営からのギフト",
+      "compensation": "補償",
+      "enterprise": "法人購入"
+    },
+    "contractReference": "契約 {contract}",
+    "refusal": {
+      "spendCap": "今月の利用額が上限に達しました。StudioのAdminに連絡してください。"
+    },
+    "spendCap": {
+      "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。{date} にリセットされます。追加が必要な場合はStudioのAdminに連絡してください。",
+      "studio": "このStudioの今月の利用額が上限に達しました。{date} にリセットされます。StudioのAdminに連絡してください。"
     }
   },
   "notFound": {

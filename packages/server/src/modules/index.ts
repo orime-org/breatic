@@ -34,7 +34,7 @@ export * as agentInstructionsService from "@server/modules/conversation/agent-in
 export * as runningTurnsService from "@server/modules/conversation/running-turns.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";
 export * as paymentService from "@server/modules/payment/payment.service.js";
-export { precheckCredits, reserveForRun } from "@server/modules/payment/credit-precheck.service.js";
+export { precheckCredits, reserveForRun } from "@server/modules/credit/credit-precheck.service.js";
 export * as creditViewService from "@server/modules/credit/credit-view.service.js";
 export {
   assertStorageAllowance,
@@ -57,3 +57,4 @@ export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/di
 export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
 
 export * as creditGrantService from "@server/modules/credit-grant/credit-grant.service.js";
+export * as enterpriseCreditPurchaseService from "@server/modules/enterprise-credit-purchase/enterprise-credit-purchase.service.js";

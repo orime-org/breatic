@@ -20,8 +20,7 @@ import { serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, expect, inject, vi } from "vitest";
-import { env, getRedis, initCore, loadLocales } from "@breatic/core";
-import { signRequest } from "@server/middleware/internal-signature.js";
+import { env, getRedis, initCore, loadLocales, signRequest } from "@breatic/core";
 import { fakeStripe } from "./fake-stripe-refunds.js";
 import { expectOnlyRejudged, mailsOf, type SeededLot, type WorldState } from "./credit-refund-fixtures.js";
 

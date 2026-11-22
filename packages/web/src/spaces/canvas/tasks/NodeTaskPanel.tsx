@@ -7,8 +7,8 @@
  *
  * It holds one state's rows: the user asked for the failures, so the
  * successes are not what they are looking at. The rows are fetched from the
- * server rather than read off the shared document — the document carries four
- * numbers and nothing else (§3.3), so the detail behind a number is only
+ * server rather than read off the shared document — the document carries only
+ * the node's task counts (§3.3), so the detail behind a number is only
  * pulled when somebody asks for it.
  */
 
@@ -19,28 +19,43 @@ import { Loader2, RotateCw } from 'lucide-react';
 import { Button } from '@web/components/ui/button';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import type { NodeTaskEntry } from '@breatic/shared';
+import type { NodeTaskCounts, NodeTaskEntry } from '@breatic/shared';
 import { useTranslation } from '@web/i18n/use-translation';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
-import type { TaskStatus } from '@web/spaces/canvas/tasks/TaskStatusDot';
+import { TASK_LABEL_KEY, type TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import type { TaskActionRequest } from '@web/stores/task-actions-in-flight';
 
 /**
- * The heading, one per state. The rows below carry their state as a colour and
- * nothing else, so this is the one place on screen the word appears — without
- * it colour is the only thing saying which list this is (WCAG 1.4.1).
+ * Whether one task belongs in one list. A waiting task is a running one on the
+ * wire, so the running list leaves it out and the queued list holds only it,
+ * the way the counts column splits the two (inner#1968).
+ * @param task - The task.
+ * @param list - The list.
+ * @returns Whether the task shows in that list.
  */
-const TITLE_KEY: Readonly<Record<TaskStatus, string>> = {
-  running: 'canvas.task.status.running',
-  done: 'canvas.task.status.done',
-  failed: 'canvas.task.status.failed',
-  expired: 'canvas.task.status.expired',
-};
+export function inTaskList(task: NodeTaskEntry, list: TaskListKind): boolean {
+  const waiting = task.status === 'running' && task.waitingSince != null;
+  if (list === 'waiting') return waiting;
+  return task.status === list && !waiting;
+}
+
+/**
+ * How many tasks one list holds by a node's counts: the running list without
+ * the waiting ones, which have their own (inner#1968).
+ * @param counts - The node's counts.
+ * @param list - The list.
+ * @returns Its count.
+ */
+export function countInList(counts: NodeTaskCounts, list: TaskListKind): number {
+  const waiting = counts.waiting ?? 0;
+  if (list === 'waiting') return waiting;
+  return list === 'running' ? counts.running - waiting : counts[list];
+}
 
 /** What {@link NodeTaskPanel} renders and reports. */
 export interface NodeTaskPanelProps {
-  /** The state whose count was clicked; only these rows show. */
-  status: TaskStatus;
+  /** The count that was clicked; only its rows show. */
+  status: TaskListKind;
   /** Every live task on the node, as the server last listed them. */
   entries: readonly NodeTaskEntry[];
   /** The user's clock, ticking once a second while rows are running. */
@@ -72,6 +87,8 @@ export interface NodeTaskPanelProps {
   onRetry: (taskId: string) => void;
   /** Drop one row. */
   onDismiss: (taskId: string) => void;
+  /** Cancel a task that waits for a free running slot (inner#1968). */
+  onCancel?: (taskId: string) => void;
 }
 
 /**
@@ -92,6 +109,7 @@ export interface NodeTaskPanelProps {
  * @param props.displayNameOf - The catalog's name for a model id.
  * @param props.onRetry - Send one task's stashed File again.
  * @param props.onDismiss - Drop one row.
+ * @param props.onCancel - Cancel one waiting task.
  * @returns The panel element.
  */
 export function NodeTaskPanel({
@@ -110,10 +128,11 @@ export function NodeTaskPanel({
   displayNameOf,
   onRetry,
   onDismiss,
+  onCancel,
 }: NodeTaskPanelProps): JSX.Element {
   const t = useTranslation();
   const shown = React.useMemo(
-    () => entries.filter((task) => task.status === status),
+    () => entries.filter((task) => inTaskList(task, status)),
     [entries, status],
   );
 
@@ -122,12 +141,15 @@ export function NodeTaskPanel({
     // same way the history panel does: the ScrollArea scrolls on wheel, and
     // dragging the panel never moves the node behind it.
     <CanvasPanel
+      // The heading names the state: the rows carry it as a colour and
+      // nothing else, so without the word colour alone says which list this
+      // is (WCAG 1.4.1).
       title={
         <span
           data-testid='node-task-panel-title'
           className='text-2xs text-muted-foreground'
         >
-          {t(TITLE_KEY[status])}
+          {t(TASK_LABEL_KEY[status])}
         </span>
       }
       aside={
@@ -190,12 +212,14 @@ export function NodeTaskPanel({
                 canRetry={canRetry(task.id)}
                 retrying={isWaiting(task.id, 'retry')}
                 dismissing={isWaiting(task.id, 'dismiss')}
+                cancelling={isWaiting(task.id, 'cancel')}
                 readOnly={readOnly}
                 {...(medium !== undefined && { medium })}
                 onView={onView}
                 {...(displayNameOf !== undefined && { displayNameOf })}
                 onRetry={onRetry}
                 onDismiss={onDismiss}
+                {...(onCancel !== undefined && { onCancel })}
               />
             ))}
           </div>

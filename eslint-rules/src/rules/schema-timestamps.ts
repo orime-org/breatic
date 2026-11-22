@@ -16,6 +16,8 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ["creditCompensations", "immutable funding evidence; deleting a receipt hides the provenance of credits already issued"],
   ["creditGifts", "immutable registration claim or operator funding evidence; removing a registration claim would permit a second grant"],
   ["creditGrantOperations", "immutable original grant decisions retain their idempotency keys permanently; deleting a decision would permit duplicate funding"],
+  ["enterpriseCreditPurchaseOperations", "immutable corporate purchase decisions retain the original key permanently to prevent duplicate funding"],
+  ["creditEnterprisePurchases", "immutable corporate purchase receipts outlive their credit lots and retain the original contract evidence"],
   ["referralCodes", "a code is only disabled, re-enabled or removed; bindings and future commissions point at it permanently"],
   ["referralBindings", "a binding is permanent by the promoter terms; commissions are computed from it"],
   ["referralOperations", "immutable back-office decisions retain their idempotency keys permanently; deleting one would let a replay act twice"],

@@ -34,11 +34,21 @@ const open = vi.fn(async (_opts: OpenArgs) => ({
   counts: { running: 1, done: 0, failed: 0, expired: 0 },
 }));
 const emit = vi.fn();
+const settle = vi.fn(async (_opts: { taskId: string; outcome: string; errorMessage: string }) => ({
+  counts: { running: 0, done: 0, failed: 1, expired: 0 },
+}));
+
+const releaseHold = vi.fn(async (_taskId: string) => undefined);
+const reserveForRun = vi.fn(async (_projectId: string, _userId: string, _taskId: string, _credits: number) => undefined);
+const loggerError = vi.fn();
 
 vi.mock("@breatic/domain", () => ({
-  nodeTaskService: { open },
+  nodeTaskService: { open, settle },
+  creditHoldService: { releaseHold },
   emitNodeTaskCounts: emit,
 }));
+
+vi.mock("@server/modules/credit/credit-precheck.service.js", () => ({ reserveForRun }));
 
 vi.mock("@server/modules/project/project.service.js", () => ({ assertAccess: vi.fn() }));
 
@@ -49,12 +59,12 @@ vi.mock("@breatic/core", async () => {
   return {
     AppError: actual.AppError,
     getStreamRedis: () => ({}),
-    logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn() },
+    logger: { error: loggerError, warn: vi.fn(), info: vi.fn() },
     getNodeTaskConfig: () => ({ default_budget_ms: 7_200_000 }),
   };
 });
 
-const { openGenerationTasks } = await import(
+const { openGenerationTasks, holdRowedRun } = await import(
   "@server/modules/task/generation-task.js"
 );
 
@@ -167,5 +177,52 @@ describe("opening a generation's task rows", () => {
     // happen, so opening more rows for it would only leave them to expire.
     expect(open).toHaveBeenCalledTimes(1);
     expect(emit).not.toHaveBeenCalled();
+  });
+
+  it("ends the rows it already opened when a later node's row cannot be opened (inner#1968 H-41)", async () => {
+    // A row left running would count a run that is not happening until the
+    // two-hour harvest ends it.
+    open.mockResolvedValueOnce({ id: "row-a", counts: { running: 1, done: 0, failed: 0, expired: 0 } });
+    open.mockRejectedValueOnce(new Error("no database"));
+
+    await expect(
+      openGenerationTasks({
+        projectId: PROJECT,
+        spaceId: SPACE,
+        nodeIds: [NODE_A, NODE_B],
+        startedByUserId: "user-1",
+        taskId: "job-1",
+        action: "generate",
+        label: "seedream-4",
+      }),
+    ).rejects.toMatchObject({ statusCode: 503 });
+
+    expect(settle).toHaveBeenCalledTimes(1);
+    expect(settle).toHaveBeenCalledWith({ taskId: "row-a", outcome: "failed", errorMessage: "internal" });
+  });
+});
+
+describe("holding a rowed run's credits before its row (inner#1968, design 3.10)", () => {
+  const run = (create: () => Promise<string>): Promise<string> =>
+    holdRowedRun({ taskId: "t1", projectId: PROJECT, userId: "u1", credits: async () => 2, create });
+
+  it("releases nothing when the admission itself is refused, and keeps the refusal", async () => {
+    const refusal = new Error("refused");
+    reserveForRun.mockRejectedValueOnce(refusal);
+    const create = vi.fn(async () => "row");
+
+    await expect(run(create)).rejects.toBe(refusal);
+    expect(create).not.toHaveBeenCalled();
+    expect(releaseHold).not.toHaveBeenCalled();
+  });
+
+  it("keeps the row's own failure when releasing the hold fails too, and logs the release", async () => {
+    const writeFailed = new Error("row write failed");
+    const releaseFailed = new Error("release failed");
+    releaseHold.mockRejectedValueOnce(releaseFailed);
+
+    await expect(run(async () => { throw writeFailed; })).rejects.toBe(writeFailed);
+    expect(releaseHold).toHaveBeenCalledWith("t1");
+    expect(loggerError).toHaveBeenCalledWith(expect.objectContaining({ err: releaseFailed, taskId: "t1" }), "credit_hold_release_failed");
   });
 });

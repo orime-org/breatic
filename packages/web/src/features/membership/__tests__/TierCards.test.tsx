@@ -48,6 +48,7 @@ function limits(over: Partial<MembershipLimits> = {}): MembershipLimits {
     project_members: 12,
     concurrent_editors: 6,
     storage_bytes: 200 * GIB,
+    running_tasks_per_user: 5,
     ...over,
   };
 }

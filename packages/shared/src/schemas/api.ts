@@ -1043,8 +1043,17 @@ export interface ChatSyncAnswer {
   running: boolean;
   /** A card waits for the user's answer. */
   awaiting: boolean;
-  /** Present when what waits could not open a run because the balance cannot pay for it. */
-  blocked?: "credits";
+  /**
+   * Present when what waits could not open a run: the balance cannot pay for
+   * it, or the user or the Studio has spent its monthly limit (inner#1968).
+   */
+  blocked?: "credits" | "spend_cap";
+  /** With `spend_cap`: whose limit, the user's own or the Studio's total. */
+  scope?: "member" | "studio";
+  /** With `spend_cap`: the limit reached, as a credit decimal. */
+  limit?: string;
+  /** With `spend_cap`: when the limit resets, as ISO text. */
+  resetsAt?: string;
   /** When to ask again, in milliseconds. */
   next_sync_ms: number;
 }

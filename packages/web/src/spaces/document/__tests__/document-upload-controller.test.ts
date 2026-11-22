@@ -20,7 +20,7 @@ import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import type { Node as PMNode } from '@tiptap/pm/model';
 import { TextSelection } from '@tiptap/pm/state';
 
-import { documentBodyFragment, encodeInitialSpaceContent } from '@breatic/shared';
+import { documentBodyFragment, encodeInitialSpaceContent, landDocumentUpload } from '@breatic/shared';
 
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { createDocumentUndo } from '@web/spaces/document/document-undo-blocknote';
@@ -68,9 +68,10 @@ interface World {
  * Opens an editor holding one paragraph, a synced peer doc, and a controller
  * attached to the body.
  * @param attach - Whether to attach the body right away.
+ * @param name - The body's document name, when the test needs one.
  * @returns The world.
  */
-function open(attach = true): World {
+function open(attach = true, name?: string): World {
   const doc = new Y.Doc();
   Y.applyUpdate(doc, encodeInitialSpaceContent('document'));
   const peer = new Y.Doc();
@@ -107,6 +108,7 @@ function open(attach = true): World {
   const body: AttachedBody = {
     spaceId: SPACE,
     doc,
+    ...(name !== undefined && { name }),
     writeAccess: () => access.value,
     onChange: (listener) => {
       access.listeners.add(listener);
@@ -464,19 +466,132 @@ describe('attaching a body', () => {
 });
 
 describe('failure and retry', () => {
-  it('a failure is kept with whether it can be retried, and a retry runs the same source again', async () => {
+  it('a failure is kept with whether it can be retried, and a retry runs the same source again under a new id', async () => {
     const world = open();
     pastePending(world, 'u1');
     world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
     world.uploads.get('u1')!.resolve({ ok: false, failure: { reason: 'failed', retryable: true } });
     await settle();
     expect(world.controller.entry('u1')).toMatchObject({ phase: 'failed', failure: { retryable: true } });
-    world.controller.retry('u1');
-    expect(world.controller.entry('u1')?.phase).toBe('uploading');
-    await finish(world, 'u1');
+    world.controller.retry('u1', 'u2');
+    expect(world.controller.entry('u1')).toBeUndefined();
+    expect(world.controller.entry('u2')?.phase).toBe('uploading');
+    expectEverywhere(world, [PENDING('u2')]);
+    await finish(world, 'u2');
     expectEverywhere(world, [WRITTEN()]);
   });
+
+  it('a failure collab wrote onto the block is dropped by a retry, which renames every copy (breatic#1574)', async () => {
+    const world = open();
+    pastePending(world, 'u1');
+    pastePending(world, 'u1', 'Copy');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
+    await settle();
+    // Collab's write arrives from the peer.
+    world.peer.transact(() => {
+      const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+        el.toArray().forEach((child) => {
+          if (!(child instanceof Y.XmlElement)) return;
+          if (child.nodeName === 'image') {
+            child.setAttribute('uploadState', 'failed');
+            child.setAttribute('uploadFailure', 'unreachable');
+            child.setAttribute('uploadRetryable', true as never);
+          }
+          walk(child);
+        });
+      };
+      walk(documentBodyFragment(world.peer));
+    });
+    world.controller.retry('u1', 'u2');
+    expectEverywhere(world, [PENDING('u2'), PENDING('u2', 'Copy')]);
+    for (const node of serverAttrs(world.doc)) expect(node).toEqual({});
+    expect(world.controller.entry('u2')?.phase).toBe('uploading');
+  });
+
 });
+
+describe('handing the upload to the server (breatic#1574)', () => {
+  it('lets the upload go once collab has landed its block: nothing is left to retry', async () => {
+    const world = open();
+    pastePending(world, 'u1');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
+    await settle();
+    expect(world.controller.entry('u1')).toEqual({ phase: 'handedOff' });
+
+    world.peer.transact(() => {
+      const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+        el.toArray().forEach((child) => {
+          if (!(child instanceof Y.XmlElement)) return;
+          if (child.nodeName === 'image') landDocumentUpload(child, { url: URL_Z });
+          walk(child);
+        });
+      };
+      walk(documentBodyFragment(world.peer));
+    });
+    await settle();
+
+    expect(world.controller.entry('u1')).toBeUndefined();
+  });
+
+  it('lets the upload go when collab lands its block before the hand-off answer arrives', async () => {
+    const world = open();
+    pastePending(world, 'u1');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    await settle();
+    world.peer.transact(() => {
+      const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+        el.toArray().forEach((child) => {
+          if (!(child instanceof Y.XmlElement)) return;
+          if (child.nodeName === 'image') landDocumentUpload(child, { url: URL_Z });
+          walk(child);
+        });
+      };
+      walk(documentBodyFragment(world.peer));
+    });
+    await settle();
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
+    await settle();
+
+    expect(world.controller.entry('u1')).toBeUndefined();
+  });
+
+  it('ends this page\'s part: nothing is written, the source is kept and the tab-close guard lets go', async () => {
+    const world = open();
+    pastePending(world, 'u1');
+    world.controller.start('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' });
+    await settle();
+    expect(world.register.mock.calls).toEqual([[SPACE, 'u1']]);
+    world.uploads.get('u1')!.resolve({ ok: true, handedOff: true });
+    await settle();
+    expect(world.controller.entry('u1')).toEqual({ phase: 'handedOff' });
+    expect(world.unregister.mock.calls).toEqual([[SPACE, 'u1']]);
+    expectEverywhere(world, [PENDING('u1')]);
+  });
+
+});
+
+/**
+ * What collab writes onto each image in a doc.
+ * @param doc - The doc.
+ * @returns Those attributes per image, in order.
+ */
+function serverAttrs(doc: Y.Doc): Record<string, unknown>[] {
+  const out: Record<string, unknown>[] = [];
+  const walk = (el: Y.XmlElement | Y.XmlFragment): void => {
+    el.toArray().forEach((child) => {
+      if (!(child instanceof Y.XmlElement)) return;
+      if (child.nodeName === 'image') {
+        const a = child.getAttributes() as Record<string, unknown>;
+        out.push(Object.fromEntries(['uploadState', 'uploadFailure', 'uploadRetryable'].filter((k) => a[k] !== undefined).map((k) => [k, a[k]])));
+      }
+      walk(child);
+    });
+  };
+  walk(documentBodyFragment(doc));
+  return out;
+}
 
 describe('the tab-close guard (A12)', () => {
   it('registers the Space once while an in-flight pending block sits in it, and lets go when it is gone or done', async () => {

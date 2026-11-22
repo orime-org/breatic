@@ -3,12 +3,11 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { ConflictError, createQueue, currentConsent, defaultJobOpts, logger } from "@breatic/core";
+import { ConflictError, createQueue, currentConsent, defaultJobOpts, logger, validate } from "@breatic/core";
 import { miniToolAnalysisService, type MiniToolAnalysisJob } from "@breatic/domain";
 import { MINI_TOOL_ANALYSIS_JOB, miniToolAnalysisRequestSchema } from "@breatic/shared/mini-tools";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { startRowedRun } from "@server/modules/task/generation-task.js";

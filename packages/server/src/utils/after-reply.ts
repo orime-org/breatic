@@ -2,58 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Work a shutdown must wait for before it closes the pools (#286): mostly work
- * a route starts after deciding its reply and does not wait for, and an Agent
- * chat run, whose opening stage the route does wait for (inner#1717).
- *
- * Forgot-password must answer the same thing at the same speed whether or not
- * the address is registered, so the lookup, the token and the send all run
- * here, after the reply; so do the refund mails and reports. Shutdown waits
- * for what is still running (`settleAfterReply`) before closing the pools this
- * work needs, and logs whatever the deadline cut off (`pendingAfterReply`).
+ * The product's after-reply work list (core's `createAfterReply`): routes
+ * start work here after deciding their reply, and shutdown waits for it.
  */
 
-import { logger } from "@breatic/core";
+import { createAfterReply, logger } from "@breatic/core";
 
-/** Log context of each piece of work still running. */
-const running = new Map<Promise<void>, Record<string, unknown>>();
-
-/**
- * Start work the caller does not wait for. A failure is logged with `ctx`;
- * it never becomes an unhandled rejection.
- * @param ctx - Log context naming the work (e.g. `{ task, email }`).
- * @param work - The work to run.
- */
-export function runAfterReply(
-  ctx: Record<string, unknown>,
-  work: () => Promise<void>,
-): void {
-  const done: Promise<void> = Promise.resolve()
-    .then(work)
-    .catch((err: unknown) => {
-      logger.error({ err, ...ctx }, "after_reply_failed");
-    })
-    .finally(() => {
-      running.delete(done);
-    });
-  running.set(done, ctx);
-}
-
-/**
- * Wait until no work started by {@link runAfterReply} is still running,
- * including work started while waiting.
- * @returns Resolves once nothing is running.
- */
-export async function settleAfterReply(): Promise<void> {
-  while (running.size > 0) {
-    await Promise.all(running.keys());
-  }
-}
-
-/**
- * List the work still running, by its log context.
- * @returns One context per running piece of work.
- */
-export function pendingAfterReply(): ReadonlyArray<Record<string, unknown>> {
-  return [...running.values()];
-}
+export const { runAfterReply, settleAfterReply, pendingAfterReply } = createAfterReply({
+  onFailed: (err, ctx) => logger.error({ err, ...ctx }, "after_reply_failed"),
+});

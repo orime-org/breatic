@@ -9,14 +9,11 @@
  * which replays the run's resumable stream (inner#1717).
  */
 
-import { accountActivityRepo } from "@breatic/core";
-import { reportCollaboratorFirstAction } from "@breatic/core";
+import { accountActivityRepo, reportCollaboratorFirstAction, holdsOnlyStorableText, validate, AppError, getRedis, logger, getAgentConfig, NotFoundError, SpendCapReachedError, ValidationError } from "@breatic/core";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import { randomUUID } from "node:crypto";
 import { runAfterReply } from "@server/utils/after-reply.js";
-import { holdsOnlyStorableText } from "@server/utils/storable-text.js";
-import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 
@@ -54,7 +51,6 @@ import { isShuttingDown } from "@server/agent/shutdown-flag.js";
 import { takenMessageOf, userMessageData } from "@server/agent/taken-message.js";
 import { chatQueue, type QueueItem } from "@server/modules/chat-queue/chat-queue.service.js";
 import { toUiMessages } from "@server/modules/conversation/message-part-mapping.js";
-import { AppError, getRedis, logger, getAgentConfig, NotFoundError, ValidationError } from "@breatic/core";
 import { attachmentSection, getActiveLocale, messageLength, referenceCount, t } from "@breatic/shared";
 import type { ChatAttachedChip, ChatPendingItem, ChatSpaceContext, SpaceRequestAnswer } from "@breatic/shared";
 import { assertLlmServable } from "@server/modules/task/model-servable.js";
@@ -392,9 +388,14 @@ chat.post(
         await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
       } catch (err) {
         if (!(err instanceof AppError) || err.statusCode !== 402) throw err;
-        return c.json({
-          data: { pending: pendingOf(await queue.pending(conversation.id)), running: false, awaiting: false, blocked: "credits", next_sync_ms },
-        });
+        const pending = pendingOf(await queue.pending(conversation.id));
+        // A spend limit is lifted by the Studio's admin, not by adding credits (inner#1968).
+        if (err instanceof SpendCapReachedError) {
+          return c.json({
+            data: { pending, running: false, awaiting: false, blocked: "spend_cap", scope: err.scope, limit: err.limit, resetsAt: err.resetsAt, next_sync_ms },
+          });
+        }
+        return c.json({ data: { pending, running: false, awaiting: false, blocked: "credits", next_sync_ms } });
       }
       const claimed = await queue.claim(conversation.id);
       if (claimed.status === "start") {

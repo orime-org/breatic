@@ -24,6 +24,7 @@ export * as creditSourceRepo from "@domain/credit/creditSource.repo.js";
 export * as creditLotService from "@domain/credit/creditLot.service.js";
 export * as creditLotRepo from "@domain/credit/creditLot.repo.js";
 export * as creditHoldService from "@domain/credit/creditHold.service.js";
+export * as spendLimitRepo from "@domain/credit/spendLimit.repo.js";
 export { sumCreditsByOperationKeys } from "@domain/credit/agentUsage.repo.js";
 export * as webAnimationSourceRepo from "@domain/timeline/web-animation-source.repo.js";
 export { timelineOperationKey } from "@domain/timeline/operation-key.js";
@@ -103,6 +104,7 @@ export {
   type MiniToolAnalysisJob,
   type AcceptedMiniToolAnalysis,
 } from "@domain/mini-tool/analysis.service.js";
+export * as runningSlotService from "@domain/task/running-slot.service.js";
 export * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 export * as upstreamCloneRepo from "@domain/task/upstreamClone.repo.js";
 
@@ -258,7 +260,7 @@ export { typeFromAddress } from "@domain/understand/fetch-media.js";
 export type { VoiceSampleConfig } from "@domain/model-catalog/voice-sample-config.js";
 export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-catalog.js";
 
-// ── Node tasks (one row per task on a node; the four counts the node shows) ──
+// ── Node tasks (one row per task on a node; the counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
 export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 export type { SceneTaskRow } from "@domain/node-task/node-task.repo.js";
@@ -294,6 +296,7 @@ export {
 //    upload, our worker finishes its own — one function, one place) ──
 export * as ingestReportService from "@domain/asset/ingest-report.service.js";
 export { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
+export { announceDocumentUploadAsset, announceDocumentUploadProcessing, documentTargetOf } from "@domain/asset/document-upload-events.js";
 export type {
   IngestReport,
   IngestReportOutcome,
@@ -362,6 +365,7 @@ export * as miniToolExecutionService from "@domain/mini-tool/execution.service.j
 export * as miniToolDeliveryService from "@domain/mini-tool/delivery.service.js";
 export type { MiniToolDeliveryOutput, MiniToolDeliveryState, MiniToolDeliveryContext, MiniToolDeliveryAck, MiniToolDeliveryAcknowledgement, MiniToolDeliveryDeferral, MiniToolDeliveryCursor, PendingMiniToolDelivery, PendingMiniToolDeliveryPage } from "@domain/mini-tool/delivery.service.js";
 export type { MiniToolExecutionJob, MiniToolExecution, MiniToolExecutionCompletion } from "@domain/mini-tool/execution.service.js";
+export { escapeHtml, renderMail, type MailMessage, type MailSpec, type RenderedMail } from "@domain/mail/mail-shell.js";
 
 export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
 

@@ -24,6 +24,8 @@ export interface CanvasPasteSink {
   start: (uploadId: string, source: UploadSource) => void;
   /** Tells the user how many nodes could not be pasted. */
   notPasted: (count: number) => void;
+  /** The body's document name, written on every pending block (breatic#1574). */
+  home?: string;
 }
 
 /**
@@ -56,7 +58,7 @@ export function canvasPasteHandler(sink: CanvasPasteSink, next: PasteHandler): P
             pendingBlock(item.type, uploadId, item.name, item.caption, {
               ...(item.mediaWidth !== undefined && { mediaWidth: item.mediaWidth }),
               ...(item.mediaHeight !== undefined && { mediaHeight: item.mediaHeight }),
-            }),
+            }, sink.home),
           ];
         });
         putBlocks(editor, blocks);

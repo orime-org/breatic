@@ -5,7 +5,7 @@
  * Membership quota configuration loader.
  *
  * Reads `config/membership.yaml`: which tier a new account lands in, and the
- * six ceilings each of the four configured tiers carries.
+ * seven ceilings each of the four configured tiers carries.
  *
  * Enterprise ceilings are negotiated per account and stored alongside their
  * validity in enterprise_memberships. Membership lookups resolve that record
@@ -13,11 +13,10 @@
  * ConfiguredMembershipTier values whose limits belong in the YAML file.
  *
  * Lives in core rather than beside the other business limits in server,
- * because two services need it: server enforces five of the ceilings (storage
- * among them since #89) and collab enforces the concurrency one. Worker
- * enforces none — a generation that has already started is never re-checked,
- * so every ceiling is read before the work is queued. Collab may not import
- * server.
+ * because all three services read it: server enforces the ceilings checked
+ * when work is asked for (storage among them since #89), collab enforces the
+ * concurrency one, and worker enforces the running-task limit when it picks a
+ * task up (inner#1968). Collab may not import server.
  *
  * Unlike the sibling loaders in this directory, **no field has a default**. A
  * quota that silently falls back to a number we invented would leave the
@@ -44,6 +43,7 @@ import {
   type ConfiguredMembershipTier,
   type MembershipLimits,
 } from "@breatic/shared";
+import type { SituationClock } from "@core/auth/subscription-state.js";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 
 // The shape of one tier's ceilings moved to `@breatic/shared` when the
@@ -94,7 +94,7 @@ export const membershipConfigSchema = z.object({
    * sizing a document's editor seats among them) has this file, while the
    * price file is mounted into server alone (inner#1636).
    */
-  stale_after_days: z.number().int().positive().default(14),
+  stale_after_days: z.number().int().positive(),
 });
 
 /** Validated membership configuration. */
@@ -123,7 +123,7 @@ export function getMembershipConfig(): Readonly<MembershipConfig> {
 }
 
 /**
- * The six ceilings for one tier.
+ * The seven ceilings for one tier.
  * @param tier - The membership tier to look up
  * @returns That tier's limits
  * @throws {z.ZodError} if the config file is malformed (first call only)
@@ -154,4 +154,23 @@ export function getDefaultMembershipTier(): ConfiguredMembershipTier {
  */
 export function getSubscriptionStaleAfterDays(): number {
   return getMembershipConfig().stale_after_days;
+}
+
+const MS_PER_DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * The clock every reading of an account's subscriptions is taken against.
+ *
+ * The renewal window comes from `config/membership.yaml`, read when a
+ * reading first asks for it, which only a row with a period end does.
+ * @param now - The moment to read at.
+ * @returns That moment with the configured renewal window.
+ */
+export function subscriptionClock(now: Date = new Date()): SituationClock {
+  return {
+    now,
+    get staleAfterMs(): number {
+      return getSubscriptionStaleAfterDays() * MS_PER_DAY;
+    },
+  };
 }

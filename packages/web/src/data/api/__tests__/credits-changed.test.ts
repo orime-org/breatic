@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Every request that holds or spends a project's credits says so when it
- * returns, whether it was admitted or refused (inner#1611), so the figure on
+ * Every request that holds, spends or releases a project's credits says so
+ * when it returns, whether it was admitted or refused (inner#1611), so the figure on
  * the project's top bar can be read again.
  */
 
@@ -19,6 +19,7 @@ vi.mock('@web/data/api/request', () => ({
 import { apiPost } from '@web/data/api/request';
 import { canvasApi } from '@web/data/api/canvas';
 import { miniToolsApi } from '@web/data/api/mini-tools';
+import { submitSceneGeneration } from '@web/data/api/scene';
 import { onCreditsChanged } from '@web/data/api/credits';
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
@@ -47,6 +48,10 @@ const RUNS: { name: string; run: () => Promise<unknown> }[] = [
       ),
   },
   { name: 'a mini-tool run', run: () => miniToolsApi.run({ project_id: PROJECT } as never, 'k3') },
+  // Cancelling a queued task releases its hold (inner#1968).
+  { name: 'a cancelled wait', run: () => canvasApi.cancelTask('t-1', PROJECT) },
+  // A 3D generation holds its estimate as it is submitted (inner#1968).
+  { name: 'a 3D generation', run: () => submitSceneGeneration(PROJECT, 's', {} as never, 'k4') },
 ];
 
 describe.each(RUNS)('$name', ({ run }) => {

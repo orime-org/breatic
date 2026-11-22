@@ -25,6 +25,7 @@ import { canvasSessions } from '@web/stores/canvas-session';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { submitGeneration } from '@web/spaces/canvas/generate/submit-generation';
+import { spendCapMessage } from '@web/lib/spend-cap-message';
 
 /**
  * Let pending promise callbacks run.
@@ -139,6 +140,19 @@ describe('submitGeneration', () => {
     await flush();
 
     expect(useUploadMarksStore.getState().markOf('s', 'n')).toMatchObject({ state: 'failed', action: 'upload' });
+  });
+
+  // inner#1968 D-22: a press refused at a spend limit says the limit's own sentence.
+  it('says the spend limit in the toast when the server refuses the press at it', async () => {
+    vi.mocked(toast.error).mockClear();
+    const resetsAt = '2026-12-01T00:00:00.000Z';
+    vi.mocked(canvasApi.createTask).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details: { scope: 'member', limit: '10', resetsAt } }),
+    );
+    press();
+    await flush();
+
+    expect(vi.mocked(toast.error).mock.calls.map(([message]) => message)).toEqual([spendCapMessage('member', '10', resetsAt)]);
   });
 
   it('shows the sentence the server refused the run with, in the user\'s language (#1521)', async () => {

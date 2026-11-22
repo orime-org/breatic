@@ -1,0 +1,5 @@
+# The credits file the integration suites run against. `payment-configs.ts`
+# copies this to `config/credits.yaml` when that file is absent, and removes
+# it again afterwards.
+trial_grant:
+  credits: 100

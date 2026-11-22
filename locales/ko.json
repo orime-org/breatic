@@ -27,7 +27,8 @@
       "refund_still_designated": "이 구매는 Studio에 배정되어 있습니다. 먼저 배정을 해제하세요.",
       "refund_already_spent": "이 구매의 크레딧을 사용했으므로 환불할 수 없습니다.",
       "refund_window_closed": "이 구매의 환불 기간이 종료되었습니다.",
-      "refund_state_changed": "이 구매의 환불 상태가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요."
+      "refund_state_changed": "이 구매의 환불 상태가 바뀌었습니다. 새로 고친 뒤 다시 시도하세요.",
+      "refund_offline_contract": "기업 크레딧 환불은 계약 담당자에게 문의하세요."
     },
     "auth": {
       "invalid_credentials": "이메일 또는 비밀번호가 올바르지 않습니다",
@@ -232,7 +233,8 @@
       "storage_full": {
         "subject": "저장 공간이 가득 찼습니다",
         "lead": "저장 공간이 가득 차서 <b>{studio}</b>에서 업로드와 생성이 거부되었습니다. 저장 공간은 이 Studio뿐 아니라 회원님이 관리하는 모든 Studio를 합산해 계산됩니다.",
-        "footer": "멤버십을 업그레이드하면 더 많은 공간을 사용할 수 있습니다."
+        "footer": "멤버십을 업그레이드하면 더 많은 공간을 사용할 수 있습니다.",
+        "footer_enterprise": "저장 공간은 계약으로 정해져 있습니다. 변경하려면 문의해 주세요."
       },
       "password_reset": {
         "subject": "비밀번호 재설정",
@@ -366,6 +368,10 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {이 Document의 스냅샷이 최대 #개로 가득 찼습니다. 오래된 스냅샷을 삭제한 뒤 저장하세요.}}"
+    },
+    "spend_cap": {
+      "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. 더 필요하면 Studio Admin에게 문의하세요.",
+      "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요."
     }
   },
   "chat": {
@@ -1130,13 +1136,15 @@
     },
     "task": {
       "stillRunning": "이 작업은 아직 실행 중입니다.",
+      "alreadyStarted": "이 작업은 이미 시작되어 취소할 수 없습니다.",
       "expired": "이 작업은 시간이 초과되었습니다.",
       "couldNotStart": "이 작업을 시작하지 못했습니다. 다시 시도해 주세요.",
       "status": {
         "running": "실행 중",
         "done": "완료",
         "failed": "실패",
-        "expired": "시간 초과"
+        "expired": "시간 초과",
+        "waiting": "대기 중"
       },
       "countTip": "{status} · {count}",
       "action": {
@@ -1174,6 +1182,7 @@
         "tool_failed": "도구가 이 파일을 처리하지 못했습니다.",
         "no_audio_track": "{kind, select, audio {이 오디오에서 소리를 읽을 수 없습니다.} other {이 동영상에는 오디오 트랙이 없습니다.}}",
         "cut_short": "너무 길어서 끝까지 받아쓰지 못했습니다.",
+        "cancelled": "취소되었습니다.",
         "input_refused": "{model}은(는) 현재 설정으로 실행할 수 없습니다. 설정을 바꾸거나 다른 모델을 선택하세요.",
         "model_not_configured": "이 배포에는 {model}이(가) 아직 설정되지 않았습니다. {envVars}을(를) 설정해야 합니다."
       },
@@ -1182,7 +1191,15 @@
         "generate": "생성",
         "understand": "내용 읽기",
         "transcribe": "받아쓰기"
-      }
+      },
+      "waitReason": "동시에 실행할 수 있는 작업 수에 도달했습니다. 앞의 작업이 끝나면 자동으로 시작됩니다.",
+      "you": "나",
+      "cancelFailed": "이 작업을 취소하지 못했습니다.",
+      "waitReasonLimit": "동시에 실행할 수 있는 작업 한도({limit}개)에 도달했습니다. 앞의 작업이 끝나면 자동으로 시작됩니다.",
+      "waitReasonOther": "시작한 사람의 동시 실행 작업 수가 한도에 도달했습니다. 그 사람의 앞 작업이 끝나면 자동으로 시작됩니다.",
+      "waitReasonOtherLimit": "시작한 사람의 동시 실행 작업 한도({limit}개)에 도달했습니다. 그 사람의 앞 작업이 끝나면 자동으로 시작됩니다.",
+      "waitReasonEach": "{count, plural, =1 {이 대기 중인 작업은 시작한 사람의 동시 실행 작업 수가 한도보다 적어지면 자동으로 시작됩니다.} other {대기 중인 각 작업은 시작한 사람의 동시 실행 작업 수가 한도보다 적어지면 자동으로 시작됩니다.}}",
+      "waitReasonEachLimit": "{count, plural, =1 {이 대기 중인 작업은 시작한 사람의 동시 실행 작업 수가 한도({limit}개)보다 적어지면 자동으로 시작됩니다.} other {대기 중인 각 작업은 시작한 사람의 동시 실행 작업 수가 한도({limit}개)보다 적어지면 자동으로 시작됩니다.}}"
     },
     "panel": {
       "hostDeletedByPeer": "공동 작업자가 노드를 삭제했습니다."
@@ -1576,6 +1593,7 @@
       "title": "템플릿",
       "empty": "템플릿 없음",
       "unavailable": "사용할 수 없음",
+      "styleLoadFailed": "스타일을 불러오지 못했습니다. 페이지를 새로고침한 뒤 다시 시도하세요.",
       "goal": {
         "character": "캐릭터 설정과 일관성",
         "comics-storyboards": "만화와 스토리보드",
@@ -1586,6 +1604,7 @@
         "social-hooks": "SNS 후킹",
         "talking": "토크와 대화",
         "posters": "포스터·그래픽",
+        "film-styles": "명작 화풍",
         "speed": "모션과 스피드",
         "sound": "음악·효과음·보이스"
       },
@@ -2341,6 +2360,68 @@
             "note": "사진을 먼저 넣은 뒤 생성하세요"
           }
         }
+      },
+      "film-style-still": {
+        "name": "명작 화풍 한 장",
+        "description": "내 주체를 고전 화풍의 한 장면으로 다시 그린다",
+        "prompt": "[📎 주체]를 아래 화풍의 가로형 한 장면으로 다시 그린다. 얼굴, 형태, 옷차림은 한눈에 알아볼 수 있게 두고, 주변 장소는 여기 적은 장면이며, 이를 이 화풍으로 그린다: {✏️ 장면, 예: 해 질 녘 바람 부는 항구에 서 있다}. 워터마크는 넣지 않고, 글자는 아래 화풍이 요구할 때만 넣는다.",
+        "input": {
+          "subject": {
+            "name": "주체",
+            "note": "내 주체 그림을 먼저 넣은 뒤 생성하세요"
+          }
+        }
+      },
+      "film-style-shot": {
+        "name": "화풍 숏",
+        "description": "화풍 한 장을 먼저 만들고 그 화풍 고유의 카메라로 움직인다",
+        "prompt": "(💡 화풍 한 장을 먼저 생성한 뒤 첫 프레임으로 설정하세요)5초, 소리가 있는 숏. 첫 프레임에서 시작해 모든 프레임에서 아래 화풍의 모습을 지킨다: 매체, 색, 질감이 다른 매체로 바뀌지 않는다. 움직이는 것: {✏️ 움직이는 것, 예: 코트가 바람에 날리고 갈매기가 머리 위를 맴돈다}. 아래 화풍이 요구하는 글자 말고는 화면에 글자를 넣지 않는다.",
+        "node": {
+          "still": {
+            "name": "화풍 한 장",
+            "prompt": "[📎 주체]를 아래 화풍의 가로형 한 장면으로 다시 그린다. 얼굴, 형태, 옷차림은 한눈에 알아볼 수 있게 두고, 주변 장소는 여기 적은 장면이며, 이를 이 화풍으로 그린다: {✏️ 장면, 예: 해 질 녘 바람 부는 항구에 서 있다}. 워터마크는 넣지 않고, 글자는 아래 화풍이 요구할 때만 넣는다."
+          }
+        },
+        "input": {
+          "subject": {
+            "name": "주체",
+            "note": "내 주체 그림을 먼저 넣은 뒤 화풍 한 장을 생성하세요"
+          }
+        }
+      },
+      "era-walkthrough-montage": {
+        "name": "시대를 걷다",
+        "description": "한 캐릭터가 영화의 네 시대를 차례로 걸어간다",
+        "prompt": "(💡 무성영화 시대를 먼저 생성하세요)(💡 와이드스크린 컬러를 먼저 생성하세요)(💡 90년대 필름을 먼저 생성하세요)(💡 오늘날을 먼저 생성하세요)12초, 가로, 소리가 있는 영상. [📎 캐릭터]가 영화의 네 시대를 차례로 걸어가며 각각 약 3초: [📎 무성영화 시대], 그다음 [📎 와이드스크린 컬러], 그다음 [📎 90년대 필름], 그다음 [📎 오늘날]. 각 시대의 질감은 그 그림 그대로. 한 번에 이어지는 걸음: 캐릭터가 문, 커튼, 빛 번짐을 지날 때마다 다음 시대로 넘어가며 하드 컷은 쓰지 않는다. 소리: 시대마다의 음악을 차례로, {✏️ 음악, 예: 피아노 래그, 풍성한 오케스트라, 기타 리프, 현대적인 신스 펄스}. 화면에 글자는 넣지 않는다.",
+        "node": {
+          "silent": {
+            "name": "무성영화 시대",
+            "prompt": "[📎 캐릭터]가 1920년대 무성영화의 한 장면 속에 있는 가로형 한 장: 얼굴과 머리 모양은 그림 그대로, 옷차림은 그 시대의 것. 흑백, 고운 입자, 약한 깜박임, 둥근 어두운 비네트. {✏️ 장소, 예: 전차가 지나는 도시의 거리}. 글자는 넣지 않는다."
+          },
+          "widescreen": {
+            "name": "와이드스크린 컬러",
+            "prompt": "[📎 캐릭터]가 1950년대 와이드스크린 컬러 대작의 한 장면 속에 있는 가로형 한 장: 얼굴과 머리 모양은 그림 그대로, 옷차림은 그 시대의 것. 선명한 빨강과 청록, 장소에 하늘이 보이면 그려진 하늘 배경, 윤기 나는 촬영소 조명. {✏️ 장소, 예: 그랜드 호텔의 계단}. 글자는 넣지 않는다."
+          },
+          "nineties": {
+            "name": "90년대 필름",
+            "prompt": "[📎 캐릭터]가 35mm 필름으로 찍은 1990년대 영화의 한 장면 속에 있는 가로형 한 장: 얼굴과 머리 모양은 그림 그대로, 옷차림은 그 시대의 것. 따뜻한 입자, 자연광, 살짝 차분한 색. {✏️ 장소, 예: 밤에 네온이 켜진 다이너}. 글자는 넣지 않는다."
+          },
+          "today": {
+            "name": "오늘날",
+            "prompt": "[📎 캐릭터]가 오늘날 디지털 시네마의 한 장면 속에 있는 가로형 한 장: 얼굴과 머리 모양은 그림 그대로, 옷차림은 지금의 것. 선명한 디테일, 얕은 심도, 차갑고 현대적인 색보정. {✏️ 장소, 예: 유리 빌딩의 로비}. 글자는 넣지 않는다."
+          }
+        },
+        "input": {
+          "character": {
+            "name": "캐릭터",
+            "note": "캐릭터 그림을 먼저 넣은 뒤 네 시대를 생성하세요"
+          }
+        }
+      },
+      "style-sound-bed": {
+        "name": "시대 사운드 베드",
+        "description": "고전 화풍의 시대와 매체에 맞는 가사 없는 음악",
+        "prompt": "30초 분량의 사운드 베드, 가사 없음, 분위기: {✏️ 분위기, 예: 밝고 장난스러운}."
       },
       "vehicle-speed-cutlist": {
         "name": "차량 스피드 컷 리스트",
@@ -3102,6 +3183,9 @@
       },
       "columns": {
         "unavailable": "여기에는 열을 만들 수 없습니다"
+      },
+      "slashMenu": {
+        "empty": "일치하는 항목이 없습니다"
       }
     },
     "readOnlyReconnect": "다시 연결",
@@ -3629,7 +3713,42 @@
         "colProject": "Project",
         "colModel": "모델",
         "colAmount": "크레딧",
-        "loadError": "크레딧 정보를 불러오지 못했습니다. 페이지를 새로고침하세요."
+        "loadError": "크레딧 정보를 불러오지 못했습니다. 페이지를 새로고침하세요.",
+        "spendCap": {
+          "title": "사용 한도",
+          "studioMonthly": "Studio 월간 총액 한도",
+          "studioMonthlyHint": "모든 사람 합계이며, 개인 한도와 별개입니다",
+          "memberDefault": "1인당 월간 한도 기본값",
+          "memberDefaultHint": "개별 설정이 없는 사람에게 적용됩니다",
+          "notSet": "설정 안 함",
+          "perMonth": "매월",
+          "studioSpent": "이번 달 Studio 사용액",
+          "resetsAt": "초기화",
+          "saved": "사용 한도를 저장했습니다.",
+          "saveFailed": "사용 한도를 저장하지 못했습니다. 다시 시도하세요.",
+          "invalidAmount": "0~{max} 크레딧 사이로, 소수점 둘째 자리까지 입력하세요.",
+          "loadError": "사용 한도를 불러오지 못했습니다.",
+          "retry": "다시 시도",
+          "save": "저장",
+          "colMember": "멤버",
+          "colRelation": "관계",
+          "colSpent": "이번 달 사용액",
+          "colEffective": "적용 한도",
+          "relationStudioMember": "Studio 멤버",
+          "relationProjectCollaborator": "Project 협업자",
+          "relationFormer": "떠남(읽기 전용)",
+          "unlimited": "무제한",
+          "zero": "0(크레딧 사용 불가)",
+          "amount": "{amount} 크레딧",
+          "spentOfLimit": "{spent} / {limit} 크레딧",
+          "sourceOverride": "개별",
+          "sourceDefault": "기본",
+          "atCap": "한도 도달",
+          "override": "개별 설정…",
+          "useDefault": "기본값 사용 ({fallback})",
+          "overrideTitle": "개별 한도 · {name}",
+          "overrideHint": "이 사람에게만 적용되며 기본값보다 우선합니다(현재 기본값: {fallback})."
+        }
       },
       "members": {
         "invite": "멤버 초대",
@@ -3985,7 +4104,8 @@
       "projectsPerStudio": "Studio당 Project 한도",
       "studioMembers": "Studio당 멤버 한도",
       "projectMembers": "Project당 멤버 한도",
-      "concurrentEditors": "Document당 동시 편집 수"
+      "concurrentEditors": "Document당 동시 편집 수",
+      "runningTasksPerUser": "동시에 실행되는 작업 수"
     },
     "quotaValue": "{used} / {limit}",
     "countItems": "{count}개",
@@ -3994,9 +4114,10 @@
     "overLimitTag": "초과",
     "overLimit": {
       "storage": "저장 공간이 한도를 초과했습니다. 기존 콘텐츠는 그대로 사용할 수 있지만 새로 업로드하거나 생성할 수 없습니다. 공간을 늘리려면 업그레이드하세요.",
+      "storageEnterprise": "저장 공간이 계약 한도를 넘었습니다. 기존 내용은 그대로 쓸 수 있지만 새로 업로드하거나 생성할 수는 없습니다. 변경하려면 문의해 주세요.",
       "teamStudios": "팀 Studio 수가 한도를 넘었습니다. 이미 만든 것은 그대로 쓸 수 있지만 새로 만들 수는 없습니다. 더 필요하면 업그레이드하세요."
     },
-    "enterpriseQuota": "사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",
+    "enterpriseQuota": "그 밖의 사용 한도는 별도 계약으로 정해져 있어 여기에 표시되지 않습니다.",
     "compare": "등급 비교",
     "contactEnterprise": "더 큰 규모나 별도의 상업 조건이 필요하신가요? 메일로 문의해 주세요:",
     "contactSelfHosted": "상업용 라이선스나 별도의 지원 조건이 필요하신가요? 메일로 문의해 주세요:",
@@ -4056,7 +4177,8 @@
       "added": "등록되었습니다. 멤버십을 선택하면 첫 기간이 {percent}% 할인됩니다.",
       "loadFailed": "추천 정보를 불러오지 못했습니다.",
       "retry": "다시 시도"
-    }
+    },
+    "quotaUnlimited": "{used} / 무제한"
   },
   "promoter": {
     "heading": "프로모터 프로그램",
@@ -4126,10 +4248,12 @@
     },
     "source": {
       "payment": "충전",
-      "gift": "체험 크레딧",
+      "gift": "선물 크레딧",
       "operatorGift": "선물 크레딧",
-      "compensation": "보상",
-      "discount": "할인"
+      "compensation": "선물 크레딧",
+      "discount": "할인",
+      "trial": "체험 크레딧",
+      "enterprise": "기업 크레딧"
     },
     "pinnedToPersonalStudio": "개인 Studio에서만 사용",
     "lifecycle": {
@@ -4139,7 +4263,7 @@
       "refunded": "환불 완료"
     },
     "billingOff": {
-      "title": "이 배포에서는 크레딧을 차감하지 않습니다",
+      "title": "셀프 호스팅에서는 크레딧을 차감하지 않습니다",
       "body": "생성해도 차감되지 않고 구매할 필요도 없습니다. 사용량은 그대로 기록됩니다."
     },
     "total": "계정 총액",
@@ -4164,7 +4288,7 @@
     "allStudios": "전체 Studio",
     "filterByStudio": "Studio로 좁히기",
     "ledgerEmpty": "사용 기록이 아직 없습니다.",
-    "ledgerBillingOff": "이 배포에서는 크레딧을 차감하지 않습니다. 아래는 사용량 기록입니다.",
+    "ledgerBillingOff": "셀프 호스팅에서는 크레딧을 차감하지 않습니다. 아래는 사용량 기록입니다.",
     "colDay": "날짜",
     "colWho": "사용자",
     "colStudio": "Studio",
@@ -4193,6 +4317,7 @@
     "refundsEmpty": "아직 크레딧 패키지를 구매하지 않았습니다",
     "askRefund": "환불 신청",
     "refundTitle": "환불 규정",
+    "onlinePurchaseRefundTitle": "온라인 구매 크레딧 환불 규정",
     "buy": {
       "taxNotice": "표시 가격은 세금이 포함되지 않습니다. 결제 금액은 표시 가격에 거주 지역의 세액을 더한 금액이며, 결제 페이지에 최종 금액이 표시됩니다.",
       "assignNotice": "크레딧은 Studio에 지정해야 사용할 수 있습니다.",
@@ -4234,10 +4359,25 @@
     "refundReason": {
       "spent": "이미 사용함",
       "expired": "30일 경과",
-      "restored": "크레딧 복원됨"
+      "restored": "크레딧 복원됨",
+      "offlineContract": "기업 크레딧 환불은 계약 담당자에게 문의하세요."
     },
     "refundHint": {
       "assigned": "지정을 해제하면 환불을 신청할 수 있습니다"
+    },
+    "sourceDetail": {
+      "registration": "가입 선물",
+      "operator": "운영자 선물",
+      "compensation": "보상",
+      "enterprise": "기업 구매"
+    },
+    "contractReference": "계약 {contract}",
+    "refusal": {
+      "spendCap": "이번 달 사용 한도에 도달했습니다. Studio Admin에게 문의하세요."
+    },
+    "spendCap": {
+      "member": "이 Studio에서 이번 달 사용 한도({limit} 크레딧)에 도달했습니다. {date}에 초기화됩니다. 더 필요하면 Studio Admin에게 문의하세요.",
+      "studio": "이 Studio의 이번 달 사용 한도에 도달했습니다. {date}에 초기화됩니다. Studio Admin에게 문의하세요."
     }
   },
   "notFound": {

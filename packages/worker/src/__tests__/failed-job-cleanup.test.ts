@@ -27,6 +27,11 @@ const mockMarkBilledAndCharge = vi.hoisted(() => vi.fn(async (..._args: unknown[
 const mockUpdateGenerationCredits = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 const mockPendingChargeRequestId = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => "req-1"));
 const mockSettleCharge = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => ({ billed: true })));
+// Ending the task under its person's lock; it fails by default, so a case
+// reaches the row-by-row settling that stands in when it does.
+const mockFailTask = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<{ failed: boolean; publishFailures: unknown[] }> => {
+  throw new Error("running-slot lock unavailable");
+}));
 
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...await importOriginal<typeof coreModule>(),
@@ -63,6 +68,7 @@ vi.mock("@breatic/domain", async () => ({
     settleById: mockSettleSceneRowById,
   },
   creditHoldService: { releaseHold: mockReleaseHold },
+  runningSlotService: { failTask: mockFailTask },
   creditLotService: { pendingChargeRequestId: mockPendingChargeRequestId, settleCharge: mockSettleCharge },
   creditsForUsd: (usd: number) => usd * 100,
   toChargeCredits: (await import("@domain/credit/credit-math.js")).toChargeCredits,
@@ -476,6 +482,7 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
   }
 
   beforeEach(() => {
+    mockFailTask.mockClear();
     mockSettleTaskForNode.mockReset();
     mockSettleSceneRowById.mockReset();
     mockPublishSpaceTasksChanged.mockClear();
@@ -557,6 +564,24 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
     expect(mockPublishSpaceTasksChanged).toHaveBeenCalledWith("p1", "s1");
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).not.toHaveBeenCalled();
     expect(mockSettleTaskForNode).not.toHaveBeenCalled();
+  });
+  it("leaves the rows to the running-slot ending when it ends the task, settling none of them a second time (inner#1968)", async () => {
+    vi.mocked(taskService.getByIdInternal).mockResolvedValue({
+      id: "t1",
+      userId: "u1",
+      taskType: "three_d",
+      billedAt: null,
+      params: {},
+      result: null,
+    } as never);
+    mockFailTask.mockResolvedValueOnce({ failed: true, publishFailures: [] });
+
+    await cleanupFailedJobNodes(streamRedis, sceneJob(), "job stalled more than allowable limit");
+
+    expect(mockFailTask).toHaveBeenCalledExactlyOnceWith("t1", "Task failed: job stalled more than allowable limit");
+    expect(mockSettleSceneRowById).not.toHaveBeenCalled();
+    expect(mockSettleTaskForNode).not.toHaveBeenCalled();
+    expect(vi.mocked(projectActivitiesRepo.insertGenerationFailedIfAbsent)).toHaveBeenCalled();
   });
 });
 

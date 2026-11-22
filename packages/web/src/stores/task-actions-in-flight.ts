@@ -33,7 +33,7 @@ import { useCurrentUserStore } from '@web/stores/current-user';
  * The two requests a task row sends. Finish and Clear are the same dismiss
  * request (§7.4); View sends nothing.
  */
-export type TaskActionRequest = 'retry' | 'dismiss';
+export type TaskActionRequest = 'retry' | 'dismiss' | 'cancel';
 
 /** The requests waiting, and the two ways a press enters and leaves. */
 interface TaskActionsInFlightState {

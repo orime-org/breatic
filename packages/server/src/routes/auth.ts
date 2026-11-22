@@ -10,8 +10,7 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { frontendOrigin } from "@server/utils/frontend-origin.js";
-import { validate } from "@server/middleware/validate.js";
+import { frontendOrigin, validate, env, NotFoundError, UnauthorizedError, trackServerEvent, logger } from "@breatic/core";
 import { OAuth2Client } from "google-auth-library";
 import type { TokenPayload } from "google-auth-library";
 
@@ -21,8 +20,6 @@ import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService, invitationService, signupCodeService, studioService } from "@server/modules";
 import { randomUUID } from "node:crypto";
-import { env, NotFoundError, UnauthorizedError, trackServerEvent } from "@breatic/core";
-import { logger } from "@breatic/core";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";

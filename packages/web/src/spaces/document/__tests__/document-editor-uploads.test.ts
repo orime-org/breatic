@@ -21,7 +21,7 @@ import { tableBlock } from './table-fixtures';
 const upload = vi.hoisted(() => ({ media: vi.fn() }));
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/upload/media-upload')>()),
-  uploadMedia: upload.media,
+  handOffDocumentMedia: upload.media,
 }));
 vi.mock('@web/data/api/assets', () => ({
   assetsApi: {
@@ -132,7 +132,7 @@ describe('a file pasted into a body built for a Space', () => {
       expect(upload.media).toHaveBeenCalledTimes(1);
     });
     expect(upload.media.mock.calls[0]![0]).toBe(file);
-    expect(upload.media.mock.calls[0]![1]).toEqual({ projectId: 'p1', spaceId: 's1' });
+    expect(upload.media.mock.calls[0]![1]).toEqual({ projectId: 'p1', spaceId: 's1', uploadId: expect.any(String) });
   });
 
   it('on an empty line lands above it, and the caret stays in the line', () => {

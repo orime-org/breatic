@@ -6,10 +6,11 @@
  * (inner#1351 + inner#1390 design §5.2, §5.3, §5.4). This is the upload
  * controller's `run`.
  *
- * - A file is uploaded with no node behind it.
- * - An `https:` address is fetched into storage by the ingest Worker. The
- *   requests go one at a time, and one turned away for the rate waits as
- *   long as the server says and is sent again.
+ * - A file is uploaded, and an `https:` address is fetched into storage by
+ *   the ingest Worker, for the block's `uploadId`: once the server has either,
+ *   the server announces the ending and collab writes the block (breatic#1574).
+ *   Address requests go one at a time, and one turned away for the rate waits
+ *   as long as the server says and is sent again.
  * - A `data:` or `blob:` address is read in the browser and uploaded as a file.
  * - An address under our prefix pasted before the prefix was known keeps its
  *   address.
@@ -17,32 +18,26 @@
  *   Studio, with every other one started in the same task, in one request.
  */
 
-import { formatNameOf, readTaskFailure, type PastePair, type TaskFailureReason } from '@breatic/shared';
+import { formatNameOf, type PastePair } from '@breatic/shared';
 
 import { ApiException } from '@web/data/api/types';
-import { UploadFailedError, type StoredUpload, type UploadFailureReason } from '@web/data/upload/media-upload';
-import type { UploadEnding } from '@web/data/upload/upload-status';
+import { UploadFailedError, type UploadFailureReason } from '@web/data/upload/media-upload';
 import { STORAGE_FULL_STATUS } from '@web/data/upload/upload-retry';
 import { uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
 import { routeAddress } from '@web/spaces/document/document-media-address';
-import { isMediaBlockType } from '@web/spaces/document/document-media-types';
 import type {
   PendingFailureReason,
   UploadControllerDeps,
-  UploadFailure,
   UploadOutcome,
-  UploadResult,
   UploadSource,
 } from '@web/spaces/document/document-upload-controller';
 
 /** What the sources need from the network and the clock. */
 export interface UploadSourceDeps {
-  /** Uploads a file with no node behind it; rejects with `UploadFailedError`. */
-  uploadFile: (file: File, onProgress: (share: number) => void) => Promise<StoredUpload>;
-  /** Asks the ingest Worker to fetch an address; answers the storage key. */
-  ingest: (url: string) => Promise<string>;
-  /** Waits for how the upload under a storage key ended. */
-  waitForEnding: (storageKey: string) => Promise<UploadEnding>;
+  /** Hands a block's file to the server; rejects with `UploadFailedError`. */
+  uploadFile: (file: File, uploadId: string, onProgress: (share: number) => void) => Promise<void>;
+  /** Asks the ingest Worker to fetch an address into a block. */
+  ingest: (url: string, uploadId: string) => Promise<void>;
   /** Registers addresses of ours into this project's Studio (`/canvas/paste`). */
   register: (input: { urls: string[]; pairs: PastePair[] }) => Promise<Readonly<Record<string, string | null>>>;
   /** Our public prefix, or null when it cannot be read. */
@@ -70,34 +65,6 @@ const RATE_LIMITED_STATUS = 429;
 /** How long to wait on a 429 that named no time; the server always names one. */
 const FALLBACK_WAIT_SECONDS = 1;
 
-/**
- * How a fetch that ended in each cause fails: what the block says and whether
- * fetching the address again can end differently. A cause added to the
- * vocabulary does not compile until it is placed here.
- */
-const FETCH_FAILURE: Readonly<Record<TaskFailureReason, UploadFailure>> = {
-  internal: { reason: 'failed', retryable: true },
-  expired: { reason: 'failed', retryable: true },
-  aborted: { reason: 'failed', retryable: true },
-  source_unreachable: { reason: 'unreachable', retryable: true },
-  source_cut_off: { reason: 'failed', retryable: true },
-  unsupported_type: { reason: 'unsupportedType', retryable: false },
-  over_cap: { reason: 'tooLarge', retryable: false },
-  empty: { reason: 'empty', retryable: false },
-  understand_over_cap: { reason: 'failed', retryable: false },
-  no_result: { reason: 'failed', retryable: false },
-  understand_unsupported_type: { reason: 'failed', retryable: false },
-  no_credits: { reason: 'failed', retryable: false },
-  declined: { reason: 'failed', retryable: false },
-  tool_failed: { reason: 'failed', retryable: false },
-  media_refused: { reason: 'failed', retryable: false },
-  no_audio_track: { reason: 'failed', retryable: false },
-  credits_held: { reason: 'failed', retryable: false },
-  cut_short: { reason: 'failed', retryable: false },
-  input_refused: { reason: 'failed', retryable: false },
-  model_not_configured: { reason: 'failed', retryable: false },
-};
-
 /** What the block says for each way a file upload fails. */
 const FILE_FAILURE_REASON: Readonly<Record<UploadFailureReason, PendingFailureReason>> = {
   storage: 'storageFull',
@@ -108,6 +75,9 @@ const FILE_FAILURE_REASON: Readonly<Record<UploadFailureReason, PendingFailureRe
   upload: 'failed',
   transfer: 'failed',
 };
+
+/** The server has the upload: it announces the ending and collab writes the block. */
+const HANDED_OFF: UploadOutcome = { ok: true, handedOff: true };
 
 /**
  * A failure.
@@ -120,18 +90,12 @@ function fail(reason: PendingFailureReason, retryable: boolean): UploadOutcome {
 }
 
 /**
- * A success from what the server filed.
+ * An address answered on the spot.
  * @param url - The stored address.
- * @param width - Its pixel width, when it has one.
- * @param height - Its pixel height, when it has one.
  * @returns The outcome.
  */
-function done(url: string, width?: number | null, height?: number | null): UploadOutcome {
-  const result: UploadResult = {
-    url,
-    ...(typeof width === 'number' && typeof height === 'number' && { mediaWidth: width, mediaHeight: height }),
-  };
-  return { ok: true, result };
+function done(url: string): UploadOutcome {
+  return { ok: true, result: { url } };
 }
 
 /**
@@ -162,17 +126,16 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
   let batch: { source: Extract<UploadSource, { kind: 'ours' }>; resolve: (outcome: UploadOutcome) => void }[] = [];
 
   /**
-   * Uploads a file.
+   * Hands a file to the server.
    * @param file - The file.
+   * @param uploadId - The block's upload.
    * @param onProgress - Told the share sent.
-   * @returns How it ended.
+   * @returns How this page's part ended.
    */
-  const uploadFile = async (file: File, onProgress: (share: number) => void): Promise<UploadOutcome> => {
+  const uploadFile = async (file: File, uploadId: string, onProgress: (share: number) => void): Promise<UploadOutcome> => {
     try {
-      const filed = await deps.uploadFile(file, onProgress);
-      // The kind the server read off the stored bytes, not the name's guess.
-      if (!isMediaBlockType(filed.kind)) return fail('unsupportedType', false);
-      return done(filed.fileUrl, filed.width, filed.height);
+      await deps.uploadFile(file, uploadId, onProgress);
+      return HANDED_OFF;
     } catch (err) {
       const reason = err instanceof UploadFailedError ? err.reason : 'upload';
       return fail(FILE_FAILURE_REASON[reason], uploadRetryCanChange(reason));
@@ -182,12 +145,14 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
   /**
    * Sends one ingest request, waiting out a 429 as often as it comes.
    * @param url - The address.
-   * @returns The storage key.
+   * @param uploadId - The block's upload.
+   * @returns Once the server took it.
    */
-  const ingest = async (url: string): Promise<string> => {
+  const ingest = async (url: string, uploadId: string): Promise<void> => {
     for (;;) {
       try {
-        return await deps.ingest(url);
+        await deps.ingest(url, uploadId);
+        return;
       } catch (err) {
         if (!(err instanceof ApiException) || err.status !== RATE_LIMITED_STATUS) throw err;
         await deps.sleep((err.retryAfterSeconds ?? FALLBACK_WAIT_SECONDS) * 1000);
@@ -198,25 +163,19 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
   /**
    * Has the ingest Worker fetch an address.
    * @param url - The address.
-   * @returns How it ended.
+   * @param uploadId - The block's upload.
+   * @returns How this page's part ended.
    */
-  const fetchAddress = async (url: string): Promise<UploadOutcome> => {
-    const sent = line.then(() => ingest(url));
+  const fetchAddress = async (url: string, uploadId: string): Promise<UploadOutcome> => {
+    const sent = line.then(() => ingest(url, uploadId));
     // The next address goes once this one has been taken, however it ended.
     line = sent.catch(() => undefined);
-    let key: string;
     try {
-      key = await sent;
+      await sent;
     } catch (err) {
       return refusal(err);
     }
-    const ending = await deps.waitForEnding(key);
-    if (ending.state === 'completed') return done(ending.result.fileUrl, ending.result.width, ending.result.height);
-    if (ending.state === 'failed') {
-      const cause = readTaskFailure(ending.reason).reason;
-      return cause === null ? fail('failed', true) : { ok: false, failure: FETCH_FAILURE[cause] };
-    }
-    return fail('failed', true);
+    return HANDED_OFF;
   };
 
   /** Registers this task's addresses of ours in one request. */
@@ -243,8 +202,8 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
     });
   };
 
-  return async (_uploadId, source, onProgress) => {
-    if (source.kind === 'file') return uploadFile(source.file, onProgress);
+  return async (uploadId, source, onProgress) => {
+    if (source.kind === 'file') return uploadFile(source.file, uploadId, onProgress);
     if (source.kind === 'ours') {
       return new Promise<UploadOutcome>((resolve) => {
         if (batch.length === 0) queueMicrotask(() => void flush());
@@ -254,7 +213,7 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
     const prefix = await deps.assetUrlPrefix();
     if (prefix !== null && source.url.startsWith(prefix)) return done(source.url);
     const route = routeAddress(source.url);
-    if (route === 'fetch') return fetchAddress(source.url);
+    if (route === 'fetch') return fetchAddress(source.url, uploadId);
     if (route === 'file') {
       let blob: Blob;
       try {
@@ -263,7 +222,7 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
         // A blob: address revoked by the page it came from reads as nothing again.
         return fail('failed', false);
       }
-      return uploadFile(pastedFile(blob), onProgress);
+      return uploadFile(pastedFile(blob), uploadId, onProgress);
     }
     return fail('failed', false);
   };

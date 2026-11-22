@@ -97,7 +97,10 @@ test.afterEach(async () => {
  * @param goal - The goal.
  */
 async function pointAtGoal(goal: string): Promise<void> {
-  const box = await page.getByTestId(`generate-template-goal-${goal}`).boundingBox();
+  // A long goal list scrolls inside the menu, as a user scrolls it to reach a row.
+  const row = page.getByTestId(`generate-template-goal-${goal}`);
+  await row.scrollIntoViewIfNeeded();
+  const box = await row.boundingBox();
   if (!box) throw new Error(`the ${goal} row is not on screen`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
 }
@@ -643,10 +646,14 @@ test('picking the product ad places the product, an optional person and the stil
   await page.screenshot({ path: test.info().outputPath('product-ad-person-filled.png') });
 });
 
-test('an audio panel lists the ten sound templates under one goal', async () => {
+test('an audio panel lists the ten sound templates under the sound goal, beside the film styles', async () => {
   await openPanelOnNewNode('audio');
   await openGoal('sound');
-  await expect(page.locator('[data-testid^="generate-template-goal-"]')).toHaveCount(1);
+  const goals = page.locator('[data-testid^="generate-template-goal-"]');
+  expect(await goals.evaluateAll((all) => all.map((el) => el.getAttribute('data-testid')))).toEqual([
+    'generate-template-goal-film-styles',
+    'generate-template-goal-sound',
+  ]);
   await expect(page.getByTestId('generate-template-goal-sound')).toHaveText(/^Sound, music & voice\s*10$/);
   expect(await listedTemplates()).toEqual([
     'ambience-sfx-bed',

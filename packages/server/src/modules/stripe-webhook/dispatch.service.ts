@@ -8,6 +8,11 @@ import { REFUND_EVENT_TYPES, handleRefundEvent, type RefundEvent } from "@server
 import { handleSubscriptionEvent, type SubscriptionEventOutcome } from "@server/modules/subscription/subscription-events.js";
 import { fulfillPayment, handlePaymentFailed, type FulfillOutcome } from "@server/modules/payment/payment.service.js";
 import { logFulfillment } from "@server/modules/payment/fulfillment-log.js";
+import {
+  INVOICE_PAID_EVENT_TYPE,
+  SHARED_SESSION_EVENT_TYPES,
+  SUBSCRIPTION_EVENT_TYPES,
+} from "@server/modules/subscription/subscription-event-types.js";
 import type { WebhookDispatch } from "@server/modules/stripe-webhook/types.js";
 
 const CREDIT_RESULTS = {
@@ -21,12 +26,25 @@ const MEMBERSHIP_NOOP_RESULTS = {
 } as const satisfies Record<Extract<SubscriptionEventOutcome, { status: "noop" }>["reasonCode"], StripeWebhookResult>;
 
 /**
+ * Every Stripe event type some handler acts on. A type outside it is answered
+ * as ignored before any handler sees it, so a new type is handled only once it
+ * is listed here, and the catch-up lists exactly these.
+ */
+export const HANDLED_EVENT_TYPES: ReadonlySet<string> = new Set([
+  ...SHARED_SESSION_EVENT_TYPES,
+  ...SUBSCRIPTION_EVENT_TYPES,
+  INVOICE_PAID_EVENT_TYPE,
+  ...REFUND_EVENT_TYPES,
+]);
+
+/**
  * Dispatches the existing business paths and retains their protocol response.
  * @param event - The verified event passed by the HTTP boundary.
  * @returns Its finite processing result and existing response fields.
  * @throws {Error} When a business dependency fails; the HTTP error handler maps it.
  */
 export async function dispatchStripeWebhook(event: Stripe.Event): Promise<WebhookDispatch> {
+  if (!HANDLED_EVENT_TYPES.has(event.type)) return { result: "ignored", responseStatus: 200, received: true };
   const membership = await handleSubscriptionEvent(event);
   if (membership.status !== "notMine") {
     const line = { eventId: event.id, type: event.type, ...membership };

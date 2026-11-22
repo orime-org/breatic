@@ -4,16 +4,18 @@
 import { randomUUID } from "node:crypto";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
-import { db, getMembershipConfig, getMembershipReadingForUser } from "@breatic/core";
+import { db, getMembershipConfig, getMembershipReadingForUser, fingerprint } from "@breatic/core";
 import { tierLimitsSchema } from "@breatic/shared";
 import type { SubscriptionWrite } from "@breatic/core";
 import { applySubscriptionWrite } from "@server/modules/subscription/apply-subscription.js";
-import { fingerprint } from "@server/modules/credit-refund/idempotency.js";
 import { call, useInternalApp } from "./internal-api-harness.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 
 const suite = useInternalApp("internal-api-enterprise-membership");
 const limits = { team_studios: 8, projects_per_studio: 500, concurrent_editors: 30, studio_members: 200, project_members: 80, storage_bytes: 1099511627776 };
+// A saved agreement is read back with its running_tasks_per_user term, the
+// column default when the save left it out (inner#1968, design 3.6).
+const saved = { ...limits, running_tasks_per_user: 10 };
 const body = { targetTier: "enterprise", expiresAt: "2099-10-26T00:00:00.000Z", entryTimezone: "UTC", contractNumber: "ENT-29", limits, expectedRevision: null, expectedStoredTier: "pro" };
 
 /** Create one live account on the selected tier. */
@@ -149,7 +151,7 @@ describe("enterprise membership signed internal API", () => {
     expect(await storedTimestamps(id)).toEqual(originalTimes);
     const original = await call(suite.baseUrl, path(id));
     expect(original.status).toBe(200);
-    expect(original.json.snapshot.enterprise).toEqual({ ...originalTimes, entryTimezone: "Asia/Shanghai", contractNumber: "ENT-29-EARLY", limits, fallbackTier: "base", revision: 1 });
+    expect(original.json.snapshot.enterprise).toEqual({ ...originalTimes, entryTimezone: "Asia/Shanghai", contractNumber: "ENT-29-EARLY", limits: saved, fallbackTier: "base", revision: 1 });
     const requestKey = key();
     const request = { ...body, expiresAt: originalTimes.expiresAt, entryTimezone: "Asia/Shanghai", contractNumber: "ENT-29-EARLY-EDIT", expectedRevision: 1, expectedStoredTier: "enterprise" };
     const response = await call(suite.baseUrl, path(id), { body: request, idempotencyKey: requestKey });
@@ -159,7 +161,7 @@ describe("enterprise membership signed internal API", () => {
     const stored = await storedTimestamps(id);
     expect(stored).toEqual({ ...originalTimes, updatedAt: expect.stringMatching(/^\d{4}-\d{2}-\d{2}T.*Z$/) });
     expect(stored.updatedAt).not.toBe(originalTimes.updatedAt);
-    expect(response.json.after).toEqual({ userId: id, storedTier: "enterprise", enterprise: { ...stored, entryTimezone: "Asia/Shanghai", contractNumber: request.contractNumber, limits, fallbackTier: "base", revision: 2 } });
+    expect(response.json.after).toEqual({ userId: id, storedTier: "enterprise", enterprise: { ...stored, entryTimezone: "Asia/Shanghai", contractNumber: request.contractNumber, limits: saved, fallbackTier: "base", revision: 2 } });
     const current = await call(suite.baseUrl, path(id));
     expect(current.status).toBe(200);
     expect(current.json.snapshot).toEqual(response.json.after);
@@ -232,7 +234,7 @@ describe("enterprise membership signed internal API", () => {
     const id = await user(effectiveTier);
     const config = getMembershipConfig();
     const original = config.tiers[effectiveTier];
-    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER });
+    const configured = tierLimitsSchema.parse({ team_studios: 2147483648, projects_per_studio: 2147483648, concurrent_editors: 2147483648, studio_members: 2147483648, project_members: 2147483648, storage_bytes: Number.MAX_SAFE_INTEGER, running_tasks_per_user: 2147483648 });
     if (storedTier === "enterprise") {
       const opened = await call(suite.baseUrl, path(id), { body: { ...body, expiresAt: "2000-01-01T00:00:00.000Z", expectedStoredTier: effectiveTier }, idempotencyKey: key() });
       expect(opened.status).toBe(200);
@@ -250,7 +252,7 @@ describe("enterprise membership signed internal API", () => {
         expiresAt: storedTier === "enterprise" ? "2000-01-01T00:00:00.000Z" : null,
         fallbackTier: storedTier === "enterprise" ? effectiveTier : null, settlementProtected: effectiveTier === "self_hosted",
       });
-      expect(response.json.snapshot.enterprise).toEqual(storedTier === "enterprise" ? expect.objectContaining({ limits, revision: 1, fallbackTier: effectiveTier }) : null);
+      expect(response.json.snapshot.enterprise).toEqual(storedTier === "enterprise" ? expect.objectContaining({ limits: saved, revision: 1, fallbackTier: effectiveTier }) : null);
     } finally {
       config.tiers[effectiveTier] = original;
     }
@@ -280,7 +282,7 @@ describe("enterprise membership signed internal API", () => {
     const response = await call(suite.baseUrl, path(id), { body, idempotencyKey: requestKey });
     expect(response.status).toBe(200);
     expect(response.json).toMatchObject({ status: "applied", operation: { key: requestKey, accountId: id, adminId: "admin_7" }, before: { userId: id, storedTier: "pro", enterprise: null }, after: { userId: id, storedTier: "enterprise", enterprise: { expiresAt: body.expiresAt, entryTimezone: body.entryTimezone, contractNumber: body.contractNumber, limits, revision: 1, fallbackTier: "base" } } });
-    expect(response.json.after.enterprise.limits).toEqual(limits);
+    expect(response.json.after.enterprise.limits).toEqual(saved);
     const [stored] = await suite.sql<{ membership_tier: string }[]>`select membership_tier from users where id=${id}`;
     expect(stored!.membership_tier).toBe("enterprise");
     const history = await suite.sql`select from_tier,to_tier,reason,reference_id from membership_tier_changes where user_id=${id}`;
@@ -296,7 +298,8 @@ describe("enterprise membership signed internal API", () => {
     const response = await call(suite.baseUrl, path(id));
     expect(response.status).toBe(200);
     expect(response.json.snapshot).toMatchObject({ userId: id, storedTier: "enterprise", enterprise: { limits, revision: 1 } });
-    expect(response.json.reading).toMatchObject({ enterpriseState: "active", effectiveTier: "enterprise", limits, storageBytes: null, settlementProtected: true });
+    // An active agreement caps storage at its storage_bytes (inner#1968, design 3.6).
+    expect(response.json.reading).toMatchObject({ enterpriseState: "active", effectiveTier: "enterprise", limits, storageBytes: limits.storage_bytes, settlementProtected: true });
   });
 
   it.each([{ ...body, contractNumber: "" }, { ...body, extra: true }, { ...body, limits: { ...limits, team_studios: -1 } }, { ...body, entryTimezone: "No/Such_Zone" }])("rejects malformed bodies before claiming a key", async (invalid) => {

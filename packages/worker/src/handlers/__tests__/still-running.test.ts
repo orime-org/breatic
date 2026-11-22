@@ -173,7 +173,9 @@ beforeEach(() => {
   vi.restoreAllMocks();
   h.markFailed.mockResolvedValue(true);
   h.slotFull.value = false;
+  // A task these pickups come back to is already running: the running-task gate is behind it.
   h.getByIdInternal.mockResolvedValue({
+    status: "running",
     createdAt: CREATED,
     billedAt: null,
     providerResultUrl: null,
@@ -237,10 +239,14 @@ describe("an upstream prediction still running when a pickup ends", () => {
     expect(h.markFailed).not.toHaveBeenCalled();
   });
 
+  // The deadline counts from the start the row keeps, not from its creation:
+  // time spent waiting for a running slot does not count (inner#1968 design 3.9).
   it("hands the task's deadline to the steps of a canvas generation", async () => {
+    const started = new Date(CREATED.getTime() + 60_000);
+    h.markRunning.mockResolvedValueOnce(started);
     await runTask(jobOf({}), "lock-token").catch(() => undefined);
 
-    expect(h.taskDeadline).toHaveBeenCalledWith("task-1", CREATED);
+    expect(h.taskDeadline).toHaveBeenCalledWith("task-1", started);
     expect(h.runModelTask.mock.calls[0]![0]).toMatchObject({ taskId: "task-1", deadlineAt: DEADLINE });
   });
 

@@ -3,18 +3,17 @@
 
 /**
  * The page's one upload controller, against the real network (inner#1351 +
- * inner#1390 design §5.5): every open body on the page shares it, so a
- * result is kept for the page's lifetime whichever body the block turns up
- * in. Each upload runs against the project and Space it was started in.
+ * inner#1390 design §5.5): every open body on the page shares it. Each upload
+ * runs against the project and Space it was started in.
  */
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type * as Y from 'yjs';
 
+
 import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
-import { uploadMedia } from '@web/data/upload/media-upload';
-import { waitForUploadEnding } from '@web/data/upload/upload-status';
+import { handOffDocumentMedia } from '@web/data/upload/media-upload';
 import { renewOnWorker } from '@web/lib/upload-claims';
 import { readDocFacts, readWriteAccess } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
@@ -86,10 +85,10 @@ function runnerFor(target: UploadTarget): UploadControllerDeps['run'] {
   if (run === undefined) {
     const name = docName.documentSpace(target.projectId, target.spaceId);
     const sources = createUploadSources({
-      uploadFile: (file, onProgress) => uploadMedia(file, target, onProgress),
-      ingest: async (url) =>
-        (await assetsApi.ingestUrl({ url, project_id: target.projectId, space_id: target.spaceId })).storage_key,
-      waitForEnding: waitForUploadEnding,
+      uploadFile: (file, uploadId, onProgress) => handOffDocumentMedia(file, { ...target, uploadId }, onProgress),
+      ingest: async (url, uploadId) => {
+        await assetsApi.ingestUrl({ url, project_id: target.projectId, space_id: target.spaceId, upload_id: uploadId });
+      },
       register: async ({ urls, pairs }) =>
         (await canvasApi.paste({ project_id: target.projectId, urls, pairs, history: [] })).map,
       assetUrlPrefix: () =>
@@ -116,7 +115,7 @@ function pageController(): UploadController {
   if (controller === null) {
     const operations = useSpaceOperationsStore.getState();
     controller = createUploadController({
-      // `start` records an upload's target before it runs (see openPageBodyUploads).
+      // openBodyUploads' onUploadId records every id an upload runs under, start and retry alike, before it runs.
       run: (uploadId, source, onProgress) => runnerFor(targets.get(uploadId)!)(uploadId, source, onProgress),
       register: (spaceId, uploadId) => {
         operations.register(spaceId, uploadId);
@@ -174,12 +173,12 @@ export function openPageBodyUploads(
   name: string,
   provider: HocuspocusProvider | undefined,
 ): BodyUploads {
-  const link = openBodyUploads(pageController(), { spaceId: target.spaceId, doc, name, connection: connectionOf(name, provider) });
-  return {
-    ...link,
-    start: (uploadId, source) => {
-      targets.set(uploadId, target);
-      link.start(uploadId, source);
-    },
-  };
+  return openBodyUploads(pageController(), {
+    spaceId: target.spaceId,
+    doc,
+    name,
+    connection: connectionOf(name, provider),
+    // Every id an upload runs under is recorded against its target before it runs (see pageController).
+    onUploadId: (uploadId) => targets.set(uploadId, target),
+  });
 }

@@ -9,11 +9,21 @@
  * via Yjs document sync through the Hocuspocus collab server.
  */
 
+import { randomUUID } from "node:crypto";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
-import { currentConsent } from "@breatic/core";
+import {
+  currentConsent,
+  validate,
+  defaultJobOpts,
+  getMiniToolsConfig,
+  ConflictError,
+  ValidationError,
+  NotFoundError,
+  getUnderstandConfig,
+  logger,
+} from "@breatic/core";
 import { Hono } from "hono";
-import { validate } from "@server/middleware/validate.js";
 import { runOnce } from "@server/middleware/run-once.js";
 
 import { z } from "zod";
@@ -30,13 +40,12 @@ import { requireAuth } from "@server/middleware/auth.js";
 import { acceptTransferBody } from "@server/middleware/transfer-body.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { userUrlSchema, voiceSampleUrl } from "@breatic/domain";
+import { userUrlSchema, voiceSampleUrl, nodeHistoryService, nodeTaskService, runningSlotService, UNDERSTAND_PINS } from "@breatic/domain";
 import {
   getCanvasReferencePoolCap,
   getNodeHistoryPageSize,
 } from "@server/config/limits.js";
 import {
-  creditHoldService,
   taskService,
   estimateTaskCredits,
   sendsUntakenPrompt,
@@ -45,30 +54,24 @@ import {
   modelCatalog,
   violatesTextLengthForModel,
 } from "@breatic/domain";
-import { nodeHistoryService } from "@breatic/domain";
 import { assertLlmServable, assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
-import { nodeTaskService } from "@breatic/domain";
 import {
+  holdRowedRun,
   holdRun,
+  failOpenedTasks,
   openGenerationTasks,
+  settleUnqueuedRun,
+  type OpenedTaskRow,
   startRowedRun,
 } from "@server/modules/task/generation-task.js";
 import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
-import { UNDERSTAND_PINS } from "@breatic/domain";
 import {
   assertStorageAllowance,
   pasteAssetsService,
   projectService,
 } from "@server/modules";
-import { defaultJobOpts, getMiniToolsConfig } from "@breatic/core";
-import {
-  ValidationError,
-  NotFoundError,
-  getUnderstandConfig,
-  logger,
-} from "@breatic/core";
 import { t, GENERATION_TEMPLATES, extractPromptText } from "@breatic/shared";
 import { canvasSpaceDocName } from "@breatic/shared";
 import type { UnderstandInput } from "@breatic/shared";
@@ -325,6 +328,7 @@ canvas.post(
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
   let job: Awaited<ReturnType<ReturnType<typeof tasksQueue>["add"]>>;
+  let rows: OpenedTaskRow[] = [];
   try {
     // #89: storage gate, the other soft pre-check. AFTER credits, because
     // refusing for storage tells the studio's admin about it — and a request
@@ -365,7 +369,7 @@ canvas.post(
     // bill the user for a result nothing can deliver. An append-mode run names
     // no node: its result lands on one the browser creates, so there is no
     // corner to count in yet.
-    await openGenerationTasks({
+    rows = await openGenerationTasks({
       projectId,
       spaceId,
       nodeIds: targetNodeId ? [targetNodeId] : [],
@@ -400,9 +404,9 @@ canvas.post(
       defaultJobOpts(),
     );
   } catch (err) {
-    await creditHoldService.releaseHold(taskId).catch((releaseErr: unknown) =>
-      logger.error({ err: releaseErr, taskId, projectId }, "credit_hold_release_failed"),
-    );
+    // The hold, the task row and any node row opened end here together, as
+    // every other rowed entry ends them (inner#1968, design 3.10 L5).
+    await settleUnqueuedRun(taskId, projectId, "internal", () => failOpenedTasks(projectId, spaceId, rows, "internal"), "canvas_task");
     throw err;
   }
 
@@ -522,25 +526,32 @@ async function startReading(
     ...reading,
   };
 
+  const taskId = randomUUID();
   // Understand tasks transcribe / analyze a media URL into a result node;
   // they always produce a new node ('append'), no overwrite semantics.
-  const task = await admitGeneration(
+  // Its estimate is held before its task row is written, so a refusal by
+  // credits or a spend limit leaves nothing on the node (inner#1968).
+  const task = await holdRowedRun({
+    taskId,
+    projectId: body.project_id,
     userId,
-    body.project_id,
-    body.space_id,
-    "understand",
-    "append",
-    params,
-    model,
-    // The column every lane names itself in. Left unsaid it falls to the
-    // column's own default, which predates this vocabulary — these rows
-    // would then be the only ones it cannot account for.
-    "understand",
-  );
+    credits: () => estimateTaskCredits(model, { params }),
+    create: () => admitGeneration(
+      userId,
+      body.project_id,
+      body.space_id,
+      "understand",
+      "append",
+      params,
+      model,
+      // The column every lane names itself in. Left unsaid it falls to the
+      // column's own default, which predates this vocabulary — these rows
+      // would then be the only ones it cannot account for.
+      "understand",
+      taskId,
+    ),
+  });
 
-  // The node this run writes to is already on the canvas — the browser built
-  // it before the request went out — so its row opens before the credit
-  // gate, and a refusal is said where the node can show it.
   const status = await startRowedRun({
     taskId: task.id,
     projectId: body.project_id,
@@ -549,7 +560,6 @@ async function startReading(
     userId,
     action,
     label: model,
-    credits: () => estimateTaskCredits(model, { params }),
     enqueue: () =>
       tasksQueue().add(
         "execute-task",
@@ -690,15 +700,15 @@ canvas.get(
 );
 
 /**
- * `GET /canvas/nodes/:nodeId/tasks` — the rows behind a node's four counts.
+ * `GET /canvas/nodes/:nodeId/tasks` — the rows behind a node's task counts.
  *
- * The canvas document carries four numbers (#186 design §3.3); the detail
+ * The canvas document carries only the counts (#186 design §3.3); the detail
  * comes from here, and only when the user opens the panel. Same cross-tenant
  * guard as the history endpoint above: the rows name who started each task
  * and why one failed.
  *
  * Opening the list also republishes the node's counts (design §4.6.7). The
- * four numbers on the node and the rows in this table are not kept in lock
+ * counts on the node and the rows in this table are not kept in lock
  * step — a dropped `node-task:counts` leaves the node showing a number the
  * table no longer holds, and a node that still reads as running cannot be
  * deleted. This is the way back: the user who noticed asks for the truth,
@@ -810,6 +820,47 @@ canvas.delete(
     );
 
     return c.json({ data: result });
+  },
+);
+
+/**
+ * `POST /canvas/tasks/:taskId/cancel` — cancel a task that waits for a free
+ * running slot and has not started (inner#1968, design 3.9). The id is the
+ * task's, or that of one of its rows in a node or 3D task list.
+ *
+ * Who may cancel is who may clear the task's row: a project editor, the
+ * project read from the task row. The task and its credit hold end in one
+ * commit under its person's running-slot lock; its rows on the
+ * canvas end failed with the reason `cancelled`, and their counts go out.
+ * @param c - Hono context; the task id in the path.
+ * @returns `{ data: { cancelled: true, counts } }`; `counts` is the node's whose row was named, null when the task's
+ *   own id was named or for a 3D Space's own row.
+ * @throws {NotFoundError} When there is no such task in a project.
+ * @throws {AppError} 403 when the caller may not write that project.
+ * @throws {ConflictError} When the task has started or ended already.
+ */
+canvas.post(
+  "/tasks/:taskId/cancel",
+  validate("param", z.object({ taskId: z.string().uuid() })),
+  async (c) => {
+    const user = c.get("user");
+    const { taskId: named } = c.req.valid("param");
+    // The task lists name their rows, so a row of the node task list stands
+    // for the task it runs as (inner#1968).
+    const direct = await taskService.getByIdInternal(named);
+    const namedRow = direct === null ? await nodeTaskService.findById(named) : null;
+    const rowTaskId = namedRow?.taskId ?? null;
+    const task = direct ?? (rowTaskId === null ? null : await taskService.getByIdInternal(rowTaskId));
+    if (task === null || task.projectId === null) throw new NotFoundError(t("server.error.not_found"));
+    const taskId = task.id;
+    await projectService.assertAccess(task.projectId, user.id, "editor");
+    const result = await runningSlotService.cancelQueued(taskId);
+    for (const err of result.publishFailures) logger.error({ err, taskId }, "running_slot_publish_failed");
+    if (!result.cancelled) throw new ConflictError(t("canvas.task.alreadyStarted"));
+    logger.info({ taskId, projectId: task.projectId, userId: user.id }, "queued_task_cancelled");
+    // One run can fill several nodes; the list that asked shows the named row's node.
+    const nodeId = namedRow?.nodeId ?? null;
+    return c.json({ data: { cancelled: true, counts: nodeId === null ? null : (result.counts.get(nodeId) ?? null) } });
   },
 );
 

@@ -25,6 +25,8 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, i
 
 const settle = vi.hoisted(() => vi.fn(async (_requestId: string): Promise<Record<string, unknown> | null> => null));
 const release = vi.hoisted(() => vi.fn(async (_referenceId: string): Promise<void> => {}));
+// Runs just before the running-task gate judges an execution: a case puts another pickup's claim here.
+const beforeClaim = vi.hoisted(() => ({ run: async (_executionId: string): Promise<void> => {} }));
 
 vi.mock("@breatic/domain", async (importOriginal) => {
   const actual = await importOriginal<typeof DomainModule>();
@@ -32,6 +34,13 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     ...actual,
     creditLotService: { ...actual.creditLotService, settleCharge: settle },
     creditHoldService: { ...actual.creditHoldService, releaseHold: release },
+    runningSlotService: {
+      ...actual.runningSlotService,
+      claimWithinLimit: async (executionId: string) => {
+        await beforeClaim.run(executionId);
+        return actual.runningSlotService.claimWithinLimit(executionId);
+      },
+    },
   };
 });
 
@@ -357,6 +366,61 @@ describe("picking up a queued execution", () => {
     installFakeIngest(fx);
     const job = jobFor(fx.execution.id);
     await expect(runTimelineExecution(asJob(job), TOKEN)).rejects.toSatisfy(isWaiting);
+  });
+});
+
+// Two pickups of one execution can meet (a stalled worker, a redelivered
+// job). One that read the row as queued while another claimed it must not run
+// under that claim: the gate answers ended, and this pickup reads the row
+// again and retries it under a fence of its own (inner#1968).
+describe("a pickup that finds the execution claimed by another meanwhile", () => {
+  afterEach(() => {
+    beforeClaim.run = async () => {};
+  });
+
+  it("retries it with a new attempt and fence of its own", async () => {
+    const fx = await seed("queued");
+    const ingest = installFakeIngest(fx);
+    let other: { attempt: number; fence: string | null } | undefined;
+    beforeClaim.run = async (executionId) => {
+      beforeClaim.run = async () => {};
+      const claimed = await timelineExecutionRepo.transition({ id: executionId, event: { type: "claim" } });
+      if (!claimed.applied) throw new Error("the other pickup's claim did not apply");
+      other = { attempt: claimed.row.attempt, fence: claimed.row.fence };
+    };
+    await pickUp(fx);
+    const row = await read(fx.execution.id);
+    expect(other).toEqual({ attempt: 1, fence: expect.any(String) });
+    expect(row).toMatchObject({ status: "running", attempt: 2 });
+    expect(row.fence).not.toBeNull();
+    expect(row.fence).not.toBe(other!.fence);
+    // The other claim submitted nothing here, so this pickup finds no job and submits it once.
+    expect(ingest.calls.map((call) => call.route)).toEqual(["read", "submit"]);
+  });
+});
+
+// An execution is admitted once, at its acceptance, on a balance above zero,
+// and holds nothing; like a generation, one that then waits for a running
+// slot starts when its turn comes, and a spend limit reached or a balance gone
+// meanwhile only lets it run past them (inner#1968 design 3.10).
+describe("a queued execution that waited for a running slot", () => {
+  const PAID = { ...process.env, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite" };
+  beforeAll(() => {
+    initCore(PAID);
+  });
+  afterAll(() => {
+    initCore(process.env);
+  });
+
+  it.each(["a spend limit of 0", "no credits left"])("starts when its turn comes with %s", async (situation) => {
+    const fx = await seed("queued");
+    await sql`update timeline_executions set slot_wait_since = now() - interval '1 minute', slot_checked_at = now(), slot_wait_limit = 2 where id = ${fx.execution.id}`;
+    if (situation === "a spend limit of 0") {
+      await sql`insert into studio_spend_limits(studio_id, member_default_credits, studio_monthly_credits, updated_by_user_id) values (${fx.studioId}, 0, null, ${fx.userId})`;
+    }
+    installFakeIngest(fx);
+    await pickUp(fx);
+    expect(await read(fx.execution.id)).toMatchObject({ status: "running", attempt: 1 });
   });
 });
 

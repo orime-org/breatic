@@ -163,6 +163,18 @@ describe("POST /canvas/ingest-url — what it takes", () => {
     );
   });
 
+  // Spec R-05 (inner#1968): no Idempotency-Key asked for, and no
+  // Idempotency-Status answered.
+  it("R-05 takes an address sent without an Idempotency-Key, and answers no Idempotency-Status", async () => {
+    const { userId, projectId, cookie } = await seedEditor();
+    await sql`UPDATE users SET membership_tier = 'pro' WHERE id = ${userId}`;
+
+    const res = await submit(cookie, { project_id: projectId, space_id: crypto.randomUUID() });
+
+    expect(res.status).toBe(201);
+    expect(res.headers.get("Idempotency-Status")).toBeNull();
+  });
+
   it("opens the grant first, so the node task carries its key", async () => {
     // Settlement finds the node task row by the grant's storage key and by
     // nothing else, so a row opened before the grant exists can never be

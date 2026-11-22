@@ -86,6 +86,7 @@ import { resetChatLiveForTests } from '@web/stores/chat-live';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { replyOpens, storesWhatIsDrawn, stubRunWire } from '@web/test-utils/chat-run-wire';
 import type { RunWire } from '@web/test-utils/chat-run-wire';
+import { spendCapMessage } from '@web/lib/spend-cap-message';
 
 /** The limits the server reads, as `GET /chat/stream-config` answers them. */
 const LIMITS = {
@@ -890,5 +891,38 @@ describe('the wait for the limits before a send (inner#1413)', () => {
     await answerTheLimits();
 
     expect(sent()).toHaveLength(0);
+  });
+});
+
+// inner#1968 H-31: a send refused at a spend limit is said in the spend-limit
+// sentence, with no action (adding credits does not lift a limit), and what
+// the user typed stays in the input.
+describe('a send refused at a spend limit', () => {
+  beforeEach(() => {
+    toastSpy.error.mockClear();
+    toastSpy.warning.mockClear();
+  });
+
+  it('says the spend-limit sentence with no action and keeps the draft', async () => {
+    const panel = await anOpenPanel();
+    const details = { scope: 'member' as const, limit: '10', resetsAt: '2026-12-01T00:00:00.000Z' };
+    vi.mocked(chatApi.sendMessage).mockRejectedValueOnce(
+      new ApiException({ status: 402, message: 'cap reached', reason: 'spend_cap_reached', fromServer: true, details }),
+    );
+    act(() => {
+      panel.result.current.setDraft('hello');
+    });
+    act(() => {
+      void panel.result.current.send('hello');
+    });
+    await waitFor(() => {
+      expect(toastSpy.error.mock.calls.length + toastSpy.warning.mock.calls.length).toBeGreaterThan(0);
+    });
+
+    const calls = [...toastSpy.error.mock.calls, ...toastSpy.warning.mock.calls] as unknown[][];
+    expect(calls).toHaveLength(1);
+    expect(calls[0]![0]).toBe(spendCapMessage(details.scope, details.limit, details.resetsAt));
+    expect((calls[0]![1] as { action?: unknown } | undefined)?.action).toBeUndefined();
+    expect(panel.result.current.draft).toBe('hello');
   });
 });

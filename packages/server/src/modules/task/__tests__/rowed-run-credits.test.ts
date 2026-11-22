@@ -5,7 +5,7 @@ import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppError, initCore } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type * as DomainModule from "@breatic/domain";
-import type * as CreditPrecheck from "@server/modules/payment/credit-precheck.service.js";
+import type * as CreditPrecheck from "@server/modules/credit/credit-precheck.service.js";
 
 const open = vi.fn(async () => ({ id: "node-row", counts: { running: 1, done: 0, failed: 0, expired: 0 } }));
 const settle = vi.fn(async () => ({ counts: { running: 0, done: 0, failed: 1, expired: 0 } }));
@@ -23,7 +23,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     creditHoldService: { ...actual.creditHoldService, releaseHold },
   };
 });
-vi.mock("@server/modules/payment/credit-precheck.service.js", async (importOriginal) => ({
+vi.mock("@server/modules/credit/credit-precheck.service.js", async (importOriginal) => ({
   ...await importOriginal<typeof CreditPrecheck>(),
   reserveForRun: reserve,
 }));

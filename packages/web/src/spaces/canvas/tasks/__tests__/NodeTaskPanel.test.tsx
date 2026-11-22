@@ -17,6 +17,7 @@ import userEvent from '@testing-library/user-event';
 
 import type { NodeTaskEntry } from '@breatic/shared';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { NodeTaskPanel } from '@web/spaces/canvas/tasks/NodeTaskPanel';
 import type { TaskActionRequest } from '@web/stores/task-actions-in-flight';
 
@@ -66,26 +67,28 @@ function renderPanel(
   props: Partial<React.ComponentProps<typeof NodeTaskPanel>> = {},
 ): void {
   render(
-    <CollaboratorNamesProvider
-      value={{ resolve: (): string => 'Ada', members: [] }}
-    >
-      <NodeTaskPanel
-        status='running'
-        entries={[entry()]}
-        now={NOW}
-        isLoading={false}
-        isError={false}
-        canRetry={(): boolean => false}
-        isWaiting={(): boolean => false}
-        readOnly={false}
-        onReload={(): void => {}}
-        onClose={(): void => {}}
-        onView={(): void => {}}
-        onRetry={(): void => {}}
-        onDismiss={(): void => {}}
-        {...props}
-      />
-    </CollaboratorNamesProvider>,
+    <TooltipProvider>
+      <CollaboratorNamesProvider
+        value={{ resolve: (): string => 'Ada', members: [] }}
+      >
+        <NodeTaskPanel
+          status='running'
+          entries={[entry()]}
+          now={NOW}
+          isLoading={false}
+          isError={false}
+          canRetry={(): boolean => false}
+          isWaiting={(): boolean => false}
+          readOnly={false}
+          onReload={(): void => {}}
+          onClose={(): void => {}}
+          onView={(): void => {}}
+          onRetry={(): void => {}}
+          onDismiss={(): void => {}}
+          {...props}
+        />
+      </CollaboratorNamesProvider>
+    </TooltipProvider>,
   );
 }
 

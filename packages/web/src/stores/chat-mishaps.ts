@@ -12,7 +12,7 @@
  */
 
 import { t } from '@breatic/shared';
-import { ApiException } from '@web/data/api/types';
+import { ourSentence } from '@web/data/api/server-message';
 
 /**
  * Something that went wrong, told once to whoever is looking.
@@ -26,10 +26,12 @@ import { ApiException } from '@web/data/api/types';
  * from us repeating it later.
  *
  * The four kinds are not a matter of wording. What tells them apart is what
- * came back: `server` carries the sentence the server wrote for the user --
- * out of credits, too many requests, not allowed -- `turn` is an answer that
- * came back with none of ours in it, so there is nothing to quote and this
- * end has to supply the words, `network` is no answer at all, and `gone` is
+ * came back: `server` carries our sentence for the user -- the server's own
+ * (out of credits, too many requests, not allowed), or, past a spend limit,
+ * the one this end builds with its local reset day and, for a person's own
+ * limit, the amount -- `turn`
+ * is an answer that came back with none of ours in it, so there is nothing
+ * to quote and this end has to supply the words, `network` is no answer at all, and `gone` is
  * our own 404, where the server did answer and what it said is that the
  * conversation is not there any more. That last one is not a failure, which
  * is why it is its own kind rather than a `server` sentence about a resource.
@@ -87,51 +89,36 @@ export function tell(mishap: ChatMishap): void {
 }
 
 /**
- * The sentence our own server wrote for this user, if it wrote one.
- *
- * The whole of what this answers. What to say when it answers nothing is not
- * the same question in every place that asks, so it is left to whoever asked.
- * @param err - Whatever the call threw.
- * @returns The server's own words, or nothing when they are not the server's.
- */
-function serverSentence(err: unknown): string | undefined {
-  // Only a sentence our own server wrote for this user. An answer coming
-  // back is not the same thing: a gateway that timed out also answers, and
-  // there is nothing of ours in what it sends -- so the exception says whether
-  // the message it is carrying came out of our envelope, and this asks that
-  // and nothing else.
-  return err instanceof ApiException && err.fromServer ? err.message : undefined;
-}
-
-/**
  * Read a failed request as the user would hear it.
  *
- * For every request that fetches rather than runs a turn -- opening the
- * chat, reaching further back, switching, starting, renaming, removing, and
- * re-reading the list. Either the server wrote a sentence about it or nothing
- * did.
+ * For every chat request that fails as a whole -- opening the chat, reaching
+ * further back, switching, starting, renaming, removing, re-reading the list,
+ * sending a message, answering a card, stopping and taking a message back.
+ * Either we have a sentence about it or nothing does: the server's own, or,
+ * for sending a message or answering a card past a spend limit, the
+ * spend-limit one built here from the server's answer.
  *
  * A third case exists and is not told apart here: something answered, but
  * with nothing of ours in it. Saying "network error" for that is not right --
  * the network worked -- and there is no sentence yet that fits, so one has to
  * be written before this can tell the difference (todo #119).
  * @param err - Whatever the call threw.
- * @returns Which kind of mishap it is, and the server's own words when it
- *   answered with any.
+ * @returns Which kind of mishap it is, and our sentence when there is one.
  */
 export function readMishap(err: unknown): { kind: 'network' } | { kind: 'server'; message: string } {
-  const said = serverSentence(err);
-  return said === undefined ? { kind: 'network' } : { kind: 'server', message: said };
+  const said = ourSentence(err);
+  return said === null ? { kind: 'network' } : { kind: 'server', message: said };
 }
 
 /**
  * The sentence a mishap is told with, in the user's language at the moment
  * it is told (inner#1530: a toast, said once).
  *
- * The server's own sentence passes through -- it was written for the user,
- * in their language. A conversation that is gone is not an error, so it says
- * that. A turn that answered with nothing of ours says the reply is not
- * coming; no answer at all says only that the network failed.
+ * Our sentence passes through -- the server's own, or the spend-limit one
+ * built from its answer, both written for the user in their language. A
+ * conversation that is gone is not an error, so it says that. A turn that
+ * answered with nothing of ours says the reply is not coming; no answer at
+ * all says only that the network failed.
  * @param mishap - What happened.
  * @returns The sentence.
  */

@@ -96,7 +96,8 @@ vi.mock("@breatic/domain", async () => ({
     markCompletedAndBill: h.markCompletedAndBill,
   },
   upstreamStepRepo: { failOpenSteps: vi.fn() },
-  taskRepo: { clearSending: vi.fn() },
+  // An attempt with a retry to come keeps the task running (inner#1968 design 3.9).
+  taskRepo: { clearSending: vi.fn(), recordAttemptError: vi.fn(async () => true) },
   assetService: { resolveOwnerStudioId: vi.fn(async () => "studio-1") },
   creditLotService: {
     settleCharge: h.settleCharge,

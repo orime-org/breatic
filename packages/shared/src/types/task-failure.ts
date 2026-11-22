@@ -105,6 +105,11 @@ export const TASK_FAILURE_REASONS = [
    */
   "cut_short",
   /**
+   * The user cancelled a task that was waiting for a free running slot
+   * (inner#1968); it never ran, so nothing was charged.
+   */
+  "cancelled",
+  /**
    * No upstream here takes the run as it was set up (#1521): the sentence
    * names the model and, when the refusal states one, the limit it broke.
    */

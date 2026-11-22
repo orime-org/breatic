@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { env, getMiniToolsConfig, logger } from "@breatic/core";
+import { env, getMiniToolsConfig, logger, reportGraceMs } from "@breatic/core";
 import {
   assertBeforeDeadline, DEFAULT_TIMEOUT_MS, untilDeadline,
   miniToolPlanJobRequestSchema, readMiniToolPlanJob, submitMiniToolPlanJob,
@@ -21,7 +21,7 @@ export type EndedMiniToolPlanJob = Extract<MiniToolPlanJobReport, { state: "done
  * @throws {never} Never.
  */
 export function planReportingEnd(deadlineAt: number): number {
-  return deadlineAt + 2 * getMiniToolsConfig().poll_interval_ms;
+  return deadlineAt + reportGraceMs();
 }
 
 /**

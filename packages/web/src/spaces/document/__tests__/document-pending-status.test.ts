@@ -25,7 +25,7 @@ describe('on the uploader\'s page', () => {
   it('failed: the failure, which says whether a retry can help', () => {
     expect(
       pendingStatus({ entry: { phase: 'failed', failure: FAILURE }, access: 'granted', refused: false, claim: null }),
-    ).toEqual({ kind: 'failed', failure: FAILURE });
+    ).toEqual({ kind: 'failed', failure: FAILURE, retry: FAILURE.retryable });
   });
 
   it('done while the page may write: still uploading until the write lands', () => {
@@ -85,5 +85,49 @@ describe('reading a claim out of awareness', () => {
 
   it('no client claiming it reads as null, and malformed states are ignored', () => {
     expect(claimIn(states, 'u9')).toBeNull();
+  });
+});
+
+describe('what collab wrote onto the block (breatic#1574)', () => {
+  const processing = { state: 'processing' as const, foreign: false };
+
+  it('processing: processing for everyone, whoever claims what, until the server ends it', () => {
+    for (const claim of [null, 'failed'] as const) {
+      expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim, block: processing })).toEqual({
+        kind: 'processing',
+      });
+    }
+    expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block: processing })).toEqual({
+      kind: 'processing',
+    });
+  });
+
+  it('failed: its reason, and a retry only when it can help and the source is held', () => {
+    const block = { state: 'failed' as const, failure: 'unsupportedType' as const, retryable: false, foreign: false };
+    expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block })).toEqual({
+      kind: 'failed', failure: { reason: 'unsupportedType', retryable: false }, retry: false,
+    });
+    const retryable = { state: 'failed' as const, failure: 'unreachable' as const, retryable: true, foreign: false };
+    expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block: retryable })).toMatchObject({ retry: true });
+    expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim: null, block: retryable })).toMatchObject({ retry: false });
+  });
+
+  it('failed while this page is still sending: no retry until this page can run it again', () => {
+    const block = { state: 'failed' as const, failure: 'unreachable' as const, retryable: true, foreign: false };
+    expect(
+      pendingStatus({ entry: { phase: 'uploading', progress: 0.5 }, access: 'granted', refused: false, claim: null, block }),
+    ).toMatchObject({ kind: 'failed', retry: false });
+  });
+
+  it('handed off with nothing written yet: uploading', () => {
+    expect(pendingStatus({ entry: { phase: 'handedOff' }, access: 'granted', refused: false, claim: null, block: { state: '', foreign: false } })).toEqual({
+      kind: 'processing',
+    });
+  });
+
+  it('a block whose upload belongs to another Document: not finished, whatever is claimed', () => {
+    expect(pendingStatus({ entry: undefined, access: 'granted', refused: false, claim: 'uploading', block: { ...processing, foreign: true } })).toEqual({
+      kind: 'notFinished',
+    });
   });
 });

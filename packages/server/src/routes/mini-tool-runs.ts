@@ -5,7 +5,7 @@ import { Hono } from "hono";
 import { z } from "zod";
 import { miniToolExecutionService } from "@breatic/domain";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
-import { validate } from "@server/middleware/validate.js";
+import { validate } from "@breatic/core";
 
 const miniToolRuns = new Hono<{ Variables: AuthVariables }>();
 miniToolRuns.use(requireAuth);

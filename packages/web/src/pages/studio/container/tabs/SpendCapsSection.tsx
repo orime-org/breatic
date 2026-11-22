@@ -1,0 +1,387 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+import * as React from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { getLocale, SPEND_LIMIT_MAX_CREDITS } from '@breatic/shared';
+
+import { Badge } from '@web/components/ui/badge';
+import { Button } from '@web/components/ui/button';
+import { Dialog, DialogBody, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@web/components/ui/dialog';
+import { Input } from '@web/components/ui/input';
+import { RadioGroup, RadioGroupItem } from '@web/components/ui/radio-group';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
+import {
+  fetchSpendLimits,
+  removeMemberSpendLimit,
+  saveMemberSpendLimit,
+  saveSpendLimits,
+  spendLimitsQueryKey,
+  type SpendLimitMember,
+} from '@web/data/api/spend-limits';
+import { serverMessage } from '@web/data/api/server-message';
+import { ApiException } from '@web/data/api/types';
+import { usersApi } from '@web/data/api/users';
+import { useTranslation } from '@web/i18n/use-translation';
+import { formatCreditAmount, formatCreditColumnAmount } from '@web/lib/format-credit-amount';
+import { toast } from '@web/lib/toast';
+import { useCurrentUserStore } from '@web/stores/current-user';
+import { StudioAvatar } from '@web/ui/StudioAvatar';
+
+const KEY = 'studio.container.credits.spendCap';
+
+/** A limit as the admin edits it: none, or an amount still being typed. */
+type Draft = { kind: 'none' } | { kind: 'amount'; text: string };
+
+/**
+ * The draft a stored limit opens as.
+ * @param value - The stored limit, or null for none.
+ * @returns The draft.
+ */
+function draftOf(value: string | null): Draft {
+  return value === null ? { kind: 'none' } : { kind: 'amount', text: formatCreditAmount(value).replace(/,/g, '') };
+}
+
+/**
+ * The amount a draft sends, or undefined while it is not a usable number.
+ * @param draft - The draft.
+ * @returns The credits, null for none, undefined when unusable.
+ */
+function valueOf(draft: Draft): number | null | undefined {
+  if (draft.kind === 'none') return null;
+  const text = draft.text.trim();
+  // Digits with at most two decimals, the cents a limit is kept in, so what
+  // is saved is what the box shows; thousands separators as the page shows
+  // amounts are accepted when they group by three.
+  if (!/^(\d+|\d{1,3}(,\d{3})+)(\.\d{1,2})?$/.test(text)) return undefined;
+  const credits = Number(text.replace(/,/g, ''));
+  return credits <= SPEND_LIMIT_MAX_CREDITS ? credits : undefined;
+}
+
+/**
+ * One limit, with "not set" and an amount per month.
+ * @param props - The limit.
+ * @param props.label - What it limits.
+ * @param props.hint - How it applies.
+ * @param props.draft - Its draft.
+ * @param props.onChange - Takes the next draft.
+ * @returns The control.
+ */
+function CapInput({ label, hint, draft, onChange }: { label: string; hint: string; draft: Draft; onChange: (next: Draft) => void }): React.JSX.Element {
+  const t = useTranslation();
+  const id = React.useId();
+  const amount = draft.kind === 'amount' ? draft.text : '';
+  return (
+    <div className='flex flex-col gap-2'>
+      <div className='text-sm font-medium'>{label}</div>
+      <div className='text-xs text-muted-foreground'>{hint}</div>
+      <RadioGroup
+        value={draft.kind}
+        onValueChange={(kind) => onChange(kind === 'none' ? { kind: 'none' } : { kind: 'amount', text: amount === '' ? '0' : amount })}
+        className='gap-2'
+        aria-label={label}
+      >
+        <label htmlFor={`${id}-none`} className='flex items-center gap-1.5 text-sm'>
+          <RadioGroupItem id={`${id}-none`} value='none' />
+          {t(`${KEY}.notSet`)}
+        </label>
+        <label htmlFor={`${id}-amount`} className='flex items-center gap-1.5 text-sm'>
+          <RadioGroupItem id={`${id}-amount`} value='amount' />
+          {t(`${KEY}.perMonth`)}
+          <Input
+            value={amount}
+            inputMode='decimal'
+            autoComplete='off'
+            disabled={draft.kind !== 'amount'}
+            aria-label={label}
+            onChange={(event) => onChange({ kind: 'amount', text: event.target.value })}
+            className='h-7 w-24 text-sm tabular-nums'
+          />
+          {t('studio.container.credits.unit')}
+        </label>
+      </RadioGroup>
+    </div>
+  );
+}
+
+/**
+ * The limit in force, in words: none, zero, or an amount.
+ * @param value - The limit, or null for none.
+ * @param t - The translate function.
+ * @returns The words.
+ */
+function limitText(value: string | null, t: ReturnType<typeof useTranslation>): string {
+  if (value === null) return t(`${KEY}.unlimited`);
+  if (Number(value) === 0) return t(`${KEY}.zero`);
+  return t(`${KEY}.amount`, { amount: formatCreditAmount(value) });
+}
+
+/**
+ * A team Studio's monthly spend limits on its credits tab (inner#1968, design
+ * 3.10): the Studio's total and the per-person default, what was spent this
+ * month and when it resets, and everyone who can spend here with what they
+ * spent and the limit in force. Only the admin reads it; the server's 403 for
+ * anyone else, and its 404 for a personal Studio or a deployment that charges
+ * no credits, leave the section out.
+ * @param props - The Studio.
+ * @param props.slug - The Studio's slug.
+ * @returns The section, or nothing for anyone but a team Studio's admin.
+ */
+export function SpendCapsSection({ slug }: { slug: string }): React.JSX.Element | null {
+  const t = useTranslation();
+  const queryClient = useQueryClient();
+  const queryKey = React.useMemo(() => spendLimitsQueryKey(slug), [slug]);
+  const query = useQuery({ queryKey, queryFn: () => fetchSpendLimits(slug), retry: false });
+  const view = query.data;
+  const ids = React.useMemo(() => view?.members.map((member) => member.userId) ?? [], [view]);
+  const people = useQuery({
+    queryKey: ['users-by-ids', ...ids],
+    queryFn: () => usersApi.getByIds(ids),
+    enabled: ids.length > 0,
+    retry: false,
+  }).data;
+  const nameOf = React.useMemo(() => new Map((people ?? []).map((person) => [person.id, person.name])), [people]);
+  const avatarOf = React.useMemo(() => new Map((people ?? []).map((person) => [person.id, person.avatarUrl ?? null])), [people]);
+  const selfId = useCurrentUserStore((state) => state.user?.id);
+
+  const [studioDraft, setStudioDraft] = React.useState<Draft>({ kind: 'none' });
+  const [memberDraft, setMemberDraft] = React.useState<Draft>({ kind: 'none' });
+  const [saving, setSaving] = React.useState(false);
+  const [editing, setEditing] = React.useState<SpendLimitMember | null>(null);
+  // The drafts follow the two stored limits only: a person's own limit saved
+  // or removed reads the view again and leaves unsaved drafts as they are.
+  const storedStudio = view?.studioMonthly;
+  const storedMember = view?.memberDefault;
+  const reset = React.useCallback((): void => {
+    if (storedStudio === undefined || storedMember === undefined) return;
+    setStudioDraft(draftOf(storedStudio));
+    setMemberDraft(draftOf(storedMember));
+  }, [storedStudio, storedMember]);
+  React.useEffect(reset, [reset]);
+
+  const saveFailed = t(`${KEY}.saveFailed`);
+  const savedLine = t(`${KEY}.saved`);
+  const invalidLine = t(`${KEY}.invalidAmount`, { max: formatCreditAmount(SPEND_LIMIT_MAX_CREDITS) });
+  const studioValue = valueOf(studioDraft);
+  const memberValue = valueOf(memberDraft);
+  const invalid = studioValue === undefined || memberValue === undefined;
+  // Changed by value: "100.0" for a stored 100 is no change; an unusable entry is one.
+  /**
+   * A stored limit as the number a draft is compared with.
+   * @param value - The stored limit, or null for none.
+   * @returns The number, or null.
+   */
+  const stored = (value: string | null): number | null => (value === null ? null : Number(value));
+  const dirty = view !== undefined && (studioValue !== stored(view.studioMonthly) || memberValue !== stored(view.memberDefault));
+  const save = React.useCallback(async (): Promise<void> => {
+    if (studioValue === undefined || memberValue === undefined) {
+      toast.warning(invalidLine);
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveSpendLimits(slug, { studioMonthly: studioValue, memberDefault: memberValue });
+      await queryClient.invalidateQueries({ queryKey });
+      toast.success(savedLine);
+    } catch (err) {
+      toast.error(serverMessage(err, saveFailed));
+    } finally {
+      setSaving(false);
+    }
+  }, [slug, studioValue, memberValue, queryClient, queryKey, savedLine, saveFailed, invalidLine]);
+
+
+  if (view === undefined) {
+    // A personal Studio or a deployment that charges no credits (404), or a user who is not its admin (403), has no such section; any other failure says so.
+    const absent = query.error instanceof ApiException && (query.error.status === 403 || query.error.status === 404);
+    if (!query.isError || absent) return null;
+    return (
+      <section className='flex items-center justify-between gap-4 rounded-content-md border border-border p-4' data-testid='studio-spend-caps-error'>
+        <p className='text-sm text-muted-foreground'>{t(`${KEY}.loadError`)}</p>
+        <Button variant='outline' loading={query.isFetching} onClick={() => void query.refetch()}>{t(`${KEY}.retry`)}</Button>
+      </section>
+    );
+  }
+  const resetsAt = new Date(view.nextResetAt).toLocaleString(getLocale(), { year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  const studioCapped = view.studioMonthly !== null && Number(view.studioSpent) >= Number(view.studioMonthly);
+
+  return (
+    <section className='flex flex-col gap-4 rounded-content-md border border-border p-4' data-testid='studio-spend-caps'>
+      <h3 className='text-sm font-semibold'>{t(`${KEY}.title`)}</h3>
+      <div className='grid grid-cols-2 gap-6'>
+        <CapInput label={t(`${KEY}.studioMonthly`)} hint={t(`${KEY}.studioMonthlyHint`)} draft={studioDraft} onChange={setStudioDraft} />
+        <CapInput label={t(`${KEY}.memberDefault`)} hint={t(`${KEY}.memberDefaultHint`)} draft={memberDraft} onChange={setMemberDraft} />
+      </div>
+      <div className='flex items-center justify-between gap-4 border-t border-border pt-4'>
+        <div className='flex gap-8 text-sm'>
+          <div>
+            <div className='text-xs text-muted-foreground'>{t(`${KEY}.studioSpent`)}</div>
+            <div className={studioCapped ? 'tabular-nums text-status-error' : 'tabular-nums'}>
+              {view.studioMonthly === null
+                ? t(`${KEY}.amount`, { amount: formatCreditAmount(view.studioSpent) })
+                : t(`${KEY}.spentOfLimit`, { spent: formatCreditAmount(view.studioSpent), limit: formatCreditAmount(view.studioMonthly) })}
+            </div>
+          </div>
+          <div>
+            <div className='text-xs text-muted-foreground'>{t(`${KEY}.resetsAt`)}</div>
+            <div>{resetsAt}</div>
+          </div>
+        </div>
+        <div className='flex gap-2'>
+          <Button variant='outline' disabled={!dirty || saving} onClick={reset}>{t('common.cancel')}</Button>
+          <Button disabled={!dirty} aria-disabled={invalid || undefined} loading={saving} onClick={() => void save()}>
+            {t(`${KEY}.save`)}
+          </Button>
+        </div>
+      </div>
+      <table className='w-full text-left text-sm'>
+        <thead className='whitespace-nowrap text-xs text-muted-foreground'>
+          <tr>
+            <th className='py-1 font-medium'>{t(`${KEY}.colMember`)}</th>
+            <th className='py-1 font-medium'>{t(`${KEY}.colRelation`)}</th>
+            <th className='py-1 text-right font-medium'>{t(`${KEY}.colSpent`)}</th>
+            <th className='py-1 pl-6 font-medium'>{t(`${KEY}.colEffective`)}</th>
+            <th className='py-1' />
+          </tr>
+        </thead>
+        <tbody>
+          {view.members.map((member) => {
+            const former = member.relation === 'former';
+            const atCap = !former && member.effective !== null && Number(member.spent) >= Number(member.effective);
+            return (
+              <tr key={member.userId} className={former ? 'border-t border-border text-muted-foreground' : 'border-t border-border'}>
+                <td className='max-w-40 py-2.5 pr-3'>
+                  <span className='flex min-w-0 items-center gap-2'>
+                    <StudioAvatar name={nameOf.get(member.userId) ?? '—'} type='personal' avatarUrl={avatarOf.get(member.userId) ?? null} size='xs' />
+                    <Tooltip>
+                      <TooltipTrigger asChild><span className='truncate'>{nameOf.get(member.userId) ?? '—'}</span></TooltipTrigger>
+                      <TooltipContent className='max-w-sm break-words'>{nameOf.get(member.userId) ?? '—'}</TooltipContent>
+                    </Tooltip>
+                    {member.userId === selfId ? <span className='shrink-0 text-xs text-muted-foreground'>{t('members.modal.isMe')}</span> : null}
+                  </span>
+                </td>
+                <td className='break-keep'>{t(`${KEY}.${member.relation === 'studio_member' ? 'relationStudioMember' : member.relation === 'project_collaborator' ? 'relationProjectCollaborator' : 'relationFormer'}`)}</td>
+                <td className='text-right tabular-nums'>{formatCreditColumnAmount(member.spent)}</td>
+                <td className='pl-6'>
+                  {former ? '—' : (
+                    <span className='flex items-center gap-1.5 whitespace-nowrap'>
+                      <span className='text-xs text-muted-foreground'>{t(`${KEY}.${member.override === null ? 'sourceDefault' : 'sourceOverride'}`)}</span>
+                      <span>{limitText(member.effective, t)}</span>
+                      {atCap ? <Badge variant='destructive' className='shrink-0 whitespace-nowrap'>{t(`${KEY}.atCap`)}</Badge> : null}
+                    </span>
+                  )}
+                </td>
+                <td className='text-right'>
+                  {former ? null : <Button size='compact' variant='outline' onClick={() => setEditing(member)}>{t(`${KEY}.override`)}</Button>}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+      {editing === null ? null : (
+        <OverrideDialog
+          slug={slug}
+          member={editing}
+          name={nameOf.get(editing.userId) ?? '—'}
+          fallback={limitText(view.memberDefault, t)}
+          onClose={() => setEditing(null)}
+        />
+      )}
+    </section>
+  );
+}
+
+/** What one person's own limit is set to in the dialog. */
+type OverrideMode = 'default' | 'amount' | 'none' | 'zero';
+
+/**
+ * Set one person's own monthly limit: an amount, none, or zero.
+ * @param props - The person.
+ * @param props.slug - The Studio.
+ * @param props.member - Their row.
+ * @param props.name - Their name.
+ * @param props.fallback - The per-person default in words, which this overrides.
+ * @param props.onClose - Closes the dialog.
+ * @returns The dialog.
+ */
+function OverrideDialog({ slug, member, name, fallback, onClose }: { slug: string; member: SpendLimitMember; name: string; fallback: string; onClose: () => void }): React.JSX.Element {
+  const t = useTranslation();
+  const queryClient = useQueryClient();
+  const id = React.useId();
+  const start = member.effective;
+  const own = member.override === null ? null : member.override.monthlyCredits;
+  const [mode, setMode] = React.useState<OverrideMode>(member.override === null ? 'default' : own === null ? 'none' : Number(own) === 0 ? 'zero' : 'amount');
+  const [text, setText] = React.useState(start !== null && Number(start) > 0 ? formatCreditAmount(start).replace(/,/g, '') : '');
+  const [saving, setSaving] = React.useState(false);
+  const amount = valueOf({ kind: 'amount', text });
+  const credits = mode === 'default' ? null : mode === 'none' ? null : mode === 'zero' ? 0 : amount;
+  const saveFailed = t(`${KEY}.saveFailed`);
+  const invalidLine = t(`${KEY}.invalidAmount`, { max: formatCreditAmount(SPEND_LIMIT_MAX_CREDITS) });
+  const save = React.useCallback(async (): Promise<void> => {
+    if (credits === undefined) {
+      toast.warning(invalidLine);
+      return;
+    }
+    // A person already on the default has nothing to remove.
+    if (mode === 'default' && member.override === null) {
+      onClose();
+      return;
+    }
+    setSaving(true);
+    try {
+      await (mode === 'default' ? removeMemberSpendLimit(slug, member.userId) : saveMemberSpendLimit(slug, member.userId, credits));
+      await queryClient.invalidateQueries({ queryKey: spendLimitsQueryKey(slug) });
+      onClose();
+    } catch (err) {
+      toast.error(serverMessage(err, saveFailed));
+    } finally {
+      setSaving(false);
+    }
+  }, [credits, mode, slug, member.userId, member.override, queryClient, onClose, saveFailed, invalidLine]);
+
+  return (
+    <Dialog open onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>{t(`${KEY}.overrideTitle`, { name })}</DialogTitle>
+          <DialogDescription>{t(`${KEY}.overrideHint`, { fallback })}</DialogDescription>
+        </DialogHeader>
+        <DialogBody>
+          <RadioGroup value={mode} onValueChange={(next) => setMode(next as OverrideMode)} className='gap-2'>
+            <label htmlFor={`${id}-default`} className='flex items-center gap-1.5 text-sm'>
+              <RadioGroupItem id={`${id}-default`} value='default' />
+              {t(`${KEY}.useDefault`, { fallback })}
+            </label>
+            <label htmlFor={`${id}-amount`} className='flex items-center gap-1.5 text-sm'>
+              <RadioGroupItem id={`${id}-amount`} value='amount' />
+              {t(`${KEY}.perMonth`)}
+              <Input
+                value={text}
+                inputMode='decimal'
+                autoComplete='off'
+                disabled={mode !== 'amount'}
+                aria-label={t(`${KEY}.perMonth`)}
+                onChange={(event) => setText(event.target.value)}
+                className='h-7 w-24 text-sm tabular-nums'
+              />
+              {t('studio.container.credits.unit')}
+            </label>
+            <label htmlFor={`${id}-none`} className='flex items-center gap-1.5 text-sm'>
+              <RadioGroupItem id={`${id}-none`} value='none' />
+              {t(`${KEY}.unlimited`)}
+            </label>
+            <label htmlFor={`${id}-zero`} className='flex items-center gap-1.5 text-sm'>
+              <RadioGroupItem id={`${id}-zero`} value='zero' />
+              {t(`${KEY}.zero`)}
+            </label>
+          </RadioGroup>
+        </DialogBody>
+        <DialogFooter>
+          <Button variant='outline' onClick={onClose}>{t('common.cancel')}</Button>
+          <Button aria-disabled={credits === undefined || undefined} loading={saving} onClick={() => void save()}>{t(`${KEY}.save`)}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}

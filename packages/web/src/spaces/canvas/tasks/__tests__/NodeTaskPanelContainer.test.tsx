@@ -4,7 +4,7 @@
 /**
  * The task list's own lifecycle (#186 §7.1).
  *
- * The list is one user's fetch; the four counts beside it come off the canvas
+ * The list is one user's fetch; the counts beside it come off the canvas
  * document and move on their own. So the two can disagree, and what keeps them
  * from disagreeing on screen is when this panel asks again.
  */
@@ -16,7 +16,7 @@ import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
 vi.mock('@web/data/api/canvas', () => ({
-  canvasApi: { listNodeTasks: vi.fn(), dismissNodeTask: vi.fn() },
+  canvasApi: { listNodeTasks: vi.fn(), dismissNodeTask: vi.fn(), cancelTask: vi.fn() },
   // A failed row's sentence names the ceiling a reading refuses against,
   // which it reads from this module's cache.
   getCachedUnderstandMaxBytes: vi.fn(() => null),
@@ -36,6 +36,8 @@ vi.mock('@web/i18n/use-translation', () => ({
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { canvasApi } from '@web/data/api/canvas';
+import { toast } from '@web/lib/toast';
+import { ApiException } from '@web/data/api/types';
 import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { useTaskActionsInFlight } from '@web/stores/task-actions-in-flight';
@@ -158,11 +160,11 @@ describe('NodeTaskPanelContainer', () => {
         content: null,
       },
     ] as unknown as Awaited<ReturnType<typeof canvasApi.listNodeTasks>>);
-    vi.mocked(canvasApi.dismissNodeTask).mockResolvedValue(
-      undefined as unknown as Awaited<
-        ReturnType<typeof canvasApi.dismissNodeTask>
-      >,
-    );
+    // Clearing the failed row leaves the node one done task.
+    vi.mocked(canvasApi.dismissNodeTask).mockResolvedValue({
+      removed: true,
+      counts: { running: 0, waiting: 0, done: 1, failed: 0, expired: 0 },
+    });
 
     mount();
     const row = await screen.findByTestId('task-action-clear');
@@ -171,6 +173,104 @@ describe('NodeTaskPanelContainer', () => {
     await waitFor(() =>
       expect(canvasSessions.of('').getState().panelHostId).toBeNull(),
     );
+  });
+
+  describe('cancelling a queued task (inner#1968)', () => {
+    /**
+     * A task waiting for a free slot, as the list answers it.
+     * @param id - The task.
+     * @returns The row.
+     */
+    function queued(id: string): Awaited<ReturnType<typeof canvasApi.listNodeTasks>>[number] {
+      return {
+        id, status: 'running', action: 'generate', label: id, startedByUserId: 'u1',
+        startedAt: '2026-09-06T10:00:00.000Z', settledAt: null, budgetMs: 7_200_000,
+        errorMessage: null, content: null, waitingSince: '2026-09-06T10:00:00.000Z',
+      } as unknown as Awaited<ReturnType<typeof canvasApi.listNodeTasks>>[number];
+    }
+    const waitingHost = (waiting: number): Nodes =>
+      [{ id: 'target', data: { taskCounts: { running: waiting, waiting, done: 0, failed: 0, expired: 0 } } }] as unknown as Nodes;
+    /**
+     * What the server answers a cancel with: the node's counts after it.
+     * @param waiting - How many still wait.
+     * @returns The answer.
+     */
+    const cancelled = (waiting: number): Awaited<ReturnType<typeof canvasApi.cancelTask>> =>
+      ({ cancelled: true, counts: { running: waiting, waiting, done: 0, failed: 1, expired: 0 } });
+
+    it('closes once the last queued task is cancelled', async () => {
+      canvasSessions.of('').getState().openTaskPanel('target', 'waiting');
+      vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([queued('only')]);
+      vi.mocked(canvasApi.cancelTask).mockResolvedValue(cancelled(0));
+      mount(waitingHost(1));
+      fireEvent.click(await screen.findByTestId('task-action-cancel'));
+      await waitFor(() => expect(canvasSessions.of('').getState().panelHostId).toBeNull());
+    });
+
+    it('stays open while another queued task is left', async () => {
+      canvasSessions.of('').getState().openTaskPanel('target', 'waiting');
+      vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([queued('first'), queued('second')]);
+      vi.mocked(canvasApi.cancelTask).mockResolvedValue(cancelled(1));
+      mount(waitingHost(2));
+      fireEvent.click((await screen.findAllByTestId('task-action-cancel'))[0]!);
+      await waitFor(() => expect(canvasApi.cancelTask).toHaveBeenCalledTimes(1));
+      await act(async () => { await Promise.resolve(); });
+      expect(canvasSessions.of('').getState().panelHostId).toBe('target');
+    });
+    it('stays open when the node\'s counts move before the cancel answers, as one queued task is left', async () => {
+      canvasSessions.of('').getState().openTaskPanel('target', 'waiting');
+      vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([queued('first'), queued('second')]);
+      let answer: (value: Awaited<ReturnType<typeof canvasApi.cancelTask>>) => void = () => {};
+      vi.mocked(canvasApi.cancelTask).mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+      const view = mount(waitingHost(2));
+      fireEvent.click((await screen.findAllByTestId('task-action-cancel'))[0]!);
+      await waitFor(() => expect(canvasApi.cancelTask).toHaveBeenCalledTimes(1));
+      // The counts event, carried by the shared document, arrives first.
+      vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([queued('second')]);
+      view.rerender(panel(waitingHost(1)));
+      await waitFor(() => expect(canvasApi.listNodeTasks).toHaveBeenCalledTimes(2));
+      await act(async () => { answer(cancelled(1)); await Promise.resolve(); });
+      expect(canvasSessions.of('').getState().panelHostId).toBe('target');
+    });
+
+    it('takes the cancelled row out of the queued list at once, without reading the list again', async () => {
+      canvasSessions.of('').getState().openTaskPanel('target', 'waiting');
+      vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([queued('first'), queued('second')]);
+      vi.mocked(canvasApi.cancelTask).mockResolvedValue(cancelled(1));
+      mount(waitingHost(2));
+      fireEvent.click((await screen.findAllByTestId('task-action-cancel'))[0]!);
+      await waitFor(() => expect(screen.getAllByTestId('task-action-cancel')).toHaveLength(1));
+      expect(canvasApi.listNodeTasks).toHaveBeenCalledTimes(1);
+    });
+
+    // A task that started meanwhile is a rule stopping the press, not a failure.
+    it('warns with the server\'s sentence when the task started meanwhile, and says anything else the server wrote as an error', async () => {
+      canvasSessions.of('').getState().openTaskPanel('target', 'waiting');
+      vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([queued('first'), queued('second')]);
+      vi.mocked(canvasApi.cancelTask)
+        .mockRejectedValueOnce(new ApiException({ status: 409, message: 'It has started.', fromServer: true }))
+        .mockRejectedValueOnce(new ApiException({ status: 403, message: 'You can only view this project.', fromServer: true }));
+      mount(waitingHost(2));
+      const [first, second] = await screen.findAllByTestId('task-action-cancel');
+      fireEvent.click(first!);
+      await waitFor(() => expect(toast.warning).toHaveBeenCalledWith('It has started.'));
+      fireEvent.click(second!);
+      await waitFor(() => expect(toast.error).toHaveBeenCalledWith('You can only view this project.'));
+      expect(toast.error).toHaveBeenCalledTimes(1);
+    });
+
+    it('leaves another panel the user opened meanwhile alone when the cancel answers', async () => {
+      canvasSessions.of('').getState().openTaskPanel('target', 'waiting');
+      vi.mocked(canvasApi.listNodeTasks).mockResolvedValue([queued('only')]);
+      let answer: (value: Awaited<ReturnType<typeof canvasApi.cancelTask>>) => void = () => {};
+      vi.mocked(canvasApi.cancelTask).mockReturnValue(new Promise((resolve) => { answer = resolve; }));
+      mount(waitingHost(1));
+      fireEvent.click(await screen.findByTestId('task-action-cancel'));
+      await waitFor(() => expect(canvasApi.cancelTask).toHaveBeenCalledTimes(1));
+      act(() => canvasSessions.of('').getState().openTaskPanel('other', 'failed'));
+      await act(async () => { answer(cancelled(0)); await Promise.resolve(); });
+      expect(canvasSessions.of('').getState().panelHostId).toBe('other');
+    });
   });
 
   it('asks the server again when the node’s counts move', async () => {
@@ -370,7 +470,7 @@ describe('NodeTaskPanelContainer, a press waiting for the server', () => {
   it('waits on Clear until the server takes it, and the row leaves', async () => {
     const request = deferred();
     vi.mocked(canvasApi.dismissNodeTask).mockReturnValue(
-      request.promise as unknown as ReturnType<typeof canvasApi.dismissNodeTask>,
+      request.promise.then(() => ({ removed: true, counts: { running: 0, waiting: 0, done: 0, failed: 0, expired: 0 } })),
     );
     mount();
     const clear = await screen.findByTestId('task-action-clear');

@@ -52,6 +52,7 @@ import { appendProjectActivity } from "@domain/activity/project-activity.service
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
 import { ensureVideoPresentation } from "@domain/asset/video-presentation.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
+import { announceDocumentUploadAsset, announceDocumentUploadFailure, documentTargetOf } from "@domain/asset/document-upload-events.js";
 import { referenceUploadAsset, settleUploadTerminal, type UploadTerminal } from "@domain/asset/upload-terminal.service.js";
 import type {
   UploadGrant,
@@ -665,12 +666,14 @@ async function recordRegisteredUploadHistory(
  * @param sideEffects - Best-effort work whose failures the caller must log.
  * @param options - Trusted parent context for auxiliary presentation work.
  * @returns The same canonical result for completions and their later replays.
- * @throws {Error} When history recovery or success publication cannot finish.
+ * @throws {Error} When history recovery, success publication or a Document block's failure publication cannot finish.
  */
 async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}, options: IngestReportOptions = {}): Promise<IngestReportOutcome> {
   const { grant } = terminal;
+  const documentTarget = documentTargetOf(grant);
   if (terminal.state === "void") {
     const reason = grant.failureReason ?? "aborted";
+    if (documentTarget !== null) await announceDocumentUploadFailure(documentTarget, reason);
     const countsPublishFailed = await announceFailure(grant, reason);
     const scene = await settleSceneUpload(grant, { outcome: "failed", errorMessage: reason });
     const refusal: IngestReportOutcome = reason === "empty" || reason === "over_cap"
@@ -680,6 +683,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
   }
   const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
   if (asset === null) return { status: "stale", ...sideEffects };
+  if (documentTarget !== null) await announceDocumentUploadAsset(documentTarget, asset);
   const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
   const coverUrl = cover?.fileUrl ?? null;
   const history = await recordRegisteredUploadHistory(grant, asset, coverUrl);
@@ -709,7 +713,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
  * @param options - Trusted parent presentation budget and channel hint.
  * @returns What was decided, for the route to answer with.
  * @throws {NotFoundError} When the key names no grant we ever issued.
- * @throws {Error} When registration, association, terminal commitment or success publication fails.
+ * @throws {Error} When registration, association, terminal commitment, success publication or a Document block's failure publication fails.
  */
 export async function applyIngestReport(
   report: IngestReport,

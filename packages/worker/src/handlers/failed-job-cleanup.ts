@@ -37,6 +37,7 @@ import type { getStreamRedis } from "@breatic/core";
 import { logger, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import {
   nodeHistoryService,
+  runningSlotService,
   sceneTaskService,
   taskService,
   settleTaskForNode,
@@ -176,7 +177,40 @@ export async function cleanupFailedJobNodes(
   // The run is over whatever it was, so what was held for it is free again
   // (inner#1611). Released before the canvas checks below, which only decide
   // what the nodes are told. A release that fails leaves the hold to expire.
-  await releaseRunHold(job.data.taskId, job.data.userId);
+  // A task that did not bill ends here for good, waiting or running, under
+  // its person's running-slot lock (inner#1968): the task fails, its holds
+  // are released in one commit, and every row it still has
+  // open ends failed, so the slot it held is free at once.
+  // The same exit the handler's own failure path uses, so a lane whose causes
+  // are stored as codes keeps storing codes: a user opens a node's list in
+  // their own language, and BullMQ's sentence is in one.
+  let failure: string | undefined;
+  // Held narrowed: the closure below does not keep the narrowing of `job.data`.
+  const taskData = job.data;
+  /**
+   * The stored cause, worked out once and only for a task that did not bill.
+   * @returns The cause.
+   */
+  const failureOf = (): string => (failure ??= storedFailure(
+    taskData.taskType,
+    new Error(`Task failed: ${reason}`),
+    undefined,
+    isTranscription(taskData.params ?? {}) ? "transcribe" : undefined,
+  ));
+  // Whether the task and every row it had open are ended already.
+  let rowsEnded = false;
+  if (task?.billedAt) {
+    await releaseRunHold(job.data.taskId, job.data.userId);
+  } else {
+    try {
+      const ended = await runningSlotService.failTask(job.data.taskId, failureOf());
+      for (const err of ended.publishFailures) logger.warn({ err, taskId: job.data.taskId }, "crash_net_counts_publish_failed");
+      rowsEnded = true;
+    } catch (err) {
+      logger.error({ err, taskId: job.data.taskId }, "crash_net_task_fail_failed");
+      await releaseRunHold(job.data.taskId, job.data.userId);
+    }
+  }
 
   const { projectId, spaceId, targetNodeIds, sceneRowId } = job.data;
   if (!projectId) return 0;
@@ -322,6 +356,8 @@ export async function cleanupFailedJobNodes(
     );
   }
   if (!spaceId) return 0;
+  // Ended above, under the person's running-slot lock; what follows settles the rows only when that failed.
+  if (rowsEnded) return targetNodeIds?.length ?? 0;
   if (sceneRowId !== undefined) {
     // The row is read in each member's own language, so it holds our code.
     await settleSceneRow(job.data.taskId, sceneRowId, { outcome: "failed", errorMessage: "internal" satisfies TaskFailureReason });
@@ -338,16 +374,7 @@ export async function cleanupFailedJobNodes(
         taskId: job.data.taskId,
         nodeId,
         outcome: "failed",
-        // The same exit the handler's own failure path uses, so a lane whose
-        // causes are stored as codes keeps storing codes when the net is what
-        // settles the row: a user opens this list in their own language, and
-        // BullMQ's sentence is in one.
-        errorMessage: storedFailure(
-          job.data.taskType,
-          new Error(`Task failed: ${reason}`),
-          undefined,
-          isTranscription(job.data.params ?? {}) ? "transcribe" : undefined,
-        ),
+        errorMessage: failureOf(),
       });
       emitted++;
     } catch (err) {

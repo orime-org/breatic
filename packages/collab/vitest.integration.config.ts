@@ -31,7 +31,7 @@ export default defineConfig({
     projects: undefined,
     include: ["src/**/*.integration.test.ts"],
     globalSetup: ["@breatic/integration-tests/containers"],
-    setupFiles: ["@breatic/integration-tests/env"],
+    setupFiles: ["@breatic/integration-tests/env", "@breatic/integration-tests/loopback-listen"],
     exclude: [],
     // Everything else — the path alias, one process for the whole package —
     // comes from the base, so an alias added there reaches both suites.

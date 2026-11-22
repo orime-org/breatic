@@ -16,7 +16,7 @@ import type { MiniToolSourceBinding } from "@breatic/shared/mini-tools";
  * @param sourceKey - Its storage key.
  * @param config - The acceptance snapshot.
  * @param staleKey - The refusal copy when the same source's selected version is absent or is another one; the focus crop
- * passes `server.mini_tool.presentationChanged` (frames-split §5.5 界面状态 row). A version of another source always refuses
+ * passes `server.mini_tool.presentationChanged` (frames-split §5.5 UI state row). A version of another source always refuses
  * with `server.mini_tool.foreignSource`.
  * @returns The selected version.
  * @throws {ValidationError} When the tool input is not the selected one.
