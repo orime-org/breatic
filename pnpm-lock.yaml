@@ -183,6 +183,9 @@ catalogs:
     pino-pretty:
       specifier: ^13.1.3
       version: 13.1.3
+    playwright:
+      specifier: ^1.62.1
+      version: 1.62.1
     postgres:
       specifier: ^4.1.0
       version: 4.1.0
@@ -549,7 +552,7 @@ importers:
         specifier: 26.18.0
         version: 26.18.0(electron-builder-squirrel-windows@26.18.0)
       playwright:
-        specifier: ^1.62.1
+        specifier: 'catalog:'
         version: 1.62.1
       tsup:
         specifier: 'catalog:'
@@ -1404,7 +1407,7 @@ importers:
         specifier: ^3.3.0
         version: 3.3.0
       playwright:
-        specifier: ^1.62.1
+        specifier: 'catalog:'
         version: 1.62.1
       postcss:
         specifier: ^8.5.26

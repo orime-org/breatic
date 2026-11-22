@@ -22,7 +22,7 @@
     "@types/node": "catalog:",
     "electron": "45.3.2",
     "electron-builder": "26.18.0",
-    "playwright": "^1.62.1",
+    "playwright": "catalog:",
     "tsup": "catalog:",
     "vitest": "catalog:"
   }
