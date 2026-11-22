@@ -439,7 +439,7 @@ function VideoGeneratePanelBody({
   const estimateMentioned = spec ? (shots ?? []).flatMap((shot) => mentionedSourceIds(shot.prompt, vm.references)) : atMentioned;
   const estimateUrls = mentionedReferenceUrls({ references: vm.references, focusImages: vm.focusImages, atMentioned: new Set(estimateMentioned), nodes });
   const estimateInput = videoEstimateInput({ ...vm, referenceUrls: estimateUrls }, extractPromptText(sentPrompt), shotRun?.params);
-  const { creditText, creditDetail, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
+  const { creditText, creditDetail, creditAlso, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
@@ -1015,6 +1015,7 @@ function VideoGeneratePanelBody({
       params={stableParams}
       creditText={creditText}
       creditDetail={creditDetail}
+      creditAlso={creditAlso}
       mode={mode}
       referenceKinds={referenceKinds}
       onToggleMode={onToggleMode}

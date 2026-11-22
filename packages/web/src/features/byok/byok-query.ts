@@ -38,12 +38,14 @@ export async function rereadByok(client: QueryClient): Promise<void> {
 export interface OwnKeyCredit {
   text: string;
   detail: string;
+  /** The word for credits the run takes as well, drawn behind the credits star; absent when it takes none. */
+  also?: string;
 }
 
 /**
  * What a run on the payer's own key says in place of a credit figure (inner#1953): whose key it is to the viewer, and,
- * in the short name as well as the full sentence, that describing its elements still takes credits when the language
- * model runs on ours, so a charged run never reads like one that takes none.
+ * behind the credits star as well as in the full sentence, that describing its elements still takes credits when the
+ * language model runs on ours, so a charged run never reads like one that takes none.
  * @param payer - Whose keys pay: the viewer's own, or the Studio Admin's.
  * @param t - The translator.
  * @param describing - Whether the run's description step is charged in credits.
@@ -51,10 +53,10 @@ export interface OwnKeyCredit {
  */
 export function ownKeyCredit(payer: KeyPlan['payer'], t: ReturnType<typeof useTranslation>, describing = false): OwnKeyCredit {
   const whose = payer === 'admin' ? 'Studio' : 'Own';
-  const suffix = describing ? 'Describing' : '';
   return {
-    text: t(`canvas.generatePanel.${payer === 'admin' ? 'studioKeyLabel' : 'ownKeyLabel'}${suffix}`),
-    detail: t(`canvas.generatePanel.uses${whose}Key${suffix}`),
+    text: t(`canvas.generatePanel.${payer === 'admin' ? 'studioKeyLabel' : 'ownKeyLabel'}`),
+    detail: t(`canvas.generatePanel.uses${whose}Key${describing ? 'Describing' : ''}`),
+    ...(describing && { also: t('canvas.generatePanel.alsoCredits') }),
   };
 }
 

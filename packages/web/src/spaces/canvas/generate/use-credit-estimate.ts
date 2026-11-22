@@ -96,6 +96,8 @@ export interface RunCheck {
   creditText: string | undefined;
   /** On the payer's key (inner#1953), the full sentence its short name stands for; undefined on credits. */
   creditDetail: string | undefined;
+  /** On the payer's key, the word for credits the run takes as well; undefined when it takes none. */
+  creditAlso: string | undefined;
   /** What a press says when no upstream here takes the run (#1521), in the user's language. */
   refusalText: string | undefined;
   /** The last refusal sentence rendered, for a click handler that reads it outside render. */
@@ -143,14 +145,15 @@ export function useRunCheck(
   }, [refusalText]);
   let creditText: string | undefined;
   let creditDetail: string | undefined;
+  let creditAlso: string | undefined;
   if (onKey !== undefined) {
     // The media is on the payer's key; describing its inputs is charged while the language model runs on ours.
     const describedOnCredits = describes && plan.data?.llm.usesAccountKey !== true;
-    ({ text: creditText, detail: creditDetail } = ownKeyCredit(plan.data?.payer ?? 'self', t, describedOnCredits));
+    ({ text: creditText, detail: creditDetail, also: creditAlso } = ownKeyCredit(plan.data?.payer ?? 'self', t, describedOnCredits));
   } else if (project === undefined || !plan.isPending) {
     // Nothing prints until the plan says whose key runs it, so a figure never flashes before "no credits". A plan
     // that failed to load prices on the platform key; the server still runs the call on the keys it resolves.
     creditText = estimate ? creditEstimateText(estimate, t) : undefined;
   }
-  return { creditText, creditDetail, refusalText, latestRefusal };
+  return { creditText, creditDetail, creditAlso, refusalText, latestRefusal };
 }

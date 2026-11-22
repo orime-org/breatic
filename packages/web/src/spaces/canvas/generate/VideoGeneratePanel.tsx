@@ -44,6 +44,8 @@ interface VideoGeneratePanelProps {
   creditText: string | undefined;
   /** On the payer's key, the full sentence its short name stands for (inner#1953). */
   creditDetail?: string;
+  /** On the payer's key, the word for credits the run takes as well. */
+  creditAlso?: string;
   /** The active generation mode. */
   mode: string;
   /** Switch generation mode. */
@@ -175,6 +177,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   params,
   creditText,
   creditDetail,
+  creditAlso,
   mode,
   onToggleMode,
   modeOptions,
@@ -290,7 +293,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {creditText !== undefined && <CreditLine text={creditText} detail={creditDetail} testId='generate-video-credit' />}
+          {creditText !== undefined && <CreditLine text={creditText} detail={creditDetail} also={creditAlso} testId='generate-video-credit' />}
           <Button
             type='button'
             variant={null}

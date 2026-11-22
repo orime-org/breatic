@@ -61,6 +61,8 @@ interface AudioGeneratePanelProps {
   creditText: string | undefined;
   /** On the payer's key, the full sentence its short name stands for (inner#1953). */
   creditDetail?: string;
+  /** On the payer's key, the word for credits the run takes as well. */
+  creditAlso?: string;
   /** Whether that model consumes the prompt (its `takes_prompt`). */
   modelTakesPrompt: boolean;
   /** Whether this run takes the prompt (`promptTaken`); beside a lyrics box, the style box is drawn only then. */
@@ -173,6 +175,7 @@ interface AudioGeneratePanelProps {
  * @param root0.currentModel - That model's catalog entry.
  * @param root0.creditText - The run's estimate as printed beside the star, or the short name of the payer's key.
  * @param root0.creditDetail - On the payer's key, the full sentence its short name stands for.
+ * @param root0.creditAlso - On the payer's key, the word for credits the run takes as well.
  * @param root0.modelTakesPrompt - Whether it consumes the prompt.
  * @param root0.promptShown - Whether this run takes the prompt; beside a lyrics box, the style box is drawn only then.
  * @param root0.mode - The selected mode.
@@ -220,6 +223,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   currentModel,
   creditText,
   creditDetail,
+  creditAlso,
   modelTakesPrompt,
   promptShown,
   mode,
@@ -437,7 +441,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {creditText !== undefined && <CreditLine text={creditText} detail={creditDetail} testId='generate-audio-rate' />}
+          {creditText !== undefined && <CreditLine text={creditText} detail={creditDetail} also={creditAlso} testId='generate-audio-rate' />}
           <Button
             type='button'
             variant={null}

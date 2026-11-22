@@ -16,6 +16,8 @@ export interface CreditLineProps {
    * place of the credits star.
    */
   detail?: string;
+  /** On a key, the word for credits the run takes as well, drawn after a plus behind the credits star. */
+  also?: string;
   /** Test hook. */
   testId: string;
   className?: string;
@@ -27,11 +29,12 @@ export interface CreditLineProps {
  * @param props - The line.
  * @param props.text - The figure or the key's short name.
  * @param props.detail - On a key, the full sentence shown on hover.
+ * @param props.also - On a key, the word for credits the run takes as well.
  * @param props.testId - Test hook.
  * @param props.className - Extra classes for the line.
  * @returns The line.
  */
-export function CreditLine({ text, detail, testId, className }: CreditLineProps): React.JSX.Element {
+export function CreditLine({ text, detail, also, testId, className }: CreditLineProps): React.JSX.Element {
   const line = (
     <span
       data-testid={testId}
@@ -41,6 +44,13 @@ export function CreditLine({ text, detail, testId, className }: CreditLineProps)
         ? <Star data-icon='credits' className='h-3.5 w-3.5' aria-hidden='true' />
         : <KeyRound data-icon='key' className='h-3.5 w-3.5' aria-hidden='true' />}
       {text}
+      {also !== undefined && (
+        <>
+          <span className='px-0.5'>+</span>
+          <Star data-icon='credits' className='h-3.5 w-3.5' aria-hidden='true' />
+          {also}
+        </>
+      )}
     </span>
   );
   if (detail === undefined) return line;

@@ -32,4 +32,13 @@ describe('CreditLine', () => {
     await user.hover(line);
     expect((await screen.findAllByText('Uses your key, no credits')).length).toBeGreaterThan(0);
   });
+
+  it('draws credits a keyed run also takes behind the credits star, after the key mark', () => {
+    render(<TooltipProvider><CreditLine text='Your key' detail='Uses your key; describing elements takes credits' also='credits' testId='cost' /></TooltipProvider>);
+    const line = screen.getByTestId('cost');
+
+    expect(line).toHaveTextContent('Your key+credits');
+    const icons = [...line.querySelectorAll('[data-icon]')].map((icon) => icon.getAttribute('data-icon'));
+    expect(icons).toEqual(['key', 'credits']);
+  });
 });

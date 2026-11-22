@@ -62,6 +62,8 @@ interface GeneratePanelProps {
   creditText: string | undefined;
   /** On the payer's key, the full sentence its short name stands for (inner#1953). */
   creditDetail?: string;
+  /** On the payer's key, the word for credits the run takes as well. */
+  creditAlso?: string;
   /**
    * Which execute precondition fails, or null when Generate may proceed.
    *
@@ -141,6 +143,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   referenceKinds,
   creditText,
   creditDetail,
+  creditAlso,
   executeRefusal,
   promptSlot,
   onExit,
@@ -243,7 +246,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {creditText !== undefined && <CreditLine text={creditText} detail={creditDetail} testId='generate-credit' />}
+          {creditText !== undefined && <CreditLine text={creditText} detail={creditDetail} also={creditAlso} testId='generate-credit' />}
           <Button
             type='button'
             variant={null}

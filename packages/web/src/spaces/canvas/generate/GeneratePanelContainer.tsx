@@ -271,7 +271,7 @@ function GeneratePanelBody({
     [vm.references, vm.focusImages, atMentioned, nodes],
   );
   const estimateInput = imageEstimateInput({ ...vm, referenceUrls: mentionedUrls }, vm.promptRequired ? extractPromptText(promptText) : '');
-  const { creditText, creditDetail, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
+  const { creditText, creditDetail, creditAlso, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on
   // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
   // models array would defeat ModelPicker's React.memo each frame of any node
@@ -757,6 +757,7 @@ function GeneratePanelBody({
       referenceKinds={referenceKinds}
       creditText={creditText}
       creditDetail={creditDetail}
+      creditAlso={creditAlso}
       executeRefusal={executeRefusal}
       promptSlot={promptSlot}
       onExit={closeActivePanel}
