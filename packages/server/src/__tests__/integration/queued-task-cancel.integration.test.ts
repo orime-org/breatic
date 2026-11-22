@@ -33,9 +33,10 @@ vi.mock("@breatic/shared", async (importOriginal) =>
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
-import { env, getNodeTaskConfig, getStreamRedis, initCore, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
+import { getNodeTaskConfig, getStreamRedis, initCore, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
 import { nodeTaskService, runningSlotService } from "@breatic/domain";
-import { canvasSpaceDocName, spaceTasksChangedChannel, TASK_FAILURE_REASONS } from "@breatic/shared";
+import { canvasSpaceDocName, TASK_FAILURE_REASONS, threeDSpaceDocName } from "@breatic/shared";
+import { listenSpaceTaskSignals, spaceTasksVersion } from "@server/__tests__/integration/helpers/space-task-signals.js";
 import * as timelineExecutionService from "@server/modules/timeline/timeline-execution.service.js";
 import { PAYMENTS_ON, request, seedAccount, seedMember, type Account, type Actor } from "./paid-account-fixtures.js";
 
@@ -212,14 +213,15 @@ describe("G-28 a 3D generation that has not started", () => {
     expect(res.status, await res.clone().text()).toBe(201);
     const data = ((await res.json()) as { data: Record<string, unknown> }).data;
     const taskId = String(data.task_id ?? data.taskId);
-    const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, a.projectId);
-    const publish = vi.spyOn(getStreamRedis(), "publish");
+    const docName = threeDSpaceDocName(a.projectId, a.spaceId);
+    const spaceSignals = await listenSpaceTaskSignals();
+    await spaceSignals.mark();
     const answer = await cancel(a, taskId);
-    const signals = publish.mock.calls.filter(([published]) => published === channel).length;
-    publish.mockRestore();
+    const told = await spaceSignals.read({ projectId: a.projectId, spaceId: a.spaceId, docName });
+    await spaceSignals.stop();
     expect(answer.status, await answer.clone().text()).toBe(200);
     expect(((await answer.json()) as { data: unknown }).data).toEqual({ cancelled: true, counts: null });
-    expect(signals).toBe(1);
+    expect(told).toEqual({ doc: [spaceTasksVersion(docName)], meta: [] });
     expect(await standing(taskId)).toMatchObject({ task: "cancelled", hold: "released", node: { status: "failed", error_message: "cancelled" } });
   });
 });

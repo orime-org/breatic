@@ -45,18 +45,16 @@ import { Queue } from "bullmq";
 import {
   initCore,
   getRedis,
-  getStreamRedis,
   getStorageAdapter,
   setSession,
   sessionCookieName,
   loadLocales,
   createQueue,
-  env,
-  type Redis,
 } from "@breatic/core";
-import { ceilToCreditCent, extractPromptText, SCENE_OBJECT_NAME_MAX, SceneObjectValuesSchema, t } from "@breatic/shared";
+import { ceilToCreditCent, extractPromptText, SCENE_OBJECT_NAME_MAX, SceneObjectValuesSchema, t, threeDSpaceDocName } from "@breatic/shared";
 import { estimateTaskCredits, resolveProjectImageInputs, sceneTaskService, taskService } from "@breatic/domain";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
+import { listenSpaceTaskSignals, spaceTasksVersion, type SpaceTaskSignals, type SpaceTaskSignalsRead } from "@server/__tests__/integration/helpers/space-task-signals.js";
 import type { Hono } from "hono";
 
 initCore({
@@ -77,9 +75,8 @@ const MULTIVIEW = "tripo-h3.1-multiview";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
-let subscriber: Redis;
+let spaceSignals: SpaceTaskSignals;
 let publicUrl: (key: string) => string;
-const signals: { channel: string; message: Record<string, unknown> }[] = [];
 
 beforeAll(async () => {
   sql = postgres(inject("DATABASE_URL"), {
@@ -91,20 +88,16 @@ beforeAll(async () => {
   app = createApp();
   const storage = await getStorageAdapter();
   publicUrl = (key) => storage.publicUrl(key);
-  subscriber = getStreamRedis().duplicate();
-  subscriber.on("pmessage", (_pattern: string, channel: string, message: string) => {
-    signals.push({ channel, message: JSON.parse(message) as Record<string, unknown> });
-  });
-  await subscriber.psubscribe(`${env.REDIS_KEY_PREFIX}:project:*:space-tasks:changed`);
+  spaceSignals = await listenSpaceTaskSignals();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   setJobIdSpy.mockClear();
-  signals.length = 0;
+  await spaceSignals.mark();
 });
 
 afterAll(async () => {
-  await subscriber?.quit();
+  await spaceSignals?.stop();
   await sql?.end({ timeout: 1 });
   initCore(process.env);
 });
@@ -377,17 +370,22 @@ async function holds(s: Seeded): Promise<{ reference_id: string; status: string;
 }
 
 /**
- * Wait until the subscriber has seen a signal for the Space.
+ * What the 3D Space was told since the last mark: its document's change versions and the old channel's messages.
  * @param s - Which Space.
- * @returns The messages for it.
+ * @returns The signals for it.
  */
-async function signalsFor(s: Seeded): Promise<Record<string, unknown>[]> {
-  const deadline = Date.now() + 2000;
-  for (;;) {
-    const mine = signals.filter((x) => x.message.projectId === s.projectId && x.message.spaceId === s.spaceId).map((x) => x.message);
-    if (mine.length > 0 || Date.now() > deadline) return mine;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+async function signalsFor(s: Seeded): Promise<SpaceTaskSignalsRead> {
+  return spaceSignals.read({ projectId: s.projectId, spaceId: s.spaceId, docName: threeDSpaceDocName(s.projectId, s.spaceId) });
+}
+
+/**
+ * Assert the 3D Space's document was told at least once, and the old channel nothing.
+ * @param s - Which Space.
+ */
+async function expectDocumentTold(s: Seeded): Promise<void> {
+  const told = await signalsFor(s);
+  expect(told.meta).toEqual([]);
+  expect(told.doc).toContainEqual(spaceTasksVersion(threeDSpaceDocName(s.projectId, s.spaceId)));
 }
 
 /**
@@ -647,7 +645,7 @@ describe("submitting a generation: admission", () => {
       targetNodeIds: [],
       sceneRowId: answer!.row_id,
     });
-    expect(await signalsFor(s)).toEqual([expect.objectContaining({ projectId: s.projectId, spaceId: s.spaceId })]);
+    expect(await signalsFor(s)).toEqual({ doc: [spaceTasksVersion(threeDSpaceDocName(s.projectId, s.spaceId))], meta: [] });
   });
 
   it("stores the single image's registered address and asset id for the single-image entry", async () => {
@@ -719,7 +717,7 @@ describe("submitting a generation: admission", () => {
     expect(await holds(s)).toEqual([expect.objectContaining({ reference_id: answer!.task_id, status: "released" })]);
     const [task] = await taskRows(s);
     expect(task!.status).toBe("failed");
-    expect((await signalsFor(s)).length).toBeGreaterThanOrEqual(1);
+    await expectDocumentTold(s);
   });
 
   it("still answers 201 pending with a running row when recording the job id throws after queueing", async () => {
@@ -806,7 +804,7 @@ describe("reading the Space's list", () => {
     const left = await seedAsset(s, "image", "left.png");
     const views = await admitted(s, { mode: "i23d", model: MULTIVIEW, params: {}, image_asset_ids: [front.assetId, left.assetId], origin: "agent" });
     await makeOverdue(text.row_id);
-    signals.length = 0;
+    await spaceSignals.mark();
 
     const res = await call("GET", `/projects/${s.projectId}/three-d/${s.spaceId}/tasks`, s.viewer.cookie);
     expect(res.status).toBe(200);
@@ -838,7 +836,7 @@ describe("reading the Space's list", () => {
         { assetId: left.assetId, url: left.url },
       ],
     });
-    expect((await signalsFor(s)).length).toBeGreaterThanOrEqual(1);
+    await expectDocumentTold(s);
   });
 });
 
@@ -871,13 +869,13 @@ describe("checking a timed-out row against the queue", () => {
     const model = await seedAsset(s, "file", "lamp.glb");
     await endJob(answer.task_id);
     await markBilledWith(answer.task_id, model);
-    signals.length = 0;
+    await spaceSignals.mark();
 
     const res = await check(s, answer.row_id);
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({ data: { outcome: "has_result" } });
     expect(await rowById(answer.row_id)).toMatchObject({ status: "expired", asset_id: model.assetId });
-    expect((await signalsFor(s)).length).toBeGreaterThanOrEqual(1);
+    await expectDocumentTold(s);
   });
 
   it("answers has_result when the worker charges the run between the check's reads of it", async () => {

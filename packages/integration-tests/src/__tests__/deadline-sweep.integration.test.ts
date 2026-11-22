@@ -31,6 +31,7 @@ vi.mock("ai", () => ({
 
 import {
   createPgClient,
+  getNodeTaskConfig,
   getWorkerConfig,
   initCore,
   listenLiveUpdates,
@@ -39,6 +40,8 @@ import {
   type LiveUpdatesListener,
 } from "@breatic/core";
 import { readDeadlineWatermark, sweepDeadlines, writeDeadlineWatermark } from "@worker/handlers/deadline-sweep.js";
+import { threeDSpaceDocName } from "@breatic/shared";
+import { listenSpaceTaskSignals, spaceTasksVersion } from "@server/__tests__/integration/helpers/space-task-signals.js";
 
 let sql: ReturnType<typeof createPgClient>;
 let listener: LiveUpdatesListener;
@@ -243,6 +246,68 @@ describe("project transfers that come due", () => {
     const t = await transfer(new Date(now.getTime() - 60 * MINUTE));
     await round(new Date(now.getTime() - 10 * MINUTE), now);
     expect(await state(t.id)).toMatchObject({ status: "failed", failed_reason: "expired" });
+  });
+});
+
+/**
+ * A 3D Space's own row (no node) that started at `startedAt`, running, or waiting for a running slot.
+ * @returns The row id.
+ */
+async function sceneRow(projectId: string, spaceId: string, userId: string, startedAt: Date, waiting = false): Promise<string> {
+  const [row] = await sql<{ id: string }[]>`
+    insert into node_tasks (project_id, space_id, node_id, kind, action, status, started_by_user_id, started_at, waiting_since, budget_ms, label, origin)
+    values (${projectId}, ${spaceId}, null, 'generation', 'generate', 'running', ${userId}, ${startedAt}, ${waiting ? startedAt : null},
+      ${getNodeTaskConfig().default_budget_ms}, 'tripo-h3.1-t23d', 'space')
+    returning id
+  `;
+  return row!.id;
+}
+
+/** A node task row's status. */
+async function rowStatus(id: string): Promise<{ status: string; error_message: string | null }> {
+  const [row] = await sql<{ status: string; error_message: string | null }[]>`select status, error_message from node_tasks where id = ${id}`;
+  return row!;
+}
+
+describe("3D Space rows that come due", () => {
+  it("C-19 expires a running row past its budget and tells the 3D Space's document", async () => {
+    const interval = getWorkerConfig().deadline_sweep.interval_ms;
+    const budget = getNodeTaskConfig().default_budget_ms;
+    const admin = await user();
+    const { projectId } = await studioWithProject(admin);
+    const spaceId = randomUUID();
+    const now = new Date();
+    const id = await sceneRow(projectId, spaceId, admin, new Date(now.getTime() - budget - interval / 2));
+    const docName = threeDSpaceDocName(projectId, spaceId);
+    const signals = await listenSpaceTaskSignals();
+    try {
+      await signals.mark();
+      await round(new Date(now.getTime() - interval), now);
+      expect(await rowStatus(id)).toEqual({ status: "expired", error_message: "expired" });
+      expect(await signals.read({ projectId, spaceId, docName })).toEqual({ doc: [spaceTasksVersion(docName)], meta: [] });
+    } finally {
+      await signals.stop();
+    }
+  });
+
+  it("C-20 leaves a row waiting for a running slot, which has no deadline yet, and tells no one", async () => {
+    const interval = getWorkerConfig().deadline_sweep.interval_ms;
+    const budget = getNodeTaskConfig().default_budget_ms;
+    const admin = await user();
+    const { projectId } = await studioWithProject(admin);
+    const spaceId = randomUUID();
+    const now = new Date();
+    const id = await sceneRow(projectId, spaceId, admin, new Date(now.getTime() - budget - interval / 2), true);
+    const docName = threeDSpaceDocName(projectId, spaceId);
+    const signals = await listenSpaceTaskSignals();
+    try {
+      await signals.mark();
+      await round(new Date(now.getTime() - interval), now);
+      expect(await rowStatus(id)).toEqual({ status: "running", error_message: null });
+      expect(await signals.read({ projectId, spaceId, docName })).toEqual({ doc: [], meta: [] });
+    } finally {
+      await signals.stop();
+    }
   });
 });
 

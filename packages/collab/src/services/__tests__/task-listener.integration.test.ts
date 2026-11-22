@@ -20,7 +20,7 @@ import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/re
 
 import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
 import { eq } from "drizzle-orm";
-import { CANVAS_NODES_KEY, documentBodyFragment, documentSpaceDocName, FOCUS_IMAGE_UPLOAD_EVENT_TYPE, MAX_FOCUS_ENTRIES, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, type DocumentUploadEvent, type NodeTaskCountsEvent } from "@breatic/shared";
+import { CANVAS_NODES_KEY, documentBodyFragment, documentSpaceDocName, FOCUS_IMAGE_UPLOAD_EVENT_TYPE, MAX_FOCUS_ENTRIES, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, threeDSpaceDocName, timelineSpaceDocName, type DocumentUploadEvent, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import {
@@ -1121,5 +1121,48 @@ describe("focus crop events", () => {
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
     expect((await poolOf(c, nodeId))?.items).toEqual([first, second]);
+  });
+});
+
+describe("3D Space task versions (#1580)", () => {
+  /**
+   * A fresh stream, key prefix and empty 3D document.
+   * @returns The case's names.
+   */
+  async function newThreeDCase(): Promise<Case> {
+    const c = bareCase(threeDSpaceDocName(PID, randomUUID()));
+    await yjsRepo.seedInitialState(c.docName, Y.encodeStateAsUpdate(new Y.Doc()));
+    return c;
+  }
+
+  it("F-02 writes the stream id of a 3D Space's latest change into its document", async () => {
+    const c = await newThreeDCase();
+    const ids = await publishSpaceTasksVersion(c, 3);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readSpaceTasksVersion(c.docName)).toBe(ids[2]);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("F-03 keeps a 3D Space's newer version when an older change is replayed from the dead-letter stream", async () => {
+    const c = await newThreeDCase();
+    const [olderId, newerId] = await publishSpaceTasksVersion(c, 2);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, [olderId!, newerId!]));
+    const replayed = await publishSpaceTasksVersion(c, 1, ["originId", olderId!]);
+    await until(() => handled(c.streamKey, replayed));
+    expect(await readSpaceTasksVersion(c.docName)).toBe(newerId);
+  });
+
+  it("F-04 leaves a deleted 3D Space's stored content as it was", async () => {
+    const c = bareCase(threeDSpaceDocName(PID, randomUUID()));
+    await seedNote(c.docName, "lamp");
+    expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
+    const ids = await publishSpaceTasksVersion(c);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await readRestored(c.docName)).toEqual({ note: "lamp", version: undefined });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 });

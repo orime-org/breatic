@@ -402,11 +402,11 @@ describe("the payloads and the triggers themselves", () => {
   it("A-30 announces nothing for upload grants", async () => {
     const got = await observe(() => pgClient`update upload_grants set updated_at = now() where false`);
     expect(got).toEqual([]);
-    const [{ count }] = await pgClient<{ count: number }[]>`
+    const [row] = await pgClient<{ count: number }[]>`
       select count(*)::int as count from pg_trigger t join pg_class c on c.oid = t.tgrelid
       where c.relname = 'upload_grants' and not t.tgisinternal and t.tgname ilike '%live%'
     `;
-    expect(count).toBe(0);
+    expect(row!.count).toBe(0);
   });
 
   it("A-31 carries only the kind and one canonical id", async () => {
