@@ -519,7 +519,7 @@ function SavedKeyState({ saved, kind }: { saved: ByokSavedKey; kind: ByokUpstrea
 
 /**
  * When a key was last checked, in the user's locale: the time alone for a check made today, the date with no year
- * otherwise.
+ * for another day this year, and the year as well for an earlier year.
  * @param at - The check's instant, ISO.
  * @param t - The translator.
  * @returns The sentence.
@@ -527,10 +527,12 @@ function SavedKeyState({ saved, kind }: { saved: ByokSavedKey; kind: ByokUpstrea
 function checkedText(at: string, t: Translate): string {
   const when = new Date(at);
   const locale = getLocale();
-  if (when.toDateString() === new Date().toDateString()) {
+  const now = new Date();
+  if (when.toDateString() === now.toDateString()) {
     return t('byok.lastCheckedToday', { time: when.toLocaleTimeString(locale, { hour: 'numeric', minute: '2-digit' }) });
   }
-  return t('byok.lastChecked', { time: when.toLocaleString(locale, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) });
+  const year = when.getFullYear() === now.getFullYear() ? undefined : 'numeric';
+  return t('byok.lastChecked', { time: when.toLocaleString(locale, { year, month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' }) });
 }
 
 /**

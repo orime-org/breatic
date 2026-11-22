@@ -489,10 +489,11 @@ describe('ByokDialog', () => {
       expect(detail).not.toHaveTextContent('This key can\'t read actual costs. Use a key with billing access to see them.');
     });
 
-    it('says a check made today as today, without the date, and an older one without the year', async () => {
+    it('says a check made today as today, without the date, and an older one this year without the year', async () => {
       const today = new Date();
       today.setHours(9, 5, 0, 0);
-      const older = new Date(today.getTime() - 3 * 24 * 3600 * 1000);
+      // Another day of this year, whatever today is.
+      const older = new Date(today.getFullYear(), today.getMonth() === 0 && today.getDate() === 15 ? 1 : 0, 15, 9, 5);
       serve(view({ keys: [{ ...WAVESPEED_KEY, lastCheckedAt: today.toISOString() }, { ...FAL_KEY, lastCheckedAt: older.toISOString() }] }));
       const user = userEvent.setup();
       const dialog = await mount();
@@ -503,6 +504,17 @@ describe('ByokDialog', () => {
       const fal = within(dialog).getByTestId('byok-detail-fal');
       expect(fal).toHaveTextContent('Checked ');
       expect(fal).not.toHaveTextContent(String(older.getFullYear()));
+    });
+
+    it('says the year of a check made in an earlier year', async () => {
+      const lastYear = new Date(new Date().getFullYear() - 1, 10, 10, 15, 0);
+      serve(view({ keys: [WAVESPEED_KEY, { ...FAL_KEY, lastCheckedAt: lastYear.toISOString() }] }));
+      const user = userEvent.setup();
+      const dialog = await mount();
+      await within(dialog).findByTestId('byok-detail-wavespeed');
+      await user.click(within(dialog).getByTestId('byok-upstream-fal'));
+
+      expect(within(dialog).getByTestId('byok-detail-fal')).toHaveTextContent(String(lastYear.getFullYear()));
     });
 
     it('links to the upstream\'s key page in neutral ink, marked as opening another site', async () => {
