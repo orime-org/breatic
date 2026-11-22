@@ -138,7 +138,7 @@ describe('the press: placeholder keyed by run_id (design §5.5 "受理", "结果
     const work = pressConfirm();
     await Promise.resolve();
     expect(sent()).toHaveLength(1);
-    const runId = sent()[0]!.run_id;
+    const runId = sent()[0].run_id;
     expect(placeholders()).toEqual([{ id: runId, nodeId: PANEL, name: 'Clip 7' }]);
     expect(getRunning(spaceTaskIntent('mini-tool', SPACE, runId, 'video.focus-crop'))).toBeDefined();
     answer!({ task_id: runId, status: 'pending' });
@@ -161,7 +161,7 @@ describe('the press: placeholder keyed by run_id (design §5.5 "受理", "结果
     expect(a).not.toBe(b);
     expect(await two).toMatchObject({ kind: 'failed' });
     expect(placeholders().map((entry) => entry.id)).toEqual([a]);
-    first!({ task_id: a!, status: 'pending' });
+    first!({ task_id: a, status: 'pending' });
     expect(await one).toMatchObject({ kind: 'done' });
     expect(placeholders().map((entry) => entry.id)).toEqual([a]);
   });
@@ -179,6 +179,14 @@ describe('the press: placeholder keyed by run_id (design §5.5 "受理", "结果
     expect(await pressConfirm()).toMatchObject({ kind: 'failed' });
     expect(placeholders()).toEqual([]);
     expect(toast.error).toHaveBeenCalledTimes(1);
+  });
+
+  it('F09: a refusal because the video was updated toasts the server\'s presentationChanged text (design §5.5 界面状态)', async () => {
+    const message = 'The video was updated. Pick the frame and region again.';
+    vi.mocked(miniToolsApi.runPlanned).mockRejectedValueOnce(new ApiException({ status: 400, message, fromServer: true }));
+    expect(await pressConfirm()).toMatchObject({ kind: 'failed' });
+    expect(placeholders()).toEqual([]);
+    expect(vi.mocked(toast.error).mock.calls).toEqual([[message]]);
   });
 
   it('F08: a press released past the resend deadline removes the placeholder without a toast of its own', async () => {
