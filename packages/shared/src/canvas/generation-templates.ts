@@ -35,6 +35,7 @@ import { ANIME_OPENING_15S } from "@shared/canvas/templates/anime-opening-15s.js
 import { ANIME_SCENE } from "@shared/canvas/templates/anime-scene.js";
 import { BEAT_SYNC_OUTFIT_CHANGE } from "@shared/canvas/templates/beat-sync-outfit-change.js";
 import { BULLET_TIME_MISHAP } from "@shared/canvas/templates/bullet-time-mishap.js";
+import { BULLET_TIME_MOMENT } from "@shared/canvas/templates/bullet-time-moment.js";
 import { CARRIED_OBJECT_TRANSITION } from "@shared/canvas/templates/carried-object-transition.js";
 import { CARTOON_GAG } from "@shared/canvas/templates/cartoon-gag.js";
 import { CHARACTER_BIBLE } from "@shared/canvas/templates/character-bible.js";
@@ -51,14 +52,19 @@ import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
 import { ERA_WALKTHROUGH_MONTAGE } from "@shared/canvas/templates/era-walkthrough-montage.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
 import { EXTREME_SPORTS_RUN } from "@shared/canvas/templates/extreme-sports-run.js";
+import { FIGHT_DUEL_LOCKED } from "@shared/canvas/templates/fight-duel-locked.js";
+import { FIGHT_DUEL_ONE_TAKE } from "@shared/canvas/templates/fight-duel-one-take.js";
+import { FIGHT_EXCHANGE_SHORT } from "@shared/canvas/templates/fight-exchange-short.js";
 import { FILM_STYLE_SHOT } from "@shared/canvas/templates/film-style-shot.js";
 import { FILM_STYLE_STILL } from "@shared/canvas/templates/film-style-still.js";
 import { FISHEYE_CLONE_POV } from "@shared/canvas/templates/fisheye-clone-pov.js";
 import { FLASH_PHOTO_DUMP_GRID } from "@shared/canvas/templates/flash-photo-dump-grid.js";
 import { FOOD_MONEY_SHOT } from "@shared/canvas/templates/food-money-shot.js";
 import { GAME_UI_LIVESTREAM } from "@shared/canvas/templates/game-ui-livestream.js";
+import { HERO_ORBIT_REVEAL } from "@shared/canvas/templates/hero-orbit-reveal.js";
 import { HYPE_THEN_TWIST_AD } from "@shared/canvas/templates/hype-then-twist-ad.js";
 import { IDENTITY_LOCKED_SEQUENCE } from "@shared/canvas/templates/identity-locked-sequence.js";
+import { IMPACT_FRAME_HIT } from "@shared/canvas/templates/impact-frame-hit.js";
 import { LIVESTREAM_PITCH } from "@shared/canvas/templates/livestream-pitch.js";
 import { MUSIC_MOOD_FROM_IMAGE } from "@shared/canvas/templates/music-mood-from-image.js";
 import { NAME_AS_WORLD_TYPOGRAPHY } from "@shared/canvas/templates/name-as-world-typography.js";
@@ -106,7 +112,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "speed", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -241,6 +247,12 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   STORYBOARD_TO_VIDEO,
   COMIC_PAGE_TO_MOTION,
   COMIC_PANELS_TO_SHOTS,
+  FIGHT_DUEL_ONE_TAKE,
+  FIGHT_EXCHANGE_SHORT,
+  FIGHT_DUEL_LOCKED,
+  HERO_ORBIT_REVEAL,
+  BULLET_TIME_MOMENT,
+  IMPACT_FRAME_HIT,
   CARTOON_GAG,
   THREE_D_CARTOON_SHORT,
   STOP_MOTION_SHORT,
