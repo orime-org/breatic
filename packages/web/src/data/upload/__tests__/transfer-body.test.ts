@@ -231,7 +231,7 @@ describe('bodyOrTransfer: the threshold, counted in UTF-8 bytes of JSON.stringif
     expect(steps).toEqual([]);
   });
 
-  it('W02 transfers one byte over the limit, in order, and returns the reference', async () => {
+  it('W02 and J-02 transfers one byte over the limit, waiting on the key before the bytes go, and returns the reference', async () => {
     const body = { t: 'a'.repeat(1048569) };
     const onTransferStart = vi.fn(() => {
       steps.push('start');
@@ -240,7 +240,7 @@ describe('bodyOrTransfer: the threshold, counted in UTF-8 bytes of JSON.stringif
     const out = await bodyOrTransfer(P, body, { onTransferStart });
 
     expect(out).toEqual({ transfer: KEY });
-    expect(steps).toEqual(['start', 'ticket', 'send', 'finish', 'wait']);
+    expect(steps).toEqual(['start', 'ticket', 'wait', 'send', 'finish']);
     expect(onTransferStart).toHaveBeenCalledTimes(1);
     const [ticket] = postsTo(isTicket);
     expect(ticket?.[1]).toEqual({ project_id: P, size: 1048596 });
