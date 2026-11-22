@@ -363,7 +363,7 @@ async function prepareUpload(
       context: {
         nodeId: item.node_id ?? null,
         ...(item.upload_id !== undefined && { documentUploadId: item.upload_id }),
-        focusImage: focusTargetOf(scope, item)?.focusImage ?? null,
+        ...(item.focusImage !== undefined && { focusImage: focusTargetOf(scope, item)?.focusImage ?? null }),
         spaceId: item.space_id ?? null,
         source: item.source ?? null,
         toolName: item.tool_name ?? null,
