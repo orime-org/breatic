@@ -7,7 +7,9 @@
  * restart, more windows, links handed to the system, and a server that cannot
  * be reached.
  *
- * Run with the dev stack up: `pnpm --filter @breatic/desktop test:e2e`.
+ * Run with the dev stack up: `pnpm --filter @breatic/desktop test:e2e`. It
+ * builds the client as a brand that carries no server (e2e/brand-without-server),
+ * so the address rules and the connect window are what the cases exercise.
  * SERVER defaults to the worktree's own web port; set BREATIC_E2E_SERVER for another.
  */
 
@@ -179,7 +181,7 @@ test("a configured server that cannot be reached opens the unreachable state", a
   await app.close();
 });
 
-test("browser sign-in hands the account to the client through a breatic:// link", async () => {
+test("browser sign-in hands the account to the client through a link on its scheme", async () => {
   const userData = freshData();
   writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
   const { email, password } = account();
@@ -204,7 +206,7 @@ test("browser sign-in hands the account to the client through a breatic:// link"
   const tab = await browser.newPage({ locale: "en-US" });
   const links: string[] = [];
   tab.on("request", (request) => {
-    if (request.url().startsWith("breatic:")) links.push(request.url());
+    if (request.url().startsWith("ai.breatic.desktop:")) links.push(request.url());
   });
   await tab.goto(signInUrl);
   await expect(tab).toHaveURL(/\/login/);

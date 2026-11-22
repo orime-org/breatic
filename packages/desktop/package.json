@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "tsup && playwright test"
+    "test:e2e": "BREATIC_BRAND_DIR=e2e/brand-without-server tsup && playwright test"
   },
   "dependencies": {
     "@breatic/shared": "workspace:*",
