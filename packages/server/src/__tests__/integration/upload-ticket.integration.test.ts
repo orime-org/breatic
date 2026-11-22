@@ -1467,15 +1467,15 @@ describe("POST /assets/upload-ticket — a focus crop (#1580)", () => {
 
   it.each([
     ["the largest size", { width: MAX_FOCUS_DIMENSION }, 201],
-    ["a size past the largest", { width: MAX_FOCUS_DIMENSION + 1 }, 400],
-    ["a zero size", { width: 0 }, 400],
-    ["a negative size", { height: -1 }, 400],
-    ["a size given as text", { width: "10" }, 400],
-    ["a missing size", { height: null }, 400],
-    ["an id that is not a UUID", { id: "abc" }, 400],
-    ["an empty id", { id: "" }, 400],
+    ["a size past the largest", { width: MAX_FOCUS_DIMENSION + 1 }, 422],
+    ["a zero size", { width: 0 }, 422],
+    ["a negative size", { height: -1 }, 422],
+    ["a size given as text", { width: "10" }, 422],
+    ["a missing size", { height: null }, 422],
+    ["an id that is not a UUID", { id: "abc" }, 422],
+    ["an empty id", { id: "" }, 422],
     ["the longest name", { name: "n".repeat(MAX_FOCUS_NAME) }, 201],
-    ["a name past the longest", { name: "n".repeat(MAX_FOCUS_NAME + 1) }, 400],
+    ["a name past the longest", { name: "n".repeat(MAX_FOCUS_NAME + 1) }, 422],
     ["an empty name", { name: "" }, 201],
   ])("D-03 to D-05 answers %s with %i", async (_label, focus, status) => {
     const seed = await seedEditor();
@@ -1490,7 +1490,7 @@ describe("POST /assets/upload-ticket — a focus crop (#1580)", () => {
   ])("D-06 to D-09 refuses a crop that names %s as a request-shape error", async (_label, over) => {
     const seed = await seedEditor();
     const res = await requestTicket(seed.cookie, { ...cropBody(crypto.randomUUID(), {}, over), project_id: seed.projectId });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
     const json = (await res.json()) as { error: { reason?: string } };
     expect(json.error.reason).toBe("request_shape");
   });
@@ -1499,7 +1499,7 @@ describe("POST /assets/upload-ticket — a focus crop (#1580)", () => {
     const seed = await seedEditor();
     const payload = cropBody(crypto.randomUUID(), {}, { studio_id: seed.studioId, purpose: "studio_avatar", space_id: undefined, derived: undefined });
     const res = await requestTicket(seed.cookie, payload);
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(422);
   });
 
   it("D-10 leaves an ordinary upload's grant without a focus image", async () => {
