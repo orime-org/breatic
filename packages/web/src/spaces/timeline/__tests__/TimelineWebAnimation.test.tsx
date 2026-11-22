@@ -186,12 +186,21 @@ afterEach(() => {
 });
 
 describe('track toolbar', () => {
+  /**
+   * The buttons of the track toolbar, in order.
+   * @returns Their test ids.
+   */
+  function toolbarButtons(): Array<string | null> {
+    const bar = screen.getByRole('toolbar', { name: t('timeline.tracks') });
+    return within(bar).getAllByRole('button').map((button) => button.getAttribute('data-testid'));
+  }
+  const EDITING = ['timeline-undo', 'timeline-redo', 'timeline-split', 'timeline-duplicate', 'timeline-delete', 'timeline-toggle-magnet', 'timeline-toggle-snap', 'timeline-toggle-linkage'];
+
   it('offers an Editor Add web animation beside Add media, and no way to make one here', async () => {
     seed();
     showTimeline();
     expect(await screen.findByTestId('timeline-add-web-animation')).toHaveAccessibleName(t('timeline.webAnimation.add'));
-    expect(screen.queryByTestId('timeline-create-web-animation')).toBeNull();
-    expect(screen.queryByTestId('timeline-open-executions')).toBeNull();
+    expect(toolbarButtons()).toEqual(['timeline-add-media', 'timeline-add-web-animation', ...EDITING]);
   });
 
   it('offers Add web animation while the Timeline limits are still read', async () => {
@@ -201,12 +210,11 @@ describe('track toolbar', () => {
     expect(await screen.findByTestId('timeline-add-web-animation')).toBeInTheDocument();
   });
 
-  it('shows a Viewer neither Add web animation nor an execution list', async () => {
+  it('shows a Viewer no Add web animation', async () => {
     seed();
     showTimeline(true);
     await screen.findByTestId('timeline-side-panel');
-    expect(screen.queryByTestId('timeline-add-web-animation')).toBeNull();
-    expect(screen.queryByTestId('timeline-open-executions')).toBeNull();
+    expect(toolbarButtons()).toEqual(['timeline-add-media', ...EDITING]);
   });
 });
 
