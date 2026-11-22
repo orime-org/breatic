@@ -1209,13 +1209,13 @@ export function renderProductGuide(): string {
       "review the settings after switching to the current source. A source that cannot be read shows " +
       `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))}. Settings saved on an earlier version of the same video ` +
       `keep their values and show ${quoted(t("canvas.miniTool.videoUI.videoUpdated"))} at the top of the panel with ` +
-      `${quoted(t("canvas.miniTool.videoUI.applyToVideo"))}; until it is pressed the tool cannot run or detect scenes. A cut ` +
-      "past the updated video's end shows its time in a red row to move or remove first; pressing the button before that shows " +
-      `${quoted(t("canvas.miniTool.videoUI.settingsOutOfRange"))}`,
+      `${quoted(t("canvas.miniTool.videoUI.applyToVideo"))}; until it is pressed the tool cannot run or detect scenes. Pressing ` +
+      `it while a cut lies past the updated video's end shows ${quoted(t("canvas.miniTool.videoUI.settingsOutOfRange"))} and ` +
+      "marks that cut's row red; move or remove the cut, then press it again.",
     `While a video is being prepared, its tools show ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} and ` +
       "cannot run yet; the node plays the original meanwhile when the browser can. If preparing fails for a reason " +
       `that may pass, the panel shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))} with ` +
-      `${quoted(t("canvas.miniTool.videoUI.retryPreview"))}; Retry stays busy until the video's facts have refreshed, and ` +
+      `${quoted(t("canvas.task.action.retry"))}; Retry stays busy until the video's facts have refreshed, and ` +
       "closing the panel does not cancel accepted work. A video longer than can be prepared shows " +
       `${quoted(t("canvas.miniTool.videoUI.tooLongToPrepare"))} and other unusable content shows ` +
       `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))}, both without Retry.`,

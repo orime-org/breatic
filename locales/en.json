@@ -267,6 +267,7 @@
       "unavailable": "This tool is unavailable right now.",
       "invalidParam": "\"{name}\" has a value this tool does not take.",
       "foreignSource": "This file cannot be processed.",
+      "presentationChanged": "The video was updated. Pick the frame and region again.",
       "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
       "sourceTooLarge": "This tool takes files up to {size}.",
       "clipsTooLarge": "These clips are too large to join together.",

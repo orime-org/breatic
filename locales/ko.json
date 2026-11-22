@@ -267,6 +267,7 @@
       "unavailable": "이 도구는 지금 사용할 수 없습니다.",
       "invalidParam": "\"{name}\" 값은 이 도구에서 지원하지 않습니다.",
       "foreignSource": "이 파일은 처리할 수 없습니다.",
+      "presentationChanged": "동영상이 업데이트되었습니다. 프레임과 영역을 다시 선택하세요.",
       "sourceTooLong": "이 도구는 {minutes}분 이내의 오디오만 처리합니다.",
       "sourceTooLarge": "이 도구는 {size} 이내의 파일만 처리합니다.",
       "clipsTooLarge": "이 클립들은 합친 크기가 너무 커서 이어 붙일 수 없습니다.",

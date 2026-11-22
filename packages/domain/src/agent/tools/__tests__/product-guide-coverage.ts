@@ -1276,6 +1276,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.membership.unavailable": { excluded: REASONS.DEPLOYMENT },
   "server.membership.upgrade_pending": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.mini_tool.foreignSource": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.mini_tool.presentationChanged": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.alreadyRetried": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.sourceTooLong": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.mini_tool.sourceTooLarge": { excluded: REASONS.SAYS_WHAT_HAPPENED },

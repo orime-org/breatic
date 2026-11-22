@@ -21,6 +21,7 @@ import crypto from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { createPgClient, db, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as shared from "@breatic/shared";
+import { t } from "@breatic/shared";
 import type * as miniTools from "@breatic/shared/mini-tools";
 import type { MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import * as domain from "@domain/index.js";
@@ -174,10 +175,10 @@ describe("video focus crop admission (design §5.5 受理, 计划形状, 配置;
     expect(start).toHaveBeenCalledTimes(1);
   });
 
-  it("F02 refuses a press naming a version that is not the selected one, with no task", async () => {
+  it("F02 refuses a press naming a version that is not the selected one, saying the video was updated, with no task", async () => {
     const f = await seed();
     const stale = structuredClone(f.body); stale.presentation_ref = { source: { toolInputId: "0".repeat(64), planSha256: f.body.presentation_ref.source.planSha256 } };
-    await expect(acceptMiniToolExecution(stale as unknown as MiniToolPlannedRequest, f.userId, recorder())).rejects.toThrow();
+    await expect(acceptMiniToolExecution(stale as unknown as MiniToolPlannedRequest, f.userId, recorder())).rejects.toThrow(t("server.mini_tool.presentationChanged"));
     expect(await readTask(stale.run_id)).toBeNull();
     // The same press on the selected version is admitted, so the refusal above is the version check and not the tool.
     expect(await acceptMiniToolExecution(f.body as unknown as MiniToolPlannedRequest, f.userId, recorder())).toEqual({ taskId: f.body.run_id, status: "pending" });

@@ -267,6 +267,7 @@
       "unavailable": "這個工具暫時無法使用。",
       "invalidParam": "「{name}」的值這個工具不支援。",
       "foreignSource": "這個檔案無法處理。",
+      "presentationChanged": "影片已更新，請重新選擇畫面和區域。",
       "sourceTooLong": "這個工具只處理 {minutes} 分鐘以內的音訊。",
       "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
       "clipsTooLarge": "這些片段加起來太大，無法拼接。",

@@ -267,6 +267,7 @@
       "unavailable": "このツールは現在利用できません。",
       "invalidParam": "「{name}」の値はこのツールでは使えません。",
       "foreignSource": "このファイルは処理できません。",
+      "presentationChanged": "動画が更新されました。フレームと範囲を選び直してください。",
       "sourceTooLong": "このツールは {minutes} 分以内の音声のみ処理できます。",
       "sourceTooLarge": "このツールは {size} 以内のファイルのみ処理できます。",
       "clipsTooLarge": "これらのクリップは合計サイズが大きすぎるため、つなげられません。",

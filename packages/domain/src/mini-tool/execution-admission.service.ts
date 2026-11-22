@@ -330,7 +330,7 @@ function framesPlan(request: Extract<MiniToolPlannedRequest, { tool: "video.extr
 async function prepareFocusCrop(request: Extract<MiniToolPlannedRequest, { tool: "video.focus-crop" }>, common: ExecutionCommon): Promise<ExecutionProjection> {
   const config = structuredClone(getMiniToolsConfig());
   const { binding, sourceKey } = await resolveSource(request.draft.source);
-  const version = await selectedToolInput(request.presentation_ref.source, binding, sourceKey, config);
+  const version = await selectedToolInput(request.presentation_ref.source, binding, sourceKey, config, "server.mini_tool.presentationChanged");
   const { frameIndex, crop } = request.draft.params;
   const { display } = version;
   if (frameIndex >= display.frameCount || crop.x + crop.width > display.width || crop.y + crop.height > display.height) throw new ValidationError(t("server.mini_tool.foreignSource"));
