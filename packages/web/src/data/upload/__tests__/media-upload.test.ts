@@ -215,7 +215,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     await runMediaUpload(file, { projectId: 'p1', derived: true }, deps);
 
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, expect.any(AbortSignal));
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',

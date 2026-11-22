@@ -244,7 +244,7 @@ describe('bodyOrTransfer: the threshold, counted in UTF-8 bytes of JSON.stringif
     expect(onTransferStart).toHaveBeenCalledTimes(1);
     const [ticket] = postsTo(isTicket);
     expect(ticket?.[1]).toEqual({ project_id: P, size: 1048596 });
-    expect(vi.mocked(waitForUploadEnding)).toHaveBeenCalledWith(KEY);
+    expect(vi.mocked(waitForUploadEnding)).toHaveBeenCalledWith(KEY, expect.any(AbortSignal));
   });
 
   it('W03 counts bytes, not characters', async () => {
@@ -456,13 +456,20 @@ describe('bodyOrTransfer: cancelling between steps (W07, S03, S07, S15, S25)', (
     expect(postsTo(isFinish)).toHaveLength(0);
   });
 
-  it('S15 aborted while polling after the finish was queued: AbortError, no reference', async () => {
+  it('S15 aborted while waiting after the finish was queued: AbortError, no reference', async () => {
     const controller = new AbortController();
     let polled = false;
     vi.mocked(waitForUploadEnding).mockImplementation(() => {
       polled = true;
-      queueMicrotask(() => controller.abort());
       return new Promise<UploadEnding>(() => undefined);
+    });
+    vi.mocked(apiPost).mockImplementation(async (url: string) => {
+      if (isTicket(url)) return TICKET;
+      if (isFinish(url)) {
+        queueMicrotask(() => controller.abort());
+        return { storageKey: KEY };
+      }
+      throw new Error(`unexpected POST ${url}`);
     });
 
     await expect(bodyOrTransfer(P, big(), { signal: controller.signal })).rejects.toMatchObject({

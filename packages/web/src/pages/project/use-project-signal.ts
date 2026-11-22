@@ -3,7 +3,12 @@
 
 import { useEffect, useRef } from 'react';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import type { ActivityNewSignal, CreditsChangedSignal } from '@breatic/shared';
+import type {
+  ActivityNewSignal,
+  CreditsChangedSignal,
+  NotificationsChangedSignal,
+  ProjectTransferChangedSignal,
+} from '@breatic/shared';
 
 /** How long a burst of signals (a bulk op emits many) is gathered into one call. */
 const COALESCE_MS = 250;
@@ -12,19 +17,21 @@ const COALESCE_MS = 250;
  * Call back when the meta-doc socket carries a project signal.
  *
  * Collab relays `activity:new` whenever a row lands in the project's activity
- * feed and `credits:changed` whenever a charge made in the project commits. A burst
- * is coalesced into one call on a short trailing timer. Other stateless
- * traffic on the socket (space RPC answers) does not parse as the signal and
- * is ignored.
+ * feed, `credits:changed` whenever the Studio's credits change, `project-transfer:changed`
+ * when the project's transfer changes, and `notifications:changed` when the person's
+ * bell changes (#1580). A burst is coalesced into one call on a short trailing timer.
+ * Other stateless traffic on the socket (space RPC answers) does not parse as the
+ * signal and is ignored.
  * @param provider - The live meta-doc provider, or null while there is none.
- * @param projectId - The project whose signals count.
+ * @param projectId - The project whose signals count, or null for a signal that is the
+ *   person's and names no project.
  * @param signal - Which signal to listen for.
  * @param onSignal - What to do; read on every signal, so it need not be stable.
  */
 export function useProjectSignal(
   provider: Pick<HocuspocusProvider, 'on' | 'off'> | null | undefined,
-  projectId: string,
-  signal: ActivityNewSignal['t'] | CreditsChangedSignal['t'],
+  projectId: string | null,
+  signal: ActivityNewSignal['t'] | CreditsChangedSignal['t'] | NotificationsChangedSignal['t'] | ProjectTransferChangedSignal['t'],
   onSignal: () => void,
 ): void {
   const latest = useRef(onSignal);
@@ -42,7 +49,7 @@ export function useProjectSignal(
       try {
         const parsed: unknown = JSON.parse(data.payload);
         const { t, projectId: about } = (parsed ?? {}) as { t?: unknown; projectId?: unknown };
-        if (t === signal && about === projectId) {
+        if (t === signal && (projectId === null || about === projectId)) {
           if (debounce) clearTimeout(debounce);
           debounce = setTimeout(() => latest.current(), COALESCE_MS);
         }

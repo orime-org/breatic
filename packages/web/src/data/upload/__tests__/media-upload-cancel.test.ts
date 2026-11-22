@@ -82,7 +82,7 @@ describe('runMediaUpload cancellation ownership', () => {
     expect(deps.onSuccess).not.toHaveBeenCalled();
   });
 
-  it.each(['config', 'hash', 'ticket', 'transfer', 'status'] as const)(
+  it.each(['config', 'hash', 'ticket', 'status', 'transfer'] as const)(
     'rejects cancellation during %s and ignores its late successful answer',
     async (stage) => {
       const controller = new AbortController();
@@ -97,15 +97,16 @@ describe('runMediaUpload cancellation ownership', () => {
 
       await expect(runMediaUpload(FILE, CONTEXT, deps, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
 
-      const stages = [deps.getUploadConfig, deps.hashFile, deps.requestTicket, deps.sendToIngest, deps.waitForEnding];
-      const index = ['config', 'hash', 'ticket', 'transfer', 'status'].indexOf(stage);
+      // The wait is registered under the ticket's key before the bytes go (#1580).
+      const stages = [deps.getUploadConfig, deps.hashFile, deps.requestTicket, deps.waitForEnding, deps.sendToIngest];
+      const index = ['config', 'hash', 'ticket', 'status', 'transfer'].indexOf(stage);
       for (const later of stages.slice(index + 1)) expect(later).not.toHaveBeenCalled();
       expect(deps.onFailure).not.toHaveBeenCalled();
       expect(deps.onSuccess).not.toHaveBeenCalled();
     },
   );
 
-  it.each(['config', 'hash', 'ticket', 'transfer', 'status'] as const)(
+  it.each(['config', 'hash', 'ticket', 'status', 'transfer'] as const)(
     'propagates an AbortError from %s without reporting an upload failure',
     async (stage) => {
       const controller = new AbortController();
@@ -137,7 +138,8 @@ describe('runMediaUpload cancellation ownership', () => {
       ...CONTEXT, filename: FILE.name, contentType: FILE.type, size: FILE.size, hash: HASH,
     }, controller.signal);
     expect(deps.sendToIngest).toHaveBeenCalledWith(FILE, TICKET, CONFIG, expect.any(Function), controller.signal);
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, controller.signal);
+    // The wait carries its own stop, raised with the upload's (#1580).
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, expect.any(AbortSignal));
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(COMPLETED.result);
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
@@ -184,22 +186,20 @@ describe('runMediaUpload cancellation ownership', () => {
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
-  it('enters registration after finish is queued and waits for the registered result', async () => {
+  it('waits under the key before the bytes go, enters registration once the finish is queued, and waits for the registered result', async () => {
     const finish = deferred<typeof QUEUED>();
     const registration = deferred<UploadEnding>();
-    const entered = deferred<void>();
     const deps = dependencies();
     deps.sendToIngest.mockReturnValueOnce(finish.promise);
-    deps.waitForEnding.mockImplementationOnce(() => { entered.resolve(); return registration.promise; });
+    deps.waitForEnding.mockImplementationOnce(() => registration.promise);
     const running = runMediaUpload(FILE, CONTEXT, deps, new AbortController().signal);
     await vi.waitFor(() => expect(deps.sendToIngest).toHaveBeenCalledTimes(1));
+    expect(deps.waitForEnding.mock.invocationCallOrder[0]).toBeLessThan(deps.sendToIngest.mock.invocationCallOrder[0]!);
     expect(deps.onRegistering).not.toHaveBeenCalled();
 
     finish.resolve(QUEUED);
     try {
-      await entered.promise;
-      expect(deps.onRegistering).toHaveBeenCalledTimes(1);
-      expect(deps.onRegistering.mock.invocationCallOrder[0]).toBeLessThan(deps.waitForEnding.mock.invocationCallOrder[0]);
+      await vi.waitFor(() => expect(deps.onRegistering).toHaveBeenCalledTimes(1));
       expect(deps.onSuccess).not.toHaveBeenCalled();
     } finally {
       registration.resolve(COMPLETED);
@@ -218,7 +218,8 @@ describe('runMediaUpload cancellation ownership', () => {
     await expect(runMediaUpload(FILE, CONTEXT, deps, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
 
     if (stage === 'answered') expect(deps.sendToIngest).not.toHaveBeenCalled();
-    expect(deps.waitForEnding).not.toHaveBeenCalled();
+    // A wait registered before the stop is taken back with it.
+    for (const call of deps.waitForEnding.mock.calls) expect(call[1]?.aborted).toBe(true);
     expect(deps.onSuccess).not.toHaveBeenCalled();
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
@@ -230,7 +231,7 @@ describe('runMediaUpload cancellation ownership', () => {
 
     expect(deps.hashFile).toHaveBeenCalledWith(FILE, undefined);
     expect(deps.sendToIngest).toHaveBeenCalledWith(FILE, TICKET, CONFIG, undefined, undefined);
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, expect.any(AbortSignal));
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith(COMPLETED.result);
     expect(deps.onFailure).not.toHaveBeenCalled();
   });

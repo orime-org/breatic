@@ -73,10 +73,11 @@ function shareTokenOf(payload: Record<string, unknown>): string | null {
  * longer has — every waiting row points at the same page, and a row is only
  * drawn as answerable when it has a token to point WITH.
  *
- * The React Query refetch is triggered both on popover open and a 30s
- * background interval (the collab stateless invalidate broadcast lands in a
- * later phase). The inbox query key (`['notifications', 'unread']`) is
- * page-agnostic, so this single component serves every chrome.
+ * The inbox is read again when the popover opens and when the page hears the
+ * bell changed: the Project page from collab's `notifications:changed`, the
+ * Studio page from its one poll (#1580). The inbox query key
+ * (`['notifications', 'unread']`) is page-agnostic, so this single component
+ * serves every chrome.
  * @returns the notifications bell trigger with its unread badge and inbox popover.
  */
 export function BellMenu(): React.JSX.Element {
@@ -86,7 +87,7 @@ export function BellMenu(): React.JSX.Element {
   const [open, setOpen] = React.useState(false);
   // Gate the inbox query on a known user. BellMenu mounts in the chrome before
   // the `/auth/me` boot ping resolves; firing the query with no session caches
-  // an empty list that never refetches (30s interval, no refetch-on-focus), so
+  // an empty list that is read again only when the bell changes, so
   // notifications wouldn't appear until a reload. Keying on `userId` also keeps
   // one user's inbox from leaking into the next after a logout/login.
   const userId = useCurrentUserStore((s) => s.user?.id ?? null);
@@ -95,7 +96,6 @@ export function BellMenu(): React.JSX.Element {
     queryKey: ['notifications', 'unread', userId],
     queryFn: () => notificationsApi.list(true),
     enabled: userId !== null,
-    refetchInterval: 30_000,
     refetchOnWindowFocus: false,
     retry: false,
   });

@@ -362,14 +362,31 @@ async function deliverTicket(
     return;
   }
 
-  let queued: QueuedFinish;
+  // The ending is waited for under the ticket's key before any byte moves: the finish job may end before the finish
+  // request returns (#1580). A Document body block's upload is over once the server has the bytes, so it waits for
+  // nothing. A failed send or a stop takes the wait back.
+  const handedOff = sinks.onHandedOff !== undefined;
+  const waitForEnding = deps.waitForEnding ?? waitForUploadEnding;
+  const waitStop = new AbortController();
+  /**
+   * Take the wait back.
+   * @returns Nothing.
+   */
+  const stopWait = (): void => waitStop.abort();
+  signal?.addEventListener('abort', stopWait, { once: true });
+  const ending = handedOff ? null : waitForEnding(answer.storageKey, waitStop.signal);
+  void ending?.catch(() => undefined);
+
   try {
+    signal?.throwIfAborted();
     const { onProgress } = sinks;
-    queued = await deps.sendToIngest(file, answer, cfg, onProgress && ((landed) => {
+    await deps.sendToIngest(file, answer, cfg, onProgress && ((landed) => {
       if (!signal?.aborted) onProgress(landed / file.size);
     }), signal);
     signal?.throwIfAborted();
   } catch (err) {
+    stopWait();
+    signal?.removeEventListener('abort', stopWait);
     signal?.throwIfAborted();
     sinks.onFailure({
       reason: failureOf(err),
@@ -378,19 +395,18 @@ async function deliverTicket(
     return;
   }
 
-  if (sinks.onHandedOff !== undefined) {
-    sinks.onHandedOff();
+  if (ending === null) {
+    signal?.removeEventListener('abort', stopWait);
+    sinks.onHandedOff?.();
     return;
   }
   sinks.onRegistering?.();
   signal?.throwIfAborted();
-  const waitForEnding = deps.waitForEnding ?? waitForUploadEnding;
-  const ending = waitForEnding(queued.storageKey, signal);
   if (taskId !== undefined) {
     void ending.then((end) => {
       if (end.state !== 'completed') sinks.onFailure({ reason: failureOfEnding(end), taskId });
       else sinks.onRegistered?.();
-    });
+    }, () => undefined);
     return;
   }
   const end = await ending;
