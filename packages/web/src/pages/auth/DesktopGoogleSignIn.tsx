@@ -28,6 +28,14 @@ const GOOGLE_MARK: ReadonlyArray<readonly [string, string]> = [
 ];
 
 /**
+ * The look of Google's official button on the web login page, drawn by us:
+ * a pill in Google's colours for the page theme (tokens.css), the mark 12px
+ * from the left and the text centred in the space beside it.
+ */
+const GOOGLE_BUTTON =
+  'relative h-10 w-full rounded-full border border-(--google-button-stroke) bg-(--google-button-fill) pl-10 pr-3 text-sm font-medium text-(--google-button-text) hover-enabled:bg-(--google-button-hover)';
+
+/**
  * Google's "G" mark for the sign-in button.
  * @returns The mark.
  */
@@ -110,7 +118,7 @@ export function DesktopGoogleSignIn({ referralCode, next, busy }: DesktopGoogleS
   if (waiting || exchanging) {
     return (
       <div className='flex flex-col items-center gap-2'>
-        <Button type='button' variant='outline' className='w-full' loading disabled>
+        <Button type='button' variant={null} size={null} className={GOOGLE_BUTTON} loading disabled>
           {t('auth.desktop.waitingBrowser')}
         </Button>
         {exchanging ? null : (
@@ -123,7 +131,10 @@ export function DesktopGoogleSignIn({ referralCode, next, busy }: DesktopGoogleS
   }
 
   return (
-    <Button type='button' variant='outline' className='w-full' disabled={busy} icon={<GoogleMark />} onClick={() => void start()}>
+    <Button type='button' variant={null} size={null} className={GOOGLE_BUTTON} disabled={busy} onClick={() => void start()}>
+      <span className='absolute top-1/2 left-3 -translate-y-1/2'>
+        <GoogleMark />
+      </span>
       {t('auth.desktop.continueWithGoogle')}
     </Button>
   );
