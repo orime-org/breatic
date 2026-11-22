@@ -515,7 +515,7 @@ export function renderProductGuide(): string {
       "document's text, or a canvas's nodes and the links between them -- and hovering it shows " +
       `${quoted(t("chat.composer.spaceContextOn"))}. Off, the Agent is not told which Space is open or what is ` +
       "in it; the chip has a dashed border and grey words, and hovering it shows " +
-      `${quoted(t("chat.composer.spaceContextOff"))}. A Timeline's or a Motion Space's content cannot be read: with one ` +
+      `${quoted(t("chat.composer.spaceContextOff"))}. A Timeline's, a Motion Space's or a 3D Space's content cannot be read: with one ` +
       "open and the chip on, the Agent is told it is open but not what is in it, and hovering shows " +
       `${quoted(t("chat.composer.spaceContextOnUnreadable"))}; off, hovering shows ` +
       `${quoted(t("chat.composer.spaceContextOffUnreadable"))}. On or off, every message tells the Agent the ` +

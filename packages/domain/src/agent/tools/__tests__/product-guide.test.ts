@@ -1212,6 +1212,11 @@ describe("Motion Spaces and the Timeline's web animations (#1490)", () => {
     expect(timeline).not.toContain(q("spaces.webAnimation.executions"));
   });
 
+  it("names every Space type whose content the chat chip cannot read, as the chip decides it", () => {
+    expect(webSource("pages/project/space-type.ts")).toContain("return type === 'canvas' || type === 'document';");
+    expect(renderProductGuide()).toContain("A Timeline's, a Motion Space's or a 3D Space's content cannot be read");
+  });
+
   it("offers a Viewer Open in Motion only where the Timeline shows it: when the Project has a Motion Space", () => {
     expect(webSource("spaces/timeline/TimelineSpace.tsx")).toContain("const canOpenInMotion = !readOnly || hasMotionSpace;");
     expect(section("Timeline spaces")).toContain(`and see ${q("timeline.webAnimation.openInMotion")} only when the Project already has a Motion Space`);
