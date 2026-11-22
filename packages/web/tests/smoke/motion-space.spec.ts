@@ -4,7 +4,7 @@
 /**
  * The Motion Space (#1490): made from New Space and New Project, its empty state, bottom bar and two panels, the
  * Timeline's way into it, one web animation made, modified, exported, put on a Canvas and found again from the Canvas,
- * and annotations shared between members.
+ * annotations shared between members, and the Motion tab spinning for another member's run.
  */
 import { expect, type Locator, type Page } from 'playwright/test';
 
@@ -422,5 +422,39 @@ test('an annotation with a point is seen, answered and resolved by another Edito
     });
   } finally {
     await deleteSpace(page, motionId);
+  }
+});
+
+test('a member sees the Motion tab spin for a run another member starts while that Motion Space was never entered, and stop when it is cancelled @needs-model', async ({ page, browser }) => {
+  await openSmokeProject(page);
+  const projectId = smokeProjectId();
+  const projectUrl = page.url();
+  const motionId = await createSpace(page, 'web_animation', `Motion peer spinner ${crypto.randomUUID()}`);
+  const spaces = [motionId];
+  try {
+    await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
+      await peer.goto(projectUrl);
+      await openSpaceById(peer, motionId);
+      spaces.push(await createSpace(peer, 'canvas', `Canvas in front ${crypto.randomUUID()}`));
+      // After a reload the Motion tab is restored but its body has never been shown.
+      await peer.reload();
+      await expect(peer.getByTestId(`space-tab-name-${motionId}`)).toBeVisible();
+      const body = peer.locator(`[data-space-outlet="${motionId}"] [data-testid="motion-space"]`);
+      await expect(body).toHaveCount(0);
+      await expect(peer.getByTestId(`space-tab-busy-${motionId}`)).toHaveCount(0);
+
+      const id = await executeInMotion(page, { prompt: 'A blue square fades in on a white background.', seconds: 4 });
+      // The run reaches the other member's tab bar through the Space's document, without a reload.
+      await expect(peer.getByTestId(`space-tab-busy-${motionId}`)).toBeVisible({ timeout: 60_000 });
+      const row = visibleSpace(page).getByTestId('motion-panel-executions').getByTestId(`motion-row-${id}`);
+      await row.getByTestId('motion-cancel').click();
+      // A cancelled run leaves In progress, and both members' tabs stop.
+      await expect(row).toHaveCount(0, { timeout: 60_000 });
+      await expect(page.getByTestId(`space-tab-busy-${motionId}`)).toHaveCount(0);
+      await expect(peer.getByTestId(`space-tab-busy-${motionId}`)).toHaveCount(0, { timeout: 60_000 });
+      await expect(body).toHaveCount(0);
+    });
+  } finally {
+    for (const id of spaces.reverse()) await deleteSpace(page, id);
   }
 });

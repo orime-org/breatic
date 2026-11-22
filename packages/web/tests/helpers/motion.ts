@@ -7,7 +7,8 @@
  */
 import { expect, type Locator, type Page } from 'playwright/test';
 
-import { visibleSpace } from './space';
+import { createSpace, visibleSpace } from './space';
+import { timelineClipIds } from './timeline-media';
 
 /** One real model run, from Execute to a finished result; the design's cap is two hours. */
 export const MOTION_RUN_MS = 240_000;
@@ -133,4 +134,38 @@ export async function waitMotionFinished(page: Page, executionId: string, result
   } else {
     await expect(preview.locator('video')).toHaveCount(1);
   }
+}
+
+/**
+ * Make a web animation in a new Motion Space from the New dialog and press Execute; the Motion Space stays in front.
+ * @param name - The start of the Space's name; a random suffix keeps it unique.
+ * @returns The Motion Space and the accepted execution.
+ * @throws {Error} When the Space, the dialog or the accepted row do not appear as designed.
+ */
+export async function makeInMotion(page: Page, name: string, request: MotionRequest): Promise<{ motionId: string; executionId: string }> {
+  const motionId = await createSpace(page, 'web_animation', `${name} ${crypto.randomUUID()}`);
+  const executionId = await executeInMotion(page, request);
+  return { motionId, executionId };
+}
+
+/**
+ * Place a copy of a finished result at the playhead through Add web animation in the Timeline in front.
+ * @param prompt - The result's request, which its picker row shows.
+ * @returns The new copy's clip id.
+ * @throws {Error} When the picker does not offer the result or no copy is added.
+ */
+export async function placeCopy(page: Page, executionId: string, prompt: string): Promise<string> {
+  const before = await timelineClipIds(page);
+  await visibleSpace(page).getByTestId('timeline-add-web-animation').click();
+  const picker = page.getByTestId('timeline-web-animation-picker');
+  const row = picker.getByTestId(`timeline-picker-row-${executionId}`);
+  await expect(row).toContainText(prompt);
+  await row.click();
+  await expect(picker).toHaveCount(0);
+  await expect.poll(async () => (await timelineClipIds(page)).length).toBe(before.length + 1);
+  const added = (await timelineClipIds(page)).filter((id) => !before.includes(id));
+  expect(added).toHaveLength(1);
+  // A copy resolves its source before it is ready; until then it may be listed among the conflicts.
+  await expect(visibleSpace(page).getByTestId(`timeline-clip-${added[0]}`)).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
+  return added[0];
 }

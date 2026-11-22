@@ -19,7 +19,7 @@ import type * as YjsManagerModule from '@web/data/yjs/manager';
 
 import { dataOf } from '../helpers/api';
 import { YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
-import { MOTION_RUN_MS, acceptedRowId, executeInMotion, motionDetails, motionListTab, waitMotionFinished } from '../helpers/motion';
+import { MOTION_RUN_MS, acceptedRowId, executeInMotion, makeInMotion, motionDetails, motionListTab, placeCopy, waitMotionFinished } from '../helpers/motion';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { runRepoScript } from '../helpers/repo-script';
 import { test } from '../helpers/slot';
@@ -37,38 +37,6 @@ const SECONDS = 4;
 const RUN_MS = MOTION_RUN_MS;
 /** The longest collab holds a changed document before storing it; a Project duplicate copies stored documents. */
 const STORE_WITHIN_MS = Number(/^max_debounce:\s*(\d+)/m.exec(readFileSync(resolve(__dirname, '../../../../config/collab.yaml'), 'utf8'))?.[1] ?? Number.NaN);
-
-/**
- * Make a web animation in a new Motion Space from the New dialog and press Execute; the Motion Space stays in front.
- * @returns The Motion Space and the accepted execution.
- * @throws {Error} When the Space, the dialog or the accepted row do not appear as designed.
- */
-async function makeInMotion(page: Page, name: string, aspect: '16:9' | '9:16' = '16:9'): Promise<{ motionId: string; executionId: string }> {
-  const motionId = await createSpace(page, 'web_animation', `${name} ${crypto.randomUUID()}`);
-  const executionId = await executeInMotion(page, { prompt: PROMPT, seconds: SECONDS, aspect });
-  return { motionId, executionId };
-}
-
-/**
- * Place a copy of a finished result at the playhead through Add web animation in the Timeline in front.
- * @returns The new copy's clip id.
- * @throws {Error} When the picker does not offer the result or no copy is added.
- */
-async function placeCopy(page: Page, executionId: string): Promise<string> {
-  const before = await timelineClipIds(page);
-  await visibleSpace(page).getByTestId('timeline-add-web-animation').click();
-  const picker = page.getByTestId('timeline-web-animation-picker');
-  const row = picker.getByTestId(`timeline-picker-row-${executionId}`);
-  await expect(row).toContainText(PROMPT);
-  await row.click();
-  await expect(picker).toHaveCount(0);
-  await expect.poll(async () => (await timelineClipIds(page)).length).toBe(before.length + 1);
-  const added = (await timelineClipIds(page)).filter((id) => !before.includes(id));
-  expect(added).toHaveLength(1);
-  // A copy resolves its source before it is ready; until then it may be listed among the conflicts.
-  await expect(visibleSpace(page).getByTestId(`timeline-clip-${added[0]}`)).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
-  return added[0];
-}
 
 /**
  * The preview's seek slider. With the list open, an expanded result has a slider of the same name in the side
@@ -269,7 +237,7 @@ function expectSteadyClock(samples: readonly PlaySample[], label: string): void 
  */
 async function addCopyAt(page: Page, executionId: string, at: number, frames: number): Promise<string> {
   await seekPreview(page, at);
-  const added = await placeCopy(page, executionId);
+  const added = await placeCopy(page, executionId, PROMPT);
   await expectTimelineStart(page, added, at, frames);
   await expect(visibleSpace(page).getByTestId(`timeline-clip-${added}`)).toHaveAttribute('data-state', 'ready');
   return added;
@@ -301,7 +269,7 @@ test('one real web animation made in Motion is reused as three copies over a vid
     let first = '';
     await test.step('create: Execute in Motion runs under In progress, Add web animation offers it only once it finished, and the copy is ready', async () => {
       await expect(previewSlider(page)).toHaveAttribute('aria-valuenow', '0');
-      ({ motionId, executionId } = await makeInMotion(page, 'Motion for Timeline'));
+      ({ motionId, executionId } = await makeInMotion(page, 'Motion for Timeline', { prompt: PROMPT, seconds: SECONDS }));
       // While it runs, the Timeline's picker does not offer it.
       await openTimeline(page, spaceId);
       await outlet.getByTestId('timeline-add-web-animation').click();
@@ -328,7 +296,7 @@ test('one real web animation made in Motion is reused as three copies over a vid
       await outlet.getByTestId('timeline-add-web-animation').click();
       await expect(picker.getByTestId(`timeline-picker-group-${motionId}`).getByTestId(`timeline-picker-row-${executionId}`)).toContainText(PROMPT);
       await page.keyboard.press('Escape');
-      first = await placeCopy(page, executionId);
+      first = await placeCopy(page, executionId, PROMPT);
       await expect(clipOf(first)).not.toHaveAttribute('data-track-id', 'visual-1');
       await expectTimelineStart(page, first, 0, copyFrames);
     });
@@ -340,7 +308,7 @@ test('one real web animation made in Motion is reused as three copies over a vid
     await test.step('reuse: the same result is added twice more as independent copies on the first free track above the video', async () => {
       for (const at of [second, third]) {
         await seekPreview(page, at);
-        const added = await placeCopy(page, executionId);
+        const added = await placeCopy(page, executionId, PROMPT);
         copies.push(added);
         await expectTimelineStart(page, added, at, copyFrames);
       }
@@ -605,7 +573,7 @@ test('one real web animation made in Motion is reused as three copies over a vid
     await test.step('hold: a copy that is still loading when play reaches it holds the video on its start until it answers', async () => {
       await seekPreview(page, later);
       const before = await timelineClipIds(page);
-      const held = await placeCopy(page, executionId);
+      const held = await placeCopy(page, executionId, PROMPT);
       await expectTimelineStart(page, held, later, copyFrames);
       await expect(clipOf(held)).toHaveAttribute('data-state', 'ready');
       // The pool loads a copy's page ahead of it and keeps pages it has shown, so a copy still loading when play reaches
@@ -702,7 +670,7 @@ test('play enters a web copy, replays into it and reveals it from under a video 
     const copyFrames = SECONDS * nominal;
     const playerOf = (clipId: string): Locator => preview.locator(`hyperframes-player[data-clip-id="${clipId}"]`);
     const drawnOf = (clipId: string): Locator => preview.locator(`${DRAWN}[data-clip-id="${clipId}"]`);
-    const made = await makeInMotion(page, 'Motion for pool');
+    const made = await makeInMotion(page, 'Motion for pool', { prompt: PROMPT, seconds: SECONDS });
     motionId = made.motionId;
     const id = made.executionId;
     await waitMotionFinished(page, id);
@@ -806,12 +774,12 @@ test('a 9:16 web animation on a 16:9 Timeline is shown whole and centred, not st
     const outlet = visibleSpace(page);
     const preview = outlet.getByTestId('timeline-preview');
     await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
-    const made = await makeInMotion(page, 'Motion portrait', '9:16');
+    const made = await makeInMotion(page, 'Motion portrait', { prompt: PROMPT, seconds: SECONDS, aspect: '9:16' });
     motionId = made.motionId;
     await waitMotionFinished(page, made.executionId);
     await openTimeline(page, spaceId);
     await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
-    await placeCopy(page, made.executionId);
+    await placeCopy(page, made.executionId, PROMPT);
     const copy = outlet.locator('[data-testid^="timeline-clip-"][data-kind="web-animation"]');
     await expect(copy).toHaveCount(1);
     await expect(copy).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
@@ -860,7 +828,7 @@ test('an Editor follows a run another member starts in Motion, sees the copy pla
     let clipId = '';
     await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
       const peerErrors = watchTimelineErrors(peer);
-      const made = await makeInMotion(page, 'Motion for peer');
+      const made = await makeInMotion(page, 'Motion for peer', { prompt: PROMPT, seconds: SECONDS });
       motionId = made.motionId;
       const id = made.executionId;
 
@@ -873,7 +841,7 @@ test('an Editor follows a run another member starts in Motion, sees the copy pla
       await waitMotionFinished(page, id);
 
       await openTimeline(page, spaceId);
-      clipId = await placeCopy(page, id);
+      clipId = await placeCopy(page, id, PROMPT);
       // The other member sees the copy at once, ready, and the picker offers them the same result.
       await openTimeline(peer, spaceId);
       const view = visibleSpace(peer);
@@ -939,7 +907,7 @@ test('a run cancelled from In progress moves to Failed as Cancelled, is not offe
   const spaceId = await createSpace(page, 'timeline', `Timeline web cancel ${crypto.randomUUID()}`);
   let motionId = '';
   try {
-    const made = await makeInMotion(page, 'Motion cancel');
+    const made = await makeInMotion(page, 'Motion cancel', { prompt: PROMPT, seconds: SECONDS });
     motionId = made.motionId;
     const id = made.executionId;
     const motion = visibleSpace(page);
@@ -1090,7 +1058,7 @@ test('a web animation made in a Timeline before Motion keeps its copy and name, 
     let failed = '';
     await test.step('an old copy keeps its name and previews; a cancelled one offers Open in Motion', async () => {
       await openTimeline(page, timelineId);
-      const placed = await placeCopy(page, done);
+      const placed = await placeCopy(page, done, PROMPT);
       [old, failed] = await writeLegacyCopies(page, timelineId, placed, [done, cancelled]);
       const outlet = visibleSpace(page);
       await expect(outlet.getByTestId(`timeline-clip-${old}`)).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });

@@ -3,7 +3,7 @@
 
 /**
  * Background Timeline work (#1434): a local video is placed at once and uploads behind the closed dialog, and the
- * Timeline tab spins while an upload or an execution runs, whether or not the Space is shown.
+ * Timeline tab spins while an upload runs, whether or not the Space is shown.
  */
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -166,49 +166,5 @@ test('a collaborator sees the upload running, then unfinished once the uploader 
     });
   } finally {
     await deleteSpace(page, spaceId);
-  }
-});
-
-test('a member sees the Timeline tab spin for a run another member starts while that Timeline was never entered, and stop when it is cancelled @needs-model', async ({ page, browser }) => {
-  await openSmokeProject(page);
-  const projectId = smokeProjectId();
-  const projectUrl = page.url();
-  const spaceId = await createSpace(page, 'timeline', `Timeline peer spinner ${crypto.randomUUID()}`);
-  const spaces = [spaceId];
-  try {
-    await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
-      await peer.goto(projectUrl);
-      await openTimeline(peer, spaceId);
-      spaces.push(await createSpace(peer, 'canvas', `Canvas in front ${crypto.randomUUID()}`));
-      // After a reload the Timeline tab is restored but its body has never been shown.
-      await peer.reload();
-      await expect(peer.getByTestId(`space-tab-name-${spaceId}`)).toBeVisible();
-      await expect(peer.locator(`[data-testid="timeline-space"][data-space-id="${spaceId}"]`)).toHaveCount(0);
-      await expect(peer.getByTestId(`space-tab-busy-${spaceId}`)).toHaveCount(0);
-
-      const outlet = visibleSpace(page);
-      await outlet.getByTestId('timeline-create-web-animation').click();
-      const dialog = page.getByRole('dialog', { name: 'Create web animation', exact: true });
-      const add = dialog.getByTestId('web-animation-add-at-playhead');
-      await add.click();
-      await expect(add).toHaveAttribute('aria-checked', 'false');
-      await dialog.getByTestId('web-animation-prompt').fill('A blue square fades in on a white background.');
-      await dialog.getByTestId('web-animation-execute').click();
-      await expect(dialog).toHaveCount(0);
-      const row = outlet.getByTestId('timeline-executions').locator('li[data-status][data-testid^="timeline-execution-"]');
-      await expect(row).toHaveCount(1);
-      const executionId = ((await row.getAttribute('data-testid')) ?? '').replace('timeline-execution-', '');
-
-      // The run reaches the other member's tab bar through the Space signal, without a reload.
-      await expect(peer.getByTestId(`space-tab-busy-${spaceId}`)).toBeVisible({ timeout: 60_000 });
-      await outlet.getByTestId(`timeline-execution-cancel-${executionId}`).click();
-      // A cancelled run leaves In progress, and both members' tabs stop.
-      await expect(row).toHaveCount(0, { timeout: 60_000 });
-      await expect(page.getByTestId(`space-tab-busy-${spaceId}`)).toHaveCount(0);
-      await expect(peer.getByTestId(`space-tab-busy-${spaceId}`)).toHaveCount(0, { timeout: 60_000 });
-      await expect(peer.locator(`[data-testid="timeline-space"][data-space-id="${spaceId}"]`)).toHaveCount(0);
-    });
-  } finally {
-    for (const id of spaces.reverse()) await deleteSpace(page, id);
   }
 });
