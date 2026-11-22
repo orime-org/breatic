@@ -13,6 +13,7 @@
  */
 
 import { createHash, randomUUID } from "node:crypto";
+import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 import type { Hocuspocus } from "@hocuspocus/server";
 import type * as CoreModule from "@breatic/core";
@@ -406,5 +407,61 @@ describe("a waveform made ready", () => {
     await publishAssetPeaksReady(s.P2, randomUUID(), url);
     await arrived(onP2, "asset-peaks:ready");
     expect(toldOf(onP1, "asset-peaks:ready")).toHaveLength(1);
+  });
+});
+
+// #1580 PT-6: for any spread of connections over the two instances and any run
+// of messages from the four sources, what each connection received is exactly
+// what the routing table of design §2.7 gives it.
+describe("PT-6 routing under random connections and messages", () => {
+  type Message =
+    | { kind: "bell"; user: number }
+    | { kind: "ended"; user: number }
+    | { kind: "transfer"; project: number }
+    | { kind: "credits"; studio: number };
+  const message: fc.Arbitrary<Message> = fc.oneof(
+    fc.record({ kind: fc.constant("bell" as const), user: fc.integer({ min: 0, max: 2 }) }),
+    fc.record({ kind: fc.constant("ended" as const), user: fc.integer({ min: 0, max: 2 }) }),
+    fc.record({ kind: fc.constant("transfer" as const), project: fc.integer({ min: 0, max: 2 }) }),
+    fc.record({ kind: fc.constant("credits" as const), studio: fc.integer({ min: 0, max: 1 }) }),
+  );
+  const connection = fc.record({ user: fc.integer({ min: 0, max: 2 }), project: fc.integer({ min: 0, max: 2 }), instance: fc.integer({ min: 0, max: 1 }) });
+
+  it("delivers to each connection exactly what the table says", async () => {
+    const users = [await user(), await user(), await user()];
+    const studios = [await studio(users[0]!), await studio(users[1]!)];
+    // Projects 0 and 1 are in studio 0, project 2 in studio 1.
+    const projects = [await project(studios[0]!, users[0]!), await project(studios[0]!, users[0]!), await project(studios[1]!, users[1]!)];
+    const studioOfProject = [0, 0, 1];
+    await fc.assert(
+      fc.asyncProperty(fc.uniqueArray(connection, { maxLength: 6, selector: (c) => `${c.user}-${c.project}-${c.instance}` }), fc.array(message, { minLength: 1, maxLength: 5 }), async (spread, messages) => {
+        const opened = await Promise.all(spread.map(async (c) => ({ ...c, client: await open(c.instance === 0 ? I1 : I2, users[c.user]!, projectMetaDocName(projects[c.project]!)) })));
+        try {
+          const keys = messages.map(() => `uploads/pt6-${randomUUID()}.png`);
+          for (const [i, m] of messages.entries()) {
+            if (m.kind === "bell") await notify({ k: "notifications", u: users[m.user] });
+            else if (m.kind === "ended") await publishUploadEnded(users[m.user]!, { key: keys[i]!, state: "transferred" });
+            else if (m.kind === "transfer") await notify({ k: "project-transfer", p: projects[m.project] });
+            else await notify({ k: "credits", s: studios[m.studio] });
+          }
+          const expectedFor = (c: { user: number; project: number }): Record<string, unknown>[] =>
+            messages.flatMap((m, i): Record<string, unknown>[] => {
+              if (m.kind === "bell") return m.user === c.user ? [{ t: "notifications:changed" }] : [];
+              if (m.kind === "ended") return m.user === c.user ? [{ t: "upload:ended", key: keys[i], status: { key: keys[i], state: "transferred" } }] : [];
+              if (m.kind === "transfer") return m.project === c.project ? [{ t: "project-transfer:changed", projectId: projects[c.project] }] : [];
+              return studioOfProject[c.project] === m.studio ? [{ t: "credits:changed", projectId: projects[c.project] }] : [];
+            });
+          const sorted = (list: Record<string, unknown>[]): string[] => list.map((x) => JSON.stringify(x)).sort();
+          await vi.waitFor(() => {
+            for (const c of opened) expect(told(c.client).length).toBeGreaterThanOrEqual(expectedFor(c).length);
+          }, { timeout: 5000 });
+          await drainBells();
+          for (const c of opened) expect(sorted(told(c.client))).toEqual(sorted(expectedFor(c)));
+        } finally {
+          for (const c of opened) c.client.close();
+        }
+      }),
+      { numRuns: 100 },
+    );
   });
 });
