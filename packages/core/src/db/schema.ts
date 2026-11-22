@@ -3447,6 +3447,8 @@ export const uploadGrants = pgTable(
     nodeId: uuid("node_id"),
     /** The Document body block these bytes land in, by its `uploadId` (breatic#1574). */
     documentUploadId: text("document_upload_id"),
+    /** A focus crop's place in its node's pool: the Space, the node and the image but for its address (#1580). */
+    focusImage: jsonb("focus_image"),
     /**
      * Project the node belongs to, checked against the user's access at ticket
      * time. Null for a studio's avatar, which belongs to no project.

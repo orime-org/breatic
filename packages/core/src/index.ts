@@ -171,6 +171,11 @@ export {
   type MemberChange,
   type MemberChangeHandlers,
   type MemberChangeListener,
+  LIVE_UPDATES_CHANNEL,
+  listenLiveUpdates,
+  type LiveUpdate,
+  type LiveUpdatesHandlers,
+  type LiveUpdatesListener,
 } from "@core/infra/member-change-listener.js";
 export {
   decideClientIdentity,

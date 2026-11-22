@@ -162,7 +162,7 @@ describe("listening", () => {
     const before = listening;
     await pgClient`
       select pg_terminate_backend(pid) from pg_stat_activity
-      where pid <> pg_backend_pid() and query ilike ${`%listen%${LIVE_UPDATES_CHANNEL}%`}
+      where pid <> pg_backend_pid() and query ilike 'listen %'
     `;
     await vi.waitFor(() => expect(listening).toBeGreaterThan(before), { timeout: 15_000 });
     const got = await observe(() => insertNotification(recipient));
@@ -375,10 +375,16 @@ describe("credits", () => {
 
   it("A-27 announces a charge that only adds to the debt", async () => {
     const empty = await seedStudioFixture(pgClient, "lu-a-debt");
-    const got = await observe(() =>
-      chargeNow({ projectId: empty.projectId, actorUserId: empty.userId, amount: 1 }),
-    );
-    expect(got).toContainEqual({ k: "credits", s: empty.studioId });
+    // A deployment that charges no credits records usage and owes nothing, so the debt is written with payments on.
+    initCore({ ...process.env, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_live_updates", STRIPE_WEBHOOK_SECRET: "whsec_unused_live_updates" });
+    try {
+      const got = await observe(() =>
+        chargeNow({ projectId: empty.projectId, actorUserId: empty.userId, amount: 1 }),
+      );
+      expect(got).toContainEqual({ k: "credits", s: empty.studioId });
+    } finally {
+      initCore(process.env);
+    }
   });
 
   it("A-28 stays quiet when credit writes roll back", async () => {
@@ -399,9 +405,62 @@ describe("credits", () => {
   });
 });
 
+// #1580 A-29: the credits figure (getCreditPosition) reads spendable lots,
+// the debt and held holds; every column those reads use announces its Studio
+// when it changes, and the list here is read back from the reads themselves,
+// so a read that starts using another column fails this until a trigger
+// covers it. studios.deleted_at is left out: a Studio is never deleted.
+describe("A-29 the credit columns the figure reads", () => {
+  const COVERED: Record<string, string[]> = {
+    creditLots: ["deletedAt", "designatedStudioId", "lifecycle", "remainingCredits"],
+    creditHolds: ["amount", "expiresAt", "status", "studioId"],
+    studioCreditDebts: ["amount", "studioId"],
+  };
+
+  /** The columns of `table` a function of `source` names, by property. */
+  function columnsRead(source: string, fn: string, table: string): string[] {
+    const at = source.search(new RegExp(`(?:function|const)\\s+${fn}\\b`));
+    if (at < 0) throw new Error(`no ${fn} in its repository`);
+    const body = source.slice(at, source.indexOf("\n}\n", at));
+    return [...body.matchAll(new RegExp(`\\b${table}\\.([a-zA-Z]+)`, "g"))].map((m) => m[1]!);
+  }
+
+  it("lists exactly the columns the three reads use", async () => {
+    const lots = await readFile(new URL("../../../../domain/src/credit/creditLot.repo.ts", import.meta.url), "utf8");
+    const holds = await readFile(new URL("../../../../domain/src/credit/creditHold.repo.ts", import.meta.url), "utf8");
+    const read = {
+      creditLots: [...columnsRead(lots, "spendableByStudio", "creditLots"), ...columnsRead(lots, "sumSpendableForStudio", "creditLots")],
+      creditHolds: columnsRead(holds, "sumHeldForStudio", "creditHolds"),
+      studioCreditDebts: columnsRead(lots, "readDebt", "studioCreditDebts"),
+    };
+    for (const [table, columns] of Object.entries(read)) expect([...new Set(columns)].sort(), table).toEqual(COVERED[table]);
+  });
+
+  it("announces the Studio when any one of those columns changes", async () => {
+    const lot = await seedDesignatedLot(pgClient, fx, 10);
+    const reference = `lu-a29-${randomUUID()}`;
+    await pgClient`insert into credit_holds (studio_id, actor_user_id, reference_id, amount, expires_at) values (${fx.studioId}, ${fx.userId}, ${reference}, 3, now() + interval '1 hour')`;
+    await pgClient`insert into studio_credit_debts (studio_id, amount) values (${fx.studioId}, 0) on conflict do nothing`;
+    await drain();
+    const one = async (write: () => Promise<unknown>, studios: string[]): Promise<void> => {
+      const got = await observe(write);
+      expect([...new Set(got.map((u) => JSON.stringify(u)))].sort()).toEqual(studios.map((s) => JSON.stringify({ k: "credits", s })).sort());
+    };
+    await one(() => pgClient`update credit_lots set remaining_credits = 7 where id = ${lot}`, [fx.studioId]);
+    await one(() => pgClient`update credit_lots set lifecycle = 'depleted' where id = ${lot}`, [fx.studioId]);
+    await one(() => pgClient`update credit_lots set designated_studio_id = ${other.studioId} where id = ${lot}`, [fx.studioId, other.studioId]);
+    await one(() => pgClient`update credit_lots set deleted_at = now() where id = ${lot}`, [other.studioId]);
+    await one(() => pgClient`update credit_holds set amount = 5 where reference_id = ${reference}`, [fx.studioId]);
+    await one(() => pgClient`update credit_holds set expires_at = now() + interval '3 hours' where reference_id = ${reference}`, [fx.studioId]);
+    await one(() => pgClient`update credit_holds set studio_id = ${other.studioId} where reference_id = ${reference}`, [fx.studioId, other.studioId]);
+    await one(() => pgClient`update credit_holds set status = 'released', released_at = now() where reference_id = ${reference}`, [other.studioId]);
+    await one(() => pgClient`update studio_credit_debts set amount = amount + 2 where studio_id = ${fx.studioId}`, [fx.studioId]);
+  });
+});
+
 describe("the payloads and the triggers themselves", () => {
   it("A-30 announces nothing for upload grants", async () => {
-    const got = await observe(() => pgClient`update upload_grants set updated_at = now() where false`);
+    const got = await observe(() => pgClient`update upload_grants set consumed_at = consumed_at where false`);
     expect(got).toEqual([]);
     const [row] = await pgClient<{ count: number }[]>`
       select count(*)::int as count from pg_trigger t join pg_class c on c.oid = t.tgrelid
@@ -494,7 +553,7 @@ describe("PT-1 trigger columns under random writes", () => {
           const cols: [string, string, boolean][] = [
             ["amount", picked(0)?.same ? "amount" : "4", true],
             ["expires_at", picked(1)?.same ? "expires_at" : "now() + interval '3 hours'", true],
-            ["status", picked(2)?.same ? "status" : "'released'", true],
+            ["status", picked(2)?.same ? "status" : "'released', released_at = now()", true],
             ["updated_at", "now()", false],
           ];
           const used = cols.filter((_c, i) => picked(i) !== undefined);
