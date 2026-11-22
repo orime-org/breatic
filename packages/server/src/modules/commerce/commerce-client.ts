@@ -9,6 +9,7 @@
  */
 
 import {
+  COMMERCE_SIGNERS,
   UnavailableError,
   env,
   getCommerceConfig,
@@ -19,9 +20,6 @@ import {
   type SignedCallTarget,
 } from "@breatic/core";
 import { getActiveLocale, t } from "@breatic/shared";
-
-/** The name the product signs as on the billing service's listener. */
-const PRODUCT_SIGNER = "product";
 
 /** One call to the billing service. */
 export interface CommerceCall {
@@ -40,7 +38,7 @@ export interface CommerceCall {
  * @returns The target.
  */
 export function commerceTarget(): SignedCallTarget {
-  return { baseUrl: env.COMMERCE_API_URL, secret: env.COMMERCE_API_SECRET, signer: PRODUCT_SIGNER };
+  return { baseUrl: env.COMMERCE_API_URL, secret: env.COMMERCE_API_SECRET, signer: COMMERCE_SIGNERS.product };
 }
 
 /**

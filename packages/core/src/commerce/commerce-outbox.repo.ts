@@ -83,6 +83,9 @@ export interface CommerceOutboxRow {
   createdAt: Date;
 }
 
+/** The columns a row is read with, in `RawRow`'s names. */
+const ROW_COLUMNS = sql`o.id, o.seq::text AS seq, o.aggregate_key, o.type, o.payload, o.attempts, o.last_error, o.created_at`;
+
 /**
  * Claim the next due row: unsent, due, and the oldest unsent row of its
  * aggregate, so one row waiting on a retry holds back only its own aggregate.
@@ -92,7 +95,7 @@ export interface CommerceOutboxRow {
  */
 export async function claimNextDue(tx: DbTx): Promise<CommerceOutboxRow | null> {
   const rows = await tx.execute<RawRow>(sql`
-    SELECT o.id, o.seq::text AS seq, o.aggregate_key, o.type, o.payload, o.attempts, o.last_error, o.created_at
+    SELECT ${ROW_COLUMNS}
     FROM commerce_outbox o
     WHERE o.sent_at IS NULL
       AND o.next_attempt_at <= now()
@@ -146,7 +149,7 @@ function toRow(row: RawRow): CommerceOutboxRow {
  */
 export async function findUnsentReferralBinding(userId: string): Promise<CommerceOutboxRow | null> {
   const rows = await db.execute<RawRow>(sql`
-    SELECT o.id, o.seq::text AS seq, o.aggregate_key, o.type, o.payload, o.attempts, o.last_error, o.created_at
+    SELECT ${ROW_COLUMNS}
     FROM commerce_outbox o
     WHERE o.aggregate_key = ${`referral:${userId}`} AND o.sent_at IS NULL
     ORDER BY o.seq
@@ -158,10 +161,10 @@ export async function findUnsentReferralBinding(userId: string): Promise<Commerc
  * Mark a row sent, unless it already is: the relay and a user's request may
  * both have delivered it, and the first mark stands.
  * @param id - The row.
- * @param tx - The transaction.
+ * @param tx - The relay's transaction; a user's request writes outside one.
  */
-export async function markSent(id: string, tx: DbTx): Promise<void> {
-  await tx.update(commerceOutbox).set({ sentAt: new Date() }).where(and(eq(commerceOutbox.id, id), isNull(commerceOutbox.sentAt)));
+export async function markSent(id: string, tx?: DbTx): Promise<void> {
+  await (tx ?? db).update(commerceOutbox).set({ sentAt: new Date() }).where(and(eq(commerceOutbox.id, id), isNull(commerceOutbox.sentAt)));
 }
 
 /**

@@ -410,6 +410,7 @@ export {
   type MembershipPanelAnswer,
   KEYSET_INSTANT,
   PRODUCT_UNAVAILABLE_REASON,
+  COMMERCE_SIGNERS,
   mailStatusAnswerSchema,
   mailStatusRequestSchema,
   unlandedPaymentRowSchema,

@@ -146,9 +146,9 @@ export type SubscribableMembershipTier = Exclude<
  *
  * Derived from {@link COMPARABLE_MEMBERSHIP_TIERS} rather than written out
  * again, so a fourth priced tier lands here by itself — and, because
- * `config/subscription.yaml` is required to carry a plan for every member of
- * this list, the missing plan is named on the first read instead of reaching
- * Stripe as an undefined price id.
+ * the billing service's price configuration is required to carry a plan for
+ * every member of this list, the missing plan is named on the first read
+ * instead of reaching Stripe as an undefined price id.
  */
 export const SUBSCRIBABLE_MEMBERSHIP_TIERS =
   COMPARABLE_MEMBERSHIP_TIERS.filter(

@@ -397,7 +397,7 @@ studio.patch(
  * `GET /api/v1/studio/:slug/spend-limits` — the studio's monthly spend limits,
  * this UTC month's span and spend, and everyone who can spend its credits
  * (inner#1968). Admin-only. The four spend-limit routes answer 404 where
- * payments are switched off: nothing judges a limit there.
+ * credits are not charged (`CHARGING_ENABLED`): nothing judges a limit there.
  * @returns `200` with `{ data: SpendLimitsView }`; `403` not admin, `404` personal studio
  */
 studio.get("/:slug/spend-limits", requireCharging, requireStudioRole("admin"), async (c) => {

@@ -95,8 +95,8 @@ function getGoogleClient(): OAuth2Client {
  * `GET /auth/options` - what the sign-up and recovery pages need to know
  * about this deployment: whether an email sign-up proves the address with a
  * code (and so whether recovery goes by email or by recovery code).
- * Also whether the referral code field exists: only while payments are on
- * (inner#1868 §2).
+ * Also whether the referral code field exists: only where the deployment
+ * sells (`SELLING`, inner#1868 §2).
  * @returns `200` with `{ emailVerification, referralEnabled }`
  */
 auth.get("/options", (c) => {

@@ -168,7 +168,7 @@ async function checkSignupReferral(referral: SignupReferral | undefined): Promis
   if (referral === undefined || !env.SELLING) return undefined;
   const checked = await checkReferralCode(referral.code);
   if (checked.status === "inactive") throw new SignupReferralRefused();
-  return { code: checked.status === "active" ? checked.code : referral.code, source: referral.source };
+  return { code: checked.code, source: referral.source };
 }
 
 /**

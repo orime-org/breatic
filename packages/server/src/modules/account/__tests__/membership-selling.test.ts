@@ -76,7 +76,6 @@ beforeEach(() => {
     period: "month",
     currentPeriodEnd: "2026-09-18T00:00:00.000Z",
     cancelAtPeriodEnd: false,
-    payableInvoiceUrl: null,
   });
   vi.mocked(requestCommerce).mockResolvedValue({ data: { prices: PRICES, payableInvoiceUrl: "https://invoice.example/1" } });
   vi.mocked(studioRepo.countTeamStudiosAdministeredBy).mockResolvedValue(1);

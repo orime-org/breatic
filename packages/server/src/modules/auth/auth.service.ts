@@ -94,8 +94,10 @@ export function hashPassword(password: string): Promise<string> {
  * Every way of signing up ends here, so this is where `signup_completed` is
  * sent. The campaign source is kept only when the signing-up browser accepted
  * a consent category (inner#1442 design §4.5).
- * A referral code is bound in the same transaction as the account is created.
- * While payments are off the code is ignored: the program does not exist.
+ * A referral code goes to the billing service as a `commerce_outbox` row
+ * written in the account's transaction; the billing service binds it or
+ * refuses it when the row arrives. Where nothing is sold (`SELLING`) the code
+ * is ignored: the program does not exist.
  * @param data - The account to create, as `userRepo.createUser` takes it.
  * @param referral - The code the sign-up carried, and what to do when it is
  *   refused: `reject` creates nothing, `skip` creates the account unbound.
@@ -112,10 +114,9 @@ export async function createAccount(
   const wanted = referral !== undefined && env.SELLING ? referral : undefined;
   // Asked before the account's transaction opens: the transaction never waits on the network.
   const checked = wanted === undefined ? null : await checkReferralCode(wanted.code);
-  if (checked?.status === "inactive" && wanted!.onRefused === "reject") throw new SignupReferralRefused();
+  if (checked?.status === "inactive" && wanted?.onRefused === "reject") throw new SignupReferralRefused();
   const outcome: SignupReferralOutcome = checked === null ? null : OUTCOME_OF[checked.status];
-  // An unknown code is kept: the billing service decides it when the row arrives.
-  const binding = checked === null || checked.status === "inactive" ? null : { code: checked.status === "active" ? checked.code : wanted!.code, source: wanted!.source };
+  const binding = wanted === undefined || checked === null || checked.status === "inactive" ? null : { code: checked.code, source: wanted.source };
   let user: UserEntity;
   try {
     user = binding === null

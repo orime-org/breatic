@@ -125,7 +125,7 @@ export interface ChargeInput {
 
 /** What actually happened to a charge. */
 export interface ChargeOutcome {
-  /** Whether any credits were taken. False when payments are off, or nothing could be charged. */
+  /** Whether any credits were taken. False where credits are not charged (`CHARGING_ENABLED`), or nothing could be charged. */
   billed: boolean;
   /** Credits actually taken. */
   charged: CreditDecimal;

@@ -1514,7 +1514,7 @@ export const creditLots = pgTable(
  * spender seeing what they used.
  *
  * `lot_id` is nullable for the three situations where usage is recorded but
- * no purchase is drawn down: payments disabled, a route that carries no
+ * no purchase is drawn down: charging switched off (`CHARGING_ENABLED`), a route that carries no
  * project to pick a pool from, and a studio with nothing spendable left.
  * `payer_user_id` is absent on `debt_incurred` alone (0064, with a CHECK
  * requiring it everywhere else): a debt is what a studio owes, recorded

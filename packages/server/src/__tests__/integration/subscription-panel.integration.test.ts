@@ -191,9 +191,9 @@ describe("readStoredSubscriptionSummary — what the panel is told (#106 §11)",
     }
   });
 
-  it("hands over the payment link while a charge is being retried", async () => {
-    // The other half of keeping the tier through `past_due`: the person has to
-    // be able to see what happened and pay it themselves.
+  it("reads a charge being retried as retrying and leaves the payment link to the billing service", async () => {
+    // The link a stored row still holds may be stale; the billing service's
+    // panel answer quotes the current one (membership.service.ts).
     const userId = await makeUser("pro", `cus_panel_f_${Date.now()}`);
     try {
       await storeRow(userId, {
@@ -204,7 +204,7 @@ describe("readStoredSubscriptionSummary — what the panel is told (#106 §11)",
       const summary = await readStoredSubscriptionSummary(userId);
 
       expect(summary.state).toBe("retrying");
-      expect(summary.payableInvoiceUrl).toBe("https://invoice.example/pay");
+      expect(summary).not.toHaveProperty("payableInvoiceUrl");
     } finally {
       await dropUser(userId);
     }

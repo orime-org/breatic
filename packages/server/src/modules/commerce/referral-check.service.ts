@@ -10,12 +10,13 @@ import { SignedCallError, isUnavailable, logger, referralCodeCheckAnswerSchema }
 import { callCommerce } from "@server/modules/commerce/commerce-client.js";
 
 /** What the billing service said about a code. */
-export type ReferralCodeCheck = { status: "active"; code: string } | { status: "inactive" } | { status: "unknown" };
+export type ReferralCodeCheck = { status: "active"; code: string } | { status: "inactive" } | { status: "unknown"; code: string };
 
 /**
  * Check one code.
  * @param code - The code as the user gave it.
- * @returns Active with its stored form, inactive, or unknown when the billing service could not be asked.
+ * @returns Active with its stored form, inactive, or unknown with the code as given when the billing
+ *   service could not be asked: the billing service decides it when the binding arrives.
  * @throws {Error} When its answer does not read as the contract says.
  */
 export async function checkReferralCode(code: string): Promise<ReferralCodeCheck> {
@@ -28,6 +29,6 @@ export async function checkReferralCode(code: string): Promise<ReferralCodeCheck
     if (err instanceof SignedCallError && !isUnavailable(err)) return { status: "inactive" };
     if (!isUnavailable(err)) throw err;
     logger.error({ err }, "referral_code_check_unavailable");
-    return { status: "unknown" };
+    return { status: "unknown", code };
   }
 }

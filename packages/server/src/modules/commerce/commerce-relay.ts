@@ -158,7 +158,7 @@ export async function sendPendingReferralBinding(userId: string): Promise<void> 
     throw billingUnavailable();
   }
   if (outcome.kind === "sent") {
-    await db.transaction((tx) => commerceOutboxRepo.markSent(row.id, tx));
+    await commerceOutboxRepo.markSent(row.id);
     return;
   }
   const { err, reason } = outcome;

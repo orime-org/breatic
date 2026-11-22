@@ -10,12 +10,8 @@
  * `INTERNAL_API_SECRET` and kept out of that prefix (inner#1993 §3.1).
  */
 
-import { createInternalAuth, env, getRedis, logger, type InternalAuthEvent, type SignerSecrets } from "@breatic/core";
+import { COMMERCE_SIGNERS, createInternalAuth, env, getRedis, logger, type InternalAuthEvent, type SignerSecrets } from "@breatic/core";
 
-/** The billing service's signer name. */
-const COMMERCE_SIGNER = "commerce";
-/** The name this server signs as when it calls the billing service. */
-const PRODUCT_SIGNER = "product";
 /** The paths only the billing service may reach. */
 export const COMMERCE_PREFIX = "/internal/v1/commerce/";
 
@@ -25,8 +21,8 @@ export const COMMERCE_PREFIX = "/internal/v1/commerce/";
  * @returns The current and previous secrets, or null when this listener accepts nothing from the signer.
  */
 export function signerSecrets(signer: string): SignerSecrets | null {
-  if (signer === PRODUCT_SIGNER) return null;
-  if (signer === COMMERCE_SIGNER) {
+  if (signer === COMMERCE_SIGNERS.product) return null;
+  if (signer === COMMERCE_SIGNERS.commerce) {
     return { current: env.COMMERCE_API_SECRET, previous: env.COMMERCE_API_SECRET_PREVIOUS };
   }
   return { current: env.INTERNAL_API_SECRET, previous: env.INTERNAL_API_SECRET_PREVIOUS };
@@ -39,7 +35,7 @@ export function signerSecrets(signer: string): SignerSecrets | null {
  * @returns True for the billing service inside the commerce prefix and for everyone else outside it.
  */
 export function signerMayAccess(signer: string, path: string): boolean {
-  return (signer === COMMERCE_SIGNER) === path.startsWith(COMMERCE_PREFIX);
+  return (signer === COMMERCE_SIGNERS.commerce) === path.startsWith(COMMERCE_PREFIX);
 }
 
 /**

@@ -34,6 +34,13 @@ import { storableText } from "@core/util/storable-text.js";
  */
 export const PRODUCT_UNAVAILABLE_REASON = "product_unavailable";
 
+/**
+ * The signer names in `x-internal-admin` (§3.1): the product signs as
+ * `product` on the billing service's listener, the billing service as
+ * `commerce` on the product's.
+ */
+export const COMMERCE_SIGNERS = { product: "product", commerce: "commerce" } as const;
+
 const uuid = z.string().uuid();
 const cents = z.number().int().nonnegative();
 const instant = z.string().datetime({ offset: true });

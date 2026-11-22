@@ -21,6 +21,12 @@ import {
 import type { SubscriptionSummary } from "@breatic/shared";
 
 /**
+ * The subscription as our rows hold it. The unpaid-invoice link is the billing
+ * service's to quote (`membership.service.ts`), so it is not read here.
+ */
+export type StoredSubscriptionSummary = Omit<SubscriptionSummary, "payableInvoiceUrl">;
+
+/**
  * What an account with no live subscription is told.
  *
  * Not null. Null belongs to one meaning only — "this deployment sells no
@@ -28,7 +34,7 @@ import type { SubscriptionSummary } from "@breatic/shared";
  * account that has never bought one, or whose subscription ended, is in the
  * state the offers exist for and must still see them.
  */
-const EMPTY_SUMMARY: SubscriptionSummary = {
+const EMPTY_SUMMARY: StoredSubscriptionSummary = {
   state: "none",
   tier: "base",
   // No subscription, so no period: `base` is what an account falls back to
@@ -36,7 +42,6 @@ const EMPTY_SUMMARY: SubscriptionSummary = {
   period: null,
   currentPeriodEnd: null,
   cancelAtPeriodEnd: false,
-  payableInvoiceUrl: null,
 };
 
 /**
@@ -52,7 +57,7 @@ const EMPTY_SUMMARY: SubscriptionSummary = {
  */
 export async function readStoredSubscriptionSummary(
   userId: string,
-): Promise<SubscriptionSummary> {
+): Promise<StoredSubscriptionSummary> {
   const { situation, record } = subscriptionSituation(
     await listSubscriptions(db, userId),
     subscriptionClock(),
@@ -65,6 +70,5 @@ export async function readStoredSubscriptionSummary(
     period: record.period,
     currentPeriodEnd: record.currentPeriodEnd?.toISOString() ?? null,
     cancelAtPeriodEnd: record.cancelAtPeriodEnd,
-    payableInvoiceUrl: record.payableInvoiceUrl,
   };
 }
