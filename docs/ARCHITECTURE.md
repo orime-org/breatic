@@ -868,8 +868,8 @@ metal reads as metal. A picture's size is read from its file header (at most
 `max_picture_header_bytes`) and kept in the page-wide `LookPictureSizes` per
 Project (`look-picture-size.ts`, which loads no three.js, so the eager
 appearance panel uses it without pulling three.js into the project page); the
-lazy viewport decodes pictures into its `LookTextureCache`, built from the
-sizes, resolver and download the editor hands it. A picture past
+lazy viewport decodes pictures into the page-wide `LookTextureCache` per Project,
+built from the sizes, resolver and download the editor hands it. A picture past
 `max_texture_edge` or the device's texture size is scaled down when decoded, and `checkLookTextures` counts each
 distinct picture once against the object's `max_texture_bytes` together with
 the model's own textures; a picture over the budget is not shown, the part

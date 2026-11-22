@@ -61,7 +61,8 @@ export function picturesOf(look: SceneLook): string[] {
 
 /**
  * A part's place in panel order: its material index, the default part (the one key that is not an index) after every
- * index. The module stays free of runtime imports, so the eager panel and the lazy viewport share its chunk alone.
+ * index. At runtime the module imports only `texture-upload-bytes`, which shares its chunk, so the eager panel and the lazy
+ * viewport share that chunk alone.
  * @param part - A part key.
  * @returns Its sort rank.
  */

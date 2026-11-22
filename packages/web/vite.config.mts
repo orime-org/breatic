@@ -214,7 +214,7 @@ export default defineConfig(({ command, mode }) => {
             if (/[\\/]src[\\/]spaces[\\/]three-d[\\/]viewfinder[\\/]viewfinder-ratio\.ts$/.test(id)) {
               return 'viewfinder-ratio';
             }
-            // The eager appearance panel and the lazy viewport both judge part pictures against the texture budget; the modules import only @breatic/shared at runtime.
+            // The eager appearance panel and the lazy viewport both judge part pictures against the texture budget; at runtime the two modules import only each other.
             if (/[\\/]src[\\/]spaces[\\/]three-d[\\/](look-texture-budget|texture-upload-bytes)\.ts$/.test(id)) {
               return 'look-texture-budget';
             }
