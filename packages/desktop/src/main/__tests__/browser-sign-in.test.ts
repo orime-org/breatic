@@ -5,7 +5,8 @@
  * The client's side of Google sign-in through the system browser (#1599,
  * design §8.2).
  *
- * One sign-in waits at a time. The browser's `breatic://sign-in` link counts
+ * One sign-in waits at a time. The browser's `{scheme}://sign-in` link, on the
+ * scheme of this build's brand, counts
  * only when its challenge matches the sign-in waiting, so a repeated, stale or
  * cancelled link changes nothing. The result is kept until a page takes it,
  * once, and expires with the server's code after five minutes.
@@ -17,6 +18,8 @@ import crypto from "node:crypto";
 import { createBrowserSignIn, parseSignInLink } from "@desktop/main/browser-sign-in.js";
 
 const SERVER = "https://app.example.com";
+/** The scheme of the brand under test, a partner's. */
+const SCHEME = "com.acme.studio";
 let now = 0;
 const openExternal = vi.fn(async (_url: string) => undefined);
 
@@ -27,7 +30,7 @@ beforeEach(() => {
 
 /** A sign-in flow on a fixed clock. */
 function flow() {
-  return createBrowserSignIn({ openExternal, now: () => now, ttlMs: 5 * 60_000 });
+  return createBrowserSignIn({ openExternal, now: () => now, ttlMs: 5 * 60_000, scheme: SCHEME });
 }
 
 /**
@@ -48,7 +51,7 @@ async function started(signIn: ReturnType<typeof flow>, referral: string | null 
  * @param challenge - The challenge.
  */
 function link(code: string, challenge: string): string {
-  return `breatic://sign-in?code=${code}&challenge=${challenge}`;
+  return `${SCHEME}://sign-in?code=${code}&challenge=${challenge}`;
 }
 
 describe("start", () => {
@@ -132,16 +135,17 @@ describe("receive and take", () => {
 
 describe("parseSignInLink", () => {
   it("reads code and challenge", () => {
-    expect(parseSignInLink(link("c".repeat(43), "d".repeat(43)))).toEqual({ code: "c".repeat(43), challenge: "d".repeat(43) });
+    expect(parseSignInLink(link("c".repeat(43), "d".repeat(43)), SCHEME)).toEqual({ code: "c".repeat(43), challenge: "d".repeat(43) });
   });
 
   it.each([
-    "breatic://other?code=a&challenge=b",
+    `${SCHEME}://other?code=a&challenge=b`,
     "https://app.example.com/sign-in?code=a&challenge=b",
-    "breatic://sign-in?code=a",
-    `breatic://sign-in?code=${"c".repeat(43)}&challenge=short`,
+    `${SCHEME}://sign-in?code=a`,
+    `${SCHEME}://sign-in?code=${"c".repeat(43)}&challenge=short`,
+    `ai.breatic.desktop://sign-in?code=${"c".repeat(43)}&challenge=${"d".repeat(43)}`,
     "not a url",
   ])("refuses %s", (input) => {
-    expect(parseSignInLink(input)).toBeNull();
+    expect(parseSignInLink(input, SCHEME)).toBeNull();
   });
 });

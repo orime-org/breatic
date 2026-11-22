@@ -3,9 +3,11 @@
 
 import * as React from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { DESKTOP_SIGN_IN_LINK } from '@breatic/shared';
+import { useQuery } from '@tanstack/react-query';
+import { desktopSignInLink } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { authApi } from '@web/data/api/auth';
+import { AUTH_OPTIONS_QUERY_KEY } from '@web/features/referral/use-signup-referral';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
@@ -22,7 +24,7 @@ interface DesktopSignInPageProps {
 
 /**
  * Follow a link to the desktop client.
- * @param href - The `breatic://` link.
+ * @param href - The link on the desktop app's scheme.
  */
 function navigateTo(href: string): void {
   window.location.href = href;
@@ -33,10 +35,12 @@ function navigateTo(href: string): void {
  * (the route sits behind ProtectedRoute), the user confirms the account; only
  * then is a code asked for, so a program that opens this page cannot take the
  * account on its own (RFC 8252 §8.6). The code goes back through
- * `breatic://sign-in` with the challenge, which the client matches against the
- * sign-in it is waiting for.
+ * `{scheme}://sign-in` with the challenge, which the client matches against
+ * the sign-in it is waiting for. The scheme and the app's name are this
+ * deployment's settings (`/auth/options`): nothing in the address changes
+ * them, and until they arrive nothing can be handed over (design §8.3).
  * @param props - How to open the link.
- * @param props.openLink - Opens the `breatic://` link.
+ * @param props.openLink - Opens the link on the desktop app's scheme.
  * @returns The confirm, processing, handed-back or error card.
  */
 export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPageProps): React.JSX.Element {
@@ -48,13 +52,17 @@ export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPagePr
   const clear = useCurrentUserStore((s) => s.clear);
   const [stage, setStage] = React.useState<Stage>(valid ? 'confirm' : 'error');
   const [link, setLink] = React.useState<string | null>(null);
+  const options = useQuery({ queryKey: AUTH_OPTIONS_QUERY_KEY, queryFn: () => authApi.options(), retry: false });
+  const scheme = options.data?.desktopAppScheme;
+  const app = options.data?.desktopAppName ?? '';
 
   /** Ask for a code and hand it to the client. */
   async function handOff(): Promise<void> {
+    if (!scheme) return;
     setStage('processing');
     try {
       const { code } = await authApi.desktopHandoff({ challenge });
-      const href = `${DESKTOP_SIGN_IN_LINK}?code=${encodeURIComponent(code)}&challenge=${encodeURIComponent(challenge)}`;
+      const href = `${desktopSignInLink(scheme)}?code=${encodeURIComponent(code)}&challenge=${encodeURIComponent(challenge)}`;
       setLink(href);
       openLink(href);
       setStage('handed');
@@ -74,18 +82,18 @@ export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPagePr
 
   if (stage === 'handed' && link) {
     return (
-      <AuthCardShell title={t('auth.desktop.handedTitle')} subtitle={t('auth.desktop.handedBody')}>
+      <AuthCardShell title={t('auth.desktop.handedTitle', { app })} subtitle={t('auth.desktop.handedBody')}>
         <Button type='button' className='w-full' onClick={() => openLink(link)}>
-          {t('auth.desktop.openApp')}
+          {t('auth.desktop.openApp', { app })}
         </Button>
       </AuthCardShell>
     );
   }
 
-  if (stage === 'error') {
+  if (stage === 'error' || options.isError || (options.isSuccess && !scheme)) {
     return (
       <AuthCardShell title={t('auth.desktop.errorTitle')} subtitle={t('auth.desktop.errorBody')}>
-        {valid ? (
+        {valid && !options.isError ? (
           <Button type='button' variant='outline' className='w-full' onClick={() => setStage('confirm')}>
             {t('auth.desktop.retry')}
           </Button>
@@ -95,9 +103,9 @@ export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPagePr
   }
 
   return (
-    <AuthCardShell title={t('auth.desktop.title')} subtitle={t('auth.desktop.signingInAs', { email })}>
+    <AuthCardShell title={t('auth.desktop.title', { app })} subtitle={t('auth.desktop.signingInAs', { email })}>
       <div className='flex flex-col gap-3'>
-        <Button type='button' className='w-full' loading={stage === 'processing'} onClick={() => void handOff()}>
+        <Button type='button' className='w-full' loading={stage === 'processing'} disabled={!scheme} onClick={() => void handOff()}>
           {t('auth.desktop.continue')}
         </Button>
         <Button type='button' variant='outline' className='w-full' disabled={stage === 'processing'} onClick={() => void switchAccount()}>

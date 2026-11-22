@@ -34,13 +34,13 @@ vi.mock('@web/data/api/auth', async () => {
   const actual = await vi.importActual<typeof import('@web/data/api/auth')>(
     '@web/data/api/auth',
   );
-  return { ...actual, authApi: { login: vi.fn(), options: vi.fn(async () => ({ emailVerification: false, referralEnabled: false })) } };
+  return { ...actual, authApi: { login: vi.fn(), options: vi.fn(async () => ({ emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'breatic' })) } };
 });
 
 /** Render the login route with the destinations it can navigate to. */
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(['auth', 'options'], { emailVerification: false, referralEnabled: false });
+  client.setQueryData(['auth', 'options'], { emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'breatic' });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/login']}>

@@ -75,7 +75,7 @@ describe("checkServer", () => {
   ])("calls an address answering %s not breatic", async (_label, body, status) => {
     expect(await checkServer("https://example.com", answering(body, "https://example.com/app-version.json", status))).toEqual({
       ok: false,
-      reason: "not_breatic",
+      reason: "not_server",
     });
   });
 

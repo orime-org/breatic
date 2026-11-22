@@ -40,11 +40,13 @@ function sectionFor(locale: string): typeof en {
 }
 
 /**
- * Every key of the client's words with its text in a language.
+ * Every key of the client's words with its text in a language, the app named
+ * by the build's product name wherever a text holds `{product}`.
  * @param locale - `app.getLocale()`.
+ * @param product - The build's product name.
  * @returns The flat table.
  */
-export function desktopText(locale: string): DesktopText {
+export function desktopText(locale: string, product: string): DesktopText {
   const table: Record<string, string> = {};
   /**
    * Walk a section, recording each string under its dotted key.
@@ -53,7 +55,7 @@ export function desktopText(locale: string): DesktopText {
    */
   const walk = (node: object, prefix: string): void => {
     for (const [name, value] of Object.entries(node)) {
-      if (typeof value === "string") table[`${prefix}.${name}`] = value;
+      if (typeof value === "string") table[`${prefix}.${name}`] = value.replaceAll("{product}", product);
       else if (typeof value === "object" && value !== null) walk(value, `${prefix}.${name}`);
     }
   };

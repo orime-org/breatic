@@ -7,14 +7,17 @@
  * The desktop client opens it with a challenge. Asking for a code waits for
  * the user to press Continue: a program could open the page on its own, and
  * the account must not be handed over unless the user asked (RFC 8252 §8.6).
- * The code goes back to the client through `breatic://sign-in`, with the
- * challenge so the client can tell it from a stale one.
+ * The code goes back to the client through `{scheme}://sign-in`, with the
+ * challenge so the client can tell it from a stale one. The scheme and the
+ * app's name are this deployment's settings from `/auth/options`; nothing in
+ * the address can change them, and without them no link is made (design §8.3).
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { authApi } from '@web/data/api/auth';
 import { DesktopSignInView } from '@web/pages/auth/DesktopSignInPage';
@@ -22,7 +25,7 @@ import { useCurrentUserStore } from '@web/stores';
 
 vi.mock('@web/data/api/auth', async () => {
   const actual = await vi.importActual<typeof import('@web/data/api/auth')>('@web/data/api/auth');
-  return { ...actual, authApi: { desktopHandoff: vi.fn(), logout: vi.fn(async () => undefined) } };
+  return { ...actual, authApi: { desktopHandoff: vi.fn(), logout: vi.fn(async () => undefined), options: vi.fn() } };
 });
 
 const CHALLENGE = 'A'.repeat(43);
@@ -33,17 +36,24 @@ const open = vi.fn();
  * @param search - The query string.
  */
 function setup(search: string) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
-    <MemoryRouter initialEntries={[`/desktop/sign-in${search}`]}>
-      <Routes>
-        <Route path='/desktop/sign-in' element={<DesktopSignInView openLink={open} />} />
-      </Routes>
-    </MemoryRouter>,
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[`/desktop/sign-in${search}`]}>
+        <Routes>
+          <Route path='/desktop/sign-in' element={<DesktopSignInView openLink={open} />} />
+        </Routes>
+      </MemoryRouter>
+    </QueryClientProvider>,
   );
 }
 
+/** This deployment's settings: a partner's desktop app. */
+const OPTIONS = { emailVerification: false, referralEnabled: false, desktopAppScheme: 'com.acme.studio', desktopAppName: 'Acme Studio' };
+
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.mocked(authApi.options).mockResolvedValue(OPTIONS);
   useCurrentUserStore.setState({
     user: { id: 'u1', email: 'ada@example.com' } as never,
     role: null,
@@ -65,8 +75,8 @@ describe('DesktopSignInPage', () => {
     setup(`?challenge=${CHALLENGE}`);
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Continue' }));
     expect(authApi.desktopHandoff).toHaveBeenCalledWith({ challenge: CHALLENGE });
-    expect(open).toHaveBeenCalledWith(`breatic://sign-in?code=${'C'.repeat(43)}&challenge=${CHALLENGE}`);
-    expect(await screen.findByText('Back in breatic desktop')).toBeInTheDocument();
+    expect(open).toHaveBeenCalledWith(`com.acme.studio://sign-in?code=${'C'.repeat(43)}&challenge=${CHALLENGE}`);
+    expect(await screen.findByText('Back in Acme Studio desktop')).toBeInTheDocument();
   });
 
   it('opens the same link again from the handed-back page', async () => {
@@ -74,7 +84,7 @@ describe('DesktopSignInPage', () => {
     setup(`?challenge=${CHALLENGE}`);
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Continue' }));
-    await user.click(await screen.findByRole('button', { name: 'Open breatic desktop' }));
+    await user.click(await screen.findByRole('button', { name: 'Open Acme Studio desktop' }));
     expect(open).toHaveBeenCalledTimes(2);
     expect(authApi.desktopHandoff).toHaveBeenCalledTimes(1);
   });
@@ -100,5 +110,28 @@ describe('DesktopSignInPage', () => {
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Use another account' }));
     expect(authApi.logout).toHaveBeenCalled();
     expect(useCurrentUserStore.getState().user).toBeNull();
+  });
+
+  it('names the app the deployment ships, not one the address asks for', async () => {
+    setup(`?challenge=${CHALLENGE}&scheme=web%2Bevil&app=Evil`);
+    expect(await screen.findByText('Sign in to Acme Studio desktop')).toBeInTheDocument();
+    vi.mocked(authApi.desktopHandoff).mockResolvedValue({ code: 'C'.repeat(43) });
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Continue' }));
+    expect(open).toHaveBeenCalledWith(expect.stringMatching(/^com\.acme\.studio:\/\/sign-in\?/));
+  });
+
+  it('cannot continue before the deployment settings arrive', async () => {
+    vi.mocked(authApi.options).mockReturnValue(new Promise(() => undefined));
+    setup(`?challenge=${CHALLENGE}`);
+    expect(await screen.findByRole('button', { name: 'Continue' })).toBeDisabled();
+  });
+
+  it('shows the error and builds no link when the deployment settings cannot be read', async () => {
+    vi.mocked(authApi.options).mockRejectedValue(new Error('500'));
+    setup(`?challenge=${CHALLENGE}`);
+    expect(await screen.findByText('Couldn\'t sign in to the desktop app')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Continue' })).toBeNull();
+    expect(authApi.desktopHandoff).not.toHaveBeenCalled();
+    expect(open).not.toHaveBeenCalled();
   });
 });

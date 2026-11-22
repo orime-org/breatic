@@ -29,5 +29,29 @@ export interface DesktopBridge {
   onBrowserSignInResult(listener: () => void): () => void;
 }
 
-/** The address the browser page opens to hand a code to the client. */
-export const DESKTOP_SIGN_IN_LINK = "breatic://sign-in";
+/**
+ * A reverse domain name (RFC 8252 §7.1): lower case, at least one dot. A
+ * website can register a protocol handler only for `web+…` schemes and the
+ * browsers' safelists, and none of those has a dot.
+ */
+const REVERSE_DOMAIN = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
+
+/**
+ * Whether a scheme may carry a desktop sign-in code: one no website can claim.
+ * The server's deployment setting and the brand a client is built for both
+ * pass through this rule (#1599, design §8.3).
+ * @param scheme - The scheme, without `://`.
+ * @returns True for a reverse domain name.
+ */
+export function isDesktopAppScheme(scheme: string): boolean {
+  return REVERSE_DOMAIN.test(scheme);
+}
+
+/**
+ * The address the browser page opens to hand a code to a desktop build.
+ * @param scheme - The build's scheme, a reverse domain name.
+ * @returns `{scheme}://sign-in`.
+ */
+export function desktopSignInLink(scheme: string): string {
+  return `${scheme}://sign-in`;
+}

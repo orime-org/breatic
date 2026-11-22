@@ -76,7 +76,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   carry.code = null;
   useCurrentUserStore.setState({ user: null, role: null, loading: false, bootstrapped: true });
-  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: true });
+  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'breatic' });
 });
 
 describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
@@ -90,7 +90,7 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
 
   it('has no field and sends no code while payments are off', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false });
+    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'breatic' });
     vi.mocked(authApi.register).mockResolvedValue({ status: 'created', user: USER, recoveryCode: 'AAAA-BBBB-CCCC-DDDD' } as never);
     const user = userEvent.setup();
     setup();
@@ -132,7 +132,7 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
 
   it('warns that the code was not used when step two reports it, then goes on', async () => {
     carry.code = 'ALICE';
-    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true });
+    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'breatic' });
     vi.mocked(authApi.register).mockResolvedValue({ status: 'code_sent', expiresInSeconds: 600, resendAfterSeconds: 60 });
     vi.mocked(authApi.verifySignupCode).mockResolvedValue({ user: USER, referral: 'not_applied' } as never);
     const user = userEvent.setup();

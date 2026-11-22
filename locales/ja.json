@@ -2670,13 +2670,13 @@
       "waitingBrowser": "ブラウザでサインインを完了してください",
       "cancel": "キャンセル",
       "exchangeFailed": "サインインが完了しませんでした。もう一度お試しください。",
-      "title": "breatic デスクトップにサインイン",
+      "title": "{app} デスクトップにサインイン",
       "signingInAs": "{email} としてサインイン",
       "continue": "続行",
       "switchAccount": "別のアカウントを使う",
-      "handedTitle": "breatic デスクトップに戻りました",
+      "handedTitle": "{app} デスクトップに戻りました",
       "handedBody": "このページは閉じてかまいません。デスクトップアプリが開かない場合は、下のボタンを押してください。",
-      "openApp": "breatic デスクトップを開く",
+      "openApp": "{app} デスクトップを開く",
       "errorTitle": "デスクトップアプリにサインインできませんでした",
       "errorBody": "このサインインリンクは無効か期限切れです。デスクトップアプリに戻り、もう一度「Google で続行」を押してください。",
       "retry": "再試行"
@@ -4588,16 +4588,16 @@
   },
   "desktop": {
     "connect": {
-      "title": "breatic に接続",
+      "title": "{product} に接続",
       "continue": "続行",
       "connecting": "接続しています…",
-      "unreachableTitle": "breatic に接続できません",
+      "unreachableTitle": "{product} に接続できません",
       "retry": "再試行"
     },
     "errors": {
       "scheme": "LAN またはインターネットのアドレスには HTTPS が必要です。セルフホストガイドに従って設定してください。",
       "unreachable": "このアドレスに接続できません",
-      "notBreatic": "このアドレスは breatic サーバーではありません",
+      "notServer": "このアドレスは {product} サーバーではありません",
       "certificate": "このサーバーの証明書は信頼されていません。セルフホストガイドに従ってこのコンピューターで信頼してください。"
     },
     "menu": {

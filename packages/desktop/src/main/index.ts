@@ -15,7 +15,8 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { createBrowserSignIn } from "@desktop/main/browser-sign-in.js";
 import type { ConnectAnswer, ConnectInitial, ConnectReason } from "@desktop/main/connect-protocol.js";
-import { appImageDesktopEntry, DEEP_LINK_SCHEME, findDeepLink } from "@desktop/main/deep-link.js";
+import { BRAND } from "@desktop/main/brand.js";
+import { appImageDesktopEntry, findDeepLink } from "@desktop/main/deep-link.js";
 import { createLogger } from "@desktop/main/logger.js";
 import { buildDockMenuTemplate, buildMenuTemplate } from "@desktop/main/menu.js";
 import { nextWindowBounds, wantsNewWindow, windowsUserTasks } from "@desktop/main/new-window.js";
@@ -23,13 +24,8 @@ import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFai
 import { checkServer, normalizeServerUrl, readServerConfig, resolveServerUrl, writeServerConfig } from "@desktop/main/server-config.js";
 import { desktopText } from "@desktop/main/strings.js";
 
-/**
- * The server a build opens on first launch, with no question asked. Which host
- * a build talks to is a deployment decision, so it is injected at build time
- * from `BREATIC_DEFAULT_SERVER_URL`; a build without one asks the user.
- */
-declare const __DEFAULT_SERVER_URL__: string;
-const DEFAULT_SERVER_URL = __DEFAULT_SERVER_URL__;
+/** The server the build carries (brand.json, or BREATIC_DEFAULT_SERVER_URL at build time); empty asks on first launch. */
+const DEFAULT_SERVER_URL = BRAND.serverUrl;
 /** How long a browser sign-in waits; the server's handoff code lives as long (`config/auth.yaml`). */
 const SIGN_IN_TTL_MS = 5 * 60_000;
 /** Permissions the web app asks for; every other request is refused. */
@@ -50,8 +46,8 @@ const isDev = !app.isPackaged;
 
 if (!app.requestSingleInstanceLock()) app.quit();
 
-const logger = createLogger(app.getPath("logs"));
-const signIn = createBrowserSignIn({ openExternal: (url) => shell.openExternal(url), now: () => Date.now(), ttlMs: SIGN_IN_TTL_MS });
+const logger = createLogger(app.getPath("logs"), BRAND.id);
+const signIn = createBrowserSignIn({ openExternal: (url) => shell.openExternal(url), now: () => Date.now(), ttlMs: SIGN_IN_TTL_MS, scheme: BRAND.scheme });
 
 let serverOrigin: string | null = null;
 /** The app windows, least recently used first. */
@@ -71,7 +67,7 @@ app.on("will-finish-launching", () => {
 });
 
 app.on("second-instance", (_event, argv) => {
-  const link = findDeepLink(argv);
+  const link = findDeepLink(argv, BRAND.scheme);
   if (link) handleLink(link);
   else if (wantsNewWindow(argv)) openNewWindow();
   else showSomeWindow();
@@ -87,7 +83,7 @@ app.on("web-contents-created", (_event, contents) => attachPolicies(contents));
 
 void app.whenReady().then(start).catch((err: unknown) => {
   logger.error({ err }, "desktop_start_failed");
-  dialog.showErrorBox("breatic", err instanceof Error ? err.message : String(err));
+  dialog.showErrorBox(BRAND.productName, err instanceof Error ? err.message : String(err));
   app.quit();
 });
 
@@ -115,19 +111,20 @@ async function start(): Promise<void> {
   } else {
     openConnect({ mode: "connect", url: DEFAULT_SERVER_URL, reason: null });
   }
-  const link = queuedLink ?? findDeepLink(process.argv);
+  const link = queuedLink ?? findDeepLink(process.argv, BRAND.scheme);
   queuedLink = null;
   if (link) handleLink(link);
 }
 
-/** Register `breatic://` for this executable; an AppImage also writes its own desktop entry. */
+/** Register the build's scheme for this executable; an AppImage also writes its own desktop entry. */
 function registerScheme(): void {
   if (process.platform === "linux" && process.env.APPIMAGE) {
     try {
       const dir = join(homedir(), ".local", "share", "applications");
       mkdirSync(dir, { recursive: true });
-      writeFileSync(join(dir, "breatic-appimage.desktop"), appImageDesktopEntry(process.env.APPIMAGE));
-      execFile("xdg-mime", ["default", "breatic-appimage.desktop", `x-scheme-handler/${DEEP_LINK_SCHEME}`], (err) => {
+      const entry = `${BRAND.id}-appimage.desktop`;
+      writeFileSync(join(dir, entry), appImageDesktopEntry(process.env.APPIMAGE, BRAND));
+      execFile("xdg-mime", ["default", entry, `x-scheme-handler/${BRAND.scheme}`], (err) => {
         if (err) logger.error({ err }, "appimage_scheme_registration_failed");
       });
     } catch (err) {
@@ -136,15 +133,15 @@ function registerScheme(): void {
     return;
   }
   if (isDev && process.defaultApp && process.argv[1]) {
-    app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME, process.execPath, [process.argv[1]]);
+    app.setAsDefaultProtocolClient(BRAND.scheme, process.execPath, [process.argv[1]]);
   } else {
-    app.setAsDefaultProtocolClient(DEEP_LINK_SCHEME);
+    app.setAsDefaultProtocolClient(BRAND.scheme);
   }
 }
 
 /** Build the menu, the Dock menu and the taskbar task in the operating system's language. */
 function buildMenu(): void {
-  const text = desktopText(app.getLocale());
+  const text = desktopText(app.getLocale(), BRAND.productName);
   const labels = {
     file: text["desktop.menu.file"],
     back: text["desktop.menu.back"],
@@ -284,7 +281,7 @@ function createAppWindow(): BrowserWindow {
   const window = new BrowserWindow({
     ...nextWindowBounds(current ? current.getBounds() : null, readWindowState()),
     show: false,
-    title: "breatic",
+    title: BRAND.productName,
     webPreferences: {
       preload: join(here, "../preload/app.cjs"),
       contextIsolation: true,
@@ -318,7 +315,7 @@ function createAppWindow(): BrowserWindow {
  */
 function openConnect(initial: { mode: "connect" | "unreachable"; url: string; reason: ConnectReason | null }): void {
   const lang = app.getLocale();
-  connectInitial = { ...initial, lang, text: desktopText(lang) };
+  connectInitial = { ...initial, lang, product: BRAND.productName, text: desktopText(lang, BRAND.productName) };
   if (connectWindow) {
     void connectWindow.webContents.reload();
     connectWindow.focus();
@@ -328,7 +325,7 @@ function openConnect(initial: { mode: "connect" | "unreachable"; url: string; re
     width: 480,
     height: 420,
     resizable: false,
-    title: "breatic",
+    title: BRAND.productName,
     webPreferences: {
       preload: join(here, "../connect/preload.cjs"),
       contextIsolation: true,
@@ -386,7 +383,7 @@ function bringForward(window: BrowserWindow): void {
 }
 
 /**
- * Take a `breatic://` link from the system.
+ * Take a link on the build's scheme from the system.
  * @param link - The link.
  */
 function handleLink(link: string): void {
@@ -436,7 +433,7 @@ function attachPolicies(contents: WebContents): void {
     };
   });
   contents.on("will-prevent-unload", (event) => {
-    const text = desktopText(app.getLocale());
+    const text = desktopText(app.getLocale(), BRAND.productName);
     const owner = BrowserWindow.fromWebContents(contents);
     const options = {
       type: "question" as const,

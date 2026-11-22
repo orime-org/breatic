@@ -2670,13 +2670,13 @@
       "waitingBrowser": "請在瀏覽器中完成登入",
       "cancel": "取消",
       "exchangeFailed": "登入沒有完成，請重試。",
-      "title": "登入 breatic 桌面版",
+      "title": "登入 {app} 桌面版",
       "signingInAs": "以 {email} 的身分登入",
       "continue": "繼續",
       "switchAccount": "換個帳號",
-      "handedTitle": "已回到 breatic 桌面版",
+      "handedTitle": "已回到 {app} 桌面版",
       "handedBody": "可以關掉這個頁面了。桌面版沒有開啟的話，點下面的按鈕。",
-      "openApp": "開啟 breatic 桌面版",
+      "openApp": "開啟 {app} 桌面版",
       "errorTitle": "無法登入桌面版",
       "errorBody": "這個登入連結無效或已過期。回到桌面版，再點一次「使用 Google 繼續」。",
       "retry": "重試"
@@ -4588,16 +4588,16 @@
   },
   "desktop": {
     "connect": {
-      "title": "連線到 breatic",
+      "title": "連線到 {product}",
       "continue": "繼續",
       "connecting": "正在連線…",
-      "unreachableTitle": "連不上 breatic",
+      "unreachableTitle": "連不上 {product}",
       "retry": "重試"
     },
     "errors": {
       "scheme": "區域網路或公網位址需要 HTTPS，請依自架指南設定",
       "unreachable": "連不上這個位址",
-      "notBreatic": "這個位址不是 breatic 伺服器",
+      "notServer": "這個位址不是 {product} 伺服器",
       "certificate": "這台伺服器的憑證不受信任，請依自架指南在這台電腦上信任憑證"
     },
     "menu": {

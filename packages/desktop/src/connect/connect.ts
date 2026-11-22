@@ -27,7 +27,7 @@ function messageFor(text: DesktopText, reason: ConnectReason | null): string | n
   switch (reason) {
     case "scheme": return text["desktop.errors.scheme"];
     case "unreachable": return text["desktop.errors.unreachable"];
-    case "not_breatic": return text["desktop.errors.notBreatic"];
+    case "not_server": return text["desktop.errors.notServer"];
     case "certificate": return text["desktop.errors.certificate"];
     default: return null;
   }
@@ -115,6 +115,7 @@ function showUnreachable(text: DesktopText, url: string, reason: ConnectReason |
 
 void api.initial().then((initial) => {
   document.documentElement.lang = initial.lang;
+  document.title = initial.product;
   if (initial.mode === "unreachable") showUnreachable(initial.text, initial.url, initial.reason);
   else showConnect(initial.text, initial.url, initial.reason);
 });

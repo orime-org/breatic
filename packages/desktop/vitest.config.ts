@@ -12,6 +12,10 @@ export default defineConfig({
     testTimeout: 15_000,
     include: ["src/**/*.test.ts"],
   },
+  // The build writes the brand in (tsup.config.ts); tests run as the official one.
+  define: {
+    __BRAND__: JSON.stringify({ id: "breatic", productName: "breatic", scheme: "ai.breatic.desktop", serverUrl: "", poweredBy: false }),
+  },
   resolve: {
     alias: {
       "@desktop": resolve(import.meta.dirname, "src"),

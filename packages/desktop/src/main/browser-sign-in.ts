@@ -8,13 +8,13 @@
  * Google refuses sign-in in an embedded page (RFC 8252), so the client opens
  * the server's `/desktop/sign-in` in the system browser with a challenge, the
  * SHA-256 of a verifier it keeps. The page hands a one-time code back through
- * `breatic://sign-in`; only a link carrying the challenge of the sign-in
+ * `{scheme}://sign-in` on this build's scheme; only a link carrying the challenge of the sign-in
  * waiting here counts. The result waits until a page takes it, so a reload
  * between the click and the link loses nothing.
  */
 
 import crypto from "node:crypto";
-import { DESKTOP_SIGN_IN_LINK, type BrowserSignInResult } from "@breatic/shared";
+import { desktopSignInLink, type BrowserSignInResult } from "@breatic/shared";
 
 /** A sign-in waiting for the browser, and the result once it arrived. */
 interface Pending {
@@ -33,6 +33,8 @@ export interface BrowserSignInDeps {
   now: () => number;
   /** How long a sign-in waits; the server's code lives as long. */
   ttlMs: number;
+  /** This build's scheme, a reverse domain name. */
+  scheme: string;
 }
 
 /** The flow's operations. */
@@ -48,13 +50,15 @@ export interface BrowserSignIn {
 const DIGEST = /^[A-Za-z0-9_-]{43}$/;
 
 /**
- * Read a `breatic://sign-in` link.
+ * Read a `{scheme}://sign-in` link.
  * @param link - The link as the system delivered it.
- * @returns The code and challenge, or null when it is not a well-formed sign-in link.
+ * @param scheme - This build's scheme.
+ * @returns The code and challenge, or null when it is not a well-formed sign-in link on that scheme.
  */
-export function parseSignInLink(link: string): { code: string; challenge: string } | null {
-  if (!link.startsWith(`${DESKTOP_SIGN_IN_LINK}?`)) return null;
-  const params = new URLSearchParams(link.slice(DESKTOP_SIGN_IN_LINK.length + 1));
+export function parseSignInLink(link: string, scheme: string): { code: string; challenge: string } | null {
+  const base = desktopSignInLink(scheme);
+  if (!link.startsWith(`${base}?`)) return null;
+  const params = new URLSearchParams(link.slice(base.length + 1));
   const code = params.get("code");
   const challenge = params.get("challenge");
   if (!code || !challenge || !DIGEST.test(code) || !DIGEST.test(challenge)) return null;
@@ -95,7 +99,7 @@ export function createBrowserSignIn(deps: BrowserSignInDeps): BrowserSignIn {
       return current() !== null;
     },
     receive(link) {
-      const parsed = parseSignInLink(link);
+      const parsed = parseSignInLink(link, deps.scheme);
       const waiting = current();
       if (!parsed || !waiting || waiting.result || parsed.challenge !== waiting.challenge) return { accepted: false };
       waiting.result = { code: parsed.code, verifier: waiting.verifier };

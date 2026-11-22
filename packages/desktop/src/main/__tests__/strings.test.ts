@@ -17,11 +17,19 @@ describe("desktopText", () => {
     ["en-US", "Connect to breatic"],
     ["fr-FR", "Connect to breatic"],
   ])("speaks %s", (locale, title) => {
-    expect(desktopText(locale)["desktop.connect.title"]).toBe(title);
+    expect(desktopText(locale, "breatic")["desktop.connect.title"]).toBe(title);
   });
 
   it("has the same keys in every language", () => {
-    const keys = Object.keys(desktopText("en")).sort();
-    for (const locale of ["zh-CN", "zh-TW", "ja", "ko"]) expect(Object.keys(desktopText(locale)).sort()).toEqual(keys);
+    const keys = Object.keys(desktopText("en", "breatic")).sort();
+    for (const locale of ["zh-CN", "zh-TW", "ja", "ko"]) expect(Object.keys(desktopText(locale, "breatic")).sort()).toEqual(keys);
+  });
+
+  it("names the build's product wherever a text names the app", () => {
+    const text = desktopText("en", "Acme Studio");
+    expect(text["desktop.connect.title"]).toBe("Connect to Acme Studio");
+    expect(text["desktop.connect.unreachableTitle"]).toBe("Can't reach Acme Studio");
+    expect(text["desktop.errors.notServer"]).toBe("This address is not a Acme Studio server");
+    for (const value of Object.values(text)) expect(value).not.toMatch(/breatic|\{product\}/);
   });
 });

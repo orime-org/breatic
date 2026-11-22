@@ -29,7 +29,7 @@ vi.mock('@web/data/api/auth', async (importOriginal) => {
     authApi: {
       ...actual.authApi,
       invitation: preview,
-      options: vi.fn(async () => ({ emailVerification: true, referralEnabled: false })),
+      options: vi.fn(async () => ({ emailVerification: true, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'breatic' })),
       register: vi.fn(),
       verifySignupCode: vi.fn(),
       resendSignupCode: vi.fn(),

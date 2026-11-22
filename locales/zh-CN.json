@@ -2670,13 +2670,13 @@
       "waitingBrowser": "请在浏览器中完成登录",
       "cancel": "取消",
       "exchangeFailed": "登录没有完成，请重试。",
-      "title": "登录 breatic 桌面版",
+      "title": "登录 {app} 桌面版",
       "signingInAs": "以 {email} 的身份登录",
       "continue": "继续",
       "switchAccount": "换个账号",
-      "handedTitle": "已回到 breatic 桌面版",
+      "handedTitle": "已回到 {app} 桌面版",
       "handedBody": "可以关掉这个页面了。桌面版没有打开的话，点下面的按钮。",
-      "openApp": "打开 breatic 桌面版",
+      "openApp": "打开 {app} 桌面版",
       "errorTitle": "没能登录桌面版",
       "errorBody": "这个登录链接无效或已过期。回到桌面版，再点一次「用 Google 继续」。",
       "retry": "重试"
@@ -4588,16 +4588,16 @@
   },
   "desktop": {
     "connect": {
-      "title": "连接到 breatic",
+      "title": "连接到 {product}",
       "continue": "继续",
       "connecting": "正在连接…",
-      "unreachableTitle": "连不上 breatic",
+      "unreachableTitle": "连不上 {product}",
       "retry": "重试"
     },
     "errors": {
       "scheme": "局域网或公网地址需要 HTTPS，请按自部署指南配置",
       "unreachable": "连不上这个地址",
-      "notBreatic": "这个地址不是 breatic 服务器",
+      "notServer": "这个地址不是 {product} 服务器",
       "certificate": "这台服务器的证书不受信任，请按自部署指南在这台电脑上信任证书"
     },
     "menu": {

@@ -109,6 +109,10 @@ export interface AuthOptions {
   emailVerification: boolean;
   /** The referral code field exists; only while this deployment takes payments. */
   referralEnabled: boolean;
+  /** The scheme this deployment's desktop app receives sign-in codes on. */
+  desktopAppScheme: string;
+  /** The desktop app's name, as the sign-in confirmation shows it. */
+  desktopAppName: string;
 }
 
 interface LoginResponse {

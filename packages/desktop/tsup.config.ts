@@ -4,6 +4,10 @@
 import { resolve } from "node:path";
 import { copyFileSync, mkdirSync } from "node:fs";
 import { defineConfig, type Options } from "tsup";
+import { currentBrand } from "./brand.mjs";
+
+/** The brand this build is for: BREATIC_BRAND_DIR, else the official one. */
+const brand = currentBrand();
 
 /**
  * Everything is bundled except Electron itself, so the packaged app carries no
@@ -17,7 +21,15 @@ const shared: Options = {
   external: ["electron"],
   sourcemap: true,
   clean: false,
-  define: { __DEFAULT_SERVER_URL__: JSON.stringify(process.env.BREATIC_DEFAULT_SERVER_URL ?? "") },
+  define: {
+    __BRAND__: JSON.stringify({
+      id: brand.id,
+      productName: brand.productName,
+      scheme: brand.scheme,
+      serverUrl: brand.serverUrl,
+      poweredBy: brand.poweredBy,
+    }),
+  },
   esbuildOptions(options) {
     options.alias = {
       "@desktop": resolve(import.meta.dirname, "src"),

@@ -104,12 +104,19 @@ function getGoogleClient(): OAuth2Client {
  * about this deployment: whether an email sign-up proves the address with a
  * code (and so whether recovery goes by email or by recovery code).
  * Also whether the referral code field exists: only while payments are on
- * (inner#1868 §2).
- * @returns `200` with `{ emailVerification, referralEnabled }`
+ * (inner#1868 §2). And the desktop build this deployment hands browser
+ * sign-ins back to: the confirmation page names it and returns the code on
+ * its scheme, never on one the address asks for (#1599).
+ * @returns `200` with `{ emailVerification, referralEnabled, desktopAppScheme, desktopAppName }`
  */
 auth.get("/options", (c) => {
   return c.json({
-    data: { emailVerification: signupCodeService.emailVerificationEnabled(), referralEnabled: env.PAYMENT_ENABLED },
+    data: {
+      emailVerification: signupCodeService.emailVerificationEnabled(),
+      referralEnabled: env.PAYMENT_ENABLED,
+      desktopAppScheme: env.DESKTOP_APP_SCHEME,
+      desktopAppName: env.DESKTOP_APP_NAME,
+    },
   });
 });
 

@@ -6,7 +6,7 @@
 import type { DesktopText } from "@desktop/main/strings.js";
 
 /** Why connecting did not happen. `cancelled`: the user chose to stay on a page with unsaved work. */
-export type ConnectReason = "scheme" | "unreachable" | "not_breatic" | "certificate" | "cancelled";
+export type ConnectReason = "scheme" | "unreachable" | "not_server" | "certificate" | "cancelled";
 
 /** The window's starting state. */
 export interface ConnectInitial {
@@ -14,6 +14,8 @@ export interface ConnectInitial {
   url: string;
   reason: ConnectReason | null;
   lang: string;
+  /** The build's product name, the window's title. */
+  product: string;
   text: DesktopText;
 }
 

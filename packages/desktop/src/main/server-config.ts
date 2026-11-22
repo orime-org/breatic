@@ -14,7 +14,7 @@ import { readFileSync, writeFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 /** Why an address was refused before or during the check. */
-export type ServerRefusal = "scheme" | "unreachable" | "not_breatic" | "certificate";
+export type ServerRefusal = "scheme" | "unreachable" | "not_server" | "certificate";
 
 /** Hosts that may be reached over plain HTTP: this machine. */
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
@@ -46,7 +46,7 @@ export function normalizeServerUrl(input: string): { ok: true; origin: string } 
 export type CheckFetch = (url: string, init?: RequestInit) => Promise<Response>;
 
 /**
- * Ask an origin whether it is a breatic server: it publishes `/app-version.json`
+ * Ask an origin whether it is a server of our app: it publishes `/app-version.json`
  * with a string `version`.
  * @param origin - The normalized origin.
  * @param fetchFn - The fetch to use.
@@ -62,10 +62,10 @@ export async function checkServer(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetchFn(`${origin}/app-version.json`, { signal: controller.signal, cache: "no-store" });
-    if (!res.ok) return { ok: false, reason: "not_breatic" };
+    if (!res.ok) return { ok: false, reason: "not_server" };
     const body: unknown = await res.json().catch(() => null);
     if (typeof body !== "object" || body === null || typeof (body as { version?: unknown }).version !== "string") {
-      return { ok: false, reason: "not_breatic" };
+      return { ok: false, reason: "not_server" };
     }
     return { ok: true, origin: new URL(res.url || origin).origin };
   } catch (err) {

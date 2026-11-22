@@ -2670,13 +2670,13 @@
       "waitingBrowser": "브라우저에서 로그인을 완료하세요",
       "cancel": "취소",
       "exchangeFailed": "로그인이 완료되지 않았습니다. 다시 시도하세요.",
-      "title": "breatic 데스크톱에 로그인",
+      "title": "{app} 데스크톱에 로그인",
       "signingInAs": "{email}(으)로 로그인",
       "continue": "계속",
       "switchAccount": "다른 계정 사용",
-      "handedTitle": "breatic 데스크톱으로 돌아왔습니다",
+      "handedTitle": "{app} 데스크톱으로 돌아왔습니다",
       "handedBody": "이 페이지를 닫아도 됩니다. 데스크톱 앱이 열리지 않았다면 아래 버튼을 누르세요.",
-      "openApp": "breatic 데스크톱 열기",
+      "openApp": "{app} 데스크톱 열기",
       "errorTitle": "데스크톱 앱에 로그인하지 못했습니다",
       "errorBody": "이 로그인 링크가 유효하지 않거나 만료되었습니다. 데스크톱 앱으로 돌아가 ‘Google로 계속하기’를 다시 누르세요.",
       "retry": "다시 시도"
@@ -4588,16 +4588,16 @@
   },
   "desktop": {
     "connect": {
-      "title": "breatic에 연결",
+      "title": "{product}에 연결",
       "continue": "계속",
       "connecting": "연결하는 중…",
-      "unreachableTitle": "breatic에 연결할 수 없습니다",
+      "unreachableTitle": "{product}에 연결할 수 없습니다",
       "retry": "다시 시도"
     },
     "errors": {
       "scheme": "LAN 또는 인터넷 주소에는 HTTPS가 필요합니다. 셀프 호스팅 가이드에 따라 설정하세요.",
       "unreachable": "이 주소에 연결할 수 없습니다",
-      "notBreatic": "이 주소는 breatic 서버가 아닙니다",
+      "notServer": "이 주소는 {product} 서버가 아닙니다",
       "certificate": "이 서버의 인증서를 신뢰할 수 없습니다. 셀프 호스팅 가이드에 따라 이 컴퓨터에서 인증서를 신뢰하세요."
     },
     "menu": {

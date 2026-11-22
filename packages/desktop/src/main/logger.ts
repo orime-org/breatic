@@ -14,10 +14,11 @@ import pino, { type Logger } from "pino";
 /**
  * Open the log file in the given directory.
  * @param dir - `app.getPath("logs")`.
+ * @param brandId - The build's brand, recorded on every line.
  * @returns The logger.
  * @throws {Error} if the directory cannot be created.
  */
-export function createLogger(dir: string): Logger {
+export function createLogger(dir: string, brandId: string): Logger {
   mkdirSync(dir, { recursive: true });
-  return pino({ base: { app: "breatic-desktop" } }, pino.destination({ dest: join(dir, "main.log"), sync: false, mkdir: true }));
+  return pino({ base: { app: `${brandId}-desktop` } }, pino.destination({ dest: join(dir, "main.log"), sync: false, mkdir: true }));
 }
