@@ -81,8 +81,8 @@ describe("the 3D model catalog", () => {
         };
       }),
     ).toEqual([
-      { name: T23D, display_name: "Tripo H3.1", mode: "t23d", variant: undefined },
-      { name: I23D, display_name: "Tripo H3.1", mode: "i23d", variant: "Single image" },
+      { name: T23D, display_name: "Tripo H3.1", mode: "t23d", variant: "Text-to-3D" },
+      { name: I23D, display_name: "Tripo H3.1", mode: "i23d", variant: "Image-to-3D" },
       {
         name: MULTIVIEW,
         display_name: "Tripo H3.1",

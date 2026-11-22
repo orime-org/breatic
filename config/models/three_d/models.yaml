@@ -185,7 +185,7 @@ models:
 
   - name: "tripo-h3.1-i23d"
     display_name: "Tripo H3.1"
-    variant: "Single image"
+    variant: "Image-to-3D"
     mode: "i23d"
     takes_prompt: false
     tier: "recommended"
