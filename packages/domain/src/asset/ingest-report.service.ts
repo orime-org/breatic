@@ -43,10 +43,10 @@ import {
   getStorageConfig,
   getStreamRedis,
   NotFoundError,
-  publishSpaceTasksChanged,
+  announceSpaceTasksVersion,
   reportCollaboratorFirstAction,
 } from "@breatic/core";
-import { canvasSpaceDocName, NO_CONSENT, t, uprightKeyFor } from "@breatic/shared";
+import { canvasSpaceDocName, NO_CONSENT, t, threeDSpaceDocName, uprightKeyFor } from "@breatic/shared";
 import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
@@ -366,7 +366,7 @@ async function settleSceneUpload(
       );
     }
   }
-  const countsPublishFailed = await publishSpaceTasksChanged(grant.projectId, row.spaceId).then(() => false, () => true);
+  const countsPublishFailed = await announceSpaceTasksVersion(threeDSpaceDocName(grant.projectId, row.spaceId)).then(() => false, () => true);
   return {
     ...(countsPublishFailed && { countsPublishFailed }),
     ...(activityAppendFailed && { activityAppendFailed }),

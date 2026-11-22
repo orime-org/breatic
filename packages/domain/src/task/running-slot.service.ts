@@ -23,7 +23,7 @@ import {
   getStreamRedis,
   getWorkerConfig,
   projectsRepo,
-  publishSpaceTasksChanged,
+  announceSpaceTasksVersion,
   reportGraceMs,
   timelineReportGraceMs,
   runningTaskLimitForStudio,
@@ -31,7 +31,7 @@ import {
   timelineExecutionRepo,
   type DbTx,
 } from "@breatic/core";
-import { canvasSpaceDocName, type TaskFailureReason, type TimelineExecution } from "@breatic/shared";
+import { canvasSpaceDocName, threeDSpaceDocName, timelineSpaceDocName, type TaskFailureReason, type TimelineExecution } from "@breatic/shared";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
@@ -152,19 +152,20 @@ async function renewHoldings(creditHold: string, always: boolean, tx: DbTx): Pro
 }
 
 /**
- * Tell the canvas that rows changed: each node's counts, and the Space's list
- * for a 3D Space's own row or a Timeline execution.
+ * Tell the Spaces that rows changed: each node's counts on its canvas, and the
+ * list of a 3D Space's own row or of a Timeline execution in that Space's
+ * document.
  * @param places - The node task rows that changed.
- * @param space - A Space whose list changed, beside those rows.
+ * @param spaceDoc - The document of a Space whose list changed, beside those rows.
  * @returns The signals that failed.
  */
-async function publish(places: readonly TaskRowPlace[], space: { projectId: string; spaceId: string } | null): Promise<unknown[]> {
+async function publish(places: readonly TaskRowPlace[], spaceDoc: string | null): Promise<unknown[]> {
   const sends: Promise<void>[] = places.map(async (place) => {
-    if (place.nodeId === null) return publishSpaceTasksChanged(place.projectId, place.spaceId);
+    if (place.nodeId === null) return announceSpaceTasksVersion(threeDSpaceDocName(place.projectId, place.spaceId));
     const counts = await nodeTaskRepo.countsFor(place.projectId, place.nodeId);
     return emitNodeTaskCounts(getStreamRedis(), canvasSpaceDocName(place.projectId, place.spaceId), place.nodeId, counts, undefined);
   });
-  if (space !== null) sends.push(publishSpaceTasksChanged(space.projectId, space.spaceId));
+  if (spaceDoc !== null) sends.push(announceSpaceTasksVersion(spaceDoc));
   return (await Promise.allSettled(sends)).flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
 }
 
@@ -182,7 +183,7 @@ async function failRows(taskId: string, errorMessage: string, sceneReason: TaskF
   for (const place of await nodeTaskRepo.listRunningForTask(taskId)) {
     if (place.nodeId === null) {
       await sceneTaskService.settleById(place.id, { outcome: "failed", errorMessage: sceneReason });
-      failures.push(...(await publish([], { projectId: place.projectId, spaceId: place.spaceId })));
+      failures.push(...(await publish([], threeDSpaceDocName(place.projectId, place.spaceId))));
       continue;
     }
     const settled = await nodeTaskService.settle({ taskId: place.id, outcome: "failed", errorMessage });
@@ -304,20 +305,20 @@ export async function claimWithinLimit(executionId: string): Promise<GateOutcome
   if (row === undefined) throw new Error(`Timeline execution ${executionId} does not exist`);
   if (row.status !== "queued") return { outcome: "ended", publishFailures: [] };
   const judged = await judgeExecution(row, await limitFor(row.projectId, row.actorUserId));
-  return settleJudgement(judged, { projectId: row.projectId, spaceId: row.spaceId });
+  return settleJudgement(judged, timelineSpaceDocName(row.projectId, row.spaceId));
 }
 
 /**
  * Signal what the judgement changed, then answer it.
  * @param judged - The judgement.
- * @param space - The Space whose list a Timeline execution sits in.
+ * @param spaceDoc - The document of the Timeline an execution sits in.
  * @returns The outcome when the row does not wait.
  * @throws {StillRunning} When it waits.
  */
-async function settleJudgement<S>(judged: Judged<S>, space: { projectId: string; spaceId: string } | null): Promise<GateOutcome<S>> {
+async function settleJudgement<S>(judged: Judged<S>, spaceDoc: string | null): Promise<GateOutcome<S>> {
   if (judged.kind === "busy") throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
   if (judged.kind === "ended") return { outcome: "ended", publishFailures: [] };
-  const failures = await publish(judged.places, judged.space ? space : null);
+  const failures = await publish(judged.places, judged.space ? spaceDoc : null);
   if (judged.kind === "waiting") throw new StillRunning(Date.now() + judged.delayMs, failures);
   return { outcome: "started", started: judged.started, publishFailures: failures };
 }

@@ -19,7 +19,7 @@ import { assertBeforeDeadline, DeadlinePassed } from "@breatic/shared";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { withUnderstandSlot } from "@worker/handlers/understand-slots.js";
-import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew, publishSpaceTasksChanged } from "@breatic/core";
+import { announceSpaceTasksVersion, getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivityNew } from "@breatic/core";
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { costsOf, type Cost } from "@breatic/provider";
@@ -58,7 +58,7 @@ import {
   type PersistedOutput,
 } from "@worker/handlers/persisted-output.js";
 import type { BackendUploadContext } from "@breatic/domain";
-import { canvasSpaceDocName, NO_CONSENT, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
+import { canvasSpaceDocName, NO_CONSENT, threeDSpaceDocName, type ConsentSnapshot, type GenerationSource } from "@breatic/shared";
 import { catalogEntryOf, isModelTool, miniToolById, modelOf } from "@breatic/shared/mini-tools";
 import type { NodeTaskResult, TaskFailureReason } from "@breatic/shared";
 import { logger } from "@breatic/core";
@@ -1472,7 +1472,7 @@ export async function settleSceneRow(
   }
   const { row } = settled;
   try {
-    await publishSpaceTasksChanged(row.projectId, row.spaceId);
+    await announceSpaceTasksVersion(threeDSpaceDocName(row.projectId, row.spaceId));
   } catch (err) {
     // The row is settled; a member's list catches up on its next read.
     logger.error({ err, taskId, sceneRowId, projectId: row.projectId, spaceId: row.spaceId }, "space_tasks_publish_failed");

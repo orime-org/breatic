@@ -195,14 +195,3 @@ export interface CreditsChangedSignal {
   projectId: string;
 }
 
-/**
- * Stateless WS signal broadcast on the project meta doc when a 3D Space's task
- * list changed (inner#1690) - members with that Space open read it again.
- */
-export const SPACE_TASKS_CHANGED_SIGNAL = "space-tasks:changed" as const;
-
-export interface SpaceTasksChangedSignal {
-  t: typeof SPACE_TASKS_CHANGED_SIGNAL;
-  projectId: string;
-  spaceId: string;
-}

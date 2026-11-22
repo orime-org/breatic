@@ -160,7 +160,6 @@ export {
 export {
   publishActivityNew,
   publishCreditsChanged,
-  publishSpaceTasksChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
@@ -212,6 +211,7 @@ export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/ass
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
 export { announceExecutionChange } from "@core/timeline/execution-change.js";
+export { announceSpaceTasksVersion } from "@core/infra/space-tasks-version.js";
 export {
   TIMELINE_QUEUE,
   TIMELINE_EXECUTION_JOB,
