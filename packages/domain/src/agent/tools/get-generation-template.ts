@@ -13,7 +13,7 @@
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
-import { formatCredits, GENERATION_TEMPLATES, keyStanding, t, templateAnchor, templateSkeleton, type GenerationTemplate } from "@breatic/shared";
+import { formatCredits, GENERATION_TEMPLATES, keyStanding, t, templateAnchor, templateSkeleton, templateStyleKey, templateStylesOf, type GenerationTemplate } from "@breatic/shared";
 
 import { templateCraft } from "@domain/agent/tools/template-craft.js";
 import { modelsForMode } from "@domain/model-catalog/mode-catalog.js";
@@ -49,11 +49,14 @@ const HOW_TO_SEND =
  * A prompt is shown as the segments a proposal sends, not as the box shows
  * it: the box adds words to a reference mark, and a model copying what it
  * reads would send those words back inside the label, or a bracket as text.
+ * A styled template (inner#1817) given no style first lists its set's styles;
+ * given one, each node that takes a part of it shows that part after its own words.
  * @param template - The template.
+ * @param style - The picked style, if any.
  * @returns Its paragraph.
  * @throws {never} Never.
  */
-export function describeTemplate(template: GenerationTemplate): string {
+export function describeTemplate(template: GenerationTemplate, style?: string): string {
   const skeleton = templateSkeleton(template);
   const anchor = templateAnchor(template);
   const nodes = template.nodes.map((node) => {
@@ -80,12 +83,41 @@ export function describeTemplate(template: GenerationTemplate): string {
       : fed;
   });
   const steps = skeleton.steps.map((step) => t(`canvas.template.${template.id}.step.${step}`));
-  const prompts = template.nodes.flatMap((node) => (node.role === "generate" ? [`"${node.key}": ${templateSegmentsText(template, node.key)}`] : []));
+  const prompts = template.nodes.flatMap((node) => (node.role === "generate" ? [`"${node.key}": ${templateSegmentsText(template, node.key, style)}`] : []));
   return (
+    styleLead(template, style) +
     `${template.id}: ${template.agentNote}. Nodes: ${nodes.join("; ")}. ` +
     `Edges: ${edges.length === 0 ? "none" : edges.join("; ")}. Inputs: ${inputs.length === 0 ? "none" : inputs.join("; ")}. ` +
     `Steps after it generates: ${steps.length === 0 ? "none" : steps.join(" / ")}. Prompts, as segments: ${prompts.join("; ")}`
   );
+}
+
+/**
+ * The first sentence of a style's introducing words.
+ * @param text - The words.
+ * @returns Its first sentence.
+ */
+function firstSentence(text: string): string {
+  return /^.*?(?:[.!?](?=\s|$)|[\u3002\uFF01\uFF1F])/su.exec(text)?.[0] ?? text;
+}
+
+/**
+ * What a styled template's reading opens with: its set's styles when none
+ * is picked, or that the picked one is not among them.
+ * @param template - The template.
+ * @param style - The picked style, if any.
+ * @returns The lead, empty for an unstyled template or a style of its set.
+ */
+function styleLead(template: GenerationTemplate, style: string | undefined): string {
+  const set = templateStylesOf(template);
+  if (set === undefined) return "";
+  if (style !== undefined && set.styles.some((one) => one.id === style)) return "";
+  const intro = set.parts[0] ?? "";
+  const listed = set.styles.map(
+    (one) => `${one.id} ("${t(templateStyleKey(set.id, one.id, "name"))}"): ${firstSentence(t(templateStyleKey(set.id, one.id, intro)))}`,
+  );
+  const lead = style === undefined ? "" : `Style "${style}" is not one of this template's. `;
+  return `${lead}Its styles (pass style to read the words for one): ${listed.join("; ")}\n\n`;
 }
 
 /** A template's generate nodes priced together, and whether every one was priced exactly. */
@@ -198,17 +230,23 @@ async function applyCost(template: GenerationTemplate, studioId: string | undefi
 }
 
 /** The tool that reads one template; it renders in the turn's language when called, so one object serves every turn. */
-export const getGenerationTemplate: Tool<{ id: string }, string, StudioToolContext> = tool({
+export const getGenerationTemplate: Tool<{ id: string; style?: string }, string, StudioToolContext> = tool({
   description:
     `Read one generation template in full before proposing it with ${PROPOSE_CANVAS_ACTION}: its nodes and wiring, ` +
     "the inputs the user supplies, each generate node's prompt in the user's language as the segments to send, " +
     "how to send it, and the craft for writing its prompts. The templates, and when to offer each, are listed in " +
     `${PROPOSE_CANVAS_ACTION}'s description.`,
-  inputSchema: z.object({ id: z.enum(GENERATION_TEMPLATES.map((template) => template.id)).describe("The template's id, as the proposal tool's description lists it.") }),
+  inputSchema: z.object({
+    id: z.enum(GENERATION_TEMPLATES.map((template) => template.id)).describe("The template's id, as the proposal tool's description lists it."),
+    style: z
+      .string()
+      .optional()
+      .describe("For a template that takes a style: the style's id. Left out, the reading lists the template's styles."),
+  }),
   contextSchema: studioToolContextSchema,
   metadata: { runningLine: "chat.tool.readingTemplate" },
   execute: async (
-    { id }: { id: string },
+    { id, style }: { id: string; style?: string },
     // The signal is unused: builds text and returns, so there is nothing to abandon.
     { context }: { abortSignal?: AbortSignal; context?: StudioToolContext },
   ): Promise<string> => {
@@ -216,6 +254,6 @@ export const getGenerationTemplate: Tool<{ id: string }, string, StudioToolConte
     // The input schema admits only registered ids.
     if (template === undefined) throw new Error(`No template "${id}".`);
     const cost = await applyCost(template, context?.studioId);
-    return [describeTemplate(template), ...(cost === "" ? [] : [cost]), HOW_TO_SEND, templateCraft(template)].join("\n\n");
+    return [describeTemplate(template, style), ...(cost === "" ? [] : [cost]), HOW_TO_SEND, templateCraft(template)].join("\n\n");
   },
 });

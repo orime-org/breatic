@@ -21,9 +21,10 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import {
+  mergeLocaleMessages,
   setLocaleMessages,
   setLocaleResolver,
   type Locale,
@@ -77,5 +78,13 @@ export function loadLocales(localesDir?: string): void {
     }
   } catch {
     // locales dir may not exist in test environments
+  }
+  // The template style words (inner#1817) sit in their own catalogs so the
+  // web entry stays small; here they join the locales registered above.
+  const styles = resolve(dir, "template-styles");
+  if (!existsSync(styles)) return;
+  for (const file of readdirSync(styles)) {
+    if (!file.endsWith(".json")) continue;
+    mergeLocaleMessages(basename(file, ".json"), JSON.parse(readFileSync(resolve(styles, file), "utf-8")) as Record<string, unknown>);
   }
 }

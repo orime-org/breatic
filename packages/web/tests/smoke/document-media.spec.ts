@@ -15,14 +15,14 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { expect, type Page } from 'playwright/test';
+import { expect, type Browser, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { blankPoint, bodySelection } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
-import { storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
+import { recordRequests, storedPicture, uniquePicture } from '../helpers/upload';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
 import { withTimelinePeer } from '../helpers/timeline-media';
 
@@ -236,16 +236,20 @@ test('the plus menu offers image, audio and video after the table, columns and t
 // sized from the server's width and height, which are the copy's.
 test('a WebP tagged to turn lands as its upright copy, sized from what the server read @needs-ingest @needs-storage', async () => {
   await openFreshDocument(page);
-  const finish = watchQueuedFinish(page);
+  const sent = recordRequests(page);
+  const finished = page.waitForResponse(
+    (r) => /\/assets\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST',
+    { timeout: 60_000 },
+  );
   await pickFromPlus(page, 'image', {
     name: 'photo.webp',
     mimeType: 'image/webp',
     buffer: uniquePicture(readFileSync(resolve(__dirname, '../fixtures/exif6-red-top.webp'))),
   });
-  const { queued, delivered } = await finish;
-  expect(queued).toBe(202);
-  expect([delivered.width, delivered.height]).toEqual([768, 1024]);
+  expect((await finished).status()).toBe(202);
+  // The result reaches the block through the Document's Yjs document (#1574), so the page never asks for it.
   await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  expect(sent.filter((request) => request.url.includes('/assets/upload-status'))).toEqual([]);
 
   const block = await page.evaluate((selector) => {
     const el = document.querySelector(selector) as unknown as {
@@ -257,10 +261,9 @@ test('a WebP tagged to turn lands as its upright copy, sized from what the serve
     });
     return found as { url: string; mediaWidth: number; mediaHeight: number } | null;
   }, EDITOR);
-  expect(block?.url).toBe(delivered.fileUrl);
   expect(block?.url).toMatch(/_upright\.[a-z]+$/);
   expect([block?.mediaWidth, block?.mediaHeight]).toEqual([768, 1024]);
-  const stored = await storedPicture(page, delivered.fileUrl);
+  const stored = await storedPicture(page, block?.url ?? '');
   expect([stored.orientation, stored.width, stored.height]).toEqual([1, 768, 1024]);
   const shown = await page.locator(`${IMAGE} img`).boundingBox();
   expect(shown !== null && Math.abs(shown.width / shown.height - 768 / 1024)).toBeLessThan(0.01);
@@ -2071,6 +2074,67 @@ test('a picture and its caption show in a second client opening the document (A1
   } finally {
     await second.close();
   }
+});
+
+/**
+ * Opens the Document `page` shows in a second browser as the uploader, caret in its body.
+ * @param browser - The browser.
+ * @returns The uploader's page and what closes it.
+ */
+async function openUploader(browser: Browser): Promise<{ uploader: Page; leave: () => Promise<void> }> {
+  const home = (await page.locator('[role="tab"][aria-selected="true"]').getAttribute('data-testid'))!;
+  const context = await browser.newContext({ viewport: { width: 1680, height: 950 } });
+  const uploader = await context.newPage();
+  await uploader.goto(page.url());
+  await uploader.getByTestId(home).click();
+  await expect(uploader.locator(EDITOR)).toBeVisible({ timeout: 15_000 });
+  await uploader.locator(EDITOR).click();
+  return { uploader, leave: () => context.close() };
+}
+
+/**
+ * Waits for the uploader's page to hand its bytes to the server.
+ * @param uploader - The uploader's page.
+ * @returns Once the finish is queued.
+ */
+async function handedOver(uploader: Page): Promise<void> {
+  const finished = await uploader.waitForResponse(
+    (r) => /\/assets\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST',
+    { timeout: 60_000 },
+  );
+  expect(finished.status()).toBe(202);
+}
+
+// #1574: the result reaches the Document through the server, whatever became of the page that sent it.
+test('a picture lands for another member after its uploader closed the page once it was sent @needs-ingest @needs-storage', async ({ browser }) => {
+  await openFreshDocument(page);
+  const { uploader, leave } = await openUploader(browser);
+  try {
+    const sent = handedOver(uploader);
+    await pastePicture(uploader, 'away.png');
+    await sent;
+  } finally {
+    await leave();
+  }
+
+  await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+  await expect(page.locator(PENDING)).toHaveCount(0);
+});
+
+test('another member sees the server refuse an upload, with its reason, after the uploader left @needs-ingest @needs-storage', async ({ browser }) => {
+  await openFreshDocument(page);
+  const { uploader, leave } = await openUploader(browser);
+  try {
+    const sent = handedOver(uploader);
+    // Named a picture, but the stored bytes are text: only the server can tell.
+    await pasteFile(uploader, Buffer.from(`not a picture ${Date.now()} ${Math.random()}`), 'fake.png', 'image/png');
+    await sent;
+  } finally {
+    await leave();
+  }
+
+  await expect(page.locator('[data-testid="doc-pending-failure"]')).toHaveText('fake.png · Format not supported', { timeout: UPLOAD_TIMEOUT });
+  await expect(page.locator('[data-testid="doc-pending-remove"]')).toBeVisible();
 });
 
 // inner#1844: a viewer has no editing icons over a video, but can open it full screen.

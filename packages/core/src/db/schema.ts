@@ -906,7 +906,7 @@ export const studioUpstreamClones = pgTable(
     /** The source asset's sha256; an element adds its name after a colon. */
     sourceKey: text("source_key").notNull(),
     upstreamId: text("upstream_id").notNull(),
-    /** Whose upstream account holds the clone: `deployment` for our keys, else the `account_provider_keys` row it was made with (0130, inner#1953). */
+    /** Whose upstream account holds the clone: `deployment` for our keys, else the `account_provider_keys` row it was made with (0131, inner#1953). */
     keyOwner: text("key_owner").default("deployment").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
@@ -1249,7 +1249,7 @@ export const creditEnterprisePurchases = pgTable("credit_enterprise_purchases", 
 /**
  * An account's own key for one upstream, sealed (`secrets/provider-key-box.ts`); the only place a saved key is kept.
  * A live row always has its sealed text; replacing, deleting or erasing the key clears it and soft-deletes the row in
- * one write. One live row per account and upstream; the partial unique index and the CHECKs live in 0130.
+ * one write. One live row per account and upstream; the partial unique index and the CHECKs live in 0131.
  */
 export const accountProviderKeys = pgTable(
   "account_provider_keys",
@@ -1278,7 +1278,7 @@ export const accountProviderKeys = pgTable(
 
 /**
  * The upstream an account chose for a catalog model that is not a language model (inner#1953); one live choice per
- * account and model, and a model without one runs on the deployment's keys. Index and CHECKs live in 0130.
+ * account and model, and a model without one runs on the deployment's keys. Index and CHECKs live in 0131.
  */
 export const accountModelUpstreams = pgTable(
   "account_model_upstreams",
@@ -2471,13 +2471,13 @@ export const timelineExecutions = pgTable(
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
     resultSourceVersionId: uuid("result_source_version_id"),
     failureReason: text("failure_reason"),
-    /** The upstream a failure of the payer's own key names (0130, inner#1953); null for any other failure. */
+    /** The upstream a failure of the payer's own key names (0131, inner#1953); null for any other failure. */
     failureUpstream: text("failure_upstream"),
-    /** Why that upstream refused the payer's own key (0130, inner#1953); null for any other failure. */
+    /** Why that upstream refused the payer's own key (0131, inner#1953); null for any other failure. */
     failureKeyReason: text("failure_key_reason"),
     billedCredits: numeric("billed_credits"),
     billedAt: timestamp("billed_at", { withTimezone: true }),
-    /** The account key row its language-model calls run on (0130, inner#1953); null is the deployment's keys. */
+    /** The account key row its language-model calls run on (0131, inner#1953); null is the deployment's keys. */
     llmKeyId: uuid("llm_key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     /** First time the running-task gate held this execution back (inner#1968). */
     slotWaitSince: timestamp("slot_wait_since", { withTimezone: true }),
@@ -3513,8 +3513,10 @@ export const uploadGrants = pgTable(
      * this would reopen the key to the very write it exists to stop.
      */
     finalizingUploadId: text("finalizing_upload_id"),
-    /** Node these bytes land on. Absent for a focus crop, which has no node. */
+    /** Node these bytes land on. Absent for an upload with no node: a focus crop, or a Document body block (`documentUploadId`). */
     nodeId: uuid("node_id"),
+    /** The Document body block these bytes land in, by its `uploadId` (breatic#1574). */
+    documentUploadId: text("document_upload_id"),
     /**
      * Project the node belongs to, checked against the user's access at ticket
      * time. Null for a studio's avatar, which belongs to no project.

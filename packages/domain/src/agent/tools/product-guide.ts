@@ -379,8 +379,8 @@ export function renderProductGuide(): string {
       "to rename it: Enter or clicking away saves, Esc or an empty name keeps the old one. A locked space shows a " +
       `small padlock after its name, and trying to rename it shows ${quoted(t("spaces.rename.locked"))} ` +
       "Locking a space only stops it being renamed or deleted; what is in it stays editable. Hovering a tab " +
-      "also shows a small X at its right end, which closes the tab; the space stays in the project. While an " +
-      `upload in that space is still running, closing it shows ${quoted(t("canvas.close.operationInProgress"))} ` +
+      "also shows a small X at its right end, which closes the tab; the space stays in the project. While this page " +
+      `is still sending an upload into that space, closing it shows ${quoted(t("canvas.close.operationInProgress"))} ` +
       "Drag a tab sideways to reorder the tabs. When the tabs do not fit, arrows at either end scroll them. Just " +
       "right of the tabs a crosshair button scrolls the current tab into view; it is greyed while that tab is " +
       "already in view.",
@@ -878,7 +878,12 @@ export function renderProductGuide(): string {
       "opens a list under that heading of creative goals; pointing at a goal opens the templates for it, each a " +
       `name with a line under it. ${templateMenuLine("image", "A picture node")} ${templateMenuLine("video", "A video node")} ` +
       `${templateMenuLine("audio", "A sound node")} A template whose model this ` +
-      `deployment lacks reads ${quoted(t("canvas.template.unavailable"))} and cannot be picked. Picking one sets ` +
+      `deployment lacks reads ${quoted(t("canvas.template.unavailable"))}, cannot be picked and opens no list. Any other template with styles ` +
+      "is not picked itself: pointing at it opens one more list, its styles, under headings with a small picture for each " +
+      `where it has them; while they load it reads ${quoted(t("common.loading"))} and when they cannot be loaded it reads ` +
+      `${quoted(t("canvas.template.styleLoadFailed"))} and picking applies nothing. Picking a style applies the template and ` +
+      "writes that style's description as a paragraph after the template's own words in the prompt; picking another style " +
+      "for the same node replaces it, as picking a template again does. Picking a template sets " +
       "the panel's mode, model and settings to the template's and replaces that mode's prompt with the " +
       "template's; nothing asks first. A template with a shot list switches a video node to its multi-shot mode " +
       "and writes the shots in place of the prompt, each with its seconds and its words. A dialogue template " +
@@ -2012,17 +2017,18 @@ export function renderProductGuide(): string {
     "- Images, videos and audio can also be dragged into the document from the computer, landing where the " +
       "drop marker shows (a line between blocks, or a caret in the words of a table cell outside a code " +
       `block), or pasted at the caret, replacing the selection. ${documentPasteRules().map((rule) => rule.sentence).join(" ")} ` +
-      "Pictures, videos and audio inside copied web pages or Markdown come in with the text, and dragging " +
-      "a web page's content in does the same. Each picture, video or audio that still has to be fetched " +
-      "or uploaded first shows as a dashed box with a spinner and, for a file, its name and how far its upload has got; " +
-      "everyone working on the document sees the box, and it becomes the picture, video or audio for everyone " +
-      "when the upload is done. One Cmd+Z takes the whole paste or drop away, boxes included, and redo brings " +
+      "Media inside copied web pages or Markdown comes in with the text, and dragging " +
+      "a web page's content in does the same. Each one that still has to be fetched " +
+      "or uploaded shows as a dashed box with a spinner and, for a file, its name and upload progress; " +
+      "everyone working on the document sees the box, and it becomes the media for everyone " +
+      "when done. One Cmd+Z takes the whole paste or drop away, boxes included; redo brings " +
       "it back without uploading again. An upload that fails turns the box red with the reason, with " +
-      `${quoted(t("spaces.document.media.retry"))} when trying again can help, and ` +
-      `${quoted(t("spaces.document.media.remove"))}. If the person uploading closes the page before it is ` +
-      `done, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
+      `${quoted(t("spaces.document.media.retry"))} for the uploader when it can help, and ` +
+      `${quoted(t("spaces.document.media.remove"))}. If the uploader leaves before it is ` +
+      `sent, the box says ${quoted(t("spaces.document.media.notFinished"))} and anyone who can edit can ` +
       `${quoted(t("spaces.document.media.remove"))} it. What cannot be pasted (a canvas node with nothing in ` +
-      "it yet, an address the page cannot fetch) is left out, and a message says how many. Hovering a picture, video or " +
+      "it yet, an address the page cannot fetch) is left out, and a message says how many. Media copied from another " +
+      "document mid-upload is left out too, with a message to copy it again later. Hovering a picture, video or " +
       "audio, or clicking it, shows a row of icons above it (under it in a table cell at the view's top): " +
       "left, centre and right alignment (only when the " +
       "picture or video is narrower than the page; audio is always as wide as the page), " +
@@ -2313,8 +2319,8 @@ export function renderProductGuide(): string {
       "Once a space is past its hard ceiling, the notice says it is over its limit and only deleting a whole node, " +
       `clip, model or passage works: ${quoted(t("spaces.sizeCap.over"))} While a space is full, an Agent proposal is ` +
       `not placed (${quoted(t("spaces.sizeCap.proposal"))}), text read from a dropped file is not added ` +
-      `(${quoted(t("spaces.sizeCap.text"))}), a file already uploaded into a document waits with ` +
-      `${quoted(t("spaces.sizeCap.wait"))} and finishes by itself once content is deleted, and an upload that ` +
+      `(${quoted(t("spaces.sizeCap.text"))}), a picture, video or audio pasted into a document from our own ` +
+      `storage waits with ${quoted(t("spaces.sizeCap.wait"))} and finishes by itself once content is deleted, and an upload that ` +
       `could not start fails with ${quoted(t("spaces.sizeCap.reason"))} and can be retried. Adding media to a ` +
       "timeline or importing a 3D model shows the same sentence inside its dialog as a refused edit: " +
       `${quoted(t("spaces.sizeCap.add"))} Past the hard ceiling, the timeline's dialog shows ` +

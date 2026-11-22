@@ -79,7 +79,7 @@ interface GeneratePanelProps {
   /** Every model served for the node type: the template menu greys out templates it cannot run (inner#977). */
   catalogModels: readonly ModelEntry[];
   /** Applies a template picked from the corner menu. */
-  onPickTemplate: (template: GenerationTemplate) => void;
+  onPickTemplate: (template: GenerationTemplate, style?: string) => void;
   /** Pick a model. */
   onSelectModel: (modelId: string) => void;
   /** Switch the generation sub-mode (t2i / i2i). */

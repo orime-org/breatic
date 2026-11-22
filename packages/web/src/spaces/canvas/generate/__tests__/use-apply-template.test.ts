@@ -16,6 +16,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import {
   GENERATION_TEMPLATES,
+  mergeLocaleMessages,
   setLocale,
   setLocaleMessages,
   t,
@@ -30,10 +31,12 @@ import en from '@locales/en.json';
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), info: vi.fn(), warning: vi.fn(), success: vi.fn() },
 }));
+vi.mock('@web/spaces/canvas/generate/template-style-messages', () => ({ ensureTemplateStyleMessages: vi.fn(() => Promise.resolve(true)) }));
 
 import { addEdge, addNode, createGroup, readCanvasGraph, removeNode, setNodeLocked, setNodeTemplateNode } from '@web/data/yjs/canvas-space';
 import { _resetForTests } from '@web/data/yjs/manager';
 import { toast } from '@web/lib/toast';
+import { ensureTemplateStyleMessages } from '@web/spaces/canvas/generate/template-style-messages';
 import { createGroupNode } from '@web/spaces/canvas/node-factory';
 import { useApplyTemplate, type PlaceTemplate } from '@web/spaces/canvas/generate/use-apply-template';
 import type { ExistingNode, PlacedProposal } from '@web/spaces/canvas/use-node-creation';
@@ -302,6 +305,88 @@ describe('useApplyTemplate', () => {
   afterEach(() => {
     setLocaleMessages('en', en as Record<string, unknown>);
     setLocale('en');
+  });
+
+  describe('a styled template (inner#1817)', () => {
+    const STYLED: GenerationTemplate = {
+      id: 'fixture-styled',
+      anchor: 'still',
+      styles: 'film-styles',
+      nodes: [{ key: 'still', role: 'generate', type: 'image', mode: 'i2i', model: ULTRA.name, params: {}, styleWords: 'still' }],
+      edges: [],
+      inputs: [],
+      steps: [],
+      agentNote: 'a styled fixture',
+      goal: 'character',
+      triggers: { asks: ['a styled fixture'], offerWhen: [] },
+    };
+
+    beforeEach(() => {
+      mergeLocaleMessages('en', {
+        canvas: {
+          template: {
+            'fixture-styled': { name: 'Styled', prompt: 'Redraw it.' },
+            styleSet: { 'film-styles': { style: { 'impasto-oil': { still: 'Thick oil paint.' } } } },
+          },
+        },
+      });
+    });
+
+    it('writes the picked style\'s paragraph after the anchor\'s own words once the style words are in', async () => {
+      seed('target', 'image');
+      const place = vi.fn(lands);
+      const { result } = renderHook(() => useApplyTemplate('p', 's', 'target', [ULTRA], place));
+      result.current(STYLED, 'impasto-oil');
+      await vi.waitFor(() => expect(place).toHaveBeenCalledTimes(1));
+      expect(placed(place).proposal.nodes[0]?.prompt?.at(-1)).toEqual({ text: '\nThick oil paint.' });
+    });
+
+    it('switches an applied instance to another style by rewriting the words only: no new node, each reused one ends with the new style', async () => {
+      const PAIR: GenerationTemplate = {
+        ...STYLED,
+        id: 'fixture-styled-pair',
+        anchor: 'final',
+        nodes: [
+          { key: 'final', role: 'generate', type: 'image', mode: 'i2i', model: ULTRA.name, params: {}, styleWords: 'still' },
+          { key: 'sketch', role: 'generate', type: 'image', mode: 'i2i', model: ULTRA.name, params: {}, styleWords: 'still' },
+        ],
+        edges: [{ from: 'sketch', to: 'final', into: 'styleImageUrls' }],
+      };
+      mergeLocaleMessages('en', {
+        canvas: {
+          template: {
+            'fixture-styled-pair': { name: 'Pair', prompt: 'Finish it.', node: { sketch: { name: 'Sketch', prompt: 'Sketch it.' } } },
+            styleSet: { 'film-styles': { style: { 'expressionist-woodcut': { still: 'Black ink cut into wood.' } } } },
+          },
+        },
+      });
+      // The instance an earlier apply with impasto-oil left: the anchor, and its sketch wired into it.
+      seed('target', 'image');
+      seed('target-sketch', 'image', { name: 'Sketch', templateNode: { template: 'fixture-styled-pair', key: 'sketch' } });
+      wire('target-sketch', 'target');
+      const place = vi.fn(lands);
+      const { result } = renderHook(() => useApplyTemplate('p', 's', 'target', [ULTRA], place));
+      result.current(PAIR, 'expressionist-woodcut');
+      await vi.waitFor(() => expect(place).toHaveBeenCalledTimes(1));
+
+      const { proposal, existing } = placed(place);
+      expect(appendedOf(proposal, existing)).toEqual([]);
+      expect([...existing.values()].map((e) => e.nodeId).sort()).toEqual(['target', 'target-sketch']);
+      for (const node of proposal.nodes) {
+        expect(node.prompt?.at(-1)).toEqual({ text: '\nBlack ink cut into wood.' });
+        expect(JSON.stringify(node.prompt)).not.toContain('Thick oil paint.');
+      }
+    });
+
+    it('places nothing and asks the user to refresh when the style words do not arrive', async () => {
+      vi.mocked(ensureTemplateStyleMessages).mockResolvedValueOnce(false);
+      seed('target', 'image');
+      const place = vi.fn(lands);
+      const { result } = renderHook(() => useApplyTemplate('p', 's', 'target', [ULTRA], place));
+      result.current(STYLED, 'impasto-oil');
+      await vi.waitFor(() => expect(toast.error).toHaveBeenCalledWith(en.canvas.template.styleLoadFailed));
+      expect(place).not.toHaveBeenCalled();
+    });
   });
 
   describe('what stops it before anything is placed', () => {

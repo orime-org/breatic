@@ -199,6 +199,11 @@ export interface MediaUploadDeps {
   /** Told the share of the file that has landed, from 0 to 1, after each part. */
   onProgress?: (fraction: number) => void;
   /**
+   * A Document body block's upload is over for the page once the server has it (a dedup hit, or a queued finish):
+   * the server announces the ending and collab writes the block (breatic#1574).
+   */
+  onHandedOff?: () => void;
+  /**
    * The server answered: an opened upload or one it could not open, either of
    * which opened the upload's task row, or a copy the studio already holds.
    * Told once, before any bytes move, with the row the answer names (a 3D
@@ -211,8 +216,8 @@ export interface MediaUploadDeps {
    * What the server filed the content as. A node ignores
    * it: the server writes the node's content through Yjs, and pinning anything
    * here would be a second writer for the one field that has one (design
-   * §6.6). An upload with no node behind it has no other channel and this is
-   * what it reads.
+   * §6.6). An upload with no node and no Document block behind it has no other
+   * channel and this is what it reads.
    */
   onSuccess: (stored: StoredUpload) => void;
   /**
@@ -243,8 +248,11 @@ export interface MediaUploadDeps {
  * Finishing runs on the server as a job (inner#1367 §4.2a). An upload with a
  * node behind it is over for the page once that job is queued: the server
  * writes the node through Yjs, and only a finish that did not register comes
- * back here, through `onFailure`, when the status query has its ending. An
- * upload with no node waits for that ending and reads its result from it.
+ * back here, through `onFailure`, when the status query has its ending. A
+ * Document body block (`onHandedOff`) is over for the page once the server has
+ * the bytes or already holds them: the server announces the ending and collab
+ * writes the block (breatic#1574). Any other upload with no node waits for that
+ * ending and reads its result from it.
  * @param file - The media file to upload.
  * @param context - Where it lands and what it is for.
  * @param deps - Injected config / hash / network / result callbacks.
@@ -297,7 +305,7 @@ export async function runMediaUpload(
 }
 
 /** Where one file's outcome goes. */
-type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onRegistering' | 'onRegistered' | 'onSuccess' | 'onFailure'>;
+type UploadSinks = Pick<MediaUploadDeps, 'onProgress' | 'onAnswered' | 'onRegistering' | 'onRegistered' | 'onHandedOff' | 'onSuccess' | 'onFailure'>;
 
 /** What the delivery half calls out to. */
 type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
@@ -305,7 +313,8 @@ type DeliveryDeps = Pick<MediaUploadDeps, 'sendToIngest' | 'waitForEnding'>;
 /**
  * The half after the ticket: settle a dedup hit or an open our server could
  * not make, or send the bytes, have the finish queued and, for an upload with
- * no node, wait for its ending.
+ * no node, wait for its ending; a Document body block (`onHandedOff`) ends at
+ * the queued finish, its ending written into the block by collab.
  * @param file - The file.
  * @param answer - What the ticket request answered for it.
  * @param cfg - The upload knobs.
@@ -325,6 +334,11 @@ async function deliverTicket(
   signal?.throwIfAborted();
   sinks.onAnswered?.(answer.taskId);
   signal?.throwIfAborted();
+  if (isAlreadyStored(answer) && sinks.onHandedOff !== undefined) {
+    // The server announced the hit to the block's Document.
+    sinks.onHandedOff();
+    return;
+  }
   if (isAlreadyStored(answer)) {
     // Nothing moves. When a node is behind this upload, the server has already
     // written its history and published what ends its handling; an upload with
@@ -364,6 +378,10 @@ async function deliverTicket(
     return;
   }
 
+  if (sinks.onHandedOff !== undefined) {
+    sinks.onHandedOff();
+    return;
+  }
   sinks.onRegistering?.();
   signal?.throwIfAborted();
   const waitForEnding = deps.waitForEnding ?? waitForUploadEnding;
@@ -516,5 +534,36 @@ export function uploadMedia(
       onSuccess: resolve,
       onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
     }, signal).catch(reject);
+  });
+}
+
+/**
+ * Run the pipeline against the real network for a Document body block, whose
+ * result the server writes into the block (breatic#1574): it ends once the
+ * server has the bytes, or holds them already.
+ * @param file - The file to upload.
+ * @param context - Where it lands, naming the block's `uploadId`.
+ * @param onProgress - Told the share of the file that has landed, after each part.
+ * @returns Once the server has it.
+ * @throws {UploadFailedError} When the server could not be handed the upload.
+ */
+export function handOffDocumentMedia(
+  file: File,
+  context: UploadContext & { uploadId: string },
+  onProgress?: (fraction: number) => void,
+): Promise<void> {
+  return new Promise((resolve, reject) => {
+    void runMediaUpload(file, context, {
+      getUploadConfig: assetsApi.fetchUploadConfig,
+      hashFile,
+      requestTicket: assetsApi.requestUploadTicket,
+      sendToIngest: sendFileAndFinish,
+      ...(onProgress !== undefined && { onProgress }),
+      onHandedOff: resolve,
+      onSuccess: () => {
+        resolve();
+      },
+      onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
+    }).catch(reject);
   });
 }

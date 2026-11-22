@@ -46,6 +46,7 @@ import {
   GENERATION_TEMPLATES,
   t,
   templateAnchor,
+  templateStylesOf,
   templateGuideNode,
   type CanvasProposal,
   type GenerationTemplate,
@@ -665,6 +666,20 @@ function totalLine(prices: readonly (CreditEstimate | undefined)[]): string[] {
 }
 
 /**
+ * What a styled template's index line adds (inner#1817): how many styles it
+ * takes and their categories; the names are read with the template, in the
+ * user's language, since the index is written when the module loads.
+ * @param template - The template.
+ * @returns The sentence, empty for a template without styles.
+ */
+function stylesSentence(template: GenerationTemplate): string {
+  const set = templateStylesOf(template);
+  if (set === undefined) return "";
+  const categories = set.categories === undefined ? "" : ` (${set.categories.join(", ")})`;
+  return ` Takes one of ${String(set.styles.length)} styles${categories}; read them with ${GET_GENERATION_TEMPLATE}.`;
+}
+
+/**
  * The templates as one line each, what the agent weighs when choosing one:
  * its id, goal and anchor type, what it makes, the words a user asks for it
  * with and the situations it fits (inner#1807); when to propose it is the
@@ -680,7 +695,8 @@ function templateIndex(templates: readonly GenerationTemplate[]): string {
     (template) =>
       `${template.id} (${template.goal}, makes ${templateAnchor(template).type}): ${template.agentNote}. ` +
       `The user asks for it with words like: ${template.triggers.asks.join("; ")}.` +
-      (template.triggers.offerWhen.length === 0 ? "" : ` It also fits when: ${template.triggers.offerWhen.join("; ")}.`),
+      (template.triggers.offerWhen.length === 0 ? "" : ` It also fits when: ${template.triggers.offerWhen.join("; ")}.`) +
+      stylesSentence(template),
   );
   return (
     `Templates: ${lines.join(" | ")} ` +

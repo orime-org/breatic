@@ -27,6 +27,7 @@
  * this module holds the shape and the registry they are collected into.
  */
 
+import { templateStyleKey, templateStylesOf, type TemplateStyleSetId } from "@shared/canvas/template-styles.js";
 import { THREE_D_CARTOON_SHORT } from "@shared/canvas/templates/3d-cartoon-short.js";
 import { AMBIENCE_SFX_BED } from "@shared/canvas/templates/ambience-sfx-bed.js";
 import { ANIME_ACTION_CLIMAX } from "@shared/canvas/templates/anime-action-climax.js";
@@ -47,8 +48,11 @@ import { COMIC_PANELS_TO_SHOTS } from "@shared/canvas/templates/comic-panels-to-
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
 import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
 import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
+import { ERA_WALKTHROUGH_MONTAGE } from "@shared/canvas/templates/era-walkthrough-montage.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
 import { EXTREME_SPORTS_RUN } from "@shared/canvas/templates/extreme-sports-run.js";
+import { FILM_STYLE_SHOT } from "@shared/canvas/templates/film-style-shot.js";
+import { FILM_STYLE_STILL } from "@shared/canvas/templates/film-style-still.js";
 import { FISHEYE_CLONE_POV } from "@shared/canvas/templates/fisheye-clone-pov.js";
 import { FLASH_PHOTO_DUMP_GRID } from "@shared/canvas/templates/flash-photo-dump-grid.js";
 import { FOOD_MONEY_SHOT } from "@shared/canvas/templates/food-money-shot.js";
@@ -81,6 +85,7 @@ import { STOP_MOTION_SHORT } from "@shared/canvas/templates/stop-motion-short.js
 import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
 import { STORYBOARD_SHEET_9 } from "@shared/canvas/templates/storyboard-sheet-9.js";
 import { STORYBOARD_TO_VIDEO } from "@shared/canvas/templates/storyboard-to-video.js";
+import { STYLE_SOUND_BED } from "@shared/canvas/templates/style-sound-bed.js";
 import { TALKING_HEAD_PITCH } from "@shared/canvas/templates/talking-head-pitch.js";
 import { TALKING_OWN_VOICE } from "@shared/canvas/templates/talking-own-voice.js";
 import { TALKING_PRESENTER } from "@shared/canvas/templates/talking-presenter.js";
@@ -101,7 +106,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "speed", "sound"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -147,6 +152,12 @@ export interface TemplateGenerateNode {
    * 8.5). Each line's words are `line.<n>`, words only, no name in front.
    */
   lines?: readonly TemplateLine[];
+  /**
+   * The part of the picked style its prompt takes, one of its template's
+   * style set's `parts` (inner#1817): the style's words for that part are
+   * written after the node's own. Prompt nodes only.
+   */
+  styleWords?: string;
 }
 
 /** A node of the template that holds a file we host. */
@@ -210,6 +221,8 @@ export interface GenerationTemplate {
   goal: TemplateGoal;
   /** When the agent offers it. */
   triggers: TemplateTriggers;
+  /** The style set the user picks one style from before it applies (inner#1817). */
+  styles?: TemplateStyleSetId;
 }
 
 /** Every template, in the order the panels list them within a goal. */
@@ -271,6 +284,10 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   NAME_AS_WORLD_TYPOGRAPHY,
   DESTINATION_FESTIVAL_POSTER,
   PHOTO_PAPER_DIORAMA,
+  FILM_STYLE_STILL,
+  FILM_STYLE_SHOT,
+  ERA_WALKTHROUGH_MONTAGE,
+  STYLE_SOUND_BED,
   VEHICLE_SPEED_CUTLIST,
   SPORTS_LIVE_COVERAGE,
   EXTREME_SPORTS_RUN,
@@ -301,7 +318,7 @@ export function templateAnchor(template: GenerationTemplate): TemplateGenerateNo
 
 /** Where a template's generate node keeps its words: keys under the template's `canvas.template.<id>.` entry. */
 export type TemplateNodeWords =
-  | { prompt: string }
+  | { prompt: string; styleKey?: string }
   | { shots: ReadonlyArray<{ seconds: number; key: string }> }
   | { lines: ReadonlyArray<{ speaker: number; key: string }> };
 
@@ -309,18 +326,26 @@ export type TemplateNodeWords =
  * Where one of a template's generate nodes keeps its words: its prompt, or,
  * for a node with a shot list or dialogue lines, one key per shot or line in
  * place of a prompt.
+ * A prompt node that takes a part of the template's style also gets the
+ * absolute key of the picked style's words for it, written after its own.
  * @param template - The template.
  * @param key - The node's key.
- * @returns The keys under the template's locale entry.
+ * @param style - The picked style, if any.
+ * @returns The keys under the template's locale entry, and the style's absolute key.
  * @throws {never} Never.
  */
-export function templateNodeWords(template: GenerationTemplate, key: TemplateNodeKey): TemplateNodeWords {
+export function templateNodeWords(template: GenerationTemplate, key: TemplateNodeKey, style?: string): TemplateNodeWords {
   const node = template.nodes.find((one) => one.key === key);
   const own = key === template.anchor ? "" : `node.${key}.`;
   const lines = node?.role === "generate" ? node.lines : undefined;
   if (lines !== undefined) return { lines: lines.map((line, i) => ({ speaker: line.speaker, key: `${own}line.${String(i + 1)}` })) };
   const shots = node?.role === "generate" ? node.shots : undefined;
-  if (shots === undefined) return { prompt: `${own}prompt` };
+  if (shots === undefined) {
+    const part = node?.role === "generate" ? node.styleWords : undefined;
+    const set = templateStylesOf(template);
+    const held = set !== undefined && style !== undefined && set.styles.some((one) => one.id === style);
+    return part !== undefined && held ? { prompt: `${own}prompt`, styleKey: templateStyleKey(set.id, style, part) } : { prompt: `${own}prompt` };
+  }
   return { shots: shots.map((shot, i) => ({ seconds: shot.seconds, key: `${own}shot.${String(i + 1)}` })) };
 }
 
