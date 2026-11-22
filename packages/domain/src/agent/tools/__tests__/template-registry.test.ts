@@ -19,6 +19,8 @@ import {
   setLocale,
   t,
   templateSkeleton,
+  templateStyleKey,
+  templateStylesOf,
   type CanvasProposal,
   type GenerationTemplate,
   type ProposalNode,
@@ -27,6 +29,7 @@ import {
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 
 import { answerFor, checkProposal, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
+import { templateSegmentsText } from "../template-expansion.js";
 
 import {
   agentShape,
@@ -118,15 +121,16 @@ function structureOf(proposal: Pick<CanvasProposal, "nodes" | "edges">, identity
  * the anchor (inner#1825 design 4.1, "panel" row).
  * @param template - The template.
  * @param material - Input key to the address the user's node holds.
+ * @param style - The picked style of a styled template (inner#1817).
  * @returns The proposal, and the identity of each index but the guide's.
  */
-function panelShape(template: GenerationTemplate, material: ReadonlyMap<string, string> = new Map()): { proposal: CanvasProposal; identity: Map<number, string> } {
+function panelShape(template: GenerationTemplate, material: ReadonlyMap<string, string> = new Map(), style?: string): { proposal: CanvasProposal; identity: Map<number, string> } {
   const skeleton = templateSkeleton(template);
   const given = skeleton.inputs.filter((input) => material.has(input.key));
   const own = given.map((input, n): ProposalNode => ({ role: "source", type: input.type, name: `My ${input.key} ${String(n + 1)}`, material: material.get(input.key) }));
   const inputs = new Map(given.map((input, n) => [input.key, new Map(input.feeds.map((fed) => [fed, n + 1]))]));
   const wired = given.map((_, n) => ({ fromIndex: n + 1, toIndex: 0 }));
-  const expansion = expandTemplate(template, { anchorAt: 0, base: 1 + own.length, inputs, wired, reuse: new Map(), guide: true });
+  const expansion = expandTemplate(template, { anchorAt: 0, base: 1 + own.length, inputs, wired, reuse: new Map(), guide: true, style });
   const anchor = expansion.rewritten.get(0);
   if (anchor === undefined) throw new Error("the expansion rewrites no anchor at 0");
   const nodes = [anchor, ...own, ...expansion.appended];
@@ -166,12 +170,18 @@ function materialsOf(addresses: Iterable<string>): MaterialTable {
  * @param template - The template.
  * @param registry - The registry the agent's proposal is judged against, or the real one.
  * @param material - Input key to the address its node already holds, in both shapes.
+ * @param style - The picked style of a styled template, in both shapes (inner#1817).
  */
-function bothShapesAgree(template: GenerationTemplate, registry?: readonly GenerationTemplate[], material: ReadonlyMap<string, string> = new Map()): void {
-  const panel = panelShape(template, material);
+function bothShapesAgree(
+  template: GenerationTemplate,
+  registry?: readonly GenerationTemplate[],
+  material: ReadonlyMap<string, string> = new Map(),
+  style?: string,
+): void {
+  const panel = panelShape(template, material, style);
   const materials = materialsOf(material.values());
   expect(checkProposal(panel.proposal, materials)).toEqual({ ok: true });
-  const agent = agentShape(template, { material });
+  const agent = agentShape(template, { material, style });
   const answer = answerFor(agent.sent, materials, registry);
   expect(answer).toMatchObject({ placed: true });
   if (!answer.placed) return;
@@ -191,6 +201,34 @@ function bothShapesAgree(template: GenerationTemplate, registry?: readonly Gener
   });
   expect(withoutCanvasTags(structureOf(answer, identityOf(agent.at)))).toEqual(withoutCanvasTags(structureOf(panel.proposal, panel.identity)));
 }
+
+describe("every styled template passes from both entries with each of its styles (inner#1817)", () => {
+  for (const template of GENERATION_TEMPLATES) {
+    const set = templateStylesOf(template);
+    if (set === undefined) continue;
+    for (const locale of LOCALES) {
+      it(`${template.id} in ${locale}: each style's paragraph closes the prompt of every node taking it, the same from the panel and the agent`, () => {
+        setLocale(locale);
+        for (const style of set.styles) {
+          bothShapesAgree(template, undefined, new Map(), style.id);
+          const panel = panelShape(template, new Map(), style.id);
+          const agent = agentShape(template, { style: style.id });
+          for (const node of template.nodes) {
+            if (node.role !== "generate" || node.styleWords === undefined) continue;
+            const key = templateStyleKey(set.id, style.id, node.styleWords);
+            expect(t(key), `${locale} ${key}`).not.toBe(key);
+            const paragraph = { text: `\n${t(key)}` };
+            const agentAt = agent.at.get(`node:${node.key}`) ?? -1;
+            const panelAt = [...panel.identity].find(([, who]) => who === `node:${node.key}`)?.[0] ?? -1;
+            expect(agent.sent.nodes[agentAt]?.prompt?.at(-1), `${style.id} ${node.key}`).toEqual(paragraph);
+            expect(panel.proposal.nodes[panelAt]?.prompt?.at(-1), `${style.id} ${node.key}`).toEqual(paragraph);
+            expect(templateSegmentsText(template, node.key, style.id), `${style.id} ${node.key}`).toContain(JSON.stringify(paragraph));
+          }
+        }
+      });
+    }
+  }
+});
 
 describe("every registered template passes from both entries", () => {
   for (const template of GENERATION_TEMPLATES) {

@@ -8,11 +8,12 @@
  * Data path:
  *   server / worker → Redis stream → consumer group (one round per document) →
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
- *   (canvas), applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES) or
+ *   (canvas), applyDocumentUpload (a Document body's media upload, breatic#1574),
+ *   applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES) or
  *   applySceneLookPicture (a 3D object's part picture)
  *
- * A change version and a part picture are written only into a live Space
- * document.
+ * A change version, a Document upload and a part picture are written only into
+ * a live Space document.
  *
  * For node counts and change versions collab executes and does not judge:
  * which task moved, what the counts now are, whether a result rides along —
@@ -29,13 +30,15 @@
  * database; what keeps the next holder from writing over a peer's update it
  * has not received yet is the hand-over record, the state vector the previous
  * holder stored; what keeps an older event from undoing a newer one is the
- * version each node carries, and for other Space types the version their
- * document holds.
+ * version each node carries, for other Space types the version their document
+ * holds, and for a Document upload the block itself: an address once written
+ * never changes and `processing` never replaces an ending (`applyDocumentUpload`).
  *
- * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts, the
- * content document of a Space type in `SPACE_TASKS_TYPES` for change
- * versions and `project-{pid}/3d-{spaceId}` for part pictures, one doc per
- * Space. Any other doc name is skipped.
+ * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts,
+ * `project-{pid}/document-{spaceId}` for Document uploads, the content
+ * document of a Space type in `SPACE_TASKS_TYPES` for change versions and
+ * `project-{pid}/3d-{spaceId}` for part pictures, one doc per Space. Any other
+ * doc name is skipped.
  */
 
 import { setTimeout as delay } from "node:timers/promises";
@@ -43,9 +46,10 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
 import type {
-  NodeTaskCountsEvent, SceneLookPictureEvent, SceneLookPictureSettlement, SceneLookSettledControlEvent, SpaceTasksVersionEvent,
+  DocumentUploadEvent, NodeTaskCountsEvent, SceneLookPictureEvent, SceneLookPictureSettlement, SceneLookSettledControlEvent,
+  SpaceTasksVersionEvent,
 } from "@breatic/shared";
-import { parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
+import { applyDocumentUpload, documentBodyFragment, parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { applySpaceTasksVersion } from "@collab/services/space-tasks-version.js";
@@ -74,9 +78,6 @@ const MARK_WAITER_SCRIPT =
 
 /** How long a node's counts version, and the mark of an applied part picture upload, are kept after their last write. */
 const COUNTS_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
-
-/** Every event this listener writes. */
-type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | SceneLookPictureEvent;
 
 /** How collab settled a part picture, said to its uploader. */
 export type SceneLookSettlement = Omit<SceneLookSettledControlEvent, "type" | "ts">;
@@ -112,6 +113,9 @@ export interface TaskListenerDeps {
   /** Tell a part picture's uploader how it was settled: written, or why not (inner#1693 design 6.3). */
   settleSceneLook: (settlement: SceneLookSettlement) => Promise<void>;
 }
+
+/** An event the listener writes. */
+type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | DocumentUploadEvent | SceneLookPictureEvent;
 
 /** One parsed event and the stream entry it came from. */
 interface Item {
@@ -185,8 +189,8 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
 }
 
 /**
- * Read one entry as a task event: a node's counts for a canvas document, a change version for a document of a Space
- * type listed in `SPACE_TASKS_TYPES`, or a stored part picture for a 3D document.
+ * Read one entry as a task event: a node's counts for a canvas document, a media upload for a Document, a change
+ * version for a document of a Space type listed in `SPACE_TASKS_TYPES`, or a stored part picture for a 3D document.
  * @param entry - The stream entry.
  * @returns The event, or why it is skipped.
  */
@@ -198,14 +202,16 @@ function readItem(entry: StreamEntry): TaskEvent | { skip: string } {
     return { skip: "task_event_unparseable_skipped" };
   }
   const type = typeof event === "object" && event !== null ? (event as { type?: unknown }).type : undefined;
-  if (type !== "node-task-counts" && type !== "space-tasks-version" && type !== "scene-look-picture") {
+  if (type !== "node-task-counts" && type !== "space-tasks-version" && type !== "document-upload" && type !== "scene-look-picture") {
     return { skip: "task_event_unknown_type_skipped" };
   }
   const docName = (event as { docName?: unknown }).docName;
   const parsed = typeof docName === "string" ? parseDocName(docName) : null;
-  const fits = parsed !== null && (type === "node-task-counts" ? parsed.kind === "canvas"
-    : type === "scene-look-picture" ? parsed.kind === "3d"
-      : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
+  const fits = parsed !== null && (
+    type === "node-task-counts" ? parsed.kind === "canvas"
+      : type === "document-upload" ? parsed.kind === "document"
+        : type === "scene-look-picture" ? parsed.kind === "3d"
+          : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
   if (!fits) return { skip: "task_event_unknown_doc_skipped" };
   return event as TaskEvent;
 }
@@ -268,8 +274,8 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     stopping: () => boolean,
   ): Promise<Map<string, EntryOutcome>> {
     const outcomes = new Map<string, EntryOutcome>();
-    // Only a canvas document takes node counts, so a batch is one kind of document throughout.
-    const spaceTasks = batch.items[0]!.event.type !== "node-task-counts";
+    // A deleted Space's document loads empty, and what is written into it would be stored over the deleted content.
+    const liveOnly = batch.items[0]!.event.type !== "node-task-counts";
     /**
      * Skip a batch whose Space has no live document; a part picture for it is settled as gone.
      * @returns Every event done.
@@ -281,7 +287,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     };
     // A Space with no live row is skipped before its document is loaded into this instance.
     try {
-      if (spaceTasks && !(await isLiveDoc(batch.docName))) return await skipNotLive();
+      if (liveOnly && !(await isLiveDoc(batch.docName))) return await skipNotLive();
     } catch (err) {
       logger.error({ err, docName: batch.docName }, "task_doc_live_check_failed");
       return outcomeForAll(batch, { failed: err });
@@ -312,7 +318,7 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       const doc = connection.document!;
       // Checked again after the load: a Space deleted while it loaded reads as empty, and a version written into that
       // empty document would be stored over the deleted row's content.
-      if (spaceTasks && !(await isLiveDoc(batch.docName))) return await skipNotLive();
+      if (liveOnly && !(await isLiveDoc(batch.docName))) return await skipNotLive();
       if (!(await awaitHandOver(doc, keys.handoff, stopping))) {
         if (!stopping()) logger.warn({ docName: batch.docName }, "task_doc_handoff_not_reached");
         return outcomeForAll(batch, "wait");
@@ -341,6 +347,11 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
             }
             if (event.type === "space-tasks-version") {
               applySpaceTasksVersion(d, entry.originId ?? entry.id);
+              outcomes.set(entry.id, "done");
+              continue;
+            }
+            if (event.type === "document-upload") {
+              applyDocumentUpload(documentBodyFragment(d), event);
               outcomes.set(entry.id, "done");
               continue;
             }

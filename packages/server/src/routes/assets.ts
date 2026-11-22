@@ -48,6 +48,8 @@ import {
   mostOutputsOf,
 } from "@breatic/shared/mini-tools";
 import {
+  announceDocumentUploadProcessing,
+  documentTargetOf,
   assetService,
   ingestReportService,
   mediaReadService,
@@ -194,9 +196,11 @@ const uploadTicketFields = z.object({
    * bytes that really landed.
    */
   client_hash: z.string().regex(SHA256_HEX),
-  /** Where the bytes land. Absent for a focus crop, which has no node. */
+  /** Where the bytes land. Absent for an upload with no node: a focus crop, or a Document body block (`upload_id`). */
   node_id: z.string().uuid().optional(),
   space_id: z.string().uuid().optional(),
+  /** The Document body block the bytes land in, by its `uploadId`; it names `space_id` and no node (breatic#1574). */
+  upload_id: z.string().uuid().optional(),
   /** The name a 3D model is imported under, shown on its task row (inner#1690). */
   label: SceneObjectValuesSchema.shape.name.optional(),
   /** The 3D object a part picture is for (inner#1693 design 6.3). */
@@ -240,6 +244,7 @@ const uploadTicketSchema = z
       purpose: z.literal("studio_avatar"),
       node_id: z.never().optional(),
       space_id: z.never().optional(),
+      upload_id: z.never().optional(),
       label: z.never().optional(),
       object_id: z.never().optional(),
       part: z.never().optional(),
@@ -255,6 +260,10 @@ const uploadTicketSchema = z
         path: ["tool_name"],
         message: "a mini-tool upload names its tool, and only a mini-tool upload does",
       });
+    }
+    // A Document block is the one place a body upload lands: its Space, and no node or purpose.
+    if (body.upload_id !== undefined && (body.space_id === undefined || body.node_id !== undefined || body.purpose !== undefined || body.source !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["upload_id"], message: "a Document block upload names its Space and nothing else to land on", params: REQUEST_SHAPE_PARAMS });
     }
     if (body.purpose === "scene_look") {
       if (!isSceneLookImageMediaType(body.content_type)) {
@@ -388,13 +397,15 @@ const ingestUrlSchema = z.object({
   url: userUrlSchema,
   project_id: z.string().uuid(),
   space_id: z.string().uuid(),
+  /** The Document body block the fetched bytes land in, by its `uploadId` (breatic#1574). */
+  upload_id: z.string().uuid(),
 });
 
 /**
- * `POST /assets/ingest-url` — fetch an address into storage with no node
- * behind it (inner#1351 + inner#1390). The canvas lane's gates and job; the
- * browser asks `GET /assets/upload-status` how it ended, under the key this
- * answers.
+ * `POST /assets/ingest-url` — fetch an address into a Document body block
+ * (inner#1351 + inner#1390). The canvas lane's gates and job; the server
+ * announces the ending to the block `upload_id` names and collab writes it
+ * (breatic#1574).
  */
 assets.post(
   "/ingest-url",
@@ -409,6 +420,7 @@ assets.post(
       url: body.url,
       projectId: body.project_id,
       spaceId: body.space_id,
+      documentUploadId: body.upload_id,
       userId: user.id,
     });
     return c.json({ data: { storage_key: key } }, 201);
@@ -609,7 +621,8 @@ assets.post(
 
     // Finishing lasts as long as the Worker takes, bounded by the upload's two
     // hours, so it runs as a job and the browser learns the ending from the
-    // status query (inner#1367 §4.2a). The key is the job id: a browser that
+    // status query (inner#1367 §4.2a), or, for a Document body block, from
+    // collab writing it into the block (breatic#1574). The key is the job id: a browser that
     // did not hear 202 sends this again, and a job with that id already queued
     // or kept takes no second one.
     try {
@@ -635,6 +648,14 @@ assets.post(
         }),
       );
       return c.json({ error: { message: t("server.error.internal") } }, 502);
+    }
+    // A Document block shows every member the wait; its ending arrives with the finish, so losing this only costs
+    // that display (breatic#1574).
+    const documentTarget = documentTargetOf(claim);
+    try {
+      if (documentTarget !== null) await announceDocumentUploadProcessing(documentTarget);
+    } catch (err) {
+      logger.error({ err, key: storageKey }, "document_upload_processing_publish_failed");
     }
     return c.json({ data: { storageKey } }, 202);
   },

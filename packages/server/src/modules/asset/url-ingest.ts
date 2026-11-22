@@ -10,8 +10,9 @@
  * ingest Worker, never by us.
  *
  * Two lanes start here. The canvas names the node the result goes to and
- * reads the outcome off that node's task list; the document body names no
- * node and reads the outcome from the upload status query under the key.
+ * reads the outcome off that node's task list; a Document body names its
+ * block's upload_id, and the server announces the outcome on the task-events
+ * stream for collab to write into the block (breatic#1574).
  */
 
 import {
@@ -21,7 +22,7 @@ import {
   getStorageConfig,
   logger,
 } from "@breatic/core";
-import { extFromUrl, ingestReportService, labelForUrl } from "@breatic/domain";
+import { announceDocumentUploadProcessing, extFromUrl, ingestReportService, labelForUrl } from "@breatic/domain";
 import { INGEST_NOT_STARTED } from "@breatic/shared";
 
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
@@ -45,6 +46,8 @@ export interface UrlIngestRequest {
   readonly spaceId: string;
   /** The node the result goes to; absent for a document body's block. */
   readonly nodeId?: string;
+  /** The Document body block the result goes to, by its `uploadId` (breatic#1574). */
+  readonly documentUploadId?: string;
   readonly userId: string;
 }
 
@@ -73,7 +76,7 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
  * @throws {Error} When the job cannot be queued; the upload is settled as not started first.
  */
 export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedUpload> {
-  const { url, projectId, spaceId, nodeId, userId } = request;
+  const { url, projectId, spaceId, nodeId, documentUploadId, userId } = request;
   await projectService.assertAccess(projectId, userId, "editor");
   await assertStorageAllowance(projectId, "upload");
 
@@ -88,7 +91,7 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
       taskType: "url",
       ext: extFromUrl(url),
       expiresAt: new Date(Date.now() + ingest.ticket_expires_seconds * 1000),
-      context: { ...(nodeId !== undefined && { nodeId }), spaceId, source: "url" },
+      context: { ...(nodeId !== undefined && { nodeId }), ...(documentUploadId !== undefined && { documentUploadId }), spaceId, source: "url" },
     },
     {
       // Every task has the same two hours (inner#1367); the transfer is
@@ -117,8 +120,8 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
       { ...defaultJobOpts(), attempts: 1 },
     );
   } catch (err) {
-    // A node's row is already on every open canvas, and a body's block is
-    // asking the status query; either way the upload has to read as ended.
+    // A node's row is already on every open canvas, and a body's block waits
+    // for the server's ending; either way the upload has to read as ended.
     logger.error({ err, key: opened.key, projectId }, "url_ingest_enqueue_failed");
     const settled = await ingestReportService.applyIngestReport({
       storageKey: opened.key,
@@ -129,6 +132,13 @@ export async function startUrlIngest(request: UrlIngestRequest): Promise<OpenedU
     // second chance to notice: the request is about to throw.
     noteIngestSideEffects(opened.key, settled);
     throw err;
+  }
+  // A Document block shows every member the wait; its ending arrives with the fetch, so losing this only costs that
+  // display (breatic#1574).
+  try {
+    if (documentUploadId !== undefined) await announceDocumentUploadProcessing({ projectId, spaceId, uploadId: documentUploadId });
+  } catch (err) {
+    logger.error({ err, key: opened.key, projectId }, "document_upload_processing_publish_failed");
   }
   return opened;
 }

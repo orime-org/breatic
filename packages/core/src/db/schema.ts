@@ -3443,8 +3443,10 @@ export const uploadGrants = pgTable(
      * this would reopen the key to the very write it exists to stop.
      */
     finalizingUploadId: text("finalizing_upload_id"),
-    /** Node these bytes land on. Absent for a focus crop, which has no node. */
+    /** Node these bytes land on. Absent for an upload with no node: a focus crop, or a Document body block (`documentUploadId`). */
     nodeId: uuid("node_id"),
+    /** The Document body block these bytes land in, by its `uploadId` (breatic#1574). */
+    documentUploadId: text("document_upload_id"),
     /**
      * Project the node belongs to, checked against the user's access at ticket
      * time. Null for a studio's avatar, which belongs to no project.
@@ -3483,7 +3485,7 @@ export const uploadGrants = pgTable(
       onDelete: "restrict",
     }),
     /**
-     * A picture uploaded for a 3D object's part (0130, inner#1693): the
+     * A picture uploaded for a 3D object's part (0131, inner#1693): the
      * object, the part and the picture that part held when the upload
      * started (null for none). Collab writes the stored picture there once
      * the report arrives. All three null on every other upload.

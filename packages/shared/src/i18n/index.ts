@@ -87,6 +87,48 @@ export function setLocaleMessages(
 }
 
 /**
+ * Merge more messages into a locale that is already registered, such as the
+ * template style words loaded on demand (inner#1817). A locale with no
+ * catalog is left alone: registering it here would make it look available
+ * and its full catalog would never be downloaded.
+ * @param locale - the locale code these messages belong to
+ * @param messages - the key → ICU-string map to merge in
+ */
+export function mergeLocaleMessages(
+  locale: Locale,
+  messages: Record<string, unknown>,
+): void {
+  const current = _locales.get(locale);
+  if (current === undefined) return;
+  setLocaleMessages(locale, deepMerge(current, messages));
+}
+
+/**
+ * Two nested message maps as one, the second's leaves winning.
+ * @param base - the map merged into
+ * @param extra - the map merged in
+ * @returns a new map
+ */
+function deepMerge(base: Record<string, unknown>, extra: Record<string, unknown>): Record<string, unknown> {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(extra)) {
+    const prev = out[key];
+    out[key] =
+      isPlainObject(prev) && isPlainObject(value) ? deepMerge(prev, value) : value;
+  }
+  return out;
+}
+
+/**
+ * Whether a value is a nested message map rather than a message.
+ * @param value - the value
+ * @returns whether it is a plain object
+ */
+function isPlainObject(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
  * Set the active locale.
  * @param locale - the locale code to make active
  */

@@ -17,6 +17,7 @@
 import { accountActivityRepo } from "@breatic/core";
 import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import {
+  announceDocumentUploadAsset,
   assetService,
   emitSceneLookPicture,
   safeExt,
@@ -42,6 +43,8 @@ export interface TicketItem {
   client_hash: string;
   node_id?: string | undefined;
   space_id?: string | undefined;
+  /** The Document body block the bytes land in, by its `uploadId` (breatic#1574). */
+  upload_id?: string | undefined;
   source?: "mini_tool" | undefined;
   tool_name?: string | undefined;
   derived?: boolean | undefined;
@@ -306,6 +309,14 @@ async function prepareUpload(
         projectId, spaceId: item.space_id, target: sceneLook, picture: dedupHit.assetId, userId, uploadKey: crypto.randomUUID(),
       });
     }
+    // A Document block receives a hit the way a node does: the server announces the asset and collab writes the
+    // block, and a lost announcement fails the request.
+    if (projectId !== undefined && item.space_id !== undefined && item.upload_id !== undefined) {
+      await announceDocumentUploadAsset(
+        { projectId, spaceId: item.space_id, uploadId: item.upload_id },
+        { kind: dedupHit.kind, fileUrl: dedupHit.fileUrl, width: dedupHit.width, height: dedupHit.height },
+      );
+    }
     // A 3D model is reused from the Space's task list, so the hit opens that
     // row already holding the model (inner#1690).
     let sceneTaskId: string | undefined;
@@ -357,6 +368,7 @@ async function prepareUpload(
       expiresAt: new Date(expiresAt),
       context: {
         nodeId: item.node_id ?? null,
+        ...(item.upload_id !== undefined && { documentUploadId: item.upload_id }),
         spaceId: item.space_id ?? null,
         source: item.source ?? null,
         toolName: item.tool_name ?? null,

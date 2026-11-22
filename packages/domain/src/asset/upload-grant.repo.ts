@@ -67,8 +67,10 @@ export interface UploadGrant {
   failureReason: string | null;
   /** How long the browser has to start the upload. */
   expiresAt: Date;
-  /** Node these bytes land on. Null for a focus crop, which has no node. */
+  /** Node these bytes land on. Null for an upload with no node: a focus crop, or a Document body block (`documentUploadId`). */
   nodeId: string | null;
+  /** The Document body block these bytes land in, by its `uploadId`. */
+  documentUploadId: string | null;
   projectId: string | null;
   spaceId: string | null;
   source: string | null;
@@ -122,6 +124,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     failureReason: row.failureReason,
     expiresAt: row.expiresAt,
     nodeId: row.nodeId,
+    documentUploadId: row.documentUploadId,
     projectId: row.projectId,
     spaceId: row.spaceId,
     source: row.source,
@@ -152,8 +155,9 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  * @param input.expiresAt - When the ticket stops being usable.
  * @param input.context - Where these bytes are going and what started them.
  * @param input.context.nodeId - Node the bytes land on, when there is one.
+ * @param input.context.documentUploadId - The Document body block the bytes land in, when there is one.
  * @param input.context.projectId - Project that node belongs to.
- * @param input.context.spaceId - Canvas space holding that node.
+ * @param input.context.spaceId - The Space holding that node, or the Document holding the block `documentUploadId` names.
  * @param input.context.source - What started this upload.
  * @param input.context.toolName - Mini-tool that produced the bytes, if any.
  * @param input.context.derived - True when the bytes came out of another asset.
@@ -177,6 +181,7 @@ export async function issueGrant(input: {
   expiresAt: Date;
   context: {
     nodeId?: string | null;
+    documentUploadId?: string | null;
     projectId?: string | null;
     spaceId?: string | null;
     source?: string | null;
@@ -198,6 +203,7 @@ export async function issueGrant(input: {
       declaredSize: input.declaredSize,
       expiresAt: input.expiresAt,
       nodeId: input.context.nodeId ?? null,
+      documentUploadId: input.context.documentUploadId ?? null,
       projectId: input.context.projectId ?? null,
       spaceId: input.context.spaceId ?? null,
       source: input.context.source ?? null,
@@ -225,7 +231,7 @@ export type FinalizeRefusal = "no_grant" | "in_flight" | "already_registered";
  * finish that follows decides off it whether to read the media now (#299).
  */
 export type FinalizeClaim =
-  | { granted: true; assetSource: GrantAssetSource | null }
+  | ({ granted: true; assetSource: GrantAssetSource | null } & Pick<UploadGrant, "projectId" | "spaceId" | "documentUploadId">)
   | { granted: false; reason: FinalizeRefusal };
 
 /**
@@ -276,11 +282,20 @@ export async function claimFinalize(params: {
         ),
       ),
     )
-    .returning({ assetSource: uploadGrants.assetSource });
+    .returning({
+      assetSource: uploadGrants.assetSource,
+      projectId: uploadGrants.projectId,
+      spaceId: uploadGrants.spaceId,
+      documentUploadId: uploadGrants.documentUploadId,
+    });
   if (won.length === 1) {
+    const row = won[0]!;
     return {
       granted: true,
-      assetSource: (won[0]!.assetSource ?? null) as GrantAssetSource | null,
+      assetSource: (row.assetSource ?? null) as GrantAssetSource | null,
+      projectId: row.projectId,
+      spaceId: row.spaceId,
+      documentUploadId: row.documentUploadId,
     };
   }
 

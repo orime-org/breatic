@@ -232,6 +232,15 @@ export default defineConfig(({ command, mode }) => {
               || /[\\/]node_modules[\\/]@radix-ui[\\/]react-switch[\\/]/.test(id)) {
               return 'switch';
             }
+            // The template style words (inner#1817) download on demand, one
+            // chunk per locale, English included; `verify-chunks.mjs` checks
+            // they stay out of the entry closure.
+            const styles = id.startsWith(LOCALES_DIR)
+              ? /^[\\/]template-styles[\\/]([\w-]+)\.json$/.exec(id.slice(LOCALES_DIR.length))?.[1]
+              : undefined;
+            if (styles !== undefined) {
+              return `template-styles-${styles}`;
+            }
             // Each non-English catalog is its own `import()` chunk under a
             // fixed name, which `verify-chunks.mjs` reads: Vite's JSON modules
             // leave no `sources` in the sourcemap to recognise them by.

@@ -10,7 +10,8 @@
  * cannot hold one — so what this side collects on the way (the upload id, the
  * token every part answered with, and R2's receipt for each part) is handed to
  * our server, which queues the finish on the browser's behalf and answers 202
- * (inner#1367 §4.2a). How it ended comes from the upload status query.
+ * (inner#1367 §4.2a). How it ended comes from the upload status query, or,
+ * for a Document body block, from collab writing it into the block (breatic#1574).
  */
 
 import { sendBytesToIngest, type UploadClientConfig } from '@breatic/shared';

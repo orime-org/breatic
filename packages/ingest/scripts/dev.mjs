@@ -75,7 +75,15 @@ if (/^\s*\[assets\]/m.test(topLevel)) {
   if (fonts.status !== 0) process.exit(0);
 }
 
-const child = spawn("wrangler", ["dev"], { stdio: "inherit", shell: true });
+// miniflare records every span and log line of a local run in
+// .wrangler/state/v3/observability and never deletes any of it (its only
+// clear() has no caller), so a long session fills the disk. Off unless the
+// developer turns it on.
+const child = spawn("wrangler", ["dev"], {
+  stdio: "inherit",
+  shell: true,
+  env: { ...process.env, X_LOCAL_OBSERVABILITY: process.env.X_LOCAL_OBSERVABILITY ?? "false" },
+});
 child.on("exit", (code, signal) => {
   process.exit(signal !== null ? 1 : (code ?? 0));
 });

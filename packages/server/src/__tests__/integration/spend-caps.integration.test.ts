@@ -284,7 +284,7 @@ describe("H judging the caps at admission", () => {
         items: [file(), file()].map((item) => ({ ...item, node_id: crypto.randomUUID() })),
       }),
       await request(app, y.cookie, "POST", "/canvas/ingest-url", { url: "https://cdn.test.invalid/picture.jpg", project_id: a.projectId, space_id: a.spaceId, node_id: crypto.randomUUID() }),
-      await request(app, y.cookie, "POST", "/assets/ingest-url", { url: "https://cdn.test.invalid/picture.jpg", project_id: a.projectId, space_id: a.spaceId }),
+      await request(app, y.cookie, "POST", "/assets/ingest-url", { url: "https://cdn.test.invalid/picture.jpg", project_id: a.projectId, space_id: a.spaceId, upload_id: crypto.randomUUID() }),
     ];
     expect(answers.map((res) => res.status)).toEqual([201, 200, 201, 201]);
     expect(await creditFootprint(a)).toEqual(before);
