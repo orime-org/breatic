@@ -8,7 +8,7 @@
 
 import { expect, type Page } from 'playwright/test';
 
-import { DOCUMENT_EDITOR as EDITOR } from './space';
+import { DOCUMENT_EDITOR as EDITOR, visibleSpace } from './space';
 
 /** Where beside the body column a blank point is taken. */
 export type BlankSide = 'left' | 'right' | 'rail';
@@ -74,4 +74,26 @@ export async function bodySelection(p: Page): Promise<BodySelection> {
       text: window.getSelection()?.toString() ?? '',
     };
   }, EDITOR);
+}
+
+/**
+ * Picks a file through the plus on the empty line's insert menu.
+ * @param p - The page.
+ * @param kind - The entry.
+ * @param file - What to choose.
+ * @param file.name - Its name.
+ * @param file.mimeType - Its type.
+ * @param file.buffer - Its bytes.
+ */
+export async function pickFromPlus(
+  p: Page,
+  kind: 'image' | 'audio' | 'video',
+  file: { name: string; mimeType: string; buffer: Buffer },
+): Promise<void> {
+  const firstRow = p.locator(`${EDITOR} .bn-block-content`).first();
+  await firstRow.hover();
+  await visibleSpace(p).getByTestId('doc-block-plus').click();
+  const chooser = p.waitForEvent('filechooser');
+  await p.getByTestId(`doc-block-insert-${kind}`).click();
+  await (await chooser).setFiles(file);
 }
