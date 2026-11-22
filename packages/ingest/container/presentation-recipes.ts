@@ -54,31 +54,38 @@ export interface PresentationRecipeRequest {
 const READ_PROTOCOLS = "file,http,tcp";
 const HEAD = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", READ_PROTOCOLS];
 const ZERO: FrameRate = { numerator: 0, denominator: 1 };
+// A fragmented MP4 or MOV (the edit file has one fragment per all-intra frame) is opened by walking every top-level moof,
+// which over HTTP reads the whole file, unless the mov demuxer takes its trailing mfra index; FFprobe accepts the option
+// for any input, FFmpeg only for an input the mov demuxer opens, and without an mfra it changes nothing.
+const MFRA = ["-use_mfra_for", "pts"];
 // Paths a filter option names verbatim: mkdtemp and our own file names keep to these.
 const PLAIN_PATH = /^[\w./-]+$/u;
 
 /** What the recipes need to know of a source before reading it. */
-export interface SourceFacts { audio: boolean; mono: boolean; decoder: string[]; range: "tv" | "pc"; oddSubsampled: boolean }
+export interface SourceFacts { audio: boolean; mono: boolean; demuxer: string[]; decoder: string[]; range: "tv" | "pc"; oddSubsampled: boolean }
 
 /**
- * Probe a source for its audio, the decoder options a VP9 or VP8 stream with alpha needs (only libvpx reads the alpha plane),
- * its range and whether its decoded frames are subsampled with an odd side.
+ * Probe a source for its audio, the demuxer options it is opened with (`MFRA` for a file the mov demuxer reads), the decoder
+ * options a VP9 or VP8 stream with alpha needs (only libvpx reads the alpha plane), its range and whether its decoded frames
+ * are subsampled with an odd side.
  * @param source - Where the source is read.
  * @param run - The lifetime and IO bounds.
  * @returns The facts.
  * @throws {Error} When ffprobe fails.
  */
 export async function sourceFacts(source: string, run: Run): Promise<SourceFacts> {
-  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", READ_PROTOCOLS, "-show_entries",
-    "stream=codec_type,codec_name,channels,width,height,pix_fmt,color_range:stream_tags", "-of", "json", source], run)).toString("utf8")) as {
-    streams?: { codec_type?: string; codec_name?: string; channels?: number; width?: number; height?: number; pix_fmt?: string; color_range?: string; tags?: Record<string, string> }[] };
+  const answer = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", READ_PROTOCOLS, ...MFRA, "-show_entries",
+    "stream=codec_type,codec_name,channels,width,height,pix_fmt,color_range:stream_tags:format=format_name", "-of", "json", source], run)).toString("utf8")) as {
+    streams?: { codec_type?: string; codec_name?: string; channels?: number; width?: number; height?: number; pix_fmt?: string; color_range?: string; tags?: Record<string, string> }[];
+    format?: { format_name?: string } };
   const video = (answer.streams ?? []).find((stream) => stream.codec_type === "video");
   const audio = (answer.streams ?? []).find((stream) => stream.codec_type === "audio");
   const alphaMode = Object.entries(video?.tags ?? {}).find(([key]) => key.toLowerCase() === "alpha_mode")?.[1];
   const format = video?.pix_fmt ?? "";
   const subsampled = /^yuv[aj]?(420|422|440)p/u.test(format);
   return {
-    audio: audio !== undefined, mono: audio?.channels === 1, decoder: alphaDecoderArgs(video?.codec_name, alphaMode),
+    audio: audio !== undefined, mono: audio?.channels === 1, demuxer: (answer.format?.format_name ?? "").split(",").includes("mov") ? MFRA : [],
+    decoder: alphaDecoderArgs(video?.codec_name, alphaMode),
     range: video?.color_range === "pc" || format.startsWith("yuvj") ? "pc" : "tv",
     oddSubsampled: subsampled && ((video?.width ?? 0) % 2 === 1 || (video?.height ?? 0) % 2 === 1),
   };
@@ -137,13 +144,13 @@ interface GridAttempt { input: string[]; graph: string; landing: string; positio
  * @returns The attempt.
  * @throws {RangeError} When the run directory is not a plain path.
  */
-function gridAttempt(window: GridWindow, facts: Pick<SourceFacts, "decoder">, directory: string, attempt: number): GridAttempt {
+function gridAttempt(window: GridWindow, facts: Pick<SourceFacts, "demuxer" | "decoder">, directory: string, attempt: number): GridAttempt {
   const { grid, keyframes } = readGrid(window);
   const position = gridSeekPosition({ grid, keyframes, startFrame: window.frames.start }, attempt);
   landings += 1;
   const landing = join(directory, `landing-${landings}.txt`);
   if (!PLAIN_PATH.test(landing)) throw new RangeError("The run directory is not a plain path");
-  const input = [...HEAD, "-copyts", "-seek_timestamp", "1", "-noaccurate_seek", ...(position === null ? [] : ["-ss", position.toFixed(6)]), ...facts.decoder, "-i", window.file];
+  const input = [...HEAD, "-copyts", "-seek_timestamp", "1", "-noaccurate_seek", ...(position === null ? [] : ["-ss", position.toFixed(6)]), ...facts.demuxer, ...facts.decoder, "-i", window.file];
   const graph = `[0:v:0]split=2[gd][gl];[gl]trim=end_frame=1,metadata=mode=add:key=landing:value=1,metadata=mode=print:file=${landing},nullsink;` +
     `[gd]${gridFilterChain({ gridStart: grid.gridStart, fps: grid.fps, startFrame: window.frames.start, endFrame: window.frames.end })},setpts=PTS-STARTPTS[g]`;
   return { input, graph, landing, position };
@@ -175,7 +182,7 @@ async function landedLate(window: GridWindow, attempt: GridAttempt): Promise<boo
  * @throws {RangeError} When the run directory is not a plain path.
  * @throws {Error} When FFmpeg fails.
  */
-export async function decodeGridWindow(window: GridWindow, facts: Pick<SourceFacts, "decoder">, directory: string, run: Run,
+export async function decodeGridWindow(window: GridWindow, facts: Pick<SourceFacts, "demuxer" | "decoder">, directory: string, run: Run,
   command: (input: string[], graph: string) => string[]): Promise<void> {
   for (let attempt = 0; ; attempt += 1) {
     const tried = gridAttempt(window, facts, directory, attempt);
@@ -195,7 +202,7 @@ export async function decodeGridWindow(window: GridWindow, facts: Pick<SourceFac
  * @throws {RangeError} When the run directory is not a plain path.
  * @throws {Error} When FFmpeg fails.
  */
-async function settleGridWindow(window: GridWindow, facts: Pick<SourceFacts, "decoder">, directory: string, run: Run): Promise<Pick<GridAttempt, "input" | "graph">> {
+async function settleGridWindow(window: GridWindow, facts: Pick<SourceFacts, "demuxer" | "decoder">, directory: string, run: Run): Promise<Pick<GridAttempt, "input" | "graph">> {
   for (let attempt = 0; ; attempt += 1) {
     const tried = gridAttempt(window, facts, directory, attempt);
     if (tried.position === null) return tried;
@@ -328,12 +335,13 @@ async function renderWindow(recipe: Extract<PresentationRecipe, { kind: "segment
   const facts = await sourceFacts(file, run);
   const audioId = recipe.kind === "chunk_encode" || !recipe.audio ? null : recipe.audioInputId ?? recipe.inputId;
   const audioFile = audioId === null ? null : local(request.inputs, audioId);
-  const heard = audioFile !== null && (audioFile === file ? facts.audio : (await sourceFacts(audioFile, run)).audio);
+  const audioFacts = audioFile === null ? null : audioFile === file ? facts : await sourceFacts(audioFile, run);
+  const heard = audioFile !== null && audioFacts?.audio === true;
   const count = frames.end - frames.start;
   const chain = picture(target, facts.range, "p");
   const { video, muxer } = videoOutput(target, grid.fps);
   await decodeGridWindow({ file, grid, source: recipe.source, frames }, facts, request.directory, run, (input, graph) => [
-    ...input, ...(heard ? ["-i", audioFile] : []),
+    ...input, ...(heard ? [...(audioFacts?.demuxer ?? []), "-i", audioFile] : []),
     "-filter_complex", `${graph};[g]${chain}[v]${heard ? `;${gridAudio(1, grid, frames)}` : ""}`,
     "-map", "[v]", ...video, ...(heard ? audioOutput(target) : ["-an"]), ...muxer, request.output,
   ]);
@@ -384,12 +392,12 @@ export async function countPresentationGrid(request: GridCountRequest): Promise<
   const run = { signal, stdoutBytes: limits.analysisStdoutBytes, stderrTailBytes: limits.stderrTailBytes };
   const file = local(request.inputs, request.recipe.inputId);
   const facts = await sourceFacts(file, run);
-  const base = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", READ_PROTOCOLS, "-select_streams", "v:0", "-show_entries", "stream=time_base",
+  const base = JSON.parse((await runPlanCommand("ffprobe", ["-v", "error", "-protocol_whitelist", READ_PROTOCOLS, ...MFRA, "-select_streams", "v:0", "-show_entries", "stream=time_base",
     "-of", "json", file], run)).toString("utf8")) as { streams?: { time_base?: string }[] };
   const tick = /^(\d+)\/(\d+)$/u.exec(base.streams?.[0]?.time_base ?? "");
   if (tick === null) throw new Error("The counted video has no time base");
   const record = join(request.directory, "grid-count.txt");
-  await runPlanCommand("ffmpeg", [...HEAD, "-copyts", ...facts.decoder, "-i", file, "-map", "0:v:0",
+  await runPlanCommand("ffmpeg", [...HEAD, "-copyts", ...facts.demuxer, ...facts.decoder, "-i", file, "-map", "0:v:0",
     "-vf", `metadata=mode=add:key=count:value=1,metadata=mode=print:file=${record}`, "-f", "null", "-"], run);
   let [frames, last] = [0, null as bigint | null];
   for (const match of (await readFile(record, "utf8")).matchAll(/pts:(-?\d+)/gu)) {
@@ -455,8 +463,9 @@ async function stitch(recipe: MiniToolPlanStitch, request: PresentationRecipeReq
   let graph: string | null = null;
   if (recipe.audio) {
     const source = local(request.inputs, recipe.inputId);
-    if ((await sourceFacts(source, run)).audio) {
-      args.push("-copyts", "-i", source);
+    const facts = await sourceFacts(source, run);
+    if (facts.audio) {
+      args.push("-copyts", ...facts.demuxer, "-i", source);
       graph = gridAudio(1, recipe.grid, window);
     }
   }

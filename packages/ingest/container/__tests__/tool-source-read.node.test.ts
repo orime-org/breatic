@@ -184,4 +184,42 @@ describe('a planned job reads its tool source in place and holds one output at a
     expect(report).toMatchObject({ ok: false, reason: 'internal' });
     expect(bytes[0], 'no output was stored').toBeUndefined();
   }, 120_000);
+
+  it('TS05 a fragmented all-intra edit file is opened and seeked without reading it whole', async () => {
+    // The edit stitch streams a fragmented file (one fragment per all-intra frame) to its upload. Without its trailing
+    // mfra index the mov demuxer walks every top-level moof on open, which over HTTP reads the whole file, as one long
+    // read or one Range request per fragment, on every probe and every decode.
+    const edit = join(dir, 'edit.mp4');
+    const { stdout } = await run('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-nostdin', '-f', 'lavfi', '-i', 'testsrc2=s=640x360:r=30:d=10,noise=alls=60:allf=t',
+      '-c:v', 'libx264', '-g', '1', '-crf', '8', '-pix_fmt', 'yuv420p', '-movflags', '+frag_keyframe+empty_moov', '-f', 'mp4', 'pipe:1'], { encoding: 'buffer', maxBuffer: 1 << 28 });
+    await writeFile(edit, stdout);
+    expect(boxes(new Uint8Array(stdout)).filter((type) => type === 'moof').length, 'every frame is its own fragment').toBe(300);
+    const grid = { fps: { numerator: 30, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 300, realFrameCount: 300 };
+    const store = vi.mocked(fetch).getMockImplementation()!;
+    let [requests, read] = [0, 0];
+    vi.mocked(fetch).mockImplementation(async (input, init) => {
+      const answer = await store(input, init);
+      if (!String(input).endsWith(`/${SOURCE}`) || answer.body === null) return answer;
+      requests += 1;
+      // Hand the body out in 64 KiB pieces as it is pulled, so the count is what the reader took, not the whole answer.
+      const whole = new Uint8Array(await answer.arrayBuffer());
+      let at = 0;
+      const body = new ReadableStream<Uint8Array>({
+        pull(controller) {
+          if (at >= whole.byteLength) { controller.close(); return; }
+          const part = whole.subarray(at, at + 65_536);
+          at += part.byteLength;
+          read += part.byteLength;
+          controller.enqueue(part);
+        },
+      }, { highWaterMark: 0 });
+      return new Response(body, { status: answer.status, headers: answer.headers });
+    });
+    const { report, bytes } = await runJob({ [SOURCE]: edit }, [{ recipe: { ...segment(210, 225), grid, source: { kind: 'edit' } }, contentType: 'video/mp4' }]);
+    expect(report, JSON.stringify(vi.mocked(console.error).mock.calls)).toMatchObject({ ok: true });
+    expect(bytes[0]).toBeDefined();
+    // A probe and one decode from frame 210 read the index, the moov and the frames from 7 s: a small part of the file.
+    expect(requests, 'source requests for the probe and one seek').toBeLessThan(20);
+    expect(read, `bytes read of the ${stdout.byteLength}-byte edit file`).toBeLessThan(stdout.byteLength / 2);
+  }, 120_000);
 });
