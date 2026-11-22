@@ -222,7 +222,7 @@ function nameOf(identity) {
  * @returns {{conclusion: string, title: string, summary: string}} The check run fields.
  */
 export function checkRunOutput(verdict, version, pull) {
-  const entry = (identity) => JSON.stringify({ pullRequest: pull?.number, headSha: pull?.headSha, identity: identity.id !== null ? { id: identity.id } : { email: identity.email } });
+  const entry = (identity) => JSON.stringify({ pullRequest: pull?.number, headSha: pull?.headSha, identity: identity.id !== null ? { id: identity.id } : { email: identity.email }, reason: '<why>', reviewer: '<login>', reviewedAt: '<ISO instant>' });
   const lines = verdict.people.map((p) => `- ${p.ok ? 'passed' : 'not yet'}: ${nameOf(p.identity)} — ${p.reason}` + (p.ok || !pull ? '' : `\n  a maintainer's reviews.json entry after checking: \`${entry(p.identity)}\``));
   return {
     conclusion: verdict.ok ? 'success' : 'failure',
@@ -307,9 +307,9 @@ async function readRecords(token, repository, path, empty) {
  * @param {object} version The version.
  * @param {object} record The record.
  * @returns {Promise<object>} The signature file as written.
- * @throws {Error} When five attempts all lose the race.
+ * @throws {Error} When GitHub does not report the file written, or five attempts all lose the race.
  */
-async function appendSignature(token, repository, version, record) {
+export async function appendSignature(token, repository, version, record) {
   for (let attempt = 0; attempt < 5; attempt += 1) {
     const { data, sha } = await readRecords(token, repository, version.signatures, { signatures: [] });
     data.signatures.push(record);
@@ -318,7 +318,8 @@ async function appendSignature(token, repository, version, record) {
       method: 'PUT',
       body: { message: `Record ${record.login}'s acceptance of ${version.id} in #${record.pullRequest}`, content, branch: RECORDS_BRANCH, ...(sha && { sha }) },
     });
-    if (status !== 409) return data;
+    if (status === 200 || status === 201) return data;
+    if (status !== 409) throw new Error(`recording the acceptance failed with ${status}`);
   }
   throw new Error('could not record the acceptance after 5 attempts');
 }
@@ -349,7 +350,7 @@ async function prCommits(token, repository, pull) {
  * @returns {Promise<void>} Resolves once written.
  */
 async function writeCheck(token, repository, headSha, output) {
-  const { json } = await api(token, `/repos/${repository}/commits/${headSha}/check-runs?check_name=${encodeURIComponent(CHECK_NAME)}`);
+  const { json } = await api(token, `/repos/${repository}/commits/${headSha}/check-runs?check_name=${encodeURIComponent(CHECK_NAME)}&filter=all&per_page=100`);
   const body = { status: 'completed', conclusion: output.conclusion, output: { title: output.title, summary: output.summary } };
   for (const request of checkRunRequests(json.check_runs, headSha)) {
     await api(token, `/repos/${repository}${request.path}`, { method: request.method, body: { ...request.body, ...body } });

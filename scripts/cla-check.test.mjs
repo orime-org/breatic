@@ -7,6 +7,7 @@ import { readFileSync } from 'node:fs';
 import {
   ALLOWLIST,
   acceptanceRecord,
+  appendSignature,
   checkRunOutput,
   checkRunRequests,
   currentVersion,
@@ -236,7 +237,19 @@ test('the check output prints the reviews.json entry a maintainer can paste for 
   const pull = pr({ headSha: 'a'.repeat(40) });
   const verdict = judge({ pull, people: [ALICE, BOB, ghost], signatures: [signed(ALICE)] });
   const { summary } = checkRunOutput(verdict, V2, pull);
-  assert.ok(summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { id: BOB.id } })));
-  assert.ok(summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { email: 'ghost@x' } })));
-  assert.ok(!summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { id: ALICE.id } })));
+  assert.ok(summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { id: BOB.id }, reason: '<why>', reviewer: '<login>', reviewedAt: '<ISO instant>' })));
+  assert.ok(summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { email: 'ghost@x' }, reason: '<why>', reviewer: '<login>', reviewedAt: '<ISO instant>' })));
+  assert.ok(!summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { id: ALICE.id }, reason: '<why>', reviewer: '<login>', reviewedAt: '<ISO instant>' })));
+});
+
+test('an acceptance counts as recorded only when GitHub reports the file written', async (t) => {
+  const responses = { GET: { status: 404, body: { message: 'Not Found' } }, PUT: { status: 404, body: { message: 'Not Found' } } };
+  t.mock.method(globalThis, 'fetch', async (_url, init) => {
+    const { status, body } = responses[init.method];
+    return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+  });
+  await assert.rejects(appendSignature('token', 'o/r', V2, signed(ALICE)), /404/);
+  responses.PUT = { status: 201, body: { content: {} } };
+  const written = await appendSignature('token', 'o/r', V2, signed(ALICE));
+  assert.equal(written.signatures.length, 1);
 });

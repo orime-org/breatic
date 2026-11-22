@@ -228,13 +228,15 @@ stop-coverage notices are reviewed by a maintainer before merging. Works you
 create with Breatic are not contributions.
 
 For maintainers: the records live on the `cla-signatures` branch under
-`signatures/v2/`. Accounts that always need a review go into
+`signatures/v2/`. Accounts that need a review go into
 `review-required.json` as
-`{"accounts": [{"id": 1001, "login": "alice", "reason": "corporate", "recordedAt": "2026-12-01T00:00:00Z"}]}`,
-with `"reason": "notice"` and an optional `"coverageRestartAt"` instant for a
-stop-coverage notice. A review clears one person for one head commit and goes
+`{"accounts": [{"id": 1001, "login": "alice", "reason": "corporate", "recordedAt": "2026-12-01T00:00:00Z"}]}`.
+A stop-coverage notice uses `"reason": "notice"`; an optional
+`"coverageRestartAt"` instant on it lets pull requests opened after that
+instant pass on an acceptance made after it. A review clears one person for one head commit and goes
 into `reviews.json` as
 `{"reviews": [{"pullRequest": 7, "headSha": "<full 40-character sha>", "identity": {"id": 1001}, "reason": "...", "reviewer": "...", "reviewedAt": "..."}]}`,
 using `{"email": "..."}` as the identity for an author with no account. The
-failing check prints the entry for each person still waiting; after saving it,
-comment `recheck` on the pull request.
+failing check prints the entry for each person still waiting; fill in
+`reason`, `reviewer` and `reviewedAt`, save it, then comment `recheck` on the
+pull request.
