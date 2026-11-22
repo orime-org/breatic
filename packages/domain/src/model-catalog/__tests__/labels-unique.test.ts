@@ -30,4 +30,17 @@ describe("the catalog's labels within a modality", () => {
       expect(repeated, modality).toEqual([]);
     }
   });
+
+  it("give every model that shares its display name a variant of its own", () => {
+    const catalog = getModelCatalog() as unknown as Record<string, unknown>;
+    for (const [modality, list] of Object.entries(catalog)) {
+      if (!Array.isArray(list)) continue;
+      const models = list as { name: string; display_name: string; variant?: string }[];
+      // A bare name beside its labelled peers does not say which of them it is.
+      const bare = models
+        .filter((model) => model.variant === undefined && models.some((peer) => peer !== model && peer.display_name === model.display_name))
+        .map((model) => model.name);
+      expect(bare, modality).toEqual([]);
+    }
+  });
 });
