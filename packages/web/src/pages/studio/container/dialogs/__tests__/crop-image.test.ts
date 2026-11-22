@@ -188,9 +188,9 @@ describe('renderCropBlob', () => {
       getContext: () => ctx,
       toBlob: (done: (b: Blob) => void) => done(new Blob(['x'], { type: blobType })),
     };
-    vi.spyOn(document, 'createElement').mockReturnValue(
-      canvas as unknown as HTMLCanvasElement,
-    );
+    // One signature: the overloads also list Electron's <webview> once Playwright loads its types.
+    const doc = document as unknown as { createElement: (tagName: string) => HTMLElement };
+    vi.spyOn(doc, 'createElement').mockReturnValue(canvas as unknown as HTMLCanvasElement);
     return calls;
   }
 
