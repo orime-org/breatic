@@ -63,6 +63,8 @@ export interface WebAnimationHarness {
   insertExecution(fixture: ExecutionFixture): Promise<TimelineExecution>;
   grant(executionId: string, projectId: string): Promise<void>;
   step(id: string, event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<TimelineExecution>;
+  /** Claim the row and fail that attempt, the way a worker ends a run. */
+  fail(id: string): Promise<TimelineExecution>;
   succeed(execution: TimelineExecution, size?: { width: number; height: number; durationFrames: number }): Promise<{ id: string }>;
   holdsOf(studioId: string): Promise<{ reference_id: string; status: string; amount: number }[]>;
   grantedProjects(executionId: string): Promise<string[]>;
@@ -203,6 +205,11 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
       const result = await timelineExecutionRepo.transition({ id, event });
       if (!result.applied) throw new Error(`Fixture step ${event.type} refused`);
       return result.row;
+    },
+
+    async fail(id) {
+      const claimed = await harness.step(id, { type: "claim" });
+      return harness.step(id, { type: "failure", fence: claimed.fence, reason: "container_failed" });
     },
 
     async succeed(execution, size = { width: 1920, height: 1080, durationFrames: 96 }) {

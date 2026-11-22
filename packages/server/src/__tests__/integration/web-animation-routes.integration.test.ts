@@ -56,7 +56,7 @@ const APP = "web-animation-routes-test-driver";
 const h = useWebAnimationHarness(APP);
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
-const { seedUser, seedProject, insertExecution, grant, step, succeed, signalsFor, executionChangesFor, expectNotFound, fillStorage, grantedProjects } = h;
+const { seedUser, seedProject, insertExecution, grant, step, fail, succeed, signalsFor, executionChangesFor, expectNotFound, fillStorage, grantedProjects } = h;
 
 let queue: ReturnType<typeof createQueue>;
 
@@ -358,7 +358,7 @@ describe("POST /timeline/executions — export", () => {
     const fx = await seedProject();
     const { versionId } = await finishedCreate(fx);
     const first = await acceptRow(fx.editor.cookie, exportBody(fx, versionId), 201);
-    await step(first.id, { type: "failure", fence: null, reason: "enqueue_failed" });
+    await fail(first.id);
     const again = await acceptRow(fx.editor.cookie, exportBody(fx, versionId), 201);
     expect(again.id).not.toBe(first.id);
   });
@@ -450,7 +450,7 @@ describe("GET /timeline/space-executions", () => {
     const ungranted = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
     const failed = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
     await grant(failed.id, fx.projectId);
-    await step(failed.id, { type: "failure", fence: null, reason: "enqueue_failed" });
+    await fail(failed.id);
     const cancelled = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
     await grant(cancelled.id, fx.projectId);
     await step(cancelled.id, { type: "cancel" });
@@ -496,7 +496,7 @@ describe("GET /timeline/space-executions", () => {
       const failed = await insertExecution({ projectId: fx.projectId, spaceId, actorUserId: fx.editor.userId, origin });
       await grant(queued.id, fx.projectId);
       await grant(failed.id, fx.projectId);
-      await step(failed.id, { type: "failure", fence: null, reason: "enqueue_failed" });
+      await fail(failed.id);
       const done = await insertExecution({ projectId: fx.projectId, spaceId, actorUserId: fx.editor.userId, origin });
       await grant(done.id, fx.projectId);
       await succeed(done);
@@ -626,7 +626,7 @@ describe("GET /timeline/results", () => {
     await grant(running.id, fx.projectId);
     const failed = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
     await grant(failed.id, fx.projectId);
-    await step(failed.id, { type: "failure", fence: null, reason: "enqueue_failed" });
+    await fail(failed.id);
     const exported = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId, kind: "web_animation_export", input: { sourceVersionId: versionId, width: 1920, height: 1080, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: "generated/y.mp4" } });
     await grant(exported.id, fx.projectId);
     await createdAgo(created.id, 2);

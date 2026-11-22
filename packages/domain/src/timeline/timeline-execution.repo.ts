@@ -223,8 +223,7 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
       };
     case "failure":
       return {
-        // A queued row has no attempt yet: only a fenceless failure (enqueue failed) ends it.
-        where: event.fence === null ? eq(t.status, "queued") : fenced(event.fence),
+        where: fenced(event.fence),
         set: {
           status: sql`CASE WHEN ${t.status} = 'cancelling' THEN 'cancelled' ELSE 'failed' END`,
           failureReason: sql`CASE WHEN ${t.status} = 'cancelling' THEN ${t.failureReason} ELSE ${event.reason} END`,

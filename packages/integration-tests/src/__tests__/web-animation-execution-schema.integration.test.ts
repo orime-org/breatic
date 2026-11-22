@@ -206,7 +206,8 @@ describe("timeline_executions_export_source_idx — one live export per source i
     const spaceId = randomUUID();
     const sourceVersionId = randomUUID();
     const first = await inserted(fixture, "web_animation_export", { spaceId, sourceVersionId });
-    await timelineExecutionRepo.transition({ id: first.id, event: { type: "failure", fence: null, reason: "enqueue_failed" } });
+    const claimed = await timelineExecutionRepo.transition({ id: first.id, event: { type: "claim" } });
+    await timelineExecutionRepo.transition({ id: first.id, event: { type: "failure", fence: claimed.row.fence, reason: "container_failed" } });
     const again = await insert(fixture, "web_animation_export", { spaceId, sourceVersionId });
     expect(again?.id).toEqual(expect.any(String));
     expect(again?.id).not.toBe(first.id);

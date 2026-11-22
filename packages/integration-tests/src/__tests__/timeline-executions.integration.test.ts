@@ -147,8 +147,8 @@ async function reach(state: Setup): Promise<TimelineExecution> {
   if (state === "expired") { await passDeadline(row.id); return step({ type: "deadline" }); }
   if (state === "cancelled") return step({ type: "cancel" });
   if (state === "queued") return row;
-  if (state === "failed") return step({ type: "failure", fence: null, reason: "enqueue_failed" });
   const current = await step({ type: "claim" });
+  if (state === "failed") return step({ type: "failure", fence: current.fence, reason: "container_failed" });
   if (state === "running") return current;
   if (state === "succeeded") return step({ type: "success", fence: current.fence, resultSourceVersionId: randomUUID() });
   return step({ type: "cancel" });
@@ -181,7 +181,7 @@ const S = {
 // Rows: current state. Columns: claim, retry, success, failure, cancel, cancelAck, deadline.
 const MATRIX: Record<Setup, readonly TimelineExecutionStatus[]> = {
   awaiting_landing: [S.AL, S.AL, S.AL, S.AL, S.X, S.AL, S.E],
-  queued: [S.R, S.Q, S.Q, S.F, S.X, S.Q, S.E],
+  queued: [S.R, S.Q, S.Q, S.Q, S.X, S.Q, S.E],
   running: [S.R, S.R, S.OK, S.F, S.C, S.R, S.E],
   cancelling: [S.C, S.C, S.X, S.X, S.C, S.X, S.E],
   succeeded: [S.OK, S.OK, S.OK, S.OK, S.OK, S.OK, S.OK],
