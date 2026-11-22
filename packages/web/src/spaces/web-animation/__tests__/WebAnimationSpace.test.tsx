@@ -401,7 +401,7 @@ describe('while a result is read by id', () => {
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
     const user = userEvent.setup();
     await user.click(screen.getByTestId('motion-action-view-video'));
-    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalledWith(PROJECT, SPACE, EXPORT));
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalledWith(PROJECT, SPACE, EXPORT, expect.any(AbortSignal)));
     expect(screen.getByTestId('motion-action-view-video')).toHaveAttribute('aria-busy', 'true');
     expect(screen.getByTestId('motion-action-add-annotation')).toHaveAttribute('aria-busy', 'true');
     await user.click(screen.getByTestId('motion-action-add-annotation'));
@@ -413,7 +413,7 @@ describe('while a result is read by id', () => {
     show();
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
     await userEvent.setup().click(screen.getByTestId('motion-action-view-source'));
-    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalledWith(PROJECT, SPACE, NEWER));
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalledWith(PROJECT, SPACE, NEWER, expect.any(AbortSignal)));
     expect(screen.getByTestId('motion-action-view-source')).toHaveAttribute('aria-busy', 'true');
   });
 
@@ -427,9 +427,27 @@ describe('while a result is read by id', () => {
     const user = userEvent.setup();
     await user.click(screen.getByTestId('motion-details'));
     await user.click(await screen.findByRole('button', { name: 'Older logo' }));
-    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalledWith(PROJECT, SPACE, OLDER));
+    await waitFor(() => expect(timelineApi.getExecution).toHaveBeenCalledWith(PROJECT, SPACE, OLDER, expect.any(AbortSignal)));
     await user.click(screen.getByTestId('motion-details'));
     expect(await screen.findByRole('button', { name: 'Older logo' })).toHaveAttribute('aria-busy', 'true');
+  });
+});
+
+describe('a result read by id', () => {
+  it('shows again from the read it already has, with no second request', async () => {
+    const source = { ...done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'), export: { executionId: EXPORT, status: 'succeeded' } };
+    vi.mocked(timelineApi.getExecution).mockReset().mockResolvedValue(source as never);
+    listing([exported(source)]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    const user = userEvent.setup();
+    await user.click(screen.getByTestId('motion-action-view-source'));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    await user.click(await screen.findByTestId('motion-action-view-video'));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    await user.click(screen.getByTestId('motion-action-view-source'));
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    expect(timelineApi.getExecution).toHaveBeenCalledTimes(1);
   });
 });
 

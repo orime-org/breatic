@@ -319,10 +319,10 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
       if (effect.type === 'reveal') dispatchPanels({ type: 'reveal', tab: effect.tab, executionId: effect.executionId });
       if (effect.type === 'toast_not_found') toast.warning(t('spaces.webAnimation.notFound'));
       if (effect.type === 'fetch') {
-        timelineApi.getExecution(projectId, spaceId, effect.executionId).then((row) => select({ type: 'fetched', requestId: effect.requestId, row }), () => select({ type: 'fetch_failed', requestId: effect.requestId }));
+        queryClient.fetchQuery(byIdQuery(projectId, spaceId, effect.executionId)).then((row) => select({ type: 'fetched', requestId: effect.requestId, row }), () => select({ type: 'fetch_failed', requestId: effect.requestId }));
       }
     }
-  }, [projectId, spaceId, t]);
+  }, [queryClient, projectId, spaceId, t]);
   // While another row is read by id, the preview keeps the one it showed (design §13.2).
   const selected = shown(selection) ?? undefined;
   const selectedId = selected?.id ?? null;
