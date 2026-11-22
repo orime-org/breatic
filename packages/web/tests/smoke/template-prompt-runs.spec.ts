@@ -176,6 +176,8 @@ async function applyTemplate(id: string, style?: string): Promise<void> {
   } else {
     const row = await page.getByTestId(`generate-template-${id}`).boundingBox();
     if (!row) throw new Error(`no ${id} row`);
+    // Across into the submenu on the goal row's line first: a slant down to a lower row crosses the goal rows below and closes it.
+    await page.mouse.move(row.x + row.width / 2, box.y + box.height / 2, { steps: 8 });
     await page.mouse.move(row.x + row.width / 2, row.y + row.height / 2, { steps: 8 });
     const cell = page.getByTestId(`generate-template-style-${style}`);
     await expect(cell).toBeVisible({ timeout: 30_000 });
@@ -782,6 +784,49 @@ const RUNS: Record<string, Run> = {
       ],
     },
     localeFills: { 'zh-CN': { anchor: ['水池上的闯关赛道：平衡木、摆锤沙袋、泡沫墙', '摆过来的沙袋', '她掉进水里，水花四溅', '她浑身湿透地爬上岸，笑着向观众挥手'] } },
+  },
+  'fight-duel-one-take': {
+    type: 'video',
+    photo: false,
+    inputs: { 'fighter-a': 'character.jpg', 'fighter-b': 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['a rain-soaked rooftop at night', 'kung fu kicks and palm strikes', 'the first fighter\'s spinning kick breaks through the second fighter\'s guard', 'a neon sign behind them'] },
+  },
+  'fight-exchange-short': {
+    type: 'video',
+    photo: false,
+    inputs: { 'fighter-a': 'character.jpg', 'fighter-b': 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['an empty warehouse lit through high windows', 'the first fighter\'s elbow lands on the second fighter\'s shoulder'] },
+  },
+  'fight-duel-locked': {
+    type: 'video',
+    photo: false,
+    inputs: { 'fighter-a': 'character.jpg', 'fighter-b': 'mini-tools/portrait.jpg' },
+    first: ['sheet-a', 'sheet-b'],
+    fills: { 'sheet-a': [], 'sheet-b': [], anchor: ['a rain-soaked rooftop at night', 'kung fu kicks and palm strikes', 'the first fighter\'s spinning kick breaks through the second fighter\'s guard', 'a neon sign behind them'] },
+  },
+  'hero-orbit-reveal': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: ['keyframe'],
+    frames: { 'first-frame': 'keyframe' },
+    fills: { keyframe: ['a cracked street after an explosion', 'a photorealistic film still'], anchor: ['the hero\'s awakening after being knocked down'] },
+  },
+  'bullet-time-moment': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['a car park at night in the rain', 'leaping over a car as sparks fly'] },
+  },
+  'impact-frame-hit': {
+    type: 'video',
+    photo: false,
+    inputs: { 'fighter-a': 'character.jpg', 'fighter-b': 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['a dojo with paper screens', 'the first fighter\'s fist driving into the second fighter\'s stomach', 'the second fighter skids back across the floor and drops to one knee'] },
   },
   'extreme-sports-run': {
     type: 'video',
