@@ -7,7 +7,7 @@ import { t, videoPresentationAtIngest, videoPresentationAwaitsServer, videoPrese
   videoPresentationSourceBindingSchema,
   type StudioAssetEntity, type VideoPresentation, type VideoPresentationIngestPreparation, type VideoPresentationIngestRequest, type VideoPresentationPricing,
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding } from '@breatic/shared';
-import { findById, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
+import { findById, findCoverOf, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
 import { videoEncoderRates } from '@domain/asset/video-encoder-rates.js';
 import { select as selectPresentationPin, versionObjectKeys } from '@domain/presentation/presentation-pin.service.js';
 
@@ -186,16 +186,20 @@ function presentationJobId(requestId: string | undefined): string {
 
 /**
  * Mirror the snapshot in the public response (design §3.5 web→server row, §5.1 step 6): the registered binding, the
- * selected bundle and the target preparation, polling exactly while the user waits.
+ * selected bundle and the target preparation, polling exactly while the user waits, and the video's cover.
+ * @param row - The registered video.
  * @param binding - Current registry identity.
  * @param snapshot - Validated durable source facts.
  * @returns The public response.
  * @throws {Error} When ingest violates the public source or geometry contract.
  */
-function response(binding: VideoPresentationSourceBinding, snapshot: VideoPresentationIngestSnapshot): VideoPresentationResponse {
+async function response(row: StudioAssetEntity, binding: VideoPresentationSourceBinding, snapshot: VideoPresentationIngestSnapshot): Promise<VideoPresentationResponse> {
+  // The cover is read as material facts read it (`material-facts.ts`): the registered cover's own URL.
+  const cover = await findCoverOf(row.id);
   return videoPresentationResponseSchema.parse({
     sourceBinding: binding, presentation: snapshot.presentation, preparation: snapshot.preparation,
     pollAfterMs: videoPresentationAwaitsServer(snapshot) ? getMiniToolsConfig().poll_interval_ms : null,
+    coverURL: cover?.fileUrl ?? null,
   });
 }
 
@@ -210,7 +214,7 @@ function response(binding: VideoPresentationSourceBinding, snapshot: VideoPresen
 export async function resolveVideoPresentation(input: ResolveVideoPresentationInput): Promise<VideoPresentationResponse> {
   await assertAccess(input);
   const { row, binding } = await registeredSource(input.canonicalURL);
-  return followSelected(row, response(binding, await readThenAdmit(row, {})));
+  return followSelected(row, await response(row, binding, await readThenAdmit(row, {})));
 }
 
 /**
@@ -260,7 +264,7 @@ export async function repairVideoPresentation(input: RepairVideoPresentationInpu
   const { row, binding } = await registeredSource(input.canonicalURL);
   if (binding.contentHash !== input.sourceFingerprint) throw new VideoPresentationSourceChanged(binding);
   const snapshot = await accept(row, { repair: true, requestId: input.requestId, userId: input.userId, projectId: input.projectId });
-  return followSelected(row, response(binding, snapshot));
+  return followSelected(row, await response(row, binding, snapshot));
 }
 
 /**

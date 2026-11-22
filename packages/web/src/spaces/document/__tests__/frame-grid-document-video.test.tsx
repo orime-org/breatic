@@ -42,6 +42,7 @@ vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (im
 const PROJECT = '60000000-0000-4000-8000-000000000009';
 const ORIGINAL = 'https://assets.example.test/document/source.mov';
 const PLAYBACK = 'https://assets.example.test/document/playback.mp4';
+const COVER = 'https://assets.example.test/document/source-cover.webp';
 let client: QueryClient;
 
 /**
@@ -93,6 +94,14 @@ describe('U05 a Document video block plays through Qp (§7.8, §7.9)', () => {
     expect(original).not.toBeNull();
     fireEvent.error(original!);
     expect(screen.getByText('Preparing video…')).toBeInTheDocument();
+  });
+
+  it('U05: preparing, the block shows the video\'s cover with "Preparing video…" (§7.9 last paragraph)', () => {
+    const container = mount(presentedResponse(presentedBinding(ORIGINAL), { preparation: presentedPreparation(null), coverURL: COVER }));
+    const original = container.querySelector(`video[src="${ORIGINAL}"]`);
+    expect(original).not.toBeNull();
+    fireEvent.error(original!);
+    expect(screen.getByTestId('video-preparation-notice').querySelector(`img[src="${COVER}"]`)).not.toBeNull();
   });
 
   it('U05: a candidate failed with a temporary code shows the reason and a Retry', () => {

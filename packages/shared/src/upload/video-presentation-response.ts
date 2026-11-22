@@ -26,6 +26,8 @@ export interface VideoPresentationResponse {
   presentation: VideoPresentationVersion | null;
   preparation: VideoPresentationIngestPreparation | null;
   pollAfterMs: number | null;
+  /** The registered video's cover image, which a surface shows while its picture is not drawn; null when it has none. */
+  coverURL: string | null;
 }
 
 /**
@@ -55,6 +57,7 @@ export const videoPresentationResponseSchema: z.ZodType<VideoPresentationRespons
   sourceBinding: videoPresentationSourceBindingSchema, presentation: videoPresentationVersionSchema.nullable(),
   preparation: videoPresentationIngestPreparationSchema.nullable(),
   pollAfterMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
+  coverURL: z.url().nullable(),
 }).superRefine((value, ctx) => {
   checkSelectedVideoPresentation(value, value.sourceBinding.contentHash, ctx);
   const descriptor = value.presentation;

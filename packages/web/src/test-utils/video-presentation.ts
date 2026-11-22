@@ -85,8 +85,8 @@ export function presentedPreparation(failure: string | null, stage: Preparation[
  * @throws {never} Never.
  */
 export function presentedResponse(sourceBinding: VideoPresentationResponse['sourceBinding'],
-  fields: Partial<Pick<VideoPresentationResponse, 'presentation' | 'preparation'>> = {}, pollAfterMs = 5000): VideoPresentationResponse {
-  const value = { presentation: null, preparation: null, ...fields };
+  fields: Partial<Pick<VideoPresentationResponse, 'presentation' | 'preparation' | 'coverURL'>> = {}, pollAfterMs = 5000): VideoPresentationResponse {
+  const value = { presentation: null, preparation: null, coverURL: null, ...fields };
   return { sourceBinding, ...value, pollAfterMs: videoPresentationAwaitsServer(value) ? pollAfterMs : null };
 }
 

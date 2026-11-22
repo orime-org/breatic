@@ -28,11 +28,13 @@ export interface PresentedMediaPlayerProps extends Omit<MediaPlayerProps, 'modal
  * @throws {never} Read failures stay in the query state.
  */
 export function PresentedMediaPlayer({ projectId, retry = true, ...player }: PresentedMediaPlayerProps): React.JSX.Element {
-  const { source, failure } = useResolvedVideoPresentation(projectId, player.src, player.active ?? true);
+  const { query, source, failure } = useResolvedVideoPresentation(projectId, player.src, player.active ?? true);
+  // A surface that holds no cover of its own (a Document block) shows the registered one the read carries (§7.9 last paragraph).
+  const poster = player.poster ?? query.data?.coverURL ?? undefined;
   const { repair, repairing } = useVideoPresentationRepair(projectId);
   const { src } = player;
   const onRetry = React.useCallback((): void => repair(src), [repair, src]);
   const busy = repairing.has(src);
   const preparation = React.useMemo(() => ({ failure: source === null ? failure : null, ...(retry ? { onRetry, retrying: busy } : {}) }), [source, failure, retry, onRetry, busy]);
-  return <MediaPlayer {...player} modality='video' videoSource={source} preparation={preparation} />;
+  return <MediaPlayer {...player} modality='video' poster={poster} videoSource={source} preparation={preparation} />;
 }

@@ -152,7 +152,7 @@ vi.mock('@web/spaces/canvas/video-presentation/video-presentation-query', async 
       sourceBinding: { assetId: '10000000-0000-4000-8000-000000000001', contentHash: source.sourceFingerprint, canonicalURL: input.canonicalURL, kind: 'video', mediaInfo: { width: 160, height: 240, duration: 10, mimeType: 'video/webm' } },
       // The read carries the selected bundle; the manifest is a bundle receipt, not a response field.
       presentation: presentedBundle(input.canonicalURL, { sourceFingerprint: source.sourceFingerprint, display: presentedDisplay(160, 240, 250) }),
-      preparation: null, pollAfterMs: null,
+      preparation: null, pollAfterMs: null, coverURL: null,
     }),
   })),
 }));
