@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsup",
     "start": "tsup && BREATIC_SERVER_URL=${BREATIC_SERVER_URL:-http://localhost:8100} electron .",
-    "dist": "tsup && node scripts/stage-app.mjs && electron-builder --config electron-builder.config.mjs",
+    "dist": "tsup && node scripts/stage-app.mjs && node scripts/dist.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
@@ -25,6 +25,7 @@
     "electron-builder": "26.18.0",
     "playwright": "catalog:",
     "tsup": "catalog:",
-    "vitest": "catalog:"
+    "vitest": "catalog:",
+    "yaml": "catalog:"
   }
 }

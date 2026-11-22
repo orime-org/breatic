@@ -31,11 +31,14 @@ writeFileSync(
       name: brand.packageName,
       productName: brand.productName,
       version: manifest.version,
-      description: manifest.description,
+      // Linux launchers show it as the app's comment.
+      description: `${brand.productName} desktop client`,
       author: "Orime, Inc.",
       license: "AGPL-3.0-only",
       // The Debian package requires a homepage.
       homepage: "https://github.com/orime-org/breatic",
+      // Electron takes the Linux window class from it, so the taskbar matches the window to the brand's launcher entry.
+      desktopName: `${brand.executableName}.desktop`,
       main: "dist/main/index.cjs",
     },
     null,
