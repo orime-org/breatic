@@ -6,10 +6,10 @@
  *
  * A pending media block is a real block in the shared document whose
  * `uploadId` is set and whose `url` is empty. The controller runs the upload
- * behind each id, keeps every result for the page's lifetime, and writes the
- * address onto every pending block carrying a finished id, whenever such a
- * block appears in an attached body: inserted, undone, redone, synced from a
- * peer, pasted as a copy, moved.
+ * behind each id. A file or a fetched address is handed to the server, and
+ * collab writes its ending into the blocks of its own Document (breatic#1574);
+ * only an address answered on the spot (already ours) is written here, onto
+ * every pending block carrying its id in an attached body.
  *
  * The write is a Yjs transaction under {@link UPLOAD_WRITE_ORIGIN}, which no
  * UndoManager tracks, so it is never undone and never splits the user's
@@ -23,7 +23,15 @@
 
 import * as Y from 'yjs';
 
-import { documentBodyFragment } from '@breatic/shared';
+import {
+  documentBodyFragment,
+  landDocumentUpload,
+  UPLOAD_FAILURE_ATTR,
+  UPLOAD_RETRYABLE_ATTR,
+  UPLOAD_STATE_ATTR,
+  type DocumentUploadResult,
+  type UploadFailure,
+} from '@breatic/shared';
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import { subscribeDocSize } from '@web/data/yjs/doc-size';
@@ -38,34 +46,16 @@ export type UploadSource =
   | { readonly kind: 'ours'; readonly url: string; readonly coverUrl?: string };
 
 /** A finished upload: the stored address and the media's own size. */
-export interface UploadResult {
-  readonly url: string;
-  readonly mediaWidth?: number;
-  readonly mediaHeight?: number;
-}
+export type UploadResult = DocumentUploadResult;
 
-/** Why an upload did not finish, in the words its block has for it. */
-export type PendingFailureReason =
-  | 'failed'
-  | 'storageFull'
-  | 'rateLimited'
-  | 'hashUnavailable'
-  | 'unsupportedType'
-  | 'tooLarge'
-  | 'empty'
-  | 'unreachable'
-  /** The Space could not take an add when the upload was asked for (inner#1790). */
-  | 'spaceFull';
+export type { PendingFailureReason, UploadFailure } from '@breatic/shared';
 
-/** Why an upload did not finish, and whether running it again can help. */
-export interface UploadFailure {
-  readonly reason: PendingFailureReason;
-  readonly retryable: boolean;
-}
-
-/** How an upload ended. */
+/** How this page's part of an upload ended. */
 export type UploadOutcome =
+  /** Answered on the spot: this page writes the address. */
   | { readonly ok: true; readonly result: UploadResult }
+  /** The server took the bytes or the address: it announces the ending and collab writes the block (breatic#1574). */
+  | { readonly ok: true; readonly handedOff: true }
   | { readonly ok: false; readonly failure: UploadFailure };
 
 /** Where an upload stands on this page: a failure always says why, a finished one always holds its result. */
@@ -73,7 +63,9 @@ export type UploadEntry =
   /** `progress` is the share sent, 0 to 1, when the size is known; otherwise null. */
   | { readonly phase: 'uploading'; readonly progress: number | null }
   | { readonly phase: 'failed'; readonly failure: UploadFailure }
-  | { readonly phase: 'done'; readonly result: UploadResult };
+  | { readonly phase: 'done'; readonly result: UploadResult }
+  /** The server has it; the block learns the ending from collab. */
+  | { readonly phase: 'handedOff' };
 
 /** The part of a body's awareness the controller publishes claims through. */
 export interface ClaimChannel {
@@ -123,8 +115,11 @@ export interface UploadControllerDeps {
 export interface UploadController {
   /** Starts the upload behind a pending block. */
   start: (uploadId: string, source: UploadSource) => void;
-  /** Runs a failed, retryable upload again from the same source. */
-  retry: (uploadId: string) => void;
+  /**
+   * Runs an upload this page holds the source of again, under a new id: its blocks take `nextId` and drop what
+   * collab wrote, so nothing the earlier attempt announces reaches them (breatic#1574).
+   */
+  retry: (uploadId: string, nextId: string) => void;
   /**
    * Watches a body for pending blocks.
    * @returns What stops watching it.
@@ -144,9 +139,22 @@ const UPLOAD_WRITE_ORIGIN: Readonly<{ name: string }> = Object.freeze({
   name: 'document-upload-write',
 });
 
+/** What collab writes onto a pending block, dropped when its upload is run again. */
+const SERVER_ATTRS = [UPLOAD_STATE_ATTR, UPLOAD_FAILURE_ATTR, UPLOAD_RETRYABLE_ATTR];
+
+/**
+ * Whether this page can run an upload again from what it holds: the server has the upload, or this page's own
+ * attempt failed in a way running it again can change.
+ * @param entry - This page's record of the upload.
+ * @returns True when a retry runs.
+ */
+export function canRetry(entry: UploadEntry): boolean {
+  return entry.phase === 'handedOff' || (entry.phase === 'failed' && entry.failure.retryable);
+}
+
 /** One upload's whole record. */
 interface UploadRecord {
-  /** Where the bytes come from; let go once the upload has finished. */
+  /** Where the bytes come from; kept for a Retry until nothing can run the upload again. */
   source: UploadSource | null;
   state: UploadEntry;
 }
@@ -219,6 +227,35 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     });
   };
 
+  /** The blocks each upload in flight or handed off was last seen pending in, to tell when it settled. */
+  const trackedBlocks = new Map<string, Set<Y.XmlElement>>();
+
+  /**
+   * Lets go of a handed-off upload once nothing can run it again: its block
+   * landed (collab wrote the address), or collab wrote a failure running it
+   * again cannot change. The source would otherwise stay for the page's life.
+   */
+  const releaseSettled = (): void => {
+    for (const [uploadId, blocks] of trackedBlocks) {
+      const record = records.get(uploadId);
+      // Collab can land a block before the hand-off answer arrives (a dedup
+      // hit is announced first), so blocks are kept from the start and judged
+      // once the record is handed off.
+      if (record?.state.phase === 'uploading') continue;
+      if (record === undefined || record.state.phase !== 'handedOff') {
+        trackedBlocks.delete(uploadId);
+        continue;
+      }
+      const elements = [...blocks];
+      if (elements.some((element) => Boolean(element.getAttribute('url')))) {
+        records.delete(uploadId);
+        trackedBlocks.delete(uploadId);
+      } else if (elements.some((element) => element.getAttribute(UPLOAD_STATE_ATTR) === 'failed' && (element.getAttribute(UPLOAD_RETRYABLE_ATTR) as unknown) === false)) {
+        record.source = null;
+      }
+    }
+  };
+
   /**
    * Writes finished addresses into one body and brings its guard
    * registrations in line with what is in it now.
@@ -228,6 +265,14 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
     entry.queued = false;
     const { body } = entry;
     const pending = pendingElements(documentBodyFragment(body.doc));
+    for (const { element, uploadId } of pending) {
+      const phase = records.get(uploadId)?.state.phase;
+      if (phase !== 'uploading' && phase !== 'handedOff') continue;
+      const seen = trackedBlocks.get(uploadId) ?? new Set<Y.XmlElement>();
+      seen.add(element);
+      trackedBlocks.set(uploadId, seen);
+    }
+    releaseSettled();
     /**
      * The result of an upload this page finished.
      * @param uploadId - The upload.
@@ -246,11 +291,7 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
       writeSpaceDoc(body.name ?? '', { kind: 'edit', notify: false }, () => {
         body.doc.transact(() => {
           for (const { element, uploadId } of writable) {
-            const result = finished(uploadId)!;
-            element.setAttribute('url', result.url);
-            if (result.mediaWidth !== undefined) element.setAttribute('mediaWidth', result.mediaWidth as never);
-            if (result.mediaHeight !== undefined) element.setAttribute('mediaHeight', result.mediaHeight as never);
-            element.setAttribute('uploadId', '');
+            landDocumentUpload(element, finished(uploadId)!);
           }
         }, UPLOAD_WRITE_ORIGIN);
       }).ok;
@@ -358,7 +399,10 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
         notify();
       })
       .then((outcome) => {
-        if (outcome.ok) {
+        if (outcome.ok && 'handedOff' in outcome) {
+          // The source stays: a server failure the block shows can still be retried from it.
+          record.state = { phase: 'handedOff' };
+        } else if (outcome.ok) {
           record.state = { phase: 'done', result: outcome.result };
           record.source = null;
         } else {
@@ -377,10 +421,24 @@ export function createUploadController(deps: UploadControllerDeps): UploadContro
       queueAll();
       notify();
     },
-    retry(uploadId) {
+    retry(uploadId, nextId) {
       const record = records.get(uploadId);
-      if (record?.state.phase !== 'failed' || !record.state.failure.retryable || record.source === null) return;
-      run(uploadId, record, record.source);
+      if (record === undefined || record.source === null || !canRetry(record.state)) return;
+      for (const { body } of watched) {
+        const blocks = pendingElements(documentBodyFragment(body.doc)).filter(({ uploadId: id }) => id === uploadId);
+        if (blocks.length === 0) continue;
+        writeSpaceDoc(body.name ?? '', { kind: 'edit', notify: false }, () => {
+          body.doc.transact(() => {
+            for (const { element } of blocks) {
+              element.setAttribute('uploadId', nextId);
+              for (const attr of SERVER_ATTRS) element.removeAttribute(attr);
+            }
+          }, UPLOAD_WRITE_ORIGIN);
+        });
+      }
+      records.delete(uploadId);
+      records.set(nextId, record);
+      run(nextId, record, record.source);
       queueAll();
       notify();
     },

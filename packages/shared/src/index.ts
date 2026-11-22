@@ -491,6 +491,21 @@ export {
 } from "@shared/document-body.js";
 
 export {
+  applyDocumentUpload,
+  documentUploadFailure,
+  DOCUMENT_MEDIA_BLOCK_TYPES,
+  landDocumentUpload,
+  UPLOAD_FAILURE_ATTR,
+  UPLOAD_HOME_ATTR,
+  UPLOAD_RETRYABLE_ATTR,
+  UPLOAD_STATE_ATTR,
+  type DocumentUploadEvent,
+  type DocumentUploadResult,
+  type PendingFailureReason,
+  type UploadFailure,
+} from "@shared/document-upload.js";
+
+export {
   TimelineRateSchema,
   TimelineSettingsSchema,
   TimelineTrackSchema,

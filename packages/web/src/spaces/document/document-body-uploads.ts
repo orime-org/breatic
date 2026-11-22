@@ -14,6 +14,8 @@
 
 import type * as Y from 'yjs';
 
+import { newId } from '@breatic/shared';
+
 import { readDocSize, subscribeDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';
 import { checkAdd } from '@web/data/yjs/space-write';
@@ -62,16 +64,18 @@ export interface BodyUploads {
  * @param body.doc - Its document.
  * @param body.connection - This page's connection to it.
  * @param body.name - Its document name; read off the document cache when left out.
+ * @param body.onUploadId - Told every id an upload runs under, before it runs.
  * @returns The link.
  */
 export function openBodyUploads(
   controller: UploadController,
-  body: { spaceId: string; doc: Y.Doc; connection: BodyConnection; name?: string },
+  body: { spaceId: string; doc: Y.Doc; connection: BodyConnection; name?: string; onUploadId?: (uploadId: string) => void },
 ): BodyUploads {
   const { connection } = body;
   const name = body.name ?? docNameOf(body.doc);
   const detach = controller.attach({ spaceId: body.spaceId, doc: body.doc, name, ...connection });
   const pending: PendingUploadsStore = {
+    docName: name,
     factsOf: (uploadId) => ({
       entry: controller.entry(uploadId),
       access: connection.writeAccess(),
@@ -96,11 +100,14 @@ export function openBodyUploads(
       // A Retry asks the server again for what lands in the body: a Space
       // that cannot take an add sends nothing and keeps the file (design 5.2).
       if (name !== null && !checkAdd(name).ok) return;
-      controller.retry(uploadId);
+      const nextId = newId();
+      body.onUploadId?.(nextId);
+      controller.retry(uploadId, nextId);
     },
   };
   return {
     start: (uploadId, source) => {
+      body.onUploadId?.(uploadId);
       controller.start(uploadId, source);
     },
     pending,
