@@ -130,6 +130,12 @@ describe('a model the Studio\'s payer runs on their own key (inner#1953)', () =>
 
     expect(await screen.findByText(words)).toBeInTheDocument();
     expect(screen.queryByText(/\b36\b/)).toBeNull();
+    // The key mark stands in for the credits star, and the full sentence is on hover.
+    const line = screen.getByTestId('scene-proposal-cost');
+    expect(line.querySelector('[data-icon="key"]')).not.toBeNull();
+    expect(line.querySelector('[data-icon="credits"]')).toBeNull();
+    await userEvent.setup().hover(line);
+    expect((await screen.findAllByText(/no credits/)).length).toBeGreaterThan(0);
   });
 });
 

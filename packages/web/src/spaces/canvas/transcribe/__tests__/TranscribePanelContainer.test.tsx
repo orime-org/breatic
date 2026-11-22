@@ -8,6 +8,7 @@
  */
 
 import { act, fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { ReactFlow } from '@xyflow/react';
 import * as React from 'react';
@@ -93,7 +94,13 @@ describe('TranscribePanelContainer', () => {
     keyPlan.current = { payer, payerUserId: null, llm: { usesAccountKey: true }, models: {}, upstreamNames: {} } satisfies KeyPlan;
     render(tree(vi.fn()));
     expect(await screen.findByText(words)).toBeInTheDocument();
-    expect(screen.getByTestId('transcribe-credit')).not.toHaveTextContent('Billed by usage');
+    const line = screen.getByTestId('transcribe-credit');
+    expect(line).not.toHaveTextContent('Billed by usage');
+    // The key mark stands in for the credits star, and the full sentence is on hover.
+    expect(line.querySelector('[data-icon="key"]')).not.toBeNull();
+    expect(line.querySelector('[data-icon="credits"]')).toBeNull();
+    await userEvent.setup().hover(line);
+    expect((await screen.findAllByText(/no credits/)).length).toBeGreaterThan(0);
   });
 
   it('turns the hint with the switch', () => {

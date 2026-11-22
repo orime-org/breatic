@@ -272,5 +272,9 @@ test('the generation panel says a model on the payer\'s own key uses no credits'
   await page.getByTestId('node-menu-generate').click();
   await expect(visibleSpace(page).getByTestId('generate-prompt-editor')).toBeVisible({ timeout: 15_000 });
 
-  await expect(visibleSpace(page).getByTestId('generate-credit')).toHaveText('Your key', { timeout: 15_000 });
+  const credit = visibleSpace(page).getByTestId('generate-credit');
+  await expect(credit).toHaveText('Your key', { timeout: 15_000 });
+  // The key mark stands in for the credits star.
+  await expect(credit.locator('[data-icon="key"]')).toHaveCount(1);
+  await expect(credit.locator('[data-icon="credits"]')).toHaveCount(0);
 });
