@@ -4528,8 +4528,7 @@
       "continue": "继续",
       "connecting": "正在连接…",
       "unreachableTitle": "连不上 breatic",
-      "retry": "重试",
-      "change": "换个服务器"
+      "retry": "重试"
     },
     "errors": {
       "scheme": "局域网或公网地址需要 HTTPS，请按自部署指南配置",
@@ -4539,7 +4538,6 @@
     },
     "menu": {
       "file": "文件",
-      "switchServer": "切换服务器…",
       "back": "后退",
       "forward": "前进"
     },

@@ -126,8 +126,8 @@ test("a configured server that cannot be reached opens the unreachable state", a
   const connect = await windowWhere(app, (url) => url.startsWith("file:"));
   await expect(connect.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible();
   await expect(connect.getByText("http://localhost:9")).toBeVisible();
-  await connect.getByRole("button", { name: "Use another server" }).click();
-  await expect(connect.getByRole("heading", { name: "Connect to breatic" })).toBeVisible();
+  await expect(connect.getByRole("button", { name: "Retry" })).toBeVisible();
+  await expect(connect.getByRole("button", { name: "Use another server" })).toHaveCount(0);
   await app.close();
 });
 

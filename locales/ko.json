@@ -4528,8 +4528,7 @@
       "continue": "계속",
       "connecting": "연결하는 중…",
       "unreachableTitle": "breatic에 연결할 수 없습니다",
-      "retry": "다시 시도",
-      "change": "다른 서버 사용"
+      "retry": "다시 시도"
     },
     "errors": {
       "scheme": "LAN 또는 인터넷 주소에는 HTTPS가 필요합니다. 셀프 호스팅 가이드에 따라 설정하세요.",
@@ -4539,7 +4538,6 @@
     },
     "menu": {
       "file": "파일",
-      "switchServer": "서버 전환…",
       "back": "뒤로",
       "forward": "앞으로"
     },

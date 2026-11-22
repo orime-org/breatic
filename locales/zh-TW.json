@@ -4528,8 +4528,7 @@
       "continue": "繼續",
       "connecting": "正在連線…",
       "unreachableTitle": "連不上 breatic",
-      "retry": "重試",
-      "change": "換個伺服器"
+      "retry": "重試"
     },
     "errors": {
       "scheme": "區域網路或公網位址需要 HTTPS，請依自架指南設定",
@@ -4539,7 +4538,6 @@
     },
     "menu": {
       "file": "檔案",
-      "switchServer": "切換伺服器…",
       "back": "上一頁",
       "forward": "下一頁"
     },

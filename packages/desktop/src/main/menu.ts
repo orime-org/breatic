@@ -13,7 +13,6 @@ import type { MenuItemConstructorOptions } from "electron";
 
 /** The menu's own words, in the user's language. */
 export interface MenuLabels {
-  switchServer: string;
   back: string;
   forward: string;
   file: string;
@@ -24,7 +23,6 @@ export interface MenuOptions {
   platform: string;
   isDev: boolean;
   labels: MenuLabels;
-  onSwitchServer: () => void;
   onBack: () => void;
   onForward: () => void;
 }
@@ -37,7 +35,6 @@ export interface MenuOptions {
 export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOptions[] {
   const { platform, isDev, labels } = options;
   const mac = platform === "darwin";
-  const switchServer: MenuItemConstructorOptions = { label: labels.switchServer, click: () => options.onSwitchServer() };
   const view: MenuItemConstructorOptions = {
     role: "viewMenu",
     submenu: [
@@ -70,8 +67,6 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
         submenu: [
           { role: "about" },
           { type: "separator" },
-          switchServer,
-          { type: "separator" },
           { role: "hide" },
           { role: "hideOthers" },
           { role: "unhide" },
@@ -85,7 +80,7 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
     ];
   }
   return [
-    { label: labels.file, submenu: [switchServer, { type: "separator" }, { role: "quit" }] },
+    { label: labels.file, submenu: [{ role: "quit" }] },
     edit,
     view,
     { role: "windowMenu" },

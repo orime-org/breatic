@@ -146,11 +146,9 @@ function buildMenu(): void {
     isDev,
     labels: {
       file: text["desktop.menu.file"],
-      switchServer: text["desktop.menu.switchServer"],
       back: text["desktop.menu.back"],
       forward: text["desktop.menu.forward"],
     },
-    onSwitchServer: () => openConnect({ mode: "connect", url: serverOrigin ?? DEFAULT_SERVER_URL, reason: null }),
     onBack: () => {
       const history = BrowserWindow.getFocusedWindow()?.webContents.navigationHistory;
       if (history?.canGoBack()) history.goBack();

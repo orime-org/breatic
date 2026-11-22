@@ -4528,8 +4528,7 @@
       "continue": "Continue",
       "connecting": "Connecting…",
       "unreachableTitle": "Can't reach breatic",
-      "retry": "Retry",
-      "change": "Use another server"
+      "retry": "Retry"
     },
     "errors": {
       "scheme": "A LAN or internet address needs HTTPS. Set it up as the self-hosting guide describes.",
@@ -4539,7 +4538,6 @@
     },
     "menu": {
       "file": "File",
-      "switchServer": "Switch server…",
       "back": "Back",
       "forward": "Forward"
     },

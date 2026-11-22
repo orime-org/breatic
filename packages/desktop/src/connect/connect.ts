@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The connect window (#1599, design §6.1): first launch, Switch server, and
+ * The connect window (#1599, design §6.1): first launch of a build that carries no server, and
  * the server that cannot be reached. A local page, so it works with no server.
  */
 
@@ -103,7 +103,6 @@ function showUnreachable(text: DesktopText, url: string, reason: ConnectReason |
   const message = reason === "certificate" ? text["desktop.errors.certificate"] : null;
   if (message) root.append(el("p", message, "error"));
   const retry = el("button", text["desktop.connect.retry"]);
-  const change = el("button", text["desktop.connect.change"], "outline");
   retry.addEventListener("click", () => {
     retry.disabled = true;
     retry.textContent = text["desktop.connect.connecting"];
@@ -111,8 +110,7 @@ function showUnreachable(text: DesktopText, url: string, reason: ConnectReason |
       if (!answer.ok) showUnreachable(text, url, answer.reason);
     });
   });
-  change.addEventListener("click", () => showConnect(text, url, null));
-  root.append(retry, change);
+  root.append(retry);
 }
 
 void api.initial().then((initial) => {
