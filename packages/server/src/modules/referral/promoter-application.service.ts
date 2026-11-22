@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { db, lockAccountRow } from "@breatic/core";
 import { findLatestApplication, insertPendingApplication } from "@server/modules/referral/promoter-application.repo.js";

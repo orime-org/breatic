@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import { minimatch } from "minimatch";
 import { parse } from "yaml";
 import type { CheckContext } from "#repo-lint/check";
