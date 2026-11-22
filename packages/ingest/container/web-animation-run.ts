@@ -22,7 +22,12 @@ import { createInterface } from "node:readline";
 
 import { durationToFrames } from "@shared/timeline/time.js";
 import { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
-import type { WebAnimationRunBody, WebAnimationRunPhase } from "@ingest/jobs/web-animation-run-body.js";
+import type {
+  WebAnimationProgressBody,
+  WebAnimationReportBody,
+  WebAnimationRunBody,
+  WebAnimationRunPhase,
+} from "@ingest/jobs/web-animation-run-body.js";
 
 import { cpuUsec } from "./run-steps.js";
 import {
@@ -167,7 +172,7 @@ function instructions(job: WebAnimationRunBody): string {
  * @param body - What.
  * @returns Nothing; a failed post is logged, because the report path is the only one left.
  */
-async function post(url: string, body: unknown): Promise<void> {
+async function post(url: string, body: WebAnimationProgressBody | WebAnimationReportBody): Promise<void> {
   const answered = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
