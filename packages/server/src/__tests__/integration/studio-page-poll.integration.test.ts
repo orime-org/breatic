@@ -305,10 +305,10 @@ describe("the asked uploads", () => {
     expect((await answer(s.admin.cookie, `studio=${s.slug}`)).uploads).toEqual([]);
   });
 
-  it("K-09 refuses more keys than one request may carry", async () => {
+  it("K-09 refuses more keys than one request may carry, as request validation does", async () => {
     const s = await scene();
     const keys = Array.from({ length: UPLOAD_STATUS_MAX_KEYS + 1 }, (_v, i) => `uploads/k-${i}.png`);
-    expect((await poll(s.admin.cookie, `studio=${s.slug}&uploads=${keys.join(",")}`)).status).toBe(400);
+    expect((await poll(s.admin.cookie, `studio=${s.slug}&uploads=${keys.join(",")}`)).status).toBe(422);
   });
 });
 

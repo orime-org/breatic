@@ -46,3 +46,10 @@ describe("rate limits — config/rate-limits.yaml", () => {
     expect(() => getRateLimit("invite", dir)).toThrow(/"invite" is not configured/);
   });
 });
+
+// #1580 L-04: the status query is gone, so its limit is too.
+describe("the upload status limit (removed)", () => {
+  it("L-04 is not configured", () => {
+    expect(() => getRateLimit("upload-status")).toThrow(/"upload-status" is not configured/);
+  });
+});

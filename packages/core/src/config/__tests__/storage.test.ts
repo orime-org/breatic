@@ -164,3 +164,15 @@ describe("storageConfigSchema — the transfer section", () => {
     expect(limits["transfer-ticket"]).toEqual({ max: 10, window_seconds: 60 });
   });
 });
+
+// #1580 L-03: the status query and its interval are gone; a page learns how its
+// upload ended from a message (Project) or the Studio page poll.
+describe("the upload status interval (removed)", () => {
+  it("L-03 is neither in config/storage.yaml nor in the loader", () => {
+    const yaml = parse(readFileSync(resolve(import.meta.dirname, "../../../../../config/storage.yaml"), "utf8")) as {
+      upload?: Record<string, unknown>;
+    };
+    expect(Object.keys(yaml.upload ?? {})).not.toContain("upload_status_poll_seconds");
+    expect(Object.keys(storageConfigSchema.shape.upload.unwrap().shape)).not.toContain("upload_status_poll_seconds");
+  });
+});
