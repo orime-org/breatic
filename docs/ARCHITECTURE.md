@@ -551,7 +551,7 @@ Agent 与画布的单文件超限音频或视频共用长媒体路径。Node dom
 | `config/provider/` | 模型调用层的配置,由 `@breatic/provider` 读:`upstreams.yaml` 是每家上游的种类、地址、key 的变量名(`key_env`)与并发;`llm.yaml` 是文本模型的路由、厂商 id 与直连价格;`media/<模态>.yaml` 是每个媒体模型在各家上游的绑定(模型 id、我们的参数写成哪个字段、计价契约、额外步骤)和厂商自己的输入限制;`routing.yaml` 不随仓库分发,部署方按模型改权重,仓里是 `.template`。字段说明写在各文件表头 |
 | `config/voice-samples.json` | 音色样音的固定公开地址 `base_url`(所有部署都从这里播,`sample_key` 是它下面的路径;读取方是 domain 的 `voice-sample-config.ts`)、每种语言念的那句话,以及个别模型要多带的参数。目录新增音色时,维护样音的人用指向这个地址的存储设置跑一次 `pnpm voice-samples`(`packages/worker/src/voice-samples.ts`),把 `config/models/tts/models.yaml` 里 `sample_key` 点名、这个地址还没有的样音生成上去;`config/models/video/models.yaml` 里 `camera_commands` 的 `sample_key` 点名的运镜指令预览片段也由这一步生成,用模型的文生视频端点拍同一个场景,再转码成 640 宽、无音轨、`moov` 在文件头的 mp4 |
 
-**`config/subscription.yaml`、`config/pricing.yaml` 和 `config/credits.yaml` 三份不随仓库分发** —— 它们写的是某个部署收多少钱、卖的是哪几个 Stripe 对象、给新账号送多少。仓里跟着的是各自的 `.template`(价格 0、price id 空串、赠送 0),照着填自己的;两份价格 schema 都要求正整数,所以没改过的价格模板一读就被拒,赠送可以是 0。**`PAYMENT_ENABLED=true` 时 server 启动预检这三份,读不出来就退出**;读生效档位时要判一条过了付费期的订阅还认不认它的档,用的 `stale_after_days` 在 `config/membership.yaml` 里:档位上限(collab 给文档定可编辑人数也要读)、`/auth/me` 与登录下发的档位、会员面板都走这一步,而 `subscription.yaml` 只挂进 server。
+**`config/subscription.yaml`、`config/pricing.yaml` 和 `config/credits.yaml` 三份不随仓库分发** —— 它们写的是某个部署收多少钱、卖的是哪几个 Stripe 对象、给新账号送多少。仓里跟着的是各自的 `.template`(价格 0、price id 空串、赠送 0),照着填自己的。**没有 Orime, Inc. 的书面授权,实例只能运行在自部署模式,`PAYMENT_ENABLED` 保持 `false`,不得启用收费功能(LICENSE 第 10、11 条)**;两份价格 schema 都要求正整数,所以没改过的价格模板一读就被拒,赠送可以是 0。**`PAYMENT_ENABLED=true` 时 server 启动预检这三份,读不出来就退出**;读生效档位时要判一条过了付费期的订阅还认不认它的档,用的 `stale_after_days` 在 `config/membership.yaml` 里:档位上限(collab 给文档定可编辑人数也要读)、`/auth/me` 与登录下发的档位、会员面板都走这一步,而 `subscription.yaml` 只挂进 server。
 
 ### Logging
 
@@ -1367,17 +1367,17 @@ async function deductOnce(userId: string, amount: number, refKey: string): Promi
 
 ### 文件头:版权 + 许可声明
 
-每个**首方 TypeScript 源文件**(`packages/*/src/**/*.{ts,tsx}`,含测试)顶部必须有两行 SPDX 文件头:
+每个**首方源文件**(含测试)顶部必须有两行 SPDX 文件头:
 
 ```ts
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 ```
 
-`AGPL-3.0-only` = GNU Affero General Public License v3.0,仅限这一版本(见仓库根 `LICENSE`);Breatic 名称与标识的使用规则见仓库根 `TRADEMARKS.md`。
+`LicenseRef-Breatic-Source-Available-2.0` = Breatic Source-Available License 2.0(见仓库根 `LICENSE`;不在 SPDX 许可列表里,按 SPDX 规范用 `LicenseRef-` 前缀);保留 Breatic 名称、标识与声明是许可第 12 条的条件,品牌规则见仓库根 `TRADEMARKS.md`。
 
 - **豁免**:shadcn vendor(`web` 的 `components/ui/`)—— 第三方 IP,不挂 Orime 版权。
-- **CI 强制**:`breatic/no-missing-license-header`(扫 `packages/*/src` 的 `.ts`/`.tsx` + `eslint-rules/src` 与 `repo-lint/src` 的 `.ts`,排除 vendor;新文件缺头即 fail)。**双行都校验** —— 版权行与许可行都得在、都得在最前两行且顺序正确;只认第一行的话,写错许可证的文件能过。
+- **CI 强制**:`breatic/no-missing-license-header`(扫 `eslint.config.ts` 列出的 collab、core、domain、integration-tests、provider、shared、worker 的 `src`,server 的 `src`,web 的 `src`(`packages/web/eslint.config.mts`),以及 `eslint-rules/src`、`repo-lint/src` 的 `.ts`/`.tsx`,排除 vendor;新文件缺头即 fail)。repo-lint `no-previous-licence-header` 扫全部已跟踪文件,出现旧许可的 SPDX 行即 fail。**双行都校验** —— 版权行与许可行都得在、都得在最前两行且顺序正确;只认第一行的话,写错许可证的文件能过。
 - **一次性补全**:`pnpm lint:fix`(规则自带 fixer,幂等——已有头的文件不动)。头文本只在规则里定义这一处 —— 许可证字符串存两份必漂,而漂的那份不会有任何东西报错。
 
 ## Deployment connection configuration

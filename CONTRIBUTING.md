@@ -65,8 +65,9 @@ bodies if it helps reviewers understand the change.
 
 The authorship *identity* of the commit must be a human. Automated
 tooling cannot grant copyright, so listing it in any of the fields
-below creates licensing ambiguity — the project's license (AGPL-3.0-only)
-depends on identifiable human authors being able to grant rights.
+below creates licensing ambiguity — the project's licensing (the Breatic
+Source-Available License 2.0 and the CLA) depends on identifiable human
+authors being able to grant rights.
 
 Don't put automated tooling in:
 
@@ -209,8 +210,19 @@ issues, email the maintainers privately instead of opening a public issue.
 
 ## License and CLA
 
-Breatic is licensed under the GNU Affero General Public License v3.0
-(see [LICENSE](./LICENSE)). Before your first pull request can be merged,
-sign the [Contributor License Agreement](./CLA.md): a bot comments on the
-pull request, and you sign by replying with the sentence it asks for. You
-sign once, and it covers all your later contributions.
+Breatic is licensed under the Breatic Source-Available License 2.0 (see
+[LICENSE](./LICENSE)). Before your first pull request can be merged, accept
+the [Breatic Contributor License Agreement version 2.0](./CLA.md): a bot
+comments on the pull request with a link to the fixed text, and you accept by
+posting the exact sentence it shows. That acceptance covers your
+contributions in that pull request and those you submit afterwards. You keep
+the copyright in your contributions; Orime, Inc. may use, sublicense and
+commercially license them and does not commit to offering them under an
+OSI-approved license.
+
+If your employer has rights in your contributions, the corporate agreement in
+CLA.md is handled privately through contact@breatic.ai; do not post company
+documents in a pull request. A green `CLA signed` check means an acceptance
+record exists for each person on the pull request. Corporate rights and
+stop-coverage notices are reviewed by a maintainer before merging. Works you
+create with Breatic are not contributions.
