@@ -38,7 +38,7 @@ export interface ListParams {
   /** The Motion Space asking; read by the `space` scope only. */
   spaceId: string | null;
   scope: ListScope;
-  /** Read by the `space` and `timeline` scopes; the results list is its own fixed set. */
+  /** Which group of statuses the page reads. */
   group: ListGroup;
   cursor: string | null;
   limit: number;
@@ -53,7 +53,7 @@ export interface ListPage {
   nextCursor: string | null;
 }
 
-/** What the Timeline picker offers: a create or a modification that succeeded. */
+/** The kinds the Timeline picker offers: a create or a modification; it reads them in the succeeded group. */
 const RESULT_KINDS: readonly TimelineExecution["kind"][] = ["web_animation_create", "web_animation_modify"];
 
 /** The cursor could not be read. */
@@ -207,7 +207,7 @@ function scopeWhere(params: Pick<ListParams, "projectId" | "spaceId" | "scope">)
   if (params.scope === "space") return and(eq(t.spaceId, params.spaceId ?? ""), isNull(t.deletedAt), grantedTo(params.projectId));
   return and(
     liveGrantOf(params.projectId), isNull(t.deletedAt),
-    params.scope === "timeline" ? eq(g.executionOrigin, "timeline") : and(inArray(t.kind, RESULT_KINDS), eq(t.status, "succeeded")),
+    params.scope === "timeline" ? eq(g.executionOrigin, "timeline") : inArray(t.kind, RESULT_KINDS),
   );
 }
 
@@ -220,8 +220,7 @@ function scopeWhere(params: Pick<ListParams, "projectId" | "spaceId" | "scope">)
 function pageQuery(params: ListParams): PromiseLike<timelineExecutionRepo.Row[]> & { getSQL(): SQL } {
   const after = params.cursor === null ? null : readCursor(params.cursor);
   const take = params.limit + 1;
-  // The results list is its own fixed set; the other two read one group.
-  const group = params.scope === "results" ? undefined : inArray(t.status, GROUP_STATUSES[params.group]);
+  const group = inArray(t.status, GROUP_STATUSES[params.group]);
   if (params.scope === "space") {
     // A row comparison, so the index range starts at the cursor instead of filtering from the newest row.
     const cursorCondition = after === null ? undefined : sql`(${t.createdAt}, ${t.id}) < (${after.createdAt}::timestamptz, ${after.id}::uuid)`;
