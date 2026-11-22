@@ -52,7 +52,7 @@ import { MotionFrameCard } from '@web/spaces/web-animation/MotionFrameCard';
 import { MotionThreadCard } from '@web/spaces/web-animation/MotionThreadCard';
 import { useMotionAnnotations, useThreads } from '@web/spaces/web-animation/use-motion-annotations';
 import { useMotionClock } from '@web/spaces/web-animation/use-motion-clock';
-import { rowsOf, useMotionLists } from '@web/spaces/web-animation/use-motion-lists';
+import { useMotionLists } from '@web/spaces/web-animation/use-motion-lists';
 import { WebAnimationDialog } from '@web/spaces/web-animation/WebAnimationDialog';
 import { SELECTION_NONE, shown, transitionWebAnimationSelection, type SelectionEvent, type SelectionState } from '@web/spaces/web-animation/web-animation-selection';
 import { useCurrentUserStore } from '@web/stores';
@@ -365,14 +365,11 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   // an open request that names no result, and after a named result could not be read.
   React.useEffect(() => {
     if (lists.succeeded.own.data === undefined || selection.status !== 'none') return;
-    const newest = rowsOf(lists.succeeded.own)[0] ?? rowsOf(lists.succeeded.legacy)[0];
+    const newest = lists.succeeded.rows[0];
     if (newest !== undefined) pick(newest);
-  }, [selection.status, lists.succeeded.own, lists.succeeded.legacy, pick]);
+  }, [selection.status, lists.succeeded.own, lists.succeeded.rows, pick]);
   // With nothing to show, the preview tells the Completed list's state (design §7.3).
   const succeededShows = listShows(lists.succeeded.own, lists.succeeded.legacy);
-  const { refetch: refetchSucceededOwn } = lists.succeeded.own;
-  const { refetch: refetchSucceededLegacy } = lists.succeeded.legacy;
-  const retrySucceeded = React.useCallback((): void => { void refetchSucceededOwn(); void refetchSucceededLegacy(); }, [refetchSucceededOwn, refetchSucceededLegacy]);
   // The selection keeps the freshest copy of its row; running this again with the copy it holds (the Space shown again, a
   // new `select`) asks for nothing.
   React.useEffect(() => {
@@ -628,7 +625,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const sendAnnotation = React.useCallback((): void => annotate({ type: 'send' }), [annotate]);
   const cancelAnnotation = React.useCallback((): void => annotate({ type: 'cancel', confirmed: false }), [annotate]);
   const pickRow = React.useCallback((picked: WebAnimationRowView): void => showResult(() => pick(picked)), [showResult, pick]);
-  const order = React.useMemo(() => [...rowsOf(lists.succeeded.own), ...rowsOf(lists.succeeded.legacy)].map((item) => item.id), [lists.succeeded.own, lists.succeeded.legacy]);
+  const order = React.useMemo(() => lists.succeeded.rows.map((item) => item.id), [lists.succeeded.rows]);
   const activeDraft = activeThread === null ? '' : annotations.drafts.get(activeThread.thread.id) ?? '';
 
   const toggleExecutions = React.useCallback((): void => dispatchPanels({ type: 'toggle_executions' }), []);
@@ -658,7 +655,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         ? selection.status === 'fetching' || succeededShows === 'pending'
           ? <LoaderCircle data-testid='motion-loading' className='size-5 animate-spin text-muted-foreground' />
           : succeededShows === 'failed'
-            ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retrySucceeded} />
+            ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={lists.succeeded.retry} />
             : <div data-testid='motion-empty' className='flex flex-col items-center gap-3 text-sm text-muted-foreground'>
               <span>{t('spaces.webAnimation.empty')}</span>
               {!readOnly && <Button data-testid='motion-empty-new' size='sm' className='gap-1.5' onClick={openNew} loading={limitsWaiting} icon={NEW_ICON}>{t('spaces.webAnimation.new')}</Button>}
