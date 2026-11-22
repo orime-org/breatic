@@ -172,6 +172,21 @@ function hex(bytes: ArrayBuffer): string {
 }
 
 /**
+ * The edit file's cap check (§4.2 size cap row) on measured bytes, against the job's frozen encoding and display grid.
+ * @param job - The job.
+ * @param measuredBytes - The bytes measured.
+ * @returns `edit_over_cap` over the cap; null within it or when the job has no plan or encoding.
+ * @throws {never} Never.
+ */
+function editBytesFailure(job: JobRecord, measuredBytes: number): 'edit_over_cap' | null {
+  const { prepared } = job;
+  const edit = job.admission.encoding?.edit;
+  if (prepared === undefined || edit === undefined) return null;
+  return editFileSizeFailure({ frameCount: prepared.display.frameCount, width: prepared.display.width, height: prepared.display.height,
+    bytesPerPixel: edit.bytesPerPixel, maxEditBytes: edit.maxEditBytes, measuredBytes });
+}
+
+/**
  * The unit key of a chunk report: its container job id without the attempt.
  * @param jobId - The main job.
  * @param unit - The unit.
@@ -459,6 +474,10 @@ export class VideoPresentationStore {
         await this.save(state);
         return verified;
       }
+      if (stage === 'edit_stitch' && await this.editChunksOverCap(state, found.job)) {
+        await this.save(state);
+        return false;
+      }
       const step = await this.candidateEvent(state, found.job, { kind: 'Sg', jobId: identity.jobId, stage });
       if (!step.rejected) await this.save(state);
       return !step.rejected;
@@ -714,14 +733,35 @@ export class VideoPresentationStore {
    */
   private async takeEditFile(state: PresentationState, job: JobRecord, edit: VideoPresentationEditReceipt): Promise<void> {
     const { admission, prepared } = job;
-    const encoding = admission.encoding;
-    if (prepared === undefined || encoding === undefined) return;
-    const over = editFileSizeFailure({ frameCount: prepared.display.frameCount, width: prepared.display.width, height: prepared.display.height,
-      bytesPerPixel: encoding.edit.bytesPerPixel, maxEditBytes: encoding.edit.maxEditBytes, measuredBytes: edit.size });
+    if (prepared === undefined || admission.encoding === undefined) return;
+    const over = editBytesFailure(job, edit.size);
     if (over !== null) { await this.candidateEvent(state, job, { kind: 'Er', jobId: admission.jobId, code: over }); return; }
     const toolInputId = await videoPresentationToolInputId({ sourceFingerprint: admission.sourceFingerprint, planSha256: prepared.planSha256, editFileSha256: edit.sha256 });
     const step = await this.candidateEvent(state, job, { kind: 'Ev', jobId: admission.jobId, fact: { kind: 'tool-input', toolInputId } });
     if (!step.rejected) job.editFile = edit;
+  }
+
+  /**
+   * Fail the candidate `edit_over_cap` before its edit stitch is dispatched when the done edit chunks, which the stitch
+   * downloads to its disk and joins by stream copy, are already over `presentation.max_edit_bytes` (§4.2 size cap row): the
+   * stitch could only run out of disk. Each chunk is measured in R2 at its done attempt's key; a missing one fails the stitch.
+   * @param state - The state.
+   * @param job - The current job.
+   * @returns Whether the candidate failed.
+   * @throws {Error} When R2 or publication fails.
+   */
+  private async editChunksOverCap(state: PresentationState, job: JobRecord): Promise<boolean> {
+    const { admission, prepared } = job;
+    if (job.candidate.stage !== 'edit' || !this.stageDone(job) || prepared === undefined) return false;
+    let bytes = 0;
+    for (const unit of stageUnits('edit', prepared.work)) {
+      const done = job.chunks[unitKey(admission.jobId, unit)]?.attempts.find((attempt) => attempt.state === 'done');
+      if (done !== undefined) bytes += (await this.bucket.head(videoPresentationWorkKeyFor(admission.storageKey, done.jobId)))?.size ?? 0;
+    }
+    const over = editBytesFailure(job, bytes);
+    if (over === null) return false;
+    await this.candidateEvent(state, job, { kind: 'Er', jobId: admission.jobId, code: over });
+    return true;
   }
 
   /**

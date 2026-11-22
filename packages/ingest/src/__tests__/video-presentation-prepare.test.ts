@@ -623,6 +623,32 @@ describe('the edit file (inner#1306 §4.2, §3.2 item 3, §3.5 edit-file receipt
       expect((await store.read(key, H)).candidate).toMatchObject({ state: 'failed', failure: 'edit_over_cap' });
     });
   });
+
+  it.each([[100_001, false], [100_000, true]] as const)('ED04 edit chunks of %i bytes in all against a 100000-byte cap: the edit stitch is dispatched only within the cap (§4.2 size cap row)', async (total, within) => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      // The plan-time estimate (4000 × 3840 × 2160 × bytesPerPixel ≈ 66 kB) is within the cap; the encoded chunks may not be.
+      const now = Date.now();
+      const deadlineAt = now + 200_000;
+      const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned({ edit: true, width: 3840, height: 2160, frames: 4000 })), deadlineAt, now,
+        { encoding: { ...ENCODING, edit: { ...ENCODING.edit, bytesPerPixel: 0.000002, maxEditBytes: 100_000 } } });
+      expect(answer.preparation).toMatchObject({ failure: null });
+      const capability = capabilityOf(key, answer, 'job-a', deadlineAt);
+      await counted(store, capability, { lastVideoTime: { numerator: 3999, denominator: 25 }, sourceFrames: 4000 });
+      expect(await store.advanceStage(capability, 'edit')).toBe(true);
+      const chunks = (answer.work as Extract<Work, { kind: 'edit' }>).editChunks;
+      expect(chunks.length, 'the edit stage has more than one chunk').toBeGreaterThan(1);
+      // The chunks the stitch would download are stored at their done attempts' keys; together they are `total` bytes.
+      for (const [chunk] of chunks.entries()) {
+        const size = Math.floor(total / chunks.length) + (chunk === 0 ? total % chunks.length : 0);
+        await writeOutput(workKey(key, videoContainerJobId({ kind: 'presentation-edit', jobId: capability.jobId, chunk, attempt: 1 })), new Uint8Array(size));
+        await finish(store, capability, { kind: 'presentation-edit', chunk });
+      }
+      // The worker dispatches a stage's units only after the DO moved the candidate to it.
+      expect(await store.advanceStage(capability, 'edit_stitch'), 'the candidate moves to the edit stitch only within the cap').toBe(within);
+      expect((await store.read(key, H)).candidate).toMatchObject(within ? { state: 'building', stage: 'edit_stitch' } : { state: 'failed', stage: 'edit', failure: 'edit_over_cap' });
+    });
+  });
 });
 
 describe('the carrier reuse route from the selected bundle\'s identity (inner#1306 §7.1 复用载体, §3.5 P descriptor)', () => {
