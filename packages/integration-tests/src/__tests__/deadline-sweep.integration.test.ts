@@ -16,6 +16,7 @@
  */
 
 import { randomUUID } from "node:crypto";
+import fc from "fast-check";
 import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
 
 vi.mock("ai", () => ({
@@ -41,6 +42,7 @@ import {
 } from "@breatic/core";
 import { readDeadlineWatermark, sweepDeadlines, writeDeadlineWatermark } from "@worker/handlers/deadline-sweep.js";
 import { threeDSpaceDocName } from "@breatic/shared";
+import { confirmProjectTransfer, declineProjectTransfer, withdrawProjectTransfer } from "@server/modules/project/projectTransfer.service.js";
 import { listenSpaceTaskSignals, spaceTasksVersion } from "@server/__tests__/integration/helpers/space-task-signals.js";
 
 let sql: ReturnType<typeof createPgClient>;
@@ -338,6 +340,86 @@ describe("the watermark", () => {
     const now = new Date(Date.now() + 365 * 24 * 60 * MINUTE);
     await round(new Date(now.getTime() - MINUTE), now);
     expect((await readDeadlineWatermark())?.getTime()).toBe(now.getTime());
+    await writeDeadlineWatermark(new Date());
+  });
+});
+
+// #1580 PT-2 (invariant I7): for any due times and any round times, every item
+// due after the first window opens is announced in some round, and never in a
+// round whose now is before its deadline.
+describe("PT-2 the sweep window under random rounds", () => {
+  it("announces every item due inside the swept span, none early", async () => {
+    const interval = getWorkerConfig().deadline_sweep.interval_ms;
+    let run = 0;
+    await fc.assert(
+      fc.asyncProperty(
+        fc.array(fc.integer({ min: 1, max: 60 }), { minLength: 1, maxLength: 4 }),
+        fc.array(fc.integer({ min: 10, max: 600 }), { minLength: 1, maxLength: 4 }),
+        async (dueTenths, gapTenths) => {
+          run += 1;
+          const w0 = new Date(Date.now() + (400 + run) * 24 * 60 * MINUTE);
+          const items = await Promise.all(dueTenths.map(async (d) => {
+            const u = await user();
+            const due = new Date(w0.getTime() + (d * interval) / 10);
+            await notice(u, due);
+            return { u, due, seenAt: [] as Date[] };
+          }));
+          let now = w0;
+          let first = true;
+          for (const g of gapTenths) {
+            now = new Date(now.getTime() + (g * interval) / 10);
+            const got = await round(first ? w0 : null, now);
+            first = false;
+            for (const item of items) if (bellFor(got, item.u)) item.seenAt.push(now);
+          }
+          for (const item of items) {
+            if (item.due.getTime() <= now.getTime()) expect(item.seenAt.length).toBeGreaterThanOrEqual(1);
+            for (const at of item.seenAt) expect(at.getTime()).toBeGreaterThanOrEqual(item.due.getTime());
+          }
+        },
+      ),
+      { numRuns: 100 },
+    );
+    await writeDeadlineWatermark(new Date());
+  });
+});
+
+// #1580 PT-7 (invariant I6): a sweep that finds a transfer due races a decision
+// on it; the row leaves pending once, and a transfer no longer pending never
+// points at a bell entry still unread.
+describe("PT-7 a transfer coming due while it is decided", () => {
+  it("ends once, and retires its bell entry whichever side wins", async () => {
+    await fc.assert(
+      fc.asyncProperty(fc.constantFrom("confirm", "decline", "withdraw"), fc.boolean(), async (action, sweepFirst) => {
+        const owner = await user();
+        const to = await user();
+        const { projectId } = await studioWithProject(owner);
+        await sql`insert into project_members (project_id, user_id, role, added_by) values (${projectId}, ${to}, 'editor', ${owner})`;
+        const due = new Date(Date.now() + MINUTE);
+        const [note] = await sql<{ id: string }[]>`
+          insert into notifications (user_id, type, payload, expires_at) values (${to}, 'project.transfer_request', '{}'::jsonb, ${due}) returning id
+        `;
+        const [row] = await sql<{ id: string }[]>`
+          insert into project_transfers (project_id, from_user_id, to_user_id, status, expires_at, share_token, notification_id)
+          values (${projectId}, ${owner}, ${to}, 'pending', ${due}, ${randomUUID()}, ${note!.id}) returning id
+        `;
+        const decide = (): Promise<unknown> =>
+          action === "confirm" ? confirmProjectTransfer(row!.id, to)
+            : action === "decline" ? declineProjectTransfer(row!.id, to)
+              : withdrawProjectTransfer(row!.id, projectId, owner);
+        await writeDeadlineWatermark(new Date(Date.now() - MINUTE));
+        const sweep = (): Promise<unknown> => sweepDeadlines({ now: new Date(Date.now() + 10 * MINUTE) });
+        const [a, b] = await Promise.allSettled(sweepFirst ? [sweep(), decide()] : [decide(), sweep()]);
+        const decided = (sweepFirst ? b : a).status === "fulfilled";
+        expect((sweepFirst ? a : b).status).toBe("fulfilled");
+        const [after] = await sql<{ status: string; failed_reason: string | null }[]>`select status, failed_reason from project_transfers where id = ${row!.id}`;
+        expect(after!.status).not.toBe("pending");
+        expect(after!.status === "failed" && after!.failed_reason === "expired").toBe(!decided);
+        const [bell] = await sql<{ read_at: Date | null; deleted_at: Date | null }[]>`select read_at, deleted_at from notifications where id = ${note!.id}`;
+        expect(bell!.read_at !== null || bell!.deleted_at !== null).toBe(true);
+      }),
+      { numRuns: 100 },
+    );
     await writeDeadlineWatermark(new Date());
   });
 });
