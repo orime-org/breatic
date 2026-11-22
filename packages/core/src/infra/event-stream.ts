@@ -20,7 +20,7 @@
  */
 
 import type Redis from "ioredis";
-import type { DocumentUploadEvent, NodeEvent } from "@breatic/shared";
+import type { DocumentUploadEvent, FocusImageUploadEvent, NodeEvent } from "@breatic/shared";
 import { env } from "@core/config/env.js";
 
 /** Approximate length cap of every stream we write, dead-letter streams included. */
@@ -82,6 +82,24 @@ export async function publishToStream(
 export async function publishDocumentUploadEvent(
   redis: Redis,
   event: DocumentUploadEvent,
+): Promise<void> {
+  await publishToStream(
+    redis,
+    taskEventsStreamKey(),
+    event as unknown as Record<string, unknown>,
+  );
+}
+
+/**
+ * Publish a registered focus crop for collab to add to its node's pool (#1580).
+ * @param redis - Redis client for the stream DB.
+ * @param event - The crop's event.
+ * @returns Nothing.
+ * @throws {Error} When the stream rejects the entry.
+ */
+export async function publishFocusImageUploadEvent(
+  redis: Redis,
+  event: FocusImageUploadEvent,
 ): Promise<void> {
   await publishToStream(
     redis,

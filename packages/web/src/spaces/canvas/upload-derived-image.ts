@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { uploadMedia } from '@web/data/upload/media-upload';
+import type { FocusCropImage } from '@web/spaces/canvas/focus/run-focus-crop';
 
 /**
  * Upload an image made in the browser from canvas content: a focus crop, a
@@ -20,4 +21,29 @@ import { uploadMedia } from '@web/data/upload/media-upload';
 export async function uploadDerivedImage(file: File, where: { projectId: string; spaceId: string }): Promise<string> {
   const { fileUrl } = await uploadMedia(file, { projectId: where.projectId, spaceId: where.spaceId, derived: true });
   return fileUrl;
+}
+
+/**
+ * Upload a focus crop as the image it becomes in a node's pool (#1580). Collab adds the image once the bytes are
+ * registered, so nothing is read from the answer; this ends when the upload has.
+ * @param file - The crop.
+ * @param where - The project, the canvas Space and the node whose pool takes it.
+ * @param where.projectId - The project.
+ * @param where.spaceId - The canvas Space.
+ * @param where.nodeId - The node.
+ * @param image - The image the crop becomes: its id, name and size.
+ * @returns Nothing, once the upload ended well.
+ * @throws {UploadFailedError} When the upload does not complete.
+ */
+export async function uploadFocusCrop(
+  file: File,
+  where: { projectId: string; spaceId: string; nodeId: string },
+  image: FocusCropImage,
+): Promise<void> {
+  await uploadMedia(file, {
+    projectId: where.projectId,
+    spaceId: where.spaceId,
+    derived: true,
+    focusImage: { nodeId: where.nodeId, ...image },
+  });
 }

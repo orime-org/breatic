@@ -1058,6 +1058,32 @@ describe("focus crop events", () => {
     expect(await pending(c)).toBe(0);
   });
 
+  it("D-19 adds a replayed crop once", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const img = image();
+    const ids = await publishFocus(c, [{ nodeId, image: img }, { nodeId, image: img }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect((await poolOf(c, nodeId))?.items).toEqual([img]);
+  });
+
+  it("D-22 leaves a node whose data is not a map alone", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+    try {
+      await conn.transact((doc) => (doc.getMap(CANVAS_NODES_KEY).get(nodeId) as Y.Map<unknown>).set("data", "not a map"));
+    } finally {
+      await conn.disconnect();
+    }
+    const ids = await publishFocus(c, [{ nodeId, image: image() }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await poolOf(c, nodeId)).toBeUndefined();
+    expect(await pending(c)).toBe(0);
+  });
+
   it("D-23 adds nothing for an id already in the pool", async () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });

@@ -169,9 +169,10 @@ export interface AttachRef {
  * the node it was cropped from — deleting, renaming, or regenerating the
  * source never changes an existing focus image. `name` is a snapshot of
  * the source node's display name at crop time and never follows renames.
- * Frontend-owned; the backend never reads or writes this field — focus
- * images only reach a generate request when the user `@`-mentions them
- * (same explicit-selection rule as node references).
+ * Collab adds an entry once the crop's upload is registered (#1580,
+ * `appendFocusImageCore`); the page only removes entries, and no other backend
+ * code reads the field — focus images only reach a generate request when the
+ * user `@`-mentions them (same explicit-selection rule as node references).
  */
 export interface FocusImage {
   /** Stable id (frontend-generated UUID v4); `@` mentions reference it. */
@@ -577,9 +578,8 @@ export interface CanvasNodeFields {
      * empty at node birth (lazy creation is itself a whole-container LWW
      * race); a plain-array value (a pre-encoding doc / forged wire) is
      * converted on its first write. This WIRE type is unchanged either way:
-     * `toJSON()` serializes both encodings to the same plain array, and the
-     * backend never reads or writes the field. See {@link FocusImage} for
-     * the copy semantics. Empty / absent = none created.
+     * `toJSON()` serializes both encodings to the same plain array. Who writes
+     * it, and the copy semantics: {@link FocusImage}. Empty / absent = none created.
      */
     focusImages?: FocusImage[];
 

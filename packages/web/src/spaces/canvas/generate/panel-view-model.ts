@@ -15,7 +15,7 @@ import {
   deriveReferences,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared';
 import {
   IMAGE_MODE_OPTIONS,
   resolveMode,

@@ -25,9 +25,9 @@ import type { CanvasNodeFields, FocusImage } from '@breatic/shared';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   addNode,
-  addNodeFocusImage,
   removeNodeFocusImage,
 } from '@web/data/yjs/canvas-space';
+import { landFocusImage } from '@web/data/yjs/__tests__/helpers/focus-pool';
 
 const PID = 'p1';
 const SID = 's1';
@@ -134,18 +134,18 @@ describe('focusImages cross-client concurrency (design adversary 2026-07-17)', (
     // each create their OWN container and map-level LWW would vanish one
     // WITH its crop.
     const merged = concurrently(
-      () => expect(addNodeFocusImage(PID, SID, 'gen', crop('a'))).toBe('added'),
-      () => expect(addNodeFocusImage(PID, SID, 'gen', crop('b'))).toBe('added'),
+      () => expect(landFocusImage(PID, SID, 'gen', crop('a'))).toBe('added'),
+      () => expect(landFocusImage(PID, SID, 'gen', crop('b'))).toBe('added'),
     ) as unknown[];
     expect(merged).toHaveLength(2);
     expect(merged).toEqual(expect.arrayContaining([crop('a'), crop('b')]));
   });
 
   it('concurrent appends on an already-cropped node keep both new crops', () => {
-    addNodeFocusImage(PID, SID, 'gen', crop('base'));
+    landFocusImage(PID, SID, 'gen', crop('base'));
     const merged = concurrently(
-      () => addNodeFocusImage(PID, SID, 'gen', crop('a')),
-      () => addNodeFocusImage(PID, SID, 'gen', crop('b')),
+      () => landFocusImage(PID, SID, 'gen', crop('a')),
+      () => landFocusImage(PID, SID, 'gen', crop('b')),
     ) as unknown[];
     expect(merged).toHaveLength(3);
     expect(merged[0]).toEqual(crop('base'));
@@ -155,19 +155,19 @@ describe('focusImages cross-client concurrency (design adversary 2026-07-17)', (
   });
 
   it('a removal and an append merge with BOTH effects intact', () => {
-    addNodeFocusImage(PID, SID, 'gen', crop('a'));
-    addNodeFocusImage(PID, SID, 'gen', crop('b'));
+    landFocusImage(PID, SID, 'gen', crop('a'));
+    landFocusImage(PID, SID, 'gen', crop('b'));
     const merged = concurrently(
       () => expect(removeNodeFocusImage(PID, SID, 'gen', 'a')).toBe(true),
-      () => addNodeFocusImage(PID, SID, 'gen', crop('c')),
+      () => landFocusImage(PID, SID, 'gen', crop('c')),
     ) as unknown[];
     expect(merged).toEqual([crop('b'), crop('c')]);
   });
 
   it('concurrent removals of DIFFERENT crops both land', () => {
-    addNodeFocusImage(PID, SID, 'gen', crop('a'));
-    addNodeFocusImage(PID, SID, 'gen', crop('b'));
-    addNodeFocusImage(PID, SID, 'gen', crop('keep'));
+    landFocusImage(PID, SID, 'gen', crop('a'));
+    landFocusImage(PID, SID, 'gen', crop('b'));
+    landFocusImage(PID, SID, 'gen', crop('keep'));
     const merged = concurrently(
       () => expect(removeNodeFocusImage(PID, SID, 'gen', 'a')).toBe(true),
       () => expect(removeNodeFocusImage(PID, SID, 'gen', 'b')).toBe(true),

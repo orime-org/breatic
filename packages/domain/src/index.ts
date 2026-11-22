@@ -107,6 +107,7 @@ export type {
 } from "@domain/asset/backend-upload.service.js";
 export type {
   UploadGrant,
+  GrantFocusImage,
   FinalizeClaim,
   FinalizeRefusal,
 } from "@domain/asset/upload-grant.repo.js";
@@ -251,6 +252,7 @@ export {
 export * as ingestReportService from "@domain/asset/ingest-report.service.js";
 export { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
 export { announceDocumentUploadAsset, announceDocumentUploadProcessing, documentTargetOf } from "@domain/asset/document-upload-events.js";
+export { announceFocusImage } from "@domain/asset/focus-image-events.js";
 export type {
   IngestReport,
   IngestReportOutcome,

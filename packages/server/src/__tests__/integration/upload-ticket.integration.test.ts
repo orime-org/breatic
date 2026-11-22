@@ -1532,6 +1532,23 @@ describe("POST /assets/upload-ticket — a focus crop (#1580)", () => {
     });
   });
 
+  it("D-17 fails the request when the crop cannot be handed to collab, rather than answer a hit", async () => {
+    const seed = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    await sql`
+      INSERT INTO studio_assets (studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind, source, produced_by_user_id, width, height)
+      VALUES (${seed.studioId}, ${hash}, ${`image/${hash}.png`}, ${`https://cdn.test.invalid/${hash}.png`}, 4096, 'image/png', 'image', 'upload', ${seed.userId}, 640, 480)
+    `;
+    const spy = vi.spyOn(getStreamRedis(), "xadd").mockRejectedValueOnce(new Error("stream down"));
+    try {
+      const res = await requestTicket(seed.cookie, { ...cropBody(crypto.randomUUID(), {}, { client_hash: hash }), project_id: seed.projectId });
+      expect(res.status).toBeGreaterThanOrEqual(500);
+      expect(JSON.stringify(await res.json())).not.toContain("alreadyExists");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   it("D-18 hands nothing to collab for a dedup hit that is not a focus crop", async () => {
     const seed = await seedEditor();
     const hash = crypto.randomBytes(32).toString("hex");

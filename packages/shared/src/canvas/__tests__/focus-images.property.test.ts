@@ -8,7 +8,7 @@
  * `@breatic/shared/space-content`.
  */
 
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import fc from "fast-check";
 import { describe, expect, it } from "vitest";
@@ -63,7 +63,8 @@ function source(file: string): string {
 describe("the focus image rule has one home", () => {
   it("D-11 the ticket, the page's pool read and collab's append take it from shared", () => {
     expect(source("server/src/routes/assets.ts")).toMatch(/focusImageTicketSchema[\s\S]*from "@breatic\/shared"|from "@breatic\/shared"[\s\S]*focusImageTicketSchema/);
-    expect(source("web/src/data/focus-images.ts")).not.toMatch(/function validFocusImages/);
+    // The page's own copy of the pool read is gone; every web reader imports the shared one.
+    expect(existsSync(path.join(PACKAGES, "web/src/data/focus-images.ts"))).toBe(false);
     expect(source("shared/src/space-content.ts")).toMatch(/appendFocusImageCore/);
   });
 

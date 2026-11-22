@@ -16,7 +16,7 @@
 import { referenceKinds, referencePool, VIDEO_GENERATION_MODES, type ReferencePool } from '@breatic/shared';
 import type { FocusImage, ModelEntry } from '@breatic/shared';
 
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared';
 import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,

@@ -36,6 +36,7 @@ import {
   SceneObjectValuesSchema,
   REQUEST_SHAPE_PARAMS,
   INGEST_NOT_STARTED,
+  focusImageTicketSchema,
   t,
 } from "@breatic/shared";
 import {
@@ -179,6 +180,8 @@ const uploadTicketFields = z.object({
     .refine((id) => miniToolById(id)?.run.kind === "browser")
     .optional(),
   derived: z.boolean().optional(),
+  /** The focus image a crop becomes, in the pool of the node it names on `space_id` (#1580); collab adds it once registered. */
+  focusImage: focusImageTicketSchema.optional(),
 });
 
 /**
@@ -204,6 +207,7 @@ const uploadTicketSchema = z
       space_id: z.never().optional(),
       upload_id: z.never().optional(),
       label: z.never().optional(),
+      focusImage: z.never().optional(),
     }),
   ])
   // The purpose selects the format gate and whether node metadata is meaningful.
@@ -215,6 +219,10 @@ const uploadTicketSchema = z
         path: ["tool_name"],
         message: "a mini-tool upload names its tool, and only a mini-tool upload does",
       });
+    }
+    // A focus crop lands in a node's pool on its canvas Space, and on nothing else.
+    if (body.focusImage !== undefined && (body.space_id === undefined || body.node_id !== undefined || body.upload_id !== undefined || body.purpose !== undefined || body.source !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["focusImage"], message: "a focus crop names its Space and lands in the pool of the node it names, on nothing else", params: REQUEST_SHAPE_PARAMS });
     }
     // A Document block is the one place a body upload lands: its Space, and no node or purpose.
     if (body.upload_id !== undefined && (body.space_id === undefined || body.node_id !== undefined || body.purpose !== undefined || body.source !== undefined)) {

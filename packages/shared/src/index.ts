@@ -989,6 +989,19 @@ export {
   type TemplateStyleSetId,
 } from "@shared/canvas/template-styles.js";
 export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
+export {
+  FOCUS_IMAGE_UPLOAD_EVENT_TYPE,
+  MAX_FOCUS_DIMENSION,
+  MAX_FOCUS_ENTRIES,
+  MAX_FOCUS_ID,
+  MAX_FOCUS_NAME,
+  MAX_FOCUS_URL,
+  focusImageTicketSchema,
+  isValidFocusImage,
+  validFocusImages,
+  type FocusImageTicket,
+  type FocusImageUploadEvent,
+} from "@shared/canvas/focus-images.js";
 export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
 export {
   STAND_IN_ON,

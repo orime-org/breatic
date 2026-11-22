@@ -72,6 +72,7 @@ export const assetsApi = {
    * @param params.toolName - The mini-tool's name when `source` says so.
    * @param params.derived - True for a byproduct, which is registered without
    *   an activity-feed row of its own.
+   * @param params.focusImage - For a focus crop, the image it becomes and the node whose pool takes it.
    * @param params.purpose - Upload use context; models retain the ordinary upload source.
    * @param params.label - The name a 3D model is imported under.
    * @param signal - Cancellation belonging to this authorization request.
@@ -93,6 +94,7 @@ export const assetsApi = {
       ...(params.source !== undefined && { source: params.source }),
       ...(params.toolName !== undefined && { tool_name: params.toolName }),
       ...(params.derived !== undefined && { derived: params.derived }),
+      ...(params.focusImage !== undefined && { focusImage: params.focusImage }),
       ...(params.purpose !== undefined && { purpose: params.purpose }),
       ...(params.label !== undefined && { label: params.label }),
     }, { ...NO_CLIENT_TIMEOUT, ...(signal !== undefined && { signal }) });

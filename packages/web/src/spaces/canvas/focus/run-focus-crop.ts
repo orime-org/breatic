@@ -2,18 +2,17 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Focus-crop orchestration (#1782): a confirmed marquee becomes a
- * standalone uploaded asset appended to the panel node's `focusImages`.
+ * Focus-crop orchestration (#1782, #1580): a confirmed marquee becomes a
+ * standalone uploaded asset in the panel node's `focusImages`.
  *
  * Pipeline: export the crop (offscreen canvas, natural pixels) → wrap the
  * blob as a PNG File named from the source-node snapshot → run it through
  * the standard media-upload pipeline (hash → ticket dedup → parts to the
- * ingest Worker) → append the {@link FocusImage} copy to Yjs. Nothing is
- * written on any failure path — the pending rail entry is the caller's
- * local state and simply disappears.
+ * ingest Worker), the ticket naming the image the crop becomes. Once the
+ * bytes are registered, collab adds that image to the node's pool; the page
+ * writes nothing. The pending rail entry, under the same id, is the caller's
+ * local state: it goes when the image lands, or through `onFailure`.
  */
-
-import type { FocusImage } from '@breatic/shared';
 
 import {
   isUploadFailureReason,
@@ -28,12 +27,11 @@ export interface FocusCropDeps {
   /** Export the natural-pixel crop of the source as a PNG blob. */
   exportCrop: (source: CropSource, crop: CropRect) => Promise<Blob>;
   /**
-   * Upload the file and resolve the public URL (throws on failure) —
-   * production binds the standard `runMediaUpload` pipeline.
+   * Upload the file as the named focus image, resolving once the upload ended
+   * well (throws on failure) — production binds the standard media upload
+   * with the panel node's Space and node.
    */
-  uploadFile: (file: File, projectId: string) => Promise<string>;
-  /** Append the finished copy to the panel node's focusImages (Yjs). */
-  addFocusImage: (image: FocusImage) => void;
+  uploadFile: (file: File, projectId: string, focusImage: FocusCropImage) => Promise<unknown>;
   /**
    * Failure sink, discriminated by stage (for the toast wording). Two of these
    * are not retryable and must not share the retryable wording: `hash` means
@@ -43,12 +41,20 @@ export interface FocusCropDeps {
    * verdict out rather than folding everything but `hash` into `upload`.
    */
   onFailure: (stage: 'export' | UploadFailureReason) => void;
-  /** Id factory (uuid v4 in production; fixed in tests). */
-  makeId: () => string;
+}
+
+/** The image a crop becomes, as its upload names it; its address comes from the registered asset. */
+export interface FocusCropImage {
+  id: string;
+  name: string;
+  width: number;
+  height: number;
 }
 
 /** What one confirmed marquee carries into the pipeline. */
 export interface FocusCropParams {
+  /** The crop's id: its pending entry's, and the image's once it lands. */
+  id: string;
   /** The source node's asset URL (the content being cropped). */
   sourceUrl: string;
   /** The source node's display name, snapshotted at crop time. */
@@ -83,11 +89,11 @@ export function focusCropFilename(sourceName: string): string {
 }
 
 /**
- * Run one confirmed focus crop end to end. Never throws — both failure
- * stages route through `deps.onFailure` so the caller clears its pending
- * entry and toasts; nothing reaches Yjs unless the upload succeeded.
- * @param params - The confirmed crop (source URL / name, natural rect, project).
- * @param deps - Injected export / upload / write / failure sinks.
+ * Run one confirmed focus crop up to the end of its upload. Never throws —
+ * both failure stages route through `deps.onFailure` so the caller clears its
+ * pending entry and toasts.
+ * @param params - The confirmed crop (id, source URL / name, natural rect, project).
+ * @param deps - Injected export / upload / failure sinks.
  */
 export async function runFocusCrop(
   params: FocusCropParams,
@@ -107,10 +113,8 @@ export async function runFocusCrop(
     const file = new File([blob], focusCropFilename(params.sourceName), {
       type: 'image/png',
     });
-    const url = await deps.uploadFile(file, params.projectId);
-    deps.addFocusImage({
-      id: deps.makeId(),
-      url,
+    await deps.uploadFile(file, params.projectId, {
+      id: params.id,
       name: params.sourceName,
       width: params.crop.width,
       height: params.crop.height,

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Focus-crop orchestration tests (#1782): export → wrap as File →
- * upload pipeline → focusImages write, with both failure exits.
+ * Focus-crop orchestration tests (#1782, #1580): export → wrap as File →
+ * upload naming the image it becomes, with both failure exits.
  */
 
 import { describe, it, expect, vi } from 'vitest';
@@ -23,23 +23,21 @@ const CROP = { x: 10, y: 20, width: 640, height: 360 };
  * @returns The deps plus the spies for assertions.
  */
 function makeDeps(): FocusCropDeps & {
-  addFocusImage: ReturnType<typeof vi.fn>;
   onFailure: ReturnType<typeof vi.fn>;
   } {
   return {
     exportCrop: vi.fn().mockResolvedValue(new Blob(['x'], { type: 'image/png' })),
-    uploadFile: vi.fn().mockResolvedValue('https://cdn/crop-final.png'),
-    addFocusImage: vi.fn(),
+    uploadFile: vi.fn().mockResolvedValue(undefined),
     onFailure: vi.fn(),
-    makeId: () => 'focus-uuid-1',
   };
 }
 
 describe('runFocusCrop', () => {
-  it('happy path: exports, uploads, then appends the FocusImage copy', async () => {
+  it('happy path: exports, then uploads naming the image the crop becomes', async () => {
     const deps = makeDeps();
     await runFocusCrop(
       {
+        id: 'crop-1',
         sourceUrl: 'https://cdn/source.png',
         sourceName: 'Image Node 26',
         sourceTimeSeconds: null,
@@ -60,21 +58,16 @@ describe('runFocusCrop', () => {
     expect(file.name).toBe(focusCropFilename('Image Node 26'));
     expect(file.type).toBe('image/png');
     expect(uploadCall[1]).toBe('p1');
-    expect(deps.addFocusImage).toHaveBeenCalledWith({
-      id: 'focus-uuid-1',
-      url: 'https://cdn/crop-final.png',
-      name: 'Image Node 26',
-      width: 640,
-      height: 360,
-    });
+    expect(uploadCall[2]).toEqual({ id: 'crop-1', name: 'Image Node 26', width: 640, height: 360 });
     expect(deps.onFailure).not.toHaveBeenCalled();
   });
 
-  it('export failure: reports "export", never uploads or writes', async () => {
+  it('export failure: reports "export", never uploads', async () => {
     const deps = makeDeps();
     vi.mocked(deps.exportCrop).mockRejectedValue(new Error('taint'));
     await runFocusCrop(
       {
+        id: 'crop-1',
         sourceUrl: 'u',
         sourceName: 'n',
         sourceTimeSeconds: null,
@@ -85,7 +78,6 @@ describe('runFocusCrop', () => {
     );
     expect(deps.onFailure).toHaveBeenCalledWith('export');
     expect(deps.uploadFile).not.toHaveBeenCalled();
-    expect(deps.addFocusImage).not.toHaveBeenCalled();
   });
 
   // Every refusal the upload pipeline can tell apart has its own remedy, and
@@ -102,6 +94,7 @@ describe('runFocusCrop', () => {
 
       await runFocusCrop(
         {
+          id: 'crop-1',
           sourceUrl: 'https://cdn/source.png',
           sourceName: 'Image Node 26',
           sourceTimeSeconds: null,
@@ -115,11 +108,12 @@ describe('runFocusCrop', () => {
     },
   );
 
-  it('upload failure: reports "upload", writes nothing (no half data)', async () => {
+  it('upload failure: reports "upload"', async () => {
     const deps = makeDeps();
     vi.mocked(deps.uploadFile).mockRejectedValue(new Error('net'));
     await runFocusCrop(
       {
+        id: 'crop-1',
         sourceUrl: 'u',
         sourceName: 'n',
         sourceTimeSeconds: null,
@@ -129,7 +123,6 @@ describe('runFocusCrop', () => {
       deps,
     );
     expect(deps.onFailure).toHaveBeenCalledWith('upload');
-    expect(deps.addFocusImage).not.toHaveBeenCalled();
   });
 
   it('storage refusal: reports "storage", not the retryable wording', async () => {
@@ -140,6 +133,7 @@ describe('runFocusCrop', () => {
     vi.mocked(deps.uploadFile).mockRejectedValue(new Error('storage'));
     await runFocusCrop(
       {
+        id: 'crop-1',
         sourceUrl: 'u',
         sourceName: 'n',
         sourceTimeSeconds: null,
@@ -149,13 +143,13 @@ describe('runFocusCrop', () => {
       deps,
     );
     expect(deps.onFailure).toHaveBeenCalledWith('storage');
-    expect(deps.addFocusImage).not.toHaveBeenCalled();
   });
 
   it('视频源：时间点原样传给取源那一步，一位小数都不改（#1987 A9）', async () => {
     const deps = makeDeps();
     await runFocusCrop(
       {
+        id: 'crop-1',
         sourceUrl: 'https://cdn/clip.mp4',
         sourceName: 'Video Node 3',
         // A frame the user parked on by dragging — not a round number, on

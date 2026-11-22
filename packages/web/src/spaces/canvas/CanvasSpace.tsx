@@ -61,7 +61,7 @@ import {
   MAX_FOCUS_ENTRIES,
   MAX_FOCUS_NAME,
   validFocusImages,
-} from '@web/data/focus-images';
+} from '@breatic/shared';
 import {
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
@@ -101,7 +101,6 @@ import { exportExpand } from '@web/spaces/canvas/mini-tool/expand-export';
 import { focusFailureMessageKey, runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import {
   addEdge,
-  addNodeFocusImage,
   addNode,
   appendNodeSlotItem,
   expandGroup,
@@ -123,7 +122,6 @@ import {
   type CanvasEdge,
   type CanvasNodeView,
   type CanvasUndoStep,
-  readCanvasGraph,
   readTextBodies,
   readEdges,
   readNodePlacements,
@@ -156,7 +154,8 @@ import {
 } from '@web/spaces/canvas/mini-tool/drawing-history';
 import { BRUSH_SIZE } from '@web/stores/drawing-draft';
 import { steppedMarkSize } from '@web/stores/mark-draft';
-import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
+import { uploadDerivedImage, uploadFocusCrop } from '@web/spaces/canvas/upload-derived-image';
+import { watchPendingFocusUploads } from '@web/spaces/canvas/focus/pending-focus-uploads';
 import { failUploadIntoNode, startUploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useCanvasRevealReceiver } from '@web/spaces/canvas/use-canvas-reveal-receiver';
 import {
@@ -168,8 +167,6 @@ import {
   fillNodesFromFiles,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
-  assetUrlSurvives,
-  isReportableAssetUrl,
   TEXT_REFUSAL_MARK,
 } from '@web/spaces/canvas/canvas-upload';
 import { checkAdd, checkWrite, type SpaceRefusal } from '@web/data/yjs/space-write';
@@ -957,16 +954,19 @@ function CanvasSpaceInner({
       // The crop is uploaded before it is written, so the Space is asked
       // first: one that cannot take an add uploads nothing (inner#1790).
       if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return false;
-      const pendingId = newId();
+      // One id names the crop from here on: its pending entry, its ticket, and the image collab adds to the pool,
+      // whose arrival drops the entry (`watchPendingFocusUploads`).
+      const cropId = newId();
       store.addPendingFocusUpload({
-        id: pendingId,
+        id: cropId,
         nodeId: panelNodeId,
         name: sourceName,
       });
       trackOperation(
-        pendingId,
+        cropId,
         runFocusCrop(
           {
+            id: cropId,
             sourceUrl,
             sourceName,
             sourceTimeSeconds: result.sourceTimeSeconds,
@@ -975,70 +975,22 @@ function CanvasSpaceInner({
           },
           {
             exportCrop: exportCropBlob,
-            uploadFile: (file, pid) => uploadDerivedImage(file, { projectId: pid, spaceId }),
-            addFocusImage: (image) => {
-              sessionStore.getState().removePendingFocusUpload(pendingId);
-              // A refused append must be SAID — the upload already succeeded,
-              // and silence here loses the crop after real side effects
-              // (round-7). Each refusal gets its TRUTHFUL message (round-8:
-              // one boolean told "pool full (200)" when the panel node was
-              // deleted mid-upload), and the just-uploaded orphan asset is
-              // reported deleted (ledger parity with the ✕ path) unless the
-              // URL survives elsewhere.
-              const outcome = addNodeFocusImage(
-                projectId,
-                spaceId,
-                panelNodeId,
-                image,
-              );
-              if (outcome === 'added') return;
-              if (outcome === 'pool-full') {
-                toast.warning(
-                  t('canvas.generatePanel.referencePoolFull', {
-                    cap: MAX_FOCUS_ENTRIES,
-                  }),
-                );
-              } else if (outcome !== 'refused') {
-                // A size-cap refusal said so itself; its crop is still an
-                // orphan to report below.
-                toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
-              }
-              if (
-                isReportableAssetUrl(image.url) &&
-              !assetUrlSurvives(
-                image.url,
-                readCanvasGraph(projectId, spaceId).nodes,
-              )
-              ) {
-                void assetsApi
-                  .reportDeleted({
-                    projectId,
-                    entries: [
-                      {
-                        fileUrl: image.url,
-                        kind: 'image',
-                        nodeId: panelNodeId,
-                        spaceId,
-                      },
-                    ],
-                  })
-                  .catch(() => {
-                  // Silent: audit-feed miss at worst (reportDeletedAssets
-                  // parity).
-                  });
-              }
-            },
+            uploadFile: (file, pid, image) => uploadFocusCrop(file, { projectId: pid, spaceId, nodeId: panelNodeId }, image),
             onFailure: (stage) => {
-              sessionStore.getState().removePendingFocusUpload(pendingId);
+              sessionStore.getState().removePendingFocusUpload(cropId);
               toast.error(t(focusFailureMessageKey(stage)));
             },
-            makeId: newId,
           },
         ),
       );
       return true;
     },
     [graphStore, sessionStore, trackOperation, focusCropTargetId, projectId, spaceId, t],
+  );
+  // A pending crop goes when its image lands in the pool or its node leaves the document (#1580).
+  React.useEffect(
+    () => watchPendingFocusUploads(getDoc(docName.canvasSpace(projectId, spaceId)), sessionStore),
+    [projectId, spaceId, sessionStore],
   );
   // Warm the reference-pool cap knob (#1782) once per canvas mount. A
   // failure leaves the soft cap off (degrade-to-uncapped by design — no

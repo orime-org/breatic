@@ -53,6 +53,7 @@ import { appendProjectActivity } from "@domain/activity/project-activity.service
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import { announceDocumentUploadAsset, announceDocumentUploadFailure, documentTargetOf } from "@domain/asset/document-upload-events.js";
+import { announceFocusImage, focusImageTargetOf } from "@domain/asset/focus-image-events.js";
 import { referenceUploadAsset, settleUploadTerminal, type UploadTerminal } from "@domain/asset/upload-terminal.service.js";
 import { statusOfGrant } from "@domain/asset/upload-status.service.js";
 import type {
@@ -679,6 +680,8 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
   const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
   if (asset === null) return { status: "stale", ...sideEffects };
   if (documentTarget !== null) await announceDocumentUploadAsset(documentTarget, asset);
+  const focusTarget = focusImageTargetOf(grant);
+  if (focusTarget !== null) await announceFocusImage(focusTarget, asset);
   const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
   const coverUrl = cover?.fileUrl ?? null;
   const history = await recordRegisteredUploadHistory(grant, asset, coverUrl);
