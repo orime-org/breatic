@@ -141,29 +141,6 @@ async function fetchLookPicture(url: string): Promise<Response> {
   return response;
 }
 
-const pageSizes = new Map<string, LookPictureSizes>();
-
-/**
- * The page's picture sizes for one Project, shared by every 3D Space of it.
- * @param projectId - The Project whose scene assets are read.
- * @returns The sizes.
- */
-export function pageLookPictureSizes(projectId: string): LookPictureSizes {
-  let sizes = pageSizes.get(projectId);
-  if (!sizes) {
-    sizes = new LookPictureSizes({
-      resolve: (assetId) => resolveLookPicture(projectId, assetId),
-      open: async (url) => {
-        const body = (await fetchLookPicture(url)).body;
-        if (!body) throw new Error('Look picture response has no body');
-        return body;
-      },
-    });
-    pageSizes.set(projectId, sizes);
-  }
-  return sizes;
-}
-
 /** What the lazy viewport needs from the page to load part pictures. */
 export interface LookPictureAccess {
   /** The page's picture sizes for the Project. */
@@ -177,19 +154,43 @@ export interface LookPictureAccess {
 const pageAccess = new Map<string, LookPictureAccess>();
 
 /**
- * The page's way to part pictures for one Project, handed to the lazy viewport by the editor.
+ * The page's way to part pictures for one Project, shared by every 3D Space of it and handed to the lazy viewport by the
+ * editor.
  * @param projectId - The Project whose scene assets are read.
  * @returns The sizes, the resolver and the download.
  */
 export function pageLookPictureAccess(projectId: string): LookPictureAccess {
   let access = pageAccess.get(projectId);
   if (!access) {
+    /**
+     * A picture asset's registered URL in this Project.
+     * @param assetId - The asset.
+     * @returns Its URL.
+     * @throws {Error} When it is not a look picture.
+     */
+    const resolve = (assetId: string): Promise<string> => resolveLookPicture(projectId, assetId);
     access = {
-      sizes: pageLookPictureSizes(projectId),
-      resolve: (assetId) => resolveLookPicture(projectId, assetId),
+      sizes: new LookPictureSizes({
+        resolve,
+        open: async (url) => {
+          const body = (await fetchLookPicture(url)).body;
+          if (!body) throw new Error('Look picture response has no body');
+          return body;
+        },
+      }),
+      resolve,
       download: async (url) => (await fetchLookPicture(url)).blob(),
     };
     pageAccess.set(projectId, access);
   }
   return access;
+}
+
+/**
+ * The page's picture sizes for one Project, the same instance the lazy viewport gets from `pageLookPictureAccess`.
+ * @param projectId - The Project whose scene assets are read.
+ * @returns The sizes.
+ */
+export function pageLookPictureSizes(projectId: string): LookPictureSizes {
+  return pageLookPictureAccess(projectId).sizes;
 }
