@@ -69,8 +69,8 @@ export async function openModelKeys(sealed: string, privateKeyPem: string): Prom
     throw new ModelKeysUnreadable();
   }
   if (!z.record(z.string(), z.string()).safeParse(payload).success) throw new ModelKeysUnreadable();
-  // Rebuilt from the parsed text's own entries: an upstream named `__proto__` stays an entry, which assigning it into
-  // a new object (as the schema's output does) would turn into a prototype.
+  // Rebuilt from the parsed text's own entries: the schema's output skips an upstream named `__proto__` (zod leaves that
+  // key out so it cannot set the prototype), which would drop its key; Object.fromEntries keeps it as an own entry.
   const entries = Object.entries(payload as object);
   if (!entries.every(([, key]) => typeof key === "string")) throw new ModelKeysUnreadable();
   return Object.fromEntries(entries);
