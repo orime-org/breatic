@@ -300,11 +300,8 @@ export const MotionExecutionsPanel = React.memo(function MotionExecutionsPanel({
   const t = useTranslation();
   const changeTab = React.useCallback((value: string): void => { if (isTab(value)) onTab(value); }, [onTab]);
   const current = lists[tab];
-  const { refetch: refetchOwn } = current.own;
-  const { refetch: refetchLegacy } = current.legacy;
-  const retry = React.useCallback((): void => { void refetchOwn(); void refetchLegacy(); }, [refetchOwn, refetchLegacy]);
   const shows = listShows(current.own, current.legacy);
-  const empty = rowsOf(current.own).length === 0 && rowsOf(current.legacy).length === 0;
+  const empty = current.rows.length === 0;
   const emptyKey = TABS.find((entry) => entry.tab === tab)?.empty ?? 'spaces.webAnimation.empty';
   // The marked row is brought into view once per mark and tab, as soon as its list has it; a later read of the list
   // leaves the user's scrolling alone.
@@ -329,7 +326,7 @@ export const MotionExecutionsPanel = React.memo(function MotionExecutionsPanel({
     </Tabs>
     <ScrollArea className='min-h-0 flex-1' viewportRef={viewportRef}>
       {shows === 'pending' ? <ListPending className='p-2' />
-        : shows === 'failed' ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={retry} />
+        : shows === 'failed' ? <ListLoadError message={t('spaces.webAnimation.listError')} onRetry={current.retry} />
           : empty ? <p className='p-6 text-center text-xs text-muted-foreground'>{t(emptyKey)}</p>
             : <>
               <ListBlock query={current.own} tab={tab} selectedId={selectedId} markedId={markedId} onPick={onPick} {...actions} />

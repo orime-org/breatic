@@ -14,6 +14,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { ListLoadError, ListPending, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import { playable, type PlayableRow } from '@web/spaces/web-animation/motion-parts';
+import { rowsOf } from '@web/spaces/web-animation/use-motion-lists';
 import { webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 
 /** One group of the picker: the Space that made its results. */
@@ -106,8 +107,8 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
   const list = useInfiniteQuery({ queryKey, queryFn, initialPageParam: undefined as string | undefined, getNextPageParam: (page) => page.nextCursor ?? undefined, refetchOnMount: 'always' });
   const { refetch } = list;
   const shows = listShows(list);
-  const rows = React.useMemo(() => (list.data?.pages.flatMap((page) => page.rows) ?? [])
-    .filter(playable), [list.data]);
+  const { data } = list;
+  const rows = React.useMemo(() => rowsOf({ data }).filter(playable), [data]);
   const groups = React.useMemo(() => groupResults(rows, spaces, t('timeline.webAnimation.picker.deletedSpace')), [rows, spaces, t]);
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const retry = React.useCallback((): void => { void refetch(); }, [refetch]);

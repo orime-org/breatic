@@ -12,10 +12,19 @@ import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
 /** One list's pages as React Query holds them. */
 type ListQuery = UseInfiniteQueryResult<InfiniteData<SpaceExecutionPage, string | undefined>>;
 
+/** Any paged list of executions as React Query holds it: a Motion list or the Timeline picker's results. */
+interface PagedRows {
+  data?: { pages: readonly SpaceExecutionPage[] };
+}
+
 /** One tab of the execution list: this Space's rows, then those made in a Timeline before Motion. */
 export interface MotionTabList {
   own: ListQuery;
   legacy: ListQuery;
+  /** Both lists' loaded rows, this Space's first. */
+  rows: readonly WebAnimationRowView[];
+  /** Reads both lists again. */
+  retry: () => void;
 }
 
 /** The Motion Space's lists (#1490 design §4.4, §7.1), one per execution-list tab. */
@@ -76,8 +85,23 @@ export function useMotionList(projectId: string, spaceId: string, scope: SpaceEx
  * @returns Its rows, newest first.
  * @throws {never} Never.
  */
-export function rowsOf(query: ListQuery): WebAnimationRowView[] {
+export function rowsOf(query: PagedRows): WebAnimationRowView[] {
   return query.data?.pages.flatMap((page) => page.rows) ?? [];
+}
+
+/**
+ * One tab from its two lists: their rows in order and one retry for both.
+ * @param own - This Space's list.
+ * @param legacy - The Timeline-made group's list.
+ * @returns The tab.
+ * @throws {never} Never.
+ */
+function useTabList(own: ListQuery, legacy: ListQuery): MotionTabList {
+  const rows = React.useMemo(() => [...rowsOf(own), ...rowsOf(legacy)], [own, legacy]);
+  const { refetch: refetchOwn } = own;
+  const { refetch: refetchLegacy } = legacy;
+  const retry = React.useCallback((): void => { void refetchOwn(); void refetchLegacy(); }, [refetchOwn, refetchLegacy]);
+  return React.useMemo(() => ({ own, legacy, rows, retry }), [own, legacy, rows, retry]);
 }
 
 /**
@@ -109,8 +133,8 @@ export function useMotionLists(projectId: string, spaceId: string): MotionLists 
     succeeded: (own?.succeeded ?? 0) + (legacy?.succeeded ?? 0),
     failed: (own?.failed ?? 0) + (legacy?.failed ?? 0),
   }), [own, legacy]);
-  const succeeded = React.useMemo(() => ({ own: ownSucceeded, legacy: legacySucceeded }), [ownSucceeded, legacySucceeded]);
-  const running = React.useMemo(() => ({ own: ownRunning, legacy: legacyRunning }), [ownRunning, legacyRunning]);
-  const failed = React.useMemo(() => ({ own: ownFailed, legacy: legacyFailed }), [ownFailed, legacyFailed]);
+  const succeeded = useTabList(ownSucceeded, legacySucceeded);
+  const running = useTabList(ownRunning, legacyRunning);
+  const failed = useTabList(ownFailed, legacyFailed);
   return React.useMemo(() => ({ succeeded, running, failed, byId, totals }), [succeeded, running, failed, byId, totals]);
 }
