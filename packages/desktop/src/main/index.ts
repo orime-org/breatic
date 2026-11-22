@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The desktop client's main process (#1599): one window on the chosen
- * server's web app, a local connect window to choose that server, Google
- * sign-in through the system browser and the navigation rules that keep the
- * window on the app.
+ * The desktop client's main process (#1599): windows on the chosen server's
+ * web app, a local connect window to choose that server, Google sign-in
+ * through the system browser and the navigation rules that keep each window
+ * on the app.
  */
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, session, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
@@ -17,7 +17,8 @@ import { createBrowserSignIn } from "@desktop/main/browser-sign-in.js";
 import type { ConnectAnswer, ConnectInitial, ConnectReason } from "@desktop/main/connect-protocol.js";
 import { appImageDesktopEntry, DEEP_LINK_SCHEME, findDeepLink } from "@desktop/main/deep-link.js";
 import { createLogger } from "@desktop/main/logger.js";
-import { buildMenuTemplate } from "@desktop/main/menu.js";
+import { buildDockMenuTemplate, buildMenuTemplate } from "@desktop/main/menu.js";
+import { nextWindowBounds, wantsNewWindow, windowsUserTasks } from "@desktop/main/new-window.js";
 import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure } from "@desktop/main/navigation.js";
 import { checkServer, normalizeServerUrl, readServerConfig, resolveServerUrl, writeServerConfig } from "@desktop/main/server-config.js";
 import { desktopText } from "@desktop/main/strings.js";
@@ -41,7 +42,7 @@ const here = __dirname;
  */
 const configFile = (): string => join(app.getPath("userData"), "config.json");
 /**
- * Where the main window's size and place are kept.
+ * Where the last closed window's size and place are kept.
  * @returns The path of `window-state.json` in the app's data directory.
  */
 const windowStateFile = (): string => join(app.getPath("userData"), "window-state.json");
@@ -53,8 +54,10 @@ const logger = createLogger(app.getPath("logs"));
 const signIn = createBrowserSignIn({ openExternal: (url) => shell.openExternal(url), now: () => Date.now(), ttlMs: SIGN_IN_TTL_MS });
 
 let serverOrigin: string | null = null;
-let mainWindow: BrowserWindow | null = null;
-let mainLoaded = false;
+/** The app windows, least recently used first. */
+let appWindows: BrowserWindow[] = [];
+/** App windows that have shown the server at least once. */
+const loadedWindows = new WeakSet<BrowserWindow>();
 let connectWindow: BrowserWindow | null = null;
 let connectInitial: ConnectInitial | null = null;
 let queuedLink: string | null = null;
@@ -70,6 +73,7 @@ app.on("will-finish-launching", () => {
 app.on("second-instance", (_event, argv) => {
   const link = findDeepLink(argv);
   if (link) handleLink(link);
+  else if (wantsNewWindow(argv)) openNewWindow();
   else showSomeWindow();
 });
 
@@ -138,17 +142,20 @@ function registerScheme(): void {
   }
 }
 
-/** Build the menu in the operating system's language. */
+/** Build the menu, the Dock menu and the taskbar task in the operating system's language. */
 function buildMenu(): void {
   const text = desktopText(app.getLocale());
+  const labels = {
+    file: text["desktop.menu.file"],
+    back: text["desktop.menu.back"],
+    forward: text["desktop.menu.forward"],
+    newWindow: text["desktop.menu.newWindow"],
+  };
   const template = buildMenuTemplate({
     platform: process.platform,
     isDev,
-    labels: {
-      file: text["desktop.menu.file"],
-      back: text["desktop.menu.back"],
-      forward: text["desktop.menu.forward"],
-    },
+    labels,
+    onNewWindow: openNewWindow,
     onBack: () => {
       const history = BrowserWindow.getFocusedWindow()?.webContents.navigationHistory;
       if (history?.canGoBack()) history.goBack();
@@ -159,6 +166,8 @@ function buildMenu(): void {
     },
   });
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+  app.dock?.setMenu(Menu.buildFromTemplate(buildDockMenuTemplate({ labels, onNewWindow: openNewWindow })));
+  if (process.platform === "win32") app.setUserTasks(windowsUserTasks(process.execPath, labels.newWindow));
 }
 
 /**
@@ -212,16 +221,16 @@ async function connect(input: string): Promise<ConnectAnswer> {
 }
 
 /**
- * Load a server's app in the main window. The address is saved only once the
- * window is really on it: a load the user cancels from the leave dialog keeps
- * the old server.
+ * Load a server's app in the app window that could not show it, or a new one.
+ * The address is saved only once the window is really on it: a load the user
+ * cancels from the leave dialog keeps the old server.
  * @param origin - The server.
  * @param options - Whether to save it as the server to open next time.
  * @param options.save - Save on success.
  * @returns Whether the window now shows the server, or why not.
  */
 async function openServer(origin: string, options: { save: boolean }): Promise<ConnectAnswer> {
-  const window = mainWindow ?? createMainWindow();
+  const window = appWindows.findLast((other) => !other.isVisible()) ?? createAppWindow();
   const previous = serverOrigin;
   serverOrigin = origin;
   try {
@@ -234,19 +243,46 @@ async function openServer(origin: string, options: { save: boolean }): Promise<C
     return { ok: false, reason: isCertificateError(code) ? "certificate" : "unreachable" };
   }
   if (options.save) writeServerConfig(configFile(), origin);
-  mainLoaded = true;
+  loadedWindows.add(window);
   window.show();
   connectWindow?.close();
   return { ok: true };
 }
 
 /**
- * Create the main window, hidden until a server loads.
+ * Open another app window on the server (menu, Dock menu, taskbar task). With
+ * no server shown yet, bring the connect window forward instead.
+ */
+function openNewWindow(): void {
+  if (connectWindow || !serverOrigin) {
+    showSomeWindow();
+    return;
+  }
+  const origin = serverOrigin;
+  const window = createAppWindow();
+  void window.loadURL(`${origin}/studio`).then(
+    () => {
+      loadedWindows.add(window);
+      window.show();
+    },
+    (err: unknown) => {
+      logger.error({ err, origin }, "server_load_failed");
+      window.close();
+      const code = (err as { errno?: number }).errno ?? 0;
+      openConnect({ mode: "unreachable", url: origin, reason: isCertificateError(code) ? "certificate" : "unreachable" });
+    },
+  );
+}
+
+/**
+ * Create an app window, hidden until a server loads, a step down and right of
+ * the window in use.
  * @returns The window.
  */
-function createMainWindow(): BrowserWindow {
+function createAppWindow(): BrowserWindow {
+  const current = appWindows.at(-1);
   const window = new BrowserWindow({
-    ...readWindowState(),
+    ...nextWindowBounds(current ? current.getBounds() : null, readWindowState()),
     show: false,
     title: "breatic",
     webPreferences: {
@@ -257,17 +293,19 @@ function createMainWindow(): BrowserWindow {
     },
   });
   window.on("close", () => saveWindowState(window));
+  window.on("focus", () => {
+    appWindows = [...appWindows.filter((other) => other !== window), window];
+  });
   window.on("closed", () => {
-    mainWindow = null;
-    mainLoaded = false;
+    appWindows = appWindows.filter((other) => other !== window);
   });
   window.webContents.on("did-fail-load", (_event, errorCode, _description, url, isMainFrame) => {
-    if (!mainLoaded || !serverOrigin || !isServerLoadFailure({ url, serverOrigin, isMainFrame, errorCode })) return;
+    if (!loadedWindows.has(window) || !serverOrigin || !isServerLoadFailure({ url, serverOrigin, isMainFrame, errorCode })) return;
     logger.error({ errorCode, url }, "server_unreachable");
     window.hide();
     openConnect({ mode: "unreachable", url: serverOrigin, reason: isCertificateError(errorCode) ? "certificate" : "unreachable" });
   });
-  mainWindow = window;
+  appWindows = [...appWindows, window];
   return window;
 }
 
@@ -301,25 +339,50 @@ function openConnect(initial: { mode: "connect" | "unreachable"; url: string; re
   window.on("closed", () => {
     connectWindow = null;
     // Nothing else is on screen: on Windows and Linux closing it ends the app; macOS keeps the app in the Dock.
-    if (!mainLoaded && process.platform !== "darwin") app.quit();
+    if (!appWindows.some((window) => loadedWindows.has(window)) && process.platform !== "darwin") app.quit();
   });
   void window.loadFile(join(here, "../connect/index.html"));
   connectWindow = window;
 }
 
-/** Bring a visible window forward: the main window once a server loaded, otherwise the connect window. */
+/**
+ * Bring a window forward: the connect window while it is open, else the most
+ * recently used app window, else a new app window on the server; with no
+ * server yet, the connect window.
+ */
 function showSomeWindow(): void {
-  if (mainWindow && mainLoaded) {
-    if (mainWindow.isMinimized()) mainWindow.restore();
-    mainWindow.show();
-    mainWindow.focus();
-    return;
-  }
   if (connectWindow) {
     connectWindow.focus();
     return;
   }
-  openConnect({ mode: "connect", url: serverOrigin ?? DEFAULT_SERVER_URL, reason: null });
+  const recent = recentLoadedWindow();
+  if (recent) {
+    bringForward(recent);
+    return;
+  }
+  if (serverOrigin) {
+    openNewWindow();
+    return;
+  }
+  openConnect({ mode: "connect", url: DEFAULT_SERVER_URL, reason: null });
+}
+
+/**
+ * The most recently used app window that shows the server.
+ * @returns The window, or null when none is open.
+ */
+function recentLoadedWindow(): BrowserWindow | null {
+  return appWindows.findLast((window) => loadedWindows.has(window)) ?? null;
+}
+
+/**
+ * Restore, show and focus a window.
+ * @param window - The window.
+ */
+function bringForward(window: BrowserWindow): void {
+  if (window.isMinimized()) window.restore();
+  window.show();
+  window.focus();
 }
 
 /**
@@ -337,11 +400,9 @@ function handleLink(link: string): void {
     showSomeWindow();
     return;
   }
-  const target = BrowserWindow.fromId(received.windowId) ?? mainWindow;
+  const target = BrowserWindow.fromId(received.windowId) ?? recentLoadedWindow();
   if (!target) return;
-  if (target.isMinimized()) target.restore();
-  target.show();
-  target.focus();
+  bringForward(target);
   target.webContents.send("sign-in:arrived");
 }
 
@@ -405,7 +466,7 @@ function applyNavigation(url: string, contents: WebContents, cancel: () => void)
 }
 
 /**
- * The size and place the main window had when it last closed.
+ * The size and place the last closed app window had.
  * @returns Bounds for the window, or a default size.
  */
 function readWindowState(): { width: number; height: number; x?: number; y?: number } {
@@ -427,7 +488,7 @@ function readWindowState(): { width: number; height: number; x?: number; y?: num
 }
 
 /**
- * Remember the main window's size and place.
+ * Remember an app window's size and place as it closes.
  * @param window - The window closing.
  */
 function saveWindowState(window: BrowserWindow): void {

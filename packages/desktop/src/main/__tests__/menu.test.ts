@@ -5,16 +5,18 @@
  * The client's menu (#1599, design §6.1). The standard roles keep copy, paste
  * and undo working in the page's fields on macOS; Back and Forward let a user
  * return from a page with no way back, such as a Stripe invoice. There is
- * no way to switch servers: a build opens the server it carries. Switch
- * server reopens the connect window.
+ * no way to switch servers: a build opens the server it carries. New Window
+ * sits in the File menu on every platform and in the macOS Dock menu.
  */
 
 import { describe, it, expect, vi } from "vitest";
 import type { MenuItemConstructorOptions } from "electron";
 
-import { buildMenuTemplate, type MenuLabels } from "@desktop/main/menu.js";
+import { buildDockMenuTemplate, buildMenuTemplate, type MenuLabels } from "@desktop/main/menu.js";
 
-const labels: MenuLabels = { back: "Back", forward: "Forward", file: "File" };
+const labels: MenuLabels = { back: "Back", forward: "Forward", file: "File", newWindow: "New Window" };
+/** Actions the tests do not watch. */
+const quiet = { onBack: vi.fn(), onForward: vi.fn(), onNewWindow: vi.fn() };
 
 /**
  * Every item of a template, submenus included.
@@ -26,7 +28,7 @@ function flatten(items: MenuItemConstructorOptions[]): MenuItemConstructorOption
 
 describe("buildMenuTemplate", () => {
   it("gives macOS an app menu and the standard Edit roles", () => {
-    const template = buildMenuTemplate({ platform: "darwin", isDev: false, labels, onBack: vi.fn(), onForward: vi.fn() });
+    const template = buildMenuTemplate({ platform: "darwin", isDev: false, labels, ...quiet });
     expect(template[0]?.role).toBe("appMenu");
     const items = flatten(template);
     for (const role of ["undo", "redo", "cut", "copy", "paste", "selectAll"]) {
@@ -36,9 +38,9 @@ describe("buildMenuTemplate", () => {
 
   it("offers no way to switch servers: a build opens the server it carries", () => {
     for (const platform of ["darwin", "win32", "linux"]) {
-      const items = flatten(buildMenuTemplate({ platform, isDev: false, labels, onBack: vi.fn(), onForward: vi.fn() }));
+      const items = flatten(buildMenuTemplate({ platform, isDev: false, labels, ...quiet }));
       const ownItems = items.filter((item) => item.click).map((item) => item.label);
-      expect(ownItems, platform).toEqual(["Back", "Forward"]);
+      expect(ownItems, platform).toEqual(["New Window", "Back", "Forward"]);
     }
   });
 
@@ -48,17 +50,45 @@ describe("buildMenuTemplate", () => {
     ["linux", "Alt+Left", "Alt+Right"],
   ])("binds Back and Forward on %s", (platform, back, forward) => {
     const onBack = vi.fn();
-    const items = flatten(buildMenuTemplate({ platform, isDev: false, labels, onBack, onForward: vi.fn() }));
+    const items = flatten(buildMenuTemplate({ platform, isDev: false, labels, ...quiet, onBack }));
     expect(items.find((item) => item.label === "Back")?.accelerator).toBe(back);
     expect(items.find((item) => item.label === "Forward")?.accelerator).toBe(forward);
     items.find((item) => item.label === "Back")?.click?.({} as never, undefined, {});
     expect(onBack).toHaveBeenCalled();
   });
 
+  it.each(["darwin", "win32", "linux"])("offers New Window in the File menu on %s", (platform) => {
+    const onNewWindow = vi.fn();
+    const template = buildMenuTemplate({ platform, isDev: false, labels, ...quiet, onNewWindow });
+    const file = template.find((menu) => menu.label === "File");
+    const item = (file?.submenu as MenuItemConstructorOptions[] | undefined)?.find((entry) => entry.label === "New Window");
+    expect(item?.accelerator).toBe("CmdOrCtrl+Shift+N");
+    item?.click?.({} as never, undefined, {});
+    expect(onNewWindow).toHaveBeenCalledOnce();
+  });
+
+  it("keeps Quit in the File menu on Windows and Linux and in the app menu on macOS", () => {
+    const fileItems = (platform: string) =>
+      (buildMenuTemplate({ platform, isDev: false, labels, ...quiet }).find((menu) => menu.label === "File")?.submenu ?? []) as MenuItemConstructorOptions[];
+    expect(fileItems("win32").some((item) => item.role === "quit")).toBe(true);
+    expect(fileItems("darwin").some((item) => item.role === "quit")).toBe(false);
+    expect(flatten(buildMenuTemplate({ platform: "darwin", isDev: false, labels, ...quiet }).slice(0, 1)).some((item) => item.role === "quit")).toBe(true);
+  });
+
   it("offers developer tools only in development", () => {
-    const shipped = flatten(buildMenuTemplate({ platform: "darwin", isDev: false, labels, onBack: vi.fn(), onForward: vi.fn() }));
-    const dev = flatten(buildMenuTemplate({ platform: "darwin", isDev: true, labels, onBack: vi.fn(), onForward: vi.fn() }));
+    const shipped = flatten(buildMenuTemplate({ platform: "darwin", isDev: false, labels, ...quiet }));
+    const dev = flatten(buildMenuTemplate({ platform: "darwin", isDev: true, labels, ...quiet }));
     expect(shipped.some((item) => item.role === "toggleDevTools")).toBe(false);
     expect(dev.some((item) => item.role === "toggleDevTools")).toBe(true);
+  });
+});
+
+describe("buildDockMenuTemplate", () => {
+  it("offers New Window from the macOS Dock icon", () => {
+    const onNewWindow = vi.fn();
+    const template = buildDockMenuTemplate({ labels, onNewWindow });
+    expect(template.map((item) => item.label)).toEqual(["New Window"]);
+    template[0]?.click?.({} as never, undefined, {});
+    expect(onNewWindow).toHaveBeenCalledOnce();
   });
 });

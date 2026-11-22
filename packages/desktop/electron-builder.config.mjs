@@ -13,6 +13,12 @@
  * AZURE_SIGNING_PROFILE) sign the installer.
  */
 
+import en from "../../locales/en.json" with { type: "json" };
+import ja from "../../locales/ja.json" with { type: "json" };
+import ko from "../../locales/ko.json" with { type: "json" };
+import zhCN from "../../locales/zh-CN.json" with { type: "json" };
+import zhTW from "../../locales/zh-TW.json" with { type: "json" };
+
 const env = process.env;
 const azure = env.AZURE_SIGNING_ENDPOINT && env.AZURE_SIGNING_ACCOUNT && env.AZURE_SIGNING_PROFILE;
 const notarize = Boolean(env.APPLE_API_KEY && env.APPLE_API_KEY_ID && env.APPLE_API_ISSUER);
@@ -49,6 +55,23 @@ export default {
       : {}),
   },
   nsis: { oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true },
+  // A right-click on the installed launcher icon opens another window (design §5.1).
+  // The AppImage writes its own hidden entry for the scheme and has no launcher icon.
+  deb: {
+    desktop: {
+      entry: { Actions: "NewWindow;" },
+      desktopActions: {
+        NewWindow: {
+          Name: en.desktop.menu.newWindow,
+          "Name[zh_CN]": zhCN.desktop.menu.newWindow,
+          "Name[zh_TW]": zhTW.desktop.menu.newWindow,
+          "Name[ja]": ja.desktop.menu.newWindow,
+          "Name[ko]": ko.desktop.menu.newWindow,
+          Exec: "/opt/breatic/breatic --new-window",
+        },
+      },
+    },
+  },
   linux: {
     target: ["AppImage", "deb"],
     category: "Graphics",

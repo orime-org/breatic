@@ -7,6 +7,7 @@
  * On macOS a custom menu without the Edit roles leaves Cmd+C, V and Z dead in
  * every field of the page, so the standard role menus stay. The client has no
  * address bar, so Back and Forward are here, with the browsers' shortcuts.
+ * New Window is in File on every platform and in the macOS Dock menu (§5.1).
  */
 
 import type { MenuItemConstructorOptions } from "electron";
@@ -16,6 +17,7 @@ export interface MenuLabels {
   back: string;
   forward: string;
   file: string;
+  newWindow: string;
 }
 
 /** What the menu is built from. */
@@ -25,6 +27,7 @@ export interface MenuOptions {
   labels: MenuLabels;
   onBack: () => void;
   onForward: () => void;
+  onNewWindow: () => void;
 }
 
 /**
@@ -35,6 +38,7 @@ export interface MenuOptions {
 export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOptions[] {
   const { platform, isDev, labels } = options;
   const mac = platform === "darwin";
+  const newWindow: MenuItemConstructorOptions = { label: labels.newWindow, accelerator: "CmdOrCtrl+Shift+N", click: () => options.onNewWindow() };
   const view: MenuItemConstructorOptions = {
     role: "viewMenu",
     submenu: [
@@ -74,15 +78,27 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
           { role: "quit" },
         ],
       },
+      { label: labels.file, submenu: [newWindow] },
       edit,
       view,
       { role: "windowMenu" },
     ];
   }
   return [
-    { label: labels.file, submenu: [{ role: "quit" }] },
+    { label: labels.file, submenu: [newWindow, { type: "separator" }, { role: "quit" }] },
     edit,
     view,
     { role: "windowMenu" },
   ];
+}
+
+/**
+ * The macOS Dock icon's menu.
+ * @param options - Labels and the New Window action.
+ * @param options.labels - The menu's words.
+ * @param options.onNewWindow - Opens a window.
+ * @returns The template for `app.dock.setMenu`.
+ */
+export function buildDockMenuTemplate(options: Pick<MenuOptions, "labels" | "onNewWindow">): MenuItemConstructorOptions[] {
+  return [{ label: options.labels.newWindow, click: () => options.onNewWindow() }];
 }

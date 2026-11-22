@@ -4603,7 +4603,8 @@
     "menu": {
       "file": "File",
       "back": "Back",
-      "forward": "Forward"
+      "forward": "Forward",
+      "newWindow": "New Window"
     },
     "leave": {
       "message": "You have unsaved changes. Leave anyway?",

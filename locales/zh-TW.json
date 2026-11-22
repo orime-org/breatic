@@ -4603,7 +4603,8 @@
     "menu": {
       "file": "檔案",
       "back": "上一頁",
-      "forward": "下一頁"
+      "forward": "下一頁",
+      "newWindow": "新增視窗"
     },
     "leave": {
       "message": "有尚未儲存的變更，確定要離開嗎？",

@@ -4603,7 +4603,8 @@
     "menu": {
       "file": "파일",
       "back": "뒤로",
-      "forward": "앞으로"
+      "forward": "앞으로",
+      "newWindow": "새 창"
     },
     "leave": {
       "message": "저장되지 않은 변경 사항이 있습니다. 나가시겠습니까?",

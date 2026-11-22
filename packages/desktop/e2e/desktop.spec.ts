@@ -4,7 +4,8 @@
 /**
  * The desktop client started for real against a local server (#1599): first
  * launch, the address rules, signing in by email and staying signed in after a
- * restart, links handed to the system, and a server that cannot be reached.
+ * restart, more windows, links handed to the system, and a server that cannot
+ * be reached.
  *
  * Run with the dev stack up: `pnpm --filter @breatic/desktop test:e2e`.
  * SERVER defaults to the worktree's own web port; set BREATIC_E2E_SERVER for another.
@@ -96,6 +97,53 @@ test("email sign-in survives a restart", async () => {
   await expect(again).toHaveURL(/\/studio/, { timeout: 30_000 });
   await expect(again).not.toHaveURL(/\/login/);
   await second.close();
+});
+
+test("New Window opens another signed-in window on the Studio, from the menu and from a second launch", async () => {
+  const userData = freshData();
+  writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
+  const { email, password } = account();
+  const app = await launch(userData);
+  const page = await windowWhere(app, (url) => url.startsWith(SERVER));
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("textbox", { name: "Password" }).fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/studio/, { timeout: 30_000 });
+
+  await app.evaluate(({ Menu }) => {
+    const items = Menu.getApplicationMenu()?.items.flatMap((menu) => menu.submenu?.items ?? []) ?? [];
+    items.find((item) => item.label === "New Window")?.click();
+  });
+  await expect.poll(() => app.windows().length).toBe(2);
+  for (const window of app.windows()) await expect(window).toHaveURL(/\/studio/, { timeout: 30_000 });
+
+  // Windows' taskbar task and the Linux launcher action start the client again with --new-window.
+  await app.evaluate(({ app: electronApp }) => {
+    electronApp.emit("second-instance", {}, ["breatic", "--new-window"], process.cwd(), {});
+  });
+  await expect.poll(() => app.windows().length).toBe(3);
+  for (const window of app.windows()) await expect(window).toHaveURL(/\/studio/, { timeout: 30_000 });
+  await app.close();
+});
+
+test("on macOS, closing every window and clicking the Dock icon reopens the server", async () => {
+  test.skip(process.platform !== "darwin", "the app stays open without windows only on macOS");
+  const userData = freshData();
+  writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
+  const app = await launch(userData);
+  const page = await windowWhere(app, (url) => url.startsWith(SERVER));
+  await expect(page).toHaveURL(/\/login/);
+  await app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) window.close();
+  });
+  await expect.poll(() => app.windows().length).toBe(0);
+  await app.evaluate(({ app: electronApp }) => {
+    electronApp.emit("activate");
+  });
+  const reopened = await windowWhere(app, (url) => url.startsWith(SERVER));
+  await expect(reopened).toHaveURL(/\/login/);
+  expect(app.windows().some((window) => window.url().startsWith("file:"))).toBe(false);
+  await app.close();
 });
 
 test("a link to another site goes to the system browser and the window stays", async () => {

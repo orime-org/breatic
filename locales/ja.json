@@ -4603,7 +4603,8 @@
     "menu": {
       "file": "ファイル",
       "back": "戻る",
-      "forward": "進む"
+      "forward": "進む",
+      "newWindow": "新しいウィンドウ"
     },
     "leave": {
       "message": "保存されていない変更があります。移動しますか？",

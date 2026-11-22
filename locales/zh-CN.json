@@ -4603,7 +4603,8 @@
     "menu": {
       "file": "文件",
       "back": "后退",
-      "forward": "前进"
+      "forward": "前进",
+      "newWindow": "新建窗口"
     },
     "leave": {
       "message": "有未保存的改动，确定离开吗？",
