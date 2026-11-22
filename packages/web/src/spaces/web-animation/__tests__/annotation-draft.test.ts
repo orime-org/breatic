@@ -17,7 +17,7 @@ const EXEC = 'e0000000-0000-4000-8000-000000000001';
 const IDLE: AnnotationDraftState = { status: 'idle' };
 const PICKING: AnnotationDraftState = { status: 'picking', executionId: EXEC, timeSeconds: 2.5 };
 const writing = (text: string, overrides: Partial<Extract<AnnotationDraftState, { status: 'writing' }>> = {}): AnnotationDraftState => ({
-  status: 'writing', executionId: EXEC, timeSeconds: 2.5, point: { x: 0.25, y: 0.5 }, text, disconnected: false, ...overrides,
+  status: 'writing', executionId: EXEC, timeSeconds: 2.5, point: { x: 0.25, y: 0.5 }, text, ...overrides,
 });
 const SENDING: AnnotationDraftState = { status: 'sending', executionId: EXEC, timeSeconds: 2.5, point: { x: 0.25, y: 0.5 }, text: 'Too fast' };
 
@@ -37,7 +37,7 @@ describe('transitionAnnotationDraft — idle', () => {
     expect(step(IDLE, add)).toEqual({ state: PICKING, effects: [{ type: 'pause' }] });
   });
 
-  it.each([click, { type: 'type', text: 'x' }, { type: 'send' }, { type: 'written' }, { type: 'write_failed', reason: 'full' }, { type: 'cancel', confirmed: false }, { type: 'switch_result', confirmed: false }, { type: 'disconnect' }] as AnnotationDraftEvent[])(
+  it.each([click, { type: 'type', text: 'x' }, { type: 'send' }, { type: 'written' }, { type: 'write_failed', reason: 'full' }, { type: 'cancel', confirmed: false }, { type: 'switch_result', confirmed: false }] as AnnotationDraftEvent[])(
     'stays idle on %o',
     (event) => {
       expect(step(IDLE, event)).toEqual({ state: IDLE, effects: [] });
@@ -65,10 +65,6 @@ describe('transitionAnnotationDraft — picking a point', () => {
   it('goes back to idle on cancel and a switch of result', () => {
     expect(step(PICKING, { type: 'cancel', confirmed: false }).state).toEqual(IDLE);
     expect(step(PICKING, { type: 'switch_result', confirmed: false }).state).toEqual(IDLE);
-  });
-
-  it('goes back to idle and says the connection dropped', () => {
-    expect(step(PICKING, { type: 'disconnect' })).toEqual({ state: IDLE, effects: [{ type: 'toast_disconnected' }] });
   });
 });
 
@@ -102,25 +98,10 @@ describe('transitionAnnotationDraft — writing', () => {
     expect(step(writing('A'), { type: 'switch_result', confirmed: false })).toEqual({ state: writing('A'), effects: [{ type: 'confirm_discard' }] });
     expect(step(writing('A'), { type: 'switch_result', confirmed: true }).state).toEqual(IDLE);
   });
-
-  it('keeps the draft but holds sending while the document is disconnected, and lets it go once back', () => {
-    const offline = step(writing('A'), { type: 'disconnect' }).state;
-    expect(offline).toEqual(writing('A', { disconnected: true }));
-    expect(step(offline, { type: 'send' })).toEqual({ state: offline, effects: [] });
-    expect(step(offline, { type: 'reconnect' }).state).toEqual(writing('A'));
-  });
-
-  it('answers a connection state it already holds with the same draft, so a repeated notice renders nothing', () => {
-    const online = writing('A');
-    expect(step(online, { type: 'reconnect' })).toEqual({ state: online, effects: [] });
-    expect(step(online, { type: 'reconnect' }).state).toBe(online);
-    const offline = writing('A', { disconnected: true });
-    expect(step(offline, { type: 'disconnect' }).state).toBe(offline);
-  });
 });
 
 describe('transitionAnnotationDraft — sending', () => {
-  it.each([add, click, { type: 'type', text: 'x' }, { type: 'send' }, { type: 'cancel', confirmed: true }, { type: 'switch_result', confirmed: true }, { type: 'disconnect' }] as AnnotationDraftEvent[])(
+  it.each([add, click, { type: 'type', text: 'x' }, { type: 'send' }, { type: 'cancel', confirmed: true }, { type: 'switch_result', confirmed: true }] as AnnotationDraftEvent[])(
     'ignores %o',
     (event) => {
       expect(step(SENDING, event)).toEqual({ state: SENDING, effects: [] });

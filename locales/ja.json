@@ -3410,7 +3410,6 @@
     "webAnimation": {
       "addAnnotation": "注釈を追加",
       "annotateAt": "{time} に注釈を追加",
-      "annotationDisconnected": "接続が切れました。もう一度注釈を追加してください。",
       "annotationFailed": "注釈を保存できませんでした。",
       "annotationPlaceholder": "変更したい点を書く",
       "annotations": "注釈",

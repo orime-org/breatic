@@ -15,7 +15,7 @@ export type FramePoint = { x: number; y: number };
 export type AnnotationDraftState =
   | { status: 'idle' }
   | { status: 'picking'; executionId: string; timeSeconds: number }
-  | { status: 'writing'; executionId: string; timeSeconds: number; point: FramePoint | null; text: string; disconnected: boolean }
+  | { status: 'writing'; executionId: string; timeSeconds: number; point: FramePoint | null; text: string }
   | { status: 'sending'; executionId: string; timeSeconds: number; point: FramePoint | null; text: string };
 
 /** What can happen to the draft. */
@@ -27,17 +27,14 @@ export type AnnotationDraftEvent =
   | { type: 'written' }
   | { type: 'write_failed'; reason: string }
   | { type: 'cancel'; confirmed: boolean }
-  | { type: 'switch_result'; confirmed: boolean }
-  | { type: 'disconnect' }
-  | { type: 'reconnect' };
+  | { type: 'switch_result'; confirmed: boolean };
 
 /** What the Space does after a transition. */
 export type AnnotationDraftEffect =
   | { type: 'pause' }
   | { type: 'confirm_discard' }
   | { type: 'write'; anchor: WebAnimationAnchor; text: string }
-  | { type: 'toast_failed'; reason: string }
-  | { type: 'toast_disconnected' };
+  | { type: 'toast_failed'; reason: string };
 
 /** A transition's outcome. */
 export interface AnnotationDraftTransition {
@@ -75,12 +72,11 @@ export function transitionAnnotationDraft(state: AnnotationDraftState, event: An
       if (event.type !== 'add') return stay;
       return { state: { status: 'picking', executionId: event.executionId, timeSeconds: event.timeSeconds }, effects: [{ type: 'pause' }] };
     case 'picking': {
-      const base = { status: 'writing' as const, executionId: state.executionId, timeSeconds: state.timeSeconds, disconnected: false };
+      const base = { status: 'writing' as const, executionId: state.executionId, timeSeconds: state.timeSeconds };
       switch (event.type) {
         case 'click_frame': return { state: { ...base, point: event.point, text: '' }, effects: [] };
         case 'type': return { state: { ...base, point: null, text: event.text }, effects: [] };
         case 'cancel': case 'switch_result': return IDLE;
-        case 'disconnect': return { state: ANNOTATION_DRAFT_IDLE, effects: [{ type: 'toast_disconnected' }] };
         default: return stay;
       }
     }
@@ -89,7 +85,7 @@ export function transitionAnnotationDraft(state: AnnotationDraftState, event: An
         case 'click_frame': return { state: { ...state, point: event.point }, effects: [] };
         case 'type': return { state: { ...state, text: event.text }, effects: [] };
         case 'send': {
-          if (state.disconnected || state.text.trim() === '') return stay;
+          if (state.text.trim() === '') return stay;
           const { executionId, timeSeconds, point, text } = state;
           return {
             state: { status: 'sending', executionId, timeSeconds, point, text },
@@ -97,15 +93,13 @@ export function transitionAnnotationDraft(state: AnnotationDraftState, event: An
           };
         }
         case 'cancel': case 'switch_result': return closeWriting(state, event.confirmed);
-        case 'disconnect': return state.disconnected ? stay : { state: { ...state, disconnected: true }, effects: [] };
-        case 'reconnect': return state.disconnected ? { state: { ...state, disconnected: false }, effects: [] } : stay;
         default: return stay;
       }
     case 'sending':
       if (event.type === 'written') return IDLE;
       if (event.type !== 'write_failed') return stay;
       return {
-        state: { status: 'writing', executionId: state.executionId, timeSeconds: state.timeSeconds, point: state.point, text: state.text, disconnected: false },
+        state: { status: 'writing', executionId: state.executionId, timeSeconds: state.timeSeconds, point: state.point, text: state.text },
         effects: [{ type: 'toast_failed', reason: event.reason }],
       };
   }

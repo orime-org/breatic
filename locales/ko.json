@@ -3410,7 +3410,6 @@
     "webAnimation": {
       "addAnnotation": "주석 추가",
       "annotateAt": "{time}에 주석 추가",
-      "annotationDisconnected": "연결이 끊겼습니다. 주석을 다시 추가하세요.",
       "annotationFailed": "주석을 저장하지 못했습니다.",
       "annotationPlaceholder": "수정할 내용을 적으세요",
       "annotations": "주석",

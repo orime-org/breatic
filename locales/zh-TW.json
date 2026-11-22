@@ -3410,7 +3410,6 @@
     "webAnimation": {
       "addAnnotation": "新增註解",
       "annotateAt": "在 {time} 新增註解",
-      "annotationDisconnected": "連線已中斷，請重新新增註解。",
       "annotationFailed": "註解未能儲存。",
       "annotationPlaceholder": "寫下要修改的地方",
       "annotations": "註解",

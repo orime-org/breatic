@@ -163,7 +163,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "spaces.webAnimation.details": { described: /a details button \(three dots\)/ },
   "spaces.webAnimation.sourceLabel": { excluded: REASONS.FILLS_A_VALUE },
   "spaces.webAnimation.baseWithAnnotations": { excluded: REASONS.FILLS_A_VALUE },
-  "spaces.webAnimation.annotationDisconnected": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.webAnimation.annotationFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "spaces.webAnimation.pickPoint": { described: /click the picture to mark a spot/ },
   "spaces.webAnimation.annotateAt": { excluded: REASONS.FILLS_A_VALUE },

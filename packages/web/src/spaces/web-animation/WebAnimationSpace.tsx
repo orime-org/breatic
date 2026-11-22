@@ -411,7 +411,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
     setAnnotation(state);
     for (const effect of effects) {
       if (effect.type === 'pause') pauseClock();
-      if (effect.type === 'toast_disconnected') toast.warning(t('spaces.webAnimation.annotationDisconnected'));
       if (effect.type === 'toast_failed' && effect.reason !== 'space_full') toast.error(t('spaces.webAnimation.annotationFailed'));
       if (effect.type === 'confirm_discard') setDiscardAsked(event.type === 'switch_result' ? 'switch_result' : 'cancel');
       if (effect.type === 'write') {
@@ -584,7 +583,6 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   });
   const { resultThreads, activeThread, openThread, closeThread } = annotations;
   showWritten.current = annotations.showWritten;
-  React.useEffect(() => { annotate(docReady ? { type: 'reconnect' } : { type: 'disconnect' }); }, [docReady, annotate]);
   const addAnnotation = React.useCallback((): void => {
     // The open card hides while the annotation is written and shows again after (design §13.7).
     // The anchor's time lies within the result (design §13.6).

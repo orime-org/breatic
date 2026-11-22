@@ -3410,7 +3410,6 @@
     "webAnimation": {
       "addAnnotation": "Add annotation",
       "annotateAt": "Annotation at {time}",
-      "annotationDisconnected": "Connection lost. Add the annotation again.",
       "annotationFailed": "The annotation could not be saved.",
       "annotationPlaceholder": "What should change here",
       "annotations": "Annotations",

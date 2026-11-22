@@ -3410,7 +3410,6 @@
     "webAnimation": {
       "addAnnotation": "添加批注",
       "annotateAt": "在 {time} 添加批注",
-      "annotationDisconnected": "连接已断开，请重新添加批注。",
       "annotationFailed": "批注没有保存成功。",
       "annotationPlaceholder": "写下要改的地方",
       "annotations": "批注",
