@@ -21,7 +21,7 @@ export type EndedMiniToolPlanJob = Extract<MiniToolPlanJobReport, { state: "done
  * @throws {never} Never.
  */
 export function planReportingEnd(deadlineAt: number): number {
-  return deadlineAt + reportGraceMs();
+  return deadlineAt + reportGraceMs(getMiniToolsConfig().poll_interval_ms);
 }
 
 /**
