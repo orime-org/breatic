@@ -15,3 +15,9 @@ describe("SPACE_TASKS_TYPES", () => {
     expect(Object.keys(shared)).not.toContain("SPACE_TASKS_CHANGED_SIGNAL");
   });
 });
+
+describe("the old per-Project credits signal", () => {
+  it("H-15 leaves no channel builder, the credit-table trigger having replaced it", () => {
+    expect(Object.keys(shared)).not.toContain("creditsChangedChannel");
+  });
+});
