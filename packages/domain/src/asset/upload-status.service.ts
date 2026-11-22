@@ -27,7 +27,7 @@ import { referenceUploadAsset } from "@domain/asset/upload-terminal.service.js";
  * @returns Its status.
  * @throws {Error} When the current asset or its Project association cannot be read or accepted.
  */
-async function statusOfGrant(grant: UploadGrant): Promise<UploadStatus> {
+export async function statusOfGrant(grant: UploadGrant): Promise<UploadStatus> {
   const key = grant.storageKey;
   if (grant.voidedAt !== null) {
     return { key, state: "failed", reason: grant.failureReason ?? "aborted" };

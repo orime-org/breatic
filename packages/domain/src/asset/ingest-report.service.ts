@@ -44,6 +44,7 @@ import {
   getStreamRedis,
   NotFoundError,
   announceSpaceTasksVersion,
+  publishUploadEnded,
   reportCollaboratorFirstAction,
 } from "@breatic/core";
 import { canvasSpaceDocName, NO_CONSENT, t, threeDSpaceDocName, uprightKeyFor } from "@breatic/shared";
@@ -53,6 +54,7 @@ import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import { announceDocumentUploadAsset, announceDocumentUploadFailure, documentTargetOf } from "@domain/asset/document-upload-events.js";
 import { referenceUploadAsset, settleUploadTerminal, type UploadTerminal } from "@domain/asset/upload-terminal.service.js";
+import { statusOfGrant } from "@domain/asset/upload-status.service.js";
 import type {
   UploadGrant,
   FinalizeClaim,
@@ -652,14 +654,17 @@ async function recordRegisteredUploadHistory(
 }
 
 /**
- * Publish and answer exclusively from the committed upload terminal.
+ * Publish and answer exclusively from the committed upload terminal. Every ending, a replay included, is told first to
+ * its uploader with the status the status read answers (#1580).
  * @param terminal - The result of serialized database arbitration.
  * @param sideEffects - Best-effort work whose failures the caller must log.
  * @returns The same canonical result for completions and their later replays.
- * @throws {Error} When history recovery, success publication or a Document block's failure publication cannot finish.
+ * @throws {Error} When the uploader cannot be told, or history recovery, success publication or a Document block's
+ *   failure publication cannot finish; the finish runs again and tells it again.
  */
 async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}): Promise<IngestReportOutcome> {
   const { grant } = terminal;
+  await publishUploadEnded(grant.userId, await statusOfGrant(grant));
   const documentTarget = documentTargetOf(grant);
   if (terminal.state === "void") {
     const reason = grant.failureReason ?? "aborted";

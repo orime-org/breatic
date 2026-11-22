@@ -10,7 +10,7 @@
  * the object, which is bounded by the upload's two hours and nothing shorter.
  */
 
-import { env } from "@breatic/core";
+import { env, publishUploadEnded } from "@breatic/core";
 import {
   finishUploadAtIngest,
   TRANSFER_MEDIA_TYPE,
@@ -23,6 +23,7 @@ import type { IngestReportOutcome } from "@domain/asset/ingest-report.service.js
 import { ingestRunFor } from "@domain/asset/asset.service.js";
 import * as mediaReadService from "@domain/asset/media-read.service.js";
 import { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
+import { statusOfGrant } from "@domain/asset/upload-status.service.js";
 import {
   completeTransferGrant,
   findGrantByKey,
@@ -103,11 +104,12 @@ async function finishResult(result: UploadFinishResult, assetSource: GrantAssetS
 /**
  * Settle a transfer upload (inner#1006) once the Worker has stored it: no
  * asset row, no media read, no activity. The grant is marked complete so the
- * request it carries may be referenced once.
+ * request it carries may be referenced once, and its uploader is told how it
+ * ended (#1580).
  * @param storageKey - The transfer's key.
  * @param answered - What the Worker measured over the stored object.
  * @returns How it ended.
- * @throws {Error} When the ledger cannot be read or written.
+ * @throws {Error} When the ledger cannot be read or written, or the uploader cannot be told.
  */
 async function finishTransfer(
   storageKey: string,
@@ -122,6 +124,8 @@ async function finishTransfer(
   if (answered.sizeBytes > declared) return refuse(storageKey, "too_large");
   // False only for a grant voided first, whose ending stands.
   const completed = await completeTransferGrant(storageKey);
+  const grant = await findGrantByKey(storageKey);
+  if (grant !== null) await publishUploadEnded(grant.userId, await statusOfGrant(grant));
   return { outcome: { status: completed ? "transferred" : "stale" } };
 }
 
