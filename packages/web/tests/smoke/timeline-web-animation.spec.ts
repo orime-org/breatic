@@ -982,6 +982,8 @@ test('an execution started without adding a copy is cancelled and offers Run aga
     await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
     const id = await executeWebAnimation(page, false);
     const list = outlet.getByTestId('timeline-executions');
+    // Cancelled while it still queues, a run reaches no step and marks none; the cancel waits for the pickup.
+    await expect(list.getByTestId(`timeline-execution-${id}`)).toHaveAttribute('data-status', 'running', { timeout: RUN_MS });
     await list.getByTestId(`timeline-execution-cancel-${id}`).click();
     // With the switch off nothing is placed on the Timeline.
     await expect(outlet.locator('[data-testid^="timeline-clip-"]')).toHaveCount(0);
