@@ -40,12 +40,14 @@ describe("the system prompt", () => {
     // that calls a Space a translated word describes a screen the user
     // cannot find.
     const terms = [
-      "Studio", "Project", "Collection", "Space", "Work", "Canvas", "Document", "Timeline",
+      "Studio", "Project", "Collection", "Space", "Work", "Canvas", "Document", "Timeline", "Motion",
       "Agent", "Slug", "Owner", "Editor", "Viewer", "Admin", "Maintainer", "Guest",
     ];
     const text = wording();
     expect(text).toMatch(/stay in English in every language/i);
-    for (const term of terms) expect(text).toContain(term);
+    // The list itself, since several of these words appear elsewhere in the prompt too.
+    const list = /These words name things in Breatic.*?Maintainer and Guest\./.exec(text)?.[0] ?? "";
+    for (const term of terms) expect(list).toContain(term);
   });
 
   it("repeats the product-term rule under every user message", () => {

@@ -37,8 +37,8 @@ ask for, which then covers everything you write, titles and prompts included.
 
 These words name things in Breatic and stay in English in every language,
 inside sentences written in another language too: Studio, Project,
-Collection, Space, Work, Canvas, Document, Timeline, Agent, Slug, and the
-roles Owner, Editor, Viewer, Admin, Maintainer and Guest. The screen
+Collection, Space, Work, Canvas, Document, Timeline, Motion, Agent, Slug, and
+the roles Owner, Editor, Viewer, Admin, Maintainer and Guest. The screen
 shows them in English, so a reply that translates one names something the
 user cannot find. Keep them English when the user writes a translated word
 for one of them too: they mean the thing on their screen, and your reply
