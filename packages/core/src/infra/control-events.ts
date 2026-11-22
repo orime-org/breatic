@@ -54,17 +54,18 @@ import { getStreamRedis } from "@core/infra/redis.js";
 import { env } from "@core/config/runtime.js";
 import {
   activityNewChannel,
-  creditsChangedChannel,
   assetPeaksReadyChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
+  uploadEndedChannel,
   type ActivityNewControlEvent,
-  type CreditsChangedControlEvent,
   type AssetPeaksReadyControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
+  type UploadEndedEvent,
+  type UploadStatus,
 } from "@breatic/shared";
 
 /**
@@ -100,23 +101,6 @@ export async function publishActivityNew(projectId: string): Promise<void> {
   };
   const redis = getStreamRedis();
   await redis.publish(activityNewChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
-}
-
-/**
- * Announce that a charge made in a project committed (inner#1611); collab
- * relays it to connected members as the `credits:changed` stateless signal.
- * Fire-and-forget like {@link publishActivityNew}.
- * @param projectId - Project whose studio was charged.
- * @returns Nothing.
- * @throws {Error} When Redis rejects the publish.
- */
-export async function publishCreditsChanged(projectId: string): Promise<void> {
-  const event: CreditsChangedControlEvent = {
-    type: "project-credits:changed",
-    projectId,
-    ts: Date.now(),
-  };
-  await getStreamRedis().publish(creditsChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**
@@ -177,4 +161,26 @@ export function sessionsRevokedChannelName(): string {
 export async function publishSessionsRevoked(userId: string, sessionIds: string[]): Promise<void> {
   const event: SessionsRevokedEvent = { type: "sessions:revoked", userId, sessionIds, ts: Date.now() };
   await getStreamRedis().publish(sessionsRevokedChannelName(), JSON.stringify(event));
+}
+
+/**
+ * The channel collab subscribes to for ended uploads, with this deployment's prefix (the same reason as
+ * {@link projectControlChannelPattern}).
+ * @returns The channel name.
+ */
+export function uploadEndedChannelName(): string {
+  return uploadEndedChannel(env.REDIS_KEY_PREFIX);
+}
+
+/**
+ * Tell an upload's uploader that it ended (#1580), with the status the status read answers; every collab instance
+ * relays it to that person's meta connections. Called at the finish's terminal exits, after the ending committed.
+ * @param userId - The uploader.
+ * @param status - How the upload ended.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishUploadEnded(userId: string, status: UploadStatus): Promise<void> {
+  const event: UploadEndedEvent = { type: "upload:ended", userId, status };
+  await getStreamRedis().publish(uploadEndedChannelName(), JSON.stringify(event));
 }

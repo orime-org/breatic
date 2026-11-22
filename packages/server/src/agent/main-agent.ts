@@ -1568,12 +1568,6 @@ export class MainAgent {
                   "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
                 );
               }
-              if (outcome?.signalFailure) {
-                logger.error(
-                  { err: outcome.signalFailure, userId, conversationId, turnIndex, projectId },
-                  "credits_signal_failed",
-                );
-              }
             },
           },
         });

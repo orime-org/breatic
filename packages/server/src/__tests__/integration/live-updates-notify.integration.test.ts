@@ -472,7 +472,7 @@ describe("the payloads and the triggers themselves", () => {
   it("A-31 carries only the kind and one canonical id", async () => {
     const got = await observe(() => insertNotification(bystander));
     expect(got).toHaveLength(1);
-    expect(Object.keys(got[0]).sort()).toEqual(["k", "u"]);
+    expect(Object.keys(got[0]!).sort()).toEqual(["k", "u"]);
     expect((got[0] as { u: string }).u).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 

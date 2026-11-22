@@ -159,11 +159,12 @@ export {
 } from "@core/infra/event-stream.js";
 export {
   publishActivityNew,
-  publishCreditsChanged,
   publishAssetPeaksReady,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
+  uploadEndedChannelName,
+  publishUploadEnded,
 } from "@core/infra/control-events.js";
 export {
   PROJECT_MEMBER_CHANGED_CHANNEL,

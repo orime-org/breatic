@@ -32,7 +32,6 @@ vi.mock("@core/config/runtime.js", () => ({ env: envMock }));
 
 import {
   publishActivityNew,
-  publishCreditsChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   publishUploadEnded,
@@ -84,15 +83,6 @@ describe("control-events — deployment prefix", () => {
       projectId: PID,
       reason: "archived",
     });
-  });
-
-  it("publishes credits:changed on the prefixed channel, under the subscribe pattern", async () => {
-    await publishCreditsChanged(PID);
-
-    expect(lastChannel()).toBe(`dev:project:${PID}:credits:changed`);
-    expect(patternMatches(projectControlChannelPattern(), lastChannel())).toBe(true);
-    const call = publishMock.mock.calls.at(-1) as unknown as [string, string];
-    expect(JSON.parse(call[1])).toMatchObject({ type: "project-credits:changed", projectId: PID });
   });
 
   it("derives the subscribe pattern from the same prefix", () => {

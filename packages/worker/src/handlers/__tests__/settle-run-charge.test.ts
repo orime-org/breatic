@@ -118,13 +118,6 @@ describe("settleRunCharge", () => {
     );
   });
 
-  it("logs a charge whose readers could not be told", async () => {
-    const redis = new Error("redis down");
-    h.settleCharge.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: redis });
-    await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
-    expect(h.error).toHaveBeenCalledExactlyOnceWith({ ...CONTEXT, err: redis }, "credits_signal_failed");
-  });
-
   it("does nothing more when the request was already settled by the sweep", async () => {
     h.settleCharge.mockResolvedValue(null);
     await expect(settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 })).resolves.toBeUndefined();

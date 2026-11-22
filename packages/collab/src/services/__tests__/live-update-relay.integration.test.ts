@@ -428,13 +428,15 @@ describe("PT-6 routing under random connections and messages", () => {
   const connection = fc.record({ user: fc.integer({ min: 0, max: 2 }), project: fc.integer({ min: 0, max: 2 }), instance: fc.integer({ min: 0, max: 1 }) });
 
   it("delivers to each connection exactly what the table says", async () => {
-    const users = [await user(), await user(), await user()];
-    const studios = [await studio(users[0]!), await studio(users[1]!)];
     // Projects 0 and 1 are in studio 0, project 2 in studio 1.
-    const projects = [await project(studios[0]!, users[0]!), await project(studios[0]!, users[0]!), await project(studios[1]!, users[1]!)];
     const studioOfProject = [0, 0, 1];
     await fc.assert(
       fc.asyncProperty(fc.uniqueArray(connection, { maxLength: 6, selector: (c) => `${c.user}-${c.project}-${c.instance}` }), fc.array(message, { minLength: 1, maxLength: 5 }), async (spread, messages) => {
+        // Each run has its own people and Projects, so a message still on its way from an earlier run reaches no
+        // connection of this one.
+        const users = [await user(), await user(), await user()];
+        const studios = [await studio(users[0]!), await studio(users[1]!)];
+        const projects = [await project(studios[0]!, users[0]!), await project(studios[0]!, users[0]!), await project(studios[1]!, users[1]!)];
         const opened = await Promise.all(spread.map(async (c) => ({ ...c, client: await open(c.instance === 0 ? I1 : I2, users[c.user]!, projectMetaDocName(projects[c.project]!)) })));
         try {
           const keys = messages.map(() => `uploads/pt6-${randomUUID()}.png`);

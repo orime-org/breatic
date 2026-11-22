@@ -2,18 +2,13 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A settled charge tells the project's users, and failing to tell them never
- * undoes or repeats the charge (inner#1611, inner#1617).
- *
- * The signal goes out after the settle transaction commits, so a user who
- * reads again sees the charge. A publish that fails is handed back on the
- * outcome: thrown instead, `chargeOnce` would record a settle failure for a
- * request that is already settled, and callers would log a charge that stands
- * as one that failed.
+ * A charge request settles once, in one commit (inner#1611, inner#1617). The
+ * Studio's members learn of it from the trigger on the credit tables (#1580),
+ * so settling sends nothing itself.
  *
  * The charge-request repository is a stand-in here (`creditCharge.repo.ts`,
  * design §3.1). The names below are the interface this suite assumes; what it
- * asserts is the order of lock, charge, mark-settled, commit and publish.
+ * asserts is the order of lock, charge, mark-settled and commit.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -37,7 +32,6 @@ interface RequestRow {
 
 const h = vi.hoisted(() => ({
   order: [] as string[],
-  publish: vi.fn<(projectId: string) => Promise<void>>(),
   rows: new Map<string, RequestRow>(),
   keys: new Map<string, string>(),
   recordFailure: vi.fn(async (..._args: unknown[]): Promise<void> => undefined),
@@ -53,10 +47,6 @@ vi.mock("@breatic/core", async (importOriginal) => ({
       h.order.push("commit");
       return result;
     },
-  },
-  publishCreditsChanged: (projectId: string) => {
-    h.order.push("publish");
-    return h.publish(projectId);
   },
 }));
 
@@ -148,57 +138,41 @@ beforeEach(() => {
   h.order.length = 0;
   h.rows.clear();
   h.keys.clear();
-  h.publish.mockReset();
-  h.publish.mockResolvedValue(undefined);
   h.recordFailure.mockClear();
   h.appendLedgerEntry.mockClear();
 });
 
-describe("settleCharge and the credits signal", () => {
-  it("locks the request before the debt, marks it settled in the charge's commit, and tells the project's users after", async () => {
+describe("settleCharge", () => {
+  it("locks the request before the debt and marks it settled in the charge's commit", async () => {
     seedRequest("req-a");
 
     const outcome = await settleCharge("req-a");
 
-    expect(h.publish).toHaveBeenCalledWith(PROJECT);
     // The request row is the first lock; marking it settled is part of the
-    // charge's own commit; the signal follows the commit.
+    // charge's own commit.
     expect(h.order[0]).toBe("lock-request");
     expect(h.order.indexOf("lock-debt")).toBeGreaterThan(0);
     expect(h.order.indexOf("mark-settled")).toBeGreaterThan(0);
     expect(h.order.indexOf("commit")).toBeGreaterThan(h.order.indexOf("lock-debt"));
     expect(h.order.indexOf("commit")).toBeGreaterThan(h.order.indexOf("mark-settled"));
-    expect(h.order.slice(-2)).toEqual(["commit", "publish"]);
+    expect(h.order.at(-1)).toBe("commit");
     expect(outcome).toMatchObject({ billed: true, charged: "10.000000", shortfall: "0.000000" });
-    expect(outcome?.signalFailure).toBeUndefined();
     expect(h.rows.get("req-a")?.status).toBe("settled");
   });
 
-  it("hands a failed publish back on the outcome, with the charge settled", async () => {
-    seedRequest("req-b");
-    const down = new Error("redis down");
-    h.publish.mockRejectedValueOnce(down);
-
-    await expect(settleCharge("req-b")).resolves.toMatchObject({ billed: true, charged: "10.000000", signalFailure: down });
-    expect(h.rows.get("req-b")?.status).toBe("settled");
-  });
-
-  it("returns null for a request already settled, charging and telling nobody", async () => {
+  it("returns null for a request already settled, charging nothing", async () => {
     seedRequest("req-c", "settled");
 
     await expect(settleCharge("req-c")).resolves.toBeNull();
 
     expect(h.appendLedgerEntry).not.toHaveBeenCalled();
-    expect(h.publish).not.toHaveBeenCalled();
     expect(h.order).not.toContain("lock-debt");
     expect(h.order).not.toContain("mark-settled");
   });
 });
 
-describe("chargeOnce and the credits signal", () => {
-  it("does not record a failure when only the publish failed, and a second call under the key charges nothing", async () => {
-    h.publish.mockRejectedValueOnce(new Error("redis down"));
-
+describe("chargeOnce", () => {
+  it("charges once under a key, and a second call under it charges nothing", async () => {
     await expect(chargeOnce("operation", "turn:c1:1", INPUT)).resolves.toMatchObject({ charged: "10.000000" });
     expect(h.recordFailure).not.toHaveBeenCalled();
 

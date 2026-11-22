@@ -8,8 +8,6 @@
  *
  *   - `{prefix}:project:{pid}:activity:new` (server, worker) — relay the
  *     activity signal on the `meta` doc.
- *   - `{prefix}:project:{pid}:credits:changed` (server, worker) — relay the
- *     credits signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:asset-peaks:ready` (worker) — relay a written
  *     audio waveform on the `meta` doc, with the audio's address.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
@@ -50,14 +48,11 @@ import { createLogger, projectControlChannelPattern } from "@breatic/core";
 import {
   projectMetaDocName,
   type ActivityNewControlEvent,
-  type CreditsChangedControlEvent,
   type AssetPeaksReadyControlEvent,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
-  CREDITS_CHANGED_SIGNAL,
   ASSET_PEAKS_READY_SIGNAL,
   type ActivityNewSignal,
-  type CreditsChangedSignal,
   type AssetPeaksReadySignal,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
@@ -66,7 +61,6 @@ const logger = createLogger("project-control-sync");
 
 type ProjectControlEvent =
   | ActivityNewControlEvent
-  | CreditsChangedControlEvent
   | AssetPeaksReadyControlEvent
   | ProjectConnectionsCloseEvent;
 
@@ -81,7 +75,7 @@ type ProjectControlEvent =
 function relayOnMetaDoc(
   hocuspocus: Hocuspocus,
   projectId: string,
-  signal: ActivityNewSignal | CreditsChangedSignal | AssetPeaksReadySignal,
+  signal: ActivityNewSignal | AssetPeaksReadySignal,
 ): void {
   const docName = projectMetaDocName(projectId);
   const doc = hocuspocus.documents?.get(docName);
@@ -96,7 +90,6 @@ function relayOnMetaDoc(
 /**
  * Decode one raw control-plane pub/sub message and dispatch it:
  * `project-activity:new` relays the activity signal on the meta doc;
- * `project-credits:changed` relays the credits signal on the meta doc;
  * `project-connections:close` closes this instance's connections to the
  * project; `project-asset-peaks:ready` relays a written waveform on the meta
  * doc. Unknown / unparseable messages are logged and ignored.
@@ -121,13 +114,6 @@ async function handleEvent(
     // as the same stateless signal collab-originated rows broadcast
     // directly (ADR 2026-07-04 project-activity-feed).
     relayOnMetaDoc(hocuspocus, event.projectId, { t: ACTIVITY_NEW_SIGNAL, projectId: event.projectId });
-    return;
-  }
-
-  if (event.type === "project-credits:changed") {
-    // A charge made in this project committed; members' top bars read
-    // their credits again.
-    relayOnMetaDoc(hocuspocus, event.projectId, { t: CREDITS_CHANGED_SIGNAL, projectId: event.projectId });
     return;
   }
 

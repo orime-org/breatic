@@ -67,7 +67,7 @@ export async function runUsageLookup(
     ? `${data.operationKey}:lookup:${createHash("sha256").update(JSON.stringify(data.lookup)).digest("hex")}`
     : `${data.operationKey}:gen:${data.generationId}`;
   try {
-    const outcome = await creditLotService.chargeOnce("operation", refKey, {
+    await creditLotService.chargeOnce("operation", refKey, {
       projectId: data.projectId,
       actorUserId: data.actorUserId,
       amount,
@@ -75,12 +75,6 @@ export async function runUsageLookup(
       model: data.model,
       provider: upstream,
     });
-    if (outcome?.signalFailure) {
-      logger.error(
-        { err: outcome.signalFailure, lookup, projectId: data.projectId },
-        "credits_signal_failed",
-      );
-    }
   } catch (err) {
     logger.error({ err, lookup, refKey, actorUserId: data.actorUserId, amount }, "credit_charge_settle_failed");
   }

@@ -28,6 +28,8 @@
  * auth-related DB0 (session / lock / rate-limit).
  */
 
+import type { UploadStatus } from "@shared/upload/upload-status.js";
+
 // ── Project lifecycle (transactional outbox → durable stream) ───────
 //
 // Yjs document store lives in a SEPARATE Postgres database from the
@@ -105,30 +107,6 @@ export function activityNewChannel(prefix: string, projectId: string): string {
 }
 
 /**
- * Control event announcing that a charge made in a project committed
- * (inner#1611); collab relays it as the `credits:changed` stateless signal on
- * the project meta doc, and the top bar reads its credits again. Fire-and-forget
- * like {@link ActivityNewControlEvent}: a page that misses it reads the figure
- * on its next load.
- */
-export interface CreditsChangedControlEvent {
-  type: "project-credits:changed";
-  projectId: string;
-  ts: number;
-}
-
-/**
- * Pub/sub channel for {@link CreditsChangedControlEvent}. Matched by
- * {@link allProjectChannelsPattern}.
- * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
- * @param projectId - Project whose studio was charged.
- * @returns The channel name `{prefix}:project:{projectId}:credits:changed`.
- */
-export function creditsChangedChannel(prefix: string, projectId: string): string {
-  return `${prefix}:project:${projectId}:credits:changed`;
-}
-
-/**
  * Control event announcing that an audio asset's peaks were written (#1580), sent once to each live Project
  * referencing the audio; collab relays it as the `asset-peaks:ready` stateless signal on that Project's meta doc, and
  * a cut band waiting for the audio's waveform reads it again.
@@ -199,6 +177,27 @@ export interface SessionsRevokedEvent {
  */
 export function sessionsRevokedChannel(prefix: string): string {
   return `${prefix}:sessions:revoked`;
+}
+
+/**
+ * An upload ended, told to its uploader (#1580): published at the finish's
+ * terminal exits with the status the status read answers, and relayed by collab
+ * to the uploader's meta connections as the `upload:ended` signal.
+ */
+export interface UploadEndedEvent {
+  type: "upload:ended";
+  /** The uploader; nobody else is told. */
+  userId: string;
+  status: UploadStatus;
+}
+
+/**
+ * Pub/sub channel for {@link UploadEndedEvent}, one per deployment.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @returns The channel name `{prefix}:uploads:ended`.
+ */
+export function uploadEndedChannel(prefix: string): string {
+  return `${prefix}:uploads:ended`;
 }
 
 /**
