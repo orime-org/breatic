@@ -6,7 +6,7 @@
  * expands into (inner#977).
  */
 
-import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("@domain/provider/instance.js", () => ({
   initProvider: () => undefined,
@@ -61,10 +61,14 @@ import {
 
 const NOTE = { slot: { kind: "note" as const, label: "Put the character's picture in Character first" } };
 
-beforeEach(() => {
+// Once for the file: no case changes the catalogs or the environment, and redoing both before each case is what makes a file that loops over every template slow.
+beforeAll(() => {
   loadFixtureLocales();
-  setLocale("en");
   useFullCatalog();
+});
+
+beforeEach(() => {
+  setLocale("en");
 });
 
 afterAll(() => {
