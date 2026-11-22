@@ -23,9 +23,9 @@ import { checkServer, normalizeServerUrl, readServerConfig, resolveServerUrl, wr
 import { desktopText } from "@desktop/main/strings.js";
 
 /**
- * The address offered on first launch. Which host a build talks to is a
- * deployment decision, so it is injected at build time from
- * `BREATIC_DEFAULT_SERVER_URL`; a build without one offers an empty field.
+ * The server a build opens on first launch, with no question asked. Which host
+ * a build talks to is a deployment decision, so it is injected at build time
+ * from `BREATIC_DEFAULT_SERVER_URL`; a build without one asks the user.
  */
 declare const __DEFAULT_SERVER_URL__: string;
 const DEFAULT_SERVER_URL = __DEFAULT_SERVER_URL__;
@@ -100,7 +100,11 @@ async function start(): Promise<void> {
   });
   registerIpc();
   buildMenu();
-  const resolved = resolveServerUrl({ envUrl: process.env.BREATIC_SERVER_URL, savedUrl: readServerConfig(configFile()) });
+  const resolved = resolveServerUrl({
+    envUrl: process.env.BREATIC_SERVER_URL,
+    savedUrl: readServerConfig(configFile()),
+    builtInUrl: DEFAULT_SERVER_URL,
+  });
   if (resolved) {
     const answer = await openServer(resolved.origin, { save: false });
     if (!answer.ok) openConnect({ mode: "unreachable", url: resolved.origin, reason: answer.reason });

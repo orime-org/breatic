@@ -124,21 +124,35 @@ describe("config file", () => {
 
 describe("resolveServerUrl", () => {
   it("lets BREATIC_SERVER_URL override the saved address", () => {
-    expect(resolveServerUrl({ envUrl: "http://localhost:8100", savedUrl: "https://app.example.com" })).toEqual({
+    expect(resolveServerUrl({ envUrl: "http://localhost:8100", savedUrl: "https://app.example.com", builtInUrl: "" })).toEqual({
       origin: "http://localhost:8100",
       fromEnv: true,
     });
   });
 
   it("uses the saved address", () => {
-    expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://app.example.com" })).toEqual({ origin: "https://app.example.com", fromEnv: false });
+    expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://app.example.com", builtInUrl: "" })).toEqual({ origin: "https://app.example.com", fromEnv: false });
   });
 
-  it("has nothing on the first launch", () => {
-    expect(resolveServerUrl({ envUrl: undefined, savedUrl: null })).toBeNull();
+  it("opens the server the build carries on the first launch, without asking", () => {
+    expect(resolveServerUrl({ envUrl: undefined, savedUrl: null, builtInUrl: "https://app.example.com" })).toEqual({
+      origin: "https://app.example.com",
+      fromEnv: false,
+    });
+  });
+
+  it("prefers the server the user chose over the one the build carries", () => {
+    expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://team.example.com", builtInUrl: "https://app.example.com" })).toEqual({
+      origin: "https://team.example.com",
+      fromEnv: false,
+    });
+  });
+
+  it("asks on the first launch of a build that carries no server", () => {
+    expect(resolveServerUrl({ envUrl: undefined, savedUrl: null, builtInUrl: "" })).toBeNull();
   });
 
   it("throws on an override the client refuses", () => {
-    expect(() => resolveServerUrl({ envUrl: "http://10.0.0.2", savedUrl: null })).toThrow(/BREATIC_SERVER_URL/);
+    expect(() => resolveServerUrl({ envUrl: "http://10.0.0.2", savedUrl: null, builtInUrl: "" })).toThrow(/BREATIC_SERVER_URL/);
   });
 });
