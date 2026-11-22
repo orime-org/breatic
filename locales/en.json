@@ -1567,6 +1567,7 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "fight": "Fights & action",
         "animation": "Animated shorts",
         "ecommerce": "E-commerce ads",
         "product-showcase": "Product showcase",
@@ -2534,6 +2535,104 @@
         "step": {
           "trim": "Each section usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the length its prompt asks for.",
           "join": "Select the four trimmed clips (named CUT-…), right-click and choose Join; check the order runs intro, body, reveal, outro, and set a crossfade of about 1 second."
+        }
+      },
+      "fight-duel-one-take": {
+        "name": "One-take duel",
+        "description": "Two fighters in one 15-second take",
+        "prompt": "A 15-second widescreen fight scene with sound in one continuous take, no cuts. The first fighter is [📎 Fighter A] and the second is [📎 Fighter B]: each has the face, hair, build and outfit of their own picture, nothing else taken from the pictures; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. a rain-soaked rooftop at night}. Fighting style: {✏️ the fighting style, e.g. kung fu kicks and palm strikes}. The camera moves with the fight: it pushes in when one attacks, pulls back when the other blocks and circles them when they lock together. 0–3 s: already in motion, the two circle each other, the camera circling with them. 3–6 s: the first fighter attacks with a swift combination, the camera pushing in; the second fighter blocks each strike. 6–9 s: the second fighter counters with a whip-fast kick, the camera pulling back to keep both in frame; they lock arms and the camera circles them. 9–12 s: the deciding blow: {✏️ the deciding blow, e.g. the first fighter's spinning kick breaks through the second fighter's guard}; the instant it lands the picture holds for a split second with a short shock of camera shake. 12–15 s: the second fighter is knocked back, motion trails behind them, the camera pulling back; both settle, ending on a medium close-up as the camera gently pulls out. Every move readable: full bodies in frame during each exchange, never a blurred smear. One light source: {✏️ the light, e.g. a neon sign behind them}. Sound: footsteps and cloth, whooshes, hard impacts, a beat of silence just before the deciding blow, then heavy breathing. No blood, no wounds. No text on screen.",
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate."
+          }
+        }
+      },
+      "fight-exchange-short": {
+        "name": "Quick exchange",
+        "description": "One clash in 8 seconds: dash, hit, knock-back",
+        "prompt": "An 8-second widescreen fight shot with sound: one exchange. The first fighter is [📎 Fighter A] and the second is [📎 Fighter B]: each has the face, hair, build and outfit of their own picture, nothing else taken from the pictures; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. an empty warehouse lit through high windows}. 0–2 s [Tracking shot]: the first fighter dashes in from the left, the camera tracking alongside at waist height. 2–4 s [Push in]: the two clash, fist against forearm, the camera pushing in on the clash. 4–5 s [Shake]: the hit: {✏️ the hit, e.g. the first fighter's elbow lands on the second fighter's shoulder}, the frame shaking once on contact. 5–8 s [Pull out]: the second fighter is knocked back several steps and skids to a stop, both drop back into stance facing each other, the camera pulling out to a wide shot and holding. Both full bodies readable in every beat. One light source: the place's own. Sound: a rush of footsteps, a crack of contact, a heavy thud, then breathing. No blood. No text on screen.",
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate."
+          }
+        }
+      },
+      "fight-duel-locked": {
+        "name": "Duel with locked looks",
+        "description": "Model sheets first, so both still look the same",
+        "prompt": "(💡 Generate Fighter A sheet first)(💡 Generate Fighter B sheet first)A 15-second widescreen fight scene with sound in one continuous take, no cuts. The first fighter is the person on [📎 Fighter A sheet] and the second is the person on [📎 Fighter B sheet]; each sheet shows one person from the front, side and back with a close-up of the face. Take from each sheet only that person: face, hair, build and every piece of the outfit, never the white background, the layout or the poses; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. a rain-soaked rooftop at night}. Fighting style: {✏️ the fighting style, e.g. kung fu kicks and palm strikes}. The camera moves with the fight: it pushes in when one attacks, pulls back when the other blocks and circles them when they lock together. 0–3 s: already in motion, the two circle each other, the camera circling with them. 3–6 s: the first fighter attacks with a swift combination, the camera pushing in; the second fighter blocks each strike. 6–9 s: the second fighter counters with a whip-fast kick, the camera pulling back to keep both in frame; they lock arms and the camera circles them. 9–12 s: the deciding blow: {✏️ the deciding blow, e.g. the first fighter's spinning kick breaks through the second fighter's guard}; the instant it lands the picture holds for a split second with a short shock of camera shake. 12–15 s: the second fighter is knocked back, motion trails behind them, the camera pulling back; both settle, ending on a medium close-up as the camera gently pulls out. Every move readable: full bodies in frame during each exchange, never a blurred smear. One light source: {✏️ the light, e.g. a neon sign behind them}. Sound: footsteps and cloth, whooshes, hard impacts, a beat of silence just before the deciding blow, then heavy breathing. No blood, no wounds. No text on screen.",
+        "node": {
+          "sheet-a": {
+            "name": "Fighter A sheet",
+            "prompt": "A 4:3 landscape model sheet of [📎 Fighter A] only, on a plain white background: on the left, the same person full body from the front, from the side and from the back in one row, standing straight with the arms a little away from the body, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin, build and every piece of clothing, shoes and accessories exactly as in the picture; nothing added, no second person, nothing of the picture's background. Even soft light. No text, no labels."
+          },
+          "sheet-b": {
+            "name": "Fighter B sheet",
+            "prompt": "A 4:3 landscape model sheet of [📎 Fighter B] only, on a plain white background: on the left, the same person full body from the front, from the side and from the back in one row, standing straight with the arms a little away from the body, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin, build and every piece of clothing, shoes and accessories exactly as in the picture; nothing added, no second person, nothing of the picture's background. Even soft light. No text, no labels."
+          }
+        },
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate Fighter A sheet."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate Fighter B sheet."
+          }
+        }
+      },
+      "hero-orbit-reveal": {
+        "name": "Hero orbit reveal",
+        "description": "Low angle, half orbit, the hero rises",
+        "prompt": "(💡 Generate Low-angle keyframe first, then set it as the First frame)A 6-second shot with sound that starts on the first frame. The moment: {✏️ what this moment is, e.g. the hero's awakening after being knocked down}. The camera stays low and makes one smooth half orbit, 180 degrees around the hero, at the same distance and height throughout; the debris close to the camera sweeps past fast while the background moves slowly. Over the whole shot the hero rises on the spot from one knee to standing tall and keeps facing the way they faced in the first frame; they do not turn with the camera. The backlight stays behind the hero. Sound: a low rumble building, debris settling, one deep boom as they stand. No text on screen.",
+        "node": {
+          "keyframe": {
+            "name": "Low-angle keyframe",
+            "prompt": "A widescreen still of [📎 Hero] seen from a camera almost on the ground, looking up: down on one knee, one hand on the ground, head lowered, about to rise. Face, hair, build and outfit exactly as in the picture; nothing else taken from the picture. Place: {✏️ the place, e.g. a cracked street after an explosion}. Strong backlight behind them rims the silhouette; dust and small debris hang in the air close to the camera, the background falling away into depth. Look: {✏️ the look, e.g. a photorealistic film still}. No text."
+          }
+        },
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate Low-angle keyframe."
+          }
+        }
+      },
+      "bullet-time-moment": {
+        "name": "Bullet-time moment",
+        "description": "Freeze the key instant and circle it",
+        "prompt": "A 6-second widescreen bullet-time shot with sound. The person is [📎 Hero]: face, hair, build and outfit as in the picture, nothing else taken from the picture. Place: {✏️ the place, e.g. a car park at night in the rain}. The action: {✏️ the action, e.g. leaping over a car as sparks fly}. 0–2 s [Static shot]: the action at full speed. 2–5 s [Truck left,Pan right]: at the deciding instant everything freezes almost completely, the person in mid-air, every particle, droplet and spark hanging still, while the camera keeps moving, circling about 120 degrees around the frozen moment at the same distance and height so the same instant is seen from new sides. This is a frozen moment with a moving camera, not slow motion. 5–6 s [Static shot]: the action carries on at full speed from exactly where it froze. Sound: the rush of the action, a sudden near-silence with a low hum while it is frozen, then the sound crashing back in. No text on screen.",
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "impact-frame-hit": {
+        "name": "Impact hit",
+        "description": "The deciding hit lands with a visual accent",
+        "prompt": "A 10-second widescreen fight with sound, built around one deciding hit. The first fighter is [📎 Fighter A] and the second is [📎 Fighter B]: each has the face, hair, build and outfit of their own picture, nothing else taken from the pictures; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. a dojo with paper screens}. 0–3 s: already in motion, the two close in and trade quick blows, the camera moving with them. 3–5 s: the first fighter winds up for the deciding hit, a beat of stillness. 5–6 s: the deciding hit lands: {✏️ the exact point of contact, e.g. the first fighter's fist driving into the second fighter's stomach}. At the instant of contact the picture takes the accent below, for a split second only. Through it the two silhouettes stay apart and readable, the striking arm and the point of contact are the clearest things in the frame, and the background gives way to them. Then the picture snaps back to its normal colours. 6–10 s: the aftermath: {✏️ what follows, e.g. the second fighter skids back across the floor and drops to one knee}, then the first fighter settles back into stance. The accent happens once only. Sound: quick blows, one huge hit at contact with a split second of silence after it, then the aftermath. No blood. No text on screen.",
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate."
+          }
         }
       }
     },

@@ -206,6 +206,9 @@ const COMICS_IMAGES = ['storyboard-grid-25', 'storyboard-sheet-9', 'comic-page',
 /** The comic and storyboard templates a video panel lists. */
 const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
 
+/** The fight and action templates (inner#1818), in registry order. */
+const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked', 'hero-orbit-reveal', 'bullet-time-moment', 'impact-frame-hit'];
+
 /** The film style templates (inner#1817), in registry order. */
 const FILM_STYLES = ['film-style-still', 'film-style-shot', 'era-walkthrough-montage', 'style-sound-bed'];
 
@@ -357,6 +360,7 @@ describe('generation templates', () => {
       'identity-locked-sequence',
       'character-showcase-orbit',
       ...COMICS_VIDEOS,
+      ...FIGHT,
       ...ANIMATION,
       ...ECOMMERCE,
       ...PRODUCT_SHOWCASE_VIDEOS,
@@ -521,6 +525,19 @@ describe('generation templates', () => {
         before: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
         after: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
       },
+      'fight-duel-one-take': t2v(15, '16:9'),
+      'fight-exchange-short': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 8 } } },
+      'fight-duel-locked': {
+        ...t2v(15, '16:9'),
+        'sheet-a': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3' } },
+        'sheet-b': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3' } },
+      },
+      'hero-orbit-reveal': {
+        result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 6, generate_audio: true } },
+        keyframe: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } },
+      },
+      'bullet-time-moment': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 6 } } },
+      'impact-frame-hit': t2v(10, '16:9'),
       'vehicle-speed-cutlist': t2v(12, '16:9'),
       'sports-live-coverage': t2v(12, '16:9'),
       'extreme-sports-run': t2v(10),
@@ -626,11 +643,12 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'speed', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'speed', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
+      ...Object.fromEntries(FIGHT.map((id) => [id, 'fight'])),
       ...Object.fromEntries(ANIMATION.map((id) => [id, 'animation'])),
       ...Object.fromEntries(ECOMMERCE.map((id) => [id, 'ecommerce'])),
       ...Object.fromEntries(PRODUCT_SHOWCASE.map((id) => [id, 'product-showcase'])),
@@ -695,6 +713,7 @@ describe('creative goals and triggers', () => {
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
       ['comics-storyboards', COMICS_VIDEOS],
+      ['fight', FIGHT],
       ['animation', ANIMATION],
       ['ecommerce', ECOMMERCE],
       ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
