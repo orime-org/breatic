@@ -15,6 +15,7 @@ import { commitVideoSceneAnalysis, commitVideoToolAnalysisRef, commitVideoToolDr
 import { useVideoToolDraft } from '@web/data/yjs/use-video-tool-draft';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
+import { ourSentence } from '@web/data/api/server-message';
 import { useMiniToolRunning } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { MiniToolPanel } from '@web/spaces/canvas/mini-tool/MiniToolPanel';
 import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
@@ -290,7 +291,10 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
       queryClient.setQueryData(miniToolAnalysisQuery(record.analysisRunId).queryKey, record);
       commitVideoToolAnalysisRef(doc, nodeId, { version: 1, toolId: 'video.split', kind: record.kind, draftId: record.draftId, analysisRunId: record.analysisRunId, inputFingerprint: record.inputFingerprint });
       return undefined;
-    }, onFailure: () => { toast.error(t('canvas.miniTool.videoUI.analysisFailed')); } });
+    }, onFailure: (error) => {
+      // A refusal says its own sentence, a spend limit's with its reset day (inner#1968 design 3.3a).
+      toast.error(ourSentence(error) ?? t('canvas.miniTool.videoUI.analysisFailed'));
+    } });
   }, [intent, queryClient, doc, nodeId, t]);
   /**
    * Starts a frozen, idempotent scene analysis of the whole grid.

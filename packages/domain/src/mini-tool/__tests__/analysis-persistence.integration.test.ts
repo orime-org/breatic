@@ -164,8 +164,10 @@ function scenes(f: Fixture): ScenesResult {
 }
 
 describe("accepted analysis execution entry", () => {
-  it.each(["scene_cuts"] as const)("starts the original pending %s analysis with its SQL identity", async (kind) => {
+  it.each(["scene_cuts"] as const)("starts the original %s analysis the running-task gate let through with its SQL identity", async (kind) => {
     const f = await seed(kind, "pending", "2026-10-25T01:02:03.123456Z");
+    // The running-task gate starts a pending task (inner#1968 design 3.9); the pickup runs after it.
+    await pg`UPDATE tasks SET status='running',started_at=clock_timestamp() WHERE id=${f.taskId}`;
     const before = await snapshot(f);
     const execution = await domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-original");
     expect(execution.record).toEqual({ ...f.initial, status: "running" });
@@ -201,7 +203,8 @@ describe("accepted analysis execution entry", () => {
 
   it("continues an accepted analysis hidden from user history using the original source", async () => {
     const f = await seed("scene_cuts", "pending");
-    await pg`UPDATE tasks SET deleted_at='2026-10-25T01:02:03.123456Z'::timestamptz WHERE id=${f.taskId}`;
+    // The running-task gate starts a pending task (inner#1968 design 3.9); the pickup runs after it.
+    await pg`UPDATE tasks SET status='running',started_at=clock_timestamp(),deleted_at='2026-10-25T01:02:03.123456Z'::timestamptz WHERE id=${f.taskId}`;
     const before = await snapshot(f);
     const execution = await domain.miniToolAnalysisService.startMiniToolAnalysisExecution(f.taskId, "analysis-job-hidden");
     expect(execution.record).toEqual({ ...f.initial, status: "running" }); expect(execution.params).toEqual(before.task.params);
@@ -233,7 +236,10 @@ describe("accepted analysis execution entry", () => {
   });
 
   it("rolls back the execution start when its SQL write fails", async () => {
-    const f = await seed("scene_cuts", "pending"); const before = await snapshot(f);
+    const f = await seed("scene_cuts", "pending");
+    // The running-task gate starts a pending task (inner#1968 design 3.9); the pickup runs after it.
+    await pg`UPDATE tasks SET status='running',started_at=clock_timestamp() WHERE id=${f.taskId}`;
+    const before = await snapshot(f);
     await pg.unsafe(`CREATE FUNCTION reject_analysis_start() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.id='${f.taskId}'::uuid AND NEW.status='running' THEN RAISE EXCEPTION 'fixture_analysis_start_failed'; END IF; RETURN NEW; END $$`);
     await pg.unsafe("CREATE TRIGGER reject_analysis_start BEFORE UPDATE ON tasks FOR EACH ROW EXECUTE FUNCTION reject_analysis_start()");
     try {
@@ -556,8 +562,6 @@ describe("persistent analysis results", () => {
     });
     let committed!: MiniToolAnalysisRecord;
     await expect(domain.miniToolAnalysisService.accept(body, f.userId, async (accepted) => {
-      await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at)
-        SELECT studio_id,${f.userId},${body.analysisRunId},1,'held','2099-01-01T00:00:00Z' FROM projects WHERE id=${body.projectId}`;
       const identity = accepted.record;
       committed = await record(f, {
         ...f.result, schemaVersion: identity.schemaVersion, draftId: identity.draftId, revision: identity.revision,
@@ -565,6 +569,9 @@ describe("persistent analysis results", () => {
         binding: identity.binding, analysisInput: identity.analysisInput, inputFingerprint: identity.inputFingerprint,
       }, body.analysisRunId);
       throw new Error("fixture_queue_acknowledgement_failed");
+    }, async (taskId) => {
+      await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at)
+        SELECT studio_id,${f.userId},${taskId},1,'held','2099-01-01T00:00:00Z' FROM projects WHERE id=${body.projectId}`;
     })).rejects.toThrow("fixture_queue_acknowledgement_failed");
     expect(await domain.miniToolAnalysisService.get(body.analysisRunId, f.userId)).toEqual(committed);
     const [task] = await pg<{ status: string }[]>`SELECT status FROM tasks WHERE id=${body.analysisRunId}`;

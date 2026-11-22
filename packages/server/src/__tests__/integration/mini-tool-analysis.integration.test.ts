@@ -9,7 +9,7 @@ import { z } from "zod";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import { getMiniToolsConfig, getNodeTaskConfig, getRedis, getStorageAdapter, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
 import type * as shared from "@breatic/shared";
-import { miniToolAnalysisRequestSchema, miniToolAnalysisService, taskRepo, taskService } from "@breatic/domain";
+import { miniToolAnalysisRequestSchema, miniToolAnalysisService, runningSlotService, taskRepo } from "@breatic/domain";
 import { fingerprintMiniToolAnalysisInput, miniToolAnalysisRecordSchema, miniToolConsumptionKey, projectMiniToolAnalysisInput, type MiniToolAnalysisKind, type MiniToolAnalysisRecord } from "@breatic/shared/mini-tools";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { editKeyOf, presentedSource, type PresentedSource } from "./presentation-fixtures.js";
@@ -448,6 +448,20 @@ describe("mini-tool analysis admission and project reads", () => {
     expect(after).toEqual(held);
   });
 
+  // inner#1968 design 3.10 U9: the hold comes before any row, so a refusal leaves nothing and says the limit.
+  it("M1-04 a scene analysis past the Studio's monthly limit answers 402 spend_cap_reached and opens no task, row or hold", async () => {
+    const fixture = await seed();
+    const body = requestFor(fixture, "scene_cuts");
+    await sql`INSERT INTO studio_spend_limits (studio_id, member_default_credits, studio_monthly_credits, updated_by_user_id)
+      VALUES (${fixture.studioId}, null, 1, ${fixture.userId})`;
+    await sql`INSERT INTO credit_charge_requests (kind, actor_user_id, reference_id, project_id, studio_id, amount, status, settled_at)
+      VALUES ('task', ${fixture.userId}, ${`spent-${crypto.randomUUID()}`}, ${fixture.projectId}, ${fixture.studioId}, 1, 'settled', now())`;
+    const response = await post(body, fixture.ownerCookie);
+    expect(response.status, await response.clone().text()).toBe(402);
+    expect(((await response.json()) as { error: { reason: string; scope: string } }).error).toMatchObject({ reason: "spend_cap_reached", scope: "studio" });
+    expect(await counts(body.analysisRunId)).toEqual({ tasks: 0, rows: 0, holds: 0 });
+  });
+
   it("preserves source registration compatibility across studios", async () => {
     const sourceOwner = await seed();
     const target = await seed();
@@ -470,7 +484,8 @@ describe("mini-tool analysis admission and project reads", () => {
     for (const item of fixtures) {
       const pending = await reading(await get(item.record.analysisRunId, fixture.viewerCookie));
       expect(pending.acceptedAt).toBe(item.acceptedAt);
-      await taskService.markRunning(item.record.analysisRunId, "analysis-microseconds", new Date("2026-10-24T09:04:00Z"));
+      // The running-task gate is the one way a pending task first runs (inner#1968 design 3.9).
+      await runningSlotService.startWithinLimit({ id: item.record.analysisRunId, jobId: "analysis-microseconds" });
       expect((await reading(await get(item.record.analysisRunId, fixture.viewerCookie))).acceptedAt).toBe(item.acceptedAt);
       const completed = completedScenes(item.record, item.acceptedAt);
       await sql`UPDATE tasks SET status = 'completed', result = ${sql.json({ analysis: completed })} WHERE id = ${item.record.analysisRunId}`;
@@ -526,7 +541,7 @@ describe("mini-tool analysis admission and project reads", () => {
     const body = miniToolAnalysisRequestSchema.parse(requestFor(fixture));
     await expect(miniToolAnalysisService.accept(body, fixture.userId, async () => {
       throw new Error("queue unavailable");
-    })).rejects.toThrow("queue unavailable");
+    }, async () => undefined)).rejects.toThrow("queue unavailable");
     const failed = await reading(await get(body.analysisRunId, fixture.viewerCookie));
     expect(failed.status).toBe("failed");
     expect(failed.error).toEqual({ code: "analysis_start_failed" });

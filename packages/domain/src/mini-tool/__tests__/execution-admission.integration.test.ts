@@ -12,7 +12,10 @@ import type * as core from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError, createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as shared from "@breatic/shared";
 import { miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
-import { acceptMiniToolExecution, type AcceptedMiniToolExecution } from "@domain/index.js";
+import { acceptMiniToolExecution, miniToolExecutionService, type AcceptedMiniToolExecution } from "@domain/index.js";
+
+/** These cases are about admission, not credits: every run here is platform-funded and holds nothing. */
+const NO_HOLD = async (): Promise<void> => undefined;
 import { seedStudioFixture } from "../../../../server/src/__tests__/integration/studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 import { presentedSource, type PresentedSource } from "../../../../server/src/__tests__/integration/presentation-fixtures.js";
@@ -180,7 +183,7 @@ describe("planned execution durable admission", () => {
       expect(task?.params).toEqual({ miniToolExecution: JSON.parse(JSON.stringify(accepted)) });
       return "pending";
     });
-    expect(await acceptMiniToolExecution(f.body, f.userId, start)).toEqual({ taskId: GOLDEN_BODY.run_id, status: "pending" });
+    expect(await acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD)).toEqual({ taskId: GOLDEN_BODY.run_id, status: "pending" });
     expect(start).toHaveBeenCalledTimes(1);
     expect(captured[0]).toMatchObject({ tool: "video.extract-frames", taskId: GOLDEN_BODY.run_id, model: "video.extract-frames", chargeTo: "platform", credits: 0,
       sourceKey: "video/source.mp4", outputs: GOLDEN_BODY.outputs, draft: GOLDEN_BODY.draft, layout: { batches: [[0]], encodes: [] },
@@ -199,7 +202,7 @@ describe("planned execution durable admission", () => {
 
   it("A08 replays canonical identity before source resolution, repricing or another callback", async () => {
     const f = await seed(); const start = startRecorder();
-    const initial = await acceptMiniToolExecution(f.body, f.userId, start);
+    const initial = await acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD);
     const before = await readTask(f.body.run_id);
     await pg`UPDATE studio_assets SET deleted_at=clock_timestamp() WHERE id=${f.sourceAssetId}`;
     const reordered: MiniToolPlannedRequest = {
@@ -208,42 +211,42 @@ describe("planned execution durable admission", () => {
       run_id: f.body.run_id, space_id: f.body.space_id, project_id: f.body.project_id, tool: "video.extract-frames",
       presentation_ref: structuredClone(f.body.presentation_ref),
     };
-    expect(await acceptMiniToolExecution(reordered, f.userId, start)).toEqual(initial);
+    expect(await acceptMiniToolExecution(reordered, f.userId, start, NO_HOLD)).toEqual(initial);
     expect(start).toHaveBeenCalledTimes(1);
     expect(await readTask(f.body.run_id)).toEqual(before);
   });
 
   it.each(["revision", "source", "target", "space"] as const)("A09 rejects an existing run's changed %s without rewriting its winner", async (field) => {
     const f = await seed(); const start = startRecorder();
-    await acceptMiniToolExecution(f.body, f.userId, start); const before = await readTask(f.body.run_id);
+    await acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD); const before = await readTask(f.body.run_id);
     const changed = structuredClone(f.body);
     if (field === "revision") changed.draft.revision = crypto.randomUUID();
     else if (field === "source") changed.draft.source.canonicalURL = "https://foreign.example.test/changed.mp4";
     else if (field === "target") changed.outputs[0]!.nodeId = crypto.randomUUID();
     else changed.space_id = crypto.randomUUID();
-    await expect(acceptMiniToolExecution(changed, f.userId, start)).rejects.toBeInstanceOf(ConflictError);
+    await expect(acceptMiniToolExecution(changed, f.userId, start, NO_HOLD)).rejects.toBeInstanceOf(ConflictError);
     expect(start).toHaveBeenCalledTimes(1); expect(await readTask(f.body.run_id)).toEqual(before);
   });
 
   it("A09 checks actor identity even when another editor has real access to the same Project", async () => {
     const f = await seed(); const start = startRecorder();
-    await acceptMiniToolExecution(f.body, f.userId, start); const before = await readTask(f.body.run_id);
-    await expect(acceptMiniToolExecution(f.body, f.otherEditorId, start)).rejects.toBeInstanceOf(ConflictError);
+    await acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD); const before = await readTask(f.body.run_id);
+    await expect(acceptMiniToolExecution(f.body, f.otherEditorId, start, NO_HOLD)).rejects.toBeInstanceOf(ConflictError);
     expect(start).toHaveBeenCalledTimes(1); expect(await readTask(f.body.run_id)).toEqual(before);
   });
 
   it("A09 refuses a second authorized Project claiming the same run id", async () => {
     const f = await seed(); const start = startRecorder();
-    await acceptMiniToolExecution(f.body, f.userId, start); const before = await readTask(f.body.run_id);
+    await acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD); const before = await readTask(f.body.run_id);
     const other = await seedStudioFixture(pg, "exec-other");
     await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${other.projectId},${f.userId},'editor')`;
-    await expect(acceptMiniToolExecution({ ...f.body, project_id: other.projectId }, f.userId, start)).rejects.toBeInstanceOf(ConflictError);
+    await expect(acceptMiniToolExecution({ ...f.body, project_id: other.projectId }, f.userId, start, NO_HOLD)).rejects.toBeInstanceOf(ConflictError);
     expect(start).toHaveBeenCalledTimes(1); expect(await readTask(f.body.run_id)).toEqual(before);
   });
 
   it("A10 snapshots the complete press before its first await and replays its original revision", async () => {
     const f = await seed(); const original = structuredClone(f.body); const start = startRecorder();
-    const accepting = acceptMiniToolExecution(f.body, f.userId, start);
+    const accepting = acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD);
     f.body.draft.revision = crypto.randomUUID();
     f.body.draft.source.canonicalURL = "https://foreign.example.test/later-edit.mp4";
     f.body.outputs[0]!.nodeId = crypto.randomUUID();
@@ -252,14 +255,14 @@ describe("planned execution durable admission", () => {
     expect(start.mock.calls[0]?.[0].draft).toEqual(original.draft);
     expect(start.mock.calls[0]?.[0].outputs).toEqual(original.outputs);
     const before = await readTask(original.run_id);
-    expect(await acceptMiniToolExecution(original, f.userId, start)).toEqual(initial);
+    expect(await acceptMiniToolExecution(original, f.userId, start, NO_HOLD)).toEqual(initial);
     expect(start).toHaveBeenCalledTimes(1); expect(await readTask(original.run_id)).toEqual(before);
   });
 
   it("A11 admits a self-consistent revision UUID without inventing a latest-Yjs test", async () => {
     const f = await seed(); f.body.draft.revision = "00000000-0000-4000-8000-000000000001";
     const start = startRecorder();
-    expect(await acceptMiniToolExecution(f.body, f.userId, start)).toEqual({ taskId: f.body.run_id, status: "pending" });
+    expect(await acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD)).toEqual({ taskId: f.body.run_id, status: "pending" });
     expect(start.mock.calls.map(([accepted]) => accepted.draft.revision)).toEqual(["00000000-0000-4000-8000-000000000001"]);
   });
 
@@ -270,8 +273,8 @@ describe("planned execution durable admission", () => {
     const ready = new Promise<void>((resolve) => { entered = resolve; });
     const owner = pg.begin(async (tx) => { await tx`LOCK TABLE tasks IN SHARE MODE`; entered(); await gate; });
     await ready;
-    const first = acceptMiniToolExecution(f.body, f.userId, start);
-    const second = acceptMiniToolExecution(structuredClone(f.body), f.userId, start);
+    const first = acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD);
+    const second = acceptMiniToolExecution(structuredClone(f.body), f.userId, start, NO_HOLD);
     void first.catch(() => undefined); void second.catch(() => undefined);
     try {
       await waitUntilBlockedOn(pg, ["insert into", "tasks"], 2);
@@ -294,7 +297,7 @@ describe("planned execution durable admission", () => {
     await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,params)
       VALUES (${f.body.run_id},${f.userId},${f.body.project_id},${f.body.space_id},${taskType},'append',${source},'pending',${pg.json(params)})`;
     const before = await readTask(f.body.run_id);
-    await expect(acceptMiniToolExecution(f.body, f.userId, start)).rejects.toBeInstanceOf(ConflictError);
+    await expect(acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD)).rejects.toBeInstanceOf(ConflictError);
     expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toEqual(before);
   });
 
@@ -304,25 +307,41 @@ describe("planned execution durable admission", () => {
     if (kind === "missing membership") await pg`UPDATE project_members SET deleted_at=clock_timestamp() WHERE project_id=${f.body.project_id} AND user_id=${f.userId}`;
     else if (kind === "missing Project") f.body.project_id = crypto.randomUUID();
     else await pg`UPDATE projects SET deleted_at=clock_timestamp() WHERE id=${f.body.project_id}`;
-    await expect(acceptMiniToolExecution(f.body, f.userId, start)).rejects.toBeInstanceOf(NotFoundError);
+    await expect(acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD)).rejects.toBeInstanceOf(NotFoundError);
     expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toBeNull();
   });
 
   it("refuses a real viewer before claiming the run", async () => {
     const f = await seed(); const start = startRecorder();
-    await expect(acceptMiniToolExecution(f.body, f.viewerId, start)).rejects.toBeInstanceOf(ForbiddenError);
+    await expect(acceptMiniToolExecution(f.body, f.viewerId, start, NO_HOLD)).rejects.toBeInstanceOf(ForbiddenError);
     expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toBeNull();
   });
 
   it("keeps persisted user identity and source binding independent from client media claims", async () => {
     const f = await seed(); const start = startRecorder();
     f.body.draft.source.mediaInfo = { width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" };
-    await acceptMiniToolExecution(f.body, f.userId, start);
+    await acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD);
     const accepted = start.mock.calls[0]?.[0];
     expect(accepted?.binding).toEqual({ assetId: f.sourceAssetId, contentHash: f.sourceHash, canonicalURL: f.body.draft.source.canonicalURL,
       kind: "video", mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: "video/mp4" } });
     expect(accepted?.credits).toBe(0);
     expect(accepted?.draft.source.mediaInfo).toEqual({ width: 16, height: 16, duration: 0.1, mimeType: "video/mp4" });
+  });
+});
+
+// inner#1968 design 3.9: the running-task gate starts a run (pending -> running) and a queued cancel ends it
+// (pending -> cancelled) on the task row alone; the run's public record follows the task's status.
+describe("the planned run's record follows its task through the running-task gate (inner#1968 design 3.9)", () => {
+  it.each(["running", "cancelled"] as const)("M2-06 a run the gate moves to %s reads with that status", async (status) => {
+    const f = await seed(); await acceptMiniToolExecution(f.body, f.userId, startRecorder(), NO_HOLD);
+    await pg`UPDATE tasks SET status=${status},started_at=CASE WHEN ${status}='running' THEN clock_timestamp() END WHERE id=${f.body.run_id}`;
+    expect((await miniToolExecutionService.getMiniToolExecution(f.body.project_id, f.body.run_id, f.userId)).status).toBe(status);
+  });
+
+  it("M2-07 the first pickup of a run the gate started runs it", async () => {
+    const f = await seed(); await acceptMiniToolExecution(f.body, f.userId, startRecorder(), NO_HOLD);
+    await pg`UPDATE tasks SET status='running',started_at=clock_timestamp() WHERE id=${f.body.run_id}`;
+    expect((await miniToolExecutionService.startMiniToolExecution(f.body.run_id, "queue-job")).record.status).toBe("running");
   });
 });
 
@@ -334,13 +353,13 @@ describe("planned admission on the selected version and failed-output retry (fra
     if (bad === "ref toolInputId") f.body.presentation_ref.source.toolInputId = "b".repeat(64);
     else if (bad === "ref planSha256") f.body.presentation_ref.source.planSha256 = "b".repeat(64);
     else snapshot.presentation = null;
-    await expect(acceptMiniToolExecution(f.body, f.userId, start)).rejects.toThrow();
+    await expect(acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD)).rejects.toThrow();
     expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toBeNull();
   });
 
   it("a failed-output retry reuses the frozen plan without reading the current version and keeps the platform payer", async () => {
     const f = await seed(); const start = startRecorder();
-    await acceptMiniToolExecution(f.body, f.userId, start);
+    await acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD);
     const original = start.mock.calls[0]![0];
     const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: original.planFingerprint,
       resultVersion: 1, sourceBindings: [original.binding], outputs: original.outputs.map((output) => ({ ...output, late: false,
@@ -348,7 +367,7 @@ describe("planned admission on the selected version and failed-output retry (fra
     await pg`UPDATE tasks SET status='failed',result=${pg.json({ miniToolExecution: JSON.parse(JSON.stringify(record)) })},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
     outside.ingest.mockClear(); outside.reads.length = 0;
     const retry = { tool: "video.extract-frames" as const, project_id: f.body.project_id, space_id: f.body.space_id, run_id: crypto.randomUUID(), retry: { runId: f.body.run_id, outputIndexes: [0] } };
-    await acceptMiniToolExecution(retry, f.otherEditorId, start);
+    await acceptMiniToolExecution(retry, f.otherEditorId, start, NO_HOLD);
     const accepted = start.mock.calls[1]![0];
     expect(accepted).toMatchObject({ taskId: retry.run_id, retry: retry.retry, outputs: original.outputs, chargeTo: "platform", credits: 0,
       presentationRef: original.presentationRef, presentations: original.presentations, layout: original.layout });

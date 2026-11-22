@@ -8,7 +8,7 @@ import { startRowedRun } from "@server/modules/task/generation-task.js";
 let tasksQueue: ReturnType<typeof createQueue> | undefined;
 
 /**
- * Start the accepted planned run with the original row, credit-hold and queue owners.
+ * Start the accepted planned run with the original row and queue owners; admission already held its credits.
  * @param accepted - The complete SQL-claimed execution plan.
  * @param userId - Its authenticated initiating actor.
  * @returns Pending after queue acceptance or failed after a refused opened run.
@@ -21,7 +21,6 @@ export async function startPlannedMiniToolRun(accepted: AcceptedMiniToolExecutio
   return startRowedRun({
     taskId: accepted.taskId, projectId: accepted.projectId, spaceId: accepted.spaceId,
     nodeIds: accepted.targetNodeIds, userId, action: "mini_tool", label: accepted.tool,
-    credits: () => Promise.resolve(accepted.credits),
     enqueue: () => (tasksQueue ??= createQueue("tasks")).add("execute-mini-tool", job, { ...defaultJobOpts(), jobId: accepted.taskId }),
     settleFailure: async (reason) => {
       const record = await miniToolExecutionService.failMiniToolExecutionAdmission(accepted.taskId, { code: reason });

@@ -63,7 +63,10 @@ async function rejectWrite(f: ExecutionFixture, point: "public" | "settlement" |
 
 describe("planned lifecycle start and complete media-index transaction (W15/M)", () => {
   it("W01/W15 initializes every slot before returning SQL context and preserves first startedAt", async () => {
-    const f = await seedExecution(pg, "pending", false); const first = await miniToolExecutionService.startMiniToolExecution(f.taskId, "original-job");
+    const f = await seedExecution(pg, "pending", false);
+    // The running-task gate starts a pending task (inner#1968 design 3.9); the pickup runs after it.
+    await pg`UPDATE tasks SET status='running',started_at=clock_timestamp() WHERE id=${f.taskId}`;
+    const first = await miniToolExecutionService.startMiniToolExecution(f.taskId, "original-job");
     expect(first.execution).toEqual(f.plan); expect(first.task).toMatchObject({ id: f.taskId, userId: f.userId, status: "running" });
     expect(first.record).toEqual({ ...f.record, status: "running" }); const before = await executionSnapshot(pg, f);
     expect(before.result).toEqual({ preserved: { token: "original" }, miniToolExecution: { ...f.record, status: "running" } });
@@ -71,7 +74,10 @@ describe("planned lifecycle start and complete media-index transaction (W15/M)",
     await miniToolExecutionService.startMiniToolExecution(f.taskId, "second-job"); expect((await executionSnapshot(pg, f)).started_at).toBe(before.started_at);
   });
   it("W15 rolls back running and namespace together when initialization persistence fails", async () => {
-    const f = await seedExecution(pg, "pending", false); const before = await executionSnapshot(pg, f);
+    const f = await seedExecution(pg, "pending", false);
+    // The running-task gate starts a pending task (inner#1968 design 3.9); the pickup runs after it.
+    await pg`UPDATE tasks SET status='running',started_at=clock_timestamp() WHERE id=${f.taskId}`;
+    const before = await executionSnapshot(pg, f);
     await rejectWrite(f, "public", async () => { await expect(miniToolExecutionService.startMiniToolExecution(f.taskId, "job")).rejects.toMatchObject({ cause: { message: expect.stringContaining("fixture_execution_write_failed") } }); });
     expect(await executionSnapshot(pg, f)).toEqual(before);
   });

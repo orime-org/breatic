@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ConsentSnapshot, TaskEntity } from "@breatic/shared";
-import { t } from "@breatic/shared";
+import { TaskStatus, t } from "@breatic/shared";
 import { z } from "zod";
 import { ConflictError, NotFoundError, db, projectAuthService, type DbTx } from "@breatic/core";
 import { canonicalMiniToolValue, miniToolExecutionOutputSchema, plannedFailureRetryable, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
@@ -215,6 +215,9 @@ function sameMapping(outputs: readonly MiniToolExecutionOutput[], execution: Acc
   return canonicalMiniToolValue(outputs.map(({ outputIndex, nodeId, recipe }) => ({ outputIndex, nodeId, recipe }))) === canonicalMiniToolValue(execution.outputs);
 }
 
+/** A task row's status, which its run's record carries. */
+const taskStatusSchema = z.enum(TaskStatus);
+
 /**
  * Project only persisted task facts; the read path never queries provider steps.
  * @param plan - The verified physical parent and immutable execution.
@@ -230,11 +233,13 @@ export function recordFromPlan(plan: MiniToolExecutionPlan): MiniToolExecutionRe
     sourceBindings: [execution.binding], outputs: execution.outputs.map((output) => ({ ...output, result: null, late: false })),
     usage: [], billingState, error: null,
   });
-  if (record.runId !== task.id || record.planFingerprint !== execution.planFingerprint || record.status !== task.status
+  if (record.runId !== task.id || record.planFingerprint !== execution.planFingerprint
     || canonicalMiniToolValue(record.sourceBindings) !== canonicalMiniToolValue([execution.binding]) || !sameMapping(record.outputs, execution)) {
     throw new Error("Public execution differs from its original SQL plan");
   }
-  return { ...record, billingState };
+  // The task row owns the status: the running-task gate starts a run and a queued cancel ends it on that row alone
+  // (inner#1968 design 3.9).
+  return { ...record, status: taskStatusSchema.parse(task.status), billingState };
 }
 
 /**

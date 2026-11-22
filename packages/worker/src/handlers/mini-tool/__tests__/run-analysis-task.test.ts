@@ -13,7 +13,7 @@ import { StillRunning } from "@worker/handlers/still-running.js";
 import { runMiniToolAnalysisTask } from "../run-analysis-task.js";
 import { FROZEN_PRESENTATION } from "./frozen-presentation.js";
 
-const h = vi.hoisted(() => ({ start: vi.fn(), finish: vi.fn(), deadline: vi.fn(), execute: vi.fn(),
+const h = vi.hoisted(() => ({ gate: vi.fn(), start: vi.fn(), finish: vi.fn(), deadline: vi.fn(), execute: vi.fn(),
   extend: vi.fn(), delay: vi.fn(), error: vi.fn(), warn: vi.fn(), stream: {} }));
 vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
@@ -22,13 +22,16 @@ vi.mock("@breatic/core", async (original) => {
 });
 vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
-  return { ...actual, miniToolAnalysisService: { ...actual.miniToolAnalysisService, startMiniToolAnalysisExecution: h.start } };
+  return { ...actual, runningSlotService: { ...actual.runningSlotService, startWithinLimit: h.gate },
+    miniToolAnalysisService: { ...actual.miniToolAnalysisService, startMiniToolAnalysisExecution: h.start } };
 });
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
 vi.mock("@worker/handlers/mini-tool/analysis-completion.js", () => ({ finishMiniToolAnalysisAndNotify: h.finish }));
 
 const TASK = "10000000-0000-4000-8000-000000000001";
 const DEADLINE = 1792927200000;
+// The start the running-task gate gave the analysis; its budget counts from here (inner#1968 design 3.9).
+const STARTED = new Date("2026-10-25T01:05:00.000Z");
 const record = miniToolAnalysisRecordSchema.parse({
   schemaVersion: 1, draftId: "20000000-0000-4000-8000-000000000001", revision: "30000000-0000-4000-8000-000000000001",
   analysisRunId: TASK, acceptedAt: "2026-10-25T01:02:03.123456Z", kind: "scene_cuts", inputFingerprint: "a".repeat(64),
@@ -63,6 +66,7 @@ beforeEach(() => {
   vi.resetAllMocks(); vi.spyOn(Date, "now").mockReturnValue(DEADLINE - 1);
   h.start.mockResolvedValue(structuredClone(execution)); h.execute.mockResolvedValue(result); h.deadline.mockResolvedValue(DEADLINE);
   h.extend.mockResolvedValue(1); h.finish.mockResolvedValue(undefined);
+  h.gate.mockResolvedValue({ outcome: "started", started: STARTED, publishFailures: [] });
 });
 afterEach(() => vi.restoreAllMocks());
 
@@ -71,12 +75,25 @@ describe("original analysis task pickup", () => {
   it("passes SQL-owned execution and the original budget into computation, then fences completion", async () => {
     expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ analysisRunId: TASK, status: "completed" });
     expect(h.start).toHaveBeenCalledExactlyOnceWith(TASK, "original-queue-job");
-    expect(h.deadline).toHaveBeenCalledExactlyOnceWith(TASK, new Date(record.acceptedAt));
+    expect(h.deadline).toHaveBeenCalledExactlyOnceWith(TASK, STARTED);
     expect(h.execute).toHaveBeenCalledExactlyOnceWith(execution, DEADLINE);
     expect(h.extend).toHaveBeenCalledExactlyOnceWith("token", 600000);
     expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK, { kind: "result", result }, h.stream);
     expect(h.extend.mock.invocationCallOrder[0]).toBeLessThan(h.finish.mock.invocationCallOrder[0]!);
     expect(result.acceptedAt).toBe("2026-10-25T01:02:03.123456Z");
+  });
+
+  it("M2-04 asks the running-task gate with its job before the pickup starts the analysis", async () => {
+    await runMiniToolAnalysisTask(job(), "token", h.execute);
+    expect(h.gate).toHaveBeenCalledExactlyOnceWith({ id: TASK, jobId: "original-queue-job" });
+    expect(h.gate.mock.invocationCallOrder[0]).toBeLessThan(h.start.mock.invocationCallOrder[0]!);
+  });
+
+  it("M2-05 an analysis that must wait goes back on the delayed queue without starting", async () => {
+    h.gate.mockRejectedValue(new StillRunning(DEADLINE + 3000));
+    await expect(runMiniToolAnalysisTask(job(), "token", h.execute)).rejects.toBeInstanceOf(DelayedError);
+    expect(h.delay).toHaveBeenCalledExactlyOnceWith(DEADLINE + 3000, "token");
+    expect(h.start).not.toHaveBeenCalled(); expect(h.execute).not.toHaveBeenCalled(); expect(h.error).not.toHaveBeenCalled();
   });
 
   it.each([DEADLINE - 1, DEADLINE + 1])("returns a valid upstream wait to the delayed queue at time %s", async (now) => {

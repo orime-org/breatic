@@ -10,6 +10,7 @@ import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
+import { explainHoldRefusal, reserveForRunIn } from "@server/modules";
 import { startRowedRun } from "@server/modules/task/generation-task.js";
 
 const analyses = new Hono<{ Variables: AuthVariables }>();
@@ -36,7 +37,7 @@ analyses.post(
         return startRowedRun({
           taskId: job.taskId, projectId: job.projectId, spaceId: job.spaceId,
           nodeIds: [job.hostNodeId], userId: job.userId, action: "mini_tool",
-          label: body.kind, credits: () => Promise.resolve(accepted.params.credits),
+          label: body.kind,
           enqueue: () => tasksQueue.add(MINI_TOOL_ANALYSIS_JOB, job, { ...defaultJobOpts(), jobId: job.taskId }),
           settleFailure: async (reason) => {
             const record = await miniToolAnalysisService.failMiniToolAnalysisAdmission(job.taskId, { code: reason });
@@ -44,9 +45,10 @@ analyses.post(
           },
           logTag: "mini_tool_analysis", logContext: { kind: body.kind },
         });
-      });
+      }, (taskId, credits, tx) => reserveForRunIn(tx, body.projectId, user.id, taskId, credits));
       return c.json({ data: record }, 201);
-    } catch (err) {
+    } catch (thrown) {
+      const err = await explainHoldRefusal(thrown);
       logger.error({
         err,
         ctx: {

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { AppError, initCore } from "@breatic/core";
+import { initCore } from "@breatic/core";
 import { t } from "@breatic/shared";
 import type * as DomainModule from "@breatic/domain";
 import type * as CreditPrecheck from "@server/modules/credit/credit-precheck.service.js";
@@ -36,44 +36,13 @@ beforeAll(() => {
 });
 beforeEach(() => vi.clearAllMocks());
 
-describe("rowed run credit admission", () => {
-  it.each([0, 12.5])("starts a run estimated at %s credits with the corresponding hold boundary", async (amount) => {
-    const credits = vi.fn(async () => amount);
-    const enqueue = vi.fn(async () => ({ id: "job" }));
-    const result = await startRowedRun({
-      taskId: "task", projectId: "project", spaceId: "space", nodeIds: ["node"],
-      userId: "user", action: "mini_tool", label: "analysis", credits, enqueue,
-      logTag: "test", logContext: {},
-    });
-    expect(result).toBe("pending");
-    expect(credits).toHaveBeenCalledTimes(1);
-    expect(open).toHaveBeenCalledTimes(1);
-    expect(enqueue).toHaveBeenCalledTimes(1);
-    expect(setJobId).toHaveBeenCalledWith("task", "job");
-    if (amount === 0) expect(reserve).not.toHaveBeenCalled();
-    else expect(reserve).toHaveBeenCalledExactlyOnceWith("project", "user", "task", amount);
-  });
-
-  it("still releases the hold and settles rows when paid admission is refused", async () => {
-    reserve.mockRejectedValueOnce(new AppError(402, "insufficient credits"));
-    const enqueue = vi.fn(async () => ({ id: "job" }));
-    const result = await startRowedRun({
-      taskId: "task", projectId: "project", spaceId: "space", nodeIds: ["node"],
-      userId: "user", action: "mini_tool", label: "analysis", credits: async () => 12.5,
-      enqueue, logTag: "test", logContext: {},
-    });
-    expect(result).toBe("failed");
-    expect(enqueue).not.toHaveBeenCalled();
-    expect(releaseHold).toHaveBeenCalledWith("task");
-    expect(markFailed).toHaveBeenCalledWith("task", "no_credits");
-    expect(settle).toHaveBeenCalledWith({ taskId: "node-row", outcome: "failed", errorMessage: "no_credits" });
-  });
-
+// A rowed run holds nothing itself: its admission held its credits before any row (inner#1968 design 3.10 U9).
+describe("rowed run failure settlement", () => {
   it.each(["completed", "failed"] as const)("uses a lane's committed %s decision without legacy task or hold cleanup", async (status) => {
     const settleFailure = vi.fn(async () => status);
     const result = await startRowedRun({
       taskId: "task", projectId: "project", spaceId: "space", nodeIds: ["node"],
-      userId: "user", action: "mini_tool", label: "analysis", credits: async () => 12.5,
+      userId: "user", action: "mini_tool", label: "analysis",
       enqueue: async () => { throw new Error("fixture_queue_acknowledgement_failed"); },
       logTag: "test", settleFailure,
     });
@@ -90,7 +59,7 @@ describe("rowed run credit admission", () => {
     const settleFailure = vi.fn(async () => { throw transactionError; });
     const result: unknown = await startRowedRun({
       taskId: "task", projectId: "project", spaceId: "space", nodeIds: ["node"],
-      userId: "user", action: "mini_tool", label: "analysis", credits: async () => 12.5,
+      userId: "user", action: "mini_tool", label: "analysis",
       enqueue: async () => { throw queueError; }, logTag: "test", settleFailure,
     }).catch((error: unknown) => error);
     expect(result).toBeInstanceOf(AggregateError);
@@ -107,7 +76,7 @@ describe("rowed run credit admission", () => {
     const enqueue = vi.fn(async () => ({ id: "job" }));
     await expect(startRowedRun({
       taskId: "task", projectId: "project", spaceId: "space", nodeIds: ["node"],
-      userId: "user", action: "mini_tool", label: "analysis", credits: async () => 12.5,
+      userId: "user", action: "mini_tool", label: "analysis",
       enqueue, logTag: "test", settleFailure,
     })).rejects.toMatchObject({ name: "AppError", statusCode: 503, message: t("canvas.task.couldNotStart") });
     expect(settleFailure).toHaveBeenCalledExactlyOnceWith("internal");

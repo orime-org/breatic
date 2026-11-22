@@ -4,7 +4,7 @@
 import { newId, t } from '@breatic/shared';
 import { miniToolById, miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit, videoToolDraftSchema, type MiniToolAnalysisRecord, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type VideoPlanGrid, type VideoToolAnalysisRef, type VideoToolDraft, type VideoToolDraftById, type VideoToolId } from '@breatic/shared/mini-tools';
 import { miniToolsApi, type MiniToolPlannedRunAnswer } from '@web/data/api/mini-tools';
-import { ApiException } from '@web/data/api/types';
+import { ourSentence } from '@web/data/api/server-message';
 import { addEdge, addNode, runCanvasUndoBatch } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
 import { createEmptyNode } from '@web/spaces/canvas/node-factory';
@@ -165,15 +165,15 @@ export async function preparePlannedVideoRun(run: PlannedVideoRun): Promise<Mini
 }
 
 /**
- * What a refused planned run tells the user: the server's own reason when it gave one (frames-split §7.11), otherwise that the
- * run could not start.
+ * What a refused planned run tells the user: a spend-limit refusal's own sentence (inner#1968 design 3.3a), the server's own
+ * reason when it gave one (frames-split §7.11), otherwise that the run could not start.
  * @param error - The failure.
  * @param translate - The translator.
  * @returns The text.
  * @throws {never} Never.
  */
 export function plannedRunRefusalText(error: unknown, translate: (key: string) => string): string {
-  return error instanceof ApiException && error.fromServer && error.message ? error.message : translate('canvas.miniTool.panel.couldNotStart');
+  return ourSentence(error) ?? translate('canvas.miniTool.panel.couldNotStart');
 }
 
 /**
@@ -207,7 +207,7 @@ export function startPlannedVideoRun(run: PlannedVideoRun): Promise<RunOnceOutco
     onDone: () => { settle(); return undefined; },
     onFailure: (error) => {
       if (operations.length === 0) toast.error(plannedRunRefusalText(error, t));
-      else settle(error instanceof ApiException && error.fromServer && error.message ? { text: error.message } : { key: 'canvas.miniTool.panel.couldNotStart' });
+      else { const ours = ourSentence(error); settle(ours === null ? { key: 'canvas.miniTool.panel.couldNotStart' } : { text: ours }); }
     },
   }).then((outcome) => { if (outcome.kind === 'released') settle(); return outcome; });
 }

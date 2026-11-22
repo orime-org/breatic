@@ -30,7 +30,7 @@ import { getStreamRedis, getWorkerConfig, projectActivitiesRepo, publishActivity
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { costsOf, type Cost } from "@breatic/provider";
-import { failureOutcome, runningSlotService, taskRepo, taskService, upstreamStepRepo, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
+import { failureOutcome, taskRepo, taskService, upstreamStepRepo, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
 import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {
@@ -93,6 +93,7 @@ import {
 } from "@worker/handlers/transcribe-question.js";
 import { reportFirstGeneration } from "@worker/handlers/first-generation.js";
 import { settleChargeLogged } from "@worker/handlers/settle-charge.js";
+import { passRunningGate } from "@worker/handlers/running-gate.js";
 
 /** The task types that run a catalog model. */
 const MODEL_TASK_TYPES: ReadonlySet<string> = new Set(["image", "audio", "video", "tts", "three_d"]);
@@ -570,18 +571,7 @@ async function runTaskBody(
   if (existing === null || existing.status === "running") {
     startedAt = await taskService.markRunning(taskId, job.id ?? "", new Date());
   } else {
-    let gate: Awaited<ReturnType<typeof runningSlotService.startWithinLimit>>;
-    try {
-      gate = await runningSlotService.startWithinLimit({ id: taskId, jobId: job.id ?? "" });
-    } catch (err) {
-      if (err instanceof StillRunning && token !== undefined) {
-        logPublishFailures(taskId, err.publishFailures);
-        await job.moveToDelayed(err.resumeAt, token);
-        throw new DelayedError();
-      }
-      throw err;
-    }
-    logPublishFailures(taskId, gate.publishFailures);
+    const gate = await passRunningGate(job, token, taskId);
     if (gate.outcome === "ended") {
       // A task the old code failed while a retry was due: its open upstream steps end with it.
       if (gate.failed === true) await upstreamStepRepo.failOpenSteps(taskId, existing?.errorMessage ?? "internal");
@@ -1514,16 +1504,6 @@ export async function settleSceneRow(
     // The row is settled; a member's list catches up on its next read.
     logger.error({ err, taskId, sceneRowId, projectId: row.projectId, spaceId: row.spaceId }, "space_tasks_publish_failed");
   }
-}
-
-/**
- * Log the canvas signals the running-task gate could not send: the rows are
- * written, and a node's counts catch up on its next change.
- * @param taskId - The task.
- * @param failures - What failed.
- */
-function logPublishFailures(taskId: string, failures: readonly unknown[]): void {
-  for (const err of failures) logger.error({ err, taskId }, "running_slot_publish_failed");
 }
 
 // ─── Failure-path helpers ────────────────────────────────────────────

@@ -197,15 +197,22 @@ function expiryFor(ttlMs: number): Date {
 /**
  * Admit a piece of work and hold its estimate, or refuse it.
  * @param request - What to hold, for whom and for how long.
+ * @param outer - The caller's transaction, when the hold must commit or roll back with the row it admits (a mini-tool run
+ *   whose task id the client chose holds in the transaction that claims that id); a refusal writes nothing in it.
  * @returns Admitted, or the figures the refusal is explained with.
  * @throws {Error} When the key already has a hold, held or released.
  * @throws {NotFoundError} When the project has no live studio.
  */
-export async function reserveCredits(request: HoldRequest): Promise<ReserveOutcome> {
+export async function reserveCredits(request: HoldRequest, outer?: DbTx): Promise<ReserveOutcome> {
   if (!env.PAYMENT_ENABLED) return { ok: true };
-  const studioId = await resolveOwnerStudioId(request.projectId);
+  const studioId = await resolveOwnerStudioId(request.projectId, outer);
   const amount = toChargeMicro(request.amount);
-  return db.transaction(async (tx) => {
+  /**
+   * Judge and hold under the studio's debt lock.
+   * @param tx - The transaction holding that lock.
+   * @returns The outcome.
+   */
+  const hold = async (tx: DbTx): Promise<ReserveOutcome> => {
     const position = await lockedPosition(studioId, tx);
     const cap = await spendCapHit(studioId, request.actorUserId, amount, tx);
     if (cap !== null) return { ok: false, cap };
@@ -221,7 +228,8 @@ export async function reserveCredits(request: HoldRequest): Promise<ReserveOutco
       tx,
     );
     return { ok: true };
-  });
+  };
+  return outer === undefined ? db.transaction(hold) : hold(outer);
 }
 
 /**

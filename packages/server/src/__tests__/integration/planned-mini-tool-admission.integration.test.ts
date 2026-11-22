@@ -21,7 +21,7 @@ import { NO_CONSENT } from "@breatic/shared";
 import { miniToolPlanJobRequestSchema } from "@breatic/shared";
 import { miniToolConsumptionKey, type MiniToolConsumptionIdentity, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import {
-  creditHoldService, miniToolExecutionService, modelCatalog, openMiniToolPlanJob, upstreamStepRepo, type AcceptedMiniToolExecution, initProvider,
+  creditHoldService, miniToolExecutionService, modelCatalog, openMiniToolPlanJob, runningSlotService, upstreamStepRepo, type AcceptedMiniToolExecution, initProvider,
 } from "@breatic/domain";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
@@ -178,6 +178,8 @@ async function openContainerJob(taskId: string): Promise<{ stepId: string; ident
  * @throws {Error} When actual domain persistence fails.
  */
 async function workerFacts(f: Fixture, completed: boolean): Promise<void> {
+  // The running-task gate starts a pending task before its pickup does (inner#1968 design 3.9).
+  await runningSlotService.startWithinLimit({ id: f.body.run_id, jobId: f.body.run_id });
   const entered = await miniToolExecutionService.startMiniToolExecution(f.body.run_id, f.body.run_id);
   const { stepId } = await openContainerJob(f.body.run_id);
   if (!completed) return;
@@ -317,17 +319,16 @@ describe("HTTP press and durable SQL identity remain distinct (A05-A13)", () => 
 });
 
 describe("existing credit and acknowledgement ownership (A14-A17 / preparation A14-A17)", () => {
-  it.each(["no_credits", "credits_held"] as const)("A15 refuses %s after opening only the original target row", async (reason) => {
+  // inner#1968 design 3.10 U9: the hold is taken with the task row's claim, so a refusal answers 402 with its own sentence
+  // and leaves no task, node row, hold, queue job or pin behind; the nodes the browser built say it.
+  it.each(["no_credits", "credits_held"] as const)("A15 refuses %s with 402 before any row opens", async (reason) => {
     // The lot covers the 5-credit split quote, so a 1-credit hold leaves it short only by the hold.
     const f = await seed(reason === "no_credits" ? 0 : 5);
     if (reason === "credits_held") await creditHoldService.reserveCredits({ projectId: f.projectId, actorUserId: f.userId, referenceId: randomUUID(), amount: 1, ttlMs: getNodeTaskConfig().default_budget_ms });
-    const response = await post(f); expect(response.status).toBe(201); expect(await response.json()).toEqual({ data: { task_id: f.body.run_id, status: "failed" } });
-    const task = await parent(f); expect(task.status).toBe("failed"); expect(task.error_message).toBe(reason);
-    const rows = await pg`SELECT node_id,status,error_message FROM node_tasks WHERE task_id=${f.body.run_id}`; expect([...rows]).toEqual([{ node_id: f.body.outputs[0]!.nodeId, status: "failed", error_message: reason }]);
-    expect(await queue.getJob(f.body.run_id)).toBeUndefined();
-    const held = await pg`SELECT status FROM credit_holds WHERE reference_id=${f.body.run_id} AND status='held'`; expect([...held]).toEqual([]);
-    // A split refused at admission stays retryable (frames-split §7.15), so its execution pin outlives the refusal.
-    const pins = await pg`SELECT holder_kind FROM presentation_pins WHERE holder_id=${f.body.run_id} AND deleted_at IS NULL`; expect([...pins]).toEqual([{ holder_kind: "execution" }]);
+    const response = await post(f); expect(response.status).toBe(402);
+    expect(((await response.json()) as { error: { message: string } }).error.message).toMatch(reason === "credits_held" ? /held/i : /credit/i);
+    expect(await counts(f)).toEqual({ tasks: 0, rows: 0, holds: 0, queue: 0 });
+    expect([...await pg`SELECT holder_kind FROM presentation_pins WHERE holder_id=${f.body.run_id}`]).toEqual([]);
   });
   it("A16 payment-disabled admission keeps the real quote and queue but opens no hold", async () => {
     const f = await seed(); configure(false); await accepted(f, await post(f)); expect((await parent(f)).params.miniToolExecution.credits).toBe(5);

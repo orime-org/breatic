@@ -13,6 +13,7 @@ import { runMiniToolVideoTool, type VideoToolPickup } from "@worker/handlers/min
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
+import { passRunningGate } from "@worker/handlers/running-gate.js";
 import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 
 /**
@@ -28,6 +29,8 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
   let returned = false;
   let ctx: Record<string, unknown> = { taskId, jobId: job.id, phase };
   try {
+    // A run first passes the running-task gate (inner#1968 design 3.9); one it finds ended is read as it stands.
+    const gate = await passRunningGate(job, token, taskId);
     const current = await miniToolExecutionService.startMiniToolExecution(taskId, job.id ?? taskId);
     const { task, execution } = current;
     // The record the run last read or wrote: progress commits move it within the pickup (§93 D5-11).
@@ -40,7 +43,7 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
         outputs: record.outputs, error: record.error };
       returned = true;
     } else {
-      const deadlineAt = await taskDeadline(taskId, task.createdAt);
+      const deadlineAt = await taskDeadline(taskId, gate.outcome === "started" ? gate.started : task.createdAt);
       phase = "computation";
       // What this pickup settled so far, kept when a later step throws: an output registered here is never shown failed.
       const settled: VideoToolPickup = { results: new Map(), waiting: false };

@@ -53,6 +53,8 @@ vi.mock("@breatic/domain", async (original) => {
   return { ...actual, readMiniToolExecutionPlan: h.plan, openContainerOutputs: h.grants, openMiniToolPlanJob: h.openPlan, recordMiniToolStepResult: h.record,
     assetRepo: { ...actual.assetRepo, findById: h.findById, findCoverOf: h.findCoverOf },
     miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start, commitMiniToolExecutionProgress: h.progress },
+    // The running-task gate lets every pickup through; its own cases are in run-execution-task.gate.test.ts.
+    runningSlotService: { ...actual.runningSlotService, startWithinLimit: async () => ({ outcome: "started", started: new Date(), publishFailures: [] }) },
     miniToolDeliveryService: { ...actual.miniToolDeliveryService, readMiniToolDelivery: h.readDelivery },
     upstreamStepRepo: { ...actual.upstreamStepRepo, listSteps: h.list, ensureSteps: h.ensure, recordInline: h.inline } };
 });

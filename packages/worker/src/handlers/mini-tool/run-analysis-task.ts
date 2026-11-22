@@ -12,6 +12,7 @@ import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { finishMiniToolAnalysisAndNotify } from "@worker/handlers/mini-tool/analysis-completion.js";
 import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
+import { passRunningGate } from "@worker/handlers/running-gate.js";
 
 /** The original analysis computation is selected after loading its SQL identity. */
 export type MiniToolAnalysisExecutor = (execution: miniToolAnalysisService.MiniToolAnalysisExecution, deadlineAt: number) => Promise<MiniToolAnalysisResult>;
@@ -29,6 +30,8 @@ export async function runMiniToolAnalysisTask(
 ): Promise<Record<string, unknown>> {
   let ctx: Record<string, unknown> = { taskId: job.data.taskId, jobId: job.id, phase: "entry" };
   try {
+    // An analysis first passes the running-task gate (inner#1968 design 3.9); one it finds ended is read as it stands.
+    const gate = await passRunningGate(job, token, job.data.taskId);
     const execution = await miniToolAnalysisService.startMiniToolAnalysisExecution(job.data.taskId, job.id ?? job.data.taskId);
     const { record, context } = execution;
     ctx = { ...context, jobId: job.id, phase: "computation" };
@@ -39,7 +42,8 @@ export async function runMiniToolAnalysisTask(
         ? { kind: "result", result: record.result }
         : { kind: "error", error: record.error };
     } else {
-      const deadlineAt = await taskDeadline(context.taskId, new Date(record.acceptedAt));
+      // Its budget counts from the start the gate gave it, not from acceptance.
+      const deadlineAt = await taskDeadline(context.taskId, gate.outcome === "started" ? gate.started : new Date(record.acceptedAt));
       try {
         completion = { kind: "result", result: await execute(execution, deadlineAt) };
         marker = { analysisRunId: record.analysisRunId, status: "completed" };

@@ -16,10 +16,15 @@ import { plannedRetryIntent, preparePlannedVideoRun, retryPlannedVideoRun, start
 import { miniToolIntent } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { getRunning, resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
+import { spendCapMessage } from '@web/lib/spend-cap-message';
 import { toast } from '@web/lib/toast';
 
 vi.mock('@web/data/api/mini-tools', async (original) => ({ ...(await original<typeof ApiModule>()), miniToolsApi: { ...(await original<typeof ApiModule>()).miniToolsApi, runPlanned: vi.fn(), retryPlannedVideoRun: vi.fn() } }));
 vi.mock('@web/lib/toast', async (original) => ({ ...(await original<typeof ToastModule>()), toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() } }));
+
+const RESETS_AT = '2026-12-01T00:00:00.000Z';
+const SPEND_CAP = new ApiException({ status: 402, message: 'This Studio reached its monthly limit.', reason: 'spend_cap_reached', fromServer: true,
+  details: { scope: 'studio', limit: '10', resetsAt: RESETS_AT } });
 
 const PROJECT = '10000000-0000-4000-8000-000000000001';
 const SPACE = '10000000-0000-4000-8000-000000000002';
@@ -185,6 +190,14 @@ describe('planned video press: independent frozen body and original graph', () =
     expect(readEdges(getDoc(docName.canvasSpace(PROJECT, SPACE)))).toHaveLength(1);
   });
 
+  // inner#1968 design 3.3a, 3.10: a press refused at a monthly spend limit says that limit on the nodes it built.
+  it('M1-05 a press refused at a spend limit says the limit and its reset day on its output nodes', async () => {
+    vi.mocked(miniToolsApi.runPlanned).mockRejectedValueOnce(SPEND_CAP);
+    expect(await startPlannedVideoRun(press())).toMatchObject({ kind: 'failed' });
+    const [node] = targets();
+    expect(useUploadMarksStore.getState().markOf(SPACE, node!.id)).toMatchObject({ state: 'failed', message: { text: spendCapMessage('studio', '10', RESETS_AT) } });
+  });
+
   it('F14 settles an accepted press after panel leave without stealing the new session or recreating a deleted target', async () => {
     let answer: ((value: ApiModule.MiniToolPlannedRunAnswer) => void) | undefined;
     let open = true;
@@ -222,6 +235,12 @@ describe('retrying a planned run\'s failed output', () => {
     const [body] = vi.mocked(miniToolsApi.retryPlannedVideoRun).mock.calls[0]!;
     expect(body).toMatchObject({ tool: 'video.split', project_id: PROJECT, space_id: SPACE, retry: { runId: RUN, outputIndexes: [2] } });
     expect(onDone).toHaveBeenCalledOnce();
+  });
+
+  it('M1-06 says the spend limit when the retry is refused at it', async () => {
+    vi.mocked(miniToolsApi.retryPlannedVideoRun).mockRejectedValue(SPEND_CAP);
+    await retryPlannedVideoRun({ projectId: PROJECT, spaceId: SPACE, tool: 'video.split', runId: RUN, onDone: vi.fn() });
+    expect(toast.error).toHaveBeenCalledExactlyOnceWith(spendCapMessage('studio', '10', RESETS_AT));
   });
 
   it('says why the retry was refused', async () => {

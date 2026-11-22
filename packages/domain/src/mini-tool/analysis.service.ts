@@ -12,6 +12,7 @@ import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
+import type { MiniToolHold } from "@domain/mini-tool/mini-tool-hold.js";
 import { completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
@@ -303,10 +304,12 @@ async function freeze(body: MiniToolAnalysisRequest): Promise<{
 }
 
 /**
- * Freeze a new run or replay the durable identity before any node row or hold.
+ * Freeze a new run or replay the durable identity before any node row; a run that spends credits holds its estimate
+ * in the transaction that claims its task row (inner#1968 design 3.10 U9).
  * @param body - Validated editable inputs.
  * @param userId - The authenticated editor.
- * @param start - The application's existing row/hold/queue adapter.
+ * @param start - The application's existing row and queue adapter.
+ * @param hold - The application's credit admission, asked inside the claim.
  * @returns The complete accepted record, using SQL time on every path.
  * @throws {ConflictError} When a run UUID belongs to another actor or body.
  * @throws {ValidationError} When a source, range or expected fingerprint is invalid.
@@ -316,6 +319,7 @@ export async function accept(
   body: MiniToolAnalysisRequest,
   userId: string,
   start: (accepted: AcceptedMiniToolAnalysis) => Promise<"pending" | "failed">,
+  hold: MiniToolHold,
 ): Promise<MiniToolAnalysisRecord> {
   await assertAccess(body.projectId, userId, true);
   const requestFingerprint = await hashMiniToolValue(body);
@@ -337,8 +341,12 @@ export async function accept(
       id: body.analysisRunId, userId, projectId: body.projectId, spaceId: body.spaceId,
       params: taskParams,
     }, tx);
-    // The analysis keeps its input's edit file alive until it ends (§7.15 analysis row).
-    if (claimed) await presentationPinService.acquire({ holderKind: "analysis", holderId: body.analysisRunId, toolInputId, objectKeys: toolSourceObjects(frozen.version) }, tx);
+    if (claimed) {
+      // The analysis keeps its input's edit file alive until it ends (§7.15 analysis row).
+      await presentationPinService.acquire({ holderKind: "analysis", holderId: body.analysisRunId, toolInputId, objectKeys: toolSourceObjects(frozen.version) }, tx);
+      // Its estimate is held with its claim; a refusal rolls the claim back (inner#1968 design 3.10 U9).
+      if (frozen.credits !== 0) await hold(body.analysisRunId, frozen.credits, tx);
+    }
     return claimed;
   });
   if (!inserted) {

@@ -163,10 +163,10 @@ export async function holdRowedRun<T>(opts: {
 
 /**
  * Start a run whose result nodes are already on the canvas and whose credits
- * {@link holdRowedRun} already holds: open their rows, queue the job and keep
- * its id. The hold comes before any row, so a refusal opens none (inner#1968,
- * design 3.10 U9). A planned or analysis mini-tool passes `credits` instead
- * and is held here, after its rows open.
+ * its admission already holds ({@link holdRowedRun}, or a planned or analysis
+ * mini-tool's own admission): open their rows, queue the job and keep its id.
+ * The hold comes before any row, so a refusal opens none (inner#1968, design
+ * 3.10 U9).
  *
  * Once a row is open, any failure settles both accounts of the run — the task
  * and its rows — each on its own, so neither settlement takes the other down:
@@ -184,13 +184,9 @@ export async function holdRowedRun<T>(opts: {
  * @param opts.enqueue - Queues the job, past the point of no return.
  * @param opts.logTag - Prefix of this lane's log events.
  * @param opts.logContext - Extra fields on the failure log.
- * @param opts.credits - A lane that holds after its rows open (a planned or
- *   analysis mini-tool, whose task row its own acceptance already wrote): the
- *   run's estimate, held here when not zero. Omitted when {@link holdRowedRun}
- *   already holds it.
  * @param opts.settleFailure - An optional lane-specific task/hold transaction;
  *   completed skips failure cleanup, failed settles the opened node rows.
- * @returns `"pending"` once queued, `"failed"` when it failed or was refused after a row opened.
+ * @returns `"pending"` once queued, `"failed"` when it failed after a row opened.
  * @throws {Error} The failure itself, when no row opened to carry it.
  */
 export async function startRowedRun(opts: {
@@ -201,7 +197,6 @@ export async function startRowedRun(opts: {
   userId: string;
   action: Exclude<NodeTaskAction, "upload">;
   label: string;
-  credits?: () => Promise<number>;
   enqueue: () => Promise<{ id?: string | undefined }>;
   logTag: string;
   logContext?: Record<string, unknown>;
@@ -219,16 +214,11 @@ export async function startRowedRun(opts: {
       action: opts.action,
       label: opts.label,
     });
-    if (opts.credits !== undefined) {
-      const required = await opts.credits();
-      if (required !== 0) await reserveForRun(projectId, opts.userId, taskId, required);
-    }
     const job = await opts.enqueue();
     await recordJobId(taskId, job.id, projectId, opts.logTag);
     return "pending";
   } catch (err) {
-    // Only a lane that holds here (`opts.credits`) can be refused by its credits.
-    const reason: TaskFailureReason = err instanceof AppError && err.statusCode === 402 ? "no_credits" : "internal";
+    const reason: TaskFailureReason = "internal";
     if (opts.settleFailure !== undefined) {
       try {
         if (await opts.settleFailure(reason) === "completed") {
@@ -249,8 +239,7 @@ export async function startRowedRun(opts: {
     } else {
       await settleUnqueuedRun(taskId, projectId, reason, () => failOpenedTasks(projectId, spaceId, rows, reason), opts.logTag);
     }
-    if (reason === "internal") logger.error({ err, taskId, projectId, ...opts.logContext }, `${opts.logTag}_run_failed`);
-    else logger.warn({ err, taskId, projectId, reason, ...opts.logContext }, `${opts.logTag}_run_failed`);
+    logger.error({ err, taskId, projectId, ...opts.logContext }, `${opts.logTag}_run_failed`);
     // An open row is the answer — it holds the cause and the node shows it.
     // With none, opening it is what failed, and the rejection carries the cause.
     if (rows.length > 0) return "failed";

@@ -24,7 +24,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
-import { miniToolPlannedRunService, projectService } from "@server/modules";
+import { explainHoldRefusal, miniToolPlannedRunService, projectService, reserveForRunIn } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
 import { holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
 
@@ -74,9 +74,12 @@ miniTools.post(
   const body = c.req.valid("json");
   if ("run_id" in body) {
     try {
-      const record = await acceptMiniToolExecution(body, user.id, (accepted) => miniToolPlannedRunService.startPlannedMiniToolRun(accepted, user.id));
+      // Its estimate is held with its task row's claim, so a refusal leaves nothing on the nodes (inner#1968).
+      const record = await acceptMiniToolExecution(body, user.id, (accepted) => miniToolPlannedRunService.startPlannedMiniToolRun(accepted, user.id),
+        (taskId, credits, tx) => reserveForRunIn(tx, body.project_id, user.id, taskId, credits));
       return c.json({ data: { task_id: record.taskId, status: record.status } }, 201);
-    } catch (err) {
+    } catch (thrown) {
+      const err = await explainHoldRefusal(thrown);
       logger.error({ err, ctx: { userId: user.id, projectId: body.project_id, spaceId: body.space_id, runId: body.run_id, tool: body.tool } },
         err instanceof ConflictError ? "mini_tool_planned_identity_conflict" : "mini_tool_planned_admission_failed");
       throw err;

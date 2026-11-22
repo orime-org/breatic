@@ -23,6 +23,7 @@ import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
+import type { MiniToolHold } from "@domain/mini-tool/mini-tool-hold.js";
 
 /** Frozen common planning facts owned by the physical SQL task. */
 interface ExecutionPlan {
@@ -357,10 +358,12 @@ export async function quoteMiniToolExecution(body: MiniToolPlannedRequest, userI
 }
 
 /**
- * Admit or replay one complete execution through the existing task, hold and queue owners.
+ * Admit or replay one complete execution through the existing task, hold and queue owners. A run that spends credits
+ * holds its estimate in the transaction that claims its task row (inner#1968 design 3.10 U9), so a refusal leaves nothing.
  * @param body - Fresh or retry press-frozen inputs.
  * @param userId - The authenticated initiating actor.
- * @param start - Existing application's row, hold and queue adapter; only a durable winner calls it.
+ * @param start - Existing application's row and queue adapter; only a durable winner calls it.
+ * @param hold - The application's credit admission, asked inside the claim.
  * @returns Original identity and current status.
  * @throws {NotFoundError} When current Project membership or original retry ownership is absent.
  * @throws {ForbiddenError} When a viewer starts work.
@@ -368,7 +371,8 @@ export async function quoteMiniToolExecution(body: MiniToolPlannedRequest, userI
  * @throws {ValidationError} When source, receipt, exact plan or failed subset is invalid.
  * @throws {Error} When preparation, persistence or startup fails.
  */
-export async function acceptMiniToolExecution(body: MiniToolExecutionRequest, userId: string, start: (accepted: AcceptedMiniToolExecution) => Promise<"pending" | "failed">): Promise<MiniToolExecutionAdmission> {
+export async function acceptMiniToolExecution(body: MiniToolExecutionRequest, userId: string, start: (accepted: AcceptedMiniToolExecution) => Promise<"pending" | "failed">,
+  hold: MiniToolHold): Promise<MiniToolExecutionAdmission> {
   const request = miniToolExecutionRequestSchema.parse(structuredClone(body));
   const role = await projectAuthService.loadProjectRole(userId, request.project_id);
   if (role === null) throw new NotFoundError(t("server.error.not_found"));
@@ -377,10 +381,10 @@ export async function acceptMiniToolExecution(body: MiniToolExecutionRequest, us
   const previous = await taskRepo.getMiniToolExecutionTask(request.run_id);
   if (previous !== null) return replay(previous, request, userId, fingerprint);
   let claim: { accepted: AcceptedMiniToolExecution; inserted: boolean };
-  if ("retry" in request) claim = await claimRetry(request, userId, fingerprint);
+  if ("retry" in request) claim = await claimRetry(request, userId, fingerprint, hold);
   else {
     const plan = await prepare(request);
-    claim = await db.transaction((tx) => claimPrepared(plan, request, userId, fingerprint, tx));
+    claim = await db.transaction((tx) => claimPrepared(plan, request, userId, fingerprint, tx, hold));
   }
   if (!claim.inserted) {
     const winner = await taskRepo.getMiniToolExecutionTask(request.run_id);
@@ -399,11 +403,13 @@ export async function acceptMiniToolExecution(body: MiniToolExecutionRequest, us
  * @param request - The fresh or retry identity.
  * @param userId - The new execution's actor.
  * @param fingerprint - Complete request fingerprint.
- * @param tx - The admission transaction; the run's execution pin is written in it (§7.15).
+ * @param tx - The admission transaction; the run's execution pin and its credit hold are written in it (§7.15).
+ * @param hold - The application's credit admission; its refusal rolls the claim back (inner#1968 design 3.10 U9).
  * @returns The frozen plan and whether its task UUID was claimed.
- * @throws {Error} When hashing, task or pin persistence fails.
+ * @throws {Error} When hashing, task or pin persistence fails, or the hold is refused.
  */
-async function claimPrepared(plan: ExecutionProjection, request: MiniToolExecutionRequest, userId: string, fingerprint: string, tx: DbTx): Promise<{ accepted: AcceptedMiniToolExecution; inserted: boolean }> {
+async function claimPrepared(plan: ExecutionProjection, request: MiniToolExecutionRequest, userId: string, fingerprint: string, tx: DbTx,
+  hold: MiniToolHold): Promise<{ accepted: AcceptedMiniToolExecution; inserted: boolean }> {
   const accepted: AcceptedMiniToolExecution = { ...plan, requestFingerprint: fingerprint, planFingerprint: await hashMiniToolValue(plan) };
   const inserted = await taskRepo.claimMiniToolExecutionTask({ id: request.run_id, userId, projectId: request.project_id, spaceId: request.space_id,
     taskType: miniToolTaskType(request.tool), model: accepted.model, params: { miniToolExecution: accepted },
@@ -414,6 +420,7 @@ async function claimPrepared(plan: ExecutionProjection, request: MiniToolExecuti
   if (inserted) {
     await presentationPinService.acquire({ holderKind: "execution", holderId: accepted.taskId, toolInputId: accepted.presentationRef.source.toolInputId,
       objectKeys: toolSourceObjects(accepted.presentations.source) }, tx);
+    if (accepted.credits !== 0) await hold(accepted.taskId, accepted.credits, tx);
   }
   return { accepted, inserted };
 }
@@ -423,13 +430,14 @@ async function claimPrepared(plan: ExecutionProjection, request: MiniToolExecuti
  * @param request - A new execution selecting original failed output indices.
  * @param userId - Any current Project editor starting this new execution.
  * @param fingerprint - Whole retry request identity.
+ * @param hold - The application's credit admission, asked inside the claim.
  * @returns One new claimed task, or the existing same-run winner.
  * @throws {NotFoundError} When the original execution belongs to another Project, Space or tool.
  * @throws {ValidationError} When any selected slot is not failed, was registered late or was already taken over by a retry.
  * @throws {ConflictError} When an overlapping execution is still active.
  * @throws {Error} When original frozen planning or transactional persistence is invalid.
  */
-async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string, fingerprint: string): Promise<{ accepted: AcceptedMiniToolExecution; inserted: boolean }> {
+async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string, fingerprint: string, hold: MiniToolHold): Promise<{ accepted: AcceptedMiniToolExecution; inserted: boolean }> {
   // A retry of a failed retry shares the first execution's admission lock with
   // direct retries; otherwise two different original rows could reserve one node.
   let root = await taskRepo.getMiniToolExecutionTask(request.retry.runId);
@@ -478,7 +486,7 @@ async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string
     const seconds = layoutSeconds(layout, works, frozen.container.startSeconds);
     // The payer is the original's frozen one (frames-split §5.5): a platform-funded run's retry quotes 0 as it did.
     const credits = frozen.chargeTo === "platform" ? 0 : containerCredits(frozen.container, seconds);
-    const claim = await claimPrepared({ ...frozen, ...retried, layout, stageJobs: plannedStageJobs(layout), outputSeconds, credits }, request, userId, fingerprint, tx);
+    const claim = await claimPrepared({ ...frozen, ...retried, layout, stageJobs: plannedStageJobs(layout), outputSeconds, credits }, request, userId, fingerprint, tx, hold);
     if (claim.inserted) await releaseTakenOver(original.id, record, tx);
     return claim;
   });
