@@ -111,11 +111,7 @@ describe("sign-up referral codes", () => {
       req.path.startsWith("/v1/inbox/") ? { status: 200, body: { result: "applied" } } : { status: 200, body: { active: true, code: "FRIEND-2026" } };
     const relay = startCommerceRelay();
     try {
-      // Let the first pass, which runs at start, finish whatever earlier files left.
-      await vi.waitFor(async () => {
-        const [r] = await suite.sql<{ n: number }[]>`SELECT count(*)::int AS n FROM commerce_outbox WHERE sent_at IS NULL AND next_attempt_at <= now()`;
-        expect(r!.n).toBe(0);
-      }, { timeout: 4000, interval: 50 });
+      // Let the first pass, which runs at start, finish on the empty outbox.
       await new Promise((resolve) => setTimeout(resolve, 100));
 
       const startedAt = Date.now();

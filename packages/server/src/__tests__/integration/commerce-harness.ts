@@ -104,9 +104,11 @@ export function useCommerceApp(appName: string): CommerceSuite {
     const { createApp } = await import("@server/app.js");
     suite.app = createApp();
   });
-  beforeEach(() => {
+  beforeEach(async () => {
     suite.received.length = 0;
     suite.reply = defaultReply;
+    // Rows other files left would be taken by the relay before this test's own.
+    await suite.sql`DELETE FROM commerce_outbox`;
   });
   afterAll(async () => {
     await running?.close();
