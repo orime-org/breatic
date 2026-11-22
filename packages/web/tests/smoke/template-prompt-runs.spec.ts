@@ -828,6 +828,20 @@ const RUNS: Record<string, Run> = {
     first: [],
     fills: { anchor: ['a dojo with paper screens', 'the first fighter\'s fist driving into the second fighter\'s stomach', 'the second fighter skids back across the floor and drops to one knee'] },
   },
+  'reference-video-remix': {
+    type: 'video',
+    photo: false,
+    inputs: { reference: 'mini-tools/driving.mp4', subject: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['the subject does the same moves on a rooftop at sunset', 'the last move ends in a freeze as confetti falls'] },
+  },
+  'seamless-bridge': {
+    type: 'video',
+    photo: false,
+    inputs: { 'clip-a': 'mini-tools/driving.mp4', 'clip-b': 'clip-ruined-street.mp4' },
+    first: [],
+    fills: { anchor: ['the white studio wall cracking and falling away to reveal the street behind it'] },
+  },
   'extreme-sports-run': {
     type: 'video',
     photo: true,

@@ -1558,7 +1558,8 @@
         "posters": "Posters & graphics",
         "film-styles": "Famous film styles",
         "speed": "Motion & speed",
-        "sound": "Sound, music & voice"
+        "sound": "Sound, music & voice",
+        "video-remix": "Remix existing videos"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
@@ -2614,6 +2615,39 @@
             "name": "Fighter B",
             "note": "Add a picture of the second fighter first, then generate."
           }
+        }
+      },
+      "reference-video-remix": {
+        "name": "Remix a reference video",
+        "description": "Its camera and rhythm, your subject, a new video",
+        "prompt": "A 10-second vertical video with sound inspired by [📎 Reference video]: take from it only its camera moves, the order and length of its shots and its rhythm, cut for cut; never its performer, faces, clothes, place, logos, on-screen text or sound. The subject is [📎 Subject]: face, shape and clothes as in the picture, nothing else taken from the picture. What happens: {✏️ the new idea, e.g. the subject does the same moves on a rooftop at sunset}. Creative twist: {✏️ one thing that makes it its own, e.g. the last move ends in a freeze as confetti falls}. Music and sound of its own. No text on screen.",
+        "input": {
+          "reference": {
+            "name": "Reference video",
+            "note": "Add the video you want to borrow the camera and rhythm from first, then generate."
+          },
+          "subject": {
+            "name": "Subject",
+            "note": "Add a picture of your subject first, then generate."
+          }
+        }
+      },
+      "seamless-bridge": {
+        "name": "Seamless bridge",
+        "description": "A transition shot that joins two clips",
+        "prompt": "A 5-second transition shot with sound that joins two existing clips. It starts exactly where [📎 Clip A] ends: its last frame, subject, light, camera direction and motion. It ends exactly where [📎 Clip B] begins: its first frame, subject, light and framing. In between, one carries into the other through {✏️ the bridge, e.g. a round shape that turns from a wheel into the moon, or something passing close in front of the camera that wipes into the next place}. One continuous camera move, no hard cut, no new characters, nothing repeated from the middle of either clip. Sound: the first clip's sound flows into the second's. No text on screen.",
+        "input": {
+          "clip-a": {
+            "name": "Clip A",
+            "note": "Add the clip that comes first, then generate."
+          },
+          "clip-b": {
+            "name": "Clip B",
+            "note": "Add the clip that comes after, then generate."
+          }
+        },
+        "step": {
+          "join": "Once it has generated, select Clip A, this transition and Clip B, right-click and choose Join; check the order runs Clip A, transition, Clip B."
         }
       }
     },
