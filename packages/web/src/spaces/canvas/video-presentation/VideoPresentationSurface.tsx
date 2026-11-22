@@ -13,7 +13,7 @@ export interface VideoPresentationSurfaceProps {
   active: boolean;
   onBinding: (snapshot: MediaSurfaceSnapshot) => void;
   onPresentedFrame?: (frame: PresentedMediaFrame) => void;
-  /** Called when the page pool releases the renderer; without it a new renderer starts at once. */
+  /** Called when the page pool releases the renderer; the surface stays detached until its owner wakes it. */
   onEvicted?: () => void;
   className?: string;
   children?: React.ReactNode;

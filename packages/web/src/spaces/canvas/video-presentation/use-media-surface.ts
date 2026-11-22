@@ -14,7 +14,7 @@ export interface MediaSurfaceOptions {
   active: boolean;
   createRenderer?: VideoRendererFactory;
   onPresentedFrame?: (frame: PresentedMediaFrame) => void;
-  /** Called when the page pool releases the renderer; without it a new renderer starts at once. */
+  /** Called when the page pool releases the renderer; the surface stays detached and never restarts on its own. */
   onEvicted?: () => void;
 }
 /** Resource state plus an explicit retry action. */
@@ -30,7 +30,8 @@ const DETACHED: MediaSurfaceSnapshot = { status: 'detached', binding: null, erro
  * @param options.active - Whether the owning Space or preview is visible.
  * @param options.createRenderer - Renderer factory, injectable for lifecycle tests.
  * @param options.onPresentedFrame - Synchronous consumer of the committed drawable frame.
- * @param options.onEvicted - Takes over after the page pool releases the renderer; a new one starts when it is absent.
+ * @param options.onEvicted - Told after the page pool releases the renderer, which the owner builds again only when the user
+ *   reaches it: restarting at once would evict the next idle renderer, and a page of them would evict each other forever.
  * @returns Current resource state and a retry command.
  * @throws {never} Resource failures are reported in the snapshot.
  */
@@ -145,8 +146,7 @@ export function useMediaSurface({ host, container, source, active, createRendere
           terminal = true;
           release();
           setSnapshot(DETACHED);
-          if (onEvictedRef.current) onEvictedRef.current();
-          else retry();
+          onEvictedRef.current?.();
         },
       });
       if (released) resource.dispose();

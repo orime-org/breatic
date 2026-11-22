@@ -57,7 +57,8 @@ export interface MediaPlayerProps {
   active?: boolean;
   /**
    * Nothing outside the player uses its frames: a transparent version with a cover shows the cover and holds no WebGL
-   * renderer until the user reaches the player, or after the page pool releases its renderer.
+   * renderer until the user reaches the player. Any player the page pool releases rests the same way, whether or not this
+   * is set.
    */
   restsOnCover?: boolean;
   /** Actual source transport lifecycle, never persisted in node data. */
@@ -201,7 +202,7 @@ function useOriginalCover(url: string | undefined): CoverOutcome {
  * @param root0.videoSource - The selected version; null plays the original for display only.
  * @param root0.preparation - The candidate's state while nothing is selected.
  * @param root0.active - Whether this resource is displayed.
- * @param root0.restsOnCover - Whether a transparent version may rest on its cover while unused.
+ * @param root0.restsOnCover - Whether a transparent version may start at rest on its cover while unused.
  * @param root0.onVideoBinding - Actual resource and independent overlay target.
  * @param root0.onPresentedFrame - Synchronous canonical frame consumer.
  * @param root0.children - Tool overlays in the same canonical display box.
@@ -330,12 +331,14 @@ export function MediaPlayer({
     },
   }), [binding]);
   const unavailable = ownsVideo && binding === null;
-  // Chromium keeps at most 16 live WebGL contexts per page, so an unused transparent node shows its cover instead of one.
-  const rests = restsOnCover && videoSource?.presentation.playback.kind === 'alpha-packed' && poster !== undefined;
-  const [reachedFor, setReachedFor] = React.useState<string | null>(null);
-  const awake = !rests || reachedFor === key;
-  const reach = React.useCallback((): void => setReachedFor(key), [key]);
-  const rest = React.useCallback((): void => setReachedFor(null), []);
+  // Chromium keeps at most 16 live WebGL contexts per page, so an unused transparent node shows its cover instead of one,
+  // and a player whose renderer the page pool releases rests (on its cover, or the loading placeholder) until the user
+  // reaches it: restarting at once would release the next one, and a page of them would release each other forever.
+  const restsAtFirst = restsOnCover && videoSource?.presentation.playback.kind === 'alpha-packed' && poster !== undefined;
+  const [wake, setWake] = React.useState<{ key: string; awake: boolean } | null>(null);
+  const awake = wake?.key === key ? wake.awake : !restsAtFirst;
+  const reach = React.useCallback((): void => setWake({ key, awake: true }), [key]);
+  const rest = React.useCallback((): void => setWake({ key, awake: false }), [key]);
   const displaysOriginal = isVideo && videoSource === null;
   React.useEffect(() => {
     if (displaysOriginal) handoff.current = { src, time: p.currentTime, playing: p.playing };
@@ -520,8 +523,8 @@ export function MediaPlayer({
     const original = presentedSizeOf(videoSource.presentation);
     const loadingOwner = snapshot?.status !== 'ready';
     return <div className='group/player @container relative' data-testid='media-player' style={{ aspectRatio: `${original.width}/${original.height}` }}
-      onPointerEnter={rests ? reach : undefined} onFocus={rests ? reach : undefined}>
-      <VideoPresentationSurface source={videoSource} active={active && awake} onBinding={acceptBinding} onPresentedFrame={acceptFrame} onEvicted={rests ? rest : undefined}>
+      onPointerEnter={awake ? undefined : reach} onFocus={awake ? undefined : reach}>
+      <VideoPresentationSurface source={videoSource} active={active && awake} onBinding={acceptBinding} onPresentedFrame={acceptFrame} onEvicted={rest}>
         {loadingOwner && shownPoster ? <img src={shownPoster} alt='' className='pointer-events-none absolute inset-0 h-full w-full object-contain' /> : null}
         {loadingOwner && !posterLoaded ? <Skeleton data-testid='media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' /> : null}
         {placedControls}

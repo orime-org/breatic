@@ -82,10 +82,28 @@ describe('a transparent video node at rest', () => {
     expect(driver.sessions).toHaveLength(2);
   });
 
-  it('starts a new renderer at once when a player that does not rest on its cover is released by the pool', () => {
+  // W9-1: a player released by the pool never restarts on its own, or nine of them evict each other forever.
+  it('rests on its cover when a player that started with a renderer is released by the pool, until the user reaches it', () => {
     render(<MediaPlayer modality='video' src={CANONICAL} videoSource={alpha} poster={COVER} />);
     const first = driver.sessions[0]!;
+    act(() => first.callbacks.ready(first.element, first.surface));
     act(() => first.callbacks.evicted?.());
+    expect(first.dispose).toHaveBeenCalled();
+    expect(driver.sessions).toHaveLength(1);
+    expect(coverImage()).not.toBeNull();
+    fireEvent.pointerEnter(screen.getByTestId('media-player'));
+    expect(driver.sessions).toHaveLength(2);
+  });
+
+  it('rests on the loading placeholder when a player with no cover (a Document video block) is released, and wakes on pointer enter', () => {
+    render(<MediaPlayer modality='video' src={CANONICAL} videoSource={alpha} />);
+    const first = driver.sessions[0]!;
+    act(() => first.callbacks.ready(first.element, first.surface));
+    expect(screen.queryByTestId('media-skeleton')).toBeNull();
+    act(() => first.callbacks.evicted?.());
+    expect(driver.sessions).toHaveLength(1);
+    expect(screen.getByTestId('media-skeleton')).not.toBeNull();
+    fireEvent.pointerEnter(screen.getByTestId('media-player'));
     expect(driver.sessions).toHaveLength(2);
   });
 });
