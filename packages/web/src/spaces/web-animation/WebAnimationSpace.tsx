@@ -208,7 +208,7 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
       <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.placeOnCanvas')} icon={PLACE_ICON}
         loading={waiting} disabled={asset === undefined} />
     </DropdownMenuTrigger>
-    <DropdownMenuContent side='top' align='start' sideOffset={BAR_MENU_OFFSET} className='w-max min-w-40 max-w-72'>
+    <DropdownMenuContent side='top' align='end' sideOffset={BAR_MENU_OFFSET} className='w-max min-w-40 max-w-72'>
       <DropdownMenuLabel>{t('spaces.webAnimation.chooseCanvas')}</DropdownMenuLabel>
       {canvases.map((canvas) => <DropdownMenuItem key={canvas.id} data-testid={`motion-canvas-${canvas.id}`} onSelect={() => { setOpen(false); choose(canvas); }}>
         <span className='truncate'>{canvas.name}</span>
@@ -663,6 +663,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
           {playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}
           {row.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.fileUrl ?? null} assetFailed={exportAssetRead.isError}
             assetRetrying={exportAssetRead.isFetching} onAssetRetry={retryExportAsset} time={clock.time} playing={clock.playing} />}
+          {row.kind === 'web_animation_export' && <span data-testid='motion-video-tag' className='pointer-events-none absolute left-2 top-2 rounded-chrome-sm bg-black/50 px-1.5 text-2xs text-white'>{t('spaces.webAnimation.videoTag')}</span>}
           {playable(row) && resultThreads.filter(({ anchor }) => anchor.point !== null && Math.abs(anchor.timeSeconds - clock.time) < PIN_WINDOW_SECONDS).map(({ thread, anchor }) =>
             <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-pin-${thread.id}`} aria-label={t('spaces.webAnimation.annotations')}
               onClick={(event) => { event.stopPropagation(); openThread(thread.id); }}

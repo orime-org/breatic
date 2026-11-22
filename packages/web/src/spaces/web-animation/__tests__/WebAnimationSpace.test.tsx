@@ -1268,11 +1268,13 @@ describe('the execution list\'s three tabs', () => {
       const panel = await openTab('inProgress');
       const row = await within(panel).findByTestId(`motion-row-${RUNNING}`);
       expect(within(row).getByTestId('task-waiting-mark')).toBeInTheDocument();
+      expect(within(row).queryByTestId('motion-running-mark')).toBeNull();
       expect(row).toHaveTextContent(t('timeline.webAnimation.status.queued'));
       expect(row).toHaveTextContent(t(reason, { limit: 2 }));
       expect(within(row).getByTestId('motion-cancel')).toBeInTheDocument();
       const plain = await within(panel).findByTestId(`motion-row-${FAILED}`);
       expect(within(plain).queryByTestId('task-waiting-mark')).toBeNull();
+      expect(within(plain).getByTestId('motion-running-mark')).toBeInTheDocument();
     });
 
   it('shows a failed row with its reason and Run again, and a cancelled one with its status', async () => {
@@ -1327,8 +1329,28 @@ describe('the execution list\'s three tabs', () => {
     await userEvent.setup().click(await screen.findByTestId('motion-action-export'));
     const panel = await screen.findByTestId('motion-panel-executions');
     await waitFor(() => expect(within(panel).getByRole('tab', { name: new RegExp(t('spaces.webAnimation.inProgress')) })).toHaveAttribute('aria-selected', 'true'));
-    expect(await within(panel).findByTestId(`motion-row-${EXPORT}`)).toHaveAttribute('data-marked', 'true');
+    const marked = await within(panel).findByTestId(`motion-row-${EXPORT}`);
+    expect(marked).toHaveAttribute('data-marked', 'true');
+    // A marked row wears the new-row look; the grey fill means only "the preview shows this row".
+    expect(marked).toHaveClass('motion-row-new');
+    expect(marked).not.toHaveClass('bg-accent-strong');
     expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+  });
+});
+
+describe('the exported video in the preview', () => {
+  it('carries the video tag, which a source animation does not', async () => {
+    listing([exported(done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z'))]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
+    expect(within(screen.getByTestId('motion-preview')).getByTestId('motion-video-tag')).toHaveTextContent(t('spaces.webAnimation.videoTag'));
+  });
+
+  it('shows no video tag on a source animation', async () => {
+    listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER));
+    expect(screen.queryByTestId('motion-video-tag')).toBeNull();
   });
 });
 

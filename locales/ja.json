@@ -3411,6 +3411,7 @@
       "addAnnotation": "注釈を追加",
       "annotateAt": "{time} に注釈を追加",
       "annotationFailed": "注釈を保存できませんでした。",
+      "videoTag": "MP4",
       "annotationPlaceholder": "変更したい点を書く",
       "annotations": "注釈",
       "annotationsAll": "すべて",

@@ -3411,6 +3411,7 @@
       "addAnnotation": "新增註解",
       "annotateAt": "在 {time} 新增註解",
       "annotationFailed": "註解未能儲存。",
+      "videoTag": "MP4",
       "annotationPlaceholder": "寫下要修改的地方",
       "annotations": "註解",
       "annotationsAll": "全部",

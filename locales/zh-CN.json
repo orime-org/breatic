@@ -3411,6 +3411,7 @@
       "addAnnotation": "添加批注",
       "annotateAt": "在 {time} 添加批注",
       "annotationFailed": "批注没有保存成功。",
+      "videoTag": "MP4",
       "annotationPlaceholder": "写下要改的地方",
       "annotations": "批注",
       "annotationsAll": "全部",

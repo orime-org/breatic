@@ -3411,6 +3411,7 @@
       "addAnnotation": "주석 추가",
       "annotateAt": "{time}에 주석 추가",
       "annotationFailed": "주석을 저장하지 못했습니다.",
+      "videoTag": "MP4",
       "annotationPlaceholder": "수정할 내용을 적으세요",
       "annotations": "주석",
       "annotationsAll": "전체",

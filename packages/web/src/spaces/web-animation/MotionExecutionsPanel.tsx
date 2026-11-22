@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import * as React from 'react';
-import { Hourglass, RotateCcw, X } from 'lucide-react';
+import { Hourglass, LoaderCircle, RotateCcw, X } from 'lucide-react';
 import { getLocale } from '@breatic/shared';
 import type { WebAnimationRowView } from '@breatic/shared/space-content';
 
@@ -173,7 +173,7 @@ const ProgressRow = React.memo(function ProgressRow({ row, marked, readOnly, onC
       <span className='flex min-w-0 items-center gap-1 text-2xs'><Hourglass data-testid='task-waiting-mark' aria-hidden className='size-3.5 shrink-0' /><span className='truncate'>{rowStep(row, t)}</span></span>
       <span className='text-pretty text-2xs text-muted-foreground'>{waitReason(t, row.slotWaitLimit, row.actorUserId === selfId ? 'own' : 'other')}</span>
     </>
-    : <span className='truncate text-2xs'>{rowStep(row, t)}</span>;
+    : <span className='flex min-w-0 items-center gap-1 text-2xs'><LoaderCircle data-testid='motion-running-mark' aria-hidden className='size-3.5 shrink-0 animate-spin text-muted-foreground' /><span className='truncate'>{rowStep(row, t)}</span></span>;
   return <RowFrame row={row} marked={marked} detail={detail}
     action={!readOnly && row.ownProject && row.status !== 'cancelling'
       ? <Button type='button' data-testid='motion-cancel' variant='outline' size='sm' className='gap-1.5' loading={cancelling} onClick={cancel} icon={<X className='size-4' />}>{t('timeline.webAnimation.cancel')}</Button>
@@ -214,7 +214,7 @@ interface RowFrameProps {
 
 /**
  * The frame of a row that does not open in the preview: title, summary and one more line, the action on the right; a
- * marked row wears the selected look.
+ * marked row wears the new-row look, apart from the grey of the row the preview shows.
  * @param props - The row.
  * @param props.row - The execution.
  * @param props.marked - Whether the list marks it.
@@ -225,9 +225,9 @@ interface RowFrameProps {
  */
 function RowFrame({ row, marked, detail, action }: RowFrameProps): React.JSX.Element {
   return <div data-testid={`motion-row-${row.id}`} data-execution-id={row.id} data-marked={marked || undefined}
-    className={cn('flex items-start gap-2 border-b border-border px-3 py-2', marked && 'bg-accent-strong')}>
+    className={cn('flex items-start gap-2 border-b border-border px-3 py-2', marked && 'motion-row-new')}>
     <div className='flex min-w-0 flex-1 flex-col gap-0.5'>
-      <RowText row={row} active={marked} />
+      <RowText row={row} active={false} />
       {detail}
     </div>
     {action}

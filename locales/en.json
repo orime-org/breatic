@@ -3411,6 +3411,7 @@
       "addAnnotation": "Add annotation",
       "annotateAt": "Annotation at {time}",
       "annotationFailed": "The annotation could not be saved.",
+      "videoTag": "MP4",
       "annotationPlaceholder": "What should change here",
       "annotations": "Annotations",
       "annotationsAll": "All",
