@@ -97,7 +97,9 @@ export function longMediaSegmentArgs(
 /**
  * Build the ffprobe call that reads the first video packet an input seek to a source time lands on, searched as FFmpeg's
  * own input seek searches it (an absolute stream time, as `-seek_timestamp 1`): that keyframe's presentation and decode
- * times.
+ * times. A fragmented MP4 is searched through its trailing mfra index (`-use_mfra_for pts`): without it the mov demuxer
+ * walks every fragment from the start, which over HTTP reads the file up to the seek and lands on its first packet;
+ * ffprobe accepts the option for any input, and a file without an mfra is read as before.
  * @param objectUrl - Where the container reads the object.
  * @param atUs - The seek time in microseconds.
  * @param from - Whether that is a served object or the container's own file.
@@ -108,6 +110,7 @@ export function seekLandingArgs(objectUrl: string, atUs: bigint, from: ReadFrom 
   return [
     "-v", "error",
     "-protocol_whitelist", protocolsFor(from),
+    "-use_mfra_for", "pts",
     "-select_streams", "v:0",
     "-read_intervals", `${ffmpegSeconds(atUs)}%+#1`,
     "-show_entries", "packet=pts_time,dts_time",
