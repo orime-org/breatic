@@ -6,6 +6,7 @@ import * as React from 'react';
 import {
   TEMPLATE_GUIDE_KEY,
   expandTemplate,
+  getLocale,
   matchTemplateInstance,
   proposalMarkSegments,
   t,
@@ -28,6 +29,7 @@ import { deriveReferences } from '@web/spaces/canvas/generate/derive-references'
 import type { ProposalMention } from '@web/spaces/canvas/generate/proposal-prompt';
 import { slotForParam } from '@web/spaces/canvas/generate/proposal-fills';
 import { readSlotPick } from '@web/spaces/canvas/generate/slots';
+import { ensureTemplateStyleMessages } from '@web/spaces/canvas/generate/template-style-messages';
 import { templateParams, templateServed } from '@web/spaces/canvas/generate/template-writes';
 import type { SpaceRefusal } from '@web/data/yjs/space-write';
 import { standsEmpty, type ExistingNode, type PlacedProposal } from '@web/spaces/canvas/use-node-creation';
@@ -94,9 +96,9 @@ export function useApplyTemplate(
   nodeId: string,
   models: readonly ModelEntry[],
   placeTemplate: PlaceTemplate,
-): (template: GenerationTemplate) => void {
-  return React.useCallback(
-    (template: GenerationTemplate) => {
+): (template: GenerationTemplate, style?: string) => void {
+  const place = React.useCallback(
+    (template: GenerationTemplate, style: string | undefined) => {
       const byName = new Map(models.map((m) => [m.name, m]));
       if (!templateServed(template, new Set(byName.keys()))) {
         // The catalog refetched and dropped a model since the menu drew it.
@@ -168,7 +170,7 @@ export function useApplyTemplate(
       // A node given for an input that holds nothing yet still gets the note
       // saying what to put there, as a node placed new does.
       const emptyNodes = new Set(held.flatMap((id, index) => (index > 0 && standsEmpty(views.get(id)) ? [index] : [])));
-      const expansion = expandTemplate(template, { anchorAt: 0, base: held.length, inputs, wired, reuse, guide: !guided, emptyNodes });
+      const expansion = expandTemplate(template, { anchorAt: 0, base: held.length, inputs, wired, reuse, guide: !guided, emptyNodes, style });
 
       if (expansion.appended.length > 0 && inLockedGroup(own, views)) {
         toast.warning(t('canvas.template.groupLocked'));
@@ -241,6 +243,24 @@ export function useApplyTemplate(
       if (toFill) toast.info(t('canvas.generatePanel.editProposalMarks'));
     },
     [projectId, spaceId, nodeId, models, placeTemplate],
+  );
+  return React.useCallback(
+    (template: GenerationTemplate, style?: string) => {
+      if (template.styles === undefined) {
+        place(template, undefined);
+        return;
+      }
+      // A styled template's words arrive on demand (inner#1817); without them
+      // the prompt would carry raw keys, so nothing is placed.
+      void ensureTemplateStyleMessages(getLocale()).then((ok) => {
+        if (!ok) {
+          toast.error(t('canvas.template.styleLoadFailed'));
+          return;
+        }
+        place(template, style);
+      });
+    },
+    [place],
   );
 }
 

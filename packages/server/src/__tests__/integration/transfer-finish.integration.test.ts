@@ -348,7 +348,7 @@ describe("T25: a transfer leaves no activity, no asset and no storage usage", ()
     expect(ticket.status).toBe(201);
     const { data } = (await ticket.json()) as { data: { storageKey: string } };
     const claim = await uploadGrantRepo.claimFinalize({ storageKey: data.storageKey, uploadId: "transfer-upload-1" });
-    expect(claim).toEqual({ granted: true, assetSource: "transfer" });
+    expect(claim).toMatchObject({ granted: true, assetSource: "transfer" });
     workerAnswers({ contentType: TRANSFER_TYPE, sizeBytes: DECLARED });
     const result = await uploadFinishService.finishUpload(transferJob(data.storageKey));
     expect(result.outcome.status).toBe("transferred");

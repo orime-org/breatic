@@ -250,11 +250,23 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
       granted: true,
       assetSource: null,
+      projectId: null,
+      spaceId: null,
+      documentUploadId: null,
     });
     const rows = await sql<{ finalizing_upload_id: string | null }[]>`
       SELECT finalizing_upload_id FROM upload_grants WHERE storage_key = ${storageKey}
     `;
     expect(rows[0]!.finalizing_upload_id).toBe("upload-a");
+  });
+
+  it("hands back the Document block the upload is for, so the finish can tell it without reading the grant again", async () => {
+    const userId = await insertUser();
+    const studioId = await insertStudio(userId);
+    const storageKey = freshKey();
+    await issueGrant({ ...grantFields({ userId, studioId, storageKey, declaredSize: 1 }), context: { documentUploadId: "u1" } });
+
+    expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toMatchObject({ granted: true, documentUploadId: "u1" });
   });
 
   it("lets the same upload ask again, so three deliveries all get through", async () => {
@@ -267,6 +279,9 @@ describe("upload-grant repo — the permission to finish an upload", () => {
       expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
         granted: true,
         assetSource: null,
+        projectId: null,
+        spaceId: null,
+        documentUploadId: null,
       });
     }
   });
@@ -302,6 +317,9 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
       granted: true,
       assetSource: null,
+      projectId: null,
+      spaceId: null,
+      documentUploadId: null,
     });
   });
 
@@ -319,6 +337,9 @@ describe("upload-grant repo — the permission to finish an upload", () => {
     expect(await claimFinalize({ storageKey, uploadId: "upload-a" })).toEqual({
       granted: true,
       assetSource: "project_cover",
+      projectId: null,
+      spaceId: null,
+      documentUploadId: null,
     });
   });
 

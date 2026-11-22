@@ -14,6 +14,20 @@ function catalog(body: Record<string, unknown>) {
 }
 
 describe("no-translated-product-noun", () => {
+  it("checks the names and category names in the template style catalogs, not the style words", () => {
+    // inner#1817: a style's words say 画布 for the painter's support, which is not the product's Canvas.
+    const context = fakeContext({
+      "locales/template-styles/zh-CN.json": JSON.stringify({
+        canvas: { template: { styleSet: { s: { category: { a: "作品" }, style: { b: { name: "画布油画", still: "厚涂在画布上" } } } } } },
+      }),
+    });
+    const findings = noTranslatedProductNoun.run(context);
+    expect(findings.map((one) => one.message.split(" ")[0])).toEqual([
+      "canvas.template.styleSet.s.category.a",
+      "canvas.template.styleSet.s.style.b.name",
+    ]);
+  });
+
   it("passes a catalog that keeps the noun in English", () => {
     expect(
       noTranslatedProductNoun.run(catalog({ title: "新建 Project" })),

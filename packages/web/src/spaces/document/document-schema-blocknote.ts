@@ -81,6 +81,11 @@ const MEDIA_SIZE_PROPS: Record<string, PropDecl> = {
  */
 const UPLOAD_ID_PROP: Record<string, PropDecl> = {
   uploadId: { default: '' },
+  // breatic#1574: the Document the upload belongs to, written with the block; and what collab writes back.
+  uploadHome: { default: '' },
+  uploadState: { default: '' },
+  uploadFailure: { default: '' },
+  uploadRetryable: { default: undefined, type: 'boolean' },
 };
 
 /** Lets a list item pin a user-set number. */
