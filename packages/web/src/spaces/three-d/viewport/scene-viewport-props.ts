@@ -69,8 +69,6 @@ export interface SceneViewportProps {
   onSelectPart?: (part: string) => void;
   /** The page's way to this Project's part pictures; the lazy viewport keeps their textures. */
   lookPictures?: LookPictureAccess | null;
-  /** Part pictures for this Project, given to the runtime by the viewport component. */
-  lookTextures?: LookTextureCache | null;
   /** Told each model's parts when it loads, or that it is loading or failed. */
   onLookReport?: (id: string, report: SceneLookReport | 'loading' | 'failed') => void;
   /** Told which part pictures of an object are shown, and why the others are not. */
@@ -116,6 +114,12 @@ export interface SceneViewportProps {
   onLightPlan?: (plan: LightsPlan) => void;
   /** The monitor card canvases by camera id. */
   monitors?: ReadonlyMap<string, HTMLCanvasElement>;
+}
+
+/** What the runtime gets: the component's props plus the part pictures the component makes from `lookPictures`. */
+export interface SceneViewportRuntimeProps extends SceneViewportProps {
+  /** Part pictures for this Project. */
+  lookTextures?: LookTextureCache | null;
 }
 
 /** What the editor asks of the pilot. */

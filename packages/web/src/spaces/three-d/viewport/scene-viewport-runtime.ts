@@ -30,7 +30,7 @@ import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-t
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
 import { SCENE_VIEW_FAR, SCENE_VIEW_FOV, SCENE_VIEW_NEAR, captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
 import { createOrbitUserMoveWatch } from '@web/spaces/three-d/viewport/orbit-user-move';
-import type { CapturedPixels, SceneCameraView, SceneFrameCapture, SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { CapturedPixels, SceneCameraView, SceneFrameCapture, SceneTransformPatch, SceneViewportRuntimeProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 /** Width and depth of the ground that shows shadows, matching the grid. */
 const GROUND_SIZE = 200;
@@ -191,7 +191,7 @@ function sceneError(error: unknown): Error {
  * @throws {Error} When WebGL or the installed controls cannot be constructed.
  */
 export class SceneViewportRuntime {
-  private props: SceneViewportProps;
+  private props: SceneViewportRuntimeProps;
   private readonly host: HTMLDivElement;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(SCENE_VIEW_FOV, 1, SCENE_VIEW_NEAR, SCENE_VIEW_FAR);
@@ -293,7 +293,7 @@ export class SceneViewportRuntime {
    * @param props - The initial scene snapshots, personal camera state and callbacks to the owning session.
    * @throws {Error} When Three cannot construct a WebGL renderer or controls.
    */
-  constructor(host: HTMLDivElement, props: SceneViewportProps) {
+  constructor(host: HTMLDivElement, props: SceneViewportRuntimeProps) {
     this.host = host;
     this.props = props;
     this.renderer = new WebGLRenderer({ antialias: true });
@@ -542,7 +542,7 @@ export class SceneViewportRuntime {
    * @param props - The latest scene content, selection, permissions, revisions and session callbacks.
    * @throws {Error} When the installed controls differ from the r173 adapter.
    */
-  update(props: SceneViewportProps): void {
+  update(props: SceneViewportRuntimeProps): void {
     if (this.disposed) return;
     this.syncing = true;
     try {
@@ -556,7 +556,7 @@ export class SceneViewportRuntime {
    * Apply new props to the scene.
    * @param props - The latest scene content, selection, permissions, revisions and session callbacks.
    */
-  private updateNow(props: SceneViewportProps): void {
+  private updateNow(props: SceneViewportRuntimeProps): void {
     const previous = this.props;
     this.leaveCameraView(previous, props);
     this.props = props;
@@ -643,7 +643,7 @@ export class SceneViewportRuntime {
    * @param previous - The props in force.
    * @param next - The props about to apply.
    */
-  private leaveCameraView(previous: SceneViewportProps, next: SceneViewportProps): void {
+  private leaveCameraView(previous: SceneViewportRuntimeProps, next: SceneViewportRuntimeProps): void {
     const before = previous.cameraView;
     const after = next.cameraView ?? null;
     if (before?.kind !== 'live') return;

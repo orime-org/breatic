@@ -6,7 +6,7 @@ import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtur
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SceneViewport from '@web/spaces/three-d/viewport/SceneViewport';
-import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneViewportProps, SceneViewportRuntimeProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 const mocks = vi.hoisted(() => ({
   construct: vi.fn(),
@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@web/spaces/three-d/viewport/scene-viewport-runtime', () => ({
-  SceneViewportRuntime: vi.fn(function (host: HTMLDivElement, props: SceneViewportProps) {
+  SceneViewportRuntime: vi.fn(function (host: HTMLDivElement, props: SceneViewportRuntimeProps) {
     mocks.construct(host, props);
     const instance = { update: vi.fn(), dispose: vi.fn(), acquireModel: vi.fn() };
     mocks.instances.push(instance);
@@ -73,9 +73,9 @@ describe('viewport effect ownership under React Activity (inner#1689)', () => {
     const page = render(<SceneViewport {...initial} />);
     const runtime = mocks.instances[0];
     page.rerender(<SceneViewport {...initial} selectedIds={['selected']} />);
-    const first = (mocks.construct.mock.calls[0]?.[1] as SceneViewportProps).lookTextures;
+    const first = (mocks.construct.mock.calls[0]?.[1] as SceneViewportRuntimeProps).lookTextures;
     expect(first).toBeInstanceOf(LookTextureCache);
-    expect((runtime.update.mock.calls.at(-1)?.[0] as SceneViewportProps).lookTextures).toBe(first);
+    expect((runtime.update.mock.calls.at(-1)?.[0] as SceneViewportRuntimeProps).lookTextures).toBe(first);
   });
 
   it('rebuilds visible resources after Activity cleanup while retaining the host and camera input', async () => {

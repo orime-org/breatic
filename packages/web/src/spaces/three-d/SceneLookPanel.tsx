@@ -121,7 +121,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const showingPictures = React.useMemo(() => new Set(showing), [showing]);
   const queryClient = useQueryClient();
   const uploads = React.useMemo(() => pageSceneLookUploads(queryClient), [queryClient]);
-  const textures = React.useMemo(() => pageLookPictureSizes(projectId), [projectId]);
+  const sizes = React.useMemo(() => pageLookPictureSizes(projectId), [projectId]);
   const uploadVersion = React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const [pickerPart, setPickerPart] = React.useState<string | null>(null);
   const isChecking = React.useCallback(
@@ -182,9 +182,9 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
     const name = image.displayName || translate('spaces.threeD.picker.unnamed');
     void (async () => {
       try {
-        let size: Awaited<ReturnType<typeof textures.read>>;
+        let size: Awaited<ReturnType<typeof sizes.read>>;
         try {
-          size = await textures.read(image.assetId, textureLimits.maxPictureHeaderBytes);
+          size = await sizes.read(image.assetId, textureLimits.maxPictureHeaderBytes);
         } catch {
           if (isLatest()) notify(pictureReadFailedNotice(name));
           return;
@@ -198,7 +198,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
         const current = openObject(session.name, objectId);
         if (!current) return;
         const issue = await checkLookWrite({ ownBytes: ready.ownBytes, clampBytes: ready.clampBytes, limits: textureLimits,
-          look: current.look ?? {}, part, map: image.assetId, mapSize: size, size: (assetId) => textures.size(assetId, textureLimits.maxPictureHeaderBytes) });
+          look: current.look ?? {}, part, map: image.assetId, mapSize: size, size: (assetId) => sizes.size(assetId, textureLimits.maxPictureHeaderBytes) });
         if (!isLatest()) return;
         if (issue) {
           notify(lookLimitNotice(issue, textureLimits));
@@ -213,7 +213,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
         }
       }
     })();
-  }, [pickerPart, ready, textures, textureLimits, session, objectId]);
+  }, [pickerPart, ready, sizes, textureLimits, session, objectId]);
   const pickFile = React.useCallback((file: File): void => {
     const part = pickerPart;
     if (part === null || !ready) return;

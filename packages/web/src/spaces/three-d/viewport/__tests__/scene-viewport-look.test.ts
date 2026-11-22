@@ -12,7 +12,7 @@ import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtur
 import { createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
-import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneViewportRuntimeProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 const compiles: Array<{ scene: Object3D; target: Scene | null | undefined; types: string[] }> = [];
 const steps: string[] = [];
@@ -43,7 +43,7 @@ const owners: Array<() => void> = [];
 afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); document.body.replaceChildren(); compiles.length = 0; steps.length = 0; });
 
 /** Props for a scene holding one built-in box. */
-function props(extra: Partial<SceneViewportProps> = {}): SceneViewportProps {
+function props(extra: Partial<SceneViewportRuntimeProps> = {}): SceneViewportRuntimeProps {
   return {
     objects: [BOX], selectedIds: [], mode: 'translate', readOnly: false,
     view: { position: [5, 5, 5], target: [0, 0, 0] }, focusRevision: 0, cancelRevision: 0, remotePeers: [],
@@ -52,11 +52,11 @@ function props(extra: Partial<SceneViewportProps> = {}): SceneViewportProps {
     onSelect: vi.fn(), onGestureStart: vi.fn(() => true), onGestureChange: vi.fn(), onGestureEnd: vi.fn(), onViewChange: vi.fn(), onError: vi.fn(),
     onModelStateChange: vi.fn(), resolveAsset: vi.fn(), onLookReport: vi.fn(),
     ...extra,
-  } as SceneViewportProps;
+  } as SceneViewportRuntimeProps;
 }
 
 /** A runtime on a host whose theme colour is the given grey, once the box has loaded. */
-async function open(initial: SceneViewportProps, grey: string): Promise<{ runtime: SceneViewportRuntime; host: HTMLDivElement }> {
+async function open(initial: SceneViewportRuntimeProps, grey: string): Promise<{ runtime: SceneViewportRuntime; host: HTMLDivElement }> {
   const host = document.createElement('div'); document.body.append(host);
   host.style.setProperty('--color-muted-foreground', grey);
   Object.defineProperties(host, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
@@ -236,7 +236,7 @@ describe('Retry (inner#1693 design 6.2)', () => {
     const cache = { size: vi.fn(async () => ({ width: 64, height: 64, type: 'png' })), release: vi.fn(),
       acquire: vi.fn().mockRejectedValueOnce(new Error('network')).mockResolvedValue(texture) };
     const onLookPictures = vi.fn();
-    const initial = props({ objects: [{ ...BOX, look: { 0: { map: picture } } }], lookTextures: cache as never, onLookPictures } as Partial<SceneViewportProps>);
+    const initial = props({ objects: [{ ...BOX, look: { 0: { map: picture } } }], lookTextures: cache as never, onLookPictures } as Partial<SceneViewportRuntimeProps>);
     const { runtime } = await open(initial, '#969696');
     await vi.waitFor(() => expect(onLookPictures).toHaveBeenLastCalledWith(BOX.id, expect.objectContaining({ retry: true })));
     runtime.update({ ...initial, modelRetryRevision: 1 });
@@ -259,7 +259,7 @@ describe('Retry (inner#1693 design 6.2)', () => {
       throw new Error('network');
     });
     const objects = [REFUSED, LOST].map((assetId) => ({ ...BOX, id: assetId, model: { kind: 'asset', assetId } }) as SceneObject);
-    const initial = props({ objects, resolveAsset } as Partial<SceneViewportProps>);
+    const initial = props({ objects, resolveAsset } as Partial<SceneViewportRuntimeProps>);
     const host = document.createElement('div'); document.body.append(host);
     Object.defineProperties(host, { clientWidth: { value: 800 }, clientHeight: { value: 600 } });
     const runtime = new SceneViewportRuntime(host, initial); owners.push(() => runtime.dispose());
