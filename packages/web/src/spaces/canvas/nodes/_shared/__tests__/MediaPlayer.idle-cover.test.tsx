@@ -9,6 +9,7 @@ import type { VideoPresentationSource, VideoRendererCallbacks } from '../../../v
 import type * as RendererModule from '../../../video-presentation/create-video-renderer';
 import type { CanvasSessionState } from '@web/stores/canvas-session';
 import { PRESENTED, presentedBundle, presentedDisplay } from '@web/test-utils/video-presentation';
+import { resetPreviewRecords } from '@web/lib/preview-src';
 
 const driver = vi.hoisted(() => ({ sessions: [] as { element: HTMLVideoElement; surface: HTMLCanvasElement; callbacks: VideoRendererCallbacks; dispose: ReturnType<typeof vi.fn> }[] }));
 vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (importOriginal) => ({
@@ -80,6 +81,29 @@ describe('a transparent video node at rest', () => {
     fireEvent.pointerLeave(screen.getByTestId('media-player'));
     fireEvent.pointerEnter(screen.getByTestId('media-player'));
     expect(driver.sessions).toHaveLength(2);
+  });
+
+  // W9-2: at rest no renderer will ever end the wait, so the cover shown (here the original, its preview missing) ends it.
+  it('takes the skeleton off a resting cover whose preview is missing once the shown cover loads', async () => {
+    vi.stubGlobal('Image', class {
+      onload: (() => void) | null = null;
+      onerror: (() => void) | null = null;
+      set src(_url: string) { queueMicrotask(() => this.onerror?.()); }
+    });
+    try {
+      render(<MediaPlayer modality='video' src={CANONICAL} videoSource={alpha} poster={COVER} size={{ width: 160, height: 240 }} restsOnCover />);
+      await act(async () => { await Promise.resolve(); });
+      const cover = coverImage()!;
+      expect(cover.getAttribute('src')).toBe(COVER);
+      expect(screen.getByTestId('media-skeleton')).not.toBeNull();
+      fireEvent.load(cover);
+      expect(screen.queryByTestId('media-skeleton')).toBeNull();
+      expect(coverImage()).not.toBeNull();
+      expect(driver.sessions).toHaveLength(0);
+    } finally {
+      vi.unstubAllGlobals();
+      resetPreviewRecords();
+    }
   });
 
   // W9-1: a player released by the pool never restarts on its own, or nine of them evict each other forever.

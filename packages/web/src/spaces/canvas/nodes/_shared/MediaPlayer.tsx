@@ -364,6 +364,8 @@ export function MediaPlayer({
   // The poster's preview has loaded once its width is recorded; the video's
   // own data ends the wait for a poster that has none.
   const posterLoaded = usePreviewWidth(poster) !== null;
+  // The cover address the presented player's own cover image has loaded or failed at.
+  const [coverSettledFor, setCoverSettledFor] = React.useState<string | null>(null);
   const [frameFor, setFrameFor] = React.useState<string | null>(null);
   const loading = size !== undefined && !posterLoaded && frameFor !== src;
   // The poster shows until the video first plays (HTML's "show poster" flag);
@@ -522,11 +524,16 @@ export function MediaPlayer({
   if (ownsVideo && videoSource != null) {
     const original = presentedSizeOf(videoSource.presentation);
     const loadingOwner = snapshot?.status !== 'ready';
+    // The skeleton waits on a renderer only while one is loading; with none (at rest, released, inactive) nothing else
+    // would end the wait, so the cover shown, preview or original, ends it through its own load or error.
+    const withoutRenderer = snapshot === null || snapshot.status === 'detached';
+    const skeleton = loadingOwner && (withoutRenderer ? shownPoster === undefined || coverSettledFor !== shownPoster : !posterLoaded);
     return <div className='group/player @container relative' data-testid='media-player' style={{ aspectRatio: `${original.width}/${original.height}` }}
       onPointerEnter={awake ? undefined : reach} onFocus={awake ? undefined : reach}>
       <VideoPresentationSurface source={videoSource} active={active && awake} onBinding={acceptBinding} onPresentedFrame={acceptFrame} onEvicted={rest}>
-        {loadingOwner && shownPoster ? <img src={shownPoster} alt='' className='pointer-events-none absolute inset-0 h-full w-full object-contain' /> : null}
-        {loadingOwner && !posterLoaded ? <Skeleton data-testid='media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' /> : null}
+        {loadingOwner && shownPoster ? <img src={shownPoster} alt='' className='pointer-events-none absolute inset-0 h-full w-full object-contain'
+          onLoad={() => setCoverSettledFor(shownPoster)} onError={() => setCoverSettledFor(shownPoster)} /> : null}
+        {skeleton ? <Skeleton data-testid='media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' /> : null}
         {placedControls}
         {/* Overlays read data-controls to keep clear of the control bar while it covers the bottom of the video. */}
         <div data-testid='video-tool-overlay-host' data-controls={controlsOverVideo ? 'shown' : 'hidden'} className='group/media-overlay pointer-events-none absolute inset-0'>{children}</div>
