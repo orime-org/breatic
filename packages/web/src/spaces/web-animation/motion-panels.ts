@@ -7,8 +7,10 @@
  * shows is `useMotionAnnotations'`.
  */
 
+import type { WebAnimationListGroup } from '@breatic/shared/space-content';
+
 /** Which execution-list tab shows: rows that succeeded, rows in progress, or rows that failed, were cancelled or expired. */
-export type MotionTab = 'succeeded' | 'running' | 'failed';
+export type MotionTab = WebAnimationListGroup;
 
 /** The panels' state. */
 export interface MotionPanelsState {

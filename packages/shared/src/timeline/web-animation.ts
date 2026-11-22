@@ -206,6 +206,22 @@ export const WebAnimationRowViewSchema = z.discriminatedUnion("kind", [
 /** One execution as the routes answer it. */
 export type WebAnimationRowView = z.infer<typeof WebAnimationRowViewSchema>;
 
+/** A Motion list's group: rows still in progress, rows that succeeded, or rows that failed, were cancelled or expired. */
+export const WebAnimationListGroupSchema = z.enum(["running", "succeeded", "failed"]);
+export type WebAnimationListGroup = z.infer<typeof WebAnimationListGroupSchema>;
+
+/** Which Motion list: the Space's own, or the group made in a Timeline before Motion existed. */
+export const WebAnimationListScopeSchema = z.enum(["space", "timeline"]);
+export type WebAnimationListScope = z.infer<typeof WebAnimationListScopeSchema>;
+
+/** One page of a list; a Motion Space list's first page also says how many rows each group holds. */
+export interface WebAnimationListPage {
+  rows: WebAnimationRowView[];
+  nextCursor: string | null;
+  /** Null on later pages and for the Timeline picker's results, which never read it. */
+  totals: Record<WebAnimationListGroup, number> | null;
+}
+
 /** Where a Motion annotation points: a time in a result, and optionally a point on its frame as fractions. */
 export const WebAnimationAnchorSchema = z.object({
   executionId: z.uuid(),

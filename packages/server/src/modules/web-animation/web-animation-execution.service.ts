@@ -53,6 +53,9 @@ import {
   webAnimationDurationFrames,
   type WebAnimationExecutionInput,
   type WebAnimationExecutionRequest,
+  type WebAnimationListGroup,
+  type WebAnimationListPage,
+  type WebAnimationListScope,
   type WebAnimationRowView,
 } from "@breatic/shared/space-content";
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
@@ -65,14 +68,6 @@ import { timelineQueue } from "@server/modules/web-animation/timeline-queue.js";
 export interface AcceptedExecution {
   row: WebAnimationRowView;
   created: boolean;
-}
-
-/** One page of a list. */
-export interface ExecutionPage {
-  rows: WebAnimationRowView[];
-  nextCursor: string | null;
-  /** Counted for a Motion Space list's first page only; null on later pages and for the Timeline picker's results. */
-  totals: grantRepo.GroupTotals | null;
 }
 
 /** The insert lost to a concurrent accept; the transaction is rolled back and the winner read. */
@@ -378,8 +373,9 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
   if (scope.spaceId !== null) {
     const results = rows.filter((row) => row.kind !== "web_animation_export" && row.resultSourceVersionId !== null).map((row) => row.resultSourceVersionId!);
     for (const live of await grantRepo.findLiveExports({ projectId: scope.projectId, spaceId: scope.spaceId, sourceVersionIds: results })) {
-      const source = String((live.input as { sourceVersionId?: unknown }).sourceVersionId);
-      if (!exports.has(source)) exports.set(source, { executionId: live.id, status: live.status });
+      const source = readInput(live);
+      if (source?.kind !== "web_animation_export") continue;
+      if (!exports.has(source.sourceVersionId)) exports.set(source.sourceVersionId, { executionId: live.id, status: live.status });
     }
   }
   // A Project duplicated while an export rendered holds its grant but not its video, whose reference the finish wrote
@@ -393,7 +389,6 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
   for (const row of rows) {
     const input = inputs.get(row.id);
     if (input === undefined) continue;
-    const { kind: _kind, ...stored } = input;
     const common = {
       id: row.id,
       spaceId: row.spaceId,
@@ -403,7 +398,6 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
       createdAt: row.createdAt,
       resultSourceVersionId: row.resultSourceVersionId,
       resultAssetId: row.resultAssetId,
-      input: stored,
       ownProject: row.projectId === scope.projectId,
       actorUserId: row.actorUserId,
       slotWaitSince: row.slotWaitSince,
@@ -413,23 +407,26 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
     };
     const exportOf = scope.spaceId === null ? {} : { export: (row.resultSourceVersionId === null ? undefined : exports.get(row.resultSourceVersionId)) ?? null };
     if (input.kind === "web_animation_create") {
-      views.push({ ...common, kind: input.kind, request: input.prompt, ...exportOf } as WebAnimationRowView);
+      const { kind, ...stored } = input;
+      views.push({ ...common, kind, input: stored, request: input.prompt, ...exportOf });
       continue;
     }
     if (input.kind === "web_animation_modify") {
       const base = baseRef(input, byVersion);
       if (base === undefined) { logger.error({ executionId: row.id }, "web_animation_base_unresolved"); continue; }
-      views.push({ ...common, kind: input.kind, request: input.instruction, base, ...exportOf } as WebAnimationRowView);
+      const { kind, ...stored } = input;
+      views.push({ ...common, kind, input: stored, request: input.instruction, base, ...exportOf });
       continue;
     }
     const source = byVersion.get(input.sourceVersionId);
     const request = source === undefined ? null : requestOf(source.input);
     if (source === undefined || request === null) { logger.error({ executionId: row.id }, "web_animation_source_unresolved"); continue; }
     const base = source.input.kind === "web_animation_modify" ? baseRef(source.input, byVersion) : undefined;
+    const { kind, ...stored } = input;
     views.push({
-      ...common, kind: input.kind,
+      ...common, kind, input: stored,
       source: { executionId: source.execution.id, request, ...(base !== undefined && { base }) },
-    } as WebAnimationRowView);
+    });
   }
   return views;
 }
@@ -451,7 +448,7 @@ function pageSize(limit: number | undefined): number {
  * @returns The page.
  * @throws {ValidationError} When the cursor is not one the list wrote.
  */
-async function readPage(params: grantRepo.ListParams): Promise<ExecutionPage> {
+async function readPage(params: grantRepo.ListParams): Promise<WebAnimationListPage> {
   let page: grantRepo.ListPage;
   try {
     page = await grantRepo.listPage(params);
@@ -482,8 +479,8 @@ async function readPage(params: grantRepo.ListParams): Promise<ExecutionPage> {
  */
 export async function listSpace(
   userId: string,
-  query: { projectId: string; spaceId: string; scope: "space" | "timeline"; group: grantRepo.ListGroup; cursor?: string; limit?: number },
-): Promise<ExecutionPage> {
+  query: { projectId: string; spaceId: string; scope: WebAnimationListScope; group: WebAnimationListGroup; cursor?: string; limit?: number },
+): Promise<WebAnimationListPage> {
   await projectService.assertAccess(query.projectId, userId, "viewer");
   return readPage({ ...query, cursor: query.cursor ?? null, limit: pageSize(query.limit) });
 }
@@ -499,7 +496,7 @@ export async function listSpace(
  * @throws {NotFoundError} When the caller is not a member of the Project.
  * @throws {ValidationError} When the cursor is not one the list wrote.
  */
-export async function listResults(userId: string, query: { projectId: string; cursor?: string; limit?: number }): Promise<ExecutionPage> {
+export async function listResults(userId: string, query: { projectId: string; cursor?: string; limit?: number }): Promise<WebAnimationListPage> {
   await projectService.assertAccess(query.projectId, userId, "viewer");
   return readPage({ projectId: query.projectId, spaceId: null, scope: "results", group: "succeeded", cursor: query.cursor ?? null, limit: pageSize(query.limit) });
 }

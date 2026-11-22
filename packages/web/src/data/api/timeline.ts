@@ -3,7 +3,9 @@
 
 import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineWebResolution } from '@breatic/shared';
 import type { z } from 'zod';
-import type { WebAnimationExecutionRequestSchema, WebAnimationRowView } from '@breatic/shared/space-content';
+import type {
+  WebAnimationExecutionRequestSchema, WebAnimationListGroup, WebAnimationListPage, WebAnimationListScope, WebAnimationRowView,
+} from '@breatic/shared/space-content';
 import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 
 /** What a Motion Space submits: one kinded request, keyed by the Project. */
@@ -14,21 +16,15 @@ export type WebAnimationAcceptRequest = WebAnimationAcceptBody extends infer Bod
   ? Body extends unknown ? Omit<Body, 'projectId' | 'spaceId' | 'actionId'> : never
   : never;
 
-/** One page of a Motion list; a Space list's first page also says how many rows each group holds. */
-export interface SpaceExecutionPage {
-  rows: WebAnimationRowView[];
-  nextCursor: string | null;
-  /** Null on later pages and for the Timeline picker's results, which never read it. */
-  totals: { running: number; succeeded: number; failed: number } | null;
-}
+/** One page of a Motion list or of the Timeline picker's results. */
+export type SpaceExecutionPage = WebAnimationListPage;
 
 /** Which Motion list to read: this Space's own, or the group made in a Timeline before Motion existed. */
 export interface SpaceExecutionQuery {
   projectId: string;
   spaceId: string;
-  scope: 'space' | 'timeline';
-  /** Rows in progress, rows that succeeded, or rows that failed, were cancelled or expired. */
-  group: 'running' | 'succeeded' | 'failed';
+  scope: WebAnimationListScope;
+  group: WebAnimationListGroup;
   cursor?: string;
 }
 

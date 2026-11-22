@@ -17,16 +17,15 @@ import { and, desc, eq, inArray, isNull, notInArray, sql, type SQL } from "drizz
 import { db, timelineExecutionGrants as g, timelineExecutions as t, type DbTx } from "@breatic/core";
 import { timelineExecutionRepo } from "@breatic/domain";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
-import { WEB_ANIMATION_FAILED_STATUSES, WEB_ANIMATION_OPEN_STATUSES } from "@breatic/shared/space-content";
+import {
+  WEB_ANIMATION_FAILED_STATUSES, WEB_ANIMATION_OPEN_STATUSES, type WebAnimationListGroup, type WebAnimationListScope,
+} from "@breatic/shared/space-content";
 
-/** Which list: a Motion Space's own, the Timeline-made group, or the Project's results for the Timeline picker. */
-export type ListScope = "space" | "timeline" | "results";
-
-/** Rows still in progress, rows that succeeded, or rows that failed, were cancelled or expired. */
-export type ListGroup = "running" | "succeeded" | "failed";
+/** Which list: a Motion list, or the Project's results for the Timeline picker. */
+export type ListScope = WebAnimationListScope | "results";
 
 /** The statuses each group holds. */
-const GROUP_STATUSES: Record<ListGroup, readonly TimelineExecutionStatus[]> = {
+const GROUP_STATUSES: Record<WebAnimationListGroup, readonly TimelineExecutionStatus[]> = {
   running: WEB_ANIMATION_OPEN_STATUSES,
   succeeded: ["succeeded"],
   failed: WEB_ANIMATION_FAILED_STATUSES,
@@ -39,13 +38,10 @@ export interface ListParams {
   spaceId: string | null;
   scope: ListScope;
   /** Which group of statuses the page reads. */
-  group: ListGroup;
+  group: WebAnimationListGroup;
   cursor: string | null;
   limit: number;
 }
-
-/** How many rows each group of a list holds. */
-export type GroupTotals = Record<ListGroup, number>;
 
 /** One page. */
 export interface ListPage {
@@ -270,13 +266,13 @@ export async function listPage(params: ListParams): Promise<ListPage> {
  * @returns The count of each group.
  * @throws {Error} When the read fails.
  */
-export async function countGroups(params: Pick<ListParams, "projectId" | "spaceId" | "scope">): Promise<GroupTotals> {
+export async function countGroups(params: Pick<ListParams, "projectId" | "spaceId" | "scope">): Promise<Record<WebAnimationListGroup, number>> {
   /**
    * One group's count.
    * @param group - The group.
    * @returns The count expression.
    */
-  const countOf = (group: ListGroup): SQL<number> => sql<number>`count(*) FILTER (WHERE ${inArray(t.status, GROUP_STATUSES[group])})::int`;
+  const countOf = (group: WebAnimationListGroup): SQL<number> => sql<number>`count(*) FILTER (WHERE ${inArray(t.status, GROUP_STATUSES[group])})::int`;
   const counts = { running: countOf("running"), succeeded: countOf("succeeded"), failed: countOf("failed") };
   const [row] = params.scope === "space"
     ? await db.select(counts).from(t).where(scopeWhere(params))

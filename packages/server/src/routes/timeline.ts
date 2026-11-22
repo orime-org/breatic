@@ -10,7 +10,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { WebAnimationExecutionRequestSchema } from "@breatic/shared/space-content";
+import { WebAnimationExecutionRequestSchema, WebAnimationListGroupSchema, WebAnimationListScopeSchema } from "@breatic/shared/space-content";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
@@ -38,7 +38,7 @@ const idParam = z.object({ id: z.uuid() });
 const projectQuery = z.object({ projectId: z.uuid() });
 const page = { cursor: z.string().min(1).max(500).optional(), limit: z.coerce.number().int().positive().optional() };
 const spaceExecutionsQuery = z.object({
-  projectId: z.uuid(), spaceId: z.uuid(), scope: z.enum(["space", "timeline"]), group: z.enum(["running", "succeeded", "failed"]), ...page,
+  projectId: z.uuid(), spaceId: z.uuid(), scope: WebAnimationListScopeSchema, group: WebAnimationListGroupSchema, ...page,
 });
 const resultsQuery = z.object({ projectId: z.uuid(), ...page });
 /** The Project the route takes, apart from the request the shared schema reads strictly. */
