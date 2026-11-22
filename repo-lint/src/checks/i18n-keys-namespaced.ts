@@ -11,7 +11,7 @@ import { spelledOutKeys } from "#repo-lint/message-keys";
  * translation is invisible to any check that reads the source catalog — and
  * the shape this one is about would be just as broken there.
  */
-const CATALOG = /^locales\/[^/]+\.json$/;
+const CATALOG = /^locales\/(template-styles\/)?[^/]+\.json$/;
 
 /**
  * Every message id lives in a namespace — where it is defined, and where it

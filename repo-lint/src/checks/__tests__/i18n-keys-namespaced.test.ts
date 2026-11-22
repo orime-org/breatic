@@ -23,6 +23,14 @@ function catalog(body: Record<string, unknown>) {
 }
 
 describe("i18n-keys-namespaced", () => {
+  it("reads the template style catalogs too", () => {
+    const context = fakeContext({
+      "locales/template-styles/en.json": JSON.stringify({ loose: "A message" }),
+      "packages/web/src/a.tsx": 't("common.cancel")',
+    });
+    expect(i18nKeysNamespaced.run(context)).toHaveLength(1);
+  });
+
   it("passes a catalog whose top level is all namespaces", () => {
     expect(
       i18nKeysNamespaced.run(

@@ -206,6 +206,9 @@ const COMICS_IMAGES = ['storyboard-grid-25', 'storyboard-sheet-9', 'comic-page',
 /** The comic and storyboard templates a video panel lists. */
 const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
 
+/** The film style templates (inner#1817), in registry order. */
+const FILM_STYLES = ['film-style-still', 'film-style-shot', 'era-walkthrough-montage', 'style-sound-bed'];
+
 /** The animated short templates (inner#1814), in registry order. */
 const ANIMATION = ['cartoon-gag', '3d-cartoon-short', 'stop-motion-short', 'anime-scene', 'anime-action-climax', 'anime-opening-15s'];
 
@@ -347,6 +350,7 @@ describe('generation templates', () => {
       'fisheye-clone-pov',
       'flash-photo-dump-grid',
       ...POSTERS,
+      'film-style-still',
     ]);
     expect(templatesFor('video').map((t) => t.id)).toEqual([
       'single-view-refs-scene',
@@ -359,11 +363,13 @@ describe('generation templates', () => {
       ...FOOD_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
       ...TALKING,
+      'film-style-shot',
+      'era-walkthrough-montage',
       ...SPEED,
       'clip-ambience-foley',
     ]);
     // inner#1825 changes this contract: audio had no template until the sound goal.
-    expect(templatesFor('audio').map((t) => t.id)).toEqual(SOUND_AUDIO);
+    expect(templatesFor('audio').map((t) => t.id)).toEqual(['style-sound-bed', ...SOUND_AUDIO]);
   });
 
   it('fixes the mode, model and the params the real runs settled on', () => {
@@ -463,6 +469,19 @@ describe('generation templates', () => {
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
         },
       },
+      'film-style-still': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } } },
+      'film-style-shot': {
+        result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 5, generate_audio: true } },
+        still: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'era-walkthrough-montage': {
+        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 12, generate_audio: true } },
+        silent: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        widescreen: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        nineties: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        today: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'style-sound-bed': { result: { type: 'audio', mode: 't2m', model: 'lyria-3-pro-music', params: {} } },
       'anime-action-climax': t2v(10, '16:9'),
       'anime-opening-15s': {
         result: {
@@ -607,7 +626,7 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'speed', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'speed', 'sound']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
@@ -619,6 +638,7 @@ describe('creative goals and triggers', () => {
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
+      ...Object.fromEntries(FILM_STYLES.map((id) => [id, 'film-styles'])),
       ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
       ...Object.fromEntries(['storyboard-grid-25', ...COMICS].map((id) => [id, 'comics-storyboards'])),
@@ -670,6 +690,7 @@ describe('creative goals and triggers', () => {
       ['food', ['dish-hero-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
       ['posters', POSTERS],
+      ['film-styles', ['film-style-still']],
     ]);
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
@@ -680,10 +701,14 @@ describe('creative goals and triggers', () => {
       ['food', FOOD_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
       ['talking', TALKING],
+      ['film-styles', ['film-style-shot', 'era-walkthrough-montage']],
       ['speed', SPEED],
       ['sound', ['clip-ambience-foley']],
     ]);
-    expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([['sound', SOUND_AUDIO]]);
+    expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
+      ['film-styles', ['style-sound-bed']],
+      ['sound', SOUND_AUDIO],
+    ]);
   });
 });
 
