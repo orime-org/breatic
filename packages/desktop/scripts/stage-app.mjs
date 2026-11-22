@@ -29,6 +29,8 @@ writeFileSync(
       description: manifest.description,
       author: "Orime, Inc.",
       license: "AGPL-3.0-only",
+      // The Debian package requires a homepage.
+      homepage: "https://github.com/orime-org/breatic",
       main: "dist/main/index.cjs",
     },
     null,
