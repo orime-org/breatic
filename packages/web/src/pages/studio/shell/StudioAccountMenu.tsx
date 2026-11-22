@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Cookie, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
+import { Cookie, FileText, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
@@ -14,6 +14,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrailing,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
@@ -74,6 +77,16 @@ function creditsFigure(
   if (!overview.data.billing) return null;
   return formatCreditAmount(accountTotal(overview.data));
 }
+
+/**
+ * The licence and attribution notices LICENSE section 12 keeps reachable.
+ * Site paths, so each instance opens the copies its own image carries.
+ */
+const NOTICE_LINKS = [
+  { href: '/LICENSE.txt', labelKey: 'studio.topBar.noticesLicense' },
+  { href: '/TRADEMARKS.md', labelKey: 'studio.topBar.noticesTrademarks' },
+  { href: '/THIRD-PARTY.md', labelKey: 'studio.topBar.noticesThirdParty' },
+] as const;
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
@@ -327,8 +340,24 @@ export function StudioAccountMenu(): React.JSX.Element {
               {creditsFigure(overview, t)}
             </DropdownMenuTrailing>
           </DropdownMenuItem>
-          {/* This browser's cookie consent, and the account's other sign-ins. */}
+          {/* The notices this instance serves, this browser's cookie consent,
+            and the account's other sign-ins. */}
           <DropdownMenuSeparator />
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <FileText className='h-4 w-4' />
+              {t('studio.topBar.notices')}
+            </DropdownMenuSubTrigger>
+            <DropdownMenuSubContent>
+              {NOTICE_LINKS.map(({ href, labelKey }) => (
+                <DropdownMenuItem key={href} asChild>
+                  <a href={href} target='_blank' rel='noopener noreferrer'>
+                    {t(labelKey)}
+                  </a>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           {COOKIE_SETTINGS_AVAILABLE ? (
             <DropdownMenuItem onSelect={openCookieSettings}>
               <Cookie className='h-4 w-4' />

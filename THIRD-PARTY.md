@@ -11,7 +11,10 @@ obligations attach to distribution.
 
 This file is the overview. The full machine-generated list, with every
 package in the front-end bundle and the text of every licence, is served
-beside the bundle at `/third-party-licences.txt`.
+beside the bundle at `/third-party-licences.txt`. The attribution for the built-in
+3D figure and the pose bone names is served at `/model-import-third-party-licences.txt`,
+and the one for the film styles of the generation templates at
+`/template-styles-third-party-licences.txt`.
 
 ## Programs in our container images
 

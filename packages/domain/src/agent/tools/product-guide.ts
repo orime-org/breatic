@@ -2256,7 +2256,9 @@ export function renderProductGuide(): string {
       `${quoted(t("connection.banner.authFailed.action"))} and ${quoted(t("connection.banner.reload"))}, and ` +
       "covers the work area the same way. It shows when the session ran out or was signed out from another " +
       "device -- the account menu on the studio pages has " +
-      `${quoted(t("studio.topBar.logoutOthers"))}, which signs out every device except the one it is pressed on -- ` +
+      `${quoted(t("studio.topBar.logoutOthers"))}, which signs out every device except the one it is pressed on, and ` +
+      `${quoted(t("studio.topBar.notices"))}, which opens ${quoted(t("studio.topBar.noticesLicense"))}, ` +
+      `${quoted(t("studio.topBar.noticesTrademarks"))} and ${quoted(t("studio.topBar.noticesThirdParty"))} in a new tab -- ` +
       "and also when the user was " +
       "removed from the project: if signing in again does not let them back in, they were removed, and the " +
       "project's owner can say why. With a document open, " +
