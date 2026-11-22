@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Cookie, FileText, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
+import { Cookie, ExternalLink, FileText, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
@@ -348,11 +348,13 @@ export function StudioAccountMenu(): React.JSX.Element {
               <FileText className='h-4 w-4' />
               {t('studio.topBar.notices')}
             </DropdownMenuSubTrigger>
-            <DropdownMenuSubContent>
+            {/* Rows spaced and new-tab links marked as in the parent menu and the Help menu. */}
+            <DropdownMenuSubContent rowsClassName='flex flex-col gap-0.5'>
               {NOTICE_LINKS.map(({ href, labelKey }) => (
                 <DropdownMenuItem key={href} asChild>
                   <a href={href} target='_blank' rel='noopener noreferrer'>
                     {t(labelKey)}
+                    <ExternalLink className='ml-auto !size-3.5 text-muted-foreground' aria-hidden='true' />
                   </a>
                 </DropdownMenuItem>
               ))}

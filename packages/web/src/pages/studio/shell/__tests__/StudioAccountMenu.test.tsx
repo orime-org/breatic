@@ -265,6 +265,11 @@ describe('StudioAccountMenu', () => {
       ['Trademark and branding policy', '/TRADEMARKS.md', '_blank', 'noopener noreferrer'],
       ['Third-party notices', '/THIRD-PARTY.md', '_blank', 'noopener noreferrer'],
     ]);
+    // Each row ends with the external-link glyph the Help menu uses, so the
+    // new tab is announced before the click.
+    for (const link of links.filter((l) => l.tagName === 'A')) {
+      expect(link.lastElementChild?.getAttribute('class')).toContain('lucide-external-link');
+    }
   });
 
   describe('promoter program entry (inner#1868)', () => {
