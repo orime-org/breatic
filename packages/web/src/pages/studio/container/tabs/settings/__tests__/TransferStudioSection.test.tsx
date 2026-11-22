@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -183,5 +183,25 @@ describe('TransferStudioSection', () => {
     settle();
     await waitFor(() => expect(send).not.toHaveAttribute('aria-busy'));
     expect(screen.getByTestId('settings-transfer-dialog')).toBeInTheDocument();
+  });
+});
+
+describe('TransferStudioSection with no change for ten minutes (#1580 K-27)', () => {
+  it('reads the live transfer once; the Studio page poll reads it again when it changes', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(studiosApi.liveTransfer).mockReset().mockResolvedValue(null);
+      const view = renderSection(<TransferStudioSection slug={SLUG} members={MEMBERS} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+      });
+      expect(studiosApi.liveTransfer).toHaveBeenCalledTimes(1);
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
