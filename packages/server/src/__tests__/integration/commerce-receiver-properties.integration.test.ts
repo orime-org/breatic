@@ -242,7 +242,7 @@ describe("refund-steps", () => {
         const tell = !tells
           ? null
           : edge.step === "settle"
-            ? { kind: "refund_completed" as const, amountCents: 1000, currency: "usd" }
+            ? { kind: "refund_completed" as const }
             : edge.step === "reject"
               ? { kind: "refund_rejected" as const }
               : edge.step === "restore"

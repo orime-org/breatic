@@ -11,10 +11,11 @@
  *
  * Self-scheduling: the next pass is queued only after this one settles, so a
  * slow pass never overlaps itself. A pass ends when the outbox has nothing
- * due, the batch is used up, or a forward fails; a failed row is tried again
- * on a later pass (an outbox with backoff skips it until its next attempt is
- * due, so the other rows go first). Core does not log; every failure is
- * reported to the caller.
+ * due or the batch is used up. A failed forward ends it too, unless the
+ * outbox sets `continueAfterRetry`: its failed rows are pushed into backoff,
+ * so the claim skips them and the pass goes on to other aggregates' rows; an
+ * outbox without backoff would take the same row again and ends the pass.
+ * Core does not log; every failure is reported to the caller.
  *
  * Wake and poll: a process that has just committed a row calls `wake()`, which
  * starts a pass at once (or, when one is running, one more right after it);
@@ -48,6 +49,12 @@ export interface RelayLoopDeps {
   batchSize: number;
   /** Log one event. */
   report: (event: RelayLoopEvent) => void;
+  /**
+   * Go on to the next due row after a failed forward instead of ending the
+   * pass. Set it only when `forwardNext` puts a failed row into backoff, so
+   * the next claim cannot take it again; absent or false ends the pass.
+   */
+  continueAfterRetry?: boolean;
 }
 
 /** Handle to stop the loop on shutdown. */
@@ -84,7 +91,7 @@ export function startRelayLoop(deps: RelayLoopDeps): RelayLoop {
           continue;
         }
         deps.report({ kind: "forward_failed", id: forwarded.id, err: forwarded.error });
-        break;
+        if (deps.continueAfterRetry !== true) break;
       }
     } catch (err) {
       deps.report({ kind: "pass_failed", err });

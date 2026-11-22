@@ -76,22 +76,22 @@ describe("applyRefundStep", () => {
     expect(answer).toMatchObject({ httpStatus: 200, body: { status: "applied", lot: { lotId, lifecycle: "refunding" } } });
   });
 
-  it("settles the refund, tells the buyer and reports it after the commit", async () => {
+  it("settles the refund, tells the buyer the settled amount and reports it after the commit", async () => {
     const { lotId, userId } = await lot("refunding");
     const refundId = `re_${randomUUID()}`;
 
-    const answer = await step({ lotId, step: "settle", referenceId: refundId, settled: { amountCents: 1000, currency: "usd" }, tell: { kind: "refund_completed", amountCents: 1000, currency: "usd" } });
+    const answer = await step({ lotId, step: "settle", referenceId: refundId, settled: { amountCents: 750, currency: "eur" }, tell: { kind: "refund_completed" } });
 
     expect(answer).toMatchObject({ httpStatus: 200, body: { status: "applied", lot: { lifecycle: "refunded", ledgerSum: "0.000000" } } });
     expect(await sql`SELECT amount::text, reference_id FROM credit_ledger WHERE lot_id = ${lotId} AND entry_type = 'refund'`).toEqual([
       { amount: "-1000.000000", reference_id: refundId },
     ]);
     expect(await sql`SELECT type, payload FROM notifications WHERE user_id = ${userId}`).toEqual([
-      { type: "credit.refund_completed", payload: { lotId, credits: "1000.000000", amountCents: 1000, currency: "usd" } },
+      { type: "credit.refund_completed", payload: { lotId, credits: "1000.000000", amountCents: 750, currency: "eur" } },
     ]);
     expect(track).toHaveBeenCalledWith(
       "refund_completed",
-      { userId, insertId: `refund:${lotId}`, properties: { credits: 1000, amount_cents: 1000, currency: "usd" } },
+      { userId, insertId: `refund:${lotId}`, properties: { credits: 1000, amount_cents: 750, currency: "eur" } },
       { analytics: true, ads: false },
     );
   });
@@ -147,7 +147,7 @@ describe("applyRefundStep", () => {
   it("refuses a lot that has moved on, writes nothing, and answers every repeat the same", async () => {
     const { lotId, userId } = await lot("active");
     const operationId = randomUUID();
-    const request: RefundStepRequest = { lotId, step: "settle", referenceId: `re_${randomUUID()}`, settled: { amountCents: 1000, currency: "usd" }, tell: { kind: "refund_completed", amountCents: 1000, currency: "usd" } };
+    const request: RefundStepRequest = { lotId, step: "settle", referenceId: `re_${randomUUID()}`, settled: { amountCents: 1000, currency: "usd" }, tell: { kind: "refund_completed" } };
 
     const first = await step(request, operationId);
     const again = await step(request, operationId);

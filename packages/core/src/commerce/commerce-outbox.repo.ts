@@ -137,29 +137,31 @@ function toRow(row: RawRow): CommerceOutboxRow {
 }
 
 /**
- * Whether an account's referral binding still waits in the outbox (inner#1993
- * §5.5): a plain read, so a user waiting on it never holds the row nor
- * touches its attempts. A sent row, a row moved to the dead letters and no
- * row at all all answer false.
+ * An account's referral binding still waiting in the outbox (inner#1993
+ * §5.5), for a user's request to send it once itself: a plain read, so the
+ * request never holds the row nor touches its attempts. A sent row, a row
+ * moved to the dead letters and no row at all all answer null.
  * @param userId - The account.
- * @returns True while an unsent binding is there.
+ * @returns The unsent row, or null.
  */
-export async function hasUnsentReferralBinding(userId: string): Promise<boolean> {
-  const rows = await db
-    .select({ id: commerceOutbox.id })
-    .from(commerceOutbox)
-    .where(and(eq(commerceOutbox.aggregateKey, `referral:${userId}`), isNull(commerceOutbox.sentAt)))
-    .limit(1);
-  return rows.length > 0;
+export async function findUnsentReferralBinding(userId: string): Promise<CommerceOutboxRow | null> {
+  const rows = await db.execute<RawRow>(sql`
+    SELECT o.id, o.seq::text AS seq, o.aggregate_key, o.type, o.payload, o.attempts, o.last_error, o.created_at
+    FROM commerce_outbox o
+    WHERE o.aggregate_key = ${`referral:${userId}`} AND o.sent_at IS NULL
+    ORDER BY o.seq
+    LIMIT 1`);
+  return rows[0] === undefined ? null : toRow(rows[0]);
 }
 
 /**
- * Mark a claimed row sent.
+ * Mark a row sent, unless it already is: the relay and a user's request may
+ * both have delivered it, and the first mark stands.
  * @param id - The row.
- * @param tx - The relay's transaction.
+ * @param tx - The transaction.
  */
 export async function markSent(id: string, tx: DbTx): Promise<void> {
-  await tx.update(commerceOutbox).set({ sentAt: new Date() }).where(eq(commerceOutbox.id, id));
+  await tx.update(commerceOutbox).set({ sentAt: new Date() }).where(and(eq(commerceOutbox.id, id), isNull(commerceOutbox.sentAt)));
 }
 
 /**
@@ -178,17 +180,24 @@ export async function markRetry(id: string, attempts: number, delaySeconds: numb
 }
 
 /**
- * Move a claimed row to the dead letters; it is never sent again. The row
+ * Move an unsent row to the dead letters; it is never sent again. The row
  * leaves this table (the one hard delete here) and lives on, same id, seq
  * and payload, in `commerce_outbox_dead_letters`, so an aggregate's history
- * is the two tables read together.
+ * is the two tables read together. A row already sent or already moved, by
+ * the relay or a user's request delivering it at the same time, is left.
  * @param row - The row.
  * @param attempts - Attempts made, this one included.
  * @param lastError - Why the last attempt failed.
  * @param reason - Why it is given up.
- * @param tx - The relay's transaction.
+ * @param tx - The transaction.
+ * @returns Whether this call moved it.
  */
-export async function moveToDeadLetters(row: CommerceOutboxRow, attempts: number, lastError: string, reason: string, tx: DbTx): Promise<void> {
+export async function moveToDeadLetters(row: CommerceOutboxRow, attempts: number, lastError: string, reason: string, tx: DbTx): Promise<boolean> {
+  const removed = await tx
+    .delete(commerceOutbox)
+    .where(and(eq(commerceOutbox.id, row.id), isNull(commerceOutbox.sentAt)))
+    .returning({ id: commerceOutbox.id });
+  if (removed.length === 0) return false;
   await tx.insert(commerceOutboxDeadLetters).values({
     id: row.id,
     seq: BigInt(row.seq),
@@ -200,5 +209,5 @@ export async function moveToDeadLetters(row: CommerceOutboxRow, attempts: number
     reason,
     createdAt: row.createdAt,
   });
-  await tx.delete(commerceOutbox).where(eq(commerceOutbox.id, row.id));
+  return true;
 }

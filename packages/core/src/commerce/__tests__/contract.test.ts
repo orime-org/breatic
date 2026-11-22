@@ -3,7 +3,8 @@
 
 /**
  * The refund-step and subscription-fact request shapes (inner#1993 §3.3): a
- * settle step carries the settled amount and no other step does; a fact
+ * settle step carries the settled amount and no other step does, and only a
+ * settle tells the buyer a refund completed, from that amount; a fact
  * carries the reference its tier ledger row points at.
  */
 
@@ -15,8 +16,19 @@ const USER = "0b1c2d3e-4f50-4612-8a7b-9c0d1e2f3a4b";
 
 describe("refundStepRequestSchema", () => {
   it("takes a settle step with the settled amount, told or not", () => {
-    for (const tell of [null, { kind: "refund_completed" as const, amountCents: 500, currency: "usd" }]) {
+    for (const tell of [null, { kind: "refund_completed" as const }]) {
       expect(refundStepRequestSchema.safeParse({ lotId: LOT, step: "settle", referenceId: "re_1", settled: { amountCents: 500, currency: "usd" }, tell }).success).toBe(true);
+    }
+  });
+
+  it("refuses an amount inside the refund_completed tell: the settled amount is the only copy", () => {
+    const tell = { kind: "refund_completed", amountCents: 500, currency: "usd" };
+    expect(refundStepRequestSchema.safeParse({ lotId: LOT, step: "settle", referenceId: "re_1", settled: { amountCents: 500, currency: "usd" }, tell }).success).toBe(false);
+  });
+
+  it("refuses a refund_completed tell on any step but settle", () => {
+    for (const step of ["mark_refunding", "send_back", "reject", "restore"] as const) {
+      expect(refundStepRequestSchema.safeParse({ lotId: LOT, step, referenceId: "op_1", settled: null, tell: { kind: "refund_completed" } }).success).toBe(false);
     }
   });
 

@@ -7,7 +7,8 @@
  * signature the way the real one does: an answered row is marked sent, a
  * permanent failure or a refusal moves it to the dead letters, an
  * unavailable service puts it back with a backoff and holds back only its own
- * aggregate, and a row out of attempts is given up.
+ * aggregate, a row out of attempts is given up, and a running relay goes on
+ * past a failing row to another aggregate's due row in the same pass.
  */
 
 import { randomUUID } from "node:crypto";
@@ -15,14 +16,14 @@ import { Hono } from "hono";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
 import { closeDb, createInternalAuth, env, getCommerceConfig, getRedis, initCore } from "@breatic/core";
-import { forwardNextCommerceEvent } from "@server/modules/commerce/commerce-relay.js";
+import { forwardNextCommerceEvent, startCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
 import { serveOnLoopback, type RunningApp } from "./internal-api-harness.js";
 
 const PRODUCT_SECRET = "commerce-secret-current-0123456789abcdef";
 
 /** What the stand-in answers next, and what it saw. */
 const billing: {
-  reply: () => { status: number; body: unknown };
+  reply: (path: string) => { status: number; body: unknown };
   seen: Array<{ path: string; signer: string; body: unknown }>;
 } = { reply: () => ({ status: 200, body: { result: "applied" } }), seen: [] };
 
@@ -43,7 +44,7 @@ beforeAll(async () => {
   );
   app.post("/v1/inbox/:outboxId", async (c) => {
     billing.seen.push({ path: c.req.path, signer: c.req.header("x-internal-admin") ?? "", body: await c.req.json() });
-    const { status, body } = billing.reply();
+    const { status, body } = billing.reply(c.req.path);
     return c.json(body as object, status as 200);
   });
   running = await serveOnLoopback(app);
@@ -171,5 +172,25 @@ describe("forwardNextCommerceEvent", () => {
     expect(await forwardNextCommerceEvent()).toMatchObject({ id, deadLettered: true });
 
     expect(await deadLetter(id)).toEqual({ reason: "attempts_exhausted", attempts: getCommerceConfig().relay_max_attempts });
+  });
+});
+
+describe("startCommerceRelay", () => {
+  it("delivers another aggregate's due row in the same pass as a row that keeps failing", async () => {
+    const failing = await row(`erasure:${randomUUID()}`);
+    const other = await row(`erasure:${randomUUID()}`);
+    billing.reply = (path) => (path === `/v1/inbox/${failing.id}` ? { status: 500, body: {} } : { status: 200, body: { result: "applied" } });
+    // Well inside relay_interval_ms, so only the first pass can have sent it.
+    const deadline = Date.now() + Math.min(2000, getCommerceConfig().relay_interval_ms / 2);
+
+    const relay = startCommerceRelay();
+    try {
+      while ((await state(other.id))?.sent !== true && Date.now() < deadline) await new Promise((r) => setTimeout(r, 50));
+    } finally {
+      relay.stop();
+    }
+
+    expect(await state(other.id)).toMatchObject({ sent: true });
+    expect(await state(failing.id)).toMatchObject({ sent: false, attempts: 1, due: false });
   });
 });

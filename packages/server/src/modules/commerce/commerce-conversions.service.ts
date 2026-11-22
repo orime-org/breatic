@@ -36,8 +36,9 @@ export async function reportConversion(report: ConversionReport): Promise<Stored
       if ((await getUserById(report.userId, tx)) === null) {
         return { status: "refused", httpStatus: 404, body: { code: "account_not_found" } };
       }
-      const account = report.consent === "account";
-      const consent = report.consent === "account" ? await accountOnlyConsent(report.userId) : report.consent;
+      const { consent: reported } = report;
+      const account = reported === "account";
+      const consent = account ? await accountOnlyConsent(report.userId) : reported;
       trackServerEvent(report.name, { userId: report.userId, insertId: report.insertId, properties: report.properties }, consent);
       const { ads } = report;
       const adsQueued =

@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A later referral binding (inner#1993 §3.2, §8.4): the product checks the
- * body, waits for the relay to deliver the account's pending sign-up binding
- * (sending nothing itself), then forwards the request to the billing
- * service, which decides it. The panel read forwards and sends nothing. Where nothing is sold
- * the route does not exist.
+ * A later referral binding (inner#1993 §3.2, §5.5, §8.4): the product checks
+ * the body, sends the account's pending sign-up binding to the inbox itself
+ * once (leaving its attempts and backoff to the relay), then forwards the
+ * request to the billing service, which decides it. The panel read forwards
+ * and sends nothing. Where nothing is sold the route does not exist.
  */
 
 import { randomUUID } from "node:crypto";
@@ -67,7 +67,7 @@ describe("a later referral binding", () => {
     ]);
   });
 
-  it("answers 503 and forwards nothing while the pending sign-up binding stays unsent, sending nothing itself", async () => {
+  it("answers 503 and forwards nothing when the pending sign-up binding cannot be sent, counting no attempt", async () => {
     const userId = await insertAccount(suite.sql);
     const row = await pendingBinding(userId);
     suite.reply = () => ({ status: 503, body: {} });
@@ -76,7 +76,7 @@ describe("a later referral binding", () => {
 
     expect(res.status).toBe(503);
     expect(await res.json()).toMatchObject({ error: { reason: "billing_unavailable" } });
-    expect(suite.received).toEqual([]);
+    expect(suite.received.map((r) => r.path)).toEqual([`/v1/inbox/${row}`]);
     expect(await suite.sql`SELECT sent_at IS NULL AS unsent, attempts FROM commerce_outbox WHERE id = ${row}`).toEqual([{ unsent: true, attempts: 0 }]);
   });
 

@@ -4,7 +4,8 @@
 /**
  * The outbox relay loop every outbox shares (inner#1993 §5.2): a pass forwards
  * rows one at a time through the caller's `forwardNext` until the outbox is
- * empty, the batch is used up or a forward fails; the next pass is scheduled
+ * empty, the batch is used up or a forward fails (unless the outbox backs
+ * failed rows off and asks to go on); the next pass is scheduled
  * only after this one settles; `stop()` ends it. Failures and dead letters are
  * reported to the caller, which logs them.
  */
@@ -61,6 +62,17 @@ describe("startRelayLoop", () => {
     expect(report).toHaveBeenCalledWith({ kind: "forward_failed", id: "7", err });
     await vi.advanceTimersByTimeAsync(1000);
     expect(forwardNext).toHaveBeenCalledTimes(3);
+    loop.stop();
+  });
+
+  it("goes on past a failed forward in the same pass when the outbox backs failed rows off", async () => {
+    const err = new Error("unavailable");
+    const forwardNext = forwards({ id: "7", error: err }, { id: "8" }, null);
+    const report = vi.fn<(event: RelayLoopEvent) => void>();
+    const loop = startRelayLoop({ forwardNext, intervalMs: 1000, batchSize: 10, report, continueAfterRetry: true });
+    await vi.advanceTimersByTimeAsync(0);
+    expect(forwardNext).toHaveBeenCalledTimes(3);
+    expect(report).toHaveBeenCalledWith({ kind: "forward_failed", id: "7", err });
     loop.stop();
   });
 

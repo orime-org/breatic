@@ -187,9 +187,12 @@ export type SubscriptionFactAnswer = z.infer<typeof subscriptionFactAnswerSchema
 export const REFUND_STEPS = ["mark_refunding", "settle", "send_back", "reject", "restore"] as const;
 export type RefundStep = (typeof REFUND_STEPS)[number];
 
-/** What a finished disposition tells the buyer through the bell. */
+/**
+ * What a finished disposition tells the buyer through the bell. A
+ * `refund_completed` notice shows the request's `settled` amount, its only copy.
+ */
 export const refundTellSchema = z.discriminatedUnion("kind", [
-  z.object({ kind: z.literal("refund_completed"), amountCents: cents, currency: z.string().min(1).max(10) }).strict(),
+  z.object({ kind: z.literal("refund_completed") }).strict(),
   z.object({ kind: z.literal("refund_rejected") }).strict(),
   z.object({ kind: z.literal("refund_restored") }).strict(),
 ]);
@@ -204,7 +207,7 @@ export type RefundSettled = z.infer<typeof refundSettledSchema>;
  * one edge. `referenceId` is what the ledger row the edge writes points at:
  * the Stripe refund for `settle`, the disposition otherwise. `settled` is
  * what a `settle` step paid back, whether the buyer is told or not, and null
- * on every other step.
+ * on every other step; only a `settle` step tells `refund_completed`.
  */
 export const refundStepRequestSchema = z
   .object({
@@ -218,6 +221,11 @@ export const refundStepRequestSchema = z
   .refine((request) => (request.step === "settle") === (request.settled !== null), {
     message: "settled is required on a settle step and null on every other",
     path: ["settled"],
+    params: REQUEST_SHAPE_PARAMS,
+  })
+  .refine((request) => request.tell?.kind !== "refund_completed" || request.step === "settle", {
+    message: "refund_completed is told only on a settle step",
+    path: ["tell"],
     params: REQUEST_SHAPE_PARAMS,
   });
 export type RefundStepRequest = z.infer<typeof refundStepRequestSchema>;

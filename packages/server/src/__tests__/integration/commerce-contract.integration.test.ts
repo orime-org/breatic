@@ -203,7 +203,7 @@ describe("the billing contract, product side", () => {
   it("moves a lot one refund step", async () => {
     const tell = fc.option(
       fc.oneof(
-        fc.record({ kind: fc.constant("refund_completed" as const), amountCents: cents, currency }),
+        fc.record({ kind: fc.constant("refund_completed" as const) }),
         fc.record({ kind: fc.constant("refund_rejected" as const) }),
         fc.record({ kind: fc.constant("refund_restored" as const) }),
       ),

@@ -58,11 +58,13 @@ function takeEdge(request: RefundStepRequest, tx: DbTx): Promise<CreditLotEntity
 /**
  * Write the bell notice a finished disposition owes the buyer.
  * @param lot - The lot after the edge.
- * @param tell - What to tell.
+ * @param request - The step: what to tell and, for `refund_completed`, the settled amount, which the schema requires there.
  * @param tx - The step's transaction.
  */
-async function tellBuyer(lot: CreditLotEntity, tell: NonNullable<RefundStepRequest["tell"]>, tx: DbTx): Promise<void> {
+async function tellBuyer(lot: CreditLotEntity, request: RefundStepRequest, tx: DbTx): Promise<void> {
+  const { tell, settled } = request;
   const base = { lotId: lot.id, credits: lot.purchasedCredits };
+  if (tell === null) return;
   if (tell.kind === "refund_rejected") {
     await notificationService.createCreditRefundRejected({ userId: lot.userId, payload: base, tx });
   } else if (tell.kind === "refund_restored") {
@@ -70,7 +72,7 @@ async function tellBuyer(lot: CreditLotEntity, tell: NonNullable<RefundStepReque
   } else {
     await notificationService.createCreditRefundCompleted({
       userId: lot.userId,
-      payload: { ...base, amountCents: tell.amountCents, currency: tell.currency },
+      payload: { ...base, amountCents: settled!.amountCents, currency: settled!.currency },
       tx,
     });
   }
@@ -121,7 +123,7 @@ export async function applyRefundStep(operationId: string, step: RefundStep, req
         const [facts] = await creditLotRepo.readLotRefundFacts([request.lotId]);
         return { status: "refused", httpStatus: 409, body: { status: "refused", code: "lot_state_changed", lot: toLotRefundFacts(facts!) } };
       }
-      if (request.tell !== null) await tellBuyer(lot, request.tell, tx);
+      await tellBuyer(lot, request, tx);
       moved = lot;
       const [facts] = await creditLotRepo.readLotRefundFacts([request.lotId]);
       return { status: "applied", httpStatus: 200, body: { status: "applied", lot: toLotRefundFacts(facts!) } };

@@ -16,7 +16,7 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { requireSelling } from "@server/middleware/require-selling.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { userPath } from "@server/modules/commerce/commerce-client.js";
-import { awaitReferralBinding } from "@server/modules/commerce/referral-wait.service.js";
+import { sendPendingReferralBinding } from "@server/modules/commerce/commerce-relay.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { forwardToCommerce, idempotencyKeyOf } from "@server/routes/commerce-forward.js";
 
@@ -33,7 +33,7 @@ referral.get("/", rateLimitFor("referral-read", "user"), async (c) =>
 /**
  * `POST /account/referral/binding` — attach a code before the first
  * membership payment. The code the account signed up with is decided first:
- * the relay delivers it while this waits.
+ * this request sends it to the billing service if it is still pending.
  */
 referral.post(
   "/binding",
@@ -43,7 +43,7 @@ referral.post(
   runOnce("referral"),
   async (c) => {
     const userId = c.get("user").id;
-    await awaitReferralBinding(userId);
+    await sendPendingReferralBinding(userId);
     return forwardToCommerce(c, {
       method: "POST",
       path: userPath(userId, "/referral/binding"),

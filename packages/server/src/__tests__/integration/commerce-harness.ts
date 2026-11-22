@@ -30,8 +30,8 @@ export interface BillingRequest {
   body: unknown;
 }
 
-/** How the stand-in answers. */
-export type BillingReply = (req: BillingRequest) => { status: number; body: unknown };
+/** How the stand-in answers; a case may hold an answer back to line up concurrent requests. */
+export type BillingReply = (req: BillingRequest) => { status: number; body: unknown } | Promise<{ status: number; body: unknown }>;
 
 /** What a suite reads inside its tests. */
 export interface CommerceSuite {
@@ -93,7 +93,7 @@ export function useCommerceApp(appName: string): CommerceSuite {
         body: text === "" ? null : (JSON.parse(text) as unknown),
       };
       suite.received.push(req);
-      const { status, body } = suite.reply(req);
+      const { status, body } = await suite.reply(req);
       return c.json(body as object, status as 200);
     });
     running = await serveOnLoopback(billing);

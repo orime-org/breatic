@@ -20,7 +20,7 @@ import { paymentConfirmSchema, subscriptionChangeSchema, subscriptionPlanSchema 
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 import { takeCheckoutSnapshot } from "@server/modules/analytics/checkout-snapshot.js";
 import { userPath } from "@server/modules/commerce/commerce-client.js";
-import { awaitReferralBinding } from "@server/modules/commerce/referral-wait.service.js";
+import { sendPendingReferralBinding } from "@server/modules/commerce/commerce-relay.js";
 import { callCommerceOrAnswer, forwardToCommerce, idempotencyKeyOf } from "@server/routes/commerce-forward.js";
 
 const subscription = new Hono<{ Variables: AuthVariables }>();
@@ -33,8 +33,8 @@ subscription.use(rateLimitFor("subscription-write", "user"));
 
 /**
  * `POST /account/subscription/checkout` — start paying for a membership. It
- * waits for the relay to deliver the account's pending referral binding
- * first, since the checkout reads it for the first-period discount.
+ * sends the account's pending referral binding to the billing service first,
+ * since the checkout reads it for the first-period discount.
  */
 subscription.post(
   "/checkout",
@@ -43,7 +43,7 @@ subscription.post(
   runOnce("membership"),
   async (c) => {
     const userId = c.get("user").id;
-    await awaitReferralBinding(userId);
+    await sendPendingReferralBinding(userId);
     return forwardToCommerce(c, {
       method: "POST",
       path: userPath(userId, "/subscription/checkout"),
