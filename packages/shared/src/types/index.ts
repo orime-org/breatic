@@ -244,6 +244,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
+  ASSET_PEAKS_READY_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -259,6 +260,7 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
+  AssetPeaksReadySignal,
 } from "@shared/types/project-activity.js";
 
 export {
@@ -287,6 +289,7 @@ export type {
 export {
   activityNewChannel,
   creditsChangedChannel,
+  assetPeaksReadyChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -294,6 +297,7 @@ export {
 export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
+  AssetPeaksReadyControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,

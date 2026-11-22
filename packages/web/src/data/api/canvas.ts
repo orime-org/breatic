@@ -47,10 +47,6 @@ export interface CanvasLimits {
   waveformMaxSeconds: number;
   /** The largest audio file the cut band downloads to decode, in bytes. */
   waveformMaxBytes: number;
-  /** How often an open cut band reads peaks not yet written, in ms. */
-  waveformPeaksRetryMs: number;
-  /** How long an open cut band keeps reading peaks not yet written, in ms. */
-  waveformPeaksRetryMaxMs: number;
   /**
    * The most clips one join takes, its source included (inner#1825 §6.3);
    * absent from a server that predates the join, which then leaves the list uncapped here.
@@ -142,8 +138,6 @@ export function getCachedWaveformLimits(): WaveformLimits | null {
     ? {
       maxSeconds: limitsCache.waveformMaxSeconds,
       maxBytes: limitsCache.waveformMaxBytes,
-      peaksRetryMs: limitsCache.waveformPeaksRetryMs,
-      peaksRetryMaxMs: limitsCache.waveformPeaksRetryMaxMs,
     }
     : null;
 }
@@ -157,12 +151,10 @@ export function getCachedJoinMaxClips(): number | null {
   return limitsCache?.joinMaxClips ?? null;
 }
 
-/** The cut band's waveform ceilings and how it reads peaks not yet written. */
+/** The cut band's waveform ceilings. */
 export interface WaveformLimits {
   maxSeconds: number;
   maxBytes: number;
-  peaksRetryMs: number;
-  peaksRetryMaxMs: number;
 }
 
 export const canvasApi = {

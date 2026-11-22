@@ -131,6 +131,7 @@ export type {
   Space,
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
+  AssetPeaksReadyControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
@@ -169,6 +170,7 @@ export {
   SPACE_TASKS_VERSION,
   activityNewChannel,
   creditsChangedChannel,
+  assetPeaksReadyChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -200,6 +202,7 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
+  ASSET_PEAKS_READY_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -235,6 +238,7 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
+  AssetPeaksReadySignal,
 } from "@shared/types/index.js";
 
 export {

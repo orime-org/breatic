@@ -55,11 +55,13 @@ import { env } from "@core/config/runtime.js";
 import {
   activityNewChannel,
   creditsChangedChannel,
+  assetPeaksReadyChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
+  type AssetPeaksReadyControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
@@ -115,6 +117,20 @@ export async function publishCreditsChanged(projectId: string): Promise<void> {
     ts: Date.now(),
   };
   await getStreamRedis().publish(creditsChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Announce to one Project referencing an audio asset that the audio's peaks were written (#1580); collab relays it
+ * to that Project's connected members as the `asset-peaks:ready` stateless signal.
+ * @param projectId - A live Project referencing the audio.
+ * @param assetId - The audio asset.
+ * @param url - The audio's own address.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishAssetPeaksReady(projectId: string, assetId: string, url: string): Promise<void> {
+  const event: AssetPeaksReadyControlEvent = { type: "project-asset-peaks:ready", projectId, assetId, url, ts: Date.now() };
+  await getStreamRedis().publish(assetPeaksReadyChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**

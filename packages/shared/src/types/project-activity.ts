@@ -195,3 +195,16 @@ export interface CreditsChangedSignal {
   projectId: string;
 }
 
+/**
+ * Stateless WS signal on the project meta doc when an audio asset's peaks were written (#1580); a cut band waiting
+ * for that audio's waveform reads its peaks again. The page knows its audio by address, so the signal carries it.
+ */
+export const ASSET_PEAKS_READY_SIGNAL = "asset-peaks:ready" as const;
+
+export interface AssetPeaksReadySignal {
+  t: typeof ASSET_PEAKS_READY_SIGNAL;
+  projectId: string;
+  assetId: string;
+  url: string;
+}
+

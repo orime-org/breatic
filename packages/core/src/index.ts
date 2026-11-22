@@ -160,6 +160,7 @@ export {
 export {
   publishActivityNew,
   publishCreditsChanged,
+  publishAssetPeaksReady,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,

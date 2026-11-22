@@ -128,6 +128,30 @@ export function creditsChangedChannel(prefix: string, projectId: string): string
   return `${prefix}:project:${projectId}:credits:changed`;
 }
 
+/**
+ * Control event announcing that an audio asset's peaks were written (#1580), sent once to each live Project
+ * referencing the audio; collab relays it as the `asset-peaks:ready` stateless signal on that Project's meta doc, and
+ * a cut band waiting for the audio's waveform reads it again.
+ */
+export interface AssetPeaksReadyControlEvent {
+  type: "project-asset-peaks:ready";
+  projectId: string;
+  assetId: string;
+  /** The audio's own address, which is what a cut band knows its source by. */
+  url: string;
+  ts: number;
+}
+
+/**
+ * Pub/sub channel for {@link AssetPeaksReadyControlEvent}. Matched by {@link allProjectChannelsPattern}.
+ * @param prefix - Deployment namespace (`REDIS_KEY_PREFIX`, defaults to `ENV`).
+ * @param projectId - A Project referencing the audio.
+ * @returns The channel name `{prefix}:project:{projectId}:asset-peaks:ready`.
+ */
+export function assetPeaksReadyChannel(prefix: string, projectId: string): string {
+  return `${prefix}:project:${projectId}:asset-peaks:ready`;
+}
+
 /** Why every collab instance closes a project's connections. */
 export type ProjectConnectionsCloseReason = "content-updated" | "archived" | "restored";
 

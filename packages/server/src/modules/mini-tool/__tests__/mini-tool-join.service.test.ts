@@ -33,8 +33,6 @@ const CONFIG = {
   join_max_clips: 20,
   waveform_max_seconds: 600,
   waveform_max_bytes: 200_000_000,
-  waveform_peaks_retry_ms: 5000,
-  waveform_peaks_retry_max_ms: 600_000,
 };
 
 const BUCKET = "https://assets.example.com/";

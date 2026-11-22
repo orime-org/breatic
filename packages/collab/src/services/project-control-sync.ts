@@ -10,6 +10,8 @@
  *     activity signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:credits:changed` (server, worker) — relay the
  *     credits signal on the `meta` doc.
+ *   - `{prefix}:project:{pid}:asset-peaks:ready` (worker) — relay a written
+ *     audio waveform on the `meta` doc, with the audio's address.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
  *     consumer) — close every connection to the project.
  *
@@ -49,11 +51,14 @@ import {
   projectMetaDocName,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
+  type AssetPeaksReadyControlEvent,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
+  ASSET_PEAKS_READY_SIGNAL,
   type ActivityNewSignal,
   type CreditsChangedSignal,
+  type AssetPeaksReadySignal,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
 
@@ -62,6 +67,7 @@ const logger = createLogger("project-control-sync");
 type ProjectControlEvent =
   | ActivityNewControlEvent
   | CreditsChangedControlEvent
+  | AssetPeaksReadyControlEvent
   | ProjectConnectionsCloseEvent;
 
 /**
@@ -75,7 +81,7 @@ type ProjectControlEvent =
 function relayOnMetaDoc(
   hocuspocus: Hocuspocus,
   projectId: string,
-  signal: ActivityNewSignal | CreditsChangedSignal,
+  signal: ActivityNewSignal | CreditsChangedSignal | AssetPeaksReadySignal,
 ): void {
   const docName = projectMetaDocName(projectId);
   const doc = hocuspocus.documents?.get(docName);
@@ -92,7 +98,8 @@ function relayOnMetaDoc(
  * `project-activity:new` relays the activity signal on the meta doc;
  * `project-credits:changed` relays the credits signal on the meta doc;
  * `project-connections:close` closes this instance's connections to the
- * project. Unknown / unparseable messages are logged and ignored.
+ * project; `project-asset-peaks:ready` relays a written waveform on the meta
+ * doc. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the relay and close handlers.
  * @param raw - Raw JSON message body received on the project control channel.
  * @throws {TypeError} When the message decodes to `null`; the subscriber logs it.
@@ -121,6 +128,18 @@ async function handleEvent(
     // A charge made in this project committed; members' top bars read
     // their credits again.
     relayOnMetaDoc(hocuspocus, event.projectId, { t: CREDITS_CHANGED_SIGNAL, projectId: event.projectId });
+    return;
+  }
+
+  if (event.type === "project-asset-peaks:ready") {
+    // An audio this project references has its waveform; a cut band waiting
+    // for it reads the peaks again.
+    relayOnMetaDoc(hocuspocus, event.projectId, {
+      t: ASSET_PEAKS_READY_SIGNAL,
+      projectId: event.projectId,
+      assetId: event.assetId,
+      url: event.url,
+    });
     return;
   }
 
