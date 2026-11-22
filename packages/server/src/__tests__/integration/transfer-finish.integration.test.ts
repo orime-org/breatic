@@ -54,8 +54,10 @@ import {
   getRedis,
   getStorageAdapter,
   getStorageConfig,
+  getStreamRedis,
   initCore,
   loadLocales,
+  uploadEndedChannelName,
 } from "@breatic/core";
 import {
   MEDIA_READ_QUEUE,
@@ -661,5 +663,61 @@ describe("§6.1 grant transitions outside the reference read", () => {
     await uploadFinishService.finishUpload(transferJob(key));
 
     expect(await grantRow(sql, key)).toEqual(before);
+  });
+});
+
+// #1580 test spec B-08, B-09: the transfer's ending is told to its uploader at
+// the finish, the same status the status read answers.
+describe("the transfer's ending, told to its uploader (#1580)", () => {
+  type Ended = { type?: string; userId?: string; status?: { key?: string }; sentinel?: string };
+  let subscriber: ReturnType<ReturnType<typeof getStreamRedis>["duplicate"]>;
+  const heard: Ended[] = [];
+
+  beforeAll(async () => {
+    subscriber = getStreamRedis().duplicate();
+    subscriber.on("message", (_channel: string, message: string) => {
+      heard.push(JSON.parse(message) as Ended);
+    });
+    await subscriber.subscribe(uploadEndedChannelName());
+  });
+
+  afterAll(async () => {
+    await subscriber?.quit();
+  });
+
+  /**
+   * Everything told about `key`, read up to a sentinel published after the finish.
+   * @param key - The upload's key.
+   * @returns The messages, oldest first.
+   * @throws {Error} When the sentinel never arrives.
+   */
+  async function toldAbout(key: string): Promise<Ended[]> {
+    const sentinel = crypto.randomUUID();
+    await getStreamRedis().publish(uploadEndedChannelName(), JSON.stringify({ sentinel }));
+    await vi.waitFor(() => expect(heard.some((h) => h.sentinel === sentinel)).toBe(true));
+    return heard.filter((h) => h.status?.key === key);
+  }
+
+  it("B-08 tells a stored transfer once, as transferred", async () => {
+    const a = await seedOwner(sql);
+    const key = await finishingGrant(a);
+    workerAnswers({ contentType: TRANSFER_TYPE, sizeBytes: DECLARED });
+
+    await uploadFinishService.finishUpload(transferJob(key));
+
+    expect(await toldAbout(key)).toEqual([{ type: "upload:ended", userId: a.userId, status: { key, state: "transferred" } }]);
+  });
+
+  it.each([
+    ["unsupported_type", { contentType: "text/plain", sizeBytes: DECLARED }],
+    ["too_large", { contentType: TRANSFER_TYPE, sizeBytes: DECLARED + 1 }],
+  ] as const)("B-09 tells a refused transfer as failed with %s", async (reason, answer) => {
+    const a = await seedOwner(sql);
+    const key = await finishingGrant(a);
+    workerAnswers(answer);
+
+    await uploadFinishService.finishUpload(transferJob(key));
+
+    expect(await toldAbout(key)).toEqual([{ type: "upload:ended", userId: a.userId, status: { key, state: "failed", reason } }]);
   });
 });

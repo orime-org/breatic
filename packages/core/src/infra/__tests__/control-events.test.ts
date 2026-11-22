@@ -35,6 +35,8 @@ import {
   publishCreditsChanged,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
+  publishUploadEnded,
+  uploadEndedChannelName,
 } from "@core/infra/control-events.js";
 
 const PID = "4d1a0d66-ee82-4596-986a-21054cd65490";
@@ -127,5 +129,28 @@ describe("control-events — deployment prefix", () => {
     await publishActivityNew(PID);
 
     expect(patternMatches(theirs, lastChannel())).toBe(false);
+  });
+});
+
+// #1580 B-17: an upload's ending is told on a channel the deployment prefix
+// separates, as the project channels are, so a second deployment's collab on
+// the same Redis never relays it.
+describe("control-events — the upload ending channel", () => {
+  beforeEach(() => {
+    publishMock.mockClear();
+  });
+
+  it.each(["dev", "dev-agent", "prod"])("B-17 with prefix %s publishes under that prefix", async (prefix) => {
+    envMock.REDIS_KEY_PREFIX = prefix;
+    await publishUploadEnded("11111111-1111-4111-8111-111111111111", { key: "uploads/k.png", state: "transferred" });
+    expect(lastChannel()).toBe(uploadEndedChannelName());
+    expect(lastChannel().startsWith(`${prefix}:`)).toBe(true);
+  });
+
+  it("B-17 gives two deployments two channels, also when one prefix starts the other", () => {
+    envMock.REDIS_KEY_PREFIX = "dev";
+    const ours = uploadEndedChannelName();
+    envMock.REDIS_KEY_PREFIX = "dev-agent";
+    expect(uploadEndedChannelName()).not.toBe(ours);
   });
 });

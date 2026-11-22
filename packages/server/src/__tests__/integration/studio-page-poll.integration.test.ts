@@ -30,11 +30,13 @@ import type { Hono } from "hono";
 import {
   getRateLimit,
   getRedis,
+  getStreamRedis,
   getStudioPageConfig,
   initCore,
   loadLocales,
   sessionCookieName,
   setSession,
+  uploadEndedChannelName,
 } from "@breatic/core";
 import { uploadStatusService } from "@breatic/domain";
 import { signSessionToken, UPLOAD_STATUS_MAX_KEYS } from "@breatic/shared";
@@ -316,5 +318,27 @@ describe("the interval", () => {
   it("K-10 is the configured poll interval", async () => {
     const s = await scene();
     expect((await answer(s.member.cookie, `studio=${s.slug}`)).nextPollMs).toBe(getStudioPageConfig().poll_interval_ms);
+  });
+});
+
+describe("an upload's ending, two ways", () => {
+  it("B-18 the poll tells it as the message to the uploader did", async () => {
+    const heard: { userId?: string; status?: { key?: string } }[] = [];
+    const subscriber = getStreamRedis().duplicate();
+    subscriber.on("message", (_channel: string, message: string) => {
+      heard.push(JSON.parse(message) as { userId?: string; status?: { key?: string } });
+    });
+    await subscriber.subscribe(uploadEndedChannelName());
+    try {
+      const s = await scene();
+      const key = await ticket(s, s.admin);
+      await finishStored(key, s.admin);
+      await vi.waitFor(() => expect(heard.some((h) => h.status?.key === key)).toBe(true));
+      const told = heard.find((h) => h.status?.key === key)!;
+      const got = await answer(s.admin.cookie, `studio=${s.slug}&uploads=${encodeURIComponent(key)}`);
+      expect(got.uploads).toEqual([told.status]);
+    } finally {
+      await subscriber.quit();
+    }
   });
 });
