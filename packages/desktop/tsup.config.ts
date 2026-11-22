@@ -1,13 +1,15 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { resolve } from "node:path";
+import { extname, resolve } from "node:path";
 import { copyFileSync, mkdirSync } from "node:fs";
 import { defineConfig, type Options } from "tsup";
 import { currentBrand } from "./brand.mjs";
 
 /** The brand this build is for: BREATIC_BRAND_DIR, else the official one. */
 const brand = currentBrand();
+/** The brand logo's file name beside the splash page; main reads the extension from the brand too. */
+const SPLASH_LOGO = "brand-logo";
 
 /**
  * Everything is bundled except Electron itself, so the packaged app carries no
@@ -28,6 +30,7 @@ const shared: Options = {
       scheme: brand.scheme,
       serverUrl: brand.serverUrl,
       poweredBy: brand.poweredBy,
+      splashLogo: `${SPLASH_LOGO}${extname(brand.logo)}`,
     }),
   },
   esbuildOptions(options) {
@@ -56,6 +59,23 @@ export default defineConfig([
       mkdirSync("dist/connect", { recursive: true });
       copyFileSync("src/connect/index.html", "dist/connect/index.html");
       copyFileSync("src/connect/connect.css", "dist/connect/connect.css");
+    },
+  },
+  {
+    ...shared,
+    entry: { "splash/splash": "src/splash/splash.ts" },
+    format: "iife",
+    platform: "browser",
+    target: "chrome130",
+    outDir: "dist",
+    outExtension: () => ({ js: ".js" }),
+    // The page, the brand's logo and the platform's mark for the attribution line.
+    onSuccess: async () => {
+      mkdirSync("dist/splash", { recursive: true });
+      copyFileSync("src/splash/index.html", "dist/splash/index.html");
+      copyFileSync("src/splash/splash.css", "dist/splash/splash.css");
+      copyFileSync(brand.logo, `dist/splash/${SPLASH_LOGO}${extname(brand.logo)}`);
+      copyFileSync(resolve(import.meta.dirname, "../web/public/logo-color.svg"), "dist/splash/powered-mark.svg");
     },
   },
 ]);

@@ -4604,12 +4604,22 @@
       "file": "文件",
       "back": "后退",
       "forward": "前进",
-      "newWindow": "新建窗口"
+      "newWindow": "新建窗口",
+      "checkForUpdates": "检查更新…",
+      "help": "帮助"
     },
     "leave": {
       "message": "有未保存的改动，确定离开吗？",
       "leave": "离开",
       "stay": "留下"
+    },
+    "updates": {
+      "ready": "新版本 {version} 已就绪",
+      "readyDetail": "现在重启 {product} 即可安装，或在下次退出时自动安装。",
+      "restart": "立即重启",
+      "later": "稍后",
+      "upToDate": "{product} 已是最新版本",
+      "failed": "无法检查更新"
     }
   }
 }

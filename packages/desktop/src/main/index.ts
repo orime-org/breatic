@@ -9,6 +9,7 @@
  */
 
 import { app, BrowserWindow, dialog, ipcMain, Menu, net, session, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
+import electronUpdater from "electron-updater";
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
@@ -20,6 +21,8 @@ import { appImageDesktopEntry, findDeepLink } from "@desktop/main/deep-link.js";
 import { createLogger } from "@desktop/main/logger.js";
 import { buildDockMenuTemplate, buildMenuTemplate } from "@desktop/main/menu.js";
 import { nextWindowBounds, wantsNewWindow, windowsUserTasks } from "@desktop/main/new-window.js";
+import { splashCloseDelay, splashQuery } from "@desktop/main/splash.js";
+import { createUpdates } from "@desktop/main/updates.js";
 import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure } from "@desktop/main/navigation.js";
 import { checkServer, normalizeServerUrl, readServerConfig, resolveServerUrl, writeServerConfig } from "@desktop/main/server-config.js";
 import { desktopText } from "@desktop/main/strings.js";
@@ -57,6 +60,21 @@ const loadedWindows = new WeakSet<BrowserWindow>();
 let connectWindow: BrowserWindow | null = null;
 let connectInitial: ConnectInitial | null = null;
 let queuedLink: string | null = null;
+let splashWindow: BrowserWindow | null = null;
+let splashShownAt = 0;
+/** Callbacks waiting to hear that a window's leave confirmation answered Stay. */
+const stayListeners = new Map<WebContents, () => void>();
+/** A packaged build with an update feed: electron-builder wrote app-update.yml beside the app. */
+const updatesEnabled = app.isPackaged && existsSync(join(process.resourcesPath, "app-update.yml"));
+const updates = createUpdates({
+  updater: electronUpdater.autoUpdater,
+  enabled: updatesEnabled,
+  every: (task, ms) => void setInterval(task, ms),
+  ask: askToRestart,
+  tell: tellUpdateOutcome,
+  closeAllWindows,
+  log: (err) => logger.error({ err }, "update_failed"),
+});
 
 // macOS hands a link that launched the app to `open-url` before `ready`.
 app.on("will-finish-launching", () => {
@@ -76,6 +94,8 @@ app.on("second-instance", (_event, argv) => {
 app.on("activate", () => showSomeWindow());
 
 app.on("window-all-closed", () => {
+  // Restart now quits through the updater once every window has closed.
+  if (updates.isRestarting()) return;
   if (process.platform !== "darwin") app.quit();
 });
 
@@ -100,6 +120,8 @@ async function start(): Promise<void> {
   });
   registerIpc();
   buildMenu();
+  openSplash();
+  updates.start();
   const resolved = resolveServerUrl({
     envUrl: process.env.BREATIC_SERVER_URL,
     savedUrl: readServerConfig(configFile()),
@@ -147,12 +169,15 @@ function buildMenu(): void {
     back: text["desktop.menu.back"],
     forward: text["desktop.menu.forward"],
     newWindow: text["desktop.menu.newWindow"],
+    checkForUpdates: text["desktop.menu.checkForUpdates"],
+    help: text["desktop.menu.help"],
   };
   const template = buildMenuTemplate({
     platform: process.platform,
     isDev,
     labels,
     onNewWindow: openNewWindow,
+    ...(updatesEnabled ? { onCheckForUpdates: () => void updates.checkNow() } : {}),
     onBack: () => {
       const history = BrowserWindow.getFocusedWindow()?.webContents.navigationHistory;
       if (history?.canGoBack()) history.goBack();
@@ -241,6 +266,7 @@ async function openServer(origin: string, options: { save: boolean }): Promise<C
   }
   if (options.save) writeServerConfig(configFile(), origin);
   loadedWindows.add(window);
+  await finishSplash();
   window.show();
   connectWindow?.close();
   return { ok: true };
@@ -325,6 +351,7 @@ function openConnect(initial: { mode: "connect" | "unreachable"; url: string; re
     width: 480,
     height: 420,
     resizable: false,
+    show: false,
     title: BRAND.productName,
     webPreferences: {
       preload: join(here, "../connect/preload.cjs"),
@@ -340,6 +367,102 @@ function openConnect(initial: { mode: "connect" | "unreachable"; url: string; re
   });
   void window.loadFile(join(here, "../connect/index.html"));
   connectWindow = window;
+  void finishSplash().then(() => {
+    if (!window.isDestroyed()) window.show();
+  });
+}
+
+/** Show the splash at launch: the brand's logo and name, and on a partner's brand the attribution (design §5.2). */
+function openSplash(): void {
+  const window = new BrowserWindow({
+    width: 420,
+    height: 280,
+    frame: false,
+    resizable: false,
+    center: true,
+    show: false,
+    title: BRAND.productName,
+    webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
+  });
+  splashShownAt = Date.now();
+  window.once("ready-to-show", () => {
+    splashShownAt = Date.now();
+    window.show();
+  });
+  window.on("closed", () => {
+    if (splashWindow === window) splashWindow = null;
+  });
+  void window.loadFile(join(here, "../splash/index.html"), { query: splashQuery(BRAND, BRAND.splashLogo) });
+  splashWindow = window;
+}
+
+/** Close the splash once it has shown long enough; nothing to do when it is gone. */
+async function finishSplash(): Promise<void> {
+  const window = splashWindow;
+  if (!window) return;
+  const wait = splashCloseDelay(splashShownAt, Date.now());
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  if (!window.isDestroyed()) window.close();
+}
+
+/**
+ * Close every window through its normal path, so each page's leave
+ * confirmation runs (Restart now, design §9.1.2).
+ * @returns True when all closed; false when a page's user chose Stay.
+ */
+async function closeAllWindows(): Promise<boolean> {
+  const results = await Promise.all(
+    BrowserWindow.getAllWindows().map(
+      (window) =>
+        new Promise<boolean>((resolve) => {
+          const contents = window.webContents;
+          window.once("closed", () => {
+            stayListeners.delete(contents);
+            resolve(true);
+          });
+          stayListeners.set(contents, () => {
+            stayListeners.delete(contents);
+            resolve(false);
+          });
+          window.close();
+        }),
+    ),
+  );
+  return results.every(Boolean);
+}
+
+/**
+ * Offer a downloaded version.
+ * @param version - The version ready to install.
+ * @returns Restart now or later.
+ */
+async function askToRestart(version: string): Promise<"restart" | "later"> {
+  const text = desktopText(app.getLocale(), BRAND.productName);
+  const owner = BrowserWindow.getFocusedWindow();
+  const options = {
+    type: "info" as const,
+    buttons: [text["desktop.updates.restart"], text["desktop.updates.later"]],
+    defaultId: 0,
+    cancelId: 1,
+    message: text["desktop.updates.ready"].replaceAll("{version}", version),
+    detail: text["desktop.updates.readyDetail"],
+  };
+  const { response } = owner ? await dialog.showMessageBox(owner, options) : await dialog.showMessageBox(options);
+  return response === 0 ? "restart" : "later";
+}
+
+/**
+ * Tell the user how a check they asked for ended.
+ * @param outcome - Nothing new, or the check failed.
+ */
+function tellUpdateOutcome(outcome: "upToDate" | "failed"): void {
+  const text = desktopText(app.getLocale(), BRAND.productName);
+  const options = {
+    type: outcome === "failed" ? ("error" as const) : ("info" as const),
+    message: outcome === "failed" ? text["desktop.updates.failed"] : text["desktop.updates.upToDate"],
+  };
+  const owner = BrowserWindow.getFocusedWindow();
+  void (owner ? dialog.showMessageBox(owner, options) : dialog.showMessageBox(options));
 }
 
 /**
@@ -409,7 +532,7 @@ function handleLink(link: string): void {
  */
 function attachPolicies(contents: WebContents): void {
   contents.on("will-navigate", (details) => {
-    if (contents === connectWindow?.webContents) {
+    if (contents === connectWindow?.webContents || contents === splashWindow?.webContents) {
       details.preventDefault();
       return;
     }
@@ -445,6 +568,7 @@ function attachPolicies(contents: WebContents): void {
     const choice = owner ? dialog.showMessageBoxSync(owner, options) : dialog.showMessageBoxSync(options);
     // preventDefault lets the page go, ignoring its beforeunload.
     if (choice === 0) event.preventDefault();
+    else stayListeners.get(contents)?.();
   });
 }
 

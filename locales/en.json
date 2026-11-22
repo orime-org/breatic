@@ -4604,12 +4604,22 @@
       "file": "File",
       "back": "Back",
       "forward": "Forward",
-      "newWindow": "New Window"
+      "newWindow": "New Window",
+      "checkForUpdates": "Check for Updates…",
+      "help": "Help"
     },
     "leave": {
       "message": "You have unsaved changes. Leave anyway?",
       "leave": "Leave",
       "stay": "Stay"
+    },
+    "updates": {
+      "ready": "New version {version} is ready",
+      "readyDetail": "Restart {product} to install it now, or it installs the next time you quit.",
+      "restart": "Restart now",
+      "later": "Later",
+      "upToDate": "{product} is up to date",
+      "failed": "Couldn't check for updates"
     }
   }
 }

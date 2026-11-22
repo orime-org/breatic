@@ -18,6 +18,8 @@ export interface MenuLabels {
   forward: string;
   file: string;
   newWindow: string;
+  checkForUpdates?: string;
+  help?: string;
 }
 
 /** What the menu is built from. */
@@ -28,6 +30,8 @@ export interface MenuOptions {
   onBack: () => void;
   onForward: () => void;
   onNewWindow: () => void;
+  /** Present only in a build with an update feed (design §9.1.2). */
+  onCheckForUpdates?: () => void;
 }
 
 /**
@@ -39,6 +43,8 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
   const { platform, isDev, labels } = options;
   const mac = platform === "darwin";
   const newWindow: MenuItemConstructorOptions = { label: labels.newWindow, accelerator: "CmdOrCtrl+Shift+N", click: () => options.onNewWindow() };
+  const onCheck = options.onCheckForUpdates;
+  const checkForUpdates: MenuItemConstructorOptions[] = onCheck ? [{ label: labels.checkForUpdates, click: () => onCheck() }] : [];
   const view: MenuItemConstructorOptions = {
     role: "viewMenu",
     submenu: [
@@ -70,6 +76,7 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
         role: "appMenu",
         submenu: [
           { role: "about" },
+          ...checkForUpdates,
           { type: "separator" },
           { role: "hide" },
           { role: "hideOthers" },
@@ -89,6 +96,7 @@ export function buildMenuTemplate(options: MenuOptions): MenuItemConstructorOpti
     edit,
     view,
     { role: "windowMenu" },
+    ...(checkForUpdates.length > 0 ? [{ label: labels.help, submenu: checkForUpdates }] : []),
   ];
 }
 

@@ -16,6 +16,7 @@
   },
   "dependencies": {
     "@breatic/shared": "workspace:*",
+    "electron-updater": "6.8.12",
     "pino": "catalog:"
   },
   "devDependencies": {

@@ -14,7 +14,7 @@ export default defineConfig({
   },
   // The build writes the brand in (tsup.config.ts); tests run as the official one.
   define: {
-    __BRAND__: JSON.stringify({ id: "breatic", productName: "breatic", scheme: "ai.breatic.desktop", serverUrl: "", poweredBy: false }),
+    __BRAND__: JSON.stringify({ id: "breatic", productName: "breatic", scheme: "ai.breatic.desktop", serverUrl: "", poweredBy: false, splashLogo: "brand-logo.svg" }),
   },
   resolve: {
     alias: {

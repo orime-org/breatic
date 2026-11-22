@@ -64,7 +64,7 @@ function freshData(): string {
 test("first launch: the connect window refuses LAN http, connects to the server and remembers it", async () => {
   const userData = freshData();
   const app = await launch(userData);
-  const connect = await windowWhere(app, (url) => url.startsWith("file:"));
+  const connect = await windowWhere(app, (url) => url.includes("/connect/"));
   await expect(connect.getByRole("heading", { name: "Connect to breatic" })).toBeVisible();
 
   const input = connect.getByRole("textbox");
@@ -77,6 +77,32 @@ test("first launch: the connect window refuses LAN http, connects to the server 
   const main = await windowWhere(app, (url) => url.startsWith(SERVER));
   await expect(main).toHaveURL(/\/login/);
   expect(JSON.parse(readFileSync(join(userData, "config.json"), "utf8"))).toEqual({ serverUrl: SERVER });
+  await app.close();
+});
+
+test("the splash shows the brand first and closes once a window is ready", async () => {
+  const app = await launch(freshData());
+  const splash = await windowWhere(app, (url) => url.includes("/splash/"));
+  await expect(splash.getByText("breatic", { exact: true })).toBeVisible();
+  await expect(splash.getByText("powered by")).toBeHidden();
+  await windowWhere(app, (url) => url.includes("/connect/"));
+  await expect.poll(() => app.windows().some((window) => window.url().includes("/splash/")), { timeout: 10_000 }).toBe(false);
+  await app.close();
+});
+
+test("a partner's splash carries the powered-by line under its own name", async () => {
+  const app = await launch(freshData());
+  const splashUrl = (await windowWhere(app, (url) => url.includes("/splash/"))).url();
+  const page = new URL(splashUrl);
+  page.search = new URLSearchParams({ product: "Acme Studio", poweredBy: "1", logo: page.searchParams.get("logo") ?? "" }).toString();
+  await app.evaluate(({ BrowserWindow }, href) => {
+    void new BrowserWindow({ width: 420, height: 280 }).loadURL(href);
+  }, page.toString());
+  const partner = await windowWhere(app, (url) => url.includes("Acme"));
+  await expect(partner.getByText("Acme Studio", { exact: true })).toBeVisible();
+  await expect(partner.getByText("powered by")).toBeVisible();
+  await expect(partner.locator("#powered-name")).toHaveText("Breatic");
+  await expect(partner.locator(".mark")).toBeVisible();
   await app.close();
 });
 
@@ -144,7 +170,7 @@ test("on macOS, closing every window and clicking the Dock icon reopens the serv
   });
   const reopened = await windowWhere(app, (url) => url.startsWith(SERVER));
   await expect(reopened).toHaveURL(/\/login/);
-  expect(app.windows().some((window) => window.url().startsWith("file:"))).toBe(false);
+  expect(app.windows().some((window) => window.url().includes("/connect/"))).toBe(false);
   await app.close();
 });
 
@@ -165,7 +191,7 @@ test("a link to another site goes to the system browser and the window stays", a
   await page.evaluate(() => window.open("https://example.com/", "_blank"));
   await expect.poll(() => app.evaluate(() => (globalThis as { opened?: string[] }).opened ?? [])).toEqual(["https://example.com/"]);
   expect(page.url()).toBe(before);
-  expect(app.windows()).toHaveLength(1);
+  expect(app.windows().filter((window) => !window.url().includes("/splash/"))).toHaveLength(1);
   await app.close();
 });
 
@@ -173,7 +199,7 @@ test("a configured server that cannot be reached opens the unreachable state", a
   const userData = freshData();
   writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: "http://localhost:9" }));
   const app = await launch(userData);
-  const connect = await windowWhere(app, (url) => url.startsWith("file:"));
+  const connect = await windowWhere(app, (url) => url.includes("/connect/"));
   await expect(connect.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible();
   await expect(connect.getByText("http://localhost:9")).toBeVisible();
   await expect(connect.getByRole("button", { name: "Retry" })).toBeVisible();

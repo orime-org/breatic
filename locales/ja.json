@@ -4604,12 +4604,22 @@
       "file": "ファイル",
       "back": "戻る",
       "forward": "進む",
-      "newWindow": "新しいウィンドウ"
+      "newWindow": "新しいウィンドウ",
+      "checkForUpdates": "アップデートを確認…",
+      "help": "ヘルプ"
     },
     "leave": {
       "message": "保存されていない変更があります。移動しますか？",
       "leave": "移動する",
       "stay": "とどまる"
+    },
+    "updates": {
+      "ready": "新しいバージョン {version} の準備ができました",
+      "readyDetail": "今すぐ {product} を再起動してインストールするか、次回の終了時にインストールされます。",
+      "restart": "今すぐ再起動",
+      "later": "後で",
+      "upToDate": "{product} は最新です",
+      "failed": "アップデートを確認できませんでした"
     }
   }
 }

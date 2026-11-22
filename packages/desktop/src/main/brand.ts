@@ -20,6 +20,8 @@ export interface BuildBrand {
   serverUrl: string;
   /** Whether the splash carries the "powered by" line: every brand but the official one. */
   poweredBy: boolean;
+  /** The brand logo's file name beside the splash page. */
+  splashLogo: string;
 }
 
 declare const __BRAND__: BuildBrand;

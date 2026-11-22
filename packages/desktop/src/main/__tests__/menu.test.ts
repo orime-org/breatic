@@ -92,3 +92,32 @@ describe("buildDockMenuTemplate", () => {
     expect(onNewWindow).toHaveBeenCalledOnce();
   });
 });
+
+describe("Check for Updates", () => {
+  const withUpdates = { ...labels, checkForUpdates: "Check for Updates…", help: "Help" };
+
+  it("is absent from a build without an update feed", () => {
+    for (const platform of ["darwin", "win32", "linux"]) {
+      const items = flatten(buildMenuTemplate({ platform, isDev: false, labels: withUpdates, ...quiet }));
+      expect(items.some((item) => item.label === "Check for Updates…"), platform).toBe(false);
+      expect(items.some((item) => item.label === "Help"), platform).toBe(false);
+    }
+  });
+
+  it("sits in the app menu on macOS", () => {
+    const onCheckForUpdates = vi.fn();
+    const template = buildMenuTemplate({ platform: "darwin", isDev: false, labels: withUpdates, ...quiet, onCheckForUpdates });
+    const item = flatten(template.slice(0, 1)).find((entry) => entry.label === "Check for Updates…");
+    item?.click?.({} as never, undefined, {});
+    expect(onCheckForUpdates).toHaveBeenCalledOnce();
+  });
+
+  it.each(["win32", "linux"])("sits in a Help menu on %s", (platform) => {
+    const onCheckForUpdates = vi.fn();
+    const template = buildMenuTemplate({ platform, isDev: false, labels: withUpdates, ...quiet, onCheckForUpdates });
+    const help = template.find((menu) => menu.label === "Help");
+    const item = (help?.submenu as MenuItemConstructorOptions[] | undefined)?.find((entry) => entry.label === "Check for Updates…");
+    item?.click?.({} as never, undefined, {});
+    expect(onCheckForUpdates).toHaveBeenCalledOnce();
+  });
+});

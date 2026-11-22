@@ -4604,12 +4604,22 @@
       "file": "檔案",
       "back": "上一頁",
       "forward": "下一頁",
-      "newWindow": "新增視窗"
+      "newWindow": "新增視窗",
+      "checkForUpdates": "檢查更新…",
+      "help": "說明"
     },
     "leave": {
       "message": "有尚未儲存的變更，確定要離開嗎？",
       "leave": "離開",
       "stay": "留下"
+    },
+    "updates": {
+      "ready": "新版本 {version} 已就緒",
+      "readyDetail": "現在重新啟動 {product} 即可安裝，或在下次結束時自動安裝。",
+      "restart": "立即重新啟動",
+      "later": "稍後",
+      "upToDate": "{product} 已是最新版本",
+      "failed": "無法檢查更新"
     }
   }
 }
