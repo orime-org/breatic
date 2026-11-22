@@ -265,7 +265,7 @@ quote_debounce_ms: 300
 # The worker consumes the accepted profile; later config changes apply to new runs.
 analyses:
   scene_cuts:
-    container_class: "MiniToolContainerStd4"
+    container_class: "MiniToolContainerStd1"
     precheck_seconds: 300
     profile:
       id: "pyscenedetect-content"

@@ -68,8 +68,8 @@ describe('platform presentation container configuration (inner#1306)', () => {
       max_edit_bytes: 16000000000, edit: { crf: 15, preset: 'medium', prores_profile: '4444', bytes_per_pixel: 0.5 } });
   });
 
-  // ING-3: the edit stitch downloads every edit chunk and a later tool run downloads the whole edit file, both on the standard-4
-  // disk (20 GB, decimal); the cap leaves that disk a 4 GB working margin, so an edit file that passes admission also fits there.
+  // ING-3: the edit stitch downloads every edit chunk to the standard-4 disk (20 GB, decimal); the cap leaves that disk a
+  // 4 GB working margin, so an edit file that passes admission can be stitched there.
   it('FG-C03 caps the edit file at the standard-4 disk less its 4 GB working margin, and refuses a larger estimate up front', () => {
     const config = getMiniToolsConfig();
     const disk = config.classes.MiniToolContainerStd4!.disk_gb * 1_000_000_000;
@@ -80,13 +80,18 @@ describe('platform presentation container configuration (inner#1306)', () => {
     expect(editFileSizeFailure({ ...estimate, frameCount: 15_000, maxEditBytes: config.presentation.max_edit_bytes }), 'an estimate under the cap is admitted').toBeNull();
   });
 
-  // Every video execution, every analysis and the encoder read the tool source whole, and the tool source is the edit file
-  // when there is one, so each of their classes must hold a capped edit file plus the cap's 4 GB working margin.
-  // Video executions and analyses read the tool source through the loopback reader; only the edit stitch downloads it.
+  // Only the edit stitch downloads chunks to disk, so only its class must hold a capped edit file plus the cap's 4 GB working
+  // margin. Video executions and analyses read the tool source in place through the loopback reader.
   it('FG-C04 runs the edit stitch, which downloads every edit chunk, on a class whose disk holds the cap and its margin', () => {
     const config = getMiniToolsConfig();
     const disk = config.classes[config.encoding.encoder.container_class]!.disk_gb * 1_000_000_000;
     expect(disk, 'the encoder class holds a capped edit file and its margin').toBeGreaterThanOrEqual(config.presentation.max_edit_bytes + 4_000_000_000);
+  });
+
+  // Scene detection reads the tool source in place and pipes its frames to the detector, so nothing large lands on its
+  // disk; it is charged to the user, so it runs on standard-1 rather than the edit stitch's standard-4.
+  it('FG-C05 runs scene detection on standard-1', () => {
+    expect(getMiniToolsConfig().analyses.scene_cuts.container_class).toBe('MiniToolContainerStd1');
   });
 
   it('rejects a presentation class whose actual instance size is not configured', () => {
