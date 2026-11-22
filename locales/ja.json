@@ -1045,6 +1045,8 @@
       "integerBlank": "空欄で自動",
       "ownKeyLabel": "あなたのキー",
       "studioKeyLabel": "Studio のキー",
+      "ownKeyLabelDescribing": "あなたのキー + クレジット",
+      "studioKeyLabelDescribing": "Studio のキー + クレジット",
       "usesOwnKey": "あなたのキーを使用、クレジット消費なし",
       "usesStudioKey": "Studio のキーを使用、クレジット消費なし",
       "usesOwnKeyDescribing": "あなたのキーを使用、要素の説明はクレジットを消費",

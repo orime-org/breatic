@@ -1045,6 +1045,8 @@
       "integerBlank": "留空为自动",
       "ownKeyLabel": "你的 key",
       "studioKeyLabel": "Studio 的 key",
+      "ownKeyLabelDescribing": "你的 key + 积分",
+      "studioKeyLabelDescribing": "Studio 的 key + 积分",
       "usesOwnKey": "用你的 key，不扣积分",
       "usesStudioKey": "用 Studio 的 key，不扣积分",
       "usesOwnKeyDescribing": "用你的 key；描述元素用积分",

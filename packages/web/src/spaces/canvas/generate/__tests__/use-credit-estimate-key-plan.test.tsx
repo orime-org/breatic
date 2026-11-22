@@ -170,7 +170,8 @@ describe('useRunCheck — the key plan (inner#1953)', () => {
     serve({ payer: 'self', llm: { usesAccountKey: false }, models: { describing: ON_WAVESPEED } });
     const { result } = renderHook(() => useRunCheck(DESCRIBING, WITH_ELEMENT, 1, PROJECT), { wrapper: wrapper() });
 
-    await waitFor(() => expect(result.current.creditText).toBe('Your key'));
+    // The visible label says credits are taken, so a charged run never reads like one that takes none.
+    await waitFor(() => expect(result.current.creditText).toBe('Your key + credits'));
     expect(result.current.creditDetail).toBe('Uses your key; describing elements takes credits');
   });
 
@@ -178,7 +179,7 @@ describe('useRunCheck — the key plan (inner#1953)', () => {
     serve({ payer: 'admin', llm: { usesAccountKey: false }, models: { describing: ON_WAVESPEED } });
     const { result } = renderHook(() => useRunCheck(DESCRIBING, WITH_ELEMENT, 1, PROJECT), { wrapper: wrapper() });
 
-    await waitFor(() => expect(result.current.creditText).toBe('Studio key'));
+    await waitFor(() => expect(result.current.creditText).toBe('Studio key + credits'));
     expect(result.current.creditDetail).toBe('Uses the Studio\'s key; describing elements takes credits');
   });
 

@@ -1008,8 +1008,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.generatePanel.studioKeyLabel"))} for everyone else, and the run takes no credits; hovering it ` +
       `reads ${quoted(t("canvas.generatePanel.usesOwnKey"))} or ${quoted(t("canvas.generatePanel.usesStudioKey"))}. A run that ` +
       "first describes its elements on a language model (Kling O3 with elements) pays for that description in credits " +
-      `unless the payer also brought an OpenRouter key; hovering it then reads ${quoted(t("canvas.generatePanel.usesOwnKeyDescribing"))} ` +
-      `or ${quoted(t("canvas.generatePanel.usesStudioKeyDescribing"))}.`,
+      `unless the payer also brought an OpenRouter key; the key mark then reads ${quoted(t("canvas.generatePanel.ownKeyLabelDescribing"))} ` +
+      `or ${quoted(t("canvas.generatePanel.studioKeyLabelDescribing"))}, and hovering it reads ` +
+      `${quoted(t("canvas.generatePanel.usesOwnKeyDescribing"))} or ${quoted(t("canvas.generatePanel.usesStudioKeyDescribing"))}.`,
     `Bringing your own keys: ${quoted(t("byok.heading"))} in the account menu on the studio pages opens a ` +
       "dialog where an account adds its own keys for upstreams (one OpenRouter key runs every language model; " +
       "keys for other upstreams run picture, video, sound and 3D models) and picks, model by model, which upstream " +
