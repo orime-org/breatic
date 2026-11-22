@@ -2,21 +2,26 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * What a pending media block shows (inner#1351 + inner#1390 design §5.5): one
- * row of the display table, from what this page knows about the upload and
- * what other clients claim in awareness.
+ * What a pending media block shows (inner#1351 + inner#1390 design §5.5,
+ * breatic#1574 design 3.6): one row of the display table, from what collab
+ * wrote onto the block, what this page knows about the upload and what other
+ * clients claim in awareness.
  */
+
+import type { PendingFailureReason } from '@breatic/shared';
 
 import type { WriteAccess } from '@web/data/yjs/collab-socket';
 import type { UploadClaim } from '@web/lib/upload-claims';
-import type { UploadEntry, UploadFailure } from '@web/spaces/document/document-upload-controller';
+import { canRetry, type UploadEntry, type UploadFailure } from '@web/spaces/document/document-upload-controller';
 
 /** What a pending block shows. */
 export type PendingStatus =
   /** This page is running it; `progress` is the share sent when known. */
   | { readonly kind: 'uploading'; readonly progress: number | null }
-  /** This page ran it and it failed. */
-  | { readonly kind: 'failed'; readonly failure: UploadFailure }
+  /** It failed, here or on the server; `retry` where this page holds the source and running it again can help. */
+  | { readonly kind: 'failed'; readonly failure: UploadFailure; readonly retry: boolean }
+  /** The server has it and has not ended it; whether it ran out of time is the server's to settle, as on a canvas node. */
+  | { readonly kind: 'processing' }
   /** This page has the result and was demoted to read-only. */
   | { readonly kind: 'waitingDemoted' }
   /** This page has the result and the server refused it. */
@@ -30,6 +35,16 @@ export type PendingStatus =
   /** Nobody claims it. */
   | { readonly kind: 'notFinished' };
 
+/** What collab wrote onto the block, and whether its upload belongs to another Document. */
+export interface PendingBlockFacts {
+  /** `processing` or `failed`, written by collab; empty before the server took the upload. */
+  readonly state: '' | 'processing' | 'failed';
+  readonly failure?: PendingFailureReason;
+  readonly retryable?: boolean;
+  /** The block's `uploadHome` is not this Document (another Document's, or empty on a block written before breatic#1574): collab never writes its ending here. */
+  readonly foreign: boolean;
+}
+
 /** What {@link pendingStatus} decides from. */
 export interface PendingFacts {
   /** This page's record of the upload, if it ran it. */
@@ -42,6 +57,8 @@ export interface PendingFacts {
   readonly claim: UploadClaim | null;
   /** Whether the Space is full or over its ceiling, outside a rebuild. */
   readonly full?: boolean;
+  /** What collab wrote onto the block; absent where the block is not read. */
+  readonly block?: PendingBlockFacts;
 }
 
 /**
@@ -50,9 +67,17 @@ export interface PendingFacts {
  * @returns What the block shows.
  */
 export function pendingStatus(facts: PendingFacts): PendingStatus {
-  const { entry } = facts;
+  const { entry, block } = facts;
+  if (block?.foreign === true) return { kind: 'notFinished' };
+  if (block?.state === 'failed') {
+    const failure: UploadFailure = { reason: block.failure ?? 'failed', retryable: block.retryable ?? true };
+    // A Retry is offered only where this page would run it.
+    return { kind: 'failed', failure, retry: entry !== undefined && canRetry(entry) && failure.retryable };
+  }
+  if (block?.state === 'processing') return { kind: 'processing' };
   if (entry !== undefined) {
-    if (entry.phase === 'failed') return { kind: 'failed', failure: entry.failure };
+    if (entry.phase === 'handedOff') return { kind: 'processing' };
+    if (entry.phase === 'failed') return { kind: 'failed', failure: entry.failure, retry: canRetry(entry) };
     if (entry.phase === 'done' && facts.access === 'denied') {
       return facts.refused ? { kind: 'waitingRefused' } : { kind: 'waitingDemoted' };
     }

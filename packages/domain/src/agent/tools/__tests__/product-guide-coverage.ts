@@ -10,6 +10,8 @@
  * screens fails the coverage test until someone decides where it belongs.
  */
 
+import { TEMPLATE_STYLE_SETS, templateStyleKey } from "@breatic/shared";
+
 /** Why a message is not in the guide. */
 export const REASONS = {
   SCREEN_READER: "Only a screen reader announces it; the guide describes the control by how it looks.",
@@ -53,8 +55,29 @@ interface Excluded {
   look?: RegExp;
 }
 
+/**
+ * Every style set's words (inner#1817): category headings and style names are the third level of the template
+ * menu, and a style's parts are the paragraph picking it writes into the prompt.
+ */
+const STYLE_SET_WORDS: Readonly<Record<string, Described>> = Object.fromEntries(
+  TEMPLATE_STYLE_SETS.flatMap((set) => [
+    ...(set.categories ?? []).map((category) => [
+      `canvas.template.styleSet.${set.id}.category.${category}`,
+      { described: /opens one more list, its styles, under headings/ },
+    ]),
+    ...set.styles.flatMap((style) => [
+      [templateStyleKey(set.id, style.id, "name"), { described: /opens one more list, its styles/ }],
+      ...set.parts.map((part) => [
+        templateStyleKey(set.id, style.id, part),
+        { described: /writes that style's description as a paragraph after the template's own words/ },
+      ]),
+    ]),
+  ]),
+);
+
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
+  ...STYLE_SET_WORDS,
   // inner#1968: waiting for a running-task slot, and the spend-limit refusals.
   "canvas.task.waitReason": { described: /starts by itself when an earlier one ends|waits its turn/ },
   "canvas.task.waitReasonOther": { described: /a row someone else started says so of that person/ },
@@ -613,6 +636,26 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.template.anime-opening-15s.shot.3": { described: /writes the shots in place of the prompt, each with its seconds and its words/ },
   "canvas.template.anime-opening-15s.shot.4": { described: /writes the shots in place of the prompt, each with its seconds and its words/ },
   "canvas.template.anime-opening-15s.shot.5": { described: /writes the shots in place of the prompt, each with its seconds and its words/ },
+  "canvas.template.film-style-still.input.subject.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.film-style-still.input.subject.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.film-style-still.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.film-style-shot.input.subject.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.film-style-shot.input.subject.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.film-style-shot.node.still.name": { described: /for one of the model's slots, such as the first or end frame, the character or the audio the face speaks, is connected but not @'d/ },
+  "canvas.template.film-style-shot.node.still.prompt": { described: /for one of the model's slots, such as the first or end frame, the character or the audio the face speaks, is connected but not @'d/ },
+  "canvas.template.film-style-shot.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.era-walkthrough-montage.input.character.name": { described: /an empty node is placed to the left, connected and @'d/ },
+  "canvas.template.era-walkthrough-montage.input.character.note": { described: /a note at the top of the prompt says what to put in it/ },
+  "canvas.template.era-walkthrough-montage.node.silent.name": { described: /place picture, video or sound nodes to the left that generate first, connected and @'d/ },
+  "canvas.template.era-walkthrough-montage.node.silent.prompt": { described: /place picture, video or sound nodes to the left that generate first, connected and @'d/ },
+  "canvas.template.era-walkthrough-montage.node.widescreen.name": { described: /place picture, video or sound nodes to the left that generate first, connected and @'d/ },
+  "canvas.template.era-walkthrough-montage.node.widescreen.prompt": { described: /place picture, video or sound nodes to the left that generate first, connected and @'d/ },
+  "canvas.template.era-walkthrough-montage.node.nineties.name": { described: /place picture, video or sound nodes to the left that generate first, connected and @'d/ },
+  "canvas.template.era-walkthrough-montage.node.nineties.prompt": { described: /place picture, video or sound nodes to the left that generate first, connected and @'d/ },
+  "canvas.template.era-walkthrough-montage.node.today.name": { described: /place picture, video or sound nodes to the left that generate first, connected and @'d/ },
+  "canvas.template.era-walkthrough-montage.node.today.prompt": { described: /place picture, video or sound nodes to the left that generate first, connected and @'d/ },
+  "canvas.template.era-walkthrough-montage.prompt": { described: /replaces that mode's prompt with the template's/ },
+  "canvas.template.style-sound-bed.prompt": { described: /replaces that mode's prompt with the template's/ },
   "canvas.template.storyboard-sheet-9.input.character.name": { described: /an empty node is placed to the left, connected and @'d/ },
   "canvas.template.storyboard-sheet-9.input.character.note": { described: /a note at the top of the prompt says what to put in it/ },
   "canvas.template.storyboard-sheet-9.prompt": { described: /replaces that mode's prompt with the template's/ },
@@ -1004,7 +1047,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chrome.tooltip.revealActiveTab": { excluded: REASONS.SCREEN_READER, look: /a crosshair button scrolls the current tab into view/ },
   "chrome.tooltip.share": { excluded: REASONS.SCREEN_READER, look: /a person icon with a plus/ },
   "common.clipboardError": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "common.loading": { excluded: REASONS.PASSING },
   "common.mediaViewer.close": { excluded: REASONS.SCREEN_READER, look: /an X at the top right of the screen closes it/ },
   "common.mediaViewer.loadFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "common.pageUnavailable.action": { excluded: REASONS.SAYS_TRY_AGAIN },

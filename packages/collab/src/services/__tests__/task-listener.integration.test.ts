@@ -20,7 +20,7 @@ import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/re
 
 import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
 import { eq } from "drizzle-orm";
-import { CANVAS_NODES_KEY, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, webAnimationSpaceDocName, type NodeTaskCountsEvent } from "@breatic/shared";
+import { CANVAS_NODES_KEY, documentBodyFragment, documentSpaceDocName, SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, webAnimationSpaceDocName, type DocumentUploadEvent, type NodeTaskCountsEvent } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import {
@@ -861,6 +861,121 @@ describe("task events across two collab instances", () => {
     await untilUnloaded(c.docName);
     expect(await yjsRepo.fetchDocData(c.docName)).toBeNull();
     expect(await yjsRepo.restoreByName(c.docName)).toBe(false);
+  });
+});
+
+/**
+ * A fresh stream and key prefix, and a Document whose body holds one image waiting for an upload.
+ * @param padding - Characters of paragraph text added after it, to make the document large.
+ * @returns The case's names.
+ */
+async function newDocumentUploadCase(padding = 0): Promise<Case> {
+  const c = bareCase(documentSpaceDocName(PID, randomUUID()));
+  const doc = new Y.Doc();
+  const group = new Y.XmlElement("blockGroup");
+  documentBodyFragment(doc).insert(0, [group]);
+  const media = new Y.XmlElement("image");
+  media.setAttribute("uploadId", "u1");
+  media.setAttribute("uploadHome", c.docName);
+  media.setAttribute("url", "");
+  // The editor writes every declared prop, so a fresh block holds these empty.
+  media.setAttribute("uploadState", "");
+  media.setAttribute("uploadFailure", "");
+  const container = new Y.XmlElement("blockContainer");
+  container.insert(0, [media]);
+  group.insert(0, [container]);
+  if (padding > 0) {
+    const paragraph = new Y.XmlElement("paragraph");
+    paragraph.insert(0, [new Y.XmlText("x".repeat(padding))]);
+    const textContainer = new Y.XmlElement("blockContainer");
+    textContainer.insert(0, [paragraph]);
+    group.insert(1, [textContainer]);
+  }
+  doc.getMap("probe").set("note", "body");
+  await yjsRepo.seedInitialState(c.docName, Y.encodeStateAsUpdate(doc));
+  return c;
+}
+
+/**
+ * Publish Document upload events.
+ * @param c - The case.
+ * @param events - The events, completed with the case's document name.
+ * @returns Their stream ids.
+ */
+async function publishDocumentUpload(c: Case, events: Array<Omit<DocumentUploadEvent, "type" | "docName">>): Promise<string[]> {
+  const ids: string[] = [];
+  for (const event of events) {
+    const payload = JSON.stringify({ type: "document-upload", docName: c.docName, ...event });
+    ids.push((await stream.xadd(c.streamKey, "*", "payload", payload))!);
+  }
+  return ids;
+}
+
+/**
+ * The image's attributes as the stored document holds them.
+ * @param docName - The document.
+ * @returns The attributes.
+ */
+async function readImage(docName: string): Promise<Record<string, unknown>> {
+  const conn = await instanceA.openDirectConnection(docName, { context: { user: { id: "test" } } });
+  try {
+    const group = documentBodyFragment(conn.document!).get(0) as Y.XmlElement;
+    const media = (group.get(0) as Y.XmlElement).get(0) as Y.XmlElement;
+    return { ...media.getAttributes() };
+  } finally {
+    await conn.disconnect();
+  }
+}
+
+describe("Document upload events (breatic#1574)", () => {
+  const COMPLETED = { uploadId: "u1", state: "completed" as const, result: { url: "https://cdn.example/a.png", mediaWidth: 8, mediaHeight: 6 } };
+
+  it("writes the processing state and then the result into the block waiting for the upload", async () => {
+    const c = await newDocumentUploadCase();
+    const ids = await publishDocumentUpload(c, [{ uploadId: "u1", state: "processing" }, COMPLETED]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readImage(c.docName)).toMatchObject({ url: "https://cdn.example/a.png", mediaWidth: 8, mediaHeight: 6, uploadId: "" });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("writes into a Document over the size limit the editor enforces", async () => {
+    const c = await newDocumentUploadCase(12_000_000);
+    const ids = await publishDocumentUpload(c, [COMPLETED]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids), 60_000);
+    expect(await readImage(c.docName)).toMatchObject({ url: "https://cdn.example/a.png" });
+  }, 90_000);
+
+  it("writes nothing for an upload no block in the Document waits for", async () => {
+    const c = await newDocumentUploadCase();
+    const ids = await publishDocumentUpload(c, [{ ...COMPLETED, uploadId: "someone-else" }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readImage(c.docName)).toMatchObject({ url: "", uploadId: "u1", uploadState: "" });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("lands the same block for an ending delivered twice and a processing that arrives after it", async () => {
+    const c = await newDocumentUploadCase();
+    const ids = await publishDocumentUpload(c, [COMPLETED, COMPLETED, { uploadId: "u1", state: "processing" }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    const image = await readImage(c.docName);
+    expect(image).toMatchObject({ url: "https://cdn.example/a.png", mediaWidth: 8, mediaHeight: 6, uploadId: "" });
+    expect(image).not.toHaveProperty("uploadState");
+  });
+
+  it("leaves a deleted Document's stored content as it was", async () => {
+    const c = await newDocumentUploadCase();
+    expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
+    const ids = await publishDocumentUpload(c, [COMPLETED]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await yjsRepo.restoreByName(c.docName)).toBe(true);
+    expect(await readImage(c.docName)).toMatchObject({ url: "", uploadId: "u1" });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 });
 
