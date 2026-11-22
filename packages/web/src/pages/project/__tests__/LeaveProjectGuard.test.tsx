@@ -90,6 +90,15 @@ describe('LeaveProjectGuard (#1787)', () => {
     expect(unload.defaultPrevented).toBe(true);
   });
 
+  it('says an upload, edit or run has not finished while a press waits', async () => {
+    blocker.state = 'blocked';
+    render(<LeaveProjectGuard />);
+    expect(screen.getByText('project.leaveGuard.completeTitle')).toBeInTheDocument();
+    void runOnce('press-1', { scope: 'timeline-execution', prepare: async () => ({}), send: () => new Promise(() => {}) });
+    expect(await screen.findByText('project.leaveGuard.title')).toBeInTheDocument();
+    expect(screen.getByText('project.leaveGuard.description')).toBeInTheDocument();
+  });
+
   it('lets a press whose answer sends the page away leave without asking', async () => {
     render(<LeaveProjectGuard />);
     const args = { currentLocation: { pathname: '/project/p' }, nextLocation: { pathname: '/studio' } };
