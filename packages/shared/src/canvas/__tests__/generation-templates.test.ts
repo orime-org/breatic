@@ -209,6 +209,9 @@ const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-pan
 /** The fight and action templates (inner#1818), in registry order. */
 const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked', 'hero-orbit-reveal', 'bullet-time-moment', 'impact-frame-hit'];
 
+/** The templates that remix videos the user already has (inner#1819), in registry order. */
+const VIDEO_REMIX = ['reference-video-remix', 'seamless-bridge'];
+
 /** The film style templates (inner#1817), in registry order. */
 const FILM_STYLES = ['film-style-still', 'film-style-shot', 'era-walkthrough-montage', 'style-sound-bed'];
 
@@ -371,6 +374,7 @@ describe('generation templates', () => {
       'era-walkthrough-montage',
       ...SPEED,
       'clip-ambience-foley',
+      ...VIDEO_REMIX,
     ]);
     // inner#1825 changes this contract: audio had no template until the sound goal.
     expect(templatesFor('audio').map((t) => t.id)).toEqual(['style-sound-bed', ...SOUND_AUDIO]);
@@ -538,6 +542,8 @@ describe('generation templates', () => {
       },
       'bullet-time-moment': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 6 } } },
       'impact-frame-hit': t2v(10, '16:9'),
+      'reference-video-remix': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 10 } } },
+      'seamless-bridge': t2v(5, '16:9'),
       'vehicle-speed-cutlist': t2v(12, '16:9'),
       'sports-live-coverage': t2v(12, '16:9'),
       'extreme-sports-run': t2v(10),
@@ -643,7 +649,7 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'speed', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'speed', 'sound', 'video-remix']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
@@ -659,6 +665,7 @@ describe('creative goals and triggers', () => {
       ...Object.fromEntries(FILM_STYLES.map((id) => [id, 'film-styles'])),
       ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
+      ...Object.fromEntries(VIDEO_REMIX.map((id) => [id, 'video-remix'])),
       ...Object.fromEntries(['storyboard-grid-25', ...COMICS].map((id) => [id, 'comics-storyboards'])),
       'costume-sheet': 'character',
       'character-bible': 'character',
@@ -723,6 +730,7 @@ describe('creative goals and triggers', () => {
       ['film-styles', ['film-style-shot', 'era-walkthrough-montage']],
       ['speed', SPEED],
       ['sound', ['clip-ambience-foley']],
+      ['video-remix', VIDEO_REMIX],
     ]);
     expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['film-styles', ['style-sound-bed']],
@@ -1320,9 +1328,8 @@ describe('sound, music and voice templates (inner#1825)', () => {
    */
   const settingsOf = (node: TemplateGenerateNode): Settings => ({ type: node.type, mode: node.mode, model: node.model });
 
-  it('registers all eleven under the sound goal, which the panels list last', () => {
+  it('registers all eleven under the sound goal', () => {
     for (const id of SOUND) expect(byId(id)?.goal, id).toBe('sound');
-    expect(TEMPLATE_GOALS[TEMPLATE_GOALS.length - 1]).toBe('sound');
   });
 
   it('anchors each on the node type, mode, model and params the design gives', () => {
