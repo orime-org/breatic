@@ -81,8 +81,10 @@ import { PRODUCT_PARTICLE_REVEAL } from "@shared/canvas/templates/product-partic
 import { PRODUCT_STATE_CHANGE } from "@shared/canvas/templates/product-state-change.js";
 import { PRODUCT_TURNTABLE_360 } from "@shared/canvas/templates/product-turntable-360.js";
 import { RECIPE_PROCESS_MONTAGE } from "@shared/canvas/templates/recipe-process-montage.js";
+import { REFERENCE_VIDEO_REMIX } from "@shared/canvas/templates/reference-video-remix.js";
 import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
 import { SCORE_FOR_MY_VIDEO } from "@shared/canvas/templates/score-for-my-video.js";
+import { SEAMLESS_BRIDGE } from "@shared/canvas/templates/seamless-bridge.js";
 import { SECTION_MAPPED_SCORE } from "@shared/canvas/templates/section-mapped-score.js";
 import { SINGLE_VIEW_REFS_SCENE } from "@shared/canvas/templates/single-view-refs-scene.js";
 import { SONG_COVER } from "@shared/canvas/templates/song-cover.js";
@@ -112,7 +114,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "speed", "sound", "video-remix"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -314,6 +316,8 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   MUSIC_MOOD_FROM_IMAGE,
   CLIP_AMBIENCE_FOLEY,
   SECTION_MAPPED_SCORE,
+  REFERENCE_VIDEO_REMIX,
+  SEAMLESS_BRIDGE,
 ];
 
 /**
