@@ -119,6 +119,33 @@ describe('watchPendingFocusUploads', () => {
     stop();
   });
 
+  it('E-13 keeps the entry while nothing arrives, and drops it when a later sync brings the image', () => {
+    const doc = canvasDoc(['n1']);
+    const session = createCanvasSessionStore();
+    session.getState().addPendingFocusUpload({ id: 'crop-1', nodeId: 'n1', name: 'S' });
+    const stop = watchPendingFocusUploads(doc, session);
+    const offline = new Y.Doc();
+    Y.applyUpdate(offline, Y.encodeStateAsUpdate(doc));
+    addImage(offline, 'n1', 'crop-1');
+    expect(pendingFor(session, 'n1')).toEqual(['crop-1']);
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(offline, Y.encodeStateVector(doc)));
+    expect(pendingFor(session, 'n1')).toEqual([]);
+    stop();
+  });
+
+  it('E-15 and E-17 leave the entries alone on an unrelated update, an entry that never had a key included', () => {
+    const doc = canvasDoc(['n1', 'n2']);
+    const session = createCanvasSessionStore();
+    session.getState().addPendingFocusUpload({ id: 'crop-1', nodeId: 'n1', name: 'S' });
+    session.getState().addPendingFocusUpload({ id: 'crop-dedup', nodeId: 'n2', name: 'S' });
+    const stop = watchPendingFocusUploads(doc, session);
+    remote(doc, (peer) => addImage(peer, 'n1', 'crop-1'));
+    expect(() => remote(doc, (peer) => ((peer.getMap(CANVAS_NODES_KEY).get('n2') as Y.Map<unknown>).get('data') as Y.Map<unknown>).set('prompt', 'x'))).not.toThrow();
+    expect(pendingFor(session, 'n1')).toEqual([]);
+    expect(pendingFor(session, 'n2')).toEqual(['crop-dedup']);
+    stop();
+  });
+
   it('E-12 stops watching when stopped', () => {
     const doc = canvasDoc(['n1']);
     const session = createCanvasSessionStore();
