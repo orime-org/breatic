@@ -208,7 +208,7 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
       <BarButton testId='motion-action-place-on-canvas' label={t('spaces.webAnimation.placeOnCanvas')} icon={PLACE_ICON}
         loading={waiting} disabled={asset === undefined} />
     </DropdownMenuTrigger>
-    <DropdownMenuContent side='top' align='start' sideOffset={BAR_MENU_OFFSET} className='w-52'>
+    <DropdownMenuContent side='top' align='start' sideOffset={BAR_MENU_OFFSET} className='w-max min-w-40 max-w-72'>
       <DropdownMenuLabel>{t('spaces.webAnimation.chooseCanvas')}</DropdownMenuLabel>
       {canvases.map((canvas) => <DropdownMenuItem key={canvas.id} data-testid={`motion-canvas-${canvas.id}`} onSelect={() => { setOpen(false); choose(canvas); }}>
         <span className='truncate'>{canvas.name}</span>
