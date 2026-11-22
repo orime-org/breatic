@@ -13,10 +13,18 @@ import * as React from 'react';
 
 import { DocumentPendingMedia } from '@web/spaces/document/DocumentPendingMedia';
 import type { MediaBlockActions, MediaBlockProps } from '@web/spaces/document/DocumentMediaBlock';
-import { pendingStatus, type PendingFacts, type PendingStatus } from '@web/spaces/document/document-pending-status';
+import {
+  pendingStatus,
+  type PendingBlockFacts,
+  type PendingFacts,
+  type PendingStatus,
+} from '@web/spaces/document/document-pending-status';
+import { uploadLandsIn } from '@web/spaces/document/document-uploads';
 
 /** What a body's pending blocks read from. */
 export interface PendingUploadsStore {
+  /** The body's document name, which a block's `uploadHome` is checked against; null when it is not known. */
+  readonly docName: string | null;
   /** What this page knows about an upload, read now. */
   factsOf: (uploadId: string) => PendingFacts;
   /**
@@ -29,6 +37,7 @@ export interface PendingUploadsStore {
 }
 
 const NOTHING_KNOWN: PendingUploadsStore = {
+  docName: null,
   factsOf: () => ({ entry: undefined, access: 'unknown', refused: false, claim: null }),
   subscribe: () => () => {},
   retry: () => {},
@@ -38,15 +47,34 @@ const NOTHING_KNOWN: PendingUploadsStore = {
 export const PendingUploadsContext = React.createContext<PendingUploadsStore>(NOTHING_KNOWN);
 
 /**
+ * What collab wrote onto a block, as the display reads it.
+ * @param props - The block's props.
+ * @param docName - The body's document name.
+ * @returns The facts.
+ */
+function blockFactsOf(props: MediaBlockProps, docName: string | null): PendingBlockFacts {
+  const state = props.uploadState === 'processing' || props.uploadState === 'failed' ? props.uploadState : '';
+  return {
+    state,
+    ...(props.uploadFailure !== undefined && props.uploadFailure !== '' && { failure: props.uploadFailure as PendingBlockFacts['failure'] }),
+    ...(props.uploadRetryable !== undefined && { retryable: props.uploadRetryable }),
+    foreign: !uploadLandsIn(props.uploadHome, docName),
+  };
+}
+
+/**
  * What a pending block shows, kept current.
- * @param uploadId - The block's upload id.
+ * @param props - The block's props.
  * @returns Its status.
  */
-function usePendingStatus(uploadId: string): PendingStatus {
+function usePendingStatus(props: MediaBlockProps): PendingStatus {
   const store = React.useContext(PendingUploadsContext);
+  const block = blockFactsOf(props, store.docName);
+  const blockKey = JSON.stringify(block);
   const snapshot = React.useCallback(
-    (): string => JSON.stringify(pendingStatus(store.factsOf(uploadId))),
-    [store, uploadId],
+    (): string =>
+      JSON.stringify(pendingStatus({ ...store.factsOf(props.uploadId), block: JSON.parse(blockKey) as PendingBlockFacts })),
+    [store, props.uploadId, blockKey],
   );
   const key = React.useSyncExternalStore(store.subscribe, snapshot);
   return React.useMemo(() => JSON.parse(key) as PendingStatus, [key]);
@@ -70,7 +98,7 @@ export const DocumentPendingMediaBlock = React.memo(function DocumentPendingMedi
   actions,
 }: DocumentPendingMediaBlockProps): React.JSX.Element {
   const store = React.useContext(PendingUploadsContext);
-  const status = usePendingStatus(props.uploadId);
+  const status = usePendingStatus(props);
   const onRetry = React.useCallback((): void => {
     store.retry(props.uploadId);
   }, [store, props.uploadId]);

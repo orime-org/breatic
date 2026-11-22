@@ -3,17 +3,17 @@
 
 /**
  * Where a pending block's bytes come from and how each source ends
- * (inner#1351 + inner#1390 design §5.2, §5.3, §5.4): a file is uploaded, an
- * `https:` address is fetched by the ingest Worker one at a time, a `data:`
- * or `blob:` address is read here and uploaded, an address of ours is
- * registered with the others of the same paste in one request.
+ * (inner#1351 + inner#1390 design §5.2, §5.3, §5.4; breatic#1574): a file is
+ * handed to the server for its block, an `https:` address is handed to the
+ * ingest Worker one at a time, a `data:` or `blob:` address is read here and
+ * handed over as a file, an address of ours is registered with the others of
+ * the same paste in one request.
  */
 
 import { describe, it, expect, vi } from 'vitest';
 
 import { ApiException } from '@web/data/api/types';
-import { UploadFailedError, type StoredUpload } from '@web/data/upload/media-upload';
-import type { UploadEnding } from '@web/data/upload/upload-status';
+import { UploadFailedError } from '@web/data/upload/media-upload';
 import {
   createUploadSources,
   type UploadSourceDeps,
@@ -21,16 +21,6 @@ import {
 import type { UploadFailure, UploadOutcome } from '@web/spaces/document/document-upload-controller';
 
 const PREFIX = 'https://cdn.example/';
-
-/**
- * A stored upload.
- * @param fileUrl - Its address.
- * @param kind - What the server read it as.
- * @returns The record.
- */
-function stored(fileUrl: string, kind = 'image'): StoredUpload {
-  return { assetId: 'a1', fileUrl, kind, width: 640, height: 480 };
-}
 
 /**
  * Sources whose network the test answers.
@@ -42,13 +32,8 @@ function sources(overrides: Partial<UploadSourceDeps> = {}): {
   deps: UploadSourceDeps;
 } {
   const deps: UploadSourceDeps = {
-    uploadFile: vi.fn(async () => stored(`${PREFIX}up.png`)),
-    ingest: vi.fn(async () => 'key-1'),
-    waitForEnding: vi.fn(async (key: string): Promise<UploadEnding> => ({
-      key,
-      state: 'completed',
-      result: stored(`${PREFIX}fetched.png`),
-    })),
+    uploadFile: vi.fn(async () => {}),
+    ingest: vi.fn(async () => {}),
     register: vi.fn(async ({ urls, pairs }: Parameters<UploadSourceDeps['register']>[0]) =>
       Object.fromEntries([...urls, ...pairs.flatMap((p) => [p.url, p.cover])].map((u) => [u, `${u}?copy`])),
     ),
@@ -73,16 +58,16 @@ function failure(outcome: UploadOutcome): UploadFailure {
 }
 
 describe('a file', () => {
-  it('is uploaded, its progress passed on, and ends with the stored address and size', async () => {
-    const uploadFile = vi.fn(async (_file: File, onProgress: (share: number) => void) => {
+  it('is handed to the server for its block, its progress passed on, and this page is done with it', async () => {
+    const uploadFile = vi.fn(async (_file: File, _uploadId: string, onProgress: (share: number) => void) => {
       onProgress(0.5);
-      return stored(`${PREFIX}up.png`);
     });
     const { run } = sources({ uploadFile });
     const progress = vi.fn();
     const file = new File(['x'], 'a.png', { type: 'image/png' });
     const outcome = await run('u1', { kind: 'file', file }, progress);
-    expect(outcome).toEqual({ ok: true, result: { url: `${PREFIX}up.png`, mediaWidth: 640, mediaHeight: 480 } });
+    expect(outcome).toEqual({ ok: true, handedOff: true });
+    expect(uploadFile).toHaveBeenCalledWith(file, 'u1', expect.any(Function));
     expect(progress).toHaveBeenCalledWith(0.5);
   });
 
@@ -97,57 +82,21 @@ describe('a file', () => {
     const outcome = await run('u1', { kind: 'file', file: new File(['x'], 'a.png', { type: 'image/png' }) }, noProgress);
     expect(failure(outcome)).toEqual({ reason: 'failed', retryable: true });
   });
-
-  it('stored as something that is not a medium is refused as that type', async () => {
-    const { run } = sources({ uploadFile: vi.fn(async () => stored(`${PREFIX}x.pdf`, 'document')) });
-    const outcome = await run('u1', { kind: 'file', file: new File(['x'], 'a.png', { type: 'image/png' }) }, noProgress);
-    expect(failure(outcome)).toEqual({ reason: 'unsupportedType', retryable: false });
-  });
 });
 
 describe('an https address', () => {
-  it('is fetched by the ingest Worker and ends with what it stored', async () => {
+  it('is handed to the ingest Worker for its block, and this page is done with it', async () => {
     const { run, deps } = sources();
     const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
-    expect(deps.ingest).toHaveBeenCalledWith('https://imgs.example/x.jpg');
-    expect(deps.waitForEnding).toHaveBeenCalledWith('key-1');
-    expect(outcome).toEqual({ ok: true, result: { url: `${PREFIX}fetched.png`, mediaWidth: 640, mediaHeight: 480 } });
-  });
-
-  it.each([
-    ['source_unreachable', 'unreachable', true],
-    ['source_cut_off', 'failed', true],
-    ['internal', 'failed', true],
-    ['unsupported_type', 'unsupportedType', false],
-    ['over_cap', 'tooLarge', false],
-    ['empty', 'empty', false],
-  ])('whose fetch failed as %s says %s, retryable: %s', async (stored, reason, retryable) => {
-    const { run } = sources({
-      waitForEnding: vi.fn(async (key: string) => ({ key, state: 'failed' as const, reason: stored })),
-    });
-    const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
-    expect(failure(outcome)).toEqual({ reason, retryable });
-  });
-
-  it('whose fetch failed for a cause that is not ours says it failed and can be retried', async () => {
-    const { run } = sources({
-      waitForEnding: vi.fn(async (key: string) => ({ key, state: 'failed' as const, reason: 'something else' })),
-    });
-    const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
-    expect(failure(outcome)).toEqual({ reason: 'failed', retryable: true });
-  });
-
-  it('whose ending the server does not know fails and can be retried', async () => {
-    const { run } = sources({ waitForEnding: vi.fn(async (key: string) => ({ key, state: 'unknown' as const })) });
-    const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
-    expect(failure(outcome)).toEqual({ reason: 'failed', retryable: true });
+    expect(deps.ingest).toHaveBeenCalledWith('https://imgs.example/x.jpg', 'u1');
+    expect(outcome).toEqual({ ok: true, handedOff: true });
   });
 
   it('turned away for the rate waits as long as the server says, then is sent again', async () => {
     const ingest = vi
       .fn<UploadSourceDeps['ingest']>()
       .mockRejectedValueOnce(new ApiException({ status: 429, message: 'slow', retryAfterSeconds: 7 }))
-      .mockResolvedValueOnce('key-1');
+      .mockResolvedValueOnce(undefined);
     const { run, deps } = sources({ ingest });
     const outcome = await run('u1', { kind: 'address', url: 'https://imgs.example/x.jpg' }, noProgress);
     expect(deps.sleep).toHaveBeenCalledWith(7000);
@@ -169,20 +118,20 @@ describe('an https address', () => {
   });
 
   it('is sent only once the address before it has been taken', async () => {
-    let release!: (key: string) => void;
+    let release!: () => void;
     const ingest = vi
       .fn<UploadSourceDeps['ingest']>()
       .mockImplementationOnce(() => new Promise((resolve) => (release = resolve)))
-      .mockResolvedValueOnce('key-2');
+      .mockResolvedValueOnce(undefined);
     const { run } = sources({ ingest });
     const first = run('u1', { kind: 'address', url: 'https://imgs.example/1.jpg' }, noProgress);
     const second = run('u2', { kind: 'address', url: 'https://imgs.example/2.jpg' }, noProgress);
     await Promise.resolve();
     await Promise.resolve();
     expect(ingest).toHaveBeenCalledTimes(1);
-    release('key-1');
+    release();
     await Promise.all([first, second]);
-    expect(ingest).toHaveBeenNthCalledWith(2, 'https://imgs.example/2.jpg');
+    expect(ingest).toHaveBeenNthCalledWith(2, 'https://imgs.example/2.jpg', 'u2');
   });
 
   it('under our own prefix keeps its address and sends nothing', async () => {

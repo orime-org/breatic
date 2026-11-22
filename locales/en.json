@@ -1455,6 +1455,7 @@
       "title": "Templates",
       "empty": "No templates",
       "unavailable": "Unavailable",
+      "styleLoadFailed": "Styles didn't load. Refresh the page and try again.",
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
@@ -1465,6 +1466,7 @@
         "social-hooks": "Social hooks",
         "talking": "Talking and dialogue",
         "posters": "Posters & graphics",
+        "film-styles": "Famous film styles",
         "speed": "Motion & speed",
         "sound": "Sound, music & voice"
       },
@@ -2217,6 +2219,68 @@
             "note": "Add the photo first, then generate."
           }
         }
+      },
+      "film-style-still": {
+        "name": "Film style still",
+        "description": "Your subject redrawn as one scene in a classic style",
+        "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it is the scene written here, drawn in the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No watermark; lettering only where the style below calls for it.",
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a picture of your subject first, then generate."
+          }
+        }
+      },
+      "film-style-shot": {
+        "name": "Film style shot",
+        "description": "A styled still that then moves with the style's own camera",
+        "prompt": "(💡 Generate Styled still first, then set it as the First frame)A 5-second shot with sound that starts on the first frame and keeps the look of the style below in every frame: its medium, colour and texture never drift into another medium. What moves: {✏️ what moves, e.g. the coat lifts in the wind and gulls wheel overhead}. No text on screen beyond what the style below calls for.",
+        "node": {
+          "still": {
+            "name": "Styled still",
+            "prompt": "Redraw [📎 Subject] as one widescreen scene in the style below. Its face, shape and clothes stay recognisable at a glance; the place around it is the scene written here, drawn in the style: {✏️ the scene, e.g. standing on a windy harbour at dusk}. No watermark; lettering only where the style below calls for it."
+          }
+        },
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a picture of your subject first, then generate Styled still."
+          }
+        }
+      },
+      "era-walkthrough-montage": {
+        "name": "Through the eras",
+        "description": "One character walking through four eras of film",
+        "prompt": "(💡 Generate Silent era first)(💡 Generate Widescreen colour first)(💡 Generate 90s film first)(💡 Generate Today first)A 12-second widescreen video with sound in which [📎 Character] walks through four eras of film in order, about 3 seconds each: [📎 Silent era], then [📎 Widescreen colour], then [📎 90s film], then [📎 Today], each era's look exactly as in its picture. One continuous walk: each era gives way to the next as the character passes a doorway, a curtain or a flare of light, with no hard cut. Sound: the music of each era in turn, {✏️ the music, e.g. a piano rag, a lush orchestra, a guitar riff, a modern synth pulse}. No text on screen.",
+        "node": {
+          "silent": {
+            "name": "Silent era",
+            "prompt": "A widescreen still of [📎 Character] in a scene from a 1920s silent film: face and hair as in the picture, clothes of the period. Black and white with soft grain, gentle flicker and a round dark vignette; {✏️ the place, e.g. a city street with a streetcar}. No text."
+          },
+          "widescreen": {
+            "name": "Widescreen colour",
+            "prompt": "A widescreen still of [📎 Character] in a scene from a 1950s widescreen colour epic: face and hair as in the picture, clothes of the period. Saturated reds and teals, a painted-sky backdrop wherever the place shows sky, and glossy studio light; {✏️ the place, e.g. a grand hotel staircase}. No text."
+          },
+          "nineties": {
+            "name": "90s film",
+            "prompt": "A widescreen still of [📎 Character] in a scene from a 1990s film shot on 35 mm stock: face and hair as in the picture, clothes of the period. Warm grain, natural light and slightly muted colours; {✏️ the place, e.g. a neon-lit diner at night}. No text."
+          },
+          "today": {
+            "name": "Today",
+            "prompt": "A widescreen still of [📎 Character] in a scene from today's digital cinema: face and hair as in the picture, clothes of today. Crisp detail, shallow depth of field and a cool modern grade; {✏️ the place, e.g. a glass tower lobby}. No text."
+          }
+        },
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate the four eras."
+          }
+        }
+      },
+      "style-sound-bed": {
+        "name": "Style sound bed",
+        "description": "Music with no lyrics in the era and medium of a classic style",
+        "prompt": "A 30-second music bed with no lyrics, mood: {✏️ the mood, e.g. bright and playful}."
       },
       "vehicle-speed-cutlist": {
         "name": "Vehicle speed cut list",

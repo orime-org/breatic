@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * 0130 adds what the product needs to receive from the billing service
+ * 0131 adds what the product needs to receive from the billing service
  * (inner#1993 §4.2, §4.6): `payment_receipts`, `commerce_requests` and the
  * `commerce_outbox` pair. It only adds; the backfill gives every completed
  * payment its receipt, copied from the payment row, and nothing else.
@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
-const migration = new URL("../../../../core/src/db/migrations/0130_commerce_receiving.sql", import.meta.url);
+const migration = new URL("../../../../core/src/db/migrations/0131_commerce_receiving.sql", import.meta.url);
 let sql: ReturnType<typeof postgres>;
 let statements: string[];
 
@@ -30,7 +30,7 @@ class Rollback extends Error {}
 type Tx = postgres.TransactionSql;
 
 /**
- * Replay 0130 against payments seeded inside a transaction that always rolls back.
+ * Replay 0131 against payments seeded inside a transaction that always rolls back.
  * @param body - Seeds, applies and asserts.
  */
 async function replay(body: (tx: Tx) => Promise<void>): Promise<void> {
@@ -49,7 +49,7 @@ async function replay(body: (tx: Tx) => Promise<void>): Promise<void> {
 }
 
 /**
- * Run every statement of 0130.
+ * Run every statement of 0131.
  * @param tx - The replay transaction.
  */
 async function apply(tx: Tx): Promise<void> {
@@ -91,7 +91,7 @@ async function payment(
   return id;
 }
 
-describe("0130_commerce_receiving", () => {
+describe("0131_commerce_receiving", () => {
   it("gives every completed payment a receipt copied from it, and no other payment one", async () => {
     await replay(async (tx) => {
       const userId = await account(tx);

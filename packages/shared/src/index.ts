@@ -426,6 +426,7 @@ export {
   getLocale,
   getActiveLocale,
   getAvailableLocales,
+  mergeLocaleMessages,
   setLocaleMessages,
   setEveryLocaleMessages,
   EVERY_LOCALE_KEYS,
@@ -487,6 +488,21 @@ export {
   documentCommentThreads,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
+
+export {
+  applyDocumentUpload,
+  documentUploadFailure,
+  DOCUMENT_MEDIA_BLOCK_TYPES,
+  landDocumentUpload,
+  UPLOAD_FAILURE_ATTR,
+  UPLOAD_HOME_ATTR,
+  UPLOAD_RETRYABLE_ATTR,
+  UPLOAD_STATE_ATTR,
+  type DocumentUploadEvent,
+  type DocumentUploadResult,
+  type PendingFailureReason,
+  type UploadFailure,
+} from "@shared/document-upload.js";
 
 export {
   TimelineRateSchema,
@@ -954,6 +970,15 @@ export {
   type TemplateShot,
   type TemplateTriggers,
 } from "@shared/canvas/generation-templates.js";
+export {
+  TEMPLATE_STYLE_SETS,
+  templateStyleKey,
+  templateStyleSet,
+  templateStylesOf,
+  type TemplateStyle,
+  type TemplateStyleSet,
+  type TemplateStyleSetId,
+} from "@shared/canvas/template-styles.js";
 export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
 export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
 export {

@@ -6,8 +6,10 @@
  * for every place in the body that treats them apart from text.
  */
 
+import { DOCUMENT_MEDIA_BLOCK_TYPES } from '@breatic/shared';
+
 /** The media block types. */
-export const MEDIA_BLOCK_TYPES = ['image', 'video', 'audio'] as const;
+export const MEDIA_BLOCK_TYPES = DOCUMENT_MEDIA_BLOCK_TYPES;
 
 /** The HTML elements that carry a picture, a video or a sound. */
 export const HTML_MEDIA_ELEMENTS = ['img', 'video', 'audio'] as const;

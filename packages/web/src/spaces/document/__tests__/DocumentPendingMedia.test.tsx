@@ -97,8 +97,8 @@ describe('the frame', () => {
 
 describe('a failure', () => {
   it.each<[PendingStatus, string]>([
-    [{ kind: 'failed', failure: FAILURE }, 'cover.png · Upload failed'],
-    [{ kind: 'failed', failure: { reason: 'tooLarge', retryable: false } }, 'cover.png · Exceeds the upload size limit'],
+    [{ kind: 'failed', failure: FAILURE, retry: true }, 'cover.png · Upload failed'],
+    [{ kind: 'failed', failure: { reason: 'tooLarge', retryable: false }, retry: false }, 'cover.png · Exceeds the upload size limit'],
     [{ kind: 'peerFailed' }, 'cover.png · Upload failed'],
   ])('%o names the file and the reason in one line', (status, said) => {
     draw(status);
@@ -107,7 +107,7 @@ describe('a failure', () => {
   });
 
   it('says the reason alone when the block has a caption', () => {
-    draw({ kind: 'failed', failure: FAILURE }, 'Hero');
+    draw({ kind: 'failed', failure: FAILURE, retry: true }, 'Hero');
     expect(screen.getByTestId('doc-pending-failure').textContent).toBe('Upload failed');
   });
 
@@ -121,8 +121,21 @@ describe('a failure', () => {
     ['empty', 'The file is empty'],
     ['unreachable', 'The address won’t open'],
   ])('%s says %s', (reason, said) => {
-    draw({ kind: 'failed', failure: { reason, retryable: false } }, 'Hero');
+    draw({ kind: 'failed', failure: { reason, retryable: false }, retry: false }, 'Hero');
     expect(screen.getByTestId('doc-pending-failure').textContent).toBe(said);
+  });
+});
+
+describe('what the server wrote (breatic#1574)', () => {
+  it('processing reads as uploading, with the spinner', () => {
+    draw({ kind: 'processing' });
+    expect(root().getAttribute('data-status')).toBe('processing');
+    expect(root().querySelector('svg.animate-spin')).not.toBeNull();
+  });
+
+  it('a server failure says its reason as a failure', () => {
+    draw({ kind: 'failed', failure: { reason: 'unreachable', retryable: true }, retry: false });
+    expect(screen.getByTestId('doc-pending-failure')).toBeTruthy();
   });
 });
 
@@ -137,20 +150,23 @@ describe('its buttons', () => {
 
   it.each<[PendingStatus, string[]]>([
     [{ kind: 'uploading', progress: null }, []],
-    [{ kind: 'failed', failure: FAILURE }, ['doc-pending-retry', 'doc-pending-remove']],
-    [{ kind: 'failed', failure: { ...FAILURE, retryable: false } }, ['doc-pending-remove']],
+    [{ kind: 'failed', failure: FAILURE, retry: true }, ['doc-pending-retry', 'doc-pending-remove']],
+    [{ kind: 'failed', failure: { ...FAILURE, retryable: false }, retry: false }, ['doc-pending-remove']],
     [{ kind: 'waitingDemoted' }, []],
     [{ kind: 'waitingRefused' }, []],
     [{ kind: 'peerUploading' }, []],
     [{ kind: 'peerFailed' }, []],
     [{ kind: 'notFinished' }, ['doc-pending-remove']],
+    [{ kind: 'processing' }, []],
+    [{ kind: 'failed', failure: FAILURE, retry: true }, ['doc-pending-retry', 'doc-pending-remove']],
+    [{ kind: 'failed', failure: FAILURE, retry: false }, ['doc-pending-remove']],
   ])('%o → %o', (status, expected) => {
     draw(status);
     expect(buttons()).toEqual(expected);
   });
 
   it('retry and remove call back', () => {
-    const { onRetry, onRemove } = draw({ kind: 'failed', failure: FAILURE });
+    const { onRetry, onRemove } = draw({ kind: 'failed', failure: FAILURE, retry: true });
     fireEvent.click(screen.getByTestId('doc-pending-retry'));
     fireEvent.click(screen.getByTestId('doc-pending-remove'));
     expect(onRetry).toHaveBeenCalledTimes(1);

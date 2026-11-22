@@ -38,6 +38,7 @@ import { isMediaBlockType, pendingUploadId } from '@web/spaces/document/document
 import { readTransfer } from '@web/spaces/document/document-paste-read';
 import { putContent, selectPlaced, type JudgeMedium } from '@web/spaces/document/document-put';
 import type { UploadSource } from '@web/spaces/document/document-upload-controller';
+import { uploadLandsIn } from '@web/spaces/document/document-uploads';
 
 /** The key the pasted-media extension registers under. */
 export const PASTED_MEDIA_KEY = 'documentPastedMedia';
@@ -121,6 +122,10 @@ export interface PastedMediaOptions {
    * known as ours is left out instead.
    */
   readonly start?: (uploadId: string, source: UploadSource) => void;
+  /** This body's document name: a pending block whose `uploadHome` is not this name is left out (breatic#1574). */
+  readonly docName?: string | null;
+  /** Told how many pending blocks of another Document a paste left out. */
+  readonly onStillUploading?: (count: number) => void;
 }
 
 /** An upload a paste waits on, started once its block is in. */
@@ -157,6 +162,7 @@ export function documentPastedMediaExtension(
   return createExtension(({ editor }) => {
     let queued: Queued[] = [];
     let leftOut = 0;
+    let stillUploading = 0;
     let flushing = false;
 
     /**
@@ -173,13 +179,16 @@ export function documentPastedMediaExtension(
         const present = doc === undefined ? new Set<string>() : pendingIds(doc);
         const waiting = queued;
         const judgedOut = leftOut;
+        const otherDocument = stillUploading;
         queued = [];
         leftOut = 0;
+        stillUploading = 0;
         const missing = waiting.filter(({ uploadId }) => !present.has(uploadId)).length;
         for (const { uploadId, url } of waiting) {
           if (present.has(uploadId)) options?.start?.(uploadId, { kind: 'address', url });
         }
         if (judgedOut + missing > 0) options?.onLeftOut(judgedOut + missing);
+        if (otherDocument > 0) options?.onStillUploading?.(otherDocument);
       });
     };
 
@@ -194,7 +203,15 @@ export function documentPastedMediaExtension(
     const media: PastedMediaJudge = {
       lands: (url) => landing(url) !== null,
       judge: (props) => {
-        if (pendingUploadId(props) !== null) return props;
+        if (pendingUploadId(props) !== null) {
+          // Its result is written only into the Document it was started in; anywhere else it would never end.
+          if (!uploadLandsIn(props['uploadHome'], options?.docName)) {
+            stillUploading += 1;
+            settle();
+            return null;
+          }
+          return props;
+        }
         const url = props['url'];
         const how = typeof url === 'string' ? landing(url) : null;
         if (how === null) {
@@ -205,7 +222,7 @@ export function documentPastedMediaExtension(
         const uploadId = newId();
         queued.push({ uploadId, url: url as string });
         settle();
-        return { ...props, url: '', uploadId };
+        return { ...props, url: '', uploadId, ...(options?.docName != null && { uploadHome: options.docName }) };
       },
       leaveOut: (count) => {
         if (count <= 0) return;

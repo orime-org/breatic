@@ -1256,7 +1256,7 @@ export const creditGifts = pgTable("credit_gifts", {
  * The product's record of a completed payment (inner#1993 §4.2): written when
  * the billing service grants the payment, shaped like the gift and
  * compensation receipts so a lot's source reads without the billing tables.
- * CHECKs, the backfill and the index live in 0130.
+ * CHECKs, the backfill and the index live in 0131.
  */
 export const paymentReceipts = pgTable("payment_receipts", {
   id: uuid("id").primaryKey(),
@@ -2184,7 +2184,7 @@ export const projectLifecycleOutbox = pgTable(
 /**
  * One write the billing service asked of the product, claimed in the same
  * transaction as the write and holding its answer, so a repeat of the key
- * replays it (inner#1993 §3.3). The status CHECK lives in 0130.
+ * replays it (inner#1993 §3.3). The status CHECK lives in 0131.
  */
 export const commerceRequests = pgTable("commerce_requests", {
   id: uuid("id").defaultRandom().primaryKey(),
@@ -3074,8 +3074,10 @@ export const uploadGrants = pgTable(
      * this would reopen the key to the very write it exists to stop.
      */
     finalizingUploadId: text("finalizing_upload_id"),
-    /** Node these bytes land on. Absent for a focus crop, which has no node. */
+    /** Node these bytes land on. Absent for an upload with no node: a focus crop, or a Document body block (`documentUploadId`). */
     nodeId: uuid("node_id"),
+    /** The Document body block these bytes land in, by its `uploadId` (breatic#1574). */
+    documentUploadId: text("document_upload_id"),
     /**
      * Project the node belongs to, checked against the user's access at ticket
      * time. Null for a studio's avatar, which belongs to no project.

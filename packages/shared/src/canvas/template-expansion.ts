@@ -98,6 +98,8 @@ export interface TemplateExpansionInput {
   guide: boolean;
   /** The caller's indices that stand empty: an input given one of them still gets its note. */
   emptyNodes?: ReadonlySet<number>;
+  /** The style picked from the template's style set (inner#1817). */
+  style?: string;
 }
 
 /** The panel's expansion: nodes rewritten at the caller's indices, nodes appended from `base`, new edges. */
@@ -695,8 +697,12 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
         if (index === undefined) return segment;
         return target !== undefined && "input" in target && optionalInputs.has(target.input) ? { ref: index, optional: true } : { ref: index };
       });
-    const words = templateNodeWords(template, key);
-    if ("prompt" in words) return { prompt: [...notes, ...bound(words.prompt)] };
+    const words = templateNodeWords(template, key, input.style);
+    if ("prompt" in words) {
+      // The style's words are a paragraph of plain text on the line after the node's own, read from their absolute key.
+      const style = words.styleKey === undefined ? [] : markedSegments(`\n${t(words.styleKey)}`);
+      return { prompt: [...notes, ...bound(words.prompt), ...style] };
+    }
     if ("lines" in words) return { lines: words.lines.map((line, i) => ({ speaker: line.speaker, prompt: [...(i === 0 ? notes : []), ...bound(line.key)] })) };
     return { shots: words.shots.map((shot, i) => ({ duration: shot.seconds, prompt: [...(i === 0 ? notes : []), ...bound(shot.key)] })) };
   };

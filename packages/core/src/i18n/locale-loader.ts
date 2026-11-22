@@ -21,7 +21,7 @@
  */
 
 import { AsyncLocalStorage } from "node:async_hooks";
-import { readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import {
   setLocaleMessages,
@@ -105,6 +105,18 @@ export function loadLocales(localesDirs?: string | readonly string[]): void {
         const locale = basename(file, ".json");
         const data = JSON.parse(readFileSync(resolve(dir, file), "utf-8")) as Record<string, unknown>;
         catalogs.set(locale, mergeCatalogs(catalogs.get(locale) ?? {}, data));
+      }
+      // The template style words (inner#1817) sit in their own catalogs so the
+      // web entry stays small; here they join the same locales.
+      const styles = resolve(dir, "template-styles");
+      if (!existsSync(styles)) continue;
+      for (const file of readdirSync(styles)) {
+        if (!file.endsWith(".json")) continue;
+        const locale = basename(file, ".json");
+        const base = catalogs.get(locale);
+        if (base === undefined) continue;
+        const data = JSON.parse(readFileSync(resolve(styles, file), "utf-8")) as Record<string, unknown>;
+        catalogs.set(locale, mergeCatalogs(base, data));
       }
     } catch {
       // locales dir may not exist in test environments
