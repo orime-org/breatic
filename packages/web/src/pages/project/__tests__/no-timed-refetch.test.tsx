@@ -32,7 +32,7 @@ vi.mock('@web/data/api/members', async (importOriginal) => {
 });
 vi.mock('@web/data/api/assets', async (importOriginal) => {
   const actual = await importOriginal<typeof AssetsModule>();
-  return { ...actual, assetsApi: { ...actual.assetsApi, fetchUploadStatus: vi.fn(), fetchUploadConfig: vi.fn() } };
+  return { ...actual, assetsApi: { ...actual.assetsApi, fetchUploadConfig: vi.fn() } };
 });
 
 import { BellMenu } from '@web/features/notifications/BellMenu';
@@ -93,11 +93,7 @@ beforeEach(() => {
   vi.mocked(notificationsApi.list).mockResolvedValue({ items: [], resolved: EMPTY_RESOLVED });
   vi.mocked(projectsApi.liveTransfer).mockResolvedValue(null);
   vi.mocked(membersApi.transferCandidates).mockResolvedValue([]);
-  vi.mocked(assetsApi.fetchUploadConfig).mockResolvedValue({ uploadStatusPollSeconds: 2 } as never);
-  vi.mocked(assetsApi.fetchUploadStatus).mockImplementation(async (keys) => ({
-    items: keys.map((key) => ({ key, state: 'finishing' as const })),
-    retryAfterSeconds: null,
-  }));
+  vi.mocked(assetsApi.fetchUploadConfig).mockResolvedValue({} as never);
 });
 
 afterEach(() => {
@@ -131,7 +127,7 @@ describe('with no live update for ten minutes', () => {
     await firstReadThenTenMinutes();
     expect(notificationsApi.list).toHaveBeenCalledTimes(1);
     expect(projectsApi.liveTransfer).toHaveBeenCalledTimes(1);
-    expect(assetsApi.fetchUploadStatus).not.toHaveBeenCalled();
+    expect(assetsApi.fetchUploadConfig).not.toHaveBeenCalled();
     view.unmount();
     stop.abort();
     await waiting;

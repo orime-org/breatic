@@ -369,6 +369,7 @@ export async function findLiveTransfer(slug: string): Promise<{
   fromUserId: string;
   toUserId: string;
   expiresAt: Date;
+  updatedAt: Date;
 } | null> {
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) throw new NotFoundError(t("server.error.not_found"));

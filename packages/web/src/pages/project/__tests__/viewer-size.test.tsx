@@ -101,7 +101,6 @@ beforeEach(() => {
     clientMaxAttempts: 1,
     clientRetryBaseDelayMs: 1,
     uploadIdleTimeoutMs: 60000,
-    uploadStatusPollSeconds: 2,
     assetUrlPrefix: 'https://cdn/',
   });
   picker = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);

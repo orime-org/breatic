@@ -154,19 +154,16 @@ async function pastDeadline(key: string): Promise<void> {
 }
 
 /**
- * The status the route answers for one of `cookie`'s keys.
- * @param cookie - The caller's session cookie.
+ * How one of `userId`'s uploads stands, as the status read answers it (what the
+ * `upload:ended` message and the Studio page poll carry).
+ * @param userId - The uploader.
  * @param key - The key asked about.
  * @returns The one status item.
  */
-async function statusVia(cookie: string, key: string): Promise<unknown> {
-  const res = await app.request(`/api/v1/assets/upload-status?key=${encodeURIComponent(key)}`, {
-    headers: { cookie },
-  });
-  expect(res.status).toBe(200);
-  const body = (await res.json()) as { data: { items: unknown[] } };
-  expect(body.data.items).toHaveLength(1);
-  return body.data.items[0];
+async function statusVia(userId: string, key: string): Promise<unknown> {
+  const items = await uploadStatusService.statusOf(userId, [key]);
+  expect(items).toHaveLength(1);
+  return items[0];
 }
 
 /**
@@ -367,7 +364,7 @@ describe("T25: a transfer leaves no activity, no asset and no storage usage", ()
   });
 });
 
-describe("T37: where a transfer grant stands, as the status route answers", () => {
+describe("T37: where a transfer grant stands, as the status read answers", () => {
   it("answers finishing, finishing, transferred, failed and expired by state, and leaves other grants as they were", async () => {
     const a = await seedOwner(sql);
     const b = await seedOwner(sql);
@@ -404,12 +401,12 @@ describe("T37: where a transfer grant stands, as the status route answers", () =
       await uploadGrantRepo.consumeGrant({ storageKey: ordinary, userId: a.userId, assetId: assetRows[0]!.id }),
     ).toBe(true);
 
-    expect(await statusVia(a.cookie, open)).toEqual({ key: open, state: "finishing" });
-    expect(await statusVia(a.cookie, finishing)).toEqual({ key: finishing, state: "finishing" });
-    expect(await statusVia(a.cookie, completed)).toEqual({ key: completed, state: "transferred" });
-    expect(await statusVia(a.cookie, voided)).toEqual({ key: voided, state: "failed", reason: "unsupported_type" });
-    expect(await statusVia(a.cookie, expired)).toEqual({ key: expired, state: "failed", reason: "expired" });
-    expect(await statusVia(a.cookie, ordinary)).toEqual({
+    expect(await statusVia(a.userId, open)).toEqual({ key: open, state: "finishing" });
+    expect(await statusVia(a.userId, finishing)).toEqual({ key: finishing, state: "finishing" });
+    expect(await statusVia(a.userId, completed)).toEqual({ key: completed, state: "transferred" });
+    expect(await statusVia(a.userId, voided)).toEqual({ key: voided, state: "failed", reason: "unsupported_type" });
+    expect(await statusVia(a.userId, expired)).toEqual({ key: expired, state: "failed", reason: "expired" });
+    expect(await statusVia(a.userId, ordinary)).toEqual({
       key: ordinary,
       state: "completed",
       result: {
@@ -420,7 +417,7 @@ describe("T37: where a transfer grant stands, as the status route answers", () =
         height: 480,
       },
     });
-    expect(await statusVia(a.cookie, theirs)).toEqual({ key: theirs, state: "unknown" });
+    expect(await statusVia(a.userId, theirs)).toEqual({ key: theirs, state: "unknown" });
   });
 });
 
@@ -444,7 +441,7 @@ describe("§6.1 grant transitions outside the reference read", () => {
     const key = await openTransferGrant(a, DECLARED);
     await pastDeadline(key);
 
-    expect(await statusVia(a.cookie, key)).toEqual({ key, state: "failed", reason: "expired" });
+    expect(await statusVia(a.userId, key)).toEqual({ key, state: "failed", reason: "expired" });
     expect((await grantRow(sql, key))!.voided_at).toBeNull();
 
     const res = await completeVia(a.cookie, key, "upload-s05", Date.now() - 1000);
@@ -464,7 +461,7 @@ describe("§6.1 grant transitions outside the reference read", () => {
       finalizing_upload_id: null,
       asset_source: "transfer",
     });
-    expect(await statusVia(a.cookie, key)).toEqual({ key, state: "finishing" });
+    expect(await statusVia(a.userId, key)).toEqual({ key, state: "finishing" });
     expect(await finishQueue.getJob(key)).toBeUndefined();
   });
 
@@ -501,7 +498,7 @@ describe("§6.1 grant transitions outside the reference read", () => {
     await pastDeadline(key);
 
     // (a) the status query reads expired and writes nothing
-    expect(await statusVia(a.cookie, key)).toEqual({ key, state: "failed", reason: "expired" });
+    expect(await statusVia(a.userId, key)).toEqual({ key, state: "failed", reason: "expired" });
     const row = await grantRow(sql, key);
     expect(row!.voided_at).toBeNull();
     expect(row!.consumed_at).toBeNull();
@@ -563,7 +560,7 @@ describe("§6.1 grant transitions outside the reference read", () => {
     await pastDeadline(key);
     const before = await grantRow(sql, key);
 
-    expect(await statusVia(a.cookie, key)).toEqual({ key, state: "transferred" });
+    expect(await statusVia(a.userId, key)).toEqual({ key, state: "transferred" });
     expect(await grantRow(sql, key)).toEqual(before);
 
     const nodeId = crypto.randomUUID();
@@ -622,7 +619,7 @@ describe("§6.1 grant transitions outside the reference read", () => {
     await pastDeadline(key);
     const before = await grantRow(sql, key);
 
-    expect(await statusVia(a.cookie, key)).toEqual({ key, state: "failed", reason: "unsupported_type" });
+    expect(await statusVia(a.userId, key)).toEqual({ key, state: "failed", reason: "unsupported_type" });
     expect(await grantRow(sql, key)).toEqual(before);
   });
 

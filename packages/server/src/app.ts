@@ -40,6 +40,7 @@ import { timelineRoute } from "@server/routes/timeline.js";
 import { membersRoute } from "@server/routes/members.js";
 import { usersRoute } from "@server/routes/users.js";
 import { studiosRoute, studioRoute } from "@server/routes/studios.js";
+import { studioPageRoute } from "@server/routes/studio-page.js";
 import { decisionsRoute } from "@server/routes/decisions.js";
 import { projectInvitesRoute } from "@server/routes/project-invitations.js";
 import { notificationsRoute } from "@server/routes/notifications.js";
@@ -104,6 +105,7 @@ export function createApp(): Hono {
   app.route("/api/v1/decisions", decisionsRoute);
   app.route("/api/v1/studios", studiosRoute);
   app.route("/api/v1/studio", studioRoute);
+  app.route("/api/v1/studio-page", studioPageRoute);
   app.route("/api/v1/tasks", tasksRoute);
   app.route("/api/v1/payment", paymentRoute);
   app.route("/api/v1/credits", creditsRoute);

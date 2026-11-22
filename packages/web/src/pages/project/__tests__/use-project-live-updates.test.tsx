@@ -21,7 +21,6 @@ vi.mock('@web/data/api/assets', async (importOriginal) => {
     ...actual,
     assetsApi: {
       ...actual.assetsApi,
-      fetchUploadStatus: vi.fn(() => new Promise(() => {})),
       fetchUploadConfig: vi.fn(() => new Promise(() => {})),
     },
   };
@@ -160,7 +159,7 @@ describe('an upload\'s ending', () => {
     double.send({ t: 'upload:ended', key: k2, status: s2 });
     await expect(first).resolves.toEqual(s1);
     await expect(second).resolves.toEqual(s2);
-    expect(assetsApi.fetchUploadStatus).not.toHaveBeenCalled();
+    expect(assetsApi.fetchUploadConfig).not.toHaveBeenCalled();
     view.unmount();
   });
 

@@ -159,13 +159,12 @@ export async function expectTimelineVideoReady(page: Page, clipId: string, fileU
 }
 
 /**
- * Identify the ticket, ingest transfer and finish/status requests used by this upload.
+ * Identify the ticket, ingest transfer and finish requests used by this upload.
  * @throws {never} Never; browser request URLs are already absolute URLs.
  */
 function isTimelineUploadRequest(request: Request): boolean {
   const path = new URL(request.url()).pathname;
-  return path === '/api/v1/assets/upload-ticket' || path === '/api/v1/assets/upload-status'
-    || /(?:^|\/)uploads(?:\/|$)/.test(path);
+  return path === '/api/v1/assets/upload-ticket' || /(?:^|\/)uploads(?:\/|$)/.test(path);
 }
 
 /**

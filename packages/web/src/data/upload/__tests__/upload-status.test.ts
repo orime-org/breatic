@@ -13,7 +13,7 @@ import type * as AssetsModule from '@web/data/api/assets';
 
 vi.mock('@web/data/api/assets', async (importOriginal) => {
   const actual = await importOriginal<typeof AssetsModule>();
-  return { ...actual, assetsApi: { ...actual.assetsApi, fetchUploadStatus: vi.fn(), fetchUploadConfig: vi.fn() } };
+  return { ...actual, assetsApi: { ...actual.assetsApi, fetchUploadConfig: vi.fn() } };
 });
 
 import { assetsApi } from '@web/data/api/assets';
@@ -130,7 +130,6 @@ describe('a key waiting', () => {
     await vi.advanceTimersByTimeAsync(60 * 60_000);
     expect(wait.settledTimes).toBe(0);
     expect(vi.getTimerCount()).toBe(0);
-    expect(assetsApi.fetchUploadStatus).not.toHaveBeenCalled();
     expect(assetsApi.fetchUploadConfig).not.toHaveBeenCalled();
     settleUploadEnding(completed(key));
   });
@@ -214,7 +213,6 @@ describe('the table', () => {
     for (const key of keys) void waitForUploadEnding(key);
     await vi.advanceTimersByTimeAsync(10 * 60_000);
     expect(vi.getTimerCount()).toBe(0);
-    expect(assetsApi.fetchUploadStatus).not.toHaveBeenCalled();
     expect(assetsApi.fetchUploadConfig).not.toHaveBeenCalled();
     for (const key of keys) settleUploadEnding(completed(key));
   });

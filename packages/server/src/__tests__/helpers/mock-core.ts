@@ -528,7 +528,9 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // the values these suites depend on are set here.
     getAgentConfig: () => ({ ...(actual.getAgentConfig as () => Record<string, unknown>)(), default_model: "test", main_model_sees_pictures: "no", max_tool_iterations: 5, memory_index_max_entries: 10, memory_progress_max_chars: 410, max_output_tokens: 16384, memory_keep_tokens: 500000, user_message_max_chars: 15000, user_message_max_references: 100, attachment_max_chars: 200000, attachment_max_items: 10, conversation_page_size: 30, image_search_timeout_ms: 10000 }),
     // Values intentionally differ from config/storage.yaml so route tests
-    // prove the endpoint reads config instead of hardcoding.
+    // prove the endpoint reads config instead of hardcoding. The removed
+    // status interval stays in the stub so a route still sending it shows
+    // (#1580 L-02).
     getStorageConfig: () => ({
       upload: { max_upload_bytes: 1024, client_max_attempts: 2, client_retry_base_delay_ms: 250, upload_idle_timeout_seconds: 45, upload_status_poll_seconds: 7 },
     }),

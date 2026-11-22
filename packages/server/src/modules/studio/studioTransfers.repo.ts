@@ -68,6 +68,8 @@ export interface LiveStudioTransfer {
   fromUserId: string;
   toUserId: string;
   expiresAt: Date;
+  /** When the offer last changed, which the Studio page's poll compares (#1580). */
+  updatedAt: Date;
 }
 
 /**
@@ -347,6 +349,7 @@ export async function findLiveForContainer(
       fromUserId: studioTransfers.fromUserId,
       toUserId: studioTransfers.toUserId,
       expiresAt: studioTransfers.expiresAt,
+      updatedAt: studioTransfers.updatedAt,
     })
     .from(studioTransfers)
     .where(

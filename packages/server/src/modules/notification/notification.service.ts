@@ -679,6 +679,15 @@ export async function countUnread(userId: string): Promise<number> {
   return notificationRepo.countUnread(userId);
 }
 
+/**
+ * When the user's newest notification still there was made (#1580).
+ * @param userId - Inbox owner.
+ * @returns Its `created_at` as an ISO instant, or null when there is none.
+ */
+export async function latestCreatedAt(userId: string): Promise<string | null> {
+  return notificationRepo.latestCreatedAt(userId);
+}
+
 // ── Mutations ───────────────────────────────────────────────────────
 
 /**

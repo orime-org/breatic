@@ -286,6 +286,21 @@ export async function markAllRead(userId: string): Promise<number> {
 }
 
 /**
+ * When a user's newest notification still there was made (#1580): with the unread count, what the Studio page's poll
+ * compares to tell the bell changed.
+ * @param userId - Inbox owner.
+ * @returns Its `created_at` as an ISO instant, or null when the user has none.
+ */
+export async function latestCreatedAt(userId: string): Promise<string | null> {
+  const rows = await db
+    .select({ at: sql<Date | null>`max(${notifications.createdAt})` })
+    .from(notifications)
+    .where(and(eq(notifications.userId, userId), isNull(notifications.deletedAt)));
+  const at = rows[0]?.at ?? null;
+  return at === null ? null : new Date(at).toISOString();
+}
+
+/**
  * Count unread notifications for a user — drives the red-dot badge.
  * @param userId - Inbox owner whose unread notifications to count
  * @returns Number of unread, non-deleted notifications

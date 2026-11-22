@@ -56,7 +56,6 @@ async function cacheLimit(maxRequestBodyBytes: number | undefined): Promise<void
     clientRetryBaseDelayMs: 1,
     uploadIdleTimeoutMs: 30_000,
     assetUrlPrefix: 'https://assets.test.invalid/',
-    uploadStatusPollSeconds: 1,
     ...(maxRequestBodyBytes !== undefined && { maxRequestBodyBytes }),
   });
   await assetsApi.fetchUploadConfig();

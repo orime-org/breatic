@@ -86,7 +86,6 @@ const CONFIG: UploadConfig = {
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 500,
   uploadIdleTimeoutMs: 60000,
-  uploadStatusPollSeconds: 5,
 };
 
 interface Gate {

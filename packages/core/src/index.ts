@@ -80,6 +80,7 @@ export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-web
 export { getMiniToolsConfig, reportGraceMs, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
+export { getStudioPageConfig, studioPageConfigSchema, type StudioPageConfig } from "@core/config/studio-page.js";
 export {
   getUsagePricing,
   parseUsagePricing,

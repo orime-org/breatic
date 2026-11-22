@@ -36,7 +36,6 @@ import {
   SceneObjectValuesSchema,
   REQUEST_SHAPE_PARAMS,
   INGEST_NOT_STARTED,
-  UPLOAD_STATUS_MAX_KEYS,
   t,
 } from "@breatic/shared";
 import {
@@ -51,7 +50,6 @@ import {
   ingestReportService,
   mediaReadService,
   studioAuthService,
-  uploadStatusService,
   UPLOAD_FINISH_QUEUE,
   type UploadFinishJob,
 } from "@breatic/domain";
@@ -110,7 +108,6 @@ assets.get("/upload-config", requireAuth, async (c) => {
       clientMaxAttempts: upload.client_max_attempts,
       clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
       uploadIdleTimeoutMs: upload.upload_idle_timeout_seconds * 1000,
-      uploadStatusPollSeconds: upload.upload_status_poll_seconds,
       assetUrlPrefix: store.publicUrl(""),
       // The largest body a route reads (inner#1006); past it the browser
       // moves the body through a transfer upload, on the routes that take one.
@@ -118,36 +115,6 @@ assets.get("/upload-config", requireAuth, async (c) => {
     },
   });
 });
-
-// ── Upload status (inner#1367 §4.2a) ────────────────────────────────
-
-/**
- * How the caller's uploads ended. Finishing answers 202 and runs as a job, so
- * the page asks here — every upload it is waiting on, in one request — until
- * each has an ending. A key that is not the caller's reads as `unknown`.
- */
-assets.get(
-  "/upload-status",
-  requireAuth,
-  rateLimitFor("upload-status", "user"),
-  validate(
-    "query",
-    z.object({
-      // One `key` arrives as a string, several as an array.
-      key: z.preprocess(
-        (v) => (Array.isArray(v) ? v : [v]),
-        z.array(z.string().min(1).max(512)).min(1).max(UPLOAD_STATUS_MAX_KEYS),
-      ),
-    }),
-  ),
-  async (c) => {
-    const user = c.get("user");
-    const { key } = c.req.valid("query");
-    const items = await uploadStatusService.statusOf(user.id, key);
-    c.header("Retry-After", String(getStorageConfig().upload.upload_status_poll_seconds));
-    return c.json({ data: { items } });
-  },
-);
 
 // ── Upload ticket (#173) ────────────────────────────────────────────
 

@@ -12,6 +12,12 @@
  */
 export const UPLOAD_STATUS_MAX_KEYS = 100;
 
+/**
+ * How long the Studio page waits between polls before any answer has named the interval, in ms (#1580): the default
+ * of `poll_interval_ms` in `config/studio-page.yaml`, which every answer then names as `nextPollMs`.
+ */
+export const STUDIO_PAGE_POLL_DEFAULT_MS = 2000;
+
 /** What a finished upload registered as. */
 export interface UploadStatusResult {
   assetId: string;
