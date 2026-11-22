@@ -69,7 +69,7 @@ function presentation(grid: VideoPlanGrid | null, sourceURL = URL, status: Video
   const facts: BindingModule.CanvasVideoBindings = {
     bindings: new Map([[SOURCE, { binding, status, error: null, sourceBinding: SOURCE_BINDING }]]),
     presentations: new Map([[SOURCE, { status, grid, presentedTime: null, sourceURL, sourceEpoch: 1, seekEpoch: 0, ...(presentationRef === null || presentationRef === undefined ? {} : { presentationRef }) }]]),
-    onVideoBinding: vi.fn(), onVideoFrame: vi.fn(),
+    onVideoBinding: vi.fn(), onVideoFrame: vi.fn(), presentedFrameOf: () => null,
   };
   vi.mocked(useCanvasVideoBindings).mockReturnValue(facts);
   return facts;

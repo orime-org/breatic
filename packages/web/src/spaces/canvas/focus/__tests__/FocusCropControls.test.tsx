@@ -217,7 +217,6 @@ describe('FocusCropControls', () => {
       natural: { width: 800, height: 600 },
       sourceSrc: 'https://cdn/original.png',
       sourceTimeSeconds: null,
-      sourceMediaTime: null,
     });
     expect(screen.queryByTestId('focus-crop-rect')).toBeNull();
   });
@@ -776,7 +775,6 @@ describe('FocusCropControls: a video target and its timeline (#1987)', () => {
       sourceSrc: 'https://cdn/clip.mp4',
       sourceTimeSeconds: video.currentTime,
       // jsdom presents no frame, so no requestVideoFrameCallback mediaTime was read (frames-split §4.3).
-      sourceMediaTime: null,
     });
   });
 
@@ -797,7 +795,6 @@ describe('FocusCropControls: a video target and its timeline (#1987)', () => {
       natural: { width: 800, height: 600 },
       sourceSrc: ALPHA_VIDEO.src,
       sourceTimeSeconds: 4.375,
-      sourceMediaTime: null,
     });
   });
 

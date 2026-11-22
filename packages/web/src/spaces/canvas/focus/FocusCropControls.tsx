@@ -72,11 +72,6 @@ export interface FocusCropConfirm {
    */
   sourceTimeSeconds: number | null;
   /**
-   * For a video source, the mediaTime of the last frame the element presented (its requestVideoFrameCallback clock), which
-   * the canvas turns into the grid frame number (frames-split §4.3); null for an image or before any frame was presented.
-   */
-  sourceMediaTime: number | null;
-  /**
    * The src the marquee was drawn + validated against (round-3): the export
    * MUST crop exactly this URL — the graph store can lead the DOM by a
    * commit, and exporting the store's newer content at this marquee's
@@ -177,11 +172,9 @@ export function FocusCropControls({ onConfirm, onBackToPick, sourceState, source
   // element when the bar attaches to it. Confirm reads the element, not this.
   const [currentTime, setCurrentTime] = React.useState(0);
   const [duration, setDuration] = React.useState(Number.NaN);
-  // The last presented frame's mediaTime, from the element's own frame clock; never derived from currentTime (§4.3).
-  const presentedMediaTime = React.useRef<number | null>(null);
 
   // Park the video and read it, keyed on the element so a remount cannot leave
-  // any of the three behind. Seeding is not optional: the element fired
+  // either mirror behind. Seeding is not optional: the element fired
   // `loadedmetadata` long before the user picked it. `seeked` is deliberately
   // NOT subscribed: a media element rounds a written position to its own time
   // base, and feeding that back into the Slider knocks it off the step grid
@@ -199,22 +192,9 @@ export function FocusCropControls({ onConfirm, onBackToPick, sourceState, source
     seed();
     video.addEventListener('loadedmetadata', seed);
     video.addEventListener('durationchange', seed);
-    presentedMediaTime.current = null;
-    let handle: number | null = null;
-    /**
-     * Records each presented frame's mediaTime and asks for the next.
-     * @param _now - Callback time.
-     * @param info - The presented frame.
-     */
-    const onFrame = (_now: DOMHighResTimeStamp, info: VideoFrameCallbackMetadata): void => {
-      presentedMediaTime.current = info.mediaTime;
-      handle = video.requestVideoFrameCallback(onFrame);
-    };
-    if (typeof video.requestVideoFrameCallback === 'function') handle = video.requestVideoFrameCallback(onFrame);
     return () => {
       video.removeEventListener('loadedmetadata', seed);
       video.removeEventListener('durationchange', seed);
-      if (handle !== null && typeof video.cancelVideoFrameCallback === 'function') video.cancelVideoFrameCallback(handle);
     };
   }, [sourceEl]);
 
@@ -336,8 +316,6 @@ export function FocusCropControls({ onConfirm, onBackToPick, sourceState, source
       sourceSrc: focus.content,
       // Off the element, not the display mirror (#1987).
       sourceTimeSeconds: el instanceof HTMLVideoElement ? el.currentTime : null,
-      // A paused element that has presented nothing yet still shows its first frame.
-      sourceMediaTime: el instanceof HTMLVideoElement ? presentedMediaTime.current ?? (el.currentTime === 0 ? 0 : null) : null,
     });
     // A gate rejection keeps the marquee (round-3); an accepted one ends the
     // crop state like Cancel (user 2026-07-20).

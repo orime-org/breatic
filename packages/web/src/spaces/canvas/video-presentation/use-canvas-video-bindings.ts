@@ -6,7 +6,7 @@ import { classifyVideoSourceLedgerFailure, type VideoPresentationResponse } from
 import { shownVersionOf, type VideoPresentationSource } from '@web/spaces/canvas/video-presentation/types';
 import type { VideoToolPresentation } from '@web/spaces/canvas/mini-tool/video/VideoToolPanelContainer';
 import type { MediaPlayerVideoSnapshot } from '@web/spaces/canvas/nodes/_shared/MediaPlayer';
-import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
+import type { MediaSurfaceBinding, PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
 import { playSourceRange } from '@web/spaces/canvas/video-presentation/play-source-range';
 import { gridDuration } from '@web/spaces/canvas/video-presentation/frame-grid-time';
 
@@ -100,6 +100,19 @@ export interface CanvasVideoBindings {
   presentations: ReadonlyMap<string, VideoToolPresentation>;
   onVideoBinding: (nodeId: string, canonicalURL: string, snapshot: MediaPlayerVideoSnapshot) => void;
   onVideoFrame: (nodeId: string, canonicalURL: string, frame: PresentedMediaFrame) => void;
+  /** The frame a node's player last drew of this URL, current for its source, resource and seek; null when there is none. */
+  presentedFrameOf: (nodeId: string, canonicalURL: string) => PresentedMediaFrame | null;
+}
+
+/**
+ * The frame a binding's player last drew, when it is still current: the same source and resource, and no seek since.
+ * @param binding - The node's attachment.
+ * @returns The frame, or null.
+ * @throws {never} Never.
+ */
+function currentFrameOf(binding: MediaSurfaceBinding): PresentedMediaFrame | null {
+  const frame = binding.getPresentedFrame();
+  return frame && frame.sourceKey === binding.sourceKey && frame.sourceEpoch === binding.sourceEpoch && frame.seekEpoch === binding.getSeekEpoch() ? frame : null;
 }
 
 /**
@@ -141,6 +154,17 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
    * @param frame - The just-committed actual frame, never inferred from native time.
    * @throws {never} Never.
    */
+  /**
+   * Reads, at the moment of asking, the frame a node's player last drew; the player keeps it from its own mount.
+   * @param nodeId - The node.
+   * @param url - Its canonical content.
+   * @returns The current frame, or null.
+   * @throws {never} Never.
+   */
+  const presentedFrameOf = React.useCallback((nodeId: string, url: string): PresentedMediaFrame | null => {
+    const record = records.current.get(nodeId);
+    return record?.url === url && record.snapshot.binding ? currentFrameOf(record.snapshot.binding) : null;
+  }, []);
   const onVideoFrame = React.useCallback((nodeId: string, url: string, frame: PresentedMediaFrame): void => {
     if (current.current.hostId !== nodeId || current.current.canonicalURL !== url) return;
     const binding = records.current.get(nodeId)?.snapshot.binding;
@@ -173,8 +197,7 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
        * @throws {never} Never.
        */
       function actualFrame(): PresentedMediaFrame | null {
-        const frame = binding!.getPresentedFrame();
-        return frame && frame.sourceKey === binding!.sourceKey && frame.sourceEpoch === binding!.sourceEpoch && frame.seekEpoch === binding!.getSeekEpoch() ? frame : null;
+        return currentFrameOf(binding!);
       }
       const frame = actualFrame();
       const live = binding;
@@ -195,6 +218,6 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
       presentations.set(hostId, { status: 'loading', sourceURL: canonicalURL, sourceEpoch: 0, seekEpoch: 0, presentedTime: null, grid: null, getPresentedFrame: () => null,
         panelState, failure: facts.response?.presentation === null ? facts.response.preparation?.failure ?? null : null, readFailed: readFailedOf(facts), retrying: facts.retrying, onRetry: facts.onRetry, previewSource: facts.previewSource });
     }
-    return { bindings, presentations, onVideoBinding, onVideoFrame };
-  }, [hostId, canonicalURL, snapshot, binding, facts, onVideoBinding, onVideoFrame, revision]);
+    return { bindings, presentations, onVideoBinding, onVideoFrame, presentedFrameOf };
+  }, [hostId, canonicalURL, snapshot, binding, facts, onVideoBinding, onVideoFrame, presentedFrameOf, revision]);
 }

@@ -61,7 +61,7 @@ function presentation(grid: VideoPlanGrid | null, sourceURL = URL, status: Video
   const facts: BindingModule.CanvasVideoBindings = {
     bindings: new Map([[SOURCE, { binding, status, error: null, sourceBinding: SOURCE_BINDING }]]),
     presentations: new Map([[SOURCE, { status, grid, presentedTime: null, sourceURL, sourceEpoch: 1, seekEpoch: 0, ...(presentationRef === null || presentationRef === undefined ? {} : { presentationRef }) }]]),
-    onVideoBinding: vi.fn(), onVideoFrame: vi.fn(),
+    onVideoBinding: vi.fn(), onVideoFrame: vi.fn(), presentedFrameOf: () => null,
   };
   vi.mocked(useCanvasVideoBindings).mockReturnValue(facts);
   return facts;
@@ -151,7 +151,7 @@ describe('actual Canvas planned split callback wire', () => {
   });
 
   it.each(['loading', 'failed', 'absent'] as const)('G03 retains the source-not-ready gate when presentation is %s', (status) => {
-    if (status === 'absent') vi.mocked(useCanvasVideoBindings).mockReturnValue({ bindings: new Map(), presentations: new Map(), onVideoBinding: vi.fn(), onVideoFrame: vi.fn() });
+    if (status === 'absent') vi.mocked(useCanvasVideoBindings).mockReturnValue({ bindings: new Map(), presentations: new Map(), onVideoBinding: vi.fn(), onVideoFrame: vi.fn(), presentedFrameOf: () => null });
     else presentation(null, URL, status);
     mount();
     expect(screen.getByTestId('mini-tool-run')).toBeDisabled();

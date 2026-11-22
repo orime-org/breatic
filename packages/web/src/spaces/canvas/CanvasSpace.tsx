@@ -241,6 +241,7 @@ import { pickSessionUi } from '@web/spaces/canvas/pick-purpose-ui';
 import { exportMiniToolFile } from '@web/spaces/canvas/mini-tool/export-mini-tool-file';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
 import { useCanvasVideoBindings } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
+import type { PresentedMediaFrame } from '@web/spaces/canvas/video-presentation/types';
 import { useResolvedVideoPresentation } from '@web/spaces/canvas/video-presentation/use-resolved-video-presentation';
 import { useVideoPresentationRepair } from '@web/spaces/canvas/video-presentation/video-presentation-recovery';
 import { TranscribePanelContainer } from '@web/spaces/canvas/transcribe/TranscribePanelContainer';
@@ -800,6 +801,8 @@ function CanvasSpaceInner({
   const focusVideo = useResolvedVideoPresentation(projectId, focusVideoURL, focusVideoURL !== '');
   const focusVideoRead = React.useRef(focusVideo.query.data);
   focusVideoRead.current = focusVideo.query.data;
+  // The frame a node's player last drew, which a video crop names (frames-split §5.5); bound once the bindings exist below.
+  const presentedFrameOf = React.useRef<(nodeId: string, url: string) => PresentedMediaFrame | null>(() => null);
   /**
    * Return the focus session to its PICK state (user 2026-07-17 A): drop
    * the crop target, but keep the session — the banner stays and another
@@ -987,12 +990,14 @@ function CanvasSpaceInner({
           width: selected.display.width, height: selected.display.height,
           duration: read.sourceBinding.mediaInfo.duration ?? selected.display.frameCount * selected.display.fps.denominator / selected.display.fps.numerator,
           mimeType: read.sourceBinding.mediaInfo.mimeType } });
-        if (selected === null || sourceRef === null || !sourceRef.success || result.sourceMediaTime === null) {
+        // The player keeps its last drawn frame from its own mount, so a video paused before the crop opened still names it.
+        const drawn = presentedFrameOf.current(source.id, sourceUrl);
+        if (selected === null || sourceRef === null || !sourceRef.success || drawn === null) {
           toast.error(t('canvas.generatePanel.focusExportFailed'));
           return false;
         }
         void runVideoFocusCrop({ projectId, spaceId, panelNodeId, source: sourceRef.data, sourceName, presentationRef: { source: { toolInputId: selected.toolInputId, planSha256: selected.planSha256 } },
-          frameIndex: frameIndexOfMediaTime(result.sourceMediaTime, selected.display), crop: result.crop });
+          frameIndex: frameIndexOfMediaTime(drawn.mediaTime, selected.display), crop: result.crop });
         return true;
       }
       const pendingId = newId();
@@ -4329,6 +4334,7 @@ function CanvasSpaceInner({
     onRetrySource: retryFocusSource, retryingSource: retrying };
   }, [focusVideoURL, focusVideo.query.data, focusVideo.query.isError, repairingVideoSources, retryFocusSource]);
   const videoRuntime = useCanvasVideoBindings(videoHost, videoURL || null, videoFacts);
+  presentedFrameOf.current = videoRuntime.presentedFrameOf;
 
   /**
    * Execute the complete video draft from the current source and Canvas session.
