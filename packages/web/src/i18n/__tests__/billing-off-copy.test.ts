@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The billing-off sentences (inner#1968, test spec E-07). A deployment with
- * payments off is called self-hosted; the old "this deployment" wording is
+ * The billing-off sentences (inner#1968, test spec E-07). A deployment that
+ * does not charge credits is called self-hosted; the old "this deployment" wording is
  * gone from all five locales.
  */
 
@@ -28,7 +28,7 @@ function zhCN(): unknown {
   return LOCALE_CATALOGS.find(([tag]) => tag === 'zh-CN')![1];
 }
 
-describe('E-07 a deployment with payments off is self-hosted', () => {
+describe('E-07 a deployment that does not charge credits is self-hosted', () => {
   it('reads in zh-CN as 自部署', () => {
     expect(readPath(zhCN(), 'credits.billingOff.title')).toBe('自部署不计积分');
     expect(readPath(zhCN(), 'credits.ledgerBillingOff')).toBe('自部署不计积分，下面是用量记录。');

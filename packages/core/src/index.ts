@@ -411,6 +411,7 @@ export {
   KEYSET_INSTANT,
   PRODUCT_UNAVAILABLE_REASON,
   COMMERCE_SIGNERS,
+  MAIL_STATUS_IDS_MAX,
   mailStatusAnswerSchema,
   mailStatusRequestSchema,
   unlandedPaymentRowSchema,

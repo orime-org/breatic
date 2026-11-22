@@ -118,7 +118,7 @@ describe('enterprise and gift provenance in the actual product surfaces', () => 
 
   it.each(languages)('shows compensation detail and the original enterprise contract in $locale', async ({ locale, gift, compensation, enterprise }) => {
     setLocale(locale);
-    mount(<PurchasesSection userId='account-174' charging selling />);
+    mount(<PurchasesSection userId='account-174' charging />);
     const rows = await screen.findAllByTestId('purchase-row');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent(gift);
@@ -132,7 +132,7 @@ describe('enterprise and gift provenance in the actual product surfaces', () => 
 
   it('keeps the actual charged amount on an online payment', async () => {
     history.mockResolvedValue({ items: [{ ...acquisition('enterprise'), sourceKind: 'payment', contractNumber: null, paymentId: 'payment-174', amountCents: 2000, totalCents: 2240, taxCents: 240, status: 'completed' }], nextCursor: null });
-    mount(<PurchasesSection userId='account-174' charging selling />);
+    mount(<PurchasesSection userId='account-174' charging />);
     expect(await screen.findByTestId('purchase-row')).toHaveTextContent('$22.40');
   });
 

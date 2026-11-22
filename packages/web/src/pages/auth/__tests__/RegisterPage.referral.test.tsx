@@ -88,7 +88,7 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
     expect(screen.getByRole('button', { name: 'Create account' })).toBeDisabled();
   });
 
-  it('has no field and sends no code while payments are off', async () => {
+  it('has no field and sends no code where nothing is sold', async () => {
     carry.code = 'ALICE';
     vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false });
     vi.mocked(authApi.register).mockResolvedValue({ status: 'created', user: USER, recoveryCode: 'AAAA-BBBB-CCCC-DDDD' } as never);

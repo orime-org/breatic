@@ -797,20 +797,35 @@ async function mirrored(lot: CreditLotEntity, tx: DbTx): Promise<CreditLotEntity
  * (inner#1993 §5.4), so its mirror converges even when a delivery was lost.
  * Each lot is read under its own lock, in a transaction of its own, so the
  * snapshot is ordered after any edge that committed before it.
- * @param windowDays - How far back an active lot must have changed.
+ * @param windowDays - How far back a lot must have changed to be resent.
  * @returns How many lots were resent.
  * @throws {Error} When the database fails; lots already resent stay resent.
  */
 export async function resendLotMirror(windowDays: number): Promise<number> {
   if (!env.SELLING) return 0;
   const ids = await creditLotRepo.listLotIdsForMirror(windowDays);
-  for (const id of ids) {
+  await resendLotStates(ids);
+  return ids.length;
+}
+
+/**
+ * Append the current lifecycle of each named lot to the billing service's
+ * outbox (inner#1993 §5.2, §5.4): the daily reconcile's step, and how a
+ * dead-lettered lot event is requeued, since copying an old event back would
+ * put a stale lifecycle after a newer one. Each lot is read under its own
+ * lock, in a transaction of its own; ids that name no lot are skipped and lots
+ * nobody paid for are left out.
+ * @param lotIds - The lots.
+ * @returns Once each was appended.
+ * @throws {Error} When the database fails; lots already appended stay appended.
+ */
+export async function resendLotStates(lotIds: readonly string[]): Promise<void> {
+  for (const id of lotIds) {
     await db.transaction(async (tx) => {
       const lot = await creditLotRepo.lockLot(id, tx);
       if (lot) await mirrored(lot, tx);
     });
   }
-  return ids.length;
 }
 
 /**

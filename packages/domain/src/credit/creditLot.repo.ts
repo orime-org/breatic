@@ -291,42 +291,6 @@ export async function lockLiveLot(
 }
 
 /**
- * The two facts of a lot the refund disposition reads besides the lot row:
- * what its ledger sums to, and when the buyer asked for the refund.
- * @param lotId - The lot.
- * @param tx - The caller's transaction.
- * @returns The ledger sum as Postgres `numeric` text, and the ask time.
- */
-export async function readRefundFacts(
-  lotId: string,
-  tx: DbTx,
-): Promise<{ ledgerSum: string; refundRequestedAt: Date | null }> {
-  const [ledger] = await tx
-    .select({ sum: sql<string>`COALESCE(SUM(${creditLedger.amount}), 0)::text` })
-    .from(creditLedger)
-    .where(eq(creditLedger.lotId, lotId));
-  const [lot] = await tx
-    .select({ refundRequestedAt: creditLots.refundRequestedAt })
-    .from(creditLots)
-    .where(eq(creditLots.id, lotId));
-  return { ledgerSum: ledger?.sum ?? "0", refundRequestedAt: lot?.refundRequestedAt ?? null };
-}
-
-/**
- * Whether a payment opened a lot, unlocked.
- * @param paymentId - The payment.
- * @returns The lot's id, or null.
- */
-export async function findLotIdByPayment(paymentId: string): Promise<string | null> {
-  const rows = await db
-    .select({ id: creditLots.id })
-    .from(creditLots)
-    .where(eq(creditLots.sourceId, paymentId))
-    .limit(1);
-  return rows[0]?.id ?? null;
-}
-
-/**
  * The lot a payment opened, read in the caller's transaction.
  * @param paymentId - The payment, which is the lot's source.
  * @param tx - The caller's transaction.
@@ -342,25 +306,6 @@ export async function findLotGrantedFromPayment(
     .where(eq(creditLots.sourceId, paymentId))
     .limit(1);
   return rows[0] ?? null;
-}
-
-/**
- * {@link lockLot}, for the lot a payment opened. `source_id` is unique, so a
- * payment opens at most one lot.
- * @param paymentId - The payment the lot was granted from.
- * @param tx - The transaction holding the lock.
- * @returns The locked lot, or null if the payment opened none.
- */
-export async function lockLotByPayment(
-  paymentId: string,
-  tx: DbTx,
-): Promise<CreditLotEntity | null> {
-  const rows = await tx
-    .select()
-    .from(creditLots)
-    .where(eq(creditLots.sourceId, paymentId))
-    .for("update");
-  return rows[0] ? toLotEntity(rows[0]) : null;
 }
 
 /**
@@ -1282,9 +1227,12 @@ export async function readLotRefundFacts(lotIds: string[]): Promise<LotRefundFac
 
 /**
  * The bought lots the daily lot-mirror reconcile resends (inner#1993 §5.4):
- * every one not active, and the active ones that changed within the window.
- * Soft-deleted lots are included; the billing service mirrors them too.
- * @param windowDays - How far back an active lot must have changed.
+ * those that changed within the window, whatever their lifecycle. Every
+ * lifecycle move sets `updated_at`, so a delivery that may have been lost is
+ * always inside it; a lot in a final state that reached the mirror long ago
+ * changes nothing there and is not sent again. Soft-deleted lots are
+ * included; the billing service mirrors them too.
+ * @param windowDays - How far back a lot must have changed.
  * @returns Their ids, oldest first.
  */
 export async function listLotIdsForMirror(windowDays: number): Promise<string[]> {
@@ -1294,7 +1242,7 @@ export async function listLotIdsForMirror(windowDays: number): Promise<string[]>
     .where(
       and(
         eq(creditLots.sourceKind, "payment"),
-        or(ne(creditLots.lifecycle, "active"), sql`${creditLots.updatedAt} > now() - make_interval(days => ${windowDays})`),
+        sql`${creditLots.updatedAt} > now() - make_interval(days => ${windowDays})`,
       ),
     )
     .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
@@ -1830,16 +1778,3 @@ export async function sumSpendableByStudio(userId: string): Promise<
     }));
 }
 
-/**
- * Read one lot by id, without locking it.
- * @param lotId - The lot to read.
- * @returns The lot, or null if there is no live row with that id.
- */
-export async function findLotById(lotId: string): Promise<CreditLotEntity | null> {
-  const rows = await db
-    .select()
-    .from(creditLots)
-    .where(and(eq(creditLots.id, lotId), isNull(creditLots.deletedAt)))
-    .limit(1);
-  return rows[0] ? toLotEntity(rows[0]) : null;
-}

@@ -35,7 +35,7 @@ export interface PromoterApplicationForm {
 export const referralApi = {
   /**
    * Read the account's referral view.
-   * @returns The view; the request answers 404 while payments are off.
+   * @returns The view; the request answers 404 where nothing is sold (`selling` false).
    */
   get(): Promise<AccountReferral> {
     return apiGet<AccountReferral>('/account/referral');

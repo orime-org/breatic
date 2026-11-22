@@ -67,7 +67,7 @@ export function CreditsSectionPanel({
     case 'overview':
       return <OverviewSection overview={data} />;
     case 'lots':
-      return <PurchasesSection userId={userId} charging={data.charging} selling={data.selling} />;
+      return <PurchasesSection userId={userId} charging={data.charging} />;
     case 'ledger':
       return <LedgerSection userId={userId} overview={data} />;
     case 'studios':

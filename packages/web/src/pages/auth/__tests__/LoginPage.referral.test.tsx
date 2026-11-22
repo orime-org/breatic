@@ -156,7 +156,7 @@ describe('the sign-in page referral row (inner#1868 table 12.14)', () => {
     expect(warning).not.toHaveBeenCalled();
   });
 
-  it('has no referral row while payments are off', async () => {
+  it('has no referral row where nothing is sold', async () => {
     carry.code = 'ALICE';
     vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false });
     setup();

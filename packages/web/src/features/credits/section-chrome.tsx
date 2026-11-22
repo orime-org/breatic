@@ -486,7 +486,7 @@ interface SellingOffNoticeProps {
 }
 
 /**
- * What a section that exists only where credits are sold (buying, purchases,
+ * What a section that exists only where credits are sold (buying,
  * assigning, refunds) shows where they are not: that nothing is charged at
  * all, or that credits are charged but not sold here.
  * @param props - Whether credits are recorded.

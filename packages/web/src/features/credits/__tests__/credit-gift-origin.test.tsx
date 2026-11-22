@@ -76,7 +76,7 @@ describe('gift receipt origin in the real acquisition list', () => {
     history.mockResolvedValue({ items: [giftRow('registration'), giftRow('operator')] as unknown as PurchaseRow[], nextCursor: null });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     try {
-      render(<QueryClientProvider client={client}><PurchasesSection userId='account-1' charging selling /></QueryClientProvider>);
+      render(<QueryClientProvider client={client}><PurchasesSection userId='account-1' charging /></QueryClientProvider>);
       const rows = await screen.findAllByTestId('purchase-row');
       expect(rows).toHaveLength(2);
       expect(rows[0]).toHaveTextContent(registration);

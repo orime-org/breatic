@@ -575,7 +575,7 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('seedream-4.0');
     });
 
-    // inner#1968 E-08: with payments off the ledger says it is self-hosted.
+    // inner#1968 E-08: where credits are not charged the ledger says it is self-hosted.
     it('says self-hosted where nothing is charged', async () => {
       fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       setLocale('zh-CN');
@@ -1823,7 +1823,17 @@ describe('the credits overlay, section by section', () => {
       expect(body).not.toHaveTextContent(/does not charge credits/i);
     });
 
-    it.each(['lots', 'buy', 'assign', 'refunds'] as const)(
+    it('lists the credit history this deployment holds, with no notice', async () => {
+      await openOn('lots');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('$50.00');
+      expect(body).toHaveTextContent('Assigned to Orime Studio');
+      expect(body).not.toHaveTextContent(/does not sell credits/i);
+      expect(paymentHistory).toHaveBeenCalled();
+    });
+
+    it.each(['buy', 'assign', 'refunds'] as const)(
       'tells the %s section that nothing is sold here and reads nothing for it',
       async (section) => {
         await openOn(section);

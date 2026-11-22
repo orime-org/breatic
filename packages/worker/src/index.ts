@@ -10,7 +10,7 @@
 
 // MUST be first: reads process.env + initCore before any env.* read.
 import "@worker/bootstrap-config.js";
-import type { Queue } from "bullmq";
+import type { Queue, Worker } from "bullmq";
 import { exitProcess, initSentry } from "@worker/sentry.js";
 import {
   env,
@@ -277,19 +277,25 @@ export function startWorker(): void {
     logger.error({ err }, "credit_charge_sweep_schedule_failed");
   });
 
-  const lotMirrorQueue = createQueue(COMMERCE_LOT_MIRROR_QUEUE);
-  const lotMirror = createWorker<Record<string, never>>(COMMERCE_LOT_MIRROR_QUEUE, () => reconcileLotMirror());
-  lotMirror.on("failed", (job, err) => {
-    logger.error({ err, jobId: job?.id }, "commerce_lot_mirror_failed");
-  });
-  const lotMirrorJob = "commerce-lot-mirror";
-  void lotMirrorQueue.upsertJobScheduler(
-    lotMirrorJob,
-    { pattern: getCommerceConfig().lot_mirror_reconcile_cron, tz: "UTC" },
-    { name: lotMirrorJob, data: {}, opts: defaultJobOpts() },
-  ).catch((err: unknown) => {
-    logger.error({ err }, "commerce_lot_mirror_schedule_failed");
-  });
+  // The daily lot-mirror reconcile exists only where something is sold; a
+  // deployment that sells nothing has no billing service to mirror into and
+  // never reads config/commerce.yaml.
+  let lotMirror: Worker<Record<string, never>> | null = null;
+  if (env.SELLING) {
+    const lotMirrorQueue = createQueue(COMMERCE_LOT_MIRROR_QUEUE);
+    lotMirror = createWorker<Record<string, never>>(COMMERCE_LOT_MIRROR_QUEUE, () => reconcileLotMirror());
+    lotMirror.on("failed", (job, err) => {
+      logger.error({ err, jobId: job?.id }, "commerce_lot_mirror_failed");
+    });
+    const lotMirrorJob = "commerce-lot-mirror";
+    void lotMirrorQueue.upsertJobScheduler(
+      lotMirrorJob,
+      { pattern: getCommerceConfig().lot_mirror_reconcile_cron, tz: "UTC" },
+      { name: lotMirrorJob, data: {}, opts: defaultJobOpts() },
+    ).catch((err: unknown) => {
+      logger.error({ err }, "commerce_lot_mirror_schedule_failed");
+    });
+  }
 
   const worker = createWorker<TaskJobData>("tasks", runTask);
 
@@ -617,7 +623,7 @@ export function startWorker(): void {
         () => timelineWorker.close(),
         () => timelineSweep.close(),
         () => creditChargeSweep.close(),
-        () => lotMirror.close(),
+        () => lotMirror?.close() ?? Promise.resolve(),
         () => slotWaitSweep.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),

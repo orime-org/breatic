@@ -357,8 +357,11 @@ export type UnlandedPaymentRow = z.infer<typeof unlandedPaymentRowSchema>;
  */
 export const unlandedPaymentsAnswerSchema = z.object({ data: z.array(unlandedPaymentRowSchema) }).strict();
 
+/** The most payment ids one mail-status request may carry; a longer page is asked in chunks of this size. */
+export const MAIL_STATUS_IDS_MAX = 100;
+
 /** `POST /v1/users/:userId/payment/mail-status`: whether each purchase's letter can be sent again. */
-export const mailStatusRequestSchema = z.object({ paymentIds: z.array(uuid).min(1).max(100) }).strict();
+export const mailStatusRequestSchema = z.object({ paymentIds: z.array(uuid).min(1).max(MAIL_STATUS_IDS_MAX) }).strict();
 export const mailStatusAnswerSchema = z.object({ data: z.record(uuid, z.boolean()) }).strict();
 
 const tierPrice = z.object({ priceCents: cents, currency: z.string().min(1).max(10) }).strict().nullable();

@@ -30,7 +30,7 @@ if (typeof input.userId !== "string" || typeof input.code !== "string") {
 }
 const { userId, code } = input;
 const timeoutMs = core.getCommerceConfig().call_timeout_ms;
-const asProduct = { baseUrl: core.env.COMMERCE_API_URL, secret: core.env.COMMERCE_API_SECRET, signer: "product" };
+const asProduct = { baseUrl: core.env.COMMERCE_API_URL, secret: core.env.COMMERCE_API_SECRET, signer: core.COMMERCE_SIGNERS.product };
 const asOperator = { baseUrl: core.env.COMMERCE_API_URL, secret: core.env.INTERNAL_API_SECRET, signer: "smoke" };
 
 try {

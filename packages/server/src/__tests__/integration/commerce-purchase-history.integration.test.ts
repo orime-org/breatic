@@ -11,7 +11,7 @@
  */
 
 import { randomUUID } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -20,12 +20,38 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-import { decodeActivityCursor, initCore } from "@breatic/core";
+/** The page bounds each case reads; one case raises the maximum above the mail-status bound. */
+const pageBounds = vi.hoisted(() => ({ max: 100 }));
+vi.mock("@server/config/limits.js", async (importOriginal) => {
+  const actual = await importOriginal<{ getCreditPageLimits: () => { default: number; max: number } }>();
+  return { ...actual, getCreditPageLimits: () => ({ ...actual.getCreditPageLimits(), max: pageBounds.max }) };
+});
+
+import { decodeActivityCursor, initCore, MAIL_STATUS_IDS_MAX, mailStatusRequestSchema } from "@breatic/core";
 import { CREDIT_AMOUNT_FORMAT } from "@breatic/shared";
 import { initSellingCore, insertAccount, loginCookie, useCommerceApp, type BillingRequest } from "./commerce-harness.js";
 import { recordPaymentReceipt } from "./payment-source.js";
 
 const suite = useCommerceApp("commerce-purchase-history");
+
+afterEach(() => {
+  pageBounds.max = 100;
+});
+
+/**
+ * Give an account `count` bought lots, one minute apart.
+ * @param userId - Whose.
+ * @param count - How many.
+ */
+async function manyBought(userId: string, count: number): Promise<void> {
+  await suite.sql`
+    WITH ids AS (SELECT gen_random_uuid() AS id, n FROM generate_series(1, ${count}::int) AS n),
+    src AS (INSERT INTO credit_sources(id,kind) SELECT id, 'payment' FROM ids),
+    rec AS (INSERT INTO payment_receipts(id,user_id,amount_cents,currency,credits_granted,ordered_at)
+      SELECT id, ${userId}, 100, 'usd', 100, now() - make_interval(mins => n) FROM ids)
+    INSERT INTO credit_lots(source_id,source_kind,user_id,purchased_credits,remaining_credits,lifecycle)
+    SELECT id, 'payment', ${userId}, 100, 100, 'active' FROM ids`;
+}
 
 /**
  * A payment the billing service holds without a lot.
@@ -183,6 +209,34 @@ describe("purchase history", () => {
     expect(asked).toHaveLength(1);
     expect(asked[0]).toHaveLength(100);
     expect(new Set(asked[0])).toEqual(new Set(res.body.data!.items.map((r) => r["paymentId"])));
+  });
+
+  it("asks about a page larger than the mail-status bound in chunks, and answers every row", async () => {
+    pageBounds.max = 250;
+    const userId = await insertAccount(suite.sql);
+    await manyBought(userId, 230);
+    const resendable = new Set<string>();
+    // The stand-in holds each request to the contract, as the billing service's validate does.
+    const answer = billingHistory([], resendable);
+    suite.reply = (req) => (req.path.includes("/payment/mail-status") && !mailStatusRequestSchema.safeParse(req.body).success
+      ? { status: 400, body: { error: { code: "VALIDATION_ERROR" } } }
+      : answer(req));
+    const ids = await suite.sql<{ id: string }[]>`SELECT id FROM payment_receipts WHERE user_id = ${userId} ORDER BY ordered_at DESC`;
+    // Every third row can be resent, so a lost chunk shows as a wrong answer.
+    ids.forEach((r, i) => {
+      if (i % 3 === 0) resendable.add(r.id);
+    });
+
+    const res = await page(userId, "?limit=230");
+
+    expect(res.status).toBe(200);
+    expect(res.body.data!.items).toHaveLength(230);
+    for (const item of res.body.data!.items) expect(item["canResend"]).toBe(resendable.has(item["paymentId"] as string));
+    const asked = suite.received.filter((r) => r.path.includes("/payment/mail-status")).map((r) => (r.body as { paymentIds: string[] }).paymentIds);
+    expect(asked.length).toBeGreaterThan(1);
+    for (const chunk of asked) expect(chunk.length).toBeLessThanOrEqual(MAIL_STATUS_IDS_MAX);
+    expect(new Set(asked.flat())).toEqual(new Set(res.body.data!.items.map((r) => r["paymentId"])));
+    expect(asked.flat()).toHaveLength(230);
   });
 
   it("answers 503 billing_unavailable when the billing service cannot answer", async () => {

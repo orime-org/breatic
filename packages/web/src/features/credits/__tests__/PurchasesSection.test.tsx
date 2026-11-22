@@ -107,16 +107,16 @@ beforeEach(() => {
 
 /**
  * Render the purchase history.
- * @param selling - Whether this deployment sells credits.
+ * @param charging - Whether this deployment records and deducts credits.
  * @returns The render result.
  */
-function renderHistory(selling = true): ReturnType<typeof render> {
+function renderHistory(charging = true): ReturnType<typeof render> {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
   return render(
     <QueryClientProvider client={client}>
-      <PurchasesSection userId='u1' charging selling={selling} />
+      <PurchasesSection userId='u1' charging={charging} />
     </QueryClientProvider>,
   );
 }
@@ -450,11 +450,21 @@ describe('the purchase history', () => {
     expect(first.textContent).toContain('use Assign on the left');
   });
 
-  it('offers nothing where this deployment sells nothing', async () => {
+  it('lists the rows wherever credits are charged, sold or not', async () => {
+    // A charging deployment still holds trial grants, gifts and purchase
+    // receipts carried over from before; the server answers them without a
+    // billing service, so the list shows them.
+    renderHistory(true);
+    const first = await screen.findByTestId('purchase-row');
+    expect(first.textContent).toContain('1,700');
+    expect(history).toHaveBeenCalled();
+    expect(screen.queryByText(en.credits.notSoldHere.title)).toBeNull();
+  });
+
+  it('says credits are not charged, and reads nothing, where they are not', async () => {
     renderHistory(false);
-    await waitFor(() => {
-      expect(screen.queryAllByTestId('purchase-row')).toHaveLength(0);
-    });
+    expect(await screen.findByText(en.credits.billingOff.title)).toBeInTheDocument();
+    expect(screen.queryAllByTestId('purchase-row')).toHaveLength(0);
     expect(history).not.toHaveBeenCalled();
   });
 

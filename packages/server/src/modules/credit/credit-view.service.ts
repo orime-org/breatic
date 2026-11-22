@@ -32,7 +32,7 @@ import { getCreditPageLimits } from "@server/config/limits.js";
  * @param raw - The client's `?cursor`, if any.
  * @returns The decoded cursor, or null to start from the beginning.
  */
-function readCursor(raw: string | undefined): ActivityCursor | null {
+export function readCursor(raw: string | undefined): ActivityCursor | null {
   return raw ? decodeActivityCursor(raw) : null;
 }
 
@@ -41,7 +41,7 @@ function readCursor(raw: string | undefined): ActivityCursor | null {
  * @param raw - The raw query value, if any.
  * @returns A page size within bounds.
  */
-function pageSize(raw: string | undefined): number {
+export function pageSize(raw: string | undefined): number {
   const bounds = getCreditPageLimits();
   const asked = raw === undefined ? Number.NaN : Number.parseInt(raw, 10);
   if (!Number.isFinite(asked) || asked <= 0) return bounds.default;
@@ -53,7 +53,7 @@ function pageSize(raw: string | undefined): number {
  * @param value - A `numeric(20, 6)` value as Postgres returned it.
  * @returns The same exact canonical decimal.
  */
-function toDecimal(value: string): CreditDecimal {
+export function toDecimal(value: string): CreditDecimal {
   return serializeCreditMicro(parseCreditDecimal(value));
 }
 

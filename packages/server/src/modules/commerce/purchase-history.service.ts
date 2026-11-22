@@ -10,19 +10,16 @@
  * Both halves are read on one keyset and merged.
  */
 
-import { decodeActivityCursor, env, mailStatusAnswerSchema, toPage, unlandedPaymentsAnswerSchema } from "@breatic/core";
+import { env, MAIL_STATUS_IDS_MAX, mailStatusAnswerSchema, toPage, unlandedPaymentsAnswerSchema } from "@breatic/core";
 import { creditLotRepo, creditSourceRepo } from "@breatic/domain";
 import {
-  parseCreditDecimal,
-  serializeCreditMicro,
-  type CreditDecimal,
   type CreditLotLifecycle,
   type CreditPage,
   type CreditSourceKind,
   type PurchaseRow,
 } from "@breatic/shared";
-import { getCreditPageLimits } from "@server/config/limits.js";
 import { requestCommerce, userPath } from "@server/modules/commerce/commerce-client.js";
+import { pageSize, readCursor, toDecimal } from "@server/modules/credit/credit-view.service.js";
 
 /** A history row and the keyset position it sorts by. */
 interface Keyed {
@@ -41,10 +38,8 @@ interface Keyed {
  * @throws {UnavailableError} When the billing service cannot answer its half.
  */
 export async function readPurchaseHistory(userId: string, rawLimit: string | undefined, rawCursor: string | undefined): Promise<CreditPage<PurchaseRow>> {
-  const bounds = getCreditPageLimits();
-  const asked = rawLimit === undefined ? Number.NaN : Number.parseInt(rawLimit, 10);
-  const size = !Number.isFinite(asked) || asked <= 0 ? bounds.default : Math.min(asked, bounds.max);
-  const cursor = rawCursor === undefined ? null : decodeActivityCursor(rawCursor);
+  const size = pageSize(rawLimit);
+  const cursor = readCursor(rawCursor);
 
   const local = await localRows(userId, size, cursor);
   const merged = env.SELLING ? [...local, ...(await unlandedRows(userId, size, cursor === null ? null : rawCursor!))] : local;
@@ -90,8 +85,8 @@ async function localRows(userId: string, size: number, cursor: { createdAt: stri
         totalCents: r.totalCents,
         taxCents: r.taxCents,
         currency: r.currency,
-        creditsGranted: credits(r.creditsGranted),
-        remainingCredits: r.remainingCredits === null ? null : credits(r.remainingCredits),
+        creditsGranted: toDecimal(r.creditsGranted),
+        remainingCredits: r.remainingCredits === null ? null : toDecimal(r.remainingCredits),
         lifecycle: r.lifecycle as CreditLotLifecycle | null,
         designatedStudioId: r.designatedStudioId,
         designatedStudioName: r.designatedStudioName,
@@ -127,7 +122,7 @@ async function unlandedRows(userId: string, size: number, rawCursor: string | nu
       totalCents: p.totalCents,
       taxCents: p.taxCents,
       currency: p.currency,
-      creditsGranted: credits(p.creditsGranted),
+      creditsGranted: toDecimal(p.creditsGranted),
       remainingCredits: null,
       lifecycle: null,
       designatedStudioId: null,
@@ -141,29 +136,25 @@ async function unlandedRows(userId: string, size: number, rawCursor: string | nu
 
 /**
  * Ask the billing service which of the product's bought rows can have their letter sent again.
+ *
+ * A page may be larger than one request may carry (`credit_page_max` is an
+ * operator setting), so the ids go in chunks of `MAIL_STATUS_IDS_MAX`.
  * @param userId - The account.
  * @param rows - The page's rows; the product's bought ones are filled in.
  * @throws {UnavailableError} When the billing service cannot answer.
  */
 async function fillCanResend(userId: string, rows: Keyed[]): Promise<void> {
   const local = rows.filter((k) => k.receipt);
-  if (local.length === 0) return;
-  const answer = mailStatusAnswerSchema.parse(
-    await requestCommerce({
-      method: "POST",
-      path: userPath(userId, "/payment/mail-status"),
-      body: { paymentIds: local.map((k) => k.row.paymentId!) },
-      quick: true,
-    }),
-  );
-  for (const k of local) k.row.canResend = answer.data[k.row.paymentId!] === true;
-}
-
-/**
- * A stored credit figure in the wire form.
- * @param decimal - The figure as the database reads it.
- * @returns The serialized amount.
- */
-function credits(decimal: string): CreditDecimal {
-  return serializeCreditMicro(parseCreditDecimal(decimal));
+  for (let start = 0; start < local.length; start += MAIL_STATUS_IDS_MAX) {
+    const chunk = local.slice(start, start + MAIL_STATUS_IDS_MAX);
+    const answer = mailStatusAnswerSchema.parse(
+      await requestCommerce({
+        method: "POST",
+        path: userPath(userId, "/payment/mail-status"),
+        body: { paymentIds: chunk.map((k) => k.row.paymentId!) },
+        quick: true,
+      }),
+    );
+    for (const k of chunk) k.row.canResend = answer.data[k.row.paymentId!] === true;
+  }
 }

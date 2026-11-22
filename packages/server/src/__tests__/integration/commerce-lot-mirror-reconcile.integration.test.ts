@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The daily lot-mirror reconcile (inner#1993 §5.4): every bought lot that is
- * not active, or changed within the window, has its current lifecycle
+ * The daily lot-mirror reconcile (inner#1993 §5.4): every bought lot that
+ * changed within the window, whatever its lifecycle, has its current lifecycle
  * appended to the outbox once more, read under the lot's lock, so the billing
  * service's mirror converges even when a delivery was lost.
  */
@@ -69,17 +69,28 @@ async function appended(lotId: string): Promise<unknown[]> {
 }
 
 describe("resendLotMirror", () => {
-  it("resends every bought lot that is not active or changed within the window", async () => {
-    const refunded = await lot("payment", "refunded", 400);
+  it("resends every bought lot changed within the window, and none changed before it", async () => {
     const recent = await lot("payment", "active", 2);
+    const refundedRecently = await lot("payment", "refunded", 2);
     const settled = await lot("payment", "active", 90);
+    // A lot in a final state reached the mirror on its first delivery; long
+    // after, it changes nothing there and is not sent again.
+    const refundedLongAgo = await lot("payment", "refunded", 400);
+    const depletedLongAgo = await lot("payment", "depleted", 60);
+    const deletedRecently = await lot("payment", "depleted", 2);
+    await sql`UPDATE credit_lots SET deleted_at = now() WHERE id = ${deletedRecently.lotId}`;
     const gift = await lot("gift", "refunded", 2);
 
     await creditLotService.resendLotMirror(30);
 
-    expect(await appended(refunded.lotId)).toEqual([{ lotId: refunded.lotId, paymentId: refunded.sourceId, userId: refunded.userId, lifecycle: "refunded" }]);
     expect(await appended(recent.lotId)).toEqual([{ lotId: recent.lotId, paymentId: recent.sourceId, userId: recent.userId, lifecycle: "active" }]);
+    expect(await appended(refundedRecently.lotId)).toEqual([
+      { lotId: refundedRecently.lotId, paymentId: refundedRecently.sourceId, userId: refundedRecently.userId, lifecycle: "refunded" },
+    ]);
+    expect(await appended(deletedRecently.lotId)).toHaveLength(1);
     expect(await appended(settled.lotId)).toEqual([]);
+    expect(await appended(refundedLongAgo.lotId)).toEqual([]);
+    expect(await appended(depletedLongAgo.lotId)).toEqual([]);
     expect(await appended(gift.lotId)).toEqual([]);
   });
 
@@ -93,5 +104,19 @@ describe("resendLotMirror", () => {
     }
 
     expect(await appended(refunded.lotId)).toEqual([]);
+  });
+});
+
+describe("resendLotStates", () => {
+  it("appends each lot's current lifecycle, whatever an older event said, and skips ids that are no bought lot", async () => {
+    // A lot whose refund was later restored: a dead-lettered "refunded" event
+    // must not reach the mirror after the "active" one.
+    const restored = await lot("payment", "active", 400);
+    const gift = await lot("gift", "refunded", 2);
+
+    await creditLotService.resendLotStates([restored.lotId, gift.lotId, randomUUID()]);
+
+    expect(await appended(restored.lotId)).toEqual([{ lotId: restored.lotId, paymentId: restored.sourceId, userId: restored.userId, lifecycle: "active" }]);
+    expect(await appended(gift.lotId)).toEqual([]);
   });
 });

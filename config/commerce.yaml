@@ -34,6 +34,6 @@ relay_backoff_base_seconds: 10
 relay_backoff_max_seconds: 3600
 
 # The daily lot-mirror reconcile: when it runs (cron, UTC), and how far back
-# a lot that is active again must have changed to be sent once more.
+# a bought lot must have changed to be sent once more.
 lot_mirror_reconcile_cron: "0 3 * * *"
 lot_mirror_reconcile_window_days: 30

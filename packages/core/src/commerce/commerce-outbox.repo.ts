@@ -8,12 +8,13 @@
  * sent, retries it later or moves it to the dead letters.
  *
  * Nothing is appended while the deployment sells nothing: no relay runs then,
- * and a row nobody sends would only pile up. Once selling starts, the daily
- * lot-mirror reconcile resends every bought lot that is not active, and the
- * active ones changed within `lot_mirror_reconcile_window_days`.
+ * and a row nobody sends would only pile up. Once selling starts, the
+ * billing service's mirror is seeded from every bought lot at the cutover,
+ * and the daily lot-mirror reconcile resends each bought lot changed within
+ * `lot_mirror_reconcile_window_days`.
  */
 
-import { and, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
 import { env } from "@core/config/env.js";
 import { db, type DbTx } from "@core/db/client.js";
 import { commerceOutbox, commerceOutboxDeadLetters } from "@core/db/schema.js";
@@ -213,4 +214,67 @@ export async function moveToDeadLetters(row: CommerceOutboxRow, attempts: number
     createdAt: row.createdAt,
   });
   return true;
+}
+
+/** One dead letter, as the requeue script lists it. */
+export interface DeadLetterRow {
+  id: string;
+  aggregateKey: string;
+  type: string;
+  reason: string;
+  attempts: number;
+  lastError: string | null;
+  failedAt: Date;
+}
+
+/** Which dead letters to pick: by id, or by reason given up since an instant. */
+export type DeadLetterSelection = { ids: string[] } | { reason: string; since: Date };
+
+/**
+ * The dead letters an operator picked (inner#1993 §5.2), oldest failure first.
+ * @param selection - By id, or by reason and since when they failed.
+ * @returns The matching dead letters; ids that are not dead letters are absent.
+ */
+export async function listDeadLetters(selection: DeadLetterSelection): Promise<DeadLetterRow[]> {
+  const t = commerceOutboxDeadLetters;
+  if ("ids" in selection && selection.ids.length === 0) return [];
+  const where = "ids" in selection ? inArray(t.id, selection.ids) : and(eq(t.reason, selection.reason), gte(t.failedAt, selection.since));
+  return await db
+    .select({ id: t.id, aggregateKey: t.aggregateKey, type: t.type, reason: t.reason, attempts: t.attempts, lastError: t.lastError, failedAt: t.failedAt })
+    .from(t)
+    .where(where)
+    .orderBy(asc(t.failedAt), asc(t.seq));
+}
+
+/**
+ * Put dead letters back into the outbox (inner#1993 §5.2), all in one
+ * transaction: each becomes a new unsent row (new id, the next sequence
+ * number, attempts from zero) with the dead letter's type, aggregate and
+ * payload, which the running relay then sends. The dead letter is kept, so
+ * requeueing again makes another row; the billing service's inbox dedupes
+ * repeats by its own rules. A `lot_refund_lifecycle` dead letter is not
+ * copied back: a newer sequence number would put its old lifecycle after a
+ * newer one, so its lot's current state is resent instead
+ * (`creditLotService.resendLotStates`).
+ * @param ids - The dead letters to requeue; ids that are not dead letters, and lot lifecycle ones, are skipped.
+ * @returns Each requeued dead letter and the outbox row made from it.
+ */
+export async function requeueDeadLetters(ids: string[]): Promise<Array<{ deadLetterId: string; outboxId: string }>> {
+  if (ids.length === 0) return [];
+  return await db.transaction(async (tx) => {
+    const letters = await tx
+      .select()
+      .from(commerceOutboxDeadLetters)
+      .where(and(inArray(commerceOutboxDeadLetters.id, ids), ne(commerceOutboxDeadLetters.type, "lot_refund_lifecycle")))
+      .orderBy(asc(commerceOutboxDeadLetters.seq));
+    const made: Array<{ deadLetterId: string; outboxId: string }> = [];
+    for (const letter of letters) {
+      const [row] = await tx
+        .insert(commerceOutbox)
+        .values({ aggregateKey: letter.aggregateKey, type: letter.type, payload: letter.payload })
+        .returning({ id: commerceOutbox.id });
+      made.push({ deadLetterId: letter.id, outboxId: row!.id });
+    }
+    return made;
+  });
 }
