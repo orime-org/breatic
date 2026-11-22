@@ -1,9 +1,11 @@
 name: Desktop
 
-# Builds the desktop client's installers (#1599): .dmg on macOS, the NSIS
-# .exe on Windows, AppImage and .deb on Linux. Each runner builds for its own
-# platform. Signing is on only where the secrets exist; without them the
-# installers are unsigned builds of the same app.
+# Builds the official desktop client's installers (#1599): .dmg and .zip on
+# macOS, the NSIS .exe on Windows, AppImage and .deb on Linux. Each runner
+# builds for its own platform. Signing is on only where the secrets exist;
+# without them the installers are unsigned builds of the same app. A
+# desktop-v{version} tag also publishes them to the update feed; a manual run
+# only keeps them as workflow artifacts.
 on:
   workflow_dispatch:
   push:
@@ -29,8 +31,8 @@ jobs:
         shell: bash
         run: pnpm --filter @breatic/desktop run dist
         env:
-          # The address offered on first launch; a repository variable, not source.
-          BREATIC_DEFAULT_SERVER_URL: ${{ vars.DESKTOP_DEFAULT_SERVER_URL }}
+          # The update feed; builds that cannot be signed on their platform leave it out (electron-builder.config.mjs).
+          BREATIC_UPDATE_BASE_URL: ${{ vars.DESKTOP_UPDATE_BASE_URL }}
           CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
           CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
           APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
@@ -42,13 +44,29 @@ jobs:
           AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
           AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
           AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_PUBLISHER_NAME: ${{ vars.AZURE_PUBLISHER_NAME }}
+
+      - name: Publish to the update feed
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: node packages/desktop/scripts/publish.mjs
+        env:
+          R2_UPDATES_BUCKET: ${{ vars.DESKTOP_UPDATES_BUCKET }}
+          R2_UPDATES_PREFIX: ${{ vars.DESKTOP_UPDATES_PREFIX }}
+          R2_UPDATES_ENDPOINT: ${{ secrets.DESKTOP_UPDATES_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.DESKTOP_UPDATES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DESKTOP_UPDATES_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
 
       - uses: actions/upload-artifact@v4
         with:
           name: breatic-desktop-${{ matrix.os }}
           path: |
             packages/desktop/release/*.dmg
+            packages/desktop/release/*.zip
             packages/desktop/release/*.exe
             packages/desktop/release/*.AppImage
             packages/desktop/release/*.deb
+            packages/desktop/release/*.blockmap
+            packages/desktop/release/latest*.yml
           if-no-files-found: error

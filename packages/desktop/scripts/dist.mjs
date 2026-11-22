@@ -12,11 +12,14 @@
 
 import { execFileSync } from "node:child_process";
 import { copyFileSync, existsSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { mergeLinuxManifests } from "./linux-manifest.mjs";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
+/** electron-builder's command line, run through Node so the Windows runner needs no shell. */
+const cli = createRequire(join(root, "package.json")).resolve("electron-builder/cli.js");
 const release = join(root, "release");
 const requested = process.argv.slice(2).filter((arg) => ["--mac", "--win", "--linux"].includes(arg));
 const platforms = requested.length > 0 ? requested : [{ darwin: "--mac", win32: "--win", linux: "--linux" }[process.platform]];
@@ -26,7 +29,7 @@ const platforms = requested.length > 0 ? requested : [{ darwin: "--mac", win32: 
  * @param {string[]} args - Its arguments after the config.
  */
 function build(args) {
-  execFileSync("npx", ["electron-builder", "--config", "electron-builder.config.mjs", ...args], { cwd: root, stdio: "inherit" });
+  execFileSync(process.execPath, [cli, "--config", "electron-builder.config.mjs", ...args], { cwd: root, stdio: "inherit" });
 }
 
 for (const platform of platforms.filter((name) => name !== "--linux")) build([platform]);
