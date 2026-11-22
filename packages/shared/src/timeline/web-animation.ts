@@ -24,8 +24,8 @@ const positiveInteger = z.number().int().min(1).max(Number.MAX_SAFE_INTEGER);
  */
 export const WebAnimationExecutionStatusSchema = z.enum(["awaiting_landing", "queued", "running", "cancelling", "succeeded", "failed", "cancelled", "expired"]);
 
-/** A web-animation execution's status. */
-export type WebAnimationExecutionStatus = z.infer<typeof WebAnimationExecutionStatusSchema>;
+/** A web-animation execution's status (exported as `TimelineExecutionStatus` with the entity). */
+type WebAnimationExecutionStatus = z.infer<typeof WebAnimationExecutionStatusSchema>;
 
 /** The statuses of an execution that ended without a result: it failed, was cancelled or expired. */
 export const WEB_ANIMATION_FAILED_STATUSES = ["failed", "cancelled", "expired"] as const satisfies readonly WebAnimationExecutionStatus[];

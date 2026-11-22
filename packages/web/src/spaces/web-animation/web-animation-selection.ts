@@ -12,14 +12,15 @@
  * move that asked for it.
  */
 
-import { webAnimationExecutionFailed, type WebAnimationExecutionStatus } from '@breatic/shared/space-content';
+import type { TimelineExecutionStatus } from '@breatic/shared';
+import { webAnimationExecutionFailed } from '@breatic/shared/space-content';
 
 import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
 
 /** The part of a row the selection reads. */
 export interface SelectionRow {
   id: string;
-  status: WebAnimationExecutionStatus;
+  status: TimelineExecutionStatus;
 }
 
 /** What the preview shows: nothing, the row it showed while another is fetched by id, or the selected row as last seen. */
@@ -62,7 +63,7 @@ export const SELECTION_NONE: SelectionState<never> = { status: 'none' };
  * @returns `succeeded`, `running` before it ended, or `failed` once it failed, was cancelled or expired.
  * @throws {never} Never.
  */
-export function tabOf(status: WebAnimationExecutionStatus): MotionTab {
+export function tabOf(status: TimelineExecutionStatus): MotionTab {
   if (status === 'succeeded') return 'succeeded';
   return webAnimationExecutionFailed(status) ? 'failed' : 'running';
 }

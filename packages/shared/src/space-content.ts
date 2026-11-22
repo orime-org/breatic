@@ -14,7 +14,7 @@ export {
   WEB_ANIMATION_FAILED_STATUSES, WEB_ANIMATION_OPEN_STATUSES,
   webAnimationExecutionFailed, WebAnimationAspectSchema, WebAnimationExecutionRequestSchema,
   executionInputOf, WebAnimationRowViewSchema, readWebAnimationAnchor, anchorTimeWithin,
-  type WebAnimationManifest, type WebAnimationExpectation, type WebAnimationManifestMismatch, type WebAnimationExecutionStatus,
+  type WebAnimationManifest, type WebAnimationExpectation, type WebAnimationManifestMismatch,
   type WebAnimationExecutionRequest, type WebAnimationExecutionInput,
   type WebAnimationRowView, type WebAnimationAnchor, type WebAnimationAspect,
 } from "@shared/timeline/web-animation.js";
