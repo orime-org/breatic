@@ -803,10 +803,11 @@ describe('MembershipPanel', () => {
     // 自部署不向我们付费，所以价格一个字都不出现。
     expect(screen.queryByText(/\$\d/)).toBeNull();
     expect(screen.queryByText('Free')).toBeNull();
-    // 联系邮箱保留，措辞换成商用授权与支持条款。
+    // The contact email stays; the sentence names the written agreement a
+    // commercial platform or paid features need (LICENSE sections 10 and 11).
     const contact = screen.getByTestId('membership-contact-self-hosted');
     expect(contact).toHaveAttribute('href', 'mailto:contact@breatic.ai');
-    expect(contact.parentElement).toHaveTextContent('commercial licence');
+    expect(contact.parentElement).toHaveTextContent('written agreement');
   });
 
   it('shows an enterprise account without an agreement no ceiling figures and no comparison table', async () => {
