@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * frames-split design §7.8 surface list row for `timeline-media-draft.ts`: a Project video placed on a Timeline whose
- * registration carries no duration takes its length from the selected version's grid (P.display), the length every other
- * surface plays; only while nothing is selected is the original decoded for it.
+ * frames-split design §7.8 surface list row for `timeline-media-draft.ts` and §7.14 Tv: a Project video placed on a Timeline
+ * takes its length from the selected version's grid (P.display), the length every other surface plays, whatever its
+ * registration says; only while nothing is selected does the registered duration count, or, without one, the decoded original.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -54,9 +54,11 @@ afterEach(() => { client.clear(); evictTimelineEditSession(NAME); clearAllDocSiz
 
 /**
  * Places the Project video through the real material draft and edit session.
+ * @param asset - The registered video the server resolves.
  * @returns The placed source's duration in seconds.
  */
-async function place(): Promise<number> {
+async function place(asset: ProjectRegisteredAsset = ASSET): Promise<number> {
+  resolveAsset.mockResolvedValue(asset);
   const doc = getDoc(NAME);
   const seeded = seededDoc(timeline([], [{ id: MAIN, kind: 'visual', order: 0 }], []));
   Y.applyUpdate(doc, Y.encodeStateAsUpdate(seeded), 'remote');
@@ -68,11 +70,11 @@ async function place(): Promise<number> {
   draft.setCanWrite(true);
   draft.open(0, MAIN);
   draft.setMode('project');
-  draft.select(ASSET);
+  draft.select(asset);
   await draft.confirm(ON);
   const sources = Object.values(readTimelineDocument(doc).sources);
   expect(sources).toHaveLength(1);
-  return Number(sources[0]!.durationSeconds);
+  return Number(sources[0].durationSeconds);
 }
 
 describe('a Project video without a registered duration (frames-split §7.8)', () => {
@@ -88,5 +90,23 @@ describe('a Project video without a registered duration (frames-split §7.8)', (
     client.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: ASSET.fileUrl, active: true }).queryKey, presentedResponse(presentedBinding(ASSET.fileUrl)));
     expect(await place()).toBe(9);
     expect(decoded).toContain(ASSET.fileUrl);
+  });
+});
+
+describe('a Project video with a registered duration (frames-split §7.14 Tv)', () => {
+  const REGISTERED: ProjectRegisteredAsset = { ...ASSET, durationSeconds: 5.06 };
+
+  it('MD03 takes the selected version grid length over the registered duration', async () => {
+    // 135 grid frames at 30 fps: 4.5 s, where the registration says 5.06 s.
+    client.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: ASSET.fileUrl, active: true }).queryKey,
+      presentedResponse(presentedBinding(ASSET.fileUrl), { presentation: presentedBundle(ASSET.fileUrl, { display: { ...presentedDisplay(96, 64, 135), fps: { numerator: 30, denominator: 1 } } }) }));
+    expect(await place(REGISTERED)).toBe(4.5);
+    expect(decoded).not.toContain(ASSET.fileUrl);
+  });
+
+  it('MD04 with nothing selected takes the registered duration and decodes nothing', async () => {
+    client.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: ASSET.fileUrl, active: true }).queryKey, presentedResponse(presentedBinding(ASSET.fileUrl)));
+    expect(await place(REGISTERED)).toBe(5.06);
+    expect(decoded).not.toContain(ASSET.fileUrl);
   });
 });
