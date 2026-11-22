@@ -130,7 +130,7 @@ describe("resolveServerUrl", () => {
     });
   });
 
-  it("uses the saved address", () => {
+  it("uses the saved address when the build carries none", () => {
     expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://app.example.com", builtInUrl: "" })).toEqual({ origin: "https://app.example.com", fromEnv: false });
   });
 
@@ -141,9 +141,9 @@ describe("resolveServerUrl", () => {
     });
   });
 
-  it("prefers the server the user chose over the one the build carries", () => {
+  it("opens the server the build carries even when an older address is saved", () => {
     expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://team.example.com", builtInUrl: "https://app.example.com" })).toEqual({
-      origin: "https://team.example.com",
+      origin: "https://app.example.com",
       fromEnv: false,
     });
   });
