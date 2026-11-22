@@ -6,7 +6,7 @@ import type * as Y from 'yjs';
 import { ArrowRightToLine, Code, Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, type TimelineFramePreset, timelineLayerContains, timelineLayerCorners, timelineLayerStyle,
+  getLocale, newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, type TimelineFramePreset, timelineLayerContains, timelineLayerCorners, timelineLayerStyle,
   type TimelineClip, type TimelineDocumentV1, type TimelineLayerBox, type TimelineLayerTransform, type TimelineWebAnimationClip,
 } from '@breatic/shared';
 import { webAnimationDurationFrames, webAnimationExecutionFailed } from '@breatic/shared/space-content';
@@ -226,6 +226,8 @@ const LINKAGE_ICON = <Link2 className='size-4' />;
  */
 function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, damagedClipIds }: TimelineEditorProps): React.JSX.Element {
   const t = useTranslation();
+  // `t` stays the same function across a language switch; memos that build text depend on the locale it reads.
+  const locale = getLocale();
   const [frame, setFrame] = React.useState(0);
   const [zoom, setZoom] = React.useState(DEFAULT_PIXELS_PER_FRAME);
   const [trackWidth, setTrackWidth] = React.useState(0);
@@ -294,20 +296,23 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   // The live value of a layer being dragged in the preview; it is never written to the document.
   const [override, setOverride] = React.useState<{ clipId: string; transform: TimelineLayerTransform } | null>(null);
   const transformOf = React.useCallback((clip: TimelineClip): TimelineLayerTransform => override?.clipId === clip.id ? override.transform : clip.transform, [override]);
-  const webClips = React.useMemo(() => new Map(clips.flatMap((clip) => clip.kind === 'web-animation' ? [[clip.id, webClipView(clip, web, t)] as const] : [])), [clips, web, t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the text follows the locale, which `t` itself does not.
+  const webClips = React.useMemo(() => new Map(clips.flatMap((clip) => clip.kind === 'web-animation' ? [[clip.id, webClipView(clip, web, t)] as const] : [])), [clips, web, t, locale]);
   const uploadViews = useTimelineUploadViews(name, uploads, clips);
   // A visible placeholder draws no picture and hides nothing below it; the preview notes it by track.
   const uploadNotes = React.useMemo(() => visible.flatMap((clip, index): TimelineUploadNote[] => {
     const view = clip.kind === 'upload' ? uploadViews.get(clip.id) : undefined;
     return view === undefined ? [] : [{ clipId: clip.id, z: index + 1, text: t('timeline.upload.preview', { track: labels.nameOf(clip.trackId) ?? clip.trackId, state: view.state }) }];
-  }), [visible, uploadViews, labels, t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the text follows the locale, which `t` itself does not.
+  }), [visible, uploadViews, labels, t, locale]);
   const selectedUploadView = selected?.kind === 'upload' ? uploadViews.get(selected.id) : undefined;
   const selectedUploadId = selected?.kind === 'upload' ? selected.upload.uploadId : null;
   const selectedUploadName = selected?.kind === 'upload' ? selected.upload.name : '';
   const retryUpload = React.useCallback((): void => { if (selectedUploadId !== null) uploads.retry(selectedUploadId); }, [uploads, selectedUploadId]);
   const selectedUpload = React.useMemo(() => selectedUploadView === undefined ? null
     : { text: timelineUploadText(t, selectedUploadView, selectedUploadName), failed: selectedUploadView.state === 'failed', progress: selectedUploadView.progress, onRetry: selectedUploadView.retryable && !readOnly ? retryUpload : null },
-  [selectedUploadView, selectedUploadName, readOnly, retryUpload, t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the text follows the locale, which `t` itself does not.
+  [selectedUploadView, selectedUploadName, readOnly, retryUpload, t, locale]);
   // The web preview's instance pool (inner#1711 design §7.4): visible copies, copies within the premount lead and
   // loaded pages no copy uses. It is allocated again whenever the frame, the document or the resolution changes, and
   // without the Timeline limits it premounts and keeps nothing.
@@ -558,7 +563,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     failure: selectedWeb.state === 'failed' && selectedWeb.status !== null ? t(endedSentenceKey(selectedWeb.status, selectedWeb.failureReason)) : null,
     onOpenInMotion: selectedWeb.state === 'failed' && selectedOrigin !== null && canOpenInMotion ? openSelectedInMotion : null,
     opening: requestStatus === 'creating',
-  }, [selectedWeb, selectedOrigin, canOpenInMotion, openSelectedInMotion, requestStatus, t]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the text follows the locale, which `t` itself does not.
+  }, [selectedWeb, selectedOrigin, canOpenInMotion, openSelectedInMotion, requestStatus, t, locale]);
 
   const needSelection = React.useCallback((): TimelineClip | null => {
     if (selected === undefined) { toast.warning(t('timeline.edit.selectFirst')); return null; }

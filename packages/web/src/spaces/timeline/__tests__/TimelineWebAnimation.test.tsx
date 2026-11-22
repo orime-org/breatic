@@ -39,6 +39,7 @@ import { useCurrentUserStore, useUIStore } from '@web/stores';
 import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useTimelineEditPrefsStore } from '@web/stores/timeline-edit-prefs';
+import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { LOCALE_CATALOGS, readPath } from '@web/test-utils/locale-catalogs';
 import { gesture, moveableMock, resetMoveableMock } from '@web/spaces/timeline/__tests__/helpers/moveable-mock';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
@@ -542,6 +543,19 @@ describe('web copies on the tracks and in properties', () => {
     expect(panel).toHaveTextContent('Slower');
   });
 
+  it('names a copy of a modification in the language the user switches to', async () => {
+    const copy = '30000000-0000-4000-8000-000000000104';
+    seed([webClip(copy, 'v2', 0, 96, boundTo(SRC_B))]);
+    showTimeline();
+    await waitFor(() => expect(screen.getByTestId(`timeline-clip-${copy}`)).toHaveTextContent(t('spaces.webAnimation.titleModifiedFrom', { base: 'Gold dot along an arc', request: 'Slower' })));
+    try {
+      await act(async () => { await changeLocale('zh-CN'); });
+      expect(screen.getByTestId(`timeline-clip-${copy}`)).toHaveTextContent(t('spaces.webAnimation.titleModifiedFrom', { base: 'Gold dot along an arc', request: 'Slower' }));
+    } finally {
+      await act(async () => { await changeLocale('en'); });
+    }
+  });
+
   it('names a placeholder by the request of the execution it waits for', async () => {
     const waiting = '30000000-0000-4000-8000-000000000102';
     seed([webClip(waiting, 'v2', 0, 72, waitingFor(EXEC_RUNNING))]);
@@ -573,6 +587,20 @@ describe('a copy whose execution failed', () => {
     await waitFor(() => expect(panel).toHaveTextContent(t('timeline.webAnimation.failure.stopped')));
     await userEvent.click(within(panel).getByTestId('timeline-web-open-in-motion'));
     expect(useSpaceOpenRequestStore.getState().state).toEqual({ status: 'requesting', request: { type: 'web_animation', select: EXEC_FAILED } });
+  });
+
+  it('shows why it failed in the language the user switches to', async () => {
+    seed([webClip(failed, 'v2', 0, 48, waitingFor(EXEC_FAILED))]);
+    showTimeline();
+    await userEvent.click(await screen.findByTestId(`timeline-clip-${failed}`));
+    const panel = screen.getByTestId('timeline-side-panel');
+    await waitFor(() => expect(panel).toHaveTextContent(t('timeline.webAnimation.failure.stopped')));
+    try {
+      await act(async () => { await changeLocale('zh-CN'); });
+      expect(panel).toHaveTextContent(t('timeline.webAnimation.failure.stopped'));
+    } finally {
+      await act(async () => { await changeLocale('en'); });
+    }
   });
 
   it('hides Open in Motion from a Viewer when the Project has no Motion Space, since a Viewer cannot make one', async () => {
@@ -658,6 +686,23 @@ describe('Add web animation', () => {
     ]);
     expect(within(picker).getByTestId(`timeline-picker-group-${MOTION_SPACE}`)).toHaveTextContent('Launch motion');
     expect(within(picker).getByTestId('timeline-picker-group-deleted')).toHaveTextContent(t('timeline.webAnimation.picker.deletedSpace'));
+  });
+
+  it('names the deleted-Space group in the language the user switches to', async () => {
+    vi.mocked(timelineApi.listResults).mockResolvedValue({
+      rows: [result('90000000-0000-4000-8000-0000000000c2', 'a0000000-0000-4000-8000-0000000000ee', 'Lost one', 'succeeded', SRC_B)],
+      nextCursor: null, totals: null,
+    } as never);
+    seed();
+    showTimeline();
+    const picker = await openPicker();
+    await waitFor(() => expect(within(picker).getByTestId('timeline-picker-group-deleted')).toHaveTextContent(t('timeline.webAnimation.picker.deletedSpace')));
+    try {
+      await act(async () => { await changeLocale('zh-CN'); });
+      expect(within(picker).getByTestId('timeline-picker-group-deleted')).toHaveTextContent(t('timeline.webAnimation.picker.deletedSpace'));
+    } finally {
+      await act(async () => { await changeLocale('en'); });
+    }
   });
 
   it('places each pick as a new copy bound to the result\'s source', async () => {

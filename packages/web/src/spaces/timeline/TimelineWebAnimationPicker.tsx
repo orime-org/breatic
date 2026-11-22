@@ -109,7 +109,8 @@ export function TimelineWebAnimationPicker({ projectId, making, onPick, onGoMake
   const shows = listShows(list);
   const { data } = list;
   const rows = React.useMemo(() => rowsOf({ data }).filter(playable), [data]);
-  const groups = React.useMemo(() => groupResults(rows, spaces, t('timeline.webAnimation.picker.deletedSpace')), [rows, spaces, t]);
+  const deletedName = t('timeline.webAnimation.picker.deletedSpace');
+  const groups = React.useMemo(() => groupResults(rows, spaces, deletedName), [rows, spaces, deletedName]);
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const retry = React.useCallback((): void => { void refetch(); }, [refetch]);
   return <Dialog open onOpenChange={changeOpen}>
