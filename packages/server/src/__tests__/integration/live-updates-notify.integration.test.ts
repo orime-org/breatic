@@ -15,6 +15,7 @@
 
 import { readdir, readFile } from "node:fs/promises";
 import { randomUUID } from "node:crypto";
+import fc from "fast-check";
 import { describe, it, expect, beforeAll, afterAll, vi, inject } from "vitest";
 import {
   initCore,
@@ -412,7 +413,7 @@ describe("the payloads and the triggers themselves", () => {
   it("A-31 carries only the kind and one canonical id", async () => {
     const got = await observe(() => insertNotification(bystander));
     expect(got).toHaveLength(1);
-    expect(Object.keys(got[0]!).sort()).toEqual(["k", "u"]);
+    expect(Object.keys(got[0]).sort()).toEqual(["k", "u"]);
     expect((got[0] as { u: string }).u).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/);
   });
 
@@ -434,5 +435,99 @@ describe("the payloads and the triggers themselves", () => {
       ["credit_holds", "credit_lots", "notifications", "project_transfers", "studio_credit_debts"],
     );
     for (const row of rows) expect(row.timing).toMatch(/AFTER INSERT OR UPDATE/);
+  });
+});
+
+// #1580 PT-1: whatever columns a committed write changes, an update arrives
+// exactly when a trigger column changed, and a rolled-back write sends nothing;
+// a lot whose designation moves tells exactly the studios on either side.
+describe("PT-1 trigger columns under random writes", () => {
+  type Change = { column: string; same: boolean };
+  const write = fc.record({
+    table: fc.constantFrom("notifications", "project_transfers", "credit_holds", "credit_lots", "studio_credit_debts"),
+    changes: fc.uniqueArray(fc.record({ column: fc.integer({ min: 0, max: 3 }).map(String), same: fc.boolean() }), {
+      selector: (c) => c.column,
+      maxLength: 4,
+    }),
+    commit: fc.boolean(),
+    from: fc.constantFrom<"none" | "S" | "T">("none", "S", "T"),
+    to: fc.constantFrom<"none" | "S" | "T">("none", "S", "T"),
+  });
+
+  it("announces a committed change to a trigger column, and nothing else", async () => {
+    await fc.assert(
+      fc.asyncProperty(write, async ({ table, changes, commit, from, to }) => {
+        const studioOf = (side: "none" | "S" | "T"): string | null => (side === "S" ? fx.studioId : side === "T" ? other.studioId : null);
+        const picked = (i: number): Change | undefined => changes.find((c) => c.column === String(i));
+        let expected: LiveUpdate[] = [];
+        let run: (tx: typeof pgClient) => Promise<unknown>;
+        if (table === "notifications") {
+          const id = await insertNotification(recipient);
+          await drain();
+          const cols: [string, string, boolean][] = [
+            ["read_at", picked(0)?.same ? "read_at" : "now()", true],
+            ["deleted_at", picked(1)?.same ? "deleted_at" : "now()", true],
+            ["payload", picked(2)?.same ? "payload" : `'{"x":1}'::jsonb`, false],
+            ["updated_at", "now()", false],
+          ];
+          const used = cols.filter((_c, i) => picked(i) !== undefined);
+          if (used.some(([, v, trig]) => trig && v === "now()")) expected = [{ k: "notifications", u: recipient }];
+          run = (tx) => (used.length === 0 ? Promise.resolve() : tx.unsafe(`update notifications set ${used.map(([c, v]) => `${c} = ${v}`).join(", ")} where id = '${id}'`));
+        } else if (table === "project_transfers") {
+          // A project holds one pending offer, so the last run's offer is closed before this one opens.
+          await pgClient`update project_transfers set status = 'cancelled' where project_id = ${fx.projectId} and status = 'pending'`;
+          const id = await insertTransfer(fx.projectId, fx.userId, recipient);
+          await drain();
+          const cols: [string, string][] = [
+            ["status", picked(0)?.same ? "status" : "'declined'"],
+            ["expires_at", picked(1)?.same ? "expires_at" : "now() + interval '2 days'"],
+            ["deleted_at", picked(2)?.same ? "deleted_at" : "now()"],
+            ["updated_at", "now()"],
+          ];
+          const used = cols.filter((_c, i) => picked(i) !== undefined);
+          if (used.some(([c, v]) => c === "status" && v !== "status")) expected = [{ k: "project-transfer", p: fx.projectId }];
+          run = (tx) => (used.length === 0 ? Promise.resolve() : tx.unsafe(`update project_transfers set ${used.map(([c, v]) => `${c} = ${v}`).join(", ")} where id = '${id}'`));
+        } else if (table === "credit_holds") {
+          const reference = `pt1-${randomUUID()}`;
+          await pgClient`insert into credit_holds (studio_id, actor_user_id, reference_id, amount, expires_at) values (${fx.studioId}, ${fx.userId}, ${reference}, 3, now() + interval '1 hour')`;
+          await drain();
+          const cols: [string, string, boolean][] = [
+            ["amount", picked(0)?.same ? "amount" : "4", true],
+            ["expires_at", picked(1)?.same ? "expires_at" : "now() + interval '3 hours'", true],
+            ["status", picked(2)?.same ? "status" : "'released'", true],
+            ["updated_at", "now()", false],
+          ];
+          const used = cols.filter((_c, i) => picked(i) !== undefined);
+          if (used.some(([c, v, trig]) => trig && v !== c)) expected = [{ k: "credits", s: fx.studioId }];
+          run = (tx) => (used.length === 0 ? Promise.resolve() : tx.unsafe(`update credit_holds set ${used.map(([c, v]) => `${c} = ${v}`).join(", ")} where reference_id = '${reference}'`));
+        } else if (table === "credit_lots") {
+          const lot = await seedDesignatedLot(pgClient, fx, 10);
+          await pgClient`update credit_lots set designated_studio_id = ${studioOf(from)} where id = ${lot}`;
+          await drain();
+          const spend = picked(0) !== undefined && !picked(0)!.same;
+          const sides = new Set([studioOf(from), studioOf(to)].filter((v): v is string => v !== null));
+          if (from !== to) expected = [...sides].map((s) => ({ k: "credits", s }));
+          else if (spend && studioOf(from) !== null) expected = [{ k: "credits", s: studioOf(from)! }];
+          run = (tx) => tx`update credit_lots set designated_studio_id = ${studioOf(to)}, remaining_credits = remaining_credits - ${spend ? 1 : 0} where id = ${lot}`;
+        } else {
+          await pgClient`insert into studio_credit_debts (studio_id, amount) values (${other.studioId}, 0) on conflict do nothing`;
+          await drain();
+          const grow = picked(0) !== undefined && !picked(0)!.same;
+          if (grow) expected = [{ k: "credits", s: other.studioId }];
+          run = (tx) => tx`update studio_credit_debts set amount = amount + ${grow ? 0.5 : 0}, updated_at = now() where studio_id = ${other.studioId}`;
+        }
+        const got = await observe(() =>
+          pgClient
+            .begin(async (tx) => {
+              await run(tx as unknown as typeof pgClient);
+              if (!commit) throw new Error("rollback");
+            })
+            .catch(() => undefined),
+        );
+        const key = (u: LiveUpdate): string => JSON.stringify(u);
+        expect([...new Set(got.map(key))].sort()).toEqual(commit ? expected.map(key).sort() : []);
+      }),
+      { numRuns: 100 },
+    );
   });
 });
