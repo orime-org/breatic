@@ -17,7 +17,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, webAnimationSpaceDocName } from '@breatic/shared';
 
 import { getDoc } from '@web/data/yjs/manager';
-import { timelineApi, type SpaceExecutionPage } from '@web/data/api/timeline';
+import type { WebAnimationListPage } from '@breatic/shared/space-content';
+import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { useSpaceTaskStatus } from '@web/pages/project/chrome/tab-bar/use-space-task-status';
 import { SpaceTasksWatcher } from '@web/pages/project/SpaceTasksWatcher';
@@ -38,9 +39,9 @@ const clients: QueryClient[] = [];
  * @returns The page.
  * @throws {never} Never.
  */
-function page(inProgress: number): SpaceExecutionPage {
+function page(inProgress: number): WebAnimationListPage {
   const rows = Array.from({ length: inProgress }, (_, index) => ({ id: `90000000-0000-4000-8000-00000000000${index}`, status: 'running' }));
-  return { rows: rows as unknown as SpaceExecutionPage['rows'], nextCursor: null, totals: { running: inProgress, succeeded: 3, failed: 0 } };
+  return { rows: rows as unknown as WebAnimationListPage['rows'], nextCursor: null, totals: { running: inProgress, succeeded: 3, failed: 0 } };
 }
 
 /**

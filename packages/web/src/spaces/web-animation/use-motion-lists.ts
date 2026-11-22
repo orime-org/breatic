@@ -3,18 +3,18 @@
 
 import * as React from 'react';
 import { useInfiniteQuery, type InfiniteData, type UseInfiniteQueryResult } from '@tanstack/react-query';
-import type { WebAnimationRowView } from '@breatic/shared/space-content';
+import type { WebAnimationListPage, WebAnimationListScope, WebAnimationRowView } from '@breatic/shared/space-content';
 
 import { spaceTasksQueryKey } from '@web/data/api/scene';
-import { timelineApi, type SpaceExecutionPage, type SpaceExecutionQuery } from '@web/data/api/timeline';
+import { timelineApi } from '@web/data/api/timeline';
 import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
 
 /** One list's pages as React Query holds them. */
-type ListQuery = UseInfiniteQueryResult<InfiniteData<SpaceExecutionPage, string | undefined>>;
+type ListQuery = UseInfiniteQueryResult<InfiniteData<WebAnimationListPage, string | undefined>>;
 
 /** Any paged list of executions as React Query holds it: a Motion list or the Timeline picker's results. */
 interface PagedRows {
-  data?: { pages: readonly SpaceExecutionPage[] };
+  data?: { pages: readonly WebAnimationListPage[] };
 }
 
 /** One tab of the execution list: this Space's rows, then those made in a Timeline before Motion. */
@@ -35,7 +35,7 @@ export interface MotionLists {
   /** Every row loaded in any list, by id. */
   byId: ReadonlyMap<string, WebAnimationRowView>;
   /** How many rows each tab holds, across this Space's own rows and the Timeline-made group. */
-  totals: NonNullable<SpaceExecutionPage['totals']>;
+  totals: NonNullable<WebAnimationListPage['totals']>;
 }
 
 /**
@@ -48,7 +48,7 @@ export interface MotionLists {
  * @returns The key.
  * @throws {never} Never.
  */
-export function motionListQueryKey(projectId: string, spaceId: string, scope: SpaceExecutionQuery['scope'], group: MotionTab): readonly unknown[] {
+export function motionListQueryKey(projectId: string, spaceId: string, scope: WebAnimationListScope, group: MotionTab): readonly unknown[] {
   return [...spaceTasksQueryKey(projectId, spaceId), 'motion-list', scope, group];
 }
 
@@ -63,7 +63,7 @@ export function motionListQueryKey(projectId: string, spaceId: string, scope: Sp
  * @returns The query.
  * @throws {never} Never.
  */
-export function useMotionList(projectId: string, spaceId: string, scope: SpaceExecutionQuery['scope'], group: MotionTab, enabled = true): ListQuery {
+export function useMotionList(projectId: string, spaceId: string, scope: WebAnimationListScope, group: MotionTab, enabled = true): ListQuery {
   const queryKey = React.useMemo(() => motionListQueryKey(projectId, spaceId, scope, group), [projectId, spaceId, scope, group]);
   const queryFn = React.useCallback(({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) =>
     timelineApi.listSpaceExecutions({ projectId, spaceId, scope, group, cursor: pageParam }, signal), [projectId, spaceId, scope, group]);

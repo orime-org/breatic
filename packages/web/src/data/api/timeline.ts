@@ -16,9 +16,6 @@ export type WebAnimationAcceptRequest = WebAnimationAcceptBody extends infer Bod
   ? Body extends unknown ? Omit<Body, 'projectId' | 'spaceId' | 'actionId'> : never
   : never;
 
-/** One page of a Motion list or of the Timeline picker's results. */
-export type SpaceExecutionPage = WebAnimationListPage;
-
 /** Which Motion list to read: this Space's own, or the group made in a Timeline before Motion existed. */
 export interface SpaceExecutionQuery {
   projectId: string;
@@ -68,7 +65,7 @@ export const timelineApi = {
    * @returns The page, with the group totals on a first page.
    * @throws {ApiException} When the request fails.
    */
-  listSpaceExecutions(query: SpaceExecutionQuery, signal?: AbortSignal): Promise<SpaceExecutionPage> {
+  listSpaceExecutions(query: SpaceExecutionQuery, signal?: AbortSignal): Promise<WebAnimationListPage> {
     return apiGet('/timeline/space-executions', { params: query, signal });
   },
   /**
@@ -79,7 +76,7 @@ export const timelineApi = {
    * @returns The page.
    * @throws {ApiException} When the request fails.
    */
-  listResults(projectId: string, cursor?: string, signal?: AbortSignal): Promise<SpaceExecutionPage> {
+  listResults(projectId: string, cursor?: string, signal?: AbortSignal): Promise<WebAnimationListPage> {
     return apiGet('/timeline/results', { params: { projectId, cursor }, signal });
   },
   /**
