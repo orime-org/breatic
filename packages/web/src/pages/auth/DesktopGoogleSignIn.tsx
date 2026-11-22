@@ -29,11 +29,11 @@ const GOOGLE_MARK: ReadonlyArray<readonly [string, string]> = [
 
 /**
  * The look of Google's official button on the web login page, drawn by us:
- * a pill in Google's colours for the page theme (tokens.css), the mark 12px
- * from the left and the text centred in the space beside it.
+ * a pill in Google's colours for the page theme (tokens.css), its blue-tinted
+ * hover, the mark 12px from the left and the text centred beside it.
  */
 const GOOGLE_BUTTON =
-  'relative h-10 w-full rounded-full border border-(--google-button-stroke) bg-(--google-button-fill) pl-10 pr-3 text-sm font-medium text-(--google-button-text) hover-enabled:bg-(--google-button-hover)';
+  'relative h-10 w-full cursor-pointer rounded-full border border-(--google-button-stroke) bg-(--google-button-fill) pl-10 pr-3 text-sm font-medium text-(--google-button-text) hover-enabled:border-(--google-button-hover-stroke) hover-enabled:bg-(--google-button-hover)';
 
 /**
  * Google's "G" mark for the sign-in button.

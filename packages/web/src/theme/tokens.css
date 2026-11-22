@@ -114,10 +114,12 @@ html[data-theme='light'] {
      client, #1599). The colours are Google's branding-guideline values, the
      same theme the web page's official button takes: its dark button on a
      light page. Plain :root variables because Google's greys are not neutral
-     ramp values; the button reads them with bg-(--…). */
+     ramp values; the button reads them with bg-(--…). The hover values are
+     read off Google's own button on the web login page. */
   --google-button-fill: #131314;
-  --google-button-hover: #2b2b2d;
+  --google-button-hover: #252526;
   --google-button-stroke: #8e918f;
+  --google-button-hover-stroke: #d2e3fc;
   --google-button-text: #e3e3e3;
 
   /* Palette · 7 colors · single chromatic source of truth (#1549,
@@ -542,8 +544,9 @@ html[data-theme='dark'] {
 
   /* Google's light button on a dark page, as the web page's official one. */
   --google-button-fill: #ffffff;
-  --google-button-hover: #f2f2f2;
+  --google-button-hover: #f0f5fe;
   --google-button-stroke: #747775;
+  --google-button-hover-stroke: #d2e3fc;
   --google-button-text: #1f1f1f;
 
   /* neutral reversal (= light scale reversed, same temperature). */
