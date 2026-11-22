@@ -39,6 +39,12 @@ describe("sealModelKeys / openModelKeys", () => {
     expect(Object.entries(opened)).toEqual([["__proto__", "k1"], ["constructor", "k2"]]);
   });
 
+  it("refuses an upstream named __proto__ whose key is not a string, which the schema does not read", async () => {
+    const sealed = await sealModelKeys(JSON.parse('{"__proto__":5}') as Record<string, string>, publicKey);
+
+    await expect(openModelKeys(sealed, privateKey)).rejects.toBeInstanceOf(ModelKeysUnreadable);
+  });
+
   it("writes a compact JWE with RSA-OAEP-256 and A256GCM that does not carry a key in the clear", async () => {
     const sealed = await sealModelKeys({ openrouter: "sk-or-v1-secret-value" }, publicKey);
 

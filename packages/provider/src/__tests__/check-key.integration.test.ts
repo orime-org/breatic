@@ -147,6 +147,9 @@ describe("checkKey on fal", () => {
     const { checkKey } = started();
     falAnswers({ status: 200, body: { credits: { current_balance: 3 } } }, { status: 200, body: { billing_events: [] } });
     expect(await checkKey("fal", "user-fal")).toMatchObject({ connected: true, balance: { amount: 3, currency: "USD" } });
+    // A balance in fal's own currency keeps that currency.
+    falAnswers({ status: 200, body: { credits: { current_balance: 3, currency: "EUR" } } }, { status: 200, body: { billing_events: [] } });
+    expect(await checkKey("fal", "user-fal")).toMatchObject({ connected: true, balance: { amount: 3, currency: "EUR" } });
     falAnswers({ status: 200, body: { credits: { currency: "EUR" } } }, { status: 200, body: { billing_events: [] } });
     expect(await checkKey("fal", "user-fal")).toMatchObject({ connected: true, balance: "unsupported" });
   });

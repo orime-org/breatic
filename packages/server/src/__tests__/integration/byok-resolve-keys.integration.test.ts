@@ -31,7 +31,7 @@ import { randomBytes } from "node:crypto";
 import fc from "fast-check";
 import postgres from "postgres";
 import { accountModelUpstreamsRepo, accountProviderKeysRepo, initCore, sealProviderKey } from "@breatic/core";
-import { initProvider, resolveKeys } from "@breatic/domain";
+import { initProvider, payerKeyPlan, resolveKeys } from "@breatic/domain";
 
 const SECRET = randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
@@ -282,6 +282,45 @@ describe("resolveKeys: media calls", () => {
     const resolved = await resolveKeys({ studioId }, MEDIA);
     expect(resolved.keyId).toBe(newId);
     expect(resolved.keys.keyOf("fal")).toBe("fal-new");
+  });
+});
+
+describe("payerKeyPlan: the answer resolveKeys gives, without opening a key", () => {
+  it("names a model on the payer's key exactly when resolveKeys runs it there, and OpenRouter exactly when a language-model call does", async () => {
+    await fc.assert(
+      fc.asyncProperty(
+        fc.record({ openrouter: fc.boolean(), fal: fc.boolean(), wavespeed: fc.boolean(), choice: fc.constantFrom<"fal" | "wavespeed" | null>("fal", "wavespeed", null) }),
+        async ({ openrouter, fal, wavespeed, choice }) => {
+          const userId = await seedUser();
+          const { studioId } = await seedStudio(userId, "personal");
+          if (openrouter) await saveKey(userId, "openrouter", "sk-or-v1-plan");
+          if (fal) await saveKey(userId, "fal", "fal-plan");
+          if (wavespeed) await saveKey(userId, "wavespeed", "ws-plan");
+          if (choice !== null) await accountModelUpstreamsRepo.setModelUpstream(userId, MODEL, choice);
+
+          const plan = await payerKeyPlan(studioId);
+          const media = await resolveKeys({ studioId }, MEDIA);
+          const llm = await resolveKeys({ studioId }, LLM);
+          expect(plan?.models[MODEL] ?? null).toBe(media.route.mode === "upstream" ? media.route.upstream : null);
+          expect(plan?.upstreams.includes("openrouter") ?? false).toBe(llm.keyId !== null);
+        },
+      ),
+      { numRuns: 12 },
+    );
+  });
+
+  it("is null when this deployment does not open account keys, as resolveKeys then runs on ours", async () => {
+    const userId = await seedUser();
+    const { studioId } = await seedStudio(userId, "personal");
+    await saveKey(userId, "fal", "fal-ring-off");
+    await accountModelUpstreamsRepo.setModelUpstream(userId, MODEL, "fal");
+    const { PROVIDER_KEY_SECRET_ID: _id, PROVIDER_KEY_SECRETS: _secrets, ...withoutRing } = process.env;
+    initCore(withoutRing);
+    try {
+      expect(await payerKeyPlan(studioId)).toBeNull();
+    } finally {
+      initCore({ ...process.env, PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
+    }
   });
 });
 
