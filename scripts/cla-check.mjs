@@ -230,7 +230,7 @@ export function checkRunOutput(verdict, version, pull) {
     summary: [
       ...lines,
       '',
-      'A green check means an acceptance record exists for each person. Corporate rights were not verified by this check; before merging, a maintainer reviews them as CONTRIBUTING.md describes.',
+      'A green check means each person has an acceptance record, is an Orime, Inc. account on a pull request an Orime, Inc. account opened, or was cleared by a maintainer for this head. Corporate rights were not verified by this check; before merging, a maintainer reviews them as CONTRIBUTING.md describes.',
     ].join('\n'),
   };
 }
@@ -244,15 +244,15 @@ export function checkRunOutput(verdict, version, pull) {
  */
 export function signRequestComment(verdict, version, repository) {
   const link = `https://github.com/${repository}/blob/${version.commit}/${version.path}`;
-  if (verdict.ok) return `${COMMENT_MARKER}\nEveryone on this pull request has accepted the [Breatic Contributor License Agreement version 2.0](${link}).`;
+  if (verdict.ok) return `${COMMENT_MARKER}\nEveryone on this pull request has accepted the [Breatic Contributor License Agreement version 2.0](${link}) or been cleared by a maintainer.`;
   const waiting = verdict.people.filter((p) => !p.ok).map((p) => `- ${nameOf(p.identity)}: ${p.reason}`);
   return [
     COMMENT_MARKER,
-    `Before this pull request can be merged, each person below has to accept the [Breatic Contributor License Agreement version 2.0](${link}) (SHA-256 \`${version.sha256}\`).`,
+    `Before this pull request can be merged, each person below has to accept the [Breatic Contributor License Agreement version 2.0](${link}) (SHA-256 \`${version.sha256}\`), unless their line says a maintainer has to review.`,
     '',
     'Read it before accepting. You keep the copyright in your contributions. You grant Orime, Inc. the right to use, sublicense and commercially license them, and Orime, Inc. does not commit to offering them under an OSI-approved license.',
     '',
-    'To accept, post a comment on this pull request containing exactly:',
+    'To accept, post a comment on this pull request whose entire text is:',
     '',
     `> ${version.phrase}`,
     '',

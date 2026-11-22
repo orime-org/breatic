@@ -2,9 +2,9 @@
 
 [English](LOCAL.md) | **简体中文**
 
-适用：自己使用，或分享给家庭、私密小组、同一组织内的同事。主站安装在一台电脑上，其他人通过浏览器访问这台电脑。**使用发布镜像，不启动源码开发服务器。** 修改源码请看 [开发环境](DEVELOPMENT-CN.md)。
+适用：自己使用，或分享给家庭、非商业的私密小组、同一组织内的同事。主站安装在一台电脑上，其他人通过浏览器访问这台电脑。**使用发布镜像，不启动源码开发服务器。** 修改源码请看 [开发环境](DEVELOPMENT-CN.md)。
 
-Breatic 采用 [Breatic Source-Available License 2.0](../LICENSE)。你可以自部署给自己、私人小组或本组织使用，不需要支付软件许可费。没有 Orime, Inc. 的书面授权，实例只能运行在自部署模式，`PAYMENT_ENABLED` 保持 `false`；把它作为商业平台提供给他人使用需要另行书面授权（LICENSE 第 10、11 条）。界面上保留 Breatic 名称和 Logo，见 [TRADEMARKS.md](../TRADEMARKS.md)。
+Breatic 采用 [Breatic Source-Available License 2.0](../LICENSE)。你可以自部署给自己、非商业的私人小组或本组织使用，不需要支付软件许可费。没有 Orime, Inc. 的书面授权，实例只能运行在自部署模式，`PAYMENT_ENABLED` 保持 `false`；把它作为商业平台提供给他人使用需要另行书面授权（LICENSE 第 10、11 条）。界面上保留 Breatic 名称和 Logo，见 [TRADEMARKS.md](../TRADEMARKS.md)。
 
 ## 1. 部署完成后是什么样
 

@@ -2,9 +2,9 @@
 
 **English** | [简体中文](LOCAL-CN.md)
 
-Use this guide to run Breatic for yourself or share it with your household, private group or colleagues within one organization. Install the application on one computer; other users connect through a browser. **Use published images, not development servers.** For source changes, see [Development setup](DEVELOPMENT.md).
+Use this guide to run Breatic for yourself or share it with your household, a private noncommercial group or colleagues within one organization. Install the application on one computer; other users connect through a browser. **Use published images, not development servers.** For source changes, see [Development setup](DEVELOPMENT.md).
 
-Breatic is source-available under the [Breatic Source-Available License 2.0](../LICENSE). You may self-host it for yourself, a private group or your organization without a software license fee. Without written authorization from Orime, Inc., an instance must run in Self-Deployment Mode with `PAYMENT_ENABLED=false`, and making it available to others as a commercial platform needs separate written authorization (LICENSE sections 10 and 11). Keep the Breatic name and logo visible; see [TRADEMARKS.md](../TRADEMARKS.md).
+Breatic is source-available under the [Breatic Source-Available License 2.0](../LICENSE). You may self-host it for personal use, a private noncommercial group or use within your organization without a software license fee. Without written authorization from Orime, Inc., an instance must run in Self-Deployment Mode with `PAYMENT_ENABLED=false`, and making it available to others as a commercial platform needs separate written authorization (LICENSE sections 10 and 11). Keep the Breatic name and logo visible; see [TRADEMARKS.md](../TRADEMARKS.md).
 
 ## 1. What you will run
 

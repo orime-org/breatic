@@ -222,8 +222,10 @@ OSI-approved license.
 
 If your employer has rights in your contributions, the corporate agreement in
 CLA.md is handled privately through contact@breatic.ai; do not post company
-documents in a pull request. A green `CLA signed` check means an acceptance
-record exists for each person on the pull request. Corporate rights and
+documents in a pull request. A green `CLA signed` check means each person on
+the pull request has an acceptance record, is an Orime, Inc. account on a pull
+request an Orime, Inc. account opened, or was cleared by a maintainer for the
+current head commit. Corporate rights and
 stop-coverage notices are reviewed by a maintainer before merging. Works you
 create with Breatic are not contributions.
 
