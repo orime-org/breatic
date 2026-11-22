@@ -66,6 +66,9 @@ const IN_DEVELOPMENT: ReadonlySet<SpaceType> = new Set(['3d', 'timeline', 'web_a
 /** How wide the fade is on a side the row can still scroll to; a landed card stays clear of it and its arrow. */
 const FADE_PX = 56;
 
+/** The drawn fade, as wide as the width the scroll maths keeps clear. */
+const FADE_STYLE: React.CSSProperties = { width: FADE_PX };
+
 /** How far one line of a line-based wheel moves the row. */
 const WHEEL_LINE_PX = 16;
 
@@ -278,7 +281,7 @@ export function SpaceKindPicker({
         </ScrollArea>
         {edges.start ? (
           <>
-            <div aria-hidden='true' className='pointer-events-none absolute inset-y-0 left-0 w-14 bg-gradient-to-r from-card via-card/80 to-transparent' />
+            <div aria-hidden='true' className='pointer-events-none absolute inset-y-0 left-0 bg-gradient-to-r from-card via-card/80 to-transparent' style={FADE_STYLE} />
             <Button
               type='button'
               variant='outline'
@@ -294,7 +297,7 @@ export function SpaceKindPicker({
         ) : null}
         {edges.end ? (
           <>
-            <div aria-hidden='true' className='pointer-events-none absolute inset-y-0 right-0 w-14 bg-gradient-to-l from-card via-card/80 to-transparent' />
+            <div aria-hidden='true' className='pointer-events-none absolute inset-y-0 right-0 bg-gradient-to-l from-card via-card/80 to-transparent' style={FADE_STYLE} />
             <Button
               type='button'
               variant='outline'
