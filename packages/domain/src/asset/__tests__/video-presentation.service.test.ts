@@ -22,8 +22,8 @@ import type * as coreModule from '@breatic/core';
 import { resolveVideoPresentation, repairVideoPresentation, ensureVideoPresentation } from '../video-presentation.service.js';
 import { videoEncoderRates } from '../video-encoder-rates.js';
 
-const { loadProjectRole, findLiveByStorageKey, findById, keyFromUrl, publicUrl } = vi.hoisted(() => ({
-  loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
+const { loadProjectRole, findLiveByStorageKey, findById, findCoverOf, keyFromUrl, publicUrl } = vi.hoisted(() => ({
+  loadProjectRole: vi.fn(), findLiveByStorageKey: vi.fn(), findById: vi.fn(), findCoverOf: vi.fn(), keyFromUrl: vi.fn(), publicUrl: vi.fn(),
 }));
 const { videoPresentationAtIngest, queueAdd, fillMediaNumbers, createUsageRecorder, recordServiceCall, settle, selectPin } = vi.hoisted(() => ({
   videoPresentationAtIngest: vi.fn(), queueAdd: vi.fn(), fillMediaNumbers: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), selectPin: vi.fn(),
@@ -41,7 +41,7 @@ vi.mock('@breatic/core', async (original) => {
   };
 });
 vi.mock('@breatic/shared', async (original) => ({ ...await original<Record<string, unknown>>(), videoPresentationAtIngest }));
-vi.mock('@domain/asset/asset.repo.js', async (original) => ({ ...await original<Record<string, unknown>>(), findLiveByStorageKey, findById, fillMediaNumbers }));
+vi.mock('@domain/asset/asset.repo.js', async (original) => ({ ...await original<Record<string, unknown>>(), findLiveByStorageKey, findById, findCoverOf, fillMediaNumbers }));
 vi.mock('@domain/presentation/presentation-pin.service.js', async (original) => ({ ...await original<Record<string, unknown>>(), select: selectPin }));
 vi.mock('@domain/credit/usage-recorder.js', async (original) => ({ ...await original<Record<string, unknown>>(), createUsageRecorder }));
 
@@ -126,6 +126,7 @@ beforeEach(() => {
   publicUrl.mockImplementation((key: string) => `https://assets.example.test/${key}`);
   findLiveByStorageKey.mockResolvedValue(asset);
   findById.mockResolvedValue(asset);
+  findCoverOf.mockResolvedValue(null);
   ingest(snapshot());
   queueAdd.mockResolvedValue(undefined);
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
@@ -287,7 +288,7 @@ describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 �
     const got = await resolveVideoPresentation(input);
     const accept = acceptSent();
     expect(accept.repair).not.toBe(true);
-    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), pollAfterMs: 5000 });
+    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), pollAfterMs: 5000, coverURL: null });
     expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: accept.jobId }), expect.objectContaining({ jobId: accept.jobId }));
   });
 
@@ -305,6 +306,13 @@ describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 �
     expect(sent().map((request) => request.action)).toEqual(['read']);
     expect(queueAdd).not.toHaveBeenCalled();
     expect(got).toMatchObject({ presentation: null, preparation: prep('failed-job', 'plan', 'too_long'), pollAfterMs: null });
+  });
+
+  it('R06 carries the registered video\'s cover, for a surface that holds none of its own', async () => {
+    findCoverOf.mockResolvedValue({ fileUrl: 'https://assets.example.test/cover/source.webp' });
+    const got = await resolveVideoPresentation(input);
+    expect(findCoverOf).toHaveBeenCalledWith(asset.id);
+    expect(got.coverURL).toBe('https://assets.example.test/cover/source.webp');
   });
 
   // frames-split §7.12: a selected version carries its grid, so it is answered as it is.
@@ -342,7 +350,7 @@ describe('the response mirrors the snapshot (inner#1306 §3.5 web→server, §5.
   it('M01 maps every field with one name per concept and nothing else', async () => {
     ingest(snapshot({ presentation: bundle, preparation: prep('next-policy', 'encode') }));
     expect(await resolveVideoPresentation(input)).toEqual({
-      sourceBinding: registered, presentation: bundle, preparation: prep('next-policy', 'encode'), pollAfterMs: null,
+      sourceBinding: registered, presentation: bundle, preparation: prep('next-policy', 'encode'), pollAfterMs: null, coverURL: null,
     });
   });
 
@@ -370,7 +378,7 @@ describe('repair returns the same response (inner#1306 §3.5 web→server repair
     const got = await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'repair-press' });
     const accept = acceptSent();
     expect(accept).toMatchObject({ action: 'accept', repair: true, storageKey: asset.storageKey, sourceFingerprint: H });
-    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), pollAfterMs: 5000 });
+    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), pollAfterMs: 5000, coverURL: null });
   });
 
   it('RP02 a repair of the selected version answers it with the new work and queues the job ingest accepted', async () => {
