@@ -6,6 +6,7 @@ import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { defineConfig, type Options } from "tsup";
 import { currentBrand } from "./brand.mjs";
 import { builtInServerUrl } from "./src/main/server-config.js";
+import { buildTimeSentryDsn } from "./src/main/error-monitoring.js";
 
 /** The brand this build is for: BREATIC_BRAND_DIR, else the official one. */
 const brand = currentBrand();
@@ -33,6 +34,11 @@ const shared: Options = {
       poweredBy: brand.poweredBy,
       splashLogo: `${SPLASH_LOGO}${extname(brand.logo)}`,
       appImageEntryName: brand.appImageEntryName,
+    }),
+    // A release build (tagged CI, partner pipeline) sets BREATIC_RELEASE_BUILD=1 and must carry the DSN.
+    __BUILD__: JSON.stringify({
+      sentryDsn: buildTimeSentryDsn(process.env.BREATIC_DESKTOP_SENTRY_DSN, { release: process.env.BREATIC_RELEASE_BUILD === "1" }),
+      commit: process.env.GITHUB_SHA ?? "unknown",
     }),
   },
   esbuildOptions(options) {
