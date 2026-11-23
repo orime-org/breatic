@@ -94,9 +94,9 @@ function passes(task: SpaceTask, filters: TaskFilters, userId: string): boolean 
  *
  * The rows are the server's; this page adds what only it knows about the
  * uploads it sends, and its own filters. The list is read again when the
- * server signals a change (the page invalidates its query) and when the
- * earliest running row reaches its deadline, timed from the server's clock so
- * a browser clock that runs ahead cannot reread in a loop.
+ * server writes a new change version into the 3D Space's document
+ * (`SpaceTasksWatcher`), which it also does when a running row reaches its
+ * deadline (#1580).
  * @param props - Space identity, edit right, the page's uploads and the row actions.
  * @returns The list.
  */

@@ -34,7 +34,7 @@ import {
   UPLOAD_ENDED_SIGNAL,
   type UploadEndedEvent,
 } from "@breatic/shared";
-import type { AuthContext } from "@collab/hooks/auth.js";
+import { relayOnMetaDoc, type MetaSignal } from "@collab/services/meta-signal.js";
 
 const logger = createLogger("live-update-relay");
 
@@ -55,38 +55,15 @@ export interface LiveUpdateRelay {
 }
 
 /**
- * Send a signal on one loaded meta document, to the connections `filter` picks. A failure on one document is logged
- * and does not stop the others.
- * @param hocuspocus - This instance's Hocuspocus server.
- * @param docName - The meta document.
- * @param signal - The signal, as its connections parse it.
- * @param filter - Which connections get it; all when absent.
- */
-function relayOn(
-  hocuspocus: Hocuspocus,
-  docName: string,
-  signal: Record<string, unknown>,
-  filter?: (context: AuthContext | undefined) => boolean,
-): void {
-  const doc = hocuspocus.documents?.get(docName);
-  if (!doc) return;
-  try {
-    doc.relayStateless(JSON.stringify(signal), filter && ((connection) => filter(connection.context as AuthContext | undefined)));
-  } catch (err) {
-    logger.warn({ err, docName, signal: signal.t }, "live_update_relay_failed");
-  }
-}
-
-/**
  * Send a person's signal to their connections on every loaded meta document.
  * @param hocuspocus - This instance's Hocuspocus server.
  * @param userId - The person.
  * @param signal - The signal.
  */
-function relayToPerson(hocuspocus: Hocuspocus, userId: string, signal: Record<string, unknown>): void {
+function relayToPerson(hocuspocus: Hocuspocus, userId: string, signal: MetaSignal): void {
   for (const docName of hocuspocus.documents?.keys() ?? []) {
     if (parseDocName(docName)?.kind !== "meta") continue;
-    relayOn(hocuspocus, docName, signal, (context) => context?.user?.id === userId);
+    relayOnMetaDoc(hocuspocus, docName, signal, (context) => context?.user?.id === userId);
   }
 }
 
@@ -103,11 +80,11 @@ async function relayUpdate(hocuspocus: Hocuspocus, deps: LiveUpdateRelayDeps, up
     return;
   }
   if (update.k === "project-transfer") {
-    relayOn(hocuspocus, projectMetaDocName(update.p), { t: PROJECT_TRANSFER_CHANGED_SIGNAL, projectId: update.p });
+    relayOnMetaDoc(hocuspocus, projectMetaDocName(update.p), { t: PROJECT_TRANSFER_CHANGED_SIGNAL, projectId: update.p });
     return;
   }
   for (const projectId of await deps.listLiveProjectIdsInStudio(update.s)) {
-    relayOn(hocuspocus, projectMetaDocName(projectId), { t: CREDITS_CHANGED_SIGNAL, projectId });
+    relayOnMetaDoc(hocuspocus, projectMetaDocName(projectId), { t: CREDITS_CHANGED_SIGNAL, projectId });
   }
 }
 

@@ -237,7 +237,9 @@ test('N-04 a focus crop lands in its node\'s pool after its uploader closed the 
     await node.click();
     const layer = node.getByTestId('focus-crop-layer');
     await expect(layer).toBeVisible({ timeout: 15_000 });
-    await dragAcross(uploader, layer, [0.2, 0.2], [0.6, 0.7]);
+    // A crop of the same picture with the same box is the same bytes, which the Studio already holds after an earlier
+    // run and answers as a dedup hit with no upload; a box of its own keeps this crop new.
+    await dragAcross(uploader, layer, [0.2, 0.2], [0.55 + Math.random() * 0.2, 0.6 + Math.random() * 0.2]);
 
     const finished = uploader.waitForResponse(
       (r) => /\/assets\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST',

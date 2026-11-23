@@ -52,10 +52,9 @@ import {
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   ASSET_PEAKS_READY_SIGNAL,
-  type ActivityNewSignal,
-  type AssetPeaksReadySignal,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
+import { relayOnMetaDoc } from "@collab/services/meta-signal.js";
 
 const logger = createLogger("project-control-sync");
 
@@ -63,29 +62,6 @@ type ProjectControlEvent =
   | ActivityNewControlEvent
   | AssetPeaksReadyControlEvent
   | ProjectConnectionsCloseEvent;
-
-/**
- * Relay a stateless signal to this instance's connections on a project's meta
- * doc. An instance that holds no connection to the project has no doc loaded
- * and relays nothing.
- * @param hocuspocus - Running Hocuspocus server.
- * @param projectId - The project whose meta doc carries the signal.
- * @param signal - The signal, as its connections parse it.
- */
-function relayOnMetaDoc(
-  hocuspocus: Hocuspocus,
-  projectId: string,
-  signal: ActivityNewSignal | AssetPeaksReadySignal,
-): void {
-  const docName = projectMetaDocName(projectId);
-  const doc = hocuspocus.documents?.get(docName);
-  if (!doc) return;
-  try {
-    doc.relayStateless(JSON.stringify(signal));
-  } catch (err) {
-    logger.warn({ err, docName, signal: signal.t }, "meta_signal_relay_failed");
-  }
-}
 
 /**
  * Decode one raw control-plane pub/sub message and dispatch it:
@@ -113,14 +89,14 @@ async function handleEvent(
     // Relay a server/worker-written activity row to connected members
     // as the same stateless signal collab-originated rows broadcast
     // directly (ADR 2026-07-04 project-activity-feed).
-    relayOnMetaDoc(hocuspocus, event.projectId, { t: ACTIVITY_NEW_SIGNAL, projectId: event.projectId });
+    relayOnMetaDoc(hocuspocus, projectMetaDocName(event.projectId), { t: ACTIVITY_NEW_SIGNAL, projectId: event.projectId });
     return;
   }
 
   if (event.type === "project-asset-peaks:ready") {
     // An audio this project references has its waveform; a cut band waiting
     // for it reads the peaks again.
-    relayOnMetaDoc(hocuspocus, event.projectId, {
+    relayOnMetaDoc(hocuspocus, projectMetaDocName(event.projectId), {
       t: ASSET_PEAKS_READY_SIGNAL,
       projectId: event.projectId,
       assetId: event.assetId,

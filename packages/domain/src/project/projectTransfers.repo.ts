@@ -20,9 +20,10 @@
  * `now()` — which means a timed-out offer keeps `status = 'pending'` and holds
  * the project's slot until something flips it. Nothing would, since a timed-out
  * offer is by definition the case where nobody acted, and here the cost is the whole
- * project: no further transfer could ever be started. So {@link createPending}
- * reaps stale pendings in the same transaction that takes the slot, exactly as
- * the invite tables learned to (#1769).
+ * project: no further transfer could ever be started. So `expireDueTransfers`
+ * (transfer-expiry.service) ends a timed-out offer, and the deadline sweep and
+ * filing a new offer both run it, the latter in the transaction that takes the
+ * slot (#1769, #1580).
  *
  * LOCKING BY ID, NOT BY STATUS. {@link lockRequest} locks on `id` alone and
  * reports the status it found. Adding `status = 'pending'` to the lock's WHERE

@@ -1130,6 +1130,21 @@ describe("focus crop events", () => {
     expect(await poolOf(c, nodeId)).toEqual({ isArray: true, items: [old, img] });
   });
 
+  it("D-28 adds nothing to a canvas whose document was deleted, and acknowledges the event", async () => {
+    // The ticket does not check the Space exists; a live document is what the crop may land in.
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    await untilUnloaded(c.docName);
+    expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
+    const ids = await publishFocus(c, [{ nodeId, image: image() }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await yjsRepo.restoreByName(c.docName)).toBe(true);
+    expect(await poolOf(c, nodeId)).toBeUndefined();
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
   it("D-29 skips a focus event addressed to a document that is not a canvas", async () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });
