@@ -1,0 +1,21 @@
+{
+  "signatures": [
+    {
+      "id": 29032600,
+      "login": "NipunaRanasinghe",
+      "version": "Breatic-CLA-2.0",
+      "sha256": "dee9944afe77ca3d68a154f73d5c0cbc79a145ad379fd89c4ceef4c5a7208fde",
+      "document": "https://github.com/orime-org/breatic/blob/f299a6bcb3b569b91fdeb44fcd2f158b808387fc/docs/legal/cla/v2/CLA.md",
+      "pullRequest": 1546,
+      "pullRequestUrl": "https://github.com/orime-org/breatic/pull/1546",
+      "commentId": 7091453320,
+      "commentUrl": "https://github.com/orime-org/breatic/pull/1546#issuecomment-7091453320",
+      "commentBody": "I have read and agree to the Breatic Contributor License Agreement version 2.0, including my contributions to this pull request.",
+      "acceptedAt": "2026-11-23T04:17:23Z",
+      "headSha": "5113bdbb211a0149074cfb3bfbf43896769e3dbd",
+      "commits": [
+        "5113bdbb211a0149074cfb3bfbf43896769e3dbd"
+      ]
+    }
+  ]
+}
