@@ -16,7 +16,7 @@
  */
 
 import crypto from "node:crypto";
-import { env, getRedis } from "@breatic/core";
+import { env, getRedis, getSession } from "@breatic/core";
 import type { UserEntity } from "@breatic/shared";
 import { getDesktopHandoffTtlSeconds } from "@server/config/auth.js";
 import { createSession, getUserById } from "@server/modules/auth/auth.service.js";
@@ -25,10 +25,12 @@ import { createSession, getUserById } from "@server/modules/auth/auth.service.js
 interface HandoffRecord {
   userId: string;
   challenge: string;
+  /** The browser session that asked; the code dies with it, so signing out or a password reset ends it too. */
+  session: string;
 }
 
 /** Why a redemption was refused; logged, never shown. */
-export type DesktopExchangeRefusal = "unknown_code" | "verifier_mismatch" | "account_gone";
+export type DesktopExchangeRefusal = "unknown_code" | "verifier_mismatch" | "session_gone" | "account_gone";
 
 /** The outcome of redeeming a code. */
 export type DesktopExchangeOutcome =
@@ -49,12 +51,13 @@ function keyOf(code: string): string {
  * Issue a one-time code for a signed-in account, bound to the client's challenge.
  * @param userId - The account signed in in the browser.
  * @param challenge - base64url SHA-256 of the client's verifier.
+ * @param session - The token of the browser session asking.
  * @returns The code to hand to the desktop client.
  * @throws {Error} if Redis is unreachable.
  */
-export async function issueDesktopHandoff(userId: string, challenge: string): Promise<string> {
+export async function issueDesktopHandoff(userId: string, challenge: string, session: string): Promise<string> {
   const code = crypto.randomBytes(32).toString("base64url");
-  const record: HandoffRecord = { userId, challenge };
+  const record: HandoffRecord = { userId, challenge, session };
   await getRedis().set(keyOf(code), JSON.stringify(record), "EX", getDesktopHandoffTtlSeconds());
   return code;
 }
@@ -75,6 +78,7 @@ export async function redeemDesktopHandoff(code: string, verifier: string): Prom
   if (derived.length !== expected.length || !crypto.timingSafeEqual(derived, expected)) {
     return { ok: false, reason: "verifier_mismatch" };
   }
+  if ((await getSession(getRedis(), record.session)) !== record.userId) return { ok: false, reason: "session_gone" };
   const user = await getUserById(record.userId);
   if (!user) return { ok: false, reason: "account_gone" };
   return { ok: true, user, token: await createSession(user.id) };

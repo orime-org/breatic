@@ -463,7 +463,9 @@ auth.post(
   validate("json", desktopHandoffSchema),
   async (c) => {
     const user = c.get("user");
-    const code = await desktopHandoffService.issueDesktopHandoff(user.id, c.req.valid("json").challenge);
+    // requireAuth has read this cookie, so it is present.
+    const session = readSessionCookie(c) ?? "";
+    const code = await desktopHandoffService.issueDesktopHandoff(user.id, c.req.valid("json").challenge, session);
     logger.info({ userId: user.id }, "desktop_handoff_issued");
     return c.json({ data: { code } });
   },

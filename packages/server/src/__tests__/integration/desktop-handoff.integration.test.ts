@@ -57,7 +57,7 @@ vi.mock("@breatic/core", async (io) => {
 import crypto from "node:crypto";
 import fc from "fast-check";
 import postgres from "postgres";
-import { initCore, getRedis, getSession, setSession, sessionCookieName, loadLocales, env } from "@breatic/core";
+import { initCore, getRedis, getSession, revokeAllSessions, revokeSession, setSession, sessionCookieName, loadLocales, env } from "@breatic/core";
 import type { Hono } from "hono";
 import { PROXY_PEER, withPeer } from "../helpers/peer.js";
 
@@ -175,13 +175,14 @@ function exchange(code: unknown, verifier: unknown, from: string = ip()): Promis
  * @returns The account, its code and the verifier behind it.
  * @throws {Error} when the handoff is refused.
  */
-async function handedOff(): Promise<{ userId: string; code: string; verifier: string }> {
+async function handedOff(): Promise<{ userId: string; code: string; verifier: string; browser: string }> {
   const userId = await account();
   const { verifier, challenge } = pkce();
-  const res = await handoff(await session(userId), challenge);
+  const browser = await session(userId);
+  const res = await handoff(browser, challenge);
   if (res.status !== 200) throw new Error(`handoff answered ${res.status}`);
   const body = (await res.json()) as { data: { code: string } };
-  return { userId, code: body.data.code, verifier };
+  return { userId, code: body.data.code, verifier, browser };
 }
 
 /**
@@ -279,6 +280,18 @@ describe("POST /auth/desktop-exchange", () => {
     expect(res.status).toBe(401);
     expect(setToken(res)).toBeNull();
     expect(logWarn).toHaveBeenCalledWith(expect.objectContaining({ reason: "account_gone" }), "desktop_exchange_refused");
+  });
+
+  it.each([
+    ["signs out of every device", (userId: string) => revokeAllSessions(getRedis(), userId)],
+    ["signs out in that browser", (_userId: string, browser: string) => revokeSession(getRedis(), browser)],
+  ])("refuses a code once the browser session that asked for it ends: the user %s", async (_label, end) => {
+    const { userId, code, verifier, browser } = await handedOff();
+    await end(userId, browser);
+    const res = await exchange(code, verifier);
+    expect(res.status).toBe(401);
+    expect(setToken(res)).toBeNull();
+    expect(logWarn).toHaveBeenCalledWith(expect.objectContaining({ reason: "session_gone" }), "desktop_exchange_refused");
   });
 
   it("answers 422 to a body without code or verifier", async () => {
