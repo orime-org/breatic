@@ -219,6 +219,19 @@ test("a configured server that cannot be reached opens the unreachable state", a
   await expect(connect.getByRole("button", { name: "Use another server" })).toHaveCount(0);
   await connect.getByRole("button", { name: "Retry" }).click();
   await expect(connect.getByText("Can't reach this address")).toBeVisible();
+  if (process.platform === "darwin") {
+    // Closed and reopened from the Dock, it comes back to the same server, never to an empty address form.
+    await app.evaluate(({ BrowserWindow }) => {
+      for (const window of BrowserWindow.getAllWindows()) window.close();
+    });
+    await expect.poll(() => app.windows().length).toBe(0);
+    await app.evaluate(({ app: electronApp }) => {
+      electronApp.emit("activate");
+    });
+    const again = await windowWhere(app, (url) => url.includes("/connect/"));
+    await expect(again.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible();
+    await expect(again.getByText("http://localhost:9")).toBeVisible();
+  }
   await app.close();
 });
 

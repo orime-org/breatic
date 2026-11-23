@@ -116,3 +116,13 @@ export function isServerLoadFailure(failure: { url: string; serverOrigin: string
 export function isCertificateError(errorCode: number): boolean {
   return errorCode <= -200 && errorCode > -300;
 }
+
+/**
+ * Why loading the server failed, as the connect window says it.
+ * @param errno - The load's network error code (`errno` on loadURL's rejection).
+ * @returns Cancelled for a load the user stopped from the leave dialog, else certificate or unreachable.
+ */
+export function loadFailureReason(errno: number): "cancelled" | "certificate" | "unreachable" {
+  if (errno === ERR_ABORTED) return "cancelled";
+  return isCertificateError(errno) ? "certificate" : "unreachable";
+}

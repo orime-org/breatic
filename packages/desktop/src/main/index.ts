@@ -23,7 +23,8 @@ import { buildDockMenuTemplate, buildMenuTemplate } from "@desktop/main/menu.js"
 import { nextWindowBounds, wantsNewWindow, windowsUserTasks } from "@desktop/main/new-window.js";
 import { splashCloseDelay, splashQuery } from "@desktop/main/splash.js";
 import { createUpdates } from "@desktop/main/updates.js";
-import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure } from "@desktop/main/navigation.js";
+import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure, loadFailureReason } from "@desktop/main/navigation.js";
+import { activateAction, quitsWhenConnectCloses } from "@desktop/main/window-policy.js";
 import { checkServer, normalizeServerUrl, readServerConfig, resolveServerUrl, writeServerConfig } from "@desktop/main/server-config.js";
 import { desktopText } from "@desktop/main/strings.js";
 
@@ -47,16 +48,24 @@ const configFile = (): string => join(app.getPath("userData"), "config.json");
 const windowStateFile = (): string => join(app.getPath("userData"), "window-state.json");
 const isDev = !app.isPackaged;
 
-if (!app.requestSingleInstanceLock()) app.quit();
+/** False in a second launch: it hands its arguments to the first instance (second-instance) and ends. */
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.quit();
 
 const logger = createLogger(app.getPath("logs"), BRAND.id);
 const signIn = createBrowserSignIn({ openExternal: (url) => shell.openExternal(url), now: () => Date.now(), ttlMs: SIGN_IN_TTL_MS, scheme: BRAND.scheme });
 
 let serverOrigin: string | null = null;
+/** The server this client opens (environment, saved or built in); Dock and relaunch come back to it. */
+let boundServer = "";
 /** The app windows, least recently used first. */
 let appWindows: BrowserWindow[] = [];
 /** App windows that have shown the server at least once. */
 const loadedWindows = new WeakSet<BrowserWindow>();
+/** App windows hidden after the server stopped answering; Retry loads them all again. */
+const failedWindows = new WeakSet<BrowserWindow>();
+/** What every app window runs with, the ones the page opens included. */
+const APP_WEB_PREFERENCES = { preload: join(here, "../preload/app.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false };
 let connectWindow: BrowserWindow | null = null;
 let connectInitial: ConnectInitial | null = null;
 let queuedLink: string | null = null;
@@ -102,7 +111,7 @@ app.on("window-all-closed", () => {
 
 app.on("web-contents-created", (_event, contents) => attachPolicies(contents));
 
-void app.whenReady().then(start).catch((err: unknown) => {
+if (primary) void app.whenReady().then(start).catch((err: unknown) => {
   logger.error({ err }, "desktop_start_failed");
   dialog.showErrorBox(BRAND.productName, err instanceof Error ? err.message : String(err));
   app.quit();
@@ -128,6 +137,7 @@ async function start(): Promise<void> {
     savedUrl: readServerConfig(configFile()),
     builtInUrl: DEFAULT_SERVER_URL,
   });
+  boundServer = resolved?.origin ?? "";
   if (resolved) {
     const answer = await openServer(resolved.origin, { save: false });
     if (!answer.ok) openConnect({ mode: "unreachable", url: resolved.origin, reason: answer.reason });
@@ -253,23 +263,34 @@ async function connect(input: string): Promise<ConnectAnswer> {
  * @returns Whether the window now shows the server, or why not.
  */
 async function openServer(origin: string, options: { save: boolean }): Promise<ConnectAnswer> {
-  const window = appWindows.findLast((other) => !other.isVisible()) ?? createAppWindow();
+  const window = appWindows.findLast((other) => failedWindows.has(other)) ?? createAppWindow();
   const previous = serverOrigin;
   serverOrigin = origin;
   try {
     await window.loadURL(`${origin}/studio`);
   } catch (err) {
     serverOrigin = previous;
-    const code = (err as { errno?: number }).errno ?? 0;
-    if (code === -3) return { ok: false, reason: "cancelled" };
-    logger.error({ err, origin }, "server_load_failed");
-    return { ok: false, reason: isCertificateError(code) ? "certificate" : "unreachable" };
+    const reason = loadFailureReason((err as { errno?: number }).errno ?? 0);
+    if (reason !== "cancelled") logger.error({ err, origin }, "server_load_failed");
+    return { ok: false, reason };
   }
   if (options.save) writeServerConfig(configFile(), origin);
+  boundServer = origin;
+  failedWindows.delete(window);
   loadedWindows.add(window);
   await finishSplash();
   window.show();
   connectWindow?.close();
+  // The other windows that lost the server come back with it.
+  for (const other of appWindows.filter((candidate) => failedWindows.has(candidate))) {
+    void other.loadURL(`${origin}/studio`).then(
+      () => {
+        failedWindows.delete(other);
+        other.show();
+      },
+      (err: unknown) => logger.error({ err, origin }, "server_load_failed"),
+    );
+  }
   return { ok: true };
 }
 
@@ -292,8 +313,8 @@ function openNewWindow(): void {
     (err: unknown) => {
       logger.error({ err, origin }, "server_load_failed");
       window.close();
-      const code = (err as { errno?: number }).errno ?? 0;
-      openConnect({ mode: "unreachable", url: origin, reason: isCertificateError(code) ? "certificate" : "unreachable" });
+      const reason = loadFailureReason((err as { errno?: number }).errno ?? 0);
+      openConnect({ mode: "unreachable", url: origin, reason: reason === "cancelled" ? "unreachable" : reason });
     },
   );
 }
@@ -309,13 +330,19 @@ function createAppWindow(): BrowserWindow {
     ...nextWindowBounds(current ? current.getBounds() : null, readWindowState()),
     show: false,
     title: BRAND.productName,
-    webPreferences: {
-      preload: join(here, "../preload/app.cjs"),
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-    },
+    webPreferences: APP_WEB_PREFERENCES,
   });
+  track(window);
+  return window;
+}
+
+/**
+ * Keep an app window in the list: its place in the use order, its size on
+ * close, and the can't-reach state when the server stops answering. Every app
+ * window goes through here, the ones the page opens with window.open included.
+ * @param window - The window.
+ */
+function track(window: BrowserWindow): void {
   window.on("close", () => saveWindowState(window));
   window.on("focus", () => {
     appWindows = [...appWindows.filter((other) => other !== window), window];
@@ -326,11 +353,11 @@ function createAppWindow(): BrowserWindow {
   window.webContents.on("did-fail-load", (_event, errorCode, _description, url, isMainFrame) => {
     if (!loadedWindows.has(window) || !serverOrigin || !isServerLoadFailure({ url, serverOrigin, isMainFrame, errorCode })) return;
     logger.error({ errorCode, url }, "server_unreachable");
+    failedWindows.add(window);
     window.hide();
     openConnect({ mode: "unreachable", url: serverOrigin, reason: isCertificateError(errorCode) ? "certificate" : "unreachable" });
   });
   appWindows = [...appWindows, window];
-  return window;
 }
 
 /**
@@ -364,7 +391,7 @@ function openConnect(initial: { mode: "connect" | "unreachable"; url: string; re
   window.on("closed", () => {
     connectWindow = null;
     // Nothing else is on screen: on Windows and Linux closing it ends the app; macOS keeps the app in the Dock.
-    if (!appWindows.some((window) => loadedWindows.has(window)) && process.platform !== "darwin") app.quit();
+    if (quitsWhenConnectCloses({ platform: process.platform, visibleWindow: recentLoadedWindow() !== null })) app.quit();
   });
   void window.loadFile(join(here, "../connect/index.html"));
   connectWindow = window;
@@ -415,24 +442,23 @@ async function finishSplash(): Promise<void> {
  * @returns True when all closed; false when a page's user chose Stay.
  */
 async function closeAllWindows(): Promise<boolean> {
-  const results = await Promise.all(
-    BrowserWindow.getAllWindows().map(
-      (window) =>
-        new Promise<boolean>((resolve) => {
-          const contents = window.webContents;
-          window.once("closed", () => {
-            stayListeners.delete(contents);
-            resolve(true);
-          });
-          stayListeners.set(contents, () => {
-            stayListeners.delete(contents);
-            resolve(false);
-          });
-          window.close();
-        }),
-    ),
-  );
-  return results.every(Boolean);
+  // One at a time: once a page's user chooses Stay, the others stay open and are not asked.
+  for (const window of BrowserWindow.getAllWindows()) {
+    const closed = await new Promise<boolean>((resolve) => {
+      const contents = window.webContents;
+      window.once("closed", () => {
+        stayListeners.delete(contents);
+        resolve(true);
+      });
+      stayListeners.set(contents, () => {
+        stayListeners.delete(contents);
+        resolve(false);
+      });
+      window.close();
+    });
+    if (!closed) return false;
+  }
+  return true;
 }
 
 /**
@@ -475,20 +501,19 @@ function tellUpdateOutcome(outcome: "upToDate" | "failed"): void {
  * server yet, the connect window.
  */
 function showSomeWindow(): void {
-  if (connectWindow) {
-    connectWindow.focus();
-    return;
-  }
   const recent = recentLoadedWindow();
-  if (recent) {
-    bringForward(recent);
-    return;
-  }
-  if (serverOrigin) {
-    openNewWindow();
-    return;
-  }
-  openConnect({ mode: "connect", url: DEFAULT_SERVER_URL, reason: null });
+  const action = activateAction({
+    connectOpen: connectWindow !== null,
+    visibleWindow: recent !== null,
+    loadingWindow: appWindows.some((window) => !loadedWindows.has(window) && !failedWindows.has(window)),
+    server: serverOrigin,
+    boundServer,
+  });
+  if (action === "focus-connect") connectWindow?.focus();
+  else if (action === "focus-window" && recent) bringForward(recent);
+  else if (action === "new-window") openNewWindow();
+  else if (action === "unreachable") openConnect({ mode: "unreachable", url: boundServer, reason: null });
+  else if (action === "connect") openConnect({ mode: "connect", url: DEFAULT_SERVER_URL, reason: null });
 }
 
 /**
@@ -496,7 +521,7 @@ function showSomeWindow(): void {
  * @returns The window, or null when none is open.
  */
 function recentLoadedWindow(): BrowserWindow | null {
-  return appWindows.findLast((window) => loadedWindows.has(window)) ?? null;
+  return appWindows.findLast((window) => loadedWindows.has(window) && !failedWindows.has(window)) ?? null;
 }
 
 /**
@@ -554,10 +579,12 @@ function attachPolicies(contents: WebContents): void {
     if (decision !== "window") return { action: "deny" };
     return {
       action: "allow",
-      overrideBrowserWindowOptions: {
-        webPreferences: { preload: join(here, "../preload/app.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false },
-      },
+      overrideBrowserWindowOptions: { webPreferences: APP_WEB_PREFERENCES },
     };
+  });
+  contents.on("did-create-window", (window) => {
+    track(window);
+    loadedWindows.add(window);
   });
   contents.on("will-prevent-unload", (event) => {
     const text = desktopText(app.getLocale(), BRAND.productName);

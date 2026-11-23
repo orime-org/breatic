@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { decideNavigation, decideWindowOpen, isServerLoadFailure } from "@desktop/main/navigation.js";
+import { decideNavigation, decideWindowOpen, isServerLoadFailure, loadFailureReason } from "@desktop/main/navigation.js";
 
 const SERVER = "https://app.example.com";
 
@@ -71,5 +71,16 @@ describe("isServerLoadFailure", () => {
     ["a Stripe page", { url: "https://checkout.stripe.com/x", isMainFrame: true, errorCode: -105 }],
   ])("is not %s", (_label, failure) => {
     expect(isServerLoadFailure({ ...failure, serverOrigin: SERVER })).toBe(false);
+  });
+});
+
+describe("loadFailureReason", () => {
+  it.each([
+    [-3, "cancelled"],
+    [-202, "certificate"],
+    [-105, "unreachable"],
+    [-102, "unreachable"],
+  ])("names load error %i %s", (errno, reason) => {
+    expect(loadFailureReason(errno)).toBe(reason);
   });
 });
