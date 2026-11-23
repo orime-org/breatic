@@ -774,7 +774,6 @@ describe('FocusCropControls: a video target and its timeline (#1987)', () => {
       natural: { width: 800, height: 600 },
       sourceSrc: 'https://cdn/clip.mp4',
       sourceTimeSeconds: video.currentTime,
-      // jsdom presents no frame, so no requestVideoFrameCallback mediaTime was read (frames-split §4.3).
     });
   });
 

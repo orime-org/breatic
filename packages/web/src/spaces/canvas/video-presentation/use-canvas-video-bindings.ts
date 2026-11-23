@@ -148,13 +148,6 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
     if (current.current.hostId === nodeId) { published.current = ''; refresh(); }
   }, [refresh]);
   /**
-   * Consumes the actual draw clock synchronously and publishes only availability/epoch edges.
-   * @param nodeId - The node that drew this frame.
-   * @param url - Its canonical content.
-   * @param frame - The just-committed actual frame, never inferred from native time.
-   * @throws {never} Never.
-   */
-  /**
    * Reads, at the moment of asking, the frame a node's player last drew; the player keeps it from its own mount.
    * @param nodeId - The node.
    * @param url - Its canonical content.
@@ -165,6 +158,13 @@ export function useCanvasVideoBindings(hostId: string | null, canonicalURL: stri
     const record = records.current.get(nodeId);
     return record?.url === url && record.snapshot.binding ? currentFrameOf(record.snapshot.binding) : null;
   }, []);
+  /**
+   * Consumes the actual draw clock synchronously and publishes only availability/epoch edges.
+   * @param nodeId - The node that drew this frame.
+   * @param url - Its canonical content.
+   * @param frame - The just-committed actual frame, never inferred from native time.
+   * @throws {never} Never.
+   */
   const onVideoFrame = React.useCallback((nodeId: string, url: string, frame: PresentedMediaFrame): void => {
     if (current.current.hostId !== nodeId || current.current.canonicalURL !== url) return;
     const binding = records.current.get(nodeId)?.snapshot.binding;
