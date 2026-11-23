@@ -3,7 +3,8 @@
 
 /**
  * How the product talks to the billing service (inner#1993 §3.1, §5.2):
- * loads `config/commerce.yaml`, read by the server's outbox relay and the
+ * loads `config/commerce.yaml`, read by the server's calls to the billing
+ * service (timeouts, the membership price cache, the outbox relay) and the
  * worker's daily lot-mirror reconcile.
  */
 

@@ -168,8 +168,10 @@ export const users = pgTable(
  * sits in that rule's allowlist: deleting a row would leave a history that no
  * longer adds up to the value on the account.
  *
- * `reference_id` holds whatever the trigger was identified by upstream — a
- * Stripe subscription or event id once subscriptions land. It is deliberately
+ * `reference_id` holds whatever the trigger was identified by upstream: the
+ * Stripe event id, or the checkout, recheck, reconcile or user action the
+ * billing service read the subscription for (`checkout:<sessionId>`,
+ * `action:cancel:<subId>`, …). It is deliberately
  * NOT what makes a redelivered webhook safe: comparing tiers converges on the
  * last call and cannot tell a replay from a new event, so subscription facts
  * are keyed on their delivery id through `commerce_requests`, the way
@@ -2217,7 +2219,7 @@ export const commerceOutbox = pgTable(
   ],
 );
 
-/** Outbox rows the billing service refused for good, kept for a person to look at. */
+/** Outbox rows given up for good (refused, answered `permanent_failure`, or out of attempts), kept for a person to look at and requeue. */
 export const commerceOutboxDeadLetters = pgTable("commerce_outbox_dead_letters", {
   id: uuid("id").primaryKey(),
   seq: bigint("seq", { mode: "bigint" }).notNull().unique(),

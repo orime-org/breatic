@@ -6,8 +6,9 @@
 # How long a forwarded user request may take: a write covers the billing
 # service's own Stripe call and one call back to the product. The quick limit
 # is for calls a page waits on (the sign-up code check, the membership panel's
-# prices, the overview's reconcile, and the pending referral binding a
-# membership checkout or a later binding sends first).
+# prices, the credit pack list, the referral sections, the purchase history's
+# billing-service half, the overview's reconcile, and the pending referral
+# binding a membership checkout or a later binding sends first).
 call_timeout_ms: 30000
 quick_call_timeout_ms: 3000
 

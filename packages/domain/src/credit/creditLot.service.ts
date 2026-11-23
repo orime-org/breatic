@@ -809,8 +809,8 @@ export async function resendLotMirror(windowDays: number): Promise<number> {
 }
 
 /**
- * Append the current lifecycle of each named lot to the billing service's
- * outbox (inner#1993 §5.2, §5.4): the daily reconcile's step, and how a
+ * Append the current lifecycle of each named lot to `commerce_outbox`, the
+ * product's outbox to the billing service (inner#1993 §5.2, §5.4): the daily reconcile's step, and how a
  * dead-lettered lot event is requeued, since copying an old event back would
  * put a stale lifecycle after a newer one. Each lot is read under its own
  * lock, in a transaction of its own; ids that name no lot are skipped and lots

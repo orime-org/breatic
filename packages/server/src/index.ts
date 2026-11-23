@@ -267,8 +267,9 @@ server.on("error", (err) => {
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
-// The billing service's outbox relay (inner#1993 §5.1): it runs where the
-// billing service can call back, which is the internal listener.
+// The commerce outbox relay, which sends `commerce_outbox` rows to the billing
+// service (inner#1993 §5.1): it runs where the billing service can call back,
+// which is the internal listener.
 const commerceRelay = env.INTERNAL_API_ENABLED && env.SELLING ? startCommerceRelay() : null;
 
 const maintenanceLoop = startMaintenanceLoop();

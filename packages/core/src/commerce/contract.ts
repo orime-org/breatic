@@ -212,7 +212,8 @@ export type RefundSettled = z.infer<typeof refundSettledSchema>;
 /**
  * `POST /internal/v1/commerce/refund-steps/:operationId/:step`: move the lot
  * one edge. `referenceId` is what the ledger row the edge writes points at:
- * the Stripe refund for `settle`, the disposition otherwise. `settled` is
+ * the Stripe refund for `settle` (or the disposition, when resolve_outside
+ * books a lot no refund succeeded on), the disposition otherwise. `settled` is
  * what a `settle` step paid back, whether the buyer is told or not, and null
  * on every other step; only a `settle` step tells `refund_completed`.
  */

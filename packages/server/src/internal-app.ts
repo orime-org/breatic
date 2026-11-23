@@ -9,8 +9,9 @@
  * Every request passes, in order: one log line for it, the rate limit by
  * connection address (fail closed; `/internal/v1/commerce/` counts against
  * `commerce-api`, everything else against `internal-api`), the body size
- * limit, the signature and nonce, a 403 for HEAD, then the authorisation
- * table; whatever the table does not list is 403.
+ * limit, the signature and nonce, a 403 for HEAD, the refusal of text the
+ * database cannot store, then the authorisation table; whatever the table
+ * does not list is 403.
  */
 
 import { Hono, type Context, type MiddlewareHandler } from "hono";

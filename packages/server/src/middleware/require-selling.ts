@@ -10,8 +10,9 @@
  * not a feature that exists, and saying "forbidden" would imply they might
  * work for somebody else.
  *
- * The membership and credit endpoints all gate on this, so the
- * test lives in one place: a second copy would be a second answer the day the
+ * The membership, credit-purchase and referral endpoints all gate on this
+ * (the credits views and Studio spend limits follow `CHARGING_ENABLED`), so
+ * the test lives in one place: a second copy would be a second answer the day the
  * flag's meaning moved. What each leg says is its own — a buyer who asked to top up and is
  * told memberships are unavailable has been answered about something else.
  */

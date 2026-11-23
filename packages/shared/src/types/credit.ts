@@ -421,7 +421,8 @@ export interface CreditOverview {
   charging: boolean;
   /**
    * Whether this deployment sells credits and memberships (a billing service
-   * is configured). Purchases, assigning, refunds and buying exist only then.
+   * is configured). Buying and refunds exist only then; the credit history and
+   * assigning follow `charging`.
    */
   selling: boolean;
   /** Every studio this account has money in or has spent money in. */

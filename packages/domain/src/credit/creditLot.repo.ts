@@ -695,8 +695,8 @@ export async function sumGrantedForUser(userId: string): Promise<string> {
 }
 
 /**
- * Credits an account still holds across its lots: active, depleted-to-zero and
- * under refund, which is the figure the credits overlay totals and a purchase
+ * Credits an account still holds across its live lots: active and under
+ * refund (`HELD_LIFECYCLES`), which is the figure the credits overlay totals and a purchase
  * confirmation states (inner#1993 §3.3 `accounts`).
  * @param userId - The account.
  * @returns The sum as decimal text.
