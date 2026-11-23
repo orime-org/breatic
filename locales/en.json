@@ -1572,6 +1572,7 @@
         "ecommerce": "E-commerce ads",
         "product-showcase": "Product showcase",
         "food": "Food",
+        "fashion": "Fashion lookbook",
         "social-hooks": "Social hooks",
         "talking": "Talking and dialogue",
         "posters": "Posters & graphics",
@@ -2751,6 +2752,76 @@
         "step": {
           "more": "Need it longer? Copy an act node, write what happens next after This act, and generate it; each act is up to 30 seconds.",
           "join": "Select the acts in order, right-click and choose Join."
+        }
+      },
+      "fashion-lookbook": {
+        "name": "Fashion lookbook",
+        "description": "One model, one outfit, a few places, ending on the hero piece",
+        "prompt": "A 15-second vertical fashion lookbook video with sound. [📎 Model] wears the outfit in [📎 Outfit], locked head to toe in every shot: the same face, hair and build as in the model picture, and every piece exactly as in the outfit picture: {✏️ name each piece, e.g. a cream wool coat, a black turtleneck, wide grey trousers, white leather sneakers}. 0–2 s hook: a close moving shot of the fabric as the model turns. 2–12 s: the model walks through {✏️ two or three places, e.g. a concrete stairwell, a sunlit street, a rooftop at dusk}, one place per shot, the fabric swinging, creasing and catching the light with each step. 12–15 s: the camera pushes in to {✏️ the hero piece, e.g. the coat's collar}, then tilts up to the face. Soft natural light, editorial colour. Sound: {✏️ the music, e.g. a slow electronic beat} and footsteps. No text on screen.",
+        "input": {
+          "model": {
+            "name": "Model",
+            "note": "Add a full-body photo of the model first, then generate."
+          },
+          "outfit": {
+            "name": "Outfit",
+            "note": "Add a picture of the outfit first, then generate."
+          }
+        }
+      },
+      "try-on-still": {
+        "name": "Try-on still",
+        "description": "Your model wearing your garment, every detail kept",
+        "prompt": "Put the garment from [📎 Garment] on [📎 Model]. Create ONE full-body photo: the same face, hairstyle, skin tone and build as in the model picture; the garment keeps its exact cut, length, colour, pattern, fabric and every detail such as buttons, seams and prints, and drapes and creases naturally on the body. With it: {✏️ what goes with it, e.g. plain black trousers and white sneakers}. A natural standing pose in a plain light grey studio, even soft light, photorealistic. No text.",
+        "input": {
+          "model": {
+            "name": "Model",
+            "note": "Add a full-body photo of the model first, then generate."
+          },
+          "garment": {
+            "name": "Garment",
+            "note": "Add a picture of the garment first, then generate."
+          }
+        }
+      },
+      "lookbook-multi-look": {
+        "name": "Multi-look lookbook",
+        "description": "Three outfits tried on first, then one video changing through them",
+        "prompt": "(💡 Generate Look 1 first)(💡 Generate Look 2 first)(💡 Generate Look 3 first)A 15-second vertical lookbook video with sound of [📎 Model] changing through three looks: the face, hair and build from the model picture throughout, never its clothes; each look exactly as in its picture. 0–2 s hook, already wearing the first look: {✏️ the hook, e.g. the model snaps their fingers at the camera}. 2–7 s: [📎 Look 1], walking toward the camera. 7–8 s: the model spins and comes round in the next look. 8–11 s: [📎 Look 2]. 11–12 s: a flash of light, and the next look. 12–15 s: [📎 Look 3], ending in a pose. Each look a clearly different silhouette. Sound: {✏️ the music, e.g. an upbeat house track}, a whoosh on each change. No text on screen.",
+        "node": {
+          "look-1": {
+            "name": "Look 1",
+            "prompt": "Put the outfit from [📎 Outfit 1] on [📎 Model]. A vertical full-body photo: the same face, hairstyle and build as in the model picture; every piece keeps its exact cut, colour, fabric and details. A natural pose in {✏️ the place for this look, e.g. a sunlit street}, soft natural light, photorealistic. No text."
+          },
+          "look-2": {
+            "name": "Look 2",
+            "prompt": "Put the outfit from [📎 Outfit 2] on [📎 Model]. A vertical full-body photo: the same face, hairstyle and build as in the model picture; every piece keeps its exact cut, colour, fabric and details. A natural pose in {✏️ the place for this look, e.g. a white gallery}, soft natural light, photorealistic. No text."
+          },
+          "look-3": {
+            "name": "Look 3",
+            "prompt": "Put the outfit from [📎 Outfit 3] on [📎 Model]. A vertical full-body photo: the same face, hairstyle and build as in the model picture; every piece keeps its exact cut, colour, fabric and details. A natural pose in {✏️ the place for this look, e.g. a rooftop at dusk}, soft natural light, photorealistic. No text."
+          }
+        },
+        "input": {
+          "model": {
+            "name": "Model",
+            "note": "Add a full-body photo of the model first, then generate the looks."
+          },
+          "outfit-1": {
+            "name": "Outfit 1",
+            "note": "Add a picture of the first outfit first, then generate Look 1."
+          },
+          "outfit-2": {
+            "name": "Outfit 2",
+            "note": "Add a picture of the second outfit first, then generate Look 2."
+          },
+          "outfit-3": {
+            "name": "Outfit 3",
+            "note": "Add a picture of the third outfit first, then generate Look 3."
+          }
+        },
+        "step": {
+          "more": "Need more looks? Copy a look node, connect the next outfit and the model to it and its result into the video, then lengthen the video and add the look to its prompt."
         }
       }
     },

@@ -54,6 +54,7 @@ import { EPIC_FANTASY_SCIFI } from "@shared/canvas/templates/epic-fantasy-scifi.
 import { ERA_WALKTHROUGH_MONTAGE } from "@shared/canvas/templates/era-walkthrough-montage.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
 import { EXTREME_SPORTS_RUN } from "@shared/canvas/templates/extreme-sports-run.js";
+import { FASHION_LOOKBOOK } from "@shared/canvas/templates/fashion-lookbook.js";
 import { FIGHT_DUEL_LOCKED } from "@shared/canvas/templates/fight-duel-locked.js";
 import { FIGHT_DUEL_ONE_TAKE } from "@shared/canvas/templates/fight-duel-one-take.js";
 import { FIGHT_EXCHANGE_SHORT } from "@shared/canvas/templates/fight-exchange-short.js";
@@ -70,6 +71,7 @@ import { IMPACT_FRAME_HIT } from "@shared/canvas/templates/impact-frame-hit.js";
 import { LANDSCAPE_3_SHOT } from "@shared/canvas/templates/landscape-3-shot.js";
 import { LIVESTREAM_PITCH } from "@shared/canvas/templates/livestream-pitch.js";
 import { LONG_FORM_ACTS } from "@shared/canvas/templates/long-form-acts.js";
+import { LOOKBOOK_MULTI_LOOK } from "@shared/canvas/templates/lookbook-multi-look.js";
 import { MUSIC_MOOD_FROM_IMAGE } from "@shared/canvas/templates/music-mood-from-image.js";
 import { NAME_AS_WORLD_TYPOGRAPHY } from "@shared/canvas/templates/name-as-world-typography.js";
 import { PET_SELFIE_VLOG } from "@shared/canvas/templates/pet-selfie-vlog.js";
@@ -105,6 +107,7 @@ import { TIME_FREEZE_REWIND } from "@shared/canvas/templates/time-freeze-rewind.
 import { TRAILER_BEAT_3_SHOT } from "@shared/canvas/templates/trailer-beat-3-shot.js";
 import { TRANSFORMATION_6_SHOT } from "@shared/canvas/templates/transformation-6-shot.js";
 import { TRAVEL_CITY_WALK } from "@shared/canvas/templates/travel-city-walk.js";
+import { TRY_ON_STILL } from "@shared/canvas/templates/try-on-still.js";
 import { TWIST_COMEDY_SKIT } from "@shared/canvas/templates/twist-comedy-skit.js";
 import { TWO_SPEAKER_TALK } from "@shared/canvas/templates/two-speaker-talk.js";
 import { TWO_VOICE_DIALOGUE } from "@shared/canvas/templates/two-voice-dialogue.js";
@@ -120,7 +123,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "food", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -283,6 +286,9 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   FOOD_MONEY_SHOT,
   RECIPE_PROCESS_MONTAGE,
   DISH_HERO_STILL,
+  FASHION_LOOKBOOK,
+  TRY_ON_STILL,
+  LOOKBOOK_MULTI_LOOK,
   PET_SELFIE_VLOG,
   PHONE_VLOG_REALISM,
   RETRO_FOUND_FOOTAGE,
