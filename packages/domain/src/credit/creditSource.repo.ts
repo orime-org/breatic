@@ -15,10 +15,10 @@ export { CREDIT_SOURCE_KINDS, type CreditSourceKind } from "@breatic/shared";
  *
  * The id is the caller's, because each kind of source shares its primary key
  * with the row holding its details — a payment's own id IS its source id.
- * That is what lets a redelivered webhook reach the same source: it reads the
- * payment it already has rather than opening a second receipt, which would
- * hand it a fresh id and let the unique index on `credit_lots.source_id`
- * admit a second grant.
+ * That is what lets a repeated payment grant reach the same source: it is
+ * keyed on the payment id it carries rather than opening a second receipt,
+ * which would hand it a fresh id and let the unique index on
+ * `credit_lots.source_id` admit a second grant.
  * @param data - The receipt to open.
  * @param data.id - The id of the row holding this source's details.
  * @param data.kind - Which kind of source it is.
@@ -38,7 +38,7 @@ export async function createSource(
  * Open a receipt only if this id has not opened one already.
  *
  * The counterpart of {@link createSource}, for grants where a second attempt
- * is an ordinary outcome rather than a fault. A redelivered webhook reaching
+ * is an ordinary outcome rather than a fault. A repeated payment grant reaching
  * `createSource` twice means something went wrong and has to be heard; an
  * account that deletes its personal studio and makes another simply arrives
  * here again, and the right answer is to grant nothing and let the studio be

@@ -196,8 +196,8 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
     // so it falls past the error handler's typed branches and answers 500 for
     // a request the caller simply got wrong. The whole package, because reading
     // a parsed body outside the one wrapper is wrong wherever it is written.
-    // `req.text()` stays allowed: a Stripe signature is computed over the bytes
-    // as sent. Tests are exempt: they build requests rather than handle them.
+    // `req.text()` stays allowed: an internal API signature is computed over
+    // the bytes as sent. Tests are exempt: they build requests rather than handle them.
     { files: src, ignores: TEST_IGNORES, rules: { "breatic/no-raw-body-parse": "error" } },
     { files: src, ignores: TEST_IGNORES, rules: { "breatic/no-untranslated-error-message": "error" } },
     { files: each("src/**/*.{test,spec}.{ts,tsx}"), rules: { "breatic/test-file-location": "error" } },

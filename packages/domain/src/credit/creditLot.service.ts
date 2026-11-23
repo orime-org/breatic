@@ -161,12 +161,12 @@ export interface ChargeOutcome {
  * @param input - The completed payment.
  * @param input.paymentId - The payment row, which is also its source id: a
  *   payment shares its source's primary key. Unique across lots, so a
- *   redelivered webhook fails here.
+ *   repeated payment grant fails here.
  * @param input.userId - Who paid.
  * @param input.purchasedCredits - How many credits it bought.
- * @param outer - The caller's transaction, when it has one. Fulfillment grants
- *   inside the same transaction that claims the event and moves the payment's
- *   status, so all three roll back together.
+ * @param outer - The caller's transaction, when it has one. A payment grant
+ *   runs inside the transaction that claims the billing service's request key
+ *   and writes the payment receipt, so all of them roll back together.
  * @returns The new lot.
  * @throws {Error} If a lot already exists for this payment — the unique constraint rejects the insert.
  */

@@ -390,7 +390,7 @@ Repeat section 6. If rollback requires database recovery, stop the application a
 | Upload CORS error | Update the deployed Worker's origin list and redeploy; a LAN setup must not still name only localhost |
 | Image returns 404 or cropping fails | Check the R2 bucket, public read URL and GET CORS; upload CORS does not replace read CORS |
 | Video has no cover | Check the Cloudflare media container's deployment, runtime and logs; do not disable it |
-| AI errors | Check the selected provider, credentials, quota and connectivity; the application payment switch cannot fix provider access |
+| AI errors | Check the selected provider, credentials, quota and connectivity; the credit charging switch (`CHARGING_ENABLED`) cannot fix provider access |
 | No email arrives | Console mode writes to `docker compose logs server`; real delivery needs SMTP |
 
 On the publishing machine, inspect cloud logs with `pnpm --filter @breatic/ingest exec wrangler tail --env production`. Remove credentials, cookies and signed tokens before sharing logs.

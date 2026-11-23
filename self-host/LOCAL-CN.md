@@ -388,7 +388,7 @@ docker compose ps -a
 | 上传跨域失败 | 更新正式 Worker 的来源并重新发布；局域网地址不能仍填写 localhost |
 | 图片 404 或裁剪失败 | 核对 R2 bucket、公开读取地址和 GET CORS；上传 CORS 无法代替读取 CORS |
 | 视频无封面 | 检查 Cloudflare 媒体容器发布、运行及日志，不要禁用容器 |
-| AI 报错 | 核对所选模型供应商、密钥、额度及网络；站内支付开关不解决供应商问题 |
+| AI 报错 | 核对所选模型供应商、密钥、额度及网络；积分扣费开关（`CHARGING_ENABLED`）不解决供应商问题 |
 | 收不到邮件 | console 只写 `docker compose logs server`；真实发送需 SMTP |
 
 Cloudflare 日志可在发布机器运行 `pnpm --filter @breatic/ingest exec wrangler tail --env production` 查看。分享日志前删除密钥、cookie 和签名令牌。

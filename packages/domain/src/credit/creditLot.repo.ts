@@ -159,7 +159,7 @@ function toLedgerEntity(
  * studio each one is for mid-purchase puts two decisions in one flow.
  * Designation is its own step.
  *
- * The unique constraint on `source_id` is what makes a redelivered webhook a
+ * The unique constraint on `source_id` is what makes a repeated payment grant a
  * failed insert rather than a second grant, so this deliberately does not
  * swallow the conflict — the caller decides what a duplicate means.
  * @param data - Where this lot's credits came from and who holds them.

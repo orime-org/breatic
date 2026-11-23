@@ -439,8 +439,8 @@ export type TierChangeReason = (typeof TIER_CHANGE_REASONS)[number];
  * tier that is already set writes nothing, which absorbs a repeat of the same
  * call; it compares tiers, not event identity, so it cannot tell a redelivered
  * webhook from a new event and converges on whichever call arrives last.
- * Subscription handling keys idempotency on the event itself, the way
- * `updatePaymentStatusCAS` and `creditLotService.chargeOnce` already do.
+ * Subscription facts are made idempotent by their delivery id
+ * (`commerce_requests`), the way `creditLotService.chargeOnce` keys a charge.
  * @param userId - The account to move
  * @param toTier - The tier it should end up on
  * @param reason - What caused the move

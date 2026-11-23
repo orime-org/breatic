@@ -171,9 +171,9 @@ export const users = pgTable(
  * `reference_id` holds whatever the trigger was identified by upstream — a
  * Stripe subscription or event id once subscriptions land. It is deliberately
  * NOT what makes a redelivered webhook safe: comparing tiers converges on the
- * last call and cannot tell a replay from a new event, so the subscription
- * work keys idempotency on event identity the way `updatePaymentStatusCAS`
- * and `creditLotService.chargeOnce` already do.
+ * last call and cannot tell a replay from a new event, so subscription facts
+ * are keyed on their delivery id through `commerce_requests`, the way
+ * `creditLotService.chargeOnce` keys a charge.
  */
 export const membershipTierChanges = pgTable(
   "membership_tier_changes",
@@ -1392,17 +1392,14 @@ export const subscriptions = pgTable(
  * be a thing that can still be pointed at.
  *
  * `source_id` is NOT NULL and unique, and that is the whole of "a payment
- * grants credits exactly once". The `payments` table cannot carry that rule:
- * `stripe_payment_intent_id` has no unique index, and the one on
- * `stripe_session_id` sits on a nullable column, where Postgres admits any
- * number of NULLs. A redelivered webhook reaches the same `payments` row and
- * is refused here, at the insert.
+ * grants credits exactly once": a repeated payment grant from the billing
+ * service reaches the same source and is refused here, at the insert.
  *
- * `payments` and this table hold different facts about the same event and
- * both keep their own status: `payments.status` says whether the money
- * arrived, `lifecycle` says whether the credits still exist. Putting them in
- * one row would give one row two state machines written by two paths, and
- * every state in the design has a single writer.
+ * `payment_receipts` and this table hold different facts about the same
+ * payment: the receipt records what was paid, `lifecycle` says whether the
+ * credits still exist. Putting them in one row would give one row two state
+ * machines written by two paths, and every state in the design has a single
+ * writer.
  *
  * `designated_studio_id` NULL means unassigned, which means unspendable — a
  * lot has to be pointed at a studio before anything can be charged to it. A
