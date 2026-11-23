@@ -1011,7 +1011,7 @@ export function renderProductGuide(): string {
       `unless the payer also brought an OpenRouter key; the line then follows the key's name with a plus and the credits ` +
       `star before ${quoted(t("canvas.generatePanel.alsoCredits"))}, and hovering it reads ` +
       `${quoted(t("canvas.generatePanel.usesOwnKeyDescribing"))} or ${quoted(t("canvas.generatePanel.usesStudioKeyDescribing"))}.`,
-    `Bringing your own keys: ${quoted(t("byok.heading"))} in the account menu on the studio pages opens a ` +
+    `Bringing your own keys: where the deployment has it on, ${quoted(t("byok.heading"))} in the account menu on the studio pages opens a ` +
       "dialog where an account adds its own keys for upstreams (one OpenRouter key runs every language model; " +
       "keys for other upstreams run picture, video, sound and 3D models) and picks, model by model, which upstream " +
       "with a key runs it. A studio's runs use the keys of whoever pays for it: the owner's own on a personal " +

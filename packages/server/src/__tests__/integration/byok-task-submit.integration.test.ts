@@ -54,7 +54,7 @@ initCore({
   PAYMENT_ENABLED: "true",
   STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
   STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-  PROVIDER_KEY_SECRET_ID: "t1",
+  BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1",
   PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }),
 });
 loadLocales();
