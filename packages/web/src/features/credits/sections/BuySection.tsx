@@ -62,7 +62,7 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
   if (!overview.selling) {
     return (
       <Section title={t('credits.section.buy')}>
-        <SellingOffNotice charging={overview.charging} />
+        <SellingOffNotice charging={overview.charging} body={t('credits.notSoldHere.body')} />
       </Section>
     );
   }

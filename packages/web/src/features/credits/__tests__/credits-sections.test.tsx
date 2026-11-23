@@ -882,7 +882,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it.each([
-      ['lots' as const, /No purchases yet/i],
+      ['lots' as const, /No credits yet/i],
       ['ledger' as const, /Nothing spent yet/i],
       ['assign' as const, /Nothing to assign/i],
       ['refunds' as const, /No credit packs bought yet/i],
@@ -1842,6 +1842,42 @@ describe('the credits overlay, section by section', () => {
       );
       expect(body).not.toHaveTextContent(/does not sell credits/i);
       expect(body).not.toHaveTextContent(/does not charge credits/i);
+    });
+
+    const empty = {
+      assignedCredits: '0.000000' as CreditDecimal,
+      unassignedCredits: '0.000000' as CreditDecimal,
+      underRefundCredits: '0.000000' as CreditDecimal,
+    };
+
+    it('tells an empty account that nothing can be bought here', async () => {
+      fetchCreditOverview.mockResolvedValue(overview({ ...empty, charging: true, selling: false }));
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/does not sell credits/i);
+      expect(body).toHaveTextContent(/none can be bought here/i);
+      expect(body).not.toHaveTextContent(/Buy credits on the left/i);
+    });
+
+    it('keeps the buy-then-assign notice for an empty account where credits are sold', async () => {
+      fetchCreditOverview.mockResolvedValue(overview({ ...empty, charging: true, selling: true }));
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/Buy credits on the left/i);
+      expect(body).not.toHaveTextContent(/does not sell credits/i);
+    });
+
+    it('says on the refunds section that purchases cannot be refunded here', async () => {
+      await openOn('refunds');
+      expect(await panel()).toHaveTextContent(/Purchases cannot be refunded here/i);
+      expect(await panel()).not.toHaveTextContent(/none can be bought here/i);
+    });
+
+    it('says on the buy section that none can be bought here', async () => {
+      await openOn('buy');
+      expect(await panel()).toHaveTextContent(/none can be bought here/i);
     });
 
     it.each(['buy', 'refunds'] as const)(

@@ -4127,7 +4127,8 @@
     },
     "notSoldHere": {
       "title": "This deployment does not sell credits",
-      "body": "Generating uses credits as usual, but none can be bought here."
+      "body": "Generating uses credits as usual, but none can be bought here.",
+      "refundsBody": "Purchases cannot be refunded here."
     },
     "total": "Account total",
     "unassigned": "Unassigned",
@@ -4140,7 +4141,7 @@
       "title": "Credits have to be assigned to a Studio before they can be spent",
       "body": "Buy credits on the left, then use Assign to give each purchase to the Studio that will spend it."
     },
-    "lotsEmpty": "No purchases yet.",
+    "lotsEmpty": "No credits yet.",
     "lotsEmptyNotice": {
       "title": "Every credit you hold is listed here",
       "body": "Bought and granted alike, with where each came from, what it cost, how far it got, and which Studio it went to."

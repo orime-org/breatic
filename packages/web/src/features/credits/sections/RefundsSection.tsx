@@ -167,7 +167,7 @@ export function RefundsSection({
       }
     >
       {!selling ? (
-        <SellingOffNotice charging={charging} />
+        <SellingOffNotice charging={charging} body={t('credits.notSoldHere.refundsBody')} />
       ) : paging.isPending ? (
         <SectionSkeleton />
       ) : paging.isError ? (

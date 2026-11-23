@@ -115,10 +115,15 @@ export function OverviewSection({
         </div>
       </div>
       {!overview.charging ? null : parseCreditDecimal(total) === 0n ? (
-        <Notice
-          title={t('credits.overviewEmpty.title')}
-          body={t('credits.overviewEmpty.body')}
-        />
+        // An empty account is sent to buying only where credits are sold.
+        overview.selling ? (
+          <Notice
+            title={t('credits.overviewEmpty.title')}
+            body={t('credits.overviewEmpty.body')}
+          />
+        ) : (
+          <Notice title={t('credits.notSoldHere.title')} body={t('credits.notSoldHere.body')} tone='info' />
+        )
       ) : parts.length === 0 ? null : (
         <Card title={t('credits.distributionTitle')}>
           {/* A bar rather than a list of percentages: which studio holds most
