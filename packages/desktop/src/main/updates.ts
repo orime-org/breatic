@@ -66,6 +66,8 @@ export function createUpdates(deps: UpdatesDeps): Updates {
    */
   async function check(byUser: boolean): Promise<void> {
     manual = byUser;
+    // Asking means asking again, even about a version the user put off.
+    if (byUser) offered = null;
     try {
       const result = (await updater.checkForUpdates()) as { downloadPromise?: Promise<unknown> | null } | null;
       // electron-updater starts the download without awaiting it.
@@ -95,7 +97,7 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   if (deps.enabled) {
     updater.autoInstallOnAppQuit = true;
     updater.on("update-downloaded", (info) => {
-      if (!manual && info.version === offered) return;
+      if (info.version === offered) return;
       offered = info.version;
       void offer(info.version).catch((err: unknown) => deps.log(err));
     });

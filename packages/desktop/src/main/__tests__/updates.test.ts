@@ -126,13 +126,13 @@ describe("createUpdates", () => {
     updater.emit("update-downloaded", { version: "1.2.0" });
     await vi.waitFor(() => expect(deps.ask).toHaveBeenCalledTimes(1));
     const timed = vi.mocked(deps.every).mock.calls[0]![0];
+    // As electron-updater does: the check resolves first, the cached download reports afterwards.
     updater.checkForUpdates.mockImplementation(async () => {
-      updater.emit("update-downloaded", { version: "1.2.0" });
+      setTimeout(() => updater.emit("update-downloaded", { version: "1.2.0" }), 0);
       return null;
     });
     timed();
-    await Promise.resolve();
-    await Promise.resolve();
+    await new Promise((resolve) => setTimeout(resolve, 5));
     expect(deps.ask).toHaveBeenCalledTimes(1);
     await updates.checkNow();
     await vi.waitFor(() => expect(deps.ask).toHaveBeenCalledTimes(2));
