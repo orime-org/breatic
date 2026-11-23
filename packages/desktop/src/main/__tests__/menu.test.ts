@@ -50,11 +50,16 @@ describe("buildMenuTemplate", () => {
     ["linux", "Alt+Left", "Alt+Right"],
   ])("binds Back and Forward on %s", (platform, back, forward) => {
     const onBack = vi.fn();
-    const items = flatten(buildMenuTemplate({ platform, isDev: false, labels, ...quiet, onBack }));
+    const onForward = vi.fn();
+    const items = flatten(buildMenuTemplate({ platform, isDev: false, labels, ...quiet, onBack, onForward }));
     expect(items.find((item) => item.label === "Back")?.accelerator).toBe(back);
     expect(items.find((item) => item.label === "Forward")?.accelerator).toBe(forward);
     items.find((item) => item.label === "Back")?.click?.({} as never, undefined, {});
-    expect(onBack).toHaveBeenCalled();
+    expect(onBack).toHaveBeenCalledOnce();
+    expect(onForward).not.toHaveBeenCalled();
+    items.find((item) => item.label === "Forward")?.click?.({} as never, undefined, {});
+    expect(onForward).toHaveBeenCalledOnce();
+    expect(onBack).toHaveBeenCalledOnce();
   });
 
   it.each(["darwin", "win32", "linux"])("offers New Window in the File menu on %s", (platform) => {

@@ -29,10 +29,10 @@ describe("splashCloseDelay", () => {
 
 describe("splashQuery", () => {
   it("names a partner's product and asks for the attribution line", () => {
-    expect(splashQuery({ productName: "Acme Studio", poweredBy: true }, "logo.svg")).toEqual({ product: "Acme Studio", poweredBy: "1", logo: "logo.svg" });
+    expect(splashQuery({ productName: "Acme Studio", poweredBy: true, splashLogo: "logo.svg" })).toEqual({ product: "Acme Studio", poweredBy: "1", logo: "logo.svg" });
   });
 
   it("leaves the attribution off the official build", () => {
-    expect(splashQuery({ productName: "breatic", poweredBy: false }, "logo.svg").poweredBy).toBe("0");
+    expect(splashQuery({ productName: "breatic", poweredBy: false, splashLogo: "logo.svg" }).poweredBy).toBe("0");
   });
 });

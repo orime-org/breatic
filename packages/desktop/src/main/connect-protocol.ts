@@ -3,10 +3,11 @@
 
 /** What the connect window and the main process say to each other (#1599). */
 
+import type { ServerRefusal } from "@desktop/main/server-config.js";
 import type { DesktopText } from "@desktop/main/strings.js";
 
 /** Why connecting did not happen. `cancelled`: the user chose to stay on a page with unsaved work. */
-export type ConnectReason = "scheme" | "unreachable" | "not_server" | "certificate" | "cancelled";
+export type ConnectReason = ServerRefusal | "cancelled";
 
 /** The window's starting state. */
 export interface ConnectInitial {

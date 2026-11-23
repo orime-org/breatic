@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { extname, resolve } from "node:path";
-import { copyFileSync, mkdirSync } from "node:fs";
+import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { defineConfig, type Options } from "tsup";
 import { currentBrand } from "./brand.mjs";
 import { builtInServerUrl } from "./src/main/server-config.js";
@@ -32,6 +32,7 @@ const shared: Options = {
       serverUrl: builtInServerUrl(brand.serverUrl),
       poweredBy: brand.poweredBy,
       splashLogo: `${SPLASH_LOGO}${extname(brand.logo)}`,
+      appImageEntryName: brand.appImageEntryName,
     }),
   },
   esbuildOptions(options) {
@@ -42,36 +43,33 @@ const shared: Options = {
   },
 };
 
+// Cleared once here: tsup builds the configurations below in parallel, so a
+// per-configuration clean could delete another one's output.
+rmSync(resolve(import.meta.dirname, "dist"), { recursive: true, force: true });
+
+/** Browser pages: the connect window and the splash. */
+const page: Options = { ...shared, format: "iife", platform: "browser", target: "chrome130", outDir: "dist", outExtension: () => ({ js: ".js" }) };
+
 export default defineConfig([
   // CommonJS: bundled CommonJS dependencies (pino) require Node built-ins at
-  // runtime, which an ES module bundle cannot do.
-  { ...shared, entry: { "main/index": "src/main/index.ts" }, format: "cjs", platform: "node", target: "node22", outDir: "dist", outExtension: () => ({ js: ".cjs" }), clean: true },
-  { ...shared, entry: { "preload/app": "src/preload/app.ts" }, format: "cjs", platform: "node", target: "node22", outDir: "dist", outExtension: () => ({ js: ".cjs" }) },
-  { ...shared, entry: { "connect/preload": "src/connect/preload.ts" }, format: "cjs", platform: "node", target: "node22", outDir: "dist", outExtension: () => ({ js: ".cjs" }) },
+  // runtime, which an ES module bundle cannot do. CommonJS is not split, so each entry stays whole.
   {
     ...shared,
-    entry: { "connect/connect": "src/connect/connect.ts" },
-    format: "iife",
-    platform: "browser",
-    target: "chrome130",
+    entry: { "main/index": "src/main/index.ts", "preload/app": "src/preload/app.ts", "connect/preload": "src/connect/preload.ts" },
+    format: "cjs",
+    platform: "node",
+    target: "node22",
     outDir: "dist",
-    outExtension: () => ({ js: ".js" }),
+    outExtension: () => ({ js: ".cjs" }),
+  },
+  {
+    ...page,
+    entry: { "connect/connect": "src/connect/connect.ts", "splash/splash": "src/splash/splash.ts" },
+    // The pages, the brand's logo and the platform's mark for the attribution line.
     onSuccess: async () => {
       mkdirSync("dist/connect", { recursive: true });
       copyFileSync("src/connect/index.html", "dist/connect/index.html");
       copyFileSync("src/connect/connect.css", "dist/connect/connect.css");
-    },
-  },
-  {
-    ...shared,
-    entry: { "splash/splash": "src/splash/splash.ts" },
-    format: "iife",
-    platform: "browser",
-    target: "chrome130",
-    outDir: "dist",
-    outExtension: () => ({ js: ".js" }),
-    // The page, the brand's logo and the platform's mark for the attribution line.
-    onSuccess: async () => {
       mkdirSync("dist/splash", { recursive: true });
       copyFileSync("src/splash/index.html", "dist/splash/index.html");
       copyFileSync("src/splash/splash.css", "dist/splash/splash.css");

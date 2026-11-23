@@ -111,6 +111,9 @@ describe("createUpdates", () => {
     updater.checkForUpdates.mockRejectedValue(new Error("offline"));
     updates.start();
     await Promise.resolve();
+    vi.mocked(deps.every).mock.calls[0]![0]();
+    await Promise.resolve();
+    expect(updater.checkForUpdates).toHaveBeenCalledTimes(2);
     expect(deps.tell).not.toHaveBeenCalled();
     await updates.checkNow();
     expect(deps.tell).toHaveBeenCalledWith("failed");

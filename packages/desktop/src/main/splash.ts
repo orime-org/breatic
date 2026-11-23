@@ -7,6 +7,8 @@
  * page, so it shows before any server answers.
  */
 
+import type { BuildBrand } from "@desktop/main/brand.js";
+
 /** The shortest time the splash stays, so the attribution can be read. */
 export const SPLASH_MIN_MS = 1_000;
 
@@ -22,12 +24,12 @@ export function splashCloseDelay(shownAt: number, now: number): number {
 
 /**
  * What the splash page is told in its address.
- * @param brand - The build's product name and whether it carries the attribution.
+ * @param brand - The build's brand.
  * @param brand.productName - The name under the logo.
  * @param brand.poweredBy - Whether the attribution line shows.
- * @param logo - The logo's file name beside the page.
+ * @param brand.splashLogo - The logo's file name beside the page.
  * @returns The query.
  */
-export function splashQuery(brand: { productName: string; poweredBy: boolean }, logo: string): Record<string, string> {
-  return { product: brand.productName, poweredBy: brand.poweredBy ? "1" : "0", logo };
+export function splashQuery(brand: Pick<BuildBrand, "productName" | "poweredBy" | "splashLogo">): Record<string, string> {
+  return { product: brand.productName, poweredBy: brand.poweredBy ? "1" : "0", logo: brand.splashLogo };
 }

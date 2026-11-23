@@ -125,22 +125,20 @@ if (primary) void app.whenReady().then(start).catch((err: unknown) => {
 async function start(): Promise<void> {
   registerScheme();
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
-  session.defaultSession.on("will-download", () => {
-    // No save path: Electron shows the system save dialog.
-  });
   registerIpc();
   buildMenu();
   openSplash();
   updates.start();
   const resolved = resolveServerUrl({
-    envUrl: process.env.BREATIC_SERVER_URL,
+    // A packaged build opens the server it carries; the override is for development.
+    envUrl: isDev ? process.env.BREATIC_SERVER_URL : undefined,
     savedUrl: readServerConfig(configFile()),
     builtInUrl: DEFAULT_SERVER_URL,
   });
-  boundServer = resolved?.origin ?? "";
+  boundServer = resolved ?? "";
   if (resolved) {
-    const answer = await openServer(resolved.origin, { save: false });
-    if (!answer.ok) openConnect({ mode: "unreachable", url: resolved.origin, reason: answer.reason });
+    const answer = await openServer(resolved, { save: false });
+    if (!answer.ok) openConnect({ mode: "unreachable", url: resolved, reason: answer.reason });
   } else {
     openConnect({ mode: "connect", url: DEFAULT_SERVER_URL, reason: null });
   }
@@ -155,7 +153,7 @@ function registerScheme(): void {
     try {
       const dir = join(homedir(), ".local", "share", "applications");
       mkdirSync(dir, { recursive: true });
-      const entry = `${BRAND.id}-appimage.desktop`;
+      const entry = BRAND.appImageEntryName;
       writeFileSync(join(dir, entry), appImageDesktopEntry(process.env.APPIMAGE, BRAND));
       execFile("xdg-mime", ["default", entry, `x-scheme-handler/${BRAND.scheme}`], (err) => {
         if (err) logger.error({ err }, "appimage_scheme_registration_failed");
@@ -422,7 +420,7 @@ function openSplash(): void {
   window.on("closed", () => {
     if (splashWindow === window) splashWindow = null;
   });
-  void window.loadFile(join(here, "../splash/index.html"), { query: splashQuery(BRAND, BRAND.splashLogo) });
+  void window.loadFile(join(here, "../splash/index.html"), { query: splashQuery(BRAND) });
   splashWindow = window;
 }
 

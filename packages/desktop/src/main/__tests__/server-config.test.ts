@@ -125,28 +125,19 @@ describe("config file", () => {
 
 describe("resolveServerUrl", () => {
   it("lets BREATIC_SERVER_URL override the saved address", () => {
-    expect(resolveServerUrl({ envUrl: "http://localhost:8100", savedUrl: "https://app.example.com", builtInUrl: "" })).toEqual({
-      origin: "http://localhost:8100",
-      fromEnv: true,
-    });
+    expect(resolveServerUrl({ envUrl: "http://localhost:8100", savedUrl: "https://app.example.com", builtInUrl: "" })).toBe("http://localhost:8100");
   });
 
   it("uses the saved address when the build carries none", () => {
-    expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://app.example.com", builtInUrl: "" })).toEqual({ origin: "https://app.example.com", fromEnv: false });
+    expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://app.example.com", builtInUrl: "" })).toBe("https://app.example.com");
   });
 
   it("opens the server the build carries on the first launch, without asking", () => {
-    expect(resolveServerUrl({ envUrl: undefined, savedUrl: null, builtInUrl: "https://app.example.com" })).toEqual({
-      origin: "https://app.example.com",
-      fromEnv: false,
-    });
+    expect(resolveServerUrl({ envUrl: undefined, savedUrl: null, builtInUrl: "https://app.example.com" })).toBe("https://app.example.com");
   });
 
   it("opens the server the build carries even when an older address is saved", () => {
-    expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://team.example.com", builtInUrl: "https://app.example.com" })).toEqual({
-      origin: "https://app.example.com",
-      fromEnv: false,
-    });
+    expect(resolveServerUrl({ envUrl: undefined, savedUrl: "https://team.example.com", builtInUrl: "https://app.example.com" })).toBe("https://app.example.com");
   });
 
   it("asks on the first launch of a build that carries no server", () => {

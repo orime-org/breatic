@@ -22,6 +22,8 @@ export interface BuildBrand {
   poweredBy: boolean;
   /** The brand logo's file name beside the splash page. */
   splashLogo: string;
+  /** The desktop entry an AppImage writes for the scheme; per brand, so two brands never overwrite each other's. */
+  appImageEntryName: string;
 }
 
 declare const __BRAND__: BuildBrand;

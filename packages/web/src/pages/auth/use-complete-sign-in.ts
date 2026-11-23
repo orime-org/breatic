@@ -8,8 +8,8 @@ import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 
 /**
- * The last steps of every sign-in: keep the user, switch to their language and
- * go where the sign-in was headed.
+ * The last steps of a sign-in on the login page and the desktop Google page:
+ * keep the user, switch to their language and go where the sign-in was headed.
  * @returns A function finishing a sign-in for an account and a destination.
  */
 export function useCompleteSignIn(): (user: AuthUser, next: string) => void {

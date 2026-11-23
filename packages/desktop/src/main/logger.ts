@@ -20,5 +20,5 @@ import pino, { type Logger } from "pino";
  */
 export function createLogger(dir: string, brandId: string): Logger {
   mkdirSync(dir, { recursive: true });
-  return pino({ base: { app: `${brandId}-desktop` } }, pino.destination({ dest: join(dir, "main.log"), sync: false, mkdir: true }));
+  return pino({ base: { app: `${brandId}-desktop` } }, pino.destination({ dest: join(dir, "main.log"), sync: false }));
 }

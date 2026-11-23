@@ -29,7 +29,7 @@ import type { AuthVariables } from "@server/middleware/auth.js";
 import { authService, desktopHandoffService, invitationService, signupCodeService, studioService } from "@server/modules";
 import { randomUUID } from "node:crypto";
 import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
-import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
+import type { PersonalStudioRef, SignupReferralSource, UserEntity } from "@breatic/shared";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
   setSessionCookie,
@@ -79,6 +79,41 @@ function toPersonalStudioRef(
     slug: studio.slug,
     avatarUrl: studio.avatarUrl ?? null,
   };
+}
+
+/**
+ * The last steps every sign-in shares: the session cookie, the audit line,
+ * the login count and the user as the page shows it.
+ * @param c - Hono context the cookie is set on.
+ * @param signedIn - The user and the session token.
+ * @param signedIn.user - The signed-in user.
+ * @param signedIn.token - The new session's token.
+ * @param method - How the user signed in, in the log and the event.
+ * @param countLogin - False for a sign-in that is a sign-up, already counted as one.
+ * @returns The user with the tier in force and the personal studio.
+ */
+async function finishSignIn(
+  c: Context,
+  signedIn: { user: UserEntity; token: string },
+  method: "email" | "google" | "desktop_handoff",
+  countLogin = true,
+): Promise<UserEntity & { personalStudio: PersonalStudioRef | null }> {
+  const { user, token } = signedIn;
+  setSessionCookie(c, token);
+  const [shown, studio] = await Promise.all([
+    authService.withTierInForce(user),
+    studioService.getPersonalStudio(user.id),
+  ]);
+  // Audit log moved from auth.service.ts (17B mandate).
+  logger.info({ userId: user.id, method }, "user_logged_in");
+  if (countLogin) {
+    trackServerEvent("login_completed", {
+      userId: user.id,
+      insertId: `login:${randomUUID()}`,
+      properties: { method },
+    });
+  }
+  return { ...shown, personalStudio: toPersonalStudioRef(studio) };
 }
 
 /**
@@ -319,22 +354,8 @@ auth.post(
   rateLimitForAll([{ action: "login-ip" }, { action: "login", keyBy: "ip+email" }]),
   async (c) => {
     const { email, password } = c.req.valid("json");
-    const { user, token } = await authService.loginEmail(email, password);
-    setSessionCookie(c, token);
-    const [shown, studio] = await Promise.all([
-      authService.withTierInForce(user),
-      studioService.getPersonalStudio(user.id),
-    ]);
-    // Audit log moved from auth.service.ts (17B mandate).
-    logger.info({ userId: user.id, method: "email" }, "user_logged_in");
-    trackServerEvent("login_completed", {
-      userId: user.id,
-      insertId: `login:${randomUUID()}`,
-      properties: { method: "email" },
-    });
-    return c.json({
-      data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } },
-    });
+    const user = await finishSignIn(c, await authService.loginEmail(email, password), "email");
+    return c.json({ data: { user } });
   },
 );
 
@@ -419,27 +440,11 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
     if (err instanceof authService.SignupReferralRefused) return refuseSignupReferral(c);
     throw err;
   }
-  const { user, token, created, referral } = signedIn;
-
-  setSessionCookie(c, token);
-  const [shown, studio] = await Promise.all([
-    authService.withTierInForce(user),
-    studioService.getPersonalStudio(user.id),
-  ]);
-  // Audit log moved from auth.service.ts (17B mandate).
-  logger.info({ userId: user.id, method: "google" }, "user_logged_in");
+  const { created, referral } = signedIn;
   // A first Google sign-in is a sign-up, already counted as `signup_completed`.
-  if (!created) {
-    trackServerEvent("login_completed", {
-      userId: user.id,
-      insertId: `login:${randomUUID()}`,
-      properties: { method: "google" },
-    });
-  }
+  const user = await finishSignIn(c, signedIn, "google", !created);
   // `created` tells the page to report the sign-up conversion (inner#1442 §4.9).
-  return c.json({
-    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) }, created, ...(referral ? { referral } : {}) },
-  });
+  return c.json({ data: { user, created, ...(referral ? { referral } : {}) } });
 });
 
 /**
@@ -480,19 +485,8 @@ auth.post("/desktop-exchange", rateLimitFor("desktop-exchange"), validate("json"
     logger.warn({ reason: outcome.reason }, "desktop_exchange_refused");
     throw new UnauthorizedError(t("server.auth.desktop_exchange_invalid"));
   }
-  const { user, token } = outcome;
-  setSessionCookie(c, token);
-  const [shown, studio] = await Promise.all([
-    authService.withTierInForce(user),
-    studioService.getPersonalStudio(user.id),
-  ]);
-  logger.info({ userId: user.id, method: "desktop_handoff" }, "user_logged_in");
-  trackServerEvent("login_completed", {
-    userId: user.id,
-    insertId: `login:${randomUUID()}`,
-    properties: { method: "desktop_handoff" },
-  });
-  return c.json({ data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) } } });
+  const user = await finishSignIn(c, outcome, "desktop_handoff");
+  return c.json({ data: { user } });
 });
 
 /**
