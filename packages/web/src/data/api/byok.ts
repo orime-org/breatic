@@ -37,7 +37,7 @@ export interface ByokSavedKey {
 
 /** The account's BYOK settings, as `GET /account/byok` answers them. */
 export interface ByokView {
-  /** False where the deployment has no master key to seal keys with. */
+  /** False where the deployment has BYOK off: `BYOK_ENABLED` is not true. */
   enabled: boolean;
   upstreams: ByokUpstream[];
   keys: ByokSavedKey[];
