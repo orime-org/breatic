@@ -30,12 +30,12 @@ vi.mock("ai", () => ({
 }));
 
 import type * as DomainModule from "@breatic/domain";
-import { randomUUID } from "node:crypto";
+import { generateKeyPairSync, randomUUID } from "node:crypto";
 import { coverKeyFor, createPgClient, getTimelineConfig, initCore, loadLocales } from "@breatic/core";
 import { createUsageRecorder, initProvider, timelineOperationKey, toChargeCredits, uploadGrantService, webAnimationSourceRepo, timelineExecutionRepo } from "@breatic/domain";
 import { durationToFrames } from "@breatic/shared";
 import {
-  WEB_ANIMATION_CONTAINER_CLASS, WEB_ANIMATION_RENDER_CONTAINER_CLASS, webAnimationJobRequestSchema, webAnimationRenderJobRequestSchema,
+  WEB_ANIMATION_CONTAINER_CLASS, WEB_ANIMATION_RENDER_CONTAINER_CLASS, openModelKeys, webAnimationJobRequestSchema, webAnimationRenderJobRequestSchema,
 } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import {
@@ -48,9 +48,17 @@ const FPS = { num: 24, den: 1 };
 const SHA = "d".repeat(64);
 /** The cover's own hash: the same bytes as the video would be filed as one asset. */
 const COVER_SHA = "e".repeat(64);
+/** The ingest Worker's key pair: a creation job's submit seals the run's keys to the public half (inner#1953). */
+const PAIR = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+});
+/** Our OpenRouter key on this deployment, the only key of ours the suite sets. */
+const DEPLOYMENT_KEY = "sk-or-deployment-kinds-suite";
 
 beforeAll(() => {
-  initCore(process.env);
+  initCore({ ...process.env, OPENROUTER_API_KEY: DEPLOYMENT_KEY, INGEST_KEY_SEAL_PUBLIC_KEY: PAIR.publicKey });
   loadLocales();
   initProvider();
   sql = createPgClient(inject("DATABASE_URL"), { name: "web-animation-kinds-driver", max: 4, prepare: false });
@@ -70,6 +78,7 @@ afterEach(async () => {
 
 afterAll(async () => {
   await sql?.end({ timeout: 1 });
+  initCore(process.env);
 });
 
 /**
@@ -163,6 +172,8 @@ describe("a modification", () => {
       base: { packageKey: base.packageKey, viewport: { width: 1920, height: 1080 }, durationFrames: 96, fontSetVersion: 1 },
     });
     expect(job.viewport.height).toBeGreaterThan(job.viewport.width);
+    // A modification calls the model like a create, so its submit carries the run's keys sealed (inner#1953).
+    expect(await openModelKeys(job.sealedKeys!, PAIR.privateKey)).toEqual({ openrouter: DEPLOYMENT_KEY });
   });
 });
 
@@ -174,6 +185,8 @@ describe("an export", () => {
     await pickUp(fx);
     const submit = ingest.calls.find((call) => call.route === "submit");
     expect(submit?.containerClass).toBe(WEB_ANIMATION_RENDER_CONTAINER_CLASS);
+    // An export calls no model, so it carries no keys (inner#1953).
+    expect(submit?.body).not.toHaveProperty("sealedKeys");
     expect(webAnimationRenderJobRequestSchema.parse(submit?.body)).toEqual({
       containerClass: WEB_ANIMATION_RENDER_CONTAINER_CLASS,
       jobId: `timeline:${fx.execution.id}`,
