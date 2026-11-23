@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import { describe, expect, it } from "vitest";
 import { noUpstreamFieldInCatalog } from "#repo-lint/checks/no-upstream-field-in-catalog";
 import { fakeContext } from "#repo-lint/__tests__/fake-context";

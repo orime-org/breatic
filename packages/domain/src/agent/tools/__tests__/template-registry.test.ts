@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Every generation template, applied from either entry, makes a proposal the
@@ -9,7 +9,7 @@
  * nodes differently; read by identity they wire, @ and guide alike.
  */
 
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
 import {
@@ -50,7 +50,8 @@ import {
 /** The five interface languages every template has words in. */
 const LOCALES = ["en", "ja", "ko", "zh-CN", "zh-TW"];
 
-beforeEach(() => {
+// Once for the file: no case changes the catalogs or the environment, and redoing both before each of several hundred cases kept the single fork busy past vitest's RPC timeout.
+beforeAll(() => {
   loadFixtureLocales();
   useFullCatalog();
 });

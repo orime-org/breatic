@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** Project creation and real membership around collaborative 3D scenes (inner#1689). */
 import { expect, type Locator, type Page } from 'playwright/test';

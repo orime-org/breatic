@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { SRGBColorSpace, type GridHelper, type Group, type Object3D, type PerspectiveCamera, type WebGLRenderTarget } from 'three';

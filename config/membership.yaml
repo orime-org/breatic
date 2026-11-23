@@ -19,8 +19,9 @@
 
 # Which tier a newly registered account lands in.
 #
-# This single field is what distinguishes a self-hosted install from our
-# hosted service — there is no separate "self-hosted mode" switch.
+# Self-Deployment Mode (LICENSE section 10) means paid features are off,
+# PAYMENT_ENABLED=false; this field only sets capacity. Without written
+# authorization from Orime, Inc. an instance runs in that mode.
 #   self-hosted (this file as shipped): self_hosted, whose numbers you set
 #   our hosted service:                 base, and people pay their way up
 #

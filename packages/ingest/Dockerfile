@@ -88,6 +88,8 @@ COPY packages/ingest/container/COPYING.LGPLv3 /usr/share/ffmpeg-source/COPYING.L
 # What this image distributes and under what terms, beside the four texts above
 # rather than among them: those are FFmpeg's own, this one covers the image.
 COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md
+COPY LICENSE /usr/share/doc/breatic/LICENSE
+COPY TRADEMARKS.md /usr/share/doc/breatic/TRADEMARKS.md
 
 # Every value is read out of the installed package rather than written here, so
 # what the notice claims is what was actually installed. `c:` is the aports

@@ -1548,6 +1548,7 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "fight": "Fights & action",
         "animation": "Animated shorts",
         "ecommerce": "E-commerce ads",
         "product-showcase": "Product showcase",
@@ -1556,8 +1557,10 @@
         "talking": "Talking and dialogue",
         "posters": "Posters & graphics",
         "film-styles": "Famous film styles",
+        "cinematic": "Cinematic shorts & trailers",
         "speed": "Motion & speed",
-        "sound": "Sound, music & voice"
+        "sound": "Sound, music & voice",
+        "video-remix": "Remix existing videos"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
@@ -2515,6 +2518,220 @@
         "step": {
           "trim": "Each section usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the length its prompt asks for.",
           "join": "Select the four trimmed clips (named CUT-…), right-click and choose Join; check the order runs intro, body, reveal, outro, and set a crossfade of about 1 second."
+        }
+      },
+      "fight-duel-one-take": {
+        "name": "One-take duel",
+        "description": "Two fighters in one 15-second take",
+        "prompt": "A 15-second widescreen fight scene with sound in one continuous take, no cuts. The first fighter is [📎 Fighter A] and the second is [📎 Fighter B]: each has the face, hair, build and outfit of their own picture, nothing else taken from the pictures; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. a rain-soaked rooftop at night}. Fighting style: {✏️ the fighting style, e.g. kung fu kicks and palm strikes}. The camera moves with the fight: it pushes in when one attacks, pulls back when the other blocks and circles them when they lock together. 0–3 s: already in motion, the two circle each other, the camera circling with them. 3–6 s: the first fighter attacks with a swift combination, the camera pushing in; the second fighter blocks each strike. 6–9 s: the second fighter counters with a whip-fast kick, the camera pulling back to keep both in frame; they lock arms and the camera circles them. 9–12 s: the deciding blow: {✏️ the deciding blow, e.g. the first fighter's spinning kick breaks through the second fighter's guard}; the instant it lands the picture holds for a split second with a short shock of camera shake. 12–15 s: the second fighter is knocked back, motion trails behind them, the camera pulling back; both settle, ending on a medium close-up as the camera gently pulls out. Every move readable: full bodies in frame during each exchange, never a blurred smear. One light source: {✏️ the light, e.g. a neon sign behind them}. Sound: footsteps and cloth, whooshes, hard impacts, a beat of silence just before the deciding blow, then heavy breathing. No blood, no wounds. No text on screen.",
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate."
+          }
+        }
+      },
+      "fight-exchange-short": {
+        "name": "Quick exchange",
+        "description": "One clash in 8 seconds: dash, hit, knock-back",
+        "prompt": "An 8-second widescreen fight shot with sound: one exchange. The first fighter is [📎 Fighter A] and the second is [📎 Fighter B]: each has the face, hair, build and outfit of their own picture, nothing else taken from the pictures; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. an empty warehouse lit through high windows}. 0–2 s [Tracking shot]: the first fighter dashes in from the left, the camera tracking alongside at waist height. 2–4 s [Push in]: the two clash, fist against forearm, the camera pushing in on the clash. 4–5 s [Shake]: the hit: {✏️ the hit, e.g. the first fighter's elbow lands on the second fighter's shoulder}, the frame shaking once on contact. 5–8 s [Pull out]: the second fighter is knocked back several steps and skids to a stop, both drop back into stance facing each other, the camera pulling out to a wide shot and holding. Both full bodies readable in every beat. One light source: the place's own. Sound: a rush of footsteps, a crack of contact, a heavy thud, then breathing. No blood. No text on screen.",
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate."
+          }
+        }
+      },
+      "fight-duel-locked": {
+        "name": "Duel with locked looks",
+        "description": "Model sheets first, so both still look the same",
+        "prompt": "(💡 Generate Fighter A sheet first)(💡 Generate Fighter B sheet first)A 15-second widescreen fight scene with sound in one continuous take, no cuts. The first fighter is the person on [📎 Fighter A sheet] and the second is the person on [📎 Fighter B sheet]; each sheet shows one person from the front, side and back with a close-up of the face. Take from each sheet only that person: face, hair, build and every piece of the outfit, never the white background, the layout or the poses; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. a rain-soaked rooftop at night}. Fighting style: {✏️ the fighting style, e.g. kung fu kicks and palm strikes}. The camera moves with the fight: it pushes in when one attacks, pulls back when the other blocks and circles them when they lock together. 0–3 s: already in motion, the two circle each other, the camera circling with them. 3–6 s: the first fighter attacks with a swift combination, the camera pushing in; the second fighter blocks each strike. 6–9 s: the second fighter counters with a whip-fast kick, the camera pulling back to keep both in frame; they lock arms and the camera circles them. 9–12 s: the deciding blow: {✏️ the deciding blow, e.g. the first fighter's spinning kick breaks through the second fighter's guard}; the instant it lands the picture holds for a split second with a short shock of camera shake. 12–15 s: the second fighter is knocked back, motion trails behind them, the camera pulling back; both settle, ending on a medium close-up as the camera gently pulls out. Every move readable: full bodies in frame during each exchange, never a blurred smear. One light source: {✏️ the light, e.g. a neon sign behind them}. Sound: footsteps and cloth, whooshes, hard impacts, a beat of silence just before the deciding blow, then heavy breathing. No blood, no wounds. No text on screen.",
+        "node": {
+          "sheet-a": {
+            "name": "Fighter A sheet",
+            "prompt": "A 4:3 landscape model sheet of [📎 Fighter A] only, on a plain white background: on the left, the same person full body from the front, from the side and from the back in one row, standing straight with the arms a little away from the body, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin, build and every piece of clothing, shoes and accessories exactly as in the picture; nothing added, no second person, nothing of the picture's background. Even soft light. No text, no labels."
+          },
+          "sheet-b": {
+            "name": "Fighter B sheet",
+            "prompt": "A 4:3 landscape model sheet of [📎 Fighter B] only, on a plain white background: on the left, the same person full body from the front, from the side and from the back in one row, standing straight with the arms a little away from the body, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin, build and every piece of clothing, shoes and accessories exactly as in the picture; nothing added, no second person, nothing of the picture's background. Even soft light. No text, no labels."
+          }
+        },
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate Fighter A sheet."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate Fighter B sheet."
+          }
+        }
+      },
+      "hero-orbit-reveal": {
+        "name": "Hero orbit reveal",
+        "description": "Low angle, half orbit, the hero rises",
+        "prompt": "(💡 Generate Low-angle keyframe first, then set it as the First frame)A 6-second shot with sound that starts on the first frame. The moment: {✏️ what this moment is, e.g. the hero's awakening after being knocked down}. The camera stays low and makes one smooth half orbit, 180 degrees around the hero, at the same distance and height throughout; the debris close to the camera sweeps past fast while the background moves slowly. Over the whole shot the hero rises on the spot from one knee to standing tall and keeps facing the way they faced in the first frame; they do not turn with the camera. The backlight stays behind the hero. Sound: a low rumble building, debris settling, one deep boom as they stand. No text on screen.",
+        "node": {
+          "keyframe": {
+            "name": "Low-angle keyframe",
+            "prompt": "A widescreen still of [📎 Hero] seen from a camera almost on the ground, looking up: down on one knee, one hand on the ground, head lowered, about to rise. Face, hair, build and outfit exactly as in the picture; nothing else taken from the picture. Place: {✏️ the place, e.g. a cracked street after an explosion}. Strong backlight behind them rims the silhouette; dust and small debris hang in the air close to the camera, the background falling away into depth. Look: {✏️ the look, e.g. a photorealistic film still}. No text."
+          }
+        },
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate Low-angle keyframe."
+          }
+        }
+      },
+      "bullet-time-moment": {
+        "name": "Bullet-time moment",
+        "description": "Freeze the key instant and circle it",
+        "prompt": "A 6-second widescreen bullet-time shot with sound. The person is [📎 Hero]: face, hair, build and outfit as in the picture, nothing else taken from the picture. Place: {✏️ the place, e.g. a car park at night in the rain}. The action: {✏️ the action, e.g. leaping over a car as sparks fly}. 0–2 s [Static shot]: the action at full speed. 2–5 s [Truck left,Pan right]: at the deciding instant everything freezes almost completely, the person in mid-air, every particle, droplet and spark hanging still, while the camera keeps moving, circling about 120 degrees around the frozen moment at the same distance and height so the same instant is seen from new sides. This is a frozen moment with a moving camera, not slow motion. 5–6 s [Static shot]: the action carries on at full speed from exactly where it froze. Sound: the rush of the action, a sudden near-silence with a low hum while it is frozen, then the sound crashing back in. No text on screen.",
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "impact-frame-hit": {
+        "name": "Impact hit",
+        "description": "The deciding hit lands with a visual accent",
+        "prompt": "A 10-second widescreen fight with sound, built around one deciding hit. The first fighter is [📎 Fighter A] and the second is [📎 Fighter B]: each has the face, hair, build and outfit of their own picture, nothing else taken from the pictures; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. a dojo with paper screens}. 0–3 s: already in motion, the two close in and trade quick blows, the camera moving with them. 3–5 s: the first fighter winds up for the deciding hit, a beat of stillness. 5–6 s: the deciding hit lands: {✏️ the exact point of contact, e.g. the first fighter's fist driving into the second fighter's stomach}. At the instant of contact the picture takes the accent below, for a split second only. Through it the two silhouettes stay apart and readable, the striking arm and the point of contact are the clearest things in the frame, and the background gives way to them. Then the picture snaps back to its normal colours. 6–10 s: the aftermath: {✏️ what follows, e.g. the second fighter skids back across the floor and drops to one knee}, then the first fighter settles back into stance. The accent happens once only. Sound: quick blows, one huge hit at contact with a split second of silence after it, then the aftermath. No blood. No text on screen.",
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate."
+          }
+        }
+      },
+      "reference-video-remix": {
+        "name": "Remix a reference video",
+        "description": "Its camera and rhythm, your subject, a new video",
+        "prompt": "A 10-second vertical video with sound inspired by [📎 Reference video]: take from it only its camera moves, the order and length of its shots and its rhythm, cut for cut; never its performer, faces, clothes, place, logos, on-screen text or sound. The subject is [📎 Subject]: face, shape and clothes as in the picture, nothing else taken from the picture. What happens: {✏️ the new idea, e.g. the subject does the same moves on a rooftop at sunset}. Creative twist: {✏️ one thing that makes it its own, e.g. the last move ends in a freeze as confetti falls}. Music and sound of its own. No text on screen.",
+        "input": {
+          "reference": {
+            "name": "Reference video",
+            "note": "Add the video you want to borrow the camera and rhythm from first, then generate."
+          },
+          "subject": {
+            "name": "Subject",
+            "note": "Add a picture of your subject first, then generate."
+          }
+        }
+      },
+      "seamless-bridge": {
+        "name": "Seamless bridge",
+        "description": "A transition shot that joins two clips",
+        "prompt": "A 5-second transition shot with sound that joins two existing clips. It starts exactly where [📎 Clip A] ends: its last frame, subject, light, camera direction and motion. It ends exactly where [📎 Clip B] begins: its first frame, subject, light and framing. In between, one carries into the other through {✏️ the bridge, e.g. a round shape that turns from a wheel into the moon, or something passing close in front of the camera that wipes into the next place}. One continuous camera move, no hard cut, no new characters, nothing repeated from the middle of either clip. Sound: the first clip's sound flows into the second's. No text on screen.",
+        "input": {
+          "clip-a": {
+            "name": "Clip A",
+            "note": "Add the clip that comes first, then generate."
+          },
+          "clip-b": {
+            "name": "Clip B",
+            "note": "Add the clip that comes after, then generate."
+          }
+        },
+        "step": {
+          "join": "Once it has generated, select Clip A, this transition and Clip B, right-click and choose Join; check the order runs Clip A, transition, Clip B."
+        }
+      },
+      "cinematic-15s-arc": {
+        "name": "Cinematic 15s scene",
+        "description": "A hook, then a whole arc in 15 seconds",
+        "prompt": "A 15-second widescreen cinematic scene with sound. The character is [📎 Character]: face, hair, build and outfit as in the picture, nothing else taken from the picture; the same person, outfit, place and light throughout. Place: {✏️ the place, e.g. a rain-wet station platform at night}. What the character wants: {✏️ e.g. to catch the last train before it leaves}. 0–2 s hook: already in motion, one striking close image taken from the climax to come. 2–5 s: a wide shot shows the place and the time of day. 5–7 s: the character's face up close, the want visible in it. 7–10 s: the pressure rises, the camera moving with the character. 10–13 s: the climax: {✏️ the climax, e.g. they squeeze through the doors as they shut}. 13–15 s: release, a slow pull-back as the moment settles. One light source, the place's own. Grade: {✏️ one named look, e.g. teal-and-orange blockbuster}. Sound: the place's ambience, music swelling toward the climax, a beat of near-silence after it. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "landscape-3-shot": {
+        "name": "Landscape in three shots",
+        "description": "The place is the star, no people",
+        "shot": {
+          "1": "Wide establishing shot of {✏️ the place and the time of day, e.g. a misty fjord at dawn}: the camera drifts slowly forward, the scale of the land clear, no people anywhere. The natural sound of the place. No text on screen.",
+          "2": "A closer look at one detail of the same place: {✏️ the detail, e.g. water running over dark stones}, the light as in the first shot, no people. No text on screen.",
+          "3": "A slow closing shot of the same place from high up, the camera rising and pulling back as the light changes a little, no people. No text on screen."
+        }
+      },
+      "epic-fantasy-scifi": {
+        "name": "Epic fantasy or sci-fi",
+        "description": "A big scene where the magic follows its own rule",
+        "prompt": "A 15-second widescreen {✏️ the genre, e.g. high fantasy} scene with sound.\nHero: [📎 Hero], face, hair, build and outfit as in the picture, nothing else taken from the picture.\nWorld: {✏️ the world, e.g. a city of white towers on a cliff above a stormy sea}.\nEffect: {✏️ the effect and its rule, e.g. the hero's raised hand pulls the sea upward into a wall of water that moves only while the hand stays raised}. Show where it comes from and keep to its rule; it never changes shape for no reason.\nThe spectacle is in the world, not in more effects: wind, rain or dust in the air, light shifting across the scene, cloth and hair moving, water or fire reacting, crowds small in the distance.\n0–3 s: already in motion, the world in a wide shot. 3–7 s: the hero, close, just before acting. 7–12 s: {✏️ what the hero does, e.g. raises the wall of water against an incoming fleet}, the camera moving back to show its size. 12–15 s: the aftermath, the hero small against the scale of it. Sound: wind, the effect's own deep sound, a swelling score. No text on screen.",
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "trailer-beat-3-shot": {
+        "name": "Trailer beat",
+        "description": "The world, the hero in action, one line",
+        "shot": {
+          "1": "Establishing shot of the world: {✏️ the world, e.g. a dusty frontier town under a red sky}, the camera sweeping slowly over it, a deep trailer drone rising. No text on screen.",
+          "2": "[📎 Hero], face, hair, build and outfit as in the picture, in one big action: {✏️ the action, e.g. rides through a wall of fire}, the camera tracking with them, a hard musical hit. No text on screen.",
+          "3": "Close-up of [📎 Hero], the same face and outfit, looking into the lens and saying one line: {✏️ the line, e.g. This ends tonight.}, then a cut to black on the last word. No text on screen."
+        },
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your hero first, then generate."
+          }
+        }
+      },
+      "transformation-6-shot": {
+        "name": "Transformation in six shots",
+        "description": "Calm, threat, change, reveal, the quiet after",
+        "shot": {
+          "1": "Calm: [📎 Subject], face, hair and outfit as in the picture, in {✏️ the place, e.g. a quiet forest clearing at dusk}, an ordinary moment. No text on screen.",
+          "2": "The threat arrives: {✏️ the threat, e.g. a dark shape bursting from the trees}, the subject looks up. No text on screen.",
+          "3": "The trigger: a close-up of the subject's eyes as something starts to glow inside them. No text on screen.",
+          "4": "The transformation: [📎 Subject] changes into {✏️ what they become, e.g. a figure of living flame}, the camera circling, light flaring, the face still recognisably theirs. No text on screen.",
+          "5": "The reveal: a low wide shot of the new form standing against the threat. No text on screen.",
+          "6": "The quiet after: embers settle, the new form breathes, the sound drops away. No text on screen."
+        },
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a picture of your subject first, then generate."
+          }
+        }
+      },
+      "long-form-acts": {
+        "name": "Long video in acts",
+        "description": "A minute and more, act by act, joined into one",
+        "prompt": "Act 1 of 3 of one long video, 30 seconds with sound. Shared by all three acts: {✏️ the place, the light and the look, e.g. a small café by a rainy window, warm lamps, soft film grain}, under the same sound of {✏️ the sound, e.g. rain on glass and quiet jazz}. This act: {✏️ what happens, e.g. the café opens and steam rises from the first cup}. It opens the video. One slow camera move, no cuts. No text on screen.",
+        "node": {
+          "act-2": {
+            "name": "Act 2",
+            "prompt": "Act 2 of 3 of one long video, 30 seconds with sound. Shared by all three acts: {✏️ the place, the light and the look, e.g. a small café by a rainy window, warm lamps, soft film grain}, under the same sound of {✏️ the sound, e.g. rain on glass and quiet jazz}. This act: {✏️ what happens, e.g. people come and go as the rain grows heavier}. It carries straight on from act 1. One slow camera move, no cuts. No text on screen."
+          },
+          "act-3": {
+            "name": "Act 3",
+            "prompt": "Act 3 of 3 of one long video, 30 seconds with sound. Shared by all three acts: {✏️ the place, the light and the look, e.g. a small café by a rainy window, warm lamps, soft film grain}, under the same sound of {✏️ the sound, e.g. rain on glass and quiet jazz}. This act: {✏️ what happens, e.g. evening falls, the lamps glow and the café empties}. It ends the video, settling into stillness. One slow camera move, no cuts. No text on screen."
+          }
+        },
+        "step": {
+          "more": "Need it longer? Copy an act node, write what happens next after This act, and generate it; each act is up to 30 seconds.",
+          "join": "Select the acts in order, right-click and choose Join."
         }
       }
     },
@@ -3593,6 +3810,10 @@
       "home": "Studio home",
       "account": "Account",
       "signOut": "Sign out",
+      "notices": "Licenses and notices",
+      "noticesLicense": "Breatic license",
+      "noticesTrademarks": "Trademark and branding policy",
+      "noticesThirdParty": "Third-party notices",
       "logoutOthers": "Sign out of other devices",
       "logoutOthersTitle": "Sign out of other devices?",
       "logoutOthersBody": "You will stay signed in here. Every other device is signed out, and canvases and documents open there disconnect right away.",
@@ -4117,7 +4338,7 @@
     "enterpriseQuota": "Your other allowances are set by a separate agreement and are not shown here.",
     "compare": "Compare tiers",
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
-    "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
+    "contactSelfHosted": "To offer Breatic as a commercial platform, turn on paid features or agree separate support terms, you need a written agreement. Email us:",
     "contactEnterpriseAccount": "Questions about your allowances, or need them changed? Email us:",
     "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment.",
     "action": {
