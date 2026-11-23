@@ -2674,6 +2674,10 @@ export const notifications = pgTable(
       table.readAt,
       table.deletedAt,
     ),
+    // The deadline sweep's window across every user (#1580).
+    index("notifications_expires_at_idx")
+      .on(table.expiresAt)
+      .where(sql`${table.expiresAt} IS NOT NULL AND ${table.deletedAt} IS NULL`),
   ],
 );
 

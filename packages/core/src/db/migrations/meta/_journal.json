@@ -925,6 +925,13 @@
       "when": 1795330717067,
       "tag": "0131_live_update_notify",
       "breakpoints": true
+    },
+    {
+      "idx": 132,
+      "version": "7",
+      "when": 1795398382407,
+      "tag": "0132_notifications_expires_at_idx",
+      "breakpoints": true
     }
   ]
 }
