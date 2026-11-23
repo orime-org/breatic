@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { getSceneControls } from '@web/data/api/scene';
+import { useSceneControls } from '@web/data/api/use-scene-controls';
 import { useCollabSocketContext } from '@web/data/yjs/collab-socket';
 import { getDoc } from '@web/data/yjs/manager';
 import { getSceneSession, type SceneSession } from '@web/data/yjs/scene-session';
@@ -57,7 +56,7 @@ export function publishUploadProgress(
  */
 export function SceneUploadProgressPublisher({ projectId, spaceId, name }: { projectId: string; spaceId: string; name: string }): null {
   const { userId } = useCollabSocketContext();
-  const controls = useQuery({ queryKey: ['scene-controls', projectId, userId], queryFn: ({ signal }) => getSceneControls(projectId, signal), enabled: Boolean(userId) });
+  const controls = useSceneControls(projectId, userId);
   const gapMs = controls.data?.progressPublishMs;
   React.useEffect(() => {
     if (!userId || gapMs === undefined) return;

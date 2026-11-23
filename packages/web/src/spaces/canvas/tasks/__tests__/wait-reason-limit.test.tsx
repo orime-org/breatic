@@ -3,8 +3,7 @@
 
 /**
  * Where the queued tip's number comes from (inner#1968 design 21 row 22): the
- * counts' `waitingLimit`, a task row's and a Timeline execution's
- * `slotWaitLimit`. Without one the tip names no number. A row the user
+ * counts' `waitingLimit` and a task row's `slotWaitLimit`. Without one the tip names no number. A row the user
  * started says "you"; a row someone else started names the person who started
  * it; the counts column, which may hold several tasks from several people,
  * says it of each queued task.
@@ -19,12 +18,11 @@ vi.mock('@web/data/api/canvas', () => ({
   getCachedUnderstandMaxBytes: vi.fn(() => null),
 }));
 
-import { setLocale, type NodeTaskCounts, type NodeTaskEntry, type TimelineExecutionRow } from '@breatic/shared';
+import { setLocale, type NodeTaskCounts, type NodeTaskEntry } from '@breatic/shared';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { CollaboratorNamesProvider } from '@web/features/collab-editor/collaborator-names-context';
 import { TaskCountColumn } from '@web/spaces/canvas/tasks/TaskCountColumn';
 import { TaskRow } from '@web/spaces/canvas/tasks/TaskRow';
-import { TimelineExecutionList } from '@web/spaces/timeline/TimelineExecutionList';
 import { useCurrentUserStore } from '@web/stores/current-user';
 
 const WITH_LIMIT = '你同时运行的任务已达上限（5 个），前面的任务结束后自动开始';
@@ -86,25 +84,5 @@ describe('a waiting row of the task list', () => {
     expect(screen.getByTestId('node-task-row')).toHaveTextContent(said);
     // inner#1968 visual round 1: the panel's heading names the state; the row says only why.
     expect(screen.getByTestId('task-waiting')).not.toHaveTextContent('排队中');
-  });
-});
-
-describe('a waiting Timeline execution', () => {
-  it('says why with the limit it waits under', () => {
-    const row = {
-      id: 'e1', projectId: 'p', spaceId: 's', actorUserId: 'u', kind: 'web_animation_create', actionId: 'a',
-      input: { prompt: 'x', engine: 'deepseek', aspect: '16:9', durationSeconds: 8, fps: { num: 24, den: 1 } },
-      inputHash: 'sha256:q', engine: 'deepseek', status: 'queued', phase: null, steps: [], attempt: 1, fence: null,
-      deadlineAt: new Date(Date.now() + 3_600_000).toISOString(), resultSourceVersionId: null, failureReason: null, failureUpstream: null, failureKeyReason: null,
-      billedCredits: null, billedAt: null, createdAt: '2026-11-15T08:00:00.000Z', updatedAt: '2026-11-15T08:00:00.000Z',
-      usageCredits: 0, slotWaitSince: '2026-11-15T08:00:01.000Z', slotWaitLimit: 5,
-    } as TimelineExecutionRow;
-    render(
-      <TooltipProvider>
-        <TimelineExecutionList projectId='p' rows={[row]} view='inProgress' openId='e1' readOnly={false}
-          onView={vi.fn()} onToggle={vi.fn()} onClose={vi.fn()} onCancel={vi.fn()} onAdd={vi.fn()} onRetry={vi.fn()} />
-      </TooltipProvider>,
-    );
-    expect(screen.getByTestId('timeline-execution-detail-e1')).toHaveTextContent(WITH_LIMIT);
   });
 });

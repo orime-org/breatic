@@ -17,6 +17,7 @@
  */
 
 import {
+  announceExecutionChange,
   db,
   getMembershipReadingForUser,
   getNodeTaskConfig,
@@ -28,9 +29,9 @@ import {
   timelineReportGraceMs,
   runningTaskLimitForStudio,
   runningTasksPerUserOf,
-  timelineExecutionRepo,
   type DbTx,
 } from "@breatic/core";
+import * as timelineExecutionRepo from "@domain/timeline/timeline-execution.repo.js";
 import { canvasSpaceDocName, type TaskFailureReason, type TimelineExecution } from "@breatic/shared";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";
@@ -62,8 +63,8 @@ export type GateOutcome<S> =
 type Judged<S> =
   | { kind: "busy" }
   | { kind: "ended" }
-  | { kind: "started"; started: S; places: TaskRowPlace[]; space: boolean }
-  | { kind: "waiting"; delayMs: number; places: TaskRowPlace[]; space: boolean };
+  | { kind: "started"; started: S; places: TaskRowPlace[]; announce: boolean }
+  | { kind: "waiting"; delayMs: number; places: TaskRowPlace[]; announce: boolean };
 
 /**
  * Wait a moment.
@@ -153,18 +154,16 @@ async function renewHoldings(creditHold: string, always: boolean, tx: DbTx): Pro
 
 /**
  * Tell the canvas that rows changed: each node's counts, and the Space's list
- * for a 3D Space's own row or a Timeline execution.
- * @param places - The node task rows that changed.
- * @param space - A Space whose list changed, beside those rows.
+ * for a 3D Space's own row.
+ * @param places - The task rows that changed.
  * @returns The signals that failed.
  */
-async function publish(places: readonly TaskRowPlace[], space: { projectId: string; spaceId: string } | null): Promise<unknown[]> {
+async function publish(places: readonly TaskRowPlace[]): Promise<unknown[]> {
   const sends: Promise<void>[] = places.map(async (place) => {
     if (place.nodeId === null) return publishSpaceTasksChanged(place.projectId, place.spaceId);
     const counts = await nodeTaskRepo.countsFor(place.projectId, place.nodeId);
     return emitNodeTaskCounts(getStreamRedis(), canvasSpaceDocName(place.projectId, place.spaceId), place.nodeId, counts, undefined);
   });
-  if (space !== null) sends.push(publishSpaceTasksChanged(space.projectId, space.spaceId));
   return (await Promise.allSettled(sends)).flatMap((r) => (r.status === "rejected" ? [r.reason] : []));
 }
 
@@ -182,7 +181,7 @@ async function failRows(taskId: string, errorMessage: string, sceneReason: TaskF
   for (const place of await nodeTaskRepo.listRunningForTask(taskId)) {
     if (place.nodeId === null) {
       await sceneTaskService.settleById(place.id, { outcome: "failed", errorMessage: sceneReason });
-      failures.push(...(await publish([], { projectId: place.projectId, spaceId: place.spaceId })));
+      failures.push(...(await publish([place])));
       continue;
     }
     const settled = await nodeTaskService.settle({ taskId: place.id, outcome: "failed", errorMessage });
@@ -214,13 +213,13 @@ async function judgeTask(row: taskRepo.GateTaskRow, jobId: string, limit: number
       if (startedAt === null) return { kind: "ended" };
       const places = await nodeTaskRepo.startWaiting(row.id, tx);
       await renewHoldings(row.id, true, tx);
-      return { kind: "started", started: startedAt, places, space: false };
+      return { kind: "started", started: startedAt, places, announce: false };
     }
     await taskRepo.markSlotWait(row.id, jobId, tx);
     await taskRepo.noteSlotCheck(row.id, limit, getWorkerConfig().slot_wait_stale_ms, tx);
     const places = await nodeTaskRepo.markWaiting(row.id, tx);
     await renewHoldings(row.id, false, tx);
-    return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places, space: false };
+    return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places, announce: false };
   });
 }
 
@@ -243,11 +242,11 @@ async function judgeExecution(row: { id: string; actorUserId: string; createdAt:
       const budgetMs = getNodeTaskConfig().default_budget_ms;
       const claimed = await timelineExecutionRepo.transition({ id: row.id, event: { type: "claim", budgetMs } }, tx);
       if (!claimed.applied) return { kind: "ended" };
-      return { kind: "started", started: claimed.row, places: [], space: true };
+      return { kind: "started", started: claimed.row, places: [], announce: true };
     }
     const first = await timelineExecutionRepo.markSlotWait(row.id, tx);
     await timelineExecutionRepo.noteSlotCheck(row.id, limit, getWorkerConfig().slot_wait_stale_ms, tx);
-    return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places: [], space: first };
+    return { kind: "waiting", delayMs: waitDelay(limit, running, ahead), places: [], announce: first };
   });
 }
 
@@ -304,20 +303,31 @@ export async function claimWithinLimit(executionId: string): Promise<GateOutcome
   if (row === undefined) throw new Error(`Timeline execution ${executionId} does not exist`);
   if (row.status !== "queued") return { outcome: "ended", publishFailures: [] };
   const judged = await judgeExecution(row, await limitFor(row.projectId, row.actorUserId));
-  return settleJudgement(judged, { projectId: row.projectId, spaceId: row.spaceId });
+  return settleJudgement(judged, row);
 }
 
 /**
- * Signal what the judgement changed, then answer it.
+ * Signal what the judgement changed, then answer it. An execution's claim or first wait is written into the document
+ * of the Space it belongs to, the way every other change of an execution is.
  * @param judged - The judgement.
- * @param space - The Space whose list a Timeline execution sits in.
+ * @param execution - The execution judged, or null for a task.
  * @returns The outcome when the row does not wait.
  * @throws {StillRunning} When it waits.
  */
-async function settleJudgement<S>(judged: Judged<S>, space: { projectId: string; spaceId: string } | null): Promise<GateOutcome<S>> {
+async function settleJudgement<S>(
+  judged: Judged<S>,
+  execution: Pick<TimelineExecution, "projectId" | "spaceId" | "origin"> | null,
+): Promise<GateOutcome<S>> {
   if (judged.kind === "busy") throw new StillRunning(Date.now() + getWorkerConfig().poll_interval);
   if (judged.kind === "ended") return { outcome: "ended", publishFailures: [] };
-  const failures = await publish(judged.places, judged.space ? space : null);
+  const failures = await publish(judged.places);
+  if (judged.announce && execution !== null) {
+    try {
+      await announceExecutionChange(execution);
+    } catch (err) {
+      failures.push(err);
+    }
+  }
   if (judged.kind === "waiting") throw new StillRunning(Date.now() + judged.delayMs, failures);
   return { outcome: "started", started: judged.started, publishFailures: failures };
 }

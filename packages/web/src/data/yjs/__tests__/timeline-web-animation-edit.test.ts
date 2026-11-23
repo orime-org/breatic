@@ -6,8 +6,8 @@
  *
  * A copy's length is not in the document: `resolveTimelineClipExtent(document, web, clip)` reads it from the
  * `TimelineWebResolution` the web-sources endpoint answers, and every planner rule that reads a video's source length
- * reads that instead. `add_web_animation` and `land_execution` carry the new reference's extent themselves, the way
- * `add_video` carries its source, and place the copy with `placeWebAnimationClip`: above the highest video over its
+ * reads that instead. `add_web_animation` carries the new copy's extent itself, the way `add_video` carries its
+ * source, and places the copy with `placeWebAnimationClip`: above the highest video over its
  * span, or on a new top track.
  */
 
@@ -24,7 +24,7 @@ import {
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import {
   EMPTY_RESOLUTION, EXEC_CANCELLED, EXEC_DONE, EXEC_EXPIRED, EXEC_FAILED, EXEC_GONE, EXEC_RUNNING, RESOLUTION, SRC_A, SRC_B, SRC_GONE,
-  addPlaceholder, addResult, boundTo, land, waitingFor, webClip,
+  addResult, boundTo, waitingFor, webClip,
 } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 
 type Accepted = Extract<TimelineEditPlan, { ok: true }>;
@@ -204,11 +204,6 @@ describe('add_web_animation', () => {
     expect(result.created).toEqual([cid(1)]);
   });
 
-  it('adds an in-progress execution as a placeholder bound to the execution, at its accepted length', () => {
-    const result = accepted(plan(timeline([]), addPlaceholder(cid(1), EXEC_RUNNING, 0, NEW_TRACK, OFF, 72)));
-    expect(createdCopy(result, cid(1))).toMatchObject({ contentBinding: waitingFor(EXEC_RUNNING), durationFrames: 72, sourceInFrame: 0 });
-  });
-
   it('plans the first copy of a result from the extent the command carries, before any resolution knows it', () => {
     const result = accepted(plan(timeline([]), addResult(cid(1), SRC_B, 0, NEW_TRACK, OFF, 96), EMPTY_RESOLUTION));
     expect(createdCopy(result, cid(1))).toMatchObject({ contentBinding: boundTo(SRC_B), durationFrames: 96 });
@@ -219,13 +214,17 @@ describe('add_web_animation', () => {
     expect(refused.ok ? 'ok' : refused.reason).toBe('id_taken');
   });
 
-  it('is a command the schema accepts in both forms', () => {
+  it('is a command the schema accepts for a source version, and refuses for an execution still being made', () => {
     expect(TimelineEditCommandSchema.safeParse(addResult(cid(1), SRC_A, 0, NEW_TRACK, OFF)).success).toBe(true);
-    expect(TimelineEditCommandSchema.safeParse(addPlaceholder(cid(1), EXEC_RUNNING, 0, NEW_TRACK, OFF)).success).toBe(true);
+    expect(TimelineEditCommandSchema.safeParse({
+      operation: 'add_web_animation',
+      parameters: { clipId: cid(1), from: { executionId: EXEC_RUNNING }, startFrame: 0, newTrackId: NEW_TRACK, extent: { acceptedDurationFrames: 72, fps: FPS } },
+      placement: OFF,
+    }).success).toBe(false);
   });
 });
 
-describe('placeWebAnimationClip, through both adding commands', () => {
+describe('placeWebAnimationClip, through add_web_animation', () => {
   it('starts above the main track when no video is over the span', () => {
     const doc = timeline([clip(cid(9), MAIN, 200, 10)]);
     expect(createdCopy(accepted(plan(doc, addResult(cid(1), SRC_A, 0, NEW_TRACK, OFF))), cid(1)).trackId).toBe(V2);
@@ -263,7 +262,7 @@ describe('placeWebAnimationClip, through both adding commands', () => {
 
   it('creates a new top track when every track above the highest video is taken, leaving the others alone', () => {
     const doc = timeline([clip(cid(8), MAIN, 0, 100), clip(cid(9), V2, 0, 100)]);
-    const result = accepted(plan(doc, addPlaceholder(cid(1), EXEC_RUNNING, 10, NEW_TRACK, OFF)));
+    const result = accepted(plan(doc, addResult(cid(1), SRC_A, 10, NEW_TRACK, OFF)));
     expect(createdCopy(result, cid(1)).trackId).toBe(NEW_TRACK);
     expect(result.next.tracks[NEW_TRACK]).toEqual({ id: NEW_TRACK, kind: 'visual', order: 2 });
     expect(result.next.clips[cid(8)]).toEqual(doc.clips[cid(8)]);
@@ -275,36 +274,11 @@ describe('placeWebAnimationClip, through both adding commands', () => {
     expect(Object.keys(result.next.tracks).sort()).toEqual([MAIN, V2].sort());
   });
 
-  it('places the copy that land_execution adds by the same rule', () => {
-    const doc = timeline([clip(cid(8), MAIN, 0, 100), clip(cid(9), V2, 0, 100)]);
-    const result = accepted(plan(doc, land(ACTION, RECEIPT, OFF, { clipId: cid(1), startFrame: 5, newTrackId: NEW_TRACK, extent: { acceptedDurationFrames: 72, fps: FPS } })));
-    expect(createdCopy(result, cid(1))).toMatchObject({ trackId: NEW_TRACK, startFrame: 5, durationFrames: 72, contentBinding: waitingFor(EXEC_RUNNING) });
-  });
 });
 
-describe('land_execution', () => {
-  it('writes the receipt alone when it adds no copy', () => {
-    const doc = timeline([clip(cid(1), MAIN, 0, 10)]);
-    const result = accepted(plan(doc, land(ACTION, RECEIPT, OFF)));
-    expect(result.next.operationReceipts).toEqual({ [ACTION]: RECEIPT });
-    expect(result.next.clips).toEqual(doc.clips);
-    expect(result.next.tracks).toEqual(doc.tracks);
-  });
-
-  it('keeps the receipts already in the document', () => {
-    const other = 'a0000000-0000-4000-8000-000000000002';
-    const doc = { ...timeline([]), operationReceipts: { [other]: { ...RECEIPT, executionId: EXEC_DONE } } };
-    expect(accepted(plan(doc, land(ACTION, RECEIPT, OFF))).next.operationReceipts).toEqual({ [other]: { ...RECEIPT, executionId: EXEC_DONE }, [ACTION]: RECEIPT });
-  });
-
-  it('is a command the schema accepts with and without a copy', () => {
-    expect(TimelineEditCommandSchema.safeParse(land(ACTION, RECEIPT, OFF)).success).toBe(true);
-    expect(TimelineEditCommandSchema.safeParse(land(ACTION, RECEIPT, OFF, { clipId: cid(1), startFrame: 0, newTrackId: NEW_TRACK, extent: { acceptedDurationFrames: 24, fps: FPS } })).success).toBe(true);
-  });
-
-  it('carries the receipts through every other command unchanged', () => {
-    const doc = { ...timeline([webClip(cid(1), V2, 0, 48)]), operationReceipts: { [ACTION]: RECEIPT } };
-    expect(accepted(plan(doc, move(cid(1), 10))).next.operationReceipts).toEqual({ [ACTION]: RECEIPT });
+describe('execution landing', () => {
+  it('has no command that lands an execution', () => {
+    expect(TimelineEditCommandSchema.safeParse({ operation: 'land_execution', parameters: { actionId: ACTION, receipt: RECEIPT }, placement: OFF }).success).toBe(false);
   });
 });
 
@@ -312,12 +286,12 @@ describe('copies are independent (fast-check)', () => {
   const starts = fc.array(fc.integer({ min: 0, max: 400 }), { minLength: 1, maxLength: 6 });
 
   it('gives every addition of one result its own id and the same fixed binding, never touching earlier copies', () => {
-    fc.assert(fc.property(starts, fc.boolean(), (frames, fromExecution) => {
+    fc.assert(fc.property(starts, (frames) => {
       let doc = timeline([clip(cid(90), MAIN, 0, 500)]);
       const ids: string[] = [];
       frames.forEach((frame, index) => {
         const id = cid(index + 1);
-        const command = fromExecution ? addPlaceholder(id, EXEC_RUNNING, frame, `track-${index}`, OFF) : addResult(id, SRC_A, frame, `track-${index}`, OFF);
+        const command = addResult(id, SRC_A, frame, `track-${index}`, OFF);
         const before = doc;
         const result = accepted(planTimelineEdit(doc, command, idFactory(), RESOLUTION));
         for (const previous of ids) expect(result.next.clips[previous]).toEqual(before.clips[previous]);
@@ -329,7 +303,7 @@ describe('copies are independent (fast-check)', () => {
       expect(new Set(copies.map((copy) => copy?.id)).size).toBe(frames.length);
       for (const copy of copies) {
         expect(copy?.kind).toBe('web-animation');
-        expect(copy?.kind === 'web-animation' ? copy.contentBinding : null).toEqual(fromExecution ? waitingFor(EXEC_RUNNING) : boundTo(SRC_A));
+        expect(copy?.kind === 'web-animation' ? copy.contentBinding : null).toEqual(boundTo(SRC_A));
       }
     }));
   });
@@ -343,7 +317,7 @@ describe('copies are independent (fast-check)', () => {
     fc.assert(fc.property(fc.integer({ min: 2, max: 5 }), fc.nat(), edit, (count, pick, change) => {
       const tracks = [track(MAIN, 0), ...Array.from({ length: count }, (_, index) => track(`copy-${index}`, index + 1))];
       const copies = Array.from({ length: count }, (_, index) => webClip(cid(index + 1), `copy-${index}`, index * 10, 24));
-      const doc = { ...timeline(copies, tracks), operationReceipts: { [ACTION]: RECEIPT } };
+      const doc = timeline(copies, tracks);
       const target = copies[pick % count];
       if (target === undefined) return;
       const command: TimelineEditCommand = change.kind === 'move' ? move(target.id, change.start)
@@ -351,8 +325,6 @@ describe('copies are independent (fast-check)', () => {
           : { operation: 'delete', parameters: { clipId: target.id }, placement: OFF };
       const result = accepted(planTimelineEdit(doc, command, idFactory(), RESOLUTION));
       for (const other of copies) if (other.id !== target.id) expect(result.next.clips[other.id]).toEqual(other);
-      // Removing or changing a placement never touches the execution's landing record.
-      expect(result.next.operationReceipts).toEqual({ [ACTION]: RECEIPT });
     }));
   });
 });

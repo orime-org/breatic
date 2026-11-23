@@ -449,6 +449,7 @@ export {
   documentSpaceDocName,
   timelineSpaceDocName,
   threeDSpaceDocName,
+  webAnimationSpaceDocName,
   spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,
@@ -465,6 +466,7 @@ export type { FollowingDeclaration, FollowingEntry } from "@shared/following-tab
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {
+  confirmsSync,
   SyncConfirmRequestSchema,
   SyncConfirmedResponseSchema,
 } from "@shared/sync-receipt.js";
@@ -493,6 +495,7 @@ export {
 export {
   documentBodyFragment,
   documentCommentThreads,
+  webAnimationAnnotationThreads,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
 
@@ -520,7 +523,6 @@ export {
   TimelineWebAnimationClipSchema,
   TimelineUploadClipSchema,
   TimelineClipSchema,
-  TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
   TIMELINE_MAIN_TRACK_ID,
   TIMELINE_SCHEMA_VERSIONS,
@@ -536,7 +538,6 @@ export type {
   TimelineWebAnimationContentBinding,
   TimelineUploadClip,
   TimelineClip,
-  TimelineOperationReceipt,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
 // The web-animation contracts are exported from `@breatic/shared/space-content` only: their schemas are built at
@@ -1244,6 +1245,6 @@ export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, Proj
 export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";
 export type { AccountProviderKey, AccountModelUpstream, ChatKeyFailureReason, ChatKeyRefusal, ProviderKeyBalanceState } from "@shared/types/entities.js";
 export type {
-  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
+  TimelineExecution, TimelineExecutionStatus, TimelineWebResolution, TimelineWebResolutionOrigin, WebAnimationSourceVersion, DocumentVersion,
 } from "@shared/types/entities.js";
 export { routeSchema, type RunRoute } from "@shared/schemas/route.js";

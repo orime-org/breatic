@@ -752,7 +752,8 @@
       "snapshot": "Save snapshot",
       "download": "Download",
       "understand": "Understand",
-      "transcribe": "Transcribe"
+      "transcribe": "Transcribe",
+      "openSourceAnimation": "Open source animation"
     },
     "understand": {
       "couldNotStart": "Could not start. Try again.",
@@ -3249,11 +3250,11 @@
   "project": {
     "leaveGuard": {
       "title": "Leave with work in progress?",
-      "description": "An upload or edit hasn't finished syncing. Leaving now may lose it.",
+      "description": "An upload, edit or run you started hasn't finished. Leaving now may lose it.",
       "stay": "Stay",
       "leave": "Leave anyway",
       "unsyncedDescription": "Some changes have not synced. Refreshing or leaving now may lose them.",
-      "combinedDescription": "Some changes have not synced, and an upload or edit is still in progress. Refreshing or leaving now may lose this work.",
+      "combinedDescription": "Some changes have not synced, and an upload, edit or run is still in progress. Refreshing or leaving now may lose this work.",
       "completeDescription": "Changes are synced and operations are complete.",
       "completeTitle": "Ready to continue"
     },
@@ -3415,7 +3416,9 @@
       "document": "Document",
       "documentSub": "Rich text + collaboration",
       "timeline": "Timeline",
-      "timelineSub": "Video / audio editing"
+      "timelineSub": "Video / audio editing",
+      "webAnimation": "Motion",
+      "webAnimationSub": "Animations made with code, exported as video"
     },
     "create": {
       "title": "New space",
@@ -3427,7 +3430,9 @@
       "namePlaceholder": "e.g. Cyberpunk Concept",
       "nameRemaining": "{count, plural, one {# character left} other {# characters left}}",
       "cancel": "Cancel",
-      "submit": "Create"
+      "submit": "Create",
+      "scrollTypesStart": "Scroll types left",
+      "scrollTypesEnd": "Scroll types right"
     },
     "rename": {
       "inputAriaLabel": "Rename space",
@@ -4007,6 +4012,67 @@
       "reason": "This Space is full.",
       "text": "Text not added: this Space is full.",
       "wait": "This Space is full. It will finish once some content is deleted."
+    },
+    "webAnimation": {
+      "addAnnotation": "Add annotation",
+      "annotateAt": "Annotation at {time}",
+      "annotationFailed": "The annotation could not be saved.",
+      "videoTag": "MP4",
+      "annotationPlaceholder": "What should change here",
+      "annotations": "Annotations",
+      "annotationsAll": "All",
+      "annotationsOpen": "Open",
+      "baseWithAnnotations": "{base} ({count, plural, one {# open annotation} other {# open annotations}})",
+      "canvasUnreachable": "Could not connect to the Canvas.",
+      "chooseCanvas": "Put on which Canvas",
+      "closePanel": "Close",
+      "completed": "Completed",
+      "details": "Details",
+      "dialog": {
+        "instruction": "What to change",
+        "instructionPlaceholder": "For example: slow the title down and darken the background",
+        "modifyDescription": "Modified from “{base}”",
+        "modifyKeepsOriginal": "The original result stays as it is.",
+        "modifyTitle": "Modify web animation",
+        "relayout": "The picture will be laid out again for the new size."
+      },
+      "discardAnnotation": "Discard this annotation?",
+      "discard": "Discard",
+      "keepWriting": "Keep writing",
+      "download": "Download",
+      "empty": "No web animations yet",
+      "emptyInProgress": "Nothing in progress",
+      "emptyFailed": "Nothing failed",
+      "executions": "Executions",
+      "export": "Export video",
+      "hasPoint": "Marked on frame",
+      "inProgress": "In progress",
+      "failed": "Failed",
+      "limitsUnavailable": "Settings could not be loaded. Try again.",
+      "listError": "The list could not be loaded.",
+      "madeInTimeline": "Made in a Timeline before",
+      "modifiedFromLabel": "Modified from",
+      "modify": "Modify",
+      "new": "New",
+      "noAnnotations": "No annotations yet",
+      "noCanvas": "This Project has no Canvas yet",
+      "noOpenAnnotations": "No open annotations",
+      "notFound": "This web animation could not be found.",
+      "pickPoint": "Click the frame to mark a spot, or just write below",
+      "placeOnCanvas": "Put on Canvas",
+      "placed": "Put on {name}",
+      "viewPlaced": "View",
+      "placing": "The video is still being put on the Canvas.",
+      "readOnlyNotice": "The collaborator limit is reached, so annotations are view-only for now. New, Modify and Export still work.",
+      "reexport": "Export again",
+      "replies": "{count, plural, one {# reply} other {# replies}}",
+      "sourceLabel": "Source animation",
+      "titleModifiedFrom": "Modified from “{base}”: {request}",
+      "titleVideo": "Video · {source}",
+      "unlistedResult": "Other result",
+      "viewSource": "View source animation",
+      "viewVideo": "View video",
+      "sourceSpaceGone": "The Space with the source animation is gone."
     }
   },
   "menu": {
@@ -5177,8 +5243,6 @@
       "offFrame": "This clip is not at the current frame."
     },
     "webAnimation": {
-      "create": "Create web animation",
-      "executions": "Executions",
       "copy": "Web animation copy",
       "durationShort": "{seconds} s",
       "dialog": {
@@ -5190,15 +5254,7 @@
         "engine": "Engine",
         "aspect": "Aspect ratio",
         "duration": "Duration (seconds)",
-        "addAtPlayhead": "Add to the Timeline at the playhead",
         "execute": "Execute"
-      },
-      "list": {
-        "close": "Close executions",
-        "completed": "Completed",
-        "inProgress": "In progress",
-        "emptyCompleted": "No completed executions yet.",
-        "emptyInProgress": "No executions in progress."
       },
       "status": {
         "awaiting_landing": "Saving",
@@ -5211,26 +5267,28 @@
         "expired": "Expired"
       },
       "step": {
-        "landing": "Save the request"
+        "landing": "Save the request",
+        "savingVideo": "Save the video"
       },
       "phase": {
         "writing": "Write the page",
-        "validating": "Check frames and manifest",
-        "saving": "Save the source"
+        "validating": "Check the frames",
+        "saving": "Save the source",
+        "rendering": "Render the video"
       },
       "usageLabel": "Usage",
       "usage": "{credits} credits",
-      "usagePending": "Settled when it ends",
       "unavailable": "Web animation unavailable",
       "cancel": "Cancel",
-      "addToTimeline": "Add to Timeline",
-      "addPlaceholder": "Add to Timeline now",
       "retry": "Run again",
       "failure": {
         "feature_disabled": "Web animation is unavailable right now.",
         "check": "The page did not pass the check.",
         "stopped": "Creation stopped unexpectedly.",
         "unknown": "This execution failed.",
+        "render": "Video rendering failed.",
+        "frameMismatch": "The rendered video does not match the animation's length.",
+        "saveVideo": "The video could not be saved.",
         "key_lost": "Creation was interrupted. Run it again."
       },
       "preview": {
@@ -5238,6 +5296,18 @@
         "failed": "{track}: {status, select, failed {web animation failed} cancelled {web animation cancelled} expired {web animation expired} other {web animation not shown}}, not shown",
         "unavailable": "{track}: web animation unavailable",
         "loading": "{track}: web animation loading…"
+      },
+      "add": "Add web animation",
+      "goMake": "Make in Motion",
+      "openInMotion": "Open in Motion",
+      "modifiedFrom": "Modified from: {base}",
+      "picker": {
+        "title": "Add web animation",
+        "description": "Pick a result to place a copy at the playhead.",
+        "empty": "This Project has no web animations yet",
+        "deletedSpace": "Deleted Spaces",
+        "loadMore": "Load more",
+        "error": "Web animations could not be loaded."
       }
     },
     "upload": {

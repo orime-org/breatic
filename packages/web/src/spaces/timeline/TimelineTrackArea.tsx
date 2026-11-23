@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
 import { Code, Film, Trash2 } from 'lucide-react';
-import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip as TimelineClipRecord, type TimelineDocumentV1, type TimelineExecutionStatus, type TimelineWebResolution } from '@breatic/shared';
+import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip as TimelineClipRecord, type TimelineDocumentV1, type TimelineExecution, type TimelineExecutionStatus, type TimelineWebResolution } from '@breatic/shared';
 import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { orderedTimelineClips, orderedTimelineTracks } from '@web/data/yjs/timeline-order';
@@ -41,9 +41,17 @@ const SELECTED_FILL = { video: 'bg-[color:var(--color-palette-blue-highlight)]',
  */
 export interface TimelineWebClipView {
   state: 'ready' | 'pending' | 'failed' | 'unresolved';
-  prompt: string | null;
+  /** The one title rule's name for it, once its reference is resolved. */
+  title: string | null;
+  /** The whole prompt or modification instruction. */
+  request: string | null;
+  /** For a modification, the request of the result it started from. */
+  baseRequest: string | null;
+  /** The execution that made it. */
+  originExecutionId: string | null;
   status: TimelineExecutionStatus | null;
-  phase: 'writing' | 'validating' | 'saving' | null;
+  phase: TimelineExecution['phase'];
+  failureReason: string | null;
 }
 
 /** What the track area needs from the editor. */
@@ -128,7 +136,7 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
   const assetName = useTimelineAsset(projectId, assetId).data?.displayName || null;
   const isWeb = clip.kind === 'web-animation';
   const upload = clip.kind === 'upload' ? uploadView ?? null : null;
-  const name = isWeb ? webView?.prompt || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : assetName ?? t('timeline.video');
+  const name = isWeb ? webView?.title || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : assetName ?? t('timeline.video');
   const status = isWeb && (webView?.state === 'pending' || webView?.state === 'failed') ? webView.status : null;
   const phase = status === 'running' ? webView?.phase ?? null : null;
   // A failure's reason, which names the file, is read in the properties; the track keeps the short status.

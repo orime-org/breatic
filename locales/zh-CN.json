@@ -1062,7 +1062,8 @@
       "snapshot": "保存快照",
       "download": "下载",
       "understand": "理解",
-      "transcribe": "转写"
+      "transcribe": "转写",
+      "openSourceAnimation": "打开源动画"
     },
     "edge": {
       "delete": "删除连线"
@@ -3249,11 +3250,11 @@
   "project": {
     "leaveGuard": {
       "title": "有未完成的操作,确定离开?",
-      "description": "上传或编辑还没同步完,现在离开可能丢失。",
+      "description": "上传、编辑或运行还没完成，现在离开可能丢失。",
       "stay": "留下",
       "leave": "仍然离开",
       "unsyncedDescription": "部分修改尚未同步，现在刷新或离开可能丢失这些修改。",
-      "combinedDescription": "部分修改尚未同步，且仍有上传或编辑操作正在进行。现在刷新或离开可能丢失这些工作。",
+      "combinedDescription": "部分修改尚未同步，且仍有上传、编辑或运行正在进行。现在刷新或离开可能丢失这些工作。",
       "completeDescription": "修改已同步，操作已完成。",
       "completeTitle": "可以继续"
     },
@@ -3415,7 +3416,9 @@
       "document": "Document",
       "documentSub": "富文本 + 协作",
       "timeline": "Timeline",
-      "timelineSub": "视频 / 音频剪辑"
+      "timelineSub": "视频 / 音频剪辑",
+      "webAnimation": "Motion",
+      "webAnimationSub": "用代码生成动画，可导出视频"
     },
     "create": {
       "title": "新建 Space",
@@ -3427,7 +3430,9 @@
       "namePlaceholder": "例:Cyberpunk Concept",
       "nameRemaining": "{count, plural, other {还可输入 # 个字符}}",
       "cancel": "取消",
-      "submit": "创建"
+      "submit": "创建",
+      "scrollTypesStart": "向左滚动类型",
+      "scrollTypesEnd": "向右滚动类型"
     },
     "rename": {
       "inputAriaLabel": "重命名 Space",
@@ -4007,6 +4012,67 @@
       "reason": "这个 Space 已满。",
       "text": "文字没有写入：这个 Space 已满。",
       "wait": "这个 Space 已满，删除一些内容后会自动完成。"
+    },
+    "webAnimation": {
+      "addAnnotation": "添加批注",
+      "annotateAt": "在 {time} 添加批注",
+      "annotationFailed": "批注没有保存成功。",
+      "videoTag": "MP4",
+      "annotationPlaceholder": "写下要改的地方",
+      "annotations": "批注",
+      "annotationsAll": "全部",
+      "annotationsOpen": "未解决",
+      "baseWithAnnotations": "{base}（{count} 条未解决批注）",
+      "canvasUnreachable": "无法连接到这个 Canvas。",
+      "chooseCanvas": "放到哪个 Canvas",
+      "closePanel": "关闭",
+      "completed": "已完成",
+      "details": "详情",
+      "dialog": {
+        "instruction": "要改的地方",
+        "instructionPlaceholder": "例如：标题慢一点，背景再暗一些",
+        "modifyDescription": "修改自「{base}」",
+        "modifyKeepsOriginal": "原结果保持不变。",
+        "modifyTitle": "修改网页动画",
+        "relayout": "画面会按新尺寸重新排版。"
+      },
+      "discardAnnotation": "放弃这条批注？",
+      "discard": "放弃",
+      "keepWriting": "继续写",
+      "download": "下载",
+      "empty": "还没有网页动画",
+      "emptyInProgress": "没有进行中的",
+      "emptyFailed": "没有失败的",
+      "executions": "执行列表",
+      "export": "导出视频",
+      "hasPoint": "有位置",
+      "inProgress": "进行中",
+      "failed": "失败",
+      "limitsUnavailable": "设置加载失败，请重试。",
+      "listError": "列表加载失败。",
+      "madeInTimeline": "以前在 Timeline 里做的",
+      "modifiedFromLabel": "修改自",
+      "modify": "修改",
+      "new": "新建",
+      "noAnnotations": "还没有批注",
+      "noCanvas": "本 Project 还没有 Canvas",
+      "noOpenAnnotations": "没有未解决的批注",
+      "notFound": "找不到这条网页动画。",
+      "pickPoint": "点画面标出位置，或直接在下面写",
+      "placeOnCanvas": "放到 Canvas",
+      "placed": "已放到「{name}」",
+      "viewPlaced": "查看",
+      "placing": "视频还在放到 Canvas 上。",
+      "readOnlyNotice": "协作人数已满，批注暂时只能查看。新建、修改、导出照常可用。",
+      "reexport": "重新导出",
+      "replies": "{count} 条回复",
+      "sourceLabel": "源动画",
+      "titleModifiedFrom": "修改自「{base}」：{request}",
+      "titleVideo": "视频 · {source}",
+      "unlistedResult": "其他结果",
+      "viewSource": "查看源动画",
+      "viewVideo": "查看视频",
+      "sourceSpaceGone": "源动画所在的 Space 已不在。"
     }
   },
   "menu": {
@@ -5177,8 +5243,6 @@
       "offFrame": "这个片段不在当前帧。"
     },
     "webAnimation": {
-      "create": "制作网页动画",
-      "executions": "执行列表",
       "copy": "网页动画副本",
       "durationShort": "{seconds} 秒",
       "dialog": {
@@ -5190,15 +5254,7 @@
         "engine": "引擎",
         "aspect": "比例",
         "duration": "时长（秒）",
-        "addAtPlayhead": "在播放头位置加入 Timeline",
         "execute": "执行"
-      },
-      "list": {
-        "close": "关闭执行列表",
-        "completed": "已完成",
-        "inProgress": "进行中",
-        "emptyCompleted": "还没有已完成的执行。",
-        "emptyInProgress": "没有进行中的执行。"
       },
       "status": {
         "awaiting_landing": "保存中",
@@ -5211,26 +5267,28 @@
         "expired": "已过期"
       },
       "step": {
-        "landing": "保存执行请求"
+        "landing": "保存执行请求",
+        "savingVideo": "保存视频"
       },
       "phase": {
         "writing": "编写网页",
-        "validating": "校验定位与清单",
-        "saving": "保存源包"
+        "validating": "检查画面",
+        "saving": "保存源包",
+        "rendering": "渲染视频"
       },
       "usageLabel": "用量",
       "usage": "{credits} 积分",
-      "usagePending": "结束后结算",
       "unavailable": "网页动画不可用",
       "cancel": "取消",
-      "addToTimeline": "添加到 Timeline",
-      "addPlaceholder": "先加入 Timeline",
       "retry": "重新执行",
       "failure": {
         "feature_disabled": "网页动画暂不可用。",
         "check": "页面没有通过检查。",
         "stopped": "制作意外中断。",
         "unknown": "执行失败。",
+        "render": "视频渲染失败。",
+        "frameMismatch": "渲染出的视频与动画长度不一致。",
+        "saveVideo": "视频保存失败。",
         "key_lost": "任务中断，请重新运行。"
       },
       "preview": {
@@ -5238,6 +5296,18 @@
         "failed": "{track}：网页动画{status, select, failed {失败} cancelled {已取消} expired {已过期} other {不可用}}，不显示",
         "unavailable": "{track}：网页动画不可用",
         "loading": "{track}：网页动画加载中…"
+      },
+      "add": "添加网页动画",
+      "goMake": "去 Motion 制作",
+      "openInMotion": "在 Motion 中打开",
+      "modifiedFrom": "修改自：{base}",
+      "picker": {
+        "title": "添加网页动画",
+        "description": "选一个结果，在播放头处放一份副本。",
+        "empty": "本 Project 还没有网页动画",
+        "deletedSpace": "已删除的 Space",
+        "loadMore": "加载更多",
+        "error": "网页动画加载失败。"
       }
     },
     "upload": {

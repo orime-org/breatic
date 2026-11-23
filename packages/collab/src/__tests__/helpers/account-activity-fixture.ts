@@ -43,9 +43,9 @@ export async function seedCollabActivity(): Promise<ActivityCollabFixture> {
   const [project] = await sql<{ id: string }[]>`INSERT INTO projects(studio_id,created_by_user_id,slug,name) VALUES(${studio!.id},${userId},${`ca-p-${tag}`},'Activity') RETURNING id`;
   const projectId = project!.id;
   await sql`INSERT INTO project_members(project_id,user_id,role) VALUES(${projectId},${userId},'owner')`;
-  const spaceIds = { canvas: randomUUID(), document: randomUUID(), timeline: randomUUID(), "3d": randomUUID() };
+  const spaceIds = { canvas: randomUUID(), document: randomUUID(), timeline: randomUUID(), "3d": randomUUID(), web_animation: randomUUID() };
   const meta = new Y.Doc();
-  for (const [order, type] of (["canvas", "document", "timeline", "3d"] as const).entries()) {
+  for (const [order, type] of (["canvas", "document", "timeline", "3d", "web_animation"] as const).entries()) {
     writeSpaceEntry(meta.getMap("spaces"), { spaceId: spaceIds[type], type, name: type, order, createdAt: 1, createdBy: userId });
     const content = new Y.Doc();
     content.getMap("activity-test").set("existing", "preserved");

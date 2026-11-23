@@ -72,7 +72,7 @@ function Notice({
   readOnly?: boolean;
 }): React.JSX.Element {
   const build = DOC_NAME_BUILDERS[type];
-  const notice = <SpaceReadOnlyNotice readOnly={readOnly} />;
+  const notice = <SpaceReadOnlyNotice readOnly={readOnly} spaceType={type} />;
   return build ? (
     <SpaceConnection name={build(projectId, spaceId)}>{notice}</SpaceConnection>
   ) : (
@@ -124,6 +124,20 @@ describe('SpaceReadOnlyNotice', () => {
     expect(sentence).not.toHaveClass('truncate');
     expect(button.parentElement).toBe(surface);
     expect(sentence.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  });
+
+  it('tells a Motion Space that only annotations are held back, since its runs go through the server (#1490 design §7.3)', () => {
+    setLocale('zh-CN');
+    degrade('project-p1/web_animation-s1');
+    render(<Notice projectId='p1' spaceId='s1' type='web_animation' />);
+    expect(screen.getByTestId('space-read-only-notice')).toHaveTextContent('协作人数已满，批注暂时只能查看。新建、修改、导出照常可用。');
+    setLocale('en');
+  });
+
+  it.each(LOCALE_CATALOGS)('has the Motion read-only sentence in %s', (_tag, catalog) => {
+    const sentence = readPath(catalog, 'spaces.webAnimation.readOnlyNotice');
+    expect(typeof sentence).toBe('string');
+    expect(String(sentence).trim()).not.toBe('');
   });
 
   it('stays out of the way while this connection may write', () => {

@@ -148,7 +148,6 @@ export function timeline(
     tracks: Object.fromEntries(tracks.map((item) => [item.id, item])),
     clips: Object.fromEntries(clips.map((item) => [item.id, item])),
     sources: Object.fromEntries(sources.map((item) => [item.id, item])),
-    operationReceipts: {},
   });
 }
 

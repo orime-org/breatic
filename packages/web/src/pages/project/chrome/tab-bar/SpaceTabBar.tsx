@@ -48,7 +48,7 @@ import {
   scrollTargetFor,
   startsBefore,
   type Span,
-} from '@web/pages/project/chrome/tab-bar/tab-scroll';
+} from '@web/lib/strip-scroll';
 
 /** Held still so the bar is not handed a fresh object on every render. */
 const BAR_BOX = chromeBarBox({ sides: 'var(--space-6)', gap: 'var(--space-2)' });

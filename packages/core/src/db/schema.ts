@@ -2462,14 +2462,22 @@ export const timelineExecutions = pgTable(
     actionId: text("action_id").notNull(),
     input: jsonb("input").$type<Record<string, unknown>>().notNull(),
     inputHash: text("input_hash").notNull(),
-    engine: text("engine").notNull(),
-    status: text("status").notNull().default("awaiting_landing"),
+    /** Empty for an export, which calls no model (0133, #1490). */
+    engine: text("engine"),
+    /** `awaiting_landing` is held only by rows written before #1490 (0133). */
+    status: text("status").notNull().default("queued"),
+    /** Where it was asked for: `web_animation_space`, or `timeline` before #1490 (0133). */
+    origin: text("origin").notNull(),
     phase: text("phase"),
+    /** How far a running export's render got, as a whole percent (0133, #1490). */
+    progress: smallint("progress"),
     steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
     attempt: integer("attempt").notNull().default(0),
     fence: uuid("fence"),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
     resultSourceVersionId: uuid("result_source_version_id"),
+    /** An export's registered video (0133, #1490). */
+    resultAssetId: uuid("result_asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
     failureReason: text("failure_reason"),
     /** The upstream a failure of the payer's own key names (0131, inner#1953); null for any other failure. */
     failureUpstream: text("failure_upstream"),
@@ -2504,6 +2512,12 @@ export const timelineExecutions = pgTable(
     index("timeline_executions_open_idx")
       .on(table.createdAt)
       .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
+    index("timeline_executions_space_order_idx")
+      .on(table.spaceId, desc(table.createdAt), desc(table.id))
+      .where(sql`${table.deletedAt} IS NULL`),
+    uniqueIndex("timeline_executions_export_source_idx")
+      .on(table.projectId, table.spaceId, sql`(${table.input}->>'sourceVersionId')`)
+      .where(sql`${table.kind} = 'web_animation_export' AND ${table.status} NOT IN ('failed', 'cancelled', 'expired') AND ${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -2587,10 +2601,19 @@ export const timelineExecutionGrants = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
+    /** Its execution's creation time and origin, copied on insert so a Project's list reads in order (0133, #1490). */
+    executionCreatedAt: timestamp("execution_created_at", { withTimezone: true }).notNull(),
+    executionOrigin: text("execution_origin").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
+    index("timeline_execution_grants_order_idx")
+      .on(table.projectId, desc(table.executionCreatedAt), desc(table.executionId))
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_execution_grants_origin_order_idx")
+      .on(table.projectId, table.executionOrigin, desc(table.executionCreatedAt), desc(table.executionId))
+      .where(sql`${table.deletedAt} IS NULL`),
     uniqueIndex("timeline_execution_grants_live_idx")
       .on(table.executionId, table.projectId)
       .where(sql`${table.deletedAt} IS NULL`),

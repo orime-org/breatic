@@ -17,6 +17,20 @@ import { cn } from '@web/lib/utils';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 import { TimelineTransformFields } from '@web/spaces/timeline/TimelineTransformFields';
 
+/** A web-animation copy's origin as its properties show it (#1490 design §8.1). */
+export interface TimelineWebCopyDetails {
+  /** The whole prompt or modification instruction, once resolved. */
+  request: string | null;
+  /** For a modification, the request of the result it started from. */
+  baseRequest: string | null;
+  /** Why its execution did not produce a result, when it did not. */
+  failure: string | null;
+  /** Opens the Motion Space that made it with its execution selected; null hides the button. */
+  onOpenInMotion: (() => void) | null;
+  /** Whether a Motion Space is being made to open it in. */
+  opening: boolean;
+}
+
 /** The selected clip's editable properties. */
 interface TimelineClipPropertiesProps {
   spaceId: string;
@@ -26,8 +40,8 @@ interface TimelineClipPropertiesProps {
   /** Whether the clip covers the current frame. */
   atFrame: boolean;
   name: string;
-  /** The request a web-animation copy came from. */
-  request?: string | null;
+  /** What a web-animation copy came from, why it failed and how to open it in Motion. */
+  webCopy?: TimelineWebCopyDetails | null;
   /** An upload placeholder's status line, and the retry this page can offer for it. */
   upload?: { text: string; failed: boolean; progress: number | null; onRetry: (() => void) | null } | null;
   conflict: boolean;
@@ -85,7 +99,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonl
  * @param props.clip - The selected clip.
  * @param props.atFrame - Whether it covers the current frame.
  * @param props.name - Its display name.
- * @param props.request - The request a web copy came from, when known.
+ * @param props.webCopy - What a web copy came from and why it failed.
  * @param props.upload - An upload placeholder's status and retry.
  * @param props.conflict - Whether the arrangement reports a conflict.
  * @param props.reason - The first reason it conflicts, if any (only a conflicting clip has one).
@@ -96,7 +110,7 @@ function syncDrafts(drafts: Drafts | null, clip: TimelineClip, editable: Readonl
  * @returns The properties fields.
  * @throws {never} Never.
  */
-export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE_WEB_RESOLUTION, clip, atFrame, name, request = null, upload = null, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
+export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE_WEB_RESOLUTION, clip, atFrame, name, webCopy = null, upload = null, conflict, reason = null, labels, readOnly, placement, onCommit }: TimelineClipPropertiesProps): React.JSX.Element {
   const t = useTranslation();
   const startLocked = placement.magnet && clip.trackId === TIMELINE_MAIN_TRACK_ID;
   const editable = React.useMemo(() => ({ start: !readOnly && !startLocked, in: !readOnly, duration: !readOnly }), [readOnly, startLocked]);
@@ -110,7 +124,8 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
   const update = React.useCallback((field: Field, patch: Partial<FieldDraft>): void => {
     setDrafts((previous) => ({ ...previous, [field]: { ...previous[field], ...patch } }));
   }, []);
-  const change = React.useCallback((field: Field, value: string): void => update(field, { value, error: false }), [update]);
+  // Frames are whole and never negative: the plain field keeps digits only, with no native spinner.
+  const change = React.useCallback((field: Field, value: string): void => update(field, { value: value.replace(/[^0-9]/g, ''), error: false }), [update]);
   // Each field is judged with the other fields' stored values: an entry in range is committed and its field shows the
   // stored value again (the new one, or the old one with a toast when refused), so a draft left in another field is
   // one judged out of range.
@@ -149,7 +164,7 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
     return <div className='flex flex-col gap-1'>
       <Label htmlFor={editable[which] ? id : undefined} className={LABEL}>{t(label)}</Label>
       {editable[which]
-        ? <Input id={id} data-testid={testId} type='number' inputMode='numeric' autoComplete='off' step={1} value={current[which].value} className='h-8 w-full'
+        ? <Input id={id} data-testid={testId} type='text' inputMode='numeric' autoComplete='off' value={current[which].value} className='h-8 w-full'
           aria-invalid={current[which].error} onChange={(event) => change(which, event.target.value)} onBlur={() => commit(which)}
           onKeyDown={(event) => { if (event.key === 'Enter') { event.preventDefault(); commit(which); } }} />
         : <span data-testid={testId} className={cn('flex h-8 items-center text-sm tabular-nums', !readOnly && 'px-3')}>{current[which].value}</span>}
@@ -164,7 +179,14 @@ export function TimelineClipProperties({ spaceId, document, web = EMPTY_TIMELINE
         <TooltipTrigger asChild><span className='truncate text-sm font-semibold leading-normal'>{name}</span></TooltipTrigger>
         <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
       </Tooltip>
-      {request !== null && <span data-testid='timeline-clip-request' className='break-words text-xs text-muted-foreground'>{request}</span>}
+      {webCopy !== null && webCopy.request !== null && <span data-testid='timeline-clip-request' className='break-words text-xs text-muted-foreground'>{webCopy.request}</span>}
+      {webCopy !== null && webCopy.baseRequest !== null && <span data-testid='timeline-web-base-request' className='break-words text-xs text-muted-foreground'>
+        {t('timeline.webAnimation.modifiedFrom', { base: webCopy.baseRequest })}
+      </span>}
+      {webCopy !== null && webCopy.failure !== null && <span className='flex flex-col items-start gap-1.5'>
+        <span data-testid='timeline-web-failure' className='break-words text-xs text-status-error-foreground'>{webCopy.failure}</span>
+        {webCopy.onOpenInMotion !== null && <Button data-testid='timeline-web-open-in-motion' variant='outline' size='compact' loading={webCopy.opening} onClick={webCopy.onOpenInMotion}>{t('timeline.webAnimation.openInMotion')}</Button>}
+      </span>}
       {upload !== null && <span className='flex min-w-0 items-center gap-2'>
         <span data-testid='timeline-clip-upload' className={cn('min-w-0 break-words text-xs', upload.failed ? 'text-status-error-foreground' : 'text-muted-foreground')}>{upload.text}</span>
         {upload.onRetry !== null && <Button data-testid='timeline-upload-retry' variant='outline' size='compact' onClick={upload.onRetry}>{t('timeline.retry')}</Button>}

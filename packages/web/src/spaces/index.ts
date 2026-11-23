@@ -9,6 +9,7 @@ import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { DocumentSpace } from '@web/spaces/document/DocumentSpace';
 import { TimelineSpace } from '@web/spaces/timeline/TimelineSpace';
 import { ThreeDSpace } from '@web/spaces/three-d/ThreeDSpace';
+import { WebAnimationSpace } from '@web/spaces/web-animation/WebAnimationSpace';
 
 export interface SpaceBodyProps {
   spaceId: string;
@@ -36,8 +37,6 @@ export interface SpaceBodyProps {
 
 export interface SpaceDefinition {
   type: SpaceType;
-  label: string;
-  icon: string;
   bodyComponent: ComponentType<SpaceBodyProps>;
 }
 
@@ -50,23 +49,21 @@ export interface SpaceDefinition {
  * picker in `NewSpaceDialog` lists the types it offers in its own order.
  */
 export const SPACE_TYPES: Record<SpaceType, SpaceDefinition> = {
-  '3d': { type: '3d', label: '3D', icon: 'box', bodyComponent: ThreeDSpace },
+  '3d': { type: '3d', bodyComponent: ThreeDSpace },
   canvas: {
     type: 'canvas',
-    label: 'Canvas',
-    icon: 'layout-grid',
     bodyComponent: CanvasSpace,
   },
   document: {
     type: 'document',
-    label: 'Document',
-    icon: 'file-text',
     bodyComponent: DocumentSpace,
   },
   timeline: {
     type: 'timeline',
-    label: 'Timeline',
-    icon: 'film',
     bodyComponent: TimelineSpace,
+  },
+  web_animation: {
+    type: 'web_animation',
+    bodyComponent: WebAnimationSpace,
   },
 };

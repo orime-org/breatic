@@ -102,7 +102,7 @@ Assets are currently read through public URLs. A private Breatic instance does n
 
 Text too large for one request (a long pasted text node, its history snapshot, an Agent message with large attachments, a snapshot of a long Document) is uploaded as a temporary transfer file under the `transfer/` prefix and read back by the server with the S3 credentials. Add an R2 lifecycle rule to the bucket that deletes objects with the prefix `transfer/` after 1 day. On a custom asset domain, also add a Cloudflare WAF custom rule that blocks requests whose path starts with `/transfer/`; an `r2.dev` address cannot carry this rule. See [Object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
 
-Timeline web animation is optional and off unless you enable it ([packages/ingest/README.md](../packages/ingest/README.md#web-animation)). Its packages are stored under the private `web-animation/` prefix and are read only through the Worker's signed preview route. If you enable it on a custom asset domain, add a Cloudflare WAF custom rule that blocks requests whose path starts with `/web-animation/`; an `r2.dev` address cannot carry this rule.
+Web animation (Motion Spaces and their copies on a Timeline) is optional and off unless you enable it ([packages/ingest/README.md](../packages/ingest/README.md#web-animation)). Its packages are stored under the private `web-animation/` prefix and are read only through the Worker's signed preview route. If you enable it on a custom asset domain, add a Cloudflare WAF custom rule that blocks requests whose path starts with `/web-animation/`; an `r2.dev` address cannot carry this rule.
 
 Save the following bucket CORS configuration:
 

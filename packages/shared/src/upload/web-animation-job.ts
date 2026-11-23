@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The web-animation container job protocol between our worker and the ingest Worker (inner#1711 design §3.7). Both
- * ends read these shapes on two runtimes, so the request, the cancel body and the report live here once.
+ * The web-animation container job protocols between our worker and the ingest Worker (inner#1711 design §3.7; #1490
+ * design §5.2, §6). Both ends read these shapes on two runtimes, so the requests, the cancel body and the reports live
+ * here once: the creation job (a create, or a modification that names its base package) and the render job an export
+ * runs on its own container class.
  */
 
 import { z } from "zod";
@@ -17,8 +19,11 @@ import { TimelineRateSchema } from "@shared/timeline/schema.js";
  */
 export const JOB_KEY_FAILURE_REASONS = ["invalid", "no_balance", "model_not_found", "rate_limited"] as const;
 
-/** The container class `POST /jobs` dispatches web-animation jobs to. */
+/** The container class `POST /jobs` dispatches web-animation creation and modification jobs to. */
 export const WEB_ANIMATION_CONTAINER_CLASS = "WebAnimationContainer";
+
+/** The container class `POST /jobs` dispatches export render jobs to. */
+export const WEB_ANIMATION_RENDER_CONTAINER_CLASS = "WebAnimationRenderContainer";
 
 const positiveInteger = z.number().int().positive();
 const nonnegativeInteger = z.number().int().nonnegative();
@@ -86,10 +91,44 @@ export const webAnimationJobRequestSchema = z.object({
    * submit 501 `feature_disabled`; remove the optional once every job submitted without it is past its deadline.
    */
   messagesPlan: messagesPlan.optional(),
+  /**
+   * A modification's base: the package it starts from, read by GET through `r2.local`, with that result's frame and
+   * length and the font set it was packed with, which the runner unpacks it by.
+   */
+  base: z.object({
+    packageKey: webAnimationKey,
+    viewport: z.object({ width: positiveInteger, height: positiveInteger }),
+    durationFrames: positiveInteger,
+    fontSetVersion: positiveInteger,
+  }).optional(),
 });
 
 /** What the worker submits. */
 export type WebAnimationJobRequest = z.infer<typeof webAnimationJobRequestSchema>;
+
+/** A rendered output is a studio asset, so its key never sits under the private package prefix. */
+const outputKey = z.string().min(1).max(500).refine((key) => !key.startsWith("web-animation/"), { message: "An output key is not a package key" });
+
+/** What the worker submits for an export: render the package at its frozen frame and length, write the video and its cover. */
+export const webAnimationRenderJobRequestSchema = z.object({
+  containerClass: z.literal(WEB_ANIMATION_RENDER_CONTAINER_CLASS),
+  jobId: z.string().min(1).max(200),
+  /** Epoch ms; the job expires when it is reached. */
+  deadlineAt: positiveInteger,
+  packageKey: webAnimationKey,
+  fontSetVersion: positiveInteger,
+  width: positiveInteger,
+  height: positiveInteger,
+  fps: TimelineRateSchema,
+  durationFrames: positiveInteger,
+  /** The renderer's quality, from `web_animation.render_quality`. */
+  quality: z.string().min(1).max(32),
+  videoKey: outputKey,
+  coverKey: outputKey,
+}).strict();
+
+/** What the worker submits for an export. */
+export type WebAnimationRenderJobRequest = z.infer<typeof webAnimationRenderJobRequestSchema>;
 
 /** A cancel body; with no job record yet, the pre-submit cancel marker lives until `deadlineAt`. */
 export const webAnimationJobCancelSchema = z.object({ deadlineAt: positiveInteger });
@@ -147,3 +186,35 @@ export type WebAnimationJobReport = z.infer<typeof webAnimationJobReportSchema>;
 
 /** One model call a job made. */
 export type WebAnimationJobCall = z.infer<typeof call>;
+
+const measured = {
+  storageKey: z.string().min(1),
+  sha256: z.string().regex(/^[0-9a-f]{64}$/),
+  sizeBytes: nonnegativeInteger,
+  contentType: z.string().min(1),
+  width: positiveInteger,
+  height: positiveInteger,
+};
+
+/**
+ * What a render job answers. A done render carries the video and its cover as the ingest Worker measured the stored
+ * bytes and the container measured the media, which is what registration reads.
+ */
+export const webAnimationRenderJobReportSchema = z.object({
+  // No `stopping`: a render has no open model call to wait for, so a cancel ends it at once.
+  state: z.enum(["running", "done", "failed", "cancelled", "expired", "cancelled_before_submit"]),
+  phase: z.enum(["rendering", "saving"]).nullable(),
+  /** How far the renderer got, 0 to 1; null before it starts. */
+  progress: z.number().min(0).max(1).nullable(),
+  container: z.object({ wallMs: z.number().nonnegative(), cpuUsec: z.number().nonnegative().nullable() }).nullable(),
+  video: z.object({
+    ...measured,
+    durationSeconds: z.number().positive(),
+    cover: z.object(measured).strict().nullable(),
+  }).strict().nullable(),
+  /** `render_failed`, `frame_mismatch`, `save_failed`, or another reason the run ended with. */
+  failureReason: z.string().min(1).nullable(),
+}).refine((report) => report.state !== "done" || report.video !== null, { message: "A done render carries its video" });
+
+/** What a render job answers. */
+export type WebAnimationRenderJobReport = z.infer<typeof webAnimationRenderJobReportSchema>;

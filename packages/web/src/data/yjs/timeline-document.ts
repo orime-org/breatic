@@ -170,12 +170,12 @@ export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<str
 const FORMAT_ORIGIN = Symbol('timeline-record-format');
 
 /**
- * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields, the frame size
- * and any landing receipt in one transaction under `origin`, after an untracked conversion of any plain-object record
+ * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields and the frame
+ * size in one transaction under `origin`, after an untracked conversion of any plain-object record
  * the edit changes and of any clip still stored with pixel offsets (#1502), which also marks a version 1 document
  * version 2. A deletion while the size holds writes back converts nothing, so it stays a pure delete; undoing it
- * revives a pixel clip whose offsets are then read under the frame of that moment. The receipts map is outside every undo manager's scope, so undoing a landing keeps its receipt. The two
- * transactions go through the Space's size check as one write (inner#1790): a new record or receipt is `add`, a
+ * revives a pixel clip whose offsets are then read under the frame of that moment. The two
+ * transactions go through the Space's size check as one write (inner#1790): a new record is `add`, a
  * changed one `edit`; a deletion whose plan only deletes is `remove`, one that also rewrites a record `compound`.
  * While the size holds writes back a deletion is planned with the magnet off and sweeps no source.
  * @param doc - The current content document.
@@ -204,7 +204,7 @@ export function applyTimelineEdit(
   // An edit that changes no record writes nothing, so it neither sweeps a peer's orphan nor becomes an undo step.
   const layoutSame = sameRecords(current.tracks, next.tracks) && sameRecords(current.clips, next.clips);
   const settingsSame = JSON.stringify(current.settings) === JSON.stringify(next.settings);
-  if (layoutSame && settingsSame && sameRecords(current.operationReceipts, next.operationReceipts)) return plan;
+  if (layoutSame && settingsSame) return plan;
   // A peer may have stored a record as a plain value. The ones this edit changes become maps outside the edit's own
   // origin, so undoing the edit reverts only the fields it set.
   const plain = [
@@ -221,11 +221,7 @@ export function applyTimelineEdit(
     }
     doc.transact(() => {
       if (!settingsSame) doc.getMap<unknown>('timeline').set('settings', freezeRecord(structuredClone(next.settings)));
-      // A receipt is one fact written once; it is stored whole.
-      for (const [actionId, receipt] of Object.entries(next.operationReceipts)) {
-        if (JSON.stringify(current.operationReceipts[actionId]) !== JSON.stringify(receipt)) doc.getMap<unknown>('operationReceipts').set(actionId, freezeRecord(structuredClone(receipt)));
-      }
-      // A landing that adds no copy changes no layout record, so it sweeps nothing and makes no undo step.
+      // A change of the frame alone writes no layout record.
       if (layoutSame) return;
       writeRecords(doc.getMap<unknown>('tracks'), current.tracks, next.tracks);
       writeRecords(doc.getMap<unknown>('clips'), current.clips, next.clips);
@@ -236,15 +232,15 @@ export function applyTimelineEdit(
 }
 
 /**
- * What an edit's records and receipts write in Yjs.
+ * What an edit's records write in Yjs.
  * @param deleting - Whether the user deleted something.
  * @param before - The document the plan started from.
  * @param after - The planned document.
- * @returns `add` for a new record or receipt, `remove` or `compound` for a deletion that does or does not only delete, else `edit`.
+ * @returns `add` for a new record, `remove` or `compound` for a deletion that does or does not only delete, else `edit`.
  * @throws {never} Never.
  */
 function editKind(deleting: boolean, before: TimelineDocumentV1, after: TimelineDocumentV1): SpaceWriteKind {
-  const collections = [[before.tracks, after.tracks], [before.clips, after.clips], [before.operationReceipts, after.operationReceipts]] as const;
+  const collections = [[before.tracks, after.tracks], [before.clips, after.clips]] as const;
   if (collections.some(([was, now]) => Object.keys(now).some((id) => was[id] === undefined))) return 'add';
   if (!deleting) return 'edit';
   const rewrites = collections.some(([was, now]) => Object.entries(now).some(([id, record]) => JSON.stringify(was[id]) !== JSON.stringify(record)));

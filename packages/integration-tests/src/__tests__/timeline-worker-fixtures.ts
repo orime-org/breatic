@@ -14,11 +14,13 @@ import { join } from "node:path";
 import type { Job } from "bullmq";
 import * as Y from "yjs";
 import { expect, vi } from "vitest";
-import { env, getStorageAdapter, getTimelineConfig, initLogger, timelineExecutionRepo } from "@breatic/core";
+import { env, getStorageAdapter, getTimelineConfig, initLogger } from "@breatic/core";
+import { timelineExecutionRepo } from "@breatic/domain";
 import type { createPgClient } from "@breatic/core";
 import { projectMetaDocName, spaceContentDocName, type TimelineExecution } from "@breatic/shared";
 import {
   WEB_ANIMATION_CONTAINER_CLASS,
+  WEB_ANIMATION_RENDER_CONTAINER_CLASS,
   initializeTimelineDocument,
   type WebAnimationJobCall,
   type WebAnimationJobReport,
@@ -83,7 +85,11 @@ export async function deleteSpace(projectId: string, spaceId: string): Promise<v
  * @returns The fixture.
  * @throws {Error} When a fixture write or step fails.
  */
-export async function seedExecution(sql: Sql, state: StartState): Promise<ExecutionFixture> {
+export async function seedExecution(
+  sql: Sql,
+  state: StartState,
+  options: { kind?: TimelineExecution["kind"]; input?: Record<string, unknown> } = {},
+): Promise<ExecutionFixture> {
   const userId = randomUUID();
   await sql`INSERT INTO users (id, email, email_verified) VALUES (${userId}, ${`tl-worker-${userId}@example.test`}, true)`;
   const studioId = randomUUID();
@@ -94,28 +100,28 @@ export async function seedExecution(sql: Sql, state: StartState): Promise<Execut
   await sql`INSERT INTO projects (id, studio_id, created_by_user_id, name, slug) VALUES (${projectId}, ${studioId}, ${userId}, 'Timeline worker', ${`tw-${projectId}`})`;
   const spaceId = randomUUID();
   await storeSpaces(projectId, [spaceId]);
+  const kind = options.kind ?? "web_animation_create";
   const inserted = await timelineExecutionRepo.insert({
     projectId,
     spaceId,
     actorUserId: userId,
-    kind: "web_animation_create",
-    engine: "deepseek",
+    kind,
+    engine: kind === "web_animation_export" ? null : "deepseek",
     actionId: randomUUID(),
-    input: { prompt: "A red square slides in", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
+    input: options.input ?? { prompt: "A red square slides in", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: `sha256:${randomUUID()}`,
     deadlineAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    origin: "web_animation_space",
   });
   if (inserted === null) throw new Error("Fixture execution conflicted");
+  // A row still waiting for its landing receipt was stored before #1490.
+  if (state === "awaiting_landing") await sql`UPDATE timeline_executions SET status = 'awaiting_landing' WHERE id = ${inserted.id}`;
   const step = async (event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<TimelineExecution> => {
     const result = await timelineExecutionRepo.transition({ id: inserted.id, event });
     if (!result.applied) throw new Error(`Fixture step ${event.type} refused`);
     return result.row;
   };
-  let execution = inserted;
-  if (state !== "awaiting_landing") {
-    await step({ type: "land", inputHash: inserted.inputHash });
-    execution = await read(inserted.id);
-  }
+  let execution = await read(inserted.id);
   if (state === "running" || state === "cancelling") execution = await step({ type: "claim" });
   if (state === "cancelling") execution = await step({ type: "cancel" });
   return {
@@ -314,6 +320,8 @@ export async function serveManifest(fx: ExecutionFixture, body: WebAnimationMani
 export interface IngestCall {
   method: string;
   route: "submit" | "read" | "cancel";
+  /** The container class the route named; for a submit, the one its body named. */
+  containerClass: string;
   jobId: string;
   body: Record<string, unknown> | null;
 }
@@ -375,18 +383,19 @@ export function installFakeIngest(fx: ExecutionFixture): FakeIngest {
     if (!url.startsWith(jobsPath)) throw new Error(`unexpected request to ${url}`);
     const rest = url.slice(jobsPath.length);
     if (rest === "" && method === "POST") {
-      fake.calls.push({ method, route: "submit", jobId: String(body?.jobId), body });
+      fake.calls.push({ method, route: "submit", containerClass: String(body?.containerClass), jobId: String(body?.jobId), body });
       return fake.submit(body ?? {});
     }
-    const match = new RegExp(`^/${WEB_ANIMATION_CONTAINER_CLASS}/([^/]+)(/cancel)?$`).exec(rest);
+    const match = new RegExp(`^/(${WEB_ANIMATION_CONTAINER_CLASS}|${WEB_ANIMATION_RENDER_CONTAINER_CLASS})/([^/]+)(/cancel)?$`).exec(rest);
     if (match === null) throw new Error(`unexpected ingest route ${method} ${rest}`);
-    const jobId = decodeURIComponent(match[1]!);
-    if (match[2] !== undefined && method === "POST") {
-      fake.calls.push({ method, route: "cancel", jobId, body });
+    const containerClass = match[1]!;
+    const jobId = decodeURIComponent(match[2]!);
+    if (match[3] !== undefined && method === "POST") {
+      fake.calls.push({ method, route: "cancel", containerClass, jobId, body });
       return fake.cancel(jobId, body ?? {});
     }
     if (method === "GET") {
-      fake.calls.push({ method, route: "read", jobId, body: null });
+      fake.calls.push({ method, route: "read", containerClass, jobId, body: null });
       return fake.read(jobId);
     }
     throw new Error(`unexpected ingest route ${method} ${rest}`);

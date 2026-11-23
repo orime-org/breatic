@@ -387,6 +387,34 @@ describe("relayMessages: what reaches the harness, and how the call ends", () =>
     expect(order).toEqual(["started", "ended", "closed"]);
   });
 
+  it("ends a completed call before the harness reads its message_stop, while the upstream still holds the body open", async () => {
+    // The harness takes message_stop as the end of the call and sends its next one at once.
+    fakes.openrouter.answer(() => stream(COMPLETE, "hold"));
+    const ended: MessagesCallEnd[] = [];
+    const response = await relayMessages({ model: "m", candidates: [candidates().openrouter] }, BODY, {
+      keyOf: (name) => KEYS[name], maxTokens: 32_000, signal: new AbortController().signal,
+      onStarted: async () => undefined,
+      onEnded: async (end) => {
+        await new Promise((done) => setTimeout(done, 20));
+        ended.push(end);
+      },
+    });
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    while (!text.includes("\"type\":\"message_stop\"")) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    expect(text).toContain("\"type\":\"message_stop\"");
+    expect(ended.map((end) => end.outcome)).toEqual(["completed"]);
+    await reader.cancel("the harness moved on");
+    fakes.openrouter.release();
+    await new Promise((done) => setTimeout(done, 50));
+    expect(ended).toHaveLength(1);
+  });
+
   it("leaves OpenRouter's cost pending by its generation when the stream carries none", async () => {
     const delta = { ...MESSAGE_DELTA, usage: { input_tokens: 10, output_tokens: 2 } };
     fakes.openrouter.answer(() => stream([MESSAGE_START, delta, MESSAGE_STOP]));

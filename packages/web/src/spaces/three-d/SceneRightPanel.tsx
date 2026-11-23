@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { Anchor } from '@radix-ui/react-popover';
 import { X } from 'lucide-react';
-import { Popover, PopoverContent } from '@web/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent } from '@web/components/ui/popover';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -58,8 +57,8 @@ export const SceneRightPanel = React.memo(function SceneRightPanel({ open, onOpe
    */
   const close = React.useCallback((): void => onOpenChange(false), [onOpenChange]);
   return <Popover open={open} onOpenChange={onOpenChange}>
-    <Anchor asChild><div data-testid='scene-right-panel-anchor' className='pointer-events-none absolute right-[var(--space-5)] top-[var(--space-5)] w-0'
-      style={{ bottom, ...(top === null ? {} : { top: `${top}px` }) }} /></Anchor>
+    <PopoverAnchor asChild><div data-testid='scene-right-panel-anchor' className='pointer-events-none absolute right-[var(--space-5)] top-[var(--space-5)] w-0'
+      style={{ bottom, ...(top === null ? {} : { top: `${top}px` }) }} /></PopoverAnchor>
     <PopoverContent ref={contentRef} container={stage.current} side='left' align='start' sideOffset={0} className='flex h-[var(--radix-popover-trigger-height)] w-80 flex-col p-0' data-testid='scene-right-panel'
       onOpenAutoFocus={(event) => { event.preventDefault(); if (!automatic.current) (event.currentTarget as HTMLElement).focus(); }}
       onEscapeKeyDown={(event) => {

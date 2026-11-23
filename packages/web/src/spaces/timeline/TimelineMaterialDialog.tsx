@@ -86,7 +86,8 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const chooseLocal = React.useCallback((): void => draft.setMode('local'), [draft]);
   const chooseFile = React.useCallback((): void => fileInput.current?.click(), []);
   const changeFile = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => draft.setFile(event.target.files?.[0] ?? null), [draft]);
-  const changeFrame = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => draft.setStartFrame(event.target.value), [draft]);
+  // A start frame is whole and never negative: the plain field keeps digits only, with no native spinner.
+  const changeFrame = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => draft.setStartFrame(event.target.value.replace(/[^0-9]/g, '')), [draft]);
   const retryList = React.useCallback((): void => { void refetch(); }, [refetch]);
   const moreVideos = React.useCallback((): void => { void fetchNextPage(); }, [fetchNextPage]);
   const confirm = React.useCallback((event: React.FormEvent): void => { event.preventDefault(); void draft.confirm(placement); }, [draft, placement]);
@@ -126,7 +127,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
               <SelectTrigger id={`timeline-track-${spaceId}`} data-testid='timeline-material-track' className='min-w-0 flex-1'><SelectValue placeholder={t('timeline.edit.trackRemoved')} /></SelectTrigger>
               <SelectContent>{labels.visual.map((track) => <SelectItem key={track.id} value={track.id}>{track.label}</SelectItem>)}<SelectItem value='new'>{t('timeline.edit.newTrack')}</SelectItem></SelectContent>
             </Select></div>
-          <div className='flex items-center gap-3'><Label htmlFor={`timeline-start-${spaceId}`} className='shrink-0'>{t('timeline.startFrame')}</Label><Input id={`timeline-start-${spaceId}`} data-testid='timeline-start-frame' type='number' autoComplete='off' min={0} step={1} value={state.startFrame} onChange={changeFrame} disabled={state.busy} /></div>
+          <div className='flex items-center gap-3'><Label htmlFor={`timeline-start-${spaceId}`} className='shrink-0'>{t('timeline.startFrame')}</Label><Input id={`timeline-start-${spaceId}`} data-testid='timeline-start-frame' type='text' inputMode='numeric' autoComplete='off' value={state.startFrame} onChange={changeFrame} disabled={state.busy} /></div>
           {showsHint && <p data-testid='timeline-material-insert-hint' className='text-xs text-muted-foreground'>{before === undefined ? t('timeline.material.insertFirst') : t('timeline.material.insertAfter', { name: before.kind === 'upload' ? before.upload.name : beforeAsset.data?.displayName || t('timeline.video') })}</p>}
           {state.errorKey !== null && <p data-testid='timeline-material-error' className='text-sm text-status-error-foreground'>{t(`timeline.errors.${state.errorKey}`)}</p>}
           {!canWrite && <p className='text-sm text-muted-foreground'>{t('timeline.errors.readonly')}</p>}

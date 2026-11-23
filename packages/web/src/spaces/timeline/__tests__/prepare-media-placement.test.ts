@@ -182,7 +182,7 @@ describe('prepareTimelineMediaPlacement', () => {
     expect(readTimelineDocument(doc)).toEqual({
       schemaVersion: 2, settings: SETTINGS,
       tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
-      clips: {}, sources: {}, operationReceipts: {},
+      clips: {}, sources: {},
     });
     if (!result.ok) throw new Error('Expected a prepared native command');
     expect(TimelineEditCommandSchema.parse(result.command)).toEqual(command);
@@ -192,7 +192,6 @@ describe('prepareTimelineMediaPlacement', () => {
       tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
       clips: { [CLIP_ID]: command.parameters.clip },
       sources: { [SOURCE_ID]: command.parameters.source },
-      operationReceipts: {},
     });
   });
 
