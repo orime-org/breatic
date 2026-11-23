@@ -6,8 +6,10 @@ import { copyFileSync, mkdirSync, rmSync } from "node:fs";
 import { defineConfig, type Options } from "tsup";
 import { currentBrand } from "./brand.mjs";
 import { builtInServerUrl } from "./src/main/server-config.js";
-import { buildTimeSentryDsn } from "./src/main/error-monitoring.js";
+import { buildTimeCommit, buildTimeSentryDsn } from "./src/main/error-monitoring.js";
 
+/** Tagged CI and partner pipelines: the build must carry what error monitoring needs. */
+const RELEASE_BUILD = process.env.BREATIC_RELEASE_BUILD === "1";
 /** The brand this build is for: BREATIC_BRAND_DIR, else the official one. */
 const brand = currentBrand();
 /** The brand logo's file name beside the splash page; main reads the extension from the brand too. */
@@ -35,10 +37,10 @@ const shared: Options = {
       splashLogo: `${SPLASH_LOGO}${extname(brand.logo)}`,
       appImageEntryName: brand.appImageEntryName,
     }),
-    // A release build (tagged CI, partner pipeline) sets BREATIC_RELEASE_BUILD=1 and must carry the DSN.
+    // A release build (tagged CI, partner pipeline) sets BREATIC_RELEASE_BUILD=1 and must carry the DSN and its commit.
     __BUILD__: JSON.stringify({
-      sentryDsn: buildTimeSentryDsn(process.env.BREATIC_DESKTOP_SENTRY_DSN, { release: process.env.BREATIC_RELEASE_BUILD === "1" }),
-      commit: process.env.GITHUB_SHA ?? "unknown",
+      sentryDsn: buildTimeSentryDsn(process.env.BREATIC_DESKTOP_SENTRY_DSN, { release: RELEASE_BUILD }),
+      commit: buildTimeCommit(process.env.GITHUB_SHA, { release: RELEASE_BUILD }),
     }),
   },
   esbuildOptions(options) {
@@ -53,7 +55,7 @@ const shared: Options = {
 // per-configuration clean could delete another one's output.
 rmSync(resolve(import.meta.dirname, "dist"), { recursive: true, force: true });
 
-/** Browser pages: the connect window and the splash. */
+/** Browser pages: the splash. */
 const page: Options = { ...shared, format: "iife", platform: "browser", target: "chrome130", outDir: "dist", outExtension: () => ({ js: ".js" }) };
 
 export default defineConfig([
@@ -61,7 +63,7 @@ export default defineConfig([
   // runtime, which an ES module bundle cannot do. CommonJS is not split, so each entry stays whole.
   {
     ...shared,
-    entry: { "main/index": "src/main/index.ts", "preload/app": "src/preload/app.ts", "connect/preload": "src/connect/preload.ts" },
+    entry: { "main/index": "src/main/index.ts", "preload/app": "src/preload/app.ts" },
     format: "cjs",
     platform: "node",
     target: "node22",
@@ -70,12 +72,9 @@ export default defineConfig([
   },
   {
     ...page,
-    entry: { "connect/connect": "src/connect/connect.ts", "splash/splash": "src/splash/splash.ts" },
-    // The pages, the brand's logo and the platform's mark for the attribution line.
+    entry: { "splash/splash": "src/splash/splash.ts" },
+    // The page, the brand's logo and the platform's mark for the attribution line.
     onSuccess: async () => {
-      mkdirSync("dist/connect", { recursive: true });
-      copyFileSync("src/connect/index.html", "dist/connect/index.html");
-      copyFileSync("src/connect/connect.css", "dist/connect/connect.css");
       mkdirSync("dist/splash", { recursive: true });
       copyFileSync("src/splash/index.html", "dist/splash/index.html");
       copyFileSync("src/splash/splash.css", "dist/splash/splash.css");

@@ -46,7 +46,7 @@ export function loadBrand(dir, env = process.env) {
   if (typeof raw.id !== "string" || !BRAND_ID.test(raw.id)) fail("id", "must be lower-case letters, digits and hyphens");
   if (typeof raw.productName !== "string" || raw.productName.trim() === "") fail("productName", "must be a name");
   if (typeof raw.appId !== "string" || !isDesktopAppScheme(raw.appId.toLowerCase())) fail("appId", "must be a reverse domain name such as ai.breatic.desktop");
-  if (typeof raw.serverUrl !== "string") fail("serverUrl", "must be an address or empty");
+  if (typeof raw.serverUrl !== "string") fail("serverUrl", "must be the address of the server the build opens");
   const image = (field) => {
     const path = typeof raw[field] === "string" ? resolve(dir, raw[field]) : "";
     if (!path || !existsSync(path)) fail(field, "must name an image in the brand directory");

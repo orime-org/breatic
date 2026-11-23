@@ -37,6 +37,8 @@ export interface UpdatesDeps {
   tell: (outcome: "upToDate" | "failed") => void;
   /** Close every window through the normal path; false when one refused. */
   closeAllWindows: () => Promise<boolean>;
+  /** Send what error monitoring still holds: the installer ends the process soon after it starts. */
+  flushReports: () => Promise<void>;
   /** Record a failure. */
   log: (err: unknown) => void;
 }
@@ -88,7 +90,10 @@ export function createUpdates(deps: UpdatesDeps): Updates {
     if ((await deps.ask(version)) !== "restart") return;
     restarting = true;
     try {
-      if (await deps.closeAllWindows()) updater.quitAndInstall(false, true);
+      if (await deps.closeAllWindows()) {
+        await deps.flushReports();
+        updater.quitAndInstall(false, true);
+      }
     } finally {
       restarting = false;
     }

@@ -2,26 +2,31 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The desktop client started for real against a local server (#1599): first
- * launch, the address rules, signing in by email and staying signed in after a
- * restart, more windows, links handed to the system, and a server that cannot
- * be reached.
+ * The desktop client started for real against a local server (#1599): the
+ * server the build carries, the splash, signing in by email and staying signed
+ * in after a restart, more windows, links handed to the system, "can't reach"
+ * in the window that failed, and the shell's error reports.
  *
  * Run with the dev stack up: `pnpm --filter @breatic/desktop test:e2e`. It
- * builds the client as a brand that carries no server (e2e/brand-without-server),
- * so the address rules and the connect window are what the cases exercise.
- * SERVER defaults to the worktree's own web port; set BREATIC_E2E_SERVER for another.
+ * builds the client with SERVER written in (BREATIC_DEFAULT_SERVER_URL) and a
+ * DSN for a local receiver; the "can't reach" cases point a development build
+ * at a stand-in server of their own through BREATIC_SERVER_URL. SERVER
+ * defaults to the worktree's own web port; set BREATIC_E2E_SERVER for another.
  */
 
 import { execFileSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
-import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
+import { createServer, type IncomingMessage, type RequestListener, type Server, type ServerResponse } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { _electron as electron, chromium, expect, request, test, type ElectronApplication, type Page } from "playwright/test";
 
 const SERVER = process.env.BREATIC_E2E_SERVER ?? "http://localhost:8100";
 const MAIN = join(import.meta.dirname, "..", "dist", "main", "index.cjs");
+/** Where the e2e build sends its error reports (the DSN in package.json's test:e2e). */
+const SENTRY_PORT = 47_999;
 
 /** The account the run made, once. */
 let made: { email: string; password: string } | null = null;
@@ -79,7 +84,7 @@ async function windowWhere(app: ElectronApplication, match: (url: string) => boo
 }
 
 /**
- * The app's windows on the server, the splash and the connect window left out.
+ * The app's windows, the splash left out.
  * @param app - The running app.
  * @returns The pages.
  */
@@ -87,41 +92,106 @@ function appWindows(app: ElectronApplication): Page[] {
   return app.windows().filter((window) => !window.url().startsWith("file:"));
 }
 
+/**
+ * Wait until the splash has closed and the first window is on screen.
+ * @param app - The running app.
+ */
+async function afterSplash(app: ElectronApplication): Promise<void> {
+  await expect.poll(() => app.windows().some((window) => window.url().includes("/splash/")), { timeout: 10_000 }).toBe(false);
+}
+
 /** A fresh data directory. */
 function freshData(): string {
   return mkdtempSync(join(tmpdir(), "breatic-e2e-"));
 }
 
-test("first launch: the connect window refuses LAN http, connects to the server and remembers it", async () => {
+/**
+ * Listen on a port.
+ * @param handler - What answers.
+ * @param port - The port, or 0 for any.
+ * @returns The listening server.
+ */
+function listen(handler: RequestListener, port = 0): Promise<Server> {
+  const server = createServer(handler);
+  return new Promise((resolve) => server.listen(port, "127.0.0.1", () => resolve(server)));
+}
+
+/**
+ * Stop a server.
+ * @param server - The server.
+ * @returns When it has stopped.
+ */
+function stop(server: Server): Promise<void> {
+  server.closeAllConnections();
+  return new Promise((resolve) => server.close(() => resolve()));
+}
+
+/** A stand-in server on a fixed port that a case switches on and off. */
+interface StandIn {
+  origin: string;
+  /** Start answering every request with the handler. */
+  up(handler: RequestListener): Promise<void>;
+  /** Stop answering: the port refuses connections. */
+  down(): Promise<void>;
+}
+
+/**
+ * A stand-in server, off until a case starts it.
+ * @returns The stand-in.
+ */
+async function standIn(): Promise<StandIn> {
+  const probe = await listen(() => undefined);
+  const port = (probe.address() as AddressInfo).port;
+  await stop(probe);
+  let server: Server | null = null;
+  return {
+    origin: `http://127.0.0.1:${port}`,
+    up: async (handler) => {
+      server = await listen(handler, port);
+    },
+    down: async () => {
+      if (server) await stop(server);
+      server = null;
+    },
+  };
+}
+
+/**
+ * Answer with a small page of the app.
+ * @param _req - The request.
+ * @param res - The response.
+ */
+function appPage(_req: IncomingMessage, res: ServerResponse): void {
+  res.setHeader("Content-Type", "text/html");
+  res.end("<!doctype html><title>Studio</title><h1>Studio</h1>");
+}
+
+test("the build opens the server it carries, with no address to enter", async () => {
   const userData = freshData();
   const app = await launch(userData);
-  const connect = await windowWhere(app, (url) => url.includes("/connect/"));
-  await expect(connect.getByRole("heading", { name: "Connect to breatic" })).toBeVisible();
-
-  const input = connect.getByRole("textbox");
-  await input.fill("http://192.168.1.50");
-  await connect.getByRole("button", { name: "Continue" }).click();
-  await expect(connect.getByText("A LAN or internet address needs HTTPS")).toBeVisible();
-
-  await connect.getByRole("textbox").fill(SERVER);
-  await connect.getByRole("button", { name: "Continue" }).click();
   const main = await windowWhere(app, (url) => url.startsWith(SERVER));
   await expect(main).toHaveURL(/\/login/);
-  expect(JSON.parse(readFileSync(join(userData, "config.json"), "utf8"))).toEqual({ serverUrl: SERVER });
+  await expect.poll(() => app.windows().length).toBe(1);
+  // Nothing about the server is kept: the build is the only source.
+  expect(existsSync(join(userData, "config.json"))).toBe(false);
   await app.close();
 });
 
-test("the splash shows the brand first and closes once a window is ready", async () => {
+test("the splash shows the brand first, the first window stays hidden behind it, and it closes once the window is ready", async () => {
   const app = await launch(freshData());
   const splash = await windowWhere(app, (url) => url.includes("/splash/"));
   await expect(splash.getByText("breatic", { exact: true })).toBeVisible();
   await expect(splash.getByText("powered by")).toBeHidden();
   // The page's own load start comes before it is shown; the splash must outlive it by the minimum.
   const loadStart = await splash.evaluate(() => performance.timeOrigin);
-  await windowWhere(app, (url) => url.includes("/connect/"));
+  const shownWhileSplash = await app.evaluate(({ BrowserWindow }) =>
+    BrowserWindow.getAllWindows().filter((window) => window.isVisible() && !window.webContents.getURL().startsWith("file:")).length,
+  );
+  expect(shownWhileSplash).toBe(0);
   await expect.poll(() => app.windows().some((window) => window.url().includes("/splash/")), { timeout: 10_000 }).toBe(false);
   // At least a second on screen, so a partner's attribution can be read.
   expect(Date.now() - loadStart).toBeGreaterThanOrEqual(1_000);
+  await expect.poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().filter((window) => window.isVisible()).length)).toBe(1);
   await app.close();
 });
 
@@ -143,7 +213,6 @@ test("a partner's splash carries the powered-by line under its own name", async 
 
 test("email sign-in survives a restart", async () => {
   const userData = freshData();
-  writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
   const { email, password } = await account();
 
   const first = await launch(userData);
@@ -162,12 +231,11 @@ test("email sign-in survives a restart", async () => {
   await second.close();
 });
 
-test("New Window opens another signed-in window on the Studio, from the menu and from a second launch", async () => {
-  const userData = freshData();
-  writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
+test("New Window opens another signed-in window on the Studio at once, from the menu and from a second launch", async () => {
   const { email, password } = await account();
-  const app = await launch(userData);
+  const app = await launch(freshData());
   const page = await windowWhere(app, (url) => url.startsWith(SERVER));
+  await afterSplash(app);
   await page.getByLabel("Email").fill(email);
   await page.getByRole("textbox", { name: "Password" }).fill(password);
   await page.getByRole("button", { name: "Sign in" }).click();
@@ -177,6 +245,9 @@ test("New Window opens another signed-in window on the Studio, from the menu and
     const items = Menu.getApplicationMenu()?.items.flatMap((menu) => menu.submenu?.items ?? []) ?? [];
     items.find((item) => item.label === "New Window")?.click();
   });
+  // On screen as soon as it exists, before its page has loaded.
+  const visibleAtCreation = await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().every((window) => window.isVisible()));
+  expect(visibleAtCreation).toBe(true);
   await expect.poll(() => appWindows(app).length).toBe(2);
   for (const window of appWindows(app)) await expect(window).toHaveURL(/\/studio/, { timeout: 30_000 });
 
@@ -191,11 +262,10 @@ test("New Window opens another signed-in window on the Studio, from the menu and
 
 test("on macOS, closing every window and clicking the Dock icon reopens the server", async () => {
   test.skip(process.platform !== "darwin", "the app stays open without windows only on macOS");
-  const userData = freshData();
-  writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
-  const app = await launch(userData);
+  const app = await launch(freshData());
   const page = await windowWhere(app, (url) => url.startsWith(SERVER));
   await expect(page).toHaveURL(/\/login/);
+  await afterSplash(app);
   await app.evaluate(({ BrowserWindow }) => {
     for (const window of BrowserWindow.getAllWindows()) window.close();
   });
@@ -205,14 +275,23 @@ test("on macOS, closing every window and clicking the Dock icon reopens the serv
   });
   const reopened = await windowWhere(app, (url) => url.startsWith(SERVER));
   await expect(reopened).toHaveURL(/\/login/);
-  expect(app.windows().some((window) => window.url().includes("/connect/"))).toBe(false);
   await app.close();
 });
 
+test("on Windows and Linux, closing the last window ends the app", async () => {
+  test.skip(process.platform === "darwin", "macOS keeps the app in the Dock");
+  const app = await launch(freshData());
+  await windowWhere(app, (url) => url.startsWith(SERVER));
+  await afterSplash(app);
+  const ended = app.waitForEvent("close");
+  void app.evaluate(({ BrowserWindow }) => {
+    for (const window of BrowserWindow.getAllWindows()) window.close();
+  }).catch(() => undefined);
+  await ended;
+});
+
 test("a link to another site goes to the system browser and the window stays", async () => {
-  const userData = freshData();
-  writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
-  const app = await launch(userData);
+  const app = await launch(freshData());
   const page = await windowWhere(app, (url) => url.startsWith(SERVER));
   await expect(page).toHaveURL(/\/login/);
   await app.evaluate(({ shell }) => {
@@ -230,38 +309,135 @@ test("a link to another site goes to the system browser and the window stays", a
   await app.close();
 });
 
-test("a configured server that cannot be reached opens the unreachable state", async () => {
-  const userData = freshData();
-  writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: "http://localhost:9" }));
-  const app = await launch(userData);
-  const connect = await windowWhere(app, (url) => url.includes("/connect/"));
-  await expect(connect.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible();
-  await expect(connect.getByText("http://localhost:9")).toBeVisible();
-  await expect(connect.getByRole("button", { name: "Retry" })).toBeVisible();
-  await expect(connect.getByRole("button", { name: "Use another server" })).toHaveCount(0);
-  await connect.getByRole("button", { name: "Retry" }).click();
-  await expect(connect.getByText("Can't reach this address")).toBeVisible();
-  if (process.platform === "darwin") {
-    // Closed and reopened from the Dock, it comes back to the same server, never to an empty address form.
-    await app.evaluate(({ BrowserWindow }) => {
-      for (const window of BrowserWindow.getAllWindows()) window.close();
-    });
-    await expect.poll(() => app.windows().length).toBe(0);
-    await app.evaluate(({ app: electronApp }) => {
-      electronApp.emit("activate");
-    });
-    const again = await windowWhere(app, (url) => url.includes("/connect/"));
-    await expect(again.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible();
-    await expect(again.getByText("http://localhost:9")).toBeVisible();
+test.describe("can't reach the server", () => {
+  let server: StandIn;
+
+  test.beforeEach(async () => {
+    server = await standIn();
+  });
+
+  test.afterEach(async () => {
+    await server.down();
+  });
+
+  /**
+   * Launch a development build on the stand-in.
+   * @returns The app and its window.
+   */
+  async function launchOnStandIn(): Promise<{ app: ElectronApplication; page: Page }> {
+    const app = await launch(freshData(), { BREATIC_SERVER_URL: server.origin });
+    const page = await windowWhere(app, (url) => !url.startsWith("file:"));
+    return { app, page };
   }
-  await app.close();
+
+  test("shows in the window that failed, retries by itself and comes back when the server answers", async () => {
+    const { app, page } = await launchOnStandIn();
+    await expect(page.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText(`${server.origin}/studio`)).toBeVisible();
+    await expect(page.getByText("Can't reach this address")).toBeVisible();
+    await expect(page.getByText("Retrying automatically")).toBeVisible();
+    // Once the splash closes, the window shows it under its own title; it is never hidden.
+    await afterSplash(app);
+    await expect
+      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((window) => [window.getTitle(), window.isVisible()])))
+      .toEqual([["Can't reach breatic", true]]);
+
+    await server.up(appPage);
+    // The first automatic retry comes 5 s after the failure.
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible({ timeout: 15_000 });
+    await expect(page).toHaveURL(`${server.origin}/studio`);
+    // The error entry turned back into the page: no history entry was added.
+    expect(await page.evaluate(() => history.length)).toBe(1);
+    await app.close();
+  });
+
+  test("Retry tries again at once", async () => {
+    const { app, page } = await launchOnStandIn();
+    await expect(page.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible({ timeout: 30_000 });
+    await server.up(appPage);
+    const clicked = Date.now();
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible();
+    // Well before the 5 s automatic retry.
+    expect(Date.now() - clicked).toBeLessThan(4_000);
+    await app.close();
+  });
+
+  test("a page on the server cannot ask for a retry", async () => {
+    await server.up(appPage);
+    const { app, page } = await launchOnStandIn();
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible({ timeout: 30_000 });
+    let requests = 0;
+    await server.down();
+    await server.up((req, res) => {
+      requests += 1;
+      appPage(req, res);
+    });
+    await page.evaluate(() => (window as unknown as { breaticDesktop: { retry(): Promise<void> } }).breaticDesktop.retry());
+    await page.waitForTimeout(1_000);
+    expect(requests).toBe(0);
+    await app.close();
+  });
+
+  test("a server address that redirects to another site says where it went and opens nothing", async () => {
+    await server.up((_req, res) => {
+      res.statusCode = 302;
+      res.setHeader("Location", "https://www.example.test/landing?ref=desktop");
+      res.end();
+    });
+    const { app, page } = await launchOnStandIn();
+    await app.evaluate(({ shell }) => {
+      const opened: string[] = [];
+      (globalThis as { opened?: string[] }).opened = opened;
+      shell.openExternal = async (url: string) => {
+        opened.push(url);
+      };
+    });
+    await expect(page.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByText("This address goes to https://www.example.test/landing")).toBeVisible();
+    expect(await app.evaluate(() => (globalThis as { opened?: string[] }).opened ?? [])).toEqual([]);
+    await app.close();
+  });
+});
+
+test("the shell reports a session per launch and its errors under the brand, without queries, and pages cannot reach its channel", async () => {
+  const bodies: string[] = [];
+  const receiver = await listen((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => {
+      bodies.push(Buffer.concat(chunks).toString("utf8"));
+      res.end("{}");
+    });
+  }, SENTRY_PORT);
+  try {
+    const app = await launch(freshData());
+    const page = await windowWhere(app, (url) => url.startsWith(SERVER));
+
+    await app.evaluate(() => {
+      void Promise.reject(new Error("e2e failure at https://studio.example.test/reset?token=SECRET"));
+    });
+    await expect.poll(() => bodies.some((body) => body.includes("e2e failure")), { timeout: 20_000 }).toBe(true);
+    const report = bodies.find((body) => body.includes("e2e failure"))!;
+    expect(report).toContain('"brand":"breatic"');
+    expect(report).toContain("https://studio.example.test/reset");
+    expect(report).not.toContain("SECRET");
+
+    // The classic IPC registers no privileged scheme a server page could write to.
+    const reached = await page.evaluate(() => fetch("sentry-ipc://scope/x", { method: "POST", body: "{}" }).then(() => true, () => false));
+    expect(reached).toBe(false);
+
+    // The launch's session record goes out when the session ends, at quit.
+    await app.close();
+    await expect.poll(() => bodies.some((body) => body.includes('"type":"session"')), { timeout: 10_000 }).toBe(true);
+  } finally {
+    await stop(receiver);
+  }
 });
 
 test("browser sign-in hands the account to the client through a link on its scheme", async () => {
-  const userData = freshData();
-  writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
   const { email, password } = await account();
-  const app = await launch(userData);
+  const app = await launch(freshData());
   const page = await windowWhere(app, (url) => url.startsWith(SERVER));
   await expect(page).toHaveURL(/\/login/);
   // The system browser is a separate Chromium here; record what the client asks it to open.

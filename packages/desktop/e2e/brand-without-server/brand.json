@@ -1,8 +1,0 @@
-{
-  "id": "breatic",
-  "productName": "breatic",
-  "appId": "ai.breatic.desktop",
-  "serverUrl": "",
-  "icon": "../../../web/public/icon-512.png",
-  "logo": "../../../web/public/logo-color.svg"
-}

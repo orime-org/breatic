@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The client's own words (connect window, menu, leave dialog) in the
+ * The client's own words ("can't reach" page, menu, leave and update dialogs) in the
  * operating system's language (#1599). They live in the root `locales/*.json`
  * beside the web app's, under `desktop`, and are read by their full key, as
  * the web app reads its own.
@@ -14,7 +14,7 @@ import { desktop as ko } from "@locales/ko.json";
 import { desktop as zhCN } from "@locales/zh-CN.json";
 import { desktop as zhTW } from "@locales/zh-TW.json";
 
-/** Every dotted key under a section, e.g. `desktop.connect.title`. */
+/** Every dotted key under a section, e.g. `desktop.unreachable.title`. */
 type Leaves<T, P extends string> = {
   [K in keyof T & string]: T[K] extends string ? `${P}.${K}` : Leaves<T[K], `${P}.${K}`>;
 }[keyof T & string];
@@ -22,7 +22,7 @@ type Leaves<T, P extends string> = {
 /** A key of the client's own words. */
 export type DesktopKey = Leaves<typeof en, "desktop">;
 
-/** Every key with its text, as the connect window receives it. */
+/** Every key with its text. */
 export type DesktopText = Record<DesktopKey, string>;
 
 /**

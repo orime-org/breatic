@@ -8,6 +8,8 @@
  * reloading it in place. Kept apart from Electron so the rules can be tested.
  */
 
+import { isCertificateError } from "@desktop/main/navigation.js";
+
 /** Automatic retry delays: 5 s doubling to a 60 s cap, as Mattermost's RELOAD_INTERVAL starts. */
 export const RETRY_DELAYS_MS: readonly number[] = [5_000, 10_000, 20_000, 40_000, 60_000];
 
@@ -16,7 +18,7 @@ const STRIPE_HOST = /(^|\.)stripe\.com$/;
 
 /**
  * Network error codes that mean the user's network or this computer, not the shell:
- * offline, name resolution, refused, reset, timed out, unreachable, and certificate errors (-200 to -299).
+ * offline, name resolution, refused, reset, timed out, unreachable; certificate errors are added by isCertificateError.
  */
 const ENVIRONMENT_CODES = new Set([-21, -100, -101, -102, -104, -105, -106, -109, -118, -130, -137, -138]);
 
@@ -33,8 +35,10 @@ export function retryDelay(failures: number): number {
 export interface RetryScheduler {
   /** A load failed (the first one or a retry): schedule the next retry after the backoff. */
   failed(): void;
-  /** Retry now (the button, Reload, the online event), unless a retry is already in flight. */
+  /** Retry now (the button, the online event), unless a retry is already in flight. */
   now(): void;
+  /** A retry started outside the scheduler (the user pressed Reload on the error entry): wait for it. */
+  started(): void;
   /** The server answered: stop and reset the backoff. */
   succeeded(): void;
   /** The window left the error entry or closed: stop. */
@@ -75,6 +79,10 @@ export function createRetryScheduler(retry: () => void): RetryScheduler {
     },
     now(): void {
       if (!inFlight) start();
+    },
+    started(): void {
+      stop();
+      inFlight = true;
     },
     succeeded(): void {
       stop();
@@ -147,5 +155,5 @@ export function blocksRedirect(response: RedirectResponse): boolean {
  * @returns True for network and certificate failures.
  */
 export function isEnvironmentFailure(errorCode: number): boolean {
-  return ENVIRONMENT_CODES.has(errorCode) || (errorCode <= -200 && errorCode > -300);
+  return ENVIRONMENT_CODES.has(errorCode) || isCertificateError(errorCode);
 }

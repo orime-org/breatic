@@ -2,51 +2,66 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The desktop client's main process (#1599): windows on the chosen server's
- * web app, a local connect window to choose that server, Google sign-in
- * through the system browser and the navigation rules that keep each window
- * on the app.
+ * The desktop client's main process (#1599): windows on the server the build
+ * carries, the "can't reach" page in the window that failed, Google sign-in
+ * through the system browser, the navigation rules that keep each window on
+ * the app, and the shell's error monitoring.
  */
 
-import { app, BrowserWindow, dialog, ipcMain, Menu, net, session, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
+import * as Sentry from "@sentry/electron/main";
+import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, session, shell, type IpcMainInvokeEvent, type WebContents } from "electron";
 import electronUpdater from "electron-updater";
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { addressWithoutQuery } from "@breatic/shared";
 import { createBrowserSignIn } from "@desktop/main/browser-sign-in.js";
-import type { ConnectAnswer, ConnectInitial, ConnectReason } from "@desktop/main/connect-protocol.js";
 import { BRAND } from "@desktop/main/brand.js";
+import { BUILD } from "@desktop/main/build-info.js";
 import { appImageDesktopEntry, findDeepLink } from "@desktop/main/deep-link.js";
+import { desktopSentryOptions, keepsIntegration, scrubBreadcrumb, scrubEvent } from "@desktop/main/error-monitoring.js";
 import { createLogger } from "@desktop/main/logger.js";
 import { buildDockMenuTemplate, buildMenuTemplate } from "@desktop/main/menu.js";
+import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure } from "@desktop/main/navigation.js";
 import { nextWindowBounds, wantsNewWindow, windowsUserTasks } from "@desktop/main/new-window.js";
-import { splashCloseDelay, splashQuery } from "@desktop/main/splash.js";
-import { createUpdates } from "@desktop/main/updates.js";
-import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure, loadFailureReason } from "@desktop/main/navigation.js";
-import { activateAction, quitsWhenConnectCloses } from "@desktop/main/window-policy.js";
-import { checkServer, normalizeServerUrl, readServerConfig, resolveServerUrl, writeServerConfig } from "@desktop/main/server-config.js";
+import { resolveServerUrl } from "@desktop/main/server-config.js";
+import { SPLASH_MAX_MS, splashCloseDelay, splashQuery } from "@desktop/main/splash.js";
 import { desktopText } from "@desktop/main/strings.js";
+import { acceptsRetry, blocksRedirect, createRetryScheduler, isEnvironmentFailure, type RetryScheduler } from "@desktop/main/unreachable.js";
+import { createUpdates } from "@desktop/main/updates.js";
+import { unreachableScript } from "@desktop/unreachable/render.js";
 
-/** The server the build carries (brand.json, or BREATIC_DEFAULT_SERVER_URL at build time); empty asks on first launch. */
-const DEFAULT_SERVER_URL = BRAND.serverUrl;
 /** How long a code the browser handed back stays usable, counted from when it arrived; the server's handoff code lives as long (`config/auth.yaml`). */
 const SIGN_IN_TTL_MS = 5 * 60_000;
 /** Permissions the web app asks for; every other request is refused. */
 const ALLOWED_PERMISSIONS = new Set(["clipboard-read", "clipboard-sanitized-write", "notifications", "fullscreen", "media"]);
+/** How long Restart now waits for pending reports, as the server's `FLUSH_TIMEOUT_MS`. */
+const FLUSH_TIMEOUT_MS = 2_000;
+
+const isDev = !app.isPackaged;
+
+// First, before anything can fail: the shell's error monitoring (design 9.4).
+const sentryOptions = desktopSentryOptions({ dsn: BUILD.sentryDsn, brandId: BRAND.id, packaged: app.isPackaged, commit: BUILD.commit });
+if (sentryOptions) {
+  const home = app.getPath("home");
+  Sentry.init({
+    ...sentryOptions,
+    integrations: (defaults) => [
+      ...defaults.filter((integration) => keepsIntegration(integration.name)),
+      Sentry.pinoIntegration({ log: { levels: [] }, error: { levels: ["error", "fatal"] } }),
+    ],
+    beforeSend: (event) => scrubEvent(event, home),
+    beforeBreadcrumb: (breadcrumb) => scrubBreadcrumb(breadcrumb, home),
+  });
+}
 
 const here = __dirname;
-/**
- * Where the chosen server is kept.
- * @returns The path of `config.json` in the app's data directory.
- */
-const configFile = (): string => join(app.getPath("userData"), "config.json");
 /**
  * Where the last closed window's size and place are kept.
  * @returns The path of `window-state.json` in the app's data directory.
  */
 const windowStateFile = (): string => join(app.getPath("userData"), "window-state.json");
-const isDev = !app.isPackaged;
 
 /** False in a second launch: it hands its arguments to the first instance (second-instance) and ends. */
 const primary = app.requestSingleInstanceLock();
@@ -55,23 +70,41 @@ if (!primary) app.quit();
 const logger = createLogger(app.getPath("logs"), BRAND.id);
 const signIn = createBrowserSignIn({ openExternal: (url) => shell.openExternal(url), now: () => Date.now(), ttlMs: SIGN_IN_TTL_MS, scheme: BRAND.scheme });
 
-let serverOrigin: string | null = null;
-/** The server this client opens (environment, saved or built in); Dock and relaunch come back to it. */
-let boundServer = "";
+/** Why a window shows "can't reach" (design 6.2). */
+type UnreachableReason = { kind: "unreachable" } | { kind: "certificate" } | { kind: "redirected"; target: string };
+
+/** One app window's loads and its "can't reach" state (design 5.3). */
+interface WindowLoad {
+  window: BrowserWindow;
+  scheduler: RetryScheduler;
+  /** The address that failed and why, while the window shows "can't reach". */
+  shown: { url: string; reason: UnreachableReason } | null;
+  /** A main-frame failure of the current navigation, waiting for its error entry to finish loading. */
+  failure: { url: string; reason: UnreachableReason } | null;
+  /** The main process is loading the server here: start, new window, reopen, retry, or Reload on the error entry. */
+  mainLoad: boolean;
+  /** The current navigation has ended in success or failure. */
+  settled: boolean;
+  /** Where the current main load was redirected when that redirect was cancelled. */
+  redirectTarget: string | null;
+  /** Runs once when the window's first load ends; the first window waits on it to close the splash. */
+  onFirstLoad: (() => void) | null;
+}
+
+/** The server this build opens; set first thing in start(). */
+let serverOrigin = "";
 /** The app windows, least recently used first. */
 let appWindows: BrowserWindow[] = [];
-/** App windows that have shown the server at least once. */
-const loadedWindows = new WeakSet<BrowserWindow>();
-/** App windows hidden after the server stopped answering; Retry loads them all again. */
-const failedWindows = new WeakSet<BrowserWindow>();
+/** Each app window's loads, by its web contents id. */
+const loads = new Map<number, WindowLoad>();
 /** What every app window runs with, the ones the page opens included. */
 const APP_WEB_PREFERENCES = { preload: join(here, "../preload/app.cjs"), contextIsolation: true, sandbox: true, nodeIntegration: false };
-let connectWindow: BrowserWindow | null = null;
-let connectInitial: ConnectInitial | null = null;
 let queuedLink: string | null = null;
 let splashWindow: BrowserWindow | null = null;
-/** Resolves with the time the splash appeared (or was closed before it could). */
-let splashShown: Promise<number> = Promise.resolve(0);
+/** When the splash appeared, or null while it has not. */
+let splashShownAt: number | null = null;
+/** Whether the first app window is on screen; until then Dock clicks and relaunches bring the splash forward. */
+let firstShown = false;
 /** Callbacks waiting to hear that a window's leave confirmation answered Stay. */
 const stayListeners = new Map<WebContents, () => void>();
 /** A packaged build with an update feed: electron-builder wrote app-update.yml beside the app. */
@@ -83,7 +116,11 @@ const updates = createUpdates({
   ask: askToRestart,
   tell: tellUpdateOutcome,
   closeAllWindows,
-  log: (err) => logger.error({ err }, "update_failed"),
+  flushReports: async () => {
+    await Sentry.flush(FLUSH_TIMEOUT_MS);
+  },
+  // The feed being unreachable is the user's network: a warning, not a report.
+  log: (err) => logger.warn({ err }, "update_failed"),
 });
 
 // macOS hands a link that launched the app to `open-url` before `ready`.
@@ -103,8 +140,8 @@ app.on("second-instance", (_event, argv) => {
 
 app.on("activate", () => showSomeWindow());
 
+// The only way the app ends on Windows and Linux; Restart now quits through the updater instead.
 app.on("window-all-closed", () => {
-  // Restart now quits through the updater once every window has closed.
   if (updates.isRestarting()) return;
   if (process.platform !== "darwin") app.quit();
 });
@@ -118,30 +155,33 @@ if (primary) void app.whenReady().then(start).catch((err: unknown) => {
 });
 
 /**
- * Start: register the scheme, build the menu, open the configured server or
- * the connect window.
+ * Start: register the scheme, build the menu, show the splash and open the
+ * first window on the server, shown when the splash closes.
  * @throws {Error} if `BREATIC_SERVER_URL` is an address the client refuses.
  */
-async function start(): Promise<void> {
+function start(): void {
+  // A packaged build opens the server it carries; the override is for development.
+  serverOrigin = resolveServerUrl({ envUrl: isDev ? process.env.BREATIC_SERVER_URL : undefined, builtInUrl: BRAND.serverUrl });
   registerScheme();
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
+  cancelRedirectsAway();
   registerIpc();
   buildMenu();
   openSplash();
   updates.start();
-  const resolved = resolveServerUrl({
-    // A packaged build opens the server it carries; the override is for development.
-    envUrl: isDev ? process.env.BREATIC_SERVER_URL : undefined,
-    savedUrl: readServerConfig(configFile()),
-    builtInUrl: DEFAULT_SERVER_URL,
-  });
-  boundServer = resolved ?? "";
-  if (resolved) {
-    const answer = await openServer(resolved, { save: false });
-    if (!answer.ok) openConnect({ mode: "unreachable", url: resolved, reason: answer.reason });
-  } else {
-    openConnect({ mode: "connect", url: DEFAULT_SERVER_URL, reason: null });
-  }
+  const first = openAppWindow({ show: false });
+  let revealed = false;
+  /** Close the splash and show the first window, once: its first load ended, or the splash reached its longest. */
+  const reveal = (): void => {
+    if (revealed) return;
+    revealed = true;
+    void finishSplash().then(() => {
+      firstShown = true;
+      if (!first.window.isDestroyed()) first.window.show();
+    });
+  };
+  first.onFirstLoad = reveal;
+  setTimeout(reveal, SPLASH_MAX_MS);
   const link = queuedLink ?? findDeepLink(process.argv, BRAND.scheme);
   queuedLink = null;
   if (link) handleLink(link);
@@ -168,6 +208,24 @@ function registerScheme(): void {
   } else {
     app.setAsDefaultProtocolClient(BRAND.scheme);
   }
+}
+
+/**
+ * Cancel a main-issued server load that the server redirects to another
+ * origin (Stripe aside): Chromium then commits an error entry at the server
+ * address, and the window shows "can't reach" with where it went (design 5.1).
+ */
+function cancelRedirectsAway(): void {
+  session.defaultSession.webRequest.onHeadersReceived((details, callback) => {
+    const load = details.webContentsId === undefined ? undefined : loads.get(details.webContentsId);
+    const location = Object.entries(details.responseHeaders ?? {}).find(([name]) => name.toLowerCase() === "location")?.[1]?.[0];
+    if (load && location && blocksRedirect({ resourceType: details.resourceType, statusCode: details.statusCode, location, serverOrigin, mainLoadInFlight: load.mainLoad })) {
+      load.redirectTarget = addressWithoutQuery(new URL(location, serverOrigin).href);
+      callback({ cancel: true });
+      return;
+    }
+    callback({});
+  });
 }
 
 /** Build the menu, the Dock menu and the taskbar task in the operating system's language. */
@@ -202,27 +260,18 @@ function buildMenu(): void {
 }
 
 /**
- * Whether an IPC call came from a page of the server the client opened.
+ * Whether an IPC call came from a page of the server.
  * @param event - The call.
  * @returns True for the server's origin.
  */
 function fromServer(event: IpcMainInvokeEvent): boolean {
-  return serverOrigin !== null && event.senderFrame?.origin === serverOrigin;
+  return event.senderFrame?.origin === serverOrigin;
 }
 
-/**
- * Whether an IPC call came from the connect window.
- * @param event - The call.
- * @returns True for the connect window's own page.
- */
-function fromConnectWindow(event: IpcMainInvokeEvent): boolean {
-  return connectWindow !== null && event.sender === connectWindow.webContents;
-}
-
-/** The calls the two preloads make. */
+/** The calls the app preload makes. */
 function registerIpc(): void {
   ipcMain.handle("sign-in:start", async (event, referralCode: unknown) => {
-    if (!fromServer(event) || !serverOrigin) return;
+    if (!fromServer(event)) return;
     const window = BrowserWindow.fromWebContents(event.sender);
     await signIn.start({ windowId: window?.id ?? -1, serverOrigin, referralCode: typeof referralCode === "string" && referralCode ? referralCode : null });
   });
@@ -231,174 +280,203 @@ function registerIpc(): void {
   });
   ipcMain.handle("sign-in:pending", (event) => fromServer(event) && signIn.isPending());
   ipcMain.handle("sign-in:take", (event) => (fromServer(event) ? signIn.take() : null));
-  ipcMain.handle("connect:initial", (event) => (fromConnectWindow(event) ? connectInitial : null));
-  ipcMain.handle("connect:connect", async (event, url: unknown): Promise<ConnectAnswer | null> => {
-    if (!fromConnectWindow(event) || typeof url !== "string") return null;
-    return connect(url);
+  ipcMain.handle("unreachable:retry", (event) => {
+    const load = loads.get(event.sender.id);
+    const frame = event.senderFrame;
+    if (!load || !frame) return;
+    if (acceptsRetry({ isMainFrame: frame.parent === null, origin: frame.origin, url: frame.url, recordedUrl: load.shown?.url ?? null })) load.scheduler.now();
   });
 }
 
-/**
- * Check an address and open it, from the connect window.
- * @param input - The address as typed.
- * @returns Whether the client now shows that server.
- */
-async function connect(input: string): Promise<ConnectAnswer> {
-  const normalized = normalizeServerUrl(input);
-  if (!normalized.ok) return { ok: false, reason: "scheme" };
-  const checked = await checkServer(normalized.origin, (url, init) => net.fetch(url, init));
-  if (!checked.ok) return checked;
-  return openServer(checked.origin, { save: true });
-}
-
-/**
- * Load a server's app in the app window that could not show it, or a new one.
- * The address is saved only once the window is really on it: a load the user
- * cancels from the leave dialog keeps the old server.
- * @param origin - The server.
- * @param options - Whether to save it as the server to open next time.
- * @param options.save - Save on success.
- * @returns Whether the window now shows the server, or why not.
- */
-async function openServer(origin: string, options: { save: boolean }): Promise<ConnectAnswer> {
-  const window = appWindows.findLast((other) => failedWindows.has(other)) ?? createAppWindow();
-  const previous = serverOrigin;
-  serverOrigin = origin;
-  try {
-    await window.loadURL(`${origin}/studio`);
-  } catch (err) {
-    serverOrigin = previous;
-    const reason = loadFailureReason((err as { errno?: number }).errno ?? 0);
-    if (reason !== "cancelled") logger.error({ err, origin }, "server_load_failed");
-    return { ok: false, reason };
-  }
-  if (options.save) writeServerConfig(configFile(), origin);
-  boundServer = origin;
-  failedWindows.delete(window);
-  loadedWindows.add(window);
-  await finishSplash();
-  window.show();
-  connectWindow?.close();
-  // The other windows that lost the server come back with it.
-  for (const other of appWindows.filter((candidate) => failedWindows.has(candidate))) {
-    void other.loadURL(`${origin}/studio`).then(
-      () => {
-        failedWindows.delete(other);
-        other.show();
-      },
-      (err: unknown) => logger.error({ err, origin }, "server_load_failed"),
-    );
-  }
-  return { ok: true };
-}
-
-/**
- * Open another app window on the server (menu, Dock menu, taskbar task). With
- * no server shown yet, bring the connect window forward instead.
- */
+/** Open another app window on the server (menu, Dock menu, taskbar task, `--new-window`), on screen at once. */
 function openNewWindow(): void {
-  if (connectWindow || !serverOrigin) {
-    showSomeWindow();
-    return;
-  }
-  const origin = serverOrigin;
-  const window = createAppWindow();
-  void window.loadURL(`${origin}/studio`).then(
-    () => {
-      loadedWindows.add(window);
-      window.show();
-    },
-    (err: unknown) => {
-      logger.error({ err, origin }, "server_load_failed");
-      window.close();
-      const reason = loadFailureReason((err as { errno?: number }).errno ?? 0);
-      openConnect({ mode: "unreachable", url: origin, reason: reason === "cancelled" ? "unreachable" : reason });
-    },
-  );
+  openAppWindow({ show: true });
 }
 
 /**
- * Create an app window, hidden until a server loads, a step down and right of
- * the window in use.
- * @returns The window.
+ * Create an app window a step down and right of the window in use, and load the server in it.
+ * @param options - Whether it shows at once; the first window waits for the splash.
+ * @param options.show - Show it now.
+ * @returns The window's loads.
  */
-function createAppWindow(): BrowserWindow {
+function openAppWindow(options: { show: boolean }): WindowLoad {
   const current = appWindows.at(-1);
   const window = new BrowserWindow({
     ...nextWindowBounds(current ? current.getBounds() : null, readWindowState()),
-    show: false,
+    show: options.show,
+    // What a browser's new tab shows while the page loads.
+    backgroundColor: nativeTheme.shouldUseDarkColors ? "#111113" : "#f4f4f5",
     title: BRAND.productName,
     webPreferences: APP_WEB_PREFERENCES,
   });
-  track(window);
-  return window;
+  const load = track(window);
+  loadServer(load, `${serverOrigin}/studio`);
+  return load;
 }
 
 /**
- * Keep an app window in the list: its place in the use order, its size on
- * close, and the can't-reach state when the server stops answering. Every app
- * window goes through here, the ones the page opens with window.open included.
- * @param window - The window.
+ * Load an address of the server as the main process: a redirect of it to another origin is cancelled.
+ * @param load - The window.
+ * @param url - The address.
  */
-function track(window: BrowserWindow): void {
+function loadServer(load: WindowLoad, url: string): void {
+  load.mainLoad = true;
+  load.redirectTarget = null;
+  // The outcome is read from the load events, which also see loads the page starts itself.
+  load.window.loadURL(url).catch((err: unknown) => logger.debug({ err }, "server_load_rejected"));
+}
+
+/**
+ * Keep an app window in the list and follow its loads: its place in the use
+ * order, its size on close, and "can't reach" when a main-frame load of the
+ * server fails. Every app window goes through here, the ones the page opens
+ * with window.open included.
+ * @param window - The window.
+ * @returns The window's loads.
+ */
+function track(window: BrowserWindow): WindowLoad {
+  const contents = window.webContents;
+  const id = contents.id;
+  const load: WindowLoad = {
+    window,
+    scheduler: createRetryScheduler(() => retry(load)),
+    shown: null,
+    failure: null,
+    mainLoad: false,
+    settled: true,
+    redirectTarget: null,
+    onFirstLoad: null,
+  };
+  loads.set(id, load);
   window.on("close", () => saveWindowState(window));
   window.on("focus", () => {
     appWindows = [...appWindows.filter((other) => other !== window), window];
   });
   window.on("closed", () => {
+    load.scheduler.clear();
+    loads.delete(id);
     appWindows = appWindows.filter((other) => other !== window);
   });
-  window.webContents.on("did-fail-load", (_event, errorCode, _description, url, isMainFrame) => {
-    if (!loadedWindows.has(window) || !serverOrigin || !isServerLoadFailure({ url, serverOrigin, isMainFrame, errorCode })) return;
-    logger.error({ errorCode, url }, "server_unreachable");
-    failedWindows.add(window);
-    window.hide();
-    openConnect({ mode: "unreachable", url: serverOrigin, reason: isCertificateError(errorCode) ? "certificate" : "unreachable" });
+  contents.on("did-start-navigation", (details) => {
+    if (!details.isMainFrame || details.isSameDocument) return;
+    load.settled = false;
+    if (!load.shown || load.mainLoad) return;
+    if (details.url === load.shown.url) {
+      // Reload on the error entry (the menu, Cmd+R) is a retry.
+      load.scheduler.started();
+      load.mainLoad = true;
+      load.redirectTarget = null;
+      renderUnreachable(load, true);
+    } else {
+      // Back, Forward or a link: the window leaves the error entry.
+      load.shown = null;
+      load.scheduler.clear();
+    }
+  });
+  contents.on("did-fail-load", (_event, errorCode, _description, url, isMainFrame) => {
+    if (!isServerLoadFailure({ url, serverOrigin, isMainFrame, errorCode })) return;
+    const reason: UnreachableReason = load.redirectTarget
+      ? { kind: "redirected", target: load.redirectTarget }
+      : isCertificateError(errorCode)
+        ? { kind: "certificate" }
+        : { kind: "unreachable" };
+    load.failure = { url, reason };
+    const entry = { errorCode, url: addressWithoutQuery(url) };
+    // The user's network and certificates are logged only; anything else is reported.
+    if (isEnvironmentFailure(errorCode)) logger.warn(entry, "server_unreachable");
+    else logger.error(entry, "server_unreachable");
+  });
+  contents.on("did-finish-load", () => {
+    if (load.failure) {
+      // Chromium's error entry for the failure: write "can't reach" into it and schedule the next retry.
+      load.shown = load.failure;
+      load.failure = null;
+      renderUnreachable(load, false);
+      load.scheduler.failed();
+    } else if (load.shown) {
+      load.shown = null;
+      if (isServerPage(contents.getURL())) load.scheduler.succeeded();
+      else load.scheduler.clear();
+    }
+    endNavigation(load);
+  });
+  contents.on("did-stop-loading", () => {
+    if (!load.mainLoad || load.settled) return;
+    // A retry that neither failed nor showed the server (a 204, a download) counts as failed, so the next one can run.
+    if (load.shown) {
+      renderUnreachable(load, false);
+      load.scheduler.failed();
+    }
+    endNavigation(load);
   });
   appWindows = [...appWindows, window];
+  return load;
 }
 
 /**
- * Open (or refocus) the connect window in a state.
- * @param initial - What the window shows first.
- * @param initial.mode - Connect or cannot reach.
- * @param initial.url - The address to show.
- * @param initial.reason - Why the last attempt failed.
+ * The current navigation has ended.
+ * @param load - The window.
  */
-function openConnect(initial: { mode: "connect" | "unreachable"; url: string; reason: ConnectReason | null }): void {
-  const lang = app.getLocale();
-  connectInitial = { ...initial, lang, product: BRAND.productName, text: desktopText(lang, BRAND.productName) };
-  if (connectWindow) {
-    void connectWindow.webContents.reload();
-    connectWindow.focus();
-    return;
-  }
-  const window = new BrowserWindow({
-    width: 480,
-    height: 420,
-    resizable: false,
-    show: false,
-    title: BRAND.productName,
-    webPreferences: {
-      preload: join(here, "../connect/preload.cjs"),
-      contextIsolation: true,
-      sandbox: true,
-      nodeIntegration: false,
-    },
-  });
-  window.on("closed", () => {
-    connectWindow = null;
-    // Nothing else is on screen: on Windows and Linux closing it ends the app; macOS keeps the app in the Dock.
-    if (quitsWhenConnectCloses({ platform: process.platform, visibleWindow: recentLoadedWindow() !== null })) app.quit();
-  });
-  void window.loadFile(join(here, "../connect/index.html"));
-  connectWindow = window;
-  void finishSplash().then(() => {
-    if (!window.isDestroyed()) window.show();
-  });
+function endNavigation(load: WindowLoad): void {
+  load.settled = true;
+  load.mainLoad = false;
+  load.redirectTarget = null;
+  const first = load.onFirstLoad;
+  load.onFirstLoad = null;
+  first?.();
 }
 
-/** Show the splash at launch: the brand's logo and name, and on a partner's brand the attribution (design §5.2). */
+/**
+ * Whether an address is on the server.
+ * @param url - The address.
+ * @returns True for the server's origin.
+ */
+function isServerPage(url: string): boolean {
+  try {
+    return new URL(url).origin === serverOrigin;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Retry a window's failed address: reload its error entry in place.
+ * @param load - The window.
+ */
+function retry(load: WindowLoad): void {
+  load.mainLoad = true;
+  load.redirectTarget = null;
+  renderUnreachable(load, true);
+  load.window.webContents.reload();
+}
+
+/**
+ * Write "can't reach" into a window's error entry.
+ * @param load - The window.
+ * @param busy - A retry is in flight.
+ */
+function renderUnreachable(load: WindowLoad, busy: boolean): void {
+  const shown = load.shown;
+  if (!shown) return;
+  const lang = app.getLocale();
+  const text = desktopText(lang, BRAND.productName);
+  const reason =
+    shown.reason.kind === "redirected"
+      ? text["desktop.unreachable.redirected"].replaceAll("{target}", shown.reason.target)
+      : text[`desktop.unreachable.${shown.reason.kind}`];
+  const script = unreachableScript({
+    lang,
+    title: text["desktop.unreachable.title"],
+    address: shown.url,
+    reason,
+    retry: text["desktop.unreachable.retry"],
+    retrying: text["desktop.unreachable.retrying"],
+    busy,
+  });
+  load.window.webContents.executeJavaScript(script).catch((err: unknown) => logger.error({ err }, "unreachable_render_failed"));
+}
+
+/** Show the splash at launch: the brand's logo and name, and on a partner's brand the attribution (design 5.2). */
 function openSplash(): void {
   const window = new BrowserWindow({
     width: 420,
@@ -410,12 +488,9 @@ function openSplash(): void {
     title: BRAND.productName,
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
-  splashShown = new Promise((resolve) => {
-    window.once("ready-to-show", () => {
-      window.show();
-      resolve(Date.now());
-    });
-    window.once("closed", () => resolve(0));
+  window.once("ready-to-show", () => {
+    window.show();
+    splashShownAt = Date.now();
   });
   window.on("closed", () => {
     if (splashWindow === window) splashWindow = null;
@@ -424,19 +499,19 @@ function openSplash(): void {
   splashWindow = window;
 }
 
-/** Close the splash once it has shown long enough; nothing to do when it is gone. */
+/** Close the splash once it has shown long enough; at once when it never appeared. */
 async function finishSplash(): Promise<void> {
   const window = splashWindow;
   if (!window) return;
   // The minimum counts from when the splash is on screen, not from when it was created.
-  const wait = splashCloseDelay(await splashShown, Date.now());
+  const wait = splashShownAt === null ? 0 : splashCloseDelay(splashShownAt, Date.now());
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
   if (!window.isDestroyed()) window.close();
 }
 
 /**
  * Close every window through its normal path, so each page's leave
- * confirmation runs (Restart now, design §9.1.2).
+ * confirmation runs (Restart now, design 9.1.2).
  * @returns True when all closed; false when a page's user chose Stay.
  */
 async function closeAllWindows(): Promise<boolean> {
@@ -494,32 +569,17 @@ function tellUpdateOutcome(outcome: "upToDate" | "failed"): void {
 }
 
 /**
- * Bring a window forward: the connect window while it is open, else the most
- * recently used app window, else a new app window on the server; with no
- * server yet, the connect window.
+ * Bring the client forward (Dock click, relaunch): the splash while it shows,
+ * else the most recently used app window, else a new one on the server.
  */
 function showSomeWindow(): void {
-  const recent = recentLoadedWindow();
-  const action = activateAction({
-    connectOpen: connectWindow !== null,
-    visibleWindow: recent !== null,
-    loadingWindow: appWindows.some((window) => !loadedWindows.has(window) && !failedWindows.has(window)),
-    server: serverOrigin,
-    boundServer,
-  });
-  if (action === "focus-connect") connectWindow?.focus();
-  else if (action === "focus-window" && recent) bringForward(recent);
-  else if (action === "new-window") openNewWindow();
-  else if (action === "unreachable") openConnect({ mode: "unreachable", url: boundServer, reason: null });
-  else if (action === "connect") openConnect({ mode: "connect", url: DEFAULT_SERVER_URL, reason: null });
-}
-
-/**
- * The most recently used app window that shows the server.
- * @returns The window, or null when none is open.
- */
-function recentLoadedWindow(): BrowserWindow | null {
-  return appWindows.findLast((window) => loadedWindows.has(window) && !failedWindows.has(window)) ?? null;
+  if (!firstShown) {
+    splashWindow?.focus();
+    return;
+  }
+  const recent = appWindows.at(-1);
+  if (recent) bringForward(recent);
+  else openNewWindow();
 }
 
 /**
@@ -533,7 +593,9 @@ function bringForward(window: BrowserWindow): void {
 }
 
 /**
- * Take a link on the build's scheme from the system.
+ * Take a link on the build's scheme from the system. A sign-in result goes to
+ * the window that started it, else the most recently used one, else a new
+ * window, whose sign-in page takes the result when it loads.
  * @param link - The link.
  */
 function handleLink(link: string): void {
@@ -547,8 +609,11 @@ function handleLink(link: string): void {
     showSomeWindow();
     return;
   }
-  const target = BrowserWindow.fromId(received.windowId) ?? recentLoadedWindow();
-  if (!target) return;
+  const target = BrowserWindow.fromId(received.windowId) ?? appWindows.at(-1);
+  if (!target) {
+    openNewWindow();
+    return;
+  }
   bringForward(target);
   target.webContents.send("sign-in:arrived");
 }
@@ -559,7 +624,7 @@ function handleLink(link: string): void {
  */
 function attachPolicies(contents: WebContents): void {
   contents.on("will-navigate", (details) => {
-    if (contents === connectWindow?.webContents || contents === splashWindow?.webContents) {
+    if (contents === splashWindow?.webContents) {
       details.preventDefault();
       return;
     }
@@ -570,7 +635,7 @@ function attachPolicies(contents: WebContents): void {
     applyNavigation(details.url, contents, () => details.preventDefault());
   });
   contents.setWindowOpenHandler(({ url }) => {
-    if (!serverOrigin || contents === connectWindow?.webContents) return { action: "deny" };
+    if (contents === splashWindow?.webContents) return { action: "deny" };
     const decision = decideWindowOpen({ url, serverOrigin });
     if (decision === "download") contents.downloadURL(url);
     if (decision === "external") void shell.openExternal(url);
@@ -582,7 +647,6 @@ function attachPolicies(contents: WebContents): void {
   });
   contents.on("did-create-window", (window) => {
     track(window);
-    loadedWindows.add(window);
   });
   contents.on("will-prevent-unload", (event) => {
     const text = desktopText(app.getLocale(), BRAND.productName);
@@ -608,7 +672,6 @@ function attachPolicies(contents: WebContents): void {
  * @param cancel - Stops the navigation.
  */
 function applyNavigation(url: string, contents: WebContents, cancel: () => void): void {
-  if (!serverOrigin) return;
   const decision = decideNavigation({ url, currentUrl: contents.getURL(), serverOrigin });
   if (decision === "allow") return;
   cancel();

@@ -4587,18 +4587,13 @@
     }
   },
   "desktop": {
-    "connect": {
-      "title": "連線到 {product}",
-      "continue": "繼續",
-      "connecting": "正在連線…",
-      "unreachableTitle": "連不上 {product}",
-      "retry": "重試"
-    },
-    "errors": {
-      "scheme": "區域網路或公網位址需要 HTTPS，請依自架指南設定",
+    "unreachable": {
+      "title": "連不上 {product}",
+      "retry": "重試",
+      "retrying": "正在自動重試",
       "unreachable": "連不上這個位址",
-      "notServer": "這個位址不是 {product} 伺服器",
-      "certificate": "這台伺服器的憑證不受信任，請依自架指南在這台電腦上信任憑證"
+      "certificate": "這台伺服器的憑證不受信任，請依自架指南在這台電腦上信任憑證",
+      "redirected": "這個位址轉到了 {target}"
     },
     "menu": {
       "file": "檔案",

@@ -12,7 +12,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
-    "test:e2e": "BREATIC_BRAND_DIR=e2e/brand-without-server tsup && playwright test"
+    "test:e2e": "BREATIC_DEFAULT_SERVER_URL=${BREATIC_E2E_SERVER:-http://localhost:8100} BREATIC_DESKTOP_SENTRY_DSN=http://e2e@127.0.0.1:47999/1 GITHUB_SHA=${GITHUB_SHA:-$(git rev-parse HEAD)} tsup && playwright test"
   },
   "dependencies": {
     "@breatic/shared": "workspace:*",

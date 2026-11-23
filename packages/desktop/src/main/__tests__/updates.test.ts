@@ -37,6 +37,7 @@ function setup(over: Partial<UpdatesDeps> = {}) {
     ask: vi.fn(async () => "later" as const),
     tell: vi.fn(),
     closeAllWindows: vi.fn(async () => true),
+    flushReports: vi.fn(async () => undefined),
     log: vi.fn(),
     ...over,
   };
@@ -70,7 +71,7 @@ describe("createUpdates", () => {
     expect(updater.quitAndInstall).not.toHaveBeenCalled();
   });
 
-  it("closes every window, then installs and starts again, on Restart now", async () => {
+  it("closes every window, sends pending reports, then installs and starts again, on Restart now", async () => {
     const order: string[] = [];
     const { updates, updater } = setup({
       ask: vi.fn(async () => "restart" as const),
@@ -78,12 +79,15 @@ describe("createUpdates", () => {
         order.push(`closing:${String(updates.isRestarting())}`);
         return true;
       }),
+      flushReports: vi.fn(async () => {
+        order.push("flush");
+      }),
     });
     updater.quitAndInstall.mockImplementation(() => order.push("install"));
     updates.start();
     updater.emit("update-downloaded", { version: "1.2.0" });
     await vi.waitFor(() => expect(updater.quitAndInstall).toHaveBeenCalledWith(false, true));
-    expect(order).toEqual(["closing:true", "install"]);
+    expect(order).toEqual(["closing:true", "flush", "install"]);
   });
 
   it("keeps the app and the update for the next quit when a window refuses to close", async () => {

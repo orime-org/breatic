@@ -4587,18 +4587,13 @@
     }
   },
   "desktop": {
-    "connect": {
-      "title": "{product}에 연결",
-      "continue": "계속",
-      "connecting": "연결하는 중…",
-      "unreachableTitle": "{product}에 연결할 수 없습니다",
-      "retry": "다시 시도"
-    },
-    "errors": {
-      "scheme": "LAN 또는 인터넷 주소에는 HTTPS가 필요합니다. 셀프 호스팅 가이드에 따라 설정하세요.",
+    "unreachable": {
+      "title": "{product}에 연결할 수 없습니다",
+      "retry": "다시 시도",
+      "retrying": "자동으로 다시 시도하는 중",
       "unreachable": "이 주소에 연결할 수 없습니다",
-      "notServer": "이 주소는 {product} 서버가 아닙니다",
-      "certificate": "이 서버의 인증서를 신뢰할 수 없습니다. 셀프 호스팅 가이드에 따라 이 컴퓨터에서 인증서를 신뢰하세요."
+      "certificate": "이 서버의 인증서를 신뢰할 수 없습니다. 셀프 호스팅 가이드에 따라 이 컴퓨터에서 인증서를 신뢰하세요.",
+      "redirected": "이 주소는 {target}(으)로 이동합니다"
     },
     "menu": {
       "file": "파일",

@@ -4587,18 +4587,13 @@
     }
   },
   "desktop": {
-    "connect": {
-      "title": "{product} に接続",
-      "continue": "続行",
-      "connecting": "接続しています…",
-      "unreachableTitle": "{product} に接続できません",
-      "retry": "再試行"
-    },
-    "errors": {
-      "scheme": "LAN またはインターネットのアドレスには HTTPS が必要です。セルフホストガイドに従って設定してください。",
+    "unreachable": {
+      "title": "{product} に接続できません",
+      "retry": "再試行",
+      "retrying": "自動で再試行しています",
       "unreachable": "このアドレスに接続できません",
-      "notServer": "このアドレスは {product} サーバーではありません",
-      "certificate": "このサーバーの証明書は信頼されていません。セルフホストガイドに従ってこのコンピューターで信頼してください。"
+      "certificate": "このサーバーの証明書は信頼されていません。セルフホストガイドに従ってこのコンピューターで信頼してください。",
+      "redirected": "このアドレスは {target} に転送されます"
     },
     "menu": {
       "file": "ファイル",

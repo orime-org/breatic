@@ -12,6 +12,7 @@ import { describe, it, expect } from "vitest";
 import { errorMonitoringDataCollection } from "@breatic/shared";
 
 import {
+  buildTimeCommit,
   buildTimeSentryDsn,
   desktopSentryOptions,
   keepsIntegration,
@@ -35,6 +36,22 @@ describe("buildTimeSentryDsn", () => {
   it("fails a release build without a DSN, and any build with a malformed one", () => {
     expect(() => buildTimeSentryDsn("", { release: true })).toThrow(/BREATIC_DESKTOP_SENTRY_DSN/);
     expect(() => buildTimeSentryDsn("not-a-dsn", { release: false })).toThrow(/BREATIC_DESKTOP_SENTRY_DSN/);
+  });
+});
+
+describe("buildTimeCommit", () => {
+  it("keeps a full commit hash", () => {
+    expect(buildTimeCommit(` ${COMMIT} `, { release: true })).toBe(COMMIT);
+  });
+
+  it("names a development build without one unknown", () => {
+    expect(buildTimeCommit(undefined, { release: false })).toBe("unknown");
+    expect(buildTimeCommit("abc123", { release: false })).toBe("unknown");
+  });
+
+  it("fails a release build without a full commit hash", () => {
+    expect(() => buildTimeCommit(undefined, { release: true })).toThrow(/GITHUB_SHA/);
+    expect(() => buildTimeCommit("abc123", { release: true })).toThrow(/GITHUB_SHA/);
   });
 });
 

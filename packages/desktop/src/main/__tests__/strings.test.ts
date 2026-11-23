@@ -9,15 +9,15 @@ import { desktopText } from "@desktop/main/strings.js";
 
 describe("desktopText", () => {
   it.each([
-    ["zh-CN", "连接到 breatic"],
-    ["zh-TW", "連線到 breatic"],
-    ["zh-HK", "連線到 breatic"],
-    ["ja", "breatic に接続"],
-    ["ko-KR", "breatic에 연결"],
-    ["en-US", "Connect to breatic"],
-    ["fr-FR", "Connect to breatic"],
+    ["zh-CN", "连不上 breatic"],
+    ["zh-TW", "連不上 breatic"],
+    ["zh-HK", "連不上 breatic"],
+    ["ja", "breatic に接続できません"],
+    ["ko-KR", "breatic에 연결할 수 없습니다"],
+    ["en-US", "Can't reach breatic"],
+    ["fr-FR", "Can't reach breatic"],
   ])("speaks %s", (locale, title) => {
-    expect(desktopText(locale, "breatic")["desktop.connect.title"]).toBe(title);
+    expect(desktopText(locale, "breatic")["desktop.unreachable.title"]).toBe(title);
   });
 
   it("has the same keys in every language", () => {
@@ -27,9 +27,8 @@ describe("desktopText", () => {
 
   it("names the build's product wherever a text names the app", () => {
     const text = desktopText("en", "Acme Studio");
-    expect(text["desktop.connect.title"]).toBe("Connect to Acme Studio");
-    expect(text["desktop.connect.unreachableTitle"]).toBe("Can't reach Acme Studio");
-    expect(text["desktop.errors.notServer"]).toBe("This address is not a Acme Studio server");
+    expect(text["desktop.unreachable.title"]).toBe("Can't reach Acme Studio");
+    expect(text["desktop.updates.upToDate"]).toBe("Acme Studio is up to date");
     for (const value of Object.values(text)) expect(value).not.toMatch(/breatic|\{product\}/);
   });
 });

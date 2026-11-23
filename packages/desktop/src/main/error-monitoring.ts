@@ -49,6 +49,21 @@ export function buildTimeSentryDsn(raw: string | undefined, build: { release: bo
   return dsn;
 }
 
+/**
+ * The commit a build carries, its Sentry release.
+ * @param raw - `GITHUB_SHA`.
+ * @param build - Whether this is a release build.
+ * @param build.release - True for a release build.
+ * @returns The commit, or `unknown` for a development build without one.
+ * @throws {Error} When a release build has no full commit hash: Sentry keeps no session without a release, and source maps are uploaded under it.
+ */
+export function buildTimeCommit(raw: string | undefined, build: { release: boolean }): string {
+  const commit = raw?.trim() ?? "";
+  if (errorMonitoringRelease(commit) !== undefined) return commit;
+  if (build.release) throw new Error("GITHUB_SHA must be the full commit hash for a release build");
+  return "unknown";
+}
+
 /** The options the shell hands `@sentry/electron/main`'s `init`, beside its integrations and hooks. */
 export interface DesktopSentryOptions {
   dsn: string;

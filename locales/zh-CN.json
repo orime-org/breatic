@@ -4587,18 +4587,13 @@
     }
   },
   "desktop": {
-    "connect": {
-      "title": "连接到 {product}",
-      "continue": "继续",
-      "connecting": "正在连接…",
-      "unreachableTitle": "连不上 {product}",
-      "retry": "重试"
-    },
-    "errors": {
-      "scheme": "局域网或公网地址需要 HTTPS，请按自部署指南配置",
+    "unreachable": {
+      "title": "连不上 {product}",
+      "retry": "重试",
+      "retrying": "正在自动重试",
       "unreachable": "连不上这个地址",
-      "notServer": "这个地址不是 {product} 服务器",
-      "certificate": "这台服务器的证书不受信任，请按自部署指南在这台电脑上信任证书"
+      "certificate": "这台服务器的证书不受信任，请按自部署指南在这台电脑上信任证书",
+      "redirected": "这个地址转到了 {target}"
     },
     "menu": {
       "file": "文件",

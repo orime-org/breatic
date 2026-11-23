@@ -77,6 +77,23 @@ describe("createRetryScheduler", () => {
     vi.useRealTimers();
   });
 
+  it("waits for a retry the user started with Reload, and doubles the wait when it fails", () => {
+    const { scheduler, retry } = setup();
+    scheduler.failed();
+    vi.advanceTimersByTime(1_000);
+    scheduler.started();
+    vi.advanceTimersByTime(10_000);
+    expect(retry).not.toHaveBeenCalled();
+    scheduler.now();
+    expect(retry).not.toHaveBeenCalled();
+    scheduler.failed();
+    vi.advanceTimersByTime(9_999);
+    expect(retry).not.toHaveBeenCalled();
+    vi.advanceTimersByTime(1);
+    expect(retry).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
   it("starts a new schedule at 5 s after a success", () => {
     const { scheduler, retry } = setup();
     scheduler.failed();

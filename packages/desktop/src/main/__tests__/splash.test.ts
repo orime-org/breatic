@@ -10,7 +10,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { SPLASH_MIN_MS, splashCloseDelay, splashQuery } from "@desktop/main/splash.js";
+import { SPLASH_MAX_MS, SPLASH_MIN_MS, splashCloseDelay, splashQuery } from "@desktop/main/splash.js";
 
 describe("splashCloseDelay", () => {
   it("waits out the rest of the minimum when the server loads quickly", () => {
@@ -22,8 +22,9 @@ describe("splashCloseDelay", () => {
     expect(splashCloseDelay(1_000, 9_000)).toBe(0);
   });
 
-  it("is at least a second", () => {
+  it("stays at least a second and at most four", () => {
     expect(SPLASH_MIN_MS).toBeGreaterThanOrEqual(1_000);
+    expect(SPLASH_MAX_MS).toBe(4_000);
   });
 });
 

@@ -11,6 +11,8 @@ import type { BuildBrand } from "@desktop/main/brand.js";
 
 /** The shortest time the splash stays, so the attribution can be read. */
 export const SPLASH_MIN_MS = 1_000;
+/** The longest the splash stays: then the first window shows even while it is still loading (Mattermost's MAX_LOADING_SCREEN_SECONDS). */
+export const SPLASH_MAX_MS = 4_000;
 
 /**
  * How long to keep the splash before closing it.

@@ -14,7 +14,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { decideNavigation, decideWindowOpen, isServerLoadFailure, loadFailureReason } from "@desktop/main/navigation.js";
+import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure } from "@desktop/main/navigation.js";
 
 const SERVER = "https://app.example.com";
 
@@ -74,13 +74,8 @@ describe("isServerLoadFailure", () => {
   });
 });
 
-describe("loadFailureReason", () => {
-  it.each([
-    [-3, "cancelled"],
-    [-202, "certificate"],
-    [-105, "unreachable"],
-    [-102, "unreachable"],
-  ])("names load error %i %s", (errno, reason) => {
-    expect(loadFailureReason(errno)).toBe(reason);
+describe("isCertificateError", () => {
+  it.each([[-202, true], [-200, true], [-299, true], [-105, false], [-300, false]])("treats %i as a certificate error: %s", (code, expected) => {
+    expect(isCertificateError(code)).toBe(expected);
   });
 });
