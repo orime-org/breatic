@@ -353,9 +353,13 @@ export type UnlandedPaymentRow = z.infer<typeof unlandedPaymentRowSchema>;
 
 /**
  * `GET /v1/users/:userId/payment/history/unlanded?limit=&before=`: the
- * newest `limit` such payments before the cursor, newest first.
+ * newest `limit` such payments before the cursor, newest first; `limit` is at
+ * most `UNLANDED_PAYMENTS_LIMIT_MAX`.
  */
 export const unlandedPaymentsAnswerSchema = z.object({ data: z.array(unlandedPaymentRowSchema) }).strict();
+
+/** The most unlanded payments one history request may ask for. */
+export const UNLANDED_PAYMENTS_LIMIT_MAX = 1000;
 
 /** The most payment ids one mail-status request may carry; a longer page is asked in chunks of this size. */
 export const MAIL_STATUS_IDS_MAX = 100;

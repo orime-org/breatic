@@ -114,8 +114,9 @@ describe("resendLotStates", () => {
     const restored = await lot("payment", "active", 400);
     const gift = await lot("gift", "refunded", 2);
 
-    await creditLotService.resendLotStates([restored.lotId, gift.lotId, randomUUID()]);
+    const appendedCount = await creditLotService.resendLotStates([restored.lotId, gift.lotId, randomUUID()]);
 
+    expect(appendedCount).toBe(1);
     expect(await appended(restored.lotId)).toEqual([{ lotId: restored.lotId, paymentId: restored.sourceId, userId: restored.userId, lifecycle: "active" }]);
     expect(await appended(gift.lotId)).toEqual([]);
   });

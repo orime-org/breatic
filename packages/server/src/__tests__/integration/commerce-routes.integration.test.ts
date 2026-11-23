@@ -31,8 +31,15 @@ function commerce(path: string, opts: CallOptions = {}): ReturnType<typeof call>
  * @returns How many keys it has.
  */
 async function buckets(name: string): Promise<number> {
-  const [, keys] = await getRedis().scan("0", "MATCH", `${env.ENV}:ratelimit:${name}*`, "COUNT", 1000);
-  return keys.length;
+  // One SCAN call covers only part of the keyspace; keys other files left make the first call miss.
+  let count = 0;
+  let cursor = "0";
+  do {
+    const [next, keys] = await getRedis().scan(cursor, "MATCH", `${env.ENV}:ratelimit:${name}*`, "COUNT", 1000);
+    count += keys.length;
+    cursor = next;
+  } while (cursor !== "0");
+  return count;
 }
 
 describe("commerce routes", () => {
@@ -101,9 +108,12 @@ describe("commerce routes", () => {
   });
 
   it("counts the billing service's requests against its own limit", async () => {
+    // Other files' back-office calls may have left internal-api buckets behind.
+    const internalBefore = await buckets("internal-api");
+
     await commerce(`/accounts/${randomUUID()}`);
 
     expect(await buckets("commerce-api")).toBeGreaterThan(0);
-    expect(await buckets("internal-api")).toBe(0);
+    expect(await buckets("internal-api")).toBe(internalBefore);
   });
 });

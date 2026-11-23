@@ -177,7 +177,7 @@ const COMMERCE_LOT_MIRROR_QUEUE = "commerce-lot-mirror";
 /** Queue holding the recurring sweep of tasks waiting for a running slot whose job may be lost (inner#1968). */
 const SLOT_WAIT_SWEEP_QUEUE = "slot-wait-sweep";
 
-/** Every BullMQ queue this process runs a worker for. */
+/** Every BullMQ queue this process can run a worker for; `config/worker.yaml` may name only these. */
 const WORKER_QUEUES: readonly string[] = [
   "tasks",
   "url-ingest",
@@ -536,9 +536,11 @@ export function startWorker(): void {
   });
 
 
+  // The lot-mirror worker runs only where the deployment sells (above).
+  const runningQueues = env.SELLING ? WORKER_QUEUES : WORKER_QUEUES.filter((q) => q !== COMMERCE_LOT_MIRROR_QUEUE);
   logger.info(
     {
-      queues: WORKER_QUEUES,
+      queues: runningQueues,
     },
     "BullMQ workers started",
   );

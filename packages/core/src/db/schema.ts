@@ -2232,6 +2232,8 @@ export const commerceOutboxDeadLetters = pgTable("commerce_outbox_dead_letters",
   reason: text("reason").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
   failedAt: timestamp("failed_at", { withTimezone: true }).defaultNow().notNull(),
+  /** When it was last put back into the outbox; a requeue by reason skips it then. */
+  requeuedAt: timestamp("requeued_at", { withTimezone: true }),
 });
 
 // ── Notifications ──────────────────────────────────────────────────

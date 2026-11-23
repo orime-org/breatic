@@ -20,14 +20,14 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-/** The page bounds each case reads; one case raises the maximum above the mail-status bound. */
+/** The page bounds each case reads; two cases raise the maximum above the mail-status and unlanded bounds. */
 const pageBounds = vi.hoisted(() => ({ max: 100 }));
 vi.mock("@server/config/limits.js", async (importOriginal) => {
   const actual = await importOriginal<{ getCreditPageLimits: () => { default: number; max: number } }>();
   return { ...actual, getCreditPageLimits: () => ({ ...actual.getCreditPageLimits(), max: pageBounds.max }) };
 });
 
-import { decodeActivityCursor, initCore, MAIL_STATUS_IDS_MAX, mailStatusRequestSchema } from "@breatic/core";
+import { decodeActivityCursor, initCore, MAIL_STATUS_IDS_MAX, mailStatusRequestSchema, UNLANDED_PAYMENTS_LIMIT_MAX } from "@breatic/core";
 import { CREDIT_AMOUNT_FORMAT } from "@breatic/shared";
 import { initSellingCore, insertAccount, loginCookie, useCommerceApp, type BillingRequest } from "./commerce-harness.js";
 import { recordPaymentReceipt } from "./payment-source.js";
@@ -237,6 +237,32 @@ describe("purchase history", () => {
     for (const chunk of asked) expect(chunk.length).toBeLessThanOrEqual(MAIL_STATUS_IDS_MAX);
     expect(new Set(asked.flat())).toEqual(new Set(res.body.data!.items.map((r) => r["paymentId"])));
     expect(asked.flat()).toHaveLength(230);
+  });
+
+  it("keeps a page larger than the unlanded bound within it, and still reaches every row", async () => {
+    pageBounds.max = 1500;
+    const userId = await insertAccount(suite.sql);
+    await manyBought(userId, 1100);
+    const older = [unlanded("2020-01-01 10:00:00.000000+00"), unlanded("2020-01-01 09:00:00.000000+00")];
+    // The stand-in refuses what the billing service's validate refuses.
+    const answer = billingHistory(older, new Set());
+    suite.reply = (req) => {
+      const limit = Number(new URL(`http://x${req.path}`).searchParams.get("limit"));
+      return req.path.includes("/history/unlanded") && limit > UNLANDED_PAYMENTS_LIMIT_MAX
+        ? { status: 400, body: { error: { code: "VALIDATION_ERROR" } } }
+        : answer(req);
+    };
+
+    const first = await page(userId, "?limit=1500");
+    expect(first.status).toBe(200);
+    const second = await page(userId, `?limit=1500&cursor=${encodeURIComponent(first.body.data!.nextCursor!)}`);
+    expect(second.status).toBe(200);
+
+    const limits = suite.received.filter((r) => r.path.includes("/history/unlanded")).map((r) => Number(new URL(`http://x${r.path}`).searchParams.get("limit")));
+    for (const limit of limits) expect(limit).toBeLessThanOrEqual(UNLANDED_PAYMENTS_LIMIT_MAX);
+    const all = [...first.body.data!.items, ...second.body.data!.items].map((r) => r["paymentId"]);
+    expect(new Set(all).size).toBe(1102);
+    expect(second.body.data!.nextCursor).toBeNull();
   });
 
   it("answers 503 billing_unavailable when the billing service cannot answer", async () => {

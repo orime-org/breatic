@@ -815,17 +815,21 @@ export async function resendLotMirror(windowDays: number): Promise<number> {
  * put a stale lifecycle after a newer one. Each lot is read under its own
  * lock, in a transaction of its own; ids that name no lot are skipped and lots
  * nobody paid for are left out.
+ * Called inside an open transaction, as the requeue does, each becomes a
+ * savepoint of it.
  * @param lotIds - The lots.
- * @returns Once each was appended.
- * @throws {Error} When the database fails; lots already appended stay appended.
+ * @returns How many lifecycle rows were appended.
+ * @throws {Error} When the database fails; lots already appended stay appended, unless an enclosing transaction rolls back.
  */
-export async function resendLotStates(lotIds: readonly string[]): Promise<void> {
+export async function resendLotStates(lotIds: readonly string[]): Promise<number> {
+  let appended = 0;
   for (const id of lotIds) {
     await db.transaction(async (tx) => {
       const lot = await creditLotRepo.lockLot(id, tx);
-      if (lot) await mirrored(lot, tx);
+      if (lot && (await commerceOutboxRepo.appendLotLifecycle(lot, tx))) appended += 1;
     });
   }
+  return appended;
 }
 
 /**

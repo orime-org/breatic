@@ -14,7 +14,7 @@
  * `lot_mirror_reconcile_window_days`.
  */
 
-import { and, asc, eq, gte, inArray, isNull, ne, sql } from "drizzle-orm";
+import { and, asc, eq, gte, inArray, isNull, sql } from "drizzle-orm";
 import { env } from "@core/config/env.js";
 import { db, type DbTx } from "@core/db/client.js";
 import { commerceOutbox, commerceOutboxDeadLetters } from "@core/db/schema.js";
@@ -26,10 +26,12 @@ import type { CommerceOutboxType } from "@core/commerce/contract.js";
  * @param type - The event.
  * @param payload - Its body.
  * @param tx - The business transaction.
+ * @returns Whether a row was written: none is while the deployment sells nothing.
  */
-async function append(aggregateKey: string, type: CommerceOutboxType, payload: Record<string, unknown>, tx: DbTx): Promise<void> {
-  if (!env.SELLING) return;
+async function append(aggregateKey: string, type: CommerceOutboxType, payload: Record<string, unknown>, tx: DbTx): Promise<boolean> {
+  if (!env.SELLING) return false;
   await tx.insert(commerceOutbox).values({ aggregateKey, type, payload });
+  return true;
 }
 
 /**
@@ -41,13 +43,14 @@ async function append(aggregateKey: string, type: CommerceOutboxType, payload: R
  * @param lot.userId - Its buyer.
  * @param lot.lifecycle - Its lifecycle.
  * @param tx - The transaction that moved it.
+ * @returns Whether a row was written.
  */
 export async function appendLotLifecycle(
   lot: { id: string; sourceId: string; sourceKind: string; userId: string; lifecycle: string },
   tx: DbTx,
-): Promise<void> {
-  if (lot.sourceKind !== "payment") return;
-  await append(`lot:${lot.id}`, "lot_refund_lifecycle", { lotId: lot.id, paymentId: lot.sourceId, userId: lot.userId, lifecycle: lot.lifecycle }, tx);
+): Promise<boolean> {
+  if (lot.sourceKind !== "payment") return false;
+  return await append(`lot:${lot.id}`, "lot_refund_lifecycle", { lotId: lot.id, paymentId: lot.sourceId, userId: lot.userId, lifecycle: lot.lifecycle }, tx);
 }
 
 /**
@@ -225,13 +228,18 @@ export interface DeadLetterRow {
   attempts: number;
   lastError: string | null;
   failedAt: Date;
+  /** When it was last requeued, or null when it never was. */
+  requeuedAt: Date | null;
 }
 
 /** Which dead letters to pick: by id, or by reason given up since an instant. */
 export type DeadLetterSelection = { ids: string[] } | { reason: string; since: Date };
 
 /**
- * The dead letters an operator picked (inner#1993 §5.2), oldest failure first.
+ * The dead letters an operator picked (inner#1993 §5.2), oldest failure
+ * first, the ones already requeued included with when, so the listing can
+ * mark them: the script skips them in a selection by reason and requeues one
+ * named by id only when told again.
  * @param selection - By id, or by reason and since when they failed.
  * @returns The matching dead letters; ids that are not dead letters are absent.
  */
@@ -240,41 +248,73 @@ export async function listDeadLetters(selection: DeadLetterSelection): Promise<D
   if ("ids" in selection && selection.ids.length === 0) return [];
   const where = "ids" in selection ? inArray(t.id, selection.ids) : and(eq(t.reason, selection.reason), gte(t.failedAt, selection.since));
   return await db
-    .select({ id: t.id, aggregateKey: t.aggregateKey, type: t.type, reason: t.reason, attempts: t.attempts, lastError: t.lastError, failedAt: t.failedAt })
+    .select({
+      id: t.id,
+      aggregateKey: t.aggregateKey,
+      type: t.type,
+      reason: t.reason,
+      attempts: t.attempts,
+      lastError: t.lastError,
+      failedAt: t.failedAt,
+      requeuedAt: t.requeuedAt,
+    })
     .from(t)
     .where(where)
     .orderBy(asc(t.failedAt), asc(t.seq));
 }
 
+/** What a requeue wrote. */
+export interface RequeueResult {
+  /** Each dead letter copied back and the outbox row made from it. */
+  requeued: Array<{ deadLetterId: string; outboxId: string }>;
+  /** How many lifecycle rows `resendLots` appended for the lot dead letters. */
+  lotsResent: number;
+}
+
 /**
  * Put dead letters back into the outbox (inner#1993 §5.2), all in one
- * transaction: each becomes a new unsent row (new id, the next sequence
- * number, attempts from zero) with the dead letter's type, aggregate and
- * payload, which the running relay then sends. The dead letter is kept, so
- * requeueing again makes another row; the billing service's inbox dedupes
- * repeats by its own rules. A `lot_refund_lifecycle` dead letter is not
- * copied back: a newer sequence number would put its old lifecycle after a
- * newer one, so its lot's current state is resent instead
- * (`creditLotService.resendLotStates`).
- * @param ids - The dead letters to requeue; ids that are not dead letters, and lot lifecycle ones, are skipped.
- * @returns Each requeued dead letter and the outbox row made from it.
+ * transaction, which also marks every named dead letter `requeued_at`: each
+ * becomes a new unsent row (new id, the next sequence number, attempts from
+ * zero) with the dead letter's type, aggregate and payload, which the running
+ * relay then sends. The dead letter is kept, so requeueing again makes
+ * another row. A requeued row carries a new id and seq, so the billing
+ * service applies it again: each event type must be idempotent there (a
+ * binding answers already_bound, an erasure repeats, a lot is resent as its
+ * current state). A `lot_refund_lifecycle` dead letter is not copied back: a
+ * newer sequence number would put its old lifecycle after a newer one, so
+ * `resendLots` appends its lot's current state instead, inside the same
+ * transaction (`creditLotService.resendLotStates`; its own transactions
+ * become savepoints), and everything commits or nothing does.
+ * @param ids - The dead letters to requeue; ids that are not dead letters are skipped.
+ * @param resendLots - Appends the current lifecycle of each named lot and answers how many rows it appended.
+ * @returns What was written.
+ * @throws {Error} When the deployment sells nothing (no relay would send the rows), or the database or `resendLots` fails; nothing is written then.
  */
-export async function requeueDeadLetters(ids: string[]): Promise<Array<{ deadLetterId: string; outboxId: string }>> {
-  if (ids.length === 0) return [];
+export async function requeueDeadLetters(ids: string[], resendLots: (lotIds: string[]) => Promise<number>): Promise<RequeueResult> {
+  if (!env.SELLING) throw new Error("COMMERCE_API_URL is not set: this deployment sells nothing and no relay would send requeued rows");
+  if (ids.length === 0) return { requeued: [], lotsResent: 0 };
+  const t = commerceOutboxDeadLetters;
   return await db.transaction(async (tx) => {
     const letters = await tx
-      .select()
-      .from(commerceOutboxDeadLetters)
-      .where(and(inArray(commerceOutboxDeadLetters.id, ids), ne(commerceOutboxDeadLetters.type, "lot_refund_lifecycle")))
-      .orderBy(asc(commerceOutboxDeadLetters.seq));
-    const made: Array<{ deadLetterId: string; outboxId: string }> = [];
+      .update(t)
+      .set({ requeuedAt: sql`now()` })
+      .where(inArray(t.id, ids))
+      .returning({ id: t.id, seq: t.seq, aggregateKey: t.aggregateKey, type: t.type, payload: t.payload });
+    letters.sort((a, b) => (a.seq < b.seq ? -1 : 1));
+    const requeued: RequeueResult["requeued"] = [];
+    const lotIds = new Set<string>();
     for (const letter of letters) {
+      if (letter.type === "lot_refund_lifecycle") {
+        lotIds.add(letter.aggregateKey.slice("lot:".length));
+        continue;
+      }
       const [row] = await tx
         .insert(commerceOutbox)
         .values({ aggregateKey: letter.aggregateKey, type: letter.type, payload: letter.payload })
         .returning({ id: commerceOutbox.id });
-      made.push({ deadLetterId: letter.id, outboxId: row!.id });
+      requeued.push({ deadLetterId: letter.id, outboxId: row!.id });
     }
-    return made;
+    const lotsResent = lotIds.size === 0 ? 0 : await resendLots([...lotIds]);
+    return { requeued, lotsResent };
   });
 }

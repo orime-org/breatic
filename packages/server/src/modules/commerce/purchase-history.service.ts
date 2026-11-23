@@ -10,7 +10,7 @@
  * Both halves are read on one keyset and merged.
  */
 
-import { env, MAIL_STATUS_IDS_MAX, mailStatusAnswerSchema, toPage, unlandedPaymentsAnswerSchema } from "@breatic/core";
+import { env, MAIL_STATUS_IDS_MAX, mailStatusAnswerSchema, toPage, UNLANDED_PAYMENTS_LIMIT_MAX, unlandedPaymentsAnswerSchema } from "@breatic/core";
 import { creditLotRepo, creditSourceRepo } from "@breatic/domain";
 import {
   type CreditLotLifecycle,
@@ -38,7 +38,12 @@ interface Keyed {
  * @throws {UnavailableError} When the billing service cannot answer its half.
  */
 export async function readPurchaseHistory(userId: string, rawLimit: string | undefined, rawCursor: string | undefined): Promise<CreditPage<PurchaseRow>> {
-  const size = pageSize(rawLimit);
+  // Where the billing service holds half of the page, the page is no longer
+  // than one unlanded request may ask for (its size plus the look-ahead row):
+  // a shorter unlanded half would let the merged page run past payments it
+  // never asked about, and the cursor would skip them. credit_page_max is an
+  // operator setting.
+  const size = env.SELLING ? Math.min(pageSize(rawLimit), UNLANDED_PAYMENTS_LIMIT_MAX - 1) : pageSize(rawLimit);
   const cursor = readCursor(rawCursor);
 
   const local = await localRows(userId, size, cursor);

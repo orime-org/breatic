@@ -3,8 +3,8 @@
 
 /**
  * The daily lot-mirror reconcile (inner#1993 §5.4): resends bought lots'
- * current lifecycle to the billing service; does nothing while the
- * deployment sells nothing.
+ * current lifecycle to the billing service. It runs only where the
+ * deployment sells; the worker schedules it then.
  */
 
 import { getCommerceConfig, logger } from "@breatic/core";
