@@ -2768,7 +2768,7 @@
       "lookbook-multi-look": {
         "name": "Multi-look lookbook",
         "description": "Three outfits tried on first, then one video changing through them",
-        "prompt": "(💡 Generate Look 1 first)(💡 Generate Look 2 first)(💡 Generate Look 3 first)A 15-second vertical lookbook video with sound of [📎 Model] changing through three looks: the same face, hair and build throughout, each look exactly as in its picture. 0–2 s hook: {✏️ the hook, e.g. the model snaps their fingers at the camera}. 2–7 s: [📎 Look 1], walking toward the camera. 7–8 s: the model spins and comes round in the next look. 8–11 s: [📎 Look 2]. 11–12 s: a flash of light, and the next look. 12–15 s: [📎 Look 3], ending in a pose. Each look a clearly different silhouette. Sound: {✏️ the music, e.g. an upbeat house track}, a whoosh on each change. No text on screen.",
+        "prompt": "(💡 Generate Look 1 first)(💡 Generate Look 2 first)(💡 Generate Look 3 first)A 15-second vertical lookbook video with sound of [📎 Model] changing through three looks: the face, hair and build from the model picture throughout, never its clothes; each look exactly as in its picture. 0–2 s hook, already wearing the first look: {✏️ the hook, e.g. the model snaps their fingers at the camera}. 2–7 s: [📎 Look 1], walking toward the camera. 7–8 s: the model spins and comes round in the next look. 8–11 s: [📎 Look 2]. 11–12 s: a flash of light, and the next look. 12–15 s: [📎 Look 3], ending in a pose. Each look a clearly different silhouette. Sound: {✏️ the music, e.g. an upbeat house track}, a whoosh on each change. No text on screen.",
         "node": {
           "look-1": {
             "name": "Look 1",
