@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 // Run inside the exact native release image with --network none. No render job
 // is submitted: the service rejects malformed input, while the producer, the
 // headless shell and FFmpeg it drives are each checked to be present and runnable.
