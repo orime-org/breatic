@@ -9,12 +9,13 @@ import type { WebAnimationRowView } from '@breatic/shared/space-content';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Tabs, TabsList, TabsTrigger } from '@web/components/ui/tabs';
+import { useKeyFailureWords } from '@web/features/byok/key-failure-words';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useRunning } from '@web/stores/task-actions-in-flight';
 import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
-import { cancelIntent, endedSentenceKey, exportIntent, phaseKey } from '@web/spaces/web-animation/execution-text';
+import { cancelIntent, endedSentence, exportIntent, phaseKey } from '@web/spaces/web-animation/execution-text';
 import { ListLoadError, ListPending, LoadMoreButton, listShows } from '@web/spaces/web-animation/list-states';
 import type { MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { MotionPanel, revealWithin, rowSeconds } from '@web/spaces/web-animation/motion-parts';
@@ -195,11 +196,12 @@ const ProgressRow = React.memo(function ProgressRow({ row, marked, readOnly, onC
  */
 const FailedRow = React.memo(function FailedRow({ row, marked, spaceId, readOnly, waitingLimits, onRetry }: ActionRowProps): React.JSX.Element {
   const t = useTranslation();
+  const keys = useKeyFailureWords();
   const exporting = useRunning(row.kind === 'web_animation_export' ? exportIntent(spaceId, row.input.sourceVersionId) : '') !== undefined;
   const waiting = row.kind === 'web_animation_export' ? exporting : waitingLimits;
   const retry = React.useCallback((): void => onRetry(row), [onRetry, row]);
   return <RowFrame row={row} marked={marked}
-    detail={<span className={cn('truncate text-2xs', row.status === 'failed' ? 'text-status-error-foreground' : 'text-muted-foreground')}>{t(endedSentenceKey(row.status, row.failureReason))}</span>}
+    detail={<span className={cn('truncate text-2xs', row.status === 'failed' ? 'text-status-error-foreground' : 'text-muted-foreground')}>{endedSentence(row, t, keys)}</span>}
     action={readOnly ? null : <Button type='button' data-testid='motion-retry' variant='outline' size='sm' className='gap-1.5' loading={waiting} onClick={retry} icon={<RotateCcw className='size-4' />}>
       {t(row.kind === 'web_animation_export' ? 'spaces.webAnimation.reexport' : 'timeline.webAnimation.retry')}</Button>} />;
 });

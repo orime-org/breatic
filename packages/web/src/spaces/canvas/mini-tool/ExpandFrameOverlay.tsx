@@ -9,7 +9,7 @@ import { catalogEntryOf, isModelTool, miniToolById } from '@breatic/shared/mini-
 
 import type { CropHandle } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { expandCapOf } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';

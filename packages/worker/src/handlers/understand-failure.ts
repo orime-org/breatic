@@ -15,6 +15,7 @@ import { MediaUnavailable, UnderstandRefused } from "@breatic/domain";
 import type { RefusalKind, UnavailableKind } from "@breatic/domain";
 import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { MediaRunFailed } from "@worker/handlers/media-run.js";
+import { accountKeyFailureIn } from "@breatic/provider";
 import { DeadlinePassed } from "@breatic/shared";
 import {
   assetNameFromUrl,
@@ -144,6 +145,10 @@ export function verdictStands(err: unknown): boolean {
   // provider answered the run failed: an upstream refused or failed it, or none can take it. A redelivery reads the
   // same answer.
   if (err instanceof MediaRunFailed) return true;
+  // An account's key failed, or its row is gone (inner#1953): our key is never tried instead, so a lasting failure
+  // reads the same on the next attempt, and a passing one (a 429, the upstream unreachable or a 5xx) may not.
+  const keyFailure = accountKeyFailureIn(err);
+  if (keyFailure !== undefined) return keyFailure.lasting;
   // A redelivery reads the same job, which has already ended.
   if (err instanceof ContainerJobFailed) return true;
   // The task's two hours do not come back.
@@ -161,6 +166,8 @@ export function verdictStands(err: unknown): boolean {
  * @returns The stored code, which the user is told in their own language.
  */
 export function understandFailureCode(err: unknown): TaskFailureReason {
+  const keyFailure = accountKeyFailureIn(err);
+  if (keyFailure !== undefined) return keyFailure.kind;
   if (err instanceof MediaUnavailable) return UNAVAILABLE_AS[err.kind];
   if (err instanceof UnderstandRefused) return REFUSAL_AS[err.kind];
   if (err instanceof CutShort) return "cut_short";
@@ -204,6 +211,10 @@ const SAYS_SOMETHING_ABOUT_THE_FILE: Readonly<
   cut_short: false,
   input_refused: false,
   model_not_configured: false,
+  // About the account's key or its upstream, never the file (inner#1953).
+  account_key_failed: false,
+  account_key_missing: false,
+  upstream_unavailable: false,
 };
 
 /**

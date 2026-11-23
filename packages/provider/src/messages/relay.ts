@@ -3,19 +3,20 @@
 
 /**
  * The model calls of the web-animation container, relayed from the ingest Worker (`@breatic/provider/messages`). The
- * Worker has no provider configuration: the application plans the call on Node (`provider.llm.messagesPlan`) and hands
- * the plan over with the job, and this relay sends each call to the plan's upstreams in order, moving on before the
- * first answer by the same rules as every other call, and tells the caller who served it and what it cost. It runs in
- * a Cloudflare Worker, so it imports nothing that needs Node beyond `AsyncLocalStorage`.
+ * Worker has no provider configuration and no key of its own: the application plans the call on Node
+ * (`provider.llm.messagesPlan`) and hands the plan over with the job, the Worker reads each call's keys by upstream
+ * (inner#1953), and this relay sends each call to the plan's upstreams in order, moving on before the first answer by
+ * the same rules as every other call, and tells the caller who served it and what it cost. It runs in a Cloudflare
+ * Worker, so it imports nothing that needs Node beyond `AsyncLocalStorage`.
  */
 
-import type { Cost } from "@provider/cost.js";
+import { paidBy, type Cost } from "@provider/cost.js";
 import { NotSent } from "@provider/http/errors.js";
 import { answerText, isSuccess, parsed, send } from "@provider/http/request.js";
 import type { PriceEntries } from "@provider/llm/prices.js";
 import { counter, type MessagesSpeaker } from "@provider/llm/upstreams/common.js";
 import { messagesSpeakerOf } from "@provider/llm/upstreams/messages.js";
-import { decide } from "@provider/routing/decide.js";
+import { accountFailureOf, decide, type AccountKeyFailureKind, type AccountKeyFailureReason, type Failure } from "@provider/routing/decide.js";
 
 /** The Messages fields a call may carry upstream; everything else the caller sends is dropped. */
 const ALLOWED_FIELDS = [
@@ -35,7 +36,7 @@ export interface MessagesCandidate {
   baseUrl: string;
   /** The id this upstream serves the model under. */
   vendorModel: string;
-  /** The environment variable of its key; the Worker reads its own copy of it. */
+  /** The environment variable of its key on our services, named for whoever sets it up; the relay asks for keys by upstream. */
   keyEnv: string;
   /** The model's direct prices, for an upstream priced from `llm.yaml`. */
   prices?: PriceEntries;
@@ -44,7 +45,18 @@ export interface MessagesCandidate {
 /** Where one model's Messages calls go, in order; serializable, carried with the job. */
 export interface MessagesPlan {
   model: string;
+  /** `account` when the plan was made on an account's keys (inner#1953); absent for the deployment's. */
+  keysOwner?: "account";
   candidates: MessagesCandidate[];
+}
+
+/** A failure of the payer's own key or its upstream, read by the upstream's own reader (inner#1953); `lasting` says whether asking again can change it. */
+export interface AccountKeyRefusal {
+  upstream: string;
+  kind: AccountKeyFailureKind;
+  reason?: AccountKeyFailureReason;
+  /** True when asking again cannot change it; a 429, a 5xx or an upstream never reached is false. */
+  lasting: boolean;
 }
 
 /** The counters of a completed call, as its usage stated them. */
@@ -65,8 +77,8 @@ export interface MessagesCallEnd {
 
 /** What the relay needs from its caller. */
 export interface RelayOptions {
-  /** Reads one key the caller holds; undefined or empty means not configured. */
-  keyOf: (envName: string) => string | undefined;
+  /** Reads the key the caller holds for one upstream of the plan, as a `KeySet` does; undefined or empty means none. */
+  keyOf: (upstream: string) => string | undefined;
   /** The highest max_tokens a call may ask for. */
   maxTokens: number;
   /** Stops the call, whatever it is doing. */
@@ -77,6 +89,12 @@ export interface RelayOptions {
   onStarted: (upstream: string, messageId: string) => Promise<void>;
   /** Awaited exactly once per call, before the answer's stream closes or errors. */
   onEnded: (end: MessagesCallEnd) => Promise<void>;
+  /**
+   * Awaited before the call ends when a plan on the payer's own keys failed on its key or upstream, with the last such
+   * failure: one that lasts (the key invalid, out of balance or not reaching the model) or a passing one the caller may
+   * ask again after (a 429, a 5xx, the upstream never reached). The deployment's keys are never used.
+   */
+  onAccountKeyRefused?: (refusal: AccountKeyRefusal) => Promise<void>;
 }
 
 const FAILED: MessagesCallEnd = { outcome: "upstream_error", upstream: null, tokens: null, cost: null };
@@ -127,9 +145,10 @@ function dropNullCounters(usage: unknown): void {
  */
 export async function relayMessages(plan: MessagesPlan, asked: Record<string, unknown>, options: RelayOptions): Promise<Response> {
   let refused: { status: number; text: string; contentType: string } | undefined;
+  let keyRefused: AccountKeyRefusal | undefined;
   for (const candidate of plan.candidates) {
     const speaker = messagesSpeakerOf(candidate.kind);
-    const key = options.keyOf(candidate.keyEnv);
+    const key = options.keyOf(candidate.upstream);
     if (speaker === undefined || key === undefined || key === "") continue;
     const body = upstreamBody(asked, candidate.vendorModel, options.maxTokens);
     speaker.rewrite?.(body);
@@ -146,16 +165,26 @@ export async function relayMessages(plan: MessagesPlan, asked: Record<string, un
       response = await send({ url, method: "POST", headers, body: JSON.stringify(body) }, bounds);
     } catch (error) {
       // A request that never left moves on; one that left without an answer, or was stopped, ends the call there.
-      if (error instanceof NotSent) continue;
+      if (error instanceof NotSent) {
+        if (plan.keysOwner === "account") keyRefused = { upstream: candidate.upstream, kind: "upstream_unavailable", lasting: false };
+        continue;
+      }
       break;
     }
     const contentType = response.headers.get("content-type") ?? "application/json";
-    if (isSuccess(response.status) && response.body !== null) return relayed(candidate, speaker, response, sentAt, contentType, options);
+    if (isSuccess(response.status) && response.body !== null) return relayed(candidate, speaker, response, sentAt, contentType, options, plan.keysOwner);
     const text = await answerText(url, response, MAX_REFUSAL_BYTES, REFUSAL_IDLE_MS, bounds).catch(() => "");
     const refusal = speaker.refusal(response.status, parsed(text));
     refused = { status: response.status, text, contentType };
-    if (decide(refusal === undefined ? { kind: "http_status", status: response.status } : { kind: refusal }, "llm_before_content", 0, 0) !== "switch") break;
+    const failure: Failure = refusal === undefined ? { kind: "http_status", status: response.status } : { kind: refusal };
+    const turned = plan.keysOwner === "account" ? accountFailureOf(failure, "llm_before_content") : undefined;
+    if (turned !== undefined) {
+      keyRefused = { upstream: candidate.upstream, kind: turned.kind, ...(turned.reason === undefined ? {} : { reason: turned.reason }), lasting: turned.lasting };
+      if (turned.lasting) break;
+    }
+    if (decide(failure, "llm_before_content", 0, 0) !== "switch") break;
   }
+  if (keyRefused !== undefined) await options.onAccountKeyRefused?.(keyRefused);
   await options.onEnded(FAILED);
   return refused === undefined
     ? new Response("The model service could not be reached", { status: 502 })
@@ -171,9 +200,10 @@ export async function relayMessages(plan: MessagesPlan, asked: Record<string, un
  * @param sentAt - When the request was sent.
  * @param contentType - The answer's type.
  * @param options - The caller's callbacks.
+ * @param payer - `account` when the plan runs on the payer's keys.
  * @returns The answer to hand the caller.
  */
-function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstream: Response, sentAt: number, contentType: string, options: RelayOptions): Response {
+function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstream: Response, sentAt: number, contentType: string, options: RelayOptions, payer: "account" | undefined): Response {
   const reader = upstream.body!.getReader();
   const decoder = new TextDecoder();
   const encoder = new TextEncoder();
@@ -199,7 +229,8 @@ function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstrea
       await options.onEnded(FAILED);
       return;
     }
-    const cost = speaker.cost({ upstream: candidate.upstream, messageId, usage, sentAt, prices: candidate.prices });
+    // A call on the payer's keys is the payer's, and so is the lookup of a cost still pending.
+    const cost = paidBy(payer)(speaker.cost({ upstream: candidate.upstream, messageId, usage, sentAt, prices: candidate.prices }));
     if (usage === undefined) {
       await options.onEnded({ outcome: "interrupted", upstream: candidate.upstream, tokens: null, cost });
       return;

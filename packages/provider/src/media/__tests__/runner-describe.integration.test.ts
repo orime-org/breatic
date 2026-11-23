@@ -12,6 +12,8 @@ import { createProvider } from "../../provider.js";
 import { costsOf, DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed } from "../../errors.js";
 import { createMediaRunner, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket } from "../runner.js";
 import { accepted, billing, driven, fakeUpstream, result, submits, type FakeUpstream, type Reply } from "./fake-upstream.js";
+import { accountKeys } from "../../__tests__/keys-harness.js";
+
 
 // The loopback image server stands in for a public host; 10.0.0.5 is private.
 vi.mock("../../http/private-address.js", () => ({
@@ -846,9 +848,11 @@ describe("a run with describe steps: every billed answer reaches the caller once
   const DESCRIBES = Object.keys(describeAnswers(0));
   const SUBMITS = ["accept", "busy", "refused"] as const;
 
-  it("property: whatever the describe, element and generate calls answer, and whether the deadline cuts a send", async () => {
+  it("property: whatever the describe, element and generate calls answer, on whoever's keys, and whether the deadline cuts a send", async () => {
     await fc.assert(
-      fc.asyncProperty(fc.array(fc.constantFrom(...DESCRIBES), { maxLength: 5 }), fc.array(fc.constantFrom(...SUBMITS), { maxLength: 5 }), fc.integer({ min: 1, max: 2 }), async (describeScript, submitScript, images) => {
+      fc.asyncProperty(fc.array(fc.constantFrom(...DESCRIBES), { maxLength: 5 }), fc.array(fc.constantFrom(...SUBMITS), { maxLength: 5 }), fc.integer({ min: 1, max: 2 }), fc.boolean(), async (describeScript, submitScript, images, onAccount) => {
+        // On the payer's keys (inner#1953) a passing failure is retried on the same key and a lasting one ends the run.
+        const sets = onAccount ? { keys: accountKeys({ wavespeed: "acct-ws" }), llmKeys: accountKeys({ openrouter: "acct-or" }) } : {};
         vi.spyOn(Math, "random").mockReturnValue(0);
         let d = 0;
         let billed = 0;
@@ -874,16 +878,16 @@ describe("a run with describe steps: every billed answer reaches the caller once
         const provider = createProvider({ config: config(), keyOf: (name) => ({ WAVESPEED_API_KEY: "ws-key", OPENROUTER_API_KEY: "or-key" })[name], llmMaxRetries: 1, cleanText: (t) => t });
         const r = createMediaRunner(provider, { mediaLimits: { maxMediaBytes: 1_000_000 }, pollIntervalMs: 0 });
         const reached: Cost[] = [];
-        let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: Array.from({ length: images }, () => imageUrl) } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {} });
+        let answer: MediaAnswer = await r.plan("kling-elements", { prompt: "go", params: { elements: Array.from({ length: images }, () => imageUrl) } }, { mode: "default" }, { idempotencyKey: "task-1", sourceKeys: {}, clones: [], durations: {}, ...sets });
         let ended = false;
         for (let turn = 0; turn < 24 && !ended && (answer.state === "send" || answer.state === "running"); turn++) {
           const ticket = stored((answer as { ticket: MediaTicket }).ticket);
           if (answer.state === "running") {
-            answer = await r.poll(ticket, live());
+            answer = await r.poll(ticket, { ...live(), ...sets });
             continue;
           }
           try {
-            answer = await r.send(ticket, { deadlineAt: Date.now() + 600 });
+            answer = await r.send(ticket, { deadlineAt: Date.now() + 600, ...sets });
           } catch (error) {
             // SendNotAccepted leaves the ticket to send again; any other throw ends the task.
             reached.push(...costsOf(error));

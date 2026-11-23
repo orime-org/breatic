@@ -21,7 +21,7 @@
  */
 
 import { AppError, env, getNodeTaskConfig } from "@breatic/core";
-import { creditHoldService, creditLotService } from "@breatic/domain";
+import { creditHoldService, creditLotService, SMALLEST_CREDIT } from "@breatic/domain";
 import { SpendCapReachedError } from "@breatic/core";
 import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
@@ -102,6 +102,27 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
   }
 
   throw new AppError(402, t("server.credit.none"));
+}
+
+/**
+ * Admit an Agent turn on a balance above zero (#296), on the payer's own OpenRouter key too (inner#1953): the key pays
+ * for the model, while web search, image search and page reading run on our services and are charged in credits, so a
+ * turn that could not pay for them is refused before it starts. The refusal then says why the own key is not enough.
+ * @param projectId - The turn's project.
+ * @param userId - The authenticated caller.
+ * @param keyOwner - The account whose own key runs the turn's model; undefined on our keys.
+ * @throws {SpendCapReachedError} 402 when the caller or the studio has spent its monthly limit.
+ * @throws {AppError} 402 when the balance is not above zero.
+ */
+export async function precheckAgentTurn(projectId: string, userId: string, keyOwner: string | undefined): Promise<void> {
+  try {
+    await precheckCredits(projectId, userId, SMALLEST_CREDIT);
+  } catch (err) {
+    // A spend limit says its own sentence; only a balance refusal is about the paid tools.
+    if (keyOwner === undefined || err instanceof SpendCapReachedError || !(err instanceof AppError) || err.statusCode !== 402) throw err;
+    const whose = keyOwner === userId ? "self" : "admin";
+    throw new AppError(402, t("server.credit.agent_tools_need_credits", { refusal: err.message, whose }), err.reason);
+  }
 }
 
 /**

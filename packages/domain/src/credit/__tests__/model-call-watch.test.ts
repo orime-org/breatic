@@ -2,20 +2,17 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import type * as DomainModule from "@breatic/domain";
 import type { Cost, PendingCost } from "@breatic/provider";
 
 const handOffLookups = vi.hoisted(() => vi.fn(async () => undefined));
 const costOf = vi.hoisted(() => vi.fn((): Cost => ({ state: "known", usd: 0.01, source: "reported" })));
 const servedBy = vi.hoisted(() => vi.fn((): string | undefined => "openrouter"));
 
-vi.mock("@breatic/domain", async (importOriginal) => {
-  const actual = await importOriginal<typeof DomainModule>();
-  return { ...actual, provider: () => ({ llm: { costOf, servedBy } }), handOffLookups };
-});
+const LLM = { costOf, servedBy };
+vi.mock("@domain/credit/generation-lookup.js", () => ({ handOffLookups }));
 
-import type { UsageRecorder } from "@breatic/domain";
-import { watchModelCalls } from "@server/agent/model-call-watch.js";
+import type { UsageRecorder } from "@domain/credit/usage-recorder.js";
+import { watchModelCalls } from "@domain/credit/model-call-watch.js";
 
 const USAGE = {
   inputTokens: 10,
@@ -54,7 +51,7 @@ beforeEach(() => {
 describe("watching a stream's model calls", () => {
   it("records a call that ended at what provider says it cost, under the upstream that served it", () => {
     const usage = recorder();
-    const watch = watchModelCalls(usage, CALL, () => []);
+    const watch = watchModelCalls(usage, CALL, () => [], LLM);
     const metadata = { breatic: { upstream: "openrouter" }, openrouter: { usage: { cost: 0.01 } } };
     watch.callEnded({ usage: USAGE, providerMetadata: metadata });
 
@@ -69,13 +66,13 @@ describe("watching a stream's model calls", () => {
   });
 
   it("serves no upstream before any call ended", () => {
-    expect(watchModelCalls(recorder(), CALL, () => []).served()).toBeUndefined();
+    expect(watchModelCalls(recorder(), CALL, () => [], LLM).served()).toBeUndefined();
   });
 
   it("hands off what the recorder could not price under each call's own source and model, and each call cut off before it ended", async () => {
     const cutOff: PendingCost = { state: "pending", lookup: { upstream: "openrouter", generationId: "gen-9" } };
     const read = { lookup: LOOKUP, source: "tool:understand_media" as const, model: "google/gemini-3.8-flash" };
-    const watch = watchModelCalls(recorder([read]), CALL, () => [cutOff]);
+    const watch = watchModelCalls(recorder([read]), CALL, () => [cutOff], LLM);
 
     await watch.handOff();
 
@@ -85,7 +82,7 @@ describe("watching a stream's model calls", () => {
   it("records a cut-off call nothing can look up as missing, under the upstream that billed it", async () => {
     const usage = recorder();
     const missing: PendingCost = { state: "missing", reason: "the stream was cut before its finish", upstream: "deepseek" };
-    const watch = watchModelCalls(usage, CALL, () => [missing]);
+    const watch = watchModelCalls(usage, CALL, () => [missing], LLM);
 
     await watch.handOff();
 
@@ -100,7 +97,7 @@ describe("watching a stream's model calls", () => {
   });
 
   it("queues nothing when every cost was in hand", async () => {
-    const watch = watchModelCalls(recorder(), CALL, () => []);
+    const watch = watchModelCalls(recorder(), CALL, () => [], LLM);
     watch.callEnded({ usage: USAGE, providerMetadata: undefined });
 
     await watch.handOff();
@@ -111,7 +108,7 @@ describe("watching a stream's model calls", () => {
   it("records a call whose metadata names no upstream as served by nobody", () => {
     servedBy.mockReturnValueOnce(undefined);
     const usage = recorder();
-    watchModelCalls(usage, CALL, () => []).callEnded({ usage: USAGE, providerMetadata: undefined });
+    watchModelCalls(usage, CALL, () => [], LLM).callEnded({ usage: USAGE, providerMetadata: undefined });
 
     expect(usage.recordModelCall).toHaveBeenCalledWith(expect.objectContaining({ upstream: "" }));
   });

@@ -22,7 +22,7 @@ import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { snapshotOfPick } from '@web/spaces/canvas/attach-nodes';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { pickReaders } from '@web/spaces/canvas/pick-for-agent';

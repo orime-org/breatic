@@ -236,14 +236,16 @@ describe('StudioAccountMenu', () => {
     const labels = screen
       .getAllByRole('menuitem')
       .map((entry) => entry.textContent ?? '');
-    expect(labels).toHaveLength(7);
+    // BYOK settings is account-level too, so it joins the account group, after settings (inner#1953).
+    expect(labels).toHaveLength(8);
     expect(labels[0]).toContain('Account settings');
-    expect(labels[1]).toBe('Promoter program');
-    expect(labels[2]).toContain('Membership');
-    expect(labels[3]).toContain('Credits');
-    expect(labels[4]).toBe('Licenses and notices');
-    expect(labels[5]).toBe('Sign out of other devices');
-    expect(labels[6]).toBe('Sign out');
+    expect(labels[1]).toBe('BYOK settings');
+    expect(labels[2]).toBe('Promoter program');
+    expect(labels[3]).toContain('Membership');
+    expect(labels[4]).toContain('Credits');
+    expect(labels[5]).toBe('Licenses and notices');
+    expect(labels[6]).toBe('Sign out of other devices');
+    expect(labels[7]).toBe('Sign out');
   });
 
   it('opens the licence, the trademark policy and the third-party notices this instance serves, each in a new tab', async () => {

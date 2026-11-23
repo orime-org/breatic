@@ -23,6 +23,7 @@ import { SCENE_VIEW_SLOTS, THREE_D_GENERATION_MODES, type ParamViolation, type P
 
 import { resolveProjectImageInputs } from "@domain/asset/project-image-inputs.js";
 import { estimateTaskCredits, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
+import { resolveKeys } from "@domain/provider/provider-keys.js";
 import { upstreamRefusal } from "@domain/agent/tools/upstream-refusal.js";
 import { planSceneGeneration, type SceneGenerationProblem } from "@domain/model-catalog/scene-generation.js";
 import { LIST_GENERATION_MODELS } from "@domain/agent/tools/tool-names.js";
@@ -137,7 +138,9 @@ async function answerSceneGeneration(input: SceneGenerationInput, projectId: str
   const params = input.params ?? {};
   const plan = planSceneGeneration({ mode: input.mode, model: input.model, prompt: input.prompt, params, imageCount: views.length });
   if (!plan.ok) return refused(problemWords(plan.problem));
-  const refusal = await inputRefusalFor(plan.entry.name, { params: plan.params, prompt: plan.prompt ?? undefined });
+  // Judged on the upstream and key the Studio's payer runs the model on (inner#1953).
+  const resolved = await resolveKeys({ projectId }, { kind: "media", model: plan.entry.name });
+  const refusal = await inputRefusalFor(plan.entry.name, { params: plan.params, prompt: plan.prompt ?? undefined }, resolved.route, resolved.keyId === null ? undefined : resolved.keys);
   if (refusal !== null) return refused(upstreamRefusal("The 3D generation", plan.entry.name, refusal));
   let images: Array<{ assetId: string; url: string }> = [];
   try {

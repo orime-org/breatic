@@ -30,6 +30,8 @@ import {
 } from "@breatic/core";
 import {
   SMALLEST_CREDIT,
+  keyOwnerOf,
+  resolveKeys,
   sumCreditsByOperationKeys,
   timelineOperationKey,
   uploadGrantService,
@@ -38,6 +40,7 @@ import {
   timelineExecutionRepo,
 } from "@breatic/domain";
 import {
+  ACCOUNT_KEY_FAILURE_KINDS,
   ceilToCreditCent,
   extractPromptText,
   signPayload,
@@ -63,6 +66,9 @@ import { precheckCredits } from "@server/modules/credit/credit-precheck.service.
 import * as projectService from "@server/modules/project/project.service.js";
 import * as grantRepo from "@server/modules/web-animation/web-animation-grants.repo.js";
 import { timelineQueue } from "@server/modules/web-animation/timeline-queue.js";
+
+/** The failures of the payer's own key or its upstream (inner#1953). */
+const KEY_FAILURES: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_KINDS);
 
 /** What accepting answered: the row, and whether this request created it. */
 export interface AcceptedExecution {
@@ -251,15 +257,19 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
   if (found !== undefined) return found;
 
   // Admitted once, as an Agent chat turn is (chat.ts): the spend limits, then a balance above zero; one that then
-  // waits for a running slot starts without a second check (design 3.10). Payments off: no check.
+  // waits for a running slot starts without a second check (design 3.10). Payments off: no check. Asked on the payer's
+  // own OpenRouter key too: the containers run on ours (inner#1953).
   await precheckCredits(projectId, userId, SMALLEST_CREDIT);
   if (sourceVersionId !== null) await assertStorageAllowance(projectId, "generate");
+  // The key row a create's or a modification's language-model calls run on, settled at acceptance and read back by id
+  // (inner#1953); an export makes no model call and runs on no key row.
+  const llmKeyId = sourceVersionId === null ? (await resolveKeys({ projectId }, { kind: "llm" })).keyId : null;
   const deadlineAt = new Date(budgetDeadlineFrom(Date.now()));
   try {
     const row = await db.transaction(async (tx) => {
       const input = sourceVersionId === null ? frozen.input : { ...frozen.input, videoKey: await openVideoUpload(projectId, userId, deadlineAt) };
       const inserted = await timelineExecutionRepo.insert(
-        { projectId, spaceId, actorUserId: userId, kind, engine: frozen.engine, actionId, input, inputHash, deadlineAt, origin: "web_animation_space" },
+        { projectId, spaceId, actorUserId: userId, kind, engine: frozen.engine, actionId, input, inputHash, deadlineAt, origin: "web_animation_space", llmKeyId },
         tx,
       );
       if (inserted === null) throw new InsertLost();
@@ -278,6 +288,19 @@ export async function accept(userId: string, body: WebAnimationExecutionRequest 
     if (winner === undefined) throw new AppError(500, t("server.error.internal"));
     return winner;
   }
+}
+
+/**
+ * What a failure of the payer's own key names (inner#1953): the upstream, why it refused the key and whose key it was,
+ * read from the language-model key row the execution recorded, since the Studio may have handed it to another admin.
+ * @param row - An execution.
+ * @returns Those fields beside a key failure; nothing for any other row.
+ * @throws {Error} When the key row cannot be read.
+ */
+async function keyFailureOf(row: TimelineExecution): Promise<Pick<WebAnimationRowView, "failureUpstream" | "failureKeyReason" | "failureKeyOwner">> {
+  if (row.failureReason === null || !KEY_FAILURES.has(row.failureReason)) return {};
+  const owner = await keyOwnerOf(await timelineExecutionRepo.llmKeyIdOf(row.id));
+  return { failureUpstream: row.failureUpstream, failureKeyReason: row.failureKeyReason, ...(owner !== undefined && { failureKeyOwner: owner }) };
 }
 
 /**
@@ -404,6 +427,7 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
       slotWaitLimit: row.slotWaitLimit,
       progress: row.progress,
       usageCredits: ceilToCreditCent(Number(sums.get(timelineOperationKey(row.id)) ?? 0)),
+      ...(await keyFailureOf(row)),
     };
     const exportOf = scope.spaceId === null ? {} : { export: (row.resultSourceVersionId === null ? undefined : exports.get(row.resultSourceVersionId)) ?? null };
     if (input.kind === "web_animation_create") {

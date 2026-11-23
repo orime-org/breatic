@@ -69,7 +69,7 @@ import {
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { historyKey } from '@web/spaces/canvas/history/use-node-history';
 import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
 import {

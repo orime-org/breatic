@@ -56,8 +56,13 @@ const recorders = vi.hoisted(() => ({
   writeFailure: null as Error | null,
 }));
 
+// The real watch, whose hand-off is this file's double.
+vi.mock("../../../../../domain/src/credit/generation-lookup.js", () => ({ handOffLookups }));
 vi.mock("@breatic/domain", async () => ({
   handOffLookups,
+  watchModelCalls: (await import("../../../../../domain/src/credit/model-call-watch.js")).watchModelCalls,
+  // The run goes out on the deployment's keys (inner#1953).
+  resolveKeys: async () => ({ keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null, payerUserId: null }),
   // A run cut off before its finish leaves its generation among the prepared call's pending costs.
   provider: () => ({
     llm: {
@@ -175,6 +180,7 @@ async function run(): Promise<{ type: string }[]> {
     { instructions: "写点什么" },
     new AbortController().signal,
     "key-1",
+    { keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null, payerUserId: null },
   )) {
     events.push(event);
   }
@@ -321,6 +327,7 @@ describe("一次跑到一半就死掉的运行", () => {
       { instructions: "写点什么" },
       new AbortController().signal,
       "key-1",
+      { keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null, payerUserId: null },
     );
     await gen.next();
     await gen.next();
@@ -344,7 +351,7 @@ describe("a run cut off before the model reported its cost", () => {
     expect(handOffLookups).toHaveBeenCalledWith(
       [{ lookup: { upstream: "openrouter", generationId: "gen-42" }, source: "model", model: "openai/gpt-4o-mini" }],
       { operationKey: "texttool:key-1", feature: "text_tool", actorUserId: "u-1", projectId: PROJECT },
-      { description: "Text tool: generate", charge: true },
+      { description: "Text tool: generate", charge: true, keyId: null },
     );
   });
 

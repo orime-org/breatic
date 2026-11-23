@@ -28,6 +28,7 @@
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
       "refund_window_closed": "The refund window for this purchase has closed.",
       "refund_state_changed": "This purchase's refund status has changed. Refresh and try again.",
+      "agent_tools_need_credits": "{refusal} {whose, select, self {Your own OpenRouter key} other {The Studio Admin's OpenRouter key}} pays for the Agent's model, but web search, image search and page reading run on our services and are paid in credits.",
       "refund_offline_contract": "Contact your contract representative for enterprise credit refunds."
     },
     "auth": {
@@ -365,6 +366,13 @@
     "document": {
       "versions_full": "{limit, plural, one {This document already has 1 snapshot. Delete it to save a new one.} other {This document already has # snapshots. Delete an old one to save a new one.}}"
     },
+    "byok": {
+      "disabled": "Bring your own key is not enabled on this deployment.",
+      "upstream_not_offered": "Keys for this provider are not accepted here.",
+      "key_malformed": "This key is not valid. Check it for extra characters and paste it again.",
+      "key_not_connected": "This key could not connect. Check it and try again.",
+      "model_choice_refused": "This provider cannot run this model with your saved keys."
+    },
     "spend_cap": {
       "member": "You've reached your monthly spend limit in this Studio ({limit, select, 1 {1 credit} other {{limit} credits}}). Contact the Studio admin if you need more.",
       "studio": "This Studio has reached its monthly spend limit. Contact the Studio admin."
@@ -451,6 +459,7 @@
         "noConnection": "couldn't reach the service, try again later",
         "refused": "the service didn't accept this request",
         "unavailable": "this feature is unavailable right now",
+        "accountKey": "the BYOK key this Studio runs on couldn't be used",
         "badAnswer": "the service returned something unusable",
         "linkUnreachable": "this address can't be opened, try another link",
         "fileTooLarge": "the file is too large",
@@ -1047,7 +1056,14 @@
       },
       "editProposalMarks": "Replace the text in braces. Orange notes are not sent to the model.",
       "notePrefix": "Note: ",
-      "integerBlank": "Blank for auto"
+      "integerBlank": "Blank for auto",
+      "ownKeyLabel": "Your key",
+      "studioKeyLabel": "Studio key",
+      "alsoCredits": "credits",
+      "usesOwnKey": "Uses your key, no credits",
+      "usesStudioKey": "Uses the Studio's key, no credits",
+      "usesOwnKeyDescribing": "Uses your key; describing elements takes credits",
+      "usesStudioKeyDescribing": "Uses the Studio's key; describing elements takes credits"
     },
     "edge": {
       "delete": "Delete connection"
@@ -1180,7 +1196,10 @@
         "cut_short": "This is too long to transcribe in full.",
         "cancelled": "Cancelled.",
         "input_refused": "{model} can’t take this run as set up. Change the settings or pick another model.",
-        "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}."
+        "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
+        "account_key_failed": "{whose, select, self {{keyReason, select, invalid {{upstream} turned down your key as invalid. Change it in BYOK settings.} no_balance {Your {upstream} key is out of balance. Top up at {upstream}.} model_not_found {{upstream} does not offer this model on your key. Pick another upstream in BYOK settings.} rate_limited {{upstream} is limiting requests on your key. Try again later.} other {Your {upstream} key failed. Check it in BYOK settings.}}} admin {{keyReason, select, invalid {{upstream} turned down the Studio Admin's key as invalid. Ask the Studio Admin to change it.} no_balance {The Studio Admin's {upstream} key is out of balance. Ask the Studio Admin to top up at {upstream}.} model_not_found {{upstream} does not offer this model on the Studio Admin's key. Ask the Studio Admin to pick another upstream.} rate_limited {{upstream} is limiting requests on the Studio Admin's key. Try again later.} other {The Studio Admin's {upstream} key failed. Ask the Studio Admin to check it.}}} other {{keyReason, select, invalid {{upstream} turned down the key as invalid. Change it in BYOK settings.} no_balance {The {upstream} key is out of balance. Top up at {upstream}.} model_not_found {{upstream} does not offer this model on this key. Pick another upstream in BYOK settings.} rate_limited {{upstream} is limiting requests on this key. Try again later.} other {The {upstream} key failed. Check it in BYOK settings.}}}}",
+        "account_key_missing": "{whose, select, self {{upstream, select, none {Your key for this run was replaced or deleted. Run it again.} other {Your {upstream} key for this run was replaced or deleted. Run it again.}}} admin {{upstream, select, none {The Studio Admin's key for this run was replaced or deleted. Run it again.} other {The Studio Admin's {upstream} key for this run was replaced or deleted. Run it again.}}} other {{upstream, select, none {The key this run used was replaced or deleted. Run it again.} other {The {upstream} key this run used was replaced or deleted. Run it again.}}}}",
+        "upstream_unavailable": "Couldn't reach {upstream}. Try again later."
       },
       "kind": {
         "upload": "Upload",
@@ -4462,6 +4481,80 @@
     "submit": "Submit application",
     "submitted": "Application submitted"
   },
+  "byok": {
+    "heading": "BYOK settings",
+    "tabKeys": "Upstream keys",
+    "tabModels": "Models",
+    "searchUpstreams": "Search upstreams",
+    "added": "Added",
+    "noneAdded": "None added yet",
+    "notAddedGroup": "Not added · {group}",
+    "groupLanguageModel": "Language model",
+    "groupOfficial": "Official API",
+    "groupReseller": "Reseller",
+    "noUpstreamMatch": "No matching upstreams",
+    "connected": "Connected",
+    "notConnected": "Not connected",
+    "lastChecked": "Checked {time}",
+    "lastCheckedToday": "Checked today {time}",
+    "balance": "Balance: {amount}",
+    "balanceKeyLimit": "Left on this key: {amount}",
+    "balanceForbidden": "This key can't read the balance. Use a key with billing access to see it.",
+    "balanceNoCap": "This key has no spending limit.",
+    "balanceUnsupported": "This upstream does not report a balance.",
+    "costsUnreadable": "This key can't read actual costs. Use a key with billing access to see them.",
+    "balanceAndCostsUnreadable": "This key can't read the balance or actual costs. Use a key with billing access to see them.",
+    "refresh": "Refresh",
+    "replace": "Replace",
+    "delete": "Delete",
+    "save": "Save",
+    "keyLabel": "API key",
+    "keyPlaceholder": "Paste a key",
+    "keyEmpty": "Paste a key first.",
+    "saveHint": "The key is checked before it is saved.",
+    "saveFailed": "Couldn't save the key. Try again.",
+    "saved": "{upstream} key saved",
+    "deleted": "{upstream} key deleted",
+    "checkFailed": "Couldn't check the key. Try again.",
+    "deleteFailed": "Couldn't delete the key. Try again.",
+    "getKey": "Get a key from {upstream}",
+    "runsModels": "Models it runs",
+    "runsNone": "No model here runs on it.",
+    "openrouterNote": "Every language model call, web animation included, uses this key and takes no credits. A web animation's rendering still uses credits.",
+    "replaceTitle": "Replace the {upstream} key",
+    "replaceBody": "The new key is checked before it is saved. Tasks using the old key may be interrupted or fail. If the old key has leaked, also revoke it at {upstream}.",
+    "deleteTitle": "Delete the {upstream} key?",
+    "deleteBody": "Tasks using this key may be interrupted or fail, and models set to it go back to the platform key. If the key has leaked, also revoke it at {upstream}.",
+    "deleteBodyLanguage": "Tasks using this key may be interrupted or fail, and language model calls go back to the platform key. If the key has leaked, also revoke it at {upstream}.",
+    "platformKey": "Platform key (uses credits)",
+    "modelsIntro": "Models left unset use the platform key and spend credits. Only models an upstream you added can run are listed.",
+    "modelsEmpty": "Add an upstream key, then choose here which upstream each model uses. Models left unset use the platform key.",
+    "goAddKey": "Add a key",
+    "searchModels": "Search models",
+    "noModelMatch": "No matching models",
+    "noModelsInModality": "No upstream you added runs these models.",
+    "modelSaved": "{model} now uses {upstream}",
+    "modelSaveFailed": "Couldn't change the model's key. Try again.",
+    "disabled": "Bring your own key is not turned on for this deployment.",
+    "loadFailed": "Couldn't load BYOK settings.",
+    "retry": "Retry",
+    "showKey": "Show key",
+    "hideKey": "Hide key",
+    "failure": {
+      "invalid": "The key is invalid or has been revoked.",
+      "unavailable": "Couldn't reach the upstream. Try again later.",
+      "rate_limited": "The upstream is limiting this key right now. Try again later.",
+      "refused": "The upstream refused the check.",
+      "other": "The key didn't connect."
+    },
+    "modality": {
+      "image": "Image",
+      "video": "Video",
+      "audio": "Audio",
+      "tts": "Voice-over",
+      "three_d": "3D"
+    }
+  },
   "credits": {
     "panelTitle": "Credits",
     "close": "Close",
@@ -4825,7 +4918,8 @@
         "unknown": "This execution failed.",
         "render": "Video rendering failed.",
         "frameMismatch": "The rendered video does not match the animation's length.",
-        "saveVideo": "The video could not be saved."
+        "saveVideo": "The video could not be saved.",
+        "key_lost": "Creation was interrupted. Run it again."
       },
       "preview": {
         "pending": "{track}: {status, select, awaiting_landing {saving web animation} queued {web animation queued} running {creating web animation} cancelling {cancelling web animation} other {web animation pending}}…",

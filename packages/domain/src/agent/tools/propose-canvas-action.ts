@@ -37,7 +37,7 @@
  * would be the rules written out in code.
  */
 import { tool, type Tool } from "ai";
-import { z } from "zod";
+import type { z } from "zod";
 
 import {
   canConnect,
@@ -55,7 +55,7 @@ import {
   type ProposalNode,
 } from "@breatic/shared";
 
-import { renderPrice } from "@domain/agent/tools/generation-models.js";
+import { payerKeyWords, renderPrice, studioToolContextSchema, type StudioToolContext } from "@domain/agent/tools/generation-models.js";
 import { upstreamRefusal } from "@domain/agent/tools/upstream-refusal.js";
 import { onDialogueSide, proposalDialogueText } from "@domain/agent/tools/proposal-dialogue.js";
 import { checkBlanks, checkGenerateNode, generateRunOf, takesPromptHere } from "@domain/agent/tools/proposal-generate-check.js";
@@ -75,6 +75,9 @@ import { expandAt, templatePlace, type TemplatePlace } from "@domain/agent/tools
 import { GET_GENERATION_TEMPLATE, GET_PRODUCT_GUIDE, SAVE_IMAGE } from "@domain/agent/tools/tool-names.js";
 import { materialFacts, type MaterialTable } from "@domain/asset/material-facts.js";
 import { estimateModelCredits, inputRefusalFor } from "@domain/model-catalog/model-catalog.js";
+import type { KeyPurpose } from "@domain/provider/account-keys.service.js";
+import { resolveKeys, runDescribesInput, type ResolvedKeys } from "@domain/provider/provider-keys.js";
+import type { KeySet } from "@breatic/provider";
 import type { CreditEstimate } from "@breatic/shared/pricing";
 
 export type { MaterialFacts, MaterialTable } from "@domain/asset/material-facts.js";
@@ -346,6 +349,8 @@ function judgeSent(sent: z.infer<typeof inputSchema>, materials: MaterialTable, 
  * @param sent - What the model sent.
  * @param materials - The registration behind each material address it names.
  * @param templates - The template registry the tags are read against.
+ * @param keysFor - The keys and route the Studio's payer runs a model or the language model on (inner#1953); ours when
+ *   not given.
  * @returns The answer the card and the canvas read.
  * @throws {Error} When a limit cannot be evaluated in a way provider does not catch.
  */
@@ -353,19 +358,39 @@ export async function checkedAnswerFor(
   sent: z.infer<typeof inputSchema>,
   materials: MaterialTable = NO_MATERIAL,
   templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
+  keysFor: (purpose: KeyPurpose) => Promise<ProposalKeys> = onOurKeys,
 ): Promise<ProposalAnswer> {
   const judged = judgeSent(sent, materials, templates);
+  const onPayerKey = new Set<string>();
+  // A run on the payer's key still pays credits for describing its inputs while the language model runs on ours.
+  const describedOnCredits = new Set<number>();
   if ("proposal" in judged) {
     for (const [index, node] of judged.proposal.nodes.entries()) {
       if (node.role !== "generate") continue;
       const run = generateRunOf(judged.proposal, node, index);
       if (run === undefined) continue;
-      const refusal = await inputRefusalFor(run.model, { params: run.params, prompt: run.prompt });
+      const resolved = await keysFor({ kind: "media", model: run.model });
+      if (resolved.keyId !== null) onPayerKey.add(run.model);
+      // What reaches the pool through an edge is sent as a param too (Kling O3's elements), so both checks read it.
+      const sent = sentParams(judged.proposal, node, index, run.params);
+      if (resolved.keyId !== null && runDescribesInput(run.model, sent) && (await keysFor({ kind: "llm" })).keyId === null) describedOnCredits.add(index);
+      const refusal = await inputRefusalFor(run.model, { params: sent, prompt: run.prompt }, resolved.route, resolved.keyId === null ? undefined : resolved.keys);
       if (refusal !== null) return { placed: false, reason: upstreamRefusal(node.name, run.model, refusal) };
     }
   }
-  return answerFor(sent, materials, templates);
+  const answer = answerFor(sent, materials, templates);
+  if (!answer.placed || onPayerKey.size === 0) return answer;
+  return { ...answer, onPayerKey: [...onPayerKey], ...(describedOnCredits.size === 0 ? {} : { describedOnCredits: [...describedOnCredits] }) };
 }
+
+/** The keys and route one model of a proposal runs on; a null key row is ours. */
+export type ProposalKeys = Pick<ResolvedKeys, "keyId" | "route"> & { keys?: KeySet };
+
+/**
+ * Every model on our keys and the weights.
+ * @returns Our keys.
+ */
+const onOurKeys = async (): Promise<ProposalKeys> => ({ keyId: null, route: { mode: "default" } });
 
 /**
  * Each anchored template's own nodes marked with the key they stand for (one
@@ -535,15 +560,21 @@ export function answerFor(
  */
 export async function renderProposalForModel(answer: ProposalAnswer): Promise<string> {
   if (!answer.placed) return `That proposal was refused, so nothing is on screen. ${answer.reason}`;
+  const onPayerKey = new Set(answer.onPayerKey ?? []);
+  const describedOnCredits = new Set(answer.describedOnCredits ?? []);
+  const generations = answer.nodes.flatMap((node, index) => (node.role === "generate" && node.model !== undefined ? [{ node, index, model: node.model }] : []));
   const priced = await Promise.all(
-    answer.nodes.flatMap((node, index) =>
-      node.role === "generate" && node.model !== undefined
-        ? [estimateModelCredits(node.model, { params: wiredParams(answer, node, index), prompt: wordsOf(node) }).then((price) => ({ name: node.name, price }))]
-        : [],
-    ),
+    generations.filter(({ model }) => !onPayerKey.has(model)).map(async ({ node, index, model }) => ({
+      index,
+      price: await estimateModelCredits(model, { params: wiredParams(answer, node, index), prompt: wordsOf(node) }),
+    })),
   );
-  const lines = priced.map(({ name, price }) => `- "${name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`);
-  return ["The proposal is on screen as a card. The user decides whether to place it.", ...(priced.length === 0 ? [] : ["Running its generations costs:", ...lines]), ...totalLine(priced.map(({ price }) => price))].join("\n");
+  const lines = generations.map(({ node, index, model }) => {
+    if (onPayerKey.has(model)) return `- "${node.name}": ${payerKeyWords(describedOnCredits.has(index))}`;
+    const price = priced.find((one) => one.index === index)?.price;
+    return `- "${node.name}": ${price === undefined ? "no price on this deployment" : renderPrice(price, "at its params")}`;
+  });
+  return ["The proposal is on screen as a card. The user decides whether to place it.", ...(lines.length === 0 ? [] : ["Running its generations costs:", ...lines]), ...totalLine(priced.map(({ price }) => price))].join("\n");
 }
 
 /**
@@ -573,6 +604,21 @@ function wiredParams(proposal: CanvasProposal, node: ProposalNode, index: number
     params[name] = spec.type === "list" ? Array.from({ length: count }, (_, i) => `wired ${String(i + 1)}`) : "wired";
   }
   return params;
+}
+
+/**
+ * The params a proposed run sends, its wired sources included, as the checks before it is placed read them.
+ * @param proposal - The proposal.
+ * @param node - The generate node.
+ * @param index - Where it sits in the proposal.
+ * @param runParams - The run's own params.
+ * @returns The params.
+ */
+export function sentParams(proposal: CanvasProposal, node: ProposalNode, index: number, runParams: Readonly<Record<string, unknown>>): Record<string, unknown> {
+  // Only what the wiring adds: the run already shaped the node's own params (a single voice drops its speakers).
+  const own = node.params ?? {};
+  const wired = Object.entries(wiredParams(proposal, node, index)).filter(([name]) => !(name in own));
+  return { ...runParams, ...Object.fromEntries(wired) };
 }
 
 /**
@@ -659,13 +705,6 @@ function templateIndex(templates: readonly GenerationTemplate[]): string {
   );
 }
 
-/** What this tool is handed in its context: the studio whose material counts. */
-export interface ProposeContext extends Record<string, unknown> {
-  studioId: string;
-}
-
-const proposeContextSchema: z.ZodType<ProposeContext> = z.object({ studioId: z.string().min(1) });
-
 /**
  * The proposal tool over a template registry: its description indexes the
  * registry's templates.
@@ -674,7 +713,7 @@ const proposeContextSchema: z.ZodType<ProposeContext> = z.object({ studioId: z.s
  */
 export function makeProposeCanvasAction(
   templates: readonly GenerationTemplate[] = GENERATION_TEMPLATES,
-): Tool<z.infer<typeof inputSchema>, ProposalAnswer, ProposeContext> {
+): Tool<z.infer<typeof inputSchema>, ProposalAnswer, StudioToolContext> {
   return tool({
   description:
     "The canvas is where models are run and where the pieces of one job are " +
@@ -710,7 +749,7 @@ export function makeProposeCanvasAction(
     "is placed -- what to put in, what to pick, what to press. " +
     templateIndex(templates),
   inputSchema,
-  contextSchema: proposeContextSchema,
+  contextSchema: studioToolContextSchema,
   metadata: { runningLine: "chat.tool.proposingNodes" },
   toModelOutput: async ({ output }) => ({ type: "text", value: await renderProposalForModel(output) }),
   execute: async (
@@ -718,12 +757,12 @@ export function makeProposeCanvasAction(
     // The signal is unused: a cached catalog and at most a few ledger rows,
     // so there is nothing worth abandoning. Declared so every tool has the
     // same shape.
-    { context }: { abortSignal?: AbortSignal; context: ProposeContext },
+    { context }: { abortSignal?: AbortSignal; context: StudioToolContext },
   ): Promise<ProposalAnswer> => {
     const urls = proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material]));
     // A proposal with no material asks the ledger nothing.
     const materials = urls.length === 0 ? NO_MATERIAL : await materialFacts(context.studioId, urls);
-    return checkedAnswerFor(proposal, materials, templates);
+    return checkedAnswerFor(proposal, materials, templates, (purpose) => resolveKeys({ studioId: context.studioId }, purpose));
   },
 });
 }

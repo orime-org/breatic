@@ -126,7 +126,7 @@ async function syncNow(conversationId: string): Promise<void> {
     const seen = await chatApi.sync(conversationId, shown.projectId);
     if (showing !== shown) return;
     shown.intervalMs = seen.next_sync_ms;
-    chatWaiting.fromSync(conversationId, { pending: seen.pending, awaiting: seen.awaiting, blocked: seen.blocked === 'credits', capNote: capNoteOf(seen) });
+    chatWaiting.fromSync(conversationId, { pending: seen.pending, awaiting: seen.awaiting, blocked: seen.blocked === 'credits', ownKey: seen.own_key ?? null, capNote: capNoteOf(seen) });
     // Shown again with no run holding it: a run that ended while it was away
     // is in the history only. An attach under way reads it before its run and
     // again after; a read of ours landing during that run would replace the

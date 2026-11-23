@@ -9,7 +9,7 @@
       "signatures": "signatures/cla.json",
       "phrase": "I have read the CLA Document and I hereby sign the CLA",
       "activatedAt": "2026-11-16T02:22:06Z",
-      "retiredAt": null
+      "retiredAt": "2026-11-23T01:06:29Z"
     },
     {
       "id": "Breatic-CLA-2.0",
@@ -18,7 +18,7 @@
       "sha256": "dee9944afe77ca3d68a154f73d5c0cbc79a145ad379fd89c4ceef4c5a7208fde",
       "signatures": "signatures/v2/cla.json",
       "phrase": "I have read and agree to the Breatic Contributor License Agreement version 2.0, including my contributions to this pull request.",
-      "activatedAt": null,
+      "activatedAt": "2026-11-23T01:06:29Z",
       "retiredAt": null
     }
   ]

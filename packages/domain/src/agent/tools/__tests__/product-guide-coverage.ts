@@ -77,6 +77,7 @@ const STYLE_SET_WORDS: Readonly<Record<string, Described>> = Object.fromEntries(
 
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
+  "server.credit.agent_tools_need_credits": { described: /web search, image search and page reading, and a web animation's rendering, are paid in credits/ },
   ...STYLE_SET_WORDS,
   // inner#1968: waiting for a running-task slot, and the spend-limit refusals.
   "canvas.task.waitReason": { described: /starts by itself when an earlier one ends|waits its turn/ },
@@ -151,6 +152,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.webAnimation.failure.render": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.webAnimation.failure.frameMismatch": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.webAnimation.failure.saveVideo": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "timeline.webAnimation.failure.key_lost": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.webAnimation.picker.title": { described: /opens a list of the Project's finished web animations/ },
   "spaces.webAnimation.dialog.modifyKeepsOriginal": { described: /which stays as it was with its annotations/ },
   "timeline.webAnimation.picker.description": { excluded: REASONS.SAYS_WHAT_TO_PICK },
@@ -915,6 +917,9 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.task.elapsed": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.task.endedAt": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.task.failure.aborted": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "canvas.task.failure.account_key_failed": { described: /says which upstream and whose key it was, and what to do/ },
+  "canvas.task.failure.account_key_missing": { described: /says which upstream and whose key it was, and what to do/ },
+  "canvas.task.failure.upstream_unavailable": { described: /says which upstream and whose key it was, and what to do/ },
   "canvas.task.failure.credits_held": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.declined": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.task.failure.empty": { excluded: REASONS.SAYS_WHAT_HAPPENED },
@@ -1006,6 +1011,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "chat.tool.checkingCanvas": { described: /a line may name what it is doing/ },
   "chat.tool.checkingModels": { described: /a line may name what it is doing/ },
   "chat.tool.failedLine": { described: /naming the step and why/ },
+  "chat.tool.failure.accountKey": { described: /says which upstream and whose key it was/ },
   "chat.tool.failure.badAnswer": { described: /naming the step and why/ },
   "chat.tool.failure.declined": { described: /naming the step and why/ },
   "chat.tool.failure.emptyFile": { described: /naming the step and why/ },
@@ -1317,6 +1323,11 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.conversation.attachment_not_found": { excluded: REASONS.NO_CALLER },
   "server.conversation.attachment_not_yours": { excluded: REASONS.NO_CALLER },
   "server.conversation.not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "server.byok.disabled": { excluded: REASONS.NOT_ON_THESE_SCREENS },
+  "server.byok.key_malformed": { excluded: REASONS.NOT_ON_THESE_SCREENS },
+  "server.byok.key_not_connected": { excluded: REASONS.NOT_ON_THESE_SCREENS },
+  "server.byok.model_choice_refused": { excluded: REASONS.NOT_ON_THESE_SCREENS },
+  "server.byok.upstream_not_offered": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.designation_locked": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.designation_not_purchased": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.credit.granted_elsewhere": { excluded: REASONS.SAYS_WHAT_HAPPENED },

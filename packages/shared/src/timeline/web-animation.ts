@@ -12,6 +12,7 @@ import { z } from "zod";
 import { TimelineRateSchema, type TimelineRate } from "@shared/timeline/schema.js";
 import { durationToFrames } from "@shared/timeline/time.js";
 import { decodeBase64Utf8, encodeBase64Utf8 } from "@shared/upload/base64.js";
+import { JOB_KEY_FAILURE_REASONS } from "@shared/upload/web-animation-job.js";
 import { WEB_ANIMATION_RUNTIME } from "@shared/timeline/web-animation-runtime.js";
 
 export { WEB_ANIMATION_RUNTIME };
@@ -174,6 +175,12 @@ const rowCommon = {
   status: WebAnimationExecutionStatusSchema,
   phase: WebAnimationPhaseSchema.nullable(),
   failureReason: z.string().nullable(),
+  /** The upstream a failure of the payer's own key named (inner#1953); absent for any other row. */
+  failureUpstream: z.string().min(1).nullable().optional(),
+  /** Why that upstream refused the payer's own key (inner#1953); absent for any other row. */
+  failureKeyReason: z.enum(JOB_KEY_FAILURE_REASONS).nullable().optional(),
+  /** The account whose key a failure of the payer's own key failed on (inner#1953); absent for any other row. */
+  failureKeyOwner: z.string().optional(),
   ownProject: z.boolean(),
   usageCredits: z.number().nonnegative(),
   createdAt: isoTime,

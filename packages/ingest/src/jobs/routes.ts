@@ -7,15 +7,18 @@
  * same object, and reading names the class the job was submitted to.
  *
  * Web-animation execution is optional on a deployment: without the `WEB_ANIMATION` binding its submit, read and cancel
- * answer 501 `feature_disabled` before the namespace is touched, and so does a submit with no model plan; a submit
- * whose plan names no upstream with a key here answers 501 naming the model and the variables it needs. The worker
- * reads both as terminal answers, while every other job keeps working.
+ * answer 501 `feature_disabled` before the namespace is touched, and so does a submit with no model plan, without
+ * `KEY_UNSEAL_PRIVATE_KEY`, or whose sealed keys are absent or do not open. The Worker holds no model key of its own
+ * (inner#1953): a submit's keys are opened here and handed to the job object beside the job, which holds them in memory
+ * only. The worker reads 501 as a terminal answer, while every other job keeps working.
  */
 
 import { miniToolJobRequestSchema } from "@breatic/shared";
 import {
+  ModelKeysUnreadable,
   WEB_ANIMATION_CONTAINER_CLASS,
   WEB_ANIMATION_RENDER_CONTAINER_CLASS,
+  openModelKeys,
   webAnimationJobCancelSchema,
   webAnimationJobRequestSchema,
   webAnimationRenderJobRequestSchema,
@@ -29,7 +32,6 @@ import {
   type MiniToolClass,
   type MiniToolEnv,
 } from "@ingest/jobs/mini-tool-container.js";
-import { harnessKeyName, harnessKeyOf } from "@ingest/jobs/harness-keys.js";
 import type { WebAnimationEnv } from "@ingest/jobs/web-animation-container.js";
 import type { WebAnimationRenderEnv } from "@ingest/jobs/web-animation-render-container.js";
 
@@ -127,8 +129,8 @@ async function submittedAnswer(start: () => Promise<object>, failure: string, jo
  * @param body - The parsed request body.
  * @param env - The bindings.
  * @returns 200 with its report; 400 for a body that is not a job; 410 after a cancel that came before any submit;
- *   501 when the feature is off or the job has no plan, or naming the model and its key variables when none of them
- *   is set here; 503 when the container could not start.
+ *   501 when the feature is off, the job has no plan, or its keys are absent or do not open here; 503 when the
+ *   container could not start.
  * @throws {unknown} What the object throws other than a start failure.
  */
 async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Response> {
@@ -136,17 +138,24 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
   if (namespace === null) return featureDisabled();
   const parsed = webAnimationJobRequestSchema.safeParse(body);
   if (!parsed.success) return new Response("Not a job", { status: 400 });
-  const job = parsed.data;
-  const plan = job.messagesPlan;
-  if (plan === undefined) return featureDisabled();
-  const keyOf = harnessKeyOf(env);
-  if (!plan.candidates.some(({ keyEnv }) => (keyOf(keyEnv) ?? "") !== "")) {
-    return Response.json(
-      { error: "not_configured", model: plan.model, envVars: plan.candidates.map(({ keyEnv }) => harnessKeyName(keyEnv)) },
-      { status: 501 },
-    );
+  const { sealedKeys, ...job } = parsed.data;
+  const privateKey = env.KEY_UNSEAL_PRIVATE_KEY ?? "";
+  if (privateKey === "") {
+    // The binding is here and the secret is not: the deployment's configuration, told in the log by name.
+    noteFailure("ingest_web_animation_unseal_key_unset", { jobId: job.jobId, secret: "KEY_UNSEAL_PRIVATE_KEY" });
+    return featureDisabled();
   }
-  return submittedAnswer(() => namespace.get(namespace.idFromName(job.jobId)).submit(job), "ingest_web_animation_start_failed", job.jobId);
+  if (job.messagesPlan === undefined || sealedKeys === undefined) return featureDisabled();
+  let keys: Record<string, string>;
+  try {
+    keys = await openModelKeys(sealedKeys, privateKey);
+  } catch (err) {
+    if (!(err instanceof ModelKeysUnreadable)) throw err;
+    // The worker sealed to a public key that is not this Worker's: a deployment's configuration, not this run's.
+    noteFailure("ingest_web_animation_keys_unreadable", { jobId: job.jobId });
+    return featureDisabled();
+  }
+  return submittedAnswer(() => namespace.get(namespace.idFromName(job.jobId)).submit(job, keys), "ingest_web_animation_start_failed", job.jobId);
 }
 
 /**

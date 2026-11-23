@@ -99,3 +99,102 @@ describe('a model run refused here', () => {
       .toBe('Voice Model is not set up on this deployment: it needs WAVESPEED_API_KEY, FAL_KEY.');
   });
 });
+
+// inner#1953: a run on the payer's own key that failed names the upstream as the user knows it, and whose key it was.
+describe('a run on an account key that failed', () => {
+  const names = { wavespeed: 'WaveSpeed Cloud' };
+  const own = { payer: 'self', payerUserId: 'u-admin', viewerUserId: 'u-admin', upstreamNames: names } as const;
+  const admins = { payer: 'admin', payerUserId: 'u-admin', viewerUserId: 'u-member', upstreamNames: names } as const;
+  const noBalance = encodeTaskFailure('account_key_failed', { upstream: 'wavespeed', keyReason: 'no_balance' });
+
+  it('names the owner the failure recorded, after the Studio changed hands too', () => {
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    const onOldAdmins = encodeTaskFailure('account_key_failed', { upstream: 'wavespeed', keyReason: 'no_balance', keyOwner: 'u-old' });
+    // The former admin, now a member, reads it as their own key.
+    expect(failureSentence(onOldAdmins, t, undefined, { ...admins, viewerUserId: 'u-old' })).toBe(
+      'Your WaveSpeed Cloud key is out of balance. Top up at WaveSpeed Cloud.',
+    );
+    // The new admin and any member read it as neither their own nor the current Studio Admin's.
+    expect(failureSentence(onOldAdmins, t, undefined, own)).toBe('The WaveSpeed Cloud key is out of balance. Top up at WaveSpeed Cloud.');
+    expect(failureSentence(onOldAdmins, t, undefined, admins)).toBe('The WaveSpeed Cloud key is out of balance. Top up at WaveSpeed Cloud.');
+    // A failure on the current admin's key reads as it always did.
+    const onAdmins = encodeTaskFailure('account_key_failed', { upstream: 'wavespeed', keyReason: 'no_balance', keyOwner: 'u-admin' });
+    expect(failureSentence(onAdmins, t, undefined, own)).toBe('Your WaveSpeed Cloud key is out of balance. Top up at WaveSpeed Cloud.');
+    expect(failureSentence(onAdmins, t, undefined, admins)).toBe(
+      'The Studio Admin\'s WaveSpeed Cloud key is out of balance. Ask the Studio Admin to top up at WaveSpeed Cloud.',
+    );
+  });
+
+  it('tells the payer it is their own key, by the upstream\'s name', () => {
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    expect(failureSentence(noBalance, t, undefined, own)).toBe('Your WaveSpeed Cloud key is out of balance. Top up at WaveSpeed Cloud.');
+    expect(failureSentence('account_key_missing', t, undefined, own)).toBe('Your key for this run was replaced or deleted. Run it again.');
+  });
+
+  it('tells a member it is the Studio Admin\'s key, and to ask the Studio Admin', () => {
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    expect(failureSentence(noBalance, t, undefined, admins)).toBe(
+      'The Studio Admin\'s WaveSpeed Cloud key is out of balance. Ask the Studio Admin to top up at WaveSpeed Cloud.',
+    );
+    expect(failureSentence('account_key_missing', t, undefined, admins)).toBe(
+      'The Studio Admin\'s key for this run was replaced or deleted. Run it again.',
+    );
+  });
+
+  it('names the upstream it could not reach', () => {
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    const stored = encodeTaskFailure('upstream_unavailable', { upstream: 'wavespeed' });
+    expect(failureSentence(stored, t, undefined, own)).toBe('Couldn\'t reach WaveSpeed Cloud. Try again later.');
+  });
+
+  it('says whose key and which upstream in each language, for every reason', () => {
+    for (const locale of ['en', 'zh-CN', 'zh-TW', 'ja', 'ko']) {
+      setLocale(locale);
+      const t = renderHook(() => useTranslation()).result.current;
+      for (const keyReason of ['invalid', 'no_balance', 'model_not_found', 'rate_limited', undefined] as const) {
+        const stored = encodeTaskFailure('account_key_failed', { upstream: 'wavespeed', ...(keyReason === undefined ? {} : { keyReason }) });
+        const mine = failureSentence(stored, t, undefined, own);
+        const theirs = failureSentence(stored, t, undefined, admins);
+        expect(mine, `${locale} ${keyReason}`).toContain('WaveSpeed Cloud');
+        expect(theirs, `${locale} ${keyReason}`).toContain('Studio Admin');
+        expect(mine, `${locale} ${keyReason}`).not.toContain('Studio Admin');
+        expect(`${mine}${theirs}`, `${locale} ${keyReason}`).not.toMatch(/[{}]|account_key/);
+      }
+      const missingMine = failureSentence('account_key_missing', t, undefined, own);
+      const missingTheirs = failureSentence('account_key_missing', t, undefined, admins);
+      expect(missingTheirs, locale).toContain('Studio Admin');
+      expect(missingMine, locale).not.toBe(missingTheirs);
+    }
+  });
+
+  it('names the upstream whose key is gone when the run knows it, for the payer, a member and before the plan', () => {
+    const gone = encodeTaskFailure('account_key_missing', { upstream: 'wavespeed' });
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    expect(failureSentence(gone, t, undefined, own)).toBe('Your WaveSpeed Cloud key for this run was replaced or deleted. Run it again.');
+    expect(failureSentence(gone, t, undefined, admins)).toBe(
+      'The Studio Admin\'s WaveSpeed Cloud key for this run was replaced or deleted. Run it again.',
+    );
+    expect(failureSentence(gone, t)).toBe('The wavespeed key this run used was replaced or deleted. Run it again.');
+    for (const locale of ['zh-CN', 'zh-TW', 'ja', 'ko']) {
+      setLocale(locale);
+      const tl = renderHook(() => useTranslation()).result.current;
+      for (const keys of [own, admins, undefined]) {
+        const sentence = failureSentence(gone, tl, undefined, keys);
+        expect(sentence, `${locale} ${keys?.payer}`).toContain(keys === undefined ? 'wavespeed' : 'WaveSpeed Cloud');
+        expect(sentence, `${locale} ${keys?.payer}`).not.toMatch(/[{}]|none|account_key/);
+      }
+      expect(failureSentence('account_key_missing', tl, undefined, own), locale).not.toMatch(/none|[{}]/);
+    }
+  });
+
+  it('falls back to the upstream id and no owner while the key plan is not known', () => {
+    setLocale('en');
+    const t = renderHook(() => useTranslation()).result.current;
+    expect(failureSentence(noBalance, t)).toBe('The wavespeed key is out of balance. Top up at wavespeed.');
+  });
+});

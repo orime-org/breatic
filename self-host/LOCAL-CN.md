@@ -85,6 +85,8 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。每家上游读的环境变量名写在 `config/provider/upstreams.yaml` 的 `key_env`；图像、视频等生成模型至少要配上它在 `config/provider/media/<类型>.yaml` 里列出的一家上游的密钥，例如 `WAVESPEED_API_KEY` 或 `FAL_KEY`。
 
+要让用户填自己的上游 key（账号菜单里的 BYOK 设置），按 `.env.docker` 的说明配置 `PROVIDER_KEY_SECRET_ID` 和 `PROVIDER_KEY_SECRETS`；用户保存的 key 用它们加密后存储。用某个主密钥加密的 key 还在库里时，这个主密钥要一直留在列表里，否则那些 key 无法再解开。两项都留空时 BYOK 设置关闭，所有调用都用上面配置的密钥。
+
 <a id="cloudflare"></a>
 ## 4. 正式部署 Cloudflare 上传服务
 
@@ -261,7 +263,7 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 
 替换全部 `YOUR_...`。共享密钥必须与刚设置到 Cloudflare 的完全相同，bucket 必须一致；公开读取地址和 S3 endpoint 不能互换，URL 不带末尾 `/`。不要把密钥提交到仓库。
 
-开启网页动画时，再把 `WEB_ANIMATION_PREVIEW_BASE_URL` 设为提供 Worker 预览路由的 HTTPS 地址，最好是单独的域名。
+开启网页动画时，再把 `WEB_ANIMATION_PREVIEW_BASE_URL` 设为提供 Worker 预览路由的 HTTPS 地址，最好是单独的域名；生成一对密钥，公钥填 `INGEST_KEY_SEAL_PUBLIC_KEY`，私钥用 `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` 放进 Worker（生成方法见 `.env.docker`）。Worker 不存任何模型 key：每次运行用的 key 加密后随任务带过去，所以模型 key（如 `OPENROUTER_API_KEY`）只配在应用的 `.env` 里，由 worker 每次提交时读取，不配进 Worker。
 
 Cloudflare Worker 不需要回调你的本机主站，因此个人使用不需要端口映射、内网穿透或公网主站域名。
 

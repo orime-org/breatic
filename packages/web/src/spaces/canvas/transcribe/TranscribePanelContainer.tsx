@@ -16,6 +16,7 @@ import * as React from 'react';
 import { getLocale } from '@breatic/shared';
 
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
+import { ownKeyCredit, useKeyPlan } from '@web/features/byok/byok-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { CanvasPanel } from '@web/spaces/canvas/_shared/CanvasPanel';
 import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
@@ -63,7 +64,11 @@ interface OpenTranscribePanelProps {
  */
 function OpenTranscribePanel({ nodeId, onRun }: OpenTranscribePanelProps): React.JSX.Element {
   const t = useTranslation();
-  const { spaceId } = useCanvasContext();
+  const { spaceId, projectId } = useCanvasContext();
+  // A transcription runs on the payer's OpenRouter key when they saved one, and then takes no credits (inner#1953).
+  const plan = useKeyPlan(projectId === '' ? undefined : projectId).data;
+  const onKey = plan?.llm.usesAccountKey === true ? ownKeyCredit(plan.payer, t) : undefined;
+  const creditText = onKey?.text ?? t('canvas.miniTool.panel.usage');
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
   const keepFillers = useTranscribePreference((s) => s.keepFillers);
   const setKeepFillers = useTranscribePreference((s) => s.setKeepFillers);
@@ -103,7 +108,8 @@ function OpenTranscribePanel({ nodeId, onRun }: OpenTranscribePanelProps): React
           </p>
         </div>
         <PanelRunFooter
-          creditText={t('canvas.miniTool.panel.usage')}
+          creditText={creditText}
+          creditDetail={onKey?.detail}
           runLabel={t('canvas.miniTool.panel.run')}
           disabled={false}
           loading={running}

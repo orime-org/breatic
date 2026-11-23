@@ -27,3 +27,4 @@ export {
   type WebAnimationRenderJobRequest, type WebAnimationRenderJobReport,
 } from "@shared/upload/web-animation-job.js";
 export { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
+export { ModelKeysUnreadable, sealModelKeys, openModelKeys } from "@shared/upload/model-keys.js";

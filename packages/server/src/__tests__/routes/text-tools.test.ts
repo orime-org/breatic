@@ -73,6 +73,8 @@ const model = vi.hoisted(() => ({
   gate: null as Promise<void> | null,
   entered: 0,
   calls: [] as Record<string, unknown>[],
+  /** What the stream throws after its deltas, if anything. */
+  failWith: null as Error | null,
 }));
 
 vi.mock("@breatic/domain", async () => {
@@ -94,6 +96,7 @@ vi.mock("@breatic/domain", async () => {
             providerMetadata: { test: { costUsd: 0.01 } },
           });
           for (const text of model.deltas) yield { type: "text-delta", text };
+          if (model.failWith !== null) throw model.failWith;
         })(),
       };
     },
@@ -259,6 +262,7 @@ beforeEach(() => {
   model.gate = null;
   model.entered = 0;
   model.calls = [];
+  model.failWith = null;
 });
 
 describe("the contract", () => {
@@ -486,6 +490,20 @@ describe("the budgets in config/text-tools.yaml", () => {
 });
 
 describe("the stream framing", () => {
+  it("names the key, the upstream and why when the run fails on the payer's own key (inner#1953)", async () => {
+    model.failWith = Object.assign(new Error("refused"), { kind: "account_key_failed", upstream: "openrouter", reason: "no_balance", lasting: true });
+    const { events } = await run(bodyFor("shorten"));
+    const failed = events.find((e) => e.event === "error");
+    expect(JSON.parse(failed!.data)).toMatchObject({ type: "error", reason: "account_key_failed", upstream: "openrouter", keyReason: "no_balance" });
+  });
+
+  it("names no key on any other failure", async () => {
+    model.failWith = new Error("socket hang up");
+    const { events } = await run(bodyFor("shorten"));
+    const failed = JSON.parse(events.find((e) => e.event === "error")!.data) as Record<string, unknown>;
+    expect(failed.reason).toBeUndefined();
+  });
+
   it("sends each text_delta as JSON so newlines inside it survive the frame", async () => {
     model.deltas = ["line one\n\nline two\n", "data: not a field\r\n", "\n- item\n", "end"];
 
@@ -504,6 +522,8 @@ describe("the model call", () => {
     expect(vi.mocked(provider().llm.prepare)).toHaveBeenCalledWith(
       "google/gemini-3.8-flash",
       { thinking: true, thinkingLevel: "low", cache: false },
+      undefined,
+      expect.objectContaining({ owner: "deployment" }),
     );
     expect(model.calls[0]).toMatchObject({ providerOptions: {}, maxRetries: 0 });
     expect(model.calls[0]).not.toHaveProperty("temperature");

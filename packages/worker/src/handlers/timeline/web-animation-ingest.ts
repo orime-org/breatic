@@ -6,8 +6,8 @@
  * §6.1): the creation container's jobs and an export's render jobs, each read with its own report schema.
  *
  * Each call answers a report or says why there is none: no such job (404), the container could not start (503, the
- * next pickup submits again), web-animation execution is not configured on this Worker (501, a terminal answer), or,
- * on a submit, no upstream of the job's plan has its key there (501 naming the model and the variables, terminal too).
+ * next pickup submits again), or web-animation execution is not configured on this Worker (501, a terminal answer). The
+ * Worker holds no model key: each submit carries the keys sealed (inner#1953).
  */
 
 import { env } from "@breatic/core";
@@ -29,8 +29,7 @@ export type IngestAnswer<R = WebAnimationJobReport> =
   | { kind: "report"; report: R }
   | { kind: "missing" }
   | { kind: "unavailable" }
-  | { kind: "disabled" }
-  | { kind: "unconfigured"; model: string; envVars: string[] };
+  | { kind: "disabled" };
 
 /** An answer the worker cannot act on. */
 export class IngestJobError extends Error {
@@ -43,25 +42,6 @@ export class IngestJobError extends Error {
     super(`The ingest Worker answered ${route} with ${status}`);
     this.name = "IngestJobError";
   }
-}
-
-/**
- * What a 501 says: the plan's upstreams have no key on the Worker, or the feature is off there.
- * @param text - The answer's body.
- * @returns The answer.
- * @throws {never} Never.
- */
-function disabledAnswer(text: string): IngestAnswer<never> {
-  let body: unknown;
-  try {
-    body = JSON.parse(text);
-  } catch {
-    // `feature_disabled` is plain text.
-    return { kind: "disabled" };
-  }
-  const named = body as { error?: unknown; model?: unknown; envVars?: unknown } | null;
-  if (named?.error !== "not_configured" || typeof named.model !== "string" || !Array.isArray(named.envVars)) return { kind: "disabled" };
-  return { kind: "unconfigured", model: named.model, envVars: named.envVars.filter((name): name is string => typeof name === "string") };
 }
 
 /** Reads a job's report. */
@@ -85,7 +65,7 @@ async function ask<R>(route: string, url: string, init: RequestInit, endsAt: num
     { replaySafe: true, ...untilDeadlineIfAhead(endsAt) },
   );
   if (res.status === 404) return { kind: "missing" };
-  if (res.status === 501) return disabledAnswer(await res.text().catch(() => ""));
+  if (res.status === 501) return { kind: "disabled" };
   if (res.status === 503) return { kind: "unavailable" };
   if (!res.ok) throw new IngestJobError(res.status, route);
   const report = reader.safeParse(await res.json());

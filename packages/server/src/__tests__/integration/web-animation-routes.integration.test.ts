@@ -486,6 +486,31 @@ describe("GET /timeline/space-executions", () => {
     expect(await res.json()).toEqual({ error: { code: 422, message: t("server.error.validation") } });
   });
 
+  it("answers the upstream a failure of the payer's own key names, and whose key it was (inner#1953)", async () => {
+    const fx = await seedProject();
+    const failed = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
+    await grant(failed.id, fx.projectId);
+    const plain = await insertExecution({ projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.editor.userId });
+    await grant(plain.id, fx.projectId);
+    await fail(plain.id);
+    // The run went out on the owner's OpenRouter key row, since retired; the row still names whose key it was.
+    const [key] = await sql<{ id: string }[]>`
+      INSERT INTO account_provider_keys (user_id, upstream, ciphertext, display_hint, deleted_at)
+      VALUES (${fx.owner.userId}, 'openrouter', NULL, 'sk-or…1234', now()) RETURNING id
+    `;
+    await sql`UPDATE timeline_executions SET status = 'failed', failure_reason = 'account_key_failed', failure_upstream = 'openrouter', failure_key_reason = 'no_balance', llm_key_id = ${key!.id} WHERE id = ${failed.id}`;
+
+    const failures = await page(fx.viewer.cookie, `/timeline/space-executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}&scope=space&group=failed`);
+
+    expect(failures.rows.find((row) => row.id === failed.id)).toMatchObject({
+      failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "no_balance", failureKeyOwner: fx.owner.userId,
+    });
+    const other = failures.rows.find((row) => row.id === plain.id);
+    expect(other).toBeDefined();
+    expect(other).not.toHaveProperty("failureUpstream");
+    expect(other).not.toHaveProperty("failureKeyOwner");
+  });
+
   it("counts in each total exactly the rows its pages hold, in every scope", async () => {
     const fx = await seedProject();
     const { versionId } = await finishedCreate(fx);

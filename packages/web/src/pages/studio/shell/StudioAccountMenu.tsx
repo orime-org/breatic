@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Cookie, ExternalLink, FileText, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
+import { Cookie, ExternalLink, FileText, KeyRound, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
@@ -25,6 +25,7 @@ import type { CreditOverview } from '@breatic/shared';
 import type { UseQueryResult } from '@tanstack/react-query';
 
 import { authApi } from '@web/data/api/auth';
+import { ByokDialog } from '@web/features/byok/ByokDialog';
 import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
@@ -90,8 +91,8 @@ const NOTICE_LINKS = [
 
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
- * the account's own entries: who is signed in, account settings, the promoter
- * program, membership, credits, and sign out.
+ * the account's own entries: who is signed in, account settings, BYOK
+ * settings, the promoter program, membership, credits, and sign out.
  *
  * A menu rather than a popover. Every entry here either navigates or acts, and
  * Radix's menu closes itself on select; a popover does not, and this one is
@@ -118,6 +119,9 @@ export function StudioAccountMenu(): React.JSX.Element {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [membershipOpen, setMembershipOpen] = React.useState(false);
   const [logoutOthersOpen, setLogoutOthersOpen] = React.useState(false);
+  // BYOK settings open over the page, the way the promoter program does (inner#1953).
+  const [byokOpen, setByokOpen] = React.useState(false);
+  const openByok = React.useCallback((): void => setByokOpen(true), []);
   const openLogoutOthers = React.useCallback((): void => setLogoutOthersOpen(true), []);
   const accountButtonRef = React.useRef<HTMLButtonElement>(null);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
@@ -302,6 +306,10 @@ export function StudioAccountMenu(): React.JSX.Element {
             <Settings className='h-4 w-4' />
             {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
+          <DropdownMenuItem onSelect={openByok} data-testid='account-menu-byok'>
+            <KeyRound className='h-4 w-4' />
+            {t('byok.heading')}
+          </DropdownMenuItem>
           {promoter.shown ? (
             <DropdownMenuItem onSelect={promoter.select} data-testid='account-menu-promoter'>
               <Megaphone className='h-4 w-4' />
@@ -386,6 +394,7 @@ export function StudioAccountMenu(): React.JSX.Element {
         returnFocusTo={accountButtonRef}
       />
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
+      <ByokDialog open={byokOpen} onOpenChange={setByokOpen} />
       <PromoterDialog open={promoter.dialogOpen} onOpenChange={promoter.setDialogOpen} />
       <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
       <CreditsOverlay

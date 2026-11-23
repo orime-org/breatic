@@ -67,6 +67,13 @@ vi.mock('@hyperframes/player', () => {
   return {};
 });
 vi.mock('react-moveable', async () => (await import('@web/spaces/timeline/__tests__/helpers/moveable-mock')).moveableModule);
+// The Project page's key words, as its key plan gives them; a case sets them (inner#1953).
+const keyWords = vi.hoisted((): { current: { payer: 'self' | 'admin'; upstreamNames: Record<string, string> } | undefined } => ({ current: undefined }));
+vi.mock('@web/features/byok/key-failure-words', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useKeyFailureWords: () => keyWords.current,
+}));
+
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
 }));
@@ -833,7 +840,7 @@ describe('web animation copy in every locale', () => {
     'timeline.webAnimation.picker.deletedSpace', 'timeline.webAnimation.picker.loadMore',
     'timeline.webAnimation.durationShort',
     'timeline.webAnimation.failure.feature_disabled', 'timeline.webAnimation.failure.unknown',
-    'timeline.webAnimation.failure.check', 'timeline.webAnimation.failure.stopped',
+    'timeline.webAnimation.failure.check', 'timeline.webAnimation.failure.stopped', 'timeline.webAnimation.failure.key_lost',
     'timeline.webAnimation.preview.pending', 'timeline.webAnimation.preview.failed', 'timeline.webAnimation.preview.unavailable',
     'timeline.errors.source_unresolved',
   ];
@@ -861,6 +868,7 @@ describe('web animation copy in every locale', () => {
     const english = LOCALE_CATALOGS[0]?.[1] ?? {};
     expect(readPath(english, 'timeline.webAnimation.failure.check')).toBe('The page did not pass the check.');
     expect(readPath(english, 'timeline.webAnimation.failure.stopped')).toBe('Creation stopped unexpectedly.');
+    expect(readPath(english, 'timeline.webAnimation.failure.key_lost')).toBe('Creation was interrupted. Run it again.');
     expect(readPath(english, 'timeline.webAnimation.preview.pending')).toBe(
       '{track}: {status, select, awaiting_landing {saving web animation} queued {web animation queued} running {creating web animation} cancelling {cancelling web animation} other {web animation pending}}…');
     expect(readPath(english, 'timeline.webAnimation.preview.failed')).toBe(

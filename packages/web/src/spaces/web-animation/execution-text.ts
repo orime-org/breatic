@@ -6,8 +6,12 @@
  * sentence a failure reason reads as and the steps a run goes through.
  */
 
-import type { TimelineExecutionStatus } from '@breatic/shared';
+import { ACCOUNT_KEY_FAILURE_KINDS, encodeTaskFailure, type AccountKeyFailureKind, type TimelineExecutionStatus } from '@breatic/shared';
 import { WebAnimationAspectSchema, type WebAnimationAspect, type WebAnimationRowView } from '@breatic/shared/space-content';
+
+import type { KeyFailureWords } from '@web/features/byok/key-failure-words';
+import type { useTranslation } from '@web/i18n/use-translation';
+import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 
 /** The engines a user picks from, with their display names. */
 export const WEB_ANIMATION_ENGINE_NAMES = { deepseek: 'DeepSeek' } as const satisfies Readonly<Record<string, string>>;
@@ -44,8 +48,10 @@ const CREATION_PHASES = ['writing', 'validating', 'saving'] as const;
 const EXPORT_PHASES = ['rendering', 'saving'] as const;
 
 // The sentence each failure reason is told with; a reason not listed reads as a general failure.
-const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped' | 'render' | 'frameMismatch' | 'saveVideo'>> = {
+const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped' | 'key_lost' | 'render' | 'frameMismatch' | 'saveVideo'>> = {
   feature_disabled: 'feature_disabled',
+  // The job object restarted and lost the keys its run was submitted with (inner#1953).
+  key_lost_on_restart: 'key_lost',
   validation_failed: 'check', font_not_in_set: 'check', manifest_invalid: 'check', package_too_large: 'check', output_missing: 'check',
   viewport_mismatch: 'check', fps_mismatch: 'check', duration_mismatch: 'check', font_set_mismatch: 'check',
   harness_failed: 'stopped', container_failed: 'stopped', internal: 'stopped', base_unavailable: 'stopped',
@@ -73,6 +79,34 @@ export function failureSentenceKey(reason: string | null): string {
  */
 export function endedSentenceKey(status: TimelineExecutionStatus, reason: string | null): string {
   return status === 'failed' ? failureSentenceKey(reason) : `timeline.webAnimation.status.${status}`;
+}
+
+/** The failures of the payer's own key or its upstream, told with the canvas task sentence that names the upstream (inner#1953). */
+const KEY_FAILURES: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_KINDS);
+
+/**
+ * The sentence an ended run that did not succeed is told with: a failure of the payer's own key names the upstream,
+ * why it refused the key and whose key it was (inner#1953); any other ending reads as {@link endedSentenceKey} says.
+ * @param row - The ended run.
+ * @param t - The translator.
+ * @param keys - Whose key it was to the viewer and each upstream's name, off the Project's key plan.
+ * @returns The sentence.
+ * @throws {never} Never.
+ */
+export function endedSentence(
+  row: Pick<WebAnimationRowView, 'status' | 'failureReason' | 'failureUpstream' | 'failureKeyReason' | 'failureKeyOwner'>,
+  t: ReturnType<typeof useTranslation>,
+  keys: KeyFailureWords | undefined,
+): string {
+  if (row.status === 'failed' && row.failureReason !== null && KEY_FAILURES.has(row.failureReason)) {
+    const about = {
+      ...(row.failureUpstream == null ? {} : { upstream: row.failureUpstream }),
+      ...(row.failureKeyReason == null ? {} : { keyReason: row.failureKeyReason }),
+      ...(row.failureKeyOwner === undefined ? {} : { keyOwner: row.failureKeyOwner }),
+    };
+    return failureSentence(encodeTaskFailure(row.failureReason as AccountKeyFailureKind, about), t, undefined, keys);
+  }
+  return t(endedSentenceKey(row.status, row.failureReason));
 }
 
 /**

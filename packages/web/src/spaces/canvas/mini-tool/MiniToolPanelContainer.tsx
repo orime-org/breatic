@@ -28,7 +28,7 @@ import { NodePanelMount } from '@web/spaces/canvas/_shared/NodePanelMount';
 import { cropSourceSelector, intrinsicSize, isCropSource } from '@web/spaces/canvas/focus/crop-source';
 import { canvasRootOf, useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { controlsForKeys } from '@web/spaces/canvas/generate/model-controls';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { isJoinTool, joinClipsOf } from '@web/spaces/canvas/mini-tool/join';
 import { useMiniToolRunning } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
@@ -205,7 +205,7 @@ function OpenMiniToolPanel({
   // picture, the size the export crops in (inner#888 §7.4.1).
   const crops = !isModelTool(spec) && spec.params.some((param) => param.kind === 'rect');
   const measured = draft?.sourceSize ?? null;
-  const { spaceId } = useCanvasContext();
+  const { spaceId, projectId } = useCanvasContext();
   // A press of this tool on this node still waiting (inner#1490) holds the
   // button the way an export does: it outlives the panel it was made in.
   const running = useMiniToolRunning(spaceId, nodeId, spec.id);
@@ -330,7 +330,7 @@ function OpenMiniToolPanel({
   );
   const estimateInput = React.useMemo(() => miniToolEstimateInput(spec, snapshot), [spec, snapshot]);
   // Priced, and asked why no upstream here takes it (#1521), said by the press.
-  const { creditText: estimate, refusalText } = useRunCheck(entry, estimateInput, catalog?.credit_multiplier ?? 1);
+  const { creditText: estimate, creditDetail: estimateDetail, refusalText } = useRunCheck(entry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   const mode = creditMode(spec);
   const creditText =
     mode === 'free'
@@ -338,6 +338,8 @@ function OpenMiniToolPanel({
       : mode === 'usage'
         ? t('canvas.miniTool.panel.usage')
         : (estimate ?? '');
+  // Only a priced run can be on the payer's key; free and usage-billed tools say their own sentence.
+  const creditDetail = mode === 'free' || mode === 'usage' ? undefined : estimateDetail;
 
   const drawingSteps = draft?.drawing?.steps;
   const inked = React.useMemo(() => {
@@ -467,6 +469,7 @@ function OpenMiniToolPanel({
         prompt={prompt}
         onPrompt={setMiniToolPrompt}
         creditText={creditText}
+        creditDetail={creditDetail}
         refusal={refusal}
         onRun={onRunPress}
         onClose={closeActivePanel}

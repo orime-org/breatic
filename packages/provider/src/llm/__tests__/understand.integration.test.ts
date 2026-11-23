@@ -616,8 +616,8 @@ describe("an understand refusal for its content", () => {
     expect((error as UpstreamRequestRejected).reason).toBe("content_blocked");
   });
 
-  it("names no reason for a 403 that is about the key or the budget", async () => {
-    const error = await openRouterAnswering({ status: 403, body: { error: { code: 403, message: "Key limit exceeded" } } });
+  it("names no reason for a 403 that names no spent limit", async () => {
+    const error = await openRouterAnswering({ status: 403, body: { error: { code: 403, message: "Request blocked: prompt injection patterns detected" } } });
     expect(error).toBeInstanceOf(UpstreamRequestRejected);
     expect((error as UpstreamRequestRejected).reason).toBeUndefined();
   });

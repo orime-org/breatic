@@ -18,10 +18,11 @@ import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { textToolSchema } from "@server/routes/schemas.js";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
+import { keyFailureFrame } from "@server/agent/key-failure-frame.js";
 import { precheckCredits, projectService, textToolService } from "@server/modules";
 import { getModelForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { assertLlmServable } from "@server/modules/task/model-servable.js";
-import { SMALLEST_CREDIT } from "@breatic/domain";
+import { SMALLEST_CREDIT, resolveKeys } from "@breatic/domain";
 import { t, TEXT_TOOL_INSTRUCTIONS_MAX } from "@breatic/shared";
 
 const textTools = new Hono<{ Variables: AuthVariables }>();
@@ -138,9 +139,16 @@ textTools.post(
       logger.warn({ userId: user.id, projectId, tool }, "text_tool_over_budget");
       throw err;
     }
-    await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
-    // A deployment with no upstream for the tool's model refuses before the stream opens, saying what it is missing.
-    assertLlmServable(getModelForTool(tool), "call");
+    // The run goes out on the keys of whoever pays for the Studio (inner#1953): the payer's own OpenRouter key asks no
+    // balance, and whether the tool's model can be served is judged on it.
+    const keys = await resolveKeys({ projectId }, { kind: "llm" });
+    if (keys.keyId === null) {
+      await precheckCredits(projectId, user.id, SMALLEST_CREDIT);
+      // A deployment with no upstream for the tool's model refuses before the stream opens, saying what it is missing.
+      assertLlmServable(getModelForTool(tool), "call");
+    } else {
+      assertLlmServable(getModelForTool(tool), "call", undefined, keys.keys);
+    }
 
     // The key a run is recorded and charged under is minted here for every
     // request. A key from the client would let the same key be sent again,
@@ -155,6 +163,7 @@ textTools.post(
         params,
         stopped,
         operationKey,
+        keys,
       )) {
         if (event.type === "text_delta") {
           await writeEvent(s, "text_delta", { text: event.text });
@@ -162,8 +171,9 @@ textTools.post(
         }
         ended = true;
         if (event.type === "error") {
-          // The cause stays in the log; the user is told the run failed.
-          await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed") });
+          // The cause stays in the log; the user is told the run failed, and whose key failed where and why when it
+          // was the payer's own (inner#1953).
+          await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed"), ...keyFailureFrame(event.err) });
           logger.error({ err: event.err, userId: user.id, projectId, tool }, "text_tool_error");
           continue;
         }
@@ -179,7 +189,7 @@ textTools.post(
       // waiting for one.
       logger.error({ err, userId: user.id, projectId, tool }, "text_tool_stream_failed");
       if (!ended && !s.closed) {
-        await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed") });
+        await writeEvent(s, "error", { type: "error", message: t("server.text_tool.failed"), ...keyFailureFrame(err) });
       }
     });
   },

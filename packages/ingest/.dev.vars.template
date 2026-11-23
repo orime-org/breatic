@@ -12,11 +12,10 @@
 # Generate one with `openssl rand -hex 32`.
 INGEST_SHARED_SECRET=
 
-# Optional: the model keys web-animation runs call the model with. Each is
-# `HARNESS_` plus an upstream's `key_env` in config/provider/upstreams.yaml;
-# a run goes to the first upstream of its model's route whose key is set
-# here. Only the Worker's model.local relay reads them; the container never
-# sees them. With none set, a web-animation submit answers 501 naming the
-# variables it needs. On a deployment:
-# `wrangler secret put HARNESS_OPENROUTER_API_KEY --env production`.
-HARNESS_OPENROUTER_API_KEY=
+# Optional: the private half (PKCS#8 PEM) of the key pair web-animation runs
+# need. The Worker holds no model key: our worker sends each run's keys sealed
+# to the public half (INGEST_KEY_SEAL_PUBLIC_KEY in the repo-root `.env`), and
+# this opens them into the job object's memory only. Without it, a
+# web-animation submit answers 501 feature_disabled. On a deployment:
+# `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production`.
+KEY_UNSEAL_PRIVATE_KEY=

@@ -4,7 +4,7 @@ The model provider layer: every model call (media generation, understanding, LLM
 
 ### It stands alone
 
-**The package imports no `@breatic/*` package and no other package's source (`provider-no-internal-import` in `.dependency-cruiser.cjs`); key reading, configuration and text cleaning come in through `createProvider`'s options, and each call's deadline comes in on that call.** It is a routing layer meant to be able to leave this repository, so it never reads `process.env`, never logs and never writes the application's database. Check: about to import a helper from `@breatic/shared` or `@breatic/core`? Write or move it inside the package, or take it as an option.
+**The package imports no `@breatic/*` package and no other package's source (`provider-no-internal-import` in `.dependency-cruiser.cjs`); configuration, text cleaning and the reader of the deployment's keys come in through `createProvider`'s options, and each call's deadline and an account's own keys (a `KeySet` with owner `account`, `src/keys.ts`) come in on that call.** It is a routing layer meant to be able to leave this repository, so it never reads `process.env`, never logs, never reads or writes the application's database and never stores a key: a ticket and a cost lookup record only that an account's keys ran it, and the caller hands the same keys back for every later step. Check: about to import a helper from `@breatic/shared` or `@breatic/core`? Write or move it inside the package, or take it as an option.
 
 ### Its own HTTP module
 
@@ -30,6 +30,8 @@ The model provider layer: every model call (media generation, understanding, LLM
 ### Moving to the next upstream
 
 **Weight 0 is reserved for the model's official API, and smaller weights are tried first; an LLM route only a reseller serves (the catch-all route) has that reseller at 0, while media models have no official adapter yet, so their resellers start at 1 and weight 0 stays empty; a call moves on only when the upstream has no key configured, was never reached, answered 408, 429 or 5xx, said it has no such model, or said the balance is too low; an LLM call also moves on 409, and retries on the same upstream first (`llmMaxRetries`).** Any other 400 or 422, a request that left without an answer, a passed deadline, and anything after the upstream accepted a submit or sent its first content stay on that upstream. Each upstream's "no such model" and "balance too low" answers are matched in its own adapter, never across upstreams.
+
+**A call on an account's keys runs only on the first upstream of its order that the account holds a key for and never moves on, to another upstream or to the deployment's keys; a refusal on that key, or a key for none of the model's upstreams, ends it as `AccountKeyFailure` (`src/errors.ts`).** The account pays that upstream itself, so running the call anywhere else would spend money it did not choose to spend.
 
 ### Every billed answer reaches the caller once
 

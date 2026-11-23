@@ -65,11 +65,11 @@ describe("list_generation_models with target 3d", () => {
     ]);
   });
 
-  it("lists the Single image and Multi-view variants for i23d", async () => {
+  it("lists the Image-to-3D and Multi-view variants for i23d", async () => {
     const answer = await run({ target: "3d", mode: "i23d" });
     if (!answer.available) throw new Error(`expected models, got ${JSON.stringify(answer)}`);
     expect(answer.models.map((model) => [model.name, model.displayName])).toEqual([
-      ["tripo-h3.1-i23d", "Tripo H3.1 Single image"],
+      ["tripo-h3.1-i23d", "Tripo H3.1 Image-to-3D"],
       ["tripo-h3.1-multiview", "Tripo H3.1 Multi-view"],
     ]);
   });
