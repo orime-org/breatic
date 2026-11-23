@@ -81,7 +81,7 @@ describe('part reports (inner#1693 design 3.1, 5.1)', () => {
 });
 
 describe('pre-compiling a changed part (inner#1693 design 5.2)', () => {
-  it('compiles the object for the scene it draws in, with its lights and environment', async () => {
+  it('compiles the object for the scene it draws in, with its lights', async () => {
     const initial = props();
     const { runtime } = await open(initial, '#969696');
     const scene = (runtime as unknown as { scene: Scene }).scene;
