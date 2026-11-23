@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** The push parsers of probe-image-size 7.5.0 (`lib/formats/*.js`), which ship no type declarations. */
 interface ProbeImageParser {
