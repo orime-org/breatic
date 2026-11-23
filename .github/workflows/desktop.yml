@@ -102,6 +102,9 @@ jobs:
         shell: bash
         run: pnpm --filter @breatic/desktop run dist
         env:
+          # A tag is a release build: it must carry the shell's Sentry DSN and the commit (design 9.4).
+          BREATIC_RELEASE_BUILD: ${{ startsWith(github.ref, 'refs/tags/desktop-v') && '1' || '' }}
+          BREATIC_DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
           # The update feed; builds that cannot be signed on their platform leave it out (electron-builder.config.mjs).
           BREATIC_UPDATE_BASE_URL: ${{ vars.DESKTOP_UPDATE_BASE_URL }}
           # macOS only: on Windows electron-builder falls back to CSC_LINK for signtool.
@@ -117,6 +120,16 @@ jobs:
           AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
           AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
           AZURE_PUBLISHER_NAME: ${{ vars.AZURE_PUBLISHER_NAME }}
+
+      # The installers carry no source maps; Sentry matches them to the code by the injected debug ids.
+      - name: Upload the source maps
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: pnpm exec sentry-cli sourcemaps upload --release "$GITHUB_SHA" packages/desktop/dist
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: orime
+          SENTRY_PROJECT: ${{ vars.DESKTOP_SENTRY_PROJECT }}
 
       - name: Publish to the update feed
         if: startsWith(github.ref, 'refs/tags/desktop-v')

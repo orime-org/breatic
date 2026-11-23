@@ -8,7 +8,9 @@
  * node_modules, which it cannot do from a pnpm workspace anyway. The
  * manifest's name and productName are the brand's: Electron derives the data
  * directory and the single-instance lock from them, and electron-builder the
- * Debian package name and the updater cache (design §9.1.1).
+ * Debian package name and the updater cache (design §9.1.1). Source maps stay
+ * out of the installers: they are uploaded to Sentry, matched by the debug ids
+ * `sentry-cli sourcemaps inject` wrote into the code (design §9.4).
  */
 
 import { cpSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -23,7 +25,7 @@ const brand = currentBrand();
 
 rmSync(app, { recursive: true, force: true });
 mkdirSync(app, { recursive: true });
-cpSync(join(root, "dist"), join(app, "dist"), { recursive: true });
+cpSync(join(root, "dist"), join(app, "dist"), { recursive: true, filter: (source) => !source.endsWith(".map") });
 writeFileSync(
   join(app, "package.json"),
   `${JSON.stringify(

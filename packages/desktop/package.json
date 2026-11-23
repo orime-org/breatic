@@ -8,7 +8,7 @@
   "scripts": {
     "build": "tsup",
     "start": "tsup && BREATIC_SERVER_URL=${BREATIC_SERVER_URL:-http://localhost:8100} electron .",
-    "dist": "tsup && node scripts/stage-app.mjs && node scripts/dist.mjs",
+    "dist": "tsup && sentry-cli sourcemaps inject dist && node scripts/stage-app.mjs && node scripts/dist.mjs",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
     "test": "vitest run",
