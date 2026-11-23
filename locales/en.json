@@ -2991,7 +2991,7 @@
       "before-after-reveal": {
         "name": "Before and after reveal",
         "description": "Your two photos as a social transformation clip",
-        "prompt": "A 6-second vertical before-and-after with sound. It starts on the first frame and ends on the end frame, the same place from the same spot. The hook in the first 2 seconds: 0.0 s the before, still; 0.3 s a quick push in; 0.8 s the first sign of the work; 1.5 s a flash of the after; 2.0 s back to the work. Then the work happening in fast motion until the after state: {✏️ the work, e.g. the stained sofa is scrubbed, rinsed and dried}. Sound: the work's own sounds, scrubbing and spraying, a soft whoosh at the reveal. No text on screen.",
+        "prompt": "A 6-second before-and-after with sound. It starts on the first frame and ends on the end frame, the same place from the same spot. The hook in the first 2 seconds: 0.0 s the before, still; 0.3 s a quick push in; 0.8 s the first sign of the work; 1.5 s a flash of the after; 2.0 s back to the work. Then the work happening in fast motion until the after state: {✏️ the work, e.g. the stained sofa is scrubbed, rinsed and dried}. Sound: the work's own sounds, scrubbing and spraying, a soft whoosh at the reveal. No text on screen.",
         "input": {
           "before": {
             "name": "Before",
