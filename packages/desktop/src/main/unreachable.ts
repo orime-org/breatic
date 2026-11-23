@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The rules behind the in-window "can't reach" page (#1599, design 5.1, 5.3).
+ * The rules behind the in-window "can't reach" page (inner#2041, design 5.1, 5.3).
  * Chromium commits a failed main-frame load as an error entry at the failed
  * address; the client writes the page into that entry and retries by
  * reloading it in place. Kept apart from Electron so the rules can be tested.

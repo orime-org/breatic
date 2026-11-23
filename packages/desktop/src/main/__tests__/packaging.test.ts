@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * What electron-builder is told for a brand (#1599, design §9.1, §9.1.1,
+ * What electron-builder is told for a brand (inner#2041, design §9.1, §9.1.1,
  * §9.1.2): the brand's names, its scheme, a Debian launcher action that
  * starts this brand's executable, macOS zip next to the dmg, and an update
  * feed under the brand's directory only on builds whose platform can prove

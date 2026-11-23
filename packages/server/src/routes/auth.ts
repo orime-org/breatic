@@ -141,7 +141,7 @@ function getGoogleClient(): OAuth2Client {
  * Also whether the referral code field exists: only while payments are on
  * (inner#1868 §2). And the desktop build this deployment hands browser
  * sign-ins back to: the confirmation page names it and returns the code on
- * its scheme, never on one the address asks for (#1599).
+ * its scheme, never on one the address asks for (inner#2041).
  * @returns `200` with `{ emailVerification, referralEnabled, desktopAppScheme, desktopAppName }`
  */
 auth.get("/options", (c) => {
@@ -449,7 +449,7 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
 
 /**
  * `POST /auth/desktop-handoff` - hand a signed-in browser's account to the
- * desktop client (#1599). The browser page calls it only after the user
+ * desktop client (inner#2041). The browser page calls it only after the user
  * pressed Continue, so a program that opens the page cannot take the account
  * silently (RFC 8252 §8.6).
  * @param c - Hono context with the challenge in the body
@@ -473,7 +473,7 @@ auth.post(
 
 /**
  * `POST /auth/desktop-exchange` - the desktop client trades a handoff code and
- * the verifier behind its challenge for a session of its own (#1599). The
+ * the verifier behind its challenge for a session of its own (inner#2041). The
  * session token leaves in the cookie; the user is shaped like the Google
  * sign-in answer.
  * @param c - Hono context with code and verifier in the body

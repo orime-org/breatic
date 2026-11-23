@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Publish a release to the brand's update feed (#1599, design §9.3). CI runs
+ * Publish a release to the brand's update feed (inner#2041, design §9.3). CI runs
  * it on a `desktop-v{version}` tag after packing, on each platform's runner.
  * Files go to R2 through its S3 API under {R2_UPDATES_PREFIX}/{brand id}/,
  * which BREATIC_UPDATE_BASE_URL serves; the bucket, the domain and the

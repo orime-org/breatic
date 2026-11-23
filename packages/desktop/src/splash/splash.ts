@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The splash page (#1599, design §5.2). The main process names the product,
+ * The splash page (inner#2041, design §5.2). The main process names the product,
  * the logo file and whether the attribution line shows in the page's
  * address; the page shows them and nothing else.
  */

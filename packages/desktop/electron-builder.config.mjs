@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Packaging for the desktop client (#1599, design §9). Every name comes from
+ * Packaging for the desktop client (inner#2041, design §9). Every name comes from
  * the brand the build is for (brand.mjs). Signing turns on only when its
  * credentials are in the environment, so a build without them is an unsigned
  * build of the same app.

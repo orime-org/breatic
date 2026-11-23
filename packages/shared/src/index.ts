@@ -312,7 +312,7 @@ export type {
   ApiError,
 } from "@shared/types/api.js";
 
-// ── Desktop client links (#1599) ───────────────────────────────────
+// ── Desktop client links (inner#2041) ───────────────────────────────────
 export { ASSET_DOWNLOAD_PARAM, APP_ROUTE_PREFIXES, isAppPath } from "@shared/desktop-links.js";
 export {
   BASE64URL_32_BYTES,

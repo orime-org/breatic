@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * One Linux update manifest for two packing runs (#1599, design §9.1.2). The
+ * One Linux update manifest for two packing runs (inner#2041, design §9.1.2). The
  * AppImage and the deb are packed separately, so the deb's package-type
  * marker never lands in the AppImage, and each run writes its own
  * latest-linux.yml. electron-updater's AppImage and deb updaters read the same

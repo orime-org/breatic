@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * How sign-in links on the build's own scheme reach the client (#1599,
+ * How sign-in links on the build's own scheme reach the client (inner#2041,
  * design §9.2). On Windows and Linux the link arrives in the arguments of a
  * launch, the first one or a second instance handed to the first. An AppImage
  * installs nothing, so the client writes its own desktop entry to register the

@@ -3,7 +3,7 @@
 
 /**
  * A partner build shows the partner's name everywhere the client names
- * itself (#1599, design §9.1.1). The client's own code and pages therefore
+ * itself (inner#2041, design §9.1.1). The client's own code and pages therefore
  * never write the official product name or its scheme: they read the brand
  * the build was made for. Only the workspace package scope, the bridge
  * name the pages call, the build's environment variable names and the

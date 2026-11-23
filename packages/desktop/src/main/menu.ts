@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The client's menu (#1599, design §6.1).
+ * The client's menu (inner#2041, design §6.1).
  *
  * On macOS a custom menu without the Edit roles leaves Cmd+C, V and Z dead in
  * every field of the page, so the standard role menus stay. The client has no

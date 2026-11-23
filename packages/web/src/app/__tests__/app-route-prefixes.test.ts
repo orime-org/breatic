@@ -3,7 +3,7 @@
 
 /**
  * The desktop client keeps a page in its window only when `isAppPath` says it
- * is the app's (#1599). Every top-level route the app serves must be on that
+ * is the app's (inner#2041). Every top-level route the app serves must be on that
  * list, or the client would hand the page to the system browser.
  */
 

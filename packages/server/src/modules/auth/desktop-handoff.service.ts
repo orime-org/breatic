@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Desktop client sign-in through the system browser (#1599).
+ * Desktop client sign-in through the system browser (inner#2041).
  *
  * Google refuses sign-in inside an embedded web view, so the desktop client
  * opens `/desktop/sign-in` in the system browser with a challenge, the SHA-256

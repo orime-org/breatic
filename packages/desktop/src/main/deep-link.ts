@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * How sign-in links on the build's own scheme reach the client (#1599, design
+ * How sign-in links on the build's own scheme reach the client (inner#2041, design
  * §9.2).
  *
  * macOS delivers them through `open-url`. Windows and Linux start the client

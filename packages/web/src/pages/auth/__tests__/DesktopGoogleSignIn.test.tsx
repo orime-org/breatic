@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Google sign-in inside the desktop client (#1599).
+ * Google sign-in inside the desktop client (inner#2041).
  *
  * Google refuses sign-in in an embedded page, so the client's button opens the
  * system browser and waits. The browser hands a code back to the client; the

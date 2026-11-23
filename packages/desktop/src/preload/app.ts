@@ -3,7 +3,7 @@
 
 /**
  * The app window's preload: the few calls the web app may make into the
- * client (#1599), and `retry` for the "can't reach" page the client writes
+ * client (inner#2041), and `retry` for the "can't reach" page the client writes
  * into Chromium's error entry (design 5.3). The main process checks every
  * sign-in call comes from the server's origin and every retry from that
  * window's error entry.

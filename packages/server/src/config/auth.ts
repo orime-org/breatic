@@ -76,7 +76,7 @@ function readAuthConfig(): z.infer<typeof authConfigSchema> {
 }
 
 /**
- * How long a desktop sign-in handoff code stays redeemable (#1599).
+ * How long a desktop sign-in handoff code stays redeemable (inner#2041).
  * @returns Seconds (memoized after the first read).
  * @throws {z.ZodError} if the value is malformed.
  */

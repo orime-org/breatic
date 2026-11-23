@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Desktop sign-in handoff (#1599) — real PG + Redis.
+ * Desktop sign-in handoff (inner#2041) — real PG + Redis.
  *
  * The desktop client opens `/desktop/sign-in?challenge=…` in the system
  * browser. The browser, signed in, asks `POST /auth/desktop-handoff` for a

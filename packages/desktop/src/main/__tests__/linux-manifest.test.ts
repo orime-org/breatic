@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The Linux update manifest (#1599, design §9.1.2). The AppImage and the deb
+ * The Linux update manifest (inner#2041, design §9.1.2). The AppImage and the deb
  * are packed in two runs so the deb's package-type marker never lands in the
  * AppImage; each run writes its own latest-linux.yml, and the second would
  * replace the first. The release publishes one manifest listing both, since

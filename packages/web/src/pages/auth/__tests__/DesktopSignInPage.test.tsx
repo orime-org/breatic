@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The browser page that hands a signed-in account to the desktop client (#1599).
+ * The browser page that hands a signed-in account to the desktop client (inner#2041).
  *
  * The desktop client opens it with a challenge. Asking for a code waits for
  * the user to press Continue: a program could open the page on its own, and

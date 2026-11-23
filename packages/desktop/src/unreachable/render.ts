@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The "can't reach" page (#1599, design 5.3). The main process writes it into
+ * The "can't reach" page (inner#2041, design 5.3). The main process writes it into
  * Chromium's error entry with `executeJavaScript`: the code is this fixed
  * function, and everything that comes from the network (the address, the
  * redirect target) arrives only as its JSON argument and is written with

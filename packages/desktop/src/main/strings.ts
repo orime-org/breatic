@@ -3,7 +3,7 @@
 
 /**
  * The client's own words ("can't reach" page, menu, leave and update dialogs) in the
- * operating system's language (#1599). They live in the root `locales/*.json`
+ * operating system's language (inner#2041). They live in the root `locales/*.json`
  * beside the web app's, under `desktop`, and are read by their full key, as
  * the web app reads its own.
  */

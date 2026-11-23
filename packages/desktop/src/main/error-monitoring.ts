@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The shell's error monitoring (#1599, design 9.4). Every brand reports to
+ * The shell's error monitoring (inner#2041, design 9.4). Every brand reports to
  * our official Sentry project with the DSN written in at build time, tagged
  * with the brand: errors, crashes and a session record per launch (release
  * health, which Sentry does not bill). The web pages keep their own Sentry;

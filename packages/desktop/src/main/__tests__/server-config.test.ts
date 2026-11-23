@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Which server the desktop client opens (#1599, design 6). Every build is
+ * Which server the desktop client opens (inner#2041, design 6). Every build is
  * dedicated to one server written in at build time: an empty or non-HTTPS
  * address fails the build, and the client opens that server. In development
  * `BREATIC_SERVER_URL` overrides it under the same rules.

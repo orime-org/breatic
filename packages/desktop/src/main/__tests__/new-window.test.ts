@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Opening another window (#1599, design §5.1). Windows' taskbar and Linux's
+ * Opening another window (inner#2041, design §5.1). Windows' taskbar and Linux's
  * launcher start the client with `--new-window`; the single-instance lock
  * hands that to the running client. A new window sits a step down and right
  * of the one the user was in.

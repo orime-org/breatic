@@ -111,7 +111,7 @@ html[data-theme='light'] {
   --brand-fg: #ffffff;
 
   /* Google's sign-in button where Google's own cannot run (the desktop
-     client, #1599). The colours are Google's branding-guideline values, the
+     client, inner#2041). The colours are Google's branding-guideline values, the
      same theme the web page's official button takes: its dark button on a
      light page. Plain :root variables because Google's greys are not neutral
      ramp values; the button reads them with bg-(--…). The hover values are

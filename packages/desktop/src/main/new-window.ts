@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Opening another window (#1599, design §5.1). Windows' taskbar task and the
+ * Opening another window (inner#2041, design §5.1). Windows' taskbar task and the
  * Debian launcher action start the client with `--new-window`; the
  * single-instance lock hands those arguments to the client already running.
  */

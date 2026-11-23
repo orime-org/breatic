@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The brand this build was made for (#1599, design §9.1.1), written in at
+ * The brand this build was made for (inner#2041, design §9.1.1), written in at
  * build time by tsup from the brand directory (brand.mjs). Everything the
  * client calls itself, the scheme it receives sign-ins on and the server it
  * opens come from here.

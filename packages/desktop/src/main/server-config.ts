@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Which server the desktop client opens (#1599, design 6).
+ * Which server the desktop client opens (inner#2041, design 6).
  *
  * Every build is dedicated to one server, ours or a brand's, written in at
  * build time; the client has no screen to enter or switch an address.

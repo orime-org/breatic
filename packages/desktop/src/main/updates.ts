@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Updating the shell (#1599, design §9.1.2). Only a build packaged with an
+ * Updating the shell (inner#2041, design §9.1.2). Only a build packaged with an
  * update feed (app-update.yml) runs this. It checks at launch and every four
  * hours, downloads in the background and offers Restart now or Later; Later
  * installs on the next quit. Restart now closes every window through the

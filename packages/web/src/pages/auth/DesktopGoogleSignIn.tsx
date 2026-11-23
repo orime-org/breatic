@@ -48,7 +48,7 @@ function GoogleMark(): React.JSX.Element {
 }
 
 /**
- * Google sign-in inside the desktop client (#1599). Google refuses sign-in in
+ * Google sign-in inside the desktop client (inner#2041). Google refuses sign-in in
  * an embedded page, so the button opens the system browser and waits for the
  * code it hands back. The wait lives in the client, so a reload or a move to
  * the register page picks it up again on mount.

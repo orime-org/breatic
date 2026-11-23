@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Where a page's navigations and new windows go (#1599, design §7).
+ * Where a page's navigations and new windows go (inner#2041, design §7).
  *
  * Only the app's own pages stay in the client. The official deployment serves
  * its marketing pages from the same origin, so the path decides, through the

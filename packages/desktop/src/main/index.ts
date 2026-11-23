@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The desktop client's main process (#1599): windows on the server the build
+ * The desktop client's main process (inner#2041): windows on the server the build
  * carries, the "can't reach" page in the window that failed, Google sign-in
  * through the system browser, the navigation rules that keep each window on
  * the app, and the shell's error monitoring.

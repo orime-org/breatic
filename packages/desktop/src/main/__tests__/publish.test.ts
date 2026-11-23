@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Publishing a release to the update feed (#1599, design §9.3). Only a
+ * Publishing a release to the update feed (inner#2041, design §9.3). Only a
  * `desktop-v{version}` tag publishes, and its version must be the package's:
  * clients compare versions to decide there is an update. Installers, zips and
  * blockmaps go up first and the manifests last, so a client that reads a new

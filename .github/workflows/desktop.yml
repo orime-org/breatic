@@ -1,6 +1,6 @@
 name: Desktop
 
-# Builds the official desktop client's installers (#1599): .dmg and .zip on
+# Builds the official desktop client's installers (inner#2041): .dmg and .zip on
 # macOS, the NSIS .exe on Windows, AppImage and .deb on Linux. Each runner
 # builds for its own platform. Signing is on only where the secrets exist;
 # without them the installers are unsigned builds of the same app. A

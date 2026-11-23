@@ -4,7 +4,7 @@
 import type { DesktopBridge } from '@breatic/shared';
 
 /**
- * The desktop client's bridge when this page runs inside it (#1599).
+ * The desktop client's bridge when this page runs inside it (inner#2041).
  * @returns The bridge, or null in a browser.
  */
 export function getDesktopBridge(): DesktopBridge | null {

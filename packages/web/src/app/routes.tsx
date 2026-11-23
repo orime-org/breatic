@@ -149,7 +149,7 @@ export const baseRoutes: RouteObject[] = [
     ),
   },
   {
-    // The browser side of the desktop client's sign-in (#1599). Behind
+    // The browser side of the desktop client's sign-in (inner#2041). Behind
     // ProtectedRoute: signing in first and coming back keeps the challenge in
     // `next`, and a new Google account picks its slug before it lands here.
     path: '/desktop/sign-in',

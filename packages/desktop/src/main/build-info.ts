@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * What a build carries besides its brand (#1599, design 9.4), written in at
+ * What a build carries besides its brand (inner#2041, design 9.4), written in at
  * build time by tsup: the Sentry DSN every brand reports to, and the commit
  * the build was made from.
  */

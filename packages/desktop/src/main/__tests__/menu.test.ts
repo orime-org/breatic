@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The client's menu (#1599, design §6.1). The standard roles keep copy, paste
+ * The client's menu (inner#2041, design §6.1). The standard roles keep copy, paste
  * and undo working in the page's fields on macOS; Back and Forward let a user
  * return from a page with no way back, such as a Stripe invoice. There is
  * no way to switch servers: a build opens the server it carries. New Window

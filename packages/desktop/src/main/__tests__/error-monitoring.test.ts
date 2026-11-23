@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The shell's Sentry setup (#1599, design 9.4): the build-time DSN, the
+ * The shell's Sentry setup (inner#2041, design 9.4): the build-time DSN, the
  * options every brand reports with, which default integrations stay, and the
  * scrubbing that keeps addresses without their query and the home directory
  * out of every field the Electron SDK fills.

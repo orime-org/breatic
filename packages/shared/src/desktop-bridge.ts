@@ -3,7 +3,7 @@
 
 /**
  * What the desktop client's preload exposes to the web app as
- * `window.breaticDesktop` (#1599). The preload implements it and the web app
+ * `window.breaticDesktop` (inner#2041). The preload implements it and the web app
  * calls it, so both sides read this one declaration.
  */
 
@@ -39,7 +39,7 @@ const REVERSE_DOMAIN = /^[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*)+$/;
 /**
  * Whether a scheme may carry a desktop sign-in code: one no website can claim.
  * The server's deployment setting and the brand a client is built for both
- * pass through this rule (#1599, design §8.3).
+ * pass through this rule (inner#2041, design §8.3).
  * @param scheme - The scheme, without `://`.
  * @returns True for a reverse domain name.
  */

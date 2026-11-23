@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A build is made for one brand (#1599, design §9.1.1). The brand directory
+ * A build is made for one brand (inner#2041, design §9.1.1). The brand directory
  * names the app, its ID, server and images; every name that must differ
  * between two brands installed on one machine comes from the brand's `id`,
  * and the sign-in return scheme is the app ID in lower case, a reverse domain

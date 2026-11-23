@@ -224,7 +224,7 @@ export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 const base64Url32 = z.string().regex(BASE64URL_32_BYTES);
 
 /**
- * The desktop client's sign-in through the system browser (#1599). The browser,
+ * The desktop client's sign-in through the system browser (inner#2041). The browser,
  * signed in, asks for a one-time code bound to the challenge the client made.
  */
 export const desktopHandoffSchema = z.object({ challenge: base64Url32 });

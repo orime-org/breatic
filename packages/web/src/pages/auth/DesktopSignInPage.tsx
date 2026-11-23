@@ -29,7 +29,7 @@ function navigateTo(href: string): void {
 }
 
 /**
- * The browser side of the desktop client's sign-in (#1599). Signed in already
+ * The browser side of the desktop client's sign-in (inner#2041). Signed in already
  * (the route sits behind ProtectedRoute), the user confirms the account; only
  * then is a code asked for, so a program that opens this page cannot take the
  * account on its own (RFC 8252 §8.6). The code goes back through

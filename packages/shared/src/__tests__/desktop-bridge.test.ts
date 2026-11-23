@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The scheme a desktop build receives its sign-in code on (#1599, design
+ * The scheme a desktop build receives its sign-in code on (inner#2041, design
  * §8.3). A website can register a handler only for `web+…` schemes and the
  * browsers' safelists, none of which has a dot, so a reverse domain name
  * (RFC 8252 §7.1) is one no website can claim. The server's deployment

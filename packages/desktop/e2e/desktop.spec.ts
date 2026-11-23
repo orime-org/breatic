@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The desktop client started for real against a local server (#1599): the
+ * The desktop client started for real against a local server (inner#2041): the
  * server the build carries, the splash, signing in by email and staying signed
  * in after a restart, more windows, links handed to the system, "can't reach"
  * in the window that failed, and the shell's error reports.

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** The client's words follow the operating system's language, English otherwise (#1599). */
+/** The client's words follow the operating system's language, English otherwise (inner#2041). */
 
 import { describe, it, expect } from "vitest";
 

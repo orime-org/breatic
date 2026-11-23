@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Lay out what electron-builder packs (#1599). The build bundles every
+ * Lay out what electron-builder packs (inner#2041). The build bundles every
  * dependency except Electron, so the app directory holds only the built files
  * and a manifest naming no dependencies: electron-builder then collects no
  * node_modules, which it cannot do from a pnpm workspace anyway. The

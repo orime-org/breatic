@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The splash a build shows at launch (#1599, design §5.2): the brand's logo
+ * The splash a build shows at launch (inner#2041, design §5.2): the brand's logo
  * and name, and on a partner's brand the "powered by Breatic" line. It stays
  * at least a second so the attribution can be read, longer while the server
  * is still loading.

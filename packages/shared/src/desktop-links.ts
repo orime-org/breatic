@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Addresses the web app and the desktop client must read the same way (#1599).
+ * Addresses the web app and the desktop client must read the same way (inner#2041).
  *
  * The official deployment serves the marketing site and the app from one
  * origin, routed by path at the edge, so the origin alone cannot tell the

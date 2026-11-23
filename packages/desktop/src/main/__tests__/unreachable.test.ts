@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The rules behind the in-window "can't reach" page (#1599, design 5.1, 5.3):
+ * The rules behind the in-window "can't reach" page (inner#2041, design 5.1, 5.3):
  * the retry schedule, which calls may ask for a retry, which redirects of a
  * main-issued server load are turned into a plain load failure, and which
  * failures are the user's environment rather than the shell's own fault.

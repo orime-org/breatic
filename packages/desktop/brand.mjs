@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The brand a desktop build is made for (#1599, design §9.1.1). A brand is a
+ * The brand a desktop build is made for (inner#2041, design §9.1.1). A brand is a
  * directory holding `brand.json` and its images; the official one is
  * `brands/breatic`, a partner's lives in a private repository and is chosen
  * with BREATIC_BRAND_DIR. stage-app.mjs, electron-builder.config.mjs and

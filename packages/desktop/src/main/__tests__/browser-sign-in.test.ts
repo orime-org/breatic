@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The client's side of Google sign-in through the system browser (#1599,
+ * The client's side of Google sign-in through the system browser (inner#2041,
  * design §8.2).
  *
  * One sign-in waits at a time. The browser's `{scheme}://sign-in` link, on the

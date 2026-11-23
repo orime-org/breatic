@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Which addresses on our own server are pages of the app (#1599). The desktop
+ * Which addresses on our own server are pages of the app (inner#2041). The desktop
  * client keeps those in its window and hands every other page of the same
  * origin (the official site's terms, privacy and tutorials) to the system
  * browser.

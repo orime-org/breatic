@@ -255,7 +255,7 @@ export const coreConfigSchema = z.object({
   GOOGLE_CLIENT_ID: z.string().default(""),
 
   // ── Desktop client ──────────────────────────────
-  // The desktop build this deployment hands browser sign-ins back to (#1599):
+  // The desktop build this deployment hands browser sign-ins back to (inner#2041):
   // its return scheme, a reverse domain name no website can register, and the
   // app name the confirmation page shows. A partner deployment sets its own.
   DESKTOP_APP_SCHEME: z.preprocess(

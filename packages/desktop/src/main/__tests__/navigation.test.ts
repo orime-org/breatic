@@ -3,7 +3,7 @@
 
 /**
  * What the desktop client does with a page that navigates or opens a window
- * (#1599, design §7).
+ * (inner#2041, design §7).
  *
  * The app's own pages stay in the client; links elsewhere go to the system
  * browser, as do the official site's own pages (same origin, not the app).
