@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>面向创意团队的实时协作 AI 工作空间。</strong></p>
-<p align="center">线上已开放 · 开源 · 桌面浏览器</p>
+<p align="center">线上已开放 · 源码可用 · 桌面浏览器</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_cn">官网</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -112,7 +112,7 @@ Agent 可以先提出改写方案，团队查看后再决定是否替换共享�
 
 Web、API、后台任务和协作服务使用已发布的 Docker 镜像，依赖 PostgreSQL 与 Redis。上传和媒体处理通过部署到**你自己的 Cloudflare 账户**的 Ingest Worker 与媒体容器完成，文件保存在你的 R2 bucket；AI 调用使用你的供应商账户和额度。
 
-这不是离线或完全本地化部署，局域网访问需要可信 HTTPS。云服务与模型调用可能产生费用；SMTP、Google 登录、Stripe 支付和搜索是可选集成。按安装指南完成云端配置与验收，其中一次性的 Node/pnpm/Wrangler 配置步骤不代表日常使用需要启动开发服务器。
+这不是离线或完全本地化部署，局域网访问需要可信 HTTPS。云服务与模型调用可能产生费用；SMTP、Google 登录和搜索是可选集成；Stripe 支付须获得 Orime, Inc. 的书面授权方可启用（LICENSE 第 10 条和第 11 条）。按安装指南完成云端配置与验收，其中一次性的 Node/pnpm/Wrangler 配置步骤不代表日常使用需要启动开发服务器。
 
 ## 产品状态与帮助
 
@@ -138,11 +138,16 @@ Breatic 官方在线服务已开放使用，并持续开发。上文各功能的
 
 ## 许可证与允许用途
 
-Breatic 是**开源**项目，采用 [GNU Affero General Public License v3.0](LICENSE)（`AGPL-3.0-only`）。
+Breatic 是依据 [Breatic Source-Available License 2.0](LICENSE) 授权的**源码可用**软件。该许可证源自 Apache License 2.0，并附加了其他条件。它不是 OSI 认可的开源许可证。
 
-你可以出于任何目的使用、研究、修改和自行部署 Breatic，包括商业用途。如果你修改了 Breatic，并让其他人通过网络使用修改后的版本，就必须按同一许可证向他们提供完整源代码。完整条款以许可证为准。
+- 你可以获取、修改并自行部署 Breatic，用于个人用途、非商业性的私人团体或你所在组织的内部使用（包括在你的业务中使用），无需支付软件许可费（LICENSE 第 10 条）。
+- 你可以用 Breatic 制作并销售创作作品，例如影片、广告、图像、音频和 3D 资产；具体条件见 LICENSE 第 10 条和第 13 条。
+- 未获得 Orime, Inc. 另行书面授权时，你运营的实例必须以自部署模式（Self-Deployment Mode）运行：应用内积分购买、付费会员、订阅及其他付费运营功能保持关闭（LICENSE 第 10 条）。
+- 出于商业目的，向上述用途范围以外的人提供 Breatic 或其平台功能的实质性部分，需要另行获得书面授权（LICENSE 第 11 条）。
+- 在应用的标识区域保持 Breatic 名称和随附标志可见，并保持许可证与署名声明可供查阅（LICENSE 第 12 条）。Orime, Inc. 是 Breatic 商标的经授权许可方；品牌使用规则见 [TRADEMARKS.md](TRADEMARKS.md)。
+- 以较早许可证（包括 AGPL-3.0-only）发布的版本，继续适用其发布时的许可证（LICENSE 第 15 条）。
 
-Breatic 的名称和标识是 Orime, Inc. 的商标，不在许可证授权范围内，使用规则见 [TRADEMARKS.md](TRADEMARKS.md)。许可证不限制你用 Breatic 创作的内容。
+完整条款见 [LICENSE](LICENSE)。
 
 ### 生成内容
 

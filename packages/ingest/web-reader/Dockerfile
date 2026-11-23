@@ -54,6 +54,8 @@ RUN npm install --no-audit --no-fund --omit=dev $(cat /app/runtime-libs.txt) \
 
 # What this image distributes and under what terms.
 COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md
+COPY LICENSE /usr/share/doc/breatic/LICENSE
+COPY TRADEMARKS.md /usr/share/doc/breatic/TRADEMARKS.md
 COPY --from=build /out/server.mjs /app/server.mjs
 COPY --from=build /out/build-info.json /app/build-info.json
 

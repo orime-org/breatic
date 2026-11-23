@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>مساحة عمل إبداعية بالذكاء الاصطناعي تتيح للفرق التعاون في الوقت الفعلي.</strong></p>
-<p align="center">متاح عبر الإنترنت · مفتوح المصدر · متصفح سطح المكتب</p>
+<p align="center">متاح عبر الإنترنت · متاح المصدر · متصفح سطح المكتب</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_ar">الموقع</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -101,7 +101,7 @@
 
 يستخدم التثبيت صور Docker المنشورة للويب وواجهة API والمهام الخلفية والتعاون، إلى جانب PostgreSQL وRedis. يستخدم رفع الوسائط ومعالجتها Ingest Worker وحاوية وسائط في **حساب Cloudflare الخاص بك**، وتُخزّن الملفات في حاوية R2 الخاصة بك. وتستخدم استدعاءات الذكاء الاصطناعي حساباتك وحصصك لدى المزوّدين.
 
-ليس هذا تثبيتًا يعمل دون إنترنت أو داخل الموقع بالكامل. يحتاج الوصول عبر الشبكة المحلية إلى HTTPS موثوق. قد تترتب تكاليف على الخدمات السحابية واستدعاءات النماذج. SMTP وتسجيل الدخول عبر Google ومدفوعات Stripe والبحث تكاملات اختيارية. اتبع الدليل لإعداد السحابة والتحقق منها. خطوة Node/pnpm/Wrangler الأولى تخص النشر، ولا تعني ضرورة تشغيل خادم تطوير للاستخدام اليومي.
+ليس هذا تثبيتًا يعمل دون إنترنت أو داخل الموقع بالكامل. يحتاج الوصول عبر الشبكة المحلية إلى HTTPS موثوق. قد تترتب تكاليف على الخدمات السحابية واستدعاءات النماذج. SMTP وتسجيل الدخول عبر Google والبحث تكاملات اختيارية. لا يجوز تفعيل مدفوعات Stripe إلا بإذن كتابي من Orime, Inc. (القسمان 10 و11 من LICENSE). اتبع الدليل لإعداد السحابة والتحقق منها. خطوة Node/pnpm/Wrangler الأولى تخص النشر، ولا تعني ضرورة تشغيل خادم تطوير للاستخدام اليومي.
 
 ## الحالة والمساعدة والمساهمة
 
@@ -117,9 +117,16 @@
 
 ## الترخيص والاستخدام المسموح
 
-Breatic مشروع مفتوح المصدر بموجب [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). يمكنك استخدام Breatic ودراسته وتعديله واستضافته بنفسك لأي غرض، بما في ذلك الاستخدام التجاري. إذا عدّلت Breatic وأتحت لآخرين استخدام النسخة المعدّلة عبر شبكة، فعليك أن توفّر لهم شيفرتها المصدرية الكاملة بموجب الترخيص نفسه. راجع النص الكامل للترخيص.
+Breatic **متاح المصدر** بموجب [Breatic Source-Available License 2.0](LICENSE)، وهو ترخيص مشتق من Apache License 2.0 مع شروط إضافية. وهو ليس ترخيصًا مفتوح المصدر معتمدًا من OSI.
 
-اسم Breatic وشعاره علامتان تجاريتان لشركة Orime, Inc. ولا يشملهما ترخيص البرمجيات؛ راجع [TRADEMARKS.md](TRADEMARKS.md). لا يقيّد الترخيص المحتوى الذي تنشئه باستخدام Breatic.
+- يمكنك الحصول على Breatic وتعديله واستضافته بنفسك للاستخدام الشخصي، أو لمجموعة خاصة غير تجارية، أو للاستخدام داخل مؤسستك، بما في ذلك في نشاطك التجاري، دون رسوم ترخيص للبرنامج (القسم 10 من LICENSE).
+- يمكنك إنشاء أعمال إبداعية باستخدام Breatic وبيعها، مثل الأفلام والإعلانات والصور والصوتيات والأصول ثلاثية الأبعاد؛ ويبيّن القسمان 10 و13 من LICENSE الشروط.
+- من دون إذن كتابي منفصل من Orime, Inc.، يجب أن تعمل النسخة التي تشغّلها في وضع النشر الذاتي (Self-Deployment Mode): تبقى عمليات شراء الرصيد داخل التطبيق والعضويات المدفوعة والاشتراكات وغيرها من ميزات التشغيل المدفوع معطّلة (القسم 10 من LICENSE).
+- تحتاج إتاحة Breatic، أو مجموعة جوهرية من ميزات منصته، لأشخاص خارج تلك الاستخدامات لغرض تجاري إلى إذن كتابي منفصل (القسم 11 من LICENSE).
+- أبقِ اسم Breatic والشعار المرفق ظاهرين في منطقة هوية التطبيق، وأبقِ إشعارات الترخيص والإسناد في المتناول (القسم 12 من LICENSE). Orime, Inc. مرخِّص مخوَّل لعلامات Breatic؛ ويصف [TRADEMARKS.md](TRADEMARKS.md) قواعد العلامة التجارية.
+- تحتفظ الإصدارات الصادرة بموجب ترخيص سابق، بما في ذلك AGPL-3.0-only، بالترخيص الذي صدرت بموجبه (القسم 15 من LICENSE).
+
+الشروط الكاملة موجودة في [LICENSE](LICENSE).
 
 ### المحتوى المُولّد
 

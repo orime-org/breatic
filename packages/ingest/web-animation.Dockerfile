@@ -99,6 +99,8 @@ RUN set -eu; \
   } > /usr/share/chromium-source/SOURCE
 
 COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md
+COPY LICENSE /usr/share/doc/breatic/LICENSE
+COPY TRADEMARKS.md /usr/share/doc/breatic/TRADEMARKS.md
 
 RUN useradd --create-home --home-dir /home/runner runner
 COPY --from=dsh /opt/dsh /opt/dsh

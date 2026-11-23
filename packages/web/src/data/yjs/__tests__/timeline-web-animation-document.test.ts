@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Writing web-animation copies into the shared Timeline (inner#1711 design §3.3, §9; #1490 design §8.2). A copy binds

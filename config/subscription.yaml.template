@@ -5,6 +5,10 @@
 # deployment really charges and the Stripe objects it really sells, and
 # neither belongs to anybody but the deployment that holds them.
 #
+# Charging users needs written authorization from Orime, Inc.: without it an
+# instance runs in Self-Deployment Mode with PAYMENT_ENABLED=false and needs
+# no copy of this file (LICENSE sections 10 and 11).
+#
 # The server checks this file at startup when PAYMENT_ENABLED=true and
 # refuses to start without it, and server is the only service that reads it,
 # so an install with payments off needs no copy. How long a subscription is

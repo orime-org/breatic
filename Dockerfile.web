@@ -80,6 +80,8 @@ COPY --from=builder /app/packages/web/dist/breatic /usr/share/nginx/html
 # The human-readable overview of what we distribute and under what terms. The
 # generated file beside it is the full machine-produced list.
 COPY THIRD-PARTY.md /usr/share/nginx/html/THIRD-PARTY.md
+COPY LICENSE /usr/share/nginx/html/LICENSE.txt
+COPY TRADEMARKS.md /usr/share/nginx/html/TRADEMARKS.md
 
 EXPOSE 80 443
 

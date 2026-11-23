@@ -1,5 +1,5 @@
 -- Copyright (c) 2026 Orime, Inc.
--- SPDX-License-Identifier: AGPL-3.0-only
+-- SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 -- Product database (#1378): stored fields named after the person using the
 -- product move from reader to user. A tool failure's readerKey inside

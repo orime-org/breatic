@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>El espacio de trabajo colaborativo con IA, en tiempo real, para equipos creativos.</strong></p>
-<p align="center">Disponible en línea · Código abierto · Navegador de escritorio</p>
+<p align="center">Disponible en línea · Código fuente disponible · Navegador de escritorio</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_es">Sitio web</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -99,7 +99,7 @@ Configura tu Studio personal, crea un Project y usa **+** para añadir Document,
 
 La instalación utiliza imágenes Docker publicadas para la web, la API, las tareas en segundo plano y la colaboración, con PostgreSQL y Redis. Las cargas y el procesamiento multimedia requieren un Ingest Worker y un contenedor multimedia en **tu cuenta de Cloudflare**, con almacenamiento en tu bucket R2. Las llamadas de IA utilizan tus cuentas de proveedores y sus cuotas.
 
-No es una instalación sin conexión ni completamente local. El acceso por LAN requiere HTTPS de confianza. Los servicios en la nube y las llamadas a modelos pueden generar gastos; SMTP, el inicio de sesión con Google, los pagos con Stripe y la búsqueda son integraciones opcionales. Sigue la guía para configurar y comprobar la nube. El paso inicial con Node/pnpm/Wrangler es de despliegue, no un servidor de desarrollo necesario para el uso diario.
+No es una instalación sin conexión ni completamente local. El acceso por LAN requiere HTTPS de confianza. Los servicios en la nube y las llamadas a modelos pueden generar gastos; SMTP, el inicio de sesión con Google y la búsqueda son integraciones opcionales; los pagos con Stripe solo pueden habilitarse con autorización por escrito de Orime, Inc. (secciones 10 y 11 de LICENSE). Sigue la guía para configurar y comprobar la nube. El paso inicial con Node/pnpm/Wrangler es de despliegue, no un servidor de desarrollo necesario para el uso diario.
 
 ## Estado, ayuda y contribuciones
 
@@ -115,9 +115,16 @@ Para vulnerabilidades, utiliza el canal privado de [SECURITY.md](SECURITY.md). E
 
 ## Licencia y usos permitidos
 
-Breatic es de código abierto bajo la [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). Puedes usar, estudiar, modificar y autoalojar Breatic con cualquier fin, incluido el uso comercial. Si modificas Breatic y permites que otras personas usen la versión modificada a través de una red, debes ofrecerles su código fuente completo bajo la misma licencia. Consulta los términos completos en la licencia.
+Breatic es **de código fuente disponible** bajo la [Breatic Source-Available License 2.0](LICENSE), una licencia derivada de la Apache License 2.0 con condiciones adicionales. No es una licencia de código abierto aprobada por la OSI.
 
-El nombre y el logotipo son marcas de Orime, Inc. y no están cubiertos por esta licencia; consulta [TRADEMARKS.md](TRADEMARKS.md). La licencia no restringe el contenido que creas con Breatic.
+- Puedes obtener, modificar y autoalojar Breatic para uso personal, para un grupo privado sin fines comerciales o para uso dentro de tu organización, incluso en tu empresa, sin pagar una tarifa de licencia de software (sección 10 de LICENSE).
+- Puedes crear y vender obras creativas con Breatic, como películas, anuncios, imágenes, audio y recursos 3D; las secciones 10 y 13 de LICENSE establecen las condiciones.
+- Sin una autorización por escrito independiente de Orime, Inc., una instancia que operes debe funcionar en modo de autodespliegue (Self-Deployment Mode): las compras de créditos dentro de la aplicación, las membresías de pago, las suscripciones y otras funciones de operación de pago permanecen desactivadas (sección 10 de LICENSE).
+- Poner Breatic, o un conjunto sustancial de sus funciones de plataforma, a disposición de personas ajenas a esos usos con un fin comercial requiere una autorización por escrito independiente (sección 11 de LICENSE).
+- Mantén visibles el nombre Breatic y el logotipo suministrado en el área de identidad de la aplicación, y mantén accesibles los avisos de licencia y de atribución (sección 12 de LICENSE). Orime, Inc. es un licenciante autorizado de las marcas Breatic; [TRADEMARKS.md](TRADEMARKS.md) describe las reglas de marca.
+- Las versiones publicadas bajo una licencia anterior, incluida AGPL-3.0-only, conservan la licencia con la que se publicaron (sección 15 de LICENSE).
+
+Los términos completos están en [LICENSE](LICENSE).
 
 ### Contenido generado
 

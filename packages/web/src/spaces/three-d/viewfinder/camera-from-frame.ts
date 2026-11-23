@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { MathUtils, PerspectiveCamera, Quaternion, Vector3 } from 'three';
 import { SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_MIN, VIEWFINDER_RATIOS, type ViewfinderRatio } from '@breatic/shared';

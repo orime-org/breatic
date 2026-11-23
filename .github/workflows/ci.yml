@@ -184,6 +184,9 @@ jobs:
       - name: Test provider scripts
         run: node --test scripts/provider-price-drift.test.mjs scripts/provider-llm-prices.test.mjs scripts/provider-endpoint-docs.test.mjs
 
+      - name: Test the CLA check
+        run: node --test scripts/cla-check.test.mjs
+
   test-web:
     name: Test (web, shard ${{ matrix.shard }}/4)
     # web holds most of the unit tests (804 files measured 2026-10-11) and ran

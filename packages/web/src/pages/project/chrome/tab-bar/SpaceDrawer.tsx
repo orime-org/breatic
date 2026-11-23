@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { Eye, Lock, Menu, MoreVertical, Pencil, Trash2, Unlock } from 'lucide-react';
 import * as React from 'react';

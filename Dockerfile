@@ -96,6 +96,8 @@ COPY --from=builder /app/packages/core/src/db/migrations-yjs ./packages/core/src
 # What this image distributes and under what terms, where the rest of this
 # filesystem keeps that kind of file.
 COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md
+COPY LICENSE /usr/share/doc/breatic/LICENSE
+COPY TRADEMARKS.md /usr/share/doc/breatic/TRADEMARKS.md
 
 ENV NODE_ENV=production
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** Validated operator intent; timestamps always come from the running server. */
 export type ActivityCoverageOptions = { help: true } | { help: false; action: "open" | "close"; version: number; operator: string };

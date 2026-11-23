@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>クリエイティブチームのための、リアルタイムで共同制作できる AI ワークスペース。</strong></p>
-<p align="center">オンラインで利用可能 · オープンソース · デスクトップブラウザー</p>
+<p align="center">オンラインで利用可能 · ソースコード公開 · デスクトップブラウザー</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_ja">公式サイト</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -99,7 +99,7 @@ Spaces を「冒頭・0–10 秒」「メイン・10–20 秒」「締め・20�
 
 Web、API、バックグラウンド処理、共同編集には公開済みの Docker イメージを使用し、PostgreSQL と Redis に依存します。アップロードとメディア処理には、**ご自身の Cloudflare アカウント**上の Ingest Worker とメディアコンテナー、R2 バケットを使用します。AI 呼び出しにはご自身のプロバイダーアカウントと利用枠が必要です。
 
-オフラインや完全なオンプレミスの構成ではありません。LAN アクセスには信頼できる HTTPS が必要です。クラウドサービスやモデルの利用には料金がかかる場合があります。SMTP、Google ログイン、Stripe 決済、検索は任意の連携です。ガイドに従ってクラウドを設定・確認してください。初回の Node/pnpm/Wrangler の作業はデプロイ用で、日常利用に開発サーバーを起動する必要はありません。
+オフラインや完全なオンプレミスの構成ではありません。LAN アクセスには信頼できる HTTPS が必要です。クラウドサービスやモデルの利用には料金がかかる場合があります。SMTP、Google ログイン、検索は任意の連携です。Stripe 決済は、Orime, Inc. の書面による許可がある場合に限り有効にできます（LICENSE 第 10 条および第 11 条）。ガイドに従ってクラウドを設定・確認してください。初回の Node/pnpm/Wrangler の作業はデプロイ用で、日常利用に開発サーバーを起動する必要はありません。
 
 ## 状況、サポート、貢献
 
@@ -115,9 +115,16 @@ Web、API、バックグラウンド処理、共同編集には公開済みの D
 
 ## ライセンスと利用範囲
 
-Breatic は [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0-only）のもとで公開されているオープンソースです。商用を含むあらゆる目的で、利用、調査、変更、セルフホストができます。Breatic を変更し、変更版をネットワーク経由で他の人に利用させる場合は、同じライセンスのもとで完全なソースコードを提供する必要があります。詳細はライセンス本文をご確認ください。
+Breatic は [Breatic Source-Available License 2.0](LICENSE) のもとで**ソースコードが公開**されています（source-available）。このライセンスは Apache License 2.0 から派生し、追加の条件を加えたものです。OSI 承認のオープンソースライセンスではありません。
 
-Breatic の名称とロゴは Orime, Inc. の商標で、ソフトウェアライセンスの対象外です。[TRADEMARKS.md](TRADEMARKS.md) をご覧ください。このライセンスは Breatic で制作するコンテンツを制限しません。
+- 個人利用、非営利の私的なグループ、または事業での利用を含む組織内での利用のために、ソフトウェアのライセンス料なしで Breatic を入手、変更、セルフホストできます（LICENSE 第 10 条）。
+- 映画、広告、画像、音声、3D アセットなどの創作物を Breatic で制作し、販売できます。条件は LICENSE 第 10 条と第 13 条に定められています。
+- Orime, Inc. による別途の書面による許可がない限り、あなたが運用するインスタンスはセルフデプロイメントモード（Self-Deployment Mode）で動作させる必要があります。アプリ内でのクレジット購入、有料メンバーシップ、サブスクリプション、その他の有料運営機能は無効のままとなります（LICENSE 第 10 条）。
+- 商業目的で、Breatic またはそのプラットフォーム機能の相当部分を上記の利用範囲外の人々に提供するには、別途書面による許可が必要です（LICENSE 第 11 条）。
+- アプリケーションの識別表示領域に Breatic の名称と提供されたロゴを表示し続け、ライセンスと帰属表示の通知を参照できる状態に保ってください（LICENSE 第 12 条）。Orime, Inc. は Breatic の商標の正当な権限を持つライセンサーです。ブランドに関するルールは [TRADEMARKS.md](TRADEMARKS.md) に記載しています。
+- AGPL-3.0-only を含む以前のライセンスでリリースされたバージョンには、リリース時のライセンスが引き続き適用されます（LICENSE 第 15 条）。
+
+完全な条件は [LICENSE](LICENSE) に記載されています。
 
 ### 生成コンテンツ
 
