@@ -89,6 +89,9 @@ export function validFocusImages(raw: unknown): FocusImage[] {
 
 const dimension = z.number().finite().positive().max(MAX_FOCUS_DIMENSION);
 
+/** Half of a surrogate pair with no other half, as a name clipped by UTF-16 units can end. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
 /**
  * The image a crop's upload ticket says it will become: the node whose pool takes it, the id the page started it under
  * and the parts of the image the address is added to once registered.
@@ -97,7 +100,8 @@ export const focusImageTicketSchema = z
   .object({
     nodeId: z.string().min(1).max(MAX_FOCUS_ID),
     id: z.string().uuid(),
-    name: z.string().max(MAX_FOCUS_NAME),
+    // Stored in jsonb, which refuses half a surrogate pair; replaced as a text column's UTF-8 encoding does.
+    name: z.string().max(MAX_FOCUS_NAME).transform((name) => name.replace(LONE_SURROGATE, "\uFFFD")),
     width: dimension,
     height: dimension,
   })

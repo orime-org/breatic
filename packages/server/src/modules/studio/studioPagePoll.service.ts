@@ -7,9 +7,9 @@
  * and hands each upload's ending to whoever waits for it; the answer also says when to ask again.
  */
 
-import { ForbiddenError, getStudioPageConfig } from "@breatic/core";
+import { getStudioPageConfig } from "@breatic/core";
 import { studioAuthService, uploadStatusService } from "@breatic/domain";
-import { t, type StudioRole, type UploadStatus } from "@breatic/shared";
+import type { StudioRole, UploadStatus } from "@breatic/shared";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
 import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
@@ -29,20 +29,15 @@ export interface StudioPagePoll {
 /**
  * Answer one poll of a Studio page.
  * @param userId - The caller.
+ * Any signed-in user may open a Studio's page, so only its transfer depends on the caller's role there: a Studio that
+ * does not exist, or one the caller is not in, is answered with no transfer, like the Recent page.
  * @param slug - The Studio the page shows, or undefined on the Recent page, which shows no Studio's transfer.
  * @param uploads - The keys of the uploads the page waits for.
  * @returns The answer.
- * @throws {ForbiddenError} When the Studio does not exist or the caller is not its member, as the Studio routes answer.
  */
 export async function pollStudioPage(userId: string, slug: string | undefined, uploads: readonly string[]): Promise<StudioPagePoll> {
-  let studio: { id: string } | null = null;
-  let role: StudioRole | null = null;
-  if (slug !== undefined) {
-    studio = await studioService.getStudioBySlug(slug);
-    if (!studio) throw new ForbiddenError(t("server.error.forbidden"));
-    role = await studioAuthService.loadStudioRole(userId, studio.id);
-    if (role === null) throw new ForbiddenError(t("server.error.forbidden"));
-  }
+  const studio = slug === undefined ? null : await studioService.getStudioBySlug(slug);
+  const role: StudioRole | null = studio === null ? null : await studioAuthService.loadStudioRole(userId, studio.id);
   const [unread, latestAt, live, statuses] = await Promise.all([
     notificationService.countUnread(userId),
     notificationService.latestCreatedAt(userId),

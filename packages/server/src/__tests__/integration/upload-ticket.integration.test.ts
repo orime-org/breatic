@@ -1459,6 +1459,17 @@ describe("POST /assets/upload-ticket — a focus crop (#1580)", () => {
     expect(await focusOf(data.storageKey)).toEqual({ spaceId, nodeId: focus.nodeId, id: focus.id, name: "Source", width: 640, height: 480 });
   });
 
+  it("takes a source name cut through an emoji, storing it as well-formed text", async () => {
+    // A node name clipped by UTF-16 units can end in half a surrogate pair, which jsonb refuses.
+    const seed = await seedEditor();
+    const spaceId = crypto.randomUUID();
+    const payload = cropBody(spaceId, { name: "Kyoto \ud83c" });
+    const res = await requestTicket(seed.cookie, { ...payload, project_id: seed.projectId });
+    expect(res.status).toBe(201);
+    const { data } = (await res.json()) as { data: { storageKey: string } };
+    expect((await focusOf(data.storageKey)) as { name: string }).toMatchObject({ name: "Kyoto \ufffd" });
+  });
+
   it("D-02 accepts fractional sizes", async () => {
     const seed = await seedEditor();
     const res = await requestTicket(seed.cookie, { ...cropBody(crypto.randomUUID(), { width: 123.5, height: 0.25 }), project_id: seed.projectId });

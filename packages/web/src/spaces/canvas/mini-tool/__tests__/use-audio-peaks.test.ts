@@ -65,6 +65,23 @@ describe('useAudioPeaks', () => {
     expect(result.current).toEqual({ kind: 'ready', peaks: [9] });
   });
 
+  it('reads again when the peaks are announced while its first read is still on the way', async () => {
+    let answerFirst!: (value: unknown) => void;
+    fetchAudioPeaks
+      .mockImplementationOnce(() => new Promise((resolve) => { answerFirst = resolve; }))
+      .mockResolvedValueOnce([7]);
+    const { result } = renderHook(() => useAudioPeaks(URL));
+    act(() => announceAudioPeaksReady(URL));
+    await settle();
+    expect(fetchAudioPeaks).toHaveBeenCalledTimes(2);
+    // The first read was answered "not there" before the peaks were written, and its answer arrives last.
+    await act(async () => {
+      answerFirst('missing');
+      await Promise.resolve();
+    });
+    expect(result.current).toEqual({ kind: 'ready', peaks: [7] });
+  });
+
   it('G-07 does not read when another audio\'s peaks are announced', async () => {
     fetchAudioPeaks.mockResolvedValue('missing');
     renderHook(() => useAudioPeaks(URL));

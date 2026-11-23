@@ -3,7 +3,7 @@
 
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
-import { STUDIO_PAGE_POLL_DEFAULT_MS } from '@breatic/shared';
+import { STUDIO_PAGE_POLL_DEFAULT_MS, UPLOAD_STATUS_MAX_KEYS } from '@breatic/shared';
 
 import { studioPageApi, type StudioPagePoll } from '@web/data/api/studio-page';
 import { settleUploadEnding, waitingUploadKeys } from '@web/data/upload/upload-status';
@@ -12,7 +12,8 @@ import { settleUploadEnding, waitingUploadKeys } from '@web/data/upload/upload-s
  * The Studio page's one poll (#1580). It asks once on mount, then again `nextPollMs` after each answer, with the
  * uploads the page waits for. The first answer is the baseline; a later one reads the bell again when its count or
  * newest time moved, and the Studio's transfer when the offer changed, and every ended upload goes to its waiter.
- * A hidden tab pauses it, showing the tab again asks at once, and leaving the page stops it. One request is out at a
+ * One request carries at most `UPLOAD_STATUS_MAX_KEYS` keys, starting further on each round, so every key is asked
+ * about in turn however many wait. A hidden tab pauses it, showing the tab again asks at once, and leaving the page stops it. One request is out at a
  * time, and an answer that comes back after the tab was hidden or the page went changes nothing.
  * @param slug - The Studio the page shows, or null on the Recent page.
  */
@@ -25,6 +26,19 @@ export function useStudioPagePoll(slug: string | null): void {
     let timer: ReturnType<typeof setTimeout> | undefined;
     let last: StudioPagePoll | null = null;
     let nextMs = STUDIO_PAGE_POLL_DEFAULT_MS;
+    let offset = 0;
+
+    /**
+     * The keys this round asks about.
+     * @returns At most one request's worth, starting where the last round stopped.
+     */
+    const roundKeys = (): string[] => {
+      const waiting = waitingUploadKeys();
+      if (waiting.length <= UPLOAD_STATUS_MAX_KEYS) return waiting;
+      const start = offset % waiting.length;
+      offset = start + UPLOAD_STATUS_MAX_KEYS;
+      return [...waiting, ...waiting].slice(start, start + UPLOAD_STATUS_MAX_KEYS);
+    };
 
     /**
      * Whether the poll may send now.
@@ -60,7 +74,7 @@ export function useStudioPagePoll(slug: string | null): void {
       if (inFlight || !running()) return;
       inFlight = true;
       try {
-        const answer = await studioPageApi.poll(slug, waitingUploadKeys());
+        const answer = await studioPageApi.poll(slug, roundKeys());
         if (running()) take(answer);
       } catch {
         // A failed round is tried again after the last named interval; the answers say what changed.

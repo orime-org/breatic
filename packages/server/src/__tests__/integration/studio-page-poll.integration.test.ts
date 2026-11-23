@@ -239,11 +239,17 @@ describe("who may poll", () => {
     expect((await poll(s.member.cookie, `studio=${s.slug}`)).status).toBe(429);
   });
 
-  it("K-11 answers a Studio that does not exist, and one the caller is not in, as the Studio routes do", async () => {
+  it("K-11 answers a Studio page the caller is not in, or one that does not exist, with their own bell and no transfer", async () => {
+    // Any signed-in user may open a Studio's page (studio.service getStudioDetail), so its bell keeps catching up there.
     const s = await scene();
     const stranger = await person();
-    expect((await poll(stranger.cookie, `studio=${s.slug}`)).status).toBe(403);
-    expect((await poll(stranger.cookie, `studio=no-such-${crypto.randomUUID()}`)).status).toBe(403);
+    for (const slug of [s.slug, `no-such-${crypto.randomUUID()}`]) {
+      const res = await poll(stranger.cookie, `studio=${slug}`);
+      expect(res.status).toBe(200);
+      const { data } = (await res.json()) as { data: { transfer: unknown; notifications: { unread: number } } };
+      expect(data.transfer).toBeNull();
+      expect(data.notifications.unread).toBe(0);
+    }
   });
 });
 

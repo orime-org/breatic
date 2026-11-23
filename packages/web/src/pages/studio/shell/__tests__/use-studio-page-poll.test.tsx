@@ -12,7 +12,7 @@ import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import type { UploadStatus } from '@breatic/shared';
+import { UPLOAD_STATUS_MAX_KEYS, type UploadStatus } from '@breatic/shared';
 import type * as StudioPageModule from '@web/data/api/studio-page';
 
 vi.mock('@web/data/api/studio-page', async (importOriginal) => {
@@ -318,5 +318,22 @@ describe('while paused', () => {
     expect(invalidate).not.toHaveBeenCalled();
     expect(poll).toHaveBeenCalledTimes(2);
     view.unmount();
+  });
+});
+
+describe('many uploads waiting', () => {
+  it('asks about at most the request limit at once, and every waiting key in turn', async () => {
+    const keys = Array.from({ length: UPLOAD_STATUS_MAX_KEYS + 50 }, (_, i) => `uploads/many-${i}.png`);
+    const page = new AbortController();
+    for (const key of keys) void waitForUploadEnding(key, page.signal).catch(() => undefined);
+    const view = mount();
+    await pass(0);
+    await pass(2000);
+    const asked = poll.mock.calls.map(([, sent]) => sent as string[]);
+    expect(asked).toHaveLength(2);
+    for (const sent of asked) expect(sent.length).toBeLessThanOrEqual(UPLOAD_STATUS_MAX_KEYS);
+    expect(new Set(asked.flat())).toEqual(new Set(keys));
+    view.unmount();
+    page.abort();
   });
 });

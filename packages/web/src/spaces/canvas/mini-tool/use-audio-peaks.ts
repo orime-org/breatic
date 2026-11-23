@@ -16,8 +16,8 @@ export type AudioPeaksState =
 /**
  * An audio source's peaks while its cut band is open (inner#1305 §4.4, #1580).
  *
- * Peaks are written after the audio registers, so a band opened on audio just made may find none; it reads them once
- * more when the server announces them for this audio (`announceAudioPeaksReady`).
+ * Peaks are written after the audio registers, so a band opened on audio just made may find none; until it has them it
+ * reads them again whenever the server announces them for this audio (`announceAudioPeaksReady`).
  * @param audioUrl - The audio's address.
  * @returns Where the peaks stand.
  */
@@ -26,22 +26,24 @@ export function useAudioPeaks(audioUrl: string): AudioPeaksState {
 
   React.useEffect(() => {
     const controller = new AbortController();
-    let missing = false;
+    let have = false;
+    let latest = 0;
     setState({ kind: 'loading' });
 
-    /** Read the peaks once. */
+    /** Read the peaks; only the answer to the latest read counts, so an earlier "not there" never covers them. */
     const read = async (): Promise<void> => {
+      latest += 1;
+      const mine = latest;
       const got = await fetchAudioPeaks(audioUrl, controller.signal);
-      if (controller.signal.aborted) return;
-      missing = got === 'missing';
+      if (controller.signal.aborted || mine !== latest) return;
+      have = got !== 'missing' && got !== 'invalid';
       setState(got === 'missing' || got === 'invalid' ? { kind: got } : { kind: 'ready', peaks: got });
     };
     void read();
+    // A read still on the way may have been answered before storage held the file, so every announcement reads
+    // again until the peaks are in.
     const stop = onAudioPeaksReady((ready) => {
-      if (ready === audioUrl && missing && !controller.signal.aborted) {
-        missing = false;
-        void read();
-      }
+      if (ready === audioUrl && !have && !controller.signal.aborted) void read();
     });
 
     return () => {
