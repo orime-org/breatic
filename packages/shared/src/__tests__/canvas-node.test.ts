@@ -24,6 +24,7 @@ import type {
   CanvasNodeFields,
   NodeTaskCountsEvent,
   NodeEvent,
+  SceneLookPictureEvent,
 } from "../types/canvas-node.js";
 
 
@@ -304,15 +305,15 @@ describe("CanvasNodeFields", () => {
 // ── NodeEvent alias ────────────────────────────────────────────────
 
 describe("NodeEvent", () => {
-  // One member since #186: a node's task counts are the whole of what
-  // the backend writes to the canvas. `type` stays on the wire so a consumer
-  // reading a stream it does not recognise says so instead of guessing.
+  // A node's task counts, and a 3D part picture stored after upload
+  // (inner#1693). `type` stays on the wire so a consumer reading a stream it
+  // does not recognise says so instead of guessing.
   it("is the union of the events collab consumes", () => {
-    expectTypeOf<NodeEvent>().toEqualTypeOf<NodeTaskCountsEvent>();
+    expectTypeOf<NodeEvent>().toEqualTypeOf<NodeTaskCountsEvent | SceneLookPictureEvent>();
   });
 
   it("discriminates on type", () => {
-    expectTypeOf<NodeEvent["type"]>().toEqualTypeOf<"node-task-counts">();
+    expectTypeOf<NodeEvent["type"]>().toEqualTypeOf<"node-task-counts" | "scene-look-picture">();
   });
 
   it("accepts a NodeTaskCountsEvent as NodeEvent", () => {

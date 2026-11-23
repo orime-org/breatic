@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
+import { Box3, CircleGeometry, Color, DoubleSide, type Group, HemisphereLight, Mesh, MeshBasicMaterial, type Object3D, OrthographicCamera, Plane, Raycaster, RingGeometry, Scene, Vector2, Vector3, WebGLRenderer } from 'three';
 import { isSceneLight, isSceneModelFile, type SceneObject } from '@breatic/shared';
-import type { ModelResourceCache, SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
+import { lookModelOf, type ModelResourceCache, type SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
+import { applyLook, releaseLook } from '@web/spaces/three-d/viewport/look-materials';
 import { applyPose } from '@web/spaces/three-d/viewport/pose-rig';
 
 /**
@@ -53,6 +54,8 @@ export class SceneMiniMapRuntime {
   private previewed: ReadonlySet<string> = new Set();
   private disposed = false;
   private renderKey = '';
+  /** The look and theme colour last written to each instance, so a moved object keeps its materials as they are. */
+  private readonly appliedLooks = new WeakMap<Object3D, string>();
   private width = 0;
   private height = 0;
 
@@ -72,6 +75,7 @@ export class SceneMiniMapRuntime {
     this.marker.rotation.x = -Math.PI / 2;
     this.scene.add(new HemisphereLight(0xffffff, 0x666666, 3), this.marker);
     this.renderer.domElement.addEventListener('click', this.onClick);
+    this.renderer.domElement.addEventListener('webglcontextrestored', this.onContextRestored);
     this.resize = new ResizeObserver(() => this.render()); this.resize.observe(host);
   }
 
@@ -145,8 +149,18 @@ export class SceneMiniMapRuntime {
    * @throws {never} Release is idempotent.
    */
   remove(id: string): void {
+    const root = this.items.get(id)?.root;
+    if (root) releaseLook(root);
     this.items.get(id)?.lease.release(); this.items.delete(id);
   }
+
+  /**
+   * A restored context keeps image textures but empties what was drawn, so the overview is drawn again.
+   */
+  private readonly onContextRestored = (): void => {
+    this.renderKey = '';
+    this.render();
+  };
 
   /**
    * Render on content, target, theme or size changes using actual model bounds.
@@ -169,11 +183,13 @@ export class SceneMiniMapRuntime {
       if (!root) continue;
       root.position.fromArray(object.position); root.quaternion.fromArray(object.rotation); root.scale.fromArray(object.scale); root.updateMatrixWorld(true);
       applyPose(root, object.pose, !this.previewed.has(object.id));
-      if (object.model.kind === 'builtin' && builtin) root.traverse((child) => {
-        if (child instanceof Mesh) for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
-          if (material instanceof MeshStandardMaterial) material.color.setStyle(builtin);
-        }
-      });
+      // The same per-part values as the main view; user pictures are not loaded here and show as unusable (inner#1693 design 5.2).
+      const look = lookModelOf(root);
+      const lookKey = JSON.stringify([object.look ?? {}, builtin]);
+      if (look && builtin && this.appliedLooks.get(root) !== lookKey) {
+        applyLook(root, look.table, object.look ?? {}, { themeColor: builtin, picture: () => null });
+        this.appliedLooks.set(root, lookKey);
+      }
       bounds.expandByObject(root);
     }
     for (const icon of this.icons.values()) {
@@ -212,6 +228,7 @@ export class SceneMiniMapRuntime {
     if (this.disposed) return;
     this.disposed = true; this.resize.disconnect();
     this.renderer.domElement.removeEventListener('click', this.onClick);
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     for (const id of this.items.keys()) this.remove(id);
     for (const icon of this.icons.values()) icon.material.dispose();
     this.icons.clear(); this.iconGeometry.dispose();

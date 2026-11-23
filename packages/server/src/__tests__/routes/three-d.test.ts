@@ -43,6 +43,7 @@ const IMPORT_CONFIG = {
   decoder_worker_limit: 1,
   max_texture_edge: 8192,
   max_texture_bytes: 268435456,
+  max_picture_header_bytes: 67108864,
 };
 const CAPTURE_CONFIG = { long_edge_px: 2048, min_frame_px: 120, canvas_sync_timeout_ms: 10000 };
 const DIRECTOR_CONFIG = { monitor_refresh_ms: 200, max_lights: 16, wheel_commit_ms: 400, shadow_map_px: 2048, point_shadow_map_px: 512, shadow_ground_reach: 3, shadow_bias: -0.0005, shadow_normal_bias: 0.02, point_shadow_bias: -0.002, point_shadow_normal_bias: 0.02 };
@@ -75,6 +76,7 @@ describe("3D Space project read routes", () => {
         decoderWorkerLimit: 1,
         maxTextureEdge: 8192,
         maxTextureBytes: 268435456,
+        maxPictureHeaderBytes: 67108864,
       },
       capture: { longEdgePx: 2048, minFramePx: 120, canvasSyncTimeoutMs: 10000 },
       director: DIRECTOR_WIRE,
@@ -94,6 +96,7 @@ describe("3D Space project read routes", () => {
       decoder_worker_limit: 2,
       max_texture_edge: 4096,
       max_texture_bytes: 100663296,
+      max_picture_header_bytes: 33554432,
     }, capture: { long_edge_px: 1024, min_frame_px: 80, canvas_sync_timeout_ms: 5000 }, director: DIRECTOR_CONFIG });
 
     const response = await createApp().request(`/api/v1/projects/${PROJECT}/three-d/config`, { headers: AUTH });
@@ -110,6 +113,7 @@ describe("3D Space project read routes", () => {
         decoderWorkerLimit: 2,
         maxTextureEdge: 4096,
         maxTextureBytes: 100663296,
+        maxPictureHeaderBytes: 33554432,
       },
       capture: { longEdgePx: 1024, minFramePx: 80, canvasSyncTimeoutMs: 5000 },
       director: DIRECTOR_WIRE,

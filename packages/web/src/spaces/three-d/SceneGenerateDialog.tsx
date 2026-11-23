@@ -33,6 +33,7 @@ import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { SCENE_VIEW_ACCEPT, SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SCENE_MODE_LABELS, commonSceneParams, sceneEntryFor, sceneGenerateIntent } from '@web/spaces/three-d/scene-generation';
 import type { SceneGenerateFill, SceneViewImage } from '@web/stores/scene-proposals';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 
 interface SceneGenerateDialogProps {
@@ -227,6 +228,13 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
     const id = crypto.randomUUID();
     const controller = new AbortController();
     uploads.current.add(controller);
+    // The picture is only this form's input: the Space stays busy while it uploads, so closing the tab or leaving the page asks first.
+    const operations = useSpaceOperationsStore.getState();
+    let released = false;
+    /** Let the Space go once, whichever end the upload reaches first. */
+    const release = (): void => { if (!released) { released = true; operations.unregister(spaceId, id); } };
+    operations.register(spaceId, id);
+    controller.signal.addEventListener('abort', release, { once: true });
     setViews((previous) => put(previous, index, { kind: 'uploading', id, percent: 0 }));
     /**
      * Land the upload in its slot, or mark the slot failed where it stands, so
@@ -234,6 +242,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
      * @param image - The stored picture, or null when the upload did not give one.
      */
     const settle = (image: SceneViewImage | null): void => {
+      release();
       if (controller.signal.aborted || !uploads.current.delete(controller)) return;
       setViews((previous) => previous.map((slot) => (slot.kind === 'uploading' && slot.id === id ? (image === null ? { kind: 'failed' } : { kind: 'image', ...image }) : slot)));
       if (image !== null) void queryClient.invalidateQueries({ queryKey: projectImagesQueryKey(projectId) });

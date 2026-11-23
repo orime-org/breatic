@@ -1571,6 +1571,7 @@
         "animation": "Animated shorts",
         "ecommerce": "E-commerce ads",
         "product-showcase": "Product showcase",
+        "promo": "Promo films & brand stories",
         "food": "Food",
         "fashion": "Fashion lookbook",
         "social-hooks": "Social hooks",
@@ -2823,6 +2824,103 @@
         "step": {
           "more": "Need more looks? Copy a look node, connect the next outfit and the model to it and its result into the video, then lengthen the video and add the look to its prompt."
         }
+      },
+      "app-launch-promo": {
+        "name": "App launch promo",
+        "description": "Your app's own screens on a phone, from hook to logo",
+        "prompt": "A 15-second vertical launch ad with sound for {✏️ the product, e.g. a habit-tracking app called Streak}. The phone is the hero: a modern phone whose screen shows [📎 Screen 1] and then [📎 Screen 2], each exactly as in its picture, sharp and readable, nothing on them redrawn or invented. 0–2 s hook: the phone rises out of darkness and turns to face the camera as its screen lights up. 2–8 s: a hand taps and scrolls the phone through the first screen and then the second, the camera gliding close to each. 8–12 s: the benefit: {✏️ the benefit, e.g. the streak counter ticks up to 30 days with a small burst of confetti}. 12–15 s: the phone settles in the centre on a clean background and [📎 Logo] appears above it, exactly as in its picture. Clean soft light, gentle reflections, a calm modern grade. Sound: {✏️ the music, e.g. an upbeat electronic pulse} with soft taps and whooshes. No other text on screen.",
+        "input": {
+          "screen-1": {
+            "name": "Screen 1",
+            "note": "Add a screenshot of your app first, then generate."
+          },
+          "screen-2": {
+            "name": "Screen 2",
+            "note": "Add a second screenshot first, then generate."
+          },
+          "logo": {
+            "name": "Logo",
+            "note": "Add your logo first, then generate."
+          }
+        }
+      },
+      "brand-origin-film": {
+        "name": "Brand origin film",
+        "description": "The maker, the spark, the making, the customer",
+        "shot": {
+          "1": "The maker's hands at work: close-up of the hands of [📎 Maker] {✏️ at the craft, e.g. shaping wet clay on a wheel}, slow and certain, the face just out of frame. Warm natural light. Sound: gentle acoustic music begins. No text on screen.",
+          "2": "The world they work in: a wide shot of {✏️ the place, e.g. a small sunlit workshop by the sea}, with [📎 Maker], face, hair and clothes as in the picture, small in the frame at the bench. No text on screen.",
+          "3": "The spark: close on the face of [📎 Maker] looking up, struck by {✏️ the inspiration, e.g. the colour of the sea at dawn through the window}. No text on screen.",
+          "4": "The making: a quick montage of hands and tools bringing [📎 Product] to life, each step from a new angle, the finished piece exactly as in its picture. No text on screen.",
+          "5": "In a customer's life: {✏️ the customer's moment, e.g. a woman wraps her cold hands around the mug on a rainy morning} with [📎 Product], the customer the hero, ending on a quiet smile and no logo. One short line of voice-over: {✏️ the line, e.g. \"Made slowly, for slow mornings.\"} No text on screen."
+        },
+        "input": {
+          "maker": {
+            "name": "Maker",
+            "note": "Add a photo of the maker first, then generate."
+          },
+          "product": {
+            "name": "Product",
+            "note": "Add a picture of your product first, then generate."
+          }
+        }
+      },
+      "launch-story-3-beat": {
+        "name": "Launch story in three beats",
+        "description": "Problem, reveal, payoff, cut to a score made first",
+        "shot": {
+          "1": "The problem: {✏️ the problem, e.g. a runner fumbles with tangled earbud wires in the cold}, in quiet blues, with {✏️ the object carried through all three shots, e.g. a pair of earbuds} in the shot. The music for the whole video is {✏️ @ here the 12-second clip you cut from Score}; every cut lands on a hit of it. No text on screen.",
+          "2": "The reveal: the same object becomes [📎 Product], exactly as in its picture, turning in a single beam of light as the music lifts. No text on screen.",
+          "3": "The payoff: {✏️ the payoff, e.g. the runner, wires gone, sprints into the sunrise}, in warm colour, the camera rising with the music. No text on screen."
+        },
+        "node": {
+          "score": {
+            "name": "Score",
+            "prompt": "Instrumental music for a 12-second product launch film: {✏️ the genre and tempo, e.g. modern electronic at 120 BPM}, one key throughout. It starts quiet and tense for the problem, lifts to one clear hit for the reveal and lands in a warm, confident release for the payoff, with sharp accents on the beat for the cuts. No vocals."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a picture of your product first, then generate."
+          }
+        },
+        "step": {
+          "trim": "The score comes out a few minutes long. Once it has generated, use Tools → Cut on it to cut 12 seconds, the part with the clearest lift; connect the cut clip (named CUT-…) to the video and @ it where the first shot asks."
+        }
+      },
+      "promo-film-assembled": {
+        "name": "One-minute promo film",
+        "description": "Four 15-second parts made to one score, then joined",
+        "prompt": "Part 1 of 4 of a 60-second promo film for {✏️ the brand, e.g. Nordlys, a Norwegian outdoor clothing brand}, 15 seconds. All four parts share one look: {✏️ the look, e.g. cold northern light, muted greens and greys, a handheld documentary camera}, with [📎 Brand] as the brand's product or mark, exactly as in its picture. The soundtrack is {✏️ @ here the first 15-second piece you cut from Score}; the cuts land on its beats. This part, the hook: {✏️ what happens, e.g. a climber's hand grips a frozen ledge as the wind roars}. No text on screen.",
+        "node": {
+          "part-2": {
+            "name": "Part 2",
+            "prompt": "Part 2 of 4 of a 60-second promo film for {✏️ the brand, e.g. Nordlys, a Norwegian outdoor clothing brand}, 15 seconds. All four parts share one look: {✏️ the look, e.g. cold northern light, muted greens and greys, a handheld documentary camera}, with [📎 Brand] as the brand's product or mark, exactly as in its picture. The soundtrack is {✏️ @ here the second 15-second piece you cut from Score}; the cuts land on its beats. This part, the world: {✏️ what happens, e.g. a team packs gear in a mountain hut at dawn}. No text on screen."
+          },
+          "part-3": {
+            "name": "Part 3",
+            "prompt": "Part 3 of 4 of a 60-second promo film for {✏️ the brand, e.g. Nordlys, a Norwegian outdoor clothing brand}, 15 seconds. All four parts share one look: {✏️ the look, e.g. cold northern light, muted greens and greys, a handheld documentary camera}, with [📎 Brand] as the brand's product or mark, exactly as in its picture. The soundtrack is {✏️ @ here the third 15-second piece you cut from Score}; the cuts land on its beats. This part, the change: {✏️ what happens, e.g. the storm breaks and the team reaches the summit}. No text on screen."
+          },
+          "part-4": {
+            "name": "Part 4",
+            "prompt": "Part 4 of 4 of a 60-second promo film for {✏️ the brand, e.g. Nordlys, a Norwegian outdoor clothing brand}, 15 seconds. All four parts share one look: {✏️ the look, e.g. cold northern light, muted greens and greys, a handheld documentary camera}, with [📎 Brand] as the brand's product or mark, exactly as in its picture. The soundtrack is {✏️ @ here the fourth 15-second piece you cut from Score}; the cuts land on its beats. This part, the brand signature: {✏️ what happens, e.g. the climbers rest in golden light, their jackets catching the sun}, ending on [📎 Brand]. No text on screen."
+          },
+          "score": {
+            "name": "Score",
+            "prompt": "Instrumental music for a 60-second promo film: {✏️ the genre and tempo, e.g. cinematic folk-electronic at 100 BPM}, one key throughout, in four sections of 15 seconds: a hushed hook, a steady build for the world, a lift for the change and a full, warm resolve for the brand. No vocals."
+          }
+        },
+        "input": {
+          "brand": {
+            "name": "Brand",
+            "note": "Add a picture of your product or logo first, then generate the parts."
+          }
+        },
+        "step": {
+          "trim": "The score comes out a few minutes long. Once it has generated, use Tools → Cut on it four times to cut back-to-back 15-second pieces (0–15 s, 15–30 s, 30–45 s, 45–60 s); connect each cut clip (named CUT-…) to its part in order and @ it where that part's prompt asks.",
+          "join": "Select the four parts in order, right-click and choose Join."
+        }
       }
     },
     "promptMark": {
@@ -3474,6 +3572,51 @@
       "selectedCount": "{count} selected",
       "multiTransform": "Use the scene handles to transform the selection around its centre.",
       "mixed": "Mixed",
+      "look": {
+        "title": "Appearance",
+        "resetAll": "Reset all",
+        "part": "Part {index}",
+        "defaultPart": "Default part",
+        "loadingParts": "Reading parts",
+        "partsUnavailable": "The model did not load, so its parts cannot be changed yet",
+        "unlitNote": "This part is not lit, so only its colour, image and opacity can change",
+        "lineNote": "This part is a line or points, so only its colour and opacity can change",
+        "presets": {
+          "matte": "Matte",
+          "glossy": "Glossy",
+          "metal": "Metal",
+          "brushedMetal": "Brushed metal",
+          "glass": "Glass",
+          "rubber": "Rubber"
+        },
+        "color": "Colour",
+        "image": "Image",
+        "chooseImage": "Choose image",
+        "replaceImage": "Replace",
+        "removeImage": "Remove",
+        "repeat": "Tiling",
+        "offset": "Offset",
+        "rotation": "Rotation",
+        "gloss": "Gloss",
+        "metalness": "Metallic",
+        "opacity": "Opacity",
+        "transmission": "Transmission",
+        "emission": "Glow",
+        "emissionIntensity": "Glow intensity",
+        "resetPart": "Reset this part",
+        "imageFailed": "Some part images did not load.",
+        "imageOverLimit": "Some part images would take this object over its image limit and are not shown.",
+        "pictureReadFailed": "{filename} could not be read. Try again.",
+        "objectTexturesTooLarge": "This object's images would use {actual} MiB together; the limit is {allowed} MiB. Use a smaller image or remove another part's image.",
+        "objectGone": "The image was uploaded, but the object was deleted or locked; it is in the Project images",
+        "partChanged": "The image was uploaded, but this part's image was changed meanwhile; it is in the Project images",
+        "pickSpaceClosed": "This Space was closed before the image was put on",
+        "pickObjectGone": "The object was deleted before the image was put on",
+        "checking": "Checking",
+        "partLimit": "This object can hold appearance changes on at most {max} parts.",
+        "partNotEditable": "This part cannot be changed.",
+        "uploadedPartLimit": "The image was uploaded, but this object already has appearance changes on its {max} parts; the image is in the Project images"
+      },
       "pose": {
         "title": "Pose",
         "stand": "Stand",
@@ -3484,7 +3627,8 @@
         "jointMode": "Adjust joints",
         "reset": "Reset pose",
         "noSkeleton": "This model has no skeleton and cannot be posed.",
-        "humanoidOnly": "Presets work on humanoid characters only."
+        "humanoidOnly": "Presets work on humanoid characters only.",
+        "boneLimit": "This object can hold a pose on at most {max} bones."
       },
       "selectObject": "Select an object to edit its properties.",
       "refused": "The connection to this scene was refused. Changes will not be saved.",

@@ -331,6 +331,8 @@ html[data-theme='light'] {
 
   /* ---- Border / input / focus ring ---- */
   --color-border: rgba(30, 30, 30, 0.12);
+  /* Outline of a colour swatch: strong enough to show a white or a surface-coloured swatch (#1536). */
+  --color-swatch-border: rgba(30, 30, 30, 0.32);
   --color-input: var(--neutral-200);
   /* focus = neutral solid 1px, no glow (translucent rejected: reads dirty). */
   --color-ring: var(--neutral-700);
@@ -582,6 +584,7 @@ html[data-theme='dark'] {
   --color-secondary-foreground: var(--neutral-900);
 
   --color-border: rgba(240, 240, 240, 0.12);
+  --color-swatch-border: rgba(240, 240, 240, 0.32);
   --color-input: var(--neutral-400);
 
   --color-primary: var(--neutral-900);

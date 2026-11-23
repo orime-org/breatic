@@ -212,6 +212,9 @@ const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked
 /** The templates that remix videos the user already has (inner#1819), in registry order. */
 const VIDEO_REMIX = ['reference-video-remix', 'seamless-bridge'];
 
+/** The promo film and brand story templates (inner#1822), in registry order. */
+const PROMO = ['app-launch-promo', 'brand-origin-film', 'launch-story-3-beat', 'promo-film-assembled'];
+
 /** The fashion lookbook templates (inner#1821), in registry order. */
 const FASHION = ['fashion-lookbook', 'try-on-still', 'lookbook-multi-look'];
 
@@ -377,6 +380,7 @@ describe('generation templates', () => {
       ...ANIMATION,
       ...ECOMMERCE,
       ...PRODUCT_SHOWCASE_VIDEOS,
+      ...PROMO,
       ...FOOD_VIDEOS,
       ...FASHION_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
@@ -432,6 +436,21 @@ describe('generation templates', () => {
       'food-money-shot': t2v(8),
       'recipe-process-montage': t2v(15),
       'dish-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '4:5' } } },
+      'app-launch-promo': t2v(15),
+      'brand-origin-film': {
+        result: { type: 'video', mode: 'multi_shot', model: T2V, params: { aspect_ratio: '16:9', duration: 20, generate_audio: true }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+      },
+      'launch-story-3-beat': {
+        result: { type: 'video', mode: 'multi_shot', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 12 }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+        score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
+      },
+      'promo-film-assembled': {
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        'part-2': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        'part-3': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        'part-4': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
+      },
       'fashion-lookbook': t2v(15),
       'try-on-still': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '3:4' } } },
       'lookbook-multi-look': {
@@ -703,7 +722,7 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'food', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'promo', 'food', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
@@ -713,6 +732,7 @@ describe('creative goals and triggers', () => {
       ...Object.fromEntries(ECOMMERCE.map((id) => [id, 'ecommerce'])),
       ...Object.fromEntries(PRODUCT_SHOWCASE.map((id) => [id, 'product-showcase'])),
       ...Object.fromEntries(TALKING.map((id) => [id, 'talking'])),
+      ...Object.fromEntries(PROMO.map((id) => [id, 'promo'])),
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
       ...Object.fromEntries(FASHION.map((id) => [id, 'fashion'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
@@ -781,6 +801,7 @@ describe('creative goals and triggers', () => {
       ['animation', ANIMATION],
       ['ecommerce', ECOMMERCE],
       ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
+      ['promo', PROMO],
       ['food', FOOD_VIDEOS],
       ['fashion', FASHION_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],

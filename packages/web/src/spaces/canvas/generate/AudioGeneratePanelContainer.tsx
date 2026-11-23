@@ -82,7 +82,7 @@ import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/gener
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
-import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { useContentStable } from '@web/lib/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import {
   isGenerating,

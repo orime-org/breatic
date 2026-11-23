@@ -24,6 +24,8 @@ import {
   AGENT_INSTRUCTIONS_MAX_CHARS,
   CHAT_MESSAGE_MAX_CHARS,
   MAX_SPACES_PER_PROJECT,
+  SCENE_LOOK_MAX_PARTS,
+  SCENE_POSE_MAX_KEYS,
   canConnect,
   canGenerate,
   t,
@@ -81,7 +83,8 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
     ],
   },
   { group: "Timeline", sections: [["Timeline spaces", "adding videos and web animations to a timeline and arranging them"]] },
-  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard, and the director console's cameras, lights and ambient light in a 3D space"]] },
+  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard, and the director console's cameras, lights and ambient light in a 3D space"],
+    ["3D appearance", "changing each part of a 3D object: colour, finish presets, gloss, metallic, opacity, transmission, glow, images and their tiling, and resetting"]] },
 ];
 
 /** Every section name the index lists. */
@@ -1699,7 +1702,7 @@ export function renderProductGuide(): string {
       "The view still turns and zooms, and objects can still be selected and moved. " +
       `Under the frame, a menu offers the aspect ratio (Free, 16:9, 9:16, 1:1, 4:3, 3:4, 3:2 and 2:3, starting at 16:9), the still's size in pixels (its long edge is ${String(getSceneConfig().capture.long_edge_px)}), ` +
       `${quoted(t("spaces.threeD.viewfinder.cancel"))} and ${quoted(t("spaces.threeD.viewfinder.confirm"))}. ` +
-      `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still without the grid, handles, selection outlines or joint dots; while a model is loading it says ${quoted(t("spaces.threeD.viewfinder.modelsLoading"))}. ` +
+      `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still without the grid, handles, selection outlines, joint dots or a selected part's tint; while a model is loading it says ${quoted(t("spaces.threeD.viewfinder.modelsLoading"))}. ` +
       `Then the menu shows ${quoted(t("spaces.threeD.viewfinder.toAgent"))}, ${quoted(t("spaces.threeD.viewfinder.toCanvas"))}, ${quoted(t("spaces.threeD.viewfinder.copy"))} and ` +
       `${quoted(t("spaces.threeD.viewfinder.reframe"))}, and the view stays still; the frame shows the still, and the toolbar of the selected objects is put away until the viewfinder goes back to framing or closes. ` +
       `${quoted(t("spaces.threeD.viewfinder.toAgent"))} opens the chat column and attaches the still to the conversation on screen, where it uploads like a picture attached by hand, saying ${quoted(t("spaces.threeD.viewfinder.addedToAgent"))}. ` +
@@ -1789,6 +1792,7 @@ export function renderProductGuide(): string {
       "Clearing the selection closes its properties panel. The properties button is available with a selection. " +
       `For one object it shows ${quoted(t("spaces.threeD.name"))}, ${quoted(t("spaces.threeD.position"))}, ` +
       `${quoted(t("spaces.threeD.rotation"))} and ${quoted(t("spaces.threeD.scale"))}, with X, Y and Z boxes. ` +
+      `For one ${quoted(t("spaces.threeD.figure"))}, ${quoted(t("spaces.threeD.box"))}, imported model or generated model it also has an ${quoted(t("spaces.threeD.look.title"))} section; the 3D appearance section of this guide covers it. ` +
       "Position is in metres, rotation in degrees, and scale values must be positive. Enter or leaving a box applies it; " +
       "switching to another Space keeps unfinished input and validation errors. Return and reopen Properties to continue. " +
       "Closing the panel, opening another panel or overlay, or changing the selection ends that temporary input. " +
@@ -1802,6 +1806,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.threeD.pose.walk"))} and ${quoted(t("spaces.threeD.pose.wave"))}; each replaces the whole pose and keeps the object where it is. ` +
       `Another skeleton says ${quoted(t("spaces.threeD.pose.humanoidOnly"))} Both offer the ${quoted(t("spaces.threeD.pose.jointMode"))} switch and ` +
       `${quoted(t("spaces.threeD.pose.reset"))}, which returns the model to its own resting pose. ` +
+      `A pose can set up to ${String(SCENE_POSE_MAX_KEYS)} bones of one object; posing one more bone is refused with a notice naming that limit. ` +
       `With ${quoted(t("spaces.threeD.pose.jointMode"))} on, dots mark the character's joints, drawn over the model, and the move, rotate and scale handles are hidden; ` +
       "click a dot, or a part of the body, to pick its joint, then drag the rotation rings that appear on it. Releasing saves only that joint; " +
       `each preset, reset or joint drag is one undo step. Choosing ${quoted(t("spaces.threeD.move"))}, ${quoted(t("spaces.threeD.rotate"))} or ${quoted(t("spaces.threeD.scale"))}, ` +
@@ -1833,6 +1838,34 @@ export function renderProductGuide(): string {
       "while valid objects remain usable. A scene saved by a newer version offers a reload button and says " +
       `${quoted(t("spaces.threeD.unsupported"))} A scene saved in an older format stays unopened and unchanged, ` +
       `with no reload button, and says ${quoted(t("spaces.threeD.unsupportedOld"))}`,
+    "",
+    "## 3D appearance",
+    `For one ${quoted(t("spaces.threeD.figure"))}, ${quoted(t("spaces.threeD.box"))}, imported model or generated model, the properties panel has a ${quoted(t("spaces.threeD.look.title"))} section below the position, rotation and scale boxes and above ${quoted(t("spaces.threeD.pose.title"))}; cameras, lights and several selected objects have none. ` +
+      `Its title row has ${quoted(t("spaces.threeD.look.resetAll"))} at the right, greyed while the object has no changes. Below it is one row per part of the model: a small swatch of the part's colour, or of its image, ` +
+      `the part's name from the model (a part without a name, or with the name of an earlier part, is called Part followed by its place in the list), and a dot on parts that were changed. ` +
+      `Parts are listed in the model's order; ${quoted(t("spaces.threeD.look.defaultPart"))} holds whatever has no material of its own and comes last. Built-in models name every part by number. ` +
+      `While the model loads the section says it is reading the parts; when the model did not load it says ${quoted(t("spaces.threeD.look.partsUnavailable"))}. ` +
+      `Changes can sit on up to ${String(SCENE_LOOK_MAX_PARTS)} parts of one object; changing one more part is refused with a notice naming that limit. ` +
+      `A part whose material number is above 9999 cannot be changed: its settings are unavailable and a line above them says it cannot be changed. ` +
+      `Clicking a row selects that part and opens its settings below the list; clicking it again closes them. ` +
+      `When only one object is selected, clicking it again in the scene, without Shift, selects the part under the pointer the same way and opens the properties panel unless the viewfinder or the director console is open. ` +
+      `The selected part is tinted in the scene for you alone; Shift-click, a click on another object or on empty space, joint adjustment and the viewfinder's still keep working as before, and the tint never shows in a still or a camera's picture.`,
+    `A part's settings start with six buttons that set its finish at once: ${quoted(t("spaces.threeD.look.presets.matte"))}, ${quoted(t("spaces.threeD.look.presets.glossy"))}, ${quoted(t("spaces.threeD.look.presets.metal"))}, ${quoted(t("spaces.threeD.look.presets.brushedMetal"))}, ${quoted(t("spaces.threeD.look.presets.glass"))} and ${quoted(t("spaces.threeD.look.presets.rubber"))}; ` +
+      `each writes its values in one step and leaves the colour and image as they are. Then come ${quoted(t("spaces.threeD.look.color"))} (its value and a swatch that opens a colour picker), ${quoted(t("spaces.threeD.look.image"))}, ` +
+      `${quoted(t("spaces.threeD.look.gloss"))}, ${quoted(t("spaces.threeD.look.metalness"))}, ${quoted(t("spaces.threeD.look.opacity"))} and ${quoted(t("spaces.threeD.look.transmission"))} sliders (transmission lets light through, for glass or water), ${quoted(t("spaces.threeD.look.emission"))} (its value and a swatch) and a ${quoted(t("spaces.threeD.look.emissionIntensity"))} slider. ` +
+      `A slider or the colour picker shows the change while you drag and saves it once when you let go. ` +
+      `With no image the image row has ${quoted(t("spaces.threeD.look.chooseImage"))}; with one it shows ${quoted(t("spaces.threeD.look.replaceImage"))} and ${quoted(t("spaces.threeD.look.removeImage"))}, followed by ${quoted(t("spaces.threeD.look.repeat"))} and ${quoted(t("spaces.threeD.look.offset"))} (two boxes each, X across and Y down, saved with Enter or on leaving the box; a value outside the range stays in its box, which shows ${quoted(t("spaces.threeD.valueFailed"))}) and a ${quoted(t("spaces.threeD.look.rotation"))} slider. ` +
+      `Choosing an image opens the same picker as Image to 3D: a picture of this Project, or a PNG, JPEG or WebP file from the computer, which uploads while you go on working; the Space cannot be closed while the file is still being sent, and once it is sent the image lands on the part it was chosen for even if the Space is closed; its row in the part list shows the percentage, and the image row shows it in place of the picture with ${quoted(t("spaces.threeD.taskList.running"))}, until the image is on the part. An uploaded image is put on by the server, so undo does not take it off; ${quoted(t("spaces.threeD.look.removeImage"))} does. ` +
+      `${quoted(t("spaces.threeD.look.removeImage"))} takes off an image you put on, with its tiling, and brings back the model's own; on the model's own image it turns the image off, leaving the colour. ` +
+      `${quoted(t("spaces.threeD.look.resetPart"))} puts the part back as the model made it, and ${quoted(t("spaces.threeD.look.resetAll"))} does that for every part; each is one undo step. ` +
+      `A part that is not lit says ${quoted(t("spaces.threeD.look.unlitNote"))} and a line or point part says ${quoted(t("spaces.threeD.look.lineNote"))} with the other settings greyed. ` +
+      `On a locked object, and for a Viewer, the parts can be selected and read but every setting is greyed.`,
+    `An image larger than the largest size a part shows is scaled down to it. Images have a size limit per object, counting the model's own textures and every image put on its parts; an image over it is not used and a message says how large the images would be and what the limit is. ` +
+      `When an image cannot be read, because the file changed or the connection failed, nothing is put on and a message names the image and asks to try again. ` +
+      `When an image is uploaded but cannot be put on the part, because the object was deleted or locked, another image was put on that part or the model's own image on it was turned off meanwhile, or the object already has changes on its ${String(SCENE_LOOK_MAX_PARTS)} parts, a message says so and the image stays in the Project's pictures. ` +
+      `When some part images do not load, the notice at the top left says ${quoted(t("spaces.threeD.look.imageFailed"))} with ${quoted(t("spaces.threeD.retry"))}; ` +
+      `when some are over the object's limit it says ${quoted(t("spaces.threeD.look.imageOverLimit"))} Those parts show the model's own image meanwhile, with their other changes. ` +
+      `Copies keep the look and are changed on their own afterwards. Everyone in the Space sees the same look, two people can change different settings of one part at once, and undo only takes back your own changes.`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +
