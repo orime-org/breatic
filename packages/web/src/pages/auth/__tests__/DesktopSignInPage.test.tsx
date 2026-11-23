@@ -142,4 +142,11 @@ describe('DesktopSignInPage', () => {
     expect(await screen.findByRole('button', { name: 'Continue' })).toBeEnabled();
     expect(authApi.options).toHaveBeenCalledTimes(2);
   });
+  it('reads the deployment settings again when they named no desktop app', async () => {
+    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: false, referralEnabled: false, desktopAppScheme: '', desktopAppName: '' });
+    setup(`?challenge=${CHALLENGE}`);
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: 'Continue' })).toBeEnabled();
+    expect(authApi.options).toHaveBeenCalledTimes(2);
+  });
 });

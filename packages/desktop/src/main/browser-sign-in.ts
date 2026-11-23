@@ -32,7 +32,7 @@ export interface BrowserSignInDeps {
   openExternal: (url: string) => Promise<void>;
   /** The clock, in milliseconds. */
   now: () => number;
-  /** How long a sign-in waits; the server's code lives as long. */
+  /** How long a code the browser handed back stays usable, counted from when it arrived; the server's code lives as long. */
   ttlMs: number;
   /** This build's scheme, a reverse domain name. */
   scheme: string;

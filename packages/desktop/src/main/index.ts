@@ -30,7 +30,7 @@ import { desktopText } from "@desktop/main/strings.js";
 
 /** The server the build carries (brand.json, or BREATIC_DEFAULT_SERVER_URL at build time); empty asks on first launch. */
 const DEFAULT_SERVER_URL = BRAND.serverUrl;
-/** How long a browser sign-in waits; the server's handoff code lives as long (`config/auth.yaml`). */
+/** How long a code the browser handed back stays usable, counted from when it arrived; the server's handoff code lives as long (`config/auth.yaml`). */
 const SIGN_IN_TTL_MS = 5 * 60_000;
 /** Permissions the web app asks for; every other request is refused. */
 const ALLOWED_PERMISSIONS = new Set(["clipboard-read", "clipboard-sanitized-write", "notifications", "fullscreen", "media"]);

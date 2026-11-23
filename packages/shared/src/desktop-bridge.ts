@@ -52,12 +52,12 @@ export function isDesktopAppScheme(scheme: string): boolean {
  * @param scheme - The build's scheme, a reverse domain name.
  * @returns `{scheme}://sign-in`.
  */
-export function desktopSignInLink(scheme: string): string {
+function desktopSignInLink(scheme: string): string {
   return `${scheme}://sign-in`;
 }
 
-/** A SHA-256 digest in base64url without padding: 32 bytes are 43 characters. */
-export const SHA256_BASE64URL = /^[A-Za-z0-9_-]{43}$/;
+/** 32 bytes in base64url without padding (43 characters): a SHA-256 challenge or a one-time handoff code. */
+export const BASE64URL_32_BYTES = /^[A-Za-z0-9_-]{43}$/;
 
 /**
  * The link the browser page opens to hand a code back to a desktop build.
@@ -82,6 +82,6 @@ export function parseDesktopSignInReturn(link: string, scheme: string): { code: 
   const params = new URLSearchParams(link.slice(base.length + 1));
   const code = params.get("code");
   const challenge = params.get("challenge");
-  if (!code || !challenge || !SHA256_BASE64URL.test(code) || !SHA256_BASE64URL.test(challenge)) return null;
+  if (!code || !challenge || !BASE64URL_32_BYTES.test(code) || !BASE64URL_32_BYTES.test(challenge)) return null;
   return { code, challenge };
 }

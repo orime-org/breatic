@@ -125,7 +125,7 @@ export function writeServerConfig(file: string, origin: string): void {
  * @param sources - The override, the saved origin and the build's own.
  * @param sources.envUrl - `BREATIC_SERVER_URL` in development, else undefined.
  * @param sources.savedUrl - The origin in `config.json`, when there is one.
- * @param sources.builtInUrl - The server written into the build, or "".
+ * @param sources.builtInUrl - The server written into the build, already normalized by builtInServerUrl at build time, or "".
  * @returns The origin, or null when the user must choose.
  * @throws {Error} if the override is an address the client refuses.
  */
@@ -139,7 +139,5 @@ export function resolveServerUrl(sources: {
     if (!normalized.ok) throw new Error(`BREATIC_SERVER_URL is not an address the client accepts: ${sources.envUrl}`);
     return normalized.origin;
   }
-  const builtIn = sources.builtInUrl ? normalizeServerUrl(sources.builtInUrl) : null;
-  if (builtIn?.ok) return builtIn.origin;
-  return sources.savedUrl;
+  return sources.builtInUrl || sources.savedUrl;
 }

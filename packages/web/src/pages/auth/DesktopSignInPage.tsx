@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { SHA256_BASE64URL, desktopSignInReturn } from '@breatic/shared';
+import { BASE64URL_32_BYTES, desktopSignInReturn } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { authApi } from '@web/data/api/auth';
 import { AUTH_OPTIONS_QUERY_KEY } from '@web/features/referral/use-signup-referral';
@@ -45,7 +45,7 @@ export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPagePr
   const t = useTranslation();
   const [params] = useSearchParams();
   const challenge = params.get('challenge') ?? '';
-  const valid = SHA256_BASE64URL.test(challenge);
+  const valid = BASE64URL_32_BYTES.test(challenge);
   const email = useCurrentUserStore((s) => s.user?.email ?? '');
   const clear = useCurrentUserStore((s) => s.clear);
   const [stage, setStage] = React.useState<Stage>(valid ? 'confirm' : 'error');
@@ -97,7 +97,10 @@ export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPagePr
             variant='outline'
             className='w-full'
             loading={options.isFetching}
-            onClick={() => (options.isError ? void options.refetch() : setStage('confirm'))}
+            onClick={() => {
+              setStage('confirm');
+              void options.refetch();
+            }}
           >
             {t('auth.desktop.retry')}
           </Button>
