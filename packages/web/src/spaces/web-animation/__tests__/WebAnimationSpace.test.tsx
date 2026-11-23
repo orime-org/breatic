@@ -28,6 +28,7 @@ import type * as SceneApiModule from '@web/data/api/scene';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { SpaceConnectionContext } from '@web/data/yjs/space-connection';
 import type { SocketState } from '@web/data/yjs/use-socket';
+import type { KeyFailureWords } from '@web/features/byok/key-failure-words';
 import { downloadAsset } from '@web/lib/download';
 import { toast } from '@web/lib/toast';
 import { spendCapMessage } from '@web/lib/spend-cap-message';
@@ -63,6 +64,12 @@ vi.mock('@web/components/ui/popover', async (importOriginal) => {
   return { ...actual, PopoverContent: Recorded };
 });
 vi.mock('@web/lib/toast', () => ({ toast: { success: vi.fn(), error: vi.fn(), warning: vi.fn(), info: vi.fn() } }));
+// The Project page's key words, as its key plan gives them; a case sets them (inner#1953).
+const keyWords = vi.hoisted((): { current: KeyFailureWords | undefined } => ({ current: undefined }));
+vi.mock('@web/features/byok/key-failure-words', async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  useKeyFailureWords: () => keyWords.current,
+}));
 /** How often each panel's own parts rendered: the execution list's tab strip and the annotation panel's filters. */
 const panelRenders = { tabsList: 0, filterButton: 0 };
 vi.mock('@web/components/ui/tabs', async (importOriginal) => {
@@ -1289,6 +1296,23 @@ describe('the execution list\'s three tabs', () => {
     expect(within(panel).getByTestId(`motion-row-${RUNNING}`)).toHaveTextContent(t('timeline.webAnimation.status.cancelled'));
     await userEvent.setup().click(within(failed).getByText('A box'));
     expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', NEWER);
+  });
+
+  it('tells a failed row on the Studio Admin\'s own key why its upstream refused the key (inner#1953)', async () => {
+    keyWords.current = { payer: 'admin', payerUserId: 'u-admin', viewerUserId: 'u1', upstreamNames: { openrouter: 'OpenRouter' } };
+    try {
+      listing([done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z')], { failed: [{
+        ...endedRow(done(FAILED, 'A box', '2026-11-15T07:00:00.000000Z'), 'failed', 'account_key_failed'),
+        failureUpstream: 'openrouter', failureKeyReason: 'no_balance', failureKeyOwner: 'u-admin',
+      }] });
+      show();
+      const panel = await openTab('failed');
+      expect(await within(panel).findByTestId(`motion-row-${FAILED}`)).toHaveTextContent(
+        t('canvas.task.failure.account_key_failed', { whose: 'admin', keyReason: 'no_balance', upstream: 'OpenRouter' }),
+      );
+    } finally {
+      keyWords.current = undefined;
+    }
   });
 
   it('opens the creation dialog filled with a failed row\'s request on Run again', async () => {

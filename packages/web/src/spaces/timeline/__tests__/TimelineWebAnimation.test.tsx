@@ -67,12 +67,6 @@ vi.mock('@hyperframes/player', () => {
   return {};
 });
 vi.mock('react-moveable', async () => (await import('@web/spaces/timeline/__tests__/helpers/moveable-mock')).moveableModule);
-// The Project page's key words, as its key plan gives them; a case sets them (inner#1953).
-const keyWords = vi.hoisted((): { current: { payer: 'self' | 'admin'; upstreamNames: Record<string, string> } | undefined } => ({ current: undefined }));
-vi.mock('@web/features/byok/key-failure-words', async (importOriginal) => ({
-  ...(await importOriginal<Record<string, unknown>>()),
-  useKeyFailureWords: () => keyWords.current,
-}));
 
 vi.mock('@web/lib/toast', () => ({
   toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
