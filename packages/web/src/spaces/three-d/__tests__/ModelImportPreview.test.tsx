@@ -17,47 +17,31 @@ vi.mock('three', async (importOriginal) => {
     render(scene: Scene): void { scenes.push(scene); }
   } };
 });
-const environments = vi.hoisted(() => [] as Array<{ dispose: () => void; texture: unknown }>);
-vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
-  const { WebGLRenderTarget } = await import('three');
-  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => { const target = new WebGLRenderTarget(1, 1); environments.push(target); return target; }) };
-});
 
-afterEach(() => { cleanup(); scenes.length = 0; environments.length = 0; canvases.length = 0; });
+afterEach(() => { cleanup(); scenes.length = 0; canvases.length = 0; });
 
 describe('model import preview (inner#1693 design 5.7)', () => {
-  it('lights the preview with a neutral environment at the default strength and releases it on unmount', () => {
+  it('lights the preview without a generated environment, since the 3D Space is a schematic view', () => {
     const root = new Group();
     root.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial({ metalness: 1 })));
     const view = render(<ModelImportPreview root={root} />);
     const scene = scenes.at(-1);
-    const environment = environments.at(-1);
-    if (!scene || !environment) throw new Error('no preview render');
-    expect(scene.environment).toBe(environment.texture);
-    expect(scene.environmentIntensity).toBe(0.4);
-    const dispose = vi.spyOn(environment, 'dispose');
+    if (!scene) throw new Error('no preview render');
+    expect(scene.environment).toBeNull();
     view.unmount();
-    expect(dispose).toHaveBeenCalledTimes(1);
   });
 
-  it('builds its environment again after the GPU context comes back, freeing the emptied one, and draws again', () => {
+  it('draws again once the GPU context comes back, and not after it closed', () => {
     const root = new Group();
     root.add(new Mesh(new BoxGeometry(), new MeshStandardMaterial({ metalness: 1 })));
     const view = render(<ModelImportPreview root={root} />);
-    const first = environments.at(-1)!;
-    const dispose = vi.spyOn(first, 'dispose');
+    const canvas = canvases.at(-1)!;
     const draws = scenes.length;
-    canvases.at(-1)!.dispatchEvent(new Event('webglcontextrestored'));
-    expect(dispose).toHaveBeenCalledTimes(1);
-    expect(environments).toHaveLength(2);
+    canvas.dispatchEvent(new Event('webglcontextrestored'));
     expect(scenes.length).toBeGreaterThan(draws);
-    expect(scenes.at(-1)!.environment).toBe(environments[1]!.texture);
-    const second = vi.spyOn(environments[1]!, 'dispose');
     view.unmount();
-    expect(second).toHaveBeenCalledTimes(1);
-    expect(dispose).toHaveBeenCalledTimes(1);
-    // A restore after unmount builds nothing.
-    canvases.at(-1)!.dispatchEvent(new Event('webglcontextrestored'));
-    expect(environments).toHaveLength(2);
+    const closed = scenes.length;
+    canvas.dispatchEvent(new Event('webglcontextrestored'));
+    expect(scenes).toHaveLength(closed);
   });
 });

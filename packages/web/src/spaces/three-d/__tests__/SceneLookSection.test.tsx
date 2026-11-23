@@ -146,7 +146,13 @@ describe('SceneLookSection', () => {
     const { onCommand } = renderSection({ selectedPart: '1' });
     fireEvent.click(screen.getByTestId('scene-look-preset-metal'));
     expect(onCommand).toHaveBeenCalledTimes(1);
-    expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: '1', set: { roughness: 0.15, metalness: 1, opacity: 1, transmission: 0 } });
+    expect(onCommand).toHaveBeenCalledWith({ type: 'look', id: ID, part: '1', set: { roughness: 0.15, metalness: 0.5, opacity: 1, transmission: 0 } });
+  });
+
+  it('keeps both metal presets half metallic, so a scene lit without an environment shows them grey instead of black', () => {
+    const { onCommand } = renderSection({ selectedPart: '1' });
+    fireEvent.click(screen.getByTestId('scene-look-preset-brushedMetal'));
+    expect(onCommand).toHaveBeenLastCalledWith({ type: 'look', id: ID, part: '1', set: { roughness: 0.45, metalness: 0.5, opacity: 1, transmission: 0 } });
   });
 
   it('disables finish controls on an unlit part and says why', () => {

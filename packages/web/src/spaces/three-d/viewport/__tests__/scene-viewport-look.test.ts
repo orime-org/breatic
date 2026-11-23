@@ -6,10 +6,9 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { Texture, type Object3D, type Scene, type WebGLRenderer, type WebGLRenderTarget } from 'three';
+import { Texture, type Object3D, type Scene, type WebGLRenderer } from 'three';
 import type { SceneObject } from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
-import { createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { SceneViewportRuntime } from '@web/spaces/three-d/viewport/scene-viewport-runtime';
 import type { SceneViewportRuntimeProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
@@ -32,10 +31,6 @@ vi.mock('three', async (importOriginal) => {
     }
     getContext(): unknown { return { isContextLost: () => false, getParameter: () => 'test', RENDERER: 0, VERSION: 0 }; }
   } };
-});
-vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
-  const { WebGLRenderTarget } = await import('three');
-  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => new WebGLRenderTarget(1, 1)) };
 });
 
 const BOX: SceneObject = { id: 'box', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1], locked: false };
@@ -168,29 +163,18 @@ describe('shadows after a part picture settles (inner#1693 design 5.2)', () => {
 });
 
 describe('a restored GPU context (inner#1693 design 5.7)', () => {
-  it('generates the environment again and redraws the shadows, since a restore empties GPU-made textures', async () => {
+  it('redraws the shadows, since a restore empties GPU-made shadow maps, and stops listening once closed', async () => {
     const initial = props();
     const { runtime } = await open(initial, '#969696');
     const { scene, renderer } = runtime as unknown as { scene: Scene; renderer: WebGLRenderer };
-    /** The render target the last environment was drawn into. */
-    const lastTarget = (): WebGLRenderTarget => vi.mocked(createSceneEnvironment).mock.results.at(-1)!.value as WebGLRenderTarget;
-    const before = lastTarget();
-    expect(scene.environment).toBe(before.texture);
-    const dispose = vi.spyOn(before, 'dispose');
+    expect(scene.environment).toBeNull();
     renderer.shadowMap.needsUpdate = false;
     renderer.domElement.dispatchEvent(new Event('webglcontextrestored'));
-    expect(vi.mocked(createSceneEnvironment)).toHaveBeenLastCalledWith(renderer);
-    expect(scene.environment).not.toBe(before.texture);
-    expect(dispose).toHaveBeenCalled();
     expect(renderer.shadowMap.needsUpdate).toBe(true);
-    const restored = lastTarget();
-    expect(scene.environment).toBe(restored.texture);
-    const disposeRestored = vi.spyOn(restored, 'dispose');
     runtime.dispose();
-    expect(disposeRestored).toHaveBeenCalled();
-    const calls = vi.mocked(createSceneEnvironment).mock.calls.length;
+    renderer.shadowMap.needsUpdate = false;
     renderer.domElement.dispatchEvent(new Event('webglcontextrestored'));
-    expect(vi.mocked(createSceneEnvironment).mock.calls.length).toBe(calls);
+    expect(renderer.shadowMap.needsUpdate).toBe(false);
   });
 });
 

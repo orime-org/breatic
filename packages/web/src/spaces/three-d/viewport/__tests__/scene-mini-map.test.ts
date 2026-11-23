@@ -17,11 +17,6 @@ vi.mock('three', async (importOriginal) => {
     render(...args: unknown[]): void { renders.push(args); }
   } };
 });
-const environments = vi.hoisted(() => [] as Array<{ dispose: () => void; texture: unknown }>);
-vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
-  const { WebGLRenderTarget } = await import('three');
-  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => { const target = new WebGLRenderTarget(1, 1); environments.push(target); return target; }) };
-});
 const OBJECT = { id: 'one', model: { kind: 'builtin', id: 'box' }, name: 'Box', position: [40, 8, -30], rotation: [0, Math.SQRT1_2, 0, Math.SQRT1_2], scale: [2, 3, 4], locked: false } satisfies SceneObject;
 const owners: Array<() => void> = [];
 afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); renders.length = 0; document.body.replaceChildren(); });
@@ -120,37 +115,25 @@ describe('appearance in the overview (inner#1693 design 5.2)', () => {
   });
 });
 
-describe('environment reflection in the overview (inner#1693 design 5.7)', () => {
-  it('lights its scene with its own neutral environment at the default strength and releases it on close', () => {
-    const cache = new ModelResourceCache(async () => model()); owners.push(() => cache.dispose());
-    const host = document.createElement('div'); document.body.append(host);
-    Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
-    const map = new SceneMiniMapRuntime(host, cache, vi.fn());
-    map.update([], new Set(), new Vector3(), new Set());
-    const scene = renders.at(-1)?.[0] as Scene;
-    const environment = environments.at(-1);
-    if (!environment) throw new Error('no environment');
-    expect(scene.environment).toBe(environment.texture);
-    expect(scene.environmentIntensity).toBe(0.4);
-    const dispose = vi.spyOn(environment, 'dispose');
-    map.dispose();
-    expect(dispose).toHaveBeenCalledTimes(1);
-  });
-
-  it('generates the environment again and redraws once the GPU context is restored', () => {
+describe('lighting and GPU restore in the overview (inner#1693 design 5.7)', () => {
+  it('lights its scene without a generated environment', () => {
     const cache = new ModelResourceCache(async () => model()); owners.push(() => cache.dispose());
     const host = document.createElement('div'); document.body.append(host);
     Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
     const map = new SceneMiniMapRuntime(host, cache, vi.fn()); owners.push(() => map.dispose());
     map.update([], new Set(), new Vector3(), new Set());
     const scene = renders.at(-1)?.[0] as Scene;
-    const before = environments.at(-1)!;
-    const dispose = vi.spyOn(before, 'dispose');
+    expect(scene.environment).toBeNull();
+  });
+
+  it('redraws once the GPU context is restored', () => {
+    const cache = new ModelResourceCache(async () => model()); owners.push(() => cache.dispose());
+    const host = document.createElement('div'); document.body.append(host);
+    Object.defineProperties(host, { clientWidth: { value: 200 }, clientHeight: { value: 140 } });
+    const map = new SceneMiniMapRuntime(host, cache, vi.fn()); owners.push(() => map.dispose());
+    map.update([], new Set(), new Vector3(), new Set());
     const count = renders.length;
     host.querySelector('canvas')!.dispatchEvent(new Event('webglcontextrestored'));
-    expect(scene.environment).toBe(environments.at(-1)!.texture);
-    expect(scene.environment).not.toBe(before.texture);
-    expect(dispose).toHaveBeenCalledTimes(1);
     expect(renders).toHaveLength(count + 1);
   });
 });

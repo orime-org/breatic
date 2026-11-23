@@ -16,10 +16,6 @@ import type { SceneRemotePeer, SceneSkeletonState, SceneViewportProps } from '@w
 // Tests run from packages/web; the bytes are the committed asset the browser fetches.
 const FIGURE_PATH = 'src/spaces/three-d/viewport/assets/figure.glb';
 
-vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
-  const { WebGLRenderTarget } = await import('three');
-  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: () => new WebGLRenderTarget(1, 1) };
-});
 vi.mock('three', async (importOriginal) => {
   const actual = await importOriginal<typeof import('three')>();
   return { ...actual, WebGLRenderer: class {

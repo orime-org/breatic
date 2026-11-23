@@ -862,9 +862,9 @@ would hold more than `SCENE_LOOK_MAX_PARTS` parts; `patch` commands never touch
 them. A part's picture is a registered PNG, JPEG or WebP asset of the Project,
 or `none`, which turns the model's own picture off. The runtime
 (`viewport/scene-look-runtime.ts`) applies the look to each instance's own
-materials, gives a triangle mesh without UVs generated ones (`look-uv.ts`) and
-lights the scene with a prefiltered environment (`scene-environment.ts`) so
-metal reads as metal. A picture's size is read from its file header (at most
+materials and gives a triangle mesh without UVs generated ones (`look-uv.ts`).
+The scene is a schematic for blocking, cameras and stills, lit by its hemisphere
+and directional lights with no environment map. A picture's size is read from its file header (at most
 `max_picture_header_bytes`) and kept in the page-wide `LookPictureSizes` per
 Project (`look-picture-size.ts`, which loads no three.js, so the eager
 appearance panel uses it without pulling three.js into the project page); the

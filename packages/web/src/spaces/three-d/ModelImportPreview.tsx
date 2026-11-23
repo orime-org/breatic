@@ -7,7 +7,6 @@ import type { Group } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
 import { useTranslation } from '@web/i18n/use-translation';
-import { SCENE_ENVIRONMENT_INTENSITY, createSceneEnvironment } from '@web/spaces/three-d/viewport/scene-environment';
 import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
 
 /**
@@ -37,10 +36,6 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
     renderer.setClearAlpha(0);
     element.append(renderer.domElement);
     const scene = new Scene();
-    // Metal and glass parts reflect the same neutral room as in the scene (inner#1693 design 5.7).
-    let environment = createSceneEnvironment(renderer);
-    scene.environment = environment.texture;
-    scene.environmentIntensity = SCENE_ENVIRONMENT_INTENSITY;
     const camera = new PerspectiveCamera(45, 1, 0.01, 2000);
     const orbit = new OrbitControls(camera, renderer.domElement);
     const instance = clone(root);
@@ -88,17 +83,8 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
       applySceneGridTheme(grid, getComputedStyle(element).getPropertyValue('--color-muted-foreground').trim());
       draw();
     };
-    /**
-     * Build the environment again once a lost GPU context is back: the restore leaves the old one empty (design 5.7).
-     * @throws {never} Never directly.
-     */
-    const restore = (): void => {
-      environment.dispose();
-      environment = createSceneEnvironment(renderer);
-      scene.environment = environment.texture;
-      draw();
-    };
-    renderer.domElement.addEventListener('webglcontextrestored', restore);
+    // A restored GPU context keeps image textures but empties what was drawn, so the preview is drawn again.
+    renderer.domElement.addEventListener('webglcontextrestored', draw);
     const observer = new ResizeObserver(resize);
     observer.observe(element);
     const themeObserver = new MutationObserver(theme);
@@ -110,13 +96,12 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
       observer.disconnect();
       themeObserver.disconnect();
       orbit.removeEventListener('change', draw);
-      renderer.domElement.removeEventListener('webglcontextrestored', restore);
+      renderer.domElement.removeEventListener('webglcontextrestored', draw);
       orbit.dispose();
       instance.traverse((object) => { if (object instanceof SkinnedMesh) object.skeleton.dispose(); });
       instance.removeFromParent();
       grid.geometry.dispose();
       grid.material.dispose();
-      environment.dispose();
       renderer.dispose();
       renderer.forceContextLoss();
       renderer.domElement.remove();

@@ -63,11 +63,6 @@ vi.mock('three', async (importOriginal) => {
     getContext(): unknown { return { isContextLost: () => false, getParameter: () => 'test', RENDERER: 0, VERSION: 0 }; }
   } };
 });
-const environments = vi.hoisted(() => [] as Array<{ dispose: () => void; texture: unknown }>);
-vi.mock('@web/spaces/three-d/viewport/scene-environment', async () => {
-  const { WebGLRenderTarget } = await import('three');
-  return { SCENE_ENVIRONMENT_INTENSITY: 0.4, createSceneEnvironment: vi.fn(() => { const target = new WebGLRenderTarget(1, 1); environments.push(target); return target; }) };
-});
 vi.mock('@web/spaces/three-d/viewport/model-resources', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@web/spaces/three-d/viewport/model-resources')>();
   const { Group: G, Mesh, BoxGeometry, MeshStandardMaterial } = await import('three');
@@ -85,7 +80,7 @@ const FRAME = { x: 180, y: 120, width: 640, height: 360 };
 const VIEW = { position: [7, 5, 8] as [number, number, number], target: [0, 1, 0] as [number, number, number] };
 const DIRECTOR = { monitorRefreshMs: 200, maxLights: 16, wheelCommitMs: 400, shadowMapPx: 2048, pointShadowMapPx: 512, shadowGroundReach: 3, shadowBias: -0.0005, shadowNormalBias: 0.02, pointShadowBias: -0.002, pointShadowNormalBias: 0.03 };
 const owners: Array<() => void> = [];
-afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); document.body.replaceChildren(); renders.length = 0; environments.length = 0; programs.length = 0; shadowMap.needsUpdate = false; });
+afterEach(() => { owners.splice(0).forEach((dispose) => dispose()); document.body.replaceChildren(); renders.length = 0; programs.length = 0; shadowMap.needsUpdate = false; });
 
 /** Props for a scene holding a cube and the given director records. */
 function props(objects: readonly SceneObject[], extra: Partial<SceneViewportProps> & Record<string, unknown> = {}): SceneViewportProps {
@@ -443,29 +438,14 @@ describe('lights, ambient and shadows (design 3.6, 6.4)', () => {
     expect(hemisphere[0]?.intensity).toBe(1.5);
   });
 
-  it('reflects a neutral environment at 0.4 under the default ambient, scaled with the ambient intensity (inner#1693 design 5.7)', async () => {
+  it('lights the scene without a generated environment whatever the ambient (inner#1693 design 5.7)', async () => {
     const opened = await open(props([]));
     opened.frame();
     const scene = (opened.runtime as unknown as { scene: Scene }).scene;
-    expect(environments).toHaveLength(1);
-    expect(scene.environment).toBe(environments[0]!.texture);
-    expect(scene.background).not.toBe(scene.environment);
-    expect(scene.environmentIntensity).toBeCloseTo(0.4);
-    opened.runtime.update({ ...opened.initial, environment: { ambientColor: '#ffffff', ambientIntensity: 0 } } as SceneViewportProps);
-    opened.frame();
-    expect(scene.environmentIntensity).toBe(0);
+    expect(scene.environment).toBeNull();
     opened.runtime.update({ ...opened.initial, environment: { ambientColor: '#ffffff', ambientIntensity: 5.4 } } as SceneViewportProps);
     opened.frame();
-    expect(scene.environmentIntensity).toBeCloseTo(0.8);
-  });
-
-  it('releases the environment with the view (inner#1693 design 5.7)', async () => {
-    const opened = await open(props([]));
-    const environment = environments.at(-1);
-    if (!environment) throw new Error('no environment');
-    const dispose = vi.spyOn(environment, 'dispose');
-    opened.runtime.dispose();
-    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(scene.environment).toBeNull();
   });
 
   it('casts no shadow until a mesh program has been compiled, then within the budget', async () => {

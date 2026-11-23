@@ -85,12 +85,15 @@ const NO_PRESS = (): number => -1;
  */
 const NOTHING = (): void => undefined;
 
-/** Finish presets (inner#1693 design 3.4); each writes all four values as one command. */
+/**
+ * Finish presets (inner#1693 design 3.4); each writes all four values as one command. The scene is lit without an
+ * environment to reflect, so the metal presets stay half metallic: a fully metallic part would show almost black.
+ */
 const PRESETS = {
   matte: { roughness: 0.9, metalness: 0, opacity: 1, transmission: 0 },
   glossy: { roughness: 0.2, metalness: 0, opacity: 1, transmission: 0 },
-  metal: { roughness: 0.15, metalness: 1, opacity: 1, transmission: 0 },
-  brushedMetal: { roughness: 0.45, metalness: 1, opacity: 1, transmission: 0 },
+  metal: { roughness: 0.15, metalness: 0.5, opacity: 1, transmission: 0 },
+  brushedMetal: { roughness: 0.45, metalness: 0.5, opacity: 1, transmission: 0 },
   glass: { roughness: 0.05, metalness: 0, opacity: 1, transmission: 1 },
   rubber: { roughness: 0.7, metalness: 0, opacity: 1, transmission: 0 },
 } as const;
