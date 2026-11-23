@@ -195,8 +195,7 @@ export interface FocusImage {
  * would be a second copy of what the project roster already answers, and it
  * would keep saying whatever was true the day the reply was written.
  *
- * Frontend-owned, like {@link FocusImage}: the backend never reads or writes
- * it. It lives here because it is part of the wire shape of a node's data, and
+ * Frontend-owned: the backend never reads or writes it. It lives here because it is part of the wire shape of a node's data, and
  * that shape is described in one place.
  */
 export interface AnnotationReply {

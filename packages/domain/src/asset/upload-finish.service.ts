@@ -23,7 +23,7 @@ import type { IngestReportOutcome } from "@domain/asset/ingest-report.service.js
 import { ingestRunFor } from "@domain/asset/asset.service.js";
 import * as mediaReadService from "@domain/asset/media-read.service.js";
 import { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
-import { statusOfGrant } from "@domain/asset/upload-status.service.js";
+import { settledUploadStatus } from "@domain/asset/upload-status.service.js";
 import {
   completeTransferGrant,
   findGrantByKey,
@@ -125,7 +125,7 @@ async function finishTransfer(
   // False only for a grant voided first, whose ending stands.
   const completed = await completeTransferGrant(storageKey);
   const grant = await findGrantByKey(storageKey);
-  if (grant !== null) await publishUploadEnded(grant.userId, await statusOfGrant(grant));
+  if (grant !== null) await publishUploadEnded(grant.userId, settledUploadStatus(grant, null));
   return { outcome: { status: completed ? "transferred" : "stale" } };
 }
 

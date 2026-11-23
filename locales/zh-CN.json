@@ -831,7 +831,6 @@
       "pickEnded": "已退出选择。",
       "pickEndedByPeer": "协作者结束了选择。",
       "focusSourceBusyByPeer": "协作者正在处理素材。",
-      "focusCropDiscarded": "节点已被删除——聚焦图已丢弃。",
       "duration": "生成时长",
       "durationSeconds": "{n} 秒",
       "generateAudio": "生成音频",

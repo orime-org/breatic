@@ -55,7 +55,7 @@ import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import { announceDocumentUploadAsset, announceDocumentUploadFailure, documentTargetOf } from "@domain/asset/document-upload-events.js";
 import { announceFocusImage, focusImageTargetOf } from "@domain/asset/focus-image-events.js";
 import { referenceUploadAsset, settleUploadTerminal, type UploadTerminal } from "@domain/asset/upload-terminal.service.js";
-import { statusOfGrant } from "@domain/asset/upload-status.service.js";
+import { settledUploadStatus } from "@domain/asset/upload-status.service.js";
 import type {
   UploadGrant,
   FinalizeClaim,
@@ -655,8 +655,8 @@ async function recordRegisteredUploadHistory(
 }
 
 /**
- * Publish and answer exclusively from the committed upload terminal. Every ending, a replay included, is told first to
- * its uploader with the status the status read answers (#1580).
+ * Publish and answer exclusively from the committed upload terminal. Every ending, a replay included, is told to its
+ * uploader before anything else is announced, with the status `settledUploadStatus` gives (#1580).
  * @param terminal - The result of serialized database arbitration.
  * @param sideEffects - Best-effort work whose failures the caller must log.
  * @returns The same canonical result for completions and their later replays.
@@ -665,9 +665,9 @@ async function recordRegisteredUploadHistory(
  */
 async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}): Promise<IngestReportOutcome> {
   const { grant } = terminal;
-  await publishUploadEnded(grant.userId, await statusOfGrant(grant));
   const documentTarget = documentTargetOf(grant);
   if (terminal.state === "void") {
+    await publishUploadEnded(grant.userId, settledUploadStatus(grant, null));
     const reason = grant.failureReason ?? "aborted";
     if (documentTarget !== null) await announceDocumentUploadFailure(documentTarget, reason);
     const countsPublishFailed = await announceFailure(grant, reason);
@@ -678,6 +678,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
     return { ...refusal, ...sideEffects, ...scene, ...(countsPublishFailed && { countsPublishFailed }) };
   }
   const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
+  await publishUploadEnded(grant.userId, settledUploadStatus(grant, asset));
   if (asset === null) return { status: "stale", ...sideEffects };
   if (documentTarget !== null) await announceDocumentUploadAsset(documentTarget, asset);
   const focusTarget = focusImageTargetOf(grant);

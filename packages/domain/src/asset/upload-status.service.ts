@@ -10,12 +10,36 @@
  * node, which has no task row, is answered the same way as one with.
  */
 
-import type { UploadStatus } from "@breatic/shared";
+import type { StudioAssetEntity, UploadStatus } from "@breatic/shared";
 import * as assetRepo from "@domain/asset/asset.repo.js";
 import { findOwnGrants, type UploadGrant } from "@domain/asset/upload-grant.repo.js";
 import { uploadDeadline } from "@domain/asset/upload-deadline.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
 import { referenceUploadAsset } from "@domain/asset/upload-terminal.service.js";
+
+/**
+ * How a settled grant ended: voided, a transfer, or registered as `asset` (null when its row is gone). Reads and writes
+ * nothing, so the finish that settled the grant tells its uploader with it.
+ * @param grant - A grant already consumed or voided.
+ * @param asset - The live row a consumed grant registered as, or null.
+ * @returns Its status.
+ */
+export function settledUploadStatus(
+  grant: Pick<UploadGrant, "storageKey" | "voidedAt" | "failureReason" | "assetSource">,
+  asset: Pick<StudioAssetEntity, "id" | "fileUrl" | "kind" | "width" | "height" | "deletedAt"> | null,
+): UploadStatus {
+  const key = grant.storageKey;
+  if (grant.voidedAt !== null) return { key, state: "failed", reason: grant.failureReason ?? "aborted" };
+  // A transfer (inner#1006) finishes without a row; it is referenced by key.
+  if (grant.assetSource === "transfer") return { key, state: "transferred" };
+  // A consumed grant always names its row; one that does not, or names a row since deleted, has nothing to hand over.
+  if (asset === null || asset.deletedAt !== null) return { key, state: "unknown" };
+  return {
+    key,
+    state: "completed",
+    result: { assetId: asset.id, fileUrl: asset.fileUrl, kind: asset.kind, width: asset.width, height: asset.height },
+  };
+}
 
 /**
  * Where one of the caller's grants stands.
@@ -29,28 +53,13 @@ import { referenceUploadAsset } from "@domain/asset/upload-terminal.service.js";
  */
 export async function statusOfGrant(grant: UploadGrant): Promise<UploadStatus> {
   const key = grant.storageKey;
-  if (grant.voidedAt !== null) {
-    return { key, state: "failed", reason: grant.failureReason ?? "aborted" };
+  if (grant.voidedAt !== null || (grant.consumedAt !== null && grant.assetSource === "transfer")) {
+    return settledUploadStatus(grant, null);
   }
   if (grant.consumedAt !== null) {
-    // A transfer (inner#1006) finishes without a row; it is referenced by key.
-    if (grant.assetSource === "transfer") return { key, state: "transferred" };
     const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
-    // A consumed grant always names its row; one that does not, or names a row
-    // since deleted, has nothing to hand over.
-    if (asset === null || asset.deletedAt !== null) return { key, state: "unknown" };
-    await referenceUploadAsset(grant, asset.id);
-    return {
-      key,
-      state: "completed",
-      result: {
-        assetId: asset.id,
-        fileUrl: asset.fileUrl,
-        kind: asset.kind,
-        width: asset.width,
-        height: asset.height,
-      },
-    };
+    if (asset !== null && asset.deletedAt === null) await referenceUploadAsset(grant, asset.id);
+    return settledUploadStatus(grant, asset);
   }
   return failureOutcome(await uploadDeadline(grant)) === "expired"
     ? { key, state: "failed", reason: "expired" }
