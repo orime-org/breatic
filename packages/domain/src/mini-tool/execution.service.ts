@@ -296,6 +296,32 @@ async function releaseUnretryablePins(id: string, tool: string, record: MiniTool
 }
 
 /**
+ * End a planned run whose task ended outside the worker, cancelled before it started or failed by the stale-waiter sweep
+ * (inner#1968 design 3.9), as its terminal state (frames-split §7.15): every output it never wrote fails with the task's
+ * reason. A cancelled run cannot be retried, so its pins end; a failed one keeps them while its tool can retry it.
+ * @param id - The run, whose task row the caller's transaction just ended.
+ * @param tx - That transaction.
+ * @throws {Error} When the original plan, the record or the atomic persistence is invalid.
+ */
+export async function endMiniToolExecutionOutsideRun(id: string, tx: DbTx): Promise<void> {
+  const plan = await lockedPlan(id, tx);
+  const current = recordFromPlan(plan);
+  if (current.outputs.every((output) => output.result !== null)) return;
+  const failure = { code: plan.task.errorMessage ?? "internal" };
+  const record = miniToolExecutionRecordSchema.parse({
+    ...current, resultVersion: current.resultVersion + 1, error: failure,
+    outputs: current.outputs.map((output) => output.result === null ? { ...output, result: { status: "failed", error: failure }, late: false } : output),
+  });
+  await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx);
+  if (plan.task.status === "cancelled") {
+    await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
+    return;
+  }
+  await releaseUnretryablePins(id, plan.execution.tool, record, tx);
+  if (plan.task.result?.settlement === undefined) await completeMiniToolConsumptionSet(id, tx);
+}
+
+/**
  * Preserve the accepted execution and actual expenses when admission fails or loses its queue acknowledgement.
  * @param taskId - The original SQL-claimed execution task.
  * @param error - The admission failure observed by the existing start adapter.

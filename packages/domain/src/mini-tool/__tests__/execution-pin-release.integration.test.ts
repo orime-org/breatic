@@ -13,7 +13,7 @@ import { randomUUID } from "node:crypto";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createPgClient, initCore, loadLocales } from "@breatic/core";
 import {
-  miniToolExecutionService, upstreamStepRepo, recordMiniToolStepResult,
+  miniToolExecutionService, runningSlotService, upstreamStepRepo, recordMiniToolStepResult,
   type MiniToolExecutionCompletion,
 } from "@domain/index.js";
 import { seedExecution, type ExecutionFixture } from "./execution-lifecycle-fixtures.js";
@@ -128,5 +128,66 @@ describe("terminal release (design §7.15 可重试结束)", () => {
     await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, false));
     expect(await queued(keys.source)).toEqual(once);
     expect(await livePins(f)).toEqual([]);
+  });
+});
+
+/**
+ * The run's stored execution record, as the task row holds it.
+ * @param f - The fixture.
+ * @returns Its outputs' results.
+ */
+async function storedResults(f: ExecutionFixture): Promise<unknown[]> {
+  const [row] = await pg<{ result: { miniToolExecution: { outputs: { result: unknown }[] } } }[]>`SELECT result FROM tasks WHERE id=${f.taskId}`;
+  return row!.result.miniToolExecution.outputs.map((output) => output.result);
+}
+
+/**
+ * Seed a scene detection waiting for a running slot, pinning the run's source keys, beside the fixture's run.
+ * @param f - The fixture whose person and Project it runs under.
+ * @param keys - The keys it pins.
+ * @returns Its task id.
+ */
+async function waitingAnalysis(f: ExecutionFixture, keys: string[]): Promise<string> {
+  const id = randomUUID();
+  await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
+    VALUES (${id},${f.userId},${f.projectId},${f.plan.spaceId},'mini_tool_analysis','append','mini_tool','pending','video.split',${pg.json({})},${pg.json({})})`;
+  const [row] = await pg<{ id: string }[]>`INSERT INTO presentation_pins (holder_kind,holder_id,tool_input_id) VALUES ('analysis',${id},${f.plan.presentationRef.source.toolInputId}) RETURNING id`;
+  for (const key of keys) await pg`INSERT INTO presentation_pin_objects (pin_id,storage_key) VALUES (${row!.id},${key})`;
+  return id;
+}
+
+// inner#1968 design 3.9: a waiting run ends outside the worker when the person cancels it or the stale-waiter sweep finds
+// its job lost; that end is the run's terminal state (frames-split §7.15), so its own lane ends there too.
+describe("a waiting run ended outside the worker (frames-split §7.15, inner#1968 design 3.9)", () => {
+  it("TR08 a cancelled waiting run releases its execution pin, registers its keys and ends every output failed as cancelled", async () => {
+    const f = await seedExecution(pg, "pending"); const keys = await pinned(f);
+    expect((await runningSlotService.cancelQueued(f.taskId)).cancelled).toBe(true);
+    expect(await livePins(f)).toEqual([]);
+    expect(await queued(keys.source)).toEqual([keys.full, keys.table].sort());
+    expect(await storedResults(f)).toEqual([{ status: "failed", error: { code: "cancelled" } }]);
+  });
+
+  it("TR09 a waiting run the sweep fails keeps a retryable tool's pins for its retry and ends every output failed", async () => {
+    const f = await seedExecution(pg, "pending"); const keys = await pinned(f);
+    expect((await runningSlotService.failTask(f.taskId, "internal")).failed).toBe(true);
+    expect(await livePins(f)).toEqual(["execution"]);
+    expect(await queued(keys.source)).toEqual([]);
+    expect(await storedResults(f)).toEqual([{ status: "failed", error: { code: "internal" } }]);
+  });
+
+  it("TR10 a cancelled waiting scene detection releases its analysis pin and registers the keys nothing else pins", async () => {
+    const f = await seedExecution(pg, "completed"); const keys = { source: `video/pin-release/${f.taskId}.mp4` };
+    const own = [`${keys.source}.video-source-ledger.a.json`];
+    const id = await waitingAnalysis(f, own);
+    expect((await runningSlotService.cancelQueued(id)).cancelled).toBe(true);
+    expect((await pg`SELECT 1 FROM presentation_pins WHERE holder_id=${id} AND deleted_at IS NULL`).length).toBe(0);
+    expect(await queued(keys.source)).toEqual(own);
+  });
+
+  it("TR11 the sweep failing a waiting scene detection releases its analysis pin", async () => {
+    const f = await seedExecution(pg, "completed");
+    const id = await waitingAnalysis(f, [`video/pin-release/${f.taskId}.mp4.video-source-ledger.b.json`]);
+    expect((await runningSlotService.failTask(id, "internal")).failed).toBe(true);
+    expect((await pg`SELECT 1 FROM presentation_pins WHERE holder_id=${id} AND deleted_at IS NULL`).length).toBe(0);
   });
 });
