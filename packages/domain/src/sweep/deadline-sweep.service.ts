@@ -3,16 +3,20 @@
 
 /**
  * What came due between two instants, told to the pages that show it (#1580). Notifications and credit holds that
- * expire, Project transfers that time out and 3D rows past their budget change nothing in the database on their own;
- * one round finds each and says so on the same channel as the table triggers, or through the Space's document for a
- * 3D row. Telling twice is harmless: a page only reads again.
+ * expire, Project transfers that time out, 3D rows past their budget and focus crops whose upload never ended change
+ * nothing in the database on their own; one round finds each and says so on the same channel as the table triggers,
+ * or through the Space's document for a 3D row and a focus crop. Telling twice is harmless: a page only reads again,
+ * and a crop already ended is not in its node's uploading list.
  */
 
 import {
   announceSpaceTasksVersion,
+  getNodeTaskConfig,
   publishNotificationsChanged,
   publishStudioCreditsChanged,
 } from "@breatic/core";
+import { announceFocusImageFailed, focusImageTargetOf } from "@domain/asset/focus-image-events.js";
+import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import { threeDSpaceDocName } from "@breatic/shared";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";
@@ -39,5 +43,10 @@ export async function sweepDue(window: { from: Date; now: Date }): Promise<void>
   await expireDueTransfers({ now });
   for (const place of await nodeTaskRepo.listScenesDueBetween(from, now)) {
     await announceSpaceTasksVersion(threeDSpaceDocName(place.projectId, place.spaceId));
+  }
+  // A crop whose bytes never finished ends at its two hours, as a node's upload row does.
+  for (const grant of await uploadGrantRepo.listOpenFocusGrantsDueBetween(from, now, getNodeTaskConfig().default_budget_ms)) {
+    const target = focusImageTargetOf(grant);
+    if (target !== null) await announceFocusImageFailed(target);
   }
 }

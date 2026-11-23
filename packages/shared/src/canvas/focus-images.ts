@@ -12,7 +12,7 @@
  */
 
 import { z } from "zod";
-import type { FocusImage } from "@shared/types/canvas-node.js";
+import type { FocusImage, FocusUpload } from "@shared/types/canvas-node.js";
 
 /** Longest id kept. */
 export const MAX_FOCUS_ID = 128;
@@ -28,19 +28,26 @@ export const MAX_FOCUS_NAME = 300;
  */
 export const MAX_FOCUS_ENTRIES = 200;
 
-/** The task-events type of a crop handed to collab. */
+/** The task-events type of a focus crop's upload, for collab to write into its node. */
 export const FOCUS_IMAGE_UPLOAD_EVENT_TYPE = "focus-image-upload";
 
-/** A registered focus crop, for collab to add to its node's pool. */
-export interface FocusImageUploadEvent {
+/** Where a focus crop's upload is going, for collab to write into its node (#1580). */
+interface FocusImageUploadTarget {
   type: typeof FOCUS_IMAGE_UPLOAD_EVENT_TYPE;
   /** The canvas Space document holding the node. */
   docName: string;
-  /** The node whose pool takes the image. */
+  /** The node whose reference list takes the crop. */
   nodeId: string;
-  /** The image, its address taken from the registered asset. */
-  image: FocusImage;
 }
+
+/**
+ * A focus crop's upload as it moves: `uploading` when it opens (the node shows it as running), `completed` with the
+ * address of the registered asset (it moves into the pool), `failed` when it ends without one (it goes).
+ */
+export type FocusImageUploadEvent =
+  | (FocusImageUploadTarget & { state: "uploading"; image: FocusUpload })
+  | (FocusImageUploadTarget & { state: "completed"; image: FocusImage })
+  | (FocusImageUploadTarget & { state: "failed"; id: string });
 
 /**
  * A side that a crop may have.
@@ -52,19 +59,29 @@ function isDimension(value: unknown): value is number {
 }
 
 /**
- * Whether one value is a focus image, read from untrusted data.
+ * Whether one value is a focus crop still uploading, read from untrusted data.
  * @param value - The value.
- * @returns True when it carries a non-empty id and address within bounds, a name within bounds and two valid sides.
+ * @returns True when it carries a non-empty id within bounds, a name within bounds and two valid sides.
  */
-export function isValidFocusImage(value: unknown): value is FocusImage {
+export function isValidFocusUpload(value: unknown): value is FocusUpload {
   if (typeof value !== "object" || value === null) return false;
   const f = value as Record<string, unknown>;
   return (
     typeof f.id === "string" && f.id.length > 0 && f.id.length <= MAX_FOCUS_ID &&
-    typeof f.url === "string" && f.url.length > 0 && f.url.length <= MAX_FOCUS_URL &&
     typeof f.name === "string" && f.name.length <= MAX_FOCUS_NAME &&
     isDimension(f.width) && isDimension(f.height)
   );
+}
+
+/**
+ * Whether one value is a focus image, read from untrusted data.
+ * @param value - The value.
+ * @returns True when it is a valid {@link FocusUpload} that also carries a non-empty address within bounds.
+ */
+export function isValidFocusImage(value: unknown): value is FocusImage {
+  if (!isValidFocusUpload(value)) return false;
+  const url = (value as { url?: unknown }).url;
+  return typeof url === "string" && url.length > 0 && url.length <= MAX_FOCUS_URL;
 }
 
 /**
@@ -83,6 +100,24 @@ export function validFocusImages(raw: unknown): FocusImage[] {
     if (!isValidFocusImage(f) || seen.has(f.id)) continue;
     seen.add(f.id);
     kept.push({ id: f.id, url: f.url, name: f.name, width: f.width, height: f.height });
+  }
+  return kept;
+}
+
+/**
+ * Narrow an untrusted `focusUploads` value to its valid entries, as {@link validFocusImages} does for the pool.
+ * @param raw - The raw `data.focusUploads` value, as a plain array.
+ * @returns The valid entries, each a fresh four-field object, the first of an id kept.
+ */
+export function validFocusUploads(raw: unknown): FocusUpload[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const kept: FocusUpload[] = [];
+  for (const f of raw) {
+    if (kept.length >= MAX_FOCUS_ENTRIES) break;
+    if (!isValidFocusUpload(f) || seen.has(f.id)) continue;
+    seen.add(f.id);
+    kept.push({ id: f.id, name: f.name, width: f.width, height: f.height });
   }
   return kept;
 }

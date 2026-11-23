@@ -91,9 +91,9 @@ export async function publishDocumentUploadEvent(
 }
 
 /**
- * Publish a registered focus crop for collab to add to its node's pool (#1580).
+ * Publish a step of a focus crop's upload for collab to write into its node (#1580).
  * @param redis - Redis client for the stream DB.
- * @param event - The crop's event.
+ * @param event - The step.
  * @returns Nothing.
  * @throws {Error} When the stream rejects the entry.
  */

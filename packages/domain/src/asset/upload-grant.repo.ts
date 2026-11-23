@@ -19,7 +19,7 @@
  * table's schema), and this is still the only place that reads or writes it.
  */
 
-import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
+import { and, eq, gt, inArray, isNotNull, isNull, lte, or, sql } from "drizzle-orm";
 import { db, uploadGrants, type DbTx } from "@breatic/core";
 import { focusImageTicketSchema, type ConsentSnapshot, type FocusImageTicket, type StudioAssetEntity } from "@breatic/shared";
 import { z } from "zod";
@@ -96,6 +96,27 @@ export async function scanConsumedMediaGrants(cursor: string | null, limit: numb
   const rows = await db.select().from(uploadGrants).where(and(
     isNotNull(uploadGrants.consumedAt), cursor === null ? undefined : gt(uploadGrants.id, cursor),
   )).orderBy(uploadGrants.id).limit(limit);
+  return rows.map(toEntity);
+}
+
+/**
+ * The focus crops whose upload is still open when its budget runs out within `(from, to]`: the grant is neither
+ * consumed nor voided, and `created_at + budgetMs` falls in the window, the deadline an upload with no node has
+ * (`uploadDeadline`).
+ * @param from - The window's open lower end.
+ * @param to - The window's closed upper end.
+ * @param budgetMs - An upload's budget.
+ * @returns The grants, each with its focus image.
+ * @throws {Error} When the database read fails.
+ */
+export async function listOpenFocusGrantsDueBetween(from: Date, to: Date, budgetMs: number): Promise<UploadGrant[]> {
+  const rows = await db.select().from(uploadGrants).where(and(
+    isNotNull(uploadGrants.focusImage),
+    isNull(uploadGrants.consumedAt),
+    isNull(uploadGrants.voidedAt),
+    gt(uploadGrants.createdAt, new Date(from.getTime() - budgetMs)),
+    lte(uploadGrants.createdAt, new Date(to.getTime() - budgetMs)),
+  ));
   return rows.map(toEntity);
 }
 

@@ -3371,11 +3371,15 @@ describe("a focus crop's registration, handed to collab (#1580)", () => {
     const { key, focus } = await cropTicket(seed);
     await report(completed(key));
     const events = await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId));
-    expect(events).toHaveLength(1);
+    expect(events.map((e) => e.state)).toEqual(["uploading", "completed"]);
     const [asset] = await sql<{ file_url: string }[]>`
       SELECT a.file_url FROM upload_grants g JOIN studio_assets a ON a.id = g.asset_id WHERE g.storage_key = ${key}
     `;
     expect(events[0]).toMatchObject({
+      nodeId: focus.nodeId,
+      image: { id: focus.id, name: focus.name, width: focus.width, height: focus.height },
+    });
+    expect(events[1]).toMatchObject({
       nodeId: focus.nodeId,
       image: { id: focus.id, name: focus.name, width: focus.width, height: focus.height, url: asset!.file_url },
     });
@@ -3395,11 +3399,21 @@ describe("a focus crop's registration, handed to collab (#1580)", () => {
     expect(events.at(-1)).toMatchObject({ image: { url: winner!.file_url } });
   });
 
-  it("D-14 hands nothing to collab for a voided crop", async () => {
+  it("D-14 ends a voided crop's upload in its node as failed", async () => {
     const seed = await seedEditor();
-    const { key } = await cropTicket(seed);
+    const { key, focus } = await cropTicket(seed);
     await report({ storage_key: key, outcome: "aborted" });
-    expect(await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId))).toEqual([]);
+    const events = await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    expect(events.map((e) => e.state)).toEqual(["uploading", "failed"]);
+    expect(events[1]).toMatchObject({ nodeId: focus.nodeId, id: focus.id });
+  });
+
+  it("ends as failed a crop whose bytes registered as something other than a picture", async () => {
+    const seed = await seedEditor();
+    const { key, focus } = await cropTicket(seed);
+    await report(completed(key, { content_type: "video/mp4" }));
+    const events = await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    expect(events.at(-1)).toMatchObject({ state: "failed", nodeId: focus.nodeId, id: focus.id });
   });
 
   it("D-15 hands nothing to collab for an upload that is not a focus crop", async () => {

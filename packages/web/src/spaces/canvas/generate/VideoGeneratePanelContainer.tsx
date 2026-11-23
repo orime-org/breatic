@@ -99,6 +99,7 @@ import {
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { uploadingFocusOf } from '@web/spaces/canvas/focus/focus-uploading';
 import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import {
@@ -396,11 +397,8 @@ function VideoGeneratePanelBody({
   // render at all, so the row appears out of nowhere on success.
   const pendingFocusAll = useCanvasSession((s) => s.pendingFocusUploads);
   const pendingFocus = React.useMemo(
-    () =>
-      pendingFocusAll
-        .filter((p) => p.nodeId === nodeId)
-        .map((p) => ({ id: p.id, name: p.name })),
-    [pendingFocusAll, nodeId],
+    () => uploadingFocusOf(pendingFocusAll, nodeId, nodes.find((n) => n.id === nodeId)?.data),
+    [pendingFocusAll, nodeId, nodes],
   );
   // References change identity on every derive; key the memo on their CONTENT
   // (a small array — a stringify key is cheap and exact), or the rail's memo

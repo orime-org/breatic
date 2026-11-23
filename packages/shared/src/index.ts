@@ -65,6 +65,7 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
+  FocusUpload,
   AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,
@@ -998,7 +999,9 @@ export {
   MAX_FOCUS_URL,
   focusImageTicketSchema,
   isValidFocusImage,
+  isValidFocusUpload,
   validFocusImages,
+  validFocusUploads,
   type FocusImageTicket,
   type FocusImageUploadEvent,
 } from "@shared/canvas/focus-images.js";

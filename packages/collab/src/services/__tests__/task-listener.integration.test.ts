@@ -996,10 +996,15 @@ describe("focus crop events", () => {
   }
 
   /** Append focus-image events for `c`'s document. */
-  async function publishFocus(c: Case, events: Array<{ nodeId: string; image: Record<string, unknown>; docName?: string }>): Promise<string[]> {
+  async function publishFocus(
+    c: Case,
+    events: Array<{ nodeId: string; image?: Record<string, unknown>; docName?: string; state?: "uploading" | "completed" | "failed"; id?: string }>,
+  ): Promise<string[]> {
     const ids: string[] = [];
     for (const e of events) {
-      const payload = JSON.stringify({ type: FOCUS_IMAGE_UPLOAD_EVENT_TYPE, docName: e.docName ?? c.docName, nodeId: e.nodeId, image: e.image });
+      const state = e.state ?? "completed";
+      const step = state === "failed" ? { state, id: e.id } : { state, image: e.image };
+      const payload = JSON.stringify({ type: FOCUS_IMAGE_UPLOAD_EVENT_TYPE, docName: e.docName ?? c.docName, nodeId: e.nodeId, ...step });
       ids.push((await stream.xadd(c.streamKey, "*", "payload", payload))!);
     }
     return ids;
@@ -1021,6 +1026,49 @@ describe("focus crop events", () => {
       await conn.disconnect();
     }
   }
+
+  /** The node's uploading crops as stored, or undefined when the node or list is absent. */
+  async function uploadsOf(c: Case, nodeId: string): Promise<unknown[] | undefined> {
+    const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+    try {
+      const node = conn.document!.getMap(CANVAS_NODES_KEY).get(nodeId);
+      const data = node instanceof Y.Map ? node.get("data") : undefined;
+      const raw = data instanceof Y.Map ? data.get("focusUploads") : undefined;
+      return raw instanceof Y.Array ? raw.toArray() : undefined;
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
+  it("shows a crop as uploading in its node until it ends well, then moves it into the pool", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const img = image();
+    const { url: _url, ...upload } = img;
+    const first = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, first));
+    expect(await uploadsOf(c, nodeId)).toEqual([upload]);
+    expect(await poolOf(c, nodeId)).toBeUndefined();
+    const second = await publishFocus(c, [{ nodeId, image: img }]);
+    await until(() => handled(c.streamKey, second));
+    expect(await uploadsOf(c, nodeId)).toEqual([]);
+    expect(await poolOf(c, nodeId)).toEqual({ isArray: true, items: [img] });
+  });
+
+  it("takes away a crop whose upload failed and leaves the pool as it was", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const kept = image();
+    await seedPool(c, nodeId, [kept]);
+    const img = image();
+    const { url: _url, ...upload } = img;
+    const ids = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }, { nodeId, state: "failed", id: img.id as string }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await uploadsOf(c, nodeId)).toEqual([]);
+    expect(await poolOf(c, nodeId)).toEqual({ isArray: true, items: [kept] });
+  });
 
   /** Set the node's pool before the listener starts. */
   async function seedPool(c: Case, nodeId: string, items: unknown[], plain = false): Promise<void> {

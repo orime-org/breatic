@@ -155,7 +155,7 @@ import {
 import { BRUSH_SIZE } from '@web/stores/drawing-draft';
 import { steppedMarkSize } from '@web/stores/mark-draft';
 import { uploadDerivedImage, uploadFocusCrop } from '@web/spaces/canvas/upload-derived-image';
-import { watchPendingFocusUploads } from '@web/spaces/canvas/focus/pending-focus-uploads';
+import { uploadingFocusOf } from '@web/spaces/canvas/focus/focus-uploading';
 import { failUploadIntoNode, startUploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useCanvasRevealReceiver } from '@web/spaces/canvas/use-canvas-reveal-receiver';
 import {
@@ -930,7 +930,7 @@ function CanvasSpaceInner({
         ?.data as { focusImages?: unknown } | undefined;
       if (
         validFocusImages(panelData?.focusImages).length +
-          pendingFocusCount(sessionStore, panelNodeId) >=
+          pendingFocusCount(sessionStore, graph.flowNodes, panelNodeId) >=
         MAX_FOCUS_ENTRIES
       ) {
         toast.warning(
@@ -943,7 +943,7 @@ function CanvasSpaceInner({
       if (
         cap !== null &&
         referencePoolCount(graph.flowEdges, graph.flowNodes, panelNodeId) +
-          pendingFocusCount(sessionStore, panelNodeId) >=
+          pendingFocusCount(sessionStore, graph.flowNodes, panelNodeId) >=
           cap
       ) {
         // Rejection keeps the marquee (the overlay clears only on true) —
@@ -954,8 +954,8 @@ function CanvasSpaceInner({
       // The crop is uploaded before it is written, so the Space is asked
       // first: one that cannot take an add uploads nothing (inner#1790).
       if (!checkAdd(docName.canvasSpace(projectId, spaceId)).ok) return false;
-      // One id names the crop from here on: its pending entry, its ticket, and the image collab adds to the pool,
-      // whose arrival drops the entry (`watchPendingFocusUploads`).
+      // One id names the crop from here on: its local entry, its ticket, the node's uploading entry and the image
+      // collab adds to the pool. The local entry lasts until the bytes are sent; the node's shows the rest.
       const cropId = newId();
       store.addPendingFocusUpload({
         id: cropId,
@@ -981,16 +981,11 @@ function CanvasSpaceInner({
               toast.error(t(focusFailureMessageKey(stage)));
             },
           },
-        ),
+        ).then(() => sessionStore.getState().removePendingFocusUpload(cropId)),
       );
       return true;
     },
     [graphStore, sessionStore, trackOperation, focusCropTargetId, projectId, spaceId, t],
-  );
-  // A pending crop goes when its image lands in the pool or its node leaves the document (#1580).
-  React.useEffect(
-    () => watchPendingFocusUploads(getDoc(docName.canvasSpace(projectId, spaceId)), sessionStore),
-    [projectId, spaceId, sessionStore],
   );
   // Warm the reference-pool cap knob (#1782) once per canvas mount. A
   // failure leaves the soft cap off (degrade-to-uncapped by design — no
@@ -1855,7 +1850,7 @@ function CanvasSpaceInner({
           flowNodes,
           connection.target,
         ) +
-          pendingFocusCount(sessionStore, connection.target) >=
+          pendingFocusCount(sessionStore, flowNodes, connection.target) >=
           cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
@@ -2032,7 +2027,7 @@ function CanvasSpaceInner({
           graphStore.getState().flowNodes,
           target,
         ) +
-          pendingFocusCount(sessionStore, target) >=
+          pendingFocusCount(sessionStore, graphStore.getState().flowNodes, target) >=
           cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
@@ -5172,18 +5167,21 @@ function CanvasSpaceInner({
 }
 
 /**
- * In-flight focus uploads for a node — counted by every pool-cap gate so a
- * pending crop occupies its slot BEFORE its Yjs write lands (adversarial
- * 2026-07-16: the edge gates ignoring pending let a same-client burst
- * overshoot the cap the confirm gate guards).
+ * Focus crops uploading on a node, counted by every pool-cap gate so an uploading crop holds its slot before it lands
+ * in the pool (adversarial 2026-07-16: the edge gates ignoring pending let a same-client burst overshoot the cap the
+ * confirm gate guards): this page's own until sent and the node's `focusUploads` (#1580), each once.
  * @param session - The canvas's session store.
+ * @param nodes - The canvas nodes, the node's data read from them.
  * @param nodeId - The pool's target node.
- * @returns The number of in-flight focus uploads for that node.
+ * @returns How many crops are uploading on that node.
  */
-function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number {
-  return session
-    .getState()
-    .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
+function pendingFocusCount(
+  session: CanvasSessionStore,
+  nodes: ReadonlyArray<{ id: string; data?: unknown }>,
+  nodeId: string,
+): number {
+  const data = nodes.find((n) => n.id === nodeId)?.data;
+  return uploadingFocusOf(session.getState().pendingFocusUploads, nodeId, typeof data === 'object' && data !== null ? data : undefined).length;
 }
 
 /**

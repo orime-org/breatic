@@ -188,6 +188,13 @@ export interface FocusImage {
 }
 
 /**
+ * A focus crop still uploading, held in a node's `focusUploads` (#1580): the image it will become, without the address
+ * its registration gives. It is the node's state, the way `taskCounts` is: collab writes it when the upload opens and
+ * takes it away when the upload ends, and copying a node leaves it behind.
+ */
+export type FocusUpload = Omit<FocusImage, "url">;
+
+/**
  * One reply under an annotation, stored in the sticky's `replies` Y.Array
  * (#1881) and serialized to this plain shape by `toJSON()`.
  *
@@ -581,6 +588,11 @@ export interface CanvasNodeFields {
      * it, and the copy semantics: {@link FocusImage}. Empty / absent = none created.
      */
     focusImages?: FocusImage[];
+    /**
+     * Focus crops on this node still uploading (#1580), shown in its reference list as running, the way `taskCounts`
+     * shows a task. A `Y.Array` that only collab writes; {@link FocusUpload}.
+     */
+    focusUploads?: FocusUpload[];
 
     // ─── Annotation (sticky) fields ─────────────────────────
     /**

@@ -53,7 +53,7 @@ import { appendProjectActivity } from "@domain/activity/project-activity.service
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import { announceDocumentUploadAsset, announceDocumentUploadFailure, documentTargetOf } from "@domain/asset/document-upload-events.js";
-import { announceFocusImage, focusImageTargetOf } from "@domain/asset/focus-image-events.js";
+import { announceFocusImage, announceFocusImageFailed, focusImageTargetOf } from "@domain/asset/focus-image-events.js";
 import { referenceUploadAsset, settleUploadTerminal, type UploadTerminal } from "@domain/asset/upload-terminal.service.js";
 import { settledUploadStatus } from "@domain/asset/upload-status.service.js";
 import type {
@@ -666,10 +666,12 @@ async function recordRegisteredUploadHistory(
 async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}): Promise<IngestReportOutcome> {
   const { grant } = terminal;
   const documentTarget = documentTargetOf(grant);
+  const focusTarget = focusImageTargetOf(grant);
   if (terminal.state === "void") {
     await publishUploadEnded(grant.userId, settledUploadStatus(grant, null));
     const reason = grant.failureReason ?? "aborted";
     if (documentTarget !== null) await announceDocumentUploadFailure(documentTarget, reason);
+    if (focusTarget !== null) await announceFocusImageFailed(focusTarget);
     const countsPublishFailed = await announceFailure(grant, reason);
     const scene = await settleSceneUpload(grant, { outcome: "failed", errorMessage: reason });
     const refusal: IngestReportOutcome = reason === "empty" || reason === "over_cap"
@@ -679,9 +681,11 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
   }
   const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
   await publishUploadEnded(grant.userId, settledUploadStatus(grant, asset));
-  if (asset === null) return { status: "stale", ...sideEffects };
+  if (asset === null) {
+    if (focusTarget !== null) await announceFocusImageFailed(focusTarget);
+    return { status: "stale", ...sideEffects };
+  }
   if (documentTarget !== null) await announceDocumentUploadAsset(documentTarget, asset);
-  const focusTarget = focusImageTargetOf(grant);
   if (focusTarget !== null) await announceFocusImage(focusTarget, asset);
   const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
   const coverUrl = cover?.fileUrl ?? null;

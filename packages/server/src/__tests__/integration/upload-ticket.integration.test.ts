@@ -1457,6 +1457,10 @@ describe("POST /assets/upload-ticket — a focus crop (#1580)", () => {
     const { data } = (await res.json()) as { data: { storageKey: string } };
     const focus = payload.focusImage as Record<string, unknown>;
     expect(await focusOf(data.storageKey)).toEqual({ spaceId, nodeId: focus.nodeId, id: focus.id, name: "Source", width: 640, height: 480 });
+    // The crop shows as uploading in its node once the grant is open, as a node's upload shows its task row.
+    expect(await focusEvents(canvasSpaceDocName(seed.projectId, spaceId))).toEqual([expect.objectContaining({
+      state: "uploading", nodeId: focus.nodeId, image: { id: focus.id, name: "Source", width: 640, height: 480 },
+    })]);
   });
 
   it("takes a source name cut through an emoji, storing it as well-formed text", async () => {
@@ -1538,6 +1542,7 @@ describe("POST /assets/upload-ticket — a focus crop (#1580)", () => {
     const events = await focusEvents(canvasSpaceDocName(seed.projectId, spaceId));
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({
+      state: "completed",
       nodeId: focus.nodeId,
       image: { id: focus.id, name: "Source", width: 640, height: 480, url: `https://cdn.test.invalid/${hash}.png` },
     });

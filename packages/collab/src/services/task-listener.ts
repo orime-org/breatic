@@ -8,7 +8,7 @@
  * Data path:
  *   server / worker → Redis stream → consumer group (one round per document) →
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
- *   (canvas), appendFocusImageCore (a registered focus crop into its node's pool, #1580),
+ *   (canvas), applyFocusImageUpload (a focus crop's upload into its node, uploading then pool, #1580),
  *   applyDocumentUpload (a Document body's media upload, breatic#1574)
  *   or applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES)
  *
@@ -26,8 +26,8 @@
  * holder stored; what keeps an older event from undoing a newer one is the
  * version each node carries, for other Space types the version their document
  * holds, and for a Document upload the block itself: an address once written
- * never changes and `processing` never replaces an ending (`applyDocumentUpload`); a focus crop is added once
- * per id (`appendFocusImageCore`).
+ * never changes and `processing` never replaces an ending (`applyDocumentUpload`); a focus crop is written once
+ * per id and step (`applyFocusImageUpload`).
  *
  * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts and focus crops,
  * `project-{pid}/document-{spaceId}` for Document uploads and the content
@@ -41,7 +41,7 @@ import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
 import type { DocumentUploadEvent, FocusImageUploadEvent, NodeTaskCountsEvent, SpaceTasksVersionEvent } from "@breatic/shared";
 import { applyDocumentUpload, CANVAS_NODES_KEY, documentBodyFragment, FOCUS_IMAGE_UPLOAD_EVENT_TYPE, parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
-import { appendFocusImageCore } from "@breatic/shared/space-content";
+import { applyFocusImageUpload } from "@breatic/shared/space-content";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { applySpaceTasksVersion } from "@collab/services/space-tasks-version.js";
@@ -323,10 +323,10 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
             }
             if (event.type === FOCUS_IMAGE_UPLOAD_EVENT_TYPE) {
               // A node the document no longer holds takes nothing, as a canvas upload's node does
-              // (node-task-counts.ts); the append itself refuses a duplicate id, a full pool and a bad image.
+              // (node-task-counts.ts); the write itself refuses a duplicate id, a full list and a bad image.
               const node: unknown = d.getMap(CANVAS_NODES_KEY).get(event.nodeId);
               const data = node instanceof Y.Map ? node.get("data") : undefined;
-              if (data instanceof Y.Map) appendFocusImageCore(data, event.image);
+              if (data instanceof Y.Map) applyFocusImageUpload(data, event);
               outcomes.set(entry.id, "done");
               continue;
             }

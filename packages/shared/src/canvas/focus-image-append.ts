@@ -2,15 +2,22 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Adding one image to a node's focus pool (#1782, #1580), run by collab when a crop's upload is registered.
+ * Adding one image to a node's focus pool (#1782, #1580), and the crop's upload state beside it, both run by collab.
  *
  * `focusImages` is a `Y.Array`, a CRDT sequence, so two crops added at once both stay. A pool still stored as a plain
  * array (an early document) is converted, through the shared sanitizer, into a `Y.Array` on its first add.
  */
 
 import * as Y from "yjs";
-import { isValidFocusImage, MAX_FOCUS_ENTRIES, validFocusImages } from "@shared/canvas/focus-images.js";
-import type { FocusImage } from "@shared/types/canvas-node.js";
+import {
+  isValidFocusImage,
+  isValidFocusUpload,
+  MAX_FOCUS_ENTRIES,
+  validFocusImages,
+  validFocusUploads,
+  type FocusImageUploadEvent,
+} from "@shared/canvas/focus-images.js";
+import type { FocusImage, FocusUpload } from "@shared/types/canvas-node.js";
 
 /**
  * Append a focus image to a node's pool. Call inside an open transaction.
@@ -37,4 +44,55 @@ export function appendFocusImageCore(
     data.set("focusImages", arr);
   }
   return "added";
+}
+
+/**
+ * The crop ids a node's raw list holds, read through the matching sanitizer.
+ * @param raw - A `focusImages` or `focusUploads` value.
+ * @param read - The sanitizer for that list.
+ * @returns The ids.
+ */
+function idsIn(raw: unknown, read: (value: unknown) => Array<{ id: string }>): Set<string> {
+  return new Set(read(raw instanceof Y.Array ? raw.toArray() : raw).map((f) => f.id));
+}
+
+/**
+ * Take a crop off the node's uploading list, wherever it stands in it.
+ * @param data - The node's data map.
+ * @param id - The crop's id.
+ */
+function dropUpload(data: Y.Map<unknown>, id: string): void {
+  const raw = data.get("focusUploads");
+  if (!(raw instanceof Y.Array)) {
+    if (Array.isArray(raw)) data.set("focusUploads", Y.Array.from(validFocusUploads(raw).filter((u) => u.id !== id)));
+    return;
+  }
+  const items = raw.toArray();
+  for (let i = items.length - 1; i >= 0; i--) {
+    const item: unknown = items[i];
+    if (typeof item === "object" && item !== null && (item as { id?: unknown }).id === id) raw.delete(i, 1);
+  }
+}
+
+/**
+ * Write one step of a focus crop's upload into its node, as a task row's counts are written: `uploading` shows it in
+ * `focusUploads`, `completed` moves it into the pool and `failed` takes it away, the pool untouched. Call inside an
+ * open transaction, so a crop that moves is never in both lists or in neither.
+ * @param data - The node's data map.
+ * @param event - The step.
+ */
+export function applyFocusImageUpload(data: Y.Map<unknown>, event: FocusImageUploadEvent): void {
+  if (event.state === "uploading") {
+    const { image } = event;
+    if (!isValidFocusUpload(image) || idsIn(data.get("focusImages"), validFocusImages).has(image.id)) return;
+    const raw = data.get("focusUploads");
+    const held = idsIn(raw, validFocusUploads);
+    if (held.has(image.id) || held.size >= MAX_FOCUS_ENTRIES) return;
+    const entry: FocusUpload = { id: image.id, name: image.name, width: image.width, height: image.height };
+    if (raw instanceof Y.Array) raw.push([entry]);
+    else data.set("focusUploads", Y.Array.from([...validFocusUploads(raw), entry]));
+    return;
+  }
+  if (event.state === "completed") appendFocusImageCore(data, event.image);
+  dropUpload(data, event.state === "completed" ? event.image.id : event.id);
 }
