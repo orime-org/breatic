@@ -61,7 +61,8 @@ let connectWindow: BrowserWindow | null = null;
 let connectInitial: ConnectInitial | null = null;
 let queuedLink: string | null = null;
 let splashWindow: BrowserWindow | null = null;
-let splashShownAt = 0;
+/** Resolves with the time the splash appeared (or was closed before it could). */
+let splashShown: Promise<number> = Promise.resolve(0);
 /** Callbacks waiting to hear that a window's leave confirmation answered Stay. */
 const stayListeners = new Map<WebContents, () => void>();
 /** A packaged build with an update feed: electron-builder wrote app-update.yml beside the app. */
@@ -384,10 +385,12 @@ function openSplash(): void {
     title: BRAND.productName,
     webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false },
   });
-  splashShownAt = Date.now();
-  window.once("ready-to-show", () => {
-    splashShownAt = Date.now();
-    window.show();
+  splashShown = new Promise((resolve) => {
+    window.once("ready-to-show", () => {
+      window.show();
+      resolve(Date.now());
+    });
+    window.once("closed", () => resolve(0));
   });
   window.on("closed", () => {
     if (splashWindow === window) splashWindow = null;
@@ -400,7 +403,8 @@ function openSplash(): void {
 async function finishSplash(): Promise<void> {
   const window = splashWindow;
   if (!window) return;
-  const wait = splashCloseDelay(splashShownAt, Date.now());
+  // The minimum counts from when the splash is on screen, not from when it was created.
+  const wait = splashCloseDelay(await splashShown, Date.now());
   if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
   if (!window.isDestroyed()) window.close();
 }

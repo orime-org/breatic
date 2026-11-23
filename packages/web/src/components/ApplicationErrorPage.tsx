@@ -30,7 +30,7 @@ export function ApplicationErrorPage({ eventId }: { eventId?: string }): React.J
       </div>
       <div className='flex flex-wrap justify-center gap-3'>
         <Button variant='outline' onClick={reloadPage}>{t('applicationError.reload')}</Button>
-        <Button variant='outline' asChild><a href='/'>{t('applicationError.home')}</a></Button>
+        <Button variant='outline' asChild><a href='/studio'>{t('applicationError.home')}</a></Button>
       </div>
       {eventId ? <p className='break-all text-xs text-muted-foreground'>{t('applicationError.reference', { id: eventId })}</p> : null}
     </main>

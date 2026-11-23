@@ -56,6 +56,15 @@ async function windowWhere(app: ElectronApplication, match: (url: string) => boo
   return app.windows().find((w) => match(w.url()))!;
 }
 
+/**
+ * The app's windows on the server, the splash and the connect window left out.
+ * @param app - The running app.
+ * @returns The pages.
+ */
+function appWindows(app: ElectronApplication): Page[] {
+  return app.windows().filter((window) => !window.url().startsWith("file:"));
+}
+
 /** A fresh data directory. */
 function freshData(): string {
   return mkdtempSync(join(tmpdir(), "breatic-e2e-"));
@@ -85,8 +94,12 @@ test("the splash shows the brand first and closes once a window is ready", async
   const splash = await windowWhere(app, (url) => url.includes("/splash/"));
   await expect(splash.getByText("breatic", { exact: true })).toBeVisible();
   await expect(splash.getByText("powered by")).toBeHidden();
+  // The page's own load start comes before it is shown; the splash must outlive it by the minimum.
+  const loadStart = await splash.evaluate(() => performance.timeOrigin);
   await windowWhere(app, (url) => url.includes("/connect/"));
   await expect.poll(() => app.windows().some((window) => window.url().includes("/splash/")), { timeout: 10_000 }).toBe(false);
+  // At least a second on screen, so a partner's attribution can be read.
+  expect(Date.now() - loadStart).toBeGreaterThanOrEqual(1_000);
   await app.close();
 });
 
@@ -142,15 +155,15 @@ test("New Window opens another signed-in window on the Studio, from the menu and
     const items = Menu.getApplicationMenu()?.items.flatMap((menu) => menu.submenu?.items ?? []) ?? [];
     items.find((item) => item.label === "New Window")?.click();
   });
-  await expect.poll(() => app.windows().length).toBe(2);
-  for (const window of app.windows()) await expect(window).toHaveURL(/\/studio/, { timeout: 30_000 });
+  await expect.poll(() => appWindows(app).length).toBe(2);
+  for (const window of appWindows(app)) await expect(window).toHaveURL(/\/studio/, { timeout: 30_000 });
 
   // Windows' taskbar task and the Linux launcher action start the client again with --new-window.
   await app.evaluate(({ app: electronApp }) => {
     electronApp.emit("second-instance", {}, ["breatic", "--new-window"], process.cwd(), {});
   });
-  await expect.poll(() => app.windows().length).toBe(3);
-  for (const window of app.windows()) await expect(window).toHaveURL(/\/studio/, { timeout: 30_000 });
+  await expect.poll(() => appWindows(app).length).toBe(3);
+  for (const window of appWindows(app)) await expect(window).toHaveURL(/\/studio/, { timeout: 30_000 });
   await app.close();
 });
 
@@ -164,7 +177,7 @@ test("on macOS, closing every window and clicking the Dock icon reopens the serv
   await app.evaluate(({ BrowserWindow }) => {
     for (const window of BrowserWindow.getAllWindows()) window.close();
   });
-  await expect.poll(() => app.windows().length).toBe(0);
+  await expect.poll(() => appWindows(app).length).toBe(0);
   await app.evaluate(({ app: electronApp }) => {
     electronApp.emit("activate");
   });
@@ -191,7 +204,7 @@ test("a link to another site goes to the system browser and the window stays", a
   await page.evaluate(() => window.open("https://example.com/", "_blank"));
   await expect.poll(() => app.evaluate(() => (globalThis as { opened?: string[] }).opened ?? [])).toEqual(["https://example.com/"]);
   expect(page.url()).toBe(before);
-  expect(app.windows().filter((window) => !window.url().includes("/splash/"))).toHaveLength(1);
+  expect(appWindows(app)).toHaveLength(1);
   await app.close();
 });
 
@@ -204,6 +217,8 @@ test("a configured server that cannot be reached opens the unreachable state", a
   await expect(connect.getByText("http://localhost:9")).toBeVisible();
   await expect(connect.getByRole("button", { name: "Retry" })).toBeVisible();
   await expect(connect.getByRole("button", { name: "Use another server" })).toHaveCount(0);
+  await connect.getByRole("button", { name: "Retry" }).click();
+  await expect(connect.getByText("Can't reach this address")).toBeVisible();
   await app.close();
 });
 

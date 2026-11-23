@@ -100,7 +100,7 @@ function showConnect(text: DesktopText, url: string, reason: ConnectReason | nul
 function showUnreachable(text: DesktopText, url: string, reason: ConnectReason | null): void {
   root.replaceChildren();
   root.append(el("h1", text["desktop.connect.unreachableTitle"]), el("p", url, "address"));
-  const message = reason === "certificate" ? text["desktop.errors.certificate"] : null;
+  const message = messageFor(text, reason);
   if (message) root.append(el("p", message, "error"));
   const retry = el("button", text["desktop.connect.retry"]);
   retry.addEventListener("click", () => {

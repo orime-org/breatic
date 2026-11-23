@@ -30,7 +30,7 @@ describe('application recovery', () => {
     expect(await screen.findByText('Something went wrong')).toBeVisible();
     expect(screen.queryByText(error.message)).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Reload page' })).toBeEnabled();
-    expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/');
+    expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/studio');
     await Sentry.flush(2000);
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
     const event = send.mock.calls[0]?.[0]?.[1]?.[0]?.[1];
