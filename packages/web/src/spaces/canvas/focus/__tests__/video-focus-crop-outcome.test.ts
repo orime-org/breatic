@@ -57,12 +57,14 @@ type Answer = ApiModule.MiniToolPlannedRunAnswer;
 /** What the canvas layer read for one placeholder (proposed input of `videoFocusCropSettlement`). */
 interface SettlementRead {
   /** The panel node's task row whose taskId is the run_id: `admitting` before the press is answered, `cleared` when absent after admission. */
-  row: 'admitting' | 'cleared' | { status: 'running' | 'done' | 'failed' | 'expired'; startedAt: string; budgetMs: number };
+  row: 'admitting' | 'cleared' | { status: 'running' | 'done' | 'failed' | 'expired'; startedAt: string; budgetMs: number; errorMessage: string | null };
   /** `focusCropOutcomes[run_id]`, absent until collab handled the append. */
   outcome: 'added' | 'refused' | undefined;
   /** Wall clock, ms. */
   now: number;
 }
+/** The task-list entry fields the canvas layer reads a row from. */
+interface RowEntry { status: 'running' | 'done' | 'failed' | 'expired'; startedAt: string; budgetMs: number; errorMessage: string | null }
 /** What the canvas layer does with the placeholder. */
 interface Settlement {
   placeholder: 'keep' | 'remove';
@@ -74,6 +76,7 @@ interface Settlement {
 const api = runFocusCrop as unknown as {
   runVideoFocusCrop?: (press: VideoFocusCropPress) => Promise<RunOnceOutcome<Answer>>;
   videoFocusCropSettlement?: (read: SettlementRead) => Settlement;
+  videoFocusCropRowOf?: (entry: RowEntry | undefined) => SettlementRead['row'];
 };
 
 /**
@@ -120,8 +123,8 @@ function sent(): MiniToolPlannedRequest[] {
  * @param status - Its status.
  * @returns The row.
  */
-function row(status: 'running' | 'done' | 'failed' | 'expired'): SettlementRead['row'] {
-  return { status, startedAt: new Date(STARTED).toISOString(), budgetMs: BUDGET };
+function row(status: 'running' | 'done' | 'failed' | 'expired'): RowEntry {
+  return { status, startedAt: new Date(STARTED).toISOString(), budgetMs: BUDGET, errorMessage: null };
 }
 
 beforeEach(() => {
@@ -220,6 +223,8 @@ describe('F14: the card derivation table (design §7.18)', () => {
     ['done, refused', { row: row('done'), outcome: 'refused', now: before }, { placeholder: 'remove', toast: 'referencePoolFull', recheckAt: null }],
     ['failed', { row: row('failed'), outcome: undefined, now: before }, { placeholder: 'remove', toast: 'error', recheckAt: null }],
     ['expired', { row: row('expired'), outcome: undefined, now: before }, { placeholder: 'remove', toast: 'error', recheckAt: null }],
+    // inner#1968 design 3.9: a crop waiting for a running slot that the user cancels ends its row failed as `cancelled`.
+    ['cancelled by the user while it waited', { row: { ...row('failed'), errorMessage: 'cancelled' }, outcome: undefined, now: before }, { placeholder: 'remove', toast: null, recheckAt: null }],
   ])('F14: %s', (_name, read, expected) => {
     expect(settle(read)).toEqual(expected);
   });
@@ -245,5 +250,28 @@ describe('F08: the placeholder stays until this browser sees the end (design §7
 
   it('F08: a row cleared before the first read removes the card without a toast', () => {
     expect(settle({ row: 'cleared', outcome: undefined, now: STARTED + 10 })).toEqual({ placeholder: 'remove', toast: null, recheckAt: null });
+  });
+});
+
+describe('F14: the row the canvas layer reads from the panel node\'s task list (design §7.18)', () => {
+  /**
+   * Read one entry.
+   * @param entry - The run's task-list entry, or none.
+   * @returns The row.
+   * @throws {Error} When the reader does not exist yet.
+   */
+  function rowOf(entry: RowEntry | undefined): SettlementRead['row'] {
+    if (typeof api.videoFocusCropRowOf !== 'function') throw new Error('run-focus-crop exports no videoFocusCropRowOf');
+    return api.videoFocusCropRowOf(entry);
+  }
+
+  it('F14: carries the row\'s failure reason, so a cancel is told apart from a failure', () => {
+    const entry: RowEntry = { status: 'failed', startedAt: new Date(STARTED).toISOString(), budgetMs: BUDGET, errorMessage: 'cancelled' };
+    expect(rowOf(entry)).toEqual(entry);
+    expect(settle({ row: rowOf(entry), outcome: undefined, now: STARTED + 10 })).toEqual({ placeholder: 'remove', toast: null, recheckAt: null });
+  });
+
+  it('F14: an absent entry is a cleared row', () => {
+    expect(rowOf(undefined)).toBe('cleared');
   });
 });

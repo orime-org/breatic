@@ -13,7 +13,7 @@
  * local state and simply disappears.
  */
 
-import { MAX_FOCUS_NAME, newId, t, type FocusImage } from '@breatic/shared';
+import { MAX_FOCUS_NAME, newId, t, type FocusImage, type NodeTaskEntry, type TaskFailureReason } from '@breatic/shared';
 import { miniToolPlannedRequestSchema, type MiniToolPlannedRequest, type MiniToolPresentationRef, type VideoToolSourceRef } from '@breatic/shared/mini-tools';
 import { miniToolsApi, type MiniToolPlannedRunAnswer } from '@web/data/api/mini-tools';
 import { toast } from '@web/lib/toast';
@@ -266,10 +266,26 @@ export function runVideoFocusCrop(press: VideoFocusCropPress): Promise<RunOnceOu
   }).then((outcome) => { if (outcome.kind === 'released') endVideoFocusCrop(press.spaceId, runId); return outcome; });
 }
 
+/** The panel node's task row for one placeholder, as the canvas layer reads it from the task list. */
+export type VideoFocusCropRow = Pick<NodeTaskEntry, 'status' | 'startedAt' | 'budgetMs' | 'errorMessage'>;
+
+/** The reason a row ends with when its person cancels it while it waits for a running slot (inner#1968 design 3.9). */
+const CANCELLED: TaskFailureReason = 'cancelled';
+
+/**
+ * The row the canvas layer reads for one admitted crop from its panel node's task list.
+ * @param entry - The entry whose taskId is the run_id, or none.
+ * @returns Its row, or `cleared` when the list holds none.
+ * @throws {never} Never.
+ */
+export function videoFocusCropRowOf(entry: VideoFocusCropRow | undefined): VideoFocusCropRead['row'] {
+  return entry === undefined ? 'cleared' : { status: entry.status, startedAt: entry.startedAt, budgetMs: entry.budgetMs, errorMessage: entry.errorMessage };
+}
+
 /** The panel node's task row and result marker for one placeholder, as the canvas layer read them (§7.18). */
 export interface VideoFocusCropRead {
   /** The row whose taskId is the run_id: `admitting` before the press is answered, `cleared` when absent after admission. */
-  row: 'admitting' | 'cleared' | { status: 'running' | 'done' | 'failed' | 'expired'; startedAt: string; budgetMs: number };
+  row: 'admitting' | 'cleared' | VideoFocusCropRow;
   /** `focusCropOutcomes[run_id]`, absent until collab handled the append. */
   outcome: 'added' | 'refused' | undefined;
   /** Wall clock, ms. */
@@ -288,8 +304,8 @@ const KEEP: VideoFocusCropSettlement = { placeholder: 'keep', toast: null, reche
 const REMOVE: VideoFocusCropSettlement = { placeholder: 'remove', toast: null, recheckAt: null };
 
 /**
- * The §7.18 outcome table: a marker decides on its own (added removes, refused removes and says the pool is full); a failed or
- * expired row removes and says so; a done row without a marker waits for its task deadline; a row cleared after admission
+ * The §7.18 outcome table: a marker decides on its own (added removes, refused removes and says the pool is full); a row the
+ * user cancelled while it waited removes silently; any other failed or expired row removes and says so; a done row without a marker waits for its task deadline; a row cleared after admission
  * without a marker removes silently; admission still waiting or a running row keeps the card.
  * @param read - What was read.
  * @returns The settlement.
@@ -301,6 +317,7 @@ export function videoFocusCropSettlement(read: VideoFocusCropRead): VideoFocusCr
   if (read.outcome === 'refused') return { placeholder: 'remove', toast: 'referencePoolFull', recheckAt: null };
   if (read.row === 'cleared') return REMOVE;
   if (read.row.status === 'running') return KEEP;
+  if (read.row.status === 'failed' && read.row.errorMessage === CANCELLED) return REMOVE;
   if (read.row.status === 'failed' || read.row.status === 'expired') return { placeholder: 'remove', toast: 'error', recheckAt: null };
   const deadline = Date.parse(read.row.startedAt) + read.row.budgetMs;
   return read.now >= deadline ? REMOVE : { placeholder: 'keep', toast: null, recheckAt: deadline };

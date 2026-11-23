@@ -13,7 +13,8 @@ import { canvasApi } from '@web/data/api/canvas';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import {
-  endVideoFocusCrop, subscribeVideoFocusCropRuns, videoFocusCropRuns, videoFocusCropRunsRevision, videoFocusCropSettlement, type VideoFocusCropRead,
+  endVideoFocusCrop, subscribeVideoFocusCropRuns, videoFocusCropRowOf, videoFocusCropRuns, videoFocusCropRunsRevision, videoFocusCropSettlement,
+  type VideoFocusCropRead,
 } from '@web/spaces/canvas/focus/run-focus-crop';
 
 /** The panel node facts the settlement reads. */
@@ -84,7 +85,7 @@ export function useVideoFocusCropSettlement(projectId: string, spaceId: string, 
         for (const [runId, run] of videoFocusCropRuns()) {
           if (run.panelNodeId !== panelNodeId || !run.admitted) continue;
           const task = tasks.find((entry) => entry.taskId === runId);
-          const row: VideoFocusCropRead['row'] = task === undefined ? 'cleared' : { status: task.status, startedAt: task.startedAt, budgetMs: task.budgetMs };
+          const row = videoFocusCropRowOf(task);
           rows.current.set(runId, row);
           const data = readNodes.current.find((node) => node.id === panelNodeId)?.data as PanelFacts | undefined;
           settle(runId, { row, outcome: data?.focusCropOutcomes?.[runId], now: Date.now() });
