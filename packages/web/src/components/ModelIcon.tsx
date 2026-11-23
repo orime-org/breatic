@@ -9,8 +9,8 @@ import * as React from 'react';
  * rather than reproducing the trademarked artwork; where reproducing it would
  * be reproducing the trademark itself, or no vendor mark is recognisable (an
  * open model served by the gateway), the mark names what the model does
- * instead (`qwen`, `sonilo`, `omnivoice`, `vocal-isolator`, `infinitetalk`,
- * `rife`). ByteDance's Seed models all carry `seedream`.
+ * instead (`qwen`, `sonilo`, `vocal-isolator`, `infinitetalk`, `rife`).
+ * ByteDance's Seed models all carry `seedream`.
  *
  * Every model a picker offers names one of these, and every one of these is
  * named by such a model: there is deliberately NO generic "unknown model"
@@ -116,10 +116,6 @@ const MARKS: Readonly<Record<string, React.JSX.Element>> = {
   // A speech bubble, for Inworld's voices.
   inworld: (
     <><path d='M4 4.2h16a1.8 1.8 0 0 1 1.8 1.8v9.6a1.8 1.8 0 0 1-1.8 1.8h-8.6L6.4 21v-3.6H4a1.8 1.8 0 0 1-1.8-1.8V6A1.8 1.8 0 0 1 4 4.2Z' /></>
-  ),
-  // A voiceprint inside a circle: what the model does, a cloned voice.
-  omnivoice: (
-    <><path fillRule='evenodd' d='M12 2.5a9.5 9.5 0 1 1 0 19 9.5 9.5 0 0 1 0-19Zm0 1.9a7.6 7.6 0 1 0 0 15.2 7.6 7.6 0 0 0 0-15.2Z' /><rect x='7' y='10' width='1.8' height='4' rx='.9' /><rect x='9.9' y='7.6' width='1.8' height='8.8' rx='.9' /><rect x='12.8' y='8.8' width='1.8' height='6.4' rx='.9' /><rect x='15.6' y='10.6' width='1.8' height='2.8' rx='.9' /></>
   ),
   // A waveform with its middle bar drawn out: what the model does, pulling the voice.
   'vocal-isolator': (
