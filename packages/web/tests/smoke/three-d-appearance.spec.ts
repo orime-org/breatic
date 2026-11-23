@@ -26,7 +26,7 @@ interface DrawnPart { type: string; color: string | null; map: boolean }
 interface Rendered { id: string; parts: Record<string, DrawnPart> }
 
 const FIXTURES = join(__dirname, '..', 'fixtures');
-const METAL = { roughness: 0.15, metalness: 1, opacity: 1, transmission: 0 };
+const METAL = { roughness: 0.15, metalness: 0.5, opacity: 1, transmission: 0 };
 const GLASS = { roughness: 0.05, metalness: 0, opacity: 1, transmission: 1 };
 
 /**
