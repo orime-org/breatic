@@ -39,7 +39,7 @@ const RING = { current: "t1", keys: { t1: SECRET } };
 
 initCore({
   ...process.env,
-  PROVIDER_KEY_SECRET_ID: "t1",
+  BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1",
   PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }),
 });
 
@@ -146,7 +146,7 @@ describe("keysById", () => {
       expect(kindOf(err)).toBe("account_key_missing");
       expect(accountKeyFailureIn(err)?.upstream).toBe("fal");
     } finally {
-      initCore({ ...process.env, PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
+      initCore({ ...process.env, BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
     }
   });
 

@@ -14,6 +14,7 @@ import type { CreditOverview } from '@breatic/shared';
 
 import { authApi } from '@web/data/api/auth';
 import type { AccountReferral } from '@web/data/api/referral';
+import type { ByokView } from '@web/data/api/byok';
 import { ApiException } from '@web/data/api/types';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -52,6 +53,21 @@ const overviewMock = vi.fn();
 vi.mock('@web/data/api/credits', () => ({
   fetchCreditOverview: () => overviewMock(),
 }));
+
+const byokViewMock = vi.fn();
+vi.mock('@web/data/api/byok', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/byok')>()),
+  byokApi: { ...(await importOriginal<typeof import('@web/data/api/byok')>()).byokApi, view: () => byokViewMock() },
+}));
+
+/**
+ * The account's BYOK view as the server answers it.
+ * @param enabled - Whether the deployment turned BYOK on.
+ * @returns The view.
+ */
+function byokView(enabled: boolean): ByokView {
+  return { enabled, upstreams: [], keys: [], models: [], choices: {} };
+}
 
 const referralMock = vi.fn();
 vi.mock('@web/data/api/referral', async (importOriginal) => ({
@@ -173,6 +189,7 @@ describe('StudioAccountMenu', () => {
     confirmMock.mockReset();
     overviewMock.mockReset().mockResolvedValue(overview());
     referralMock.mockReset().mockResolvedValue(referral());
+    byokViewMock.mockReset().mockResolvedValue(byokView(true));
   });
 
   it('shows the current user initial on the avatar button', () => {
@@ -272,6 +289,30 @@ describe('StudioAccountMenu', () => {
     for (const link of links.filter((l) => l.tagName === 'A')) {
       expect(link.lastElementChild?.getAttribute('class')).toContain('lucide-external-link');
     }
+  });
+
+  describe('BYOK settings entry (#1618)', () => {
+    it('is not offered where the deployment has not turned BYOK on', async () => {
+      byokViewMock.mockResolvedValue(byokView(false));
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => expect(byokViewMock).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryByRole('menuitem', { name: 'BYOK settings' })).toBeNull());
+      expect(screen.getByRole('menuitem', { name: 'Promoter program' })).toBeInTheDocument();
+    });
+
+    it('is offered where the deployment turned BYOK on', async () => {
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => expect(byokViewMock).toHaveBeenCalled());
+      expect(screen.getByRole('menuitem', { name: 'BYOK settings' })).toBeInTheDocument();
+    });
   });
 
   describe('promoter program entry (inner#1868)', () => {

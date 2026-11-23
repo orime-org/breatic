@@ -358,14 +358,16 @@ async function writeCheck(token, repository, headSha, output) {
 }
 
 /**
- * Which `CLA signed` runs to write on a head: every GitHub Actions run of that
- * name, updated in place, or one new run when there is none.
- * @param {{id: number, app?: {id: number}}[]} existingRuns The head's runs named `CLA signed`.
+ * Which `CLA signed` runs to write on a head: every run of that name this
+ * script created through the API, updated in place, or one new run when there
+ * is none. A run a workflow job created (the archived bot's, on pull requests
+ * opened before the switch) cannot be changed by a token: GitHub answers 403.
+ * @param {{id: number, app?: {id: number}, details_url?: string}[]} existingRuns The head's runs named `CLA signed`.
  * @param {string} headSha The PR head.
  * @returns {{method: string, path: string, body: object}[]} The requests.
  */
 export function checkRunRequests(existingRuns, headSha) {
-  const mine = existingRuns.filter((run) => run.app?.id === ACTIONS_APP_ID);
+  const mine = existingRuns.filter((run) => run.app?.id === ACTIONS_APP_ID && !/\/actions\/runs\/\d+\/job\//.test(run.details_url ?? ''));
   if (mine.length === 0) return [{ method: 'POST', path: '/check-runs', body: { name: CHECK_NAME, head_sha: headSha } }];
   return mine.map((run) => ({ method: 'PATCH', path: `/check-runs/${run.id}`, body: {} }));
 }

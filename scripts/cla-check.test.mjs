@@ -218,6 +218,14 @@ test('case 18: every Actions run named CLA signed on the head is updated in plac
   assert.deepEqual(created, [{ method: 'POST', path: '/check-runs', body: { name: 'CLA signed', head_sha: 'h1' } }]);
 });
 
+test('a CLA signed run left by a workflow job (the archived bot) is never patched; a new run is created beside it', () => {
+  // GitHub answers 403 to a token updating a check run that a workflow job created (seen on #1546).
+  const jobRun = { id: 7, app: { id: 15368 }, details_url: 'https://github.com/o/r/actions/runs/43838287048/job/7' };
+  assert.deepEqual(checkRunRequests([jobRun], 'h1').map((r) => `${r.method} ${r.path}`), ['POST /check-runs']);
+  const apiRun = { id: 8, app: { id: 15368 }, details_url: 'https://github.com/o/r/runs/8' };
+  assert.deepEqual(checkRunRequests([jobRun, apiRun], 'h1').map((r) => `${r.method} ${r.path}`), ['PATCH /check-runs/8']);
+});
+
 test('only a maintainer comment of "recheck" re-judges', () => {
   assert.equal(isMaintainerRecheck({ body: ' recheck ', author_association: 'MEMBER' }), true);
   assert.equal(isMaintainerRecheck({ body: 'recheck', author_association: 'CONTRIBUTOR' }), false);

@@ -300,10 +300,15 @@ export const coreConfigSchema = z.object({
   INTERNAL_API_SECRET_PREVIOUS: z.string().default(""),
 
   // ── Accounts' own provider keys (inner#1953) ─────────
-  // The master keys that seal the upstream keys accounts save: the id new
-  // seals use, and a JSON object of every key by id (32 bytes as 64 hex
-  // characters), so a key rotated out keeps opening older seals while it is
-  // listed. Neither set turns bring-your-own-key off.
+  // BYOK_ENABLED is the deployment's switch (#1618): only "true" turns
+  // bring-your-own-key on, and then the master keys below are required. The
+  // master keys seal the upstream keys accounts save: the id new seals use,
+  // and a JSON object of every key by id (32 bytes as 64 hex characters), so
+  // a key rotated out keeps opening older seals while it is listed.
+  BYOK_ENABLED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
   PROVIDER_KEY_SECRET_ID: z.string().default("").transform((value) => value.trim()),
   PROVIDER_KEY_SECRETS: jsonRecord("PROVIDER_KEY_SECRETS"),
 
@@ -410,13 +415,16 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
 /**
  * Refuse a half or malformed bring-your-own-key master key configuration, never repeating a secret.
  * @param config - The parsed configuration.
- * @throws {Error} When only one of the two variables is set, the current id names no secret, an id is not a plain
- *   token, or a secret is not 32 bytes of hex.
+ * @throws {Error} When BYOK is switched on without the master keys, only one of the two variables is set, the
+ *   current id names no secret, an id is not a plain token, or a secret is not 32 bytes of hex.
  */
 function assertProviderKeySecrets(config: CoreConfig): void {
   const id = config.PROVIDER_KEY_SECRET_ID;
   const secrets = config.PROVIDER_KEY_SECRETS;
   const ids = Object.keys(secrets);
+  if (config.BYOK_ENABLED && id === "" && ids.length === 0) {
+    throw new Error("FATAL: BYOK_ENABLED=true requires PROVIDER_KEY_SECRET_ID and PROVIDER_KEY_SECRETS, the master keys that seal accounts' keys. Refusing to start.");
+  }
   if (id === "" && ids.length === 0) return;
   if (ids.length === 0) {
     throw new Error("FATAL: PROVIDER_KEY_SECRET_ID is set without PROVIDER_KEY_SECRETS, the master keys it names. Refusing to start.");

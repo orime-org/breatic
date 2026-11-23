@@ -38,7 +38,7 @@ const RING = { current: "t1", keys: { t1: SECRET } };
 
 initCore({
   ...process.env,
-  PROVIDER_KEY_SECRET_ID: "t1",
+  BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1",
   PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }),
 });
 
@@ -217,6 +217,26 @@ describe("resolveKeys: language-model calls", () => {
   });
 });
 
+describe("resolveKeys: a deployment that has not turned BYOK on (#1618)", () => {
+  it("runs on the deployment's keys though the account saved keys and pointed a model at one", async () => {
+    const userId = await seedUser();
+    const { studioId } = await seedStudio(userId, "personal");
+    await saveKey(userId, "openrouter", "sk-or-v1-off");
+    await saveKey(userId, "fal", "fal-off");
+    await accountModelUpstreamsRepo.setModelUpstream(userId, MODEL, "fal");
+    initCore({ ...process.env, PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
+    try {
+      for (const purpose of [LLM, MEDIA]) {
+        const resolved = await resolveKeys({ studioId }, purpose);
+        expect(resolved.keys.owner).toBe("deployment");
+        expect(resolved.keyId).toBeNull();
+      }
+    } finally {
+      initCore({ ...process.env, BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
+    }
+  });
+});
+
 describe("resolveKeys: media calls", () => {
   it("runs a model the account pointed at an upstream on that upstream's key and that upstream alone", async () => {
     const userId = await seedUser();
@@ -319,7 +339,7 @@ describe("payerKeyPlan: the answer resolveKeys gives, without opening a key", ()
     try {
       expect(await payerKeyPlan(studioId)).toBeNull();
     } finally {
-      initCore({ ...process.env, PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
+      initCore({ ...process.env, BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
     }
   });
 });
