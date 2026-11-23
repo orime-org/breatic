@@ -43,7 +43,7 @@ Backend or media verification without database connections:
 docker run --rm --entrypoint cat <backend-image-at-digest> /app/build-info.json
 ```
 
-Build arguments are `RELEASE_VERSION` and `VCS_REF` for the backend, Ingest media, the Ingest page reader and web animation; `VITE_RELEASE_VERSION` and `VITE_APP_VERSION` for the web. CI supplies them from the tag and commit. Frontend URL and Google configuration remain separate public build settings.
+Build arguments are `RELEASE_VERSION` and `VCS_REF` for the backend, Ingest media, the Ingest page reader, the web-animation runner and the web-animation renderer; `VITE_RELEASE_VERSION` and `VITE_APP_VERSION` for the web. CI supplies them from the tag and commit. Frontend URL and Google configuration remain separate public build settings.
 
 ## Interrupted or repeated publication
 

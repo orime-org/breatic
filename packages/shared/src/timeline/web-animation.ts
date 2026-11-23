@@ -256,8 +256,8 @@ export function anchorTimeWithin(timeSeconds: number, durationSeconds: number): 
 }
 
 /**
- * The frames an accepted input asks for: its seconds at its frozen frame rate. A placeholder clip is this long and the
- * Manifest must say the same.
+ * The frames an accepted input asks for: its seconds at its frozen frame rate. A copy added from its result is this long
+ * and the Manifest must say the same.
  * @param input - The frozen input.
  * @param input.durationSeconds - Its length in seconds.
  * @param input.fps - Its frozen frame rate.

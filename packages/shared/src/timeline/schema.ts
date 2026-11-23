@@ -38,7 +38,7 @@ export interface TimelineVideoClip {
   transform: { frameX: number; frameY: number; scaleX: number; scaleY: number; rotation: number };
 }
 
-/** Which execution result a web-animation copy shows: a succeeded source version, an in-progress execution, or both. */
+/** Which execution result a web-animation copy shows: a succeeded source version; a copy placed before Motion may bind an execution instead, or both. */
 export interface TimelineWebAnimationContentBinding { baseSourceResultId: string | null; operationId: string | null }
 
 /** One independent placement of a web-animation execution result; its content lives outside the document. */

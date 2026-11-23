@@ -137,7 +137,7 @@ export function webClip(
  * @param startFrame - Where it starts.
  * @param newTrackId - The id a new top track would take.
  * @param placement - The editing user's switches.
- * @param durationFrames - The result's length, as the execution list row says.
+ * @param durationFrames - The result's length, as its row in the Add web animation picker says.
  * @returns The command.
  * @throws {never} Never.
  */

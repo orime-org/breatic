@@ -170,12 +170,12 @@ export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<str
 const FORMAT_ORIGIN = Symbol('timeline-record-format');
 
 /**
- * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields, the frame size
- * and any landing receipt in one transaction under `origin`, after an untracked conversion of any plain-object record
+ * Apply a user-confirmed layout edit to the shared Y.Doc, writing only what changed: the user's fields and the frame
+ * size in one transaction under `origin`, after an untracked conversion of any plain-object record
  * the edit changes and of any clip still stored with pixel offsets (#1502), which also marks a version 1 document
  * version 2. A deletion while the size holds writes back converts nothing, so it stays a pure delete; undoing it
- * revives a pixel clip whose offsets are then read under the frame of that moment. The receipts map is outside every undo manager's scope, so undoing a landing keeps its receipt. The two
- * transactions go through the Space's size check as one write (inner#1790): a new record or receipt is `add`, a
+ * revives a pixel clip whose offsets are then read under the frame of that moment. The two
+ * transactions go through the Space's size check as one write (inner#1790): a new record is `add`, a
  * changed one `edit`; a deletion whose plan only deletes is `remove`, one that also rewrites a record `compound`.
  * While the size holds writes back a deletion is planned with the magnet off and sweeps no source.
  * @param doc - The current content document.

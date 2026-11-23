@@ -108,7 +108,7 @@ export function cancelIntent(executionId: string): string {
 }
 
 /**
- * The run-once intent of exporting one source version from one Motion Space, which Export and Re-export read; a
+ * The run-once intent of exporting one source version from one Motion Space, which Export and Export again read; a
  * second press while it waits joins the first.
  * @param spaceId - The Motion Space.
  * @param sourceVersionId - The source version rendered.
