@@ -11,7 +11,7 @@
 
 import { describe, it, expect } from "vitest";
 
-import { desktopSignInLink, isDesktopAppScheme } from "@shared/desktop-bridge.js";
+import { SHA256_BASE64URL, desktopSignInLink, desktopSignInReturn, isDesktopAppScheme, parseDesktopSignInReturn } from "@shared/desktop-bridge.js";
 
 describe("isDesktopAppScheme", () => {
   it.each(["ai.breatic.desktop", "com.acme.studio", "io.x-y.app2"])("accepts the reverse domain name %s", (scheme) => {
@@ -44,5 +44,30 @@ describe("isDesktopAppScheme", () => {
 describe("desktopSignInLink", () => {
   it("is the sign-in path under the build's own scheme", () => {
     expect(desktopSignInLink("ai.breatic.desktop")).toBe("ai.breatic.desktop://sign-in");
+  });
+});
+
+describe("the sign-in return link", () => {
+  const code = "c".repeat(43);
+  const challenge = "d".repeat(43);
+
+  it("is read back by the side that waits for it", () => {
+    const link = desktopSignInReturn("com.acme.studio", code, challenge);
+    expect(link.startsWith("com.acme.studio://sign-in?")).toBe(true);
+    expect(parseDesktopSignInReturn(link, "com.acme.studio")).toEqual({ code, challenge });
+  });
+
+  it.each([
+    ["another brand's scheme", desktopSignInReturn("ai.breatic.desktop", code, challenge)],
+    ["another path", `com.acme.studio://other?code=${code}&challenge=${challenge}`],
+    ["a short challenge", `com.acme.studio://sign-in?code=${code}&challenge=short`],
+    ["no code", `com.acme.studio://sign-in?challenge=${challenge}`],
+  ])("refuses %s", (_label, link) => {
+    expect(parseDesktopSignInReturn(link, "com.acme.studio")).toBeNull();
+  });
+
+  it("names a SHA-256 digest in base64url", () => {
+    expect(SHA256_BASE64URL.test(code)).toBe(true);
+    expect(SHA256_BASE64URL.test(`${code}=`)).toBe(false);
   });
 });

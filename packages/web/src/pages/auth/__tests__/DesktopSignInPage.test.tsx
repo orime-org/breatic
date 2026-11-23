@@ -134,4 +134,12 @@ describe('DesktopSignInPage', () => {
     expect(authApi.desktopHandoff).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
   });
+
+  it('reads the deployment settings again from the error card', async () => {
+    vi.mocked(authApi.options).mockRejectedValueOnce(new Error('500'));
+    setup(`?challenge=${CHALLENGE}`);
+    await userEvent.setup().click(await screen.findByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('button', { name: 'Continue' })).toBeEnabled();
+    expect(authApi.options).toHaveBeenCalledTimes(2);
+  });
 });

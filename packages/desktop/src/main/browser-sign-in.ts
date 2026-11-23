@@ -14,14 +14,15 @@
  */
 
 import crypto from "node:crypto";
-import { desktopSignInLink, type BrowserSignInResult } from "@breatic/shared";
+import { parseDesktopSignInReturn, type BrowserSignInResult } from "@breatic/shared";
 
 /** A sign-in waiting for the browser, and the result once it arrived. */
 interface Pending {
   windowId: number;
   challenge: string;
   verifier: string;
-  startedAt: number;
+  /** When the browser's link arrived; the code expires on the server this long after it was issued. */
+  receivedAt: number;
   result: BrowserSignInResult | null;
 }
 
@@ -46,25 +47,6 @@ export interface BrowserSignIn {
   take(): BrowserSignInResult | null;
 }
 
-/** A base64url SHA-256 digest. */
-const DIGEST = /^[A-Za-z0-9_-]{43}$/;
-
-/**
- * Read a `{scheme}://sign-in` link.
- * @param link - The link as the system delivered it.
- * @param scheme - This build's scheme.
- * @returns The code and challenge, or null when it is not a well-formed sign-in link on that scheme.
- */
-export function parseSignInLink(link: string, scheme: string): { code: string; challenge: string } | null {
-  const base = desktopSignInLink(scheme);
-  if (!link.startsWith(`${base}?`)) return null;
-  const params = new URLSearchParams(link.slice(base.length + 1));
-  const code = params.get("code");
-  const challenge = params.get("challenge");
-  if (!code || !challenge || !DIGEST.test(code) || !DIGEST.test(challenge)) return null;
-  return { code, challenge };
-}
-
 /**
  * Create the sign-in flow. One sign-in waits at a time; starting another replaces it.
  * @param deps - Browser opener, clock and lifetime.
@@ -78,7 +60,8 @@ export function createBrowserSignIn(deps: BrowserSignInDeps): BrowserSignIn {
    * @returns The sign-in still waiting, or null.
    */
   function current(): Pending | null {
-    if (pending && deps.now() - pending.startedAt > deps.ttlMs) pending = null;
+    // Only a received code expires: the wait before it may last as long as the user takes in the browser.
+    if (pending?.result && deps.now() - pending.receivedAt > deps.ttlMs) pending = null;
     return pending;
   }
 
@@ -86,7 +69,7 @@ export function createBrowserSignIn(deps: BrowserSignInDeps): BrowserSignIn {
     async start({ windowId, serverOrigin, referralCode }) {
       const verifier = crypto.randomBytes(32).toString("base64url");
       const challenge = crypto.createHash("sha256").update(verifier).digest("base64url");
-      pending = { windowId, challenge, verifier, startedAt: deps.now(), result: null };
+      pending = { windowId, challenge, verifier, receivedAt: 0, result: null };
       const url = new URL("/desktop/sign-in", serverOrigin);
       url.searchParams.set("challenge", challenge);
       if (referralCode) url.searchParams.set("ref", referralCode);
@@ -99,10 +82,11 @@ export function createBrowserSignIn(deps: BrowserSignInDeps): BrowserSignIn {
       return current() !== null;
     },
     receive(link) {
-      const parsed = parseSignInLink(link, deps.scheme);
+      const parsed = parseDesktopSignInReturn(link, deps.scheme);
       const waiting = current();
       if (!parsed || !waiting || waiting.result || parsed.challenge !== waiting.challenge) return { accepted: false };
       waiting.result = { code: parsed.code, verifier: waiting.verifier };
+      waiting.receivedAt = deps.now();
       return { accepted: true, windowId: waiting.windowId };
     },
     take() {

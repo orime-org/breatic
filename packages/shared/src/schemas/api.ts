@@ -14,6 +14,7 @@
 import { creditAmountFormatQuerySchema } from "@shared/credit-amount.js";
 
 import { z } from "zod";
+import { SHA256_BASE64URL } from "@shared/desktop-bridge.js";
 import { routeSchema } from "@shared/schemas/route.js";
 import {
   BILLING_PERIODS,
@@ -220,8 +221,7 @@ export const googleAuthSchema = z.object({
 });
 export type GoogleAuthInput = z.infer<typeof googleAuthSchema>;
 
-/** A SHA-256 digest in base64url without padding: 32 bytes are 43 characters. */
-const sha256Base64Url = z.string().regex(/^[A-Za-z0-9_-]{43}$/);
+const sha256Base64Url = z.string().regex(SHA256_BASE64URL);
 
 /**
  * The desktop client's sign-in through the system browser (#1599). The browser,

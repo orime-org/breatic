@@ -55,3 +55,33 @@ export function isDesktopAppScheme(scheme: string): boolean {
 export function desktopSignInLink(scheme: string): string {
   return `${scheme}://sign-in`;
 }
+
+/** A SHA-256 digest in base64url without padding: 32 bytes are 43 characters. */
+export const SHA256_BASE64URL = /^[A-Za-z0-9_-]{43}$/;
+
+/**
+ * The link the browser page opens to hand a code back to a desktop build.
+ * @param scheme - The build's scheme.
+ * @param code - The one-time code.
+ * @param challenge - The challenge the build sent, so it can match its own sign-in.
+ * @returns The link.
+ */
+export function desktopSignInReturn(scheme: string, code: string, challenge: string): string {
+  return `${desktopSignInLink(scheme)}?${new URLSearchParams({ code, challenge }).toString()}`;
+}
+
+/**
+ * Read a sign-in return link on a build's scheme.
+ * @param link - The link as the system delivered it.
+ * @param scheme - The build's scheme.
+ * @returns The code and challenge, or null when it is not a well-formed return link on that scheme.
+ */
+export function parseDesktopSignInReturn(link: string, scheme: string): { code: string; challenge: string } | null {
+  const base = desktopSignInLink(scheme);
+  if (!link.startsWith(`${base}?`)) return null;
+  const params = new URLSearchParams(link.slice(base.length + 1));
+  const code = params.get("code");
+  const challenge = params.get("challenge");
+  if (!code || !challenge || !SHA256_BASE64URL.test(code) || !SHA256_BASE64URL.test(challenge)) return null;
+  return { code, challenge };
+}

@@ -9,13 +9,14 @@
  * scheme of this build's brand, counts
  * only when its challenge matches the sign-in waiting, so a repeated, stale or
  * cancelled link changes nothing. The result is kept until a page takes it,
- * once, and expires with the server's code after five minutes.
+ * once, and expires five minutes after it arrived, as the server's code does;
+ * the wait before it has no deadline, since the user may take long in the browser.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import crypto from "node:crypto";
 
-import { createBrowserSignIn, parseSignInLink } from "@desktop/main/browser-sign-in.js";
+import { createBrowserSignIn } from "@desktop/main/browser-sign-in.js";
 
 const SERVER = "https://app.example.com";
 /** The scheme of the brand under test, a partner's. */
@@ -125,27 +126,22 @@ describe("receive and take", () => {
     expect(signIn.isPending()).toBe(false);
   });
 
-  it("drops a wait that saw no link within the code's lifetime", async () => {
+  it("keeps waiting however long the browser takes: the code's lifetime starts when the browser hands it over", async () => {
     const signIn = flow();
     const { challenge } = await started(signIn);
-    now += 5 * 60_000 + 1;
-    expect(signIn.receive(link("c".repeat(43), challenge))).toEqual({ accepted: false });
-  });
-});
-
-describe("parseSignInLink", () => {
-  it("reads code and challenge", () => {
-    expect(parseSignInLink(link("c".repeat(43), "d".repeat(43)), SCHEME)).toEqual({ code: "c".repeat(43), challenge: "d".repeat(43) });
+    now += 30 * 60_000;
+    expect(signIn.isPending()).toBe(true);
+    expect(signIn.receive(link("c".repeat(43), challenge))).toEqual({ accepted: true, windowId: 1 });
   });
 
-  it.each([
-    `${SCHEME}://other?code=a&challenge=b`,
-    "https://app.example.com/sign-in?code=a&challenge=b",
-    `${SCHEME}://sign-in?code=a`,
-    `${SCHEME}://sign-in?code=${"c".repeat(43)}&challenge=short`,
-    `ai.breatic.desktop://sign-in?code=${"c".repeat(43)}&challenge=${"d".repeat(43)}`,
-    "not a url",
-  ])("refuses %s", (input) => {
-    expect(parseSignInLink(input, SCHEME)).toBeNull();
+  it("drops a handed-over code nobody took within its lifetime, counted from when it arrived", async () => {
+    const signIn = flow();
+    const { challenge } = await started(signIn);
+    now += 20 * 60_000;
+    signIn.receive(link("c".repeat(43), challenge));
+    now += 4 * 60_000;
+    expect(signIn.isPending()).toBe(true);
+    now += 60_000 + 1;
+    expect(signIn.take()).toBeNull();
   });
 });

@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
-import { desktopSignInLink } from '@breatic/shared';
+import { SHA256_BASE64URL, desktopSignInReturn } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
 import { authApi } from '@web/data/api/auth';
 import { AUTH_OPTIONS_QUERY_KEY } from '@web/features/referral/use-signup-referral';
@@ -12,8 +12,6 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
 
-/** A base64url SHA-256 digest, the only challenge the desktop client makes. */
-const CHALLENGE = /^[A-Za-z0-9_-]{43}$/;
 
 type Stage = 'confirm' | 'processing' | 'handed' | 'error';
 
@@ -47,7 +45,7 @@ export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPagePr
   const t = useTranslation();
   const [params] = useSearchParams();
   const challenge = params.get('challenge') ?? '';
-  const valid = CHALLENGE.test(challenge);
+  const valid = SHA256_BASE64URL.test(challenge);
   const email = useCurrentUserStore((s) => s.user?.email ?? '');
   const clear = useCurrentUserStore((s) => s.clear);
   const [stage, setStage] = React.useState<Stage>(valid ? 'confirm' : 'error');
@@ -62,7 +60,7 @@ export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPagePr
     setStage('processing');
     try {
       const { code } = await authApi.desktopHandoff({ challenge });
-      const href = `${desktopSignInLink(scheme)}?code=${encodeURIComponent(code)}&challenge=${encodeURIComponent(challenge)}`;
+      const href = desktopSignInReturn(scheme, code, challenge);
       setLink(href);
       openLink(href);
       setStage('handed');
@@ -93,8 +91,14 @@ export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPagePr
   if (stage === 'error' || options.isError || (options.isSuccess && !scheme)) {
     return (
       <AuthCardShell title={t('auth.desktop.errorTitle')} subtitle={t('auth.desktop.errorBody')}>
-        {valid && !options.isError ? (
-          <Button type='button' variant='outline' className='w-full' onClick={() => setStage('confirm')}>
+        {valid ? (
+          <Button
+            type='button'
+            variant='outline'
+            className='w-full'
+            loading={options.isFetching}
+            onClick={() => (options.isError ? void options.refetch() : setStage('confirm'))}
+          >
             {t('auth.desktop.retry')}
           </Button>
         ) : null}
