@@ -26,6 +26,7 @@ import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { projectService } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
 import { holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
+import { creditsToHold, taskKeyRows } from "@server/modules/task/run-keys.js";
 
 const miniTools = new Hono<{ Variables: AuthVariables }>();
 
@@ -56,14 +57,17 @@ miniTools.post(
 
   const taskType = outputTemplateOf(spec).modality;
   // Its estimate is held under the id its task takes before any row opens,
-  // so a refusal leaves nothing on the nodes (inner#1968).
+  // so a refusal leaves nothing on the nodes (inner#1968); what the payer's own key pays for is not held (inner#1953).
   const taskId = randomUUID();
   const task = await holdRowedRun({
     taskId,
     projectId: body.project_id,
     userId: user.id,
-    credits: () => Promise.resolve(run.credits),
-    create: () => admitGeneration(user.id, body.project_id, body.space_id, taskType, "append", run.params, run.model, "mini_tool", taskId),
+    credits: () => creditsToHold(run.keys, body.project_id, user.id, () => Promise.resolve(run.credits)),
+    create: () => admitGeneration(
+      user.id, body.project_id, body.space_id, taskType, "append", run.params, run.model, "mini_tool", taskId,
+      run.keys === undefined ? undefined : taskKeyRows(run.keys),
+    ),
   });
 
   const status = await startRowedRun({

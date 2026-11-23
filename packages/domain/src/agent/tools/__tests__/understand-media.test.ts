@@ -201,6 +201,15 @@ describe("understand_media — recording what the service billed", () => {
     expect(modelCalls(spy.recorder)).toEqual([expect.objectContaining({ cost: BILLED })]);
   });
 
+  it("says the payer's own key failed, which upstream and why, instead of a service that did not answer", async () => {
+    const { AccountKeyFailure } = await import("@breatic/provider");
+    understandMediaAtMock.mockRejectedValue(new AccountKeyFailure("gemini", "account_key_failed", { upstream: "openrouter", reason: "model_not_found" }));
+    const { forModel, userKey } = await failureOf(turnCopy(usageSpy().recorder)(ASKED));
+    expect(userKey).toBe(FAILURE_LINES.accountKey);
+    expect(forModel).toContain("openrouter");
+    expect(forModel.toLowerCase()).not.toContain("did not answer");
+  });
+
   it("records nothing when the service never billed the call", async () => {
     understandMediaAtMock.mockRejectedValue(new MediaUnavailable("slow", { detail: "TimeoutError" }));
     const spy = usageSpy();

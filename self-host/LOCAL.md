@@ -85,6 +85,8 @@ The bundled nginx refuses request bodies over 1 MiB (`client_max_body_size 1m` i
 
 Replace sample provider keys with your own valid keys; leave unused keys empty. `OPENROUTER_API_KEY` supplies the text-model route when no direct vendor key is configured, subject to model availability and account quota. Each upstream reads the variable named by `key_env` in `config/provider/upstreams.yaml`; an image, video or other generation model needs the key of at least one of its upstreams in `config/provider/media/<type>.yaml`, for example `WAVESPEED_API_KEY` or `FAL_KEY`.
 
+To let users bring their own upstream keys (BYOK settings in the account menu), set `PROVIDER_KEY_SECRET_ID` and `PROVIDER_KEY_SECRETS` as `.env.docker` describes; the keys users save are stored sealed with them. Keep every master key listed while keys sealed with it are stored, or those keys can no longer be opened. With both left empty the BYOK settings are off and every call uses the keys above.
+
 <a id="cloudflare"></a>
 ## 4. Deploy the Cloudflare upload service
 
@@ -261,7 +263,7 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 
 Replace every `YOUR_...` value. The shared secret must exactly match the Cloudflare secret, and both sides must name the same bucket. Do not interchange the public read URL and S3 endpoint. Omit trailing slashes from base URLs and never commit credentials.
 
-If you enable web animation, also set `WEB_ANIMATION_PREVIEW_BASE_URL` to the HTTPS address that serves the Worker's preview route, ideally a domain of its own.
+If you enable web animation, also set `WEB_ANIMATION_PREVIEW_BASE_URL` to the HTTPS address that serves the Worker's preview route, ideally a domain of its own, and `INGEST_KEY_SEAL_PUBLIC_KEY` to the public half of a key pair whose private half goes into the Worker with `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` (`.env.docker` shows how to make it). The Worker holds no model key: each run's keys travel sealed with the job, so the model key (such as `OPENROUTER_API_KEY`) is set only in the application's `.env`, which the worker reads at each submit, and never in the Worker.
 
 The Worker does not need to call back into the local application. Personal use therefore does not require router port forwarding, a tunnel or a public domain for the application.
 

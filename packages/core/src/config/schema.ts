@@ -48,6 +48,24 @@ function blankToUndefined(v: unknown): unknown {
 }
 
 /**
+ * A variable holding a JSON object of strings; blank means an empty object.
+ * @param key - The variable, named in the refusal.
+ * @returns The schema yielding the parsed object.
+ */
+function jsonRecord(key: string): z.ZodType<Record<string, string>, unknown> {
+  return z.preprocess((value) => {
+    const blank = blankToUndefined(value);
+    if (blank === undefined) return {};
+    if (typeof blank !== "string") return blank;
+    try {
+      return JSON.parse(blank) as unknown;
+    } catch {
+      return blank;
+    }
+  }, z.record(z.string(), z.string(), { error: `${key} must be a JSON object of strings` }));
+}
+
+/**
  * Wrap a numeric env var so a blank value means "not set".
  *
  * `.env` files spell an unset var as `VAR=`. Zod keeps that as `""` rather than
@@ -281,6 +299,14 @@ export const coreConfigSchema = z.object({
   // until it is blanked.
   INTERNAL_API_SECRET_PREVIOUS: z.string().default(""),
 
+  // ── Accounts' own provider keys (inner#1953) ─────────
+  // The master keys that seal the upstream keys accounts save: the id new
+  // seals use, and a JSON object of every key by id (32 bytes as 64 hex
+  // characters), so a key rotated out keeps opening older seals while it is
+  // listed. Neither set turns bring-your-own-key off.
+  PROVIDER_KEY_SECRET_ID: z.string().default("").transform((value) => value.trim()),
+  PROVIDER_KEY_SECRETS: jsonRecord("PROVIDER_KEY_SECRETS"),
+
   // ── Storage ──────────────────────────────────────
   // UPLOAD_BASE_URL is the public read base. On R2 it is the r2.dev
   // address or a custom domain, and it is a different host from
@@ -330,6 +356,12 @@ export const coreConfigSchema = z.object({
     .string()
     .default("")
     .transform((value) => value.replace(/\/+$/, "")),
+  // The ingest Worker's public key (SPKI PEM; line breaks may be written as
+  // `\n`, inner#1953): every web-animation run's model keys, ours or the
+  // paying account's own, are sealed to it at submit, and only the Worker's
+  // `KEY_UNSEAL_PRIVATE_KEY` opens them. Empty fails every web-animation run
+  // before it is submitted.
+  INGEST_KEY_SEAL_PUBLIC_KEY: z.string().default(""),
   // ── Upload Size Limits (MB, per asset kind) ─────
   UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),
   UPLOAD_MAX_VIDEO_MB: numeric(z.coerce.number().positive().default(1024)),
@@ -376,14 +408,47 @@ export const coreConfigSchema = z.object({
 export type CoreConfig = z.infer<typeof coreConfigSchema>;
 
 /**
+ * Refuse a half or malformed bring-your-own-key master key configuration, never repeating a secret.
+ * @param config - The parsed configuration.
+ * @throws {Error} When only one of the two variables is set, the current id names no secret, an id is not a plain
+ *   token, or a secret is not 32 bytes of hex.
+ */
+function assertProviderKeySecrets(config: CoreConfig): void {
+  const id = config.PROVIDER_KEY_SECRET_ID;
+  const secrets = config.PROVIDER_KEY_SECRETS;
+  const ids = Object.keys(secrets);
+  if (id === "" && ids.length === 0) return;
+  if (ids.length === 0) {
+    throw new Error("FATAL: PROVIDER_KEY_SECRET_ID is set without PROVIDER_KEY_SECRETS, the master keys it names. Refusing to start.");
+  }
+  if (id === "") {
+    throw new Error("FATAL: PROVIDER_KEY_SECRETS is set without PROVIDER_KEY_SECRET_ID, the id new seals use. Refusing to start.");
+  }
+  if (!Object.hasOwn(secrets, id)) {
+    throw new Error("FATAL: PROVIDER_KEY_SECRET_ID names no key in PROVIDER_KEY_SECRETS. Refusing to start.");
+  }
+  for (const [kid, hex] of Object.entries(secrets)) {
+    if (!/^[A-Za-z0-9_-]+$/.test(kid)) {
+      throw new Error("FATAL: every id in PROVIDER_KEY_SECRETS may contain only letters, digits, '_' and '-'. Refusing to start.");
+    }
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      throw new Error(
+        `FATAL: PROVIDER_KEY_SECRETS["${kid}"] must be 32 bytes as 64 hex characters (openssl rand -hex 32). Refusing to start.`,
+      );
+    }
+  }
+}
+
+/**
  * Validate a raw environment map into a typed {@link CoreConfig}.
  * @param rawEnv - The raw key/value map the application read from
  *   `process.env` (the entry owns the `process.env` read; this
  *   function only processes the map it is handed).
  * @returns The validated, typed, default-applied configuration.
  * @throws {z.ZodError} if a required variable is missing / malformed.
- * @throws {Error} if payments are enabled without Stripe secrets, or the
- *   internal API is enabled without its secret.
+ * @throws {Error} if payments are enabled without Stripe secrets, the
+ *   internal API is enabled without its secret, or the provider key master
+ *   keys are set half or malformed.
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);
@@ -427,6 +492,8 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
       "when there is no previous key. Refusing to start.",
     );
   }
+
+  assertProviderKeySecrets(config);
 
   // The yjs binary store must be a DIFFERENT database than the business
   // DB — they are separate transaction / failure domains by design (the

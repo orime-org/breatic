@@ -10,16 +10,37 @@
  * check price a run: through `estimateModelCredits`.
  */
 
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Whether a run describes an input first is provider's answer from the catalog and the run's params; these tests pick it.
+const { describes } = vi.hoisted(() => ({ describes: vi.fn<(model: string, params: Readonly<Record<string, unknown>>) => boolean>() }));
+vi.mock("../../../provider/provider-keys.js", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  runDescribesInput: (model: string, params: Readonly<Record<string, unknown>>) => describes(model, params),
+}));
+// The params each refusal check was asked about; the real check still answers.
+const { refusalAsked } = vi.hoisted(() => ({ refusalAsked: [] as { model: string; params: Readonly<Record<string, unknown>> }[] }));
+vi.mock("@domain/model-catalog/model-catalog.js", async (importOriginal) => {
+  const original = await importOriginal<typeof Catalog>();
+  return {
+    ...original,
+    inputRefusalFor: async (...args: Parameters<typeof original.inputRefusalFor>) => {
+      refusalAsked.push({ model: args[0], params: args[1].params });
+      return original.inputRefusalFor(...args);
+    },
+  };
+});
 
 import { loadLocales } from "@breatic/core";
 import { formatCredits, setLocale, type ProposalAnswer, type ProposalNode } from "@breatic/shared";
 
 import { restoreProcessEnv, useFullCatalog } from "@domain/model-catalog/__tests__/catalog-env.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import type * as Catalog from "@domain/model-catalog/model-catalog.js";
 
-import { answerFor, makeProposeCanvasAction, renderProposalForModel, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
+import { answerFor, checkedAnswerFor, makeProposeCanvasAction, renderProposalForModel, sentParams, type MaterialFacts, type MaterialTable } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
+import type { KeyPurpose } from "../../../provider/account-keys.service.js";
 
 beforeEach(() => {
   loadLocales();
@@ -113,6 +134,58 @@ describe("the cost of a placed proposal, read back to the model", () => {
 
   it("still says the proposal is on screen and the user decides", async () => {
     expect(await readBack()).toContain("The proposal is on screen as a card.");
+  });
+});
+
+describe("a generation the Studio's payer runs on their own key (inner#1953)", () => {
+  beforeEach(() => {
+    describes.mockReset();
+    describes.mockReturnValue(false);
+  });
+
+  /**
+   * The keys of each model as the payer's key plan gives them: nano-banana-2 on the payer's WaveSpeed key, the rest
+   * on ours.
+   * @param model - The model.
+   * @returns Its keys.
+   */
+  const keysFor = async (purpose: KeyPurpose): Promise<{ keyId: string | null; route: { mode: "default" } | { mode: "upstream"; upstream: string }; keys?: undefined }> =>
+    purpose.kind === "media" && purpose.model === "nano-banana-2"
+      ? { keyId: "key-row-1", route: { mode: "upstream", upstream: "wavespeed" } }
+      : { keyId: null, route: { mode: "default" } };
+
+  it("marks the models the payer runs on their own key in the placed answer", async () => {
+    const answer = await checkedAnswerFor(inputSchema.parse(TAKES), undefined, undefined, keysFor);
+    expect(answer.placed && answer.onPayerKey).toEqual(["nano-banana-2"]);
+    expect(answer.placed && answer.describedOnCredits).toBeUndefined();
+  });
+
+  it("marks each run on the payer's key whose description step runs on our keys, node by node, and only while it does", async () => {
+    // Two runs of one model: only the one whose params ask for the description pays for it.
+    describes.mockImplementation((model, params) => model === "nano-banana-2" && params.resolution === "0.5k");
+    const twoRuns = { ...TAKES, nodes: [...TAKES.nodes, { ...TAKES.nodes[0]!, name: "Ink wash, larger", params: { resolution: "1k" } }] };
+    const onOurLlm = await checkedAnswerFor(inputSchema.parse(twoRuns), undefined, undefined, keysFor);
+    expect(onOurLlm.placed && onOurLlm.describedOnCredits).toEqual([0]);
+
+    const onPayerLlm = await checkedAnswerFor(inputSchema.parse(TAKES), undefined, undefined, async (purpose) =>
+      purpose.kind === "llm" ? { keyId: "or-row", route: { mode: "default" } } : keysFor(purpose));
+    expect(onPayerLlm.placed && onPayerLlm.describedOnCredits).toBeUndefined();
+  });
+
+  it("says such a run takes credits for its description, and still leaves it out of the total", async () => {
+    const said = await renderProposalForModel({ ...placed(), onPayerKey: ["nano-banana-2"], describedOnCredits: [0] } as ProposalAnswer);
+    const ink = said.split("\n").find((line) => line.includes('"Ink wash"')) ?? "";
+    expect(ink).toContain("payer's own key");
+    expect(ink).toContain("describing its inputs takes credits");
+    expect(ink).not.toContain("no credits");
+  });
+
+  it("says such a generation costs no credits and leaves it out of the total", async () => {
+    const said = await renderProposalForModel({ ...placed(), onPayerKey: ["nano-banana-2"] } as ProposalAnswer);
+    const ink = said.split("\n").find((line) => line.includes('"Ink wash"')) ?? "";
+    expect(ink).toContain("no credits");
+    const [, cel] = await sentPrices();
+    expect(said).toContain(`Total: ${formatCredits(cel!, "en-US")} credits.`);
   });
 });
 
@@ -338,3 +411,36 @@ describe("the cost read back when sources are wired into a slot the price reads 
     expect(line).toContain(expected);
   });
 });
+
+describe("the params a proposed run is judged on (inner#1953)", () => {
+  it("judges a run on the payer's key on what the reference pool wires in, through the whole check", async () => {
+    describes.mockReset();
+    describes.mockImplementation((_model, params) => params.elements !== undefined);
+    refusalAsked.length = 0;
+    const proposal = inputSchema.parse({
+      nodes: [
+        { role: "source", type: "image", name: "Photo" },
+        { role: "generate", type: "video", name: "Clip", mode: "i2v", model: "kling-video-o3-4k-image-to-video", params: { duration: 5 }, prompt: [{ ref: 0 }, { slot: { kind: "note", label: "Put the photo in first" } }, { text: " comes alive." }] },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }],
+      rationale: "One clip from the photo.",
+      groupName: "Clip",
+    });
+    const keysFor = async (purpose: KeyPurpose): Promise<{ keyId: string | null; route: { mode: "default" } }> =>
+      ({ keyId: purpose.kind === "media" ? "media-row" : null, route: { mode: "default" } });
+
+    const answer = await checkedAnswerFor(proposal, undefined, undefined, keysFor);
+    if (!answer.placed) throw new Error(answer.reason);
+    expect(answer.describedOnCredits).toEqual([1]);
+    expect(refusalAsked.find((asked) => asked.model === "kling-video-o3-4k-image-to-video")?.params).toHaveProperty("elements");
+  });
+
+  it("carries what an edge wires into the reference pool, as the run will send it", () => {
+    const clip = { role: "generate", type: "video", name: "Clip", mode: "i2v", model: "kling-video-o3-4k-image-to-video", params: { duration: 5 } } as unknown as ProposalNode;
+    const photo = { role: "reference", type: "image", name: "Photo" } as unknown as ProposalNode;
+    const proposal = { nodes: [photo, clip], edges: [{ fromIndex: 0, toIndex: 1, into: "pool" }], rationale: "" } as never;
+
+    expect(sentParams(proposal, clip, 1, { duration: 5 })).toMatchObject({ duration: 5, elements: ["wired 1"] });
+  });
+});
+

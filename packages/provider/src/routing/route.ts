@@ -29,6 +29,8 @@ export interface RoutePlan {
   model: string;
   order: Candidate[];
   skipped: UnavailableReason[];
+  /** True when the call stays on its one upstream (an account's key, inner#1953): a request that never left is retried there too. */
+  heldToOne?: true;
 }
 
 /**

@@ -28,6 +28,7 @@
       "refund_already_spent": "この購入のクレジットは使用済みのため、返金できません。",
       "refund_window_closed": "この購入の返金期限は終了しました。",
       "refund_state_changed": "この購入の返金状況が変わりました。再読み込みしてからもう一度お試しください。",
+      "agent_tools_need_credits": "{refusal}{whose, select, self {ご自身の OpenRouter キー} other {Studio Admin の OpenRouter キー}}で支払われるのは Agent のモデルだけです。ウェブ検索、画像検索、ページの読み取りは当社のサービスで動くため、クレジットで支払われます。",
       "refund_offline_contract": "企業クレジットの返金は契約担当者にお問い合わせください。"
     },
     "auth": {
@@ -365,6 +366,13 @@
     "document": {
       "versions_full": "{limit, plural, other {この Document のスナップショットは上限の # 件に達しています。古いスナップショットを削除してから保存してください。}}"
     },
+    "byok": {
+      "disabled": "このデプロイでは独自キーの利用が有効になっていません。",
+      "upstream_not_offered": "このプロバイダーのキーはここでは受け付けていません。",
+      "key_malformed": "このキーは無効です。余分な文字がないか確認して、もう一度貼り付けてください。",
+      "key_not_connected": "このキーで接続できませんでした。確認してもう一度お試しください。",
+      "model_choice_refused": "保存済みのキーでは、このプロバイダーでこのモデルを実行できません。"
+    },
     "spend_cap": {
       "member": "このStudioでの今月の利用額が上限（{limit} クレジット）に達しました。追加が必要な場合はStudioのAdminに連絡してください。",
       "studio": "このStudioの今月の利用額が上限に達しました。StudioのAdminに連絡してください。"
@@ -451,6 +459,7 @@
         "noConnection": "サービスに接続できませんでした。しばらくしてから再試行してください",
         "refused": "サービスがこのリクエストを受け付けませんでした",
         "unavailable": "この機能は現在利用できません",
+        "accountKey": "この Studio が使う BYOK キーを使えませんでした",
         "badAnswer": "サービスから使える結果が返ってきませんでした",
         "linkUnreachable": "このアドレスを開けません。別のリンクをお試しください",
         "fileTooLarge": "ファイルが大きすぎます",
@@ -1033,7 +1042,14 @@
       },
       "editProposalMarks": "波括弧の中身を書き換えてください。オレンジ色の注意事項はモデルに送られません。",
       "notePrefix": "注意事項：",
-      "integerBlank": "空欄で自動"
+      "integerBlank": "空欄で自動",
+      "ownKeyLabel": "あなたのキー",
+      "studioKeyLabel": "Studio のキー",
+      "alsoCredits": "クレジット",
+      "usesOwnKey": "あなたのキーを使用、クレジット消費なし",
+      "usesStudioKey": "Studio のキーを使用、クレジット消費なし",
+      "usesOwnKeyDescribing": "あなたのキーを使用、要素の説明はクレジットを消費",
+      "usesStudioKeyDescribing": "Studio のキーを使用、要素の説明はクレジットを消費"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1179,7 +1195,10 @@
         "cut_short": "長すぎて最後まで文字起こしできませんでした。",
         "cancelled": "キャンセルしました。",
         "input_refused": "{model} は現在の設定では実行できません。設定を変えるか、別のモデルを選んでください。",
-        "model_not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。"
+        "model_not_configured": "このデプロイでは {model} がまだ設定されていません。{envVars} の設定が必要です。",
+        "account_key_failed": "{whose, select, self {{keyReason, select, invalid {{upstream} があなたのキーを無効として拒否しました。BYOK 設定でキーを変更してください。} no_balance {あなたの {upstream} のキーの残高が不足しています。{upstream} でチャージしてください。} model_not_found {{upstream} はあなたのキーでこのモデルを提供していません。BYOK 設定で別のアップストリームを選んでください。} rate_limited {{upstream} があなたのキーのリクエストを制限しています。しばらくしてから再試行してください。} other {あなたの {upstream} のキーでエラーが発生しました。BYOK 設定で確認してください。}}} admin {{keyReason, select, invalid {{upstream} が Studio Admin のキーを無効として拒否しました。Studio Admin にキーの変更を依頼してください。} no_balance {Studio Admin の {upstream} のキーの残高が不足しています。Studio Admin に {upstream} でのチャージを依頼してください。} model_not_found {{upstream} は Studio Admin のキーでこのモデルを提供していません。Studio Admin に別のアップストリームの選択を依頼してください。} rate_limited {{upstream} が Studio Admin のキーのリクエストを制限しています。しばらくしてから再試行してください。} other {Studio Admin の {upstream} のキーでエラーが発生しました。Studio Admin に確認を依頼してください。}}} other {{keyReason, select, invalid {{upstream} がキーを無効として拒否しました。BYOK 設定でキーを変更してください。} no_balance {{upstream} のキーの残高が不足しています。{upstream} でチャージしてください。} model_not_found {{upstream} はこのキーでこのモデルを提供していません。BYOK 設定で別のアップストリームを選んでください。} rate_limited {{upstream} がこのキーのリクエストを制限しています。しばらくしてから再試行してください。} other {{upstream} のキーでエラーが発生しました。BYOK 設定で確認してください。}}}}",
+        "account_key_missing": "{whose, select, self {{upstream, select, none {この実行で使ったあなたのキーは置き換えまたは削除されました。もう一度実行してください。} other {この実行で使ったあなたの {upstream} のキーは置き換えまたは削除されました。もう一度実行してください。}}} admin {{upstream, select, none {この実行で使った Studio Admin のキーは置き換えまたは削除されました。もう一度実行してください。} other {この実行で使った Studio Admin の {upstream} のキーは置き換えまたは削除されました。もう一度実行してください。}}} other {{upstream, select, none {この実行で使ったキーは置き換えまたは削除されました。もう一度実行してください。} other {この実行で使った {upstream} のキーは置き換えまたは削除されました。もう一度実行してください。}}}}",
+        "upstream_unavailable": "{upstream} に接続できません。しばらくしてから再試行してください。"
       },
       "kind": {
         "upload": "アップロード",
@@ -4396,6 +4415,80 @@
     "submit": "申し込む",
     "submitted": "申請しました"
   },
+  "byok": {
+    "heading": "BYOK 設定",
+    "tabKeys": "アップストリームのキー",
+    "tabModels": "モデル",
+    "searchUpstreams": "アップストリームを検索",
+    "added": "追加済み",
+    "noneAdded": "まだ追加されていません",
+    "notAddedGroup": "未追加 · {group}",
+    "groupLanguageModel": "言語モデル",
+    "groupOfficial": "公式 API",
+    "groupReseller": "リセラー",
+    "noUpstreamMatch": "一致するアップストリームはありません",
+    "connected": "接続済み",
+    "notConnected": "未接続",
+    "lastChecked": "前回の確認 {time}",
+    "lastCheckedToday": "前回の確認 今日 {time}",
+    "balance": "残高 {amount}",
+    "balanceKeyLimit": "このキーの残り上限 {amount}",
+    "balanceForbidden": "このキーには残高を確認する権限がありません。請求の権限があるキーを使うと表示されます。",
+    "balanceNoCap": "このキーには利用上限が設定されていません。",
+    "balanceUnsupported": "このアップストリームは残高を確認できません。",
+    "costsUnreadable": "このキーでは実際の費用を取得できません。請求の権限があるキーを使うと表示されます。",
+    "balanceAndCostsUnreadable": "このキーでは残高も実際の費用も取得できません。請求の権限があるキーを使うと表示されます。",
+    "refresh": "更新",
+    "replace": "置き換え",
+    "delete": "削除",
+    "save": "保存",
+    "keyLabel": "API キー",
+    "keyPlaceholder": "キーを貼り付け",
+    "keyEmpty": "先にキーを貼り付けてください。",
+    "saveHint": "保存する前にキーが接続できるか確認します。",
+    "saveFailed": "キーを保存できませんでした。再試行してください。",
+    "saved": "{upstream} のキーを保存しました",
+    "deleted": "{upstream} のキーを削除しました",
+    "checkFailed": "キーを確認できませんでした。再試行してください。",
+    "deleteFailed": "キーを削除できませんでした。再試行してください。",
+    "getKey": "{upstream} でキーを取得",
+    "runsModels": "実行できるモデル",
+    "runsNone": "このキーで実行できるモデルはありません。",
+    "openrouterNote": "ウェブアニメーションを含むすべての言語モデルの呼び出しにこのキーを使い、クレジットは消費しません。ウェブアニメーションのレンダリングにはクレジットを消費します。",
+    "replaceTitle": "{upstream} のキーを置き換え",
+    "replaceBody": "保存する前に新しいキーが接続できるか確認します。置き換えると、古いキーを使用中のタスクは中断または失敗することがあります。古いキーが漏えいした場合は、{upstream} でも無効にしてください。",
+    "deleteTitle": "{upstream} のキーを削除しますか？",
+    "deleteBody": "削除すると、このキーを使用中のタスクは中断または失敗することがあり、このキーに設定したモデルはプラットフォームのキーに戻ります。キーが漏えいした場合は、{upstream} でも無効にしてください。",
+    "deleteBodyLanguage": "削除すると、このキーを使用中のタスクは中断または失敗することがあり、言語モデルの呼び出しはプラットフォームのキーに戻ります。キーが漏えいした場合は、{upstream} でも無効にしてください。",
+    "platformKey": "プラットフォームのキー（クレジットを消費）",
+    "modelsIntro": "未設定のモデルはプラットフォームのキーを使い、クレジットを消費します。追加したアップストリームで実行できるモデルだけを表示しています。",
+    "modelsEmpty": "アップストリームのキーを追加すると、ここで各モデルが使うアップストリームを選べます。未設定のモデルはプラットフォームのキーを使います。",
+    "goAddKey": "キーを追加",
+    "searchModels": "モデルを検索",
+    "noModelMatch": "一致するモデルはありません",
+    "noModelsInModality": "追加したアップストリームではこの種類のモデルを実行できません。",
+    "modelSaved": "{model} は {upstream} を使います",
+    "modelSaveFailed": "変更できませんでした。再試行してください。",
+    "disabled": "このデプロイでは自分のキーの利用が有効になっていません。",
+    "loadFailed": "BYOK 設定を読み込めませんでした。",
+    "retry": "再試行",
+    "showKey": "キーを表示",
+    "hideKey": "キーを隠す",
+    "failure": {
+      "invalid": "キーが無効か、取り消されています。",
+      "unavailable": "アップストリームに接続できません。しばらくしてから再試行してください。",
+      "rate_limited": "アップストリームがこのキーのリクエストを制限しています。しばらくしてから再試行してください。",
+      "refused": "アップストリームがチェックを拒否しました。",
+      "other": "キーに接続できませんでした。"
+    },
+    "modality": {
+      "image": "画像",
+      "video": "動画",
+      "audio": "音声",
+      "tts": "ナレーション",
+      "three_d": "3D"
+    }
+  },
   "credits": {
     "panelTitle": "クレジット",
     "close": "閉じる",
@@ -4767,7 +4860,8 @@
         "feature_disabled": "ウェブアニメーションは現在利用できません。",
         "check": "ページがチェックを通過しませんでした。",
         "stopped": "作成が予期せず停止しました。",
-        "unknown": "実行に失敗しました。"
+        "unknown": "実行に失敗しました。",
+        "key_lost": "タスクが中断されました。もう一度実行してください。"
       },
       "preview": {
         "pending": "{track}：ウェブアニメーション{status, select, awaiting_landing {保存中} queued {待機中} running {作成中} cancelling {キャンセル中} other {待機中}}…",

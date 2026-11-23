@@ -8,7 +8,7 @@
  * entry, so one entry carries everything that tool needs: every tool keeps
  * the turn's usage recorder, and the ones that need something of the turn
  * carry it in the shape they use: the save and the canvas proposal the
- * project (inner#1315), the 3D generation proposal the project whose images
+ * project (inner#1315), the catalog tools the studio whose payer's keys a run goes out on (inner#1953), the 3D generation proposal the project whose images
  * it resolves (inner#1691), the document proposal the open document (inner#1509),
  * the record tools the user's records (inner#1469), the memory tools the
  * user's memory (#1363), and the page read its rate-limited reader (inner#1664).
@@ -17,6 +17,8 @@
 import type { ChatSpaceContext } from "@breatic/shared";
 import { canonicalMediaSourceFor } from "@server/agent/canonical-media-source.js";
 import {
+  GET_GENERATION_TEMPLATE,
+  LIST_GENERATION_MODELS,
   PROPOSE_CANVAS_ACTION,
   PROPOSE_DOCUMENT_EDIT,
   PROPOSE_SCENE_GENERATION,
@@ -79,8 +81,9 @@ export function turnToolsContext(
       resolveCanonicalMediaSource: (url: string) => canonicalMediaSourceFor(url, turn.studioId),
     };
   }
-  if (context[PROPOSE_CANVAS_ACTION]) {
-    context[PROPOSE_CANVAS_ACTION] = { ...context[PROPOSE_CANVAS_ACTION], studioId: turn.studioId };
+  // The proposal and the catalog tools judge a run on the keys of this studio's payer (inner#1953).
+  for (const name of [PROPOSE_CANVAS_ACTION, LIST_GENERATION_MODELS, GET_GENERATION_TEMPLATE]) {
+    if (context[name]) context[name] = { ...context[name], studioId: turn.studioId };
   }
   if (context[PROPOSE_SCENE_GENERATION] && turn.projectId) {
     context[PROPOSE_SCENE_GENERATION] = { ...context[PROPOSE_SCENE_GENERATION], projectId: turn.projectId };

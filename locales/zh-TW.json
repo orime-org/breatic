@@ -28,6 +28,7 @@
       "refund_already_spent": "這筆的點數已經用過，不能退款。",
       "refund_window_closed": "這筆的退款期限已過。",
       "refund_state_changed": "這筆的退款狀態已經變了，請重新整理後再試。",
+      "agent_tools_need_credits": "{refusal}{whose, select, self {你自己的 OpenRouter key} other {Studio Admin 的 OpenRouter key}}只支付 Agent 的模型；聯網搜尋、圖片搜尋和網頁讀取走我們的服務，要用點數支付。",
       "refund_offline_contract": "企業點數退款請聯絡合約負責人。"
     },
     "auth": {
@@ -365,6 +366,13 @@
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
     },
+    "byok": {
+      "disabled": "這個部署沒有開啟自帶 key。",
+      "upstream_not_offered": "這裡不接受這家的 key。",
+      "key_malformed": "key 格式不對，請檢查是否多了字元後重新貼上。",
+      "key_not_connected": "這把 key 連不上，請檢查後再試。",
+      "model_choice_refused": "這家用你已儲存的 key 跑不了這個模型。"
+    },
     "spend_cap": {
       "member": "你本月在這個 Studio 的花費已達上限（{limit} 點數）。需要更多請聯絡 Studio Admin。",
       "studio": "這個 Studio 本月的花費已達上限。請聯絡 Studio Admin。"
@@ -451,6 +459,7 @@
         "noConnection": "連不上服務，稍後可以再試",
         "refused": "服務沒有接受這次請求",
         "unavailable": "這項功能暫時無法使用",
+        "accountKey": "這個 Studio 用的 BYOK key 無法使用",
         "badAnswer": "服務回傳的內容無法使用",
         "linkUnreachable": "這個網址打不開，可以換一個連結",
         "fileTooLarge": "檔案太大",
@@ -1033,7 +1042,14 @@
       },
       "editProposalMarks": "請替換大括號裡的內容。橘色的注意事項不會傳給模型。",
       "notePrefix": "注意事項：",
-      "integerBlank": "留空為自動"
+      "integerBlank": "留空為自動",
+      "ownKeyLabel": "你的 key",
+      "studioKeyLabel": "Studio 的 key",
+      "alsoCredits": "點數",
+      "usesOwnKey": "用你的 key，不扣點數",
+      "usesStudioKey": "用 Studio 的 key，不扣點數",
+      "usesOwnKeyDescribing": "用你的 key；描述元素用點數",
+      "usesStudioKeyDescribing": "用 Studio 的 key；描述元素用點數"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1179,7 +1195,10 @@
         "cut_short": "內容太長，沒能轉寫完。",
         "cancelled": "已取消。",
         "input_refused": "{model} 無法使用目前的設定，請修改設定或換個模型。",
-        "model_not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。"
+        "model_not_configured": "這個部署還沒設定好 {model}：需要設定 {envVars}。",
+        "account_key_failed": "{whose, select, self {{keyReason, select, invalid {{upstream} 拒絕了你的 key：key 無效。到 BYOK 設定換 key。} no_balance {你的 {upstream} key 餘額不足。去 {upstream} 儲值。} model_not_found {{upstream} 用你的 key 跑不了這個模型。到 BYOK 設定換一家上游。} rate_limited {{upstream} 在限制你這把 key 的請求，稍後再試。} other {你的 {upstream} key 出錯了。到 BYOK 設定檢查。}}} admin {{keyReason, select, invalid {{upstream} 拒絕了 Studio Admin 的 key：key 無效。請 Studio Admin 換 key。} no_balance {Studio Admin 的 {upstream} key 餘額不足。請 Studio Admin 去 {upstream} 儲值。} model_not_found {{upstream} 用 Studio Admin 的 key 跑不了這個模型。請 Studio Admin 換一家上游。} rate_limited {{upstream} 在限制 Studio Admin 這把 key 的請求，稍後再試。} other {Studio Admin 的 {upstream} key 出錯了。請 Studio Admin 檢查。}}} other {{keyReason, select, invalid {{upstream} 拒絕了這把 key：key 無效。到 BYOK 設定換 key。} no_balance {{upstream} 的 key 餘額不足。去 {upstream} 儲值。} model_not_found {{upstream} 用這把 key 跑不了這個模型。到 BYOK 設定換一家上游。} rate_limited {{upstream} 在限制這把 key 的請求，稍後再試。} other {{upstream} 的 key 出錯了。到 BYOK 設定檢查。}}}}",
+        "account_key_missing": "{whose, select, self {{upstream, select, none {你這次執行用的 key 已被替換或刪除，請重新執行。} other {你這次執行用的 {upstream} key 已被替換或刪除，請重新執行。}}} admin {{upstream, select, none {這次執行用的 Studio Admin 的 key 已被替換或刪除，請重新執行。} other {這次執行用的 Studio Admin 的 {upstream} key 已被替換或刪除，請重新執行。}}} other {{upstream, select, none {這次執行用的 key 已被替換或刪除，請重新執行。} other {這次執行用的 {upstream} key 已被替換或刪除，請重新執行。}}}}",
+        "upstream_unavailable": "連不上 {upstream}，稍後再試。"
       },
       "kind": {
         "upload": "上傳",
@@ -4396,6 +4415,80 @@
     "submit": "提交申請",
     "submitted": "申請已提交"
   },
+  "byok": {
+    "heading": "BYOK 設定",
+    "tabKeys": "上游 key",
+    "tabModels": "模型",
+    "searchUpstreams": "搜尋上游",
+    "added": "已新增",
+    "noneAdded": "還沒有新增",
+    "notAddedGroup": "未新增 · {group}",
+    "groupLanguageModel": "語言模型",
+    "groupOfficial": "官方 API",
+    "groupReseller": "中轉",
+    "noUpstreamMatch": "沒有符合的上游",
+    "connected": "已連通",
+    "notConnected": "未連通",
+    "lastChecked": "上次檢測 {time}",
+    "lastCheckedToday": "上次檢測 今天 {time}",
+    "balance": "餘額 {amount}",
+    "balanceKeyLimit": "這把 key 剩餘額度 {amount}",
+    "balanceForbidden": "這把 key 沒有查詢餘額的權限，換一把有帳單權限的 key 就能看到。",
+    "balanceNoCap": "這把 key 沒設額度上限。",
+    "balanceUnsupported": "這家查不到餘額。",
+    "costsUnreadable": "這把 key 記不到實際花費，換一把有帳單權限的 key 就能看到。",
+    "balanceAndCostsUnreadable": "這把 key 查不到餘額和實際花費，換一把有帳單權限的 key 就能看到。",
+    "refresh": "重新整理",
+    "replace": "替換",
+    "delete": "刪除",
+    "save": "儲存",
+    "keyLabel": "API key",
+    "keyPlaceholder": "貼上 key",
+    "keyEmpty": "請先貼上 key。",
+    "saveHint": "儲存前會先檢測這把 key 能不能連通。",
+    "saveFailed": "沒能儲存 key，請重試。",
+    "saved": "{upstream} 的 key 已儲存",
+    "deleted": "已刪除 {upstream} 的 key",
+    "checkFailed": "沒能檢測 key，請重試。",
+    "deleteFailed": "沒能刪除 key，請重試。",
+    "getKey": "到 {upstream} 取得 key",
+    "runsModels": "這家能跑的模型",
+    "runsNone": "這裡沒有能用它跑的模型。",
+    "openrouterNote": "所有語言模型呼叫（含網頁動畫）都用這把 key，不扣點數；網頁動畫的渲染仍扣點數。",
+    "replaceTitle": "替換 {upstream} 的 key",
+    "replaceBody": "儲存前會先檢測新 key 能不能連通。替換後，正在用舊 key 的任務可能會中斷或失敗。舊 key 若已洩露，請同時到 {upstream} 作廢它。",
+    "deleteTitle": "要刪除 {upstream} 的 key 嗎？",
+    "deleteBody": "刪除後，正在用這把 key 的任務可能會中斷或失敗，設為用它的模型改回平台的 key。key 若已洩露，請同時到 {upstream} 作廢它。",
+    "deleteBodyLanguage": "刪除後，正在用這把 key 的任務可能會中斷或失敗，語言模型呼叫改回平台的 key。key 若已洩露，請同時到 {upstream} 作廢它。",
+    "platformKey": "平台的 key（扣點數）",
+    "modelsIntro": "沒選的模型用平台的 key，扣點數。只列出你已填 key 的上游能跑的模型。",
+    "modelsEmpty": "新增上游的 key 後，在這裡選模型用哪家；沒選的都用平台的 key。",
+    "goAddKey": "去新增 key",
+    "searchModels": "搜尋模型",
+    "noModelMatch": "沒有符合的模型",
+    "noModelsInModality": "你填的上游都跑不了這類模型。",
+    "modelSaved": "{model} 改用 {upstream}",
+    "modelSaveFailed": "沒能變更，請重試。",
+    "disabled": "這個部署沒有開啟自帶 key。",
+    "loadFailed": "沒能讀取 BYOK 設定。",
+    "retry": "重試",
+    "showKey": "顯示 key",
+    "hideKey": "隱藏 key",
+    "failure": {
+      "invalid": "key 無效或已被撤銷。",
+      "unavailable": "連不上上游，稍後再試。",
+      "rate_limited": "上游正在限制這把 key 的請求，稍後再試。",
+      "refused": "上游拒絕了這次檢測。",
+      "other": "這把 key 沒有連通。"
+    },
+    "modality": {
+      "image": "圖片",
+      "video": "影片",
+      "audio": "音訊",
+      "tts": "配音",
+      "three_d": "3D"
+    }
+  },
   "credits": {
     "panelTitle": "點數",
     "close": "關閉",
@@ -4767,7 +4860,8 @@
         "feature_disabled": "網頁動畫暫不可用。",
         "check": "頁面沒有通過檢查。",
         "stopped": "製作意外中斷。",
-        "unknown": "執行失敗。"
+        "unknown": "執行失敗。",
+        "key_lost": "任務中斷，請重新執行。"
       },
       "preview": {
         "pending": "{track}：網頁動畫{status, select, awaiting_landing {儲存中} queued {排隊中} running {製作中} cancelling {取消中} other {等待中}}…",

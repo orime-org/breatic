@@ -531,6 +531,8 @@ describe("submitting a generation: refusals leave nothing behind", () => {
     ["an image model in text mode", { mode: "t23d", model: I23D }],
     ["the text model in image mode", { mode: "i23d", model: T23D, prompt: undefined }],
     ["a Canvas model", { mode: "t23d", model: "flux-schnell" }],
+    ["a model named after an Object.prototype member", { mode: "t23d", model: "constructor" }],
+    ["a model named __proto__", { mode: "t23d", model: "__proto__" }],
   ])("refuses %s with 422", async (_name, overrides) => {
     const s = await seedProject();
     const res = await submit(s, s.owner.cookie, textBody(overrides));

@@ -31,6 +31,7 @@ import { textToolsRoute } from "@server/routes/text-tools.js";
 import { modelsRoute } from "@server/routes/models.js";
 import { assetsRoute } from "@server/routes/assets.js";
 import { accountRoute } from "@server/routes/account.js";
+import { byokRoute, keyPlanRoute } from "@server/routes/byok.js";
 import { subscriptionRoute } from "@server/routes/subscription.js";
 import { referralRoute } from "@server/routes/referral.js";
 import { activitiesRoute } from "@server/routes/activities.js";
@@ -111,10 +112,12 @@ export function createApp(): Hono {
   app.route("/api/v1/assets", assetsRoute);
   app.route("/api/v1/account/subscription", subscriptionRoute);
   app.route("/api/v1/account/referral", referralRoute);
+  app.route("/api/v1/account/byok", byokRoute);
   app.route("/api/v1/account", accountRoute);
   app.route("/api/v1/projects", activitiesRoute);
   app.route("/api/v1/projects", projectAssetsRoute);
   app.route("/api/v1/projects", threeDTasksRoute);
+  app.route("/api/v1/projects", keyPlanRoute);
   app.route("/api/v1/timeline", timelineRoute);
 
   return app;

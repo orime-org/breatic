@@ -144,11 +144,16 @@ only vars and bindings, so the secret never appears there; to tell "set" from
 "never set", run `wrangler secret list --env production`, which lists it by
 name. Without it every request except a CORS preflight answers 500.
 
-The optional model keys are what web-animation runs call the model with: each is
-`HARNESS_` plus an upstream's `key_env` in `config/provider/upstreams.yaml`
-(the template sets `HARNESS_OPENROUTER_API_KEY`), and a run goes to the first
-upstream of its model's route whose key is set. Only the Worker's `model.local`
-relay reads them; the container never sees them. See [Web animation](#web-animation).
+The optional `KEY_UNSEAL_PRIVATE_KEY` is what web-animation runs need. The
+Worker holds no model key of its own: our worker reads the keys a run uses
+(ours, or the paying account's own) and sends them with each submit, sealed to
+the Worker's public key (our worker's `INGEST_KEY_SEAL_PUBLIC_KEY`). This
+secret is the private half (PKCS#8 PEM); it opens them into the job object's
+memory only, and the Worker's `model.local` relay sends each call with them;
+the container never sees them. Store the whole PEM file by piping it in:
+`wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production < unseal.pem`
+(the one-line form with `\n` for each line break, as `.dev.vars` holds it,
+reads the same). See [Web animation](#web-animation).
 
 ### If a setting is missing
 
@@ -199,10 +204,14 @@ part receipts travel with the browser and come back to finish it.
 
 Web-animation execution (`WebAnimationContainer`, `WEB_ANIMATION`) is off
 unless you enable it: its container, binding, export and `[assets]` blocks are
-commented out in the template, and `HARNESS_OPENROUTER_API_KEY` is empty.
-Without the binding the web-animation job routes answer 501 `feature_disabled`;
-without any model key a submit answers 501 naming the variables it needs;
-everything else works. To develop it, uncomment those blocks and set a key. Its image (`web-animation.Dockerfile`: Node, Chromium,
+commented out in the template, and `KEY_UNSEAL_PRIVATE_KEY` is unset.
+Without the binding the web-animation job routes answer 501 `feature_disabled`,
+and so does a submit without that secret; everything else works. To develop it,
+uncomment those blocks, make a key pair (`.env.dev` shows how), put the private
+half in `.dev.vars` as `KEY_UNSEAL_PRIVATE_KEY` and the public half in the
+repo-root `.env` as `INGEST_KEY_SEAL_PUBLIC_KEY`, and give our worker the model
+key (for example `OPENROUTER_API_KEY`). A job object that restarts mid-run
+loses the keys it held, and the run fails as `key_lost_on_restart`. Its image (`web-animation.Dockerfile`: Node, Chromium,
 the DeepSeek Harness, the HyperFrames runtime and the font set) is large, so
 the first `wrangler dev` builds for a while.
 

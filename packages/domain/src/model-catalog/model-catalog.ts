@@ -46,7 +46,7 @@ import type {
 } from "@breatic/shared";
 import { checkParamCombination, extractPromptText, fitsSomeMode, promptTaken, resolveParams } from "@breatic/shared";
 import { creditEstimateOf, prepareRunParams, type CreditEstimate, type EstimateInput } from "@breatic/shared/pricing";
-import type { RejectedInput, Route } from "@breatic/provider";
+import type { KeySet, RejectedInput, Route } from "@breatic/provider";
 import { provider } from "@domain/provider/instance.js";
 
 /** Root directory for model YAML configs. */
@@ -370,6 +370,7 @@ export const MIN_TASK_CREDIT_COST = 5;
  * @param input - The run as the request describes it: params keyed by the
  *   catalog's names, the prompt, and the source lengths the caller knows.
  * @param route - How the run chooses its upstream, the same value the task carries.
+ * @param keys - The key set the run goes out on (inner#1953); the deployment's when absent.
  * @returns The credits the caller must at least hold to enqueue.
  * @throws {Error} When a pricing formula does not produce a finite price.
  */
@@ -377,8 +378,9 @@ export async function estimateTaskCredits(
   model: string | undefined,
   input: EstimateInput,
   route?: Route,
+  keys?: KeySet,
 ): Promise<number> {
-  const estimate = model ? await estimateModelCredits(model, input, route) : undefined;
+  const estimate = model ? await estimateModelCredits(model, input, route, keys) : undefined;
   return Math.max(estimate?.credits ?? 0, MIN_TASK_CREDIT_COST);
 }
 
@@ -389,6 +391,8 @@ export async function estimateTaskCredits(
  * @param model - Model name.
  * @param input - The run as set up so far; `{ params: {} }` prices the defaults.
  * @param route - How the run chooses its upstream; the weights when left out.
+ * @param keys - The key set the run goes out on (inner#1953): only the upstreams it holds a key for count; the
+ *   deployment's when absent.
  * @returns The credits and how they bound the charge, or undefined for a model
  *   not in the catalog or one no upstream here can serve.
  * @throws {Error} When a pricing formula does not produce a finite price.
@@ -397,11 +401,12 @@ export async function estimateModelCredits(
   model: string,
   input: EstimateInput,
   route: Route = { mode: "default" },
+  keys?: KeySet,
 ): Promise<CreditEstimate | undefined> {
   const entry = findCatalogEntry(model);
   if (entry === undefined) return undefined;
   const prepared = prepareRunParams(entry, { ...input, params: resolveParams(entry, input.params) });
-  return creditEstimateOf(await provider().estimate(model, prepared, route), env.CREDIT_MULTIPLIER);
+  return creditEstimateOf(await provider().estimate(model, prepared, route, keys), env.CREDIT_MULTIPLIER);
 }
 
 /**
@@ -410,15 +415,16 @@ export async function estimateModelCredits(
  * @param model - Model name.
  * @param input - The run as the request describes it.
  * @param route - How the run chooses its upstream; the weights when left out.
+ * @param keys - The key set the run goes out on (inner#1953); the deployment's when absent.
  * @returns The refusal of the first upstream the route would try, or null when one takes the run, the model is not in
  *   the catalog, or no upstream has its key (which {@link servability} answers).
  * @throws {Error} When a limit cannot be evaluated in a way provider does not catch.
  */
-export async function inputRefusalFor(model: string, input: EstimateInput, route: Route = { mode: "default" }): Promise<RejectedInput | null> {
+export async function inputRefusalFor(model: string, input: EstimateInput, route: Route = { mode: "default" }, keys?: KeySet): Promise<RejectedInput | null> {
   const entry = findCatalogEntry(model);
   if (entry === undefined) return null;
   const prepared = prepareRunParams(entry, { ...input, params: resolveParams(entry, input.params) });
-  return provider().refusal(model, prepared, route);
+  return provider().refusal(model, prepared, route, keys);
 }
 
 /** Whether a run of a model can be served here on its route, and if not, why. */
@@ -433,10 +439,11 @@ export type Servability =
  * Whether a run of a model can be served here on its route: one upstream the route may use has its key.
  * @param model - Model name.
  * @param route - How the run chooses its upstream; the weights when left out.
+ * @param keys - The key set the run goes out on (inner#1953): only the keys it holds count; the deployment's when absent.
  * @returns Servable, or why not.
  */
-export function servability(model: string, route: Route = { mode: "default" }): Servability {
-  return servabilityOn(provider().availability(model).upstreams, route);
+export function servability(model: string, route: Route = { mode: "default" }, keys?: KeySet): Servability {
+  return servabilityOn(provider().availability(model, keys).upstreams, route);
 }
 
 /**
@@ -445,10 +452,11 @@ export function servability(model: string, route: Route = { mode: "default" }): 
  * @param model - Our model id.
  * @param use - `call` for chat, consolidation and the text tools; `understand` for reading media.
  * @param route - How the call chooses its upstream; the weights when left out.
+ * @param keys - The key set the call goes out on (inner#1953); the deployment's when absent.
  * @returns Servable, or why not.
  */
-export function llmServability(model: string, use: "call" | "understand", route: Route = { mode: "default" }): Servability {
-  return servabilityOn(provider().llm.availability(model, use).upstreams, route);
+export function llmServability(model: string, use: "call" | "understand", route: Route = { mode: "default" }, keys?: KeySet): Servability {
+  return servabilityOn(provider().llm.availability(model, use, keys).upstreams, route);
 }
 
 /**

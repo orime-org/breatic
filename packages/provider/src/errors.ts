@@ -3,6 +3,7 @@
 
 import type { Cost } from "@provider/cost.js";
 import type { RejectedInput } from "@provider/pricing/estimate.js";
+import type { AccountKeyFailureKind, AccountKeyFailureReason } from "@provider/routing/decide.js";
 
 /** Why one upstream could not serve a call. */
 export type UnavailableReason =
@@ -113,6 +114,21 @@ export function costsOf(error: unknown): Cost[] {
   return costs;
 }
 
+/**
+ * Mark every cost an error and its causes carry, in place, before the error is thrown on to the caller: a billed answer
+ * on an account's keys (inner#1953) reaches the caller marked as the account's, as any other of its costs does.
+ * @param error - The call's own error.
+ * @param mark - How each cost is marked.
+ */
+export function markCostsOf(error: unknown, mark: (cost: Cost) => Cost): void {
+  const seen = new Set<unknown>();
+  for (let current = error; typeof current === "object" && current !== null && !seen.has(current); current = (current as { cause?: unknown }).cause) {
+    seen.add(current);
+    const carried = (current as { costs?: unknown }).costs;
+    if (Array.isArray(carried)) carried.splice(0, carried.length, ...(carried as Cost[]).map(mark));
+  }
+}
+
 /** Who billed an answer: the upstream, and the model it was asked of. */
 export interface ServedBy {
   upstream: string;
@@ -194,3 +210,79 @@ export class DeadlinePassed extends Error {
   }
 }
 
+
+export type { AccountKeyFailureKind, AccountKeyFailureReason };
+
+/**
+ * A call on an account's key set (`KeySet` with owner `account`) that failed on the account's side: it holds no key for
+ * any upstream of the model (`account_key_missing`), an upstream turned the key down (`account_key_failed`, with
+ * `reason`), or the upstream could not be reached or kept failing on the caller's last try (`upstream_unavailable`). The
+ * call never moves to another upstream or to the deployment's keys. It never holds the key; the upstream's own error,
+ * when there was one, is its cause, carrying any billed answer for `costsOf`.
+ */
+export class AccountKeyFailure extends Error {
+  readonly kind: AccountKeyFailureKind;
+  readonly model: string;
+  /** The upstream that failed, or whose key is gone; absent when not known. */
+  readonly upstream?: string;
+  readonly reason?: AccountKeyFailureReason;
+  /** True when asking again cannot change it; a passing failure (a 429, the upstream unreachable or a 5xx) is false. */
+  readonly lasting: boolean;
+
+  /**
+   * Record what the error carries.
+   * @param model - Our model id.
+   * @param kind - How it failed.
+   * @param detail - The upstream, the reason, whether it lasts and the upstream's own error.
+   * @param detail.upstream - The upstream that failed.
+   * @param detail.reason - Why it turned the key down.
+   * @param detail.lasting - Whether asking again cannot change it; true when not given.
+   * @param detail.cause - The upstream's own error.
+   */
+  constructor(model: string, kind: AccountKeyFailureKind, detail: { upstream?: string; reason?: AccountKeyFailureReason; lasting?: boolean; cause?: unknown } = {}) {
+    const what = kind === "account_key_missing"
+      ? `The account's keys reach no upstream of ${model}`
+      : `${detail.upstream ?? "The upstream"} failed ${model} on the account's key: ${detail.reason ?? kind}`;
+    super(what, detail.cause === undefined ? undefined : { cause: detail.cause });
+    this.name = "AccountKeyFailure";
+    this.kind = kind;
+    this.model = model;
+    this.lasting = detail.lasting ?? true;
+    if (detail.upstream !== undefined) this.upstream = detail.upstream;
+    if (detail.reason !== undefined) this.reason = detail.reason;
+  }
+}
+
+const ACCOUNT_KEY_FAILURE_KINDS: readonly string[] = ["account_key_failed", "account_key_missing", "upstream_unavailable"] satisfies AccountKeyFailureKind[];
+
+/** A key failure as read off an error. */
+export interface AccountKeyFailureFacts {
+  kind: AccountKeyFailureKind;
+  upstream?: string;
+  reason?: AccountKeyFailureReason;
+  /** True when asking again cannot change it; an error that does not say is read as lasting. */
+  lasting: boolean;
+}
+
+/**
+ * The first account-key failure on an error or its causes (inner#1953): an AccountKeyFailure, or any error carrying one
+ * of its kinds (reading a key row that is gone raises `account_key_missing`), wherever it sits on the cause chain.
+ * @param error - What was thrown.
+ * @returns Its kind, upstream and reason, or undefined when the error is not one.
+ */
+export function accountKeyFailureIn(error: unknown): AccountKeyFailureFacts | undefined {
+  const seen = new Set<unknown>();
+  for (let at = error; typeof at === "object" && at !== null && !seen.has(at); at = (at as { cause?: unknown }).cause) {
+    seen.add(at);
+    const { kind, upstream, reason, lasting } = at as { kind?: unknown; upstream?: unknown; reason?: unknown; lasting?: unknown };
+    if (typeof kind === "string" && ACCOUNT_KEY_FAILURE_KINDS.includes(kind)) {
+      return {
+        kind: kind as AccountKeyFailureKind,
+        ...(typeof upstream === "string" ? { upstream } : {}),
+        ...(typeof reason === "string" ? { reason: reason as AccountKeyFailureReason } : {}),
+        lasting: lasting !== false,
+      };
+    }
+  }
+  return undefined;
+}

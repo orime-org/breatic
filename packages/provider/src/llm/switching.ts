@@ -39,6 +39,8 @@ export interface SwitchingSetup {
   pending: Map<string, PendingCost>;
   /** Extra fields for `providerMetadata.breatic`. */
   breatic: Record<string, string>;
+  /** What an attempt's error is thrown as: itself on the deployment's keys, an AccountKeyFailure for a failure of an account's key. */
+  failed: (error: unknown) => unknown;
 }
 
 /**
@@ -87,7 +89,7 @@ export class InBandError extends Error {
  * @param vendor - The vendor that answered.
  * @returns The failure.
  */
-function statusFailure(status: number, body: unknown, vendor: Vendor | undefined): Failure {
+export function statusFailure(status: number, body: unknown, vendor: Vendor | undefined): Failure {
   const refusal = vendor?.refusal(status, body);
   return refusal === undefined ? { kind: "http_status", status } : { kind: refusal };
 }
@@ -193,9 +195,24 @@ export class SwitchingModel implements ModelV4 {
    * @param run - The call on one upstream.
    * @param signal - The call's signal, which ends a wait before a retry.
    * @returns What it answered and who served it.
-   * @throws {unknown} The call's own error when it may not move on, or NoUpstreamAvailable.
+   * @throws {unknown} The call's own error when it may not move on, or NoUpstreamAvailable, as the setup's `failed` throws it.
    */
   private async attempt<T>(run: (candidate: Candidate) => Promise<T>, signal: AbortSignal | undefined): Promise<{ value: T; servedBy: Candidate }> {
+    try {
+      return await this.tried(run, signal);
+    } catch (error) {
+      throw this.setup.failed(error);
+    }
+  }
+
+  /**
+   * Run one model call: on the pinned upstream with its retries, or along the route.
+   * @param run - The call on one upstream.
+   * @param signal - The call's signal, which ends a wait before a retry.
+   * @returns What it answered and who served it.
+   * @throws {unknown} The call's own error when it may not move on, or NoUpstreamAvailable.
+   */
+  private async tried<T>(run: (candidate: Candidate) => Promise<T>, signal: AbortSignal | undefined): Promise<{ value: T; servedBy: Candidate }> {
     const pinned = this.pinned;
     if (pinned !== undefined) {
       /**

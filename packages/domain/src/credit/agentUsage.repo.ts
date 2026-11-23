@@ -36,6 +36,7 @@ export async function insertUsageRecord(row: UsageRow): Promise<void> {
       costSource: row.costSource,
       credits: String(row.credits),
       costIdentity: row.costIdentity,
+      keyId: row.keyId,
     })
     // A container run has one row per task, whichever attempt writes it first,
     // and a call with a cost identity one row per identity; every other row has

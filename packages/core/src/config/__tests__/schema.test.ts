@@ -388,6 +388,14 @@ describe("parseConfig — SENTRY_DSN", () => {
   });
 });
 
+describe("parseConfig — the seal key of web animation's account keys (inner#1953)", () => {
+  it("keeps the seal public key as given, and empty when unset", () => {
+    const pem = "-----BEGIN PUBLIC KEY-----\\nMIIB\\n-----END PUBLIC KEY-----";
+    expect(parseConfig(baseEnv({ INGEST_KEY_SEAL_PUBLIC_KEY: pem })).INGEST_KEY_SEAL_PUBLIC_KEY).toBe(pem);
+    expect(parseConfig(baseEnv()).INGEST_KEY_SEAL_PUBLIC_KEY).toBe("");
+  });
+});
+
 describe("parseConfig — INGEST_BASE_URL", () => {
   it("drops trailing slashes so appending a path cannot double one", () => {
     const config = parseConfig(
