@@ -33,7 +33,9 @@ import { AMBIENCE_SFX_BED } from "@shared/canvas/templates/ambience-sfx-bed.js";
 import { ANIME_ACTION_CLIMAX } from "@shared/canvas/templates/anime-action-climax.js";
 import { ANIME_OPENING_15S } from "@shared/canvas/templates/anime-opening-15s.js";
 import { ANIME_SCENE } from "@shared/canvas/templates/anime-scene.js";
+import { APP_LAUNCH_PROMO } from "@shared/canvas/templates/app-launch-promo.js";
 import { BEAT_SYNC_OUTFIT_CHANGE } from "@shared/canvas/templates/beat-sync-outfit-change.js";
+import { BRAND_ORIGIN_FILM } from "@shared/canvas/templates/brand-origin-film.js";
 import { BULLET_TIME_MISHAP } from "@shared/canvas/templates/bullet-time-mishap.js";
 import { BULLET_TIME_MOMENT } from "@shared/canvas/templates/bullet-time-moment.js";
 import { CARRIED_OBJECT_TRANSITION } from "@shared/canvas/templates/carried-object-transition.js";
@@ -69,6 +71,7 @@ import { HYPE_THEN_TWIST_AD } from "@shared/canvas/templates/hype-then-twist-ad.
 import { IDENTITY_LOCKED_SEQUENCE } from "@shared/canvas/templates/identity-locked-sequence.js";
 import { IMPACT_FRAME_HIT } from "@shared/canvas/templates/impact-frame-hit.js";
 import { LANDSCAPE_3_SHOT } from "@shared/canvas/templates/landscape-3-shot.js";
+import { LAUNCH_STORY_3_BEAT } from "@shared/canvas/templates/launch-story-3-beat.js";
 import { LIVESTREAM_PITCH } from "@shared/canvas/templates/livestream-pitch.js";
 import { LONG_FORM_ACTS } from "@shared/canvas/templates/long-form-acts.js";
 import { LOOKBOOK_MULTI_LOOK } from "@shared/canvas/templates/lookbook-multi-look.js";
@@ -86,6 +89,7 @@ import { PRODUCT_HERO_STILL } from "@shared/canvas/templates/product-hero-still.
 import { PRODUCT_PARTICLE_REVEAL } from "@shared/canvas/templates/product-particle-reveal.js";
 import { PRODUCT_STATE_CHANGE } from "@shared/canvas/templates/product-state-change.js";
 import { PRODUCT_TURNTABLE_360 } from "@shared/canvas/templates/product-turntable-360.js";
+import { PROMO_FILM_ASSEMBLED } from "@shared/canvas/templates/promo-film-assembled.js";
 import { RECIPE_PROCESS_MONTAGE } from "@shared/canvas/templates/recipe-process-montage.js";
 import { REFERENCE_VIDEO_REMIX } from "@shared/canvas/templates/reference-video-remix.js";
 import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
@@ -123,7 +127,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "food", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "promo", "food", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -283,6 +287,10 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   PRODUCT_PARTICLE_REVEAL,
   PRODUCT_HERO_DIRECT_I2V,
   PRODUCT_STATE_CHANGE,
+  APP_LAUNCH_PROMO,
+  BRAND_ORIGIN_FILM,
+  LAUNCH_STORY_3_BEAT,
+  PROMO_FILM_ASSEMBLED,
   FOOD_MONEY_SHOT,
   RECIPE_PROCESS_MONTAGE,
   DISH_HERO_STILL,
