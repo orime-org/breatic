@@ -10,7 +10,7 @@ export const OFF_WAVESPEED: ReadonlySet<string> = new Set(["veed-clean-audio", "
 
 /**
  * Models the catalog has retired whose bindings stay so runs opened before the change finish on them (#1521);
- * every bound model outside the catalog is one of these. Gemini 3.1 Flash TTS goes with #1516, once no run opened
+ * every bound model outside the catalog is one of these. Gemini 3.1 Flash TTS goes with inner#2082, once no run opened
  * on it can be inside its two-hour task budget.
  */
 export const RETIRED: ReadonlySet<string> = new Set(["gemini-3.1-flash-text-to-speech"]);
