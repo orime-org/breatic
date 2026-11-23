@@ -90,6 +90,8 @@ RUN set -eu; \
   } > /usr/share/ffmpeg-source/SOURCE
 
 COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md
+COPY LICENSE /usr/share/doc/breatic/LICENSE
+COPY TRADEMARKS.md /usr/share/doc/breatic/TRADEMARKS.md
 
 RUN useradd --create-home --home-dir /home/runner runner
 COPY --from=producer /out/app /app
