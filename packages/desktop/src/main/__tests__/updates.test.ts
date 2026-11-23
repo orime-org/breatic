@@ -19,7 +19,7 @@ import { UPDATE_CHECK_INTERVAL_MS, createUpdates, type UpdatesDeps } from "@desk
 /** An updater standing in for electron-updater's autoUpdater. */
 class FakeUpdater extends EventEmitter {
   autoInstallOnAppQuit = false;
-  checkForUpdates = vi.fn(async () => null);
+  checkForUpdates = vi.fn(async (): Promise<unknown> => null);
   quitAndInstall = vi.fn();
 }
 
@@ -115,5 +115,31 @@ describe("createUpdates", () => {
     await updates.checkNow();
     expect(deps.tell).toHaveBeenCalledWith("failed");
     expect(deps.log).toHaveBeenCalled();
+  });
+
+  it("asks once per version: a timed check finding the same download stays quiet, a manual check asks again", async () => {
+    const { updates, updater, deps } = setup();
+    updates.start();
+    updater.emit("update-downloaded", { version: "1.2.0" });
+    await vi.waitFor(() => expect(deps.ask).toHaveBeenCalledTimes(1));
+    const timed = vi.mocked(deps.every).mock.calls[0]![0];
+    updater.checkForUpdates.mockImplementation(async () => {
+      updater.emit("update-downloaded", { version: "1.2.0" });
+      return null;
+    });
+    timed();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(deps.ask).toHaveBeenCalledTimes(1);
+    await updates.checkNow();
+    await vi.waitFor(() => expect(deps.ask).toHaveBeenCalledTimes(2));
+  });
+
+  it("records a background download that fails", async () => {
+    const { updates, updater, deps } = setup();
+    const failure = new Error("sha512 mismatch");
+    updater.checkForUpdates.mockResolvedValue({ downloadPromise: Promise.reject(failure) });
+    updates.start();
+    await vi.waitFor(() => expect(deps.log).toHaveBeenCalledWith(failure));
   });
 });

@@ -57,6 +57,8 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   const { updater } = deps;
   let restarting = false;
   let manual = false;
+  /** The version last offered: a timed check finding the same download again stays quiet (Later means on the next quit). */
+  let offered: string | null = null;
 
   /**
    * Look for a new version.
@@ -65,7 +67,9 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   async function check(byUser: boolean): Promise<void> {
     manual = byUser;
     try {
-      await updater.checkForUpdates();
+      const result = (await updater.checkForUpdates()) as { downloadPromise?: Promise<unknown> | null } | null;
+      // electron-updater starts the download without awaiting it.
+      void result?.downloadPromise?.catch((err: unknown) => deps.log(err));
     } catch (err) {
       deps.log(err);
       if (byUser) deps.tell("failed");
@@ -91,6 +95,8 @@ export function createUpdates(deps: UpdatesDeps): Updates {
   if (deps.enabled) {
     updater.autoInstallOnAppQuit = true;
     updater.on("update-downloaded", (info) => {
+      if (!manual && info.version === offered) return;
+      offered = info.version;
       void offer(info.version).catch((err: unknown) => deps.log(err));
     });
     updater.on("update-not-available", () => {
