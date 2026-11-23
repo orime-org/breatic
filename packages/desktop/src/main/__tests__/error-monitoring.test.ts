@@ -64,11 +64,11 @@ describe("desktopSentryOptions", () => {
 });
 
 describe("keepsIntegration", () => {
-  it.each(["PreloadInjection", "MainProcessSession", "Console"])("drops %s", (name) => {
+  it.each(["PreloadInjection", "Console"])("drops %s", (name) => {
     expect(keepsIntegration(name)).toBe(false);
   });
 
-  it.each(["SentryMinidump", "OnUncaughtException", "OnUnhandledRejection", "Pino"])("keeps %s", (name) => {
+  it.each(["SentryMinidump", "MainProcessSession", "OnUncaughtException", "OnUnhandledRejection", "Pino"])("keeps %s", (name) => {
     expect(keepsIntegration(name)).toBe(true);
   });
 });

@@ -4,9 +4,9 @@
 /**
  * The shell's error monitoring (#1599, design 9.4). Every brand reports to
  * our official Sentry project with the DSN written in at build time, tagged
- * with the brand. Only errors and crashes are sent: no session records. The
- * web pages keep their own Sentry; the shell stays off their sessions and
- * protocols. Kept apart from Electron so the options can be tested.
+ * with the brand: errors, crashes and a session record per launch (release
+ * health, which Sentry does not bill). The web pages keep their own Sentry;
+ * the shell stays off their sessions and protocols. Kept apart from Electron so the options can be tested.
  */
 
 import {
@@ -23,10 +23,10 @@ const IPC_MODE_CLASSIC = 1;
 
 /**
  * Default integrations the shell drops: preload injection (it would reach the
- * server's pages), session records (only errors and crashes are reported) and
- * console breadcrumbs (Electron prints full addresses there; logs go through pino).
+ * server's pages) and console breadcrumbs (Electron prints full addresses
+ * there; logs go through pino).
  */
-const DROPPED_INTEGRATIONS = new Set(["PreloadInjection", "MainProcessSession", "Console"]);
+const DROPPED_INTEGRATIONS = new Set(["PreloadInjection", "Console"]);
 
 /** An http(s) address inside a longer string, up to whitespace or a quote. */
 const ADDRESS = /https?:\/\/[^\s'"<>]+/g;
