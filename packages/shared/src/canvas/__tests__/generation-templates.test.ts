@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The template registry: what each generate panel lists and what a template
@@ -209,6 +209,12 @@ const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-pan
 /** The fight and action templates (inner#1818), in registry order. */
 const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked', 'hero-orbit-reveal', 'bullet-time-moment', 'impact-frame-hit'];
 
+/** The templates that remix videos the user already has (inner#1819), in registry order. */
+const VIDEO_REMIX = ['reference-video-remix', 'seamless-bridge'];
+
+/** The cinematic short and trailer templates (inner#1820), in registry order. */
+const CINEMATIC = ['cinematic-15s-arc', 'landscape-3-shot', 'epic-fantasy-scifi', 'trailer-beat-3-shot', 'transformation-6-shot', 'long-form-acts'];
+
 /** The film style templates (inner#1817), in registry order. */
 const FILM_STYLES = ['film-style-still', 'film-style-shot', 'era-walkthrough-montage', 'style-sound-bed'];
 
@@ -263,8 +269,8 @@ const SOUND = [
 /** The sound templates an audio panel lists: all but the one anchored on its video. */
 const SOUND_AUDIO = SOUND.filter((id) => id !== 'clip-ambience-foley');
 
-/** The templates the plan's G13, G15, G18 and G19 give no case for offering unasked. */
-const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short'];
+/** The templates the plan's G13, G15, G17, G18 and G19 give no case for offering unasked. */
+const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short', 'epic-fantasy-scifi'];
 
 /**
  * The template nodes a generate node's words carry a note for, counted the
@@ -369,8 +375,10 @@ describe('generation templates', () => {
       ...TALKING,
       'film-style-shot',
       'era-walkthrough-montage',
+      ...CINEMATIC,
       ...SPEED,
       'clip-ambience-foley',
+      ...VIDEO_REMIX,
     ]);
     // inner#1825 changes this contract: audio had no template until the sound goal.
     expect(templatesFor('audio').map((t) => t.id)).toEqual(['style-sound-bed', ...SOUND_AUDIO]);
@@ -538,6 +546,42 @@ describe('generation templates', () => {
       },
       'bullet-time-moment': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 6 } } },
       'impact-frame-hit': t2v(10, '16:9'),
+      'reference-video-remix': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 10 } } },
+      'seamless-bridge': t2v(5, '16:9'),
+      'cinematic-15s-arc': t2v(15, '16:9'),
+      'landscape-3-shot': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: 'gemini-omni-1.1-flash-text-to-video',
+          params: { aspect_ratio: '16:9', duration: 9 },
+          shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
+        },
+      },
+      'epic-fantasy-scifi': t2v(15, '16:9'),
+      'trailer-beat-3-shot': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '21:9', duration: 12, generate_audio: true },
+          shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }],
+        },
+      },
+      'transformation-6-shot': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '16:9', duration: 15, generate_audio: true },
+          shots: [{ seconds: 3 }, { seconds: 2 }, { seconds: 2 }, { seconds: 3 }, { seconds: 3 }, { seconds: 2 }],
+        },
+      },
+      'long-form-acts': {
+        ...t2v(30, '16:9'),
+        'act-2': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 30, generate_audio: true } },
+        'act-3': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 30, generate_audio: true } },
+      },
       'vehicle-speed-cutlist': t2v(12, '16:9'),
       'sports-live-coverage': t2v(12, '16:9'),
       'extreme-sports-run': t2v(10),
@@ -643,7 +687,7 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'speed', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
@@ -657,8 +701,10 @@ describe('creative goals and triggers', () => {
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
       ...Object.fromEntries(FILM_STYLES.map((id) => [id, 'film-styles'])),
+      ...Object.fromEntries(CINEMATIC.map((id) => [id, 'cinematic'])),
       ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
+      ...Object.fromEntries(VIDEO_REMIX.map((id) => [id, 'video-remix'])),
       ...Object.fromEntries(['storyboard-grid-25', ...COMICS].map((id) => [id, 'comics-storyboards'])),
       'costume-sheet': 'character',
       'character-bible': 'character',
@@ -721,8 +767,10 @@ describe('creative goals and triggers', () => {
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
       ['talking', TALKING],
       ['film-styles', ['film-style-shot', 'era-walkthrough-montage']],
+      ['cinematic', CINEMATIC],
       ['speed', SPEED],
       ['sound', ['clip-ambience-foley']],
+      ['video-remix', VIDEO_REMIX],
     ]);
     expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['film-styles', ['style-sound-bed']],
@@ -1320,9 +1368,8 @@ describe('sound, music and voice templates (inner#1825)', () => {
    */
   const settingsOf = (node: TemplateGenerateNode): Settings => ({ type: node.type, mode: node.mode, model: node.model });
 
-  it('registers all eleven under the sound goal, which the panels list last', () => {
+  it('registers all eleven under the sound goal', () => {
     for (const id of SOUND) expect(byId(id)?.goal, id).toBe('sound');
-    expect(TEMPLATE_GOALS[TEMPLATE_GOALS.length - 1]).toBe('sound');
   });
 
   it('anchors each on the node type, mode, model and params the design gives', () => {

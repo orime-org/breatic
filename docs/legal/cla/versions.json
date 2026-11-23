@@ -1,0 +1,25 @@
+{
+  "current": "Breatic-CLA-2.0",
+  "versions": [
+    {
+      "id": "Breatic-CLA-1.0",
+      "path": "CLA.md",
+      "commit": "981425af88e6de9a02a81eeb5b14bed7d2d385e3",
+      "sha256": "3c8f638c0d7083e41d05241d5a6ffdc6e7957af5becd7f271739753272d3c92f",
+      "signatures": "signatures/cla.json",
+      "phrase": "I have read the CLA Document and I hereby sign the CLA",
+      "activatedAt": "2026-11-16T02:22:06Z",
+      "retiredAt": null
+    },
+    {
+      "id": "Breatic-CLA-2.0",
+      "path": "docs/legal/cla/v2/CLA.md",
+      "commit": "f299a6bcb3b569b91fdeb44fcd2f158b808387fc",
+      "sha256": "dee9944afe77ca3d68a154f73d5c0cbc79a145ad379fd89c4ceef4c5a7208fde",
+      "signatures": "signatures/v2/cla.json",
+      "phrase": "I have read and agree to the Breatic Contributor License Agreement version 2.0, including my contributions to this pull request.",
+      "activatedAt": null,
+      "retiredAt": null
+    }
+  ]
+}

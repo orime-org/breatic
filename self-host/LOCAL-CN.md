@@ -2,9 +2,9 @@
 
 [English](LOCAL.md) | **简体中文**
 
-适用：自己使用，或分享给家庭、私密小组、同一组织内的同事。主站安装在一台电脑上，其他人通过浏览器访问这台电脑。**使用发布镜像，不启动源码开发服务器。** 修改源码请看 [开发环境](DEVELOPMENT-CN.md)。
+适用：自己使用，或分享给家庭、非商业的私密小组、同一组织内的同事。主站安装在一台电脑上，其他人通过浏览器访问这台电脑。**使用发布镜像，不启动源码开发服务器。** 修改源码请看 [开发环境](DEVELOPMENT-CN.md)。
 
-Breatic 采用 [GNU Affero General Public License v3.0](../LICENSE)。如果你修改了 Breatic，并让其他人通过网络使用修改后的版本，就必须按同一许可证向他们提供完整源代码。Breatic 名称和标识的使用规则见 [TRADEMARKS.md](../TRADEMARKS.md)。
+Breatic 采用 [Breatic Source-Available License 2.0](../LICENSE)。你可以自部署给自己、非商业的私人小组或本组织使用，不需要支付软件许可费。没有 Orime, Inc. 的书面授权，实例只能运行在自部署模式，`PAYMENT_ENABLED` 保持 `false`；把它作为商业平台提供给他人使用需要另行书面授权（LICENSE 第 10、11 条）。界面上保留 Breatic 名称和 Logo，见 [TRADEMARKS.md](../TRADEMARKS.md)。
 
 ## 1. 部署完成后是什么样
 
@@ -66,7 +66,7 @@ EMAIL_BACKEND=console
 REDIS_KEY_PREFIX=personal
 ```
 
-这里的 `ENV=dev` 是现有代码中允许 HTTP 会话 cookie 的运行配置，**不表示启动开发服务器**；容器仍运行编译产物。切换 HTTPS 后使用 `ENV=prod`。支付关闭不会免除外部模型费用；`console` 邮件只输出日志，不投递真实邮件。真实邮件、Google 登录、Stripe 和搜索可按模板另行配置。
+这里的 `ENV=dev` 是现有代码中允许 HTTP 会话 cookie 的运行配置，**不表示启动开发服务器**；容器仍运行编译产物。切换 HTTPS 后使用 `ENV=prod`。支付关闭不会免除外部模型费用；`console` 邮件只输出日志，不投递真实邮件。真实邮件、Google 登录、Stripe 和搜索可按模板另行配置。没有 Orime, Inc. 的书面授权，实例只能运行在自部署模式，`PAYMENT_ENABLED` 保持 `false`（LICENSE 第 10、11 条）。
 
 保留容器内部连接地址：
 

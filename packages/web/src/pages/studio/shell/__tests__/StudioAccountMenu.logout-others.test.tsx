@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * "Sign out of other devices" in the account menu (inner#1548).
@@ -104,13 +104,17 @@ describe('StudioAccountMenu — sign out of other devices', () => {
       el.getAttribute('role') === 'separator' ? '|' : (el.textContent ?? '').trim(),
     );
     const at = (label: string): number => rows.findIndex((row) => row.startsWith(label));
+    const notices = at('Licenses and notices');
     const cookie = at('Cookie settings');
     const others = at('Sign out of other devices');
     const signOut = rows.findIndex((row) => row === 'Sign out');
 
-    expect(cookie).toBeGreaterThan(at('Credits'));
+    // The group opens with the notices entry, then cookie consent, then the
+    // account's other sign-ins.
+    expect(notices).toBeGreaterThan(at('Credits'));
+    expect(rows[notices - 1]).toBe('|');
+    expect(cookie).toBe(notices + 1);
     expect(others).toBe(cookie + 1);
-    expect(rows[cookie - 1]).toBe('|');
     expect(rows[others + 1]).toBe('|');
     expect(signOut).toBe(others + 2);
   });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { CreditDecimal } from '@breatic/shared';
 
@@ -237,14 +237,41 @@ describe('StudioAccountMenu', () => {
       .getAllByRole('menuitem')
       .map((entry) => entry.textContent ?? '');
     // BYOK settings is account-level too, so it joins the account group, after settings (inner#1953).
-    expect(labels).toHaveLength(7);
+    expect(labels).toHaveLength(8);
     expect(labels[0]).toContain('Account settings');
     expect(labels[1]).toBe('BYOK settings');
     expect(labels[2]).toBe('Promoter program');
     expect(labels[3]).toContain('Membership');
     expect(labels[4]).toContain('Credits');
-    expect(labels[5]).toBe('Sign out of other devices');
-    expect(labels[6]).toBe('Sign out');
+    expect(labels[5]).toBe('Licenses and notices');
+    expect(labels[6]).toBe('Sign out of other devices');
+    expect(labels[7]).toBe('Sign out');
+  });
+
+  it('opens the licence, the trademark policy and the third-party notices this instance serves, each in a new tab', async () => {
+    // LICENSE section 12: the applicable licence and attribution notices stay
+    // reachable. The links are site paths, so a self-hosted copy shows the
+    // files its own image carries.
+    const user = userEvent.setup();
+    useCurrentUserStore.getState().setUser(ALEX);
+    setup();
+    await openMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Licenses and notices' }));
+
+    const links = await screen.findAllByRole('menuitem', { name: /license|trademark|third-party/i });
+    const hrefs = links
+      .filter((link) => link.tagName === 'A')
+      .map((link) => [link.textContent, link.getAttribute('href'), link.getAttribute('target'), link.getAttribute('rel')]);
+    expect(hrefs).toEqual([
+      ['Breatic license', '/LICENSE.txt', '_blank', 'noopener noreferrer'],
+      ['Trademark and branding policy', '/TRADEMARKS.md', '_blank', 'noopener noreferrer'],
+      ['Third-party notices', '/THIRD-PARTY.md', '_blank', 'noopener noreferrer'],
+    ]);
+    // Each row ends with the external-link glyph the Help menu uses, so the
+    // new tab is announced before the click.
+    for (const link of links.filter((l) => l.tagName === 'A')) {
+      expect(link.lastElementChild?.getAttribute('class')).toContain('lucide-external-link');
+    }
   });
 
   describe('promoter program entry (inner#1868)', () => {

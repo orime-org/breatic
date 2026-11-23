@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The account's bring-your-own-key settings over HTTP (inner#1953): `GET /api/v1/account/byok`, saving, re-checking

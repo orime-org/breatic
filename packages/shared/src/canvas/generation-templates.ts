@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Generation templates (inner#977, inner#1345): nodes, wiring, inputs and
@@ -41,6 +41,7 @@ import { CARTOON_GAG } from "@shared/canvas/templates/cartoon-gag.js";
 import { CHARACTER_BIBLE } from "@shared/canvas/templates/character-bible.js";
 import { CHARACTER_DESIGN_FROM_TEXT } from "@shared/canvas/templates/character-design-from-text.js";
 import { CHARACTER_SHOWCASE_ORBIT } from "@shared/canvas/templates/character-showcase-orbit.js";
+import { CINEMATIC_15S_ARC } from "@shared/canvas/templates/cinematic-15s-arc.js";
 import { CLIP_AMBIENCE_FOLEY } from "@shared/canvas/templates/clip-ambience-foley.js";
 import { COMIC_4KOMA } from "@shared/canvas/templates/comic-4koma.js";
 import { COMIC_PAGE_TO_MOTION } from "@shared/canvas/templates/comic-page-to-motion.js";
@@ -49,6 +50,7 @@ import { COMIC_PANELS_TO_SHOTS } from "@shared/canvas/templates/comic-panels-to-
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
 import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
 import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
+import { EPIC_FANTASY_SCIFI } from "@shared/canvas/templates/epic-fantasy-scifi.js";
 import { ERA_WALKTHROUGH_MONTAGE } from "@shared/canvas/templates/era-walkthrough-montage.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
 import { EXTREME_SPORTS_RUN } from "@shared/canvas/templates/extreme-sports-run.js";
@@ -65,7 +67,9 @@ import { HERO_ORBIT_REVEAL } from "@shared/canvas/templates/hero-orbit-reveal.js
 import { HYPE_THEN_TWIST_AD } from "@shared/canvas/templates/hype-then-twist-ad.js";
 import { IDENTITY_LOCKED_SEQUENCE } from "@shared/canvas/templates/identity-locked-sequence.js";
 import { IMPACT_FRAME_HIT } from "@shared/canvas/templates/impact-frame-hit.js";
+import { LANDSCAPE_3_SHOT } from "@shared/canvas/templates/landscape-3-shot.js";
 import { LIVESTREAM_PITCH } from "@shared/canvas/templates/livestream-pitch.js";
+import { LONG_FORM_ACTS } from "@shared/canvas/templates/long-form-acts.js";
 import { MUSIC_MOOD_FROM_IMAGE } from "@shared/canvas/templates/music-mood-from-image.js";
 import { NAME_AS_WORLD_TYPOGRAPHY } from "@shared/canvas/templates/name-as-world-typography.js";
 import { PET_SELFIE_VLOG } from "@shared/canvas/templates/pet-selfie-vlog.js";
@@ -81,8 +85,10 @@ import { PRODUCT_PARTICLE_REVEAL } from "@shared/canvas/templates/product-partic
 import { PRODUCT_STATE_CHANGE } from "@shared/canvas/templates/product-state-change.js";
 import { PRODUCT_TURNTABLE_360 } from "@shared/canvas/templates/product-turntable-360.js";
 import { RECIPE_PROCESS_MONTAGE } from "@shared/canvas/templates/recipe-process-montage.js";
+import { REFERENCE_VIDEO_REMIX } from "@shared/canvas/templates/reference-video-remix.js";
 import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
 import { SCORE_FOR_MY_VIDEO } from "@shared/canvas/templates/score-for-my-video.js";
+import { SEAMLESS_BRIDGE } from "@shared/canvas/templates/seamless-bridge.js";
 import { SECTION_MAPPED_SCORE } from "@shared/canvas/templates/section-mapped-score.js";
 import { SINGLE_VIEW_REFS_SCENE } from "@shared/canvas/templates/single-view-refs-scene.js";
 import { SONG_COVER } from "@shared/canvas/templates/song-cover.js";
@@ -96,6 +102,8 @@ import { TALKING_HEAD_PITCH } from "@shared/canvas/templates/talking-head-pitch.
 import { TALKING_OWN_VOICE } from "@shared/canvas/templates/talking-own-voice.js";
 import { TALKING_PRESENTER } from "@shared/canvas/templates/talking-presenter.js";
 import { TIME_FREEZE_REWIND } from "@shared/canvas/templates/time-freeze-rewind.js";
+import { TRAILER_BEAT_3_SHOT } from "@shared/canvas/templates/trailer-beat-3-shot.js";
+import { TRANSFORMATION_6_SHOT } from "@shared/canvas/templates/transformation-6-shot.js";
 import { TRAVEL_CITY_WALK } from "@shared/canvas/templates/travel-city-walk.js";
 import { TWIST_COMEDY_SKIT } from "@shared/canvas/templates/twist-comedy-skit.js";
 import { TWO_SPEAKER_TALK } from "@shared/canvas/templates/two-speaker-talk.js";
@@ -112,7 +120,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -300,6 +308,12 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   FILM_STYLE_SHOT,
   ERA_WALKTHROUGH_MONTAGE,
   STYLE_SOUND_BED,
+  CINEMATIC_15S_ARC,
+  LANDSCAPE_3_SHOT,
+  EPIC_FANTASY_SCIFI,
+  TRAILER_BEAT_3_SHOT,
+  TRANSFORMATION_6_SHOT,
+  LONG_FORM_ACTS,
   VEHICLE_SPEED_CUTLIST,
   SPORTS_LIVE_COVERAGE,
   EXTREME_SPORTS_RUN,
@@ -314,6 +328,8 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   MUSIC_MOOD_FROM_IMAGE,
   CLIP_AMBIENCE_FOLEY,
   SECTION_MAPPED_SCORE,
+  REFERENCE_VIDEO_REMIX,
+  SEAMLESS_BRIDGE,
 ];
 
 /**

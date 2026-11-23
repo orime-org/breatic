@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Bring-your-own-key routes (inner#1953). `/account/byok` is the caller's own settings: reading them, saving, re-checking and deleting a key under `/keys/:upstream`, and

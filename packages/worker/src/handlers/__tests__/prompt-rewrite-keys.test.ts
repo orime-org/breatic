@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Nano Banana 2's prompt rewrite on the LLM keys of its task (inner#1953): it runs on the paying account's OpenRouter

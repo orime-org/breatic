@@ -3,6 +3,7 @@ import { buildInfo } from '../../scripts/release.mjs';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
+import { readFileSync } from 'fs';
 import { visualizer } from 'rollup-plugin-visualizer';
 import { sentryVitePlugin } from '@sentry/vite-plugin';
 import { resolveDevPort } from './dev-ports.mjs';
@@ -14,6 +15,36 @@ import { everyLocaleMessages } from './every-locale-messages.mjs';
 // const breaticIndex = path.resolve(__dirname, './breatic');
 
 const LOCALES_DIR = path.resolve(__dirname, '../../locales');
+
+/**
+ * The notices the image serves from its static root (Dockerfile.web), read
+ * from the repository root while developing so the account menu's links open
+ * the same files.
+ */
+const NOTICES: Record<string, string> = {
+  '/LICENSE.txt': 'LICENSE',
+  '/TRADEMARKS.md': 'TRADEMARKS.md',
+  '/THIRD-PARTY.md': 'THIRD-PARTY.md',
+};
+
+/**
+ * Serves the repository's notices on the dev server.
+ * @returns The Vite plugin.
+ */
+function serveNotices(): import('vite').Plugin {
+  return {
+    name: 'breatic-serve-notices',
+    apply: 'serve',
+    configureServer(server) {
+      server.middlewares.use((req, res, next) => {
+        const file = req.url ? NOTICES[req.url.split('?')[0] ?? ''] : undefined;
+        if (!file) return next();
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end(readFileSync(path.resolve(__dirname, '../..', file)));
+      });
+    },
+  };
+}
 
 export default defineConfig(({ command, mode }) => {
   // Load .env from the monorepo root (shared by backend + frontend). The third
@@ -54,6 +85,7 @@ export default defineConfig(({ command, mode }) => {
       ),
     },
     plugins: [
+      serveNotices(),
       react(),
       {
         name: 'breatic-build-version',

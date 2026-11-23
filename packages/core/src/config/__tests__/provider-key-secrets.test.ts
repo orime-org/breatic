@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The master keys that seal accounts' provider keys (inner#1953): `PROVIDER_KEY_SECRET_ID` names the key new seals

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 // Run inside the exact native release image with --network none. No model call
 // or generation job is submitted: the runner rejects malformed input, while
 // Chromium loads the shipped runtime and a shipped font in a fixed composition.

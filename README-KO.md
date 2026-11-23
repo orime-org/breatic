@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>크리에이티브 팀을 위한 실시간 협업 AI 작업 공간.</strong></p>
-<p align="center">온라인 서비스 제공 · 오픈 소스 · 데스크톱 브라우저</p>
+<p align="center">온라인 서비스 제공 · 소스 공개 · 데스크톱 브라우저</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_ko">웹사이트</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -98,7 +98,7 @@ Spaces를 “도입 · 0–10초”, “주요 장면 · 10–20초”, “마�
 
 웹, API, 백그라운드 작업, 협업은 공개된 Docker 이미지와 PostgreSQL, Redis를 사용합니다. 업로드와 미디어 처리에는 **본인 Cloudflare 계정**의 Ingest Worker와 미디어 컨테이너를 사용하며 파일은 본인 R2 버킷에 저장합니다. AI 호출은 본인의 제공업체 계정과 할당량을 사용합니다.
 
-오프라인이나 완전한 온프레미스 설치가 아닙니다. LAN 접근에는 신뢰할 수 있는 HTTPS가 필요합니다. 클라우드와 모델 호출에는 비용이 발생할 수 있습니다. SMTP, Google 로그인, Stripe 결제, 검색은 선택적 연동입니다. 가이드에 따라 클라우드를 설정하고 검증하세요. 초기 Node/pnpm/Wrangler 단계는 배포 작업이며 일상적인 사용에 개발 서버가 필요한 것은 아닙니다.
+오프라인이나 완전한 온프레미스 설치가 아닙니다. LAN 접근에는 신뢰할 수 있는 HTTPS가 필요합니다. 클라우드와 모델 호출에는 비용이 발생할 수 있습니다. SMTP, Google 로그인, 검색은 선택적 연동입니다. Stripe 결제는 Orime, Inc.의 서면 승인이 있는 경우에만 활성화할 수 있습니다(LICENSE 제10조 및 제11조). 가이드에 따라 클라우드를 설정하고 검증하세요. 초기 Node/pnpm/Wrangler 단계는 배포 작업이며 일상적인 사용에 개발 서버가 필요한 것은 아닙니다.
 
 ## 상태, 도움말, 기여
 
@@ -114,9 +114,16 @@ Spaces를 “도입 · 0–10초”, “주요 장면 · 10–20초”, “마�
 
 ## 라이선스 및 허용 용도
 
-Breatic은 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only)에 따른 오픈 소스입니다. 상업적 용도를 포함해 어떤 목적으로든 사용, 연구, 수정, 자체 호스팅할 수 있습니다. Breatic을 수정하고 수정한 버전을 네트워크를 통해 다른 사람이 사용하게 하는 경우, 같은 라이선스로 전체 소스 코드를 제공해야 합니다. 전체 조건은 라이선스를 확인하세요.
+Breatic은 [Breatic Source-Available License 2.0](LICENSE)에 따라 **소스가 공개**(source-available)됩니다. 이 라이선스는 Apache License 2.0에서 파생되었으며 추가 조건이 붙어 있습니다. OSI 승인 오픈 소스 라이선스가 아닙니다.
 
-Breatic 이름과 로고는 Orime, Inc.의 상표이며 소프트웨어 라이선스에 포함되지 않습니다. [TRADEMARKS.md](TRADEMARKS.md)를 확인하세요. 라이선스는 Breatic으로 만드는 콘텐츠를 제한하지 않습니다.
+- 개인 용도, 비상업적 사적 그룹 또는 업무상 사용을 포함한 조직 내부 사용을 위해 소프트웨어 라이선스 비용 없이 Breatic을 입수, 수정, 자체 호스팅할 수 있습니다(LICENSE 제10조).
+- 영화, 광고, 이미지, 오디오, 3D 에셋 등의 창작물을 Breatic으로 만들어 판매할 수 있습니다. 조건은 LICENSE 제10조와 제13조에 있습니다.
+- Orime, Inc.의 별도 서면 승인이 없으면 운영하는 인스턴스는 셀프 배포 모드(Self-Deployment Mode)로 실행해야 합니다. 앱 내 크레딧 구매, 유료 멤버십, 구독 및 기타 유료 운영 기능은 비활성화된 상태로 유지됩니다(LICENSE 제10조).
+- 상업적 목적으로 Breatic 또는 그 플랫폼 기능의 상당 부분을 위 용도 밖의 사람들에게 제공하려면 별도의 서면 승인이 필요합니다(LICENSE 제11조).
+- 애플리케이션의 식별 영역에 Breatic 이름과 제공된 로고가 보이도록 유지하고, 라이선스 및 저작자 표시 고지에 접근할 수 있도록 유지하세요(LICENSE 제12조). Orime, Inc.는 Breatic 상표의 권한 있는 라이선스 제공자입니다. 브랜딩 규칙은 [TRADEMARKS.md](TRADEMARKS.md)에 설명되어 있습니다.
+- AGPL-3.0-only를 포함해 이전 라이선스로 배포된 버전은 배포 당시의 라이선스를 그대로 유지합니다(LICENSE 제15조).
+
+전체 조건은 [LICENSE](LICENSE)에 있습니다.
 
 ### 생성된 콘텐츠
 

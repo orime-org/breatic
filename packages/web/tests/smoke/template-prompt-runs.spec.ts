@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Real runs of the generation templates, for judging a prompt by the pictures it gets (inner#1846, inner#1816).
@@ -168,17 +168,19 @@ async function applyTemplate(id: string, style?: string): Promise<void> {
   const goal = GENERATION_TEMPLATES.find((template) => template.id === id)?.goal;
   if (goal === undefined) throw new Error(`no template ${id}`);
   await page.getByTestId('generate-template-trigger').click();
+  // The goal list scrolls when the panel opens low on the screen; a row out of view cannot be pointed at.
+  await page.getByTestId(`generate-template-goal-${goal}`).scrollIntoViewIfNeeded();
   const box = await page.getByTestId(`generate-template-goal-${goal}`).boundingBox();
   if (!box) throw new Error(`no ${goal} goal row`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+  const row = await page.getByTestId(`generate-template-${id}`).boundingBox();
+  if (!row) throw new Error(`no ${id} row`);
+  // Across into the submenu on the goal row's line first: a slant down to a lower row crosses the goal rows below and closes it.
+  await page.mouse.move(row.x + row.width / 2, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.move(row.x + row.width / 2, row.y + row.height / 2, { steps: 8 });
   if (style === undefined) {
-    await page.getByTestId(`generate-template-${id}`).click();
+    await page.mouse.click(row.x + row.width / 2, row.y + row.height / 2);
   } else {
-    const row = await page.getByTestId(`generate-template-${id}`).boundingBox();
-    if (!row) throw new Error(`no ${id} row`);
-    // Across into the submenu on the goal row's line first: a slant down to a lower row crosses the goal rows below and closes it.
-    await page.mouse.move(row.x + row.width / 2, box.y + box.height / 2, { steps: 8 });
-    await page.mouse.move(row.x + row.width / 2, row.y + row.height / 2, { steps: 8 });
     const cell = page.getByTestId(`generate-template-style-${style}`);
     await expect(cell).toBeVisible({ timeout: 30_000 });
     await cell.click();
@@ -828,6 +830,20 @@ const RUNS: Record<string, Run> = {
     first: [],
     fills: { anchor: ['a dojo with paper screens', 'the first fighter\'s fist driving into the second fighter\'s stomach', 'the second fighter skids back across the floor and drops to one knee'] },
   },
+  'reference-video-remix': {
+    type: 'video',
+    photo: false,
+    inputs: { reference: 'mini-tools/driving.mp4', subject: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['the subject does the same moves on a rooftop at sunset', 'the last move ends in a freeze as confetti falls'] },
+  },
+  'seamless-bridge': {
+    type: 'video',
+    photo: false,
+    inputs: { 'clip-a': 'mini-tools/driving.mp4', 'clip-b': 'clip-ruined-street.mp4' },
+    first: [],
+    fills: { anchor: ['the white studio wall cracking and falling away to reveal the street behind it'] },
+  },
   'extreme-sports-run': {
     type: 'video',
     photo: true,
@@ -936,6 +952,54 @@ const RUNS: Record<string, Run> = {
     inputs: { hero: 'character.jpg' },
     first: [],
     fills: { anchor: ['a ruined rooftop at night', 'a flaming sword slash'] },
+  },
+  'cinematic-15s-arc': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['a rain-wet station platform at night', 'to catch the last train before it leaves', 'they squeeze through the doors as they shut', 'teal-and-orange blockbuster'] },
+  },
+  'landscape-3-shot': { type: 'video', photo: false, first: [], fills: {}, shots: [['a misty fjord at dawn'], ['water running over dark stones'], []] },
+  'epic-fantasy-scifi': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'high fantasy',
+        'a city of white towers on a cliff above a stormy sea',
+        'the hero\'s raised hand pulls the sea upward into a wall of water that moves only while the hand stays raised',
+        'raises the wall of water against an incoming fleet',
+      ],
+    },
+  },
+  'trailer-beat-3-shot': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: [],
+    fills: {},
+    shots: [['a dusty frontier town under a red sky'], ['rides a motorbike through a wall of fire'], ['This ends tonight.']],
+  },
+  'transformation-6-shot': {
+    type: 'video',
+    photo: false,
+    inputs: { subject: 'character.jpg' },
+    first: [],
+    fills: {},
+    shots: [['a quiet forest clearing at dusk'], ['a dark shape bursting from the trees'], [], ['a figure of living flame'], [], []],
+  },
+  'long-form-acts': {
+    type: 'video',
+    photo: false,
+    first: ['act-2', 'act-3'],
+    fills: {
+      anchor: ['a small café by a rainy window, warm lamps, soft film grain', 'rain on glass and quiet jazz', 'the café opens and steam rises from the first cup'],
+      'act-2': ['a small café by a rainy window, warm lamps, soft film grain', 'rain on glass and quiet jazz', 'people come and go as the rain grows heavier'],
+      'act-3': ['a small café by a rainy window, warm lamps, soft film grain', 'rain on glass and quiet jazz', 'evening falls, the lamps glow and the café empties'],
+    },
   },
   'anime-opening-15s': {
     type: 'video',

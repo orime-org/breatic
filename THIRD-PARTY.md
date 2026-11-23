@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-Breatic itself is distributed under the GNU Affero General Public License v3.0
-(`AGPL-3.0-only`, see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
+Breatic itself is distributed under the Breatic Source-Available License 2.0
+(`LicenseRef-Breatic-Source-Available-2.0`, see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
 licence each one carries, and where to obtain its source.
 
 A component is listed here when we distribute it — in a published container
@@ -11,7 +11,10 @@ obligations attach to distribution.
 
 This file is the overview. The full machine-generated list, with every
 package in the front-end bundle and the text of every licence, is served
-beside the bundle at `/third-party-licences.txt`.
+beside the bundle at `/third-party-licences.txt`. The attribution for the built-in
+3D figure and the pose bone names is served at `/model-import-third-party-licences.txt`,
+and the one for the film styles of the generation templates at
+`/template-styles-third-party-licences.txt`.
 
 ## Programs in our container images
 
