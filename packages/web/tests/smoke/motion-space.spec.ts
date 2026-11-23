@@ -74,7 +74,7 @@ async function chooseMotion(dialog: Locator, prefix: string): Promise<void> {
 
 test.use({ viewport: { width: 1680, height: 1100 } });
 
-test('a Motion Space is made from New Space, opens empty, keeps one panel open at a time, and the Timeline\'s Make in Motion opens or makes one', async ({ page }) => {
+test('a Motion Space is made from New Space, opens empty, keeps one panel open at a time, is renamed and reopened from the drawer, and the Timeline\'s Make in Motion opens or makes one', async ({ page }) => {
   // The second Project of slot A: no case makes web animations there, so its picker is empty and it has no Motion Space.
   await openSmokeProject(page, 'A', 1);
   const made: string[] = [];
@@ -190,6 +190,28 @@ test('a Motion Space is made from New Space, opens empty, keeps one panel open a
       await expect(picker).toHaveCount(0);
       expect(await shownSpaceId(page)).toBe(newestId);
       await expect(visibleSpace(page).getByTestId('motion-space')).toBeVisible();
+    });
+
+    await test.step('tab: a Motion Space is renamed from its tab, and closing the tab then opening it from the drawer brings it back under that name', async () => {
+      const motionId = await shownSpaceId(page);
+      const renamed = `Motion renamed ${crypto.randomUUID()}`;
+      await page.getByTestId(`space-tab-name-${motionId}`).dblclick();
+      const field = page.getByTestId(`space-tab-name-input-${motionId}`);
+      await expect(field).toBeFocused();
+      await field.fill(renamed);
+      await page.keyboard.press('Enter');
+      await expect(field).toHaveCount(0);
+      await expect(page.getByTestId(`space-tab-name-${motionId}`)).toHaveText(renamed);
+
+      const tab = page.getByTestId(`space-tab-${motionId}`);
+      await tab.hover();
+      await page.getByTestId(`space-tab-close-${motionId}`).click();
+      await expect(tab).toHaveCount(0);
+      await openSpaceById(page, motionId);
+      await expect(page.getByTestId(`space-tab-name-${motionId}`)).toHaveText(renamed);
+      const motion = visibleSpace(page);
+      await expect(motion.getByTestId('motion-space')).toBeVisible();
+      await expect(motion.getByTestId('motion-empty')).toContainText('No web animations yet');
     });
   } finally {
     // A picker left open in the Timeline is hidden with its tab and keeps the drawer from opening; bring it to the front
