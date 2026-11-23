@@ -743,6 +743,39 @@ const RUNS: Record<string, Run> = {
     },
   },
   'dish-hero-still': { type: 'image', photo: true, image: 'dish.jpg', first: [], fills: { anchor: ['a dark slate table with a linen napkin'] } },
+  'fashion-lookbook': {
+    type: 'video',
+    photo: false,
+    inputs: { model: 'fashion/model.jpg', outfit: 'fashion/outfit-1.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'a camel trench coat, a white button-up shirt, straight blue jeans, brown leather loafers',
+        'a concrete stairwell, a sunlit street, a rooftop at dusk',
+        'the trench coat\'s belt',
+        'a slow electronic beat',
+      ],
+    },
+  },
+  'try-on-still': {
+    type: 'image',
+    photo: false,
+    inputs: { model: 'fashion/model.jpg', garment: 'fashion/coat.jpg' },
+    first: [],
+    fills: { anchor: ['plain black trousers and white sneakers'] },
+  },
+  'lookbook-multi-look': {
+    type: 'video',
+    photo: false,
+    inputs: { model: 'fashion/model.jpg', 'outfit-1': 'fashion/outfit-1.jpg', 'outfit-2': 'fashion/outfit-2.jpg', 'outfit-3': 'fashion/outfit-3.jpg' },
+    first: ['look-1', 'look-2', 'look-3'],
+    fills: {
+      'look-1': ['a sunlit street'],
+      'look-2': ['a white gallery'],
+      'look-3': ['a rooftop at dusk'],
+      anchor: ['the model snaps their fingers at the camera', 'an upbeat house track'],
+    },
+  },
   'name-as-world-typography': {
     type: 'image',
     photo: false,

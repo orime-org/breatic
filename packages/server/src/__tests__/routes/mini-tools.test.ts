@@ -445,7 +445,7 @@ describe("POST /mini-tools", () => {
     });
 
     expect(res.status).toBe(422);
-    expect(mocks.inputRefusalFor).toHaveBeenLastCalledWith("pro-upscaler", expect.objectContaining({ params: expect.any(Object) }), undefined);
+    expect(mocks.inputRefusalFor).toHaveBeenLastCalledWith("pro-upscaler", expect.objectContaining({ params: expect.any(Object) }), undefined, undefined);
     expect(mocks.taskService.create).not.toHaveBeenCalled();
   });
 

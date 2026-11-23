@@ -6,11 +6,17 @@
  * (#2156): the voice, vocal and element ids a studio has had cloned on each
  * upstream, keyed by the source they came from. Read and written only by the
  * worker, which hands them to provider and writes back what each answer made
- * or retired (inner#1743).
+ * or retired (inner#1743). A clone lives on the upstream account whose key
+ * made it, so each is kept per key owner (inner#1953): `deployment` for our
+ * keys, the account key row for an account's key (a replaced key may be another upstream account's, so it starts
+ * afresh), and neither reuses the other's.
  */
 
 import { and, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { db, studioUpstreamClones } from "@breatic/core";
+
+/** Whose upstream account holds a clone: `deployment` for our keys, else the account key row it was made with. */
+export type CloneKeyOwner = "deployment" | (string & {});
 
 /** What was cloned. */
 export type UpstreamCloneKind = "voice" | "vocal" | "element";
@@ -28,9 +34,10 @@ export interface LiveClone {
  * the sha256 and a suffix after a colon).
  * @param studioId - The studio.
  * @param sha256s - The sources' sha256s.
+ * @param keyOwner - Whose keys the run uses; only that owner's clones are answered.
  * @returns The clones; none for no sources.
  */
-export async function liveClonesFor(studioId: string, sha256s: readonly string[]): Promise<LiveClone[]> {
+export async function liveClonesFor(studioId: string, sha256s: readonly string[], keyOwner: CloneKeyOwner): Promise<LiveClone[]> {
   if (sha256s.length === 0) return [];
   const rows = await db
     .select({
@@ -43,6 +50,7 @@ export async function liveClonesFor(studioId: string, sha256s: readonly string[]
     .where(
       and(
         eq(studioUpstreamClones.studioId, studioId),
+        eq(studioUpstreamClones.keyOwner, keyOwner),
         isNull(studioUpstreamClones.deletedAt),
         or(
           inArray(studioUpstreamClones.sourceKey, [...sha256s]),
@@ -54,13 +62,14 @@ export async function liveClonesFor(studioId: string, sha256s: readonly string[]
 }
 
 /**
- * Record a fresh clone. When another run recorded one for the same source on that upstream first, that one stays and
- * this call writes nothing.
+ * Record a fresh clone. When another run recorded one for the same source, upstream and key owner first, that one
+ * stays and this call writes nothing.
  * @param studioId - The studio.
  * @param upstream - The upstream that made it.
  * @param kind - What was cloned.
  * @param sourceKey - The source asset's sha256 (an element adds its suffix after a colon).
  * @param upstreamId - The id the upstream answered.
+ * @param keyOwner - Whose keys made it.
  * @returns True when this call recorded it.
  */
 export async function recordClone(
@@ -69,12 +78,19 @@ export async function recordClone(
   kind: UpstreamCloneKind,
   sourceKey: string,
   upstreamId: string,
+  keyOwner: CloneKeyOwner,
 ): Promise<boolean> {
   const rows = await db
     .insert(studioUpstreamClones)
-    .values({ studioId, upstream, kind, sourceKey, upstreamId })
+    .values({ studioId, upstream, kind, sourceKey, upstreamId, keyOwner })
     .onConflictDoNothing({
-      target: [studioUpstreamClones.studioId, studioUpstreamClones.upstream, studioUpstreamClones.kind, studioUpstreamClones.sourceKey],
+      target: [
+        studioUpstreamClones.studioId,
+        studioUpstreamClones.upstream,
+        studioUpstreamClones.kind,
+        studioUpstreamClones.sourceKey,
+        studioUpstreamClones.keyOwner,
+      ],
       where: isNull(studioUpstreamClones.deletedAt),
     })
     .returning({ id: studioUpstreamClones.id });
@@ -87,9 +103,16 @@ export async function recordClone(
  * @param upstream - The upstream that refused it.
  * @param kind - What was cloned.
  * @param upstreamId - The id the upstream refused.
+ * @param keyOwner - Whose keys the refused clone was made with.
  * @returns Nothing.
  */
-export async function retireClone(studioId: string, upstream: string, kind: UpstreamCloneKind, upstreamId: string): Promise<void> {
+export async function retireClone(
+  studioId: string,
+  upstream: string,
+  kind: UpstreamCloneKind,
+  upstreamId: string,
+  keyOwner: CloneKeyOwner,
+): Promise<void> {
   await db
     .update(studioUpstreamClones)
     .set({ deletedAt: new Date() })
@@ -99,6 +122,7 @@ export async function retireClone(studioId: string, upstream: string, kind: Upst
         eq(studioUpstreamClones.upstream, upstream),
         eq(studioUpstreamClones.kind, kind),
         eq(studioUpstreamClones.upstreamId, upstreamId),
+        eq(studioUpstreamClones.keyOwner, keyOwner),
         isNull(studioUpstreamClones.deletedAt),
       ),
     );

@@ -28,6 +28,7 @@
       "refund_already_spent": "这笔的积分已经用过，不能退款。",
       "refund_window_closed": "这笔的退款期限已过。",
       "refund_state_changed": "这笔的退款状态已经变了，请刷新后再试。",
+      "agent_tools_need_credits": "{refusal}{whose, select, self {你自己的 OpenRouter key} other {Studio Admin 的 OpenRouter key}}只支付 Agent 的模型；联网搜索、图片搜索和网页读取走我们的服务，要用积分支付。",
       "refund_offline_contract": "企业积分退款请联系合同负责人。"
     },
     "text_tool": {
@@ -365,6 +366,13 @@
     "document": {
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
     },
+    "byok": {
+      "disabled": "这个部署没有开启自带 key。",
+      "upstream_not_offered": "这里不接受这家的 key。",
+      "key_malformed": "key 格式不对，请检查是否多了字符后重新粘贴。",
+      "key_not_connected": "这把 key 连不上，请检查后再试。",
+      "model_choice_refused": "这家用你已保存的 key 跑不了这个模型。"
+    },
     "spend_cap": {
       "member": "你本月在这个 Studio 的花费已到上限（{limit} 积分）。需要更多请联系 Studio Admin。",
       "studio": "这个 Studio 本月的花费已到上限。请联系 Studio Admin。"
@@ -451,6 +459,7 @@
         "noConnection": "连不上服务，稍后可以再试",
         "refused": "服务没有接受这次请求",
         "unavailable": "这项功能暂时不可用",
+        "accountKey": "这个 Studio 用的 BYOK key 用不了",
         "badAnswer": "服务返回的内容用不了",
         "linkUnreachable": "这个地址打不开，可以换一个链接",
         "fileTooLarge": "文件太大",
@@ -1033,7 +1042,14 @@
       },
       "editProposalMarks": "请替换大括号里的内容。橙色的注意事项不会发给模型。",
       "notePrefix": "注意事项：",
-      "integerBlank": "留空为自动"
+      "integerBlank": "留空为自动",
+      "ownKeyLabel": "你的 key",
+      "studioKeyLabel": "Studio 的 key",
+      "alsoCredits": "积分",
+      "usesOwnKey": "用你的 key，不扣积分",
+      "usesStudioKey": "用 Studio 的 key，不扣积分",
+      "usesOwnKeyDescribing": "用你的 key；描述元素用积分",
+      "usesStudioKeyDescribing": "用 Studio 的 key；描述元素用积分"
     },
     "nodeMenu": {
       "generate": "生成",
@@ -1179,7 +1195,10 @@
         "cut_short": "内容太长，没能转写完。",
         "cancelled": "已取消。",
         "input_refused": "{model} 接不了现在的设置，请改设置或换个模型。",
-        "model_not_configured": "这个部署还没配置好 {model}：需要设置 {envVars}。"
+        "model_not_configured": "这个部署还没配置好 {model}：需要设置 {envVars}。",
+        "account_key_failed": "{whose, select, self {{keyReason, select, invalid {{upstream} 拒绝了你的 key：key 无效。到 BYOK 设置换 key。} no_balance {你的 {upstream} key 余额不足。去 {upstream} 充值。} model_not_found {{upstream} 用你的 key 跑不了这个模型。到 BYOK 设置换一家上游。} rate_limited {{upstream} 在限制你这把 key 的请求，稍后再试。} other {你的 {upstream} key 出错了。到 BYOK 设置检查。}}} admin {{keyReason, select, invalid {{upstream} 拒绝了 Studio Admin 的 key：key 无效。请 Studio Admin 换 key。} no_balance {Studio Admin 的 {upstream} key 余额不足。请 Studio Admin 去 {upstream} 充值。} model_not_found {{upstream} 用 Studio Admin 的 key 跑不了这个模型。请 Studio Admin 换一家上游。} rate_limited {{upstream} 在限制 Studio Admin 这把 key 的请求，稍后再试。} other {Studio Admin 的 {upstream} key 出错了。请 Studio Admin 检查。}}} other {{keyReason, select, invalid {{upstream} 拒绝了这把 key：key 无效。到 BYOK 设置换 key。} no_balance {{upstream} 的 key 余额不足。去 {upstream} 充值。} model_not_found {{upstream} 用这把 key 跑不了这个模型。到 BYOK 设置换一家上游。} rate_limited {{upstream} 在限制这把 key 的请求，稍后再试。} other {{upstream} 的 key 出错了。到 BYOK 设置检查。}}}}",
+        "account_key_missing": "{whose, select, self {{upstream, select, none {你这次运行用的 key 已被替换或删除，请重新运行。} other {你这次运行用的 {upstream} key 已被替换或删除，请重新运行。}}} admin {{upstream, select, none {这次运行用的 Studio Admin 的 key 已被替换或删除，请重新运行。} other {这次运行用的 Studio Admin 的 {upstream} key 已被替换或删除，请重新运行。}}} other {{upstream, select, none {这次运行用的 key 已被替换或删除，请重新运行。} other {这次运行用的 {upstream} key 已被替换或删除，请重新运行。}}}}",
+        "upstream_unavailable": "连不上 {upstream}，稍后再试。"
       },
       "kind": {
         "upload": "上传",
@@ -1553,6 +1572,7 @@
         "ecommerce": "电商广告",
         "product-showcase": "产品展示",
         "food": "美食",
+        "fashion": "时装 lookbook",
         "social-hooks": "社媒钩子",
         "talking": "口播与对话",
         "posters": "海报与平面",
@@ -2732,6 +2752,76 @@
         "step": {
           "more": "想要更长？复制一个幕节点，把「这一幕」后面改成接下来发生的事，再生成；每一幕最长 30 秒。",
           "join": "按顺序选中各幕，右键选「拼接」。"
+        }
+      },
+      "fashion-lookbook": {
+        "name": "时装 lookbook",
+        "description": "一位模特、一套造型、几个地点，结尾落在主打单品上",
+        "prompt": "一段 15 秒、竖屏、有声音的时装 lookbook 视频。[📎 模特] 穿着 [📎 造型] 里的整套衣服，每个镜头里从头到脚都不变：脸、头发和身材和模特图一样，每件单品都和造型图一模一样：{✏️ 逐件点名，例如米色羊毛大衣、黑色高领衫、灰色阔腿裤、白色皮质运动鞋}。0–2 秒钩子：模特转身时贴近面料的运动镜头。2–12 秒：模特走过{✏️ 两三个地点，例如水泥楼梯间、阳光下的街道、黄昏的屋顶}，一个镜头一个地点，每走一步面料都在摆动、起褶、反光。12–15 秒：镜头推近{✏️ 主打单品，例如大衣的领口}，再上摇到脸。柔和的自然光，杂志大片的色调。声音：{✏️ 音乐，例如缓慢的电子节拍}和脚步声。画面里不出现文字。",
+        "input": {
+          "model": {
+            "name": "模特",
+            "note": "先放入一张模特的全身照，再生成"
+          },
+          "outfit": {
+            "name": "造型",
+            "note": "先放入一张造型的图，再生成"
+          }
+        }
+      },
+      "try-on-still": {
+        "name": "试穿静帧",
+        "description": "你的模特穿上你的衣服，细节一样不丢",
+        "prompt": "把 [📎 衣服] 里的衣服穿到 [📎 模特] 身上。生成一张全身照：脸、发型、肤色和身材和模特图一样；衣服保持原来的版型、长度、颜色、图案、面料和每个细节，比如纽扣、缝线和印花，穿在身上自然垂坠、起褶。搭配：{✏️ 搭配什么，例如纯黑长裤和白色运动鞋}。在纯浅灰色的影棚里自然站立，均匀柔和的光，照片级真实。不出现文字。",
+        "input": {
+          "model": {
+            "name": "模特",
+            "note": "先放入一张模特的全身照，再生成"
+          },
+          "garment": {
+            "name": "衣服",
+            "note": "先放入一张衣服的图，再生成"
+          }
+        }
+      },
+      "lookbook-multi-look": {
+        "name": "多套造型 lookbook",
+        "description": "三套衣服先各自试穿，再做一段依次换装的视频",
+        "prompt": "(💡 先生成造型 1)(💡 先生成造型 2)(💡 先生成造型 3)一段 15 秒、竖屏、有声音的 lookbook 视频，[📎 模特] 依次换上三套造型：脸、头发和身材始终和模特图一样，但不穿模特图里的衣服；每套造型都和它的图一模一样。0–2 秒钩子，已经穿着第一套：{✏️ 钩子，例如模特对着镜头打个响指}。2–7 秒：[📎 造型 1]，朝镜头走来。7–8 秒：模特转一圈，转回来已是下一套。8–11 秒：[📎 造型 2]。11–12 秒：一道闪光，换成下一套。12–15 秒：[📎 造型 3]，最后定格在一个姿势上。每套造型的轮廓明显不同。声音：{✏️ 音乐，例如轻快的 house 舞曲}，每次换装一声呼啸。画面里不出现文字。",
+        "node": {
+          "look-1": {
+            "name": "造型 1",
+            "prompt": "把 [📎 套装 1] 里的整套衣服穿到 [📎 模特] 身上。一张竖幅全身照：脸、发型和身材和模特图一样；每件单品保持原来的版型、颜色、面料和细节。在{✏️ 这套造型的地点，例如阳光下的街道}自然摆姿势，柔和的自然光，照片级真实。不出现文字。"
+          },
+          "look-2": {
+            "name": "造型 2",
+            "prompt": "把 [📎 套装 2] 里的整套衣服穿到 [📎 模特] 身上。一张竖幅全身照：脸、发型和身材和模特图一样；每件单品保持原来的版型、颜色、面料和细节。在{✏️ 这套造型的地点，例如白色的画廊}自然摆姿势，柔和的自然光，照片级真实。不出现文字。"
+          },
+          "look-3": {
+            "name": "造型 3",
+            "prompt": "把 [📎 套装 3] 里的整套衣服穿到 [📎 模特] 身上。一张竖幅全身照：脸、发型和身材和模特图一样；每件单品保持原来的版型、颜色、面料和细节。在{✏️ 这套造型的地点，例如黄昏的屋顶}自然摆姿势，柔和的自然光，照片级真实。不出现文字。"
+          }
+        },
+        "input": {
+          "model": {
+            "name": "模特",
+            "note": "先放入一张模特的全身照，再生成三套造型"
+          },
+          "outfit-1": {
+            "name": "套装 1",
+            "note": "先放入第一套衣服的图，再生成造型 1"
+          },
+          "outfit-2": {
+            "name": "套装 2",
+            "note": "先放入第二套衣服的图，再生成造型 2"
+          },
+          "outfit-3": {
+            "name": "套装 3",
+            "note": "先放入第三套衣服的图，再生成造型 3"
+          }
+        },
+        "step": {
+          "more": "想要更多套？复制一个造型节点，把下一套衣服和模特连上去、把它的结果连进视频，再把视频调长，并在视频提示词里加上这一套。"
         }
       }
     },
@@ -4442,6 +4532,80 @@
     "submit": "提交申请",
     "submitted": "申请已提交"
   },
+  "byok": {
+    "heading": "BYOK 设置",
+    "tabKeys": "上游 key",
+    "tabModels": "模型",
+    "searchUpstreams": "搜索上游",
+    "added": "已添加",
+    "noneAdded": "还没有添加",
+    "notAddedGroup": "未添加 · {group}",
+    "groupLanguageModel": "语言模型",
+    "groupOfficial": "官方 API",
+    "groupReseller": "中转",
+    "noUpstreamMatch": "没有匹配的上游",
+    "connected": "已连通",
+    "notConnected": "未连通",
+    "lastChecked": "上次检测 {time}",
+    "lastCheckedToday": "上次检测 今天 {time}",
+    "balance": "余额 {amount}",
+    "balanceKeyLimit": "这把 key 剩余额度 {amount}",
+    "balanceForbidden": "这把 key 没有查余额的权限，换一把有账单权限的 key 就能看到。",
+    "balanceNoCap": "这把 key 没设额度上限。",
+    "balanceUnsupported": "这家查不到余额。",
+    "costsUnreadable": "这把 key 记不到实际花费，换一把有账单权限的 key 就能看到。",
+    "balanceAndCostsUnreadable": "这把 key 查不到余额和实际花费，换一把有账单权限的 key 就能看到。",
+    "refresh": "刷新",
+    "replace": "替换",
+    "delete": "删除",
+    "save": "保存",
+    "keyLabel": "API key",
+    "keyPlaceholder": "粘贴 key",
+    "keyEmpty": "请先粘贴 key。",
+    "saveHint": "保存前会先检测这把 key 能不能连通。",
+    "saveFailed": "没能保存 key，请重试。",
+    "saved": "{upstream} 的 key 已保存",
+    "deleted": "已删除 {upstream} 的 key",
+    "checkFailed": "没能检测 key，请重试。",
+    "deleteFailed": "没能删除 key，请重试。",
+    "getKey": "到 {upstream} 获取 key",
+    "runsModels": "这家能跑的模型",
+    "runsNone": "这里没有能用它跑的模型。",
+    "openrouterNote": "所有语言模型调用（含网页动画）都用这把 key，不扣积分；网页动画的渲染仍扣积分。",
+    "replaceTitle": "替换 {upstream} 的 key",
+    "replaceBody": "保存前会先检测新 key 能不能连通。替换后，正在用旧 key 的任务可能会中断或失败。旧 key 若已泄露，请同时到 {upstream} 作废它。",
+    "deleteTitle": "要删除 {upstream} 的 key 吗？",
+    "deleteBody": "删除后，正在用这把 key 的任务可能会中断或失败，设为用它的模型改回平台的 key。key 若已泄露，请同时到 {upstream} 作废它。",
+    "deleteBodyLanguage": "删除后，正在用这把 key 的任务可能会中断或失败，语言模型调用改回平台的 key。key 若已泄露，请同时到 {upstream} 作废它。",
+    "platformKey": "平台的 key（扣积分）",
+    "modelsIntro": "没选的模型用平台的 key，扣积分。只列出你已填 key 的上游能跑的模型。",
+    "modelsEmpty": "添加上游的 key 后，在这里选模型用哪家；没选的都用平台的 key。",
+    "goAddKey": "去添加 key",
+    "searchModels": "搜索模型",
+    "noModelMatch": "没有匹配的模型",
+    "noModelsInModality": "你填的上游都跑不了这类模型。",
+    "modelSaved": "{model} 改用 {upstream}",
+    "modelSaveFailed": "没能更改，请重试。",
+    "disabled": "这个部署没有开启自带 key。",
+    "loadFailed": "没能读取 BYOK 设置。",
+    "retry": "重试",
+    "showKey": "显示 key",
+    "hideKey": "隐藏 key",
+    "failure": {
+      "invalid": "key 无效或已被撤销。",
+      "unavailable": "连不上上游，稍后再试。",
+      "rate_limited": "上游正在限制这把 key 的请求，稍后再试。",
+      "refused": "上游拒绝了这次检测。",
+      "other": "这把 key 没有连通。"
+    },
+    "modality": {
+      "image": "图片",
+      "video": "视频",
+      "audio": "音频",
+      "tts": "配音",
+      "three_d": "3D"
+    }
+  },
   "credits": {
     "panelTitle": "积分",
     "close": "关闭",
@@ -4813,7 +4977,8 @@
         "feature_disabled": "网页动画暂不可用。",
         "check": "页面没有通过检查。",
         "stopped": "制作意外中断。",
-        "unknown": "执行失败。"
+        "unknown": "执行失败。",
+        "key_lost": "任务中断，请重新运行。"
       },
       "preview": {
         "pending": "{track}：网页动画{status, select, awaiting_landing {保存中} queued {排队中} running {制作中} cancelling {取消中} other {等待中}}…",

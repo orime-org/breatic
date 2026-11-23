@@ -28,6 +28,18 @@ vi.mock('@web/components/ui/tooltip', () => ({
 vi.mock('@web/data/yjs/use-socket', () => ({
   useSocket: vi.fn(() => ({ provider: null, synced: false, status: 'connecting', authFailedReason: null })),
 }));
+// What the panel asks a price for: every estimate input the container hands the run check, the real hook still runs.
+const estimated = vi.hoisted(() => [] as { params: Record<string, unknown> }[]);
+vi.mock('@web/spaces/canvas/generate/use-credit-estimate', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@web/spaces/canvas/generate/use-credit-estimate')>();
+  return {
+    ...real,
+    useRunCheck: (...args: Parameters<typeof real.useRunCheck>) => {
+      estimated.push(args[1] as { params: Record<string, unknown> });
+      return real.useRunCheck(...args);
+    },
+  };
+});
 
 import { modelsApi } from '@web/data/api';
 import { addEdge, addNode, getPromptFragment, nodeDataMap } from '@web/data/yjs/canvas-space';
@@ -146,6 +158,11 @@ describe('the camera-angle sphere\'s card', () => {
   });
   afterEach(() => {
     vi.restoreAllMocks();
+  });
+
+  it('prices the run with the image the prompt @-mentions, as the submit sends it (inner#1953)', async () => {
+    await openSphere(['ref-b']);
+    await waitFor(() => expect(estimated.at(-1)?.params.images).toEqual(['https://cdn.test/b.png']));
   });
 
   it('carries the image the prompt @-mentions, not the first one connected', async () => {

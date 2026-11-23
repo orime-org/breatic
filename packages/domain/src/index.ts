@@ -51,6 +51,7 @@ export {
   handOffLookups,
   type UsageLookupJob,
 } from "@domain/credit/generation-lookup.js";
+export { watchModelCalls, type ModelCallEnd, type ModelCallWatch } from "@domain/credit/model-call-watch.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
@@ -122,6 +123,8 @@ export {
   AWAITS_USER,
   REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION,
+  LIST_GENERATION_MODELS,
+  GET_GENERATION_TEMPLATE,
   PROPOSE_DOCUMENT_EDIT,
   PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE,
@@ -321,3 +324,9 @@ export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
 // ── Provider (every model call goes through it, inner#1743) ──
 export { initProvider, provider } from "@domain/provider/instance.js";
 export { readProviderConfig } from "@domain/provider/provider-config-loader.js";
+
+// ── Which keys a model call runs on (inner#1953) ──
+export { resolveKeys, payerKeyPlan, keyOwnerOf, keysById, runCallsLlm, runDescribesInput, type KeyPayer, type ResolvedKeys } from "@domain/provider/provider-keys.js";
+export { PROMPT_REWRITTEN_MODELS } from "@domain/provider/prompt-rewritten-models.js";
+export { choiceHolds, studioKeyPlan, type KeyPurpose, type StudioKeyPlan } from "@domain/provider/account-keys.service.js";
+export { accountKeyFailureIn, type AccountKeyFailureFacts } from "@domain/provider/key-failure.js";

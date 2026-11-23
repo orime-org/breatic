@@ -14,12 +14,11 @@ import { accountActivityRepo } from "@breatic/core";
 import { serializeCreditMicro, type CreditDecimal, type TextToolLanguage } from "@breatic/shared";
 
 import { stepCountIs } from "ai";
-import { provider, streamTextRetry } from "@breatic/domain";
+import { provider, streamTextRetry, type ResolvedKeys } from "@breatic/domain";
 import { getModelForTool, getPromptForTool, getTextToolsConfig } from "@server/config/text-tools.js";
 import { logger } from "@breatic/core";
-import { creditLotService, createUsageRecorder } from "@breatic/domain";
+import { creditLotService, createUsageRecorder, watchModelCalls, type ModelCallWatch } from "@breatic/domain";
 import type { UsageRecorder } from "@breatic/domain";
-import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 
 /** SSE event yielded during text tool execution. */
 export type TextToolEvent =
@@ -100,6 +99,7 @@ function buildUserMessage(tool: string, params: Record<string, unknown>): string
  * @param signal - AbortSignal for cancellation on client disconnect
  * @param operationKey - The key the run is recorded and charged under, minted
  *   by the route for every request.
+ * @param resolved - The keys the route settled for the run: those of whoever pays for the project's Studio (inner#1953).
  * @yields TextToolEvent stream
  */
 export async function* executeTextTool(
@@ -109,6 +109,7 @@ export async function* executeTextTool(
   params: Record<string, unknown>,
   signal: AbortSignal,
   operationKey: string,
+  resolved: ResolvedKeys,
 ): AsyncGenerator<TextToolEvent> {
   let totalTokens = 0;
   // Declared out here so both exits reach them. The model call is recorded
@@ -125,6 +126,7 @@ export async function* executeTextTool(
     actorUserId: userId,
     projectId,
     onMissingCost: (row) => logger.error({ row, userId, tool }, "agent_usage_cost_missing"),
+    ...(resolved.keyId === null ? {} : { keyId: resolved.keyId }),
   });
   // Set once the model is known; records the run's model calls.
   let calls: ModelCallWatch | undefined;
@@ -134,8 +136,9 @@ export async function* executeTextTool(
     await accountActivityRepo.recordActivity({ userId, projectId: null, kind: "agent_started" });
     modelString = model;
     // No temperature: Gemini 3.8 deprecates the sampling parameters.
-    const prepared = provider().llm.prepare(model, { thinking: true, thinkingLevel: getTextToolsConfig().thinking_level, cache: false });
-    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}` }, prepared.pendingCosts);
+    const wants = { thinking: true, thinkingLevel: getTextToolsConfig().thinking_level, cache: false } as const;
+    const prepared = provider().llm.prepare(model, wants, undefined, resolved.keys);
+    const watch = watchModelCalls(usage, { model, description: `Text tool: ${tool}`, keyId: resolved.keyId }, prepared.pendingCosts, provider().llm);
     calls = watch;
     const systemPrompt = getPromptForTool(tool);
     const userMessage = buildUserMessage(tool, params);

@@ -3,15 +3,17 @@
 
 import * as React from 'react';
 import { Check, CircleSlash, Code, Dot, Hourglass, LoaderCircle, Plus, RotateCcw, X } from 'lucide-react';
-import { formatCredits, getLocale, type TimelineExecutionRow, type TimelineExecutionStatus } from '@breatic/shared';
+import { ACCOUNT_KEY_FAILURE_KINDS, encodeTaskFailure, formatCredits, getLocale, type AccountKeyFailureKind, type TimelineExecutionRow, type TimelineExecutionStatus } from '@breatic/shared';
 import { TimelineExecutionInputSchema, timelineExecutionEnded, type TimelineExecutionInput } from '@breatic/shared/space-content';
 
 import { Button } from '@web/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@web/components/ui/tabs';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
+import { useKeyFailureWords, type KeyFailureWords } from '@web/features/byok/key-failure-words';
 import { useTranslation } from '@web/i18n/use-translation';
 import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { cn } from '@web/lib/utils';
+import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useRunning } from '@web/stores/task-actions-in-flight';
 import { WEB_ANIMATION_ENGINE_NAMES } from '@web/spaces/timeline/TimelineWebAnimationDialog';
@@ -22,12 +24,42 @@ export type TimelineExecutionView = 'completed' | 'inProgress';
 
 const PHASES = ['writing', 'validating', 'saving'] as const;
 // The sentence each failure reason is told with; a reason not listed reads as a general failure.
-const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped'>> = {
+const FAILURE_SENTENCE: Readonly<Record<string, 'feature_disabled' | 'check' | 'stopped' | 'key_lost'>> = {
   feature_disabled: 'feature_disabled',
+  // The job object restarted and lost the keys its run was submitted with (inner#1953).
+  key_lost_on_restart: 'key_lost',
   validation_failed: 'check', font_not_in_set: 'check', manifest_invalid: 'check', package_too_large: 'check', output_missing: 'check',
   viewport_mismatch: 'check', fps_mismatch: 'check', duration_mismatch: 'check', font_set_mismatch: 'check',
   harness_failed: 'stopped', container_failed: 'stopped', internal: 'stopped',
 };
+
+/** The failures of the payer's own key or its upstream, told with the canvas task sentence that names the upstream (inner#1953). */
+const KEY_FAILURES: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_KINDS);
+
+/**
+ * The sentence a failed execution is told with.
+ * @param row - The failed execution.
+ * @param t - The translator.
+ * @param keys - Whose key it was to the viewer and each upstream's name, off the Project's key plan.
+ * @returns The sentence.
+ * @throws {never} Never.
+ */
+export function executionFailureSentence(
+  row: Pick<TimelineExecutionRow, 'failureReason' | 'failureUpstream' | 'failureKeyReason' | 'failureKeyOwner'>,
+  t: ReturnType<typeof useTranslation>,
+  keys: KeyFailureWords | undefined,
+): string {
+  if (row.failureReason !== null && KEY_FAILURES.has(row.failureReason)) {
+    const reason = row.failureReason as AccountKeyFailureKind;
+    const about = {
+      ...(row.failureUpstream === null ? {} : { upstream: row.failureUpstream }),
+      ...(row.failureKeyReason === null ? {} : { keyReason: row.failureKeyReason }),
+      ...(row.failureKeyOwner === undefined ? {} : { keyOwner: row.failureKeyOwner }),
+    };
+    return failureSentence(encodeTaskFailure(reason, about), t, undefined, keys);
+  }
+  return t(`timeline.webAnimation.failure.${(row.failureReason !== null && FAILURE_SENTENCE[row.failureReason]) || 'unknown'}`);
+}
 
 /**
  * The input an execution froze, when it can be read.
@@ -106,6 +138,7 @@ function statusTone(status: TimelineExecutionStatus): string {
  */
 const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, readOnly, onToggle, onCancel, onAdd, onRetry }: ExecutionRowProps): React.JSX.Element {
   const t = useTranslation();
+  const keys = useKeyFailureWords();
   const input = timelineExecutionInput(row);
   const unfinished = !timelineExecutionEnded(row.status);
   // Waiting for a free running slot (inner#1968): queued, nothing working yet.
@@ -160,7 +193,7 @@ const ExecutionRow = React.memo(function ExecutionRow({ projectId, row, open, re
         })}
       </ol>
       {row.status === 'failed' && <p className='text-status-error-foreground'>
-        {t(`timeline.webAnimation.failure.${(row.failureReason !== null && FAILURE_SENTENCE[row.failureReason]) || 'unknown'}`)}
+        {executionFailureSentence(row, t, keys)}
       </p>}
       <dl className='grid grid-cols-[auto_1fr] gap-x-3 gap-y-1'>
         <dt className='text-muted-foreground'>{t('timeline.webAnimation.dialog.prompt')}</dt>

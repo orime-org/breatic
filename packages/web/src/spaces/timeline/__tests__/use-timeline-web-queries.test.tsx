@@ -47,7 +47,7 @@ const EXECUTION_ROW: TimelineExecutionRow = {
   id: EXEC_RUNNING, projectId: PROJECT, spaceId: SPACE, actorUserId: 'user-one', kind: 'web_animation_create',
   actionId: 'a0000000-0000-4000-8000-000000000001', input: {}, inputHash: 'sha256:abc', engine: 'deepseek', status: 'running',
   phase: null, steps: [], attempt: 1, fence: null, deadlineAt: new Date().toISOString(), resultSourceVersionId: null,
-  failureReason: null, billedCredits: null, billedAt: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+  failureReason: null, failureUpstream: null, failureKeyReason: null, billedCredits: null, billedAt: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
   usageCredits: 0,
 };
 

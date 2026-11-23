@@ -31,7 +31,7 @@ import { toast } from '@web/lib/toast';
 import { canvasApi, type CanvasLimits } from '@web/data/api/canvas';
 import { apiGet } from '@web/data/api/request';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
 import { canvasSessions } from '@web/stores/canvas-session';
 

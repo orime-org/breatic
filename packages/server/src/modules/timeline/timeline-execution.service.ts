@@ -25,8 +25,11 @@ import {
   logger,
   timelineExecutionRepo,
 } from "@breatic/core";
-import { SMALLEST_CREDIT, sumCreditsByOperationKeys, timelineOperationKey, webAnimationSourceRepo } from "@breatic/domain";
-import { ceilToCreditCent, extractPromptText, signPayload, t, type TimelineExecution, type TimelineExecutionRow, type TimelineWebResolution } from "@breatic/shared";
+import { SMALLEST_CREDIT, keyOwnerOf, resolveKeys, sumCreditsByOperationKeys, timelineOperationKey, webAnimationSourceRepo } from "@breatic/domain";
+import { ACCOUNT_KEY_FAILURE_KINDS, ceilToCreditCent, extractPromptText, signPayload, t, type TimelineExecution, type TimelineExecutionRow, type TimelineWebResolution } from "@breatic/shared";
+
+/** The failures of the payer's own key or its upstream (inner#1953). */
+const KEY_FAILURES: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_KINDS);
 import {
   TimelineExecutionInputSchema,
   encodePreviewToken,
@@ -113,8 +116,11 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
   if (existing !== undefined) return sameAction(existing, inputHash);
 
   // Admitted once, as an Agent chat turn is (chat.ts): the spend limits, then a balance above zero; one that then
-  // waits for a running slot starts without a second check (design 3.10). Payments off: no check.
+  // waits for a running slot starts without a second check (design 3.10). Payments off: no check. Asked on the payer's
+  // own OpenRouter key too: the render container runs on ours (inner#1953).
   await precheckCredits(projectId, userId, SMALLEST_CREDIT);
+  // The key row its language-model calls run on, settled at acceptance and read back by id (inner#1953).
+  const { keyId: llmKeyId } = await resolveKeys({ projectId }, { kind: "llm" });
   try {
     const row = await db.transaction(async (tx) => {
       const inserted = await timelineExecutionRepo.insert(
@@ -128,6 +134,7 @@ export async function accept(userId: string, body: TimelineExecutionCreateInput 
           input: { ...input },
           inputHash,
           deadlineAt: new Date(budgetDeadlineFrom(Date.now())),
+          llmKeyId,
         },
         tx,
       );
@@ -156,7 +163,23 @@ export async function list(userId: string, projectId: string, spaceId: string): 
   await projectService.assertAccess(projectId, userId, "viewer");
   const rows = await timelineExecutionRepo.listForSpace({ projectId, spaceId });
   const sums = await sumCreditsByOperationKeys(rows.map((row) => timelineOperationKey(row.id)));
-  return rows.map((row) => ({ ...row, usageCredits: ceilToCreditCent(Number(sums.get(timelineOperationKey(row.id)) ?? 0)) }));
+  return Promise.all(rows.map(async (row) => ({
+    ...row,
+    usageCredits: ceilToCreditCent(Number(sums.get(timelineOperationKey(row.id)) ?? 0)),
+    // A failure of the payer's own key says whose key it was, which the Studio may since have handed to another admin.
+    ...(await keyOwnerFor(row)),
+  })));
+}
+
+/**
+ * Whose key a failure of the payer's own key failed on, read from the language-model key row the execution recorded.
+ * @param row - An execution.
+ * @returns The owner beside a key failure; nothing for any other row.
+ */
+async function keyOwnerFor(row: TimelineExecution): Promise<{ failureKeyOwner?: string }> {
+  if (row.failureReason === null || !KEY_FAILURES.has(row.failureReason)) return {};
+  const owner = await keyOwnerOf(await timelineExecutionRepo.llmKeyIdOf(row.id));
+  return owner === undefined ? {} : { failureKeyOwner: owner };
 }
 
 /**

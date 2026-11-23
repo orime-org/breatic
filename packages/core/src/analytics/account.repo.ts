@@ -21,6 +21,8 @@ import {
 } from "@breatic/shared";
 import { db, rawPg } from "@core/db/client.js";
 import { users } from "@core/db/schema.js";
+import { eraseForAccounts as eraseModelUpstreams } from "@core/byok/account-model-upstreams.repo.js";
+import { eraseForAccounts as eraseProviderKeys } from "@core/byok/account-provider-keys.repo.js";
 
 /**
  * The account's latest report.
@@ -98,7 +100,7 @@ export async function getAccountAttribution(userId: string): Promise<Attribution
 /**
  * Remove what deleted accounts' consent left behind: the latest report, and
  * the consent snapshots on their orders, upload tickets
- * and ad uploads. Only accounts already soft-deleted are touched; when any id
+ * and ad uploads; and their own provider keys (inner#1953). Only accounts already soft-deleted are touched; when any id
  * is not, nothing changes.
  * @param userIds - The accounts' `users.id`.
  * @returns The ids that are not soft-deleted (empty when the erase ran).
@@ -120,6 +122,8 @@ export async function eraseAccountAnalytics(userIds: readonly string[]): Promise
     await tx`
       UPDATE ads_conversion_uploads SET job = jsonb_set(job, '{browser}', 'null'::jsonb), updated_at = now()
       WHERE job->>'userId' = ANY(${ids}::text[]) AND job->'browser' <> 'null'::jsonb`;
+    await eraseProviderKeys(ids, tx);
+    await eraseModelUpstreams(ids, tx);
     return { notDeleted: [] };
   });
 }

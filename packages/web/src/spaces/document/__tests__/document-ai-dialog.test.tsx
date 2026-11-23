@@ -446,6 +446,16 @@ describe('a failure', () => {
     expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
   });
 
+  it('names the key and the upstream when the run failed on the payer\'s own key (inner#1953)', async () => {
+    const { call } = await polishing();
+
+    await act(async () => {
+      call.emit({ type: 'error', message: 'The text tool failed.', keyFailure: { reason: 'account_key_failed', upstream: 'openrouter' } });
+    });
+
+    expect(toastError).toHaveBeenCalledWith('The openrouter key failed. Check it in BYOK settings.');
+  });
+
   it('retry sends the request again, as a new one', async () => {
     const { call } = await polishing();
     await act(async () => {

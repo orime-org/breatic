@@ -118,6 +118,7 @@ export interface ErrorBody {
   status?: unknown;
   code?: unknown;
   type?: unknown;
+  metadata?: unknown;
 }
 
 /**

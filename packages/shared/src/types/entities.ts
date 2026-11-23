@@ -14,6 +14,7 @@ import type { ChatAttachedChip } from "@shared/schemas/api.js";
 import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
+import type { AccountKeyFailureKind, AccountKeyFailureReason } from "@shared/types/task-failure.js";
 import type { TimelineRate } from "@shared/timeline/time.js";
 import type { TimelineExecutionStatusSchema } from "@shared/timeline/web-animation.js";
 import type { z } from "zod";
@@ -244,9 +245,19 @@ export type MessagePart =
      * request could not be made to fit the model's context window however
      * much earlier history was folded into memory (inner#1567). The user is
      * told to narrow the request rather than to send it again. `shutdown` is a
-     * turn the server stopped because it was shutting down (inner#1717).
+     * turn the server stopped because it was shutting down (inner#1717). The
+     * account-key reasons are a turn on the payer's own key that failed
+     * (inner#1953): the key was refused, its row is gone, or its upstream could
+     * not be reached; the user is told which upstream and whose key, and what to do: change or top up the key, pick
+     * another upstream, or run it again later.
      */
-    reason?: "too_long" | "shutdown";
+    reason?: "too_long" | "shutdown" | ChatKeyFailureReason;
+    /** The upstream whose key failed, for an account-key reason. */
+    upstream?: string;
+    /** Why the upstream refused the key, for `account_key_failed`. */
+    keyReason?: ChatKeyRefusal;
+    /** The account the key belongs to, for an account-key reason. */
+    keyOwner?: string;
   }
   /**
    * A message the user sent while this turn ran, taken in at the step
@@ -384,6 +395,13 @@ export interface TaskEntity {
   providerResultUrl: string | null;
   /** Vendor task id for async generation; on retry the Worker resumes by polling it (#1628). */
   providerTaskId: string | null;
+  /**
+   * The account key row the task's media runs on (inner#1953); null on our keys. Read back by id on every pickup, never
+   * the key itself. Absent from an entity built without the column.
+   */
+  keyId?: string | null;
+  /** The account key row of a language-model step inside the task (a reading, a prompt rewrite), as `keyId`. */
+  llmKeyId?: string | null;
   /** Idempotency guard for credit deduction — set when charge has been applied. */
   billedAt: Date | null;
   /** Actual credits charged (audit trail). */
@@ -943,6 +961,46 @@ export interface AccountActivityCoverageEntity {
   createdAt: Date;
 }
 
+/** How a chat turn on the payer's own key failed (inner#1953), as its stored reply keeps it. */
+export type ChatKeyFailureReason = AccountKeyFailureKind;
+
+/** Why an upstream refused the payer's own key (inner#1953). */
+export type ChatKeyRefusal = AccountKeyFailureReason;
+
+/** What the last check of an account's upstream key found about its balance (inner#1953). */
+export type ProviderKeyBalanceState = "known" | "unsupported" | "forbidden" | "no_cap";
+
+/**
+ * An account's own key for one upstream (inner#1953), without the key or its sealed text: only the hint the user is
+ * shown and what the last check found.
+ */
+export interface AccountProviderKey {
+  id: string;
+  userId: string;
+  upstream: string;
+  displayHint: string;
+  lastCheckedAt: Date | null;
+  lastConnected: boolean | null;
+  lastBalanceAmount: number | null;
+  lastBalanceCurrency: string | null;
+  lastBalanceState: ProviderKeyBalanceState | null;
+  lastFailure: string | null;
+  /** Whether the key can read the actual costs of its calls (fal); null where the upstream has no such probe. */
+  lastCostsReadable: boolean | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** The upstream an account chose for a catalog model that is not a language model (inner#1953). */
+export interface AccountModelUpstream {
+  id: string;
+  userId: string;
+  model: string;
+  upstream: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 /** Where a Timeline execution is (inner#1711), as `TimelineExecutionStatusSchema` lists it. */
 export type TimelineExecutionStatus = z.infer<typeof TimelineExecutionStatusSchema>;
 
@@ -971,6 +1029,10 @@ export interface TimelineExecution {
   deadlineAt: string;
   resultSourceVersionId: string | null;
   failureReason: string | null;
+  /** The upstream a failure of the payer's own key names (inner#1953); null for any other failure. */
+  failureUpstream: string | null;
+  /** Why the upstream refused the payer's own key (`account_key_failed`, inner#1953); null otherwise. */
+  failureKeyReason: AccountKeyFailureReason | null;
   /** Credits charged, as Postgres renders the numeric. */
   billedCredits: string | null;
   billedAt: string | null;
@@ -983,7 +1045,11 @@ export interface TimelineExecution {
 }
 
 /** One row `GET /timeline/executions` answers: the execution and the credits its usage rows add up to so far. */
-export type TimelineExecutionRow = TimelineExecution & { usageCredits: number };
+export type TimelineExecutionRow = TimelineExecution & {
+  usageCredits: number;
+  /** The account whose key a failure of the payer's own key failed on (inner#1953); absent for any other row. */
+  failureKeyOwner?: string;
+};
 
 /**
  * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711

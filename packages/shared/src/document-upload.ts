@@ -96,6 +96,10 @@ const UPLOAD_FAILURE: Readonly<Record<TaskFailureReason, UploadFailure>> = {
   cancelled: { reason: "failed", retryable: true },
   input_refused: { reason: "failed", retryable: false },
   model_not_configured: { reason: "failed", retryable: false },
+  // An upload runs on no model key; these come from model tasks (inner#1953) and never from an upload.
+  account_key_failed: { reason: "failed", retryable: false },
+  account_key_missing: { reason: "failed", retryable: false },
+  upstream_unavailable: { reason: "failed", retryable: true },
 };
 
 /**

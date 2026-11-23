@@ -89,6 +89,15 @@ describe('the waiting area', () => {
   });
 
   it.each([
+    ['self', 'Your own OpenRouter key'],
+    ['admin', 'The Studio Admin\'s OpenRouter key'],
+  ] as const)('says the paid tools need credits, and whose key pays for the model, when it is the %s payer\'s own key (inner#1953)', (ownKey, whose) => {
+    setup({ blocked: true, ownKey });
+    expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent('web search, image search and page reading run on our services and are paid in credits');
+    expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent(whose);
+  });
+
+  it.each([
     ['a card waits', { awaiting: true }, 'chat.waiting.awaitingCard'],
     ['the balance is short', { blocked: true }, 'chat.waiting.blocked'],
   ] as const)('puts why they wait on a line of its own under the title when %s, so the title stays whole', (_, props, key) => {

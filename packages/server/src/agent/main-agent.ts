@@ -13,6 +13,7 @@ import { parseCreditDecimal } from "@breatic/shared";
 
 import { createUIMessageStream, stepCountIs, wrapLanguageModel } from "ai";
 import { provider, streamTextRetry } from "@breatic/domain";
+import { ON_OUR_KEYS, turnKeysOf, type TurnKeys } from "@server/agent/turn-keys.js";
 import type { ModelMessage, Tool, ToolSet, UIMessage, UIMessageChunk, UIMessageStreamWriter } from "ai";
 import type { PreparedCall } from "@breatic/provider";
 import {
@@ -29,7 +30,7 @@ import type { AgentGenerationStep, AgentPicture, OpenDocument, PrepareAgentPictu
 import { buildSystemPrompt } from "@server/agent/context.js";
 import { userClockNote } from "@server/agent/user-clock.js";
 import { getAgentConfig, getStorageAdapter } from "@breatic/core";
-import { assetService, creditLotService, createUsageRecorder } from "@breatic/domain";
+import { assetService, creditLotService, createUsageRecorder, watchModelCalls, type ModelCallWatch } from "@breatic/domain";
 import { saveToStorageFor } from "@server/agent/save-to-storage.js";
 import { agentMemoryFor } from "@server/agent/agent-memory.js";
 import { projectRecordsFor } from "@server/agent/project-records.js";
@@ -37,7 +38,6 @@ import { makePageLinks, pageLinksForTurn, type PageLinks } from "@server/agent/p
 import { readPagesFor } from "@server/agent/read-pages.js";
 import { openDocumentOf, turnToolsContext } from "@server/agent/turn-tools-context.js";
 import { buildTurnContext } from "@server/agent/turn-context.js";
-import { watchModelCalls, type ModelCallWatch } from "@server/agent/model-call-watch.js";
 import type { ChatAttachedChip, ChatSpaceContext, ConsentSnapshot, MessagePart, ToolFailure } from "@breatic/shared";
 import { toolFailureOf, wireLineOf, wordsForTitle } from "@breatic/shared";
 import { continuationMessageForModel, openSpaceKey } from "@server/agent/user-turn.js";
@@ -51,6 +51,7 @@ import type { Assembly, FoldResult, FoldTrigger, TurnIdentity } from "@server/ag
 import { claimFirstMilestone, currentConsent, getContext, serverAnalyticsWanted, trackServerEvent } from "@breatic/core";
 import { logger } from "@breatic/core";
 import { readContextOverflow, unrecognised400, type ContextOverflow } from "@breatic/provider";
+import { keyFailureFrame } from "@server/agent/key-failure-frame.js";
 import { lastFullSnapshotKey, pictureFactsOfRows, prefixHash, replayRows, stripThinking } from "@server/agent/history-replay.js";
 import type { ReplyForModel, UserForModel } from "@server/agent/history-replay.js";
 import { endingNote } from "@server/agent/model-messages.js";
@@ -224,7 +225,7 @@ export class MainAgent {
       closedAsks,
     };
     await hooks.beforeStream?.(turnIndex);
-    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, undefined, hooks);
+    return this.runStream(opening, turnIndex, title, openDocumentOf(space), signal, modelId, undefined, hooks, await turnKeysOf(this.ctx.projectId));
   }
 
   /**
@@ -267,7 +268,7 @@ export class MainAgent {
       output,
     };
     await hooks.beforeStream?.(turnIndex);
-    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, upstream, hooks);
+    return this.runStream(opening, turnIndex, null, openDocumentOf(space), signal, modelId, upstream, hooks, await turnKeysOf(this.ctx.projectId, { keyId: hooks.resumeKeyId }));
   }
 
   /**
@@ -314,6 +315,7 @@ export class MainAgent {
    * @param requestedModel - The model the route resolved for this turn (#1363).
    * @param resumeOn - The upstream a resumed segment stays on.
    * @param hooks - What the run lends the turn (inner#1717).
+   * @param turnKeys - The keys the turn runs on, or why they could not be read (inner#1953).
    * @returns The turn's chunks, in the SDK's own protocol.
    */
   private runStream(
@@ -325,8 +327,14 @@ export class MainAgent {
     requestedModel?: string,
     resumeOn?: string,
     hooks: TurnHooks = {},
+    turnKeys: TurnKeys = ON_OUR_KEYS,
   ): ReadableStream<UIMessageChunk> {
     const { userId, conversationId, projectId } = this.ctx;
+    // The account key row the turn runs on (inner#1953): its calls are recorded under it at no credits, its reply
+    // records it for a resumed segment, and a later lookup asks with it. Null on our keys.
+    const keyId = "failed" in turnKeys ? null : turnKeys.keyId;
+    const keys = "failed" in turnKeys ? undefined : turnKeys.keys;
+    const { keyOwner } = turnKeys;
     const agentCfg = getAgentConfig();
     // The asking browser's choice, held for the end of the turn, which can
     // run after the request that started it has returned.
@@ -410,6 +418,7 @@ export class MainAgent {
       projectId,
       onMissingCost: (row) =>
         logger.error({ row, userId, conversationId }, "agent_usage_cost_missing"),
+      ...(keyId === null ? {} : { keyId }),
     });
     // Set once the model is known; records the turn's model calls.
     let calls: ModelCallWatch | undefined;
@@ -648,6 +657,8 @@ export class MainAgent {
         // served it, which the resumed segment stays on (inner#1743).
         modelId: sent.agentConfig.modelId,
         ...(calls?.served() === undefined ? {} : { servedUpstream: calls.served() }),
+        // The account key row it ran on, which a resumed segment reads its key back by (inner#1953).
+        ...(keyId === null ? {} : { keyId }),
         steps: keptSteps,
         ...(pictureFacts.length === 0 ? {} : { pictures: pictureFacts }),
         countCoverage: {
@@ -730,6 +741,10 @@ export class MainAgent {
             return (await foldedLinks).urlFor(url);
           },
           preparePictures,
+          // Whether a model-calling tool is offered, and the keys its calls go out on (inner#1953).
+          ...(keys === undefined ? {} : { keys }),
+          // Whose key that is to the user the turn answers, so a tool's key failure says whose it was.
+          ...(keys === undefined || keyOwner === undefined ? {} : { keyHolder: keyOwner === userId ? "self" : "admin" }),
           // The Spaces a request to read Spaces may name: this turn's list.
           spaces: (opening.kind === "message" ? opening.turn.spaces : opening.space.spaces) ?? [],
         },
@@ -888,6 +903,8 @@ export class MainAgent {
      * @throws {unknown} When the turn fails; the stream's `onError` records it.
      */
     const askTheModel = async (writer: UIMessageStreamWriter): Promise<void> => {
+      // The payer's key row is gone or could not be read: the turn ends here, asking no model on any other key.
+      if ("failed" in turnKeys) throw turnKeys.failed;
       sent = await assemble();
       if (sent.agentConfig.contextWindowFallback === true) {
         logger.warn({ userId, conversationId, model: sent.agentConfig.modelId, window: sent.agentConfig.contextWindow }, "agent_context_window_fallback");
@@ -913,12 +930,10 @@ export class MainAgent {
       // searches and decides between tools, and shows its working. It is
       // also the one whose prefix repeats -- every step of a turn and every
       // later turn resends it -- so it is the one that asks for caching.
-      const prepared = provider().llm.prepare(
-        agentConfig.modelId,
-        { thinking: true, cache: agentCfg.prompt_cache_ttl, session: conversationId },
-        resumeOn === undefined ? undefined : { mode: "upstream", upstream: resumeOn },
-      );
-      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat" }, prepared.pendingCosts);
+      const wants = { thinking: true, cache: agentCfg.prompt_cache_ttl, session: conversationId };
+      const route = resumeOn === undefined ? undefined : { mode: "upstream" as const, upstream: resumeOn };
+      const prepared = provider().llm.prepare(agentConfig.modelId, wants, route, keys);
+      const watch = watchModelCalls(usage, { model: agentConfig.modelId, description: "Agent chat", keyId }, prepared.pendingCosts, provider().llm);
       calls = watch;
 
       let messages = sent.messages;
@@ -1337,7 +1352,7 @@ export class MainAgent {
       }
       if (failed !== undefined) {
         if (signal?.aborted !== true) sayThoughtFor(writer);
-        writer.write({ type: "data-failed", data: {} });
+        writer.write({ type: "data-failed", data: keyFailureFrame(streamFailure, keyOwner) });
         writer.write(failed);
       }
       if (finished !== undefined) writer.write(finished);
@@ -1373,7 +1388,7 @@ export class MainAgent {
             // Said before the error frame the SDK writes for this throw: the
             // page draws a failed reply only from this mark (inner#1717).
             sayThoughtFor(writer);
-            writer.write({ type: "data-failed", data: {} });
+            writer.write({ type: "data-failed", data: keyFailureFrame(err, keyOwner) });
             throw err;
           }
         } finally {

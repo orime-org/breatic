@@ -24,6 +24,22 @@ import { studioMembers, studios, users } from "@breatic/core";
 import type { StudioRole } from "@breatic/shared";
 
 /**
+ * The live account that administers a live Studio: the account its credits and its own keys come from.
+ * @param studioId - The Studio.
+ * @returns The admin's user id, or null when the Studio, its admin membership or the admin's account is gone.
+ */
+export async function liveAdminOf(studioId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ userId: users.id })
+    .from(studioMembers)
+    .innerJoin(studios, and(eq(studios.id, studioMembers.studioId), isNull(studios.deletedAt)))
+    .innerJoin(users, and(eq(users.id, studioMembers.userId), isNull(users.deletedAt)))
+    .where(and(eq(studioMembers.studioId, studioId), eq(studioMembers.role, "admin"), isNull(studioMembers.deletedAt)))
+    .limit(1);
+  return row?.userId ?? null;
+}
+
+/**
  * Get the active studio role for a user on an **active** studio, or null.
  *
  * The single source of truth for "what studio-level role does this user

@@ -43,8 +43,10 @@ import { attachmentService } from "@server/modules";
 import { agentInstructionsService } from "@server/modules";
 import { runningTurnsService } from "@server/modules";
 import { projectService } from "@server/modules";
-import { precheckCredits } from "@server/modules";
+import { precheckAgentTurn, precheckCredits } from "@server/modules";
 import { SMALLEST_CREDIT } from "@breatic/domain";
+import { turnKeysOf } from "@server/agent/turn-keys.js";
+import type { KeySet } from "@breatic/provider";
 import { startRun, stopChannel } from "@server/agent/chat-run.js";
 import { runStreams } from "@server/agent/run-stream.js";
 import { isShuttingDown } from "@server/agent/shutdown-flag.js";
@@ -241,15 +243,6 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
     throw new ValidationError(t("server.error.validation"));
   }
 
-  // A turn needs a balance above zero to start (#296). Payments off: no check.
-  // Checked before an answer is taken, so a refused answer leaves the card
-  // waiting.
-  await precheckCredits(body.project_id, user.id, SMALLEST_CREDIT);
-
-  // A message in the project's Agent chat is a collaboration action (inner#1442
-  // §4.8). Reported alongside the turn; it never rejects.
-  void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
-
   // An answer to a card resumes the turn that asked: a questionnaire's
   // (inner#1542) or a request to read Spaces (inner#1552). Both are taken,
   // refused and resumed alike; only how the answer is held to the call differs.
@@ -258,13 +251,31 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
   // refuse a request after the card's answer is already gone (#1363). A
   // resumed turn runs on the model it started on.
   const resumed = answer?.toolCallId ?? sharedSpaces?.toolCallId;
-  const { modelId, upstream } =
+  const { modelId, upstream, keyId } =
     resumed === undefined
-      ? { modelId: await conversationService.modelForMessage(conversation, user.id, body.model), upstream: undefined }
+      ? { modelId: await conversationService.modelForMessage(conversation, user.id, body.model), upstream: undefined, keyId: undefined }
       : await conversationService.modelForResume(conversation, user.id, resumed);
+  // inner#1953: a new turn runs on the keys of whoever pays for the Studio; a resumed one on the key row its paused
+  // segment ran on, read back by id. Null when they cannot be read: the run then ends failed on its own stream, saying
+  // so, without asking a model.
+  const turnKeys = await turnKeysOf(body.project_id, resumed === undefined ? undefined : { keyId });
+  if ("failed" in turnKeys) logger.warn({ err: turnKeys.failed, userId: user.id, conversationId: conversation.id, keyId }, "chat_turn_keys_unreadable");
+  const keys: KeySet | undefined | null = "failed" in turnKeys ? null : turnKeys.keys;
+  // The account whose key that is, so a refusal says whether it is the caller's own or the Studio Admin's.
+  const { keyOwner } = turnKeys;
+  // A turn needs a balance above zero to start (#296), on the payer's own key too (inner#1953). Payments off: no
+  // check. Checked before an answer is taken, so a refused answer leaves the card waiting.
+  await precheckAgentTurn(body.project_id, user.id, keys === undefined ? undefined : keyOwner);
+
+  // A message in the project's Agent chat is a collaboration action (inner#1442
+  // §4.8). Reported alongside the turn; it never rejects.
+  void reportCollaboratorFirstAction({ projectId: body.project_id, userId: user.id, action: "agent" });
+
   // A deployment with no upstream for the model, or none for the upstream a resumed turn stays on, refuses before
   // the card's answer is taken, saying what it is missing.
-  assertLlmServable(modelId, "call", upstream === undefined ? undefined : { mode: "upstream", upstream });
+  const stayOn = upstream === undefined ? undefined : { mode: "upstream" as const, upstream };
+  if (keys === undefined) assertLlmServable(modelId, "call", stayOn);
+  else if (keys !== null) assertLlmServable(modelId, "call", stayOn, keys);
   const card =
     answer !== undefined
       ? { toolCallId: answer.toolCallId, take: () => conversationService.answerAsk(conversation.id, answer, { userId: user.id, projectId: body.project_id }) }
@@ -320,6 +331,7 @@ chat.post("/message", acceptTransferBody("chat_message"), validate("json", chatM
           space: body,
           ...(modelId === undefined ? {} : { modelId }),
           ...(upstream === undefined ? {} : { upstream }),
+          ...(keyId === undefined ? {} : { keyId }),
           locale: getActiveLocale(),
         },
       }).opened;
@@ -395,7 +407,12 @@ chat.post(
             data: { pending, running: false, awaiting: false, blocked: "spend_cap", scope: err.scope, limit: err.limit, resetsAt: err.resetsAt, next_sync_ms },
           });
         }
-        return c.json({ data: { pending, running: false, awaiting: false, blocked: "credits", next_sync_ms } });
+        // On the payer's own OpenRouter key the page says the Agent's paid tools are what need credits (inner#1953).
+        const turnKeys = await turnKeysOf(projectId);
+        if ("failed" in turnKeys) logger.warn({ err: turnKeys.failed, userId: user.id, conversationId: conversation.id }, "chat_turn_keys_unreadable");
+        const { keyOwner } = turnKeys;
+        const ownKey = keyOwner === undefined ? undefined : keyOwner === user.id ? "self" : "admin";
+        return c.json({ data: { pending, running: false, awaiting: false, blocked: "credits", ...(ownKey === undefined ? {} : { own_key: ownKey }), next_sync_ms } });
       }
       const claimed = await queue.claim(conversation.id);
       if (claimed.status === "start") {

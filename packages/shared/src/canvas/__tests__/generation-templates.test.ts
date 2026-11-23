@@ -212,6 +212,12 @@ const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked
 /** The templates that remix videos the user already has (inner#1819), in registry order. */
 const VIDEO_REMIX = ['reference-video-remix', 'seamless-bridge'];
 
+/** The fashion lookbook templates (inner#1821), in registry order. */
+const FASHION = ['fashion-lookbook', 'try-on-still', 'lookbook-multi-look'];
+
+/** The fashion templates a video panel lists. */
+const FASHION_VIDEOS = FASHION.filter((id) => id !== 'try-on-still');
+
 /** The cinematic short and trailer templates (inner#1820), in registry order. */
 const CINEMATIC = ['cinematic-15s-arc', 'landscape-3-shot', 'epic-fantasy-scifi', 'trailer-beat-3-shot', 'transformation-6-shot', 'long-form-acts'];
 
@@ -356,6 +362,7 @@ describe('generation templates', () => {
       ...COMICS_IMAGES,
       'product-hero-still',
       'dish-hero-still',
+      'try-on-still',
       'fisheye-clone-pov',
       'flash-photo-dump-grid',
       ...POSTERS,
@@ -371,6 +378,7 @@ describe('generation templates', () => {
       ...ECOMMERCE,
       ...PRODUCT_SHOWCASE_VIDEOS,
       ...FOOD_VIDEOS,
+      ...FASHION_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
       ...TALKING,
       'film-style-shot',
@@ -424,6 +432,14 @@ describe('generation templates', () => {
       'food-money-shot': t2v(8),
       'recipe-process-montage': t2v(15),
       'dish-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '4:5' } } },
+      'fashion-lookbook': t2v(15),
+      'try-on-still': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '3:4' } } },
+      'lookbook-multi-look': {
+        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        'look-1': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        'look-2': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        'look-3': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+      },
       'pet-selfie-vlog': t2v(10),
       'phone-vlog-realism': t2v(15),
       'retro-found-footage': t2v(10, '4:3'),
@@ -687,7 +703,7 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'food', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
@@ -698,6 +714,7 @@ describe('creative goals and triggers', () => {
       ...Object.fromEntries(PRODUCT_SHOWCASE.map((id) => [id, 'product-showcase'])),
       ...Object.fromEntries(TALKING.map((id) => [id, 'talking'])),
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
+      ...Object.fromEntries(FASHION.map((id) => [id, 'fashion'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
       ...Object.fromEntries(FILM_STYLES.map((id) => [id, 'film-styles'])),
@@ -752,6 +769,7 @@ describe('creative goals and triggers', () => {
       ['comics-storyboards', COMICS_IMAGES],
       ['product-showcase', ['product-hero-still']],
       ['food', ['dish-hero-still']],
+      ['fashion', ['try-on-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
       ['posters', POSTERS],
       ['film-styles', ['film-style-still']],
@@ -764,6 +782,7 @@ describe('creative goals and triggers', () => {
       ['ecommerce', ECOMMERCE],
       ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
       ['food', FOOD_VIDEOS],
+      ['fashion', FASHION_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
       ['talking', TALKING],
       ['film-styles', ['film-style-shot', 'era-walkthrough-montage']],

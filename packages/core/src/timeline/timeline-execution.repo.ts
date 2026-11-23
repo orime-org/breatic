@@ -12,7 +12,7 @@
 import { and, asc, desc, eq, inArray, isNull, lte, gt, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { PgColumn, PgUpdateSetSource } from "drizzle-orm/pg-core";
-import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
+import type { AccountKeyFailureReason, TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
 import { db, type DbTx } from "@core/db/client.js";
 import { timelineExecutions as t } from "@core/db/schema.js";
 import { getWorkerConfig } from "@core/config/worker.js";
@@ -24,7 +24,8 @@ export type TimelineExecutionEvent =
   | { type: "claim"; budgetMs?: number }
   | { type: "retry" }
   | { type: "success"; fence: string | null; resultSourceVersionId: string }
-  | { type: "failure"; fence: string | null; reason: string }
+  /** `upstream` and `keyReason` are what a failure of the payer's own key names (inner#1953). */
+  | { type: "failure"; fence: string | null; reason: string; upstream?: string | null; keyReason?: AccountKeyFailureReason | null }
   | { type: "cancel" }
   | { type: "cancelAck" }
   | { type: "deadline" }
@@ -41,6 +42,8 @@ export interface NewTimelineExecution {
   input: Record<string, unknown>;
   inputHash: string;
   deadlineAt: Date;
+  /** The account key row its language-model calls run on (inner#1953); null or absent on our keys. */
+  llmKeyId?: string | null;
 }
 
 /** The outcome of one {@link transition} call. */
@@ -81,6 +84,8 @@ const columns = {
   deadlineAt: iso(t.deadlineAt),
   resultSourceVersionId: t.resultSourceVersionId,
   failureReason: t.failureReason,
+  failureUpstream: t.failureUpstream,
+  failureKeyReason: t.failureKeyReason,
   billedCredits: t.billedCredits,
   billedAt: iso<string | null>(t.billedAt),
   slotWaitSince: iso<string | null>(t.slotWaitSince),
@@ -90,11 +95,12 @@ const columns = {
 };
 
 /** A selected row before its text columns are narrowed to the entity's unions. */
-type Row = Omit<TimelineExecution, "kind" | "engine" | "status" | "phase"> & {
+type Row = Omit<TimelineExecution, "kind" | "engine" | "status" | "phase" | "failureKeyReason"> & {
   kind: string;
   engine: string;
   status: string;
   phase: string | null;
+  failureKeyReason: string | null;
 };
 
 /**
@@ -110,6 +116,8 @@ function toEntity(row: Row): TimelineExecution {
     engine: row.engine as TimelineExecution["engine"],
     status: row.status as TimelineExecutionStatus,
     phase: row.phase as TimelineExecution["phase"],
+    // Written only from the reasons a failure carries, through the event's type.
+    failureKeyReason: row.failureKeyReason as AccountKeyFailureReason | null,
   };
 }
 
@@ -123,6 +131,18 @@ function toEntity(row: Row): TimelineExecution {
 export async function insert(input: NewTimelineExecution, tx?: DbTx): Promise<TimelineExecution | null> {
   const [row] = await (tx ?? db).insert(t).values(input).onConflictDoNothing().returning(columns);
   return row === undefined ? null : toEntity(row);
+}
+
+/**
+ * The account key row a live execution's model calls run on (inner#1953): its id only, never the key.
+ * @param id - The execution.
+ * @param tx - The transaction to read in.
+ * @returns The row's id, or null on our keys or when there is no such execution.
+ * @throws {Error} When the read fails.
+ */
+export async function llmKeyIdOf(id: string, tx?: DbTx): Promise<string | null> {
+  const [row] = await (tx ?? db).select({ llmKeyId: t.llmKeyId }).from(t).where(and(eq(t.id, id), isNull(t.deletedAt))).limit(1);
+  return row?.llmKeyId ?? null;
 }
 
 /**
@@ -226,6 +246,8 @@ function plan(event: TimelineExecutionEvent): { where: SQL | undefined; set: PgU
         set: {
           status: sql`CASE WHEN ${t.status} = 'cancelling' THEN 'cancelled' ELSE 'failed' END`,
           failureReason: sql`CASE WHEN ${t.status} = 'cancelling' THEN ${t.failureReason} ELSE ${event.reason} END`,
+          failureUpstream: sql`CASE WHEN ${t.status} = 'cancelling' THEN ${t.failureUpstream} ELSE ${event.upstream ?? null}::text END`,
+          failureKeyReason: sql`CASE WHEN ${t.status} = 'cancelling' THEN ${t.failureKeyReason} ELSE ${event.keyReason ?? null}::text END`,
           fence: null,
         },
       };

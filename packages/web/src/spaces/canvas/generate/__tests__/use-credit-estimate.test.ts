@@ -131,6 +131,6 @@ describe('useRunAnswer — one answer for both (#1521)', () => {
     } as unknown as ModelEntry;
     const { result } = renderHook(() => useRunAnswer(capped, { params: {}, prompt: 'abc' }, 1));
 
-    await waitFor(() => expect(result.current).toEqual({ estimate: { credits: 10, bound: 'exact' }, refusal: undefined }));
+    await waitFor(() => expect(result.current).toEqual({ estimate: { credits: 10, bound: 'exact' }, refusal: undefined, describes: false }));
   });
 });

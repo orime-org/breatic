@@ -52,7 +52,9 @@ export async function tryInOrder<T>(plan: RoutePlan, attempts: Attempts<T>): Pro
       } catch (error) {
         const failure = attempts.classify(error, candidate);
         if (failure === null) throw error;
-        let decision = decide(failure, attempts.phase, retries, attempts.maxRetries);
+        // Held to one upstream there is nowhere to move a request that never left, so it is retried, as a pinned call's is.
+        const unsentRetry = plan.heldToOne === true && failure.kind === "not_sent" && retries < attempts.maxRetries;
+        let decision = unsentRetry ? "retry" : decide(failure, attempts.phase, retries, attempts.maxRetries);
         if (decision === "stop") throw error;
         if (decision === "retry" && attempts.pause !== undefined) decision = await attempts.pause(error, retries + 1);
         if (decision === "retry") continue;

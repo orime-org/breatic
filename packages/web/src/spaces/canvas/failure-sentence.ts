@@ -4,6 +4,7 @@
 import { inputRefusalText, readTaskFailure, uploadableFormatList } from '@breatic/shared';
 
 import { getCachedUnderstandMaxBytes } from '@web/data/api/canvas';
+import { whoseKey, type KeyFailureWords } from '@web/features/byok/key-failure-words';
 import { formatBytes } from '@web/lib/format-bytes';
 import type { useTranslation } from '@web/i18n/use-translation';
 
@@ -59,12 +60,15 @@ export function refusalClause(about: {
  * @param stored - What the row holds — a code of ours, or a provider's words.
  * @param t - The translator.
  * @param medium - What the host node holds, for a refusal that names formats.
+ * @param keys - Whose key a failure of the payer's own key was to the viewer, and each upstream's name on screen, off
+ *   the Project's key plan; without it the sentence names no owner and the upstream by its id.
  * @returns The sentence, or the stored text when it is not ours to name.
  */
 export function failureSentence(
   stored: string | null | undefined,
   t: ReturnType<typeof useTranslation>,
   medium?: Medium,
+  keys?: KeyFailureWords,
 ): string {
   const held = readTaskFailure(stored ?? null);
   const reason = held.reason;
@@ -92,5 +96,11 @@ export function failureSentence(
     // The model a refusal or a missing setup is about, and the variables it needs.
     model: held.model ?? '',
     envVars: (held.envVars ?? []).join(', '),
+    // The upstream an account's own key failed on or whose key is gone, by its name on screen, whose key it was, and
+    // why (inner#1953). Always a value: ICU throws on a select with none, and the gone-key sentence selects on `none`
+    // to drop the upstream a run did not record.
+    upstream: held.upstream === undefined ? 'none' : (keys?.upstreamNames[held.upstream] ?? held.upstream),
+    whose: whoseKey(keys, held.keyOwner),
+    keyReason: held.keyReason ?? 'other',
   });
 }

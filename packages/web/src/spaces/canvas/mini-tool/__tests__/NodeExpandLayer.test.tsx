@@ -18,7 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { modelsApi } from '@web/data/api';
 import { cropCanvas, installLayout } from '@web/spaces/canvas/crop/__tests__/crop-harness';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { ExpandFrameOverlay } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { UNIT_FRAME } from '@web/stores/expand-draft';

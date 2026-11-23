@@ -7,9 +7,10 @@
  */
 
 import { describe, expect, it } from "vitest";
+import { ACCOUNT_KEY_FAILURE_REASONS } from "../../types/task-failure.js";
 
 import {
-  WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobCancelSchema, webAnimationJobReportSchema, webAnimationJobRequestSchema,
+  JOB_KEY_FAILURE_REASONS, WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobCancelSchema, webAnimationJobReportSchema, webAnimationJobRequestSchema,
 } from "../web-animation-job.js";
 
 const request = {
@@ -54,6 +55,28 @@ const legacyCall = {
   outcome: "completed" as const,
 };
 
+describe("webAnimationJobReportSchema: the upstream a failure names (inner#1953)", () => {
+  const failed = { state: "failed", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: "account_key_missing" };
+
+  it("carries the upstream a refused key read named, and reads a report without one", () => {
+    expect(webAnimationJobReportSchema.parse({ ...failed, failureUpstream: "openrouter" }).failureUpstream).toBe("openrouter");
+    expect(webAnimationJobReportSchema.parse(failed).failureUpstream).toBeUndefined();
+    expect(webAnimationJobReportSchema.parse({ ...failed, failureUpstream: null }).failureUpstream).toBeNull();
+  });
+
+  it("carries why the upstream refused the payer's own key, and refuses a reason it does not know", () => {
+    const keyFailed = { ...failed, failureReason: "account_key_failed", failureUpstream: "openrouter" };
+    expect(webAnimationJobReportSchema.parse({ ...keyFailed, failureKeyReason: "no_balance" }).failureKeyReason).toBe("no_balance");
+    expect(webAnimationJobReportSchema.parse(keyFailed).failureKeyReason).toBeUndefined();
+    expect(webAnimationJobReportSchema.safeParse({ ...keyFailed, failureKeyReason: "bored" }).success).toBe(false);
+  });
+
+  it("keeps a plan made on the payer's own keys marked as such, so the relay never reads it as ours", () => {
+    const plan = { ...request.messagesPlan, keysOwner: "account" };
+    expect(webAnimationJobRequestSchema.parse({ ...request, messagesPlan: plan }).messagesPlan).toMatchObject({ keysOwner: "account" });
+  });
+});
+
 describe("webAnimationJobRequestSchema", () => {
   it("accepts the request the worker builds", () => {
     expect(webAnimationJobRequestSchema.parse(request)).toEqual(request);
@@ -73,6 +96,13 @@ describe("webAnimationJobRequestSchema", () => {
       const { [field]: _dropped, ...rest } = request;
       expect(webAnimationJobRequestSchema.safeParse(rest).success, field).toBe(false);
     }
+  });
+
+  it("carries the keys of its model calls only sealed (inner#1953)", () => {
+    const sealed = "eyJhbGciOiJSU0EtT0FFUC0yNTYiLCJlbmMiOiJBMjU2R0NNIn0.a.b.c.d";
+    expect(webAnimationJobRequestSchema.parse({ ...request, sealedKeys: sealed }).sealedKeys).toBe(sealed);
+    expect(webAnimationJobRequestSchema.parse(request).sealedKeys).toBeUndefined();
+    expect(webAnimationJobRequestSchema.safeParse({ ...request, sealedKeys: "" }).success).toBe(false);
   });
 
   it("carries the plan of where its model calls go", () => {
@@ -153,5 +183,11 @@ describe("webAnimationJobReportSchema", () => {
 
   it("reads a call a Worker deployed before the plan reported", () => {
     expect(webAnimationJobReportSchema.parse({ ...report, calls: [legacyCall] }).calls).toEqual([legacyCall]);
+  });
+});
+
+describe("the key failure reasons a job report names (inner#1953)", () => {
+  it("are the main entry's own, written apart only to keep them out of the chunk the Timeline schemas share", () => {
+    expect(JOB_KEY_FAILURE_REASONS).toEqual(ACCOUNT_KEY_FAILURE_REASONS);
   });
 });

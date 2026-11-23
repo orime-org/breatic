@@ -10,7 +10,7 @@ import { parse } from 'yaml';
 
 import { GENERATION_NODE_BUCKETS } from '@breatic/shared';
 
-import { ModelIcon, MODEL_ICON_NAMES } from '@web/spaces/canvas/generate/ModelIcon';
+import { ModelIcon, MODEL_ICON_NAMES } from '@web/components/ModelIcon';
 
 describe('ModelIcon — per-vendor brand marks for the model picker', () => {
   it('renders a distinct mark for every generatable-model icon name', () => {

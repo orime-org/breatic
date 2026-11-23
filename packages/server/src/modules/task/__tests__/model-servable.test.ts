@@ -40,7 +40,7 @@ describe("assertServable", () => {
   it("lets a servable run through, asking on its route", () => {
     servability.mockReturnValue({ servable: true });
     expect(() => assertServable("kling-v3", "Kling V3", { mode: "cheapest" })).not.toThrow();
-    expect(servability).toHaveBeenCalledWith("kling-v3", { mode: "cheapest" });
+    expect(servability).toHaveBeenCalledWith("kling-v3", { mode: "cheapest" }, undefined);
   });
 
   it("refuses a model the deployment has no key for with 503, naming it and every missing variable", () => {
@@ -71,7 +71,7 @@ describe("assertLlmServable", () => {
       expect.objectContaining({ statusCode: 503, message: expect.stringContaining("DEEPSEEK_API_KEY, OPENROUTER_API_KEY") }),
     );
     // No route given leaves llmServability to its own default, the weights.
-    expect(llmServability).toHaveBeenCalledWith("deepseek/deepseek-v4.1-flash-1017", "call", undefined);
+    expect(llmServability).toHaveBeenCalledWith("deepseek/deepseek-v4.1-flash-1017", "call", undefined, undefined);
   });
 
   it("asks on the route a resumed turn stays on", () => {
@@ -79,7 +79,7 @@ describe("assertLlmServable", () => {
     expect(() => assertLlmServable("deepseek/deepseek-v4.1-flash-1017", "call", { mode: "upstream", upstream: "deepseek" })).toThrow(
       expect.objectContaining({ statusCode: 503, message: expect.stringContaining("DEEPSEEK_API_KEY") }),
     );
-    expect(llmServability).toHaveBeenCalledWith("deepseek/deepseek-v4.1-flash-1017", "call", { mode: "upstream", upstream: "deepseek" });
+    expect(llmServability).toHaveBeenCalledWith("deepseek/deepseek-v4.1-flash-1017", "call", { mode: "upstream", upstream: "deepseek" }, undefined);
   });
 
   it("lets a servable call through", () => {
@@ -94,7 +94,7 @@ describe("assertTakesInput (#1521)", () => {
   it("lets through a run some upstream here takes, asking with the run and its route", async () => {
     inputRefusalFor.mockResolvedValueOnce(null);
     await expect(assertTakesInput("gemini-3.8-flash-text-to-speech", "Gemini 3.8 Flash TTS", input, { mode: "cheapest" }, { userId: "u" })).resolves.toBeUndefined();
-    expect(inputRefusalFor).toHaveBeenLastCalledWith("gemini-3.8-flash-text-to-speech", input, { mode: "cheapest" });
+    expect(inputRefusalFor).toHaveBeenLastCalledWith("gemini-3.8-flash-text-to-speech", input, { mode: "cheapest" }, undefined);
   });
 
   it("refuses a run none takes as a validation error naming the limit, and logs the refusal for the deployment", async () => {

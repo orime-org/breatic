@@ -356,16 +356,6 @@ export function featureDisabled(): Response {
 }
 
 /**
- * The Worker's answer to a submit whose plan names no upstream with a key there.
- * @param model - The plan's model.
- * @param envVars - The Worker variables it needs.
- * @returns The response.
- */
-export function notConfigured(model: string, envVars: string[]): Response {
-  return Response.json({ error: "not_configured", model, envVars }, { status: 501 });
-}
-
-/**
  * Stand in for the ingest Worker on `env.INGEST_BASE_URL`; any other address is a test failure.
  * @param fx - The execution whose job the answers describe.
  * @returns The stand-in, whose answers a case replaces.
