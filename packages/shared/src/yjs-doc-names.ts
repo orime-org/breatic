@@ -87,6 +87,17 @@ export function threeDSpaceDocName(projectId: string, spaceId: string): string {
 }
 
 /**
+ * Build the Motion Space content document name; it holds the Space's annotation threads and its executions' change
+ * version.
+ * @param projectId - Project UUID.
+ * @param spaceId - Space UUID.
+ * @returns `"project-{projectId}/web_animation-{spaceId}"`
+ */
+export function webAnimationSpaceDocName(projectId: string, spaceId: string): string {
+  return `project-${projectId}/web_animation-${spaceId}`;
+}
+
+/**
  * Build a Space's CONTENT doc name from its type — the single home for
  * "space type → content doc name".
  *
@@ -115,6 +126,8 @@ export function spaceContentDocName(
       return timelineSpaceDocName(projectId, spaceId);
     case "3d":
       return threeDSpaceDocName(projectId, spaceId);
+    case "web_animation":
+      return webAnimationSpaceDocName(projectId, spaceId);
   }
 }
 
@@ -141,7 +154,7 @@ export function spaceContentDocName(
 export function parseDocName(docName: string): ParsedDocName | null {
   // Anchor on the project- prefix and require exactly one path segment.
   const match = docName.match(
-    /^project-([^/]+)\/(meta|canvas|document|timeline|3d)(?:-([^/]+))?$/,
+    /^project-([^/]+)\/(meta|canvas|document|timeline|3d|web_animation)(?:-([^/]+))?$/,
   );
   if (!match) return null;
 
@@ -164,7 +177,7 @@ export function parseDocName(docName: string): ParsedDocName | null {
 
 /**
  * A POSIX regular expression matching every Space content doc name of one
- * project — `project-{pid}/{canvas|document|timeline|3d}-{spaceId}`, the shapes
+ * project — `project-{pid}/{canvas|document|timeline|3d|web_animation}-{spaceId}`, the shapes
  * {@link spaceContentDocName} builds — and nothing else under it: not the meta
  * doc, not the obsolete `project-{pid}/canvas` or `node/{id}` paths.
  *
@@ -176,7 +189,7 @@ export function parseDocName(docName: string): ParsedDocName | null {
  * @returns The pattern.
  */
 export function spaceContentRowPattern(projectId: string): string {
-  return `^project-${projectId}/(canvas|document|timeline|3d)-[^/]+$`;
+  return `^project-${projectId}/(canvas|document|timeline|3d|web_animation)-[^/]+$`;
 }
 
 /**

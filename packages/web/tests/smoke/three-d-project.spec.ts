@@ -118,7 +118,7 @@ test('Studio creation with 3D Space opens the first Project directly as a scene'
     await page.getByTestId('container-toolbar').getByRole('button', { name: 'New project', exact: true }).click();
     const dialog = page.getByTestId('new-project-dialog');
     expect(await dialog.getByRole('radio').evaluateAll((cards) => cards.map((card) => card.getAttribute('data-testid')))).toEqual([
-      'new-project-type-canvas', 'new-project-type-document', 'new-project-type-3d', 'new-project-type-timeline',
+      'new-project-type-canvas', 'new-project-type-document', 'new-project-type-3d', 'new-project-type-timeline', 'new-project-type-web_animation',
     ]);
     await expect(dialog.getByTestId('new-project-type-3d').getByText('3D', { exact: true })).toBeVisible();
     await dialog.locator('#new-project-name').fill(`Smoke run 3D first ${crypto.randomUUID()}`);

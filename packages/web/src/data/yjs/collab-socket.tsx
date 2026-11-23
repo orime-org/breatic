@@ -9,7 +9,7 @@ import * as React from 'react';
 import type * as Y from 'yjs';
 
 import {
-  COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, DOC_SIZE_ACK_PARAM, isReauthCloseReason, parseDocName, t,
+  COLLAB_DOCUMENT_TOO_LARGE_REASON, COLLAB_REAUTH_REASONS, confirmsSync, DOC_SIZE_ACK_PARAM, isReauthCloseReason, parseDocName, t,
   type DocSizeSeen,
 } from '@breatic/shared';
 import { ChunkingWebSocket } from '@web/data/yjs/chunking-websocket';
@@ -515,7 +515,7 @@ export function acquireDocProvider(
     sync: null,
   };
   const parsed = parseDocName(name);
-  if (parsed?.kind === 'canvas' || parsed?.kind === 'document') {
+  if (parsed !== null && confirmsSync(parsed.kind)) {
     entry.sync = bindDocSync(name, doc, provider, () => notifyProjectSync(parsed.projectId));
   }
   if (isSpaceContentDoc(name)) {

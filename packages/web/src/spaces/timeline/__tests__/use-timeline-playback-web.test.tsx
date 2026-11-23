@@ -76,7 +76,6 @@ function documentOf(clips: Array<TimelineVideoClip | TimelineWebAnimationClip>):
     tracks: Object.fromEntries(tracks.map((track) => [track.id, track])),
     clips: Object.fromEntries(clips.map((clip) => [clip.id, clip])),
     sources: { [VIDEO_SOURCE.id]: VIDEO_SOURCE },
-    operationReceipts: {},
   };
 }
 
@@ -227,6 +226,8 @@ interface HarnessProps {
   initialFrame: number;
   /** Hand the hook a new layer array on every frame, as an allocation on every frame of play does. */
   fresh?: boolean;
+  /** Whether the Timeline limits, and so the player load timeout, are still on their way. */
+  limitsPending?: boolean;
 }
 
 /**
@@ -294,7 +295,7 @@ function renderPlayback(props: HarnessProps): RenderHookResult<PlaybackResult, H
     const videoLayers = React.useMemo(() => videoLayersAt(input.document, frame), [videoSignature]);
     const playbackInput: PlaybackInput = {
       document: input.document, readyClipIds, frame, onFrame, videoLayers, createMedia,
-      enabled: true, webLayers, webLoadTimeoutMs: TIMEOUT_MS,
+      enabled: true, webLayers, webLoadTimeoutMs: input.limitsPending === true ? undefined : TIMEOUT_MS,
     };
     return { ...useTimelinePlayback(playbackInput), frame };
   }, { initialProps: props });
@@ -422,6 +423,21 @@ describe('failure and retry', () => {
     const fixture = playerFixture();
     const clip = web(1, 0, 48);
     const hook = renderPlayback({ document: documentOf([clip]), layersAt: single(clip, fixture), videos: {}, initialFrame: 0 });
+    act(() => { vi.advanceTimersByTime(TIMEOUT_MS - 1); });
+    expect(hook.result.current.webStates.get(`${SRC}:0`)).toBe('loading');
+    act(() => { vi.advanceTimersByTime(1); });
+    expect(hook.result.current.webStates.get(`${SRC}:0`)).toBe('failed');
+  });
+
+  it('fails an instance that sends no bridge-ready within the load timeout that arrives after it attached', () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const fixture = playerFixture();
+    const clip = web(1, 0, 48);
+    const props = { document: documentOf([clip]), layersAt: single(clip, fixture), videos: {}, initialFrame: 0 };
+    const hook = renderPlayback({ ...props, limitsPending: true });
+    act(() => { vi.advanceTimersByTime(TIMEOUT_MS * 2); });
+    expect(hook.result.current.webStates.get(`${SRC}:0`)).toBe('loading');
+    hook.rerender({ ...props, limitsPending: false });
     act(() => { vi.advanceTimersByTime(TIMEOUT_MS - 1); });
     expect(hook.result.current.webStates.get(`${SRC}:0`)).toBe('loading');
     act(() => { vi.advanceTimersByTime(1); });

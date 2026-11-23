@@ -96,6 +96,18 @@ export function documentCommentThreads(doc: Y.Doc): Y.Map<unknown> {
   return doc.getMap(DOCUMENT_COMMENTS_KEY);
 }
 
+/** The root of a Motion Space document that holds its annotation threads (#1490). */
+const WEB_ANIMATION_ANNOTATIONS_KEY = "webAnimationAnnotationThreads";
+
+/**
+ * Where a Motion Space keeps its annotation threads, in the same thread shape as Document comments.
+ * @param doc - The Motion Space's Y.Doc.
+ * @returns The threads map, created on first access.
+ */
+export function webAnimationAnnotationThreads(doc: Y.Doc): Y.Map<unknown> {
+  return doc.getMap(WEB_ANIMATION_ANNOTATIONS_KEY);
+}
+
 /**
  * Build the one block a fresh document Space starts with.
  *
@@ -167,6 +179,7 @@ export function encodeInitialSpaceContent(kind: SpaceType, timelineSettings?: Ti
         initializeSceneDocument(doc);
         return Y.encodeStateAsUpdate(doc);
       case "canvas":
+      case "web_animation":
         return Y.encodeStateAsUpdate(doc);
     }
   } finally {

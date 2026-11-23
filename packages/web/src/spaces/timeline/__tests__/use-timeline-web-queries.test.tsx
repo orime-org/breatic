@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The reads behind the execution list, web-clip resolution and preview (inner#1711 design §7.3 "address", §9 read
- * table).
+ * The reads behind web-clip resolution and preview (inner#1711 design §7.3 "address", §9 read table).
  *
- * The execution list and the web-source resolution live under `spaceTasksQueryKey(projectId, spaceId)`, so a new
- * change version in the Timeline's document (`SpaceTasksWatcher`) reads both again; neither reads on a timer. The
- * resolution asks only for the ids the document's web copies reference and refetches when that set changes. A preview
- * address is fetched once per mount, outside that key, and never on window focus.
+ * The web-source resolution lives under `spaceTasksQueryKey(projectId, spaceId)`, so a change version collab writes
+ * into the Timeline Space's document (`SpaceTasksWatcher`) reads it again. The resolution asks only for the ids the
+ * document's web copies reference, refetches when that set changes, and never polls, even while an execution it
+ * resolved is unfinished. A preview address is fetched once per mount, outside that key, and never on window focus.
  */
 
 import * as React from 'react';
@@ -16,11 +15,12 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, focusManager } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import type { TimelineClip, TimelineDocumentV1, TimelineExecutionRow } from '@breatic/shared';
+import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName, type TimelineClip, type TimelineDocumentV1 } from '@breatic/shared';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 import { timelineApi } from '@web/data/api/timeline';
+import { getDoc } from '@web/data/yjs/manager';
+import { SpaceTasksWatcher } from '@web/pages/project/SpaceTasksWatcher';
 import type * as TimelineApiModule from '@web/data/api/timeline';
-import { timelineExecutionsQueryKey, useTimelineExecutions } from '@web/spaces/timeline/use-timeline-executions';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
 import { useWebAnimationPreviewUrl } from '@web/spaces/timeline/use-web-animation-preview-url';
 import { MAIN, V2, V3, cid, clip, timeline } from '@web/data/yjs/__tests__/timeline-document-fixtures';
@@ -32,24 +32,14 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
   return {
     ...actual,
-    timelineApi: { ...actual.timelineApi, listExecutions: vi.fn(), resolveWebSources: vi.fn(), previewUrl: vi.fn() },
+    timelineApi: { ...actual.timelineApi, resolveWebSources: vi.fn(), previewUrl: vi.fn() },
   };
 });
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
 const SPACE = '70000000-0000-4000-8000-000000000001';
-/** Longer than any interval the old polling used. */
-const WAIT_MS = 60_000;
+const REFRESH_MS = 10_000;
 const clients: QueryClient[] = [];
-
-/** An execution row of this Space, still running. */
-const EXECUTION_ROW: TimelineExecutionRow = {
-  id: EXEC_RUNNING, projectId: PROJECT, spaceId: SPACE, actorUserId: 'user-one', kind: 'web_animation_create',
-  actionId: 'a0000000-0000-4000-8000-000000000001', input: {}, inputHash: 'sha256:abc', engine: 'deepseek', status: 'running',
-  phase: null, steps: [], attempt: 1, fence: null, deadlineAt: new Date().toISOString(), resultSourceVersionId: null,
-  failureReason: null, failureUpstream: null, failureKeyReason: null, billedCredits: null, billedAt: null, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-  usageCredits: 0,
-};
 
 /**
  * A fresh cache and a wrapper providing it.
@@ -59,7 +49,13 @@ const EXECUTION_ROW: TimelineExecutionRow = {
 function provider(): { client: QueryClient; wrapper: (props: { children: React.ReactNode }) => React.JSX.Element } {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   clients.push(client);
-  return { client, wrapper: ({ children }) => <QueryClientProvider client={client}>{children}</QueryClientProvider> };
+  return {
+    client,
+    wrapper: ({ children }) => <QueryClientProvider client={client}>
+      <SpaceTasksWatcher projectId={PROJECT} spaceId={SPACE} name={timelineSpaceDocName(PROJECT, SPACE)} />
+      {children}
+    </QueryClientProvider>,
+  };
 }
 
 /**
@@ -73,7 +69,6 @@ function docWith(clips: TimelineClip[]): TimelineDocumentV1 {
 }
 
 beforeEach(() => {
-  vi.mocked(timelineApi.listExecutions).mockReset().mockResolvedValue([]);
   vi.mocked(timelineApi.resolveWebSources).mockReset().mockResolvedValue(RESOLUTION);
   vi.mocked(timelineApi.previewUrl).mockReset().mockResolvedValue({ url: 'https://preview.example/a/index.html' });
 });
@@ -82,30 +77,6 @@ afterEach(() => {
   vi.useRealTimers();
   for (const client of clients.splice(0)) client.clear();
   focusManager.setFocused(undefined);
-});
-
-describe('useTimelineExecutions', () => {
-  it('keeps the list under the Space-task key, so a change version reads it again', async () => {
-    expect(timelineExecutionsQueryKey(PROJECT, SPACE).slice(0, 3)).toEqual([...spaceTasksQueryKey(PROJECT, SPACE)]);
-    const { client, wrapper } = provider();
-    const hook = renderHook(() => useTimelineExecutions(PROJECT, SPACE), { wrapper });
-    await waitFor(() => expect(hook.result.current.data).toEqual([]));
-    expect(timelineApi.listExecutions).toHaveBeenCalledWith(PROJECT, SPACE, expect.any(AbortSignal));
-    await act(async () => { await client.invalidateQueries({ queryKey: spaceTasksQueryKey(PROJECT, SPACE) }); });
-    expect(timelineApi.listExecutions).toHaveBeenCalledTimes(2);
-  });
-
-  it('reads nothing on a timer, while a run is open or past its deadline', async () => {
-    vi.useFakeTimers({ shouldAdvanceTime: true });
-    vi.mocked(timelineApi.listExecutions).mockResolvedValue([
-      { ...EXECUTION_ROW, status: 'running', deadlineAt: new Date(Date.now() + 1000).toISOString() },
-    ]);
-    const { wrapper } = provider();
-    renderHook(() => useTimelineExecutions(PROJECT, SPACE), { wrapper });
-    await waitFor(() => expect(timelineApi.listExecutions).toHaveBeenCalledTimes(1));
-    await act(async () => { await vi.advanceTimersByTimeAsync(WAIT_MS); });
-    expect(timelineApi.listExecutions).toHaveBeenCalledTimes(1);
-  });
 });
 
 describe('useTimelineWebResolution', () => {
@@ -141,22 +112,24 @@ describe('useTimelineWebResolution', () => {
     expect(vi.mocked(timelineApi.resolveWebSources).mock.calls[1]?.[1]).toEqual({ sourceIds: [SRC_A, SRC_B].sort(), executionIds: [] });
   });
 
-  it('is read again on a change version', async () => {
-    const { client, wrapper } = provider();
+  it('is read again when the Timeline Space\'s document records a change', async () => {
+    const { wrapper } = provider();
     renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10)])), { wrapper });
     await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1));
-    await act(async () => { await client.invalidateQueries({ queryKey: spaceTasksQueryKey(PROJECT, SPACE) }); });
-    expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(2);
+    act(() => { getDoc(timelineSpaceDocName(PROJECT, SPACE)).getMap(SPACE_TASKS_KEY).set(SPACE_TASKS_VERSION, `${Date.now()}-1`); });
+    await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(2));
   });
 
-  it('reads nothing on a timer while a resolved execution is unfinished', async () => {
+  it('waits for the document, not a timer, while a resolved execution is unfinished', async () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
     vi.mocked(timelineApi.resolveWebSources).mockResolvedValue({ sources: {}, executions: { [EXEC_RUNNING]: RESOLUTION.executions[EXEC_RUNNING]! } });
     const { wrapper } = provider();
     renderHook(() => useTimelineWebResolution(PROJECT, SPACE, docWith([webClip(cid(1), V2, 0, 10, waitingFor(EXEC_RUNNING))])), { wrapper });
     await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1));
-    await act(async () => { await vi.advanceTimersByTimeAsync(WAIT_MS); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_MS * 3); });
     expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(1);
+    act(() => { getDoc(timelineSpaceDocName(PROJECT, SPACE)).getMap(SPACE_TASKS_KEY).set(SPACE_TASKS_VERSION, `${Date.now()}-2`); });
+    await waitFor(() => expect(timelineApi.resolveWebSources).toHaveBeenCalledTimes(2));
   });
 });
 

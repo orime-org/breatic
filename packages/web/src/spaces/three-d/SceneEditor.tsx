@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 
 import {
@@ -10,7 +9,8 @@ import {
   SCENE_POSE_MAX_KEYS, type SceneLightType, type SceneObject, type ViewfinderRatio,
 } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
-import { getSceneControls, resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
+import { resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
+import { useSceneControls } from '@web/data/api/use-scene-controls';
 import { docName } from '@web/data/yjs/manager';
 import { isOlderSceneFormat, isSceneSizeRefusal, type SceneEnvironmentValues } from '@web/data/yjs/scene-document';
 import type { ScenePeer, SceneSession, SceneSessionSnapshot } from '@web/data/yjs/scene-session';
@@ -106,8 +106,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const lockText = t('spaces.threeD.lock');
   const unlockText = t('spaces.threeD.unlock');
   const pictureAccess = React.useMemo(() => pageLookPictureAccess(projectId), [projectId]);
-  const controls = useQuery({ queryKey: ['scene-controls', projectId, userId],
-    queryFn: ({ signal }) => getSceneControls(projectId, signal) });
+  const controls = useSceneControls(projectId, userId);
   const [mode, setMode] = React.useState<SceneTransformMode>('translate');
   const [focusRevision, setFocusRevision] = React.useState(0);
   const [modelRetryRevision, setModelRetryRevision] = React.useState(0);

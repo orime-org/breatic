@@ -1,12 +1,29 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineExecution, TimelineExecutionRow, TimelineWebResolution } from '@breatic/shared';
-import type { TimelineExecutionCreateInput } from '@breatic/shared/space-content';
+import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineWebResolution } from '@breatic/shared';
+import type { z } from 'zod';
+import type {
+  WebAnimationExecutionRequestSchema, WebAnimationListGroup, WebAnimationListPage, WebAnimationListScope, WebAnimationRowView,
+} from '@breatic/shared/space-content';
 import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 
-/** What the creation dialog submits: its frozen input, keyed by the Project, Space and action. */
-export type TimelineExecutionAcceptBody = TimelineExecutionCreateInput & { projectId: string };
+/** What a Motion Space submits: one kinded request, keyed by the Project. */
+export type WebAnimationAcceptBody = z.input<typeof WebAnimationExecutionRequestSchema> & { projectId: string };
+
+/** A request as a Motion Space builds it, before the Project, Space and action are added. */
+export type WebAnimationAcceptRequest = WebAnimationAcceptBody extends infer Body
+  ? Body extends unknown ? Omit<Body, 'projectId' | 'spaceId' | 'actionId'> : never
+  : never;
+
+/** Which Motion list to read: this Space's own, or the group made in a Timeline before Motion existed. */
+export interface SpaceExecutionQuery {
+  projectId: string;
+  spaceId: string;
+  scope: WebAnimationListScope;
+  group: WebAnimationListGroup;
+  cursor?: string;
+}
 
 export const timelineApi = {
   /**
@@ -42,35 +59,58 @@ export const timelineApi = {
     return apiGet(`/projects/${projectId}/timeline-limits`, { signal });
   },
   /**
-   * List one Space's executions in this Project, newest first.
-   * @param projectId - The Project.
-   * @param spaceId - The Timeline Space.
+   * One page of a Motion Space's list (#1490 design §4.4).
+   * @param query - Which list, group and page.
    * @param signal - Cancellation for this read.
-   * @returns The rows with their usage.
+   * @returns The page, with the group totals on a first page.
    * @throws {ApiException} When the request fails.
    */
-  listExecutions(projectId: string, spaceId: string, signal?: AbortSignal): Promise<TimelineExecutionRow[]> {
-    return apiGet('/timeline/executions', { params: { projectId, spaceId }, signal });
+  listSpaceExecutions(query: SpaceExecutionQuery, signal?: AbortSignal): Promise<WebAnimationListPage> {
+    return apiGet('/timeline/space-executions', { params: query, signal });
   },
   /**
-   * Accept a creation once; a resend with the same key answers the same row.
-   * @param body - The frozen input.
+   * One page of the Project's web-animation results, for the Timeline's picker.
+   * @param projectId - The Project.
+   * @param cursor - The previous page's cursor.
+   * @param signal - Cancellation for this read.
+   * @returns The page.
+   * @throws {ApiException} When the request fails.
+   */
+  listResults(projectId: string, cursor?: string, signal?: AbortSignal): Promise<WebAnimationListPage> {
+    return apiGet('/timeline/results', { params: { projectId, cursor }, signal });
+  },
+  /**
+   * One execution this Project holds, as the Motion Space asking sees it.
+   * @param projectId - The Project.
+   * @param spaceId - The Motion Space.
+   * @param executionId - The execution.
+   * @param signal - Cancellation for this read.
+   * @returns Its row view.
+   * @throws {ApiException} When it is not found or the request fails.
+   */
+  getExecution(projectId: string, spaceId: string, executionId: string, signal?: AbortSignal): Promise<WebAnimationRowView> {
+    return apiGet(`/timeline/executions/${executionId}`, { params: { projectId, spaceId }, signal });
+  },
+  /**
+   * Accept a create, modify or export once; a resend with the same key answers the same row.
+   * @param body - The request.
    * @param key - The press's `Idempotency-Key`.
-   * @returns The accepted execution.
+   * @returns The row.
    * @throws {ApiException} When it is refused or the request fails.
    */
-  acceptExecution(body: TimelineExecutionAcceptBody, key: string): Promise<TimelineExecution> {
+  acceptExecution(body: WebAnimationAcceptBody, key: string): Promise<WebAnimationRowView> {
     return apiPost('/timeline/executions', body, runOnceRequest(key));
   },
   /**
    * Ask an execution to stop.
    * @param executionId - The execution.
+   * @param projectId - The Project asking.
    * @param key - The press's `Idempotency-Key`.
    * @returns The execution after the request.
    * @throws {ApiException} When it is refused or the request fails.
    */
-  cancelExecution(executionId: string, key: string): Promise<TimelineExecution> {
-    return apiPost(`/timeline/executions/${executionId}/cancel`, undefined, runOnceRequest(key));
+  cancelExecution(executionId: string, projectId: string, key: string): Promise<WebAnimationRowView> {
+    return apiPost(`/timeline/executions/${executionId}/cancel`, { projectId }, runOnceRequest(key));
   },
   /**
    * Resolve the source versions and executions a document's web copies reference.

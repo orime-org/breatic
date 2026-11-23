@@ -2,18 +2,28 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * Web animation in a Timeline (inner#1711): a real execution, its reuse as independent copies, the preview's seek,
- * play and click behaviour, trim to the source end, a split off the second boundary, a portrait source on a landscape
- * Timeline, the video held while a copy loads, play entering, replaying into and revealing a copy prepared by the
- * preview's instance pool, cancel and Run again, what a Viewer sees, an Editor following another member's run and
- * undoing only their own edit, and a Project duplicated mid-run previewing the result. Each case spends one real
- * model run, so every check that needs a finished result shares the one run its case makes.
+ * Web animation in a Timeline (inner#1711, #1490): a real execution made in a Motion Space, its reuse as independent
+ * copies placed through Add web animation, the preview's seek, play and click behaviour, trim to the source end, a split
+ * off the second boundary, a portrait source on a landscape Timeline, the video held while a copy loads, play entering,
+ * replaying into and revealing a copy prepared by the preview's instance pool, a cancelled run and its Retry, what a
+ * Viewer sees, an Editor following another member's run and undoing only their own edit, and a Project duplicated
+ * mid-run previewing the result. Each case spends one real model run, so every check that needs a finished result
+ * shares the one run its case makes.
  */
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { expect, type Locator, type Page } from 'playwright/test';
 
+import type * as YjsManagerModule from '@web/data/yjs/manager';
+
+import { dataOf } from '../helpers/api';
+import { YJS_MANAGER, liveModuleUrl } from '../helpers/live-module';
+import { MOTION_RUN_MS, acceptedRowId, executeInMotion, makeInMotion, motionDetails, motionListTab, placeCopy, waitMotionFinished } from '../helpers/motion';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
+import { runRepoScript } from '../helpers/repo-script';
 import { test } from '../helpers/slot';
-import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { createSpace, deleteSpace, openSpaceById, visibleSpace } from '../helpers/space';
 import {
   addProjectTimelineVideo, expectTimelineStart, moveTimelineClip, openTimeline, selectTimelineClip, timelineClipIds,
   timelineVideoOf, uploadTimelineVideo, watchTimelineErrors, withTimelinePeer,
@@ -21,85 +31,12 @@ import {
 
 /** The shortest prompt whose picture visibly changes over time, so two moments of it look different. */
 const PROMPT = 'A red circle moves from left to right across a white background.';
-/** The dialog's default length, which is also the cheapest one the cases need. */
+/** The dialog's default length: the copies below are laid out over four-second results, which the checks need. */
 const SECONDS = 4;
 /** One run of the model, from Execute to a finished row; the design's cap is two hours. */
-const RUN_MS = 240_000;
-
-/**
- * Read a row's execution id from its test id.
- * @throws {Error} When the row has no test id.
- */
-async function executionIdOf(row: Locator): Promise<string> {
-  const testId = await row.getAttribute('data-testid');
-  if (testId === null) throw new Error('The execution row has no test id');
-  return testId.replace('timeline-execution-', '');
-}
-
-/**
- * Open the creation dialog, check its defaults, write the prompt and press Execute.
- * @returns The new execution's id, read from the row the list opens on.
- * @throws {Error} When the dialog or the accepted row does not appear as designed.
- */
-async function executeWebAnimation(page: Page, addAtPlayhead: boolean, aspect: '16:9' | '9:16' = '16:9'): Promise<string> {
-  const outlet = visibleSpace(page);
-  await outlet.getByTestId('timeline-create-web-animation').click();
-  const dialog = page.getByRole('dialog', { name: 'Create web animation', exact: true });
-  await expect(dialog).toBeVisible();
-  await expect(dialog.getByTestId('web-animation-duration')).toHaveValue(String(SECONDS));
-  await expect(dialog.getByTestId('web-animation-engine')).toHaveText('DeepSeek');
-  const aspectField = dialog.getByTestId('web-animation-aspect');
-  await expect(aspectField).toHaveText('16:9');
-  if (aspect !== '16:9') {
-    await aspectField.click();
-    await page.getByRole('option', { name: aspect, exact: true }).click();
-    await expect(aspectField).toHaveText(aspect);
-  }
-  const add = dialog.getByTestId('web-animation-add-at-playhead');
-  await expect(add).toHaveAttribute('aria-checked', 'true');
-  if (!addAtPlayhead) {
-    await add.click();
-    await expect(add).toHaveAttribute('aria-checked', 'false');
-  }
-  await dialog.getByTestId('web-animation-prompt').fill(PROMPT);
-  await dialog.getByTestId('web-animation-execute').click();
-  await expect(dialog).toHaveCount(0);
-  // The list opens on In progress with the accepted row expanded.
-  const list = outlet.getByTestId('timeline-executions');
-  await expect(list.getByRole('tab', { name: /^In progress/ })).toHaveAttribute('aria-selected', 'true');
-  const row = list.locator('li[data-status][data-testid^="timeline-execution-"]');
-  await expect(row).toHaveCount(1);
-  const id = await executionIdOf(row);
-  await expect(list.getByTestId(`timeline-execution-detail-${id}`)).toBeVisible();
-  await expect(row).toContainText(PROMPT);
-  return id;
-}
-
-/**
- * Close the execution list so the side panel shows the selected clip's properties again.
- * @throws {Error} When the list stays open.
- */
-async function closeExecutions(page: Page): Promise<void> {
-  const outlet = visibleSpace(page);
-  if (await outlet.getByTestId('timeline-executions').count() === 0) return;
-  await outlet.getByTestId('timeline-close-executions').click();
-  await expect(outlet.getByTestId('timeline-executions')).toHaveCount(0);
-}
-
-/**
- * Open the execution list on its Completed view.
- * @returns The list.
- * @throws {Error} When the list or the view does not open.
- */
-async function openCompleted(page: Page): Promise<Locator> {
-  const outlet = visibleSpace(page);
-  if (await outlet.getByTestId('timeline-executions').count() === 0) await outlet.getByTestId('timeline-open-executions').click();
-  const list = outlet.getByTestId('timeline-executions');
-  // Radix Tabs switch on mousedown, which a real click sends.
-  await list.getByRole('tab', { name: /^Completed/ }).click();
-  await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveAttribute('aria-selected', 'true');
-  return list;
-}
+const RUN_MS = MOTION_RUN_MS;
+/** The longest collab holds a changed document before storing it; a Project duplicate copies stored documents. */
+const STORE_WITHIN_MS = Number(/^max_debounce:\s*(\d+)/m.exec(readFileSync(resolve(__dirname, '../../../../config/collab.yaml'), 'utf8'))?.[1] ?? Number.NaN);
 
 /**
  * The preview's seek slider. With the list open, an expanded result has a slider of the same name in the side
@@ -294,21 +231,13 @@ function expectSteadyClock(samples: readonly PlaySample[], label: string): void 
 }
 
 /**
- * Seek to a frame and add the finished result there as a new copy from the Completed view.
+ * Seek to a frame and place the finished result there as a new copy.
  * @returns The new copy's clip id.
  * @throws {Error} When the copy is not added at that frame.
  */
 async function addCopyAt(page: Page, executionId: string, at: number, frames: number): Promise<string> {
   await seekPreview(page, at);
-  const list = await openCompleted(page);
-  const before = await timelineClipIds(page);
-  // A reopened Space shows the row collapsed.
-  await expect(list.getByTestId(`timeline-execution-${executionId}`)).toBeVisible();
-  if (!await list.getByTestId(`timeline-execution-detail-${executionId}`).isVisible()) await list.getByTestId(`timeline-execution-toggle-${executionId}`).click();
-  await list.getByTestId(`timeline-execution-add-${executionId}`).click();
-  await expect.poll(async () => (await timelineClipIds(page)).length).toBe(before.length + 1);
-  const [added] = (await timelineClipIds(page)).filter((id) => !before.includes(id));
-  await closeExecutions(page);
+  const added = await placeCopy(page, executionId, PROMPT);
   await expectTimelineStart(page, added, at, frames);
   await expect(visibleSpace(page).getByTestId(`timeline-clip-${added}`)).toHaveAttribute('data-state', 'ready');
   return added;
@@ -316,7 +245,7 @@ async function addCopyAt(page: Page, executionId: string, at: number, frames: nu
 
 test.use({ viewport: { width: 1680, height: 1100 } });
 
-test('one real web animation is created, reused as three copies over a video, seeks, plays across copies and is read by a Viewer @needs-model @needs-ingest @needs-storage', async ({ page, browser }) => {
+test('one real web animation made in Motion is reused as three copies over a video, seeks, plays across copies and is read by a Viewer @needs-model @needs-ingest @needs-storage', async ({ page, browser }) => {
   // Upload (up to 2 min), one real model run (up to RUN_MS) and the Viewer pass; the project's 180 s is too short.
   test.setTimeout(600_000);
   const errors = watchTimelineErrors(page);
@@ -324,6 +253,7 @@ test('one real web animation is created, reused as three copies over a video, se
   const projectId = smokeProjectId();
   const projectUrl = page.url();
   const spaceId = await createSpace(page, 'timeline', `Timeline web animation ${crypto.randomUUID()}`);
+  let motionId = '';
   try {
     const outlet = visibleSpace(page);
     const preview = outlet.getByTestId('timeline-preview');
@@ -337,33 +267,37 @@ test('one real web animation is created, reused as three copies over a video, se
 
     let executionId = '';
     let first = '';
-    await test.step('create: Execute runs under In progress, lands a placeholder and finishes as a ready copy', async () => {
+    await test.step('create: Execute in Motion runs under In progress, Add web animation offers it only once it finished, and the copy is ready', async () => {
       await expect(previewSlider(page)).toHaveAttribute('aria-valuenow', '0');
-      executionId = await executeWebAnimation(page, true);
-      const list = outlet.getByTestId('timeline-executions');
-      await expect(list.getByTestId(`timeline-execution-${executionId}`)).toBeVisible();
-      // The placeholder is placed at the playhead on a new track above the video.
-      const placeholder = outlet.locator('[data-testid^="timeline-clip-"][data-kind="web-animation"]');
-      await expect(placeholder).toHaveCount(1);
-      first = (await placeholder.getAttribute('data-clip-id')) ?? '';
-      expect(first).not.toBe('');
-      await expect(placeholder).not.toHaveAttribute('data-track-id', 'visual-1');
-      await expect(placeholder).toHaveAttribute('data-state', 'pending', { timeout: 30_000 });
-      await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*1/, { timeout: RUN_MS });
-      await openCompleted(page);
-      const row = list.getByTestId(`timeline-execution-${executionId}`);
-      await expect(row).toHaveAttribute('data-status', 'succeeded');
-      await expect(row).toContainText('Succeeded');
-      const detail = list.getByTestId(`timeline-execution-detail-${executionId}`);
-      await expect(detail).toBeVisible();
-      await expect(detail.locator('ol > li')).toHaveCount(4);
-      await expect(detail.locator('ol > li svg.lucide-check')).toHaveCount(4);
-      await expect(detail).toContainText(/Usage\s*[\d.,]+ credits/);
-      await expect(detail.locator('hyperframes-player')).toHaveCount(1);
-      await expect(list.getByTestId(`timeline-execution-add-${executionId}`)).toBeVisible();
-      await expect(list.getByTestId(`timeline-execution-cancel-${executionId}`)).toHaveCount(0);
-      await expect(clipOf(first)).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
-      await closeExecutions(page);
+      ({ motionId, executionId } = await makeInMotion(page, 'Motion for Timeline', { prompt: PROMPT, seconds: SECONDS }));
+      // While it runs, the Timeline's picker does not offer it.
+      await openTimeline(page, spaceId);
+      await outlet.getByTestId('timeline-add-web-animation').click();
+      const picker = page.getByTestId('timeline-web-animation-picker');
+      // Once the list has been read (its empty state or a row of another case shows), this run is not in it.
+      await expect(picker.getByText('This Project has no web animations yet').or(picker.locator('[data-testid^="timeline-picker-row-"]')).first()).toBeVisible();
+      await expect(picker.getByTestId(`timeline-picker-row-${executionId}`)).toHaveCount(0);
+      await page.keyboard.press('Escape');
+      await expect(picker).toHaveCount(0);
+      // The finished execution in its Motion Space: every step done, its usage.
+      await openSpaceById(page, motionId);
+      await waitMotionFinished(page, executionId);
+      await visibleSpace(page).getByTestId('motion-details').click();
+      const details = motionDetails(page);
+      // It describes only the shown result, which has always succeeded, so it carries no status.
+      await expect(details).not.toContainText('Status');
+      await expect(details.locator('ol > li')).toHaveCount(4);
+      await expect(details.locator('ol > li svg.lucide-check')).toHaveCount(4);
+      await expect(details).toContainText(/Usage\s*[\d.,]+ credits/);
+      await page.keyboard.press('Escape');
+      await expect(details).toHaveCount(0);
+      // Back in the Timeline the picker, read again on opening, offers it under its Motion Space.
+      await openTimeline(page, spaceId);
+      await outlet.getByTestId('timeline-add-web-animation').click();
+      await expect(picker.getByTestId(`timeline-picker-group-${motionId}`).getByTestId(`timeline-picker-row-${executionId}`)).toContainText(PROMPT);
+      await page.keyboard.press('Escape');
+      first = await placeCopy(page, executionId, PROMPT);
+      await expect(clipOf(first)).not.toHaveAttribute('data-track-id', 'visual-1');
       await expectTimelineStart(page, first, 0, copyFrames);
     });
 
@@ -374,15 +308,9 @@ test('one real web animation is created, reused as three copies over a video, se
     await test.step('reuse: the same result is added twice more as independent copies on the first free track above the video', async () => {
       for (const at of [second, third]) {
         await seekPreview(page, at);
-        const list = await openCompleted(page);
-        const before = await timelineClipIds(page);
-        await list.getByTestId(`timeline-execution-add-${executionId}`).click();
-        await expect.poll(async () => (await timelineClipIds(page)).length).toBe(before.length + 1);
-        const added = (await timelineClipIds(page)).filter((id) => !before.includes(id));
-        expect(added).toHaveLength(1);
-        copies.push(added[0]);
-        await closeExecutions(page);
-        await expectTimelineStart(page, added[0], at, copyFrames);
+        const added = await placeCopy(page, executionId, PROMPT);
+        copies.push(added);
+        await expectTimelineStart(page, added, at, copyFrames);
       }
       const all = [first, ...copies];
       expect(new Set(all).size).toBe(3);
@@ -410,7 +338,7 @@ test('one real web animation is created, reused as three copies over a video, se
       await expect(outlet.getByTestId('timeline-preview-notes').locator('[data-testid^="timeline-preview-note-"]')).toHaveCount(0);
     });
 
-    await test.step('Viewer: no create button; the list shows the finished row and its result without actions', async () => {
+    await test.step('Viewer: no Add web animation; in Motion the finished result and its details without a control that writes', async () => {
       await withTimelinePeer(page, browser, projectId, 'viewer', async (peer) => {
         const peerErrors = watchTimelineErrors(peer);
         peerErrors.mediaUrls.add(uploaded.asset.fileUrl);
@@ -420,19 +348,19 @@ test('one real web animation is created, reused as three copies over a video, se
         await expect.poll(async () => (await timelineClipIds(peer)).length).toBe(4);
         // Synchronized clips anchor the absence checks below.
         await expect(view.getByTestId('timeline-add-media')).toBeDisabled();
-        await expect(view.getByTestId('timeline-create-web-animation')).toHaveCount(0);
-        const list = await openCompleted(peer);
-        const row = list.getByTestId(`timeline-execution-${executionId}`);
-        await expect(row).toHaveAttribute('data-status', 'succeeded');
-        await list.getByTestId(`timeline-execution-toggle-${executionId}`).click();
-        const detail = list.getByTestId(`timeline-execution-detail-${executionId}`);
-        await expect(detail).toBeVisible();
-        await expect(detail.locator('ol > li svg.lucide-check')).toHaveCount(4);
-        await expect(detail.locator('hyperframes-player')).toHaveCount(1);
-        await expect(detail).toContainText(/Usage\s*[\d.,]+ credits/);
-        for (const action of ['cancel', 'add', 'add-placeholder', 'retry']) {
-          await expect(list.getByTestId(`timeline-execution-${action}-${executionId}`)).toHaveCount(0);
+        await expect(view.getByTestId('timeline-add-web-animation')).toHaveCount(0);
+        await openSpaceById(peer, motionId);
+        const motion = visibleSpace(peer);
+        await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', executionId, { timeout: 30_000 });
+        await expect(motion.getByTestId('motion-play')).toBeEnabled();
+        await expect(motion.locator('[data-testid="motion-preview"] hyperframes-player')).toHaveCount(1);
+        for (const control of ['motion-new', 'motion-action-modify', 'motion-action-export', 'motion-action-add-annotation']) {
+          await expect(motion.getByTestId(control)).toHaveCount(0);
         }
+        await motion.getByTestId('motion-details').click();
+        const details = motionDetails(peer);
+        await expect(details.locator('ol > li svg.lucide-check')).toHaveCount(4);
+        await expect(details).toContainText(/Usage\s*[\d.,]+ credits/);
         expect(peerErrors.unexpected).toEqual([]);
       });
     });
@@ -644,12 +572,8 @@ test('one real web animation is created, reused as three copies over a video, se
     const later = 10 * nominal;
     await test.step('hold: a copy that is still loading when play reaches it holds the video on its start until it answers', async () => {
       await seekPreview(page, later);
-      const list = await openCompleted(page);
       const before = await timelineClipIds(page);
-      await list.getByTestId(`timeline-execution-add-${executionId}`).click();
-      await expect.poll(async () => (await timelineClipIds(page)).length).toBe(before.length + 1);
-      const [held] = (await timelineClipIds(page)).filter((id) => !before.includes(id));
-      await closeExecutions(page);
+      const held = await placeCopy(page, executionId, PROMPT);
       await expectTimelineStart(page, held, later, copyFrames);
       await expect(clipOf(held)).toHaveAttribute('data-state', 'ready');
       // The pool loads a copy's page ahead of it and keeps pages it has shown, so a copy still loading when play reaches
@@ -717,6 +641,7 @@ test('one real web animation is created, reused as three copies over a video, se
     });
     expect(errors.unexpected).toEqual([]);
   } finally {
+    if (motionId !== '') await deleteSpace(page, motionId);
     await deleteSpace(page, spaceId);
   }
 });
@@ -728,6 +653,7 @@ test('play enters a web copy, replays into it and reveals it from under a video 
   await openSmokeProject(page);
   const projectId = smokeProjectId();
   const spaceId = await createSpace(page, 'timeline', `Timeline web pool ${crypto.randomUUID()}`);
+  let motionId = '';
   // Every load of a web copy's page, the iframe's cross-origin index.html included.
   const pageLoads: string[] = [];
   const onRequest = (request: { url: () => string }): void => {
@@ -744,12 +670,11 @@ test('play enters a web copy, replays into it and reveals it from under a video 
     const copyFrames = SECONDS * nominal;
     const playerOf = (clipId: string): Locator => preview.locator(`hyperframes-player[data-clip-id="${clipId}"]`);
     const drawnOf = (clipId: string): Locator => preview.locator(`${DRAWN}[data-clip-id="${clipId}"]`);
-    const id = await executeWebAnimation(page, false);
-    const list = outlet.getByTestId('timeline-executions');
-    await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*1/, { timeout: RUN_MS });
-    await openCompleted(page);
-    await expect(list.getByTestId(`timeline-execution-${id}`)).toHaveAttribute('data-status', 'succeeded');
-    await closeExecutions(page);
+    const made = await makeInMotion(page, 'Motion for pool', { prompt: PROMPT, seconds: SECONDS });
+    motionId = made.motionId;
+    const id = made.executionId;
+    await waitMotionFinished(page, id);
+    await openTimeline(page, spaceId);
     /** Whether a copy was drawn, answered and noted nowhere on every sample at or after the frame it shows from. */
     const shownFrom = (samples: readonly PlaySample[], clipId: string, from: number): string[] => samples.filter((sample) => sample.frame >= from).flatMap((sample) => {
       const player = sample.players.find((candidate) => candidate.clipId === clipId);
@@ -758,9 +683,11 @@ test('play enters a web copy, replays into it and reveals it from under a video 
 
     // A copy over the video, six seconds in: playing from three seconds before it is past the premount lead.
     const entry = 6 * nominal;
+    // The Motion Space's own preview has loaded the result's page already.
+    const loadsBeforeCopy = pageLoads.length;
     const copy = await addCopyAt(page, id, entry, copyFrames);
     await copiesAnswered(preview);
-    expect(pageLoads.length, 'the copy\'s page load must be seen as a request').toBeGreaterThan(0);
+    expect(pageLoads.length, 'the copy\'s page load must be seen as a request').toBeGreaterThan(loadsBeforeCopy);
 
     await test.step('entry: playing from three seconds before a copy enters it without a note, a pause or a frozen clock', async () => {
       // An empty pool, so the copy's page is loaded only once play comes within the premount lead.
@@ -831,6 +758,7 @@ test('play enters a web copy, replays into it and reveals it from under a video 
     expect(errors.unexpected).toEqual([]);
   } finally {
     page.off('request', onRequest);
+    if (motionId !== '') await deleteSpace(page, motionId);
     await deleteSpace(page, spaceId);
   }
 });
@@ -841,19 +769,20 @@ test('a 9:16 web animation on a 16:9 Timeline is shown whole and centred, not st
   const errors = watchTimelineErrors(page);
   await openSmokeProject(page);
   const spaceId = await createSpace(page, 'timeline', `Timeline web portrait ${crypto.randomUUID()}`);
+  let motionId = '';
   try {
     const outlet = visibleSpace(page);
     const preview = outlet.getByTestId('timeline-preview');
     await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
-    const id = await executeWebAnimation(page, true, '9:16');
-    const list = outlet.getByTestId('timeline-executions');
-    await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*1/, { timeout: RUN_MS });
-    await openCompleted(page);
-    await expect(list.getByTestId(`timeline-execution-${id}`)).toHaveAttribute('data-status', 'succeeded');
+    const made = await makeInMotion(page, 'Motion portrait', { prompt: PROMPT, seconds: SECONDS, aspect: '9:16' });
+    motionId = made.motionId;
+    await waitMotionFinished(page, made.executionId);
+    await openTimeline(page, spaceId);
+    await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
+    await placeCopy(page, made.executionId, PROMPT);
     const copy = outlet.locator('[data-testid^="timeline-clip-"][data-kind="web-animation"]');
     await expect(copy).toHaveCount(1);
     await expect(copy).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
-    await closeExecutions(page);
     await seekPreview(page, 1);
     await copiesAnswered(preview);
     const player = preview.locator('hyperframes-player');
@@ -878,11 +807,12 @@ test('a 9:16 web animation on a 16:9 Timeline is shown whole and centred, not st
     expect(Math.abs((shown.x + shown.width / 2) - (stage.x + stage.width / 2))).toBeLessThanOrEqual(2);
     expect(errors.unexpected).toEqual([]);
   } finally {
+    if (motionId !== '') await deleteSpace(page, motionId);
     await deleteSpace(page, spaceId);
   }
 });
 
-test('an Editor follows a run another member starts, undoes only their own edit, and a Project duplicated mid-run previews the result @needs-model @needs-ingest', async ({ page, browser }) => {
+test('an Editor follows a run another member starts in Motion, sees the copy placed from it at once, undoes only their own edit, and a duplicated Project previews it @needs-model @needs-ingest', async ({ page, browser }) => {
   // One real model run, a second member and a duplicated Project.
   test.setTimeout(480_000);
   const errors = watchTimelineErrors(page);
@@ -890,53 +820,40 @@ test('an Editor follows a run another member starts, undoes only their own edit,
   const projectId = smokeProjectId();
   const projectUrl = page.url();
   const spaceId = await createSpace(page, 'timeline', `Timeline web peer ${crypto.randomUUID()}`);
+  let motionId = '';
   let copyId = '';
   const copyPage = await page.context().newPage();
   const copyErrors = watchTimelineErrors(copyPage);
   try {
+    let clipId = '';
     await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
       const peerErrors = watchTimelineErrors(peer);
+      const made = await makeInMotion(page, 'Motion for peer', { prompt: PROMPT, seconds: SECONDS });
+      motionId = made.motionId;
+      const id = made.executionId;
+
+      // The other member opens the Motion Space while the run goes, and its document carries the run to Completed.
       await peer.goto(projectUrl);
+      await openSpaceById(peer, motionId);
+      const running = await motionListTab(peer, 'In progress');
+      await expect(running.getByTestId(`motion-row-${id}`)).toContainText(PROMPT);
+      await waitMotionFinished(peer, id);
+      await waitMotionFinished(page, id);
+
+      await openTimeline(page, spaceId);
+      clipId = await placeCopy(page, id, PROMPT);
+      // The other member sees the copy at once, ready, and the picker offers them the same result.
       await openTimeline(peer, spaceId);
       const view = visibleSpace(peer);
-      await expect(view.getByTestId('timeline-space-empty')).toBeVisible();
-
-      const id = await executeWebAnimation(page, true);
-      const placeholder = visibleSpace(page).locator('[data-testid^="timeline-clip-"][data-kind="web-animation"]');
-      await expect(placeholder).toHaveCount(1);
-      const clipId = (await placeholder.getAttribute('data-clip-id')) ?? '';
-      expect(clipId).not.toBe('');
-
-      // The other member sees the placeholder at once and the row once collab accepts the receipt and signals the
-      // Space, after a save of the document.
       const peerClip = view.getByTestId(`timeline-clip-${clipId}`);
-      await expect(peerClip).toHaveAttribute('data-state', 'pending', { timeout: 30_000 });
-      await view.getByTestId('timeline-open-executions').click();
-      const peerList = view.getByTestId('timeline-executions');
-      await expect(peerList.getByRole('tab', { name: /^In progress/ })).toHaveText(/In progress\s*1/, { timeout: 60_000 });
-      await expect(peerList.getByTestId(`timeline-execution-${id}`)).toBeVisible();
+      await expect(peerClip).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
+      await view.getByTestId('timeline-add-web-animation').click();
+      const peerPicker = peer.getByTestId('timeline-web-animation-picker');
+      await expect(peerPicker.getByTestId(`timeline-picker-row-${id}`)).toContainText(PROMPT);
+      await peerPicker.getByRole('button', { name: 'Cancel', exact: true }).click();
+      await expect(peerPicker).toHaveCount(0);
 
-      // Duplicated while the run is going: the copy holds the placeholder and a grant to the execution.
-      const duplicated = await page.request.post(`/api/v1/projects/${projectId}/duplicate`);
-      expect(duplicated.status(), await duplicated.text()).toBe(201);
-      copyId = ((await duplicated.json()) as { data: { id: string } }).data.id;
-      await copyPage.goto(`/project/${copyId}`);
-      await openTimeline(copyPage, spaceId);
-      const copied = visibleSpace(copyPage).getByTestId(`timeline-clip-${clipId}`);
-      await expect(copied).toHaveAttribute('data-kind', 'web-animation');
-      await expect(copied).toHaveAttribute('data-state', 'pending');
-
-      // The finish reaches the other member through the Space's task signal.
-      await expect(peerList.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*1/, { timeout: RUN_MS });
-      await expect(peerClip).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
-      await peerList.getByRole('tab', { name: /^Completed/ }).click();
-      await expect(peerList.getByTestId(`timeline-execution-${id}`)).toHaveAttribute('data-status', 'succeeded');
-      await peerList.getByTestId(`timeline-execution-toggle-${id}`).click();
-      await expect(peerList.getByTestId(`timeline-execution-detail-${id}`).locator('hyperframes-player')).toHaveCount(1);
-      await expect(peerList.getByTestId(`timeline-execution-add-${id}`)).toBeVisible();
-      await closeExecutions(peer);
-
-      // The other member's undo takes back their own duplicate and never the clip the run placed.
+      // The other member's undo takes back their own duplicate and never the copy the first member placed.
       await peerClip.click();
       await expect(peerClip).toHaveAttribute('aria-pressed', 'true');
       await peer.keyboard.press('ControlOrMeta+d');
@@ -950,15 +867,25 @@ test('an Editor follows a run another member starts, undoes only their own edit,
       expect(peerErrors.unexpected).toEqual([]);
     });
 
-    // The duplicate, open since mid-run, turns its placeholder into the result on its refresh interval and draws it.
+    // A duplicate holds the copy and a grant to its result. Nothing on screen says the placement is stored, so the
+    // duplicate waits out the longest collab holds a change.
+    expect(STORE_WITHIN_MS).toBeGreaterThan(0);
+    await page.waitForTimeout(STORE_WITHIN_MS + 1_000);
+    const duplicated = await page.request.post(`/api/v1/projects/${projectId}/duplicate`);
+    expect(duplicated.status(), await duplicated.text()).toBe(201);
+    copyId = ((await duplicated.json()) as { data: { id: string } }).data.id;
+    await copyPage.goto(`/project/${copyId}`);
+    // The copy opens on the Spaces its source had open; open the Timeline once they are there.
+    await expect(copyPage.locator('[data-testid^="space-tab-name-"]').first()).toBeVisible();
+    await openTimeline(copyPage, spaceId);
     const copyView = visibleSpace(copyPage);
-    const copied = copyView.locator('[data-testid^="timeline-clip-"][data-kind="web-animation"]');
-    await expect(copied).toHaveCount(1);
-    await expect(copied).toHaveAttribute('data-state', 'ready', { timeout: 60_000 });
+    const copied = copyView.getByTestId(`timeline-clip-${clipId}`);
+    await expect(copied).toHaveAttribute('data-kind', 'web-animation');
+    await expect(copied).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
     await seekPreview(copyPage, 1);
     const preview = copyView.getByTestId('timeline-preview');
     await copiesAnswered(preview);
-    await expect(preview.locator(`${DRAWN}[data-clip-id="${await copied.getAttribute('data-clip-id')}"]`)).toHaveCount(1);
+    await expect(preview.locator(`${DRAWN}[data-clip-id="${clipId}"]`)).toHaveCount(1);
     expect(copyErrors.unexpected).toEqual([]);
     expect(errors.unexpected).toEqual([]);
   } finally {
@@ -967,52 +894,216 @@ test('an Editor follows a run another member starts, undoes only their own edit,
       const archived = await page.request.post(`/api/v1/projects/${copyId}/archive`);
       expect(archived.ok(), `archive the duplicated Project ${copyId}`).toBe(true);
     }
+    if (motionId !== '') await deleteSpace(page, motionId);
     await deleteSpace(page, spaceId);
   }
 });
 
-test('an execution started without adding a copy is cancelled and offers Run again with its prompt @needs-model @needs-ingest', async ({ page }) => {
+test('a run cancelled from In progress moves to Failed as Cancelled, is not offered by Add web animation, and Run again opens the dialog with its prompt @needs-model @needs-ingest', async ({ page }) => {
   // One real model run is accepted and then drains its in-flight call before it reads Cancelled.
   test.setTimeout(360_000);
   const errors = watchTimelineErrors(page);
   await openSmokeProject(page);
   const spaceId = await createSpace(page, 'timeline', `Timeline web cancel ${crypto.randomUUID()}`);
+  let motionId = '';
   try {
-    const outlet = visibleSpace(page);
-    await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
-    const id = await executeWebAnimation(page, false);
-    const list = outlet.getByTestId('timeline-executions');
-    // Cancelled while it still queues, a run reaches no step and marks none; the cancel waits for the pickup.
-    await expect(list.getByTestId(`timeline-execution-${id}`)).toHaveAttribute('data-status', 'running', { timeout: RUN_MS });
-    await list.getByTestId(`timeline-execution-cancel-${id}`).click();
-    // With the switch off nothing is placed on the Timeline.
-    await expect(outlet.locator('[data-testid^="timeline-clip-"]')).toHaveCount(0);
-    await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
-    await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*1/, { timeout: RUN_MS });
+    const made = await makeInMotion(page, 'Motion cancel', { prompt: PROMPT, seconds: SECONDS });
+    motionId = made.motionId;
+    const id = made.executionId;
+    const motion = visibleSpace(page);
+    // The accepted run is marked under In progress with its step and Cancel; the empty Space shows no result.
+    const list = motion.getByTestId('motion-panel-executions');
+    const row = list.getByTestId(`motion-row-${id}`);
+    await expect(row).toHaveAttribute('data-marked', 'true');
+    await expect(motion.getByTestId('motion-preview')).toHaveCount(0);
+    // Cancelled while it still queues, a run reaches no step and drains nothing; the cancel waits for the pickup.
+    await expect(row).toContainText(/Creating|Write the page|Check the frames|Save the source/, { timeout: RUN_MS });
+    await row.getByTestId('motion-cancel').click();
+    await expect(row).toHaveCount(0, { timeout: RUN_MS });
+    // It ends under Failed, told as Cancelled, with Run again; the preview still has nothing to show.
+    await motionListTab(page, 'Failed');
+    await expect(list.getByRole('tab', { name: /^Completed/ })).toHaveText(/Completed\s*0/);
     await expect(list.getByRole('tab', { name: /^In progress/ })).toHaveText(/In progress\s*0/);
-    await openCompleted(page);
-    const row = list.getByTestId(`timeline-execution-${id}`);
-    await expect(row).toHaveAttribute('data-status', 'cancelled');
+    await expect(list.getByRole('tab', { name: /^Failed/ })).toHaveText(/Failed\s*1/);
     await expect(row).toContainText('Cancelled');
-    await expect(list.getByTestId(`timeline-execution-detail-${id}`)).toBeVisible();
-    // The step the run stopped at carries its own mark; a cancel is told muted, without the error tone.
-    const stopped = list.getByTestId(`timeline-execution-detail-${id}`).locator('ol > li[data-mark="stopped"]');
-    await expect(stopped).toHaveCount(1);
-    await expect(stopped).not.toHaveClass(/text-status-error-foreground/);
-    await expect(list.getByTestId(`timeline-execution-add-${id}`)).toHaveCount(0);
-    await list.getByTestId(`timeline-execution-retry-${id}`).click();
+    await expect(row.getByTestId('motion-retry')).toHaveText('Run again');
+    await expect(motion.getByTestId('motion-preview')).toHaveCount(0);
+    await expect(motion.getByTestId('motion-action-modify')).toHaveCount(0);
+    await expect(motion.getByTestId('motion-action-export')).toHaveCount(0);
+
+    // The Timeline is never offered a cancelled run.
+    await openTimeline(page, spaceId);
+    await visibleSpace(page).getByTestId('timeline-add-web-animation').click();
+    const picker = page.getByTestId('timeline-web-animation-picker');
+    // Once the list has been read (its empty state or a row of another case shows), the cancelled run is not in it.
+    await expect(picker.getByText('This Project has no web animations yet').or(picker.locator('[data-testid^="timeline-picker-row-"]')).first()).toBeVisible();
+    await expect(picker.getByTestId(`timeline-picker-row-${id}`)).toHaveCount(0);
+    await picker.getByRole('button', { name: 'Cancel', exact: true }).click();
+    await expect(picker).toHaveCount(0);
+    await expect(visibleSpace(page).locator('[data-testid^="timeline-clip-"]')).toHaveCount(0);
+
+    // Run again opens the dialog prefilled; closing it starts nothing.
+    await openSpaceById(page, motionId);
+    await row.getByTestId('motion-retry').click();
     const dialog = page.getByRole('dialog', { name: 'Run web animation again', exact: true });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByTestId('web-animation-prompt')).toHaveValue(PROMPT);
     await expect(dialog.getByTestId('web-animation-duration')).toHaveValue(String(SECONDS));
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(dialog).toHaveCount(0);
-    // Closing the dialog starts nothing.
+    // The execution list was left open on Failed, and a hidden Space keeps it open while another tab is in front.
+    await expect(list.getByRole('tab', { name: /^Failed/ })).toHaveAttribute('aria-selected', 'true');
     await expect(list.getByRole('tab', { name: /^In progress/ })).toHaveText(/In progress\s*0/);
-    await expect(list.locator('li[data-status][data-testid^="timeline-execution-"]')).toHaveCount(1);
-    await expect(outlet.locator('[data-testid^="timeline-clip-"]')).toHaveCount(0);
+    await expect(list.locator('[data-testid^="motion-row-"]')).toHaveCount(1);
     expect(errors.unexpected).toEqual([]);
   } finally {
+    if (motionId !== '') await deleteSpace(page, motionId);
     await deleteSpace(page, spaceId);
+  }
+});
+
+/**
+ * File runs this case made in its Motion Space as runs a Timeline made before Motion existed, the way migration 0133
+ * stored them: `origin = 'timeline'` on the Timeline's Space. The script loads the services' own configuration.
+ * @param projectId - The smoke Project.
+ * @param timelineId - The Timeline the runs are filed under.
+ * @param executionIds - The runs.
+ * @throws {Error} When the script fails or moves another number of runs.
+ */
+async function fileAsTimelineMade(projectId: string, timelineId: string, executionIds: string[]): Promise<void> {
+  const filed = await runRepoScript<{ moved: number }>('scripts/seed-smoke-timeline-made-runs.ts', { projectId, timelineSpaceId: timelineId, executionIds }, 'Filing the runs as Timeline-made');
+  expect(filed.moved).toBe(executionIds.length);
+}
+
+/**
+ * Write copies into the shown Timeline's document the way the client before Motion left them: bound to an execution
+ * only. The first takes the place of an existing copy; each further one follows the copy before it on its track.
+ * @param page - The page with the Timeline open.
+ * @param timelineId - The Timeline.
+ * @param placed - An existing copy whose placement the old copies reuse.
+ * @param executionIds - The execution each old copy is bound to.
+ * @returns The old copies' clip ids, in order.
+ * @throws {Error} When the copy or the document is missing.
+ */
+async function writeLegacyCopies(page: Page, timelineId: string, placed: string, executionIds: string[]): Promise<string[]> {
+  const managerAt = await liveModuleUrl(page, YJS_MANAGER);
+  return page.evaluate(async ([pid, sid, at, clipId, ids]: [string, string, string, string, string[]]) => {
+    const manager = await import(/* @vite-ignore */ at) as typeof YjsManagerModule;
+    const doc = manager.getDoc(manager.docName.timelineSpace(pid, sid));
+    const clips = doc.getMap('clips');
+    // Each clip is a Y.Map of plain fields, as the client writes it (attachTimelineRecord in @breatic/shared).
+    const placedClip = clips.get(clipId) as { toJSON: () => Record<string, unknown>; set: (key: string, value: unknown) => void } | undefined;
+    if (placedClip === undefined) throw new Error('no copy to replace');
+    const base = placedClip.toJSON() as { startFrame: number; durationFrames: number };
+    const ClipMap = placedClip.constructor as new () => { set: (key: string, value: unknown) => void };
+    const made: string[] = [];
+    doc.transact(() => {
+      ids.forEach((executionId, index) => {
+        const contentBinding = { baseSourceResultId: null, operationId: executionId };
+        if (index === 0) {
+          placedClip.set('contentBinding', contentBinding);
+          made.push(clipId);
+          return;
+        }
+        const id = crypto.randomUUID();
+        const clip = new ClipMap();
+        clips.set(id, clip);
+        for (const [key, value] of Object.entries({ ...base, id, startFrame: base.startFrame + index * base.durationFrames, contentBinding })) clip.set(key, value);
+        made.push(id);
+      });
+    });
+    return made;
+  }, [smokeProjectId(), timelineId, managerAt, placed, executionIds] as [string, string, string, string, string[]]);
+}
+
+/**
+ * Wait until an execution has ended in the given state, read from the server. A run made in a Timeline reports its
+ * changes to that Timeline's document only, so an open Motion Space reads it when it next loads its lists.
+ * @throws {Error} When it does not end so within one run.
+ */
+async function waitExecutionEnded(page: Page, projectId: string, spaceId: string, executionId: string, status: 'succeeded' | 'cancelled'): Promise<void> {
+  await expect.poll(async () => {
+    const res = await page.request.get(`/api/v1/timeline/executions/${executionId}`, { params: { projectId, spaceId } });
+    return res.ok() ? ((await res.json()) as { data: { status: string } }).data.status : `http ${res.status()}`;
+  }, { timeout: RUN_MS, intervals: [2_000] }).toBe(status);
+}
+
+test('a web animation made in a Timeline before Motion keeps its copy and name, is modified from that group in Motion, and a cancelled one opens in Motion under Failed @needs-model @needs-ingest', async ({ page }) => {
+  // Two real model runs (the old create and its modification) and one drained cancelled run.
+  test.setTimeout(3 * RUN_MS + 120_000);
+  const errors = watchTimelineErrors(page);
+  await openSmokeProject(page);
+  const projectId = smokeProjectId();
+  const timelineId = await createSpace(page, 'timeline', `Timeline legacy ${crypto.randomUUID()}`);
+  // The newest Motion Space holds the group of runs made in a Timeline.
+  const motionId = await createSpace(page, 'web_animation', `Motion legacy ${crypto.randomUUID()}`);
+  try {
+    // Two runs made now and filed the way 0133 stored a Timeline's runs from before Motion.
+    const done = await executeInMotion(page, { prompt: PROMPT, seconds: SECONDS });
+    await waitMotionFinished(page, done);
+    const cancelled = await executeInMotion(page, { prompt: PROMPT, seconds: SECONDS });
+    await dataOf(await page.request.post(`/api/v1/timeline/executions/${cancelled}/cancel`, {
+      headers: { 'Idempotency-Key': crypto.randomUUID() }, data: { projectId },
+    }), 'cancel the second run');
+    await waitExecutionEnded(page, projectId, motionId, cancelled, 'cancelled');
+    await fileAsTimelineMade(projectId, timelineId, [done, cancelled]);
+
+    await test.step('Motion lists the old run under Made in a Timeline before', async () => {
+      await page.reload();
+      await openSpaceById(page, motionId);
+      await waitMotionFinished(page, done);
+      const list = await motionListTab(page, 'Completed');
+      await expect(list.getByTestId('motion-legacy-group').getByTestId(`motion-row-${done}`)).toContainText(PROMPT);
+    });
+
+    let old = '';
+    let failed = '';
+    await test.step('an old copy keeps its name and previews; a cancelled one offers Open in Motion', async () => {
+      await openTimeline(page, timelineId);
+      const placed = await placeCopy(page, done, PROMPT);
+      [old, failed] = await writeLegacyCopies(page, timelineId, placed, [done, cancelled]);
+      const outlet = visibleSpace(page);
+      await expect(outlet.getByTestId(`timeline-clip-${old}`)).toHaveAttribute('data-state', 'ready', { timeout: 30_000 });
+      await expect(outlet.getByTestId(`timeline-clip-${old}`)).toContainText(PROMPT);
+      await selectTimelineClip(page, old);
+      await expect(outlet.getByTestId('timeline-clip-request')).toHaveText(PROMPT);
+      await seekPreview(page, 30);
+      await expect(outlet.locator(`${DRAWN}[data-clip-id="${old}"]`)).toHaveAttribute('data-web-state', 'ready', { timeout: 30_000 });
+      await selectTimelineClip(page, failed);
+      await expect(outlet.getByTestId('timeline-web-failure')).toBeVisible();
+    });
+
+    await test.step('Open in Motion opens the newest Motion Space on Failed with the cancelled run marked', async () => {
+      await visibleSpace(page).getByTestId('timeline-web-open-in-motion').click();
+      await expect(page.locator(`[data-space-outlet="${motionId}"]`)).toBeVisible();
+      const list = visibleSpace(page).getByTestId('motion-panel-executions');
+      await expect(list.getByRole('tab', { name: /^Failed/ })).toHaveAttribute('aria-selected', 'true');
+      const row = list.getByTestId('motion-legacy-group').getByTestId(`motion-row-${cancelled}`);
+      await expect(row).toHaveAttribute('data-marked', 'true');
+      await expect(row).toBeInViewport();
+      await expect(row).toContainText('Cancelled');
+    });
+
+    await test.step('the old result is modified in Motion into a new run of this Space', async () => {
+      const motion = visibleSpace(page);
+      const list = await motionListTab(page, 'Completed');
+      await list.getByTestId(`motion-row-${done}`).click();
+      await expect(motion.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', done);
+      await motion.getByTestId('motion-action-modify').click();
+      const dialog = page.getByRole('dialog', { name: 'Modify web animation', exact: true });
+      await expect(dialog).toContainText(PROMPT);
+      await dialog.getByTestId('web-animation-prompt').fill('Make the circle blue.');
+      await dialog.getByTestId('web-animation-execute').click();
+      await expect(dialog).toHaveCount(0);
+      const modified = await acceptedRowId(page);
+      await waitMotionFinished(page, modified);
+      const completed = await motionListTab(page, 'Completed');
+      await expect(completed.getByTestId('motion-legacy-group').getByTestId(`motion-row-${modified}`)).toHaveCount(0);
+      await expect(completed.getByTestId(`motion-row-${modified}`)).toContainText(`Modified from “${PROMPT}”: Make the circle blue.`);
+    });
+    expect(errors.unexpected).toEqual([]);
+  } finally {
+    await deleteSpace(page, motionId);
+    await deleteSpace(page, timelineId);
   }
 });

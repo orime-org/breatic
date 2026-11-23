@@ -35,10 +35,10 @@ vi.mock('@web/spaces', () => {
   const Body = (): React.JSX.Element => <div data-testid='space-body-stub' />;
   return {
     SPACE_TYPES: {
-      canvas: { type: 'canvas', label: 'Canvas', icon: 'x', bodyComponent: Body },
-      document: { type: 'document', label: 'Document', icon: 'x', bodyComponent: Body },
-      timeline: { type: 'timeline', label: 'Timeline', icon: 'x', bodyComponent: Body },
-      '3d': { type: '3d', label: '3D', icon: 'x', bodyComponent: Body },
+      canvas: { type: 'canvas', bodyComponent: Body },
+      document: { type: 'document', bodyComponent: Body },
+      timeline: { type: 'timeline', bodyComponent: Body },
+      '3d': { type: '3d', bodyComponent: Body },
     },
   };
 });

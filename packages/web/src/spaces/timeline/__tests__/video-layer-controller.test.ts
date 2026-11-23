@@ -38,7 +38,6 @@ const DOCUMENT: TimelineDocumentV1 = {
   tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 }, v2: { id: 'v2', kind: 'visual', order: 1 } },
   clips: { [A.id]: A, [B.id]: B },
   sources: { [SOURCE.id]: SOURCE },
-  operationReceipts: {},
 };
 
 afterEach(() => {

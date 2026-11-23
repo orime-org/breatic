@@ -92,7 +92,7 @@ const NO_CARDS: CommentCards = { unresolved: [], resolved: [] };
  * @param body - The comment's body.
  * @returns Its text, blocks separated by newlines.
  */
-function bodyText(body: unknown): string {
+export function bodyText(body: unknown): string {
   if (!Array.isArray(body)) return '';
   return body
     .map((block: unknown) => {

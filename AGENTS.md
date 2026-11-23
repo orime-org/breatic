@@ -6,7 +6,7 @@ Rules for coding agents live only in `AGENTS.md` files: this one for the whole r
 
 ## Project overview
 
-breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d or timeline); never invent a `Workspace` entity or name.
+breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d, timeline or web_animation, shown as Motion); never invent a `Workspace` entity or name.
 
 - **breatic is a content-creation tool, not a design tool.** Benchmark it against content-creation products and describe it that way in copy, docs and the Agent's product guide.
 - **The person using the product is the user, never the reader, in identifiers, comments, docs, tests and text sent to the model.** breatic is a tool, and whoever works in it is its user. Check: does this word mean someone using breatic? Then `user`; screen readers, code that reads data and people reading documentation keep `reader`.

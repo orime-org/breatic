@@ -508,3 +508,21 @@ describe('NodeContextMenu — adding to the agent', () => {
   });
 });
 
+describe('NodeContextMenu — open source animation (#1490)', () => {
+  it('offers "Open source animation" after the asset actions when the node has one, and runs it', () => {
+    const onOpenSourceAnimation = vi.fn();
+    setup({ target: 'node', onUpload: () => {}, onDownload: () => {}, onUnderstand: () => {}, onOpenSourceAnimation });
+    const item = screen.getByTestId('node-menu-open-source-animation');
+    expect(item).toHaveTextContent('Open source animation');
+    const items = screen.getAllByRole('menuitem').map((element) => element.getAttribute('data-testid'));
+    expect(items.indexOf('node-menu-open-source-animation')).toBeGreaterThan(items.indexOf('node-menu-understand'));
+    fireEvent.click(item);
+    expect(onOpenSourceAnimation).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves "Open source animation" out for a node without one', () => {
+    setup({ target: 'node', onUpload: () => {}, onDownload: () => {}, onUnderstand: () => {} });
+    expect(screen.queryByTestId('node-menu-open-source-animation')).not.toBeInTheDocument();
+  });
+});
+

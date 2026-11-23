@@ -16,7 +16,9 @@ import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
 import type { AccountKeyFailureKind, AccountKeyFailureReason } from "@shared/types/task-failure.js";
 import type { TimelineRate } from "@shared/timeline/time.js";
-import type { TimelineExecutionStatusSchema } from "@shared/timeline/web-animation.js";
+import type {
+  WebAnimationExecutionKind, WebAnimationExecutionOrigin, WebAnimationExecutionStatusSchema, WebAnimationPhaseSchema,
+} from "@shared/timeline/web-animation.js";
 import type { z } from "zod";
 
 /** User entity (excludes hashed_password for safety). */
@@ -1001,33 +1003,41 @@ export interface AccountModelUpstream {
   updatedAt: Date;
 }
 
-/** Where a Timeline execution is (inner#1711), as `TimelineExecutionStatusSchema` lists it. */
-export type TimelineExecutionStatus = z.infer<typeof TimelineExecutionStatusSchema>;
+/** Where a web-animation execution is (inner#1711), as `WebAnimationExecutionStatusSchema` lists it. */
+export type TimelineExecutionStatus = z.infer<typeof WebAnimationExecutionStatusSchema>;
 
-/** One Timeline execution the user accepted (inner#1711). Timestamps are UTC ISO strings at microsecond precision. */
+/**
+ * One web-animation execution the user accepted (inner#1711, #1490), as `timeline_executions` stores it. Timestamps are
+ * UTC ISO strings at microsecond precision.
+ */
 export interface TimelineExecution {
   id: string;
   projectId: string;
   spaceId: string;
   actorUserId: string;
-  kind: "web_animation_create";
+  kind: WebAnimationExecutionKind;
+  /** Where it was asked for: a Motion Space, or a Timeline before #1490. */
+  origin: WebAnimationExecutionOrigin;
   /** The client's idempotency key, unique per Project and Space. */
   actionId: string;
   /** The accepted input, frozen at acceptance. */
   input: Record<string, unknown>;
   inputHash: string;
-  engine: "deepseek";
+  /** The model engine; null for an export, which renders and calls no model. */
+  engine: "deepseek" | null;
   status: TimelineExecutionStatus;
   /** The stage a running attempt reports to the user. */
-  phase: "writing" | "validating" | "saving" | null;
+  phase: z.infer<typeof WebAnimationPhaseSchema> | null;
   steps: unknown[];
   /** How many attempts have claimed it. */
   attempt: number;
   /** The id of the attempt allowed to finish it; null when no attempt holds it. */
   fence: string | null;
-  /** The two-hour budget's end, set once at acceptance. */
+  /** The two-hour budget's end: set at acceptance, and counted again from the claim for a run that waited for a running slot. */
   deadlineAt: string;
   resultSourceVersionId: string | null;
+  /** An export's registered video. */
+  resultAssetId: string | null;
   failureReason: string | null;
   /** The upstream a failure of the payer's own key names (inner#1953); null for any other failure. */
   failureUpstream: string | null;
@@ -1036,20 +1046,15 @@ export interface TimelineExecution {
   /** Credits charged, as Postgres renders the numeric. */
   billedCredits: string | null;
   billedAt: string | null;
-  /** First time the running-task gate held it back (inner#1968); null when it never waited. Absent from an older server. */
-  slotWaitSince?: string | null;
-  /** The running-task limit it waits under, as the gate last judged it (inner#1968); null when it never waited. Absent from an older server. */
-  slotWaitLimit?: number | null;
+  /** First time the running-task gate held it back (inner#1968); null when it never waited. */
+  slotWaitSince: string | null;
+  /** The running-task limit it waits under, as the gate last judged it (inner#1968); null when it never waited. */
+  slotWaitLimit: number | null;
+  /** How far a running export's render got, as a whole percent (#1490). */
+  progress: number | null;
   createdAt: string;
   updatedAt: string;
 }
-
-/** One row `GET /timeline/executions` answers: the execution and the credits its usage rows add up to so far. */
-export type TimelineExecutionRow = TimelineExecution & {
-  usageCredits: number;
-  /** The account whose key a failure of the payer's own key failed on (inner#1953); absent for any other row. */
-  failureKeyOwner?: string;
-};
 
 /**
  * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711
@@ -1057,8 +1062,30 @@ export type TimelineExecutionRow = TimelineExecution & {
  * grant for them. A reference it leaves out is unresolved.
  */
 export interface TimelineWebResolution {
-  sources: Record<string, { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
-  executions: Record<string, { status: TimelineExecutionStatus; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
+  sources: Record<string, TimelineWebResolutionOrigin & { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
+  executions: Record<string, TimelineWebResolutionOrigin & {
+    status: TimelineExecutionStatus;
+    resultSourceVersionId: string | null;
+    acceptedDurationFrames: number;
+    fps: TimelineRate;
+    /** The stage a running attempt reported. */
+    phase: TimelineExecution["phase"];
+    failureReason: string | null;
+  }>;
+}
+
+/** What made a resolved reference (#1490 design §4.4): the Timeline names a copy and shows its request from it. */
+export interface TimelineWebResolutionOrigin {
+  executionId: string;
+  /** The Space that made it: a Motion Space, or a Timeline before #1490. */
+  spaceId: string;
+  /** Where it was asked from: a Motion Space, or a Timeline before #1490. */
+  origin: WebAnimationExecutionOrigin;
+  kind: Exclude<WebAnimationExecutionKind, "web_animation_export">;
+  /** The whole prompt or modification instruction. */
+  request: string;
+  /** For a modification, the result it started from. */
+  base?: { executionId: string; request: string };
 }
 
 /**
