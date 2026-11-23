@@ -18,6 +18,7 @@ const SCRIPT = join(import.meta.dirname, "..", "..", "..", "scripts", "publish.m
 type Module = {
   releaseVersion: (tag: string, packageVersion: string) => string;
   publishOrder: (files: string[]) => string[];
+  missingPublishSettings: (env: Record<string, string | undefined>) => string[];
 };
 
 /**
@@ -70,5 +71,25 @@ describe("publishOrder", () => {
       "breatic-0.2.0-win-x64.exe",
       "breatic-0.2.0-win-x64.exe.blockmap",
     ]);
+  });
+});
+
+describe("missingPublishSettings", () => {
+  const complete = {
+    BREATIC_UPDATE_BASE_URL: "https://updates.example.test/desktop",
+    R2_UPDATES_BUCKET: "b",
+    R2_UPDATES_ENDPOINT: "https://r2.example.test",
+    AWS_ACCESS_KEY_ID: "k",
+    AWS_SECRET_ACCESS_KEY: "s",
+  };
+
+  it("asks for nothing when every setting is there", async () => {
+    expect((await load()).missingPublishSettings(complete)).toEqual([]);
+  });
+
+  it("names the feed address: without it the packages read no feed and never update", async () => {
+    const { missingPublishSettings } = await load();
+    expect(missingPublishSettings({ ...complete, BREATIC_UPDATE_BASE_URL: " " })).toEqual(["BREATIC_UPDATE_BASE_URL"]);
+    expect(missingPublishSettings({})).toEqual(Object.keys(complete));
   });
 });

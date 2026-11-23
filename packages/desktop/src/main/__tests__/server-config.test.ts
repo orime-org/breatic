@@ -18,6 +18,7 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 
 import {
+  builtInServerUrl,
   checkServer,
   normalizeServerUrl,
   readServerConfig,
@@ -154,5 +155,21 @@ describe("resolveServerUrl", () => {
 
   it("throws on an override the client refuses", () => {
     expect(() => resolveServerUrl({ envUrl: "http://10.0.0.2", savedUrl: null, builtInUrl: "" })).toThrow(/BREATIC_SERVER_URL/);
+  });
+});
+
+describe("builtInServerUrl", () => {
+  it("keeps the origin of an address the address rules accept", () => {
+    expect(builtInServerUrl("https://studio.example.test/")).toBe("https://studio.example.test");
+    expect(builtInServerUrl("http://localhost:8100")).toBe("http://localhost:8100");
+  });
+
+  it("leaves a build that asks on first launch empty", () => {
+    expect(builtInServerUrl("")).toBe("");
+    expect(builtInServerUrl("  ")).toBe("");
+  });
+
+  it.each(["studio.example.test", "http://192.168.1.10:8000", "ftp://example.test"])("refuses %s, so the build fails", (raw) => {
+    expect(() => builtInServerUrl(raw)).toThrow(/serverUrl/);
   });
 });

@@ -81,6 +81,12 @@ describe("electron-builder configuration", () => {
     expect([signed.mac?.publish, signed.win?.publish, signed.linux?.publish]).toEqual([entry, entry, entry]);
   });
 
+  it("writes no Windows feed when the publisher name is missing: installed clients could not check who signed an update", async () => {
+    const { AZURE_PUBLISHER_NAME: _name, ...withoutName } = SIGNED_WINDOWS;
+    const config = await configFor({ ...withoutName, BREATIC_UPDATE_BASE_URL: FEED });
+    expect(config.win?.publish).toBeNull();
+  });
+
   it("names the Windows publisher so an update signed by anyone else is refused", async () => {
     const config = await configFor(SIGNED_WINDOWS);
     expect(config.win?.azureSignOptions?.publisherName).toBe("Orime, Inc.");

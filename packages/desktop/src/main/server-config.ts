@@ -42,6 +42,20 @@ export function normalizeServerUrl(input: string): { ok: true; origin: string } 
   return { ok: false, reason: "scheme" };
 }
 
+/**
+ * The server a build carries, held to the rules an address the user types is
+ * held to; runs at build time, so a wrong brand.json fails the build.
+ * @param raw - brand.json's serverUrl, or BREATIC_DEFAULT_SERVER_URL.
+ * @returns The origin, or empty for a build that asks on first launch.
+ * @throws {Error} When the address is not https, or http to this computer.
+ */
+export function builtInServerUrl(raw: string): string {
+  if (raw.trim() === "") return "";
+  const result = normalizeServerUrl(raw);
+  if (!result.ok) throw new Error(`serverUrl ${raw} must be an https address, or http to this computer`);
+  return result.origin;
+}
+
 /** The fetch the check uses: Electron's `net.fetch`, so the system certificates and proxy apply. */
 export type CheckFetch = (url: string, init?: RequestInit) => Promise<Response>;
 

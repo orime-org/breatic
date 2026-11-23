@@ -5,6 +5,7 @@ import { extname, resolve } from "node:path";
 import { copyFileSync, mkdirSync } from "node:fs";
 import { defineConfig, type Options } from "tsup";
 import { currentBrand } from "./brand.mjs";
+import { builtInServerUrl } from "./src/main/server-config.js";
 
 /** The brand this build is for: BREATIC_BRAND_DIR, else the official one. */
 const brand = currentBrand();
@@ -28,7 +29,7 @@ const shared: Options = {
       id: brand.id,
       productName: brand.productName,
       scheme: brand.scheme,
-      serverUrl: brand.serverUrl,
+      serverUrl: builtInServerUrl(brand.serverUrl),
       poweredBy: brand.poweredBy,
       splashLogo: `${SPLASH_LOGO}${extname(brand.logo)}`,
     }),

@@ -15,7 +15,8 @@
  * certificate's subject, which installed clients require of every update.
  *
  * Updates (design §9.1.2): BREATIC_UPDATE_BASE_URL turns the feed on, under
- * one directory per brand. macOS and Windows get it only when signed:
+ * one directory per brand. macOS and Windows get it only when signed, Windows
+ * also only with AZURE_PUBLISHER_NAME:
  * Squirrel.Mac cannot install an unsigned update, and an unsigned Windows
  * build has no publisher to check updates against.
  */
@@ -35,6 +36,8 @@ import { currentBrand } from "./brand.mjs";
 export function builderConfig(env) {
   const brand = currentBrand(env);
   const azure = Boolean(env.AZURE_SIGNING_ENDPOINT && env.AZURE_SIGNING_ACCOUNT && env.AZURE_SIGNING_PROFILE);
+  // Installed clients check an update's signer against this name; without it they could not.
+  const windowsFeed = azure && Boolean(env.AZURE_PUBLISHER_NAME?.trim());
   const notarize = Boolean(env.APPLE_API_KEY && env.APPLE_API_KEY_ID && env.APPLE_API_ISSUER);
   const base = env.BREATIC_UPDATE_BASE_URL?.trim().replace(/\/+$/, "");
   const feed = base ? [{ provider: "generic", url: `${base}/${brand.id}/` }] : null;
@@ -72,7 +75,7 @@ export function builderConfig(env) {
             },
           }
         : {}),
-      publish: azure ? feed : null,
+      publish: windowsFeed ? feed : null,
     },
     nsis: { oneClick: false, perMachine: false, allowToChangeInstallationDirectory: true },
     // A right-click on the installed launcher icon opens another window (design §5.1).

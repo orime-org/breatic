@@ -48,14 +48,25 @@ export function publishOrder(files) {
   return [...published.filter((file) => !MANIFEST.test(file)), ...published.filter((file) => MANIFEST.test(file))];
 }
 
+/** Settings a publish cannot go without; the feed address is what the packages were built to read. */
+const PUBLISH_SETTINGS = ["BREATIC_UPDATE_BASE_URL", "R2_UPDATES_BUCKET", "R2_UPDATES_ENDPOINT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"];
+
+/**
+ * The publish settings missing from an environment.
+ * @param {Record<string, string | undefined>} env - The environment.
+ * @returns {string[]} The names of the missing ones, blank counting as missing.
+ */
+export function missingPublishSettings(env) {
+  return PUBLISH_SETTINGS.filter((name) => !env[name]?.trim());
+}
+
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
   const root = join(dirname(fileURLToPath(import.meta.url)), "..");
   const env = process.env;
   const manifest = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
   releaseVersion(env.GITHUB_REF_NAME ?? "", manifest.version);
-  for (const name of ["R2_UPDATES_BUCKET", "R2_UPDATES_ENDPOINT", "AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"]) {
-    if (!env[name]) throw new Error(`publish needs ${name}`);
-  }
+  const missing = missingPublishSettings(env);
+  if (missing.length > 0) throw new Error(`publish needs ${missing.join(", ")}`);
   const brand = currentBrand(env);
   const prefix = [env.R2_UPDATES_PREFIX?.replace(/^\/+|\/+$/g, ""), brand.id].filter(Boolean).join("/");
   const release = join(root, "release");

@@ -13,24 +13,46 @@
  * SERVER defaults to the worktree's own web port; set BREATIC_E2E_SERVER for another.
  */
 
+import { execFileSync } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { _electron as electron, chromium, expect, test, type ElectronApplication, type Page } from "playwright/test";
+import { _electron as electron, chromium, expect, request, test, type ElectronApplication, type Page } from "playwright/test";
 
 const SERVER = process.env.BREATIC_E2E_SERVER ?? "http://localhost:8100";
 const MAIN = join(import.meta.dirname, "..", "dist", "main", "index.cjs");
 
+/** The account the run made, once. */
+let made: { email: string; password: string } | null = null;
+
 /**
- * The first account in the worktree's untracked `tasks/test_account`.
+ * An account of this run's own, made the way the web suites make theirs:
+ * through scripts/seed-smoke-account.ts, the server's own register, so the
+ * sign-up rate limit stays for the cases that test signing up. Its personal
+ * studio is made through the API, as the web suites' setup does.
  * @returns Email and password.
+ * @throws {Error} When the script fails or the studio cannot be made.
  */
-function account(): { email: string; password: string } {
-  const text = readFileSync(join(import.meta.dirname, "..", "..", "..", "tasks", "test_account"), "utf8");
-  const row = text.split("\n").find((line) => /^\S+@\S+\s+\S+/.test(line));
-  if (!row) throw new Error("tasks/test_account holds no account row");
-  const [email, password] = row.trim().split(/\s+/);
-  return { email: email!, password: password! };
+async function account(): Promise<{ email: string; password: string }> {
+  if (made) return made;
+  const mark = randomBytes(6).toString("hex");
+  const credentials = { email: `desktop-e2e-${mark}@breatic.test`, password: randomBytes(18).toString("base64url") };
+  execFileSync("pnpm", ["exec", "tsx", "--tsconfig", "packages/server/tsconfig.json", "scripts/seed-smoke-account.ts"], {
+    cwd: join(import.meta.dirname, "..", "..", ".."),
+    input: JSON.stringify(credentials),
+    stdio: ["pipe", "pipe", "inherit"],
+  });
+  const api = await request.newContext({ baseURL: SERVER });
+  try {
+    expect((await api.post("/api/v1/auth/login", { data: credentials })).ok()).toBe(true);
+    const studio = await api.post("/api/v1/auth/setup-studio", { data: { slug: `desktop-${mark}` } });
+    expect(studio.ok(), await studio.text()).toBe(true);
+  } finally {
+    await api.dispose();
+  }
+  made = credentials;
+  return made;
 }
 
 /**
@@ -122,7 +144,7 @@ test("a partner's splash carries the powered-by line under its own name", async 
 test("email sign-in survives a restart", async () => {
   const userData = freshData();
   writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
-  const { email, password } = account();
+  const { email, password } = await account();
 
   const first = await launch(userData);
   const page = await windowWhere(first, (url) => url.startsWith(SERVER));
@@ -143,7 +165,7 @@ test("email sign-in survives a restart", async () => {
 test("New Window opens another signed-in window on the Studio, from the menu and from a second launch", async () => {
   const userData = freshData();
   writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
-  const { email, password } = account();
+  const { email, password } = await account();
   const app = await launch(userData);
   const page = await windowWhere(app, (url) => url.startsWith(SERVER));
   await page.getByLabel("Email").fill(email);
@@ -238,7 +260,7 @@ test("a configured server that cannot be reached opens the unreachable state", a
 test("browser sign-in hands the account to the client through a link on its scheme", async () => {
   const userData = freshData();
   writeFileSync(join(userData, "config.json"), JSON.stringify({ serverUrl: SERVER }));
-  const { email, password } = account();
+  const { email, password } = await account();
   const app = await launch(userData);
   const page = await windowWhere(app, (url) => url.startsWith(SERVER));
   await expect(page).toHaveURL(/\/login/);
