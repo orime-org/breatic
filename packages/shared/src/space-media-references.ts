@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as Y from "yjs";
+import { z } from "zod";
 import type { SpaceType } from "@shared/types/space.js";
 import { CANVAS_NODES_KEY } from "@shared/types/canvas-node.js";
 import { existingDocumentBodyFragment } from "@shared/document-body.js";
@@ -12,6 +13,9 @@ const PHYSICAL_NODE_TYPES = new Set(["image", "audio", "video", "3d"]);
 const CANVAS_NODE_TYPES = new Set([...PHYSICAL_NODE_TYPES, "text", "web", "annotation", "group"]);
 const IMAGE_FIELDS = ["firstFrameUrl", "endFrameUrl", "characterImageUrl", "moodImageUrl"] as const;
 const VIDEO_FIELDS = ["drivingVideo", "sourceVideo", "soundVideo"] as const;
+/** A registered asset id as a 3D scene stores it. */
+const AssetIdSchema = z.string().uuid();
+
 const AUDIO_FIELDS = ["drivingAudio", "refAudio", "leftAudio", "rightAudio", "musicSong", "coverSong", "musicMelody", "musicVocal"] as const;
 
 /** Registered identities and physical-media URLs explicitly used by a Space. */
@@ -46,8 +50,32 @@ export function readSpaceMediaReferences(kind: SpaceType, doc: Y.Doc): SpaceMedi
       }
       break;
     }
+    case "3d":
+      read3dReferences(doc, assetIds);
+      break;
   }
   return { assetIds: [...assetIds].sort(), urls: [...urls].sort() };
+}
+
+/**
+ * Read a 3D scene's registered assets: each object record's imported model and its part pictures, stored as the
+ * `model` value and `look.<part>.map` keys (packages/shared/src/scene.ts). The keys are read here directly, so this
+ * subpath does not take in the scene module the main entry gives web.
+ * @param doc - The scene document.
+ * @param assetIds - Where found ids are added.
+ * @throws {never} Never.
+ */
+function read3dReferences(doc: Y.Doc, assetIds: Set<string>): void {
+  const objects = existingMap(doc, "objects");
+  if (objects === undefined) return;
+  for (const record of objects.values()) {
+    if (!(record instanceof Y.Map)) continue;
+    const model = record.get("model") as { kind?: unknown; assetId?: unknown } | undefined;
+    if (model?.kind === "asset" && AssetIdSchema.safeParse(model.assetId).success) assetIds.add(model.assetId as string);
+    for (const [key, value] of record.entries()) {
+      if (key.startsWith("look.") && key.endsWith(".map") && AssetIdSchema.safeParse(value).success) assetIds.add(value as string);
+    }
+  }
 }
 
 /**

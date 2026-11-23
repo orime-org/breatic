@@ -2462,21 +2462,21 @@ export const timelineExecutions = pgTable(
     actionId: text("action_id").notNull(),
     input: jsonb("input").$type<Record<string, unknown>>().notNull(),
     inputHash: text("input_hash").notNull(),
-    /** Empty for an export, which calls no model (0132, #1490). */
+    /** Empty for an export, which calls no model (0133, #1490). */
     engine: text("engine"),
-    /** `awaiting_landing` is held only by rows written before #1490 (0132). */
+    /** `awaiting_landing` is held only by rows written before #1490 (0133). */
     status: text("status").notNull().default("queued"),
-    /** Where it was asked for: `web_animation_space`, or `timeline` before #1490 (0132). */
+    /** Where it was asked for: `web_animation_space`, or `timeline` before #1490 (0133). */
     origin: text("origin").notNull(),
     phase: text("phase"),
-    /** How far a running export's render got, as a whole percent (0132, #1490). */
+    /** How far a running export's render got, as a whole percent (0133, #1490). */
     progress: smallint("progress"),
     steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
     attempt: integer("attempt").notNull().default(0),
     fence: uuid("fence"),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
     resultSourceVersionId: uuid("result_source_version_id"),
-    /** An export's registered video (0132, #1490). */
+    /** An export's registered video (0133, #1490). */
     resultAssetId: uuid("result_asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
     failureReason: text("failure_reason"),
     /** The upstream a failure of the payer's own key names (0131, inner#1953); null for any other failure. */
@@ -2601,7 +2601,7 @@ export const timelineExecutionGrants = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
-    /** Its execution's creation time and origin, copied on insert so a Project's list reads in order (0132, #1490). */
+    /** Its execution's creation time and origin, copied on insert so a Project's list reads in order (0133, #1490). */
     executionCreatedAt: timestamp("execution_created_at", { withTimezone: true }).notNull(),
     executionOrigin: text("execution_origin").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
@@ -3577,6 +3577,15 @@ export const uploadGrants = pgTable(
     generationTaskId: uuid("generation_task_id").references(() => tasks.id, {
       onDelete: "restrict",
     }),
+    /**
+     * A picture uploaded for a 3D object's part (0132, inner#1693): the
+     * object, the part and the picture that part held when the upload
+     * started (null for none). Collab writes the stored picture there once
+     * the report arrives. All three null on every other upload.
+     */
+    sceneObjectId: uuid("scene_object_id"),
+    scenePart: text("scene_part"),
+    sceneStartMap: text("scene_start_map"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

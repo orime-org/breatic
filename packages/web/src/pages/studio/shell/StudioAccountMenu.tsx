@@ -26,6 +26,7 @@ import type { UseQueryResult } from '@tanstack/react-query';
 
 import { authApi } from '@web/data/api/auth';
 import { ByokDialog } from '@web/features/byok/ByokDialog';
+import { useByokView } from '@web/features/byok/byok-query';
 import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
@@ -92,7 +93,8 @@ const NOTICE_LINKS = [
 /**
  * Studio account menu — the current-user avatar in the studio top bar, opening
  * the account's own entries: who is signed in, account settings, BYOK
- * settings, the promoter program, membership, credits, and sign out.
+ * settings where the deployment has BYOK on, the promoter program, membership,
+ * credits, and sign out.
  *
  * A menu rather than a popover. Every entry here either navigates or acts, and
  * Radix's menu closes itself on select; a popover does not, and this one is
@@ -131,6 +133,9 @@ export function StudioAccountMenu(): React.JSX.Element {
   // open here reads the new figure rather than the one from before.
   const overview = useCreditOverview(menuOpen);
   const promoter = usePromoterEntry(menuOpen);
+  // The BYOK view is read while the menu is open, as the promoter entry's is, and the entry leaves the menu only once
+  // the view says this deployment has BYOK off (#1618); the dialog opens on the same cached read.
+  const byokOff = useByokView(menuOpen).data?.enabled === false;
 
   // Reports what a membership checkout came to, on the way back from it. It
   // lives beside the credits return for the same reason that one does: the
@@ -306,10 +311,12 @@ export function StudioAccountMenu(): React.JSX.Element {
             <Settings className='h-4 w-4' />
             {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
-          <DropdownMenuItem onSelect={openByok} data-testid='account-menu-byok'>
-            <KeyRound className='h-4 w-4' />
-            {t('byok.heading')}
-          </DropdownMenuItem>
+          {byokOff ? null : (
+            <DropdownMenuItem onSelect={openByok} data-testid='account-menu-byok'>
+              <KeyRound className='h-4 w-4' />
+              {t('byok.heading')}
+            </DropdownMenuItem>
+          )}
           {promoter.shown ? (
             <DropdownMenuItem onSelect={promoter.select} data-testid='account-menu-promoter'>
               <Megaphone className='h-4 w-4' />

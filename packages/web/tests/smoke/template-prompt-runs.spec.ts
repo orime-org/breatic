@@ -21,6 +21,7 @@
  * leaves empty (inner#1811): every generation request is recorded, and the paragraph of an optional input must be in each
  * request of a node it feeds exactly when that input holds a picture.
  */
+import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { expect, type Locator, type Page } from 'playwright/test';
@@ -116,6 +117,10 @@ test.use({ viewport: { width: 1600, height: 1000 } });
 type Kind = 'image' | 'video' | 'audio';
 
 let page: Page;
+/** The clip cut from a run's score for each node key, as the user does with Cut (inner#1822). */
+const cutClips = new Map<string, string>();
+/** A fill that @s the clip cut for the node key that follows it. */
+const CUT_MENTION = '@cut:';
 let projectId = '';
 let spaceId = '';
 
@@ -218,6 +223,17 @@ async function fillBraces(values: string[], editorId = 'generate-prompt-editor')
     });
     if (!found) throw new Error(`no braces left for "${value}"`);
     await page.waitForTimeout(150);
+    if (value.startsWith(CUT_MENTION)) {
+      // The brace asks the user to @ the clip they cut from the score: the @ replaces it with the clip's chip.
+      const clip = cutClips.get(value.slice(CUT_MENTION.length));
+      if (clip === undefined) throw new Error(`no cut clip for "${value}"`);
+      await page.keyboard.type('@');
+      await page.getByTestId(`reference-mention-option-${clip}`).click();
+      // The list closing puts the caret back after the chip, so the next brace is picked only once it has gone.
+      await expect(page.getByTestId(`reference-mention-option-${clip}`)).toHaveCount(0);
+      await page.waitForTimeout(300);
+      continue;
+    }
     await page.keyboard.type(value);
   }
   await expect(editor).not.toContainText('{');
@@ -291,10 +307,18 @@ async function cheapestTier(): Promise<void> {
       .map((value) => value.slice(prefix.length));
     const size = (value: string): number => Number.parseFloat(value) * (/k$/i.test(value) ? 1000 : 1);
     const lowest = [...values].sort((a, b) => size(a) - size(b))[0];
-    if (lowest !== undefined) await page.getByTestId(`${prefix}${lowest}`).click();
+    // A node low on the canvas opens its popover past the bottom edge; the canvas is scrolled up, the popover with it.
+    if (lowest !== undefined) {
+      const option = page.getByTestId(`${prefix}${lowest}`);
+      await bringIntoView(option);
+      await option.click();
+    }
     // Quality sits in the same popover as resolution, so it is picked before the popover closes.
     const quality = page.locator('[data-testid^="generate-param-quality-option-"]');
-    if ((await quality.count()) > 0) await quality.first().click();
+    if ((await quality.count()) > 0) {
+      await bringIntoView(quality.first());
+      await quality.first().click();
+    }
     // The open popover can sit over its own trigger, so it is closed the way a user dismisses it.
     await page.keyboard.press('Escape');
     await expect(trigger).toHaveAttribute('data-state', 'closed');
@@ -497,6 +521,7 @@ async function dropMedia(file: string, bytes: Buffer = readFileSync(file)): Prom
 const STYLE = '3D cartoon';
 
 test.beforeEach(async ({ browser }) => {
+  cutClips.clear();
   page = await browser.newPage();
   requests.length = 0;
   page.on('request', (request) => {
@@ -678,6 +703,11 @@ interface Run {
   shots?: string[][];
   /** The template nodes picked into the anchor's slots once generated. */
   frames?: Partial<Record<VideoSlotId, string>>;
+  /**
+   * Pieces cut from a generated node's sound, in seconds, each wired into a node (`anchor` for the anchor), as the
+   * template's trim step tells the user to do with Cut; a fill of `@cut:<key>` then @s that piece (inner#1822).
+   */
+  cuts?: { from: string; pieces: { into: string; start: number; end: number }[] };
 }
 
 /** How each template is run. */
@@ -743,6 +773,91 @@ const RUNS: Record<string, Run> = {
     },
   },
   'dish-hero-still': { type: 'image', photo: true, image: 'dish.jpg', first: [], fills: { anchor: ['a dark slate table with a linen napkin'] } },
+  'app-launch-promo': {
+    type: 'video',
+    photo: false,
+    inputs: { 'screen-1': 'promo/app-screen-1.jpg', 'screen-2': 'promo/app-screen-2.jpg', logo: 'promo/app-logo.jpg' },
+    first: [],
+    fills: { anchor: ['a habit-tracking app called Streak', 'the streak counter ticks up to 30 days with a small burst of confetti', 'an upbeat electronic pulse'] },
+  },
+  'brand-origin-film': {
+    type: 'video',
+    photo: false,
+    inputs: { maker: 'promo/maker.jpg', product: 'promo/craft-mug.jpg' },
+    first: [],
+    fills: {},
+    shots: [
+      ['shaping wet clay on a wheel'],
+      ['a small sunlit workshop by the sea'],
+      ['the colour of the sea at dawn through the window'],
+      [],
+      ['a woman wraps her cold hands around the mug on a rainy morning', '"Made slowly, for slow mornings."'],
+    ],
+  },
+  'launch-story-3-beat': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: ['score'],
+    fills: { score: ['modern acoustic-electronic at 110 BPM'] },
+    shots: [['a hiker shakes an empty, dented plastic bottle on a hot trail', 'a water bottle', `${CUT_MENTION}anchor`], [], ['the hiker drinks deep from the new bottle by a cool mountain stream']],
+    cuts: { from: 'score', pieces: [{ into: 'anchor', start: 20, end: 32 }] },
+  },
+  'promo-film-assembled': {
+    type: 'video',
+    photo: false,
+    inputs: { brand: 'product.jpg' },
+    first: ['score', 'part-2', 'part-3', 'part-4'],
+    fills: {
+      score: ['cinematic folk-electronic at 100 BPM'],
+      anchor: ['Hydra, a refillable outdoor water bottle brand', 'cold northern light, muted greens and greys, a handheld documentary camera', `${CUT_MENTION}anchor`, 'a hiker\'s hand grips a frozen ledge as the wind roars'],
+      'part-2': ['Hydra, a refillable outdoor water bottle brand', 'cold northern light, muted greens and greys, a handheld documentary camera', `${CUT_MENTION}part-2`, 'a team packs their gear in a mountain hut at dawn'],
+      'part-3': ['Hydra, a refillable outdoor water bottle brand', 'cold northern light, muted greens and greys, a handheld documentary camera', `${CUT_MENTION}part-3`, 'the storm breaks and the team reaches the summit'],
+      'part-4': ['Hydra, a refillable outdoor water bottle brand', 'cold northern light, muted greens and greys, a handheld documentary camera', `${CUT_MENTION}part-4`, 'the hikers rest in golden light and drink from their bottles'],
+    },
+    cuts: {
+      from: 'score',
+      pieces: [
+        { into: 'anchor', start: 0, end: 15 },
+        { into: 'part-2', start: 15, end: 30 },
+        { into: 'part-3', start: 30, end: 45 },
+        { into: 'part-4', start: 45, end: 60 },
+      ],
+    },
+  },
+  'fashion-lookbook': {
+    type: 'video',
+    photo: false,
+    inputs: { model: 'fashion/model.jpg', outfit: 'fashion/outfit-1.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'a camel trench coat, a white button-up shirt, straight blue jeans, brown leather loafers',
+        'a concrete stairwell, a sunlit street, a rooftop at dusk',
+        'the trench coat\'s belt',
+        'a slow electronic beat',
+      ],
+    },
+  },
+  'try-on-still': {
+    type: 'image',
+    photo: false,
+    inputs: { model: 'fashion/model.jpg', garment: 'fashion/coat.jpg' },
+    first: [],
+    fills: { anchor: ['plain black trousers and white sneakers'] },
+  },
+  'lookbook-multi-look': {
+    type: 'video',
+    photo: false,
+    inputs: { model: 'fashion/model.jpg', 'outfit-1': 'fashion/outfit-1.jpg', 'outfit-2': 'fashion/outfit-2.jpg', 'outfit-3': 'fashion/outfit-3.jpg' },
+    first: ['look-1', 'look-2', 'look-3'],
+    fills: {
+      'look-1': ['a sunlit street'],
+      'look-2': ['a white gallery'],
+      'look-3': ['a rooftop at dusk'],
+      anchor: ['the model snaps their fingers at the camera', 'an upbeat house track'],
+    },
+  },
   'name-as-world-typography': {
     type: 'image',
     photo: false,
@@ -1339,6 +1454,15 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       record({ template: id, node: key, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
       expectOptionalParagraphs(id, key, sentPrompt);
       await save(url, `${tag}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
+      if (run.cuts?.from === key) {
+        for (const piece of run.cuts.pieces) {
+          const cut = `${OUT}/${tag}-${key}-${String(piece.start)}-${String(piece.end)}-${LABEL}-${n}.mp3`;
+          execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(piece.start), '-to', String(piece.end), '-i', `${OUT}/${tag}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`, cut]);
+          const clip = await dropMedia(cut);
+          await wire(page, { projectId, spaceId }, clip, piece.into === 'anchor' ? anchor : await keyed(piece.into));
+          cutClips.set(piece.into, clip);
+        }
+      }
     }
     await openPanel(anchor);
     for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as VideoSlotId, await keyed(key));

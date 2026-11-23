@@ -55,7 +55,7 @@ let sql: ReturnType<typeof postgres>;
 let app: Hono;
 
 beforeAll(async () => {
-  initCore({ ...process.env, PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
+  initCore({ ...process.env, BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1", PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }) });
   loadLocales();
   initProvider();
   initSourceProvider();

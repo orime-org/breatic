@@ -71,6 +71,7 @@ export type {
   NodeTaskResult,
   NodeMediaNumbers,
   NodeTaskCountsEvent,
+  SceneLookPictureEvent,
   NodeEvent,
   SpaceTasksVersionEvent,
   ModelModality,
@@ -132,6 +133,7 @@ export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
   SpaceTasksChangedControlEvent,
+  SceneLookSettledControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
@@ -171,6 +173,7 @@ export {
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
+  sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -203,6 +206,7 @@ export {
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
   SPACE_TASKS_CHANGED_SIGNAL,
+  SCENE_LOOK_SETTLED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -239,6 +243,7 @@ export type {
   ActivityNewSignal,
   CreditsChangedSignal,
   SpaceTasksChangedSignal,
+  SceneLookSettledSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -1221,12 +1226,15 @@ export {
   type AttributionTouch,
 } from "@shared/analytics/attribution.js";
 
-export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType,
+export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_MAX_KEYS, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType, isSceneLookImageMediaType,
+  SCENE_LOOK_KEY_PREFIX, SCENE_LOOK_MAX_PARTS, SCENE_LOOK_DEFAULT_PART, SCENE_LOOK_FIELDS, SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_EMISSIVE_DEFAULT, SCENE_LOOK_REPEAT_MIN, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_OFFSET_MAX, SCENE_LOOK_ROTATION_MAX, SceneLookSchema, SceneLookMapSchema, isSceneLookPartKey, gatherSceneLook, expandSceneLook,
   SCENE_LIGHT_TYPES, VIEWFINDER_RATIOS, DEFAULT_VIEWFINDER_RATIO, SCENE_FREE_RATIO_MIN, SCENE_FREE_RATIO_MAX, SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_DEFAULT,
   SCENE_SPOT_ANGLE_MIN, SCENE_SPOT_ANGLE_MAX, SCENE_SPOT_ANGLE_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LIGHT_COLOR_DEFAULT, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
-  SceneColorSchema, SCENE_CAMERA_KEYS, SCENE_LIGHT_KEYS, isSceneCamera, isSceneLight, compareDirectorRecords, nextDirectorNumber, isSceneModelFile } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig, SceneCaptureConfig,
-  SceneLightType, ViewfinderRatio, SceneModelFile, SceneCameraObject, SceneLightObject, SceneDirectorConfig } from "@shared/scene.js";
+  SceneColorSchema, SCENE_CAMERA_KEYS, SCENE_LIGHT_KEYS, isSceneCamera, isSceneLight, compareDirectorRecords, nextDirectorNumber, isSceneModelFile,
+  readSceneRecord, judgeSceneLookPicture, SCENE_LOOK_PICTURE_SETTLEMENTS } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneLook, SceneLookPart, SceneLookField, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig, SceneCaptureConfig,
+  SceneLightType, ViewfinderRatio, SceneModelFile, SceneCameraObject, SceneLightObject, SceneDirectorConfig,
+  SceneLookPictureOutcome, SceneLookPictureRefusal, SceneLookPictureSettlement } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";

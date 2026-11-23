@@ -34,6 +34,8 @@ const customTwMerge = extendTailwindMerge({
         // card + the ChatComposer box while its text has focus. See
         // `--color-active-border` in tokens.css (#388).
         'active-border',
+        // Colour swatch outline, `--color-swatch-border` in tokens.css (#1536).
+        'swatch-border',
       ],
     },
   },

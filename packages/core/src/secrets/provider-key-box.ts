@@ -118,13 +118,16 @@ export function openProviderKey(sealed: string, ring: ProviderKeyRing): string {
 }
 
 /**
- * The master key ring a deployment configured, or null when bring-your-own-key is off (neither variable set).
- * `parseConfig` has already refused a half or malformed configuration.
+ * The master key ring a deployment configured, or null when bring-your-own-key is off (`BYOK_ENABLED` is not true, or
+ * no master key is set). `parseConfig` has already refused a half or malformed configuration, and BYOK switched on
+ * without master keys.
  * @param config - The parsed core configuration.
  * @returns The ring, or null.
  */
-export function providerKeyRingOf(config: Pick<CoreConfig, "PROVIDER_KEY_SECRET_ID" | "PROVIDER_KEY_SECRETS">): ProviderKeyRing | null {
-  if (config.PROVIDER_KEY_SECRET_ID === "") return null;
+export function providerKeyRingOf(
+  config: Pick<CoreConfig, "BYOK_ENABLED" | "PROVIDER_KEY_SECRET_ID" | "PROVIDER_KEY_SECRETS">,
+): ProviderKeyRing | null {
+  if (!config.BYOK_ENABLED || config.PROVIDER_KEY_SECRET_ID === "") return null;
   return {
     current: config.PROVIDER_KEY_SECRET_ID,
     keys: Object.fromEntries(Object.entries(config.PROVIDER_KEY_SECRETS).map(([id, hex]) => [id, Buffer.from(hex, "hex")])),

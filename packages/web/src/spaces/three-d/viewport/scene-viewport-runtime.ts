@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, MeshStandardMaterial, OrthographicCamera, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene, ShadowMaterial, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
+import { Box3, BoxHelper, Color, DirectionalLight, GridHelper, Group, HemisphereLight, Mesh, MeshBasicMaterial, OrthographicCamera, PCFSoftShadowMap, PerspectiveCamera, PlaneGeometry, Quaternion, Raycaster, Scene, ShadowMaterial, SkinnedMesh, SphereGeometry, SRGBColorSpace, Vector2, Vector3, WebGLRenderer, WebGLRenderTarget } from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { TransformControlsGizmo } from 'three/addons/controls/TransformControls.js';
 import type { Bone, Intersection, Object3D } from 'three';
@@ -9,6 +9,7 @@ import {
   SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, isSceneCamera, isSceneLight, isSceneModelFile,
   type SceneCameraObject, type SceneModelFile, type SceneObject, type ScenePose,
 } from '@breatic/shared';
+import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { DirectorFigure, applyCameraRecord } from '@web/spaces/three-d/viewport/director-objects';
 import { DISPLAY_LINE_LAYER, DISPLAY_PICK_LAYER } from '@web/spaces/three-d/viewport/scene-layers';
 import { cameraFrameRatio } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
@@ -18,6 +19,8 @@ import { ScenePilot, pilotPivotDistance } from '@web/spaces/three-d/viewport/sce
 import { displayedObjects, previewedObjectIds } from '@web/spaces/three-d/viewport/scene-display';
 import { applyPose, poseRigOf, type PoseRig } from '@web/spaces/three-d/viewport/pose-rig';
 import { SceneMiniMapRuntime } from '@web/spaces/three-d/viewport/scene-mini-map';
+import { SceneLookRuntime, lookReportOf } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import { decideScenePick, partAtHit } from '@web/spaces/three-d/viewport/look-highlight';
 import { applySceneGridTheme } from '@web/spaces/three-d/viewport/scene-grid-theme';
 import { ModelResourceCache, acquireMeasured, loadSceneModel, type MeasuredSceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
 import type { SceneModelLease } from '@web/spaces/three-d/viewport/model-resources';
@@ -26,7 +29,7 @@ import type { SceneTransformGesture } from '@web/spaces/three-d/viewport/scene-t
 import { SceneTransformControls173 } from '@web/spaces/three-d/viewport/transform-controls-173';
 import { SCENE_VIEW_FAR, SCENE_VIEW_FOV, SCENE_VIEW_NEAR, captureViewOffset, focusSceneBounds, updateSceneCameraRange } from '@web/spaces/three-d/viewport/scene-camera';
 import { createOrbitUserMoveWatch } from '@web/spaces/three-d/viewport/orbit-user-move';
-import type { CapturedPixels, SceneCameraView, SceneFrameCapture, SceneTransformPatch, SceneViewportProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { CapturedPixels, SceneCameraView, SceneFrameCapture, SceneTransformPatch, SceneViewportRuntimeProps, SceneView } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 /** Width and depth of the ground that shows shadows, matching the grid. */
 const GROUND_SIZE = 200;
@@ -51,11 +54,34 @@ interface NativeHandleObservation {
   center: [number, number, number];
 }
 
+/**
+ * Each part's first material as drawn, for the page's own inspection: its class, colour and whether it shows a picture.
+ * @param root - A loaded instance.
+ * @returns The drawn state by part.
+ */
+function renderedParts(root: Group): Record<string, { type: string; color: string | null; map: boolean }> {
+  const parts: Record<string, { type: string; color: string | null; map: boolean }> = {};
+  root.traverse((child) => {
+    if (child.userData.lookHighlight || !(child instanceof Mesh)) return;
+    for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
+      const part = material.userData.lookPart as string | undefined;
+      if (part === undefined || parts[part]) continue;
+      const drawn = material as MeshBasicMaterial;
+      parts[part] = { type: material.type, color: drawn.color ? `#${drawn.color.getHexString()}` : null, map: Boolean(drawn.map) };
+    }
+  });
+  return parts;
+}
+
 interface RenderedObject {
   source: string;
   lease: SceneModelLease;
   root: Group | null;
   state: 'loading' | 'ready' | 'failed';
+  /** Whether a failed load can succeed when tried again: a model whose content was refused fails the same way. */
+  retryable?: boolean;
+  /** Its parts as last drawn, read again only when a look applies. */
+  parts?: Record<string, { type: string; color: string | null; map: boolean }>;
 }
 /** One joint drag: its rig, the dragged bone's key and the committed pose it started from. */
 interface JointGesture {
@@ -164,7 +190,7 @@ function sceneError(error: unknown): Error {
  * @throws {Error} When WebGL or the installed controls cannot be constructed.
  */
 export class SceneViewportRuntime {
-  private props: SceneViewportProps;
+  private props: SceneViewportRuntimeProps;
   private readonly host: HTMLDivElement;
   private readonly scene = new Scene();
   private readonly camera = new PerspectiveCamera(SCENE_VIEW_FOV, 1, SCENE_VIEW_NEAR, SCENE_VIEW_FAR);
@@ -188,6 +214,36 @@ export class SceneViewportRuntime {
   private overview: SceneMiniMapRuntime | null = null;
   private overviewHost: HTMLDivElement | null = null;
   private outlines: BoxHelper[] = [];
+  /** True while an update or a model load runs, which ends with one 'changed' of its own. */
+  private syncing = false;
+  /** Each loaded object's look, its pictures and the highlighted part (inner#1693). */
+  private readonly looks = new SceneLookRuntime({
+    textures: () => this.props.lookTextures ?? null,
+    limits: () => ({ maxTextureEdge: Math.min(this.props.importLimits.maxTextureEdge, this.renderer.capabilities.maxTextureSize),
+      maxTextureBytes: this.props.importLimits.maxTextureBytes,
+      maxPictureHeaderBytes: this.props.importLimits.maxPictureHeaderBytes }),
+    themeColor: () => this.token('--color-muted-foreground'),
+    highlightColor: () => this.token('--color-status-selected'),
+    onProgramChanged: (root) => {
+      // A loading object is not in the scene yet; its load compiles it once its look is on.
+      if (root.parent === null) return;
+      // As a model load does: its programs compile first, so the shadow budget counts their samplers (design 5.2).
+      this.renderer.compile(root, this.camera, this.scene);
+      this.syncLights();
+      this.markShadows(true);
+    },
+    // Inside an update or a model load, their own one 'changed' covers it.
+    onChanged: (id) => {
+      const item = id === undefined ? undefined : this.items.get(id);
+      if (item) item.parts = undefined;
+      if (this.syncing) return;
+      // A picture that settles later can change a cut-out part's outline, which the shadow maps draw from.
+      this.markShadows(true);
+      this.monitorEvent({ type: 'changed' });
+      this.inspect();
+    },
+    onPictures: (id, pictures) => this.props.onLookPictures?.(id, pictures),
+  });
   private gesture: SceneTransformGesture | null = null;
   private joint: JointGesture | null = null;
   /** What each object is drawn with: the document, or a collaborator's drag (design 5.4). */
@@ -225,6 +281,8 @@ export class SceneViewportRuntime {
   private readonly cardVisibility: IntersectionObserver | null;
   private readonly cardSize: ResizeObserver;
   private monitorDrawnAt = 0;
+  /** The theme colour the part reports last carried. */
+  private reportedTheme = '';
 
   /**
    * Construct resources only within the React view's effect lifetime.
@@ -232,7 +290,7 @@ export class SceneViewportRuntime {
    * @param props - The initial scene snapshots, personal camera state and callbacks to the owning session.
    * @throws {Error} When Three cannot construct a WebGL renderer or controls.
    */
-  constructor(host: HTMLDivElement, props: SceneViewportProps) {
+  constructor(host: HTMLDivElement, props: SceneViewportRuntimeProps) {
     this.host = host;
     this.props = props;
     this.renderer = new WebGLRenderer({ antialias: true });
@@ -247,6 +305,7 @@ export class SceneViewportRuntime {
     // Shadow maps are drawn again only when a display value changes.
     this.renderer.shadowMap.autoUpdate = false;
     this.renderer.shadowMap.needsUpdate = true;
+    canvas.addEventListener('webglcontextrestored', this.onContextRestored);
     this.camera.layers.enable(DISPLAY_PICK_LAYER);
     this.camera.layers.enable(DISPLAY_LINE_LAYER);
     this.camera.position.fromArray(props.view.position);
@@ -372,7 +431,7 @@ export class SceneViewportRuntime {
    * @param render - The render to run.
    */
   private withoutHelpers(render: () => void): void {
-    const helpers: Object3D[] = [this.grid, this.controls.getHelper(), this.markers, ...this.outlines];
+    const helpers: Object3D[] = [this.grid, this.controls.getHelper(), this.markers, ...this.outlines, ...this.looks.overlays()];
     const shown = helpers.map((helper) => helper.visible);
     try {
       for (const helper of helpers) helper.visible = false;
@@ -478,8 +537,21 @@ export class SceneViewportRuntime {
    * @param props - The latest scene content, selection, permissions, revisions and session callbacks.
    * @throws {Error} When the installed controls differ from the r173 adapter.
    */
-  update(props: SceneViewportProps): void {
+  update(props: SceneViewportRuntimeProps): void {
     if (this.disposed) return;
+    this.syncing = true;
+    try {
+      this.updateNow(props);
+    } finally {
+      this.syncing = false;
+    }
+  }
+
+  /**
+   * Apply new props to the scene.
+   * @param props - The latest scene content, selection, permissions, revisions and session callbacks.
+   */
+  private updateNow(props: SceneViewportRuntimeProps): void {
     const previous = this.props;
     this.leaveCameraView(previous, props);
     this.props = props;
@@ -499,6 +571,7 @@ export class SceneViewportRuntime {
     for (const [id, item] of this.items) {
       if (!visible.has(id)) {
         this.overview?.remove(id);
+        this.looks.remove(id);
         item.lease.release();
         this.items.delete(id);
         this.figures.delete(id);
@@ -514,9 +587,10 @@ export class SceneViewportRuntime {
       }
       const source = JSON.stringify(object.model);
       let item = this.items.get(object.id);
-      if (item && (item.source !== source || (item.state === 'failed' && props.modelRetryRevision !== previous.modelRetryRevision))) {
+      if (item && (item.source !== source || (item.state === 'failed' && item.retryable === true && props.modelRetryRevision !== previous.modelRetryRevision))) {
         if (this.gesture?.matrices.has(object.id) || this.joint?.id === object.id) this.endGesture(false);
         this.overview?.remove(object.id);
+        this.looks.remove(object.id);
         item.lease.release();
         this.items.delete(object.id);
         item = undefined;
@@ -526,7 +600,11 @@ export class SceneViewportRuntime {
         applyObject(item.root, object);
         applyPose(item.root, object.pose, !this.previewed.has(object.id));
       }
+      // A look drag is a local gesture too, and its preview shows here.
+      if (item?.root) this.looks.sync(object, item.root);
     }
+    if (props.modelRetryRevision !== previous.modelRetryRevision) this.looks.retry();
+    this.syncHighlight();
     this.enterCameraView(props.cameraView ?? null);
     if (this.view === null && !this.dragging && !this.sameView(props.view)) {
       this.userMove.applying(() => {
@@ -560,7 +638,7 @@ export class SceneViewportRuntime {
    * @param previous - The props in force.
    * @param next - The props about to apply.
    */
-  private leaveCameraView(previous: SceneViewportProps, next: SceneViewportProps): void {
+  private leaveCameraView(previous: SceneViewportRuntimeProps, next: SceneViewportRuntimeProps): void {
     const before = previous.cameraView;
     const after = next.cameraView ?? null;
     if (before?.kind !== 'live') return;
@@ -652,6 +730,16 @@ export class SceneViewportRuntime {
     }
     if (this.localGestureIds().has(object.id)) return;
     figure.update(object, { ink: this.token('--color-muted-foreground'), director: this.props.director }, this.lightPlan.lights[object.id]);
+  }
+
+  /**
+   * Highlight the single selected object's selected part, or nothing (inner#1693 design 5.5).
+   */
+  private syncHighlight(): void {
+    const ids = this.props.selectedIds;
+    const id = ids.length === 1 ? ids[0] ?? null : null;
+    const root = id === null ? null : this.items.get(id)?.root ?? null;
+    this.looks.setHighlight(id, root, this.props.selectedPart ?? null);
   }
 
   /**
@@ -858,6 +946,7 @@ export class SceneViewportRuntime {
     const item: RenderedObject = { source, lease: this.resources.acquire(model), root: null, state: 'loading' };
     this.items.set(object.id, item);
     this.props.onModelStateChange?.(object.id, 'loading');
+    this.props.onLookReport?.(object.id, 'loading');
     void item.lease.ready.then((root) => {
       if (this.disposed || this.items.get(object.id) !== item) {
         item.lease.release();
@@ -872,18 +961,27 @@ export class SceneViewportRuntime {
       item.state = 'ready';
       root.userData.sceneObjectId = object.id;
       root.traverse((child) => { if (child instanceof Mesh) { child.castShadow = true; child.receiveShadow = true; } });
-      // Its programs are compiled before it joins the scene, so the shadow budget counts its samplers first (design 3.6).
-      this.renderer.compile(root, this.camera);
       // The rig is measured first, while the fresh instance is still at rest.
       const rig = poseRigOf(root);
       applyObject(root, latest);
       applyPose(root, latest.pose, !this.previewed.has(object.id));
+      this.syncing = true;
+      try {
+        this.looks.sync(latest, root);
+      } finally {
+        this.syncing = false;
+      }
+      // Its programs, look included, are compiled before it joins the scene, so the shadow budget counts its samplers
+      // first (design 3.6).
+      this.renderer.compile(root, this.camera, this.scene);
       this.scene.add(root);
       this.syncLights();
       this.markShadows(true);
       this.monitorEvent({ type: 'changed' });
       this.props.onModelStateChange?.(object.id, 'ready');
       this.props.onSkeletonState(object.id, rig === null ? 'none' : rig.kind);
+      this.props.onLookReport?.(object.id, lookReportOf(root, this.renderer.capabilities.maxTextureSize, this.token('--color-muted-foreground')) ?? 'failed');
+      this.syncHighlight();
       this.syncControls();
       if (this.pendingFocus) this.focus();
       this.restyle();
@@ -892,7 +990,9 @@ export class SceneViewportRuntime {
       if (this.disposed || this.items.get(object.id) !== item) return;
       item.lease.release();
       item.state = 'failed';
+      item.retryable = !(error instanceof ModelImportError);
       this.props.onModelStateChange?.(object.id, 'failed', sceneError(error));
+      this.props.onLookReport?.(object.id, 'failed');
       this.inspect();
     });
   }
@@ -1281,7 +1381,12 @@ export class SceneViewportRuntime {
       if (key !== null) this.props.onJointSelect(key);
       return;
     }
-    if (typeof root.userData.sceneObjectId === 'string') this.props.onSelect(root.userData.sceneObjectId, event.shiftKey);
+    if (typeof root.userData.sceneObjectId !== 'string') return;
+    const selected = this.props.selectedIds;
+    const pick = decideScenePick({ shift: event.shiftKey, hitId: root.userData.sceneObjectId,
+      onlySelected: selected.length === 1 ? selected[0] ?? null : null, part: partAtHit(hit) });
+    if (pick.kind === 'part') this.props.onSelectPart?.(pick.part);
+    else this.props.onSelect(pick.id, pick.additive);
   };
 
   /**
@@ -1414,22 +1519,30 @@ export class SceneViewportRuntime {
   };
 
   /**
+   * Report every loaded object's parts again once the theme colour changed, so a built-in part's swatch shows the colour
+   * on screen (inner#1693 design 5.1).
+   */
+  private reportThemeColor(): void {
+    const theme = this.token('--color-muted-foreground');
+    if (theme === this.reportedTheme) return;
+    this.reportedTheme = theme;
+    for (const [id, item] of this.items) {
+      const report = item.root ? lookReportOf(item.root, this.renderer.capabilities.maxTextureSize, theme) : null;
+      if (report) this.props.onLookReport?.(id, report);
+    }
+  }
+
+  /**
    * Resolve theme tokens for canvas content as well as surrounding React chrome.
    * @throws {never} Never directly.
    */
   private restyle = (): void => {
     this.scene.background = new Color(this.token('--color-background'));
     applySceneGridTheme(this.grid, this.token('--color-muted-foreground'));
-    const color = this.token('--color-muted-foreground');
-    for (const object of this.props.objects) {
-      if (object.model.kind !== 'builtin') continue;
-      this.items.get(object.id)?.root?.traverse((child) => {
-        if (!(child instanceof Mesh)) return;
-        for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
-          if (material instanceof MeshStandardMaterial) material.color.setStyle(color);
-        }
-      });
-    }
+    // Built-in models take the theme colour through their look (inner#1693 design 5.2), and the panel shows it.
+    this.looks.restyle();
+    this.reportThemeColor();
+    this.looks.restyleHighlight();
     this.syncMarkers(this.jointTarget());
     this.rebuildOutlines();
     this.syncOverview();
@@ -1507,14 +1620,25 @@ export class SceneViewportRuntime {
   }
 
   /**
-   * Expose actual rendered tuples for browser assertions without a second scene model.
+   * A restored context keeps image textures but empties what the GPU drew, so the shadow maps are drawn again.
+   */
+  private readonly onContextRestored = (): void => {
+    this.renderer.shadowMap.needsUpdate = true;
+  };
+
+  /**
+   * Expose actual rendered tuples for browser assertions without a second scene model; an object's drawn parts are read
+   * again only after a look applied to it cleared them.
    * @throws {never} Never.
    */
   private inspect(): void {
     const canvas = this.renderer.domElement;
     canvas.dataset.gestureActive = String(this.dragging);
     canvas.dataset.view = JSON.stringify({ position: this.camera.position.toArray(), target: this.orbit.target.toArray() });
-    canvas.dataset.objects = JSON.stringify([...this.items].flatMap(([id, item]) => item.root ? [{ id, position: item.root.position.toArray(), rotation: item.root.quaternion.toArray(), scale: item.root.scale.toArray() }] : []));
+    for (const item of this.items.values()) if (item.root && !item.parts) item.parts = renderedParts(item.root);
+    canvas.dataset.objects = JSON.stringify([...this.items].flatMap(([id, item]) => item.root ? [{ id, position: item.root.position.toArray(), rotation: item.root.quaternion.toArray(), scale: item.root.scale.toArray(),
+      parts: item.parts }] : []));
+    canvas.dataset.partHighlight = String(this.looks.overlays().length);
   }
 
   /**
@@ -1554,12 +1678,14 @@ export class SceneViewportRuntime {
     this.orbit.dispose();
     this.overview?.dispose();
     this.overview = null;
+    this.looks.dispose();
     this.resources.dispose();
     for (const figure of this.figures.values()) figure.dispose();
     this.figures.clear();
     this.items.clear();
     this.ground.geometry.dispose();
     this.ground.material.dispose();
+    this.renderer.domElement.removeEventListener('webglcontextrestored', this.onContextRestored);
     for (const outline of this.outlines) {
       outline.geometry.dispose();
       outline.material.dispose();
