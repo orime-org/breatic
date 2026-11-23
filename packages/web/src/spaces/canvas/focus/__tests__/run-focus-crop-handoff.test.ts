@@ -57,4 +57,22 @@ describe('runFocusCrop, handed to the server', () => {
     await runFocusCrop(PARAMS, d);
     expect(d.onFailure).toHaveBeenCalledWith(stage);
   });
+
+  it('settles once the bytes are sent, and still reports an upload that ends badly afterwards', async () => {
+    let endUpload: (err: Error) => void = () => undefined;
+    const d = {
+      ...deps(),
+      uploadFile: vi.fn((_file: File, _projectId: string, _image: unknown, onSent: () => void) => {
+        onSent();
+        return new Promise<void>((_resolve, reject) => { endUpload = reject; });
+      }),
+    };
+    let settled = false;
+    const run = runFocusCrop(PARAMS, d).then(() => { settled = true; });
+    await vi.waitFor(() => expect(settled).toBe(true));
+    expect(d.onFailure).not.toHaveBeenCalled();
+    endUpload(new Error('transfer'));
+    await vi.waitFor(() => expect(d.onFailure).toHaveBeenCalledWith('transfer'));
+    await run;
+  });
 });

@@ -29,9 +29,10 @@ export interface FocusCropDeps {
   /**
    * Upload the file as the named focus image, resolving once the upload ended
    * well (throws on failure) — production binds the standard media upload
-   * with the panel node's Space and node.
+   * with the panel node's Space and node. `onSent` is called once the bytes are
+   * sent and only the server's registration is left.
    */
-  uploadFile: (file: File, projectId: string, focusImage: FocusCropImage) => Promise<unknown>;
+  uploadFile: (file: File, projectId: string, focusImage: FocusCropImage, onSent: () => void) => Promise<unknown>;
   /**
    * Failure sink, discriminated by stage (for the toast wording). Two of these
    * are not retryable and must not share the retryable wording: `hash` means
@@ -89,42 +90,51 @@ export function focusCropFilename(sourceName: string): string {
 }
 
 /**
- * Run one confirmed focus crop up to the end of its upload. Never throws —
- * both failure stages route through `deps.onFailure` so the caller clears its
- * pending entry and toasts.
+ * Run one confirmed focus crop. The returned promise settles once the browser's
+ * half is over: the bytes are sent, a dedup hit answered, or it failed. Collab
+ * adds the image, so the page may leave from then on (the Space's leave guard
+ * waits on this). The wait for the upload's ending goes on and reports a
+ * failure through `deps.onFailure`. Never throws.
  * @param params - The confirmed crop (id, source URL / name, natural rect, project).
  * @param deps - Injected export / upload / failure sinks.
+ * @returns Once the browser's half is over.
  */
-export async function runFocusCrop(
+export function runFocusCrop(
   params: FocusCropParams,
   deps: FocusCropDeps,
 ): Promise<void> {
-  let blob: Blob;
-  try {
-    blob = await deps.exportCrop(
-      { url: params.sourceUrl, timeSeconds: params.sourceTimeSeconds },
-      params.crop,
-    );
-  } catch {
-    deps.onFailure('export');
-    return;
-  }
-  try {
-    const file = new File([blob], focusCropFilename(params.sourceName), {
-      type: 'image/png',
-    });
-    await deps.uploadFile(file, params.projectId, {
-      id: params.id,
-      name: params.sourceName,
-      width: params.crop.width,
-      height: params.crop.height,
-    });
-  } catch (err) {
-    // The upload pipeline tags every refusal it can tell apart, so the caller
-    // can offer the right remedy. Anything it did not tag is transient.
-    const tagged = err instanceof Error ? err.message : '';
-    deps.onFailure(isUploadFailureReason(tagged) ? tagged : 'upload');
-  }
+  return new Promise((sent) => {
+    void (async (): Promise<void> => {
+      let blob: Blob;
+      try {
+        blob = await deps.exportCrop(
+          { url: params.sourceUrl, timeSeconds: params.sourceTimeSeconds },
+          params.crop,
+        );
+      } catch {
+        deps.onFailure('export');
+        sent();
+        return;
+      }
+      try {
+        const file = new File([blob], focusCropFilename(params.sourceName), {
+          type: 'image/png',
+        });
+        await deps.uploadFile(file, params.projectId, {
+          id: params.id,
+          name: params.sourceName,
+          width: params.crop.width,
+          height: params.crop.height,
+        }, () => sent());
+      } catch (err) {
+        // The upload pipeline tags every refusal it can tell apart, so the caller
+        // can offer the right remedy. Anything it did not tag is transient.
+        const tagged = err instanceof Error ? err.message : '';
+        deps.onFailure(isUploadFailureReason(tagged) ? tagged : 'upload');
+      }
+      sent();
+    })();
+  });
 }
 
 /**

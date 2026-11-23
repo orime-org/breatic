@@ -25,13 +25,15 @@ export async function uploadDerivedImage(file: File, where: { projectId: string;
 
 /**
  * Upload a focus crop as the image it becomes in a node's pool (#1580). Collab adds the image once the bytes are
- * registered, so nothing is read from the answer; this ends when the upload has.
+ * registered, so nothing is read from the answer; this ends when the upload has, and `onSent` tells the caller
+ * earlier, once the bytes are sent and only the registration is left.
  * @param file - The crop.
  * @param where - The project, the canvas Space and the node whose pool takes it.
  * @param where.projectId - The project.
  * @param where.spaceId - The canvas Space.
  * @param where.nodeId - The node.
  * @param image - The image the crop becomes: its id, name and size.
+ * @param onSent - Called once the bytes are sent and await registration.
  * @returns Nothing, once the upload ended well.
  * @throws {UploadFailedError} When the upload does not complete.
  */
@@ -39,11 +41,12 @@ export async function uploadFocusCrop(
   file: File,
   where: { projectId: string; spaceId: string; nodeId: string },
   image: FocusCropImage,
+  onSent?: () => void,
 ): Promise<void> {
   await uploadMedia(file, {
     projectId: where.projectId,
     spaceId: where.spaceId,
     derived: true,
     focusImage: { nodeId: where.nodeId, ...image },
-  });
+  }, undefined, undefined, onSent);
 }

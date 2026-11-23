@@ -975,7 +975,7 @@ function CanvasSpaceInner({
           },
           {
             exportCrop: exportCropBlob,
-            uploadFile: (file, pid, image) => uploadFocusCrop(file, { projectId: pid, spaceId, nodeId: panelNodeId }, image),
+            uploadFile: (file, pid, image, onSent) => uploadFocusCrop(file, { projectId: pid, spaceId, nodeId: panelNodeId }, image, onSent),
             onFailure: (stage) => {
               sessionStore.getState().removePendingFocusUpload(cropId);
               toast.error(t(focusFailureMessageKey(stage)));

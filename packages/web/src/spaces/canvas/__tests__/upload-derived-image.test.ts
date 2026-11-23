@@ -9,7 +9,7 @@ vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   uploadMedia: upload.uploadMedia,
 }));
 
-import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
+import { uploadDerivedImage, uploadFocusCrop } from '@web/spaces/canvas/upload-derived-image';
 
 const WHERE = { projectId: 'p1', spaceId: 's1' };
 const FILE = new File(['x'], 'a.png', { type: 'image/png' });
@@ -23,5 +23,21 @@ describe('uploadDerivedImage', () => {
     upload.uploadMedia.mockResolvedValue({ fileUrl: 'https://cdn/a.png' });
     await expect(uploadDerivedImage(FILE, WHERE)).resolves.toBe('https://cdn/a.png');
     expect(upload.uploadMedia).toHaveBeenCalledWith(FILE, { projectId: 'p1', spaceId: 's1', derived: true });
+  });
+});
+
+describe('uploadFocusCrop', () => {
+  it('names the pool the crop lands in and tells the caller once the bytes are sent', async () => {
+    upload.uploadMedia.mockResolvedValue({ fileUrl: 'https://cdn/a.png' });
+    const onSent = vi.fn();
+    const image = { id: 'crop-1', name: 'Kyoto', width: 4, height: 3 };
+    await uploadFocusCrop(FILE, { ...WHERE, nodeId: 'n1' }, image, onSent);
+    expect(upload.uploadMedia).toHaveBeenCalledWith(
+      FILE,
+      { projectId: 'p1', spaceId: 's1', derived: true, focusImage: { nodeId: 'n1', ...image } },
+      undefined,
+      undefined,
+      onSent,
+    );
   });
 });
