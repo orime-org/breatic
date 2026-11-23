@@ -96,6 +96,8 @@ export function BellMenu(): React.JSX.Element {
     queryKey: ['notifications', 'unread', userId],
     queryFn: () => notificationsApi.list(true),
     enabled: userId !== null,
+    // Live updates keep the bell current only while it is on screen (#1580), so each mount reads it once.
+    staleTime: 0,
     refetchOnWindowFocus: false,
     retry: false,
   });

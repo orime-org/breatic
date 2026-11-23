@@ -15,8 +15,8 @@ import { settleUploadEnding, waitingUploadKeys } from '@web/data/upload/upload-s
  * One request carries at most `UPLOAD_STATUS_MAX_KEYS` keys, starting further on each round, so every key is asked
  * about in turn however many wait. A hidden tab pauses it, showing the tab again asks at once, and leaving the page stops it. One request is out at a
  * time, and an answer that comes back after the tab was hidden or the page went changes nothing. The bell is the
- * person's own, so its last answer carries over when the page moves to another Studio; that Studio's transfer is read
- * once on the first answer, having nothing earlier to compare with.
+ * person's own, so its last answer carries over when the page moves to another Studio; the transfer section reads its
+ * Studio's offer itself when it mounts.
  * @param slug - The Studio the page shows, or null on the Recent page.
  */
 export function useStudioPagePoll(slug: string | null): void {
@@ -68,10 +68,7 @@ export function useStudioPagePoll(slug: string | null): void {
       if (bellBefore !== null && JSON.stringify(bellBefore) !== JSON.stringify(answer.notifications)) {
         void queryClient.invalidateQueries({ queryKey: ['notifications', 'unread'] });
       }
-      // The first answer after moving here from another Studio's page has no transfer of this Studio to compare with.
-      const movedHere = before === null && bellBefore !== null;
-      const transferChanged = before !== null && JSON.stringify(before.transfer) !== JSON.stringify(answer.transfer);
-      if (slug !== null && (movedHere || transferChanged)) {
+      if (slug !== null && before !== null && JSON.stringify(before.transfer) !== JSON.stringify(answer.transfer)) {
         void queryClient.invalidateQueries({ queryKey: ['studio-transfer', 'live', slug] });
       }
       for (const status of answer.uploads) settleUploadEnding(status);

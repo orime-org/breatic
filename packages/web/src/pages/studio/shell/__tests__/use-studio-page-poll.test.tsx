@@ -339,7 +339,7 @@ describe('many uploads waiting', () => {
 });
 
 describe('switching Studios', () => {
-  it('keeps the bell baseline across the switch, and reads the new Studio\'s transfer once', async () => {
+  it('keeps the bell baseline across the switch', async () => {
     poll.mockResolvedValueOnce(answerWith({ notifications: { unread: 1, latestAt: '2026-11-22T00:00:00.000Z' } }));
     poll.mockResolvedValue(answerWith({ notifications: { unread: 2, latestAt: '2026-11-22T00:00:01.000Z' } }));
     const view = renderHook(({ slug }: { slug: string | null }) => useStudioPagePoll(slug), {
@@ -351,9 +351,6 @@ describe('switching Studios', () => {
     await pass(0);
     expect(poll).toHaveBeenCalledTimes(2);
     expect(invalidations(['notifications', 'unread'])).toBe(1);
-    expect(invalidations(['studio-transfer', 'live', 'b'])).toBe(1);
-    await pass(2000);
-    expect(invalidations(['studio-transfer', 'live', 'b'])).toBe(1);
     view.unmount();
   });
 });

@@ -205,3 +205,17 @@ describe('TransferStudioSection with no change for ten minutes (#1580 K-27)', ()
     }
   });
 });
+
+// #1580: the offer is kept current by the Studio page's poll only while the section is on screen, so each time it
+// mounts it reads once, however fresh the cached answer is.
+describe('TransferStudioSection mounting again', () => {
+  it('reads the live transfer again on a new mount even while the cached answer is fresh', async () => {
+    vi.mocked(studiosApi.liveTransfer).mockReset().mockResolvedValue(null);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    const first = render(<QueryClientProvider client={client}><TransferStudioSection slug={SLUG} members={MEMBERS} /></QueryClientProvider>);
+    await waitFor(() => expect(studiosApi.liveTransfer).toHaveBeenCalledTimes(1));
+    first.unmount();
+    render(<QueryClientProvider client={client}><TransferStudioSection slug={SLUG} members={MEMBERS} /></QueryClientProvider>);
+    await waitFor(() => expect(studiosApi.liveTransfer).toHaveBeenCalledTimes(2));
+  });
+});

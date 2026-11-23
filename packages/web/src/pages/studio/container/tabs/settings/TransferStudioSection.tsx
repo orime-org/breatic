@@ -68,7 +68,9 @@ export function TransferStudioSection({
     queryFn: () => studiosApi.liveTransfer(slug),
     // The offer can end without this tab doing anything — the recipient
     // accepts or declines from their own — so the Studio page's one poll reads
-    // it again when the offer changes (#1580).
+    // it again when the offer changes (#1580). That holds only while the section is on screen, so each mount reads it
+    // once.
+    staleTime: 0,
     refetchOnWindowFocus: true,
   });
   const live = liveQuery.data ?? null;
