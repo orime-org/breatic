@@ -77,20 +77,20 @@ describe("scrubEvent", () => {
   it("strips queries and the home directory from every field the SDK and our logs fill", () => {
     const event = scrubEvent(
       {
-        exception: { values: [{ value: "ERR_FAILED (-2) loading 'https://breatic.ai/reset-password?token=SECRET'" }] },
+        exception: { values: [{ value: "ERR_FAILED (-2) loading 'https://studio.example.test/reset-password?token=SECRET'" }] },
         contexts: {
-          pino: { url: "https://breatic.ai/x?token=SECRET#frag", msg: "server_load_failed" },
-          electron: { crashed_url: "https://breatic.ai/project/1?invite=SECRET" },
+          pino: { url: "https://studio.example.test/x?token=SECRET#frag", msg: "server_load_failed" },
+          electron: { crashed_url: "https://studio.example.test/project/1?invite=SECRET" },
         },
         extra: { path: `${HOME}/Library/Application Support/breatic/window-state.json` },
-        request: { url: "https://breatic.ai/a?b=SECRET" },
+        request: { url: "https://studio.example.test/a?b=SECRET" },
       },
       HOME,
     );
     const text = JSON.stringify(event);
     expect(text).not.toContain("SECRET");
     expect(text).not.toContain(HOME);
-    expect(text).toContain("https://breatic.ai/reset-password");
+    expect(text).toContain("https://studio.example.test/reset-password");
     expect(text).toContain("~/Library/Application Support/breatic/window-state.json");
   });
 });
@@ -98,7 +98,7 @@ describe("scrubEvent", () => {
 describe("scrubBreadcrumb", () => {
   it("strips queries and the home directory from the message and the data", () => {
     const crumb = scrubBreadcrumb(
-      { message: "navigate https://breatic.ai/x?token=SECRET", data: { url: "https://breatic.ai/y?token=SECRET", file: `${HOME}/a` } },
+      { message: "navigate https://studio.example.test/x?token=SECRET", data: { url: "https://studio.example.test/y?token=SECRET", file: `${HOME}/a` } },
       HOME,
     );
     expect(JSON.stringify(crumb)).not.toContain("SECRET");

@@ -91,7 +91,7 @@ describe("createRetryScheduler", () => {
 });
 
 describe("acceptsRetry", () => {
-  const recorded = "https://breatic.ai/project/1";
+  const recorded = "https://studio.example.test/project/1";
 
   it("accepts the main frame of the error entry at the recorded address", () => {
     expect(acceptsRetry({ isMainFrame: true, origin: "null", url: recorded, recordedUrl: recorded })).toBe(true);
@@ -100,7 +100,7 @@ describe("acceptsRetry", () => {
   it.each([
     ["no unreachable state", { isMainFrame: true, origin: "null", url: recorded, recordedUrl: null }],
     ["a subframe", { isMainFrame: false, origin: "null", url: recorded, recordedUrl: recorded }],
-    ["the server page itself", { isMainFrame: true, origin: "https://breatic.ai", url: recorded, recordedUrl: recorded }],
+    ["the server page itself", { isMainFrame: true, origin: "https://studio.example.test", url: recorded, recordedUrl: recorded }],
     ["a sandboxed page elsewhere", { isMainFrame: true, origin: "null", url: "https://evil.test/", recordedUrl: recorded }],
   ])("refuses %s", (_label, call) => {
     expect(acceptsRetry(call)).toBe(false);
@@ -108,14 +108,14 @@ describe("acceptsRetry", () => {
 });
 
 describe("blocksRedirect", () => {
-  const base = { resourceType: "mainFrame", statusCode: 302, serverOrigin: "https://breatic.ai", mainLoadInFlight: true };
+  const base = { resourceType: "mainFrame", statusCode: 302, serverOrigin: "https://studio.example.test", mainLoadInFlight: true };
 
   it("blocks a main-issued server load redirected to another origin", () => {
     expect(blocksRedirect({ ...base, location: "https://www.other.test/x" })).toBe(true);
   });
 
   it.each([
-    ["a redirect within the server origin", { ...base, location: "https://breatic.ai/login" }],
+    ["a redirect within the server origin", { ...base, location: "https://studio.example.test/login" }],
     ["a relative redirect", { ...base, location: "/login" }],
     ["a redirect to Stripe", { ...base, location: "https://checkout.stripe.com/c/pay" }],
     ["an in-app navigation", { ...base, location: "https://www.other.test/x", mainLoadInFlight: false }],
