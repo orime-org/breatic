@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>為創意團隊打造的即時協作 AI 創作空間。</strong></p>
-<p align="center">線上服務已開放 · 開源 · 桌面瀏覽器</p>
+<p align="center">線上服務已開放 · 原始碼可用 · 桌面瀏覽器</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_zh_tw">官網</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -98,7 +98,7 @@
 
 Web、API、背景工作及協作服務使用已發布的 Docker 映像，搭配 PostgreSQL 與 Redis。上傳與媒體處理由**你自己的 Cloudflare 帳戶**中的 Ingest Worker 與媒體容器執行，檔案存放在你的 R2 儲存桶；AI 呼叫使用你的供應商帳戶與額度。
 
-這不是離線或完全地端部署。區域網路存取需要可信任的 HTTPS。雲端服務及模型呼叫可能產生費用；SMTP、Google 登入、Stripe 付款及搜尋是選用整合。請依指南設定並驗證雲端服務；初次使用 Node/pnpm/Wrangler 的步驟屬於部署，不代表日常使用需要啟動開發伺服器。
+這不是離線或完全地端部署。區域網路存取需要可信任的 HTTPS。雲端服務及模型呼叫可能產生費用；SMTP、Google 登入及搜尋是選用整合；Stripe 付款須取得 Orime, Inc. 的書面授權方可啟用（LICENSE 第 10 條及第 11 條）。請依指南設定並驗證雲端服務；初次使用 Node/pnpm/Wrangler 的步驟屬於部署，不代表日常使用需要啟動開發伺服器。
 
 ## 狀態、協助與貢獻
 
@@ -114,9 +114,16 @@ Web、API、背景工作及協作服務使用已發布的 Docker 映像，搭配
 
 ## 授權條款與允許用途
 
-Breatic 是開源專案，採用 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0-only）。你可以出於任何目的使用、研究、修改並自行部署 Breatic，包括商業用途；如果你修改了 Breatic，並讓其他人透過網路使用修改後的版本，就必須依同一授權條款向他們提供完整原始碼。完整條件以授權條款為準。
+Breatic 是依據 [Breatic Source-Available License 2.0](LICENSE) 授權的**原始碼可用**軟體。此授權條款衍生自 Apache License 2.0，並附加其他條件。它不是 OSI 核可的開源授權條款。
 
-Breatic 名稱與標誌是 Orime, Inc. 的商標，不包含在軟體授權中；使用規則見 [TRADEMARKS.md](TRADEMARKS.md)。授權條款不限制你使用 Breatic 創作的內容。
+- 你可以取得、修改並自行部署 Breatic，用於個人用途、非商業性的私人團體或你所屬組織的內部使用（包括在你的業務中使用），無須支付軟體授權費（LICENSE 第 10 條）。
+- 你可以使用 Breatic 製作並販售創作作品，例如影片、廣告、圖像、音訊及 3D 資產；相關條件見 LICENSE 第 10 條及第 13 條。
+- 未取得 Orime, Inc. 另行書面授權時，你營運的實例必須以自行部署模式（Self-Deployment Mode）執行：應用程式內點數購買、付費會員、訂閱及其他付費營運功能維持停用（LICENSE 第 10 條）。
+- 基於商業目的，向上述用途範圍以外的人提供 Breatic 或其平台功能的實質部分，須另行取得書面授權（LICENSE 第 11 條）。
+- 在應用程式的識別區域保持 Breatic 名稱及隨附標誌可見，並保持授權條款與姓名標示聲明可供查閱（LICENSE 第 12 條）。Orime, Inc. 是 Breatic 商標的經授權授權人；品牌使用規則見 [TRADEMARKS.md](TRADEMARKS.md)。
+- 以較早授權條款（包括 AGPL-3.0-only）發布的版本，繼續適用其發布時的授權條款（LICENSE 第 15 條）。
+
+完整條款見 [LICENSE](LICENSE)。
 
 ### 生成內容
 

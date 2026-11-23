@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { BODY_GUTTER_END, COMMENT_PANEL_WIDTH, OUTLINE_WIDTH } from '@web/spaces/document/document-columns';
 import { BODY_GUTTER_START } from '@web/spaces/document/document-strip-alignment';
