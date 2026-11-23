@@ -68,7 +68,7 @@ const PAIR = generateKeyPairSync("rsa", {
 /** This suite's environment: the master keys and the Worker's public key. */
 const ENV = {
   ...process.env,
-  PROVIDER_KEY_SECRET_ID: "t1",
+  BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1",
   PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }),
   INGEST_KEY_SEAL_PUBLIC_KEY: PAIR.publicKey.replace(/\n/g, "\\n"),
 };

@@ -45,7 +45,7 @@ const SECRET = randomBytes(32);
 /** The environment with this deployment's master keys for sealing account keys. */
 const BYOK_ENV = {
   ...process.env,
-  PROVIDER_KEY_SECRET_ID: "t1",
+  BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1",
   PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }),
 };
 
@@ -598,5 +598,26 @@ describe("a deployment without master keys", () => {
     } finally {
       initCore(BYOK_ENV);
     }
+  });
+});
+
+describe("a deployment with master keys that has not turned BYOK on (#1618)", () => {
+  it("shows BYOK as off, answers 503 to saving, and keeps the keys saved while it was on", async () => {
+    const { userId, cookie } = await signedIn();
+    expect((await putKey(cookie, "fal", freshKey("fal-"))).status).toBe(200);
+    const saved = await keyRows(userId);
+    const { BYOK_ENABLED: _on, ...off } = BYOK_ENV;
+    initCore(off);
+    try {
+      const { data } = await settings(cookie);
+      expect(data.enabled).toBe(false);
+      checkKey.mockClear();
+      expect((await putKey(cookie, "openrouter", freshKey())).status).toBe(503);
+      expect(checkKey).not.toHaveBeenCalled();
+      expect(await keyRows(userId)).toEqual(saved);
+    } finally {
+      initCore(BYOK_ENV);
+    }
+    expect((await settings(cookie)).data.enabled).toBe(true);
   });
 });
