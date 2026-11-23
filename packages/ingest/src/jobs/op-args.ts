@@ -20,7 +20,7 @@ import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamic
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
 import { CODEC_CROPPING_ONLY, shownFilters } from "@ingest/shown-picture.js";
 import { pickMediaMetadata, realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
-import { ffmpegSeconds, readMicroseconds, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
+import { ffmpegSeconds, landingDemuxer, readMicroseconds, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 
 /** The container's run endpoint, which the Durable Object posts a job to. */
 export const RUN_PATH = "/run";
@@ -875,7 +875,7 @@ function cutSteps(params: Record<string, unknown>, input: string, output: string
       return [{
         kind: "run",
         program: "ffmpeg",
-        args: [...QUIET, "-seek_timestamp", "1", "-ss", ffmpegSeconds(seekUs), ...SOURCE, ...CODEC_CROPPING_ONLY, "-i", input,
+        args: [...QUIET, "-seek_timestamp", "1", "-ss", ffmpegSeconds(seekUs), ...SOURCE, ...CODEC_CROPPING_ONLY, ...landingDemuxer(stderr), "-i", input,
           ...(seekUs < targetUs ? ["-ss", ffmpegSeconds(targetUs - seekUs)] : []), "-t", ffmpegSeconds(toUs - fromUs),
           "-vf", shown(source, EVEN), ...H264, ...AAC, ...FASTSTART, output],
       }];

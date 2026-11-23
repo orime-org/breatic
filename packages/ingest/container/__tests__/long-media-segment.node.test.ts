@@ -240,6 +240,66 @@ describe("a video segment of a B-frame MP4 without an edit list, encoded by the 
   }, 60_000);
 });
 
+// A fragmented MP4 with B-frames and a trailing mfra index, as FFmpeg's frag_keyframe writes it: the seek probe searches
+// that index, so the segment's own decode must open the file the same way or it lands on a later keyframe than the probe
+// judged. Every frame n has luma 20 + 2n; its presentation time is read from the file; keyframes every 30 frames.
+describe("a video segment of a fragmented B-frame MP4 with an mfra index", () => {
+  const realFetch = globalThis.fetch;
+  let dir: string;
+  let server: Server;
+  let objectUrl: string;
+  let ptsUs: number[] = [];
+
+  beforeAll(async () => {
+    dir = await mkdtemp(join(tmpdir(), "long-media-segment-frag-"));
+    const source = join(dir, "source.mp4");
+    execFileSync("ffmpeg", ["-hide_banner", "-loglevel", "error", "-nostdin", "-y",
+      "-f", "lavfi", "-i", "color=c=black:s=64x64:r=30:d=3,format=yuv420p,geq=lum='20+2*N':cb=128:cr=128", "-f", "lavfi", "-i", "sine=f=440:d=3",
+      "-c:v", "libx264", "-qp", "1", "-bf", "3", "-x264-params", "b-adapt=0:colorprim=bt709:transfer=bt709:colormatrix=bt709",
+      "-g", "30", "-keyint_min", "30", "-sc_threshold", "0", "-pix_fmt", "yuv420p", "-c:a", "aac", "-movflags", "+frag_keyframe+empty_moov", source]);
+    ptsUs = execFileSync("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "frame=pts_time", "-of", "csv=p=0", source])
+      .toString().trim().split("\n").map((line) => Math.round(Number(line) * 1e6));
+    const bytes = await readFile(source);
+    server = createServer((incoming, response) => {
+      const range = /^bytes=(\d+)-(\d*)/.exec(incoming.headers.range ?? "");
+      const from = range === null ? 0 : Number(range[1]);
+      const to = range === null || range[2] === "" ? bytes.length - 1 : Number(range[2]);
+      response.writeHead(range === null ? 200 : 206, { "content-type": "video/mp4", "content-length": to - from + 1, "accept-ranges": "bytes",
+        ...(range === null ? {} : { "content-range": `bytes ${from}-${to}/${bytes.length}` }) });
+      response.end(bytes.subarray(from, to + 1));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    objectUrl = `http://127.0.0.1:${(server.address() as AddressInfo).port}/source.mp4`;
+  });
+  afterAll(async () => {
+    await new Promise((resolve) => server.close(resolve));
+    await rm(dir, { recursive: true, force: true });
+    vi.unstubAllGlobals();
+  });
+
+  it("holds the ten frames presented from its start on, from starts on both sides of a keyframe", async () => {
+    const wrong: string[] = [];
+    for (const n of [26, 27, 28, 29, 30, 31, 57, 58, 59, 60]) {
+      let written: Uint8Array | null = null;
+      vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        if (init?.method === undefined || init.method === "GET") return realFetch(input, init);
+        if (init.method === "PUT") written = new Uint8Array(await new Response(init.body).arrayBuffer());
+        return new Response(null, { status: 200 });
+      }));
+      await runLongMediaSegment({ ...request, objectUrl, interval: { startUs: String(ptsUs[n]), endUs: String(ptsUs[n + 10]) }, deadlineAt: Date.now() + 600_000 });
+      expect(written, `the segment from frame ${n} was written`).not.toBeNull();
+      const output = join(dir, `segment-${n}.mp4`);
+      await writeFile(output, written!);
+      const planes = execFileSync("ffmpeg", ["-v", "error", "-i", output, "-vf", "crop=16:16:24:24", "-pix_fmt", "yuv420p", "-fps_mode", "passthrough", "-f", "rawvideo", "-"], { maxBuffer: 1 << 24 });
+      const frames = Array.from({ length: planes.length / 384 }, (_unused, frame) =>
+        Math.round((planes.subarray(frame * 384, frame * 384 + 256).reduce((sum, value) => sum + value, 0) / 256 - 20) / 2));
+      const expected = Array.from({ length: 10 }, (_unused, k) => n + k);
+      if (JSON.stringify(frames) !== JSON.stringify(expected)) wrong.push(`from ${n}: ${frames.join(",")}`);
+    }
+    expect(wrong).toEqual([]);
+  }, 120_000);
+});
+
 describe("a segment whose source connection drops mid-read, encoded by the container's own encoder", () => {
   let dir: string;
   let source: Buffer;

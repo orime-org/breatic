@@ -19,7 +19,10 @@ import {
   readProbeOutput,
   peaksArgs,
   longMediaSegmentArgs,
+  landingDemuxer,
+  MFRA,
   seekBeforeLanding,
+  seekLandingArgs,
 } from "@ingest/probe-command.js";
 
 const URL_FOR_KEY = "http://r2.local/video/2026-09-10/1_clip.mp4";
@@ -84,6 +87,16 @@ describe("moving a seek back until it lands no later than its target", () => {
       "-seek_timestamp", "1", "-ss", "0.320000", "-i", URL_FOR_KEY, "-ss", "0.080000", "-t", "0.400000",
     ]);
     expect(() => longMediaSegmentArgs(URL_FOR_KEY, "video", { startUs: "400000", endUs: "800000" }, ENCODING_PROFILE, 400_001n)).toThrow(RangeError);
+  });
+
+  it("asks the probe for the input's format, and opens the decode with the demuxer options the probe searched with", () => {
+    expect(seekLandingArgs(URL_FOR_KEY, 400_000n)).toEqual(expect.arrayContaining([...MFRA, "packet=pts_time,dts_time:format=format_name"]));
+    expect(landingDemuxer('0.480000,0.400000\n"mov,mp4,m4a,3gp,3g2,mj2"\n')).toEqual(MFRA);
+    // FFmpeg refuses the mov demuxer's option for any other input ("Option use_mfra_for not found").
+    expect(landingDemuxer('0.000000,0.000000\n"matroska,webm"\n')).toEqual([]);
+    expect(landingDemuxer("0.480000,0.400000\n")).toEqual([]);
+    const args = longMediaSegmentArgs(URL_FOR_KEY, "video", { startUs: "400000", endUs: "800000" }, ENCODING_PROFILE, 400_000n, MFRA);
+    expect(args.slice(args.indexOf("-ss"), args.indexOf("-i") + 2)).toEqual(["-ss", "0.400000", ...MFRA, "-i", URL_FOR_KEY]);
   });
 });
 

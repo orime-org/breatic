@@ -22,7 +22,7 @@ import type { MediaOfOutput } from "@ingest/jobs/container-report.js";
 import { runPlanCommand, startPlanCommand } from "@ingest/container/plan-command.js";
 import { BT709_TAGS, audioOutput, decodedPicture, picture, placement, videoOutput } from "@ingest/container/playback-command.js";
 import { editEncode, editMuxer, editPicture } from "@ingest/container/edit-command.js";
-import { alphaDecoderArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
+import { MFRA, alphaDecoderArgs, demuxerOptions, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { pickMediaMetadata } from "@ingest/media-metadata.js";
 import { pngSize } from "@ingest/png-size.js";
 import { runAnalysisPipeline } from "@ingest/container/analysis-pipeline.js";
@@ -54,10 +54,6 @@ export interface PresentationRecipeRequest {
 const READ_PROTOCOLS = "file,http,tcp";
 const HEAD = ["-hide_banner", "-loglevel", "error", "-nostdin", "-y", "-protocol_whitelist", READ_PROTOCOLS];
 const ZERO: FrameRate = { numerator: 0, denominator: 1 };
-// A fragmented MP4 or MOV (the edit file has one fragment per all-intra frame) is opened by walking every top-level moof,
-// which over HTTP reads the whole file, unless the mov demuxer takes its trailing mfra index; FFprobe accepts the option
-// for any input, FFmpeg only for an input the mov demuxer opens, and without an mfra it changes nothing.
-const MFRA = ["-use_mfra_for", "pts"];
 // Paths a filter option names verbatim: mkdtemp and our own file names keep to these.
 const PLAIN_PATH = /^[\w./-]+$/u;
 
@@ -84,7 +80,7 @@ export async function sourceFacts(source: string, run: Run): Promise<SourceFacts
   const format = video?.pix_fmt ?? "";
   const subsampled = /^yuv[aj]?(420|422|440)p/u.test(format);
   return {
-    audio: audio !== undefined, mono: audio?.channels === 1, demuxer: (answer.format?.format_name ?? "").split(",").includes("mov") ? MFRA : [],
+    audio: audio !== undefined, mono: audio?.channels === 1, demuxer: [...demuxerOptions(answer.format?.format_name ?? "")],
     decoder: alphaDecoderArgs(video?.codec_name, alphaMode),
     range: video?.color_range === "pc" || format.startsWith("yuvj") ? "pc" : "tv",
     oddSubsampled: subsampled && ((video?.width ?? 0) % 2 === 1 || (video?.height ?? 0) % 2 === 1),

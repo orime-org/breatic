@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
-import { longMediaSegmentArgs, PROBE_MAX_BYTES, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
+import { landingDemuxer, longMediaSegmentArgs, PROBE_MAX_BYTES, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 import { runToolBounded } from "./run-tool.js";
 import { readServedObject } from "@ingest/container/served-object-read.js";
 
@@ -147,16 +147,17 @@ export async function runLongMediaSegment(
  * @param objectUrl - The loopback reader's URL of the source the Worker serves.
  * @param startUs - The segment's start.
  * @param signal - The segment's deadline.
- * @returns The seek in microseconds.
+ * @returns The seek in microseconds and the demuxer options the probe searched with (`landingDemuxer`).
  * @throws {Error} When ffprobe fails, so the segment fails rather than lose its first frames.
  */
-async function seekNotPastLanding(objectUrl: string, startUs: bigint, signal: AbortSignal): Promise<bigint> {
+async function seekNotPastLanding(objectUrl: string, startUs: bigint, signal: AbortSignal): Promise<{ seekUs: bigint; demuxer: readonly string[] }> {
   let [seekUs, lastDtsUs]: [bigint, bigint | null] = [startUs, null];
   for (;;) {
     const answer = await runToolBounded("ffprobe", seekLandingArgs(objectUrl, seekUs), { maxBytes: PROBE_MAX_BYTES, signal });
     if (answer === null || answer === "over_cap") throw new Error("The long media segment's seek probe failed");
-    const next = seekBeforeLanding(startUs, seekUs, answer.toString("utf8"), lastDtsUs);
-    if (next === null) return seekUs;
+    const text = answer.toString("utf8");
+    const next = seekBeforeLanding(startUs, seekUs, text, lastDtsUs);
+    if (next === null) return { seekUs, demuxer: landingDemuxer(text) };
     [seekUs, lastDtsUs] = [next.seekUs, next.dtsUs];
   }
 }
@@ -169,8 +170,8 @@ const LONG_MEDIA_SEGMENT_DEPS: LongMediaSegmentRunDeps = {
     // connection with the part it read (a seek probe with no packet, an MP3 segment of its ID3 header alone), where this
     // read resumes the drop or fails the segment.
     return readServedObject(objectUrl, signal, async (local) => {
-      const seekUs = mediaKind === "video" ? await seekNotPastLanding(local, BigInt(interval.startUs), signal) : BigInt(interval.startUs);
-      return runToolBounded("ffmpeg", longMediaSegmentArgs(local, mediaKind, interval, profile, seekUs), { maxBytes: maxOutputBytes, signal });
+      const seek = mediaKind === "video" ? await seekNotPastLanding(local, BigInt(interval.startUs), signal) : { seekUs: BigInt(interval.startUs), demuxer: [] };
+      return runToolBounded("ffmpeg", longMediaSegmentArgs(local, mediaKind, interval, profile, seek.seekUs, seek.demuxer), { maxBytes: maxOutputBytes, signal });
     });
   },
   write: async (outputUrl, bytes, signal) => {

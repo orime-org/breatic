@@ -44,6 +44,8 @@ export type ReadFrom = "object" | "own-file";
  * @param profile - The encoding parameters frozen into this media job.
  * @param seekUs - Where the input seek opens, at or before the interval's start (`seekNotPastLanding`); the frames
  * between it and the start are decoded and dropped.
+ * @param demuxer - The demuxer options its seek probe opened the source with (`landingDemuxer`), so the decode lands
+ * where the probe judged.
  * @returns FFmpeg arguments that write one MP3 audio file or one fragmented MP4 video file to stdout.
  * @throws {RangeError} When the source-time interval is invalid or the seek is after its start.
  */
@@ -53,6 +55,7 @@ export function longMediaSegmentArgs(
   interval: { startUs: string; endUs: string },
   profile: LongMediaJobRequest["encodingProfile"],
   seekUs: bigint = BigInt(interval.startUs),
+  demuxer: readonly string[] = [],
 ): string[] {
   const startUs = BigInt(interval.startUs);
   const durationUs = BigInt(interval.endUs) - startUs;
@@ -63,6 +66,7 @@ export function longMediaSegmentArgs(
     "-protocol_whitelist", PROTOCOLS,
     "-seek_timestamp", "1",
     "-ss", ffmpegSeconds(seekUs),
+    ...demuxer,
     "-i", objectUrl,
     ...(seekUs < startUs ? ["-ss", ffmpegSeconds(startUs - seekUs)] : []),
     "-t", ffmpegSeconds(durationUs),
@@ -95,25 +99,52 @@ export function longMediaSegmentArgs(
 }
 
 /**
+ * The mov demuxer's option to search a fragmented MP4 or MOV through its trailing mfra index. Without it the demuxer walks
+ * every top-level moof from the start, which over HTTP reads the file up to the seek; without an mfra it changes nothing.
+ * ffprobe accepts it for any input, ffmpeg only for an input the mov demuxer opens.
+ */
+export const MFRA: readonly string[] = ["-use_mfra_for", "pts"];
+
+/**
+ * The demuxer options ffmpeg opens an input with, by the format ffprobe named for it.
+ * @param formatName - ffprobe's `format_name`, a comma-separated list of demuxer names.
+ * @returns `MFRA` for an input the mov demuxer opens, otherwise none.
+ * @throws {never} Any name gives a list.
+ */
+export function demuxerOptions(formatName: string): readonly string[] {
+  return formatName.split(",").includes("mov") ? MFRA : [];
+}
+
+/**
+ * The demuxer options a decode opens its input with to land where a seek probe (`seekLandingArgs`) judged.
+ * @param answer - What `seekLandingArgs` printed; its format line names the demuxer.
+ * @returns The options the probe searched with, as ffmpeg takes them.
+ * @throws {never} An answer without a format line gives none.
+ */
+export function landingDemuxer(answer: string): readonly string[] {
+  const format = answer.split("\n").map((line) => /^"?([a-z0-9_]+(?:,[a-z0-9_]+)*)"?$/u.exec(line.trim())).find((match) => match !== null);
+  return format === undefined ? [] : demuxerOptions(format[1]!);
+}
+
+/**
  * Build the ffprobe call that reads the first video packet an input seek to a source time lands on, searched as FFmpeg's
  * own input seek searches it (an absolute stream time, as `-seek_timestamp 1`): that keyframe's presentation and decode
- * times. A fragmented MP4 is searched through its trailing mfra index (`-use_mfra_for pts`): without it the mov demuxer
- * walks every fragment from the start, which over HTTP reads the file up to the seek and lands on its first packet;
- * ffprobe accepts the option for any input, and a file without an mfra is read as before.
+ * times, and the input's format. A fragmented MP4 is searched through its trailing mfra index (`MFRA`); the decode the
+ * probe stands for opens the input with the same options (`landingDemuxer`), or the two land on different keyframes.
  * @param objectUrl - Where the container reads the object.
  * @param atUs - The seek time in microseconds.
  * @param from - Whether that is a served object or the container's own file.
- * @returns The argument list, without the program name; ffprobe prints `pts,dts` in seconds.
+ * @returns The argument list, without the program name; ffprobe prints `pts,dts` in seconds, then the format name.
  * @throws {never} Building the list cannot fail.
  */
 export function seekLandingArgs(objectUrl: string, atUs: bigint, from: ReadFrom = "object"): string[] {
   return [
     "-v", "error",
     "-protocol_whitelist", protocolsFor(from),
-    "-use_mfra_for", "pts",
+    ...MFRA,
     "-select_streams", "v:0",
     "-read_intervals", `${ffmpegSeconds(atUs)}%+#1`,
-    "-show_entries", "packet=pts_time,dts_time",
+    "-show_entries", "packet=pts_time,dts_time:format=format_name",
     "-of", "csv=p=0",
     objectUrl,
   ];
