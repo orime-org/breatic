@@ -307,10 +307,18 @@ async function cheapestTier(): Promise<void> {
       .map((value) => value.slice(prefix.length));
     const size = (value: string): number => Number.parseFloat(value) * (/k$/i.test(value) ? 1000 : 1);
     const lowest = [...values].sort((a, b) => size(a) - size(b))[0];
-    if (lowest !== undefined) await page.getByTestId(`${prefix}${lowest}`).click();
+    // A node low on the canvas opens its popover past the bottom edge; the canvas is scrolled up, the popover with it.
+    if (lowest !== undefined) {
+      const option = page.getByTestId(`${prefix}${lowest}`);
+      await bringIntoView(option);
+      await option.click();
+    }
     // Quality sits in the same popover as resolution, so it is picked before the popover closes.
     const quality = page.locator('[data-testid^="generate-param-quality-option-"]');
-    if ((await quality.count()) > 0) await quality.first().click();
+    if ((await quality.count()) > 0) {
+      await bringIntoView(quality.first());
+      await quality.first().click();
+    }
     // The open popover can sit over its own trigger, so it is closed the way a user dismisses it.
     await page.keyboard.press('Escape');
     await expect(trigger).toHaveAttribute('data-state', 'closed');
