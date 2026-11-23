@@ -9,7 +9,7 @@
  */
 
 import { env, getRedis, getWorkerConfig } from "@breatic/core";
-import { deadlineSweepService } from "@breatic/domain";
+import { deadlineSweepService, readDatabaseClock } from "@breatic/domain";
 
 /** The queue the sweep's repeatable job runs on. */
 export const DEADLINE_SWEEP_QUEUE = "deadline-sweep";
@@ -52,14 +52,14 @@ export async function writeDeadlineWatermark(at: Date | null): Promise<void> {
 }
 
 /**
- * Run one round.
- * @param opts - The round's instant; now when absent.
+ * Run one round, ending its window at the database's now: every read its notices cause judges by that clock.
+ * @param opts - The round's instant; the database's now when absent.
  * @param opts.now - The instant to judge at.
  * @returns Nothing once the round finished and the watermark moved.
  * @throws {Error} When the round fails; the watermark stays where it was.
  */
 export async function sweepDeadlines(opts: { now?: Date } = {}): Promise<void> {
-  const now = opts.now ?? new Date();
+  const now = opts.now ?? await readDatabaseClock();
   const from = (await readDeadlineWatermark()) ?? new Date(now.getTime() - getWorkerConfig().deadline_sweep.interval_ms);
   await deadlineSweepService.sweepDue({ from, now });
   await writeDeadlineWatermark(now);

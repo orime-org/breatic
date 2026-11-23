@@ -321,6 +321,7 @@ export * as notificationRepo from "@domain/notification/notification.repo.js";
 export * as projectTransfersRepo from "@domain/project/projectTransfers.repo.js";
 export * as transferExpiryService from "@domain/project/transfer-expiry.service.js";
 export * as deadlineSweepService from "@domain/sweep/deadline-sweep.service.js";
+export { readDatabaseClock } from "@domain/sweep/database-clock.repo.js";
 export { mintShareToken } from "@domain/request/share-token.js";
 
 // ── Provider (every model call goes through it, inner#1743) ──

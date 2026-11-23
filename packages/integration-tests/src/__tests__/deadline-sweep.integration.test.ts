@@ -382,6 +382,24 @@ describe("the watermark", () => {
     for (const u of users) expect(bellFor(got, u)).toBe(true);
   });
 
+  it("takes the round's instant from the database, never from the worker's own clock", async () => {
+    // Every read a round's notice causes judges "due" by the database clock, so the round's window must end there.
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2099-01-01T00:00:00.000Z"));
+    try {
+      const [before] = await sql<{ at: Date }[]>`select clock_timestamp() as at`;
+      await writeDeadlineWatermark(new Date(before!.at.getTime() - MINUTE));
+      await sweepDeadlines();
+      const [after] = await sql<{ at: Date }[]>`select clock_timestamp() as at`;
+      const mark = (await readDeadlineWatermark())!.getTime();
+      expect(mark).toBeGreaterThanOrEqual(before!.at.getTime());
+      expect(mark).toBeLessThanOrEqual(after!.at.getTime());
+    } finally {
+      vi.useRealTimers();
+      await writeDeadlineWatermark(new Date());
+    }
+  });
+
   it("C-26 moves the watermark even when nothing came due", async () => {
     const now = new Date(Date.now() + 365 * 24 * 60 * MINUTE);
     await round(new Date(now.getTime() - MINUTE), now);
