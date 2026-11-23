@@ -3554,6 +3554,15 @@ export const uploadGrants = pgTable(
     generationTaskId: uuid("generation_task_id").references(() => tasks.id, {
       onDelete: "restrict",
     }),
+    /**
+     * A picture uploaded for a 3D object's part (0132, inner#1693): the
+     * object, the part and the picture that part held when the upload
+     * started (null for none). Collab writes the stored picture there once
+     * the report arrives. All three null on every other upload.
+     */
+    sceneObjectId: uuid("scene_object_id"),
+    scenePart: text("scene_part"),
+    sceneStartMap: text("scene_start_map"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

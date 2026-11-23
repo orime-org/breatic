@@ -14,6 +14,7 @@ export const IMPORT_LIMITS: SceneImportLimits = {
   decoderWorkerLimit: 1,
   maxTextureEdge: 8192,
   maxTextureBytes: 268435456,
+  maxPictureHeaderBytes: 12_345_678,
 };
 
 /** A browser that decodes WebP and AVIF, as current desktop browsers do. */

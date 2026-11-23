@@ -15,6 +15,7 @@
 
 import { z } from "zod";
 
+import type { SceneLookPictureSettlement } from "@shared/scene.js";
 import type { ProjectRole } from "@shared/types/role.js";
 
 /** Every event type the feed can carry (SQL CHECK mirrors this list). */
@@ -205,4 +206,22 @@ export interface SpaceTasksChangedSignal {
   t: typeof SPACE_TASKS_CHANGED_SIGNAL;
   projectId: string;
   spaceId: string;
+}
+
+/**
+ * Stateless WS signal broadcast on the project meta doc when collab settled an
+ * uploaded 3D part picture (inner#1693 design 6.3); the uploader's page ends
+ * that part's upload and, when it was not written, tells them why.
+ */
+export const SCENE_LOOK_SETTLED_SIGNAL = "scene-look:settled" as const;
+
+export interface SceneLookSettledSignal {
+  t: typeof SCENE_LOOK_SETTLED_SIGNAL;
+  projectId: string;
+  spaceId: string;
+  objectId: string;
+  part: string;
+  picture: string;
+  userId: string;
+  outcome: SceneLookPictureSettlement;
 }

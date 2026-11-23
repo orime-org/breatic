@@ -12,6 +12,8 @@
  *     credits signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:space-tasks:changed` (server, worker) — relay
  *     a 3D Space's task list signal on the `meta` doc.
+ *   - `{prefix}:project:{pid}:scene-look:settled` (collab's task listener) —
+ *     relay how an uploaded 3D part picture was settled.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
  *     consumer) — close every connection to the project.
  *
@@ -31,7 +33,7 @@
  * now happen inside `space-rpc.ts` as collab stateless RPC, so no
  * Redis round-trip is needed.
  *
- * One `psubscribe` on `{prefix}:project:*` covers all three channels.
+ * One `psubscribe` on `{prefix}:project:*` covers all five channels.
  *
  * Membership changes do not come through here: `member-change-sync.ts` hears
  * them from the trigger on `project_members`.
@@ -52,13 +54,16 @@ import {
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
+  type SceneLookSettledControlEvent,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
   SPACE_TASKS_CHANGED_SIGNAL,
+  SCENE_LOOK_SETTLED_SIGNAL,
   type ActivityNewSignal,
   type CreditsChangedSignal,
   type SpaceTasksChangedSignal,
+  type SceneLookSettledSignal,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
 
@@ -68,6 +73,7 @@ type ProjectControlEvent =
   | ActivityNewControlEvent
   | CreditsChangedControlEvent
   | SpaceTasksChangedControlEvent
+  | SceneLookSettledControlEvent
   | ProjectConnectionsCloseEvent;
 
 /**
@@ -81,7 +87,7 @@ type ProjectControlEvent =
 function relayOnMetaDoc(
   hocuspocus: Hocuspocus,
   projectId: string,
-  signal: ActivityNewSignal | CreditsChangedSignal | SpaceTasksChangedSignal,
+  signal: ActivityNewSignal | CreditsChangedSignal | SpaceTasksChangedSignal | SceneLookSettledSignal,
 ): void {
   const docName = projectMetaDocName(projectId);
   const doc = hocuspocus.documents?.get(docName);
@@ -98,6 +104,7 @@ function relayOnMetaDoc(
  * `project-activity:new` relays the activity signal on the meta doc;
  * `project-credits:changed` relays the credits signal on the meta doc;
  * `project-space-tasks:changed` relays a Space's task list signal on it;
+ * `project-scene-look:settled` relays how an uploaded 3D part picture was settled as the `scene-look:settled` signal on it;
  * `project-connections:close` closes this instance's connections to the
  * project. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the relay and close handlers.
@@ -139,6 +146,14 @@ async function handleEvent(
       projectId: event.projectId,
       spaceId: event.spaceId,
     });
+    return;
+  }
+
+  if (event.type === "project-scene-look:settled") {
+    // Every member's page hears it; the uploader's page ends that part's
+    // upload and tells them when the picture was not put on.
+    const { type: _type, ts: _ts, ...settlement } = event;
+    relayOnMetaDoc(hocuspocus, event.projectId, { t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement });
     return;
   }
 

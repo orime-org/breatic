@@ -8,7 +8,7 @@ import * as Y from 'yjs';
 import { Unlock } from 'lucide-react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { t, SCENE_FORMAT_VERSION, type SceneObject } from '@breatic/shared';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -21,7 +21,7 @@ import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 
 const NAME = 'project-p1/3d-s1';
 
-const { reportError, viewportInputs } = vi.hoisted(() => ({ reportError: vi.fn(), viewportInputs: vi.fn() }));
+const { reportError, reportWarning, viewportInputs, lookPanelInputs } = vi.hoisted(() => ({ reportError: vi.fn(), reportWarning: vi.fn(), viewportInputs: vi.fn(), lookPanelInputs: vi.fn() }));
 
 vi.mock('@web/data/api/scene', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/scene')>()),
@@ -32,13 +32,16 @@ vi.mock('@web/data/api/scene', async (importOriginal) => ({
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (props: SceneViewportProps): React.JSX.Element => { viewportInputs(props); return <div data-testid='scene-viewport-boundary' />; },
 }));
+vi.mock('@web/spaces/three-d/SceneLookPanel', () => ({
+  SceneLookPanel: (props: { showing: readonly string[] }): null => { lookPanelInputs(props); return null; },
+}));
 vi.mock('@web/lib/scene-view-storage', () => ({
   readSceneView: vi.fn(() => null),
   writeSceneView: vi.fn(() => true),
 }));
 vi.mock('@web/lib/toast', async (importOriginal) => {
   const actual = await importOriginal<typeof ToastModule>();
-  return { ...actual, toast: { ...actual.toast, error: reportError } };
+  return { ...actual, toast: { ...actual.toast, error: reportError, warning: reportWarning } };
 });
 
 const ID = '11111111-1111-4111-8111-111111111111';
@@ -97,7 +100,7 @@ async function pressDelete(): Promise<void> {
   });
 }
 
-beforeEach(() => { reportError.mockClear(); viewportInputs.mockClear(); });
+beforeEach(() => { reportError.mockClear(); reportWarning.mockClear(); viewportInputs.mockClear(); });
 afterEach(() => {
   cleanup();
   for (const { session, doc, client } of owners.splice(0)) {
@@ -141,6 +144,29 @@ describe('scene command failure feedback (inner#1724)', () => {
     expect(readSceneDocument(doc).objects).toEqual([{ ...OBJECT, locked: true }]);
   });
 
+  it.each([
+    ['a look on more parts than an object holds', 'look', 'spaces.threeD.look.partLimit'],
+    ['a pose on more bones than an object holds', 'pose', 'spaces.threeD.pose.boneLimit'],
+  ] as const)('names the limit when %s is refused', async (_name, kind, key) => {
+    const { doc, session, client } = fixture();
+    applySceneCommand(doc, { type: 'lock', ids: [ID], locked: false }, Symbol('shared-unlock'), true, NAME);
+    if (kind === 'look') {
+      const look = Object.fromEntries(Array.from({ length: 256 }, (_, index) => [String(index), { opacity: 0.5 }]));
+      for (const [part, set] of Object.entries(look)) applySceneCommand(doc, { type: 'look', id: ID, part, set } as never, Symbol('shared-look'), true, NAME);
+    } else {
+      const pose = Object.fromEntries(Array.from({ length: 256 }, (_, index) => [`n:Bone_${index}`, [0, 0, 0, 1]]));
+      applySceneCommand(doc, { type: 'pose', id: ID, set: pose, replace: true } as never, Symbol('shared-pose'), true, NAME);
+    }
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    act(() => {
+      if (kind === 'look') session.execute({ type: 'look', id: ID, part: '300', set: { opacity: 0.2 } });
+      else session.execute({ type: 'pose', id: ID, set: { 'n:Extra': [0, 0, 0, 1] }, replace: false });
+    });
+    await waitFor(() => expect(reportWarning).toHaveBeenCalledWith(t(key, { max: 256 })));
+    expect(reportError).not.toHaveBeenCalled();
+  });
+
   it('does not report an old command failure again when Activity shows the Space', async () => {
     const { doc, session, client } = fixture();
     const page = render(editorTree(session, client, 'visible'));
@@ -169,4 +195,50 @@ describe('registered model load failures (inner#1690)', () => {
     act(() => { props.onModelStateChange?.(ID, 'failed', new Error('Scene model request failed (503)')); });
     expect(await screen.findByRole('button', { name: t('spaces.threeD.retry') })).toBeInTheDocument();
   });
+
+  it('says when a part picture failed or went over the limit, and offers Retry only for a failure (inner#1693 design 5.4)', async () => {
+    const { session, client } = fixture();
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    const props = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
+    act(() => { props.onLookPictures?.(ID, { retry: true, over: false, shown: [] }); });
+    expect(await screen.findByTestId('scene-look-image-failed')).toHaveTextContent(t('spaces.threeD.look.imageFailed'));
+    const retry = screen.getByRole('button', { name: t('spaces.threeD.retry') });
+    const revision = (viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps).modelRetryRevision ?? 0;
+    fireEvent.click(retry);
+    await waitFor(() => expect((viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps).modelRetryRevision).toBe(revision + 1));
+    act(() => { props.onLookPictures?.(ID, { retry: false, over: true, shown: [] }); });
+    expect(await screen.findByTestId('scene-look-image-over-limit')).toHaveTextContent(t('spaces.threeD.look.imageOverLimit'));
+    expect(screen.queryByTestId('scene-look-image-failed')).toBeNull();
+    expect(screen.queryByRole('button', { name: t('spaces.threeD.retry') })).toBeNull();
+    act(() => { props.onLookPictures?.(ID, null); });
+    await waitFor(() => expect(screen.queryByTestId('scene-model-notice')).toBeNull());
+  });
+
+  it('gives the look panel the same look while a document change leaves it as it was (inner#1693 design 3.5)', async () => {
+    const { doc, session, client } = fixture();
+    act(() => { (doc.getMap('objects').get(ID) as Y.Map<unknown>).set('look.0.color', '#ff0000'); });
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    const panelLook = (): unknown => (lookPanelInputs.mock.calls.at(-1)![0] as { look: unknown }).look;
+    await waitFor(() => expect(panelLook()).toEqual({ 0: { color: '#ff0000' } }));
+    const first = panelLook();
+    const renders = lookPanelInputs.mock.calls.length;
+    act(() => { (doc.getMap('objects').get(ID) as Y.Map<unknown>).set('name', 'Peer name'); });
+    await waitFor(() => expect(lookPanelInputs.mock.calls.length).toBeGreaterThan(renders));
+    expect(panelLook()).toBe(first);
+  });
+
+  it('gives the look panel the pictures the scene shows for the selected object (inner#1693 design 3.5)', async () => {
+    const { session, client } = fixture();
+    render(editorTree(session, client, 'visible'));
+    await screen.findByTestId('scene-viewport-boundary');
+    const picture = '22222222-2222-4222-8222-222222222222';
+    const props = viewportInputs.mock.calls.at(-1)![0] as SceneViewportProps;
+    act(() => { props.onLookPictures?.(ID, { retry: false, over: false, shown: [picture] }); });
+    await waitFor(() => expect((lookPanelInputs.mock.calls.at(-1)?.[0] as { showing: readonly string[] } | undefined)?.showing).toEqual([picture]));
+    act(() => { props.onLookPictures?.(ID, { retry: false, over: false, shown: [] }); });
+    await waitFor(() => expect((lookPanelInputs.mock.calls.at(-1)![0] as { showing: readonly string[] }).showing).toEqual([]));
+  });
 });
+

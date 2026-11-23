@@ -438,6 +438,16 @@ describe('lights, ambient and shadows (design 3.6, 6.4)', () => {
     expect(hemisphere[0]?.intensity).toBe(1.5);
   });
 
+  it('lights the scene without a generated environment whatever the ambient (inner#1693 design 5.7)', async () => {
+    const opened = await open(props([]));
+    opened.frame();
+    const scene = (opened.runtime as unknown as { scene: Scene }).scene;
+    expect(scene.environment).toBeNull();
+    opened.runtime.update({ ...opened.initial, environment: { ambientColor: '#ffffff', ambientIntensity: 5.4 } } as SceneViewportProps);
+    opened.frame();
+    expect(scene.environment).toBeNull();
+  });
+
   it('casts no shadow until a mesh program has been compiled, then within the budget', async () => {
     const opened = await open(props([lamp()]));
     expect(userLights(opened.frame())[0]?.castShadow).toBe(false);

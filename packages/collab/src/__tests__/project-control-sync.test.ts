@@ -28,7 +28,9 @@ import {
   creditsChangedChannel,
   projectConnectionsCloseChannel,
   SPACE_TASKS_CHANGED_SIGNAL,
+  SCENE_LOOK_SETTLED_SIGNAL,
   spaceTasksChangedChannel,
+  sceneLookSettledChannel,
 } from "@breatic/shared";
 
 // The deployment prefix under test. `vi.hoisted` because the `vi.mock` factory
@@ -188,6 +190,33 @@ describe("startProjectControlSync — space-tasks:changed", () => {
     expect(metaDoc.relayStateless).toHaveBeenCalledWith(
       JSON.stringify({ t: SPACE_TASKS_CHANGED_SIGNAL, projectId: PID, spaceId: "space-1" }),
     );
+  });
+});
+
+describe("startProjectControlSync — scene-look:settled", () => {
+  it("relays to the project's meta doc how a part picture was settled, for whom", async () => {
+    const metaDoc: DocSpy = {
+      doc: new Y.Doc(),
+      broadcastStateless: vi.fn(),
+      relayStateless: vi.fn(),
+      connections: new Map(),
+    };
+    const { hocuspocus } = buildHocuspocus(metaDoc);
+    const { subscriber } = buildRedis();
+    startProjectControlSync(hocuspocus, subscriber as unknown as Redis);
+    await Promise.resolve();
+    const settlement = { projectId: PID, spaceId: "space-1", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged" };
+
+    subscriber.emit(
+      "pmessage",
+      `${TEST_PREFIX}:project:*`,
+      sceneLookSettledChannel(TEST_PREFIX, PID),
+      JSON.stringify({ type: "project-scene-look:settled", ...settlement, ts: Date.now() }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(metaDoc.relayStateless).toHaveBeenCalledWith(JSON.stringify({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement }));
   });
 });
 

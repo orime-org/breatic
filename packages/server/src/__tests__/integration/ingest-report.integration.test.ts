@@ -1163,10 +1163,63 @@ describe("a finish this server drove — a completed upload", () => {
   });
 });
 
-// The event that settles a successful upload is the only way its content
-// reaches the node. Answering 2xx while that event was lost would end the
-// delivery with nothing left to carry the result, so the report is refused
-// and the Worker's own retry is what tries again.
+/** Every 3D part picture event on the stream for `docName`, oldest first. */
+async function sceneLookEventsFor(docName: string): Promise<Record<string, unknown>[]> {
+  const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+  return raw
+    .map(([, fields]) => {
+      const idx = fields.indexOf("payload");
+      return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+    })
+    .filter((e): e is Record<string, unknown> => e !== null && e.type === "scene-look-picture" && e.docName === docName);
+}
+
+describe("a finish this server drove — a picture uploaded for a 3D part (inner#1693)", () => {
+  it("tells collab which part to put the stored picture on, and the picture it held at the start", async () => {
+    const seed = await seedEditor();
+    const objectId = crypto.randomUUID();
+    const startMap = crypto.randomUUID();
+    const key = await mintTicket(seed, { purpose: "scene_look", object_id: objectId, part: "3", start_map: startMap });
+
+    await report(completed(key));
+
+    const [grant] = await sql<{ asset_id: string }[]>`SELECT asset_id FROM upload_grants WHERE storage_key = ${key}`;
+    const docName = `project-${seed.projectId}/3d-${seed.spaceId}`;
+    expect(await sceneLookEventsFor(docName)).toEqual([{
+      type: "scene-look-picture", docName, objectId, part: "3", startMap,
+      picture: grant!.asset_id, userId: seed.userId, uploadKey: key,
+    }]);
+    // A part picture lands on no canvas node, so nothing is counted on one.
+    expect(await eventsFor(`project-${seed.projectId}/canvas-${seed.spaceId}`)).toEqual([]);
+  });
+
+  it("announces the picture again on a repeated report, keyed by the same upload", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { purpose: "scene_look", object_id: crypto.randomUUID(), part: "d", start_map: null });
+
+    const sha = crypto.randomBytes(32).toString("hex");
+    await report(completed(key, { sha256: sha }));
+    await report(completed(key, { sha256: sha }));
+
+    const events = await sceneLookEventsFor(`project-${seed.projectId}/3d-${seed.spaceId}`);
+    expect(events).toHaveLength(2);
+    expect(new Set(events.map((e) => e.uploadKey))).toEqual(new Set([key]));
+  });
+
+  it("refuses a success whose part picture event was lost", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { purpose: "scene_look", object_id: crypto.randomUUID(), part: "3", start_map: null });
+
+    const xadd = vi
+      .spyOn(getStreamRedis(), "xadd")
+      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
+    // The job throws, so the queue delivers it again and the picture is announced then.
+    await expect(report(completed(key))).rejects.toThrow();
+    xadd.mockRestore();
+    expect(await sceneLookEventsFor(`project-${seed.projectId}/3d-${seed.spaceId}`)).toEqual([]);
+  });
+});
+
 describe("a finish this server drove — an upload the backend opened", () => {
   // The worker uploads its own output through the same ingest Worker (#181),
   // so what an upload is can no longer be assumed from the fact that it came
@@ -1318,6 +1371,10 @@ describe("a finish this server drove — a backend upload that landed empty", ()
   });
 });
 
+// The event that settles a successful upload is the only way its content
+// reaches the node. Answering 2xx while that event was lost would end the
+// delivery with nothing left to carry the result, so the report is refused
+// and the Worker's own retry is what tries again.
 describe("a finish this server drove — an event that could not be published", () => {
   it("refuses a success whose content event was lost", async () => {
     const seed = await seedEditor();

@@ -186,7 +186,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
                 'h-5 w-5 rounded-full border transition-transform ' +
               (color.toLowerCase() === c.hex.toLowerCase()
                 ? 'border-ring ring-1 ring-ring'
-                : 'border-border hover:scale-110')
+                : 'border-swatch-border hover:scale-110')
               }
             />
           ))}

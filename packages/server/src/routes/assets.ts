@@ -33,6 +33,9 @@ import {
   reduceMediaType,
   isUploadableMediaType,
   isSceneModelMediaType,
+  isSceneLookImageMediaType,
+  isSceneLookPartKey,
+  SceneLookMapSchema,
   SceneObjectValuesSchema,
   REQUEST_SHAPE_PARAMS,
   INGEST_NOT_STARTED,
@@ -200,6 +203,12 @@ const uploadTicketFields = z.object({
   upload_id: z.string().uuid().optional(),
   /** The name a 3D model is imported under, shown on its task row (inner#1690). */
   label: SceneObjectValuesSchema.shape.name.optional(),
+  /** The 3D object a part picture is for (inner#1693 design 6.3). */
+  object_id: z.string().uuid().optional(),
+  /** The part of that object the picture is for. */
+  part: z.string().refine(isSceneLookPartKey, "part is not a part key").optional(),
+  /** The picture the part held when the upload started, or null for none. */
+  start_map: SceneLookMapSchema.nullable().optional(),
   /**
    * What started this upload. Only the mini-tool value is ever sent, and it
    * decides how the ledger files what is stored — a column the offline reclaim
@@ -225,7 +234,7 @@ const uploadTicketSchema = z
     uploadTicketFields.extend({
       project_id: z.string().uuid(),
       studio_id: z.never().optional(),
-      purpose: z.enum(["project_cover", "scene_model"]).optional(),
+      purpose: z.enum(["project_cover", "scene_model", "scene_look"]).optional(),
       // The purpose decides which kinds a project upload takes; superRefine below is that gate.
       content_type: declaredContentTypeSchema,
     }),
@@ -237,6 +246,9 @@ const uploadTicketSchema = z
       space_id: z.never().optional(),
       upload_id: z.never().optional(),
       label: z.never().optional(),
+      object_id: z.never().optional(),
+      part: z.never().optional(),
+      start_map: z.never().optional(),
     }),
   ])
   // The purpose selects the format gate and whether node metadata is meaningful.
@@ -252,6 +264,23 @@ const uploadTicketSchema = z
     // A Document block is the one place a body upload lands: its Space, and no node or purpose.
     if (body.upload_id !== undefined && (body.space_id === undefined || body.node_id !== undefined || body.purpose !== undefined || body.source !== undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["upload_id"], message: "a Document block upload names its Space and nothing else to land on", params: REQUEST_SHAPE_PARAMS });
+    }
+    if (body.purpose === "scene_look") {
+      if (!isSceneLookImageMediaType(body.content_type)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["content_type"], message: "a part picture is a PNG, JPEG or WebP picture" });
+      }
+      // Collab writes the stored picture onto this part of this object, judged
+      // against the picture the part held when the upload started.
+      if (body.space_id === undefined || body.object_id === undefined || body.part === undefined || body.start_map === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "a part picture upload names its Space, object, part and starting picture", params: REQUEST_SHAPE_PARAMS });
+      }
+      if (body.node_id !== undefined || body.label !== undefined || body.source !== undefined || body.tool_name !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "a part picture upload carries no node, model name or mini-tool context", params: REQUEST_SHAPE_PARAMS });
+      }
+      return;
+    }
+    if (body.object_id !== undefined || body.part !== undefined || body.start_map !== undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "only a part picture upload names a part", params: REQUEST_SHAPE_PARAMS });
     }
     if (body.purpose === "scene_model") {
       if (!isSceneModelMediaType(body.content_type)) {

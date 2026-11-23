@@ -16,11 +16,11 @@ export function getSceneControls(projectId: string, signal?: AbortSignal): Promi
 }
 
 /**
- * Resolve an already registered GLB or model package using Project access and its Studio's asset ledger.
- * @param projectId - Project whose scene or registered model is being read.
- * @param assetId - Registered model identity stored in the scene.
+ * Resolve an already registered GLB, model package or part picture using Project access and its Studio's asset ledger.
+ * @param projectId - Project whose scene asset is being read.
+ * @param assetId - Registered asset identity stored in the scene.
  * @param signal - Cancellation signal for this request.
- * @returns Registered model URL, MIME type and registered size.
+ * @returns Registered asset URL, MIME type and registered size.
  */
 export function resolveSceneAsset(projectId: string, assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> {
   return apiGet(`/projects/${projectId}/three-d/assets/${assetId}`, { signal });

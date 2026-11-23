@@ -84,7 +84,7 @@ afterEach(() => {
 
 describe("semantic Space media references", () => {
   it("reads empty Spaces without creating roots, emitting updates or seeding content", () => {
-    for (const kind of ["canvas", "document", "timeline"] as const) {
+    for (const kind of ["canvas", "document", "timeline", "3d"] as const) {
       const doc = trackedDoc();
       const before = Y.encodeStateAsUpdate(doc);
       const changed = vi.fn();
@@ -248,6 +248,31 @@ describe("semantic Space media references", () => {
     appendElement(body, "image", { url: 42 });
     const before = Y.encodeStateAsUpdate(doc);
     expect(readSpaceMediaReferences("document", doc)).toEqual({ assetIds: [], urls: ["https://outside.example/video.mp4", "unregistered-media"] });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it("reads 3D model assets and part pictures from the scene records", () => {
+    const doc = trackedDoc();
+    const objects = doc.getMap("objects");
+    const model = "30000000-0000-4000-8000-000000000001";
+    const picture = "30000000-0000-4000-8000-000000000002";
+    const other = "30000000-0000-4000-8000-000000000003";
+    const imported = new Y.Map<unknown>();
+    objects.set("10000000-0000-4000-8000-000000000001", imported);
+    imported.set("model", { kind: "asset", assetId: model });
+    imported.set("look.0.map", picture);
+    imported.set("look.1.map", "none");
+    imported.set("look.d.map", other);
+    imported.set("look.0.color", "#ffffff");
+    const builtin = new Y.Map<unknown>();
+    objects.set("10000000-0000-4000-8000-000000000002", builtin);
+    builtin.set("model", { kind: "builtin", id: "box" });
+    builtin.set("look.0.map", picture);
+    builtin.set("look.2.map", "not-a-picture");
+    builtin.set("name", other.replace("3", "4"));
+    objects.set("10000000-0000-4000-8000-000000000003", "not a record");
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(readSpaceMediaReferences("3d", doc)).toEqual({ assetIds: [model, picture, other].sort(), urls: [] });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 

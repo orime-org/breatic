@@ -20,6 +20,8 @@ import:
   max_texture_edge: 8192
   # Cumulative texture upload bytes for any browser that can open the model, counted from the declarations.
   max_texture_bytes: 268435456
+  # Most bytes read to learn a part picture's size from its header; a JPEG's metadata before it is skipped, not held.
+  max_picture_header_bytes: 67108864
   # Shortest gap between two upload-progress updates an uploader shares with the Space's other members.
   progress_publish_ms: 1000
 

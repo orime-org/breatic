@@ -77,6 +77,7 @@ const noteIngestSideEffects = vi.fn();
 const assertStudioStorageAllowance = vi.fn();
 const openDone = vi.fn();
 const publishSpaceTasksQuietly = vi.fn();
+const emitSceneLookPicture = vi.fn();
 
 vi.mock("@breatic/core", () => ({
   AppError: class AppError extends Error {},
@@ -102,6 +103,7 @@ vi.mock("@breatic/domain", () => ({
   safeExt: (filename: string) => filename.slice(filename.lastIndexOf(".")),
   uploadDeadlineByKey,
   sceneTaskService: { openDone },
+  emitSceneLookPicture,
   uploadTicketService: { openSignedUpload },
   UploadOpenFailed: h.UploadOpenFailed,
 }));
@@ -187,6 +189,7 @@ beforeEach(() => {
   uploadDeadlineByKey.mockReset().mockImplementation(async () => Date.now() + 7_200_000);
   noteIngestSideEffects.mockReset();
   assertStudioStorageAllowance.mockReset().mockResolvedValue(undefined);
+  emitSceneLookPicture.mockReset().mockResolvedValue(undefined);
 });
 
 describe("T28: issueTransferTicket", () => {
@@ -441,7 +444,7 @@ describe("scene model upload provenance", () => {
       taskType: "file", ext: filename.slice(filename.lastIndexOf(".")), expiresAt: expect.any(Date),
       context: {
         nodeId: null, spaceId: SCENE_SPACE, source: null, toolName: null,
-        derived: true, filename, assetSource: null,
+        derived: true, filename, assetSource: null, sceneLook: null,
       },
     }, { budgetMs: 7200000, action: "scene_import", label: "Lamp" }, true);
     expect(openSignedUpload.mock.calls[0]?.[0]).toMatchObject({
@@ -491,6 +494,48 @@ describe("scene model upload provenance", () => {
       assetSource: purpose, nodeId: null, spaceId: null,
       derived: purpose === "project_cover" ? true : null,
     });
+  });
+});
+
+describe("a picture uploaded for a 3D part (inner#1693 design 6.3)", () => {
+  const OBJECT = "77777777-7777-4777-8777-777777777777";
+  const START = "88888888-8888-4888-8888-888888888888";
+  const PICTURE = {
+    filename: "wood.png", content_type: "image/png", size: 4096, client_hash: "a".repeat(64),
+    purpose: "scene_look" as const, space_id: SCENE_SPACE, object_id: OBJECT, part: "3", start_map: START,
+  };
+
+  it("records on the grant the part it is for and the picture the part held at the start", async () => {
+    openUpload.mockResolvedValue({ key: K, studioId: SCOPE.studioId, taskId: undefined });
+
+    await issueUploadTicket(SCOPE, PICTURE, async () => true);
+
+    expect(openUpload.mock.calls[0]?.[0].context).toMatchObject({
+      nodeId: null, spaceId: SCENE_SPACE, assetSource: null,
+      sceneLook: { objectId: OBJECT, part: "3", startMap: START },
+    });
+    expect(emitSceneLookPicture).not.toHaveBeenCalled();
+  });
+
+  it("announces a picture the studio already holds at once, for collab to put on the part", async () => {
+    const assetId = "55555555-5555-4555-8555-555555555555";
+    checkUploadDedup.mockResolvedValue({ assetId, fileUrl: "https://assets.example.test/wood.png", kind: "image", width: 8, height: 8 });
+
+    const outcome = await issueUploadTicket(SCOPE, { ...PICTURE, start_map: null }, async () => true);
+
+    expect(outcome).toMatchObject({ kind: "alreadyExists", assetId });
+    expect(openUpload).not.toHaveBeenCalled();
+    expect(emitSceneLookPicture).toHaveBeenCalledWith({
+      projectId: SCOPE.projectId, spaceId: SCENE_SPACE, target: { objectId: OBJECT, part: "3", startMap: null },
+      picture: assetId, userId: SCOPE.userId, uploadKey: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+    });
+  });
+
+  it("fails the request when the announcement cannot be published, since nothing else would make it", async () => {
+    checkUploadDedup.mockResolvedValue({ assetId: "55555555-5555-4555-8555-555555555555", fileUrl: "u", kind: "image", width: 8, height: 8 });
+    emitSceneLookPicture.mockRejectedValue(new Error("redis down"));
+
+    await expect(issueUploadTicket(SCOPE, PICTURE, async () => true)).rejects.toThrow("redis down");
   });
 });
 
