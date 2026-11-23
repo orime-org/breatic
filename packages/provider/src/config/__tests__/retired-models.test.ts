@@ -31,7 +31,7 @@ describe("retired models", () => {
     expect(upstreamsOf("gemini-3.1-flash-text-to-speech")).toEqual(["wavespeed", "fal", "sandbase"]);
   });
 
-  it("leave OmniVoice out of the catalog, its weights being licensed for non-commercial use only, and keep it bound on WaveSpeed (#1292)", () => {
+  it("leave OmniVoice out of the catalog, its weights being licensed for non-commercial use only, and keep it bound on WaveSpeed (inner#1778)", () => {
     expect(catalog().models.some((m) => m.name === "omnivoice-voice-clone")).toBe(false);
     expect(RETIRED.has("omnivoice-voice-clone")).toBe(true);
     expect(upstreamsOf("omnivoice-voice-clone")).toEqual(["wavespeed"]);
