@@ -62,7 +62,6 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "elevenlabs-v3": { fal: "fal-ai/elevenlabs/tts/eleven-v3", sandbase: "elevenlabs/v3" },
   "qwen3-tts-voice-design": {},
   "minimax-voice-clone": { fal: "fal-ai/minimax/voice-clone", sandbase: "minimax/voice-clone" },
-  "omnivoice-voice-clone": {},
   "elevenlabs-voice-changer": { fal: "fal-ai/elevenlabs/voice-changer" },
   "gemini-omni-1.1-flash-text-to-video": { fal: "google/gemini-omni-flash/v1.1/text-to-video", sandbase: "google/gemini-omni-flash/1.1/text-to-video" },
   // SandBase has no prompt-expansion field and Alibaba rewrites by default (prompt_extend true); WaveSpeed does not (inner#1859).
