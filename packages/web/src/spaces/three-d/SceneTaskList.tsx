@@ -195,13 +195,13 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   const cancel = React.useCallback((task: SpaceTask): void => {
     void busyWhile(task.id, setCancelling, async () => {
       try {
-        await canvasApi.cancelTask(task.id, projectId);
+        await canvasApi.cancelTask(task.id);
       } catch (error) {
         toastCancelFailure(error, cancelFailed);
       }
       await queryClient.invalidateQueries({ queryKey });
     });
-  }, [busyWhile, projectId, queryClient, queryKey, cancelFailed]);
+  }, [busyWhile, queryClient, queryKey, cancelFailed]);
 
   /**
    * Place one finished model.

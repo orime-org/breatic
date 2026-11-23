@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { noteCreditsChanged } from '@web/data/api/credits';
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin, SceneTaskNotice } from '@breatic/shared';
 
@@ -131,11 +130,7 @@ export async function reportSpaceTaskFailure(projectId: string, spaceId: string,
  * @returns The run and its row.
  */
 export function submitSceneGeneration(projectId: string, spaceId: string, body: SceneGenerationBody, key: string): Promise<SceneGenerationAnswer> {
-  // Admitted or refused, the submission held or failed to hold the project's
-  // credits, so the top bar reads them again (inner#1611, inner#1968).
-  return apiPost<SceneGenerationAnswer>(`/projects/${projectId}/three-d/${spaceId}/generations`, body, runOnceRequest(key)).finally(() => {
-    noteCreditsChanged(projectId);
-  });
+  return apiPost<SceneGenerationAnswer>(`/projects/${projectId}/three-d/${spaceId}/generations`, body, runOnceRequest(key));
 }
 
 /**

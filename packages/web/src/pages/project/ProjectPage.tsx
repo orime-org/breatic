@@ -358,8 +358,7 @@ function ProjectWorkspace({
   // connection re-authenticates by itself, but the banner and the role gates
   // read the project query, so that is refetched too.
   useRefreshOnReauth(provider, projectId, onAuthenticated);
-  // The top bar's credits are read again whenever they may have moved: this
-  // user's own spend returning, or anyone's generation here ending.
+  // The top bar's credits are read again whenever the Studio's credits move.
   useProjectCreditsRefresh(projectId, provider);
   useProjectLiveUpdates(projectId, provider);
   // The whole tab bar, held here and nowhere else. Every cell of the
