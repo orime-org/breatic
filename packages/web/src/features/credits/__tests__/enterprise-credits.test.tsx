@@ -159,7 +159,7 @@ describe('enterprise and gift provenance in the actual product surfaces', () => 
     listUserStudios.mockResolvedValue([{ id: 'personal-174', name: 'Personal Studio 174', type: 'personal', myStudioRole: 'admin' }, { id: 'team-174', name: 'Team Studio 174', type: 'team', myStudioRole: 'admin' }]);
     fetchCreditLots.mockImplementation(async () => ({ items: [enterpriseLot({ designatedStudioId: destination, designated: destination !== null, designatedStudioName: destination === 'personal-174' ? 'Personal Studio 174' : destination === 'team-174' ? 'Team Studio 174' : null })], nextCursor: null }));
     designateCreditLot.mockImplementation(async (_lot: string, studio: string | null) => { destination = studio; });
-    mount(<AssignSection userId='account-174' charging selling />);
+    mount(<AssignSection userId='account-174' charging />);
     const picker = await screen.findByRole('combobox');
     expect(document.body).toHaveTextContent('CONTRACT-174');
     for (const [name, value] of [['Personal Studio 174', 'personal-174'], ['Team Studio 174', 'team-174'], ['Unassigned', null]] as const) {

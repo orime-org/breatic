@@ -22,7 +22,6 @@ import {
   ScrollCard,
   ListEnd,
   Notice,
-  SellingOffNotice,
   Row,
   RowBalance,
   Rows,
@@ -43,14 +42,12 @@ import { formatLocalDay } from '@web/lib/format-day';
 import { serverMessage } from '@web/data/api/server-message';
 import { toast } from '@web/lib/toast';
 
-/** Whose purchases, and whether credits are charged and sold here. */
+/** Whose purchases, and whether credits are charged here. */
 interface AssignSectionProps {
   /** The signed-in account, for the query key. */
   userId: string | null;
-  /** Whether this deployment records and deducts credits at all. */
+  /** Whether this deployment records and deducts credits; the section exists only then. */
   charging: boolean;
-  /** Whether this deployment sells credits; the section exists only then. */
-  selling: boolean;
 }
 
 /** The value the picker carries when a purchase points at no studio. */
@@ -63,16 +60,18 @@ const NONE = 'none';
  * — the buyer releases it before asking, and the database keeps it released
  * for as long as it is in the flow — and a spent one has nothing left to
  * move; in neither case is there a decision to make here.
- * @param props - The account and whether credits are charged and sold here.
+ *
+ * It follows `charging`: designation is the product's own rule for which
+ * studio may spend a lot, so a deployment that charges but sells nothing still
+ * points its lots here.
+ * @param props - The account and whether credits are charged here.
  * @param props.userId - The signed-in account, for the query key.
- * @param props.charging - Whether this deployment records and deducts credits at all.
- * @param props.selling - Whether this deployment sells credits.
+ * @param props.charging - Whether this deployment records and deducts credits.
  * @returns The section.
  */
 export function AssignSection({
   userId,
   charging,
-  selling,
 }: AssignSectionProps): React.JSX.Element {
   const t = useTranslation();
   const read = React.useCallback(
@@ -86,7 +85,7 @@ export function AssignSection({
   const paging = useCreditsPaging<CreditLotView>({
     queryKey: creditLotsKey(userId, 'active'),
     read,
-    enabled: selling && userId !== null,
+    enabled: charging && userId !== null,
   });
 
   // Only studios this account administers: pointing credits at a studio is an
@@ -95,7 +94,7 @@ export function AssignSection({
   const studios = useQuery({
     queryKey: ['studios', 'mine', userId],
     queryFn: () => studiosApi.listUserStudios(),
-    enabled: selling && userId !== null,
+    enabled: charging && userId !== null,
   });
   const admins = React.useMemo(
     () =>
@@ -110,11 +109,11 @@ export function AssignSection({
       // The rule holds whatever the list is doing, so it stays on screen
       // for a user whose list is empty or still arriving.
       footer={
-        selling ? <Footnote>{t('credits.assignNote')}</Footnote> : undefined
+        charging ? <Footnote>{t('credits.assignNote')}</Footnote> : undefined
       }
     >
-      {!selling ? (
-        <SellingOffNotice charging={charging} />
+      {!charging ? (
+        <Notice title={t('credits.billingOff.title')} body={t('credits.billingOff.body')} tone='info' />
       ) : paging.isPending || studios.isPending ? (
         // Both reads, because a row cannot be drawn without either. With only
         // the purchases in hand every picker is built from an empty list of

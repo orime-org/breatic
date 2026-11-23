@@ -75,7 +75,7 @@ export function CreditsSectionPanel({
     case 'buy':
       return <BuySection overview={data} />;
     case 'assign':
-      return <AssignSection userId={userId} charging={data.charging} selling={data.selling} />;
+      return <AssignSection userId={userId} charging={data.charging} />;
     case 'refunds':
       return <RefundsSection userId={userId} charging={data.charging} selling={data.selling} />;
   }

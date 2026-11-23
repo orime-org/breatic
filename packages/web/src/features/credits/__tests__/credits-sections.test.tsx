@@ -1833,7 +1833,18 @@ describe('the credits overlay, section by section', () => {
       expect(paymentHistory).toHaveBeenCalled();
     });
 
-    it.each(['buy', 'assign', 'refunds'] as const)(
+    it('lets the user assign the purchases this deployment holds, with no notice', async () => {
+      await openOn('assign');
+      const body = await panel();
+
+      expect(fetchCreditLots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ lifecycle: 'active' }),
+      );
+      expect(body).not.toHaveTextContent(/does not sell credits/i);
+      expect(body).not.toHaveTextContent(/does not charge credits/i);
+    });
+
+    it.each(['buy', 'refunds'] as const)(
       'tells the %s section that nothing is sold here and reads nothing for it',
       async (section) => {
         await openOn(section);
