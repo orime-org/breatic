@@ -556,42 +556,21 @@ export async function insertSceneGenerationRow(data: {
 }
 
 /**
- * Move every running row of one 3D Space that outran its budget to `expired`,
- * the Space-level counterpart of {@link harvestExpired}.
- * @param projectId - Owning project.
- * @param spaceId - The Space whose list is being read.
- * @returns How many rows this call moved.
- */
-export async function harvestExpiredInSpace(projectId: string, spaceId: string): Promise<number> {
-  const rows = await db
-    .update(nodeTasks)
-    .set({ status: "expired", errorMessage: "expired", settledAt: sql`now()` })
-    .where(
-      and(
-        eq(nodeTasks.projectId, projectId),
-        eq(nodeTasks.spaceId, spaceId),
-        isNull(nodeTasks.nodeId),
-        isNull(nodeTasks.deletedAt),
-        eq(nodeTasks.status, "running"),
-        notWaitingForSlot(),
-        sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
-      ),
-    )
-    .returning({ id: nodeTasks.id });
-  return rows.length;
-}
-
-/**
- * Move every running 3D Space row, in any Space, that outran its budget to `expired` (#1580), as
- * {@link harvestExpiredInSpace} does for one Space; the deadline sweep runs it so a list nobody reads still ends.
+ * Move every running 3D Space row that outran its budget to `expired`: in one Space when the list of that Space is
+ * read, or in every Space when the deadline sweep runs (#1580), so a list nobody reads still ends.
+ * @param scope - The Space whose list is being read; absent for every Space.
+ * @param scope.projectId - Owning project.
+ * @param scope.spaceId - The Space.
  * @returns The Spaces whose rows it moved, each once.
  */
-export async function harvestExpiredScenes(): Promise<{ projectId: string; spaceId: string }[]> {
+export async function harvestExpiredScenes(scope?: { projectId: string; spaceId: string }): Promise<{ projectId: string; spaceId: string }[]> {
   const rows = await db
     .update(nodeTasks)
     .set({ status: "expired", errorMessage: "expired", settledAt: sql`now()` })
     .where(
       and(
+        scope === undefined ? undefined : eq(nodeTasks.projectId, scope.projectId),
+        scope === undefined ? undefined : eq(nodeTasks.spaceId, scope.spaceId),
         isNull(nodeTasks.nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),

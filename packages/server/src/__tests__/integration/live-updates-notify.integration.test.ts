@@ -153,9 +153,9 @@ afterAll(async () => {
 });
 
 describe("listening", () => {
-  it("reports that it is listening once it starts and answers a probe", async () => {
+  it("reports that it is listening once it starts, on the connection the member probe checks", async () => {
     expect(listening).toBe(1);
-    expect(await listener.probe(1000)).toBe(true);
+    expect(await members.probe(1000)).toBe(true);
   });
 
   it("A-32 listens again after the connection is dropped", async () => {
@@ -167,7 +167,7 @@ describe("listening", () => {
     await vi.waitFor(() => expect(listening).toBeGreaterThan(before), { timeout: 15_000 });
     const got = await observe(() => insertNotification(recipient));
     expect(got).toContainEqual({ k: "notifications", u: recipient });
-    expect(await listener.probe(1000)).toBe(true);
+    expect(await members.probe(1000)).toBe(true);
   });
 
   it("A-33 sends unreadable payloads to onInvalid and leaves the member channel alone", async () => {
@@ -239,7 +239,7 @@ describe("notifications", () => {
     const before = updates.length;
     await pgClient.begin(async (tx) => {
       await tx`insert into notifications (user_id, type, payload) values (${recipient}, 'membership.ended', '{}'::jsonb)`;
-      expect(await listener.probe(1000)).toBe(true);
+      expect(await members.probe(1000)).toBe(true);
       expect(updates.slice(before).some((u) => u.k === "notifications" && u.u === recipient)).toBe(false);
     });
     await vi.waitFor(() => {

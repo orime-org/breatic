@@ -61,7 +61,7 @@ import { db, initCore } from "@breatic/core";
 initCore(process.env);
 
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
-import { projectTransfersRepo } from "@breatic/domain";
+import { projectTransfersRepo, transferExpiryService } from "@breatic/domain";
 import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -533,7 +533,7 @@ describe("role-upgrade requests repo", () => {
 });
 
 describe("project transfers repo", () => {
-  it("reaps a timed-out pending on the project, then takes the slot", async () => {
+  it("frees the slot of a timed-out pending once expireDueTransfers ends it", async () => {
     const { ownerId, otherId, thirdId, projectId } = await seedScene();
     const stale = (await projectTransfersRepo.createPending({
       projectId,
@@ -543,7 +543,8 @@ describe("project transfers repo", () => {
     })).id;
 
     // A DIFFERENT recipient: the slot is the project, not the pair, so this
-    // proves the reap rather than a key that happens not to collide.
+    // proves the expiry rather than a key that happens not to collide.
+    await transferExpiryService.expireDueTransfers({ projectId });
     const fresh = (await projectTransfersRepo.createPending({
       projectId,
       fromUserId: ownerId,

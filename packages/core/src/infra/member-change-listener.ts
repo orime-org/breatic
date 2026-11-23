@@ -64,9 +64,6 @@ const changeSchema = z.object({
 /** The channel the 0131 triggers notify on (#1580). */
 export const LIVE_UPDATES_CHANNEL = "live_updates";
 
-/** The channel a live-updates listener's `probe` round-trips on. */
-const LIVE_UPDATES_PROBE_CHANNEL = "live_updates_listen_probe";
-
 /**
  * One committed change a Project page shows: a person's bell (`notifications`), a Project's transfer
  * (`project-transfer`) or a Studio's credits (`credits`). It names the kind and one id, nothing of the row.
@@ -86,8 +83,14 @@ export interface LiveUpdatesHandlers {
   onInvalid: (raw: string) => void;
 }
 
-/** A running live-updates listener; the same shape as {@link MemberChangeListener}. */
-export type LiveUpdatesListener = MemberChangeListener;
+/**
+ * A running live-updates listener. It shares the membership listener's connection, whose `probe` already tells whether
+ * that connection receives notifications.
+ */
+export interface LiveUpdatesListener {
+  /** Stop delivering; nothing reaches the handlers afterwards. */
+  stop: () => Promise<void>;
+}
 
 const liveUpdateSchema = z.discriminatedUnion("k", [
   z.strictObject({ k: z.literal("notifications"), u: z.string().regex(CANONICAL_UUID) }),
@@ -113,25 +116,22 @@ function readPayload<T>(schema: z.ZodType<T>, raw: string): T | null {
 }
 
 /**
- * Listen on one trigger channel of the process pool's database, with a probe channel of its own.
+ * Listen on one trigger channel of the process pool's database.
  * @param channel - The channel the trigger notifies on.
- * @param probeChannel - The channel `probe` round-trips on.
  * @param schema - What a valid payload is.
  * @param handlers - Where values, (re)starts and unreadable payloads go.
  * @param handlers.onValue - A valid payload.
  * @param handlers.onListening - Listening started, the first time and after every reconnect.
  * @param handlers.onInvalid - A payload that is not valid; the raw text.
- * @returns The running listener, once the first LISTEN has been answered.
+ * @returns The running listener and whether it was stopped, once the first LISTEN has been answered.
  * @throws {Error} When the first LISTEN fails (the database is unreachable).
  */
 async function listenTriggerChannel<T>(
   channel: string,
-  probeChannel: string,
   schema: z.ZodType<T>,
   handlers: { onValue: (value: T) => void; onListening: () => void; onInvalid: (raw: string) => void },
-): Promise<MemberChangeListener> {
+): Promise<LiveUpdatesListener & { stopped: () => boolean }> {
   let stopped = false;
-  const pending = new Map<string, () => void>();
   await rawPg.listen(
     channel,
     (raw) => {
@@ -144,8 +144,25 @@ async function listenTriggerChannel<T>(
       if (!stopped) handlers.onListening();
     },
   );
+  return {
+    stop: async () => {
+      stopped = true;
+    },
+    stopped: () => stopped,
+  };
+}
+
+/**
+ * Round-trip nonces through the listen connection on a channel of their own.
+ * @param probeChannel - The channel the nonces travel on.
+ * @param stopped - Whether the listener they check was stopped.
+ * @returns The probe, once its LISTEN has been answered.
+ * @throws {Error} When the LISTEN fails (the database is unreachable).
+ */
+async function listenProbe(probeChannel: string, stopped: () => boolean): Promise<MemberChangeListener["probe"]> {
+  const pending = new Map<string, () => void>();
   await rawPg.listen(probeChannel, (nonce) => {
-    if (!stopped) pending.get(nonce)?.();
+    if (!stopped()) pending.get(nonce)?.();
   });
 
   /**
@@ -154,8 +171,8 @@ async function listenTriggerChannel<T>(
    * @returns True when it came back in time; false when it did not, when the
    *   listener is stopped, or when the send failed.
    */
-  const probe = async (timeoutMs: number): Promise<boolean> => {
-    if (stopped) return false;
+  return async (timeoutMs: number): Promise<boolean> => {
+    if (stopped()) return false;
     const nonce = randomUUID();
     const arrived = new Promise<boolean>((resolve) => {
       pending.set(nonce, () => resolve(true));
@@ -178,13 +195,6 @@ async function listenTriggerChannel<T>(
       pending.delete(nonce);
     }
   };
-
-  return {
-    stop: async () => {
-      stopped = true;
-    },
-    probe,
-  };
 }
 
 /**
@@ -196,11 +206,12 @@ async function listenTriggerChannel<T>(
 export async function listenProjectMemberChanges(
   handlers: MemberChangeHandlers,
 ): Promise<MemberChangeListener> {
-  return listenTriggerChannel<MemberChange>(PROJECT_MEMBER_CHANGED_CHANNEL, PROBE_CHANNEL, changeSchema, {
+  const listener = await listenTriggerChannel<MemberChange>(PROJECT_MEMBER_CHANGED_CHANNEL, changeSchema, {
     onValue: handlers.onChange,
     onListening: handlers.onListening,
     onInvalid: handlers.onInvalid,
   });
+  return { stop: listener.stop, probe: await listenProbe(PROBE_CHANNEL, listener.stopped) };
 }
 
 /**
@@ -211,11 +222,12 @@ export async function listenProjectMemberChanges(
  * @throws {Error} When the first LISTEN fails (the database is unreachable).
  */
 export async function listenLiveUpdates(handlers: LiveUpdatesHandlers): Promise<LiveUpdatesListener> {
-  return listenTriggerChannel<LiveUpdate>(LIVE_UPDATES_CHANNEL, LIVE_UPDATES_PROBE_CHANNEL, liveUpdateSchema, {
+  const listener = await listenTriggerChannel<LiveUpdate>(LIVE_UPDATES_CHANNEL, liveUpdateSchema, {
     onValue: handlers.onUpdate,
     onListening: handlers.onListening,
     onInvalid: handlers.onInvalid,
   });
+  return { stop: listener.stop };
 }
 
 /**

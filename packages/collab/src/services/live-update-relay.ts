@@ -154,22 +154,15 @@ export async function startLiveUpdateRelay(hocuspocus: Hocuspocus, deps: LiveUpd
   });
 
   const channel = uploadEndedChannelName();
+  // ioredis subscribes again by itself after a reconnect (autoResubscribe).
   const subscriber = deps.source.duplicate();
-  let stopped = false;
   subscriber.on("message", (from: string, raw: string) => {
     if (from === channel) relayUploadEnded(hocuspocus, raw);
   });
   await subscriber.subscribe(channel);
-  subscriber.on("ready", () => {
-    if (stopped) return;
-    subscriber.subscribe(channel).catch((err: unknown) => {
-      logger.error({ err }, "upload_ended_resubscribe_failed");
-    });
-  });
 
   return {
     stop: async () => {
-      stopped = true;
       await listener.stop();
       await subscriber.unsubscribe(channel);
       await subscriber.quit();

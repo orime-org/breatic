@@ -104,31 +104,26 @@ export async function expireStalePending(
   };
 }
 
-/** A freshly filed transfer, and the bell entries its reap left to take down. */
+/** A freshly filed transfer. */
 export interface CreatedProjectTransfer {
   id: string;
   /** The token that names this request in a decision link. */
   shareToken: string;
-  /** Entries of timed-out rows the insert reaped; the caller retires them. */
-  retiredNotificationIds: string[];
 }
 
 /**
- * Insert a pending transfer, reaping any stale one on the project first.
+ * Insert a pending transfer.
  *
- * Reap and insert share one transaction, so the slot is never free for anyone
- * else in between. A caller already inside a transaction passes it in; the
- * common case opens its own, because "free the slot and take it" is only
- * correct as one step.
+ * A timed-out offer still holds the project's one pending slot; the caller ends
+ * it first with `expireDueTransfers`, in the same transaction, so the slot is
+ * never free for anyone else in between.
  * @param input - The offer to create.
  * @param input.projectId - Project being offered.
  * @param input.fromUserId - The current owner making the offer.
  * @param input.toUserId - The member being offered ownership.
  * @param input.expiresAt - When this offer stops being answerable.
  * @param input.tx - Optional enclosing transaction.
- * @returns The new transfer's id, plus the bell entries of anything reaped — the
- *   caller retires those, since taking them down is a cross-module write this
- *   repo cannot make.
+ * @returns The new transfer's id and share token.
  * @throws {Error} 23505 when a LIVE pending already holds this project.
  */
 export async function createPending(input: {
@@ -138,34 +133,22 @@ export async function createPending(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<CreatedProjectTransfer> {
-  /**
-   * Free the slot and take it, on whichever transaction we end up inside.
-   * @param tx - The transaction both steps share.
-   * @returns The new transfer's id and anything the reap took down with it.
-   * @throws {Error} 23505 from the insert, or a missing returned row.
-   */
-  const run = async (tx: DbTx): Promise<CreatedProjectTransfer> => {
-    const retiredNotificationIds = (await expireStalePending({ projectId: input.projectId }, tx)).notificationIds;
-    const rows = await tx
-      .insert(projectTransfers)
-      .values({
-        projectId: input.projectId,
-        fromUserId: input.fromUserId,
-        toUserId: input.toUserId,
-        status: "pending",
-        shareToken: mintShareToken(),
-        expiresAt: input.expiresAt,
-      })
-      .returning({ id: projectTransfers.id, shareToken: projectTransfers.shareToken });
-    const row = rows[0];
-    if (!row) {
-      throw new Error(
-        "projectTransfersRepo.createPending: insert returned no row",
-      );
-    }
-    return { id: row.id, shareToken: row.shareToken, retiredNotificationIds };
-  };
-  return input.tx ? run(input.tx) : db.transaction(run);
+  const rows = await (input.tx ?? db)
+    .insert(projectTransfers)
+    .values({
+      projectId: input.projectId,
+      fromUserId: input.fromUserId,
+      toUserId: input.toUserId,
+      status: "pending",
+      shareToken: mintShareToken(),
+      expiresAt: input.expiresAt,
+    })
+    .returning({ id: projectTransfers.id, shareToken: projectTransfers.shareToken });
+  const row = rows[0];
+  if (!row) {
+    throw new Error("projectTransfersRepo.createPending: insert returned no row");
+  }
+  return { id: row.id, shareToken: row.shareToken };
 }
 
 /**

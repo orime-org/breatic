@@ -174,13 +174,13 @@ export async function settle(
  * Read a Space's list, judging overdue rows dead first.
  * @param projectId - Owning project.
  * @param spaceId - The Space.
- * @returns The rows, newest first, and how many this read expired.
+ * @returns The rows, newest first, and how many Spaces this read expired rows in (0 or 1).
  */
 export async function harvestAndList(
   projectId: string,
   spaceId: string,
 ): Promise<{ tasks: SceneTaskRow[]; harvested: number }> {
-  const harvested = await repo.harvestExpiredInSpace(projectId, spaceId);
+  const harvested = (await repo.harvestExpiredScenes({ projectId, spaceId })).length;
   const tasks = await repo.listSpace(projectId, spaceId);
   return { tasks, harvested };
 }

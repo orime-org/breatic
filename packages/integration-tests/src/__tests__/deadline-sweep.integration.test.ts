@@ -36,9 +36,11 @@ import {
   getWorkerConfig,
   initCore,
   listenLiveUpdates,
+  listenProjectMemberChanges,
   loadLocales,
   type LiveUpdate,
   type LiveUpdatesListener,
+  type MemberChangeListener,
 } from "@breatic/core";
 import { readDeadlineWatermark, sweepDeadlines, writeDeadlineWatermark } from "@worker/handlers/deadline-sweep.js";
 import { threeDSpaceDocName } from "@breatic/shared";
@@ -47,6 +49,8 @@ import { listenSpaceTaskSignals, spaceTasksVersion } from "@server/__tests__/int
 
 let sql: ReturnType<typeof createPgClient>;
 let listener: LiveUpdatesListener;
+/** Shares the live-updates listener's connection; its probe says that connection has caught up. */
+let members: MemberChangeListener;
 const updates: LiveUpdate[] = [];
 const MINUTE = 60_000;
 
@@ -61,10 +65,12 @@ beforeAll(async () => {
     onListening: () => {},
     onInvalid: () => {},
   });
+  members = await listenProjectMemberChanges({ onChange: () => {}, onListening: () => {}, onInvalid: () => {} });
 });
 
 afterAll(async () => {
   await listener?.stop();
+  await members?.stop();
   await sql?.end({ timeout: 1 });
 });
 
@@ -107,7 +113,7 @@ async function round(from: Date | null, now: Date): Promise<LiveUpdate[]> {
   if (from !== null) await writeDeadlineWatermark(from);
   const before = updates.length;
   await sweepDeadlines({ now });
-  expect(await listener.probe(2000)).toBe(true);
+  expect(await members.probe(2000)).toBe(true);
   await new Promise((r) => setTimeout(r, 50));
   return updates.slice(before);
 }

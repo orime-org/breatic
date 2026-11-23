@@ -17,7 +17,7 @@
  *
  * ONE LIVE OFFER PER PROJECT. A project has exactly one owner, so it can never
  * be offered to two people at once; the partial unique index keys on the
- * project alone. `createPending` reaps a timed-out offer in the transaction
+ * project alone. `expireDueTransfers` ends a timed-out offer in the transaction
  * that takes the slot, because a partial index predicate cannot mention
  * `now()` — without that, one unanswered offer would freeze the project's
  * ownership for good.
