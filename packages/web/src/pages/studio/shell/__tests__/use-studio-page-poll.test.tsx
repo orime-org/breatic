@@ -119,11 +119,17 @@ afterEach(() => {
 });
 
 describe('the pace', () => {
-  it('asks once on mount, and takes the first answer as the baseline', async () => {
+  it('asks once on mount, and reads the bell and the transfer once against the first answer, its baseline', async () => {
+    // The panes read at mount on their own, and nothing orders those reads before the poll's: one read again after
+    // the baseline shows nothing older than it, so a change between the two is never lost.
     const view = mount();
     await pass(0);
     expect(poll).toHaveBeenCalledTimes(1);
-    expect(invalidate).not.toHaveBeenCalled();
+    expect(invalidations(['notifications', 'unread'])).toBe(1);
+    expect(invalidations(['studio-transfer', 'live', SLUG])).toBe(1);
+    await pass(2000);
+    expect(invalidations(['notifications', 'unread'])).toBe(1);
+    expect(invalidations(['studio-transfer', 'live', SLUG])).toBe(1);
     view.unmount();
   });
 
@@ -188,11 +194,11 @@ describe('what an answer reads again', () => {
     const view = mount();
     await pass(0);
     await pass(2000);
-    expect(invalidations(['notifications', 'unread'])).toBe(0);
-    await pass(2000);
     expect(invalidations(['notifications', 'unread'])).toBe(1);
     await pass(2000);
     expect(invalidations(['notifications', 'unread'])).toBe(2);
+    await pass(2000);
+    expect(invalidations(['notifications', 'unread'])).toBe(3);
     view.unmount();
   });
 
@@ -206,11 +212,11 @@ describe('what an answer reads again', () => {
     const view = mount();
     await pass(0);
     await pass(2000);
-    expect(invalidations(['studio-transfer', 'live', SLUG])).toBe(0);
-    await pass(2000);
     expect(invalidations(['studio-transfer', 'live', SLUG])).toBe(1);
     await pass(2000);
-    expect(invalidations(['studio-transfer', 'live', SLUG])).toBe(1);
+    expect(invalidations(['studio-transfer', 'live', SLUG])).toBe(2);
+    await pass(2000);
+    expect(invalidations(['studio-transfer', 'live', SLUG])).toBe(2);
     view.unmount();
   });
 
@@ -261,13 +267,14 @@ describe('while running', () => {
     const late = deferred<Answer>();
     const view = mount();
     await pass(0);
+    const firstAnswer = invalidate.mock.calls.length;
     poll.mockReturnValueOnce(late.promise);
     await pass(2000);
     view.unmount();
     late.resolve(answerWith({ notifications: { unread: 9, latestAt: '2026-11-22T00:09:00.000Z' } }));
     await pass(60_000);
     expect(poll).toHaveBeenCalledTimes(2);
-    expect(invalidate).not.toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledTimes(firstAnswer);
   });
 });
 
@@ -310,12 +317,13 @@ describe('while paused', () => {
     const late = deferred<Answer>();
     const view = mount();
     await pass(0);
+    const firstAnswer = invalidate.mock.calls.length;
     poll.mockReturnValueOnce(late.promise);
     await pass(2000);
     setVisibility('hidden');
     late.resolve(answerWith({ notifications: { unread: 9, latestAt: '2026-11-22T00:09:00.000Z' } }));
     await pass(60_000);
-    expect(invalidate).not.toHaveBeenCalled();
+    expect(invalidate).toHaveBeenCalledTimes(firstAnswer);
     expect(poll).toHaveBeenCalledTimes(2);
     view.unmount();
   });
@@ -339,7 +347,7 @@ describe('many uploads waiting', () => {
 });
 
 describe('switching Studios', () => {
-  it('keeps the bell baseline across the switch', async () => {
+  it('keeps the bell baseline across the switch, and reads the new Studio\'s transfer once', async () => {
     poll.mockResolvedValueOnce(answerWith({ notifications: { unread: 1, latestAt: '2026-11-22T00:00:00.000Z' } }));
     poll.mockResolvedValue(answerWith({ notifications: { unread: 2, latestAt: '2026-11-22T00:00:01.000Z' } }));
     const view = renderHook(({ slug }: { slug: string | null }) => useStudioPagePoll(slug), {
@@ -350,7 +358,9 @@ describe('switching Studios', () => {
     view.rerender({ slug: 'b' });
     await pass(0);
     expect(poll).toHaveBeenCalledTimes(2);
-    expect(invalidations(['notifications', 'unread'])).toBe(1);
+    expect(invalidations(['notifications', 'unread'])).toBe(2);
+    expect(invalidations(['studio-transfer', 'live', 'a'])).toBe(1);
+    expect(invalidations(['studio-transfer', 'live', 'b'])).toBe(1);
     view.unmount();
   });
 });

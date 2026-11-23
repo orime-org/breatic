@@ -10,8 +10,9 @@ import { settleUploadEnding, waitingUploadKeys } from '@web/data/upload/upload-s
 
 /**
  * The Studio page's one poll (#1580). It asks once on mount, then again `nextPollMs` after each answer, with the
- * uploads the page waits for. The first answer is the baseline; a later one reads the bell again when its count or
- * newest time moved, and the Studio's transfer when the offer changed, and every ended upload goes to its waiter.
+ * uploads the page waits for. The first answer is the baseline, and the bell and the Studio's transfer are read once
+ * more against it; a later one reads the bell again when its count or newest time moved, and the Studio's transfer
+ * when the offer changed, and every ended upload goes to its waiter.
  * One request carries at most `UPLOAD_STATUS_MAX_KEYS` keys, starting further on each round, so every key is asked
  * about in turn however many wait. A hidden tab pauses it, showing the tab again asks at once, and leaving the page stops it. One request is out at a
  * time, and an answer that comes back after the tab was hidden or the page went changes nothing. The bell is the
@@ -65,10 +66,12 @@ export function useStudioPagePoll(slug: string | null): void {
       last = answer;
       lastBell.current = answer.notifications;
       nextMs = answer.nextPollMs;
-      if (bellBefore !== null && JSON.stringify(bellBefore) !== JSON.stringify(answer.notifications)) {
+      // A first answer is the baseline. The panes read at mount on their own, in no order with this request, so each is
+      // read once more after it: what they show is then never older than the baseline every later answer is held to.
+      if (bellBefore === null || JSON.stringify(bellBefore) !== JSON.stringify(answer.notifications)) {
         void queryClient.invalidateQueries({ queryKey: ['notifications', 'unread'] });
       }
-      if (slug !== null && before !== null && JSON.stringify(before.transfer) !== JSON.stringify(answer.transfer)) {
+      if (slug !== null && (before === null || JSON.stringify(before.transfer) !== JSON.stringify(answer.transfer))) {
         void queryClient.invalidateQueries({ queryKey: ['studio-transfer', 'live', slug] });
       }
       for (const status of answer.uploads) settleUploadEnding(status);
