@@ -229,6 +229,9 @@ async function fillBraces(values: string[], editorId = 'generate-prompt-editor')
       if (clip === undefined) throw new Error(`no cut clip for "${value}"`);
       await page.keyboard.type('@');
       await page.getByTestId(`reference-mention-option-${clip}`).click();
+      // The list closing puts the caret back after the chip, so the next brace is picked only once it has gone.
+      await expect(page.getByTestId(`reference-mention-option-${clip}`)).toHaveCount(0);
+      await page.waitForTimeout(300);
       continue;
     }
     await page.keyboard.type(value);
