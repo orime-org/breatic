@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { STUDIO_PAGE_POLL_DEFAULT_MS, UPLOAD_STATUS_MAX_KEYS } from '@breatic/shared';
 
@@ -14,11 +14,14 @@ import { settleUploadEnding, waitingUploadKeys } from '@web/data/upload/upload-s
  * newest time moved, and the Studio's transfer when the offer changed, and every ended upload goes to its waiter.
  * One request carries at most `UPLOAD_STATUS_MAX_KEYS` keys, starting further on each round, so every key is asked
  * about in turn however many wait. A hidden tab pauses it, showing the tab again asks at once, and leaving the page stops it. One request is out at a
- * time, and an answer that comes back after the tab was hidden or the page went changes nothing.
+ * time, and an answer that comes back after the tab was hidden or the page went changes nothing. The bell is the
+ * person's own, so its last answer carries over when the page moves to another Studio; that Studio's transfer is read
+ * once on the first answer, having nothing earlier to compare with.
  * @param slug - The Studio the page shows, or null on the Recent page.
  */
 export function useStudioPagePoll(slug: string | null): void {
   const queryClient = useQueryClient();
+  const lastBell = useRef<StudioPagePoll['notifications'] | null>(null);
 
   useEffect(() => {
     let stopped = false;
@@ -58,12 +61,17 @@ export function useStudioPagePoll(slug: string | null): void {
      */
     const take = (answer: StudioPagePoll): void => {
       const before = last;
+      const bellBefore = lastBell.current;
       last = answer;
+      lastBell.current = answer.notifications;
       nextMs = answer.nextPollMs;
-      if (before !== null && JSON.stringify(before.notifications) !== JSON.stringify(answer.notifications)) {
+      if (bellBefore !== null && JSON.stringify(bellBefore) !== JSON.stringify(answer.notifications)) {
         void queryClient.invalidateQueries({ queryKey: ['notifications', 'unread'] });
       }
-      if (before !== null && slug !== null && JSON.stringify(before.transfer) !== JSON.stringify(answer.transfer)) {
+      // The first answer after moving here from another Studio's page has no transfer of this Studio to compare with.
+      const movedHere = before === null && bellBefore !== null;
+      const transferChanged = before !== null && JSON.stringify(before.transfer) !== JSON.stringify(answer.transfer);
+      if (slug !== null && (movedHere || transferChanged)) {
         void queryClient.invalidateQueries({ queryKey: ['studio-transfer', 'live', slug] });
       }
       for (const status of answer.uploads) settleUploadEnding(status);

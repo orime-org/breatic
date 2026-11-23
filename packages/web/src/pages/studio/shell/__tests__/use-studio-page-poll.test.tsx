@@ -337,3 +337,23 @@ describe('many uploads waiting', () => {
     page.abort();
   });
 });
+
+describe('switching Studios', () => {
+  it('keeps the bell baseline across the switch, and reads the new Studio\'s transfer once', async () => {
+    poll.mockResolvedValueOnce(answerWith({ notifications: { unread: 1, latestAt: '2026-11-22T00:00:00.000Z' } }));
+    poll.mockResolvedValue(answerWith({ notifications: { unread: 2, latestAt: '2026-11-22T00:00:01.000Z' } }));
+    const view = renderHook(({ slug }: { slug: string | null }) => useStudioPagePoll(slug), {
+      initialProps: { slug: 'a' },
+      wrapper: ({ children }: { children: ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
+    await pass(0);
+    view.rerender({ slug: 'b' });
+    await pass(0);
+    expect(poll).toHaveBeenCalledTimes(2);
+    expect(invalidations(['notifications', 'unread'])).toBe(1);
+    expect(invalidations(['studio-transfer', 'live', 'b'])).toBe(1);
+    await pass(2000);
+    expect(invalidations(['studio-transfer', 'live', 'b'])).toBe(1);
+    view.unmount();
+  });
+});

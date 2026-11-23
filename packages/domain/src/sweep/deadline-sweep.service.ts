@@ -37,7 +37,7 @@ export async function sweepDue(window: { from: Date; now: Date }): Promise<void>
   }
   // Judged by state, not by the window: a pending offer past its deadline ends whenever a round sees it.
   await expireDueTransfers({ now });
-  for (const place of await nodeTaskRepo.harvestExpiredScenes()) {
+  for (const place of await nodeTaskRepo.listScenesDueBetween(from, now)) {
     await announceSpaceTasksVersion(threeDSpaceDocName(place.projectId, place.spaceId));
   }
 }

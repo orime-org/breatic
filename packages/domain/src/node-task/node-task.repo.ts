@@ -556,21 +556,20 @@ export async function insertSceneGenerationRow(data: {
 }
 
 /**
- * Move every running 3D Space row that outran its budget to `expired`: in one Space when the list of that Space is
- * read, or in every Space when the deadline sweep runs (#1580), so a list nobody reads still ends.
- * @param scope - The Space whose list is being read; absent for every Space.
- * @param scope.projectId - Owning project.
- * @param scope.spaceId - The Space.
- * @returns The Spaces whose rows it moved, each once.
+ * Move every running row of one 3D Space that outran its budget to `expired`,
+ * the Space-level counterpart of {@link harvestExpired}.
+ * @param projectId - Owning project.
+ * @param spaceId - The Space whose list is being read.
+ * @returns How many rows this call moved.
  */
-export async function harvestExpiredScenes(scope?: { projectId: string; spaceId: string }): Promise<{ projectId: string; spaceId: string }[]> {
+export async function harvestExpiredInSpace(projectId: string, spaceId: string): Promise<number> {
   const rows = await db
     .update(nodeTasks)
     .set({ status: "expired", errorMessage: "expired", settledAt: sql`now()` })
     .where(
       and(
-        scope === undefined ? undefined : eq(nodeTasks.projectId, scope.projectId),
-        scope === undefined ? undefined : eq(nodeTasks.spaceId, scope.spaceId),
+        eq(nodeTasks.projectId, projectId),
+        eq(nodeTasks.spaceId, spaceId),
         isNull(nodeTasks.nodeId),
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
@@ -578,9 +577,33 @@ export async function harvestExpiredScenes(scope?: { projectId: string; spaceId:
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )
-    .returning({ projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId });
-  const seen = new Map(rows.map((row) => [`${row.projectId}/${row.spaceId}`, row]));
-  return [...seen.values()];
+    .returning({ id: nodeTasks.id });
+  return rows.length;
+}
+
+/**
+ * The 3D Spaces with a running row whose budget runs out in `(from, to]` (#1580). The deadline sweep tells each one,
+ * and the list read that follows expires the row ({@link harvestExpiredInSpace}); a round that could not tell them
+ * finds the same Spaces again, since nothing here writes.
+ * @param from - The window's open lower end.
+ * @param to - The window's closed upper end.
+ * @returns The Spaces, each once.
+ */
+export async function listScenesDueBetween(from: Date, to: Date): Promise<{ projectId: string; spaceId: string }[]> {
+  const deadline = sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond')`;
+  return db
+    .selectDistinct({ projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId })
+    .from(nodeTasks)
+    .where(
+      and(
+        isNull(nodeTasks.nodeId),
+        isNull(nodeTasks.deletedAt),
+        eq(nodeTasks.status, "running"),
+        notWaitingForSlot(),
+        sql`${deadline} > ${from.toISOString()}::timestamptz`,
+        sql`${deadline} <= ${to.toISOString()}::timestamptz`,
+      ),
+    );
 }
 
 /**
