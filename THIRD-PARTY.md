@@ -138,15 +138,15 @@ loads the five npm packages listed in the next section.
 
 ### Web animation
 
-The web-animation container, the ingest Worker and the web preview carry these
-for web-animation execution:
+The web-animation container, the render container, the ingest Worker and the web
+preview carry these for web-animation execution and export:
 
 | Component | Version | Licence | How it ships | Source |
 |---|---|---|---|---|
 | Chromium | Debian bookworm's `chromium` package; the image's `/usr/share/chromium-source/SOURCE` records the exact version | **BSD-3-Clause** and the licences of the components it bundles, listed in the image at `/usr/share/doc/chromium/copyright` | A separate program the runner starts to check a package; none of its libraries is loaded into our process | `https://snapshot.debian.org/package/chromium/` at the recorded version |
 | `@deepseek-ai/dsh` (DeepSeek Harness) and its `node_modules` | `0.2.2-rc.1`, installed with `--ignore-scripts` | **MIT**; within its closure, besides MIT, Apache-2.0, BSD and ISC: `argparse` (**Python-2.0**), `fast-sha256` (**Unlicense**), `lru-cache` (**BlueOak-1.0.0**), `tslib` (**0BSD**), `type-fest` (**MIT OR CC0-1.0**). `@deepseek-ai/libreoffice-kit*` (MPL-2.0) and sharp's native `@img/*` packages (libvips is LGPL-3.0) are removed while the image is built | A separate program the runner starts; our service imports none of it | https://github.com/deepseek-ai/deepseek-harness |
 | `@hyperframes/core` runtime (`dist/hyperframe.runtime.iife.js`) | `0.8.186` | **Apache-2.0**, per the tarball's `LICENSE`, copied to `/app/runtime/LICENSE` in the image | Inlined into every web-animation package, which is served to browsers | https://github.com/heygen-com/hyperframes |
-| `@hyperframes/player` | `0.8.186` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | Bundled into the web app as its own chunk, loaded the first time a web-animation copy or a finished result is shown in a Timeline preview | https://github.com/heygen-com/hyperframes |
+| `@hyperframes/player` | `0.8.186` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | Bundled into the web app as its own chunk, loaded the first time a web-animation copy is shown in a Timeline preview or a result is shown in a Motion Space | https://github.com/heygen-com/hyperframes |
 | Chromium headless shell (render container) | `157.0.8103.78`, fetched by `@puppeteer/browsers` 3.2.2; `/opt/chs/SOURCE` in the image records it | **BSD-3-Clause** and the licences of the components it bundles | A separate program the HyperFrames producer starts to capture frames | https://chromium.googlesource.com/chromium/src/+/refs/tags/157.0.8103.78 |
 | FFmpeg (render container) | Debian bookworm's `ffmpeg` package; the image's `/usr/share/ffmpeg-source/SOURCE` records the exact version | **GPL-2.0-or-later** as Debian builds it, with its licences at `/usr/share/doc/ffmpeg/copyright` | A separate program the producer and the runner start to encode, measure and cut the cover; none of its libraries is loaded into our process | `https://snapshot.debian.org/package/ffmpeg/` at the recorded version |
 | `@hyperframes/producer` and its `@hyperframes/*` packages (`core`, `engine`, `lint`, `parsers`, `studio-server`) | `0.8.186` | Reported as **Unknown**, because their `package.json` names no licence; each tarball's `LICENSE` is **Apache-2.0** | Installed beside the render container's bundled service, which imports the producer | https://github.com/heygen-com/hyperframes |
