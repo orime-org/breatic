@@ -1557,6 +1557,7 @@
         "talking": "Talking and dialogue",
         "posters": "Posters & graphics",
         "film-styles": "Famous film styles",
+        "cinematic": "Cinematic shorts & trailers",
         "speed": "Motion & speed",
         "sound": "Sound, music & voice",
         "video-remix": "Remix existing videos"
@@ -2648,6 +2649,89 @@
         },
         "step": {
           "join": "Once it has generated, select Clip A, this transition and Clip B, right-click and choose Join; check the order runs Clip A, transition, Clip B."
+        }
+      },
+      "cinematic-15s-arc": {
+        "name": "Cinematic 15s scene",
+        "description": "A hook, then a whole arc in 15 seconds",
+        "prompt": "A 15-second widescreen cinematic scene with sound. The character is [📎 Character]: face, hair, build and outfit as in the picture, nothing else taken from the picture; the same person, outfit, place and light throughout. Place: {✏️ the place, e.g. a rain-wet station platform at night}. What the character wants: {✏️ e.g. to catch the last train before it leaves}. 0–2 s hook: already in motion, one striking close image taken from the climax to come. 2–5 s: a wide shot shows the place and the time of day. 5–7 s: the character's face up close, the want visible in it. 7–10 s: the pressure rises, the camera moving with the character. 10–13 s: the climax: {✏️ the climax, e.g. they squeeze through the doors as they shut}. 13–15 s: release, a slow pull-back as the moment settles. One light source, the place's own. Grade: {✏️ one named look, e.g. teal-and-orange blockbuster}. Sound: the place's ambience, music swelling toward the climax, a beat of near-silence after it. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "landscape-3-shot": {
+        "name": "Landscape in three shots",
+        "description": "The place is the star, no people",
+        "shot": {
+          "1": "Wide establishing shot of {✏️ the place and the time of day, e.g. a misty fjord at dawn}: the camera drifts slowly forward, the scale of the land clear, no people anywhere. The natural sound of the place. No text on screen.",
+          "2": "A closer look at one detail of the same place: {✏️ the detail, e.g. water running over dark stones}, the light as in the first shot, no people. No text on screen.",
+          "3": "A slow closing shot of the same place from high up, the camera rising and pulling back as the light changes a little, no people. No text on screen."
+        }
+      },
+      "epic-fantasy-scifi": {
+        "name": "Epic fantasy or sci-fi",
+        "description": "A big scene where the magic follows its own rule",
+        "prompt": "A 15-second widescreen {✏️ the genre, e.g. high fantasy} scene with sound.\nHero: [📎 Hero], face, hair, build and outfit as in the picture, nothing else taken from the picture.\nWorld: {✏️ the world, e.g. a city of white towers on a cliff above a stormy sea}.\nEffect: {✏️ the effect and its rule, e.g. the hero's raised hand pulls the sea upward into a wall of water that moves only while the hand stays raised}. Show where it comes from and keep to its rule; it never changes shape for no reason.\nThe spectacle is in the world, not in more effects: wind, rain or dust in the air, light shifting across the scene, cloth and hair moving, water or fire reacting, crowds small in the distance.\n0–3 s: already in motion, the world in a wide shot. 3–7 s: the hero, close, just before acting. 7–12 s: {✏️ what the hero does, e.g. raises the wall of water against an incoming fleet}, the camera moving back to show its size. 12–15 s: the aftermath, the hero small against the scale of it. Sound: wind, the effect's own deep sound, a swelling score. No text on screen.",
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "trailer-beat-3-shot": {
+        "name": "Trailer beat",
+        "description": "The world, the hero in action, one line",
+        "shot": {
+          "1": "Establishing shot of the world: {✏️ the world, e.g. a dusty frontier town under a red sky}, the camera sweeping slowly over it, a deep trailer drone rising. No text on screen.",
+          "2": "[📎 Hero], face, hair, build and outfit as in the picture, in one big action: {✏️ the action, e.g. rides through a wall of fire}, the camera tracking with them, a hard musical hit. No text on screen.",
+          "3": "Close-up of [📎 Hero], the same face and outfit, looking into the lens and saying one line: {✏️ the line, e.g. This ends tonight.}, then a cut to black on the last word. No text on screen."
+        },
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your hero first, then generate."
+          }
+        }
+      },
+      "transformation-6-shot": {
+        "name": "Transformation in six shots",
+        "description": "Calm, threat, change, reveal, the quiet after",
+        "shot": {
+          "1": "Calm: [📎 Subject], face, hair and outfit as in the picture, in {✏️ the place, e.g. a quiet forest clearing at dusk}, an ordinary moment. No text on screen.",
+          "2": "The threat arrives: {✏️ the threat, e.g. a dark shape bursting from the trees}, the subject looks up. No text on screen.",
+          "3": "The trigger: a close-up of the subject's eyes as something starts to glow inside them. No text on screen.",
+          "4": "The transformation: [📎 Subject] changes into {✏️ what they become, e.g. a figure of living flame}, the camera circling, light flaring, the face still recognisably theirs. No text on screen.",
+          "5": "The reveal: a low wide shot of the new form standing against the threat. No text on screen.",
+          "6": "The quiet after: embers settle, the new form breathes, the sound drops away. No text on screen."
+        },
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a picture of your subject first, then generate."
+          }
+        }
+      },
+      "long-form-acts": {
+        "name": "Long video in acts",
+        "description": "A minute and more, act by act, joined into one",
+        "prompt": "Act 1 of 3 of one long video, 30 seconds with sound. Shared by all three acts: {✏️ the place, the light and the look, e.g. a small café by a rainy window, warm lamps, soft film grain}, under the same sound of {✏️ the sound, e.g. rain on glass and quiet jazz}. This act: {✏️ what happens, e.g. the café opens and steam rises from the first cup}. It opens the video. One slow camera move, no cuts. No text on screen.",
+        "node": {
+          "act-2": {
+            "name": "Act 2",
+            "prompt": "Act 2 of 3 of one long video, 30 seconds with sound. Shared by all three acts: {✏️ the place, the light and the look, e.g. a small café by a rainy window, warm lamps, soft film grain}, under the same sound of {✏️ the sound, e.g. rain on glass and quiet jazz}. This act: {✏️ what happens, e.g. people come and go as the rain grows heavier}. It carries straight on from act 1. One slow camera move, no cuts. No text on screen."
+          },
+          "act-3": {
+            "name": "Act 3",
+            "prompt": "Act 3 of 3 of one long video, 30 seconds with sound. Shared by all three acts: {✏️ the place, the light and the look, e.g. a small café by a rainy window, warm lamps, soft film grain}, under the same sound of {✏️ the sound, e.g. rain on glass and quiet jazz}. This act: {✏️ what happens, e.g. evening falls, the lamps glow and the café empties}. It ends the video, settling into stillness. One slow camera move, no cuts. No text on screen."
+          }
+        },
+        "step": {
+          "more": "Need it longer? Copy an act node, write what happens next after This act, and generate it; each act is up to 30 seconds.",
+          "join": "Select the acts in order, right-click and choose Join."
         }
       }
     },
