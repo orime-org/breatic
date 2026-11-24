@@ -22,13 +22,13 @@ describe("normalizeServerUrl", () => {
     ["http://127.0.0.1", "http://127.0.0.1"],
     ["http://[::1]:8000/", "http://[::1]:8000"],
   ])("accepts %s as %s", (input, origin) => {
-    expect(normalizeServerUrl(input)).toEqual({ ok: true, origin });
+    expect(normalizeServerUrl(input)).toBe(origin);
   });
 
   it.each(["http://192.168.1.50", "http://app.example.com", "ftp://app.example.com", "app.example.com", "", "not a url", "file:///etc/passwd"])(
     "refuses %s",
     (input) => {
-      expect(normalizeServerUrl(input)).toEqual({ ok: false, reason: "scheme" });
+      expect(normalizeServerUrl(input)).toBeNull();
     },
   );
 });

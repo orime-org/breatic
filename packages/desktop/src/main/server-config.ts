@@ -18,18 +18,17 @@ const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 /**
  * An address as the origin the client opens.
  * @param input - The address.
- * @returns The origin, or why the address is refused.
+ * @returns The origin, or null when the client refuses the address.
  */
-export function normalizeServerUrl(input: string): { ok: true; origin: string } | { ok: false; reason: "scheme" } {
+export function normalizeServerUrl(input: string): string | null {
   let url: URL;
   try {
     url = new URL(input.trim());
   } catch {
-    return { ok: false, reason: "scheme" };
+    return null;
   }
-  if (url.protocol === "https:") return { ok: true, origin: url.origin };
-  if (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname)) return { ok: true, origin: url.origin };
-  return { ok: false, reason: "scheme" };
+  if (url.protocol === "https:" || (url.protocol === "http:" && LOOPBACK_HOSTS.has(url.hostname))) return url.origin;
+  return null;
 }
 
 /**
@@ -40,9 +39,9 @@ export function normalizeServerUrl(input: string): { ok: true; origin: string } 
  */
 export function builtInServerUrl(raw: string): string {
   if (raw.trim() === "") throw new Error("serverUrl is required: every build carries the server it opens");
-  const result = normalizeServerUrl(raw);
-  if (!result.ok) throw new Error(`serverUrl ${raw} must be an https address, or http to this computer`);
-  return result.origin;
+  const origin = normalizeServerUrl(raw);
+  if (!origin) throw new Error(`serverUrl ${raw} must be an https address, or http to this computer`);
+  return origin;
 }
 
 /**
@@ -55,9 +54,9 @@ export function builtInServerUrl(raw: string): string {
  */
 export function resolveServerUrl(sources: { envUrl: string | undefined; builtInUrl: string }): string {
   if (sources.envUrl) {
-    const normalized = normalizeServerUrl(sources.envUrl);
-    if (!normalized.ok) throw new Error(`BREATIC_SERVER_URL is not an address the client accepts: ${sources.envUrl}`);
-    return normalized.origin;
+    const origin = normalizeServerUrl(sources.envUrl);
+    if (!origin) throw new Error(`BREATIC_SERVER_URL is not an address the client accepts: ${sources.envUrl}`);
+    return origin;
   }
   return sources.builtInUrl;
 }

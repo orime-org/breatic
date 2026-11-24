@@ -55,9 +55,6 @@ const shared: Options = {
 // per-configuration clean could delete another one's output.
 rmSync(resolve(import.meta.dirname, "dist"), { recursive: true, force: true });
 
-/** Browser pages: the splash. */
-const page: Options = { ...shared, format: "iife", platform: "browser", target: "chrome130", outDir: "dist", outExtension: () => ({ js: ".js" }) };
-
 export default defineConfig([
   // CommonJS: bundled CommonJS dependencies (pino) require Node built-ins at
   // runtime, which an ES module bundle cannot do. CommonJS is not split, so each entry stays whole.
@@ -71,8 +68,13 @@ export default defineConfig([
     outExtension: () => ({ js: ".cjs" }),
   },
   {
-    ...page,
+    ...shared,
     entry: { "splash/splash": "src/splash/splash.ts" },
+    format: "iife",
+    platform: "browser",
+    target: "chrome130",
+    outDir: "dist",
+    outExtension: () => ({ js: ".js" }),
     // The page, the brand's logo and the platform's mark for the attribution line.
     onSuccess: async () => {
       mkdirSync("dist/splash", { recursive: true });

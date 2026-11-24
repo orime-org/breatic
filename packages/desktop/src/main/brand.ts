@@ -16,7 +16,7 @@ export interface BuildBrand {
   productName: string;
   /** The sign-in return scheme, the app ID in lower case. */
   scheme: string;
-  /** The server the build opens; empty when the first launch asks. */
+  /** The server the build opens, an origin checked at build time (builtInServerUrl). */
   serverUrl: string;
   /** Whether the splash carries the "powered by" line: every brand but the official one. */
   poweredBy: boolean;
