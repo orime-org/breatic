@@ -48,7 +48,7 @@ button:disabled { opacity: 0.6; cursor: default; }
 @keyframes spin { to { transform: rotate(360deg); } }
 `;
   const doc = document;
-  const bridge = (window as unknown as { breaticDesktop?: { retry?: () => Promise<void> } }).breaticDesktop;
+  const bridge = (window as unknown as { breaticDesktop?: { retry?: (automatic?: boolean) => Promise<void> } }).breaticDesktop;
   doc.documentElement.lang = page.lang;
   doc.title = page.title;
   if (!doc.querySelector("meta[data-desktop-unreachable]")) {
@@ -57,7 +57,7 @@ button:disabled { opacity: 0.6; cursor: default; }
     policy.content = "default-src 'none'";
     policy.setAttribute("data-desktop-unreachable", "");
     doc.head.append(policy);
-    window.addEventListener("online", () => void bridge?.retry?.());
+    window.addEventListener("online", () => void bridge?.retry?.(true));
   }
   const sheet = new CSSStyleSheet();
   sheet.replaceSync(css);

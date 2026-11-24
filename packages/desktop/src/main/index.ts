@@ -22,7 +22,7 @@ import { appImageDesktopEntry, findDeepLink } from "@desktop/main/deep-link.js";
 import { desktopSentryOptions, keepsIntegration, scrubBreadcrumb, scrubEvent } from "@desktop/main/error-monitoring.js";
 import { createLogger } from "@desktop/main/logger.js";
 import { buildDockMenuTemplate, buildMenuTemplate } from "@desktop/main/menu.js";
-import { decideNavigation, decideWindowOpen, stepHistory } from "@desktop/main/navigation.js";
+import { appCommandDirection, decideNavigation, decideWindowOpen, stepHistory } from "@desktop/main/navigation.js";
 import { nextWindowBounds, wantsNewWindow, windowsUserTasks } from "@desktop/main/new-window.js";
 import { resolveServerUrl } from "@desktop/main/server-config.js";
 import { SPLASH_MAX_MS, splashQuery, untilSplashMayClose } from "@desktop/main/splash.js";
@@ -265,9 +265,9 @@ function registerIpc(): void {
   });
   ipcMain.handle("sign-in:pending", (event) => fromServer(event) && signIn.isPending());
   ipcMain.handle("sign-in:take", (event) => (fromServer(event) ? signIn.take() : null));
-  ipcMain.handle("unreachable:retry", (event) => {
+  ipcMain.handle("unreachable:retry", (event, automatic: unknown) => {
     const frame = event.senderFrame;
-    if (frame) loads.get(event.sender.id)?.retryAsked({ isMainFrame: frame.parent === null, origin: frame.origin, url: frame.url });
+    if (frame) loads.get(event.sender.id)?.retryAsked({ isMainFrame: frame.parent === null, origin: frame.origin, url: frame.url }, automatic === true);
   });
 }
 
@@ -327,10 +327,16 @@ function track(window: BrowserWindow): LoadTracker {
     appWindows = appWindows.filter((other) => other !== window);
   });
   contents.on("did-start-navigation", (details) => tracker.navigationStarted(details));
-  contents.on("did-fail-load", (_event, errorCode, _description, url, isMainFrame) => tracker.loadFailed({ url, errorCode, isMainFrame }));
+  contents.on("did-fail-provisional-load", (_event, errorCode, _description, url, isMainFrame) => tracker.loadFailed({ url, errorCode, isMainFrame }));
   contents.on("did-navigate", () => tracker.pageCommitted());
   contents.on("did-finish-load", () => tracker.loadFinished());
   contents.on("did-stop-loading", () => tracker.loadStopped());
+  if (process.platform === "win32") {
+    window.on("app-command", (_event, command) => {
+      const direction = appCommandDirection(command);
+      if (direction) stepHistory(contents.navigationHistory, direction);
+    });
+  }
   appWindows = [...appWindows, window];
   return tracker;
 }

@@ -388,6 +388,23 @@ test.describe("can't reach the server", () => {
     await app.close();
   });
 
+  test("a server page whose body breaks off after it has opened stays, and is not reloaded", async () => {
+    let requests = 0;
+    await server.up((req, res) => {
+      if (req.url === "/studio") requests += 1;
+      res.writeHead(200, { "Content-Type": "text/html" });
+      res.write(`<!doctype html><title>Studio</title><h1>Studio</h1>${" ".repeat(4096)}`);
+      setTimeout(() => req.socket.destroy(), 300);
+    });
+    const { app, page } = await launchOnStandIn();
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible({ timeout: 30_000 });
+    // Past the first automatic retry, which would come 5 s after a failure.
+    await page.waitForTimeout(6_500);
+    expect(requests).toBe(1);
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible();
+    await app.close();
+  });
+
   test("a page on the server cannot ask for a retry", async () => {
     await server.up(appPage);
     const { app, page } = await launchOnStandIn();
@@ -404,7 +421,7 @@ test.describe("can't reach the server", () => {
     await app.close();
   });
 
-  test("the mouse's back and forward buttons step one page through the window's history", async () => {
+  test("the mouse's back and forward buttons step through the window's history", async () => {
     await server.up(appPage);
     const { app, page } = await launchOnStandIn();
     await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible({ timeout: 30_000 });
@@ -420,10 +437,12 @@ test.describe("can't reach the server", () => {
     };
     await press("back");
     await expect(page).toHaveURL(`${server.origin}/project/1`);
-    await page.waitForTimeout(500);
-    await expect(page).toHaveURL(`${server.origin}/project/1`);
     await press("forward");
     await expect(page).toHaveURL(`${server.origin}/project/2`);
+    // On Linux Electron also sends an app command for the same press, which a listener would turn into a second step.
+    if (process.platform !== "win32") {
+      expect(await app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().every((window) => window.listenerCount("app-command") === 0))).toBe(true);
+    }
     await app.close();
   });
 
@@ -436,7 +455,11 @@ test.describe("can't reach the server", () => {
     await server.up(fresh);
     const { app, page } = await launchOnStandIn();
     await app.evaluate(({ shell }) => {
-      shell.openExternal = async () => undefined;
+      const opened: string[] = [];
+      (globalThis as { opened?: string[] }).opened = opened;
+      shell.openExternal = async (url: string) => {
+        opened.push(url);
+      };
     });
     await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible({ timeout: 30_000 });
     await server.down();
@@ -458,8 +481,10 @@ test.describe("can't reach the server", () => {
         .find((window) => !window.webContents.getURL().startsWith("file:"))!
         .webContents.navigationHistory.goBack();
     });
-    await page.waitForTimeout(1_000);
-    await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible();
+    await expect.poll(() => app.evaluate(() => (globalThis as { opened?: string[] }).opened ?? [])).toEqual([`${server.origin}/oauth2/sign_in`]);
+    await expect
+      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((window) => !window.webContents.getURL().startsWith("file:"))!.webContents.isLoading()))
+      .toBe(false);
     await page.getByRole("button", { name: "Retry" }).click();
     await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible();
     await expect(page).toHaveURL(`${server.origin}/project/1`);

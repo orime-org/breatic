@@ -126,13 +126,29 @@ export interface HistorySteps {
 }
 
 /**
- * Go back or forward in a window's history, from the menu. The mouse's side
- * buttons need nothing: Chromium goes back and forward when a page releases
- * them, as in Chrome.
+ * Go back or forward in a window's history, from the menu or a Windows app
+ * command. The mouse's side buttons need nothing: Chromium goes back and
+ * forward when a page releases them, as in Chrome.
  * @param history - The focused window's history, if there is a window.
  * @param direction - Which way.
  */
 export function stepHistory(history: HistorySteps | undefined, direction: "back" | "forward"): void {
   if (direction === "back" && history?.canGoBack()) history.goBack();
   if (direction === "forward" && history?.canGoForward()) history.goForward();
+}
+
+/**
+ * Which way a Windows app command (`WM_APPCOMMAND`: a Browser Back or Forward
+ * key, or a mouse button its driver maps to one) steps the history. Chrome
+ * handles these in its browser window (`BrowserView::ExecuteWindowsCommand`);
+ * the page never sees them. On Linux Electron derives the same command from
+ * the side-button press Chromium already steps on, so it is listened to on
+ * Windows only.
+ * @param command - The `app-command` name.
+ * @returns The direction, or null for any other command.
+ */
+export function appCommandDirection(command: string): "back" | "forward" | null {
+  if (command === "browser-backward") return "back";
+  if (command === "browser-forward") return "forward";
+  return null;
 }

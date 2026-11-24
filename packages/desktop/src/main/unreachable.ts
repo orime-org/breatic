@@ -7,9 +7,10 @@
  * commits a failed main-frame load as an error entry at the failed address;
  * the client writes the page into that entry and retries by reloading it in
  * place. As in Chromium's own NetErrorHelperCore, the state changes when a
- * navigation commits (the error entry with `did-fail-load`, a page with
- * `did-navigate`); a navigation that ends without committing leaves the
- * window on the error entry. Kept apart from Electron so the transitions can
+ * navigation commits (the error entry with `did-fail-provisional-load`, a
+ * page with `did-navigate`); a navigation that ends without committing leaves
+ * the window on the error entry, and the online event's retry waits while a
+ * navigation is pending. Kept apart from Electron so the transitions can
  * be tested; the main process feeds it the window's load events.
  */
 
@@ -42,7 +43,7 @@ export interface RetryScheduler {
   now(): void;
   /** A retry started outside the scheduler (the user pressed Reload on the error entry): wait for it. */
   started(): void;
-  /** The server answered, the window left the error entry, or it closed: stop and reset the backoff. */
+  /** The server answered, a navigation started to leave the error entry, or the window closed: stop and reset the backoff. */
   clear(): void;
 }
 
@@ -170,7 +171,7 @@ export interface LoadTracker {
   redirectCancelled(target: string): void;
   /** `did-start-navigation`. */
   navigationStarted(nav: { url: string; isMainFrame: boolean; isSameDocument: boolean }): void;
-  /** `did-fail-load`: for a main-frame load, Chromium's error entry has committed. */
+  /** `did-fail-provisional-load`: Chromium's error entry has committed (`did-fail-load` also fires when a committed page's body fails). */
   loadFailed(failure: { url: string; errorCode: number; isMainFrame: boolean }): void;
   /** `did-navigate`: a page has committed in the main frame. */
   pageCommitted(): void;
@@ -178,8 +179,11 @@ export interface LoadTracker {
   loadFinished(): void;
   /** `did-stop-loading`. */
   loadStopped(): void;
-  /** The page called `retry()`; honoured only from the error entry's main frame. */
-  retryAsked(frame: { isMainFrame: boolean; origin: string; url: string }): void;
+  /**
+   * The page called `retry()`; honoured only from the error entry's main frame.
+   * An automatic one (the online event) waits while a navigation is pending, as Chromium's auto-reload does.
+   */
+  retryAsked(frame: { isMainFrame: boolean; origin: string; url: string }, automatic: boolean): void;
   /** Run once when the window's first load ends. */
   onFirstLoad(listener: () => void): void;
   /** The window closed. */
@@ -245,7 +249,7 @@ export function createLoadTracker(deps: LoadTrackerDeps): LoadTracker {
         redirectTarget = null;
         deps.render(shown, true);
       } else {
-        // Back, Forward or a link: the window leaves the error entry once that navigation commits.
+        // Back, Forward or a link: the window leaves the error entry once that navigation commits; if it does not, retries start again from 5 s.
         scheduler.clear();
       }
     },
@@ -287,7 +291,8 @@ export function createLoadTracker(deps: LoadTrackerDeps): LoadTracker {
       }
       endNavigation();
     },
-    retryAsked(frame): void {
+    retryAsked(frame, automatic): void {
+      if (automatic && !settled) return;
       if (frame.isMainFrame && isErrorEntry(frame, shown?.url ?? null)) scheduler.now();
     },
     onFirstLoad(listener): void {

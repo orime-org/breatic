@@ -14,7 +14,7 @@
 
 import { describe, it, expect, vi } from "vitest";
 
-import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure, stepHistory } from "@desktop/main/navigation.js";
+import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure, stepHistory, appCommandDirection } from "@desktop/main/navigation.js";
 
 const SERVER = "https://app.example.com";
 
@@ -98,5 +98,16 @@ describe("stepHistory", () => {
     stepHistory(undefined, "back");
     expect(h.goForward).not.toHaveBeenCalled();
     expect(h.goBack).not.toHaveBeenCalled();
+  });
+});
+
+describe("appCommandDirection", () => {
+  it.each([
+    ["browser-backward", "back"],
+    ["browser-forward", "forward"],
+    ["browser-refresh", null],
+    ["media-play-pause", null],
+  ])("maps %s to %s", (command, direction) => {
+    expect(appCommandDirection(command)).toBe(direction);
   });
 });

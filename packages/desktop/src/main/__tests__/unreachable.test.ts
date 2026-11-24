@@ -283,7 +283,7 @@ describe("createLoadTracker", () => {
     vi.advanceTimersByTime(120_000);
     expect(reload).toHaveBeenCalledTimes(1);
     expect(renders).toHaveLength(drawn);
-    tracker.retryAsked({ isMainFrame: true, origin: "null", url: STUDIO });
+    tracker.retryAsked({ isMainFrame: true, origin: "null", url: STUDIO }, true);
     expect(reload).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
@@ -305,7 +305,22 @@ describe("createLoadTracker", () => {
     expect(reload).not.toHaveBeenCalled();
     tracker.loadStopped();
     expect(renders.at(-1)).toEqual({ shown: { url: `${SERVER}/project/2`, reason: { kind: "unreachable" } }, busy: false });
-    tracker.retryAsked({ isMainFrame: true, origin: "null", url: `${SERVER}/project/2` });
+    vi.advanceTimersByTime(5_000);
+    expect(reload).toHaveBeenCalledTimes(1);
+    failLoad(tracker, -102, `${SERVER}/project/2`);
+    tracker.retryAsked({ isMainFrame: true, origin: "null", url: `${SERVER}/project/2` }, false);
+    expect(reload).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
+  });
+
+  it("holds the online event's retry while the user's Back or Forward is pending, and lets the Retry button through", () => {
+    const { tracker, reload } = setup();
+    const entry = { isMainFrame: true, origin: "null", url: `${SERVER}/project/2` };
+    failLoad(tracker, -102, `${SERVER}/project/2`);
+    tracker.navigationStarted({ url: `${SERVER}/project/1`, isMainFrame: true, isSameDocument: false });
+    tracker.retryAsked(entry, true);
+    expect(reload).not.toHaveBeenCalled();
+    tracker.retryAsked(entry, false);
     expect(reload).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
@@ -341,7 +356,7 @@ describe("createLoadTracker", () => {
   ])("refuses a retry from %s", (_label, failed, frame) => {
     const { tracker, reload } = setup();
     if (failed) failLoad(tracker, -102);
-    tracker.retryAsked(frame);
+    tracker.retryAsked(frame, false);
     expect(reload).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
@@ -349,7 +364,7 @@ describe("createLoadTracker", () => {
   it("retries at once when the error entry's main frame asks", () => {
     const { tracker, reload } = setup();
     failLoad(tracker, -102);
-    tracker.retryAsked({ isMainFrame: true, origin: "null", url: STUDIO });
+    tracker.retryAsked({ isMainFrame: true, origin: "null", url: STUDIO }, true);
     expect(reload).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
