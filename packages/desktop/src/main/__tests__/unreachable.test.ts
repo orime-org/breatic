@@ -11,7 +11,6 @@
 import { describe, it, expect, vi } from "vitest";
 
 import {
-  acceptsRetry,
   createLoadTracker,
   createRetryScheduler,
   isEnvironmentFailure,
@@ -108,23 +107,6 @@ describe("createRetryScheduler", () => {
   });
 });
 
-describe("acceptsRetry", () => {
-  const recorded = "https://studio.example.test/project/1";
-
-  it("accepts the main frame of the error entry at the recorded address", () => {
-    expect(acceptsRetry({ isMainFrame: true, origin: "null", url: recorded, recordedUrl: recorded })).toBe(true);
-  });
-
-  it.each([
-    ["no unreachable state", { isMainFrame: true, origin: "null", url: recorded, recordedUrl: null }],
-    ["a subframe", { isMainFrame: false, origin: "null", url: recorded, recordedUrl: recorded }],
-    ["the server page itself", { isMainFrame: true, origin: "https://studio.example.test", url: recorded, recordedUrl: recorded }],
-    ["a sandboxed page elsewhere", { isMainFrame: true, origin: "null", url: "https://evil.test/", recordedUrl: recorded }],
-  ])("refuses %s", (_label, call) => {
-    expect(acceptsRetry(call)).toBe(false);
-  });
-});
-
 describe("redirectAway", () => {
   const base = { statusCode: 302, serverOrigin: "https://studio.example.test", mainLoadInFlight: true };
 
@@ -155,7 +137,7 @@ describe("isEnvironmentFailure", () => {
     [-102, "connection refused"],
     [-118, "connection timed out"],
     [-7, "timed out"],
-    [-12, "network IO suspended"],
+    [-331, "network IO suspended"],
     [-21, "network changed"],
     [-103, "connection aborted"],
     [-107, "SSL protocol error"],
@@ -170,12 +152,14 @@ describe("isEnvironmentFailure", () => {
     expect(isEnvironmentFailure(-20)).toBe(false);
     expect(isEnvironmentFailure(-3)).toBe(false);
     expect(isEnvironmentFailure(-324)).toBe(false);
+    expect(isEnvironmentFailure(-12)).toBe(false);
   });
 });
 
 describe("createLoadTracker", () => {
   const SERVER = "https://studio.example.test";
   const STUDIO = `${SERVER}/studio`;
+  const UNREACHABLE: ShownUnreachable = { url: STUDIO, reason: { kind: "unreachable" } };
 
   /** A tracker over fake timers, with every effect recorded. */
   function setup(): {
@@ -197,32 +181,38 @@ describe("createLoadTracker", () => {
     return { tracker, reload, renders, logs };
   }
 
-  /** The events of a main-issued load of STUDIO that fails with a code. */
-  function failMainLoad(tracker: LoadTracker, errorCode: number): void {
-    tracker.mainLoadStarted();
-    tracker.navigationStarted({ url: STUDIO, isMainFrame: true, isSameDocument: false });
-    tracker.loadFailed({ url: STUDIO, errorCode, isMainFrame: true });
+  /** The events of a load of `url` that ends in Chromium's error entry. */
+  function failLoad(tracker: LoadTracker, errorCode: number, url = STUDIO): void {
+    tracker.navigationStarted({ url, isMainFrame: true, isSameDocument: false });
+    tracker.loadFailed({ url, errorCode, isMainFrame: true });
     tracker.loadFinished();
+    tracker.loadStopped();
   }
 
-  it("shows a failed main-frame load of the server once its error entry has loaded, and reports it once", () => {
+  /** The events of a load of `url` that commits a page. */
+  function loadPage(tracker: LoadTracker, url = STUDIO): void {
+    tracker.navigationStarted({ url, isMainFrame: true, isSameDocument: false });
+    tracker.pageCommitted();
+    tracker.loadFinished();
+    tracker.loadStopped();
+  }
+
+  it("shows a failed main-frame load of the server once its error entry has loaded, and reports it", () => {
     const { tracker, renders, logs } = setup();
-    failMainLoad(tracker, -324);
-    expect(renders).toEqual([{ shown: { url: STUDIO, reason: { kind: "unreachable" } }, busy: false }]);
-    expect(tracker.shown()).toEqual({ url: STUDIO, reason: { kind: "unreachable" } });
+    tracker.mainLoadStarted();
+    failLoad(tracker, -324);
+    expect(renders).toEqual([{ shown: UNREACHABLE, busy: false }]);
     expect(logs).toEqual([{ level: "error", errorCode: -324, url: STUDIO }]);
     vi.useRealTimers();
   });
 
   it("retries after 5 s by reloading the entry in place, and logs a failed retry as a warning", () => {
     const { tracker, reload, renders, logs } = setup();
-    failMainLoad(tracker, -324);
+    failLoad(tracker, -324);
     vi.advanceTimersByTime(5_000);
     expect(reload).toHaveBeenCalledTimes(1);
-    expect(renders.at(-1)).toEqual({ shown: { url: STUDIO, reason: { kind: "unreachable" } }, busy: true });
-    tracker.navigationStarted({ url: STUDIO, isMainFrame: true, isSameDocument: false });
-    tracker.loadFailed({ url: STUDIO, errorCode: -324, isMainFrame: true });
-    tracker.loadFinished();
+    expect(renders.at(-1)).toEqual({ shown: UNREACHABLE, busy: true });
+    failLoad(tracker, -324);
     expect(logs.map((entry) => entry.level)).toEqual(["error", "warn"]);
     expect(renders.at(-1)?.busy).toBe(false);
     vi.advanceTimersByTime(9_999);
@@ -232,9 +222,30 @@ describe("createLoadTracker", () => {
     vi.useRealTimers();
   });
 
+  it("reports the first failure that is not the user's environment, once, even when the page appeared for one that was", () => {
+    const { tracker, logs } = setup();
+    failLoad(tracker, -102);
+    vi.advanceTimersByTime(5_000);
+    failLoad(tracker, -324);
+    vi.advanceTimersByTime(10_000);
+    failLoad(tracker, -324);
+    expect(logs.map((entry) => entry.level)).toEqual(["warn", "error", "warn"]);
+    vi.useRealTimers();
+  });
+
+  it("reports again after the server has answered in between", () => {
+    const { tracker, logs } = setup();
+    failLoad(tracker, -324);
+    vi.advanceTimersByTime(5_000);
+    loadPage(tracker);
+    failLoad(tracker, -324);
+    expect(logs.map((entry) => entry.level)).toEqual(["error", "error"]);
+    vi.useRealTimers();
+  });
+
   it("logs the user's network and certificate failures as warnings, with the certificate reason", () => {
     const { tracker, renders, logs } = setup();
-    failMainLoad(tracker, -202);
+    failLoad(tracker, -202);
     expect(renders[0]?.shown.reason).toEqual({ kind: "certificate" });
     expect(logs).toEqual([{ level: "warn", errorCode: -202, url: STUDIO }]);
     vi.useRealTimers();
@@ -253,43 +264,55 @@ describe("createLoadTracker", () => {
 
   it("treats Reload on the error entry as a retry: busy at once, and the schedule waits for it", () => {
     const { tracker, reload, renders } = setup();
-    failMainLoad(tracker, -102);
+    failLoad(tracker, -102);
     vi.advanceTimersByTime(1_000);
     tracker.navigationStarted({ url: STUDIO, isMainFrame: true, isSameDocument: false });
-    expect(renders.at(-1)?.busy).toBe(true);
+    expect(renders.at(-1)).toEqual({ shown: UNREACHABLE, busy: true });
     expect(tracker.mainLoadInFlight()).toBe(true);
     vi.advanceTimersByTime(60_000);
     expect(reload).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
-  it("stops retrying once the server answers, and draws nothing more", () => {
+  it("stops retrying once a page commits, and draws nothing more", () => {
     const { tracker, reload, renders } = setup();
-    failMainLoad(tracker, -102);
+    failLoad(tracker, -102);
     vi.advanceTimersByTime(5_000);
-    tracker.navigationStarted({ url: STUDIO, isMainFrame: true, isSameDocument: false });
-    tracker.loadFinished();
+    loadPage(tracker);
     const drawn = renders.length;
-    expect(tracker.shown()).toBeNull();
     vi.advanceTimersByTime(120_000);
     expect(reload).toHaveBeenCalledTimes(1);
     expect(renders).toHaveLength(drawn);
+    tracker.retryAsked({ isMainFrame: true, origin: "null", url: STUDIO });
+    expect(reload).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 
   it("stops when the user leaves the error entry for another page", () => {
     const { tracker, reload } = setup();
-    failMainLoad(tracker, -102);
-    tracker.navigationStarted({ url: `${SERVER}/login`, isMainFrame: true, isSameDocument: false });
-    expect(tracker.shown()).toBeNull();
+    failLoad(tracker, -102);
+    loadPage(tracker, `${SERVER}/login`);
     vi.advanceTimersByTime(120_000);
     expect(reload).not.toHaveBeenCalled();
     vi.useRealTimers();
   });
 
-  it("counts a retry that neither failed nor showed a page (a 204) as failed, and goes on", () => {
+  it("keeps the error entry when the user's Back or Forward is cancelled before it commits, and goes on retrying", () => {
     const { tracker, reload, renders } = setup();
-    failMainLoad(tracker, -102);
+    failLoad(tracker, -102, `${SERVER}/project/2`);
+    tracker.navigationStarted({ url: `${SERVER}/project/1`, isMainFrame: true, isSameDocument: false });
+    vi.advanceTimersByTime(60_000);
+    expect(reload).not.toHaveBeenCalled();
+    tracker.loadStopped();
+    expect(renders.at(-1)).toEqual({ shown: { url: `${SERVER}/project/2`, reason: { kind: "unreachable" } }, busy: false });
+    tracker.retryAsked({ isMainFrame: true, origin: "null", url: `${SERVER}/project/2` });
+    expect(reload).toHaveBeenCalledTimes(1);
+    vi.useRealTimers();
+  });
+
+  it("counts a retry that neither failed nor committed a page (a 204) as failed, and goes on", () => {
+    const { tracker, reload, renders } = setup();
+    failLoad(tracker, -102);
     vi.advanceTimersByTime(5_000);
     tracker.navigationStarted({ url: STUDIO, isMainFrame: true, isSameDocument: false });
     tracker.loadStopped();
@@ -310,13 +333,22 @@ describe("createLoadTracker", () => {
     vi.useRealTimers();
   });
 
-  it("retries at once when the error entry asks, and only then", () => {
+  it.each([
+    ["no can't-reach page", false, { isMainFrame: true, origin: "null", url: STUDIO }],
+    ["a subframe", true, { isMainFrame: false, origin: "null", url: STUDIO }],
+    ["the server page itself", true, { isMainFrame: true, origin: SERVER, url: STUDIO }],
+    ["a sandboxed page at another address", true, { isMainFrame: true, origin: "null", url: "https://evil.test/" }],
+  ])("refuses a retry from %s", (_label, failed, frame) => {
     const { tracker, reload } = setup();
-    tracker.retryAsked({ isMainFrame: true, origin: "null", url: STUDIO });
+    if (failed) failLoad(tracker, -102);
+    tracker.retryAsked(frame);
     expect(reload).not.toHaveBeenCalled();
-    failMainLoad(tracker, -102);
-    tracker.retryAsked({ isMainFrame: true, origin: SERVER, url: STUDIO });
-    expect(reload).not.toHaveBeenCalled();
+    vi.useRealTimers();
+  });
+
+  it("retries at once when the error entry's main frame asks", () => {
+    const { tracker, reload } = setup();
+    failLoad(tracker, -102);
     tracker.retryAsked({ isMainFrame: true, origin: "null", url: STUDIO });
     expect(reload).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
@@ -326,15 +358,15 @@ describe("createLoadTracker", () => {
     const { tracker } = setup();
     const first = vi.fn();
     tracker.onFirstLoad(first);
-    failMainLoad(tracker, -102);
-    tracker.loadFinished();
+    failLoad(tracker, -102);
+    loadPage(tracker);
     expect(first).toHaveBeenCalledTimes(1);
     vi.useRealTimers();
   });
 
   it("schedules nothing after the window closed", () => {
     const { tracker, reload } = setup();
-    failMainLoad(tracker, -102);
+    failLoad(tracker, -102);
     tracker.closed();
     vi.advanceTimersByTime(120_000);
     expect(reload).not.toHaveBeenCalled();

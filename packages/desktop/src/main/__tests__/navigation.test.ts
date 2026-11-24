@@ -86,17 +86,15 @@ describe("stepHistory", () => {
     return { canGoBack: () => true, canGoForward: () => false, goBack: vi.fn(), goForward: vi.fn() };
   }
 
-  it.each([["back", "browser-backward"], ["back", "back"]] as const)("goes back for %s (%s)", (_direction, command) => {
+  it("goes back", () => {
     const h = history();
-    stepHistory(h, command);
+    stepHistory(h, "back");
     expect(h.goBack).toHaveBeenCalledTimes(1);
   });
 
-  it("does nothing where there is nowhere to go, or for another command", () => {
+  it("does nothing where there is nowhere to go, or without a window", () => {
     const h = history();
-    stepHistory(h, "browser-forward");
     stepHistory(h, "forward");
-    stepHistory(h, "media-play-pause");
     stepHistory(undefined, "back");
     expect(h.goForward).not.toHaveBeenCalled();
     expect(h.goBack).not.toHaveBeenCalled();

@@ -89,6 +89,8 @@ let queuedLink: string | null = null;
 let splashWindow: BrowserWindow | null = null;
 /** Resolves with the time the splash appeared. */
 let splashShown: Promise<number> = new Promise(() => undefined);
+/** After this time a splash that has not appeared is given up. */
+let splashDeadline = 0;
 /** Whether the first app window is on screen; until then Dock clicks and relaunches bring the splash forward. */
 let firstShown = false;
 /** Callbacks waiting to hear that a window's leave confirmation answered Stay. */
@@ -106,7 +108,7 @@ const updates = createUpdates({
     await Sentry.flush(FLUSH_TIMEOUT_MS);
   },
   // The feed being unreachable is the user's network: a warning, not a report.
-  log: (err) => (isFeedUnreachable(err) ? logger.warn({ err }, "update_failed") : logger.error({ err }, "update_failed")),
+  log: (err) => logger[isFeedUnreachable(err) ? "warn" : "error"]({ err }, "update_failed"),
 });
 
 // macOS hands a link that launched the app to `open-url` before `ready`.
@@ -324,10 +326,9 @@ function track(window: BrowserWindow): LoadTracker {
     loads.delete(id);
     appWindows = appWindows.filter((other) => other !== window);
   });
-  // The mouse's side buttons on Windows and Linux.
-  window.on("app-command", (_event, command) => stepHistory(contents.navigationHistory, command));
   contents.on("did-start-navigation", (details) => tracker.navigationStarted(details));
   contents.on("did-fail-load", (_event, errorCode, _description, url, isMainFrame) => tracker.loadFailed({ url, errorCode, isMainFrame }));
+  contents.on("did-navigate", () => tracker.pageCommitted());
   contents.on("did-finish-load", () => tracker.loadFinished());
   contents.on("did-stop-loading", () => tracker.loadStopped());
   appWindows = [...appWindows, window];
@@ -384,18 +385,15 @@ function openSplash(): void {
   });
   void window.loadFile(join(here, "../splash/index.html"), { query: splashQuery(BRAND) });
   splashWindow = window;
-  splashCreatedAt = Date.now();
+  splashDeadline = Date.now() + SPLASH_MAX_MS;
 }
-
-/** When the splash was created, the start of its longest time. */
-let splashCreatedAt = 0;
 
 /** Close the splash once it has shown long enough, waiting for one not yet on screen up to its longest time. */
 async function finishSplash(): Promise<void> {
   const window = splashWindow;
   if (!window) return;
   await untilSplashMayClose(
-    { shown: splashShown, deadline: splashCreatedAt + SPLASH_MAX_MS },
+    { shown: splashShown, deadline: splashDeadline },
     { now: () => Date.now(), sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) },
   );
   if (!window.isDestroyed()) window.close();

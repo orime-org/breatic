@@ -126,13 +126,13 @@ export interface HistorySteps {
 }
 
 /**
- * Go back or forward in a window's history: the menu items, and the mouse's
- * side buttons through `app-command` on Windows and Linux.
- * @param history - The window's history, if there is a window.
- * @param command - "back" or "forward" from the menu, or an app command.
+ * Go back or forward in a window's history, from the menu. The mouse's side
+ * buttons need nothing: Chromium goes back and forward when a page releases
+ * them, as in Chrome.
+ * @param history - The focused window's history, if there is a window.
+ * @param direction - Which way.
  */
-export function stepHistory(history: HistorySteps | undefined, command: string): void {
-  if (!history) return;
-  if ((command === "back" || command === "browser-backward") && history.canGoBack()) history.goBack();
-  if ((command === "forward" || command === "browser-forward") && history.canGoForward()) history.goForward();
+export function stepHistory(history: HistorySteps | undefined, direction: "back" | "forward"): void {
+  if (direction === "back" && history?.canGoBack()) history.goBack();
+  if (direction === "forward" && history?.canGoForward()) history.goForward();
 }

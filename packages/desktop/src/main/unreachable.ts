@@ -6,8 +6,11 @@
  * end in it, the retry schedule, and which failures are reported. Chromium
  * commits a failed main-frame load as an error entry at the failed address;
  * the client writes the page into that entry and retries by reloading it in
- * place. Kept apart from Electron so the transitions can be tested; the main
- * process feeds it the window's load events.
+ * place. As in Chromium's own NetErrorHelperCore, the state changes when a
+ * navigation commits (the error entry with `did-fail-load`, a page with
+ * `did-navigate`); a navigation that ends without committing leaves the
+ * window on the error entry. Kept apart from Electron so the transitions can
+ * be tested; the main process feeds it the window's load events.
  */
 
 import { addressWithoutQuery } from "@breatic/shared";
@@ -103,26 +106,6 @@ export function isErrorEntry(frame: { origin: string; url: string }, recordedUrl
   return recordedUrl !== null && frame.origin === "null" && frame.url === recordedUrl;
 }
 
-/** What the main process sees of a `retry()` call. */
-export interface RetryCall {
-  isMainFrame: boolean;
-  /** `senderFrame.origin`. */
-  origin: string;
-  /** `senderFrame.url`. */
-  url: string;
-  /** The address this window last failed at, or null when it shows no "can't reach" page. */
-  recordedUrl: string | null;
-}
-
-/**
- * Whether a `retry()` call comes from this window's error entry.
- * @param call - The call as the main process sees it.
- * @returns True for the main frame of the error entry at the recorded address.
- */
-export function acceptsRetry(call: RetryCall): boolean {
-  return call.isMainFrame && isErrorEntry(call, call.recordedUrl);
-}
-
 /** A main-frame response of the server, as `session.webRequest.onHeadersReceived` sees it. */
 export interface RedirectResponse {
   statusCode: number;
@@ -155,14 +138,15 @@ export function redirectAway(response: RedirectResponse): string | null {
 
 /**
  * Whether a load failure comes from the user's network or certificates, which
- * are logged as warnings and not reported: timed out, network IO suspended,
- * network changed, and Chromium's connection (-100 to -199) and certificate
- * (-200 to -299) ranges (`net/base/net_error_list.h`).
+ * are logged as warnings and not reported: timed out (-7), network changed
+ * (-21), network IO suspended (-331, the computer slept), and Chromium's
+ * connection (-100 to -199) and certificate (-200 to -299) ranges
+ * (`net/base/net_error_list.h`).
  * @param errorCode - Chromium's network error code.
  * @returns True for network and certificate failures.
  */
 export function isEnvironmentFailure(errorCode: number): boolean {
-  return errorCode === -7 || errorCode === -12 || errorCode === -21 || (errorCode <= -100 && errorCode > -200) || isCertificateError(errorCode);
+  return errorCode === -7 || errorCode === -21 || errorCode === -331 || (errorCode <= -100 && errorCode > -200) || isCertificateError(errorCode);
 }
 
 /** What a window's load tracker does to the window. */
@@ -186,16 +170,16 @@ export interface LoadTracker {
   redirectCancelled(target: string): void;
   /** `did-start-navigation`. */
   navigationStarted(nav: { url: string; isMainFrame: boolean; isSameDocument: boolean }): void;
-  /** `did-fail-load`. */
+  /** `did-fail-load`: for a main-frame load, Chromium's error entry has committed. */
   loadFailed(failure: { url: string; errorCode: number; isMainFrame: boolean }): void;
+  /** `did-navigate`: a page has committed in the main frame. */
+  pageCommitted(): void;
   /** `did-finish-load`. */
   loadFinished(): void;
   /** `did-stop-loading`. */
   loadStopped(): void;
   /** The page called `retry()`; honoured only from the error entry's main frame. */
   retryAsked(frame: { isMainFrame: boolean; origin: string; url: string }): void;
-  /** What the window shows, or null when it shows no "can't reach" page. */
-  shown(): ShownUnreachable | null;
   /** Run once when the window's first load ends. */
   onFirstLoad(listener: () => void): void;
   /** The window closed. */
@@ -208,9 +192,12 @@ export interface LoadTracker {
  * @returns The tracker.
  */
 export function createLoadTracker(deps: LoadTrackerDeps): LoadTracker {
+  /** The address that failed and why, while the window is on its error entry. */
   let shown: ShownUnreachable | null = null;
-  /** A main-frame failure of the current navigation, waiting for its error entry to finish loading. */
-  let failure: ShownUnreachable | null = null;
+  /** The error entry has committed and waits for its document to load before the page is written. */
+  let pendingRender = false;
+  /** This run of "can't reach" has sent its one report. */
+  let reported = false;
   let mainLoad = false;
   /** The current navigation has ended in success or failure. */
   let settled = true;
@@ -258,8 +245,7 @@ export function createLoadTracker(deps: LoadTrackerDeps): LoadTracker {
         redirectTarget = null;
         deps.render(shown, true);
       } else {
-        // Back, Forward or a link: the window leaves the error entry.
-        shown = null;
+        // Back, Forward or a link: the window leaves the error entry once that navigation commits.
         scheduler.clear();
       }
     },
@@ -270,26 +256,31 @@ export function createLoadTracker(deps: LoadTrackerDeps): LoadTracker {
         : isCertificateError(errorCode)
           ? { kind: "certificate" }
           : { kind: "unreachable" };
-      failure = { url, reason };
-      // The user's network and certificates are logged only; anything else is reported once, when the page appears.
-      deps.log(isEnvironmentFailure(errorCode) || shown ? "warn" : "error", { errorCode, url: addressWithoutQuery(url) });
+      shown = { url, reason };
+      pendingRender = true;
+      // The user's network and certificates are logged only; anything else is reported once per run of "can't reach".
+      const level = isEnvironmentFailure(errorCode) || reported ? "warn" : "error";
+      if (level === "error") reported = true;
+      deps.log(level, { errorCode, url: addressWithoutQuery(url) });
+    },
+    pageCommitted(): void {
+      shown = null;
+      pendingRender = false;
+      reported = false;
+      scheduler.clear();
     },
     loadFinished(): void {
-      if (failure) {
-        // Chromium's error entry for the failure: write "can't reach" into it and schedule the next retry.
-        shown = failure;
-        failure = null;
+      if (shown && pendingRender) {
+        // The error entry's document has loaded: write "can't reach" into it and schedule the next retry.
+        pendingRender = false;
         deps.render(shown, false);
         scheduler.failed();
-      } else if (shown) {
-        shown = null;
-        scheduler.clear();
       }
       endNavigation();
     },
     loadStopped(): void {
-      if (!mainLoad || settled) return;
-      // A retry that neither failed nor showed a page (a 204, a download) counts as failed, so the next one can run.
+      if (settled) return;
+      // A navigation that ended without committing (a 204, a download, a cancelled Back) leaves the window on the error entry.
       if (shown) {
         deps.render(shown, false);
         scheduler.failed();
@@ -297,10 +288,7 @@ export function createLoadTracker(deps: LoadTrackerDeps): LoadTracker {
       endNavigation();
     },
     retryAsked(frame): void {
-      if (acceptsRetry({ ...frame, recordedUrl: shown?.url ?? null })) scheduler.now();
-    },
-    shown(): ShownUnreachable | null {
-      return shown;
+      if (frame.isMainFrame && isErrorEntry(frame, shown?.url ?? null)) scheduler.now();
     },
     onFirstLoad(listener): void {
       firstLoad = listener;

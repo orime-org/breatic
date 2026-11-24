@@ -404,19 +404,64 @@ test.describe("can't reach the server", () => {
     await app.close();
   });
 
-  test("the mouse's back and forward buttons step through the window's history", async () => {
+  test("the mouse's back and forward buttons step one page through the window's history", async () => {
     await server.up(appPage);
     const { app, page } = await launchOnStandIn();
     await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible({ timeout: 30_000 });
     await page.goto(`${server.origin}/project/1`);
-    /** Press a mouse side button the way Windows and Linux report it. */
-    const press = (command: string): Promise<void> =>
-      app.evaluate(({ BrowserWindow }, name) => {
-        BrowserWindow.getAllWindows().find((window) => !window.webContents.getURL().startsWith("file:"))!.emit("app-command", {}, name);
-      }, command);
-    await press("browser-backward");
-    await expect(page).toHaveURL(`${server.origin}/studio`);
-    await press("browser-forward");
+    await page.goto(`${server.origin}/project/2`);
+    /** Press and release a mouse side button over the page, as the operating system delivers it. */
+    const press = async (button: "back" | "forward"): Promise<void> => {
+      const cdp = await page.context().newCDPSession(page);
+      for (const type of ["mousePressed", "mouseReleased"] as const) {
+        await cdp.send("Input.dispatchMouseEvent", { type, x: 20, y: 20, button, clickCount: 1 });
+      }
+      await cdp.detach();
+    };
+    await press("back");
+    await expect(page).toHaveURL(`${server.origin}/project/1`);
+    await page.waitForTimeout(500);
+    await expect(page).toHaveURL(`${server.origin}/project/1`);
+    await press("forward");
+    await expect(page).toHaveURL(`${server.origin}/project/2`);
+    await app.close();
+  });
+
+  test("a Back from the can't-reach page that is cancelled before it commits leaves the page working", async () => {
+    /** The app's pages, never from the cache, so Back asks the server again. */
+    const fresh = (_req: IncomingMessage, res: ServerResponse): void => {
+      res.setHeader("Cache-Control", "no-store");
+      appPage(_req, res);
+    };
+    await server.up(fresh);
+    const { app, page } = await launchOnStandIn();
+    await app.evaluate(({ shell }) => {
+      shell.openExternal = async () => undefined;
+    });
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible({ timeout: 30_000 });
+    await server.down();
+    await page.goto(`${server.origin}/project/1`).catch(() => undefined);
+    await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible();
+    // The server comes back behind a sign-in proxy: Back to the Studio is sent out of the window and cancelled.
+    await server.up((req, res) => {
+      if (req.url === "/studio") {
+        res.statusCode = 302;
+        res.setHeader("Location", "/oauth2/sign_in");
+        res.setHeader("Cache-Control", "no-store");
+        res.end();
+        return;
+      }
+      fresh(req, res);
+    });
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()
+        .find((window) => !window.webContents.getURL().startsWith("file:"))!
+        .webContents.navigationHistory.goBack();
+    });
+    await page.waitForTimeout(1_000);
+    await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible();
+    await page.getByRole("button", { name: "Retry" }).click();
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible();
     await expect(page).toHaveURL(`${server.origin}/project/1`);
     await app.close();
   });
