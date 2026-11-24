@@ -86,7 +86,7 @@ models:
           base_price: 50000
           formula: '{"total_price": $max([base_price, $ceil(base_price * $length(text) / 1000)])}'
           discount_rate: 100
-  # Retired (#1521): kept so a run opened on 3.1 before the change finishes there; removed with inner#2082.
+  # Retired (#1521): kept so a run opened on 3.1 before the change finishes there; removed with inner#1773.
   gemini-3.1-flash-text-to-speech:
     upstreams:
       - upstream: wavespeed

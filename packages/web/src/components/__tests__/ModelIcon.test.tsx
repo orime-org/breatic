@@ -47,7 +47,6 @@ describe('ModelIcon — per-vendor brand marks for the model picker', () => {
       'mirelo',
       'mureka',
       'nano-banana',
-      'omnivoice',
       'openai',
       'qwen',
       'recraft',
