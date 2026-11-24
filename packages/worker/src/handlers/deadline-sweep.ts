@@ -14,9 +14,6 @@ import { deadlineSweepService, readDatabaseClock } from "@breatic/domain";
 /** The queue the sweep's repeatable job runs on. */
 export const DEADLINE_SWEEP_QUEUE = "deadline-sweep";
 
-/** How long the watermark outlives the last round that wrote it; a sweep down longer starts one interval back. */
-const WATERMARK_TTL_SECONDS = 7 * 24 * 60 * 60;
-
 /**
  * The watermark's key, with this deployment's prefix.
  * @returns The key.
@@ -48,7 +45,7 @@ export async function writeDeadlineWatermark(at: Date | null): Promise<void> {
     await getRedis().del(watermarkKey());
     return;
   }
-  await getRedis().set(watermarkKey(), at.toISOString(), "EX", WATERMARK_TTL_SECONDS);
+  await getRedis().set(watermarkKey(), at.toISOString());
 }
 
 /**

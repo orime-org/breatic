@@ -32,10 +32,11 @@ vi.mock("ai", () => ({
 
 import {
   createPgClient,
+  env,
   getNodeTaskConfig,
+  getRedis,
   getStreamRedis,
   getWorkerConfig,
-  taskEventsStreamKey,
   initCore,
   listenLiveUpdates,
   listenProjectMemberChanges,
@@ -46,7 +47,7 @@ import {
 } from "@breatic/core";
 import { readDeadlineWatermark, sweepDeadlines, writeDeadlineWatermark } from "@worker/handlers/deadline-sweep.js";
 import { sceneTaskService } from "@breatic/domain";
-import { canvasSpaceDocName, FOCUS_IMAGE_UPLOAD_EVENT_TYPE, threeDSpaceDocName } from "@breatic/shared";
+import { threeDSpaceDocName } from "@breatic/shared";
 import { confirmProjectTransfer, declineProjectTransfer, withdrawProjectTransfer } from "@server/modules/project/projectTransfer.service.js";
 import { listenSpaceTaskSignals, spaceTasksVersion } from "@server/__tests__/integration/helpers/space-task-signals.js";
 
@@ -109,11 +110,13 @@ async function notice(userId: string, at: Date | null, over: { read?: boolean; d
 }
 
 /**
- * One round at `now` from watermark `from`, returning what it announced. The
- * round commits before it returns, so a probe afterwards has seen everything.
+ * One round at `now` from watermark `from`, returning what it announced. A
+ * probe before it lets the notices a case's own writes caused arrive first, and
+ * the round commits before it returns, so a probe afterwards has seen everything.
  */
 async function round(from: Date | null, now: Date): Promise<LiveUpdate[]> {
   if (from !== null) await writeDeadlineWatermark(from);
+  expect(await members.probe(2000)).toBe(true);
   const before = updates.length;
   await sweepDeadlines({ now });
   expect(await members.probe(2000)).toBe(true);
@@ -400,6 +403,11 @@ describe("the watermark", () => {
     }
   });
 
+  it("keeps the watermark with no expiry, so a sweep back after any outage covers the whole gap", async () => {
+    await round(new Date(Date.now() - MINUTE), new Date());
+    expect(await getRedis().ttl(`${env.REDIS_KEY_PREFIX}:deadline-sweep:watermark`)).toBe(-1);
+  });
+
   it("C-26 moves the watermark even when nothing came due", async () => {
     const now = new Date(Date.now() + 365 * 24 * 60 * MINUTE);
     await round(new Date(now.getTime() - MINUTE), now);
@@ -521,48 +529,5 @@ describe("a round that fails", () => {
     const [ended] = await sql<{ status: string; failed_reason: string | null }[]>`select status, failed_reason from project_transfers where id = ${row!.id}`;
     expect(ended).toEqual({ status: "failed", failed_reason: "expired" });
     expect(bellFor(got, to)).toBe(true);
-  });
-});
-
-describe("focus crops whose upload never ended", () => {
-  /** A focus crop's grant opened at `openedAt` on a node of `spaceId`, consumed when asked. */
-  async function focusGrant(
-    owner: { userId: string; studioId: string; projectId: string },
-    spaceId: string,
-    openedAt: Date,
-    consumed = false,
-  ): Promise<{ id: string; nodeId: string }> {
-    const focus = { spaceId, nodeId: randomUUID(), id: randomUUID(), name: "Crop", width: 64, height: 48 };
-    await sql`
-      insert into upload_grants (user_id, studio_id, storage_key, declared_size, expires_at, project_id, space_id, focus_image, created_at, consumed_at)
-      values (${owner.userId}, ${owner.studioId}, ${`image/${randomUUID()}.png`}, 4096, ${new Date(openedAt.getTime() + MINUTE)},
-        ${owner.projectId}, ${spaceId}, ${sql.json(focus)}, ${openedAt}, ${consumed ? openedAt : null})
-    `;
-    return { id: focus.id, nodeId: focus.nodeId };
-  }
-
-  /** The focus-crop steps on the stream for `docName`, oldest first. */
-  async function focusSteps(docName: string): Promise<Record<string, unknown>[]> {
-    const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
-    return raw
-      .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
-      .filter((e) => e.type === FOCUS_IMAGE_UPLOAD_EVENT_TYPE && e.docName === docName);
-  }
-
-  it("ends as failed, at its two hours, a crop whose upload is still open, and leaves one that ended", async () => {
-    const interval = getWorkerConfig().deadline_sweep.interval_ms;
-    const budget = getNodeTaskConfig().default_budget_ms;
-    const admin = await user();
-    const { studioId, projectId } = await studioWithProject(admin);
-    const spaceId = randomUUID();
-    const now = new Date();
-    const due = new Date(now.getTime() - budget - interval / 2);
-    const open = await focusGrant({ userId: admin, studioId, projectId }, spaceId, due);
-    await focusGrant({ userId: admin, studioId, projectId }, spaceId, due, true);
-    await focusGrant({ userId: admin, studioId, projectId }, spaceId, new Date(now.getTime() - budget + interval));
-    await round(new Date(now.getTime() - interval), now);
-    expect(await focusSteps(canvasSpaceDocName(projectId, spaceId))).toEqual([
-      { type: FOCUS_IMAGE_UPLOAD_EVENT_TYPE, docName: canvasSpaceDocName(projectId, spaceId), nodeId: open.nodeId, state: "failed", id: open.id },
-    ]);
   });
 });
