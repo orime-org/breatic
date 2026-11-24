@@ -179,12 +179,19 @@ async function newCase(nodes: Record<string, string>): Promise<Case> {
   return { streamKey: `itest:stream:task:${id}`, keyPrefix: `itest-${id}`, docName };
 }
 
+/** The Space types that take a change version, each with how its document is named. */
+const VERSIONED_SPACES = [
+  ["Timeline", timelineSpaceDocName],
+  ["3D", threeDSpaceDocName],
+] as const;
+
 /**
- * A fresh stream, key prefix and empty Timeline document, a Space type that takes a change version.
+ * A fresh stream, key prefix and empty document of a Space type that takes a change version.
+ * @param docNameOf - How the Space type names its document; a Timeline by default.
  * @returns The case's names.
  */
-async function newSpaceTasksCase(): Promise<Case> {
-  const c = bareCase(timelineSpaceDocName(PID, randomUUID()));
+async function newSpaceTasksCase(docNameOf: (projectId: string, spaceId: string) => string = timelineSpaceDocName): Promise<Case> {
+  const c = bareCase(docNameOf(PID, randomUUID()));
   await yjsRepo.seedInitialState(c.docName, Y.encodeStateAsUpdate(new Y.Doc()));
   return c;
 }
@@ -811,8 +818,8 @@ describe("task events across two collab instances", () => {
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
-  it("writes the stream id of a Timeline Space's latest change into its document", async () => {
-    const c = await newSpaceTasksCase();
+  it.each(VERSIONED_SPACES)("writes the stream id of a %s Space's latest change into its document, with nobody connected", async (_type, docNameOf) => {
+    const c = await newSpaceTasksCase(docNameOf);
     const ids = await publishSpaceTasksVersion(c, 3);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
@@ -839,8 +846,8 @@ describe("task events across two collab instances", () => {
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
-  it("leaves a deleted Timeline Space's stored content as it was, so restoring it brings the content back", async () => {
-    const c = bareCase(timelineSpaceDocName(PID, randomUUID()));
+  it.each(VERSIONED_SPACES)("leaves a deleted %s Space's stored content as it was, so restoring it brings the content back", async (_type, docNameOf) => {
+    const c = bareCase(docNameOf(PID, randomUUID()));
     await seedNote(c.docName, "clips");
     expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
     const ids = await publishSpaceTasksVersion(c);
@@ -851,8 +858,8 @@ describe("task events across two collab instances", () => {
     expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
-  it("creates no document for a Space that has none", async () => {
-    const c = bareCase(timelineSpaceDocName(PID, randomUUID()));
+  it.each(VERSIONED_SPACES)("creates no document for a %s Space that has none", async (_type, docNameOf) => {
+    const c = bareCase(docNameOf(PID, randomUUID()));
     const ids = await publishSpaceTasksVersion(c);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));

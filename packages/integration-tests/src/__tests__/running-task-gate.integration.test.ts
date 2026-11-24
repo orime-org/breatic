@@ -46,14 +46,16 @@ import { join } from "node:path";
 import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
-import { canvasSpaceDocName, spaceTasksChangedChannel } from "@breatic/shared";
-import { createQueue, type TimelineExecutionJobData, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
+import { canvasSpaceDocName, threeDSpaceDocName } from "@breatic/shared";
+import { createQueue, type TimelineExecutionJobData, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
 import { nodeTaskService, runningSlotService, sceneTaskService, taskService } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
 import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
+import { sweepSceneTasks } from "@worker/handlers/scene-task-sweep.js";
+import { spaceTasksChanges, streamMark } from "@server/__tests__/helpers/space-tasks-changes.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 
@@ -1029,6 +1031,46 @@ describe("G F8 a task the gate has not judged keeps its node row's deadline", ()
     expect((await nodeRow(waitScene.nodeTaskId!)).status).toBe("running");
   });
 
+  it("the 3D sweep expires every overdue 3D row in any Space and announces each such Space once, leaving waiting, recent and node rows alone", async () => {
+    const p = await person();
+    const q = await person();
+    const now = await dbNow();
+    const overdue = new Date(now.getTime() - B - 1);
+    const waiting = { since: now, checkedAt: now, limit: 2 };
+    const sceneA = await seedTask(p, { scene: true, nodeStartedAt: overdue });
+    const sceneB = await seedTask(p, { scene: true, nodeStartedAt: overdue });
+    const otherSpace = await seedTask(q, { scene: true, nodeStartedAt: overdue });
+    const waitScene = await seedTask(p, { scene: true, nodeStartedAt: overdue, waiting });
+    const recentScene = await seedTask(p, { scene: true, nodeStartedAt: now });
+    const onNode = await seedTask(p, { node: true, nodeStartedAt: overdue });
+    const since = await streamMark();
+
+    await sweepSceneTasks();
+
+    for (const row of [sceneA, sceneB, otherSpace]) {
+      expect(await nodeRow(row.nodeTaskId!)).toMatchObject({ status: "expired", error_message: "expired" });
+    }
+    for (const row of [waitScene, recentScene, onNode]) expect((await nodeRow(row.nodeTaskId!)).status).toBe("running");
+    for (const who of [p, q]) {
+      const doc = threeDSpaceDocName(who.projectId, who.spaceId);
+      expect(await spaceTasksChanges(doc, since)).toEqual([{ type: "space-tasks-version", docName: doc }]);
+    }
+  });
+
+  it("the 3D sweep and a list read expire an overdue row once between them, and the second finds nothing to announce", async () => {
+    const p = await person();
+    const now = await dbNow();
+    const row = await seedTask(p, { scene: true, nodeStartedAt: new Date(now.getTime() - B - 1) });
+    const doc = threeDSpaceDocName(p.projectId, p.spaceId);
+    const since = await streamMark();
+
+    await sweepSceneTasks();
+    expect((await sceneTaskService.harvestAndList(p.projectId, p.spaceId)).harvested).toBe(0);
+
+    expect(await nodeRow(row.nodeTaskId!)).toMatchObject({ status: "expired", error_message: "expired" });
+    expect(await spaceTasksChanges(doc, since)).toEqual([{ type: "space-tasks-version", docName: doc }]);
+  });
+
   it("both harvests expire an overdue waiting row whose task already ended, so a cancel that committed before its rows settled leaves none behind", async () => {
     const p = await person();
     const now = await dbNow();
@@ -1178,20 +1220,16 @@ describe("G a 3D Space's waiting row tells the Space's list", () => {
     const p = await person();
     await running(p, 2);
     const t = await seedTask(p, { scene: true });
-    const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, p.projectId);
-    const publish = vi.spyOn(getStreamRedis(), "publish");
-    try {
-      const signals = (): number => publish.mock.calls.filter(([published]) => published === channel).length;
-      expect(await pick(t.taskId)).toMatchObject({ waiting: true });
-      expect(signals()).toBe(1);
-      expect(await pick(t.taskId)).toMatchObject({ waiting: true });
-      expect(signals()).toBe(1);
-      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
-      expect(await pick(t.taskId)).toEqual({ started: true });
-      expect(signals()).toBe(2);
-    } finally {
-      publish.mockRestore();
-    }
+    const doc = threeDSpaceDocName(p.projectId, p.spaceId);
+    const since = await streamMark();
+    const version = { type: "space-tasks-version", docName: doc };
+    expect(await pick(t.taskId)).toMatchObject({ waiting: true });
+    expect(await spaceTasksChanges(doc, since)).toEqual([version]);
+    expect(await pick(t.taskId)).toMatchObject({ waiting: true });
+    expect(await spaceTasksChanges(doc, since)).toEqual([version]);
+    await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+    expect(await pick(t.taskId)).toEqual({ started: true });
+    expect(await spaceTasksChanges(doc, since)).toEqual([version, version]);
   });
 });
 

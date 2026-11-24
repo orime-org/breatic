@@ -59,10 +59,10 @@ import type * as DomainModule from "@breatic/domain";
 import fc from "fast-check";
 import { createHash, generateKeyPairSync } from "node:crypto";
 import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
+import { initProvider, provider, runningSlotService, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
 import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
 import { t } from "@breatic/shared";
-import { spaceTasksChangedChannel, timelineSpaceDocName } from "@breatic/shared";
+import { timelineSpaceDocName } from "@breatic/shared";
 import { WEB_ANIMATION_CONTAINER_CLASS, openModelKeys, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import {
@@ -273,34 +273,29 @@ function modelRows(executionId: string): Record<string, unknown>[] {
   ];
 }
 
-/** Spies on the stream Redis client's append and publish, read by their recorded calls. */
+/** A spy on the stream Redis client's append, read by its recorded calls. */
 interface Spies {
   xadd: { mock: { calls: unknown[][] } };
-  publish: { mock: { calls: unknown[][] } };
 }
 
 /**
- * How many changes a spied stream append sent for the execution's Timeline Space, and how many Space task-list
- * signals a spied publish sent for its Project.
- * @param spies - The spies on the stream Redis client's append and publish.
+ * How many changes a spied stream append sent for the execution's Timeline Space.
+ * @param spies - The spy on the stream Redis client's append.
  * @param spies.xadd - The append spy.
- * @param spies.publish - The publish spy.
  * @param fx - The execution.
- * @returns Both counts.
+ * @returns The count.
  */
-function signalsFor(spies: Spies, fx: ExecutionFixture): { doc: number; meta: number } {
+function signalsFor(spies: Spies, fx: ExecutionFixture): { doc: number } {
   const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
-  const doc = spies.xadd.mock.calls.filter((call) => call.some((arg) => typeof arg === "string" && arg.includes(`"docName":"${docName}"`) && arg.includes("space-tasks-version"))).length;
-  const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, fx.projectId);
-  return { doc, meta: spies.publish.mock.calls.filter(([published]) => published === channel).length };
+  return { doc: spies.xadd.mock.calls.filter((call) => call.some((arg) => typeof arg === "string" && arg.includes(`"docName":"${docName}"`) && arg.includes("space-tasks-version"))).length };
 }
 
 /**
- * Spy on the stream Redis client's append and publish.
- * @returns The spies.
+ * Spy on the stream Redis client's append.
+ * @returns The spy.
  */
 function spyOnSignals(): Spies {
-  return { xadd: vi.spyOn(getStreamRedis(), "xadd"), publish: vi.spyOn(getStreamRedis(), "publish") };
+  return { xadd: vi.spyOn(getStreamRedis(), "xadd") };
 }
 
 /**
@@ -439,6 +434,35 @@ describe("a queued execution that waited for a running slot", () => {
   });
 });
 
+describe("the running-task gate tells the Timeline Space through its document", () => {
+  const PAID = { ...ENV, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite" };
+  beforeAll(() => {
+    initCore(PAID);
+  });
+  afterAll(() => {
+    initCore(ENV);
+  });
+
+  it("announces a claim once", async () => {
+    const fx = await seed("queued");
+    const spies = spyOnSignals();
+    expect(await runningSlotService.claimWithinLimit(fx.execution.id)).toMatchObject({ outcome: "started" });
+    expect(signalsFor(spies, fx)).toEqual({ doc: 1 });
+  });
+
+  it("announces the first wait for a running slot once, and a later wait not again", async () => {
+    const fx = await seed("queued");
+    await sql`insert into tasks(user_id, project_id, space_id, task_type, mode, model, status, params, started_at, created_at)
+      select ${fx.userId}, ${fx.projectId}, ${fx.spaceId}, 'image', 'append', 'flux-schnell', 'running', '{}'::jsonb, now(), now()
+      from generate_series(1, 2)`;
+    const spies = spyOnSignals();
+    await expect(runningSlotService.claimWithinLimit(fx.execution.id)).rejects.toMatchObject({ name: "StillRunning" });
+    expect(signalsFor(spies, fx)).toEqual({ doc: 1 });
+    await expect(runningSlotService.claimWithinLimit(fx.execution.id)).rejects.toMatchObject({ name: "StillRunning" });
+    expect(signalsFor(spies, fx)).toEqual({ doc: 1 });
+  });
+});
+
 describe("picking up a running execution again", () => {
   it("retries with a new attempt and fence, keeps the deadline, and reads the job instead of submitting it again", async () => {
     const fx = await seed("queued");
@@ -467,7 +491,7 @@ describe("picking up a running execution again", () => {
     const spies = spyOnSignals();
     await pickUp(fx);
     expect(await read(fx.execution.id)).toMatchObject({ status: "running", attempt: 3, phase: "writing" });
-    expect(signalsFor(spies, fx)).toEqual({ doc: 0, meta: 0 });
+    expect(signalsFor(spies, fx)).toEqual({ doc: 0 });
   });
 
   it("signals the Space once when a pickup finds the job in a new phase", async () => {
@@ -479,7 +503,7 @@ describe("picking up a running execution again", () => {
     ingest.read = () => json(report(fx, "running", { phase: "validating" }));
     await pickUp(fx);
     expect((await read(fx.execution.id)).phase).toBe("validating");
-    expect(signalsFor(spies, fx)).toEqual({ doc: 1, meta: 0 });
+    expect(signalsFor(spies, fx)).toEqual({ doc: 1 });
   });
 
   it("does not settle a report that has not ended", async () => {

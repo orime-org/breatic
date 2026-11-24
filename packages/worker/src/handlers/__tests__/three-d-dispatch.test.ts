@@ -43,7 +43,7 @@ const h = vi.hoisted(() => {
     insertGenerationFailedIfAbsent: vi.fn(),
     settleCharge: vi.fn(),
     settleSceneRowById: vi.fn(),
-    publishSpaceTasksChanged: vi.fn(async (_projectId: string, _spaceId: string) => undefined),
+    announceSpaceTasksChange: vi.fn(async (_docName: string) => undefined),
   };
 });
 
@@ -73,7 +73,7 @@ vi.mock("@breatic/core", () => ({
     upsertGenerationSucceeded: h.upsertGenerationSucceeded,
   },
   publishActivityNew: vi.fn(),
-  publishSpaceTasksChanged: h.publishSpaceTasksChanged,
+  announceSpaceTasksChange: h.announceSpaceTasksChange,
   getStorageAdapter: vi.fn(async () => ({ keyFromUrl: () => "three_d/out.glb" })),
   getRawEnvVar: vi.fn(),
   getUnderstandConfig: vi.fn(() => ({})),
@@ -223,7 +223,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
 
     expect(result).not.toHaveProperty("failed");
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: null });
-    expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
+    expect(h.announceSpaceTasksChange).toHaveBeenCalledWith("project-proj-1/3d-space-1");
     // A Space row is not a node: nothing is settled on the canvas.
     expect(h.settleTaskForNode).not.toHaveBeenCalled();
   });
@@ -247,7 +247,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
     await expect(runTask(sceneJob(1), "lock-token")).resolves.toEqual({ failed: true, reason: "persist_failed" });
 
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "failed", errorMessage: "internal" });
-    expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
+    expect(h.announceSpaceTasksChange).toHaveBeenCalledWith("project-proj-1/3d-space-1");
     expect(h.markCompletedAndBill).not.toHaveBeenCalled();
   });
 
@@ -262,7 +262,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
 
     expect(h.runModelTask).not.toHaveBeenCalled();
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: null });
-    expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
+    expect(h.announceSpaceTasksChange).toHaveBeenCalledWith("project-proj-1/3d-space-1");
   });
 });
 

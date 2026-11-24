@@ -73,8 +73,9 @@ import fc from "fast-check";
 import postgres from "postgres";
 import { Queue } from "bullmq";
 import type { Hono } from "hono";
-import { createQueue, env, getStreamRedis, initCore, loadLocales, taskEventsStreamKey, type Redis } from "@breatic/core";
-import { formatCredits, t } from "@breatic/shared";
+import { createQueue, getStreamRedis, initCore, loadLocales, taskEventsStreamKey } from "@breatic/core";
+import { formatCredits, t, threeDSpaceDocName } from "@breatic/shared";
+import { spaceTasksChanges } from "@server/__tests__/helpers/space-tasks-changes.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
@@ -83,9 +84,6 @@ import { PAYMENTS_ON, dbNow, request, seedAccount, seedMember, type Account, typ
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
 let queue: ReturnType<typeof createQueue>;
-let subscriber: Redis;
-/** Every Space task-list signal seen, as text. */
-const spaceTaskSignals: string[] = [];
 /** Jobs the `tasks` queue accepted, by task id. */
 const queued = new Map<string, { projectId: string; jobId: string | undefined }>();
 /** What each entry's estimate came to on an unrefused run. */
@@ -98,11 +96,6 @@ beforeAll(async () => {
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false, connection: { application_name: "credit-admission-order-test" } });
   app = (await import("@server/app.js")).createApp();
   queue = createQueue("tasks");
-  subscriber = getStreamRedis().duplicate();
-  subscriber.on("pmessage", (_pattern: string, _channel: string, message: string) => {
-    spaceTaskSignals.push(message);
-  });
-  await subscriber.psubscribe(`${env.REDIS_KEY_PREFIX}:project:*:space-tasks:changed`);
   const original = Queue.prototype.add;
   vi.spyOn(Queue.prototype, "add").mockImplementation(async function (this: Queue, ...args: Parameters<Queue["add"]>) {
     const data = args[1] as { taskId?: string; projectId?: string };
@@ -120,7 +113,6 @@ beforeEach(() => {
 
 afterAll(async () => {
   vi.restoreAllMocks();
-  await subscriber?.quit();
   await queue?.close();
   await sql?.end({ timeout: 1 });
   initCore(process.env);
@@ -311,19 +303,6 @@ async function nodeEvents(nodeId: string): Promise<string[]> {
   return entries.map(([, fields]) => fields.join(" ")).filter((payload) => payload.includes(nodeId));
 }
 
-/**
- * Wait until the subscriber has seen a task-list signal for the Space.
- * @param spaceId - Which Space.
- * @returns The signals for it.
- */
-async function spaceSignals(spaceId: string): Promise<string[]> {
-  const deadline = Date.now() + 2000;
-  for (;;) {
-    const mine = spaceTaskSignals.filter((m) => m.includes(spaceId));
-    if (mine.length > 0 || Date.now() > deadline) return mine;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
-}
 
 describe("H-38 to H-44 credit admission order (design 3.10 U9)", () => {
   it("H-38 a studio with no balance refuses each entry with 402 and leaves nothing", async () => {
@@ -443,7 +422,7 @@ describe("H-38 to H-44 credit admission order (design 3.10 U9)", () => {
     expect(status).toBe("failed");
     expect(await taskRows(a)).toEqual([expect.objectContaining({ id: taskId, status: "failed", error_message: "internal" })]);
     expect(await nodeRows(a)).toEqual([expect.objectContaining({ task_id: taskId, status: "failed", error_message: "internal" })]);
-    expect((await spaceSignals(a.spaceId)).length).toBeGreaterThanOrEqual(1);
+    expect((await spaceTasksChanges(threeDSpaceDocName(a.projectId, a.spaceId))).length).toBeGreaterThanOrEqual(1);
     expect((await expectL5(a)).settled).toEqual([taskId]);
   });
 

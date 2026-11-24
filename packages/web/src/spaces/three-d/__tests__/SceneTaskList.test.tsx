@@ -269,17 +269,15 @@ describe('the 3D Space task list (inner#1690)', () => {
     await waitFor(() => expect(uploads.reconcile).toHaveBeenCalledWith(S, answer.tasks));
   });
 
-  it('reads the list again once the earliest running row reaches its deadline, timed from the server\'s clock', async () => {
-    // The browser runs ten minutes ahead of the server; the deadline is the server's.
-    vi.setSystemTime(NOW + 600_000);
+  // inner#2061: the worker's sweep expires an overdue row and announces it through the Space's document; the page
+  // sets no timer of its own to ask the server.
+  it('reads the list on no timer when the earliest running row reaches its deadline', async () => {
     api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'soon', deadlineAt: new Date(NOW + 5_000).toISOString() })));
     renderList();
     await rowOf('soon');
     expect(api.listSpaceTasks).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(120_000); });
     expect(api.listSpaceTasks).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
-    expect(api.listSpaceTasks).toHaveBeenCalledTimes(2);
   });
 
   // inner#1968 visual round 1: a waiting row wears the canvas's hourglass, not the running blue dot.
