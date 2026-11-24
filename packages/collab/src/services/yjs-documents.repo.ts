@@ -166,7 +166,7 @@ export async function softDeleteByName(name: string): Promise<boolean> {
  * `meta.spaces` CRDT, which lags behind cross-instance deletes by the
  * pub/sub propagation window. The project's meta doc (`project-{id}/meta`)
  * is excluded — it is not a Space. Rows are matched with
- * `spaceContentRowPattern` (`^project-{id}/(canvas|document|timeline)-[^/]+$`),
+ * `spaceContentRowPattern` (`^project-{id}/(canvas|document|timeline|3d|web_animation)-[^/]+$`),
  * which leaves out the meta doc and any other name under the project.
  *
  * Pattern safety relies on an IMPLICIT upstream guarantee: a

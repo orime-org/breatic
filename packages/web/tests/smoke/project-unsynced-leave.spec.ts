@@ -272,7 +272,7 @@ test('a real pending Document upload keeps refresh and browser leave protected',
     await contentState(page, item, false);
     await page.getByTestId('connection-banner-reload').click();
     const dialog = page.getByRole('alertdialog');
-    await expect(dialog).toContainText('An upload or edit');
+    await expect(dialog).toContainText('An upload, edit or run');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(placeholder).toBeVisible();
     expect(await page.evaluate(() => {

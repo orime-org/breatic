@@ -19,8 +19,9 @@
 /**
  * Space kinds.
  *
- * Canvas, Document and 3D Space carry their own collaborative content
- * documents. Timeline remains reserved.
+ * Every kind carries its own collaborative content document: the Canvas, the
+ * Document body, the 3D scene, the Timeline and, for a Motion Space
+ * (`web_animation`), its annotation threads.
  */
 import { z } from "zod";
 
@@ -28,7 +29,7 @@ import { z } from "zod";
  * Zod schema mirror of {@link SpaceType}. Used by cross-process RPC
  * payloads (e.g. `space-rpc.ts`) for runtime validation.
  */
-export const SpaceTypeSchema = z.enum(["canvas", "document", "timeline", "3d"]);
+export const SpaceTypeSchema = z.enum(["canvas", "document", "timeline", "3d", "web_animation"]);
 
 export type SpaceType = z.infer<typeof SpaceTypeSchema>;
 

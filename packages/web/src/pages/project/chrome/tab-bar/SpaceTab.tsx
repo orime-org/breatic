@@ -20,7 +20,7 @@ import { cn } from '@web/lib/utils';
 import { useTranslation } from '@web/i18n/use-translation';
 import type { SpaceType } from '@breatic/shared';
 import { useUIStore } from '@web/stores/ui';
-import { SPACE_TYPE_ICON } from '@web/pages/project/space-type';
+import { SPACE_TYPE_ICON } from '@web/spaces/space-type-icon';
 import { useSpaceTaskStatus } from '@web/pages/project/chrome/tab-bar/use-space-task-status';
 
 interface SpaceTabProps {

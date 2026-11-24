@@ -16,6 +16,7 @@
   <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
+  <a href="https://github.com/NipunaRanasinghe/awesome-ai-agents/blob/main/EMERGING.md"><img alt="Emerging in Awesome AI Agents" src="https://img.shields.io/badge/Emerging_in-Awesome_AI_Agents-0969da?style=flat"></a>
 </p>
 
 <p align="center" dir="ltr">
@@ -59,11 +60,12 @@ Collaboration means multiple people can edit the same workspace in real time. Re
 | **Document Spaces** | Write scripts, shot descriptions and production checklists with headings, lists and formatted text. |
 | **Canvas Spaces** | Arrange references and media on an infinite canvas; generate and refine assets using prompts, models and reference inputs. |
 | **3D (DEV)** | Arrange built-in objects, imported glTF models and AI-generated models in a shared scene, edit their position, rotation and scale, pose characters with presets or joint by joint, change each part's colour, finish and picture, set up shared cameras and lights in a director console that shows every camera's live picture, and frame a still of the scene or of any camera to add to the Agent, a Canvas or the clipboard. |
-| **Timeline (DEV)** | Arrange Project videos or uploaded local videos on shared tracks: move, trim, split, duplicate and delete clips, undo your own edits and preview the sequence. Describe a web animation, run it with DeepSeek, follow it in the execution list and add the result as clips that play on the Timeline clock. Videos and web animations on every track play together as stacked layers; select a layer in the preview to move, scale, stretch or rotate it, or type its position and size. Pick the frame's aspect ratio from seven presets (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) at the end of the play bar; layers keep their place in the frame. |
+| **Timeline (DEV)** | Arrange Project videos or uploaded local videos on shared tracks: move, trim, split, duplicate and delete clips, undo your own edits and preview the sequence. Add finished web animations from Motion Spaces as clips that play on the Timeline clock; each addition is an independent copy. Videos and web animations on every track play together as stacked layers; select a layer in the preview to move, scale, stretch or rotate it, or type its position and size. Pick the frame's aspect ratio from seven presets (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) at the end of the play bar; layers keep their place in the frame. |
+| **Motion (DEV)** | Describe a web animation and run it with DeepSeek, follow runs under Completed, In progress and Failed, play and seek finished results, modify a result into a new one, annotate moments with collaborators, export a result as a video and put the video on a Canvas. |
 | **An AI agent in your project** | Discuss ideas, provide document or canvas context, and review proposed work alongside your materials. |
-| **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases, documents, 3D scenes and Timelines. |
+| **Real-time collaboration** | Invite collaborators, set project access permissions and work on synchronized canvases, documents, 3D scenes, Timelines and Motion Spaces. |
 
-Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D and Timeline editors carry **DEV** badges in both creation entries. The current Timeline edits and previews video and web animations on multiple visual tracks; web animation runs only on deployments that enable it. Additional media types and video export are planned. Annotations within the 3D scene are under development.
+Supported media includes images, video, audio and 3D assets. Generation capabilities depend on configured providers and model access. Canvas and Document Spaces are available; the 3D, Timeline and Motion editors carry **DEV** badges in both creation entries. The current Timeline edits and previews video and web animations on multiple visual tracks; Motion makes, modifies and exports web animations, which run only on deployments that enable them. Additional Timeline media types and Timeline video export are planned. Annotations within the 3D scene are under development.
 
 ## Review changes together
 
@@ -105,7 +107,7 @@ The time ranges are a planning convention: Space names do not set clip duration 
 | Install for personal, private-group or internal organizational use | [Personal and LAN deployment](self-host/LOCAL.md) |
 | Modify the source or contribute | [Development setup](self-host/DEVELOPMENT.md) |
 
-After signing in, finish your personal Studio setup, create a project and add Document, Canvas, 3D or Timeline Spaces with the **+** button. Start with a brief, upload references or arrange built-in 3D objects. The [user guide](docs/USAGE.md) covers registration, your first project, Space operations and [keyboard shortcuts](docs/USAGE.md#keyboard-shortcuts).
+After signing in, finish your personal Studio setup, create a project and add Document, Canvas, 3D, Timeline or Motion Spaces with the **+** button. Start with a brief, upload references or arrange built-in 3D objects. The [user guide](docs/USAGE.md) covers registration, your first project, Space operations and [keyboard shortcuts](docs/USAGE.md#keyboard-shortcuts).
 
 ### Before self-hosting
 

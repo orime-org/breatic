@@ -222,9 +222,7 @@ function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstrea
    * @returns Nothing.
    */
   const end = async (): Promise<void> => {
-    // On Node a pull still waiting on the upstream never resumes once the caller cancels (measured with the relay
-    // tests), so only one end is reached; the guard keeps the end exactly once on a runtime that does resume it.
-    /* v8 ignore next -- @preserve */
+    // message_stop ends the call; the EOF, read error or cancel that follows reaches here again and counts nothing.
     if (ended) return;
     ended = true;
     if (!started && usage === undefined) {
@@ -275,6 +273,9 @@ function relayed(candidate: MessagesCandidate, speaker: MessagesSpeaker, upstrea
       }
     }
     if (event["type"] === "message_delta") usage = { ...startUsage, ...(isObject(event["usage"]) ? event["usage"] : {}) };
+    // The harness takes message_stop as the end of the call and sends its next one at once, while the upstream may
+    // still hold the body open; the call is ended before the harness can see it.
+    if (event["type"] === "message_stop") await end();
     return `data: ${JSON.stringify(event)}${carriage}`;
   };
 

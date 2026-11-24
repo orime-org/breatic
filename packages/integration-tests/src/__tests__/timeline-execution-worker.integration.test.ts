@@ -58,11 +58,11 @@ vi.mock("ai", () => ({
 import type * as DomainModule from "@breatic/domain";
 import fc from "fast-check";
 import { createHash, generateKeyPairSync } from "node:crypto";
-import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
+import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales } from "@breatic/core";
+import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE, timelineExecutionRepo } from "@breatic/domain";
 import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
 import { t } from "@breatic/shared";
-import { spaceTasksChangedChannel, timelineSpaceDocName } from "@breatic/shared";
+import { spaceTasksChangedChannel, webAnimationSpaceDocName } from "@breatic/shared";
 import { WEB_ANIMATION_CONTAINER_CLASS, openModelKeys, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import {
@@ -280,8 +280,8 @@ interface Spies {
 }
 
 /**
- * How many changes a spied stream append sent for the execution's Timeline Space, and how many Space task-list
- * signals a spied publish sent for its Project.
+ * How many execution changes a spied stream append sent for the execution's Motion Space, and how many Space
+ * task-list signals a spied publish sent for its Project.
  * @param spies - The spies on the stream Redis client's append and publish.
  * @param spies.xadd - The append spy.
  * @param spies.publish - The publish spy.
@@ -289,7 +289,7 @@ interface Spies {
  * @returns Both counts.
  */
 function signalsFor(spies: Spies, fx: ExecutionFixture): { doc: number; meta: number } {
-  const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
+  const docName = webAnimationSpaceDocName(fx.projectId, fx.spaceId);
   const doc = spies.xadd.mock.calls.filter((call) => call.some((arg) => typeof arg === "string" && arg.includes(`"docName":"${docName}"`) && arg.includes("space-tasks-version"))).length;
   const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, fx.projectId);
   return { doc, meta: spies.publish.mock.calls.filter(([published]) => published === channel).length };

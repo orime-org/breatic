@@ -35,6 +35,7 @@ import { createProvider } from "@breatic/provider";
 import {
   accountModelUpstreamsRepo,
   accountProviderKeysRepo,
+  getNodeTaskConfig,
   getRedis,
   initCore,
   loadLocales,
@@ -42,9 +43,10 @@ import {
   sessionCookieName,
   setSession,
 } from "@breatic/core";
-import { estimateTaskCredits, initProvider, readProviderConfig } from "@breatic/domain";
+import { estimateTaskCredits, initProvider, readProviderConfig, timelineExecutionRepo, webAnimationSourceRepo } from "@breatic/domain";
 import { ceilToCreditCent } from "@breatic/shared";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
+import * as grantRepo from "@server/modules/web-animation/web-animation-grants.repo.js";
 
 const SECRET = crypto.randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
@@ -588,23 +590,54 @@ describe("a 3D generation", () => {
   });
 });
 
-describe("a Timeline web-animation execution", () => {
+describe("a Motion web-animation execution", () => {
   /**
    * Ask to accept an execution.
    * @param fx - Where.
+   * @param body - The kind and its fields; a create when omitted.
    * @returns The response.
    */
-  const acceptExecution = (fx: Fixture): Promise<Response> =>
-    post(fx, "/timeline/executions", {
-      projectId: fx.projectId,
-      spaceId: fx.spaceId,
-      actionId: crypto.randomUUID(),
-      prompt: "A red square slides in from the left",
-      engine: "deepseek",
-      aspect: "16:9",
-      durationSeconds: 4,
-      fps: { num: 24, den: 1 },
+  const acceptExecution = (
+    fx: Fixture,
+    body: Record<string, unknown> = { kind: "web_animation_create", prompt: "A red square slides in from the left", engine: "deepseek", aspect: "16:9", durationSeconds: 4 },
+  ): Promise<Response> =>
+    post(fx, "/timeline/executions", { projectId: fx.projectId, spaceId: fx.spaceId, actionId: crypto.randomUUID(), ...body });
+
+  /**
+   * A create that succeeded in this Project and is granted to it, the way a worker leaves one.
+   * @param fx - The Project.
+   * @returns Its source version's id.
+   * @throws {Error} When a fixture write is refused.
+   */
+  const succeededCreate = async (fx: Fixture): Promise<string> => {
+    const row = await timelineExecutionRepo.insert({
+      projectId: fx.projectId, spaceId: fx.spaceId, actorUserId: fx.userId, kind: "web_animation_create", engine: "deepseek",
+      actionId: crypto.randomUUID(), input: { prompt: "A red square", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
+      inputHash: `sha256:${crypto.randomUUID()}`, deadlineAt: new Date(Date.now() + getNodeTaskConfig().default_budget_ms), origin: "web_animation_space",
     });
+    if (row === null) throw new Error("Fixture execution conflicted");
+    await grantRepo.insertGrant({ executionId: row.id, projectId: fx.projectId, executionCreatedAt: row.createdAt, executionOrigin: row.origin });
+    const claimed = await timelineExecutionRepo.transition({ id: row.id, event: { type: "claim" } });
+    if (!claimed.applied) throw new Error("Fixture claim refused");
+    const source = await webAnimationSourceRepo.insert({
+      executionId: row.id,
+      packageKey: `web-animation/${fx.projectId}/${row.id}/index.html`,
+      manifestKey: `web-animation/${fx.projectId}/${row.id}/manifest.json`,
+      packageSha256: "a".repeat(64),
+      packageBytes: 600_000,
+      manifestSha256: "b".repeat(64),
+      runtimeVersion: "@hyperframes/core@0.8.186",
+      fontSetVersion: 1,
+      width: 1920,
+      height: 1080,
+      fpsNum: 24,
+      fpsDen: 1,
+      durationFrames: 96,
+    });
+    const done = await timelineExecutionRepo.transition({ id: row.id, event: { type: "success", fence: claimed.row.fence, resultSourceVersionId: source.id } });
+    if (!done.applied) throw new Error("Fixture success refused");
+    return source.id;
+  };
 
   /**
    * The execution an accepted request answered with, and its stored key row.
@@ -633,5 +666,26 @@ describe("a Timeline web-animation execution", () => {
     await saveKey(fx.userId, "fal", FAL_KEY);
 
     expect((await acceptedExecution(await acceptExecution(fx))).llmKeyId).toBeNull();
+  });
+
+  it("records the payer's OpenRouter key row for a modification, and never the key", async () => {
+    const fx = await seed(10_000, "timeline");
+    const keyId = await saveKey(fx.userId, "openrouter", OPENROUTER_KEY);
+    const baseSourceVersionId = await succeededCreate(fx);
+
+    const { id, llmKeyId } = await acceptedExecution(await acceptExecution(fx, {
+      kind: "web_animation_modify", baseSourceVersionId, instruction: "Make it slower", engine: "deepseek", aspect: "16:9", durationSeconds: 4,
+    }));
+
+    expect(llmKeyId).toBe(keyId);
+    expect(JSON.stringify(await sql`SELECT * FROM timeline_executions WHERE id = ${id}`)).not.toContain(OPENROUTER_KEY);
+  });
+
+  it("records no key row for an export, which makes no model call, though the payer has an OpenRouter key", async () => {
+    const fx = await seed(10_000, "timeline");
+    await saveKey(fx.userId, "openrouter", OPENROUTER_KEY);
+    const sourceVersionId = await succeededCreate(fx);
+
+    expect((await acceptedExecution(await acceptExecution(fx, { kind: "web_animation_export", sourceVersionId }))).llmKeyId).toBeNull();
   });
 });

@@ -67,11 +67,12 @@ export interface WebAnimationOutput {
   bytes: number;
 }
 
-/** The two keys a job may write and the package's size limit. */
+/** The two keys a job may write, the package's size limit, and the one package a modification may read. */
 interface JobObjects {
   packageKey: string;
   manifestKey: string;
   maxPackageBytes: number;
+  basePackageKey?: string;
 }
 
 /**
@@ -128,6 +129,22 @@ export async function storeWebAnimationOutput(
   if (stored === "over_cap") return { response: new Response("Too large", { status: 413 }), written: null };
   const written = { key, sha256: await hashStoredObject(bucket, key), bytes: stored.sizeBytes };
   return { response: new Response(null, { status: 200 }), written };
+}
+
+/**
+ * Serve the one package a job may read through `r2.local`: a modification's base, an export's source.
+ * @param request - The container's request.
+ * @param bucket - The R2 binding.
+ * @param key - The key the job may read; null when it may read none.
+ * @returns The package, or why not.
+ * @throws {Error} When R2 refuses the read.
+ */
+export async function readWebAnimationPackage(request: Request, bucket: R2Bucket, key: string | null): Promise<Response> {
+  if (request.method !== "GET") return new Response("Not allowed", { status: 405 });
+  if (key === null || askedKey(request) !== key) return new Response("Not this object", { status: 403 });
+  const object = await bucket.get(key);
+  if (object === null) return new Response("No such object", { status: 404 });
+  return new Response(object.body, { status: 200 });
 }
 
 /** One web-animation job and its container. */
@@ -343,6 +360,7 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
     await this.schedule(new Date(request.deadlineAt), "expireJob");
     const objects: JobObjects = {
       packageKey: request.packageKey, manifestKey: request.manifestKey, maxPackageBytes: request.maxPackageBytes,
+      ...(request.base !== undefined && { basePackageKey: request.base.packageKey }),
     };
     // The routes submit only a request with a plan; its prices are as provider's messagesPlan wrote them.
     const limits: ModelLimits = { plan: request.messagesPlan as MessagesPlan, maxTokens: request.maxTokens, callTimeoutMs: request.callTimeoutMs };
@@ -357,6 +375,14 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
       manifestUrl: mediaObjectUrl(request.manifestKey),
       progressUrl: `http://${JOB_REPORT_HOST}${WEB_ANIMATION_PROGRESS_PATH}`,
       reportUrl: `http://${JOB_REPORT_HOST}${WEB_ANIMATION_REPORT_PATH}`,
+      ...(request.base !== undefined && {
+        base: {
+          packageUrl: mediaObjectUrl(request.base.packageKey),
+          viewport: request.base.viewport,
+          durationFrames: request.base.durationFrames,
+          fontSetVersion: request.base.fontSetVersion,
+        },
+      }),
     };
     try {
       await this.setOutboundByHosts<unknown>({
@@ -467,13 +493,14 @@ async function modelCall(request: Request, env: WebAnimationEnv, ctx: OutboundHa
 }
 
 /**
- * Write one of the job's two outputs.
+ * Read a modification's base package, or write one of the job's two outputs.
  * @param request - What the container sent to `r2.local`.
  * @param env - The bindings.
  * @param ctx - The handler's context, carrying the job's keys.
- * @returns The write's answer.
+ * @returns The read or the write's answer.
  */
 async function jobObjects(request: Request, env: WebAnimationEnv, ctx: OutboundHandlerContext<JobObjects>): Promise<Response> {
+  if (request.method === "GET") return readWebAnimationPackage(request, env.BUCKET, ctx.params.basePackageKey ?? null);
   const { response, written } = await storeWebAnimationOutput(request, env.BUCKET, ctx.params);
   if (written !== null) await jobObject(env, ctx).noteWritten(written);
   return response;

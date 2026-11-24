@@ -47,5 +47,8 @@ case "$IMAGE_KIND" in
   ingestWebAnimation)
     docker run --rm --network none -v "$PWD/scripts/ingest-web-animation-smoke.mjs:/tmp/web-animation-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/web-animation-smoke.mjs
     ;;
+  ingestWebAnimationRender)
+    docker run --rm --network none -v "$PWD/scripts/ingest-web-animation-render-smoke.mjs:/tmp/render-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/render-smoke.mjs
+    ;;
   *) echo 'Unknown image kind' >&2; exit 1 ;;
 esac

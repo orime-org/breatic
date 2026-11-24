@@ -17,7 +17,7 @@ export const FOLLOW_BAR_HEIGHT = 32;
  * freely, so nothing is lost under the bar; any other Space would hide its top
  * lines under it, so there the bar takes its own row and the Space moves down.
  */
-const BAR_OVER_SPACE: Record<SpaceType, boolean> = { canvas: true, '3d': true, document: false, timeline: false };
+const BAR_OVER_SPACE: Record<SpaceType, boolean> = { canvas: true, '3d': true, document: false, timeline: false, web_animation: false };
 
 /**
  * The "Following X · Stop" bar at the top of the Space area, and the outline

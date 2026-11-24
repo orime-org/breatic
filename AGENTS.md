@@ -6,7 +6,7 @@ Rules for coding agents live only in `AGENTS.md` files: this one for the whole r
 
 ## Project overview
 
-breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d or timeline); never invent a `Workspace` entity or name.
+breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d, timeline or web_animation, shown as Motion); never invent a `Workspace` entity or name.
 
 - **breatic is a content-creation tool, not a design tool.** Benchmark it against content-creation products and describe it that way in copy, docs and the Agent's product guide.
 - **The person using the product is the user, never the reader, in identifiers, comments, docs, tests and text sent to the model.** breatic is a tool, and whoever works in it is its user. Check: does this word mean someone using breatic? Then `user`; screen readers, code that reads data and people reading documentation keep `reader`.
@@ -150,8 +150,8 @@ Upload and generation paths only insert objects, never delete them (dedup losers
 ## Public repository
 
 - **This repository is public: commits, PR bodies, docs, comments and `.gitignore` notes must not name the private repository, expose internal service URLs or leak security-sensitive detail.** Say "private documentation" or "internal backlog" when internal material must be mentioned. `no-private-repo-path` enforces the naming half; a path fragment that names no private repository (`design/tokens.css`) is fine and is not reported.
-- **`inner#N` (no space; N is the private issue or PR number) is the only way to point at private work; code comments point at the task issue, not a PR.** Wrong: `inner #N`, `inner issue #N`, `inner PR #N`, a path or document name. Right: `inner#123`.
-- **Maintainers' tasks are tracked privately and pointed at as `inner#N` in PRs, commits and code comments; this repository's issues hold reports from outside contributors, pointed at as `#N`.** A reply to such a report or a PR that fixes it follows the same public rule.
+- **`inner#N` (no space; N is the private issue or PR number) is the only way to point at private work; code comments point at the task issue, not a PR.** Wrong: `inner #N`, `inner issue #N`, `inner PR #N`, a path or document name. Right: `inner#123`. An issue an outside contributor opened here is `#N`.
+- **Maintainers track their tasks privately and point at them as `inner#N`; this repository's issues are for reports from outside contributors, answered under the same public rule.**
 - **`docs/` holds only long-lived constitution-level documents; progress, deployment runbooks and configuration registers do not go there, and adding or deleting a markdown file in this repository needs the maintainer's approval first.** Editing an existing file's content needs none. Check: is this document a constraint that rarely changes? No → it does not belong in `docs/`.
 - **Docs carry no provenance markers (PR numbers, dates, history); `git blame` answers when.** Hex colours and numbered list items are not provenance.
 - **A reference to a document that is not in this repository is deleted outright, never replaced with "see internal docs".**

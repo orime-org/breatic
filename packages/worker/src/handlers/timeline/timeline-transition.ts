@@ -3,20 +3,20 @@
 
 /**
  * Moving a Timeline execution from the worker (inner#1711 design §5.2): every transition applied through {@link move}
- * is announced to the execution's Timeline document (#1568). A pickup's retry is the one transition written without it, since a new attempt
- * changes nothing the user sees.
+ * is announced to the execution's Space (#1490 design §4.7). A pickup's retry is written without it, since a new
+ * attempt changes nothing the user sees; the claim is written and announced by the running-task gate.
  */
 
-import { announceExecutionChange, logger, timelineExecutionRepo, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/core";
+import { announceExecutionChange, logger } from "@breatic/core";
+import { timelineExecutionRepo, type TimelineExecutionEvent, type TimelineExecutionTransition } from "@breatic/domain";
 import type { TimelineExecution } from "@breatic/shared";
 
 /**
- * Tell the execution's Timeline that it changed, and carry on if Redis refuses: the open tabs read the next change,
- * and a tab opened later reads the list.
- * @param row - The execution.
+ * Tell the execution's Space that it changed, and carry on if Redis refuses: the open tabs read the next change.
+ * @param row - The execution as written.
  * @returns Nothing.
  */
-export async function signalSpace(row: Pick<TimelineExecution, "id" | "projectId" | "spaceId">): Promise<void> {
+async function signalSpace(row: Pick<TimelineExecution, "id" | "projectId" | "spaceId" | "origin">): Promise<void> {
   try {
     await announceExecutionChange(row);
   } catch (err) {

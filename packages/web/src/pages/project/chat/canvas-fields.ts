@@ -97,6 +97,7 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   duration: 'other',
   mimeType: 'other',
   size: 'other',
+  sourceAnimation: 'other',
   sizeBytes: 'other',
   operation: 'other',
   operationParams: 'other',

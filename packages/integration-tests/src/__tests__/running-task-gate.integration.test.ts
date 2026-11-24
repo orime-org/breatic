@@ -46,9 +46,9 @@ import { join } from "node:path";
 import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
-import { canvasSpaceDocName, spaceTasksChangedChannel } from "@breatic/shared";
-import { createQueue, type TimelineExecutionJobData, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
-import { nodeTaskService, runningSlotService, sceneTaskService, taskService } from "@breatic/domain";
+import { canvasSpaceDocName, spaceTasksChangedChannel, webAnimationSpaceDocName } from "@breatic/shared";
+import { createQueue, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
+import { nodeTaskService, runningSlotService, sceneTaskService, taskService, type TimelineExecutionJobData, timelineExecutionRepo } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
 import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
@@ -329,13 +329,15 @@ async function execution(p: Person, state: "awaiting_landing" | "queued" | "runn
     input: { prompt: "A red square slides in", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: `sha256:${crypto.randomUUID()}`,
     deadlineAt,
+    origin: "web_animation_space",
   });
   if (row === null) throw new Error("fixture execution conflicted");
   const step = async (event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<void> => {
     const result = await timelineExecutionRepo.transition({ id: row.id, event });
     if (!result.applied) throw new Error(`fixture step ${event.type} refused`);
   };
-  if (state !== "awaiting_landing") await step({ type: "land", inputHash: row.inputHash });
+  // Only rows written before #1490 are awaiting landing; nothing writes that state now.
+  if (state === "awaiting_landing") await sql`update timeline_executions set status = 'awaiting_landing' where id = ${row.id}`;
   if (state === "running" || state === "cancelling") await step({ type: "claim" });
   if (state === "cancelling") await step({ type: "cancel" });
   return row.id;
@@ -869,6 +871,21 @@ describe("G F8 a waiting Timeline execution has no deadline until it starts", ()
     for (const id of [recent, stale]) expect((await executionRow(id)).status).toBe("queued");
   });
 
+  it("G-43b an export waits behind the gate like a create: its pickup holds the row back as queued (#1490)", async () => {
+    const p = await person();
+    await running(p, 2);
+    const id = await execution(p, "queued");
+    await sql`update timeline_executions set kind = 'web_animation_export', engine = null,
+      input = ${sql.json({ kind: "web_animation_export", sourceVersionId: crypto.randomUUID(), width: 1080, height: 1920, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: "x.mp4" })}
+      where id = ${id}`;
+    const job = { data: { executionId: id } } as unknown as Job<TimelineExecutionJobData>;
+    const thrown = await runTimelineExecution(job).then(() => null, (err: unknown) => err);
+    expect((thrown as Error | null)?.name).toBe("StillRunning");
+    const row = await executionRow(id);
+    expect(row.status).toBe("queued");
+    expect(row.slot_wait_since).not.toBeNull();
+  });
+
   it("G-44 a waiter that starts gets a fresh deadline of start + budget, and later deadline checks use it", async () => {
     const p = await person();
     await running(p, 2);
@@ -1170,6 +1187,40 @@ describe("G the node's counts event says how many wait", () => {
     await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
     expect(await pick(t.taskId)).toEqual({ started: true });
     expect((await countsEvents(p, t.nodeId!)).at(-1)).toMatchObject({ running: 1, waiting: 0 });
+  });
+});
+
+describe("G a Motion execution's wait and start reach its own Space document", () => {
+  it("the first wait and the claim each put one change on the Motion document, and no stateless signal", async () => {
+    const p = await person();
+    await running(p, 2);
+    const id = await execution(p, "queued");
+    const docName = webAnimationSpaceDocName(p.projectId, p.spaceId);
+    /**
+     * The space-tasks-version events the stream carries for this Motion Space.
+     * @returns How many.
+     */
+    const changes = async (): Promise<number> => {
+      const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+      return raw
+        .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
+        .filter((e) => e.type === "space-tasks-version" && e.docName === docName).length;
+    };
+    const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, p.projectId);
+    const publish = vi.spyOn(getStreamRedis(), "publish");
+    try {
+      const before = await changes();
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await changes()).toBe(before + 1);
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await changes()).toBe(before + 1);
+      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+      expect(await pick(id, "timeline_executions")).toEqual({ started: true });
+      expect(await changes()).toBe(before + 2);
+      expect(publish.mock.calls.filter(([published]) => published === channel)).toHaveLength(0);
+    } finally {
+      publish.mockRestore();
+    }
   });
 });
 

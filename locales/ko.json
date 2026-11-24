@@ -1062,7 +1062,8 @@
       "snapshot": "스냅샷 저장",
       "download": "다운로드",
       "understand": "내용 읽기",
-      "transcribe": "받아쓰기"
+      "transcribe": "받아쓰기",
+      "openSourceAnimation": "원본 애니메이션 열기"
     },
     "edge": {
       "delete": "연결 삭제"
@@ -3094,11 +3095,11 @@
   "project": {
     "leaveGuard": {
       "title": "작업 중인데 나가시겠어요?",
-      "description": "업로드 또는 편집이 아직 동기화되지 않았습니다. 지금 나가면 손실될 수 있습니다.",
+      "description": "업로드, 편집 또는 실행이 아직 완료되지 않았습니다. 지금 나가면 손실될 수 있습니다.",
       "stay": "머무르기",
       "leave": "나가기",
       "unsyncedDescription": "일부 변경 사항이 아직 동기화되지 않았습니다. 지금 새로고침하거나 나가면 변경 사항이 손실될 수 있습니다.",
-      "combinedDescription": "일부 변경 사항이 동기화되지 않았으며 업로드 또는 편집 작업이 진행 중입니다. 지금 새로고침하거나 나가면 작업이 손실될 수 있습니다.",
+      "combinedDescription": "일부 변경 사항이 동기화되지 않았으며 업로드, 편집 또는 실행 작업이 진행 중입니다. 지금 새로고침하거나 나가면 작업이 손실될 수 있습니다.",
       "completeDescription": "변경 사항 동기화와 작업이 완료되었습니다.",
       "completeTitle": "계속할 수 있습니다"
     },
@@ -3260,7 +3261,9 @@
       "document": "Document",
       "documentSub": "리치 텍스트 + 협업",
       "timeline": "Timeline",
-      "timelineSub": "비디오 / 오디오 편집"
+      "timelineSub": "비디오 / 오디오 편집",
+      "webAnimation": "Motion",
+      "webAnimationSub": "코드로 애니메이션을 만들고 동영상으로 내보내기"
     },
     "create": {
       "title": "새 Space",
@@ -3272,7 +3275,9 @@
       "namePlaceholder": "예: Cyberpunk Concept",
       "nameRemaining": "{count, plural, one {# 글자 남음} other {# 글자 남음}}",
       "cancel": "취소",
-      "submit": "만들기"
+      "submit": "만들기",
+      "scrollTypesStart": "유형 왼쪽으로 스크롤",
+      "scrollTypesEnd": "유형 오른쪽으로 스크롤"
     },
     "rename": {
       "inputAriaLabel": "Space 이름 변경",
@@ -3852,6 +3857,67 @@
       "reason": "이 Space가 가득 찼습니다.",
       "text": "텍스트가 추가되지 않았습니다. 이 Space가 가득 찼습니다.",
       "wait": "이 Space가 가득 찼습니다. 일부 내용을 삭제하면 완료됩니다."
+    },
+    "webAnimation": {
+      "addAnnotation": "주석 추가",
+      "annotateAt": "{time}에 주석 추가",
+      "annotationFailed": "주석을 저장하지 못했습니다.",
+      "videoTag": "MP4",
+      "annotationPlaceholder": "수정할 내용을 적으세요",
+      "annotations": "주석",
+      "annotationsAll": "전체",
+      "annotationsOpen": "미해결",
+      "baseWithAnnotations": "{base} (미해결 주석 {count}개)",
+      "canvasUnreachable": "이 Canvas에 연결할 수 없습니다.",
+      "chooseCanvas": "놓을 Canvas",
+      "closePanel": "닫기",
+      "completed": "완료",
+      "details": "세부 정보",
+      "dialog": {
+        "instruction": "바꿀 부분",
+        "instructionPlaceholder": "예: 제목을 더 천천히, 배경은 더 어둡게",
+        "modifyDescription": "“{base}”을(를) 수정합니다",
+        "modifyKeepsOriginal": "원래 결과는 그대로 유지됩니다.",
+        "modifyTitle": "웹 애니메이션 수정",
+        "relayout": "새 크기에 맞게 화면을 다시 배치합니다."
+      },
+      "discardAnnotation": "이 주석을 버릴까요?",
+      "discard": "버리기",
+      "keepWriting": "계속 쓰기",
+      "download": "다운로드",
+      "empty": "아직 웹 애니메이션이 없습니다",
+      "emptyInProgress": "진행 중인 항목이 없습니다",
+      "emptyFailed": "실패한 항목이 없습니다",
+      "executions": "실행 목록",
+      "export": "동영상 내보내기",
+      "hasPoint": "위치 표시",
+      "inProgress": "진행 중",
+      "failed": "실패",
+      "limitsUnavailable": "설정을 불러오지 못했습니다. 다시 시도하세요.",
+      "listError": "목록을 불러오지 못했습니다.",
+      "madeInTimeline": "이전에 Timeline에서 만든 것",
+      "modifiedFromLabel": "수정 원본",
+      "modify": "수정",
+      "new": "새로 만들기",
+      "noAnnotations": "아직 주석이 없습니다",
+      "noCanvas": "이 Project에는 아직 Canvas가 없습니다",
+      "noOpenAnnotations": "미해결 주석이 없습니다",
+      "notFound": "이 웹 애니메이션을 찾을 수 없습니다.",
+      "pickPoint": "화면을 클릭해 위치를 표시하거나 아래에 바로 적으세요",
+      "placeOnCanvas": "Canvas에 놓기",
+      "placed": "{name}에 놓았습니다",
+      "viewPlaced": "보기",
+      "placing": "동영상을 Canvas에 놓는 중입니다.",
+      "readOnlyNotice": "공동 작업 인원이 가득 차 주석은 지금 보기만 가능합니다. 새로 만들기, 수정, 내보내기는 그대로 쓸 수 있습니다.",
+      "reexport": "다시 내보내기",
+      "replies": "답글 {count}개",
+      "sourceLabel": "원본 애니메이션",
+      "titleModifiedFrom": "“{base}”에서 수정: {request}",
+      "titleVideo": "동영상 · {source}",
+      "unlistedResult": "기타 결과",
+      "viewSource": "원본 애니메이션 보기",
+      "viewVideo": "동영상 보기",
+      "sourceSpaceGone": "원본 애니메이션이 있던 Space가 더 이상 없습니다."
     }
   },
   "menu": {
@@ -5022,8 +5088,6 @@
       "offFrame": "이 클립은 현재 프레임에 없습니다."
     },
     "webAnimation": {
-      "create": "웹 애니메이션 만들기",
-      "executions": "실행 목록",
       "copy": "웹 애니메이션 사본",
       "durationShort": "{seconds}초",
       "dialog": {
@@ -5035,15 +5099,7 @@
         "engine": "엔진",
         "aspect": "화면 비율",
         "duration": "길이(초)",
-        "addAtPlayhead": "재생 헤드 위치에서 Timeline에 추가",
         "execute": "실행"
-      },
-      "list": {
-        "close": "실행 목록 닫기",
-        "completed": "완료",
-        "inProgress": "진행 중",
-        "emptyCompleted": "아직 완료된 실행이 없습니다.",
-        "emptyInProgress": "진행 중인 실행이 없습니다."
       },
       "status": {
         "awaiting_landing": "저장 중",
@@ -5056,26 +5112,28 @@
         "expired": "만료됨"
       },
       "step": {
-        "landing": "실행 요청 저장"
+        "landing": "실행 요청 저장",
+        "savingVideo": "동영상 저장"
       },
       "phase": {
         "writing": "페이지 작성",
-        "validating": "프레임과 매니페스트 검증",
-        "saving": "소스 저장"
+        "validating": "프레임 확인",
+        "saving": "소스 저장",
+        "rendering": "동영상 렌더링"
       },
       "usageLabel": "사용량",
       "usage": "{credits} 크레딧",
-      "usagePending": "종료 후 정산",
       "unavailable": "웹 애니메이션을 사용할 수 없음",
       "cancel": "취소",
-      "addToTimeline": "Timeline에 추가",
-      "addPlaceholder": "Timeline에 먼저 추가",
       "retry": "다시 실행",
       "failure": {
         "feature_disabled": "지금은 웹 애니메이션을 사용할 수 없습니다.",
         "check": "페이지가 검사를 통과하지 못했습니다.",
         "stopped": "제작이 예기치 않게 중단되었습니다.",
         "unknown": "실행에 실패했습니다.",
+        "render": "동영상 렌더링에 실패했습니다.",
+        "frameMismatch": "렌더링된 동영상의 길이가 애니메이션과 일치하지 않습니다.",
+        "saveVideo": "동영상을 저장하지 못했습니다.",
         "key_lost": "작업이 중단되었습니다. 다시 실행하세요."
       },
       "preview": {
@@ -5083,6 +5141,18 @@
         "failed": "{track}: 웹 애니메이션 {status, select, failed {실패} cancelled {취소됨} expired {만료됨} other {사용 불가}}, 표시되지 않음",
         "unavailable": "{track}: 웹 애니메이션을 사용할 수 없음",
         "loading": "{track}: 웹 애니메이션 불러오는 중…"
+      },
+      "add": "웹 애니메이션 추가",
+      "goMake": "Motion에서 만들기",
+      "openInMotion": "Motion에서 열기",
+      "modifiedFrom": "수정 원본: {base}",
+      "picker": {
+        "title": "웹 애니메이션 추가",
+        "description": "결과를 고르면 재생 헤드 위치에 사본을 놓습니다.",
+        "empty": "이 Project에는 아직 웹 애니메이션이 없습니다",
+        "deletedSpace": "삭제된 Space",
+        "loadMore": "더 불러오기",
+        "error": "웹 애니메이션을 불러오지 못했습니다."
       }
     },
     "upload": {

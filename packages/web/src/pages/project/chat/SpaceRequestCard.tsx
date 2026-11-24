@@ -10,7 +10,7 @@ import { cn } from '@web/lib/utils';
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
 import { SpaceRequestAnswerContext } from '@web/pages/project/chat/space-request-answer';
 import type { ChatSharedSpaceSummary, ChatSpaceRequest } from '@web/pages/project/chat/types';
-import { SPACE_TYPE_ICON } from '@web/pages/project/space-type';
+import { SPACE_TYPE_ICON } from '@web/spaces/space-type-icon';
 
 interface SpaceRequestCardProps {
   /** The request and where it stands. */
