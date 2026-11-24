@@ -50,6 +50,12 @@ import { COMIC_4KOMA } from "@shared/canvas/templates/comic-4koma.js";
 import { COMIC_PAGE_TO_MOTION } from "@shared/canvas/templates/comic-page-to-motion.js";
 import { COMIC_PAGE } from "@shared/canvas/templates/comic-page.js";
 import { COMIC_PANELS_TO_SHOTS } from "@shared/canvas/templates/comic-panels-to-shots.js";
+import { SCENE_PLATE } from "@shared/canvas/templates/scene-plate.js";
+import { DRAMA_SINGLE_SCENE } from "@shared/canvas/templates/drama-single-scene.js";
+import { SHORT_DRAMA_REVERSAL } from "@shared/canvas/templates/short-drama-reversal.js";
+import { EMOTIONAL_DIALOGUE_TIMELINE } from "@shared/canvas/templates/emotional-dialogue-timeline.js";
+import { HORROR_SUSPENSE } from "@shared/canvas/templates/horror-suspense.js";
+import { SHORT_DRAMA_EPISODE } from "@shared/canvas/templates/short-drama-episode.js";
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
 import { DAY_TO_NIGHT_EXTERIOR } from "@shared/canvas/templates/day-to-night-exterior.js";
 import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
@@ -134,7 +140,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "fight", "animation", "ecommerce", "product-showcase", "promo", "food", "spaces", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "drama", "fight", "animation", "ecommerce", "product-showcase", "promo", "food", "spaces", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -197,6 +203,18 @@ export interface TemplateResourceNode {
   resource: string;
 }
 
+/**
+ * A node of the template that holds words the user keeps and edits: a script,
+ * lyrics (inner#1824, CAP-3). Its words are `node.<key>.text` in the locale and
+ * may carry fill-in marks, no reference mark and no note. It only starts
+ * template edges, into the pool or the lyrics box of a generate node.
+ */
+export interface TemplateTextNode {
+  key: TemplateNodeKey;
+  role: "written";
+  type: "text";
+}
+
 /** Material the user supplies. */
 export interface TemplateInput {
   key: string;
@@ -238,7 +256,7 @@ export interface GenerationTemplate {
    * tag names.
    */
   anchor: TemplateNodeKey;
-  nodes: readonly (TemplateGenerateNode | TemplateResourceNode)[];
+  nodes: readonly (TemplateGenerateNode | TemplateResourceNode | TemplateTextNode)[];
   edges: readonly TemplateEdge[];
   inputs: readonly TemplateInput[];
   /** Keys of the follow-up steps the user does by hand once the anchor has generated; listed in the guide text node. */
@@ -269,6 +287,12 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   STORYBOARD_TO_VIDEO,
   COMIC_PAGE_TO_MOTION,
   COMIC_PANELS_TO_SHOTS,
+  SCENE_PLATE,
+  DRAMA_SINGLE_SCENE,
+  SHORT_DRAMA_REVERSAL,
+  EMOTIONAL_DIALOGUE_TIMELINE,
+  HORROR_SUSPENSE,
+  SHORT_DRAMA_EPISODE,
   FIGHT_DUEL_ONE_TAKE,
   FIGHT_EXCHANGE_SHORT,
   FIGHT_DUEL_LOCKED,
@@ -372,16 +396,17 @@ export function templateAnchor(template: GenerationTemplate): TemplateGenerateNo
   return anchor;
 }
 
-/** Where a template's generate node keeps its words: keys under the template's `canvas.template.<id>.` entry. */
+/** Where a template's generate or text node keeps its words: keys under the template's `canvas.template.<id>.` entry. */
 export type TemplateNodeWords =
   | { prompt: string; styleKey?: string }
+  | { text: string }
   | { shots: ReadonlyArray<{ seconds: number; key: string }> }
   | { lines: ReadonlyArray<{ speaker: number; key: string }> };
 
 /**
  * Where one of a template's generate nodes keeps its words: its prompt, or,
  * for a node with a shot list or dialogue lines, one key per shot or line in
- * place of a prompt.
+ * place of a prompt; a text node keeps them in its text.
  * A prompt node that takes a part of the template's style also gets the
  * absolute key of the picked style's words for it, written after its own.
  * @param template - The template.
@@ -393,6 +418,7 @@ export type TemplateNodeWords =
 export function templateNodeWords(template: GenerationTemplate, key: TemplateNodeKey, style?: string): TemplateNodeWords {
   const node = template.nodes.find((one) => one.key === key);
   const own = key === template.anchor ? "" : `node.${key}.`;
+  if (node?.role === "written") return { text: `${own}text` };
   const lines = node?.role === "generate" ? node.lines : undefined;
   if (lines !== undefined) return { lines: lines.map((line, i) => ({ speaker: line.speaker, key: `${own}line.${String(i + 1)}` })) };
   const shots = node?.role === "generate" ? node.shots : undefined;

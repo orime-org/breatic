@@ -978,6 +978,7 @@ export {
   type TemplateNodeKey,
   type TemplateNodeWords,
   type TemplateResourceNode,
+  type TemplateTextNode,
   type TemplateLine,
   type TemplateShot,
   type TemplateTriggers,

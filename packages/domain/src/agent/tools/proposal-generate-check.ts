@@ -511,15 +511,20 @@ export const FILL_BLANKS = "write each one from what the user said, or ask them,
 /**
  * Whether the agent's proposal sends every generation with its words filled.
  * A blank left in them is something the result is made without, whoever
- * wrote it (#1361), a template's own blanks among them. The panel applies a template with its blanks for the user to
- * fill, so only the agent's entry asks this.
+ * wrote it (#1361), a template's own blanks among them. A written node wired
+ * into a generation sends its words with it, into the prompt or the lyrics,
+ * so its blanks count too (inner#1824); one wired into none is copy beside
+ * the generations, its blanks left to the user. The panel applies a template
+ * with its blanks for the user to fill, so only the agent's entry asks this.
  * @param proposal - The proposal, templates expanded.
  * @returns The verdict.
  * @throws {never} Never.
  */
 export function checkBlanks(proposal: CanvasProposal): ProposalVerdict {
+  const generating = new Set(proposal.nodes.flatMap((node, index) => (node.role === "generate" ? [index] : [])));
+  const sent = new Set(proposal.edges.flatMap((edge) => (generating.has(edge.toIndex) ? [edge.fromIndex] : [])));
   for (const [index, node] of proposal.nodes.entries()) {
-    if (node.role !== "generate") continue;
+    if (node.role !== "generate" && !(node.role === "written" && sent.has(index))) continue;
     const blanks = tweakLabels(node);
     if (blanks.length > 0) {
       return refuse("template-tweak-unfilled", `"${node.name}" still holds the blanks ${quoted(blanks)}.`, fixOn(nodeLabel(proposal.nodes, index), FILL_BLANKS));
