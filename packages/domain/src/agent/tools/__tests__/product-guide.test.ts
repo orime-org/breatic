@@ -250,7 +250,7 @@ describe("what the guide says", () => {
   });
 
   it("says the reminder shows only where a placed proposal carries a mark to fill", () => {
-    expect(section("Proposal cards")).toMatch(/When a placed proposal carries a ✏️ mark \(in a prompt box or a text node's words\), the message/);
+    expect(section("Proposal cards")).toMatch(/When a template applied from the panel or a placed proposal carries a ✏️ mark \(in a prompt box or a text node's words\), the message/);
   });
 
   it("says material wired into the pool arrives @'d in the prompt, or in the shot on a multi-shot node", () => {
@@ -676,8 +676,17 @@ describe("what the guide says", () => {
 
   it("says a template from the panel and a proposal @ the nodes they wire into the reference list, and nothing in a slot", () => {
     const cards = section("Proposal cards");
-    expect(cards).toMatch(/A template applied from the panel and a proposal both arrive this way: their prompt or shot carries ✏️ marks and notes, and every node they wire into the reference list is @'d\./);
+    expect(cards).toMatch(/A template applied from the panel and a proposal both arrive this way: notes where something comes first, and every node they wire into the reference list @'d\./);
+    // A proposal's blanks are written before it is sent, but for a text node standing on its own (inner#1824).
+    expect(cards).toMatch(/a proposal arrives with its prompts, and the words of every text node it connects to a generation, already written, so only a text node standing on its own may carry ✏️ marks left for the user\./);
     expect(cards).not.toMatch(/a 📎 mark is left only where/);
+  });
+
+  it("says a template may place a text node of written words, @'d where it is used and left as it is when applied again (inner#1824)", () => {
+    const guide = section("Generating");
+    expect(guide).toMatch(/A template may also place a text node to the left holding words already written, such as a script, with ✏️ marks where the user fills something in/);
+    expect(guide).toMatch(/one connected to a song model's lyrics box is @'d there instead, its words being the lyrics\./);
+    expect(guide).toMatch(/Applying the template again where that text node is already connected leaves its words as they are\./);
   });
 
   it("says how to indent and outdent in a document", () => {
