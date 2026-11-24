@@ -100,6 +100,12 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 **One browser tab shares one WebSocket across all its documents, so a socket id covers several Yjs client ids.** Judge whether a connection is alive from the seat registry (`services/connection-registry.ts`), not from awareness (transient states cause false kills) and not from this instance's own connection list (it cannot see other instances).
 
+## Messages to pages
+
+### Relay, never broadcast
+
+**A message collab sends to pages (the project control channels, the `live_updates` triggers, `uploads:ended`) goes out with `relayStateless` through `relayOnMetaDoc` (`services/meta-signal.ts`), to this instance's connections only; never with `broadcastStateless`.** Every instance hears the same channel or trigger, and `broadcastStateless` also forwards through the Redis extension, so each extra instance would deliver one more copy. A message for one person is a filter on the connection's `user.id` on the meta documents this instance has loaded.
+
 ## Document formats
 
 ### Old formats are upgraded on load
