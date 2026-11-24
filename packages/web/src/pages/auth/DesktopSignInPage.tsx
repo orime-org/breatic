@@ -11,6 +11,7 @@ import { AUTH_OPTIONS_QUERY_KEY } from '@web/features/referral/use-signup-referr
 import { useTranslation } from '@web/i18n/use-translation';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
+import { EmailInSentence } from '@web/pages/auth/_shared/EmailInSentence';
 
 
 type Stage = 'confirm' | 'processing' | 'handed' | 'error';
@@ -110,7 +111,7 @@ export function DesktopSignInView({ openLink = navigateTo }: DesktopSignInPagePr
   }
 
   return (
-    <AuthCardShell title={t('auth.desktop.title', { app })} subtitle={t('auth.desktop.signingInAs', { email })}>
+    <AuthCardShell title={t('auth.desktop.title', { app })} subtitle={<EmailInSentence text={t('auth.desktop.signingInAs', { email })} email={email} />}>
       <div className='flex flex-col gap-3'>
         <Button type='button' className='w-full' loading={stage === 'processing'} disabled={!scheme} onClick={() => void handOff()}>
           {t('auth.desktop.continue')}

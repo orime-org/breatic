@@ -2667,7 +2667,7 @@
     },
     "desktop": {
       "continueWithGoogle": "Continue with Google",
-      "waitingBrowser": "Finish signing in in your browser",
+      "waitingBrowser": "Continue in your browser",
       "cancel": "Cancel",
       "exchangeFailed": "Sign-in did not finish. Try again.",
       "title": "Sign in to {app} desktop",

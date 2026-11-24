@@ -90,7 +90,10 @@ describe('DesktopGoogleSignIn', () => {
     setup('FRIEND1');
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Continue with Google' }));
     expect(bridge.signInWithBrowser).toHaveBeenCalledWith('FRIEND1');
-    expect(await screen.findByText('Finish signing in in your browser')).toBeInTheDocument();
+    // The label is the instruction to follow, so the waiting button keeps its own contrast.
+    const waiting = await screen.findByRole('button', { name: 'Continue in your browser' });
+    expect(waiting).toHaveAttribute('aria-busy', 'true');
+    expect(waiting).not.toHaveClass('opacity-50');
   });
 
   it('cancels the wait', async () => {
@@ -106,7 +109,7 @@ describe('DesktopGoogleSignIn', () => {
     const { bridge } = fakeBridge({ pending: true });
     (window as { breaticDesktop?: DesktopBridge }).breaticDesktop = bridge;
     setup();
-    expect(await screen.findByText('Finish signing in in your browser')).toBeInTheDocument();
+    expect(await screen.findByText('Continue in your browser')).toBeInTheDocument();
   });
 
   it('trades an arriving code for a session and finishes the sign-in', async () => {
@@ -114,7 +117,7 @@ describe('DesktopGoogleSignIn', () => {
     (window as { breaticDesktop?: DesktopBridge }).breaticDesktop = bridge;
     vi.mocked(authApi.desktopExchange).mockResolvedValue({ user } as never);
     setup();
-    await screen.findByText('Finish signing in in your browser');
+    await screen.findByText('Continue in your browser');
     arrive({ code: 'c'.repeat(43), verifier: 'v'.repeat(43) });
     expect(await screen.findByTestId('destination')).toBeInTheDocument();
     expect(authApi.desktopExchange).toHaveBeenCalledWith({ code: 'c'.repeat(43), verifier: 'v'.repeat(43) });
@@ -134,7 +137,7 @@ describe('DesktopGoogleSignIn', () => {
     (window as { breaticDesktop?: DesktopBridge }).breaticDesktop = bridge;
     vi.mocked(authApi.desktopExchange).mockRejectedValue(new Error('401'));
     setup();
-    await screen.findByText('Finish signing in in your browser');
+    await screen.findByText('Continue in your browser');
     arrive({ code: 'c'.repeat(43), verifier: 'v'.repeat(43) });
     await waitFor(() => expect(toast.error).toHaveBeenCalledWith('Sign-in did not finish. Try again.'));
     expect(await screen.findByRole('button', { name: 'Continue with Google' })).toBeEnabled();
@@ -145,7 +148,7 @@ describe('DesktopGoogleSignIn', () => {
     const { bridge } = fakeBridge({ pending: true });
     (window as { breaticDesktop?: DesktopBridge }).breaticDesktop = bridge;
     const { unmount } = setup();
-    await screen.findByText('Finish signing in in your browser');
+    await screen.findByText('Continue in your browser');
     useCurrentUserStore.setState({ user: { id: 'u2' } as never });
     unmount();
     expect(bridge.cancelBrowserSignIn).toHaveBeenCalled();
@@ -155,7 +158,7 @@ describe('DesktopGoogleSignIn', () => {
     const { bridge } = fakeBridge({ pending: true });
     (window as { breaticDesktop?: DesktopBridge }).breaticDesktop = bridge;
     const { unmount } = setup();
-    await screen.findByText('Finish signing in in your browser');
+    await screen.findByText('Continue in your browser');
     unmount();
     expect(bridge.cancelBrowserSignIn).not.toHaveBeenCalled();
   });

@@ -266,7 +266,7 @@ export const coreConfigSchema = z.object({
       .default("ai.breatic.desktop")
       .refine(isDesktopAppScheme, "DESKTOP_APP_SCHEME must be a reverse domain name such as ai.breatic.desktop"),
   ),
-  DESKTOP_APP_NAME: z.preprocess(blankToUndefined, z.string().trim().min(1).max(64).default("breatic")),
+  DESKTOP_APP_NAME: z.preprocess(blankToUndefined, z.string().trim().min(1).max(64).default("Breatic")),
 
   // ── Payment ──────────────────────────────────────
   PAYMENT_ENABLED: z

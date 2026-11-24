@@ -583,7 +583,7 @@ describe("parseConfig — desktop sign-in return", () => {
   it("defaults to the official desktop app", () => {
     const config = parseConfig(baseEnv());
     expect(config.DESKTOP_APP_SCHEME).toBe("ai.breatic.desktop");
-    expect(config.DESKTOP_APP_NAME).toBe("breatic");
+    expect(config.DESKTOP_APP_NAME).toBe("Breatic");
   });
 
   it("takes a partner's scheme and app name", () => {
@@ -599,6 +599,6 @@ describe("parseConfig — desktop sign-in return", () => {
   it.each(["", "   "])("treats a blank setting as unset (%j)", (value) => {
     const config = parseConfig(baseEnv({ DESKTOP_APP_SCHEME: value, DESKTOP_APP_NAME: value }));
     expect(config.DESKTOP_APP_SCHEME).toBe("ai.breatic.desktop");
-    expect(config.DESKTOP_APP_NAME).toBe("breatic");
+    expect(config.DESKTOP_APP_NAME).toBe("Breatic");
   });
 });

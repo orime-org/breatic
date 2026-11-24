@@ -65,7 +65,10 @@ beforeEach(() => {
 describe('DesktopSignInPage', () => {
   it('asks which account before handing anything over', async () => {
     setup(`?challenge=${CHALLENGE}`);
-    expect(await screen.findByText('Signing in as ada@example.com')).toBeInTheDocument();
+    // The account is the one thing to check before Continue, so it stands out of its sentence.
+    const email = await screen.findByText('ada@example.com');
+    expect(email.tagName).toBe('SPAN');
+    expect(email.parentElement).toHaveTextContent('Signing in as ada@example.com');
     expect(authApi.desktopHandoff).not.toHaveBeenCalled();
     expect(open).not.toHaveBeenCalled();
   });
@@ -102,7 +105,7 @@ describe('DesktopSignInPage', () => {
     const user = userEvent.setup();
     await user.click(await screen.findByRole('button', { name: 'Continue' }));
     await user.click(await screen.findByRole('button', { name: 'Try again' }));
-    expect(await screen.findByText('Signing in as ada@example.com')).toBeInTheDocument();
+    expect(await screen.findByText('ada@example.com')).toBeInTheDocument();
   });
 
   it('signs out of the browser to use another account', async () => {

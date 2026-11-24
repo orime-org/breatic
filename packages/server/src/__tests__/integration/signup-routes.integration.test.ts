@@ -113,7 +113,7 @@ describe("GET /auth/options", () => {
         emailVerification: true,
         referralEnabled: expect.any(Boolean),
         desktopAppScheme: "ai.breatic.desktop",
-        desktopAppName: "breatic",
+        desktopAppName: "Breatic",
       },
     });
   });

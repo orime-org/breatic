@@ -118,7 +118,8 @@ export function DesktopGoogleSignIn({ referralCode, next, busy }: DesktopGoogleS
   if (waiting || exchanging) {
     return (
       <div className='flex flex-col items-center gap-2'>
-        <Button type='button' variant={null} size={null} className={GOOGLE_BUTTON} loading disabled>
+        {/* The label is the instruction to follow in the browser, so it keeps the button's own contrast. */}
+        <Button type='button' variant={null} size={null} className={`${GOOGLE_BUTTON} cursor-not-allowed opacity-100`} loading>
           {t('auth.desktop.waitingBrowser')}
         </Button>
         {exchanging ? null : (

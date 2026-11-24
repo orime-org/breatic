@@ -629,7 +629,7 @@ test("browser sign-in hands the account to the client through a link on its sche
     };
   });
   await page.getByRole("button", { name: "Continue with Google" }).click();
-  await expect(page.getByText("Finish signing in in your browser")).toBeVisible();
+  await expect(page.getByText("Continue in your browser")).toBeVisible();
   await expect.poll(() => app.evaluate(() => (globalThis as { opened?: string[] }).opened?.length ?? 0)).toBe(1);
   const signInUrl = await app.evaluate(() => (globalThis as { opened?: string[] }).opened![0]!);
   expect(new URL(signInUrl).pathname).toBe("/desktop/sign-in");

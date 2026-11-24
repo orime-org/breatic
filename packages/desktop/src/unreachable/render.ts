@@ -31,9 +31,10 @@ export interface UnreachablePage {
  * @param page - What to show.
  */
 function renderUnreachable(page: UnreachablePage): void {
+  // The web app's token values (packages/web/src/theme/tokens.css), written out: the page's default-src 'none' CSP keeps the app's stylesheet out. render.test.ts holds them equal.
   const css = `
-:root { color-scheme: light dark; --bg: #f4f4f5; --text: #18181b; --muted: #71717a; --primary: #18181b; --primary-text: #ffffff; --error: #dc3e42; }
-@media (prefers-color-scheme: dark) { :root { --bg: #111113; --text: #fafafa; --muted: #a1a1aa; --primary: #fafafa; --primary-text: #18181b; --error: #e5484d; } }
+:root { color-scheme: light dark; --bg: #f0f0f0; --text: #1e1e1e; --muted: #5f5f5f; --primary: #1e1e1e; --primary-text: #f0f0f0; --error: #dc3e42; }
+@media (prefers-color-scheme: dark) { :root { --bg: #1c1c1c; --text: #f0f0f0; --muted: #969696; --primary: #f0f0f0; --primary-text: #1e1e1e; --error: #e5484d; } }
 * { box-sizing: border-box; }
 body { margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center; background: var(--bg); color: var(--text); font: 14px/1.5 system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans", "Noto Sans", sans-serif; }
 main { width: 340px; display: flex; flex-direction: column; gap: 12px; }
@@ -41,7 +42,7 @@ h1 { margin: 0 0 4px; font-size: 18px; font-weight: 600; text-align: center; }
 .address { margin: 0; color: var(--muted); text-align: center; word-break: break-all; }
 .reason { margin: -4px 0 0; color: var(--error); font-size: 12px; text-align: center; }
 .status { margin: -4px 0 0; color: var(--muted); font-size: 12px; text-align: center; }
-button { height: 40px; border-radius: 999px; border: 1px solid var(--primary); background: var(--primary); color: var(--primary-text); font: inherit; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
+button { height: 36px; border-radius: 6px; border: 1px solid var(--primary); background: var(--primary); color: var(--primary-text); font: inherit; font-weight: 500; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px; }
 button:focus-visible { outline: 1px solid var(--text); outline-offset: 2px; }
 button:disabled { opacity: 0.6; cursor: default; }
 .spin { width: 14px; height: 14px; border-radius: 50%; border: 2px solid currentColor; border-right-color: transparent; animation: spin 0.8s linear infinite; }
