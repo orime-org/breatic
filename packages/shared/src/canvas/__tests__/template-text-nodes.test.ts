@@ -89,7 +89,7 @@ const FRESH: TemplateExpansionInput = { anchorAt: 0, base: 1, inputs: new Map(),
 
 describe('a template text node (inner#1824, CAP-3)', () => {
   it('keeps its words under node.<key>.text, which every reader takes from templateNodeWords', () => {
-    expect(templateNodeWords(SCRIPTED, 'script')).toEqual({ text: 'node.script.text' });
+    expect(templateNodeWords(SCRIPTED, 'script')).toEqual({ prompt: 'node.script.text' });
     expect(templateNodeWords(SCRIPTED, 'scene-2')).toEqual({ prompt: 'node.scene-2.prompt' });
   });
 

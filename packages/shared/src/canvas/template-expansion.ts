@@ -681,7 +681,7 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
    * A generate node's words: its prompt, or its shots or dialogue lines when
    * it has them, each reference mark bound by name and the notes of its new
    * inputs on top of the prompt or of the first shot or line; a text node's
-   * words as its prompt.
+   * words as its prompt, with no note and no style.
    * @param key - The node's key.
    * @returns The prompt, the shots or the lines.
    */
@@ -708,7 +708,6 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
       const style = words.styleKey === undefined ? [] : markedSegments(`\n${t(words.styleKey)}`);
       return { prompt: [...notes, ...bound(words.prompt), ...style] };
     }
-    if ("text" in words) return { prompt: bound(words.text) };
     if ("lines" in words) return { lines: words.lines.map((line, i) => ({ speaker: line.speaker, prompt: [...(i === 0 ? notes : []), ...bound(line.key)] })) };
     return { shots: words.shots.map((shot, i) => ({ duration: shot.seconds, prompt: [...(i === 0 ? notes : []), ...bound(shot.key)] })) };
   };

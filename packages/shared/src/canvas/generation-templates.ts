@@ -399,14 +399,13 @@ export function templateAnchor(template: GenerationTemplate): TemplateGenerateNo
 /** Where a template's generate or text node keeps its words: keys under the template's `canvas.template.<id>.` entry. */
 export type TemplateNodeWords =
   | { prompt: string; styleKey?: string }
-  | { text: string }
   | { shots: ReadonlyArray<{ seconds: number; key: string }> }
   | { lines: ReadonlyArray<{ speaker: number; key: string }> };
 
 /**
  * Where one of a template's generate nodes keeps its words: its prompt, or,
  * for a node with a shot list or dialogue lines, one key per shot or line in
- * place of a prompt; a text node keeps them in its text.
+ * place of a prompt; a text node keeps them in its text, read as a prompt.
  * A prompt node that takes a part of the template's style also gets the
  * absolute key of the picked style's words for it, written after its own.
  * @param template - The template.
@@ -418,7 +417,7 @@ export type TemplateNodeWords =
 export function templateNodeWords(template: GenerationTemplate, key: TemplateNodeKey, style?: string): TemplateNodeWords {
   const node = template.nodes.find((one) => one.key === key);
   const own = key === template.anchor ? "" : `node.${key}.`;
-  if (node?.role === "written") return { text: `${own}text` };
+  if (node?.role === "written") return { prompt: `${own}text` };
   const lines = node?.role === "generate" ? node.lines : undefined;
   if (lines !== undefined) return { lines: lines.map((line, i) => ({ speaker: line.speaker, key: `${own}line.${String(i + 1)}` })) };
   const shots = node?.role === "generate" ? node.shots : undefined;

@@ -107,7 +107,6 @@ export function templateSegmentsText(template: GenerationTemplate, key: Template
     return `[${parts.join(", ")}]`;
   };
   const words = templateNodeWords(template, key, style);
-  if ("text" in words) return segments(words.text);
   if ("prompt" in words) {
     const own = segments(words.prompt);
     return words.styleKey === undefined ? own : `${own.slice(0, -1)}, ${JSON.stringify({ text: `\n${t(words.styleKey)}` })}]`;
