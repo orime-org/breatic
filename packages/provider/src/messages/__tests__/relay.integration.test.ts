@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The Messages relay of the web-animation container, run on Node against loopback upstreams. The stream samples are
@@ -9,7 +9,7 @@
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { relayMessages, type MessagesCallEnd, type MessagesCandidate, type MessagesPlan } from "../relay.js";
+import { relayMessages, type AccountKeyRefusal, type MessagesCallEnd, type MessagesCandidate, type MessagesPlan } from "../relay.js";
 import { startFakes, stopFakes, type LlmFakes } from "../../llm/__tests__/llm-harness.js";
 
 let fakes: LlmFakes;
@@ -74,13 +74,16 @@ const candidates = (): Record<"openrouter" | "anthropic" | "deepseek", MessagesC
 });
 
 const BODY = { model: "deepseek-flash", messages: [{ role: "user", content: "Write index.html" }], max_tokens: 4_000, stream: true };
-const KEYS: Record<string, string> = { OPENROUTER_API_KEY: "or-key", ANTHROPIC_API_KEY: "an-key", DEEPSEEK_API_KEY: "ds-key" };
+/** The caller's keys by upstream, as a `KeySet` reads them (inner#1953). */
+const KEYS: Record<string, string> = { openrouter: "or-key", anthropic: "an-key", deepseek: "ds-key" };
 
 /** What one relayed call reported. */
 interface Relayed {
   response: Response;
   started: { upstream: string; messageId: string }[];
   ended: MessagesCallEnd[];
+  /** The account key refusals the relay reported. */
+  keyRefused: AccountKeyRefusal[];
   /** Events in the order they happened, the stream's end included. */
   order: string[];
 }
@@ -103,9 +106,14 @@ async function relay(
 ): Promise<Relayed & { text: string }> {
   const started: Relayed["started"] = [];
   const ended: MessagesCallEnd[] = [];
+  const keyRefused: AccountKeyRefusal[] = [];
   const order: string[] = [];
   const response = await relayMessages(plan, body, {
-    keyOf: (name) => (options.keys ?? KEYS)[name],
+    onAccountKeyRefused: async (refusal) => {
+      keyRefused.push(refusal);
+      order.push("keyRefused");
+    },
+    keyOf: (upstream) => (options.keys ?? KEYS)[upstream],
     maxTokens: options.maxTokens ?? 32_000,
     signal: options.signal ?? new AbortController().signal,
     ...(options.anthropicVersion === undefined ? {} : { anthropicVersion: options.anthropicVersion }),
@@ -134,7 +142,7 @@ async function relay(
     }
   }
   order.push("closed");
-  return { response, started, ended, order, text };
+  return { response, started, ended, keyRefused, order, text };
 }
 
 /**
@@ -220,7 +228,7 @@ describe("relayMessages: what reaches each upstream", () => {
 describe("relayMessages: which upstream serves", () => {
   it("skips a candidate whose key the Worker lacks", async () => {
     fakes.openrouter.answer(() => stream(COMPLETE));
-    const { started } = await relay({ model: "m", candidates: [candidates().deepseek, candidates().openrouter] }, BODY, { keys: { OPENROUTER_API_KEY: "or-key" } });
+    const { started } = await relay({ model: "m", candidates: [candidates().deepseek, candidates().openrouter] }, BODY, { keys: { openrouter: "or-key" } });
     expect(fakes.deepseek.seen).toHaveLength(0);
     expect(started).toEqual([{ upstream: "openrouter", messageId: "gen-1762500000-abc" }]);
   });
@@ -274,6 +282,86 @@ describe("relayMessages: which upstream serves", () => {
   });
 });
 
+describe("relayMessages: a plan on the payer's own keys (inner#1953)", () => {
+  const onAccount = (...list: MessagesCandidate[]): MessagesPlan => ({ model: "m", keysOwner: "account", candidates: list });
+
+  it.each([
+    ["invalid", { status: 401, body: { error: { message: "No auth credentials found" } } }],
+    ["no_balance", { status: 402, body: { error: { message: "Insufficient credits" } } }],
+    ["model_not_found", { status: 400, body: { error: { message: "deepseek/x is not a valid model ID" } } }],
+  ] as const)("reports the key refused as %s by the upstream's own reader, before the call ends, and tries no other upstream", async (reason, reply) => {
+    fakes.openrouter.answer(() => reply);
+    const { response, keyRefused, ended, order } = await relay(onAccount(candidates().openrouter, candidates().anthropic));
+
+    expect(keyRefused).toEqual([{ upstream: "openrouter", kind: "account_key_failed", reason, lasting: true }]);
+    expect(response.status).toBe(reply.status);
+    expect(fakes.anthropic.seen).toHaveLength(0);
+    expect(ended).toEqual([{ outcome: "upstream_error", upstream: null, tokens: null, cost: null }]);
+    expect(order).toEqual(["keyRefused", "ended", "closed"]);
+  });
+
+  it("reports a rate limit as passing, which the harness may ask again on the same key", async () => {
+    fakes.openrouter.answer(() => ({ status: 429, body: { error: { message: "slow down" } } }));
+    const { response, keyRefused } = await relay(onAccount(candidates().openrouter));
+
+    expect(response.status).toBe(429);
+    expect(keyRefused).toEqual([{ upstream: "openrouter", kind: "account_key_failed", reason: "rate_limited", lasting: false }]);
+  });
+
+  it("reports the upstream's own 503 as passing, naming it", async () => {
+    fakes.openrouter.answer(() => ({ status: 503, body: { error: { message: "overloaded" } } }));
+    const { keyRefused } = await relay(onAccount(candidates().openrouter));
+
+    expect(keyRefused).toEqual([{ upstream: "openrouter", kind: "upstream_unavailable", lasting: false }]);
+  });
+
+  it("reports an upstream it could not reach as passing, naming it", async () => {
+    const closed = createServer();
+    await new Promise<void>((done) => closed.listen(0, "127.0.0.1", () => done()));
+    const { port } = closed.address() as AddressInfo;
+    await new Promise<void>((done) => closed.close(() => done()));
+    const { keyRefused, response } = await relay(onAccount({ ...candidates().openrouter, baseUrl: `http://127.0.0.1:${port}/api/v1` }));
+
+    expect(response.status).toBe(502);
+    expect(keyRefused).toEqual([{ upstream: "openrouter", kind: "upstream_unavailable", lasting: false }]);
+  });
+
+  it("reports nothing for a refusal of the request itself", async () => {
+    fakes.openrouter.answer(() => ({ status: 400, body: { error: { message: "bad request" } } }));
+    const { keyRefused } = await relay(onAccount(candidates().openrouter));
+
+    expect(keyRefused).toEqual([]);
+  });
+
+  it("marks a completed call's cost as the account's", async () => {
+    fakes.openrouter.answer(() => stream(COMPLETE));
+    const { ended } = await relay(onAccount(candidates().openrouter));
+
+    expect(ended[0]!.cost).toEqual(expect.objectContaining({ state: "known", payer: "account" }));
+  });
+
+  it("marks a pending cost and its lookup as the account's, so the lookup runs on the account's keys", async () => {
+    fakes.openrouter.answer(() => stream([MESSAGE_START, CONTENT_DELTA], "cut"));
+    const { ended } = await relay(onAccount(candidates().openrouter));
+
+    expect(ended[0]!.cost).toEqual({
+      state: "pending",
+      payer: "account",
+      lookup: { upstream: "openrouter", generationId: "gen-1762500000-abc", payer: "account" },
+    });
+  });
+
+  it("reports nothing on the deployment's keys, which move on to the next upstream as before", async () => {
+    fakes.openrouter.answer(() => ({ status: 401, body: { error: { message: "No auth credentials found" } } }));
+    fakes.openrouter.answer(() => ({ status: 402, body: { error: { message: "Insufficient credits" } } }));
+    fakes.anthropic.answer(() => stream(COMPLETE));
+    const { response, keyRefused } = await relay({ model: "m", candidates: [candidates().openrouter, candidates().anthropic] });
+
+    expect(response.status).toBe(200);
+    expect(keyRefused).toEqual([]);
+  });
+});
+
 describe("relayMessages: what reaches the harness, and how the call ends", () => {
   it("deletes null usage counters and passes every other line through", async () => {
     fakes.openrouter.answer(() => stream(COMPLETE));
@@ -297,6 +385,34 @@ describe("relayMessages: what reaches the harness, and how the call ends", () =>
       cost: { state: "known", usd: 0.000005838, source: "reported", tokens: { input: 169, cachedInput: 128, output: 6, reasoning: 3 } },
     }]);
     expect(order).toEqual(["started", "ended", "closed"]);
+  });
+
+  it("ends a completed call before the harness reads its message_stop, while the upstream still holds the body open", async () => {
+    // The harness takes message_stop as the end of the call and sends its next one at once.
+    fakes.openrouter.answer(() => stream(COMPLETE, "hold"));
+    const ended: MessagesCallEnd[] = [];
+    const response = await relayMessages({ model: "m", candidates: [candidates().openrouter] }, BODY, {
+      keyOf: (name) => KEYS[name], maxTokens: 32_000, signal: new AbortController().signal,
+      onStarted: async () => undefined,
+      onEnded: async (end) => {
+        await new Promise((done) => setTimeout(done, 20));
+        ended.push(end);
+      },
+    });
+    const reader = response.body!.getReader();
+    const decoder = new TextDecoder();
+    let text = "";
+    while (!text.includes("\"type\":\"message_stop\"")) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      text += decoder.decode(value, { stream: true });
+    }
+    expect(text).toContain("\"type\":\"message_stop\"");
+    expect(ended.map((end) => end.outcome)).toEqual(["completed"]);
+    await reader.cancel("the harness moved on");
+    fakes.openrouter.release();
+    await new Promise((done) => setTimeout(done, 50));
+    expect(ended).toHaveLength(1);
   });
 
   it("leaves OpenRouter's cost pending by its generation when the stream carries none", async () => {
@@ -444,7 +560,7 @@ describe("relayMessages: the stream's edges", () => {
     fakes.openrouter.answer(() => stream([MESSAGE_START], "hold"));
     const ended: MessagesCallEnd[] = [];
     const response = await relayMessages({ model: "m", candidates: [candidates().openrouter] }, BODY, {
-      keyOf: (name) => KEYS[name], maxTokens: 32_000, signal: new AbortController().signal,
+      keyOf: (upstream) => KEYS[upstream], maxTokens: 32_000, signal: new AbortController().signal,
       onStarted: async () => undefined,
       onEnded: async (end) => {
         ended.push(end);

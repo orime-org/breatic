@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What each card on the panel says (#18, A4 · A9 · A13).
@@ -92,7 +92,7 @@ const NO_CARDS: CommentCards = { unresolved: [], resolved: [] };
  * @param body - The comment's body.
  * @returns Its text, blocks separated by newlines.
  */
-function bodyText(body: unknown): string {
+export function bodyText(body: unknown): string {
   if (!Array.isArray(body)) return '';
   return body
     .map((block: unknown) => {

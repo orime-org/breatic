@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Presses still waiting for their answer, kept outside the panel that started
@@ -45,6 +45,8 @@ interface TaskActionsInFlightState {
   end: (key: string) => void;
   /** Each run-once press waiting, by intent, with what its button shows. */
   running: ReadonlyMap<string, unknown>;
+  /** How many run-once presses still wait for the server; a press whose answer sends the page away is not counted. */
+  waiting: number;
 }
 
 export const useTaskActionsInFlight = create<TaskActionsInFlightState>()((set) => ({
@@ -57,6 +59,7 @@ export const useTaskActionsInFlight = create<TaskActionsInFlightState>()((set) =
       return { inFlight: next };
     }),
   running: new Map(),
+  waiting: 0,
 }));
 
 /**
@@ -195,8 +198,16 @@ function publish(intentId: string, meta: unknown): void {
     const next = new Map(s.running);
     if (meta === undefined) next.delete(intentId);
     else next.set(intentId, meta);
-    return { running: next };
+    return { running: next, waiting: countWaiting() };
   });
+}
+
+/**
+ * Count the presses still waiting for the server.
+ * @returns How many are working.
+ */
+function countWaiting(): number {
+  return [...presses.values()].filter((p) => p.phase === 'working').length;
 }
 
 /**
@@ -332,6 +343,7 @@ async function drive<B, R>(
       if (!current()) return RELEASED;
       if (spec.onDone?.(result) === 'leaving') {
         press.phase = 'leaving';
+        useTaskActionsInFlight.setState({ waiting: countWaiting() });
         watchRestore();
       } else {
         release(intentId, press);

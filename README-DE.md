@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>Der KI-Arbeitsbereich für Kreativteams mit Zusammenarbeit in Echtzeit.</strong></p>
-<p align="center">Online verfügbar · Open Source · Desktop-Browser</p>
+<p align="center">Online verfügbar · Quellcode verfügbar · Desktop-Browser</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_de">Website</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -57,11 +57,12 @@ Zusammenarbeit bedeutet, dass mehrere Personen denselben Arbeitsbereich in Echtz
 | **Document Spaces** | Drehbücher, Einstellungen und Produktionslisten mit formatiertem Text verfassen. |
 | **Canvas Spaces** | Referenzen und Medien auf einer unendlichen Arbeitsfläche anordnen; Inhalte mit Prompts, Modellen und Referenzen erzeugen und verfeinern. |
 | **3D (DEV)** | Integrierte Objekte in einer gemeinsamen Szene platzieren sowie Position, Drehung und Skalierung bearbeiten. |
-| **Timeline (DEV)** | Videos aus dem Project oder lokal hochgeladene Videos auf gemeinsamen Spuren anordnen: Clips verschieben, trimmen, teilen, duplizieren und löschen, eigene Änderungen rückgängig machen und die Sequenz abspielen. Eine Web Animation beschreiben, von DeepSeek erstellen lassen, in der Ausführungsliste verfolgen und das Ergebnis als Clips einfügen, die im Takt der Timeline laufen. Videos und Web Animations aller Spuren laufen als übereinanderliegende Ebenen gemeinsam; eine Ebene in der Vorschau auswählen, um sie zu verschieben, zu skalieren, zu strecken oder zu drehen, oder Position und Größe eingeben. Am Ende der Wiedergabeleiste das Seitenverhältnis aus sieben Vorgaben wählen (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9); die Ebenen behalten ihren Platz im Bild. |
+| **Timeline (DEV)** | Videos aus dem Project oder lokal hochgeladene Videos auf gemeinsamen Spuren anordnen: Clips verschieben, trimmen, teilen, duplizieren und löschen, eigene Änderungen rückgängig machen und die Sequenz abspielen. Fertige Web Animations aus Motion Spaces als Clips einfügen, die im Takt der Timeline laufen; jedes Einfügen ist eine unabhängige Kopie. Videos und Web Animations aller Spuren laufen als übereinanderliegende Ebenen gemeinsam; eine Ebene in der Vorschau auswählen, um sie zu verschieben, zu skalieren, zu strecken oder zu drehen, oder Position und Größe eingeben. Am Ende der Wiedergabeleiste das Seitenverhältnis aus sieben Vorgaben wählen (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9); die Ebenen behalten ihren Platz im Bild. |
+| **Motion (DEV)** | Eine Web Animation beschreiben und von DeepSeek erstellen lassen, Ausführungen nach abgeschlossen, laufend und fehlgeschlagen verfolgen, fertige Ergebnisse abspielen und darin springen, ein Ergebnis zu einem neuen abändern, Zeitpunkte gemeinsam mit anderen annotieren, ein Ergebnis als Video exportieren und das Video auf einen Canvas legen. |
 | **KI-Agent im Projekt** | Ideen besprechen, Dokument- und Canvas-Kontext bereitstellen und Vorschläge zusammen mit deinen Materialien prüfen. |
-| **Zusammenarbeit in Echtzeit** | Teammitglieder einladen, Berechtigungen festlegen und synchronisierte Canvases, Dokumente, 3D-Szenen und Timelines bearbeiten. |
+| **Zusammenarbeit in Echtzeit** | Teammitglieder einladen, Berechtigungen festlegen und synchronisierte Canvases, Dokumente, 3D-Szenen, Timelines und Motion Spaces bearbeiten. |
 
-Unterstützte Medien sind Bilder, Videos, Audio und 3D-Dateien. Die Generierung hängt von den eingerichteten Anbietern und dem Modellzugang ab. Canvas und Document sind verfügbar; 3D und Timeline tragen die Kennzeichnung **DEV**. Die Timeline unterstützt derzeit Bearbeitung und Vorschau von Videos und Web Animations auf mehreren Bildspuren; Web Animation steht nur in Installationen zur Verfügung, die sie aktivieren. Weitere Medientypen und Videoexport sind geplant. Modellgenerierung und Anmerkungen innerhalb der 3D-Szene sind in Entwicklung.
+Unterstützte Medien sind Bilder, Videos, Audio und 3D-Dateien. Die Generierung hängt von den eingerichteten Anbietern und dem Modellzugang ab. Canvas und Document sind verfügbar; 3D, Timeline und Motion tragen die Kennzeichnung **DEV**. Die Timeline unterstützt derzeit Bearbeitung und Vorschau von Videos und Web Animations auf mehreren Bildspuren; Motion erstellt, ändert und exportiert Web Animations, die nur in Installationen zur Verfügung stehen, die sie aktivieren. Weitere Medientypen für die Timeline und der Videoexport der Timeline sind geplant. Modellgenerierung und Anmerkungen innerhalb der 3D-Szene sind in Entwicklung.
 
 ## Änderungen gemeinsam prüfen
 
@@ -92,13 +93,13 @@ Spaces können etwa „Auftakt · 0–10 s“, „Hauptszene · 10–20 s“ und
 - **Eigene Installation:** [Anleitung für persönliche Nutzung und LAN (Englisch)](self-host/LOCAL.md).
 - **Entwicklung:** [Entwicklungsumgebung einrichten (Englisch)](self-host/DEVELOPMENT.md).
 
-Richte dein persönliches Studio ein, erstelle ein Project und füge über **+** Document, Canvas, 3D oder Timeline Spaces hinzu. Beginne mit einem Briefing, lade Referenzen hoch oder platziere integrierte 3D-Objekte. Die [Anleitung (Englisch)](docs/USAGE.md) enthält auch [Tastenkürzel](docs/USAGE.md#keyboard-shortcuts).
+Richte dein persönliches Studio ein, erstelle ein Project und füge über **+** Document, Canvas, 3D, Timeline oder Motion Spaces hinzu. Beginne mit einem Briefing, lade Referenzen hoch oder platziere integrierte 3D-Objekte. Die [Anleitung (Englisch)](docs/USAGE.md) enthält auch [Tastenkürzel](docs/USAGE.md#keyboard-shortcuts).
 
 ### Vor dem Selbsthosting
 
 Die Installation verwendet veröffentlichte Docker-Images für Web, API, Hintergrundaufgaben und Zusammenarbeit sowie PostgreSQL und Redis. Uploads und Medienverarbeitung benötigen einen Ingest Worker und einen Mediencontainer in **deinem Cloudflare-Konto**; gespeichert wird in deinem R2-Bucket. KI-Aufrufe verwenden deine Anbieterkonten und Kontingente.
 
-Dies ist keine Offline- oder vollständig lokale Installation. LAN-Zugriff benötigt vertrauenswürdiges HTTPS. Cloud-Dienste und Modellaufrufe können Kosten verursachen; SMTP, Google-Anmeldung und Suche sind optionale Integrationen. Folge der Anleitung zur Cloud-Einrichtung und Prüfung. Der einmalige Node/pnpm/Wrangler-Schritt dient dem Deployment; für die normale Nutzung läuft kein Entwicklungsserver.
+Dies ist keine Offline- oder vollständig lokale Installation. LAN-Zugriff benötigt vertrauenswürdiges HTTPS. Cloud-Dienste und Modellaufrufe können Kosten verursachen; SMTP, Google-Anmeldung und Suche sind optionale Integrationen; der Verkauf von Credits oder Mitgliedschaften darf nur mit schriftlicher Genehmigung von Orime, Inc. aktiviert werden (LICENSE, Abschnitte 10 und 11). Folge der Anleitung zur Cloud-Einrichtung und Prüfung. Der einmalige Node/pnpm/Wrangler-Schritt dient dem Deployment; für die normale Nutzung läuft kein Entwicklungsserver.
 
 ## Status, Hilfe und Beiträge
 
@@ -114,9 +115,16 @@ Sicherheitslücken bitte gemäß [SECURITY.md](SECURITY.md) vertraulich melden. 
 
 ## Lizenz und erlaubte Nutzung
 
-Breatic ist Open Source unter der [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only). Du darfst Breatic für jeden Zweck nutzen, untersuchen, ändern und selbst hosten, auch kommerziell. Wenn du Breatic änderst und anderen die geänderte Version über ein Netzwerk zur Verfügung stellst, musst du ihnen den vollständigen Quellcode unter derselben Lizenz anbieten. Maßgeblich sind die vollständigen Lizenzbedingungen.
+Breatic ist **Source-Available-Software** unter der [Breatic Source-Available License 2.0](LICENSE), einer von der Apache License 2.0 abgeleiteten Lizenz mit zusätzlichen Bedingungen. Sie ist keine von der OSI anerkannte Open-Source-Lizenz.
 
-Name und Logo sind Marken von Orime, Inc. und nicht von dieser Lizenz erfasst; siehe [TRADEMARKS.md](TRADEMARKS.md). Die Lizenz schränkt die mit Breatic erstellten Inhalte nicht ein.
+- Du darfst Breatic für die persönliche Nutzung, für eine private nichtkommerzielle Gruppe oder für die Nutzung innerhalb deiner Organisation, auch in deinem Unternehmen, ohne Softwarelizenzgebühr beziehen, ändern und selbst hosten (LICENSE, Abschnitt 10).
+- Du darfst mit Breatic kreative Werke wie Filme, Werbung, Bilder, Audio und 3D-Assets erstellen und verkaufen; die Bedingungen stehen in LICENSE, Abschnitte 10 und 13.
+- Ohne gesonderte schriftliche Genehmigung von Orime, Inc. muss eine von dir betriebene Instanz im Selbstbereitstellungsmodus (Self-Deployment Mode) laufen: In-App-Käufe von Credits, kostenpflichtige Mitgliedschaften, Abonnements und andere Funktionen für den kostenpflichtigen Betrieb bleiben deaktiviert (LICENSE, Abschnitt 10).
+- Breatic oder einen wesentlichen Teil seiner Plattformfunktionen Personen außerhalb dieser Nutzungen zu einem kommerziellen Zweck zur Verfügung zu stellen, erfordert eine gesonderte schriftliche Genehmigung (LICENSE, Abschnitt 11).
+- Lass den Namen Breatic und das mitgelieferte Logo im Identitätsbereich der Anwendung sichtbar und halte die Lizenz- und Namensnennungshinweise erreichbar (LICENSE, Abschnitt 12). Orime, Inc. ist ein autorisierter Lizenzgeber der Breatic-Marken; [TRADEMARKS.md](TRADEMARKS.md) beschreibt die Regeln für die Markennutzung.
+- Versionen, die unter einer früheren Lizenz veröffentlicht wurden, einschließlich AGPL-3.0-only, behalten die Lizenz, unter der sie veröffentlicht wurden (LICENSE, Abschnitt 15).
+
+Die vollständigen Bedingungen stehen in [LICENSE](LICENSE).
 
 ### Generierte Inhalte
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Drizzle ORM schema definitions for all database tables.
@@ -803,6 +803,14 @@ export const tasks = pgTable(
      * uncovered part written as debt.
      */
     billedCredits: doublePrecision("billed_credits"),
+    /**
+     * The `account_provider_keys` row the task's media runs on, fixed when the
+     * task is accepted (inner#1953); null is the deployment's keys. A key row is
+     * retired, never removed, so this keeps naming its upstream.
+     */
+    keyId: uuid("key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
+    /** The key row of a language-model step inside the task, as `keyId`; null when none or on our keys. */
+    llmKeyId: uuid("llm_key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     /** First time the running-task gate held this task back (inner#1968); never changed after. */
     slotWaitSince: timestamp("slot_wait_since", { withTimezone: true }),
     /** When the gate last judged this waiting task. */
@@ -872,7 +880,7 @@ export const taskUpstreamSteps = pgTable(
  * source they were cloned from (#2156): the first run on a source clones it,
  * every later run reuses the id. Read and written only by the worker.
  *
- * At most one live row per (studio, upstream, kind, source): the partial unique index
+ * At most one live row per (studio, upstream, kind, source, key owner): the partial unique index
  * is what settles two runs cloning the same source at once — the first insert
  * wins and the second keeps its own id for its own run.
  */
@@ -889,12 +897,14 @@ export const studioUpstreamClones = pgTable(
     /** The source asset's sha256; an element adds its name after a colon. */
     sourceKey: text("source_key").notNull(),
     upstreamId: text("upstream_id").notNull(),
+    /** Whose upstream account holds the clone: `deployment` for our keys, else the `account_provider_keys` row it was made with (0131, inner#1953). */
+    keyOwner: text("key_owner").default("deployment").notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
     uniqueIndex("studio_upstream_clones_live_key")
-      .on(table.studioId, table.upstream, table.kind, table.sourceKey)
+      .on(table.studioId, table.upstream, table.kind, table.sourceKey, table.keyOwner)
       .where(sql`${table.deletedAt} IS NULL`),
   ],
 );
@@ -1224,6 +1234,57 @@ export const creditEnterprisePurchases = pgTable("credit_enterprise_purchases", 
   requestedBy: uuid("requested_by").notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, table => [foreignKey({ name: "credit_enterprise_purchases_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
+
+// ── Accounts' own provider keys (inner#1953) ─────────────────────────
+
+/**
+ * An account's own key for one upstream, sealed (`secrets/provider-key-box.ts`); the only place a saved key is kept.
+ * A live row always has its sealed text; replacing, deleting or erasing the key clears it and soft-deletes the row in
+ * one write. One live row per account and upstream; the partial unique index and the CHECKs live in 0131.
+ */
+export const accountProviderKeys = pgTable(
+  "account_provider_keys",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    upstream: text("upstream").notNull(),
+    /** Null once the row is retired. */
+    ciphertext: text("ciphertext"),
+    displayHint: text("display_hint").notNull(),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    lastConnected: boolean("last_connected"),
+    lastBalanceAmount: numeric("last_balance_amount"),
+    lastBalanceCurrency: varchar("last_balance_currency", { length: 8 }),
+    lastBalanceState: text("last_balance_state").$type<"known" | "unsupported" | "forbidden" | "no_cap">(),
+    lastFailure: text("last_failure"),
+    /** Whether the key can read the actual costs of its calls; null where the upstream has no such probe. */
+    lastCostsReadable: boolean("last_costs_readable"),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("account_provider_keys_live_key").on(table.userId, table.upstream).where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
+
+/**
+ * The upstream an account chose for a catalog model that is not a language model (inner#1953); one live choice per
+ * account and model, and a model without one runs on the deployment's keys. Index and CHECKs live in 0131.
+ */
+export const accountModelUpstreams = pgTable(
+  "account_model_upstreams",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+    model: text("model").notNull(),
+    upstream: text("upstream").notNull(),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+    ...timestamps,
+  },
+  (table) => [
+    uniqueIndex("account_model_upstreams_live_key").on(table.userId, table.model).where(sql`${table.deletedAt} IS NULL`),
+  ],
+);
 
 /** Compensation evidence outlives its lot; kind and deferred operation FK live in 0109. */
 export const creditCompensations = pgTable("credit_compensations", {
@@ -1646,6 +1707,9 @@ export const agentUsageRecords = pgTable(
     settlementEnvelopeId: uuid("settlement_envelope_id").references(() => usageSettlementEnvelopes.id, { onDelete: "restrict" }),
     settlementReceiptId: uuid("settlement_receipt_id").references(() => creditSettlementReceipts.id, { onDelete: "restrict" }),
     costIdentity: varchar("cost_identity", { length: 255 }),
+    // The `account_provider_keys` row that paid for the call (inner#1953);
+    // null is the deployment's keys.
+    keyId: uuid("key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),
@@ -1975,17 +2039,31 @@ export const timelineExecutions = pgTable(
     actionId: text("action_id").notNull(),
     input: jsonb("input").$type<Record<string, unknown>>().notNull(),
     inputHash: text("input_hash").notNull(),
-    engine: text("engine").notNull(),
-    status: text("status").notNull().default("awaiting_landing"),
+    /** Empty for an export, which calls no model (0133, #1490). */
+    engine: text("engine"),
+    /** `awaiting_landing` is held only by rows written before #1490 (0133). */
+    status: text("status").notNull().default("queued"),
+    /** Where it was asked for: `web_animation_space`, or `timeline` before #1490 (0133). */
+    origin: text("origin").notNull(),
     phase: text("phase"),
+    /** How far a running export's render got, as a whole percent (0133, #1490). */
+    progress: smallint("progress"),
     steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
     attempt: integer("attempt").notNull().default(0),
     fence: uuid("fence"),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
     resultSourceVersionId: uuid("result_source_version_id"),
+    /** An export's registered video (0133, #1490). */
+    resultAssetId: uuid("result_asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
     failureReason: text("failure_reason"),
+    /** The upstream a failure of the payer's own key names (0131, inner#1953); null for any other failure. */
+    failureUpstream: text("failure_upstream"),
+    /** Why that upstream refused the payer's own key (0131, inner#1953); null for any other failure. */
+    failureKeyReason: text("failure_key_reason"),
     billedCredits: numeric("billed_credits"),
     billedAt: timestamp("billed_at", { withTimezone: true }),
+    /** The account key row its language-model calls run on (0131, inner#1953); null is the deployment's keys. */
+    llmKeyId: uuid("llm_key_id").references(() => accountProviderKeys.id, { onDelete: "restrict" }),
     /** First time the running-task gate held this execution back (inner#1968). */
     slotWaitSince: timestamp("slot_wait_since", { withTimezone: true }),
     /** When the gate last judged it. */
@@ -2011,6 +2089,12 @@ export const timelineExecutions = pgTable(
     index("timeline_executions_open_idx")
       .on(table.createdAt)
       .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
+    index("timeline_executions_space_order_idx")
+      .on(table.spaceId, desc(table.createdAt), desc(table.id))
+      .where(sql`${table.deletedAt} IS NULL`),
+    uniqueIndex("timeline_executions_export_source_idx")
+      .on(table.projectId, table.spaceId, sql`(${table.input}->>'sourceVersionId')`)
+      .where(sql`${table.kind} = 'web_animation_export' AND ${table.status} NOT IN ('failed', 'cancelled', 'expired') AND ${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -2094,10 +2178,19 @@ export const timelineExecutionGrants = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
+    /** Its execution's creation time and origin, copied on insert so a Project's list reads in order (0133, #1490). */
+    executionCreatedAt: timestamp("execution_created_at", { withTimezone: true }).notNull(),
+    executionOrigin: text("execution_origin").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
+    index("timeline_execution_grants_order_idx")
+      .on(table.projectId, desc(table.executionCreatedAt), desc(table.executionId))
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_execution_grants_origin_order_idx")
+      .on(table.projectId, table.executionOrigin, desc(table.executionCreatedAt), desc(table.executionId))
+      .where(sql`${table.deletedAt} IS NULL`),
     uniqueIndex("timeline_execution_grants_live_idx")
       .on(table.executionId, table.projectId)
       .where(sql`${table.deletedAt} IS NULL`),
@@ -3116,6 +3209,15 @@ export const uploadGrants = pgTable(
     generationTaskId: uuid("generation_task_id").references(() => tasks.id, {
       onDelete: "restrict",
     }),
+    /**
+     * A picture uploaded for a 3D object's part (0132, inner#1693): the
+     * object, the part and the picture that part held when the upload
+     * started (null for none). Collab writes the stored picture there once
+     * the report arrives. All three null on every other upload.
+     */
+    sceneObjectId: uuid("scene_object_id"),
+    scenePart: text("scene_part"),
+    sceneStartMap: text("scene_start_map"),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
 import { act, cleanup, render } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import SceneViewport from '@web/spaces/three-d/viewport/SceneViewport';
-import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneViewportProps, SceneViewportRuntimeProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 
 const mocks = vi.hoisted(() => ({
   construct: vi.fn(),
@@ -14,7 +14,7 @@ const mocks = vi.hoisted(() => ({
 }));
 
 vi.mock('@web/spaces/three-d/viewport/scene-viewport-runtime', () => ({
-  SceneViewportRuntime: vi.fn(function (host: HTMLDivElement, props: SceneViewportProps) {
+  SceneViewportRuntime: vi.fn(function (host: HTMLDivElement, props: SceneViewportRuntimeProps) {
     mocks.construct(host, props);
     const instance = { update: vi.fn(), dispose: vi.fn(), acquireModel: vi.fn() };
     mocks.instances.push(instance);
@@ -59,8 +59,23 @@ describe('viewport effect ownership under React Activity (inner#1689)', () => {
       const next = { ...initial, ...change };
       page.rerender(<SceneViewport {...next} />);
       expect(runtime.update).toHaveBeenCalledOnce();
-      expect(runtime.update).toHaveBeenCalledWith(next);
+      // The viewport adds the page's picture cache, none without a picture access.
+      expect(runtime.update).toHaveBeenCalledWith({ ...next, lookTextures: null });
     }
+  });
+
+  it('hands the runtime the one picture cache of the access the editor gave, kept across renders', async () => {
+    const { LookPictureSizes } = await import('@web/spaces/three-d/look-picture-size');
+    const { LookTextureCache } = await import('@web/spaces/three-d/viewport/look-texture-cache');
+    const resolve = async (): Promise<string> => 'https://assets.example.test/a.png';
+    const access = { sizes: new LookPictureSizes({ resolve, open: async () => new ReadableStream() }), resolve, download: async () => new Blob() };
+    const initial = { ...props(), lookPictures: access };
+    const page = render(<SceneViewport {...initial} />);
+    const runtime = mocks.instances[0];
+    page.rerender(<SceneViewport {...initial} selectedIds={['selected']} />);
+    const first = (mocks.construct.mock.calls[0]?.[1] as SceneViewportRuntimeProps).lookTextures;
+    expect(first).toBeInstanceOf(LookTextureCache);
+    expect((runtime.update.mock.calls.at(-1)?.[0] as SceneViewportRuntimeProps).lookTextures).toBe(first);
   });
 
   it('rebuilds visible resources after Activity cleanup while retaining the host and camera input', async () => {

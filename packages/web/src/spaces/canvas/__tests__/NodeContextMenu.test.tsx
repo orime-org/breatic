@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type * as React from 'react';
 import { describe, it, expect, vi } from 'vitest';
@@ -505,6 +505,24 @@ describe('NodeContextMenu — adding to the agent', () => {
     );
 
     expect(items.slice(-4)).toEqual(['---', 'node-menu-add-to-agent', '---', 'node-menu-delete']);
+  });
+});
+
+describe('NodeContextMenu — open source animation (#1490)', () => {
+  it('offers "Open source animation" after the asset actions when the node has one, and runs it', () => {
+    const onOpenSourceAnimation = vi.fn();
+    setup({ target: 'node', onUpload: () => {}, onDownload: () => {}, onUnderstand: () => {}, onOpenSourceAnimation });
+    const item = screen.getByTestId('node-menu-open-source-animation');
+    expect(item).toHaveTextContent('Open source animation');
+    const items = screen.getAllByRole('menuitem').map((element) => element.getAttribute('data-testid'));
+    expect(items.indexOf('node-menu-open-source-animation')).toBeGreaterThan(items.indexOf('node-menu-understand'));
+    fireEvent.click(item);
+    expect(onOpenSourceAnimation).toHaveBeenCalledTimes(1);
+  });
+
+  it('leaves "Open source animation" out for a node without one', () => {
+    setup({ target: 'node', onUpload: () => {}, onDownload: () => {}, onUnderstand: () => {} });
+    expect(screen.queryByTestId('node-menu-open-source-animation')).not.toBeInTheDocument();
   });
 });
 

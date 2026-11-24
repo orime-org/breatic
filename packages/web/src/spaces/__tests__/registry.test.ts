@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect } from 'vitest';
 import type { SpaceType } from '@breatic/shared';
 
 import { SPACE_TYPES } from '@web/spaces';
+import { SPACE_TYPE_ICON } from '@web/spaces/space-type-icon';
 
 describe('SPACE_TYPES registry', () => {
   it('exposes all 3 V1 space types (canvas / document / timeline)', () => {
@@ -15,10 +16,9 @@ describe('SPACE_TYPES registry', () => {
     });
   });
 
-  it('every space has a non-empty label, icon, bodyComponent', () => {
+  it('every space has a bodyComponent and an icon', () => {
     Object.values(SPACE_TYPES).forEach((def) => {
-      expect(def.label.length).toBeGreaterThan(0);
-      expect(def.icon.length).toBeGreaterThan(0);
+      expect(SPACE_TYPE_ICON[def.type]).toBeDefined();
       // Like the Canvas node registry, Space bodies may be memo components.
       const component: unknown = def.bodyComponent;
       expect(typeof component === 'function' ||

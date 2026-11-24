@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import {
   Background,
@@ -69,7 +69,7 @@ import {
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { historyKey } from '@web/spaces/canvas/history/use-node-history';
 import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
 import {
@@ -221,6 +221,8 @@ import {
   NODE_GATE_TOAST_KEY,
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+import { sourceAnimationOf } from '@web/spaces/canvas/source-animation';
+import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
 import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
 import {
@@ -3909,6 +3911,18 @@ function CanvasSpaceInner({
     openHistoryPanel(nodeId);
     selectOnlyNode(nodeId);
   }, [nodeMenu.nodeId, openHistoryPanel, selectOnlyNode]);
+  // A video still showing what a Motion Space exported opens that result (#1490 design §9.3).
+  const menuSourceAnimation = React.useMemo(() => {
+    const node = nodes.find((n) => n.id === nodeMenu.nodeId);
+    return node === undefined ? null : sourceAnimationOf(node);
+  }, [nodes, nodeMenu.nodeId]);
+  const openSourceAnimationFromMenu = React.useCallback((): void => {
+    if (menuSourceAnimation === null) return;
+    useSpaceOpenRequestStore.getState().dispatch({
+      type: 'request',
+      request: { type: 'web_animation', spaceId: menuSourceAnimation.spaceId, select: menuSourceAnimation.executionId },
+    });
+  }, [menuSourceAnimation]);
   // Node menu "download": the asset the menu's node is showing, or null when
   // it shows none — which is also what decides whether the item is offered at
   // all, so the item and its target come from one answer (#2108).
@@ -5166,6 +5180,7 @@ function CanvasSpaceInner({
               menuDownloadUrl === null ? undefined : understandFromMenu
             }
             understanding={understandingMenuNode}
+            onOpenSourceAnimation={menuSourceAnimation === null ? undefined : openSourceAnimationFromMenu}
             // Transcribe hears speech, which only audio and video carry; it
             // greys on the same answer the two above read.
             transcribeOffered={nodeMenu.type === 'audio' || nodeMenu.type === 'video'}

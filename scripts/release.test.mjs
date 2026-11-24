@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawnSync } from 'node:child_process';
@@ -14,6 +14,7 @@ const web = `ghcr.io/orime-org/breatic-web@sha256:${'c'.repeat(64)}`;
 const media = `ghcr.io/orime-org/breatic-ingest-media@sha256:${'d'.repeat(64)}`;
 const webReader = `ghcr.io/orime-org/breatic-ingest-web-reader@sha256:${'e'.repeat(64)}`;
 const webAnimation = `ghcr.io/orime-org/breatic-ingest-web-animation@sha256:${'f'.repeat(64)}`;
+const webAnimationRender = `ghcr.io/orime-org/breatic-ingest-web-animation-render@sha256:${'f'.repeat(64)}`;
 test('stable and candidate releases preserve full source identity', () => {
   for (const version of ['0.2.0', '1.0.0-rc.1']) {
     assert.deepEqual(buildInfo(version, sha), { releaseVersion: version, revision: sha });
@@ -27,21 +28,24 @@ test('invalid or incomplete release identities fail closed', () => {
   assert.throws(() => buildInfo('0.2.0', 'unknown'));
   assert.throws(() => buildInfo('0.2.0', sha.slice(0, 7)));
 });
-test('release manifests pin all five images to digest and one source revision', () => {
-  const result = releaseManifest('v0.2.0', sha, 'orime-org/breatic', backend, web, media, webReader, webAnimation);
+test('release manifests pin all six images to digest and one source revision', () => {
+  const result = releaseManifest('v0.2.0', sha, 'orime-org/breatic', backend, web, media, webReader, webAnimation, webAnimationRender);
   assert.equal(result.tag, 'v0.2.0');
   assert.equal(result.revision, sha);
   assert.equal(result.images.backend, backend);
   assert.equal(result.images.ingestMedia, media);
-  assert.deepEqual(result.images, { backend, web, ingestMedia: media, ingestWebReader: webReader, ingestWebAnimation: webAnimation });
+  assert.deepEqual(result.images, { backend, web, ingestMedia: media, ingestWebReader: webReader, ingestWebAnimation: webAnimation, ingestWebAnimationRender: webAnimationRender });
   assert.equal(result.schemaVersion, 2);
   assert.equal(result.platform, undefined);
   assert.deepEqual(result.imagePlatforms, { backend: ['linux/amd64', 'linux/arm64'], web: ['linux/amd64', 'linux/arm64'],
-    ingestMedia: ['linux/amd64'], ingestWebReader: ['linux/amd64'], ingestWebAnimation: ['linux/amd64'] });
+    ingestMedia: ['linux/amd64'], ingestWebReader: ['linux/amd64'], ingestWebAnimation: ['linux/amd64'], ingestWebAnimationRender: ['linux/amd64'] });
 });
 test('animation images require their own repository and full immutable digest', () => {
   for (const ref of [undefined, webAnimation.replace('@sha256:', ':v'), webAnimation.slice(0, -1), media, webReader, webAnimation.replace('orime-org', 'other')]) {
-    assert.throws(() => releaseManifest('v0.2.0', sha, 'orime-org/breatic', backend, web, media, webReader, ref));
+    assert.throws(() => releaseManifest('v0.2.0', sha, 'orime-org/breatic', backend, web, media, webReader, ref, webAnimationRender));
+  }
+  for (const ref of [undefined, webAnimationRender.replace('@sha256:', ':v'), webAnimationRender.slice(0, -1), webAnimation, webAnimationRender.replace('orime-org', 'other')]) {
+    assert.throws(() => releaseManifest('v0.2.0', sha, 'orime-org/breatic', backend, web, media, webReader, webAnimation, ref));
   }
 });
 test('moving tags, wrong repositories, truncated digests cannot become a release', () => {
@@ -65,10 +69,11 @@ test('CLI emits build metadata and validates tag versus branch identities', () =
     const output = join(directory, 'build-info.json');
     execFileSync(process.execPath, [script, 'build-info', '0.2.0', sha, output]);
     assert.deepEqual(JSON.parse(readFileSync(output, 'utf8')), buildInfo('0.2.0', sha));
-    execFileSync(process.execPath, [script, 'manifest', 'v0.2.0', sha, 'orime-org/breatic', backend, web, media, webReader, webAnimation, output]);
+    execFileSync(process.execPath, [script, 'manifest', 'v0.2.0', sha, 'orime-org/breatic', backend, web, media, webReader, webAnimation, webAnimationRender, output]);
     assert.equal(JSON.parse(readFileSync(output, 'utf8')).images.ingestMedia, media);
     assert.equal(JSON.parse(readFileSync(output, 'utf8')).images.ingestWebReader, webReader);
     assert.equal(JSON.parse(readFileSync(output, 'utf8')).images.ingestWebAnimation, webAnimation);
+    assert.equal(JSON.parse(readFileSync(output, 'utf8')).images.ingestWebAnimationRender, webAnimationRender);
     assert.notEqual(spawnSync(process.execPath, [script, 'manifest', 'v0.2.0', sha, 'orime-org/breatic', backend, web, media, output]).status, 0);
     assert.match(execFileSync(process.execPath, [script, 'ci', 'refs/tags/v0.2.0', sha], { encoding: 'utf8' }), /version=0.2.0\nimage_tag=v0.2.0/);
     assert.match(execFileSync(process.execPath, [script, 'ci', 'refs/heads/main', sha], { encoding: 'utf8' }), /version=0.0.0-dev\nimage_tag=ci/);

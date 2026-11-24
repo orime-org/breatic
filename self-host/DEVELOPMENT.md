@@ -173,7 +173,7 @@ Every model call goes through the provider layer, which tries a model's upstream
 
 One text key does not cover image, video, audio, speech or 3D generation. Each of those models lists its upstreams in `config/provider/media/<type>.yaml`; set the key of at least one of them, for example `WAVESPEED_API_KEY` or `FAL_KEY`. Every model stays in the list whatever is configured; a run of one with no configured upstream is refused, naming the variables it needs. Unconfigured models are outside your current acceptance checks.
 
-Google sign-in, real SMTP email and Brave search are optional integrations. Configure them in the relevant `.env.dev` sections when needed. Enabling `CHARGING_ENABLED` does not solve model-provider quota issues.
+Google sign-in, real SMTP email and Brave search are optional integrations. Without written authorization from Orime, Inc., an instance must run in Self-Deployment Mode with `COMMERCE_API_URL` blank, selling no credits or memberships (LICENSE sections 10 and 11). Configure them in the relevant `.env.dev` sections when needed. Enabling `CHARGING_ENABLED` does not solve model-provider quota issues.
 
 ## 6. Start databases and run both migrations
 

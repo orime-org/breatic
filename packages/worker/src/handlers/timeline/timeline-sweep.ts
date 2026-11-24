@@ -1,16 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The Timeline sweep (inner#1711 design §5.2), run on a schedule over executions that have not ended.
+ * The Timeline sweep (inner#1711 design §5.2), run on a schedule over every execution that has not ended; the server
+ * adds a job when it accepts a row, and the sweep adds one that is missing.
  *
  * An awaiting-landing row past its original deadline expires; a deleted Space gets no handling of its own, as with
- * canvas tasks. Every queued, running or cancelling row must have a live job under its execution id: a missing, failed or completed job is removed and added again, because the queue's
- * retention would otherwise keep the old job id occupied. Nothing here calls the ingest Worker.
+ * canvas tasks. Every queued, running or cancelling row must have a live job under its execution id: a missing,
+ * failed or completed job is removed and added again, because the queue's retention would otherwise keep the old job
+ * id occupied. Nothing here calls the ingest Worker.
  */
 
 import type { Queue } from "bullmq";
-import { addTimelineExecutionJob, getTimelineConfig, logger, timelineExecutionRepo } from "@breatic/core";
+import { getTimelineConfig, logger } from "@breatic/core";
+import { addTimelineExecutionJob, timelineExecutionRepo } from "@breatic/domain";
 import { move } from "@worker/handlers/timeline/timeline-transition.js";
 
 /** Job states that no longer run the execution. */
@@ -33,22 +36,28 @@ async function ensureJob(queue: Pick<Queue, "add" | "getJob">, executionId: stri
 }
 
 /**
- * Sweep one batch of executions that have not ended.
+ * Sweep every execution that has not ended, a batch at a time.
  * @param queue - The `timeline` queue.
  * @returns Nothing; a row that fails is logged and left for the next sweep.
- * @throws {Error} When the batch cannot be read.
+ * @throws {Error} When a batch cannot be read.
  */
 export async function sweepTimelineExecutions(queue: Pick<Queue, "add" | "getJob">): Promise<void> {
-  const rows = await timelineExecutionRepo.listForSweep({ limit: getTimelineConfig().web_animation.sweep_batch_size });
-  for (const row of rows) {
-    try {
-      if (row.status === "awaiting_landing") {
-        if (Date.parse(row.deadlineAt) <= Date.now()) await move(row, { type: "deadline" });
-      } else {
-        await ensureJob(queue, row.id);
+  const limit = getTimelineConfig().web_animation.sweep_batch_size;
+  let afterId: string | undefined;
+  for (;;) {
+    const rows = await timelineExecutionRepo.listForSweep({ limit, ...(afterId !== undefined && { afterId }) });
+    for (const row of rows) {
+      try {
+        if (row.status === "awaiting_landing") {
+          if (Date.parse(row.deadlineAt) <= Date.now()) await move(row, { type: "deadline" });
+        } else {
+          await ensureJob(queue, row.id);
+        }
+      } catch (err) {
+        logger.error({ err, executionId: row.id, status: row.status }, "timeline_sweep_row_failed");
       }
-    } catch (err) {
-      logger.error({ err, executionId: row.id, status: row.status }, "timeline_sweep_row_failed");
     }
+    if (rows.length < limit) return;
+    afterId = rows.at(-1)!.id;
   }
 }

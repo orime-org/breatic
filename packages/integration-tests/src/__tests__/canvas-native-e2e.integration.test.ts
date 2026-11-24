@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Integration test: BullMQ → worker.runTask → task-counts event → Collab task-listener → Yjs
@@ -624,6 +624,8 @@ beforeAll(async () => {
       handoffPollMs: 20,
       handoffWaitMs: 200,
     },
+    // A canvas run: no 3D part picture is refused here.
+    settleSceneLook: async () => undefined,
   });
 
 

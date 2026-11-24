@@ -173,7 +173,7 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 
 图像、视频、音频、语音和 3D 生成不由一个文本密钥覆盖。这些模型各自的上游列在 `config/provider/media/<类型>.yaml`，至少配上其中一家的密钥，例如 `WAVESPEED_API_KEY` 或 `FAL_KEY`。无论配了什么，模型都会出现在列表里；一家可用上游都没有的模型，发起生成时会被拒绝，并写明缺哪些环境变量。没配的模型不作为本次验收项。
 
-Google 登录、真实 SMTP 邮件和 Brave 搜索是独立可选集成，不是启动前置条件。需要这些功能时，再按 `.env.dev` 对应配置段提供凭据；不要通过打开 `CHARGING_ENABLED` 来解决 AI 供应商额度问题。
+Google 登录、真实 SMTP 邮件和 Brave 搜索是独立可选集成，不是启动前置条件。没有 Orime, Inc. 的书面授权，实例只能运行在自部署模式，`COMMERCE_API_URL` 留空、不出售积分或会员（LICENSE 第 10、11 条）。需要这些功能时，再按 `.env.dev` 对应配置段提供凭据；不要通过打开 `CHARGING_ENABLED` 来解决 AI 供应商额度问题。
 
 ## 6. 启动数据库并执行两套迁移
 

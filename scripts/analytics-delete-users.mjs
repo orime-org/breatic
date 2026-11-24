@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Erases what deleted accounts left in product analytics, for an account
@@ -7,10 +7,11 @@
  * then run it with their ids (`users.id`). It refuses any account that is not
  * soft-deleted and lists them.
  *
- * It first removes, in this database, the accounts' latest reported consent
- * and the consent kept on their upload tickets and ad uploads, and, on a
- * deployment that sells, queues the billing service (through the outbox) to
- * drop the consent kept on their orders. Then, on a deployment that sends product analytics (`AMPLITUDE_API_KEY`
+ * It first removes, in this database, the accounts' latest reported consent,
+ * the consent kept on their upload tickets and ad uploads, and their own
+ * provider keys and model choices, and, on a deployment that sells, queues
+ * the billing service (through the outbox) to drop the consent kept on their
+ * orders. Then, on a deployment that sends product analytics (`AMPLITUDE_API_KEY`
  * set), it asks Amplitude to delete their events; otherwise it says so and
  * stops. A failure at Amplitude leaves the database part done; run it again.
  *
@@ -97,7 +98,7 @@ export async function run(userIds, keys, { erase, send, pauseMs = PAUSE_MS }) {
   if (notDeleted.length > 0) {
     throw new Error(`Soft-delete these accounts first, nothing was changed: ${notDeleted.join(', ')}`);
   }
-  console.log(`Erased consent records of ${userIds.length} account(s)`);
+  console.log(`Erased consent records, provider keys and model choices of ${userIds.length} account(s)`);
   if (keys === null) {
     console.log('AMPLITUDE_API_KEY is not set, so there are no Amplitude events to delete');
     return;

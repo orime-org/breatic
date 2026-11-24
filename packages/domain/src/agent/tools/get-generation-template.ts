@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Read one generation template in full (inner#1807).
@@ -16,10 +16,11 @@ import { z } from "zod";
 import { formatCredits, GENERATION_TEMPLATES, keyStanding, t, templateAnchor, templateSkeleton, templateStyleKey, templateStylesOf, type GenerationTemplate } from "@breatic/shared";
 
 import { templateCraft } from "@domain/agent/tools/template-craft.js";
-import { lowestValues } from "@domain/agent/tools/generation-models.js";
 import { modelsForMode } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { lowestValues, payerKeyRun, payerKeyWords, studioToolContextSchema, type StudioToolContext } from "@domain/agent/tools/generation-models.js";
 import { templateSegmentsText } from "@domain/agent/tools/template-expansion.js";
+import { payerKeyPlan } from "@domain/provider/provider-keys.js";
 import { PROPOSE_CANVAS_ACTION } from "@domain/agent/tools/tool-names.js";
 
 /** How to send a template once read, in the words the agent reads. */
@@ -192,32 +193,44 @@ function amount(price: TemplatePrice): string {
  * it runs: at the cheaper settings and what that costs when some make it
  * cheaper, else at its own settings as its final (inner#1811). Priced live:
  * the price list and its multiplier belong to the deployment,
- * so a number written into the template would be wrong elsewhere.
+ * so a number written into the template would be wrong elsewhere. A generate
+ * node on the Studio payer's own key (inner#1953) costs no credits: it is left
+ * out of the credits and named apart, and still takes the cheaper settings.
  * @param template - The template.
- * @returns The sentences, or "" when none of its generate nodes is priced.
+ * @param studioId - The studio the turn runs in; our keys when absent.
+ * @returns The sentences, or "" when none of its generate nodes is priced or on the payer's key.
  */
-async function applyCost(template: GenerationTemplate): Promise<string> {
+async function applyCost(template: GenerationTemplate, studioId: string | undefined): Promise<string> {
   const nodes = await nodeSettings(template);
-  const final = await priceOf(nodes.map((node) => ({ model: node.model, params: node.own })));
-  if (final === undefined) return "";
-  const finalSentence = `At its settings this template costs ${amount(final)} credits.`;
+  const plan = await payerKeyPlan(studioId);
+  const payer = new Map(nodes.map((node) => [node.key, payerKeyRun(plan, node.model, node.own)] as const));
+  const onCredits = nodes.filter((node) => payer.get(node.key) === undefined);
+  const final = await priceOf(onCredits.map((node) => ({ model: node.model, params: node.own })));
+  const onPayer = nodes.flatMap((node) => {
+    const run = payer.get(node.key);
+    return run === undefined ? [] : [`"${node.key}" (${node.model}): ${payerKeyWords(run.describedOnCredits)}.`];
+  });
+  if (final === undefined && onPayer.length === 0) return "";
+  const head = [...(final === undefined ? [] : [`At its settings this template costs ${amount(final)} credits.`]), ...onPayer].join(" ");
   const changed = nodes.filter((node) => Object.keys(node.cheaper).length > 0);
-  const take = changed.length === 0 ? undefined : await priceOf(nodes.map((node) => ({ model: node.model, params: { ...node.own, ...node.cheaper } })));
-  if (take === undefined || take.credits >= final.credits) {
-    return `${finalSentence} A take of it is made keeping its mode, model and length, at these settings, which are already its cheapest, so a take of it is already its final.`;
+  const take = changed.length === 0 || final === undefined ? undefined : await priceOf(onCredits.map((node) => ({ model: node.model, params: { ...node.own, ...node.cheaper } })));
+  // A take on the payer's key costs the payer less at the cheaper settings, though no credits show it.
+  const cheaperOnPayer = changed.some((node) => payer.get(node.key) !== undefined);
+  if (changed.length === 0 || (!cheaperOnPayer && (take === undefined || final === undefined || take.credits >= final.credits))) {
+    return `${head} A take of it is made keeping its mode, model and length, at these settings, which are already its cheapest, so a take of it is already its final.`;
   }
   const cheaper = JSON.stringify(Object.fromEntries(changed.map((node) => [node.key, node.cheaper])));
   const atFinal = JSON.stringify(Object.fromEntries(changed.map((node) => [node.key, node.final])));
   return (
-    `${finalSentence} A take of it is made this way, and comes before its final: apply it keeping its mode, model and length, which its prompts and wiring are written for, ` +
+    `${head} A take of it is made this way, and comes before its final: apply it keeping its mode, model and length, which its prompts and wiring are written for, ` +
     "even once its prompts are in the user's words and its tweak segments filled, " +
-    `and write these cheaper settings in its generate nodes' params: ${cheaper}; its final runs them at ${atFinal}. A take costs ${amount(take)} credits; ` +
+    `and write these cheaper settings in its generate nodes' params: ${cheaper}; its final runs them at ${atFinal}. ${take === undefined ? "" : `A take costs ${amount(take)} credits; `}` +
     "the final is made at its settings from the take they pick, keeping it as it is, or straight away when they ask for a final."
   );
 }
 
 /** The tool that reads one template; it renders in the turn's language when called, so one object serves every turn. */
-export const getGenerationTemplate: Tool<{ id: string; style?: string }, string> = tool({
+export const getGenerationTemplate: Tool<{ id: string; style?: string }, string, StudioToolContext> = tool({
   description:
     `Read one generation template in full before proposing it with ${PROPOSE_CANVAS_ACTION}: its nodes and wiring, ` +
     "the inputs the user supplies, each generate node's prompt in the user's language as the segments to send, " +
@@ -230,17 +243,17 @@ export const getGenerationTemplate: Tool<{ id: string; style?: string }, string>
       .optional()
       .describe("For a template that takes a style: the style's id. Left out, the reading lists the template's styles."),
   }),
+  contextSchema: studioToolContextSchema,
   metadata: { runningLine: "chat.tool.readingTemplate" },
   execute: async (
     { id, style }: { id: string; style?: string },
-    // Unused: builds text and returns, so there is nothing to abandon.
-    // Declared so every tool has the same shape.
-    _options: { abortSignal?: AbortSignal },
+    // The signal is unused: builds text and returns, so there is nothing to abandon.
+    { context }: { abortSignal?: AbortSignal; context?: StudioToolContext },
   ): Promise<string> => {
     const template = GENERATION_TEMPLATES.find((one) => one.id === id);
     // The input schema admits only registered ids.
     if (template === undefined) throw new Error(`No template "${id}".`);
-    const cost = await applyCost(template);
+    const cost = await applyCost(template, context?.studioId);
     return [describeTemplate(template, style), ...(cost === "" ? [] : [cost]), HOW_TO_SEND, templateCraft(template)].join("\n\n");
   },
 });

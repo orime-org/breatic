@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Why a use of a tool ended with nothing to show, told to two audiences.
@@ -36,6 +36,8 @@ export const FAILURE_LINES = {
   refused: "chat.tool.failure.refused",
   /** Our side of the service is not set up to serve this: keys, account, address. */
   unavailable: "chat.tool.failure.unavailable",
+  /** The key the Studio's payer saved in BYOK settings could not be used. */
+  accountKey: "chat.tool.failure.accountKey",
   /** The service answered with something that is not a result. */
   badAnswer: "chat.tool.failure.badAnswer",
   /** The address the call was given could not be reached. */

@@ -1,17 +1,18 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
 import type { Cost } from "../../cost.js";
 import type { MediaBinding, ProviderConfigInput } from "../../config/schema.js";
-import { costsOf, DeadlinePassed, SendNotAccepted, UpstreamTaskFailed } from "../../errors.js";
+import { AccountKeyFailure, costsOf, DeadlinePassed, SendNotAccepted, UpstreamTaskFailed } from "../../errors.js";
 import { Aborted, NoAnswer } from "../../http/errors.js";
 import { SIDE_REQUEST_MS } from "../../http/request.js";
 import { createProvider, type Provider } from "../../provider.js";
 import type { Route } from "../../routing/route.js";
 import { createMediaRunner, type MediaAnswer, type MediaRunner, type MediaTicket } from "../runner.js";
 import { accepted, billedIds, billing, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream, type Reply } from "./fake-upstream.js";
+import { accountKeys } from "../../__tests__/keys-harness.js";
 
 // Every billed answer reaches the caller once, whatever way the run ends.
 
@@ -390,7 +391,9 @@ describe("a run's billed predictions reach the caller once, however it ends (cri
 
   it("property: whatever the submits and polls answer", async () => {
     await fc.assert(
-      fc.asyncProperty(fc.array(fc.constantFrom(...SUBMITS), { maxLength: 6 }), fc.array(fc.constantFrom(...POLLS), { maxLength: 6 }), async (submitScript, pollScript) => {
+      fc.asyncProperty(fc.array(fc.constantFrom(...SUBMITS), { maxLength: 6 }), fc.array(fc.constantFrom(...POLLS), { maxLength: 6 }), fc.boolean(), async (submitScript, pollScript, onAccount) => {
+        // On the payer's own WaveSpeed key (inner#1953) the run is held to that upstream and its failures are the key's.
+        const keys = onAccount ? { keys: accountKeys({ ws_a: "acct-ws" }) } : {};
         vi.spyOn(Math, "random").mockReturnValue(0);
         let s = 0;
         let p = 0;
@@ -418,26 +421,31 @@ describe("a run's billed predictions reach the caller once, however it ends (cri
         b.answer(fake);
         const r = runner();
         const reached: Cost[] = [];
-        let answer: MediaAnswer = await r.plan("voice-clone", speech, DEFAULT, options);
-        for (let turn = 0; turn < 16 && (answer.state === "send" || answer.state === "running"); turn++) {
+        let answer: MediaAnswer = await r.plan("voice-clone", speech, DEFAULT, { ...options, ...keys });
+        let ended = false;
+        for (let turn = 0; turn < 16 && !ended && (answer.state === "send" || answer.state === "running"); turn++) {
           const ticket = stored((answer as { ticket: MediaTicket }).ticket);
           if (answer.state === "running") {
-            answer = await r.poll(ticket, live());
+            answer = await r.poll(ticket, { ...live(), ...keys });
             continue;
           }
           try {
-            answer = await r.send(ticket, live());
+            answer = await r.send(ticket, { ...live(), ...keys });
           } catch (error) {
             reached.push(...costsOf(error));
-            if (error instanceof NoAnswer) answer = await r.recover(ticket, live());
+            if (error instanceof NoAnswer) answer = await r.recover(ticket, { ...live(), ...keys });
+            // A failure of the payer's key ends the run; what it was billed rides on the error.
+            else if (error instanceof AccountKeyFailure) ended = true;
             else if (!(error instanceof SendNotAccepted)) throw error;
           }
         }
-        if (answer.state === "done" || answer.state === "failed") reached.push(...answer.costs);
+        if (ended) reached.push(...r.abandon(stored((answer as { ticket: MediaTicket }).ticket)).costs);
+        else if (answer.state === "done" || answer.state === "failed") reached.push(...answer.costs);
         else reached.push(...r.abandon(stored((answer as { ticket: MediaTicket }).ticket)).costs);
         const billingEntries = reached.filter((c) => (c.state === "known" && c.source === "billing") || (c.state === "pending" && typeof c.lookup.predictionId === "string")).length;
         expect(billingEntries).toBe(acceptedCount);
         expect(reached.filter((c) => c.state === "missing")).toHaveLength(unreadable);
+        if (onAccount) expect(reached.map((cost) => cost.payer)).toEqual(reached.map(() => "account"));
       }),
       { numRuns: 40 },
     );

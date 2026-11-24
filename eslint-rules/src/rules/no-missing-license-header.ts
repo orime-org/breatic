@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import { type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
 /** This repository's copyright line, which must be the file's first line. */
 const COPYRIGHT_LINE = "// Copyright (c) 2026 Orime, Inc.";
 
-/** This repository's licence line, which must directly follow the copyright line. */
-const SPDX_LINE = "// SPDX-License-Identifier: AGPL-3.0-only";
+/** The licence line, which must directly follow the copyright line. */
+const SPDX_LINE = "// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0";
 
 /** The two header lines a repository that reuses the rule under other terms names. */
 interface HeaderOptions {
@@ -38,7 +38,8 @@ function staleHeaderLines(lines: readonly string[]): number {
 /**
  * Every first-party source file carries the SPDX header.
  *
- * The repository is open source under the GNU AGPL v3.0 only, and a file
+ * The repository is source-available under the Breatic Source-Available
+ * License 2.0 (`LicenseRef-`: it is not on the SPDX list), and a file
  * without the header is a file whose terms are unstated wherever it ends up
  * on its own — in a gist, in an issue, in someone's editor. The vendored
  * shadcn components are exempt in the config: they are third-party IP and

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { ChevronDown } from 'lucide-react';
 import * as React from 'react';
@@ -14,7 +14,7 @@ import {
 } from '@web/components/ui/popover';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { cn } from '@web/lib/utils';
-import { ModelIcon } from '@web/spaces/canvas/generate/ModelIcon';
+import { ModelIcon } from '@web/components/ModelIcon';
 import { useFollowCanvasViewport } from '@web/spaces/canvas/generate/use-follow-canvas-viewport';
 
 interface ModelPickerProps {

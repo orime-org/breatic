@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * One web-animation run inside its container (inner#1711 design §6): write the workspace template and instructions,
@@ -22,7 +22,12 @@ import { createInterface } from "node:readline";
 
 import { durationToFrames } from "@shared/timeline/time.js";
 import { WEB_ANIMATION_BRIDGE_SCRIPT } from "@shared/timeline/web-animation-bridge.js";
-import type { WebAnimationRunBody, WebAnimationRunPhase } from "@ingest/jobs/web-animation-run-body.js";
+import type {
+  WebAnimationProgressBody,
+  WebAnimationReportBody,
+  WebAnimationRunBody,
+  WebAnimationRunPhase,
+} from "@ingest/jobs/web-animation-run-body.js";
 
 import { cpuUsec } from "./run-steps.js";
 import {
@@ -31,8 +36,10 @@ import {
   buildWebAnimationManifest,
   judgeWebAnimationCheck,
   packWebAnimationSource,
+  unpackWebAnimationSource,
   webAnimationDshEnv,
   type WebAnimationCheckObservation,
+  type WebAnimationInlinePieces,
   type WebAnimationFontFace,
 } from "./web-animation-package.js";
 
@@ -115,12 +122,28 @@ function instructions(job: WebAnimationRunBody): string {
   const seconds = secondsOf(job.durationFrames, job.fps);
   const { width, height } = job.viewport;
   const families = WEB_ANIMATION_FONT_FAMILIES.map((family) => `"${family}"`).join(", ");
+  const base = job.base;
+  const resized = base !== undefined
+    && (base.viewport.width !== width || base.viewport.height !== height || base.durationFrames !== job.durationFrames);
+  const modifying = base === undefined ? [] : [
+    "## Modifying",
+    "",
+    "`index.html` already holds the existing composition this request changes. Change it as the request asks and keep",
+    "everything the request does not mention as it is.",
+    ...(resized ? [
+      `The existing composition was made for a ${base.viewport.width}x${base.viewport.height} stage lasting`,
+      `${secondsOf(base.durationFrames, job.fps)} seconds. Re-lay out the composition for the stage and length below: size`,
+      "and place things in relative units (percentages of the stage), and retime its animations to the new length.",
+    ] : []),
+    "",
+  ];
   return [
     "# Web animation",
     "",
     "You write one web animation as a HyperFrames composition in `index.html` in this directory. Only that file is kept;",
     "it is packed with the HyperFrames runtime and played on a video timeline, which seeks it to any time.",
     "",
+    ...modifying,
     "## Fixed by the request",
     "",
     `- The root element is \`#main\` with \`data-composition-id="main"\`. Keep \`data-start="0"\`, \`data-duration="${seconds}"\`,`,
@@ -149,7 +172,7 @@ function instructions(job: WebAnimationRunBody): string {
  * @param body - What.
  * @returns Nothing; a failed post is logged, because the report path is the only one left.
  */
-async function post(url: string, body: unknown): Promise<void> {
+async function post(url: string, body: WebAnimationProgressBody | WebAnimationReportBody): Promise<void> {
   const answered = await fetch(url, {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -519,7 +542,27 @@ export async function runWebAnimation(job: WebAnimationRunBody, settings: WebAni
   let ok = false;
   let failureReason = "internal";
   try {
-    await writeFile(join(work, "index.html"), compositionTemplate(job));
+    const runtime = await readFile(settings.runtimeFile, "utf8");
+    /**
+     * The three texts a package of one font set inlines.
+     * @param fontSetVersion - The font set.
+     * @returns Them.
+     */
+    const piecesOf = async (fontSetVersion: number): Promise<WebAnimationInlinePieces> => {
+      const faces = JSON.parse(await readFile(join(settings.fontsDir, `v${fontSetVersion}`, "faces.json"), "utf8")) as WebAnimationFontFace[];
+      return { runtime, bridge: WEB_ANIMATION_BRIDGE_SCRIPT, fontStylesheet: buildFontSetStylesheet(fontSetVersion, faces) };
+    };
+    const pieces = await piecesOf(job.fontSetVersion);
+    let composition = compositionTemplate(job);
+    if (job.base !== undefined) {
+      failureReason = "base_unavailable";
+      const answered = await fetch(job.base.packageUrl, { method: "GET" });
+      if (!answered.ok) throw new Error(`the base package was answered ${answered.status}`);
+      // The base was packed with its own font set, which may be older than the one this result is packed with.
+      composition = unpackWebAnimationSource(await answered.text(), await piecesOf(job.base.fontSetVersion));
+      failureReason = "internal";
+    }
+    await writeFile(join(work, "index.html"), composition);
     await writeFile(join(work, "AGENTS.md"), instructions(job));
     await progress("writing");
     const exit = await runHarness(job, work, settings, (step) => {
@@ -532,13 +575,7 @@ export async function runWebAnimation(job: WebAnimationRunBody, settings: WebAni
     }
 
     await progress("validating");
-    const faces = JSON.parse(await readFile(join(settings.fontsDir, `v${job.fontSetVersion}`, "faces.json"), "utf8")) as WebAnimationFontFace[];
-    const html = packWebAnimationSource({
-      composition: await readFile(join(work, "index.html"), "utf8"),
-      runtime: await readFile(settings.runtimeFile, "utf8"),
-      bridge: WEB_ANIMATION_BRIDGE_SCRIPT,
-      fontStylesheet: buildFontSetStylesheet(job.fontSetVersion, faces),
-    });
+    const html = packWebAnimationSource({ composition: await readFile(join(work, "index.html"), "utf8"), ...pieces });
     failureReason = "validation_failed";
     const verdict = judgeWebAnimationCheck(await measureInChromium(html, job, settings), {
       viewport: job.viewport,

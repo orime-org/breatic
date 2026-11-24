@@ -69,7 +69,7 @@ README.md
 .claude/
 CONTRIBUTING.md
 CODE_OF_CONDUCT.md
-LICENSE
+# LICENSE, TRADEMARKS.md and THIRD-PARTY.md stay in: every image copies them.
 docs/
 
 # Tests (not needed at runtime)

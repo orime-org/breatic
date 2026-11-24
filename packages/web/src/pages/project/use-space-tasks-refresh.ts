@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { useEffect } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -8,9 +8,11 @@ import { SPACE_TASKS_CHANGED_SIGNAL } from '@breatic/shared';
 import { spaceTasksQueryKey } from '@web/data/api/scene';
 
 /**
- * Read a 3D Space's task list again whenever the meta-doc socket says it
- * changed (inner#1690): a row opened, settled, expired on read, or was removed.
- * The list is a query keyed by its Space, so a panel that is not open reads
+ * Read a Space's task lists again whenever the meta-doc socket says they
+ * changed (3D tasks, inner#1690): a row opened, moved, settled, expired on
+ * read, or was removed. Motion and Timeline executions are read again from
+ * the Space's own document instead (`SpaceTasksWatcher`).
+ * Every such list is a query keyed under its Space, so a panel that is not open reads
  * the fresh list when it next opens.
  * @param projectId - The project whose signals count.
  * @param provider - The live meta-doc provider, or null while there is none.

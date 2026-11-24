@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What the proposal check asks of the marks now that the agent @s for the
@@ -10,7 +10,7 @@
  * cap they are @'d into.
  */
 
-import { afterAll, beforeEach, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
 import { loadLocales } from "@breatic/core";
 import { GENERATION_TEMPLATES, markedSegments, markText, t, templateAnchor, templateMarkTargets, type CanvasProposal, type PromptSegment, type ProposalNode } from "@breatic/shared";
@@ -21,7 +21,8 @@ import { describeTemplate } from "../get-generation-template.js";
 import { answerFor, checkProposal, makeProposeCanvasAction } from "../propose-canvas-action.js";
 import { inputSchema } from "../proposal-input.js";
 
-beforeEach(() => {
+// Once for the file: no case changes the catalogs or the environment, and redoing both before each case is what makes a file that loops over every template slow.
+beforeAll(() => {
   loadLocales();
   useFullCatalog();
 });

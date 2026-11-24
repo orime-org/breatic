@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What the ticket endpoint answers (#173, design §4.2).
@@ -49,7 +49,7 @@ export interface UploadTicket {
  * avatar (filed as the asset's source).
  */
 export type UploadTargetParams =
-  | { projectId: string; studioId?: never; purpose?: 'project_cover' | 'scene_model' }
+  | { projectId: string; studioId?: never; purpose?: 'project_cover' | 'scene_model' | 'scene_look' }
   | { studioId: string; projectId?: never; purpose: 'studio_avatar' };
 
 /**
@@ -74,6 +74,10 @@ export type UploadContext = UploadTargetParams & {
   derived?: true;
   /** The name a 3D model is imported under; required with `scene_model`. */
   label?: string;
+  /** The 3D object, part and the part's starting picture (null for none); required with `scene_look` (inner#1693). */
+  objectId?: string;
+  part?: string;
+  startMap?: string | null;
 };
 
 /**

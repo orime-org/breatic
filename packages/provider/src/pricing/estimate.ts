@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { z } from "zod";
 
@@ -100,6 +100,19 @@ export function heldClone<T extends HeldClone>(clones: readonly T[], upstream: s
  */
 export function stepRequested(value: unknown): boolean {
   return isPresent(value) && value !== false;
+}
+
+/**
+ * Whether a run describes an input on a language model first (Kling O3's elements): some binding has a describing step
+ * its params ask for. That call is charged in credits whenever the language model runs on our keys (inner#1953).
+ * @param rules - The model's pricing rules.
+ * @param params - The run's params, in our names.
+ * @returns True when the run has a description step.
+ */
+export function describesInput(rules: PricingRules, params: Readonly<Record<string, unknown>>): boolean {
+  return (rules.upstreams as readonly UpstreamPricing[]).some((upstream) =>
+    upstream.steps.some((step) => step.describes === true && (step.for_param === undefined || stepRequested(params[step.for_param]))),
+  );
 }
 
 /**
@@ -240,6 +253,8 @@ const upstreamPricingSchema = z.looseObject({
     for_param: z.string().optional(),
     /** Whether the step runs once per item of its param. */
     per_item: z.boolean().optional(),
+    /** Whether the step describes its input on a language model first, a call charged on our keys. */
+    describes: z.boolean().optional(),
     pricing: pricingRuleSchema.optional(),
   })),
   /** The param whose source, once cloned, lets a later run skip the model's own call. */

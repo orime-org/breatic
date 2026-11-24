@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 
@@ -97,7 +97,7 @@ export function SpaceOutlet({
       }}
     >
       <div className='pointer-events-none absolute top-2.5 left-1/2 z-10 flex w-max max-w-[calc(100%-2rem)] -translate-x-1/2 flex-col items-center gap-1.5'>
-        <SpaceReadOnlyNotice readOnly={readOnly} />
+        <SpaceReadOnlyNotice readOnly={readOnly} spaceType={type} />
         {!readOnly && contentDocName !== undefined ? <SpaceSizeNotice docName={contentDocName} /> : null}
       </div>
       <Body

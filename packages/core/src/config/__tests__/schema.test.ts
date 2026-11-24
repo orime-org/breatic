@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Tests for {@link parseConfig}'s yjs-DB separation invariant: outside
@@ -385,6 +385,14 @@ describe("parseConfig — SENTRY_DSN", () => {
 
   it("starts with a value that is not a DSN, which the services report and leave off", () => {
     expect(parseConfig(baseEnv({ SENTRY_DSN: "<backend DSN>" })).SENTRY_DSN).toBe("<backend DSN>");
+  });
+});
+
+describe("parseConfig — the seal key of web animation's account keys (inner#1953)", () => {
+  it("keeps the seal public key as given, and empty when unset", () => {
+    const pem = "-----BEGIN PUBLIC KEY-----\\nMIIB\\n-----END PUBLIC KEY-----";
+    expect(parseConfig(baseEnv({ INGEST_KEY_SEAL_PUBLIC_KEY: pem })).INGEST_KEY_SEAL_PUBLIC_KEY).toBe(pem);
+    expect(parseConfig(baseEnv()).INGEST_KEY_SEAL_PUBLIC_KEY).toBe("");
   });
 });
 

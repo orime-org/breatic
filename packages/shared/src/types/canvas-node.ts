@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Canvas node types shared between frontend, Collab, and server.
@@ -372,6 +372,12 @@ export interface CanvasNodeFields {
     mimeType?: string;
     /** Byte count of `content`, as the ledger counted it. See `data.mimeType`. */
     size?: number;
+    /**
+     * The Motion result a video was exported from (#1490 design §9.2): the Motion Space that exported it, the create or
+     * modify execution it renders and the address written into `content` when it was placed. Content, so it travels
+     * with copies; it stands for the video only while `content` is still `videoUrl`. Video only.
+     */
+    sourceAnimation?: { spaceId: string; executionId: string; videoUrl: string };
     /** Source node id when this data node was produced by a mini-tool from a parent node. */
     sourceNodeId?: string;
     /** Tool name when produced by mini-tool (e.g., 'image.crop'). */
@@ -693,8 +699,31 @@ export interface NodeTaskCountsEvent {
   result?: NodeTaskResult;
 }
 
+/**
+ * A picture uploaded for a 3D object's part is stored (inner#1693 design 6.3).
+ *
+ * The browser only sends the bytes; collab writes the picture onto the part
+ * the upload started from, when `judgeSceneLookPicture` allows it, and
+ * tells the uploader how it settled through `scene-look:settled`.
+ */
+export interface SceneLookPictureEvent {
+  type: 'scene-look-picture';
+  /** Yjs doc name, `project-{projectId}/3d-{spaceId}`. */
+  docName: string;
+  objectId: string;
+  part: string;
+  /** The part's `map` when the upload started, or null for none. */
+  startMap: string | null;
+  /** The stored picture's asset id. */
+  picture: string;
+  /** Who uploaded it. */
+  userId: string;
+  /** Names this upload once: the storage key, or a fresh id for content the studio already held. */
+  uploadKey: string;
+}
+
 /** Single union for forward-compat. */
-export type NodeEvent = NodeTaskCountsEvent;
+export type NodeEvent = NodeTaskCountsEvent | SceneLookPictureEvent;
 
 // ── Edges ──────────────────────────────────────────────────────────
 // Edges carry no shared wire data fields. `isPrimary` (the generative

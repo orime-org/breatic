@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The director console in the 3D Space (inner#1694): the panel, its cameras,
@@ -1374,3 +1374,39 @@ describe('continuous controls end on release and on Escape (round 1 fixes, desig
     expect(ambientColor(session)).toBe('#ffffff');
   });
 });
+
+describe('picking a part in the scene (inner#1693 design 3.2)', () => {
+  it('keeps the director console open and only selects the part', async () => {
+    const { session } = await setup();
+    act(() => session.select(BOX, false));
+    await openDirector();
+    act(() => h.viewport!.onSelectPart!('0'));
+    expect(screen.getByTestId('scene-director-panel')).toBeInTheDocument();
+    expect(screen.queryByTestId('scene-properties-panel')).toBeNull();
+    expect(h.viewport!.selectedPart).toBe('0');
+  });
+
+  it('opens the properties panel the way a selection does, leaving focus on the scene', async () => {
+    const { session } = await setup();
+    act(() => session.select(BOX, false));
+    await screen.findByTestId('scene-properties-panel');
+    fireEvent.click(screen.getByTestId('scene-properties-trigger'));
+    await waitFor(() => expect(screen.queryByTestId('scene-properties-panel')).toBeNull());
+    const canvas = screen.getByTestId('scene-native-boundary');
+    canvas.focus();
+    act(() => h.viewport!.onSelectPart!('0'));
+    await screen.findByTestId('scene-properties-panel');
+    expect(document.activeElement).toBe(canvas);
+  });
+
+  it('clears the selected part when the selection changes', async () => {
+    const { session } = await setup([lamp()]);
+    act(() => session.select(BOX, false));
+    await screen.findByTestId('scene-properties-panel');
+    act(() => h.viewport!.onSelectPart!('0'));
+    expect(h.viewport!.selectedPart).toBe('0');
+    act(() => session.select(LAMP, false));
+    await waitFor(() => expect(h.viewport!.selectedPart).toBeNull());
+  });
+});
+

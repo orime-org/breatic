@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Shared @breatic/core mock for route-level tests.
@@ -24,6 +24,8 @@ import {
   AWAITS_USER as REAL_AWAITS_USER,
   REQUEST_SPACE_CONTENT as REAL_REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION as REAL_PROPOSE_CANVAS_ACTION,
+  LIST_GENERATION_MODELS as REAL_LIST_GENERATION_MODELS,
+  GET_GENERATION_TEMPLATE as REAL_GET_GENERATION_TEMPLATE,
   PROPOSE_DOCUMENT_EDIT as REAL_PROPOSE_DOCUMENT_EDIT,
   PROPOSE_SCENE_GENERATION as REAL_PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE as REAL_SAVE_IMAGE,
@@ -612,6 +614,14 @@ export const domainMock = async () => ({
   ...(await import("../../../../domain/src/agent/memory-entries.js")),
   createUsageRecorder: vi.fn(usageRecorderDouble),
   handOffLookups: mocks.handOffLookups,
+  // The real watch, priced on the provider the turn hands it; its hand-off runs only when a call left a lookup.
+  watchModelCalls: (await import("../../../../domain/src/credit/model-call-watch.js")).watchModelCalls,
+  // Which keys a call runs on (inner#1953): the deployment's, unless a suite says otherwise.
+  // Plain functions, so a suite's `vi.resetAllMocks` leaves them answering.
+  resolveKeys: async () => ({ keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null }),
+  keysById: async () => null,
+  runCallsLlm: () => false,
+  runDescribesInput: () => false,
   // The same shape as the real one: every tool in the set gets the recorder.
   usageContextFor: (tools: Record<string, unknown>, usage: unknown) =>
     Object.fromEntries(Object.keys(tools).map((name) => [name, { usage }])),
@@ -681,6 +691,9 @@ export const domainMock = async () => ({
   REQUEST_SPACE_CONTENT: REAL_REQUEST_SPACE_CONTENT,
   // Read by the turn when it hands the tools their context.
   PROPOSE_CANVAS_ACTION: REAL_PROPOSE_CANVAS_ACTION,
+  // Read by the turn when it hands the catalog tools the studio (inner#1953).
+  LIST_GENERATION_MODELS: REAL_LIST_GENERATION_MODELS,
+  GET_GENERATION_TEMPLATE: REAL_GET_GENERATION_TEMPLATE,
   // Read by the turn when it hands the document proposal the open document (inner#1509).
   PROPOSE_DOCUMENT_EDIT: REAL_PROPOSE_DOCUMENT_EDIT,
   // Read by the turn when it hands the 3D generation proposal the project (inner#1691).

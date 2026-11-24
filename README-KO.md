@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>크리에이티브 팀을 위한 실시간 협업 AI 작업 공간.</strong></p>
-<p align="center">온라인 서비스 제공 · 오픈 소스 · 데스크톱 브라우저</p>
+<p align="center">온라인 서비스 제공 · 소스 공개 · 데스크톱 브라우저</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_ko">웹사이트</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -57,11 +57,12 @@ Breatic에서는 대본을 수정하고, 여러 비주얼을 시도하고, 장�
 | **Document Spaces** | 제목, 목록, 서식 있는 텍스트로 대본, 숏 설명, 제작 체크리스트를 작성합니다. |
 | **Canvas Spaces** | 무한 캔버스에 참고 자료와 미디어를 배치하고 프롬프트, 모델, 참조 입력으로 에셋을 생성·수정합니다. |
 | **3D (DEV)** | 공유 장면에 내장 오브젝트를 배치하고 위치, 회전, 크기를 편집합니다. |
-| **Timeline (DEV)** | Project 동영상이나 업로드한 로컬 동영상을 공유 트랙에 배치하고 클립을 이동·트리밍·분할·복제·삭제하며, 자신의 편집을 취소하고 시퀀스를 미리 봅니다. Web Animation을 설명해 DeepSeek에게 만들게 하고 실행 목록에서 진행을 확인한 뒤, 결과를 Timeline 시계에 맞춰 재생되는 클립으로 추가합니다. 모든 트랙의 동영상과 Web Animation은 레이어로 겹쳐 함께 재생되며, 미리보기에서 레이어를 선택해 이동·크기 조절·늘이기·회전하거나 위치와 크기를 직접 입력할 수 있습니다. 재생 바 오른쪽 끝에서 화면 비율을 7가지(16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) 중에서 고르면 레이어는 화면 안의 상대 위치를 유지합니다. |
+| **Timeline (DEV)** | Project 동영상이나 업로드한 로컬 동영상을 공유 트랙에 배치하고 클립을 이동·트리밍·분할·복제·삭제하며, 자신의 편집을 취소하고 시퀀스를 미리 봅니다. Motion Space에서 완성된 Web Animation을 Timeline 시계에 맞춰 재생되는 클립으로 추가하며, 추가할 때마다 독립된 복사본이 됩니다. 모든 트랙의 동영상과 Web Animation은 레이어로 겹쳐 함께 재생되며, 미리보기에서 레이어를 선택해 이동·크기 조절·늘이기·회전하거나 위치와 크기를 직접 입력할 수 있습니다. 재생 바 오른쪽 끝에서 화면 비율을 7가지(16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) 중에서 고르면 레이어는 화면 안의 상대 위치를 유지합니다. |
+| **Motion (DEV)** | Web Animation을 설명해 DeepSeek에게 만들게 하고, 실행을 완료·진행 중·실패로 나눠 확인하며, 완성된 결과를 재생하고 탐색하고, 결과를 수정해 새 결과를 만들고, 협업자와 특정 시점에 주석을 달고, 결과를 동영상으로 내보내 Canvas에 놓습니다. |
 | **프로젝트 내 AI 에이전트** | 아이디어를 논의하고 문서·캔버스 맥락을 제공하며 자료와 함께 제안을 검토합니다. |
-| **실시간 협업** | 팀원을 초대하고 접근 권한을 설정하여 동기화된 캔버스, 문서, 3D 장면, Timeline을 함께 편집합니다. |
+| **실시간 협업** | 팀원을 초대하고 접근 권한을 설정하여 동기화된 캔버스, 문서, 3D 장면, Timeline, Motion을 함께 편집합니다. |
 
-이미지, 동영상, 오디오, 3D 에셋을 지원합니다. 생성 기능은 설정된 제공업체와 모델 접근 권한에 따라 달라집니다. Canvas와 Document는 사용할 수 있으며 3D와 Timeline에는 **DEV** 표시가 붙습니다. 현재 Timeline은 여러 영상 트랙에서 동영상과 Web Animation의 편집과 미리보기를 지원하며, Web Animation은 이 기능을 켠 배포에서만 사용할 수 있습니다. 추가 미디어 유형과 동영상 내보내기는 예정된 기능입니다. 3D 장면 내 모델 생성과 주석은 개발 중입니다.
+이미지, 동영상, 오디오, 3D 에셋을 지원합니다. 생성 기능은 설정된 제공업체와 모델 접근 권한에 따라 달라집니다. Canvas와 Document는 사용할 수 있으며 3D, Timeline, Motion에는 **DEV** 표시가 붙습니다. 현재 Timeline은 여러 영상 트랙에서 동영상과 Web Animation의 편집과 미리보기를 지원합니다. Motion은 Web Animation을 만들고 수정하고 내보내며, Web Animation은 이 기능을 켠 배포에서만 사용할 수 있습니다. Timeline의 추가 미디어 유형과 Timeline 동영상 내보내기는 예정된 기능입니다. 3D 장면 내 모델 생성과 주석은 개발 중입니다.
 
 ## 변경 사항을 함께 검토하기
 
@@ -92,13 +93,13 @@ Spaces를 “도입 · 0–10초”, “주요 장면 · 10–20초”, “마�
 - **자체 설치:** [개인 및 LAN 배포 가이드 (영어)](self-host/LOCAL.md)를 따르세요.
 - **개발:** [개발 환경 설정 (영어)](self-host/DEVELOPMENT.md)을 확인하세요.
 
-개인 Studio를 설정하고 Project를 만든 뒤 **+**로 Document, Canvas, 3D, Timeline Spaces를 추가하세요. 브리프를 쓰거나 참고 자료를 올리고 내장 3D 오브젝트를 배치할 수 있습니다. [사용 가이드 (영어)](docs/USAGE.md)에는 [키보드 단축키](docs/USAGE.md#keyboard-shortcuts)도 있습니다.
+개인 Studio를 설정하고 Project를 만든 뒤 **+**로 Document, Canvas, 3D, Timeline, Motion Spaces를 추가하세요. 브리프를 쓰거나 참고 자료를 올리고 내장 3D 오브젝트를 배치할 수 있습니다. [사용 가이드 (영어)](docs/USAGE.md)에는 [키보드 단축키](docs/USAGE.md#keyboard-shortcuts)도 있습니다.
 
 ### 자체 호스팅 전에
 
 웹, API, 백그라운드 작업, 협업은 공개된 Docker 이미지와 PostgreSQL, Redis를 사용합니다. 업로드와 미디어 처리에는 **본인 Cloudflare 계정**의 Ingest Worker와 미디어 컨테이너를 사용하며 파일은 본인 R2 버킷에 저장합니다. AI 호출은 본인의 제공업체 계정과 할당량을 사용합니다.
 
-오프라인이나 완전한 온프레미스 설치가 아닙니다. LAN 접근에는 신뢰할 수 있는 HTTPS가 필요합니다. 클라우드와 모델 호출에는 비용이 발생할 수 있습니다. SMTP, Google 로그인, 검색은 선택적 연동입니다. 가이드에 따라 클라우드를 설정하고 검증하세요. 초기 Node/pnpm/Wrangler 단계는 배포 작업이며 일상적인 사용에 개발 서버가 필요한 것은 아닙니다.
+오프라인이나 완전한 온프레미스 설치가 아닙니다. LAN 접근에는 신뢰할 수 있는 HTTPS가 필요합니다. 클라우드와 모델 호출에는 비용이 발생할 수 있습니다. SMTP, Google 로그인, 검색은 선택적 연동입니다. 크레딧 또는 멤버십 판매는 Orime, Inc.의 서면 승인이 있는 경우에만 활성화할 수 있습니다(LICENSE 제10조 및 제11조). 가이드에 따라 클라우드를 설정하고 검증하세요. 초기 Node/pnpm/Wrangler 단계는 배포 작업이며 일상적인 사용에 개발 서버가 필요한 것은 아닙니다.
 
 ## 상태, 도움말, 기여
 
@@ -114,9 +115,16 @@ Spaces를 “도입 · 0–10초”, “주요 장면 · 10–20초”, “마�
 
 ## 라이선스 및 허용 용도
 
-Breatic은 [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only)에 따른 오픈 소스입니다. 상업적 용도를 포함해 어떤 목적으로든 사용, 연구, 수정, 자체 호스팅할 수 있습니다. Breatic을 수정하고 수정한 버전을 네트워크를 통해 다른 사람이 사용하게 하는 경우, 같은 라이선스로 전체 소스 코드를 제공해야 합니다. 전체 조건은 라이선스를 확인하세요.
+Breatic은 [Breatic Source-Available License 2.0](LICENSE)에 따라 **소스가 공개**(source-available)됩니다. 이 라이선스는 Apache License 2.0에서 파생되었으며 추가 조건이 붙어 있습니다. OSI 승인 오픈 소스 라이선스가 아닙니다.
 
-Breatic 이름과 로고는 Orime, Inc.의 상표이며 소프트웨어 라이선스에 포함되지 않습니다. [TRADEMARKS.md](TRADEMARKS.md)를 확인하세요. 라이선스는 Breatic으로 만드는 콘텐츠를 제한하지 않습니다.
+- 개인 용도, 비상업적 사적 그룹 또는 업무상 사용을 포함한 조직 내부 사용을 위해 소프트웨어 라이선스 비용 없이 Breatic을 입수, 수정, 자체 호스팅할 수 있습니다(LICENSE 제10조).
+- 영화, 광고, 이미지, 오디오, 3D 에셋 등의 창작물을 Breatic으로 만들어 판매할 수 있습니다. 조건은 LICENSE 제10조와 제13조에 있습니다.
+- Orime, Inc.의 별도 서면 승인이 없으면 운영하는 인스턴스는 셀프 배포 모드(Self-Deployment Mode)로 실행해야 합니다. 앱 내 크레딧 구매, 유료 멤버십, 구독 및 기타 유료 운영 기능은 비활성화된 상태로 유지됩니다(LICENSE 제10조).
+- 상업적 목적으로 Breatic 또는 그 플랫폼 기능의 상당 부분을 위 용도 밖의 사람들에게 제공하려면 별도의 서면 승인이 필요합니다(LICENSE 제11조).
+- 애플리케이션의 식별 영역에 Breatic 이름과 제공된 로고가 보이도록 유지하고, 라이선스 및 저작자 표시 고지에 접근할 수 있도록 유지하세요(LICENSE 제12조). Orime, Inc.는 Breatic 상표의 권한 있는 라이선스 제공자입니다. 브랜딩 규칙은 [TRADEMARKS.md](TRADEMARKS.md)에 설명되어 있습니다.
+- AGPL-3.0-only를 포함해 이전 라이선스로 배포된 버전은 배포 당시의 라이선스를 그대로 유지합니다(LICENSE 제15조).
+
+전체 조건은 [LICENSE](LICENSE)에 있습니다.
 
 ### 생성된 콘텐츠
 

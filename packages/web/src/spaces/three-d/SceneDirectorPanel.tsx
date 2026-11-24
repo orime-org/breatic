@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { Lock, MoreHorizontal, Plus } from 'lucide-react';
@@ -178,7 +178,7 @@ export const SceneDirectorPanel = React.memo(function SceneDirectorPanel(props: 
           return <div key={light.id} data-testid={`scene-director-light-${light.id}`} className={cn('rounded-md border', light.id === selectedId ? 'border-active-border' : 'border-transparent')}>
             <div className={DIRECTOR_ROW}>
               <Button variant={null} size={null} className='flex min-w-0 flex-1 items-center gap-2 self-stretch text-left text-xs font-normal' onClick={() => session.select(light.id, false)}>
-                <span className='size-3 shrink-0 rounded-full border border-border' style={{ backgroundColor: light.color }} />
+                <span className='size-3 shrink-0 rounded-full border border-swatch-border' style={{ backgroundColor: light.color }} />
                 <span className='min-w-0 flex-1 truncate'>{light.name}</span>
                 <span className='shrink-0 text-muted-foreground'>{t(`spaces.threeD.director.${LIGHT_LABEL[light.model.type]}`)}</span>
               </Button>

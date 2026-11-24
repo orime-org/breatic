@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The viewfinder in the 3D Space (#1411): its button in the bottom-right toolbar,
@@ -500,3 +500,16 @@ describe('the destinations (acceptance 5 to 8)', () => {
     expect(screen.queryByTestId('scene-viewfinder-frame')).toBeNull();
   });
 });
+
+describe('picking a part while framing (inner#1693 design 3.2)', () => {
+  it('keeps the viewfinder and opens no panel', async () => {
+    const { session } = await setup();
+    act(() => session.select(ID, false));
+    fireEvent.click(trigger());
+    await screen.findByTestId('scene-viewfinder-menu');
+    act(() => (h.viewport as unknown as { onSelectPart: (part: string) => void }).onSelectPart('0'));
+    expect(screen.getByTestId('scene-viewfinder-menu')).toBeInTheDocument();
+    expect(screen.queryByTestId('scene-properties-panel')).toBeNull();
+  });
+});
+

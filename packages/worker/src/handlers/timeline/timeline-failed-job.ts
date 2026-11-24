@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The `timeline` queue's `QueueEvents` 'failed' handler (inner#1711 design §5.2).
@@ -9,7 +9,8 @@
  */
 
 import type { Queue } from "bullmq";
-import { logger, timelineExecutionRepo, type TimelineExecutionJobData } from "@breatic/core";
+import { logger } from "@breatic/core";
+import { timelineExecutionRepo, type TimelineExecutionJobData } from "@breatic/domain";
 
 /**
  * Log a `timeline` job that failed for good; a failure with a retry still to come is not one.

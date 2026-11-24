@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What the chat routes answer about a balance that cannot pay, with payments
@@ -57,7 +57,7 @@ vi.mock("@breatic/domain", async (importOriginal) => {
 import type * as DomainModule from "@breatic/domain";
 import crypto from "node:crypto";
 import postgres from "postgres";
-import { getRedis, initCore, loadLocales, sessionCookieName, setSession } from "@breatic/core";
+import { accountProviderKeysRepo, getRedis, initCore, loadLocales, sealProviderKey, sessionCookieName, setSession } from "@breatic/core";
 import { creditLotService } from "@breatic/domain";
 import type { Hono } from "hono";
 import { openPaymentSource } from "./payment-source.js";
@@ -65,6 +65,7 @@ import { keysOf, send, sync, until, untilIdle, type Seeded } from "./chat-run-ha
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
+const SECRET = crypto.randomBytes(32);
 
 beforeAll(async () => {
   // Placeholders satisfy the config's check; nothing here reaches Stripe.
@@ -73,6 +74,8 @@ beforeAll(async () => {
     PAYMENT_ENABLED: "true",
     STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
     STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    BYOK_ENABLED: "true", PROVIDER_KEY_SECRET_ID: "t1",
+    PROVIDER_KEY_SECRETS: JSON.stringify({ t1: SECRET.toString("hex") }),
   });
   loadLocales();
   sql = postgres(inject("DATABASE_URL"), { max: 6, prepare: false });
@@ -132,6 +135,29 @@ async function seedOwner(credits: number): Promise<Seeded & { lotId?: string }> 
 }
 
 /**
+ * A maintainer of the owner's Studio on the same project, signed in, with a conversation of their own.
+ * @param owner - The seeded owner.
+ * @returns The member's ids and cookie.
+ */
+async function memberOf(owner: Seeded): Promise<Seeded> {
+  const tag = `run-member-${crypto.randomBytes(4).toString("hex")}`;
+  const [user] = await sql<{ id: string }[]>`INSERT INTO users (email, email_verified) VALUES (${`${tag}@example.com`}, true) RETURNING id`;
+  const [project] = await sql<{ studio_id: string }[]>`SELECT studio_id FROM projects WHERE id = ${owner.projectId}`;
+  await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${project!.studio_id}, ${user!.id}, 'maintainer')`;
+  await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${owner.projectId}, ${user!.id}, 'editor', ${owner.userId})`;
+  const token = crypto.randomBytes(24).toString("hex");
+  await setSession(getRedis(), token, user!.id);
+  const cookie = `${sessionCookieName()}=${token}`;
+  const opened = await app.request("/api/v1/chat/open", {
+    method: "POST",
+    headers: { Cookie: cookie, "Content-Type": "application/json" },
+    body: JSON.stringify({ project_id: owner.projectId }),
+  });
+  const conversationId = ((await opened.json()) as { data: { current: { conversation: { id: string } } } }).data.current.conversation.id;
+  return { userId: user!.id, projectId: owner.projectId, conversationId, cookie };
+}
+
+/**
  * Spend a studio's whole balance.
  * @param lotId - Its one lot.
  */
@@ -172,6 +198,7 @@ interface Synced {
   running: boolean;
   awaiting: boolean;
   blocked?: string;
+  own_key?: "self" | "admin";
 }
 
 /**
@@ -209,6 +236,56 @@ describe("a send the balance cannot pay for", () => {
     expect(body.pending.map((p) => p.id)).toEqual([m1]);
     release();
     await untilIdle(who.conversationId);
+  });
+});
+
+describe("a send on the payer's own OpenRouter key the balance cannot pay for (inner#1953)", () => {
+  /**
+   * Save an OpenRouter key on the payer's account.
+   * @param who - The payer.
+   */
+  async function ownKey(who: Seeded): Promise<void> {
+    await accountProviderKeysRepo.saveKey({ userId: who.userId, upstream: "openrouter", ciphertext: sealProviderKey("sk-or-own", { current: "t1", keys: { t1: SECRET } }), displayHint: "hint" });
+  }
+
+  it("is refused 402 at the start, saying the Agent's search and reading tools need credits", async () => {
+    const who = await seedOwner(0);
+    await ownKey(who);
+    const before = await snapshotOf(who.conversationId);
+    const res = await send(app, who, { id: crypto.randomUUID(), message: "hello" });
+    expect(res.status).toBe(402);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("web search, image search and page reading");
+    expect(body.error.message).toContain("Your own OpenRouter key");
+    expect(await snapshotOf(who.conversationId)).toEqual(before);
+  });
+
+  it("tells a team member it is the Studio Admin's key, not their own", async () => {
+    const admin = await seedOwner(0);
+    await ownKey(admin);
+    const member = await memberOf(admin);
+    const res = await send(app, member, { id: crypto.randomUUID(), message: "hello" });
+    expect(res.status).toBe(402);
+    const body = (await res.json()) as { error: { message: string } };
+    expect(body.error.message).toContain("The Studio Admin's OpenRouter key");
+    await getRedis().rpush(keysOf(member.conversationId).queue, itemOf(member, crypto.randomUUID()));
+    expect(await synced(member)).toMatchObject({ blocked: "credits", own_key: "admin" });
+  });
+
+  it("says the balance is why no run opened for what is queued", async () => {
+    const who = await seedOwner(0);
+    await ownKey(who);
+    await getRedis().rpush(keysOf(who.conversationId).queue, itemOf(who, crypto.randomUUID()));
+    expect(await synced(who)).toMatchObject({ blocked: "credits", own_key: "self" });
+  });
+
+  it("still says the balance is why no run opened when the payer's key cannot be opened", async () => {
+    const who = await seedOwner(0);
+    await accountProviderKeysRepo.saveKey({
+      userId: who.userId, upstream: "openrouter", ciphertext: sealProviderKey("sk-or-own", { current: "gone", keys: { gone: crypto.randomBytes(32) } }), displayHint: "hint",
+    });
+    await getRedis().rpush(keysOf(who.conversationId).queue, itemOf(who, crypto.randomUUID()));
+    expect(await synced(who)).toMatchObject({ blocked: "credits" });
   });
 });
 

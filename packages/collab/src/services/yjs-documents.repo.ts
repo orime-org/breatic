@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `yjs_documents` repository — the single home for every SQL query
@@ -166,7 +166,7 @@ export async function softDeleteByName(name: string): Promise<boolean> {
  * `meta.spaces` CRDT, which lags behind cross-instance deletes by the
  * pub/sub propagation window. The project's meta doc (`project-{id}/meta`)
  * is excluded — it is not a Space. Rows are matched with
- * `spaceContentRowPattern` (`^project-{id}/(canvas|document|timeline)-[^/]+$`),
+ * `spaceContentRowPattern` (`^project-{id}/(canvas|document|timeline|3d|web_animation)-[^/]+$`),
  * which leaves out the meta doc and any other name under the project.
  *
  * Pattern safety relies on an IMPLICIT upstream guarantee: a

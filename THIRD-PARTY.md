@@ -1,7 +1,7 @@
 # Third-Party Notices
 
-Breatic itself is distributed under the GNU Affero General Public License v3.0
-(`AGPL-3.0-only`, see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
+Breatic itself is distributed under the Breatic Source-Available License 2.0
+(`LicenseRef-Breatic-Source-Available-2.0`, see [LICENSE](./LICENSE)). This file lists third-party components we ship, the
 licence each one carries, and where to obtain its source.
 
 A component is listed here when we distribute it — in a published container
@@ -11,15 +11,20 @@ obligations attach to distribution.
 
 This file is the overview. The full machine-generated list, with every
 package in the front-end bundle and the text of every licence, is served
-beside the bundle at `/third-party-licences.txt`.
+beside the bundle at `/third-party-licences.txt`. The attribution for the built-in
+3D figure and the pose bone names is served at `/model-import-third-party-licences.txt`,
+and the one for the film styles of the generation templates at
+`/template-styles-third-party-licences.txt`.
 
 ## Programs in our container images
 
-We publish four images, and a deployment that enables web animation builds a
-fifth, the web-animation container, from source. The media container carries
-FFmpeg and vips; the page reader carries a Chromium headless shell and the
-FFmpeg build Playwright installs beside it; the web-animation container carries
-Chromium and the DeepSeek Harness:
+We publish six images: the backend, the web front-end, the media container, the
+page reader, the web-animation container and the web-animation render container.
+The media container carries FFmpeg and vips; the page reader carries a
+Chromium headless shell and the FFmpeg build Playwright installs beside it; the
+web-animation container carries Chromium and the DeepSeek Harness; the render
+container carries a Chromium headless shell, FFmpeg and the HyperFrames
+producer:
 
 | Image | Built from | Base | Carries FFmpeg |
 |---|---|---|---|
@@ -28,6 +33,7 @@ Chromium and the DeepSeek Harness:
 | the page reader | [packages/ingest/web-reader/Dockerfile](./packages/ingest/web-reader/Dockerfile) | `node:24-bookworm-slim` | yes — Playwright's LGPL build, which the reader never runs |
 | `ghcr.io/<owner>/breatic-web` | [Dockerfile.web](./Dockerfile.web) | `nginx:1.27-alpine` | no — it serves the built front-end and nothing else |
 | the web-animation container | [packages/ingest/web-animation.Dockerfile](./packages/ingest/web-animation.Dockerfile) | `node:24-bookworm-slim` | no — see [Web animation](#web-animation) |
+| the web-animation render container | [packages/ingest/web-animation-render.Dockerfile](./packages/ingest/web-animation-render.Dockerfile) | `node:24-bookworm-slim` | yes — Debian's build, see [Web animation](#web-animation) |
 
 Breatic invokes the `ffmpeg` executable as a separate process and does not link
 against its libraries. The program and Breatic are separate works that happen to
@@ -135,20 +141,27 @@ loads the five npm packages listed in the next section.
 
 ### Web animation
 
-The web-animation container, the ingest Worker and the web preview carry these
-for web-animation execution:
+The web-animation container, the render container, the ingest Worker and the web
+preview carry these for web-animation execution and export:
 
 | Component | Version | Licence | How it ships | Source |
 |---|---|---|---|---|
 | Chromium | Debian bookworm's `chromium` package; the image's `/usr/share/chromium-source/SOURCE` records the exact version | **BSD-3-Clause** and the licences of the components it bundles, listed in the image at `/usr/share/doc/chromium/copyright` | A separate program the runner starts to check a package; none of its libraries is loaded into our process | `https://snapshot.debian.org/package/chromium/` at the recorded version |
 | `@deepseek-ai/dsh` (DeepSeek Harness) and its `node_modules` | `0.2.2-rc.1`, installed with `--ignore-scripts` | **MIT**; within its closure, besides MIT, Apache-2.0, BSD and ISC: `argparse` (**Python-2.0**), `fast-sha256` (**Unlicense**), `lru-cache` (**BlueOak-1.0.0**), `tslib` (**0BSD**), `type-fest` (**MIT OR CC0-1.0**). `@deepseek-ai/libreoffice-kit*` (MPL-2.0) and sharp's native `@img/*` packages (libvips is LGPL-3.0) are removed while the image is built | A separate program the runner starts; our service imports none of it | https://github.com/deepseek-ai/deepseek-harness |
 | `@hyperframes/core` runtime (`dist/hyperframe.runtime.iife.js`) | `0.8.186` | **Apache-2.0**, per the tarball's `LICENSE`, copied to `/app/runtime/LICENSE` in the image | Inlined into every web-animation package, which is served to browsers | https://github.com/heygen-com/hyperframes |
-| `@hyperframes/player` | `0.8.186` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | Bundled into the web app as its own chunk, loaded the first time a web-animation copy or a finished result is shown in a Timeline preview | https://github.com/heygen-com/hyperframes |
+| `@hyperframes/player` | `0.8.186` | Reported as **Unknown**, because its `package.json` names no licence; the tarball's `LICENSE` is **Apache-2.0** | Bundled into the web app as its own chunk, loaded the first time a web-animation copy is shown in a Timeline preview or a result is shown in a Motion Space | https://github.com/heygen-com/hyperframes |
+| Chromium headless shell (render container) | `157.0.8103.78`, fetched by `@puppeteer/browsers` 3.2.2; `/opt/chs/SOURCE` in the image records it | **BSD-3-Clause** and the licences of the components it bundles | A separate program the HyperFrames producer starts to capture frames | https://chromium.googlesource.com/chromium/src/+/refs/tags/157.0.8103.78 |
+| FFmpeg (render container) | Debian bookworm's `ffmpeg` package; the image's `/usr/share/ffmpeg-source/SOURCE` records the exact version | **GPL-2.0-or-later** as Debian builds it, with its licences at `/usr/share/doc/ffmpeg/copyright` | A separate program the producer and the runner start to encode, measure and cut the cover; none of its libraries is loaded into our process | `https://snapshot.debian.org/package/ffmpeg/` at the recorded version |
+| `@hyperframes/producer` and its `@hyperframes/*` packages (`core`, `engine`, `lint`, `parsers`, `studio-server`) | `0.8.186` | Reported as **Unknown**, because their `package.json` names no licence; each tarball's `LICENSE` is **Apache-2.0** | Installed beside the render container's bundled service, which imports the producer | https://github.com/heygen-com/hyperframes |
+| The producer's other dependencies | as installed by `npm install @hyperframes/producer@0.8.186` | MIT, Apache-2.0, ISC, BSD-2-Clause, BSD-3-Clause and 0BSD, and `argparse` (**Python-2.0**); `sharp` and its native `@img/*` packages (libvips is LGPL-3.0) are removed while the image is built | Installed beside the bundled service | — |
 | `@fontsource-variable/noto-sans-sc`, `@fontsource-variable/noto-serif-sc`, `@fontsource-variable/inter`, `@fontsource-variable/noto-sans-kr`, `@fontsource-variable/noto-sans-jp`, `@fontsource-variable/noto-sans-tc` | `5.3.1`, `5.3.1`, `5.3.0`, `5.3.1`, `5.3.1`, `5.3.1` | **OFL-1.1** | Their `wght-normal` woff2 files are served as the ingest Worker's static assets and carried by the image; each package's licence text travels beside the files as `<package>-OFL.txt` | https://github.com/notofonts/noto-cjk, https://github.com/rsms/inter |
 
 The runner bundles nothing but Node and our own code
 (`breatic/media-container-own-code-only` holds it to that, as for the media
-container). The OFL's one prohibition, selling the fonts on their own, is not
+container). The render container's service is bundled the same way and imports
+only the producer installed beside it; the producer reaches `sharp` only through
+`@hyperframes/studio-server`'s thumbnails, which a render never loads, so the
+image ships without it. The OFL's one prohibition, selling the fonts on their own, is not
 something Breatic does, and none of the six copyright lines declares a
 Reserved Font Name.
 

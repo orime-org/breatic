@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import { AST_NODE_TYPES } from "@typescript-eslint/utils";
 import type { TSESLint, TSESTree } from "@typescript-eslint/utils";
 import { stringLiteralVisitors } from "#rules/source-visitors";
@@ -19,14 +19,13 @@ const EXCUSED: ReadonlyArray<{ file: string; name: string; reason: string }> = [
   { file: "packages/ingest/container/web-animation-package.ts", name: "DEEPSEEK_API_KEY", reason: "the DeepSeek Harness's own variable: its value is a placeholder, and the relay sends the real key" },
   { file: "packages/shared/src/timeline/web-animation.ts", name: "deepseek", reason: "the web-animation engine a user picks" },
   { file: "packages/shared/src/types/entities.ts", name: "deepseek", reason: "the web-animation engine a user picks" },
-  { file: "packages/web/src/spaces/timeline/TimelineSpace.tsx", name: "deepseek", reason: "the web-animation engine a user picks" },
-  { file: "packages/web/src/spaces/timeline/TimelineWebAnimationDialog.tsx", name: "deepseek", reason: "the web-animation engine a user picks" },
+  { file: "packages/web/src/spaces/web-animation/execution-text.ts", name: "deepseek", reason: "the web-animation engine a user picks" },
   { file: "packages/server/src/modules/auth/auth.service.ts", name: "google", reason: "Google sign-in" },
   { file: "packages/server/src/routes/auth.ts", name: "google", reason: "Google sign-in" },
   { file: "packages/web/src/data/api/auth.ts", name: "google", reason: "Google sign-in" },
   { file: "packages/web/src/pages/auth/LoginPage.tsx", name: "google", reason: "Google sign-in" },
   { file: "packages/web/src/pages/auth/RegisterPage.tsx", name: "google", reason: "Google sign-in" },
-  { file: "packages/web/src/spaces/canvas/generate/ModelIcon.tsx", name: "openai", reason: "a brand icon's key" },
+  { file: "packages/web/src/components/ModelIcon.tsx", name: "openai", reason: "a brand icon's key" },
   {
     file: "packages/worker/src/handlers/timeline/web-animation-execution.ts",
     name: "openrouter",

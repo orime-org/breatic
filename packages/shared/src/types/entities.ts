@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Shared entity interfaces for cross-layer data transfer.
@@ -14,8 +14,11 @@ import type { ChatAttachedChip } from "@shared/schemas/api.js";
 import type { CreditSourceKind } from "@shared/types/credit.js";
 import type { MembershipTier } from "@shared/types/membership.js";
 import type { ProjectRole } from "@shared/types/role.js";
+import type { AccountKeyFailureKind, AccountKeyFailureReason } from "@shared/types/task-failure.js";
 import type { TimelineRate } from "@shared/timeline/time.js";
-import type { TimelineExecutionStatusSchema } from "@shared/timeline/web-animation.js";
+import type {
+  WebAnimationExecutionKind, WebAnimationExecutionOrigin, WebAnimationExecutionStatusSchema, WebAnimationPhaseSchema,
+} from "@shared/timeline/web-animation.js";
 import type { z } from "zod";
 
 /** User entity (excludes hashed_password for safety). */
@@ -244,9 +247,19 @@ export type MessagePart =
      * request could not be made to fit the model's context window however
      * much earlier history was folded into memory (inner#1567). The user is
      * told to narrow the request rather than to send it again. `shutdown` is a
-     * turn the server stopped because it was shutting down (inner#1717).
+     * turn the server stopped because it was shutting down (inner#1717). The
+     * account-key reasons are a turn on the payer's own key that failed
+     * (inner#1953): the key was refused, its row is gone, or its upstream could
+     * not be reached; the user is told which upstream and whose key, and what to do: change or top up the key, pick
+     * another upstream, or run it again later.
      */
-    reason?: "too_long" | "shutdown";
+    reason?: "too_long" | "shutdown" | ChatKeyFailureReason;
+    /** The upstream whose key failed, for an account-key reason. */
+    upstream?: string;
+    /** Why the upstream refused the key, for `account_key_failed`. */
+    keyReason?: ChatKeyRefusal;
+    /** The account the key belongs to, for an account-key reason. */
+    keyOwner?: string;
   }
   /**
    * A message the user sent while this turn ran, taken in at the step
@@ -384,6 +397,13 @@ export interface TaskEntity {
   providerResultUrl: string | null;
   /** Vendor task id for async generation; on retry the Worker resumes by polling it (#1628). */
   providerTaskId: string | null;
+  /**
+   * The account key row the task's media runs on (inner#1953); null on our keys. Read back by id on every pickup, never
+   * the key itself. Absent from an entity built without the column.
+   */
+  keyId?: string | null;
+  /** The account key row of a language-model step inside the task (a reading, a prompt rewrite), as `keyId`. */
+  llmKeyId?: string | null;
   /** Idempotency guard for credit deduction — set when charge has been applied. */
   billedAt: Date | null;
   /** Actual credits charged (audit trail). */
@@ -928,47 +948,98 @@ export interface AccountActivityCoverageEntity {
   createdAt: Date;
 }
 
-/** Where a Timeline execution is (inner#1711), as `TimelineExecutionStatusSchema` lists it. */
-export type TimelineExecutionStatus = z.infer<typeof TimelineExecutionStatusSchema>;
+/** How a chat turn on the payer's own key failed (inner#1953), as its stored reply keeps it. */
+export type ChatKeyFailureReason = AccountKeyFailureKind;
 
-/** One Timeline execution the user accepted (inner#1711). Timestamps are UTC ISO strings at microsecond precision. */
+/** Why an upstream refused the payer's own key (inner#1953). */
+export type ChatKeyRefusal = AccountKeyFailureReason;
+
+/** What the last check of an account's upstream key found about its balance (inner#1953). */
+export type ProviderKeyBalanceState = "known" | "unsupported" | "forbidden" | "no_cap";
+
+/**
+ * An account's own key for one upstream (inner#1953), without the key or its sealed text: only the hint the user is
+ * shown and what the last check found.
+ */
+export interface AccountProviderKey {
+  id: string;
+  userId: string;
+  upstream: string;
+  displayHint: string;
+  lastCheckedAt: Date | null;
+  lastConnected: boolean | null;
+  lastBalanceAmount: number | null;
+  lastBalanceCurrency: string | null;
+  lastBalanceState: ProviderKeyBalanceState | null;
+  lastFailure: string | null;
+  /** Whether the key can read the actual costs of its calls (fal); null where the upstream has no such probe. */
+  lastCostsReadable: boolean | null;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** The upstream an account chose for a catalog model that is not a language model (inner#1953). */
+export interface AccountModelUpstream {
+  id: string;
+  userId: string;
+  model: string;
+  upstream: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
+/** Where a web-animation execution is (inner#1711), as `WebAnimationExecutionStatusSchema` lists it. */
+export type TimelineExecutionStatus = z.infer<typeof WebAnimationExecutionStatusSchema>;
+
+/**
+ * One web-animation execution the user accepted (inner#1711, #1490), as `timeline_executions` stores it. Timestamps are
+ * UTC ISO strings at microsecond precision.
+ */
 export interface TimelineExecution {
   id: string;
   projectId: string;
   spaceId: string;
   actorUserId: string;
-  kind: "web_animation_create";
+  kind: WebAnimationExecutionKind;
+  /** Where it was asked for: a Motion Space, or a Timeline before #1490. */
+  origin: WebAnimationExecutionOrigin;
   /** The client's idempotency key, unique per Project and Space. */
   actionId: string;
   /** The accepted input, frozen at acceptance. */
   input: Record<string, unknown>;
   inputHash: string;
-  engine: "deepseek";
+  /** The model engine; null for an export, which renders and calls no model. */
+  engine: "deepseek" | null;
   status: TimelineExecutionStatus;
   /** The stage a running attempt reports to the user. */
-  phase: "writing" | "validating" | "saving" | null;
+  phase: z.infer<typeof WebAnimationPhaseSchema> | null;
   steps: unknown[];
   /** How many attempts have claimed it. */
   attempt: number;
   /** The id of the attempt allowed to finish it; null when no attempt holds it. */
   fence: string | null;
-  /** The two-hour budget's end, set once at acceptance. */
+  /** The two-hour budget's end: set at acceptance, and counted again from the claim for a run that waited for a running slot. */
   deadlineAt: string;
   resultSourceVersionId: string | null;
+  /** An export's registered video. */
+  resultAssetId: string | null;
   failureReason: string | null;
+  /** The upstream a failure of the payer's own key names (inner#1953); null for any other failure. */
+  failureUpstream: string | null;
+  /** Why the upstream refused the payer's own key (`account_key_failed`, inner#1953); null otherwise. */
+  failureKeyReason: AccountKeyFailureReason | null;
   /** Credits charged, as Postgres renders the numeric. */
   billedCredits: string | null;
   billedAt: string | null;
-  /** First time the running-task gate held it back (inner#1968); null when it never waited. Absent from an older server. */
-  slotWaitSince?: string | null;
-  /** The running-task limit it waits under, as the gate last judged it (inner#1968); null when it never waited. Absent from an older server. */
-  slotWaitLimit?: number | null;
+  /** First time the running-task gate held it back (inner#1968); null when it never waited. */
+  slotWaitSince: string | null;
+  /** The running-task limit it waits under, as the gate last judged it (inner#1968); null when it never waited. */
+  slotWaitLimit: number | null;
+  /** How far a running export's render got, as a whole percent (#1490). */
+  progress: number | null;
   createdAt: string;
   updatedAt: string;
 }
-
-/** One row `GET /timeline/executions` answers: the execution and the credits its usage rows add up to so far. */
-export type TimelineExecutionRow = TimelineExecution & { usageCredits: number };
 
 /**
  * What `GET /timeline/web-sources` answers for the references of a document's web-animation copies (inner#1711
@@ -976,8 +1047,30 @@ export type TimelineExecutionRow = TimelineExecution & { usageCredits: number };
  * grant for them. A reference it leaves out is unresolved.
  */
 export interface TimelineWebResolution {
-  sources: Record<string, { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
-  executions: Record<string, { status: TimelineExecutionStatus; resultSourceVersionId: string | null; acceptedDurationFrames: number; fps: TimelineRate }>;
+  sources: Record<string, TimelineWebResolutionOrigin & { durationFrames: number; fps: TimelineRate; viewport: { width: number; height: number } }>;
+  executions: Record<string, TimelineWebResolutionOrigin & {
+    status: TimelineExecutionStatus;
+    resultSourceVersionId: string | null;
+    acceptedDurationFrames: number;
+    fps: TimelineRate;
+    /** The stage a running attempt reported. */
+    phase: TimelineExecution["phase"];
+    failureReason: string | null;
+  }>;
+}
+
+/** What made a resolved reference (#1490 design §4.4): the Timeline names a copy and shows its request from it. */
+export interface TimelineWebResolutionOrigin {
+  executionId: string;
+  /** The Space that made it: a Motion Space, or a Timeline before #1490. */
+  spaceId: string;
+  /** Where it was asked from: a Motion Space, or a Timeline before #1490. */
+  origin: WebAnimationExecutionOrigin;
+  kind: Exclude<WebAnimationExecutionKind, "web_animation_export">;
+  /** The whole prompt or modification instruction. */
+  request: string;
+  /** For a modification, the result it started from. */
+  base?: { executionId: string; request: string };
 }
 
 /**

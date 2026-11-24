@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The picked piece of the canvas as "Add to agent" hands it over (#2218),
@@ -22,7 +22,7 @@ import { nodeDataMap, readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { itemForPick } from '@web/spaces/canvas/attach-nodes';
 import type { NodeReaders } from '@web/spaces/canvas/attach-nodes';
 import { firstVoiceKey, firstVoiceQuery } from '@web/spaces/canvas/generate/first-voice-query';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { attachToChat } from '@web/stores/attach-to-chat';
 
 /**

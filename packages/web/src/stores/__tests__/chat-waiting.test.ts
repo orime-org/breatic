@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The waiting area of each conversation (inner#1717): what the server's queue
@@ -26,14 +26,14 @@ beforeEach(() => {
 describe('the waiting area', () => {
   it('is what the last answer said the queue holds (WB-13)', () => {
     chatWaiting.fromSend('c1', [item('m1')]);
-    chatWaiting.fromSync('c1', { pending: [item('m1'), item('m2')], awaiting: false, blocked: false, capNote: null });
+    chatWaiting.fromSync('c1', { pending: [item('m1'), item('m2')], awaiting: false, blocked: false, ownKey: null, capNote: null });
     expect(useChatWaiting.getState().byConversation.c1?.pending.map((p) => p.id)).toEqual(['m1', 'm2']);
   });
 
   it('says a card waits, and that credits are short, only while the server says so (WB-14, WB-15)', () => {
-    chatWaiting.fromSync('c1', { pending: [item('m1')], awaiting: true, blocked: false, capNote: null });
+    chatWaiting.fromSync('c1', { pending: [item('m1')], awaiting: true, blocked: false, ownKey: null, capNote: null });
     expect(useChatWaiting.getState().byConversation.c1).toMatchObject({ awaiting: true, blocked: false });
-    chatWaiting.fromSync('c1', { pending: [item('m1')], awaiting: false, blocked: true, capNote: null });
+    chatWaiting.fromSync('c1', { pending: [item('m1')], awaiting: false, blocked: true, ownKey: null, capNote: null });
     expect(useChatWaiting.getState().byConversation.c1).toMatchObject({ awaiting: false, blocked: true });
     chatWaiting.fromSend('c1', [item('m1')]);
     expect(useChatWaiting.getState().byConversation.c1).toMatchObject({ awaiting: false, blocked: false });

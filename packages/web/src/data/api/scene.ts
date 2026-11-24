@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { noteCreditsChanged } from '@web/data/api/credits';
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
@@ -16,11 +16,11 @@ export function getSceneControls(projectId: string, signal?: AbortSignal): Promi
 }
 
 /**
- * Resolve an already registered GLB or model package using Project access and its Studio's asset ledger.
- * @param projectId - Project whose scene or registered model is being read.
- * @param assetId - Registered model identity stored in the scene.
+ * Resolve an already registered GLB, model package or part picture using Project access and its Studio's asset ledger.
+ * @param projectId - Project whose scene asset is being read.
+ * @param assetId - Registered asset identity stored in the scene.
  * @param signal - Cancellation signal for this request.
- * @returns Registered model URL, MIME type and registered size.
+ * @returns Registered asset URL, MIME type and registered size.
  */
 export function resolveSceneAsset(projectId: string, assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> {
   return apiGet(`/projects/${projectId}/three-d/assets/${assetId}`, { signal });
@@ -80,9 +80,10 @@ export interface SpaceTaskList {
 }
 
 /**
- * The query key one 3D Space's task list is cached under; the page's signal listener invalidates it.
+ * The key every background-work list of one Space is cached under (3D tasks, Motion and Timeline executions); the
+ * meta signal (3D) or `SpaceTasksWatcher` (Motion and Timeline) invalidates it.
  * @param projectId - The project.
- * @param spaceId - The 3D Space.
+ * @param spaceId - The Space.
  * @returns The key.
  */
 export function spaceTasksQueryKey(projectId: string, spaceId: string): readonly [string, string, string] {

@@ -184,6 +184,9 @@ jobs:
       - name: Test provider scripts
         run: node --test scripts/provider-price-drift.test.mjs scripts/provider-llm-prices.test.mjs scripts/provider-endpoint-docs.test.mjs
 
+      - name: Test the CLA check
+        run: node --test scripts/cla-check.test.mjs
+
   test-web:
     name: Test (web, shard ${{ matrix.shard }}/4)
     # web holds most of the unit tests (804 files measured 2026-10-11) and ran
@@ -341,6 +344,7 @@ jobs:
           - {image: ingestMedia, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/Dockerfile, suffix: '-ingest-media'}
           - {image: ingestWebReader, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/web-reader/Dockerfile, suffix: '-ingest-web-reader'}
           - {image: ingestWebAnimation, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/web-animation.Dockerfile, suffix: '-ingest-web-animation'}
+          - {image: ingestWebAnimationRender, arch: amd64, runner: ubuntu-24.04, file: packages/ingest/web-animation-render.Dockerfile, suffix: '-ingest-web-animation-render'}
     permissions:
       contents: read
       packages: write

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `@breatic/core` — shared backend runtime.
@@ -149,6 +149,7 @@ export {
   publishActivityNew,
   publishCreditsChanged,
   publishSpaceTasksChanged,
+  publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
@@ -198,15 +199,7 @@ export * as projectAssetReferenceService from "@core/asset/project-asset-referen
 export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
-export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
 export { announceExecutionChange } from "@core/timeline/execution-change.js";
-export {
-  TIMELINE_QUEUE,
-  TIMELINE_EXECUTION_JOB,
-  addTimelineExecutionJob,
-  type TimelineExecutionJobData,
-} from "@core/timeline/timeline-queue.js";
-export type { TimelineExecutionEvent, TimelineExecutionTransition, NewTimelineExecution } from "@core/timeline/timeline-execution.repo.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,
@@ -345,6 +338,19 @@ export * from "@core/credit/enterprise-credit-purchase-contract.js";
 
 export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
 export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";
+export * as accountProviderKeysRepo from "@core/byok/account-provider-keys.repo.js";
+export * as accountModelUpstreamsRepo from "@core/byok/account-model-upstreams.repo.js";
+export type { NewAccountProviderKey, ProviderKeyCheckRecord, SealedProviderKey } from "@core/byok/account-provider-keys.repo.js";
+export {
+  InvalidProviderKey,
+  ProviderKeySealBroken,
+  displayHintOf,
+  normalizeProviderKey,
+  openProviderKey,
+  providerKeyRingOf,
+  sealProviderKey,
+  type ProviderKeyRing,
+} from "@core/secrets/provider-key-box.js";
 
 // HTTP building blocks shared by every service that answers HTTP.
 export { validate, RequestShapeError } from "@core/http/validate.js";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { generateText, stepCountIs, streamText, tool } from "ai";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -419,6 +419,17 @@ describe("an upstream's answer that the account has no balance moves the call on
     expect(outcome).toBeInstanceOf(NoUpstreamAvailable);
     expect((outcome as NoUpstreamAvailable).reasons).toEqual([{ upstream: "openrouter", kind: "failed", failure: "insufficient_balance" }]);
     expect(posted(fakes.openrouter)).toHaveLength(1);
+  });
+
+  // OpenRouter's errors-and-debugging page: a spent key, workspace or guardrail budget is a 403 naming its limit_source.
+  it("names the exhausted balance when OpenRouter answers 403 for a spent key limit", async () => {
+    fakes.openrouter.answer(() => ({
+      status: 403,
+      body: { error: { message: "Key limit exceeded", code: 403, metadata: { limit_source: "openrouter_key_limit" } } },
+    }));
+    const outcome = await run({ OPENROUTER_API_KEY: "or" }, "meta/llama-x", 2);
+    expect(outcome).toBeInstanceOf(NoUpstreamAvailable);
+    expect((outcome as NoUpstreamAvailable).reasons).toEqual([{ upstream: "openrouter", kind: "failed", failure: "insufficient_balance" }]);
   });
 });
 

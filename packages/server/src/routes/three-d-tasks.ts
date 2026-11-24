@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A 3D Space's tasks (inner#1690, inner#1691): an editor submits a 3D
@@ -15,6 +15,7 @@ import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { validate } from "@breatic/core";
+import { mediaRunKeys } from "@server/modules/task/run-keys.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
 import { holdRun, sceneGenerationService, sceneTasksService } from "@server/modules";
 
@@ -37,8 +38,9 @@ threeDTasks.post(
     const held = await holdRun({
       projectId,
       userId,
-      check: () => sceneGenerationService.checkSubmission(projectId, body),
-      credits: sceneGenerationService.estimateOf,
+      // inner#1953: the keys of whoever pays for the Studio, settled once the model takes the run; the task records their rows.
+      check: () => sceneGenerationService.checkSubmission(projectId, body, (model, params) => mediaRunKeys(projectId, model, params)),
+      credits: (checked) => sceneGenerationService.estimateOf(checked, projectId, userId),
     });
     const answer = await sceneGenerationService.startSceneGeneration(userId, projectId, spaceId, body, held);
     return c.json({ data: answer }, 201);

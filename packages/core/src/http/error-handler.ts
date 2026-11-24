@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Global error handler middleware.
@@ -84,8 +84,8 @@ export function createErrorHandler(deps: { report: (event: ErrorHandlerEvent) =>
             code: err.statusCode,
             message: err.message,
             ...(err instanceof RequestShapeError ? { reason: REQUEST_SHAPE_REASON } : {}),
-            ...(err instanceof UnavailableError ? { reason: err.reason } : {}),
-            ...(err instanceof SpendCapReachedError ? { reason: err.reason, scope: err.scope, limit: err.limit, resetsAt: err.resetsAt } : {}),
+            ...(err.reason !== undefined ? { reason: err.reason } : {}),
+            ...(err instanceof SpendCapReachedError ? { scope: err.scope, limit: err.limit, resetsAt: err.resetsAt } : {}),
           },
         },
         err.statusCode as 400,

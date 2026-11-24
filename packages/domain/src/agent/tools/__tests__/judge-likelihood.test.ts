@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What `judge_likelihood` sends, what it answers with, and how it fails.
@@ -182,6 +182,26 @@ describe("judge_likelihood is in the agent's hands", () => {
     judge.mockRejectedValueOnce(new NoUpstreamAvailable("typesafe/jev-1.13", [{ upstream: "openrouter", kind: "missing_key", envVar: "OPENROUTER_API_KEY" }]));
     const { userKey } = await failureOf(askAll);
     expect(userKey).toBe(FAILURE_LINES.unavailable);
+  });
+
+  it("says the payer's own key failed, which upstream and why, when the key in BYOK settings is refused", async () => {
+    const { AccountKeyFailure } = await import("@breatic/provider");
+    judge.mockRejectedValueOnce(new AccountKeyFailure("typesafe/jev-1.13", "account_key_failed", { upstream: "openrouter", reason: "no_balance" }));
+    const { forModel, userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.accountKey);
+    expect(forModel).toContain("openrouter");
+    expect(forModel.toLowerCase()).toContain("no balance");
+  });
+
+  it("says it is the Studio Admin's key when the turn's key is the admin's, as the turn hands the tool", async () => {
+    const { AccountKeyFailure } = await import("@breatic/provider");
+    judge.mockRejectedValueOnce(new AccountKeyFailure("typesafe/jev-1.13", "account_key_failed", { upstream: "openrouter", reason: "no_balance" }));
+    const onAdmins = TOOL_MAP[JUDGE_LIKELIHOOD]!({ keys: { owner: "account", keyOf: () => "sk-or" }, keyHolder: "admin" } as never);
+    const { forModel } = await failureOf(() => onAdmins.execute!({
+      state: { user_said: "a product video" },
+      questions: { clear_enough: { type: "noul", instructions: "Is this specific enough to start?" } },
+    }, toolOptions({}) as never) as Promise<unknown>);
+    expect(forModel).toContain("the key the Studio Admin saved in BYOK settings");
   });
 });
 

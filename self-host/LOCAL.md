@@ -2,9 +2,9 @@
 
 **English** | [简体中文](LOCAL-CN.md)
 
-Use this guide to run Breatic for yourself or share it with your household, private group or colleagues within one organization. Install the application on one computer; other users connect through a browser. **Use published images, not development servers.** For source changes, see [Development setup](DEVELOPMENT.md).
+Use this guide to run Breatic for yourself or share it with your household, a private noncommercial group or colleagues within one organization. Install the application on one computer; other users connect through a browser. **Use published images, not development servers.** For source changes, see [Development setup](DEVELOPMENT.md).
 
-Breatic is licensed under the [GNU Affero General Public License v3.0](../LICENSE). If you modify it and let other people use your modified version over a network, you must offer them its complete source code under the same license. The Breatic name and logo are covered by [TRADEMARKS.md](../TRADEMARKS.md).
+Breatic is source-available under the [Breatic Source-Available License 2.0](../LICENSE). You may self-host it for personal use, a private noncommercial group or use within your organization without a software license fee. Without written authorization from Orime, Inc., an instance must run in Self-Deployment Mode with `PAYMENT_ENABLED=false`, and making it available to others as a commercial platform needs separate written authorization (LICENSE sections 10 and 11). Keep the Breatic name and logo visible; see [TRADEMARKS.md](../TRADEMARKS.md).
 
 ## 1. What you will run
 
@@ -66,7 +66,7 @@ EMAIL_BACKEND=console
 REDIS_KEY_PREFIX=personal
 ```
 
-In the current application, `ENV=dev` permits session cookies over HTTP. **It does not start development servers**: these containers still run compiled application code. Use `ENV=prod` after switching to HTTPS. Disabling credit charging does not eliminate external AI charges. `console` writes email to logs rather than delivering it. Real email, Google sign-in and search can be configured separately using the template.
+In the current application, `ENV=dev` permits session cookies over HTTP. **It does not start development servers**: these containers still run compiled application code. Use `ENV=prod` after switching to HTTPS. Disabling credit charging does not eliminate external AI charges. `console` writes email to logs rather than delivering it. Real email, Google sign-in and search can be configured separately using the template. Without written authorization from Orime, Inc., an instance must run in Self-Deployment Mode with `COMMERCE_API_URL` blank, selling no credits or memberships (LICENSE sections 10 and 11).
 
 Keep container-internal connection addresses:
 
@@ -85,6 +85,8 @@ The bundled nginx refuses request bodies over 1 MiB (`client_max_body_size 1m` i
 
 Replace sample provider keys with your own valid keys; leave unused keys empty. `OPENROUTER_API_KEY` supplies the text-model route when no direct vendor key is configured, subject to model availability and account quota. Each upstream reads the variable named by `key_env` in `config/provider/upstreams.yaml`; an image, video or other generation model needs the key of at least one of its upstreams in `config/provider/media/<type>.yaml`, for example `WAVESPEED_API_KEY` or `FAL_KEY`.
 
+To let users bring their own upstream keys (BYOK settings in the account menu), set `BYOK_ENABLED=true` together with `PROVIDER_KEY_SECRET_ID` and `PROVIDER_KEY_SECRETS` as `.env.docker` describes; the keys users save are stored sealed with the master keys, and `BYOK_ENABLED=true` without them refuses to start. Keep every master key listed while keys sealed with it are stored, or those keys can no longer be opened. With `BYOK_ENABLED` anything but `true`, the account menu has no BYOK settings and every call uses the keys above; keys users saved stay stored for when it is turned back on.
+
 <a id="cloudflare"></a>
 ## 4. Deploy the Cloudflare upload service
 
@@ -100,7 +102,7 @@ Assets are currently read through public URLs. A private Breatic instance does n
 
 Text too large for one request (a long pasted text node, its history snapshot, an Agent message with large attachments, a snapshot of a long Document) is uploaded as a temporary transfer file under the `transfer/` prefix and read back by the server with the S3 credentials. Add an R2 lifecycle rule to the bucket that deletes objects with the prefix `transfer/` after 1 day. On a custom asset domain, also add a Cloudflare WAF custom rule that blocks requests whose path starts with `/transfer/`; an `r2.dev` address cannot carry this rule. See [Object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
 
-Timeline web animation is optional and off unless you enable it ([packages/ingest/README.md](../packages/ingest/README.md#web-animation)). Its packages are stored under the private `web-animation/` prefix and are read only through the Worker's signed preview route. If you enable it on a custom asset domain, add a Cloudflare WAF custom rule that blocks requests whose path starts with `/web-animation/`; an `r2.dev` address cannot carry this rule.
+Web animation (Motion Spaces and their copies on a Timeline) is optional and off unless you enable it ([packages/ingest/README.md](../packages/ingest/README.md#web-animation)). Its packages are stored under the private `web-animation/` prefix and are read only through the Worker's signed preview route. If you enable it on a custom asset domain, add a Cloudflare WAF custom rule that blocks requests whose path starts with `/web-animation/`; an `r2.dev` address cannot carry this rule.
 
 Save the following bucket CORS configuration:
 
@@ -261,7 +263,7 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 
 Replace every `YOUR_...` value. The shared secret must exactly match the Cloudflare secret, and both sides must name the same bucket. Do not interchange the public read URL and S3 endpoint. Omit trailing slashes from base URLs and never commit credentials.
 
-If you enable web animation, also set `WEB_ANIMATION_PREVIEW_BASE_URL` to the HTTPS address that serves the Worker's preview route, ideally a domain of its own.
+If you enable web animation, also set `WEB_ANIMATION_PREVIEW_BASE_URL` to the HTTPS address that serves the Worker's preview route, ideally a domain of its own, and `INGEST_KEY_SEAL_PUBLIC_KEY` to the public half of a key pair whose private half goes into the Worker with `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` (`.env.docker` shows how to make it). The Worker holds no model key: each run's keys travel sealed with the job, so the model key (such as `OPENROUTER_API_KEY`) is set only in the application's `.env`, which the worker reads at each submit, and never in the Worker.
 
 The Worker does not need to call back into the local application. Personal use therefore does not require router port forwarding, a tunnel or a public domain for the application.
 

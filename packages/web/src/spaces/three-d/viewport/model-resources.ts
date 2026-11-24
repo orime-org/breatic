@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { Box3, Group, InstancedMesh, MeshStandardMaterial, SkinnedMesh, Texture, Vector3 } from 'three';
 import type { BufferGeometry, Material, Skeleton, WebGLRenderer } from 'three';
 import { clone } from 'three/addons/utils/SkeletonUtils.js';
-import { httpRequest, isSceneModelMediaType } from '@breatic/shared';
+import { SCENE_LOOK_DEFAULT_PART, httpRequest, isSceneModelMediaType } from '@breatic/shared';
 import type { SceneImportLimits, SceneModelFile } from '@breatic/shared';
 import { createBuiltinBox } from '@web/spaces/three-d/viewport/builtin-models';
 import figureUrl from '@web/spaces/three-d/viewport/assets/figure.glb?url';
@@ -19,9 +19,53 @@ import { loadedResources } from '@web/spaces/three-d/model-loaded-resources';
 import { contentFailure, ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { detectTextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
 import { isDrawable } from '@web/spaces/three-d/viewport/model-drawables';
+import { buildPartTable, type LookPartTable } from '@web/spaces/three-d/viewport/look-materials';
+import { generateLookUvs } from '@web/spaces/three-d/viewport/look-uv';
 
 /** Additional parsed scenes stay owned until the active template is released. */
 const ownedScenes = new WeakMap<Group, readonly Group[]>();
+
+/** What a model's look is applied against: its part table and its own texture upload bytes (inner#1693 design 5.1). */
+export interface LookModel {
+  table: LookPartTable;
+  ownBytes: number;
+}
+
+/** Look models by template and by instance; an instance shares its template's. */
+const lookModels = new WeakMap<Group, LookModel>();
+/** A parsed template's own texture upload bytes, until loadSceneModel builds its look model. */
+const ownTextureBytes = new WeakMap<Group, number>();
+
+/**
+ * The look model of a loaded template or instance.
+ * @param root - The template or an instance of it.
+ * @returns Its part table and own texture bytes, or undefined before it loaded.
+ */
+export function lookModelOf(root: Group): LookModel | undefined {
+  return lookModels.get(root);
+}
+
+/**
+ * Put each material's part on it (inner#1693 design 5.1): the glTF material the loader registered for it, else the
+ * material of the primitive the drawable was built from, else the default part.
+ * @param root - The parsed scene.
+ * @param associations - GLTFLoader's registry of what each object and material was built from.
+ * @param json - The glTF document.
+ * @param json.meshes - Its meshes, whose primitives name their materials.
+ */
+function tagLookParts(root: Group, associations: ReadonlyMap<unknown, { materials?: number; meshes?: number; primitives?: number }>,
+  json: { meshes?: { primitives?: { material?: number }[] }[] }): void {
+  root.traverse((child) => {
+    if (!isDrawable(child)) return;
+    const reference = associations.get(child);
+    const declared = reference?.meshes !== undefined && reference.primitives !== undefined
+      ? json.meshes?.[reference.meshes]?.primitives?.[reference.primitives]?.material : undefined;
+    for (const material of Array.isArray(child.material) ? child.material : [child.material]) {
+      const own = associations.get(material)?.materials ?? declared;
+      material.userData.lookPart = typeof own === 'number' ? String(own) : SCENE_LOOK_DEFAULT_PART;
+    }
+  });
+}
 
 export type SceneModelSource = SceneModelFile;
 export type SceneModelLoader = (source: SceneModelSource, signal: AbortSignal) => Promise<Group>;
@@ -102,6 +146,8 @@ export function disposeModelTemplate(root: Group): void {
 function instantiate(root: Group): Group {
   // SkeletonUtils preserves the source constructor; its declaration erases it.
   const instance = clone(root) as Group;
+  const look = lookModels.get(root);
+  if (look) lookModels.set(instance, look);
   const materials = new Map<Material, Material>();
   instance.traverse((child) => {
     if (!isDrawable(child)) return;
@@ -249,6 +295,37 @@ export async function loadSceneModel(
   limits: SceneImportLimits,
   renderer?: WebGLRenderer,
 ): Promise<Group> {
+  const root = await loadTemplate(source, signal, resolveAsset, builtinColor, limits, renderer);
+  // The built-in box is one part, 0 (inner#1693 design 5.1).
+  if (source.kind === 'builtin' && source.id === 'box') {
+    root.traverse((child) => { if (isDrawable(child)) for (const material of [child.material].flat()) material.userData.lookPart = '0'; });
+  }
+  lookModels.set(root, {
+    table: buildPartTable(root, (material) => (material.userData.lookPart as string | undefined) ?? SCENE_LOOK_DEFAULT_PART, { builtin: source.kind === 'builtin' }),
+    ownBytes: ownTextureBytes.get(root) ?? 0,
+  });
+  return root;
+}
+
+/**
+ * Load a model's template without its look model.
+ * @param source - The immutable source from the scene document.
+ * @param signal - Invalidated when the last holder leaves.
+ * @param resolveAsset - Permission-aware application resolver for registered assets.
+ * @param builtinColor - The current semantic object colour.
+ * @param limits - Import budgets injected from the Project configuration.
+ * @param renderer - Current device capabilities used for texture decoding.
+ * @returns The template.
+ * @throws {Error} When resolving, transferring or parsing the model fails.
+ */
+async function loadTemplate(
+  source: SceneModelSource,
+  signal: AbortSignal,
+  resolveAsset: (assetId: string, signal: AbortSignal) => Promise<ResolvedSceneAsset>,
+  builtinColor: string,
+  limits: SceneImportLimits,
+  renderer?: WebGLRenderer,
+): Promise<Group> {
   if (source.kind === 'builtin') {
     return source.id === 'box' ? createBuiltinBox(builtinColor) : loadBuiltinFigure(signal, builtinColor, limits, renderer);
   }
@@ -364,7 +441,10 @@ export async function parseSceneModel(model: ModelPackage, signal: AbortSignal, 
       // inspectModelFiles refused every used texture that names no image.
       if (failed) throw new ModelImportError('invalid', 'Model texture could not be decoded', { detail: imageLocation(model, failed.image!) });
       validateModelTextures(result.scenes, textureLimits);
-      validateModelTextureBytes(model.json, sizes, limits);
+      ownTextureBytes.set(result.scene, validateModelTextureBytes(model.json, sizes, limits));
+      tagLookParts(result.scene, result.parser.associations as ReadonlyMap<unknown, { materials?: number; meshes?: number; primitives?: number }>,
+        model.json as { meshes?: { primitives?: { material?: number }[] }[] });
+      generateLookUvs(result.scene);
       return result.scene;
     } catch (error) {
       disposeModelTemplate(root);

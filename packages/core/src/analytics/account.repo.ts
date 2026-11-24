@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The account's analytics record (inner#1442 design §4.4.6, §4.5): the latest
@@ -22,6 +22,8 @@ import {
 import { appendAccountErasure } from "@core/commerce/commerce-outbox.repo.js";
 import { db } from "@core/db/client.js";
 import { users } from "@core/db/schema.js";
+import { eraseForAccounts as eraseModelUpstreams } from "@core/byok/account-model-upstreams.repo.js";
+import { eraseForAccounts as eraseProviderKeys } from "@core/byok/account-provider-keys.repo.js";
 
 /**
  * The account's latest report.
@@ -98,9 +100,10 @@ export async function getAccountAttribution(userId: string): Promise<Attribution
 
 /**
  * Remove what deleted accounts' consent left behind: the latest report, and
- * the consent snapshots on their upload tickets and ad uploads; the snapshots
- * on their orders are dropped by the billing service, told in the same
- * transaction through the outbox (inner#1993 §3.4). Only accounts already soft-deleted are touched; when any id
+ * the consent snapshots on their upload tickets and ad uploads, and their own
+ * provider keys and model choices (inner#1953); the snapshots on their orders
+ * are dropped by the billing service, told in the same transaction through
+ * the outbox (inner#1993 §3.4). Only accounts already soft-deleted are touched; when any id
  * is not, nothing changes.
  * @param userIds - The accounts' `users.id`.
  * @returns The ids that are not soft-deleted (empty when the erase ran).
@@ -118,6 +121,8 @@ export async function eraseAccountAnalytics(userIds: readonly string[]): Promise
     await tx.execute(sql`
       UPDATE ads_conversion_uploads SET job = jsonb_set(job, '{browser}', 'null'::jsonb), updated_at = now()
       WHERE job->>'userId' = ANY(${`{${ids.join(",")}}`}::text[]) AND job->'browser' <> 'null'::jsonb`);
+    await eraseProviderKeys(ids, tx);
+    await eraseModelUpstreams(ids, tx);
     // The orders' consent lives with the billing service, which drops it on this event.
     for (const id of ids) await appendAccountErasure(id, tx);
     return { notDeleted: [] };

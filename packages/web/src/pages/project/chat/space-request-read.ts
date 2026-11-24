@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Reading the Spaces the Agent asked to look at, once the user allowed it
@@ -29,7 +29,7 @@ import { docName, getDoc } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { clipDocument, fitCanvasContent, holdsSynced, readCanvas } from '@web/pages/project/chat/space-context';
 import { spaceContentReadable } from '@web/pages/project/space-type';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { buildDocumentEditor } from '@web/spaces/document/build-document-editor';
 import { readTopBlocks } from '@web/spaces/document/document-blocks-read';
 import { anchoredMediaIds } from '@web/spaces/document/document-comment-media';

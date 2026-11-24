@@ -1,7 +1,10 @@
 # This deployment's credit grants. Copy to config/credits.yaml and fill in;
 # git does not track that copy, because what a deployment gives away is its
 # own decision. Read by server only where the deployment charges
-# (CHARGING_ENABLED), and checked at startup there.
+# (CHARGING_ENABLED), and checked at startup there. Selling credits or
+# memberships needs written authorization from Orime, Inc.; without it an
+# instance runs in Self-Deployment Mode with COMMERCE_API_URL blank (LICENSE
+# sections 10 and 11).
 
 # Credits a new account is given when its personal studio is created — the
 # first credits anybody gets without paying, and the only ones granted

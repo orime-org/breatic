@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Copyright (c) 2026 Orime, Inc.
-# SPDX-License-Identifier: AGPL-3.0-only
+# SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 set -euo pipefail
 : "${TEST_IMAGE:?}" "${IMAGE_KIND:?}" "${ARCH:?}" "${VERSION:?}" "${REVISION:?}"
 [[ "$(docker image inspect --format '{{.Os}}/{{.Architecture}}' "$TEST_IMAGE")" == "linux/$ARCH" ]] || exit 1
@@ -46,6 +46,9 @@ case "$IMAGE_KIND" in
     ;;
   ingestWebAnimation)
     docker run --rm --network none -v "$PWD/scripts/ingest-web-animation-smoke.mjs:/tmp/web-animation-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/web-animation-smoke.mjs
+    ;;
+  ingestWebAnimationRender)
+    docker run --rm --network none -v "$PWD/scripts/ingest-web-animation-render-smoke.mjs:/tmp/render-smoke.mjs:ro" --entrypoint node "$TEST_IMAGE" /tmp/render-smoke.mjs
     ;;
   *) echo 'Unknown image kind' >&2; exit 1 ;;
 esac

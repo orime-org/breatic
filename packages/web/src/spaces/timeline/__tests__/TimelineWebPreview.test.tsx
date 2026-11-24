@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A web copy that is not ready draws no picture (inner#1711 design §8). `<hyperframes-player>` paints its own black
@@ -23,7 +23,7 @@ import { t } from '@breatic/shared';
 import { timelineApi } from '@web/data/api/timeline';
 import type * as TimelineApiModule from '@web/data/api/timeline';
 import { TimelineWebPreview, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
-import { TimelineWebResultPreview } from '@web/spaces/timeline/TimelineWebResultPreview';
+import { MotionResultPlayer } from '@web/spaces/web-animation/MotionResultPlayer';
 import type { WebInstanceState } from '@web/spaces/timeline/web-animation-host';
 import { SRC_A, boundTo, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 
@@ -60,7 +60,7 @@ const ENTRIES = [ENTRY];
 const LIMITS = {
   defaults: { width: 1920, height: 1080, fps: FPS },
   assets: { pageSize: 50, pageMax: 100 },
-  webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 50, sourceRefreshIntervalMs: 10000 },
+  webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 50 },
 };
 
 beforeEach(() => {
@@ -344,7 +344,7 @@ function answerLastSeek(result: ResultPlayer): void {
   reply({ type: 'breatic-frame-ready', session: seek.session, sequence: seek.sequence }, result.frameWindow);
 }
 
-describe('execution list result preview', () => {
+describe('Motion result player', () => {
   beforeEach(() => {
     // The player counts as defined, so the preview drives it; the element itself stays inert.
     const get = customElements.get.bind(customElements);
@@ -388,6 +388,15 @@ describe('execution list result preview', () => {
     await waitFor(() => expect(document.querySelector('hyperframes-player')).toHaveAttribute('src', PREVIEW_URL));
     expect(screen.queryByRole('button', { name: t('timeline.retry') })).toBeNull();
   });
+  it('fails a page that never says it is ready once the player load timeout arrives after the player attached', async () => {
+    let answer: (value: unknown) => void = () => {};
+    vi.mocked(timelineApi.limits).mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
+    showResult(null);
+    await waitFor(() => expect(document.querySelector('hyperframes-player')).toHaveAttribute('data-web-state', 'loading'));
+    withIframe(document.querySelector('hyperframes-player') as HTMLElement);
+    answer(LIMITS);
+    expect(await screen.findByRole('button', { name: t('timeline.retry') })).toBeInTheDocument();
+  });
 
   it('fails a page that never says it is ready within the Timeline player load timeout and offers a retry', async () => {
     showResult();
@@ -400,18 +409,27 @@ describe('execution list result preview', () => {
     await userEvent.click(retry);
     await waitFor(() => expect(vi.mocked(timelineApi.previewUrl).mock.calls.length).toBeGreaterThan(calls));
   });
+
+  it('loads a failed page again on retry', async () => {
+    showResult({ ...LIMITS, webAnimation: { ...LIMITS.webAnimation, playerLoadTimeoutMs: 60_000 } });
+    await waitFor(() => expect(document.querySelector('hyperframes-player')).not.toBeNull());
+    const result = withIframe(document.querySelector('hyperframes-player') as HTMLElement);
+    act(() => { result.element.dispatchEvent(new Event('error')); });
+    await userEvent.click(await screen.findByRole('button', { name: t('timeline.retry') }));
+    await waitFor(() => expect(document.querySelector('hyperframes-player')).toHaveAttribute('data-web-state', 'loading'));
+    expect(screen.queryByRole('button', { name: t('timeline.retry') })).toBeNull();
+  });
 });
 
 /**
- * Render a succeeded execution's result preview inside the query cache the execution list provides.
+ * Render a succeeded execution's result in the Motion player, inside the query cache the Motion Space provides.
+ * @param limits - The Timeline limits the Motion Space has read already; null when they are still on their way.
  * @throws {Error} When rendering fails.
  */
-function showResult(): void {
+function showResult(limits: typeof LIMITS | null = LIMITS): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
-  // The list opens inside the Timeline Space, which has read the Timeline limits already.
-  client.setQueryData(['timeline-limits', PROJECT], LIMITS);
-  render(<QueryClientProvider client={client}>
-    <TimelineWebResultPreview projectId={PROJECT} executionId={EXECUTION} sourceVersionId={SRC_A}
-      input={{ prompt: 'Gold dot along an arc', engine: 'deepseek', aspect: '16:9', durationSeconds: 2, fps: FPS }} />
-  </QueryClientProvider>);
+  if (limits !== null) client.setQueryData(['timeline-limits', PROJECT], limits);
+  render(<QueryClientProvider client={client}><div className='relative'>
+    <MotionResultPlayer projectId={PROJECT} executionId={EXECUTION} sourceVersionId={SRC_A} input={{ durationSeconds: 2, fps: FPS }} frame={0} />
+  </div></QueryClientProvider>);
 }

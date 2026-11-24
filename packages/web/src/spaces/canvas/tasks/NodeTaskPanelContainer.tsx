@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Mounts the open node's task list beside it (#186 §7.1).
@@ -17,7 +17,7 @@ import type { NodeRef } from '@web/data/yjs/node-view';
 import type { NodeTaskCounts, NodeTaskEntry } from '@breatic/shared';
 
 import { canvasApi } from '@web/data/api/canvas';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { toastCancelFailure } from '@web/spaces/canvas/tasks/cancel-failure';

@@ -1,21 +1,17 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The Timeline execution HTTP surface (inner#1711 design §3.4, §4, §5.1; acceptance V1, V2, V4).
+ * The web-animation execution HTTP surface (inner#1711 design §3.4, §4, §5.1; #1490 design §4.1, §4.4).
  *
- * `POST /timeline/executions` admits a web-animation execution as an Agent chat turn is admitted: a balance above
- * zero is all it needs, and no credits are held (settlement later charges actual use and may take the balance below
- * zero). An action already accepted answers its own row (or 409 when the input differs); a new one writes the
- * execution and this Project's grant in one transaction. The read routes answer through the grant rows, so a
- * duplicated Project can resolve and preview what its source made while its execution list stays its own. Cancel
- * ends a row nothing has started; there is nothing to release.
- *
- * Driven through the real app, database and Redis with payments on, so a credit hold, were one written, would be a
- * real `credit_holds` row.
+ * `POST /timeline/executions` admits an execution as an Agent chat turn is admitted: a balance above zero is all it
+ * needs, and no credits are held. A body names its `kind`; the row starts `queued`. An action already accepted
+ * answers its own row (or 409 when the input differs); a new one writes the execution and this Project's grant in one
+ * transaction. The read routes answer through the grant rows, so a duplicated Project resolves
+ * and previews what its source made. Cancel ends a row nothing has started; there is nothing to release.
  */
 
-import { describe, it, expect, beforeAll, afterAll, beforeEach, inject, vi } from "vitest";
+import { describe, it, expect, beforeAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -31,128 +27,28 @@ vi.mock("ai", () => ({
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
-import {
-  env,
-  getNodeTaskConfig,
-  getRedis,
-  getStreamRedis,
-  getTimelineConfig,
-  initCore,
-  loadLocales,
-  sessionCookieName,
-  setSession,
-  taskEventsStreamKey,
-  timelineExecutionRepo,
-  type Redis,
-} from "@breatic/core";
-import { webAnimationSourceRepo } from "@breatic/domain";
-import { extractPromptText, readSignedPayload, t, timelineSpaceDocName } from "@breatic/shared";
-import { decodePreviewToken } from "@breatic/shared/space-content";
+import { env, getNodeTaskConfig, getTimelineConfig } from "@breatic/core";
+import { timelineExecutionRepo } from "@breatic/domain";
+import { extractPromptText, readSignedPayload, t, timelineSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
+import { WebAnimationRowViewSchema, decodePreviewToken } from "@breatic/shared/space-content";
 import type { TimelineExecution } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
-import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
+import { useWebAnimationHarness, type ProjectFixture } from "@server/__tests__/integration/web-animation-harness.js";
 
-const PREVIEW_BASE_URL = "https://preview.timeline.test";
-const SUITE_ENV = {
-  ...process.env,
-  PAYMENT_ENABLED: "true",
-  STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-  STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-  WEB_ANIMATION_PREVIEW_BASE_URL: PREVIEW_BASE_URL,
-};
 const APP = "timeline-routes-test-driver";
-
+const h = useWebAnimationHarness(APP);
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
-let subscriber: Redis;
-const signals: { channel: string; message: Record<string, unknown> }[] = [];
+const { seedUser, seedProject, holdsOf, grantedProjects, grant, step, succeed, signalsFor, executionChangesFor, expectNotFound } = h;
+const signals = h.signals;
 
-beforeAll(async () => {
-  initCore(SUITE_ENV);
-  loadLocales();
-  sql = postgres(inject("DATABASE_URL"), { max: 6, prepare: false, connection: { application_name: APP } });
-  const { createApp } = await import("@server/app.js");
-  app = createApp();
-  subscriber = getStreamRedis().duplicate();
-  subscriber.on("pmessage", (_pattern: string, channel: string, message: string) => {
-    signals.push({ channel, message: JSON.parse(message) as Record<string, unknown> });
-  });
-  await subscriber.psubscribe(`${env.REDIS_KEY_PREFIX}:project:*:space-tasks:changed`);
+beforeAll(() => {
+  sql = h.sql;
+  app = h.app;
 });
 
-beforeEach(() => {
-  signals.length = 0;
-});
-
-afterAll(async () => {
-  await subscriber?.quit();
-  await sql?.end({ timeout: 1 });
-  initCore(process.env);
-});
-
-interface Member { userId: string; cookie: string }
-interface ProjectFixture {
-  owner: Member;
-  editor: Member;
-  viewer: Member;
-  studioId: string;
-  projectId: string;
-  spaceId: string;
-}
-
-let seq = 0;
-
 /**
- * A session cookie for a user.
- * @param userId - Who signs in.
- * @returns The cookie header value.
- */
-async function sessionFor(userId: string): Promise<string> {
-  const token = crypto.randomBytes(24).toString("hex");
-  await setSession(getRedis(), token, userId);
-  return `${sessionCookieName()}=${token}`;
-}
-
-/**
- * A signed-in user with a personal studio they administer.
- * @returns The user, their cookie and their studio.
- */
-async function seedUser(): Promise<Member & { studioId: string }> {
-  const [user] = await sql<{ id: string }[]>`
-    INSERT INTO users (email, email_verified) VALUES (${`tlx-${seq++}-${crypto.randomUUID()}@example.test`}, true) RETURNING id
-  `;
-  const [studio] = await sql<{ id: string }[]>`
-    INSERT INTO studios (created_by_user_id, slug, type, name)
-    VALUES (${user!.id}, ${`tlx-s-${crypto.randomBytes(8).toString("hex")}`}, 'personal', 'Personal') RETURNING id
-  `;
-  await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')`;
-  return { userId: user!.id, studioId: studio!.id, cookie: await sessionFor(user!.id) };
-}
-
-/**
- * A Project owned by a studio admin, with an editor and a viewer, a Timeline Space id and designated credits.
- * @param credits - The credits designated to the owner's studio.
- * @returns Everyone, the Project and the Space.
- */
-async function seedProject(credits = 10_000): Promise<ProjectFixture> {
-  const owner = await seedUser();
-  const slug = `tlx-p-${crypto.randomBytes(8).toString("hex")}`;
-  const [project] = await sql<{ id: string }[]>`
-    INSERT INTO projects (studio_id, created_by_user_id, name, slug, initial_space_type)
-    VALUES (${owner.studioId}, ${owner.userId}, ${slug}, ${slug}, 'timeline') RETURNING id
-  `;
-  const projectId = project!.id;
-  await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${projectId}, ${owner.userId}, 'owner', null)`;
-  const editor = await seedUser();
-  await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${projectId}, ${editor.userId}, 'editor', ${owner.userId})`;
-  const viewer = await seedUser();
-  await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${projectId}, ${viewer.userId}, 'viewer', ${owner.userId})`;
-  if (credits > 0) await seedDesignatedLot(sql, { userId: owner.userId, studioId: owner.studioId, projectId }, credits);
-  return { owner, editor, viewer, studioId: owner.studioId, projectId, spaceId: crypto.randomUUID() };
-}
-
-/**
- * A create-execution body.
+ * A create body.
  * @param fx - The Project and Space.
  * @param overrides - Fields a case varies.
  * @returns The body.
@@ -162,11 +58,11 @@ function createBody(fx: ProjectFixture, overrides: Record<string, unknown> = {})
     projectId: fx.projectId,
     spaceId: fx.spaceId,
     actionId: crypto.randomUUID(),
+    kind: "web_animation_create",
     prompt: "A red square slides in from the left",
     engine: "deepseek",
     aspect: "16:9",
     durationSeconds: 4,
-    fps: { num: 24, den: 1 },
     ...overrides,
   };
 }
@@ -186,164 +82,86 @@ async function accept(cookie: string, body: Record<string, unknown>): Promise<Re
 }
 
 /**
- * Accept an execution and read it back from the answer.
+ * Accept an execution and read its row.
  * @param fx - The Project.
  * @param overrides - Body fields a case varies.
- * @returns The accepted row.
+ * @returns The accepted row as stored.
  */
 async function accepted(fx: ProjectFixture, overrides: Record<string, unknown> = {}): Promise<TimelineExecution> {
   const res = await accept(fx.editor.cookie, createBody(fx, overrides));
   expect(res.status, await res.clone().text()).toBe(201);
-  return ((await res.json()) as { data: TimelineExecution }).data;
+  const { id } = ((await res.json()) as { data: { id: string } }).data;
+  const row = await timelineExecutionRepo.findById(id);
+  if (row === undefined) throw new Error("Accepted execution missing");
+  return row;
 }
 
 /**
- * The credit holds of a studio.
- * @param studioId - The studio.
- * @returns Its rows, oldest first.
- */
-async function holdsOf(studioId: string): Promise<{ reference_id: string; status: string; amount: number }[]> {
-  const rows = await sql<{ reference_id: string; status: string; amount: string }[]>`
-    SELECT reference_id, status, amount::text AS amount FROM credit_holds WHERE studio_id = ${studioId} ORDER BY created_at, id
-  `;
-  return rows.map((row) => ({ ...row, amount: Number(row.amount) }));
-}
-
-/**
- * The live grants of an execution.
- * @param executionId - The execution.
- * @returns The Projects granted it, sorted.
- */
-async function grantedProjects(executionId: string): Promise<string[]> {
-  const rows = await sql<{ project_id: string }[]>`
-    SELECT project_id FROM timeline_execution_grants WHERE execution_id = ${executionId} AND deleted_at IS NULL ORDER BY project_id
-  `;
-  return rows.map((row) => row.project_id);
-}
-
-/**
- * Insert an execution straight through the repository, with no grant.
+ * Insert a create execution straight through the repository, with no grant.
  * @param projectId - Its Project.
  * @param spaceId - Its Space.
  * @param actorUserId - Who accepted it.
  * @returns The row.
  */
 async function insertExecution(projectId: string, spaceId: string, actorUserId: string): Promise<TimelineExecution> {
-  const row = await timelineExecutionRepo.insert({
-    projectId,
-    spaceId,
-    actorUserId,
-    kind: "web_animation_create",
-    engine: "deepseek",
-    actionId: crypto.randomUUID(),
-    input: { prompt: "A red square", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
-    inputHash: `sha256:${crypto.randomUUID()}`,
-    deadlineAt: new Date(Date.now() + getNodeTaskConfig().default_budget_ms),
-  });
-  if (row === null) throw new Error("Fixture execution conflicted");
-  return row;
+  return h.insertExecution({ projectId, spaceId, actorUserId });
 }
 
 /**
- * Grant an execution to a Project, as acceptance or a Project copy does.
- * @param executionId - The execution.
- * @param projectId - The Project.
+ * Insert a row as one stored before #1490 is, made in a Timeline and still waiting for its landing receipt, and grant
+ * it to its Project.
+ * @param fx - The Project and Space.
+ * @returns The row.
  */
-async function grant(executionId: string, projectId: string): Promise<void> {
-  await sql`INSERT INTO timeline_execution_grants (execution_id, project_id) VALUES (${executionId}, ${projectId})`;
-}
-
-/**
- * Move an execution through the writer.
- * @param id - The execution.
- * @param event - The event.
- * @returns The row after it.
- */
-async function step(id: string, event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<TimelineExecution> {
-  const result = await timelineExecutionRepo.transition({ id, event });
-  if (!result.applied) throw new Error(`Fixture step ${event.type} refused`);
-  return result.row;
-}
-
-/**
- * Finish an execution with a source version, as the worker does.
- * @param execution - A running or awaiting row.
- * @returns The source version.
- */
-async function succeed(execution: TimelineExecution): Promise<{ id: string }> {
-  await step(execution.id, { type: "land", inputHash: execution.inputHash });
-  const running = await step(execution.id, { type: "claim" });
-  const source = await webAnimationSourceRepo.insert({
-    executionId: execution.id,
-    packageKey: `web-animation/${execution.projectId}/${execution.id}/index.html`,
-    manifestKey: `web-animation/${execution.projectId}/${execution.id}/manifest.json`,
-    packageSha256: "a".repeat(64),
-    packageBytes: 600_000,
-    manifestSha256: "b".repeat(64),
-    runtimeVersion: "@hyperframes/core@0.8.186",
-    fontSetVersion: 1,
-    width: 1920,
-    height: 1080,
-    fpsNum: 24,
-    fpsDen: 1,
-    durationFrames: 96,
-  });
-  await step(execution.id, { type: "success", fence: running.fence, resultSourceVersionId: source.id });
-  return source;
-}
-
-/**
- * What one Timeline Space was told, after giving late messages time to arrive: the changes on the task-events stream
- * for its document, and the space-tasks signals on its Project's channel.
- * @param projectId - The Project.
- * @param spaceId - The Space.
- * @returns Both.
- */
-async function signalsFor(projectId: string, spaceId: string): Promise<{ doc: Record<string, unknown>[]; meta: Record<string, unknown>[] }> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  const docName = timelineSpaceDocName(projectId, spaceId);
-  const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
-    .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
-    .filter((event) => event.docName === docName);
-  const meta = signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
-  return { doc, meta };
-}
-
-/**
- * Assert the route itself answered "not found", which a request to a route that does not exist cannot.
- * @param res - The response.
- */
-async function expectNotFound(res: Response): Promise<void> {
-  expect(res.status).toBe(404);
-  expect(await res.json()).toEqual({ error: { code: 404, message: t("server.error.not_found") } });
+async function insertBefore1490(fx: ProjectFixture): Promise<TimelineExecution> {
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO timeline_executions (project_id, space_id, actor_user_id, kind, action_id, input, input_hash, engine, deadline_at, status, origin)
+    VALUES (${fx.projectId}, ${fx.spaceId}, ${fx.editor.userId}, 'web_animation_create', ${crypto.randomUUID()},
+      ${sql.json({ prompt: "A", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } })},
+      'sha256:before', 'deepseek', now() + interval '2 hours', 'awaiting_landing', 'timeline')
+    RETURNING id
+  `;
+  await grant(row!.id, fx.projectId);
+  const read = await timelineExecutionRepo.findById(row!.id);
+  if (read === undefined) throw new Error("Fixture execution missing");
+  return read;
 }
 
 describe("POST /timeline/executions", () => {
-  it("accepts a new action: writes the row and this Project's grant and holds no credits", async () => {
+  it("accepts a create, queued, with this Project's grant and no hold", async () => {
     const fx = await seedProject();
     const body = createBody(fx);
     const before = Date.now();
     const res = await accept(fx.editor.cookie, body);
     expect(res.status, await res.clone().text()).toBe(201);
-    const { data } = (await res.json()) as { data: TimelineExecution };
+    const { data } = (await res.json()) as { data: { id: string } };
     expect(data).toMatchObject({
+      spaceId: fx.spaceId,
+      kind: "web_animation_create",
+      status: "queued",
+      request: body.prompt,
+      ownProject: true,
+      resultSourceVersionId: null,
+    });
+    const row = await timelineExecutionRepo.findById(data.id);
+    expect(row).toMatchObject({
       projectId: fx.projectId,
       spaceId: fx.spaceId,
       actorUserId: fx.editor.userId,
       kind: "web_animation_create",
       engine: "deepseek",
       actionId: body.actionId,
-      status: "awaiting_landing",
+      origin: "web_animation_space",
+      status: "queued",
       attempt: 0,
       fence: null,
       resultSourceVersionId: null,
       billedAt: null,
     });
-    expect(data.input).toMatchObject({ prompt: body.prompt, aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } });
+    expect(row?.input).toEqual({ prompt: body.prompt, engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: getTimelineConfig().web_animation.fps });
     const budget = getNodeTaskConfig().default_budget_ms;
-    expect(Date.parse(data.deadlineAt)).toBeGreaterThanOrEqual(before + budget - 1);
-    expect(Date.parse(data.deadlineAt)).toBeLessThanOrEqual(Date.now() + budget + 1);
-    expect(await timelineExecutionRepo.findById(data.id)).toEqual(data);
+    expect(Date.parse(row!.deadlineAt)).toBeGreaterThanOrEqual(before + budget - 1);
+    expect(Date.parse(row!.deadlineAt)).toBeLessThanOrEqual(Date.now() + budget + 1);
     expect(await grantedProjects(data.id)).toEqual([fx.projectId]);
     expect(await holdsOf(fx.studioId)).toEqual([]);
   });
@@ -351,14 +169,17 @@ describe("POST /timeline/executions", () => {
   it("accepts with any balance above zero, however little of a run it would cover, holding nothing", async () => {
     const fx = await seedProject(1);
     const row = await accepted(fx);
-    expect(row.status).toBe("awaiting_landing");
+    expect(row.status).toBe("queued");
     expect(await holdsOf(fx.studioId)).toEqual([]);
   });
 
-  it("keeps the document's frame rate in the frozen input", async () => {
+  it("refuses a body without a kind with 422 and writes nothing", async () => {
     const fx = await seedProject();
-    const row = await accepted(fx, { fps: { num: 30_000, den: 1001 } });
-    expect(row.input).toMatchObject({ fps: { num: 30_000, den: 1001 } });
+    const { kind: _kind, ...kindless } = createBody(fx);
+    expect((await accept(fx.editor.cookie, kindless)).status).toBe(422);
+    expect((await accept(fx.editor.cookie, { ...kindless, fps: { num: 24, den: 1 } })).status).toBe(422);
+    const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId}`;
+    expect(count).toBe(0);
   });
 
   it("freezes the prompt as extractPromptText leaves it", async () => {
@@ -374,10 +195,10 @@ describe("POST /timeline/executions", () => {
     const body = createBody(fx);
     const first = await accept(fx.editor.cookie, body);
     expect(first.status).toBe(201);
-    const original = ((await first.json()) as { data: TimelineExecution }).data;
+    const original = ((await first.json()) as { data: unknown }).data;
     const again = await accept(fx.editor.cookie, body);
     expect(again.status, await again.clone().text()).toBe(200);
-    expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(original);
+    expect(((await again.json()) as { data: unknown }).data).toEqual(original);
     expect(await holdsOf(fx.studioId)).toEqual([]);
     const [{ count } = { count: -1 }] = await sql<{ count: number }[]>`
       SELECT count(*)::int AS count FROM timeline_executions WHERE project_id = ${fx.projectId} AND action_id = ${String(body.actionId)}
@@ -388,11 +209,12 @@ describe("POST /timeline/executions", () => {
   it("refuses an action already accepted with a different input with 409, holding nothing", async () => {
     const fx = await seedProject();
     const body = createBody(fx);
-    const original = ((await (await accept(fx.editor.cookie, body)).json()) as { data: TimelineExecution }).data;
+    const { id } = ((await (await accept(fx.editor.cookie, body)).json()) as { data: { id: string } }).data;
+    const original = await timelineExecutionRepo.findById(id);
     const changed = await accept(fx.editor.cookie, { ...body, prompt: "A blue circle" });
     expect(changed.status).toBe(409);
     expect(await holdsOf(fx.studioId)).toEqual([]);
-    expect(await timelineExecutionRepo.findById(original.id)).toEqual(original);
+    expect(await timelineExecutionRepo.findById(id)).toEqual(original);
   });
 
   it("refuses a viewer with 403 and an outsider with 404, writing and holding nothing", async () => {
@@ -449,9 +271,9 @@ describe("POST /timeline/executions", () => {
     const competitorId = crypto.randomUUID();
     const competitor = gate.begin(async (tx) => {
       await tx`
-        INSERT INTO timeline_executions (id, project_id, space_id, actor_user_id, kind, action_id, input, input_hash, engine, deadline_at)
+        INSERT INTO timeline_executions (id, project_id, space_id, actor_user_id, kind, action_id, input, input_hash, engine, deadline_at, origin)
         VALUES (${competitorId}, ${fx.projectId}, ${fx.spaceId}, ${fx.owner.userId}, 'web_animation_create', ${String(body.actionId)},
-                ${tx.json({ prompt: "Something else" })}, 'sha256:competitor', 'deepseek', now() + interval '2 hours')
+                ${tx.json({ prompt: "Something else" })}, 'sha256:competitor', 'deepseek', now() + interval '2 hours', 'web_animation_space')
       `;
       inserted();
       await held;
@@ -474,45 +296,6 @@ describe("POST /timeline/executions", () => {
   });
 });
 
-describe("GET /timeline/executions", () => {
-  it("lists only the requested Project's executions in the Space, newest first, with each one's usage credits", async () => {
-    const fx = await seedProject(0);
-    // Another Project with a Space of the same id, as a Project copy has; its executions are not this list's.
-    const copy = await seedProject(0);
-    const older = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
-    const newer = await insertExecution(fx.projectId, fx.spaceId, fx.owner.userId);
-    await insertExecution(fx.projectId, crypto.randomUUID(), fx.owner.userId);
-    const inCopy = await insertExecution(copy.projectId, fx.spaceId, copy.owner.userId);
-    await grant(inCopy.id, fx.projectId);
-    await sql`UPDATE timeline_executions SET created_at = now() - interval '2 minutes' WHERE id = ${older.id}`;
-    await sql`UPDATE timeline_executions SET created_at = now() - interval '1 minute' WHERE id = ${newer.id}`;
-    for (const credits of ["1.5", "2.25"]) {
-      await sql`
-        INSERT INTO agent_usage_records (operation_key, feature, source, actor_user_id, project_id, model, provider, cost_usd, cost_source, credits)
-        VALUES (${`timeline:${older.id}`}, 'timeline_web_animation', 'model', ${fx.owner.userId}, ${fx.projectId},
-                'deepseek/deepseek-v4.1-flash-1017', 'openrouter', 0.01, 'provider', ${credits})
-      `;
-    }
-    const res = await app.request(`/api/v1/timeline/executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}`, {
-      headers: { Cookie: fx.viewer.cookie },
-    });
-    expect(res.status, await res.clone().text()).toBe(200);
-    const { data } = (await res.json()) as { data: (TimelineExecution & { usageCredits: number })[] };
-    expect(data.map((row) => row.id)).toEqual([newer.id, older.id]);
-    expect(data.map((row) => row.usageCredits)).toEqual([0, 3.75]);
-    expect(data[1]).toMatchObject({ id: older.id, projectId: fx.projectId, spaceId: fx.spaceId, status: "awaiting_landing", steps: [], phase: null });
-  });
-
-  it("answers an outsider with 404", async () => {
-    const fx = await seedProject(0);
-    const outsider = await seedUser();
-    const res = await app.request(`/api/v1/timeline/executions?projectId=${fx.projectId}&spaceId=${fx.spaceId}`, {
-      headers: { Cookie: outsider.cookie },
-    });
-    await expectNotFound(res);
-  });
-});
-
 describe("GET /timeline/web-sources", () => {
   it("resolves only the sources and executions this Project holds a grant for", async () => {
     const fx = await seedProject(0);
@@ -524,8 +307,8 @@ describe("GET /timeline/web-sources", () => {
     await grant(running.id, fx.projectId);
     await grant(foreign.id, other.projectId);
     const source = await succeed(done);
-    await step(running.id, { type: "land", inputHash: running.inputHash });
     await step(running.id, { type: "claim" });
+    await step(running.id, { type: "progress", fence: (await timelineExecutionRepo.findById(running.id))!.fence, phase: "validating" });
     const foreignSource = await succeed(foreign);
 
     const query = `projectId=${fx.projectId}&sourceIds=${source.id},${foreignSource.id}&executionIds=${done.id},${running.id},${foreign.id}`;
@@ -534,11 +317,20 @@ describe("GET /timeline/web-sources", () => {
     expect(await res.json()).toEqual({
       data: {
         sources: {
-          [source.id]: { durationFrames: 96, fps: { num: 24, den: 1 }, viewport: { width: 1920, height: 1080 } },
+          [source.id]: {
+            durationFrames: 96, fps: { num: 24, den: 1 }, viewport: { width: 1920, height: 1080 },
+            executionId: done.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square",
+          },
         },
         executions: {
-          [done.id]: { status: "succeeded", resultSourceVersionId: source.id, acceptedDurationFrames: 96, fps: { num: 24, den: 1 } },
-          [running.id]: { status: "running", resultSourceVersionId: null, acceptedDurationFrames: 96, fps: { num: 24, den: 1 } },
+          [done.id]: {
+            status: "succeeded", resultSourceVersionId: source.id, acceptedDurationFrames: 96, fps: { num: 24, den: 1 },
+            executionId: done.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square", phase: null, failureReason: null,
+          },
+          [running.id]: {
+            status: "running", resultSourceVersionId: null, acceptedDurationFrames: 96, fps: { num: 24, den: 1 },
+            executionId: running.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square", phase: "validating", failureReason: null,
+          },
         },
       },
     });
@@ -558,8 +350,18 @@ describe("GET /timeline/web-sources", () => {
     expect(res.status).toBe(200);
     expect(await res.json()).toEqual({
       data: {
-        sources: { [source.id]: { durationFrames: 96, fps: { num: 24, den: 1 }, viewport: { width: 1920, height: 1080 } } },
-        executions: { [done.id]: { status: "succeeded", resultSourceVersionId: source.id, acceptedDurationFrames: 96, fps: { num: 24, den: 1 } } },
+        sources: {
+          [source.id]: {
+            durationFrames: 96, fps: { num: 24, den: 1 }, viewport: { width: 1920, height: 1080 },
+            executionId: done.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square",
+          },
+        },
+        executions: {
+          [done.id]: {
+            status: "succeeded", resultSourceVersionId: source.id, acceptedDurationFrames: 96, fps: { num: 24, den: 1 },
+            executionId: done.id, spaceId: fx.spaceId, origin: "web_animation_space", kind: "web_animation_create", request: "A red square", phase: null, failureReason: null,
+          },
+        },
       },
     });
   });
@@ -583,61 +385,101 @@ describe("POST /timeline/executions/:id/cancel", () => {
    * Ask to cancel an execution.
    * @param cookie - Who asks.
    * @param id - The execution.
+   * @param body - The body: the Project asking.
    * @returns The response.
    */
-  async function cancel(cookie: string, id: string): Promise<Response> {
+  async function cancelWith(cookie: string, id: string, body: Record<string, unknown>): Promise<Response> {
     return app.request(`/api/v1/timeline/executions/${id}/cancel`, {
       method: "POST",
       headers: { Cookie: cookie, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
-      body: JSON.stringify({}),
+      body: JSON.stringify(body),
     });
   }
 
+  /**
+   * Ask to cancel an execution from a Project.
+   * @param cookie - Who asks.
+   * @param fx - The Project asking.
+   * @param id - The execution.
+   * @returns The response.
+   */
+  async function cancel(cookie: string, fx: ProjectFixture, id: string): Promise<Response> {
+    return cancelWith(cookie, id, { projectId: fx.projectId });
+  }
+
+  it("refuses a cancel that names no Project with 422 and leaves the row in place", async () => {
+    const fx = await seedProject();
+    const row = await accepted(fx);
+    expect((await cancelWith(fx.editor.cookie, row.id, {})).status).toBe(422);
+    expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("queued");
+  });
+
   it.each(["awaiting_landing", "queued"] as const)(
-"cancels a %s execution, with no hold to release, and signals the Space once",
+    "cancels a %s execution, with no hold to release, and tells its own Space's document once",
     async (state) => {
       const fx = await seedProject();
-      const row = await accepted(fx);
-      if (state === "queued") await step(row.id, { type: "land", inputHash: row.inputHash });
+      const row = state === "queued" ? await accepted(fx) : await insertBefore1490(fx);
+      // A Motion run belongs to its Motion Space; a run made before #1490 belongs to its Timeline.
+      const docNameOf = state === "queued" ? webAnimationSpaceDocName : timelineSpaceDocName;
       signals.length = 0;
-      const res = await cancel(fx.editor.cookie, row.id);
+      const before = await executionChangesFor(fx.projectId, fx.spaceId, docNameOf);
+      const res = await cancel(fx.editor.cookie, fx, row.id);
       expect(res.status, await res.clone().text()).toBe(200);
       expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ id: row.id, status: "cancelled" });
       expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("cancelled");
       expect(await holdsOf(fx.studioId)).toEqual([]);
-      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual({ doc: [{ type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) }], meta: [] });
+      expect(await executionChangesFor(fx.projectId, fx.spaceId, docNameOf)).toEqual([
+        ...before, { type: "space-tasks-version", docName: docNameOf(fx.projectId, fx.spaceId) },
+      ]);
+      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
     },
   );
 
   it("moves a running execution to cancelling, keeping its attempt's fence", async () => {
     const fx = await seedProject();
     const row = await accepted(fx);
-    await step(row.id, { type: "land", inputHash: row.inputHash });
     const running = await step(row.id, { type: "claim" });
-    const res = await cancel(fx.editor.cookie, row.id);
+    const res = await cancel(fx.editor.cookie, fx, row.id);
     expect(res.status).toBe(200);
-    expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ status: "cancelling", fence: running.fence, attempt: 1 });
+    expect(((await res.json()) as { data: unknown }).data).toMatchObject({ id: row.id, status: "cancelling" });
+    expect(await timelineExecutionRepo.findById(row.id)).toMatchObject({ status: "cancelling", fence: running.fence, attempt: 1 });
     expect(await holdsOf(fx.studioId)).toEqual([]);
+  });
+
+  it("answers a cancel with the row view, never the stored row's job steps, fence or input hash", async () => {
+    const fx = await seedProject();
+    const row = await accepted(fx);
+    const first = await cancel(fx.editor.cookie, fx, row.id);
+    expect(first.status).toBe(200);
+    const again = await cancel(fx.editor.cookie, fx, row.id);
+    for (const body of [await first.json(), await again.json()] as { data: Record<string, unknown> }[]) {
+      expect(body.data).not.toHaveProperty("steps");
+      expect(body.data).not.toHaveProperty("fence");
+      expect(body.data).not.toHaveProperty("inputHash");
+      expect(WebAnimationRowViewSchema.parse(body.data)).toMatchObject({ id: row.id, status: "cancelled" });
+    }
   });
 
   it("answers a terminal execution with its row unchanged and signals nothing", async () => {
     const fx = await seedProject();
     const row = await accepted(fx);
-    await cancel(fx.editor.cookie, row.id);
+    const first = ((await (await cancel(fx.editor.cookie, fx, row.id)).json()) as { data: unknown }).data;
     const ended = await timelineExecutionRepo.findById(row.id);
-    const told = await signalsFor(fx.projectId, fx.spaceId);
-    const again = await cancel(fx.editor.cookie, row.id);
+    const told = (await executionChangesFor(fx.projectId, fx.spaceId)).length;
+    expect(told).toBeGreaterThan(0);
+    const again = await cancel(fx.editor.cookie, fx, row.id);
     expect(again.status).toBe(200);
-    expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(ended);
+    expect(((await again.json()) as { data: unknown }).data).toEqual(first);
     expect(await timelineExecutionRepo.findById(row.id)).toEqual(ended);
-    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual(told);
+    expect(await executionChangesFor(fx.projectId, fx.spaceId)).toHaveLength(told);
+    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
   });
 
   it("refuses a viewer with 403 and leaves the row in place", async () => {
     const fx = await seedProject();
     const row = await accepted(fx);
-    expect((await cancel(fx.viewer.cookie, row.id)).status).toBe(403);
-    expect(await timelineExecutionRepo.findById(row.id)).toEqual(row);
+    expect((await cancel(fx.viewer.cookie, fx, row.id)).status).toBe(403);
+    expect(row).toMatchObject(await timelineExecutionRepo.findById(row.id) ?? {});
     expect(await holdsOf(fx.studioId)).toEqual([]);
   });
 });
@@ -774,7 +616,9 @@ describe("timeline_execution_grants", () => {
     expect(columns).toEqual([
       { column_name: "created_at", data_type: "timestamp with time zone", is_nullable: "NO" },
       { column_name: "deleted_at", data_type: "timestamp with time zone", is_nullable: "YES" },
+      { column_name: "execution_created_at", data_type: "timestamp with time zone", is_nullable: "NO" },
       { column_name: "execution_id", data_type: "uuid", is_nullable: "NO" },
+      { column_name: "execution_origin", data_type: "text", is_nullable: "NO" },
       { column_name: "id", data_type: "uuid", is_nullable: "NO" },
       { column_name: "project_id", data_type: "uuid", is_nullable: "NO" },
     ]);

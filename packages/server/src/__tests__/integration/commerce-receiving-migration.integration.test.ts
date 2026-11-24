@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * 0131 adds what the product needs to receive from the billing service
@@ -13,7 +13,7 @@ import { readFile } from "node:fs/promises";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 
-const migration = new URL("../../../../core/src/db/migrations/0131_commerce_receiving.sql", import.meta.url);
+const migration = new URL("../../../../core/src/db/migrations/0134_commerce_receiving.sql", import.meta.url);
 let sql: ReturnType<typeof postgres>;
 let statements: string[];
 
@@ -91,7 +91,7 @@ async function payment(
   return id;
 }
 
-describe("0131_commerce_receiving", () => {
+describe("0134_commerce_receiving", () => {
   it("gives every completed payment a receipt copied from it, and no other payment one", async () => {
     await replay(async (tx) => {
       const userId = await account(tx);

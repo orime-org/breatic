@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { type ClassValue, clsx } from 'clsx';
 import { extendTailwindMerge } from 'tailwind-merge';
@@ -34,6 +34,8 @@ const customTwMerge = extendTailwindMerge({
         // card + the ChatComposer box while its text has focus. See
         // `--color-active-border` in tokens.css (#388).
         'active-border',
+        // Colour swatch outline, `--color-swatch-border` in tokens.css (#1536).
+        'swatch-border',
       ],
     },
   },

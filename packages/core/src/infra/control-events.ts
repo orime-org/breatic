@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Cross-process control-plane events (Redis pub/sub on DB2).
  *
- * Four fire-and-forget notification paths:
+ * Six fire-and-forget notification paths:
  *
  *   - `activity:new`      — server or worker publishes after writing an
  *                           activity row; every collab instance relays
@@ -12,6 +12,14 @@
  *   - `credits:changed`   — server or worker publishes after a charge made
  *                           in the project commits; every collab instance
  *                           relays it on the meta doc. Per project.
+ *   - `space-tasks:changed` — server or worker publishes when a 3D Space's
+ *                           task list gains, settles, expires or removes a
+ *                           row; every collab instance relays it on the meta
+ *                           doc. Per project.
+ *   - `scene-look:settled` — collab's task listener publishes how an
+ *                           uploaded 3D part picture was settled; every
+ *                           collab instance relays it on the meta doc. Per
+ *                           project.
  *   - `connections:close` — collab's lifecycle consumer publishes after
  *                           a duplicate / archive / restore; every collab
  *                           instance closes its connections to the
@@ -56,12 +64,14 @@ import {
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
+  sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
   type SpaceTasksChangedControlEvent,
+  type SceneLookSettledControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
@@ -120,7 +130,7 @@ export async function publishCreditsChanged(projectId: string): Promise<void> {
 }
 
 /**
- * Announce that a 3D Space's task list changed (inner#1690); collab relays it
+ * Announce that a Space's tasks changed (a 3D task, inner#1690); collab relays it
  * to connected members as the `space-tasks:changed` stateless signal.
  * Fire-and-forget like {@link publishActivityNew}.
  * @param projectId - Project the Space belongs to.
@@ -136,6 +146,22 @@ export async function publishSpaceTasksChanged(projectId: string, spaceId: strin
     ts: Date.now(),
   };
   await getStreamRedis().publish(spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Announce how collab settled an uploaded picture for a 3D part (inner#1693
+ * design 6.3); every collab instance relays it to its connections on the
+ * project meta doc as the `scene-look:settled` stateless signal, and the
+ * uploader's page ends that part's upload and tells them when it was not
+ * written. Fire-and-forget like {@link publishActivityNew}: the picture is in
+ * the Project's pictures either way.
+ * @param settlement - The part, the picture, the uploader and the outcome.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishSceneLookSettled(settlement: Omit<SceneLookSettledControlEvent, "type" | "ts">): Promise<void> {
+  const event: SceneLookSettledControlEvent = { type: "project-scene-look:settled", ...settlement, ts: Date.now() };
+  await getStreamRedis().publish(sceneLookSettledChannel(env.REDIS_KEY_PREFIX, settlement.projectId), JSON.stringify(event));
 }
 
 /**

@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>Yaratıcı ekipler için gerçek zamanlı, yapay zekâ destekli ortak çalışma alanı.</strong></p>
-<p align="center">Çevrim içi kullanıma açık · Açık kaynak · Masaüstü tarayıcı</p>
+<p align="center">Çevrim içi kullanıma açık · Kaynak kodu erişilebilir · Masaüstü tarayıcı</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_tr">Web sitesi</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -57,11 +57,12 @@ Ortak çalışma, birden fazla kişinin aynı çalışma alanını gerçek zaman
 | **Document Spaces** | Başlıklar, listeler ve biçimlendirilmiş metinle senaryolar, çekim açıklamaları ve üretim listeleri yazın. |
 | **Canvas Spaces** | Referansları ve medyayı sonsuz tuvale yerleştirin; istemler, modeller ve referanslarla içerik üretip geliştirin. |
 | **3D (DEV)** | Paylaşılan sahneye yerleşik nesneler ekleyin; konum, döndürme ve ölçeklerini düzenleyin. |
-| **Timeline (DEV)** | Project videolarını veya yüklenen yerel videoları ortak izlerde düzenleyin: klipleri taşıyın, kırpın, bölün, çoğaltın ve silin, kendi düzenlemelerinizi geri alın ve diziyi önizleyin. Bir Web Animation tarif edip DeepSeek’e oluşturtun, yürütme listesinden izleyin ve sonucu Timeline saatine göre oynayan klipler olarak ekleyin. Tüm izlerdeki videolar ve Web Animation’lar üst üste katmanlar olarak birlikte oynar; önizlemede bir katman seçip taşıyın, ölçekleyin, gerin veya döndürün ya da konumunu ve boyutunu yazın. Oynatma çubuğunun sonunda kare en-boy oranını yedi seçenekten (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) seçin; katmanlar karedeki yerlerini korur. |
+| **Timeline (DEV)** | Project videolarını veya yüklenen yerel videoları ortak izlerde düzenleyin: klipleri taşıyın, kırpın, bölün, çoğaltın ve silin, kendi düzenlemelerinizi geri alın ve diziyi önizleyin. Motion Spaces’teki tamamlanmış Web Animation’ları Timeline saatine göre oynayan klipler olarak ekleyin; her ekleme bağımsız bir kopyadır. Tüm izlerdeki videolar ve Web Animation’lar üst üste katmanlar olarak birlikte oynar; önizlemede bir katman seçip taşıyın, ölçekleyin, gerin veya döndürün ya da konumunu ve boyutunu yazın. Oynatma çubuğunun sonunda kare en-boy oranını yedi seçenekten (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) seçin; katmanlar karedeki yerlerini korur. |
+| **Motion (DEV)** | Bir Web Animation tarif edip DeepSeek’e oluşturtun, yürütmeleri tamamlanan, süren ve başarısız olarak izleyin, tamamlanan sonuçları oynatıp içinde gezinin, bir sonucu değiştirerek yenisini oluşturun, ekip arkadaşlarınızla anlara açıklama ekleyin, bir sonucu video olarak dışa aktarın ve videoyu bir Canvas’a yerleştirin. |
 | **Projede yapay zekâ temsilcisi** | Fikirleri tartışın, belge veya tuval bağlamını sağlayın ve önerileri malzemelerinizle birlikte değerlendirin. |
-| **Gerçek zamanlı iş birliği** | Ekip arkadaşlarınızı davet edin, erişim izinlerini belirleyin ve eşzamanlanan tuval, belge, 3D sahne ve Timeline’larda çalışın. |
+| **Gerçek zamanlı iş birliği** | Ekip arkadaşlarınızı davet edin, erişim izinlerini belirleyin ve eşzamanlanan tuval, belge, 3D sahne, Timeline ve Motion Space’lerinde çalışın. |
 
-Görseller, video, ses ve 3D varlıklar desteklenir. Üretim olanakları yapılandırılan sağlayıcılara ve model erişimine bağlıdır. Canvas ve Document kullanılabilir; 3D ve Timeline **DEV** olarak işaretlidir. Timeline şu anda birden çok görüntü izinde video ve Web Animation düzenleme ve önizleme sunar; Web Animation yalnızca onu etkinleştiren kurulumlarda kullanılabilir. Ek medya türleri ve video dışa aktarma planlanmaktadır. 3D sahnenin içinde modelle üretim ve açıklama ekleme geliştirilmektedir.
+Görseller, video, ses ve 3D varlıklar desteklenir. Üretim olanakları yapılandırılan sağlayıcılara ve model erişimine bağlıdır. Canvas ve Document kullanılabilir; 3D, Timeline ve Motion **DEV** olarak işaretlidir. Timeline şu anda birden çok görüntü izinde video ve Web Animation düzenleme ve önizleme sunar; Motion, Web Animation’ları oluşturur, değiştirir ve dışa aktarır; Web Animation yalnızca onu etkinleştiren kurulumlarda kullanılabilir. Timeline için ek medya türleri ve Timeline video dışa aktarma planlanmaktadır. 3D sahnenin içinde modelle üretim ve açıklama ekleme geliştirilmektedir.
 
 ## Değişiklikleri birlikte değerlendirin
 
@@ -92,13 +93,13 @@ Spaces’e “Açılış · 0–10 sn”, “Ana sahne · 10–20 sn” ve “Bi
 - **Kendi kurulumunuz:** [kişisel ve LAN kurulum kılavuzunu (İngilizce)](self-host/LOCAL.md) izleyin.
 - **Geliştirme:** [geliştirme ortamı kurulumuna (İngilizce)](self-host/DEVELOPMENT.md) bakın.
 
-Kişisel Studio’nuzu ayarlayın, bir Project oluşturun ve **+** ile Document, Canvas, 3D veya Timeline Spaces ekleyin. Brief yazarak, referans yükleyerek ya da yerleşik 3D nesneleri düzenleyerek başlayın. [Kullanım kılavuzu (İngilizce)](docs/USAGE.md), [klavye kısayollarını](docs/USAGE.md#keyboard-shortcuts) da içerir.
+Kişisel Studio’nuzu ayarlayın, bir Project oluşturun ve **+** ile Document, Canvas, 3D, Timeline veya Motion Spaces ekleyin. Brief yazarak, referans yükleyerek ya da yerleşik 3D nesneleri düzenleyerek başlayın. [Kullanım kılavuzu (İngilizce)](docs/USAGE.md), [klavye kısayollarını](docs/USAGE.md#keyboard-shortcuts) da içerir.
 
 ### Kendi sunucunuzda çalıştırmadan önce
 
 Kurulum; web, API, arka plan işleri ve iş birliği için yayımlanmış Docker imajlarını, PostgreSQL’i ve Redis’i kullanır. Yükleme ve medya işleme **kendi Cloudflare hesabınızdaki** Ingest Worker ve medya konteyneriyle yapılır; dosyalar R2 bucket’ınızda saklanır. Yapay zekâ çağrıları kendi sağlayıcı hesaplarınızı ve kotalarınızı kullanır.
 
-Bu, çevrim dışı veya bütünüyle yerel bir kurulum değildir. LAN erişimi güvenilir HTTPS gerektirir. Bulut hizmetleri ve model çağrıları ücret doğurabilir; SMTP, Google ile giriş ve arama isteğe bağlı entegrasyonlardır. Bulut kurulumu ve doğrulama için kılavuzu izleyin. İlk Node/pnpm/Wrangler adımı dağıtım içindir; günlük kullanım için geliştirme sunucusu çalıştırmak gerekmez.
+Bu, çevrim dışı veya bütünüyle yerel bir kurulum değildir. LAN erişimi güvenilir HTTPS gerektirir. Bulut hizmetleri ve model çağrıları ücret doğurabilir; SMTP, Google ile giriş ve arama isteğe bağlı entegrasyonlardır; kredi veya üyelik satışı yalnızca Orime, Inc.’in yazılı izniyle etkinleştirilebilir (LICENSE bölüm 10 ve 11). Bulut kurulumu ve doğrulama için kılavuzu izleyin. İlk Node/pnpm/Wrangler adımı dağıtım içindir; günlük kullanım için geliştirme sunucusu çalıştırmak gerekmez.
 
 ## Durum, yardım ve katkı
 
@@ -114,9 +115,16 @@ Güvenlik açıklarını [SECURITY.md](SECURITY.md) içindeki özel bildirim yol
 
 ## Lisans ve izin verilen kullanım
 
-Breatic, [GNU Affero General Public License v3.0](LICENSE) (AGPL-3.0-only) altında açık kaynaklıdır. Breatic’i ticari kullanım dahil her amaçla kullanabilir, inceleyebilir, değiştirebilir ve kendiniz barındırabilirsiniz. Breatic’i değiştirip değiştirilmiş sürümü ağ üzerinden başkalarının kullanımına sunarsanız, tam kaynak kodunu aynı lisans altında onlara sunmanız gerekir. Tam koşullar için lisansa bakın.
+Breatic, [Breatic Source-Available License 2.0](LICENSE) altında **kaynak kodu erişilebilir** (source-available) bir yazılımdır; bu lisans, Apache License 2.0’dan türetilmiş ve ek koşullar içeren bir lisanstır. OSI onaylı bir açık kaynak lisansı değildir.
 
-Breatic adı ve logosu Orime, Inc.’in ticari markalarıdır ve yazılım lisansı kapsamında değildir; [TRADEMARKS.md](TRADEMARKS.md) dosyasına bakın. Lisans Breatic ile oluşturduğunuz içeriği kısıtlamaz.
+- Breatic’i kişisel kullanım, ticari olmayan özel bir grup veya işletmenizdeki kullanım dahil kuruluşunuz içinde kullanım için yazılım lisans ücreti ödemeden edinebilir, değiştirebilir ve kendiniz barındırabilirsiniz (LICENSE bölüm 10).
+- Breatic ile filmler, reklamlar, görseller, ses ve 3D varlıklar gibi yaratıcı eserler üretip satabilirsiniz; koşullar LICENSE bölüm 10 ve 13’te yer alır.
+- Orime, Inc.’ten ayrı bir yazılı izin olmadan, işlettiğiniz kurulum Kendi Kendine Dağıtım Modu’nda (Self-Deployment Mode) çalışmalıdır: uygulama içi kredi satın alma, ücretli üyelikler, abonelikler ve diğer ücretli işletim özellikleri devre dışı kalır (LICENSE bölüm 10).
+- Breatic’i veya platform özelliklerinin önemli bir kısmını ticari bir amaçla bu kullanımların dışındaki kişilerin kullanımına sunmak ayrı bir yazılı izin gerektirir (LICENSE bölüm 11).
+- Breatic adını ve sağlanan logoyu uygulamanın kimlik alanında görünür tutun ve lisans ile atıf bildirimlerini erişilebilir tutun (LICENSE bölüm 12). Orime, Inc., Breatic markalarının yetkili lisans verenidir; marka kuralları [TRADEMARKS.md](TRADEMARKS.md) dosyasında açıklanır.
+- AGPL-3.0-only dahil daha önceki bir lisansla yayımlanan sürümler, yayımlandıkları lisansı korur (LICENSE bölüm 15).
+
+Tüm koşullar [LICENSE](LICENSE) dosyasındadır.
 
 ### Üretilen içerik
 

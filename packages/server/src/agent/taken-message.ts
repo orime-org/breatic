@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A message the run hands a turn, and what the turn is told about its run
@@ -63,6 +63,8 @@ export interface TurnHooks {
   beforeStream?: (turnIndex: number) => Promise<void>;
   /** Told how the turn ended, after its reply was written down or failed to be. */
   onEnded?: (ended: TurnEnded) => void;
+  /** The account key row the paused segment ran on, which a resumed segment reads its key back by (inner#1953). */
+  resumeKeyId?: string;
 }
 
 /**

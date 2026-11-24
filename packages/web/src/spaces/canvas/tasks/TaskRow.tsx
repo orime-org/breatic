@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * One row of a node's task list (#186 §7.1).
@@ -15,6 +15,7 @@ import * as React from 'react';
 import { getLocale, type NodeTaskEntry } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { useKeyFailureWords, type KeyFailureWords } from '@web/features/byok/key-failure-words';
 import { cn } from '@web/lib/utils';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
@@ -93,15 +94,17 @@ export interface TaskRowProps {
  * @param entry - The task.
  * @param t - The translator.
  * @param medium - What the host node holds, for a refusal's format list.
+ * @param keys - Whose key a failed account-key run used, and each upstream's name.
  * @returns The sentence, or null.
  */
 function settledNote(
   entry: NodeTaskEntry,
   t: ReturnType<typeof useTranslation>,
   medium: 'image' | 'video' | 'audio' | undefined,
+  keys: KeyFailureWords | undefined,
 ): string | null {
   if (entry.status === 'failed') {
-    return failureSentence(entry.errorMessage, t, medium);
+    return failureSentence(entry.errorMessage, t, medium, keys);
   }
   if (entry.status !== 'expired') return null;
   // §4.5: a report can land after the verdict, and the row has to say so —
@@ -144,6 +147,7 @@ export const TaskRow = React.memo(function TaskRow({
   cancelling = false,
 }: TaskRowProps): JSX.Element {
   const t = useTranslation();
+  const keys = useKeyFailureWords();
   const names = useCollaboratorNames();
   const selfId = useCurrentUserStore((s) => s.user?.id);
   // A person who left the project is gone from the roster while their tasks
@@ -171,7 +175,7 @@ export const TaskRow = React.memo(function TaskRow({
   );
   const kind = taskRowKind(entry, t, displayNameOf);
 
-  const note = settledNote(entry, t, medium);
+  const note = settledNote(entry, t, medium, keys);
   // Whichever instant this row has: a running task says when it began, a
   // settled one when it ended. §7.1 asks a running row for both its elapsed
   // time and the moment it started. One slot carrying two different facts

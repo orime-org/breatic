@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** Project media HTTP contracts backed by real PostgreSQL and Redis (inner#1707). */
 import { createHash, randomBytes, randomUUID } from "node:crypto";
@@ -223,7 +223,6 @@ describe("Project registered media HTTP reads", () => {
         durationSeconds: { min: config.web_animation.duration_seconds.min, max: config.web_animation.duration_seconds.max, default: config.web_animation.duration_seconds.default },
         aspects: Object.keys(config.web_animation.viewports),
         playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
-        sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
         previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
         premountMs: config.web_animation.preview_premount_ms,
         idleInstancesMax: config.web_animation.preview_idle_instances_max,
@@ -258,7 +257,6 @@ describe("Project registered media HTTP reads", () => {
       durationSeconds: { min: config.web_animation.duration_seconds.min, max: config.web_animation.duration_seconds.max, default: config.web_animation.duration_seconds.default },
       aspects: Object.keys(config.web_animation.viewports),
       playerLoadTimeoutMs: config.web_animation.player_load_timeout_ms,
-      sourceRefreshIntervalMs: config.web_animation.source_refresh_interval_ms,
       previewTokenTtlMs: config.web_animation.preview_token_ttl_ms,
       premountMs: config.web_animation.preview_premount_ms,
       idleInstancesMax: config.web_animation.preview_idle_instances_max,

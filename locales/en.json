@@ -28,6 +28,7 @@
       "refund_already_spent": "Credits from this purchase have been spent, so it cannot be refunded.",
       "refund_window_closed": "The refund window for this purchase has closed.",
       "refund_state_changed": "This purchase's refund status has changed. Refresh and try again.",
+      "agent_tools_need_credits": "{refusal} {whose, select, self {Your own OpenRouter key} other {The Studio Admin's OpenRouter key}} pays for the Agent's model, but web search, image search and page reading run on our services and are paid in credits.",
       "refund_offline_contract": "Contact your contract representative for enterprise credit refunds."
     },
     "auth": {
@@ -276,6 +277,13 @@
     "billing": {
       "unavailable": "Purchases and memberships are temporarily unavailable. Please try again shortly."
     },
+    "byok": {
+      "disabled": "Bring your own key is not enabled on this deployment.",
+      "upstream_not_offered": "Keys for this provider are not accepted here.",
+      "key_malformed": "This key is not valid. Check it for extra characters and paste it again.",
+      "key_not_connected": "This key could not connect. Check it and try again.",
+      "model_choice_refused": "This provider cannot run this model with your saved keys."
+    },
     "spend_cap": {
       "member": "You've reached your monthly spend limit in this Studio ({limit, select, 1 {1 credit} other {{limit} credits}}). Contact the Studio admin if you need more.",
       "studio": "This Studio has reached its monthly spend limit. Contact the Studio admin."
@@ -362,6 +370,7 @@
         "noConnection": "couldn't reach the service, try again later",
         "refused": "the service didn't accept this request",
         "unavailable": "this feature is unavailable right now",
+        "accountKey": "the BYOK key this Studio runs on couldn't be used",
         "badAnswer": "the service returned something unusable",
         "linkUnreachable": "this address can't be opened, try another link",
         "fileTooLarge": "the file is too large",
@@ -654,7 +663,8 @@
       "snapshot": "Save snapshot",
       "download": "Download",
       "understand": "Understand",
-      "transcribe": "Transcribe"
+      "transcribe": "Transcribe",
+      "openSourceAnimation": "Open source animation"
     },
     "understand": {
       "couldNotStart": "Could not start. Try again.",
@@ -957,7 +967,14 @@
       },
       "editProposalMarks": "Replace the text in braces. Orange notes are not sent to the model.",
       "notePrefix": "Note: ",
-      "integerBlank": "Blank for auto"
+      "integerBlank": "Blank for auto",
+      "ownKeyLabel": "Your key",
+      "studioKeyLabel": "Studio key",
+      "alsoCredits": "credits",
+      "usesOwnKey": "Uses your key, no credits",
+      "usesStudioKey": "Uses the Studio's key, no credits",
+      "usesOwnKeyDescribing": "Uses your key; describing elements takes credits",
+      "usesStudioKeyDescribing": "Uses the Studio's key; describing elements takes credits"
     },
     "edge": {
       "delete": "Delete connection"
@@ -1090,7 +1107,10 @@
         "cut_short": "This is too long to transcribe in full.",
         "cancelled": "Cancelled.",
         "input_refused": "{model} can’t take this run as set up. Change the settings or pick another model.",
-        "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}."
+        "model_not_configured": "{model} is not set up on this deployment: it needs {envVars}.",
+        "account_key_failed": "{whose, select, self {{keyReason, select, invalid {{upstream} turned down your key as invalid. Change it in BYOK settings.} no_balance {Your {upstream} key is out of balance. Top up at {upstream}.} model_not_found {{upstream} does not offer this model on your key. Pick another upstream in BYOK settings.} rate_limited {{upstream} is limiting requests on your key. Try again later.} other {Your {upstream} key failed. Check it in BYOK settings.}}} admin {{keyReason, select, invalid {{upstream} turned down the Studio Admin's key as invalid. Ask the Studio Admin to change it.} no_balance {The Studio Admin's {upstream} key is out of balance. Ask the Studio Admin to top up at {upstream}.} model_not_found {{upstream} does not offer this model on the Studio Admin's key. Ask the Studio Admin to pick another upstream.} rate_limited {{upstream} is limiting requests on the Studio Admin's key. Try again later.} other {The Studio Admin's {upstream} key failed. Ask the Studio Admin to check it.}}} other {{keyReason, select, invalid {{upstream} turned down the key as invalid. Change it in BYOK settings.} no_balance {The {upstream} key is out of balance. Top up at {upstream}.} model_not_found {{upstream} does not offer this model on this key. Pick another upstream in BYOK settings.} rate_limited {{upstream} is limiting requests on this key. Try again later.} other {The {upstream} key failed. Check it in BYOK settings.}}}}",
+        "account_key_missing": "{whose, select, self {{upstream, select, none {Your key for this run was replaced or deleted. Run it again.} other {Your {upstream} key for this run was replaced or deleted. Run it again.}}} admin {{upstream, select, none {The Studio Admin's key for this run was replaced or deleted. Run it again.} other {The Studio Admin's {upstream} key for this run was replaced or deleted. Run it again.}}} other {{upstream, select, none {The key this run used was replaced or deleted. Run it again.} other {The {upstream} key this run used was replaced or deleted. Run it again.}}}}",
+        "upstream_unavailable": "Couldn't reach {upstream}. Try again later."
       },
       "kind": {
         "upload": "Upload",
@@ -1459,16 +1479,21 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "fight": "Fights & action",
         "animation": "Animated shorts",
         "ecommerce": "E-commerce ads",
         "product-showcase": "Product showcase",
+        "promo": "Promo films & brand stories",
         "food": "Food",
+        "fashion": "Fashion lookbook",
         "social-hooks": "Social hooks",
         "talking": "Talking and dialogue",
         "posters": "Posters & graphics",
         "film-styles": "Famous film styles",
+        "cinematic": "Cinematic shorts & trailers",
         "speed": "Motion & speed",
-        "sound": "Sound, music & voice"
+        "sound": "Sound, music & voice",
+        "video-remix": "Remix existing videos"
       },
       "storyboard-grid-25": {
         "name": "25-panel storyboard",
@@ -2424,6 +2449,387 @@
           "trim": "Each section usually comes out longer than you need. Once it has generated, use Tools → Cut on it to trim it to the length its prompt asks for.",
           "join": "Select the four trimmed clips (named CUT-…), right-click and choose Join; check the order runs intro, body, reveal, outro, and set a crossfade of about 1 second."
         }
+      },
+      "fight-duel-one-take": {
+        "name": "One-take duel",
+        "description": "Two fighters in one 15-second take",
+        "prompt": "A 15-second widescreen fight scene with sound in one continuous take, no cuts. The first fighter is [📎 Fighter A] and the second is [📎 Fighter B]: each has the face, hair, build and outfit of their own picture, nothing else taken from the pictures; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. a rain-soaked rooftop at night}. Fighting style: {✏️ the fighting style, e.g. kung fu kicks and palm strikes}. The camera moves with the fight: it pushes in when one attacks, pulls back when the other blocks and circles them when they lock together. 0–3 s: already in motion, the two circle each other, the camera circling with them. 3–6 s: the first fighter attacks with a swift combination, the camera pushing in; the second fighter blocks each strike. 6–9 s: the second fighter counters with a whip-fast kick, the camera pulling back to keep both in frame; they lock arms and the camera circles them. 9–12 s: the deciding blow: {✏️ the deciding blow, e.g. the first fighter's spinning kick breaks through the second fighter's guard}; the instant it lands the picture holds for a split second with a short shock of camera shake. 12–15 s: the second fighter is knocked back, motion trails behind them, the camera pulling back; both settle, ending on a medium close-up as the camera gently pulls out. Every move readable: full bodies in frame during each exchange, never a blurred smear. One light source: {✏️ the light, e.g. a neon sign behind them}. Sound: footsteps and cloth, whooshes, hard impacts, a beat of silence just before the deciding blow, then heavy breathing. No blood, no wounds. No text on screen.",
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate."
+          }
+        }
+      },
+      "fight-exchange-short": {
+        "name": "Quick exchange",
+        "description": "One clash in 8 seconds: dash, hit, knock-back",
+        "prompt": "An 8-second widescreen fight shot with sound: one exchange. The first fighter is [📎 Fighter A] and the second is [📎 Fighter B]: each has the face, hair, build and outfit of their own picture, nothing else taken from the pictures; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. an empty warehouse lit through high windows}. 0–2 s [Tracking shot]: the first fighter dashes in from the left, the camera tracking alongside at waist height. 2–4 s [Push in]: the two clash, fist against forearm, the camera pushing in on the clash. 4–5 s [Shake]: the hit: {✏️ the hit, e.g. the first fighter's elbow lands on the second fighter's shoulder}, the frame shaking once on contact. 5–8 s [Pull out]: the second fighter is knocked back several steps and skids to a stop, both drop back into stance facing each other, the camera pulling out to a wide shot and holding. Both full bodies readable in every beat. One light source: the place's own. Sound: a rush of footsteps, a crack of contact, a heavy thud, then breathing. No blood. No text on screen.",
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate."
+          }
+        }
+      },
+      "fight-duel-locked": {
+        "name": "Duel with locked looks",
+        "description": "Model sheets first, so both still look the same",
+        "prompt": "(💡 Generate Fighter A sheet first)(💡 Generate Fighter B sheet first)A 15-second widescreen fight scene with sound in one continuous take, no cuts. The first fighter is the person on [📎 Fighter A sheet] and the second is the person on [📎 Fighter B sheet]; each sheet shows one person from the front, side and back with a close-up of the face. Take from each sheet only that person: face, hair, build and every piece of the outfit, never the white background, the layout or the poses; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. a rain-soaked rooftop at night}. Fighting style: {✏️ the fighting style, e.g. kung fu kicks and palm strikes}. The camera moves with the fight: it pushes in when one attacks, pulls back when the other blocks and circles them when they lock together. 0–3 s: already in motion, the two circle each other, the camera circling with them. 3–6 s: the first fighter attacks with a swift combination, the camera pushing in; the second fighter blocks each strike. 6–9 s: the second fighter counters with a whip-fast kick, the camera pulling back to keep both in frame; they lock arms and the camera circles them. 9–12 s: the deciding blow: {✏️ the deciding blow, e.g. the first fighter's spinning kick breaks through the second fighter's guard}; the instant it lands the picture holds for a split second with a short shock of camera shake. 12–15 s: the second fighter is knocked back, motion trails behind them, the camera pulling back; both settle, ending on a medium close-up as the camera gently pulls out. Every move readable: full bodies in frame during each exchange, never a blurred smear. One light source: {✏️ the light, e.g. a neon sign behind them}. Sound: footsteps and cloth, whooshes, hard impacts, a beat of silence just before the deciding blow, then heavy breathing. No blood, no wounds. No text on screen.",
+        "node": {
+          "sheet-a": {
+            "name": "Fighter A sheet",
+            "prompt": "A 4:3 landscape model sheet of [📎 Fighter A] only, on a plain white background: on the left, the same person full body from the front, from the side and from the back in one row, standing straight with the arms a little away from the body, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin, build and every piece of clothing, shoes and accessories exactly as in the picture; nothing added, no second person, nothing of the picture's background. Even soft light. No text, no labels."
+          },
+          "sheet-b": {
+            "name": "Fighter B sheet",
+            "prompt": "A 4:3 landscape model sheet of [📎 Fighter B] only, on a plain white background: on the left, the same person full body from the front, from the side and from the back in one row, standing straight with the arms a little away from the body, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin, build and every piece of clothing, shoes and accessories exactly as in the picture; nothing added, no second person, nothing of the picture's background. Even soft light. No text, no labels."
+          }
+        },
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate Fighter A sheet."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate Fighter B sheet."
+          }
+        }
+      },
+      "hero-orbit-reveal": {
+        "name": "Hero orbit reveal",
+        "description": "Low angle, half orbit, the hero rises",
+        "prompt": "(💡 Generate Low-angle keyframe first, then set it as the First frame)A 6-second shot with sound that starts on the first frame. The moment: {✏️ what this moment is, e.g. the hero's awakening after being knocked down}. The camera stays low and makes one smooth half orbit, 180 degrees around the hero, at the same distance and height throughout; the debris close to the camera sweeps past fast while the background moves slowly. Over the whole shot the hero rises on the spot from one knee to standing tall and keeps facing the way they faced in the first frame; they do not turn with the camera. The backlight stays behind the hero. Sound: a low rumble building, debris settling, one deep boom as they stand. No text on screen.",
+        "node": {
+          "keyframe": {
+            "name": "Low-angle keyframe",
+            "prompt": "A widescreen still of [📎 Hero] seen from a camera almost on the ground, looking up: down on one knee, one hand on the ground, head lowered, about to rise. Face, hair, build and outfit exactly as in the picture; nothing else taken from the picture. Place: {✏️ the place, e.g. a cracked street after an explosion}. Strong backlight behind them rims the silhouette; dust and small debris hang in the air close to the camera, the background falling away into depth. Look: {✏️ the look, e.g. a photorealistic film still}. No text."
+          }
+        },
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate Low-angle keyframe."
+          }
+        }
+      },
+      "bullet-time-moment": {
+        "name": "Bullet-time moment",
+        "description": "Freeze the key instant and circle it",
+        "prompt": "A 6-second widescreen bullet-time shot with sound. The person is [📎 Hero]: face, hair, build and outfit as in the picture, nothing else taken from the picture. Place: {✏️ the place, e.g. a car park at night in the rain}. The action: {✏️ the action, e.g. leaping over a car as sparks fly}. 0–2 s [Static shot]: the action at full speed. 2–5 s [Truck left,Pan right]: at the deciding instant everything freezes almost completely, the person in mid-air, every particle, droplet and spark hanging still, while the camera keeps moving, circling about 120 degrees around the frozen moment at the same distance and height so the same instant is seen from new sides. This is a frozen moment with a moving camera, not slow motion. 5–6 s [Static shot]: the action carries on at full speed from exactly where it froze. Sound: the rush of the action, a sudden near-silence with a low hum while it is frozen, then the sound crashing back in. No text on screen.",
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "impact-frame-hit": {
+        "name": "Impact hit",
+        "description": "The deciding hit lands with a visual accent",
+        "prompt": "A 10-second widescreen fight with sound, built around one deciding hit. The first fighter is [📎 Fighter A] and the second is [📎 Fighter B]: each has the face, hair, build and outfit of their own picture, nothing else taken from the pictures; the same two people, outfits, place and light throughout. Place: {✏️ the place, e.g. a dojo with paper screens}. 0–3 s: already in motion, the two close in and trade quick blows, the camera moving with them. 3–5 s: the first fighter winds up for the deciding hit, a beat of stillness. 5–6 s: the deciding hit lands: {✏️ the exact point of contact, e.g. the first fighter's fist driving into the second fighter's stomach}. At the instant of contact the picture takes the accent below, for a split second only. Through it the two silhouettes stay apart and readable, the striking arm and the point of contact are the clearest things in the frame, and the background gives way to them. Then the picture snaps back to its normal colours. 6–10 s: the aftermath: {✏️ what follows, e.g. the second fighter skids back across the floor and drops to one knee}, then the first fighter settles back into stance. The accent happens once only. Sound: quick blows, one huge hit at contact with a split second of silence after it, then the aftermath. No blood. No text on screen.",
+        "input": {
+          "fighter-a": {
+            "name": "Fighter A",
+            "note": "Add a picture of the first fighter first, then generate."
+          },
+          "fighter-b": {
+            "name": "Fighter B",
+            "note": "Add a picture of the second fighter first, then generate."
+          }
+        }
+      },
+      "reference-video-remix": {
+        "name": "Remix a reference video",
+        "description": "Its camera and rhythm, your subject, a new video",
+        "prompt": "A 10-second vertical video with sound inspired by [📎 Reference video]: take from it only its camera moves, the order and length of its shots and its rhythm, cut for cut; never its performer, faces, clothes, place, logos, on-screen text or sound. The subject is [📎 Subject]: face, shape and clothes as in the picture, nothing else taken from the picture. What happens: {✏️ the new idea, e.g. the subject does the same moves on a rooftop at sunset}. Creative twist: {✏️ one thing that makes it its own, e.g. the last move ends in a freeze as confetti falls}. Music and sound of its own. No text on screen.",
+        "input": {
+          "reference": {
+            "name": "Reference video",
+            "note": "Add the video you want to borrow the camera and rhythm from first, then generate."
+          },
+          "subject": {
+            "name": "Subject",
+            "note": "Add a picture of your subject first, then generate."
+          }
+        }
+      },
+      "seamless-bridge": {
+        "name": "Seamless bridge",
+        "description": "A transition shot that joins two clips",
+        "prompt": "A 5-second transition shot with sound that joins two existing clips. It starts exactly where [📎 Clip A] ends: its last frame, subject, light, camera direction and motion. It ends exactly where [📎 Clip B] begins: its first frame, subject, light and framing. In between, one carries into the other through {✏️ the bridge, e.g. a round shape that turns from a wheel into the moon, or something passing close in front of the camera that wipes into the next place}. One continuous camera move, no hard cut, no new characters, nothing repeated from the middle of either clip. Sound: the first clip's sound flows into the second's. No text on screen.",
+        "input": {
+          "clip-a": {
+            "name": "Clip A",
+            "note": "Add the clip that comes first, then generate."
+          },
+          "clip-b": {
+            "name": "Clip B",
+            "note": "Add the clip that comes after, then generate."
+          }
+        },
+        "step": {
+          "join": "Once it has generated, select Clip A, this transition and Clip B, right-click and choose Join; check the order runs Clip A, transition, Clip B."
+        }
+      },
+      "cinematic-15s-arc": {
+        "name": "Cinematic 15s scene",
+        "description": "A hook, then a whole arc in 15 seconds",
+        "prompt": "A 15-second widescreen cinematic scene with sound. The character is [📎 Character]: face, hair, build and outfit as in the picture, nothing else taken from the picture; the same person, outfit, place and light throughout. Place: {✏️ the place, e.g. a rain-wet station platform at night}. What the character wants: {✏️ e.g. to catch the last train before it leaves}. 0–2 s hook: already in motion, one striking close image taken from the climax to come. 2–5 s: a wide shot shows the place and the time of day. 5–7 s: the character's face up close, the want visible in it. 7–10 s: the pressure rises, the camera moving with the character. 10–13 s: the climax: {✏️ the climax, e.g. they squeeze through the doors as they shut}. 13–15 s: release, a slow pull-back as the moment settles. One light source, the place's own. Grade: {✏️ one named look, e.g. teal-and-orange blockbuster}. Sound: the place's ambience, music swelling toward the climax, a beat of near-silence after it. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "landscape-3-shot": {
+        "name": "Landscape in three shots",
+        "description": "The place is the star, no people",
+        "shot": {
+          "1": "Wide establishing shot of {✏️ the place and the time of day, e.g. a misty fjord at dawn}: the camera drifts slowly forward, the scale of the land clear, no people anywhere. The natural sound of the place. No text on screen.",
+          "2": "A closer look at one detail of the same place: {✏️ the detail, e.g. water running over dark stones}, the light as in the first shot, no people. No text on screen.",
+          "3": "A slow closing shot of the same place from high up, the camera rising and pulling back as the light changes a little, no people. No text on screen."
+        }
+      },
+      "epic-fantasy-scifi": {
+        "name": "Epic fantasy or sci-fi",
+        "description": "A big scene where the magic follows its own rule",
+        "prompt": "A 15-second widescreen {✏️ the genre, e.g. high fantasy} scene with sound.\nHero: [📎 Hero], face, hair, build and outfit as in the picture, nothing else taken from the picture.\nWorld: {✏️ the world, e.g. a city of white towers on a cliff above a stormy sea}.\nEffect: {✏️ the effect and its rule, e.g. the hero's raised hand pulls the sea upward into a wall of water that moves only while the hand stays raised}. Show where it comes from and keep to its rule; it never changes shape for no reason.\nThe spectacle is in the world, not in more effects: wind, rain or dust in the air, light shifting across the scene, cloth and hair moving, water or fire reacting, crowds small in the distance.\n0–3 s: already in motion, the world in a wide shot. 3–7 s: the hero, close, just before acting. 7–12 s: {✏️ what the hero does, e.g. raises the wall of water against an incoming fleet}, the camera moving back to show its size. 12–15 s: the aftermath, the hero small against the scale of it. Sound: wind, the effect's own deep sound, a swelling score. No text on screen.",
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your character first, then generate."
+          }
+        }
+      },
+      "trailer-beat-3-shot": {
+        "name": "Trailer beat",
+        "description": "The world, the hero in action, one line",
+        "shot": {
+          "1": "Establishing shot of the world: {✏️ the world, e.g. a dusty frontier town under a red sky}, the camera sweeping slowly over it, a deep trailer drone rising. No text on screen.",
+          "2": "[📎 Hero], face, hair, build and outfit as in the picture, in one big action: {✏️ the action, e.g. rides through a wall of fire}, the camera tracking with them, a hard musical hit. No text on screen.",
+          "3": "Close-up of [📎 Hero], the same face and outfit, looking into the lens and saying one line: {✏️ the line, e.g. This ends tonight.}, then a cut to black on the last word. No text on screen."
+        },
+        "input": {
+          "hero": {
+            "name": "Hero",
+            "note": "Add a picture of your hero first, then generate."
+          }
+        }
+      },
+      "transformation-6-shot": {
+        "name": "Transformation in six shots",
+        "description": "Calm, threat, change, reveal, the quiet after",
+        "shot": {
+          "1": "Calm: [📎 Subject], face, hair and outfit as in the picture, in {✏️ the place, e.g. a quiet forest clearing at dusk}, an ordinary moment. No text on screen.",
+          "2": "The threat arrives: {✏️ the threat, e.g. a dark shape bursting from the trees}, the subject looks up. No text on screen.",
+          "3": "The trigger: a close-up of the subject's eyes as something starts to glow inside them. No text on screen.",
+          "4": "The transformation: [📎 Subject] changes into {✏️ what they become, e.g. a figure of living flame}, the camera circling, light flaring, the face still recognisably theirs. No text on screen.",
+          "5": "The reveal: a low wide shot of the new form standing against the threat. No text on screen.",
+          "6": "The quiet after: embers settle, the new form breathes, the sound drops away. No text on screen."
+        },
+        "input": {
+          "subject": {
+            "name": "Subject",
+            "note": "Add a picture of your subject first, then generate."
+          }
+        }
+      },
+      "long-form-acts": {
+        "name": "Long video in acts",
+        "description": "A minute and more, act by act, joined into one",
+        "prompt": "Act 1 of 3 of one long video, 30 seconds with sound. Shared by all three acts: {✏️ the place, the light and the look, e.g. a small café by a rainy window, warm lamps, soft film grain}, under the same sound of {✏️ the sound, e.g. rain on glass and quiet jazz}. This act: {✏️ what happens, e.g. the café opens and steam rises from the first cup}. It opens the video. One slow camera move, no cuts. No text on screen.",
+        "node": {
+          "act-2": {
+            "name": "Act 2",
+            "prompt": "Act 2 of 3 of one long video, 30 seconds with sound. Shared by all three acts: {✏️ the place, the light and the look, e.g. a small café by a rainy window, warm lamps, soft film grain}, under the same sound of {✏️ the sound, e.g. rain on glass and quiet jazz}. This act: {✏️ what happens, e.g. people come and go as the rain grows heavier}. It carries straight on from act 1. One slow camera move, no cuts. No text on screen."
+          },
+          "act-3": {
+            "name": "Act 3",
+            "prompt": "Act 3 of 3 of one long video, 30 seconds with sound. Shared by all three acts: {✏️ the place, the light and the look, e.g. a small café by a rainy window, warm lamps, soft film grain}, under the same sound of {✏️ the sound, e.g. rain on glass and quiet jazz}. This act: {✏️ what happens, e.g. evening falls, the lamps glow and the café empties}. It ends the video, settling into stillness. One slow camera move, no cuts. No text on screen."
+          }
+        },
+        "step": {
+          "more": "Need it longer? Copy an act node, write what happens next after This act, and generate it; each act is up to 30 seconds.",
+          "join": "Select the acts in order, right-click and choose Join."
+        }
+      },
+      "fashion-lookbook": {
+        "name": "Fashion lookbook",
+        "description": "One model, one outfit, a few places, ending on the hero piece",
+        "prompt": "A 15-second vertical fashion lookbook video with sound. [📎 Model] wears the outfit in [📎 Outfit], locked head to toe in every shot: the same face, hair and build as in the model picture, and every piece exactly as in the outfit picture: {✏️ name each piece, e.g. a cream wool coat, a black turtleneck, wide grey trousers, white leather sneakers}. 0–2 s hook: a close moving shot of the fabric as the model turns. 2–12 s: the model walks through {✏️ two or three places, e.g. a concrete stairwell, a sunlit street, a rooftop at dusk}, one place per shot, the fabric swinging, creasing and catching the light with each step. 12–15 s: the camera pushes in to {✏️ the hero piece, e.g. the coat's collar}, then tilts up to the face. Soft natural light, editorial colour. Sound: {✏️ the music, e.g. a slow electronic beat} and footsteps. No text on screen.",
+        "input": {
+          "model": {
+            "name": "Model",
+            "note": "Add a full-body photo of the model first, then generate."
+          },
+          "outfit": {
+            "name": "Outfit",
+            "note": "Add a picture of the outfit first, then generate."
+          }
+        }
+      },
+      "try-on-still": {
+        "name": "Try-on still",
+        "description": "Your model wearing your garment, every detail kept",
+        "prompt": "Put the garment from [📎 Garment] on [📎 Model]. Create ONE full-body photo: the same face, hairstyle, skin tone and build as in the model picture; the garment keeps its exact cut, length, colour, pattern, fabric and every detail such as buttons, seams and prints, and drapes and creases naturally on the body. With it: {✏️ what goes with it, e.g. plain black trousers and white sneakers}. A natural standing pose in a plain light grey studio, even soft light, photorealistic. No text.",
+        "input": {
+          "model": {
+            "name": "Model",
+            "note": "Add a full-body photo of the model first, then generate."
+          },
+          "garment": {
+            "name": "Garment",
+            "note": "Add a picture of the garment first, then generate."
+          }
+        }
+      },
+      "lookbook-multi-look": {
+        "name": "Multi-look lookbook",
+        "description": "Three outfits tried on first, then one video changing through them",
+        "prompt": "(💡 Generate Look 1 first)(💡 Generate Look 2 first)(💡 Generate Look 3 first)A 15-second vertical lookbook video with sound of [📎 Model] changing through three looks: the face, hair and build from the model picture throughout, never its clothes; each look exactly as in its picture. 0–2 s hook, already wearing the first look: {✏️ the hook, e.g. the model snaps their fingers at the camera}. 2–7 s: [📎 Look 1], walking toward the camera. 7–8 s: the model spins and comes round in the next look. 8–11 s: [📎 Look 2]. 11–12 s: a flash of light, and the next look. 12–15 s: [📎 Look 3], ending in a pose. Each look a clearly different silhouette. Sound: {✏️ the music, e.g. an upbeat house track}, a whoosh on each change. No text on screen.",
+        "node": {
+          "look-1": {
+            "name": "Look 1",
+            "prompt": "Put the outfit from [📎 Outfit 1] on [📎 Model]. A vertical full-body photo: the same face, hairstyle and build as in the model picture; every piece keeps its exact cut, colour, fabric and details. A natural pose in {✏️ the place for this look, e.g. a sunlit street}, soft natural light, photorealistic. No text."
+          },
+          "look-2": {
+            "name": "Look 2",
+            "prompt": "Put the outfit from [📎 Outfit 2] on [📎 Model]. A vertical full-body photo: the same face, hairstyle and build as in the model picture; every piece keeps its exact cut, colour, fabric and details. A natural pose in {✏️ the place for this look, e.g. a white gallery}, soft natural light, photorealistic. No text."
+          },
+          "look-3": {
+            "name": "Look 3",
+            "prompt": "Put the outfit from [📎 Outfit 3] on [📎 Model]. A vertical full-body photo: the same face, hairstyle and build as in the model picture; every piece keeps its exact cut, colour, fabric and details. A natural pose in {✏️ the place for this look, e.g. a rooftop at dusk}, soft natural light, photorealistic. No text."
+          }
+        },
+        "input": {
+          "model": {
+            "name": "Model",
+            "note": "Add a full-body photo of the model first, then generate the looks."
+          },
+          "outfit-1": {
+            "name": "Outfit 1",
+            "note": "Add a picture of the first outfit first, then generate Look 1."
+          },
+          "outfit-2": {
+            "name": "Outfit 2",
+            "note": "Add a picture of the second outfit first, then generate Look 2."
+          },
+          "outfit-3": {
+            "name": "Outfit 3",
+            "note": "Add a picture of the third outfit first, then generate Look 3."
+          }
+        },
+        "step": {
+          "more": "Need more looks? Copy a look node, connect the next outfit and the model to it and its result into the video, then lengthen the video and add the look to its prompt."
+        }
+      },
+      "app-launch-promo": {
+        "name": "App launch promo",
+        "description": "Your app's own screens on a phone, from hook to logo",
+        "prompt": "A 15-second vertical launch ad with sound for {✏️ the product, e.g. a habit-tracking app called Streak}. The phone is the hero: a modern phone whose screen shows [📎 Screen 1] and then [📎 Screen 2], each exactly as in its picture, sharp and readable, nothing on them redrawn or invented. 0–2 s hook: the phone rises out of darkness and turns to face the camera as its screen lights up. 2–8 s: a hand taps and scrolls the phone through the first screen and then the second, the camera gliding close to each. 8–12 s: the benefit: {✏️ the benefit, e.g. the streak counter ticks up to 30 days with a small burst of confetti}. 12–15 s: the phone settles in the centre on a clean background and [📎 Logo] appears above it, exactly as in its picture. Clean soft light, gentle reflections, a calm modern grade. Sound: {✏️ the music, e.g. an upbeat electronic pulse} with soft taps and whooshes. No other text on screen.",
+        "input": {
+          "screen-1": {
+            "name": "Screen 1",
+            "note": "Add a screenshot of your app first, then generate."
+          },
+          "screen-2": {
+            "name": "Screen 2",
+            "note": "Add a second screenshot first, then generate."
+          },
+          "logo": {
+            "name": "Logo",
+            "note": "Add your logo first, then generate."
+          }
+        }
+      },
+      "brand-origin-film": {
+        "name": "Brand origin film",
+        "description": "The maker, the spark, the making, the customer",
+        "shot": {
+          "1": "The maker's hands at work: close-up of the hands of [📎 Maker] {✏️ at the craft, e.g. shaping wet clay on a wheel}, slow and certain, the face just out of frame. Warm natural light. Sound: gentle acoustic music begins. No text on screen.",
+          "2": "The world they work in: a wide shot of {✏️ the place, e.g. a small sunlit workshop by the sea}, with [📎 Maker], face, hair and clothes as in the picture, small in the frame at the bench. No text on screen.",
+          "3": "The spark: close on the face of [📎 Maker] looking up, struck by {✏️ the inspiration, e.g. the colour of the sea at dawn through the window}. No text on screen.",
+          "4": "The making: a quick montage of hands and tools bringing [📎 Product] to life, each step from a new angle, the finished piece exactly as in its picture. No text on screen.",
+          "5": "In a customer's life: {✏️ the customer's moment, e.g. a woman wraps her cold hands around the mug on a rainy morning} with [📎 Product], the customer the hero, ending on a quiet smile and no logo. One short line of voice-over: {✏️ the line, e.g. \"Made slowly, for slow mornings.\"} No text on screen."
+        },
+        "input": {
+          "maker": {
+            "name": "Maker",
+            "note": "Add a photo of the maker first, then generate."
+          },
+          "product": {
+            "name": "Product",
+            "note": "Add a picture of your product first, then generate."
+          }
+        }
+      },
+      "launch-story-3-beat": {
+        "name": "Launch story in three beats",
+        "description": "Problem, reveal, payoff, cut to a score made first",
+        "shot": {
+          "1": "The problem: {✏️ the problem, e.g. a runner fumbles with tangled earbud wires in the cold}, in quiet blues, with {✏️ the object carried through all three shots, e.g. a pair of earbuds} in the shot. The music for the whole video is {✏️ @ here the 12-second clip you cut from Score}; every cut lands on a hit of it. No text on screen.",
+          "2": "The reveal: the same object becomes [📎 Product], exactly as in its picture, turning in a single beam of light as the music lifts. No text on screen.",
+          "3": "The payoff: {✏️ the payoff, e.g. the runner, wires gone, sprints into the sunrise}, in warm colour, the camera rising with the music. No text on screen."
+        },
+        "node": {
+          "score": {
+            "name": "Score",
+            "prompt": "Instrumental music for a 12-second product launch film: {✏️ the genre and tempo, e.g. modern electronic at 120 BPM}, one key throughout. It starts quiet and tense for the problem, lifts to one clear hit for the reveal and lands in a warm, confident release for the payoff, with sharp accents on the beat for the cuts. No vocals."
+          }
+        },
+        "input": {
+          "product": {
+            "name": "Product",
+            "note": "Add a picture of your product first, then generate."
+          }
+        },
+        "step": {
+          "trim": "The score comes out a few minutes long. Once it has generated, use Tools → Cut on it to cut 12 seconds, the part with the clearest lift; connect the cut clip (named CUT-…) to the video and @ it where the first shot asks."
+        }
+      },
+      "promo-film-assembled": {
+        "name": "One-minute promo film",
+        "description": "Four 15-second parts made to one score, then joined",
+        "prompt": "Part 1 of 4 of a 60-second promo film for {✏️ the brand, e.g. Nordlys, a Norwegian outdoor clothing brand}, 15 seconds. All four parts share one look: {✏️ the look, e.g. cold northern light, muted greens and greys, a handheld documentary camera}, with [📎 Brand] as the brand's product or mark, exactly as in its picture. The soundtrack is {✏️ @ here the first 15-second piece you cut from Score}; the cuts land on its beats. This part, the hook: {✏️ what happens, e.g. a climber's hand grips a frozen ledge as the wind roars}. No text on screen.",
+        "node": {
+          "part-2": {
+            "name": "Part 2",
+            "prompt": "Part 2 of 4 of a 60-second promo film for {✏️ the brand, e.g. Nordlys, a Norwegian outdoor clothing brand}, 15 seconds. All four parts share one look: {✏️ the look, e.g. cold northern light, muted greens and greys, a handheld documentary camera}, with [📎 Brand] as the brand's product or mark, exactly as in its picture. The soundtrack is {✏️ @ here the second 15-second piece you cut from Score}; the cuts land on its beats. This part, the world: {✏️ what happens, e.g. a team packs gear in a mountain hut at dawn}. No text on screen."
+          },
+          "part-3": {
+            "name": "Part 3",
+            "prompt": "Part 3 of 4 of a 60-second promo film for {✏️ the brand, e.g. Nordlys, a Norwegian outdoor clothing brand}, 15 seconds. All four parts share one look: {✏️ the look, e.g. cold northern light, muted greens and greys, a handheld documentary camera}, with [📎 Brand] as the brand's product or mark, exactly as in its picture. The soundtrack is {✏️ @ here the third 15-second piece you cut from Score}; the cuts land on its beats. This part, the change: {✏️ what happens, e.g. the storm breaks and the team reaches the summit}. No text on screen."
+          },
+          "part-4": {
+            "name": "Part 4",
+            "prompt": "Part 4 of 4 of a 60-second promo film for {✏️ the brand, e.g. Nordlys, a Norwegian outdoor clothing brand}, 15 seconds. All four parts share one look: {✏️ the look, e.g. cold northern light, muted greens and greys, a handheld documentary camera}, with [📎 Brand] as the brand's product or mark, exactly as in its picture. The soundtrack is {✏️ @ here the fourth 15-second piece you cut from Score}; the cuts land on its beats. This part, the brand signature: {✏️ what happens, e.g. the climbers rest in golden light, their jackets catching the sun}, ending on [📎 Brand]. No text on screen."
+          },
+          "score": {
+            "name": "Score",
+            "prompt": "Instrumental music for a 60-second promo film: {✏️ the genre and tempo, e.g. cinematic folk-electronic at 100 BPM}, one key throughout, in four sections of 15 seconds: a hushed hook, a steady build for the world, a lift for the change and a full, warm resolve for the brand. No vocals."
+          }
+        },
+        "input": {
+          "brand": {
+            "name": "Brand",
+            "note": "Add a picture of your product or logo first, then generate the parts."
+          }
+        },
+        "step": {
+          "trim": "The score comes out a few minutes long. Once it has generated, use Tools → Cut on it four times to cut back-to-back 15-second pieces (0–15 s, 15–30 s, 30–45 s, 45–60 s); connect each cut clip (named CUT-…) to its part in order and @ it where that part's prompt asks.",
+          "join": "Select the four parts in order, right-click and choose Join."
+        }
       }
     },
     "promptMark": {
@@ -2597,11 +3003,11 @@
   "project": {
     "leaveGuard": {
       "title": "Leave with work in progress?",
-      "description": "An upload or edit hasn't finished syncing. Leaving now may lose it.",
+      "description": "An upload, edit or run you started hasn't finished. Leaving now may lose it.",
       "stay": "Stay",
       "leave": "Leave anyway",
       "unsyncedDescription": "Some changes have not synced. Refreshing or leaving now may lose them.",
-      "combinedDescription": "Some changes have not synced, and an upload or edit is still in progress. Refreshing or leaving now may lose this work.",
+      "combinedDescription": "Some changes have not synced, and an upload, edit or run is still in progress. Refreshing or leaving now may lose this work.",
       "completeDescription": "Changes are synced and operations are complete.",
       "completeTitle": "Ready to continue"
     },
@@ -2763,7 +3169,9 @@
       "document": "Document",
       "documentSub": "Rich text + collaboration",
       "timeline": "Timeline",
-      "timelineSub": "Video / audio editing"
+      "timelineSub": "Video / audio editing",
+      "webAnimation": "Motion",
+      "webAnimationSub": "Animations made with code, exported as video"
     },
     "create": {
       "title": "New space",
@@ -2775,7 +3183,9 @@
       "namePlaceholder": "e.g. Cyberpunk Concept",
       "nameRemaining": "{count, plural, one {# character left} other {# characters left}}",
       "cancel": "Cancel",
-      "submit": "Create"
+      "submit": "Create",
+      "scrollTypesStart": "Scroll types left",
+      "scrollTypesEnd": "Scroll types right"
     },
     "rename": {
       "inputAriaLabel": "Rename space",
@@ -3075,6 +3485,51 @@
       "selectedCount": "{count} selected",
       "multiTransform": "Use the scene handles to transform the selection around its centre.",
       "mixed": "Mixed",
+      "look": {
+        "title": "Appearance",
+        "resetAll": "Reset all",
+        "part": "Part {index}",
+        "defaultPart": "Default part",
+        "loadingParts": "Reading parts",
+        "partsUnavailable": "The model did not load, so its parts cannot be changed yet",
+        "unlitNote": "This part is not lit, so only its colour, image and opacity can change",
+        "lineNote": "This part is a line or points, so only its colour and opacity can change",
+        "presets": {
+          "matte": "Matte",
+          "glossy": "Glossy",
+          "metal": "Metal",
+          "brushedMetal": "Brushed metal",
+          "glass": "Glass",
+          "rubber": "Rubber"
+        },
+        "color": "Colour",
+        "image": "Image",
+        "chooseImage": "Choose image",
+        "replaceImage": "Replace",
+        "removeImage": "Remove",
+        "repeat": "Tiling",
+        "offset": "Offset",
+        "rotation": "Rotation",
+        "gloss": "Gloss",
+        "metalness": "Metallic",
+        "opacity": "Opacity",
+        "transmission": "Transmission",
+        "emission": "Glow",
+        "emissionIntensity": "Glow intensity",
+        "resetPart": "Reset this part",
+        "imageFailed": "Some part images did not load.",
+        "imageOverLimit": "Some part images would take this object over its image limit and are not shown.",
+        "pictureReadFailed": "{filename} could not be read. Try again.",
+        "objectTexturesTooLarge": "This object's images would use {actual} MiB together; the limit is {allowed} MiB. Use a smaller image or remove another part's image.",
+        "objectGone": "The image was uploaded, but the object was deleted or locked; it is in the Project images",
+        "partChanged": "The image was uploaded, but this part's image was changed meanwhile; it is in the Project images",
+        "pickSpaceClosed": "This Space was closed before the image was put on",
+        "pickObjectGone": "The object was deleted before the image was put on",
+        "checking": "Checking",
+        "partLimit": "This object can hold appearance changes on at most {max} parts.",
+        "partNotEditable": "This part cannot be changed.",
+        "uploadedPartLimit": "The image was uploaded, but this object already has appearance changes on its {max} parts; the image is in the Project images"
+      },
       "pose": {
         "title": "Pose",
         "stand": "Stand",
@@ -3085,7 +3540,8 @@
         "jointMode": "Adjust joints",
         "reset": "Reset pose",
         "noSkeleton": "This model has no skeleton and cannot be posed.",
-        "humanoidOnly": "Presets work on humanoid characters only."
+        "humanoidOnly": "Presets work on humanoid characters only.",
+        "boneLimit": "This object can hold a pose on at most {max} bones."
       },
       "selectObject": "Select an object to edit its properties.",
       "refused": "The connection to this scene was refused. Changes will not be saved.",
@@ -3309,6 +3765,67 @@
       "reason": "This Space is full.",
       "text": "Text not added: this Space is full.",
       "wait": "This Space is full. It will finish once some content is deleted."
+    },
+    "webAnimation": {
+      "addAnnotation": "Add annotation",
+      "annotateAt": "Annotation at {time}",
+      "annotationFailed": "The annotation could not be saved.",
+      "videoTag": "MP4",
+      "annotationPlaceholder": "What should change here",
+      "annotations": "Annotations",
+      "annotationsAll": "All",
+      "annotationsOpen": "Open",
+      "baseWithAnnotations": "{base} ({count, plural, one {# open annotation} other {# open annotations}})",
+      "canvasUnreachable": "Could not connect to the Canvas.",
+      "chooseCanvas": "Put on which Canvas",
+      "closePanel": "Close",
+      "completed": "Completed",
+      "details": "Details",
+      "dialog": {
+        "instruction": "What to change",
+        "instructionPlaceholder": "For example: slow the title down and darken the background",
+        "modifyDescription": "Modified from “{base}”",
+        "modifyKeepsOriginal": "The original result stays as it is.",
+        "modifyTitle": "Modify web animation",
+        "relayout": "The picture will be laid out again for the new size."
+      },
+      "discardAnnotation": "Discard this annotation?",
+      "discard": "Discard",
+      "keepWriting": "Keep writing",
+      "download": "Download",
+      "empty": "No web animations yet",
+      "emptyInProgress": "Nothing in progress",
+      "emptyFailed": "Nothing failed",
+      "executions": "Executions",
+      "export": "Export video",
+      "hasPoint": "Marked on frame",
+      "inProgress": "In progress",
+      "failed": "Failed",
+      "limitsUnavailable": "Settings could not be loaded. Try again.",
+      "listError": "The list could not be loaded.",
+      "madeInTimeline": "Made in a Timeline before",
+      "modifiedFromLabel": "Modified from",
+      "modify": "Modify",
+      "new": "New",
+      "noAnnotations": "No annotations yet",
+      "noCanvas": "This Project has no Canvas yet",
+      "noOpenAnnotations": "No open annotations",
+      "notFound": "This web animation could not be found.",
+      "pickPoint": "Click the frame to mark a spot, or just write below",
+      "placeOnCanvas": "Put on Canvas",
+      "placed": "Put on {name}",
+      "viewPlaced": "View",
+      "placing": "The video is still being put on the Canvas.",
+      "readOnlyNotice": "The collaborator limit is reached, so annotations are view-only for now. New, Modify and Export still work.",
+      "reexport": "Export again",
+      "replies": "{count, plural, one {# reply} other {# replies}}",
+      "sourceLabel": "Source animation",
+      "titleModifiedFrom": "Modified from “{base}”: {request}",
+      "titleVideo": "Video · {source}",
+      "unlistedResult": "Other result",
+      "viewSource": "View source animation",
+      "viewVideo": "View video",
+      "sourceSpaceGone": "The Space with the source animation is gone."
     }
   },
   "menu": {
@@ -3455,6 +3972,10 @@
       "home": "Studio home",
       "account": "Account",
       "signOut": "Sign out",
+      "notices": "Licenses and notices",
+      "noticesLicense": "Breatic license",
+      "noticesTrademarks": "Trademark and branding policy",
+      "noticesThirdParty": "Third-party notices",
       "logoutOthers": "Sign out of other devices",
       "logoutOthersTitle": "Sign out of other devices?",
       "logoutOthersBody": "You will stay signed in here. Every other device is signed out, and canvases and documents open there disconnect right away.",
@@ -3979,7 +4500,7 @@
     "enterpriseQuota": "Your other allowances are set by a separate agreement and are not shown here.",
     "compare": "Compare tiers",
     "contactEnterprise": "Need a bigger scale or separate commercial terms? Email us:",
-    "contactSelfHosted": "Need a commercial licence or separate support terms? Email us:",
+    "contactSelfHosted": "To offer Breatic as a commercial platform, turn on paid features or agree separate support terms, you need a written agreement. Email us:",
     "contactEnterpriseAccount": "Questions about your allowances, or need them changed? Email us:",
     "loadFailed": "We could not read your membership. It may be a network problem — try again in a moment.",
     "action": {
@@ -4082,6 +4603,80 @@
     "cancel": "Cancel",
     "submit": "Submit application",
     "submitted": "Application submitted"
+  },
+  "byok": {
+    "heading": "BYOK settings",
+    "tabKeys": "Upstream keys",
+    "tabModels": "Models",
+    "searchUpstreams": "Search upstreams",
+    "added": "Added",
+    "noneAdded": "None added yet",
+    "notAddedGroup": "Not added · {group}",
+    "groupLanguageModel": "Language model",
+    "groupOfficial": "Official API",
+    "groupReseller": "Reseller",
+    "noUpstreamMatch": "No matching upstreams",
+    "connected": "Connected",
+    "notConnected": "Not connected",
+    "lastChecked": "Checked {time}",
+    "lastCheckedToday": "Checked today {time}",
+    "balance": "Balance: {amount}",
+    "balanceKeyLimit": "Left on this key: {amount}",
+    "balanceForbidden": "This key can't read the balance. Use a key with billing access to see it.",
+    "balanceNoCap": "This key has no spending limit.",
+    "balanceUnsupported": "This upstream does not report a balance.",
+    "costsUnreadable": "This key can't read actual costs. Use a key with billing access to see them.",
+    "balanceAndCostsUnreadable": "This key can't read the balance or actual costs. Use a key with billing access to see them.",
+    "refresh": "Refresh",
+    "replace": "Replace",
+    "delete": "Delete",
+    "save": "Save",
+    "keyLabel": "API key",
+    "keyPlaceholder": "Paste a key",
+    "keyEmpty": "Paste a key first.",
+    "saveHint": "The key is checked before it is saved.",
+    "saveFailed": "Couldn't save the key. Try again.",
+    "saved": "{upstream} key saved",
+    "deleted": "{upstream} key deleted",
+    "checkFailed": "Couldn't check the key. Try again.",
+    "deleteFailed": "Couldn't delete the key. Try again.",
+    "getKey": "Get a key from {upstream}",
+    "runsModels": "Models it runs",
+    "runsNone": "No model here runs on it.",
+    "openrouterNote": "Every language model call, web animation included, uses this key and takes no credits. A web animation's rendering still uses credits.",
+    "replaceTitle": "Replace the {upstream} key",
+    "replaceBody": "The new key is checked before it is saved. Tasks using the old key may be interrupted or fail. If the old key has leaked, also revoke it at {upstream}.",
+    "deleteTitle": "Delete the {upstream} key?",
+    "deleteBody": "Tasks using this key may be interrupted or fail, and models set to it go back to the platform key. If the key has leaked, also revoke it at {upstream}.",
+    "deleteBodyLanguage": "Tasks using this key may be interrupted or fail, and language model calls go back to the platform key. If the key has leaked, also revoke it at {upstream}.",
+    "platformKey": "Platform key (uses credits)",
+    "modelsIntro": "Models left unset use the platform key and spend credits. Only models an upstream you added can run are listed.",
+    "modelsEmpty": "Add an upstream key, then choose here which upstream each model uses. Models left unset use the platform key.",
+    "goAddKey": "Add a key",
+    "searchModels": "Search models",
+    "noModelMatch": "No matching models",
+    "noModelsInModality": "No upstream you added runs these models.",
+    "modelSaved": "{model} now uses {upstream}",
+    "modelSaveFailed": "Couldn't change the model's key. Try again.",
+    "disabled": "Bring your own key is not turned on for this deployment.",
+    "loadFailed": "Couldn't load BYOK settings.",
+    "retry": "Retry",
+    "showKey": "Show key",
+    "hideKey": "Hide key",
+    "failure": {
+      "invalid": "The key is invalid or has been revoked.",
+      "unavailable": "Couldn't reach the upstream. Try again later.",
+      "rate_limited": "The upstream is limiting this key right now. Try again later.",
+      "refused": "The upstream refused the check.",
+      "other": "The key didn't connect."
+    },
+    "modality": {
+      "image": "Image",
+      "video": "Video",
+      "audio": "Audio",
+      "tts": "Voice-over",
+      "three_d": "3D"
+    }
   },
   "credits": {
     "panelTitle": "Credits",
@@ -4406,8 +5001,6 @@
       "offFrame": "This clip is not at the current frame."
     },
     "webAnimation": {
-      "create": "Create web animation",
-      "executions": "Executions",
       "copy": "Web animation copy",
       "durationShort": "{seconds} s",
       "dialog": {
@@ -4419,15 +5012,7 @@
         "engine": "Engine",
         "aspect": "Aspect ratio",
         "duration": "Duration (seconds)",
-        "addAtPlayhead": "Add to the Timeline at the playhead",
         "execute": "Execute"
-      },
-      "list": {
-        "close": "Close executions",
-        "completed": "Completed",
-        "inProgress": "In progress",
-        "emptyCompleted": "No completed executions yet.",
-        "emptyInProgress": "No executions in progress."
       },
       "status": {
         "awaiting_landing": "Saving",
@@ -4440,32 +5025,47 @@
         "expired": "Expired"
       },
       "step": {
-        "landing": "Save the request"
+        "landing": "Save the request",
+        "savingVideo": "Save the video"
       },
       "phase": {
         "writing": "Write the page",
-        "validating": "Check frames and manifest",
-        "saving": "Save the source"
+        "validating": "Check the frames",
+        "saving": "Save the source",
+        "rendering": "Render the video"
       },
       "usageLabel": "Usage",
       "usage": "{credits} credits",
-      "usagePending": "Settled when it ends",
       "unavailable": "Web animation unavailable",
       "cancel": "Cancel",
-      "addToTimeline": "Add to Timeline",
-      "addPlaceholder": "Add to Timeline now",
       "retry": "Run again",
       "failure": {
         "feature_disabled": "Web animation is unavailable right now.",
         "check": "The page did not pass the check.",
         "stopped": "Creation stopped unexpectedly.",
-        "unknown": "This execution failed."
+        "unknown": "This execution failed.",
+        "render": "Video rendering failed.",
+        "frameMismatch": "The rendered video does not match the animation's length.",
+        "saveVideo": "The video could not be saved.",
+        "key_lost": "Creation was interrupted. Run it again."
       },
       "preview": {
         "pending": "{track}: {status, select, awaiting_landing {saving web animation} queued {web animation queued} running {creating web animation} cancelling {cancelling web animation} other {web animation pending}}…",
         "failed": "{track}: {status, select, failed {web animation failed} cancelled {web animation cancelled} expired {web animation expired} other {web animation not shown}}, not shown",
         "unavailable": "{track}: web animation unavailable",
         "loading": "{track}: web animation loading…"
+      },
+      "add": "Add web animation",
+      "goMake": "Make in Motion",
+      "openInMotion": "Open in Motion",
+      "modifiedFrom": "Modified from: {base}",
+      "picker": {
+        "title": "Add web animation",
+        "description": "Pick a result to place a copy at the playhead.",
+        "empty": "This Project has no web animations yet",
+        "deletedSpace": "Deleted Spaces",
+        "loadMore": "Load more",
+        "error": "Web animations could not be loaded."
       }
     },
     "upload": {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A chat turn asks for the model's working, and the ask reaches the model.
@@ -140,6 +140,7 @@ describe("a turn that asks for the model's working", () => {
     expect(prepare).toHaveBeenCalledWith(
       "deepseek/deepseek-v4-pro",
       expect.objectContaining({ thinking: true, session: "c1" }),
+      undefined,
       undefined,
     );
   });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project service — business logic for canvas projects.
@@ -20,8 +20,8 @@ import * as projectRepo from "@server/modules/project/project.repo.js";
 import { pictureUrl } from "@server/modules/asset/picture.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { projectAuthService, projectAssetReferenceService } from "@breatic/core";
+import * as timelineGrantRepo from "@server/modules/web-animation/web-animation-grants.repo.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import * as timelineGrantRepo from "@server/modules/timeline/execution-grant.repo.js";
 import { studioAuthService } from "@breatic/domain";
 import { accountActivityRepo, claimFirstMilestone, db, enqueueAdsConversion, getAccountAttribution, getLimitsForStudio, logger, projectEditsRepo, trackServerEvent } from "@breatic/core";
 import type { DbTx } from "@breatic/core";

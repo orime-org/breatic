@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The template registry: what each generate panel lists and what a template
@@ -206,6 +206,24 @@ const COMICS_IMAGES = ['storyboard-grid-25', 'storyboard-sheet-9', 'comic-page',
 /** The comic and storyboard templates a video panel lists. */
 const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
 
+/** The fight and action templates (inner#1818), in registry order. */
+const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked', 'hero-orbit-reveal', 'bullet-time-moment', 'impact-frame-hit'];
+
+/** The templates that remix videos the user already has (inner#1819), in registry order. */
+const VIDEO_REMIX = ['reference-video-remix', 'seamless-bridge'];
+
+/** The promo film and brand story templates (inner#1822), in registry order. */
+const PROMO = ['app-launch-promo', 'brand-origin-film', 'launch-story-3-beat', 'promo-film-assembled'];
+
+/** The fashion lookbook templates (inner#1821), in registry order. */
+const FASHION = ['fashion-lookbook', 'try-on-still', 'lookbook-multi-look'];
+
+/** The fashion templates a video panel lists. */
+const FASHION_VIDEOS = FASHION.filter((id) => id !== 'try-on-still');
+
+/** The cinematic short and trailer templates (inner#1820), in registry order. */
+const CINEMATIC = ['cinematic-15s-arc', 'landscape-3-shot', 'epic-fantasy-scifi', 'trailer-beat-3-shot', 'transformation-6-shot', 'long-form-acts'];
+
 /** The film style templates (inner#1817), in registry order. */
 const FILM_STYLES = ['film-style-still', 'film-style-shot', 'era-walkthrough-montage', 'style-sound-bed'];
 
@@ -260,8 +278,8 @@ const SOUND = [
 /** The sound templates an audio panel lists: all but the one anchored on its video. */
 const SOUND_AUDIO = SOUND.filter((id) => id !== 'clip-ambience-foley');
 
-/** The templates the plan's G13, G15, G18 and G19 give no case for offering unasked. */
-const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short'];
+/** The templates the plan's G13, G15, G17, G18 and G19 give no case for offering unasked. */
+const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short', 'epic-fantasy-scifi'];
 
 /**
  * The template nodes a generate node's words carry a note for, counted the
@@ -347,6 +365,7 @@ describe('generation templates', () => {
       ...COMICS_IMAGES,
       'product-hero-still',
       'dish-hero-still',
+      'try-on-still',
       'fisheye-clone-pov',
       'flash-photo-dump-grid',
       ...POSTERS,
@@ -357,16 +376,21 @@ describe('generation templates', () => {
       'identity-locked-sequence',
       'character-showcase-orbit',
       ...COMICS_VIDEOS,
+      ...FIGHT,
       ...ANIMATION,
       ...ECOMMERCE,
       ...PRODUCT_SHOWCASE_VIDEOS,
+      ...PROMO,
       ...FOOD_VIDEOS,
+      ...FASHION_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
       ...TALKING,
       'film-style-shot',
       'era-walkthrough-montage',
+      ...CINEMATIC,
       ...SPEED,
       'clip-ambience-foley',
+      ...VIDEO_REMIX,
     ]);
     // inner#1825 changes this contract: audio had no template until the sound goal.
     expect(templatesFor('audio').map((t) => t.id)).toEqual(['style-sound-bed', ...SOUND_AUDIO]);
@@ -412,6 +436,29 @@ describe('generation templates', () => {
       'food-money-shot': t2v(8),
       'recipe-process-montage': t2v(15),
       'dish-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '4:5' } } },
+      'app-launch-promo': t2v(15),
+      'brand-origin-film': {
+        result: { type: 'video', mode: 'multi_shot', model: T2V, params: { aspect_ratio: '16:9', duration: 20, generate_audio: true }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+      },
+      'launch-story-3-beat': {
+        result: { type: 'video', mode: 'multi_shot', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 12 }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+        score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
+      },
+      'promo-film-assembled': {
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        'part-2': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        'part-3': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        'part-4': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
+      },
+      'fashion-lookbook': t2v(15),
+      'try-on-still': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '3:4' } } },
+      'lookbook-multi-look': {
+        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        'look-1': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        'look-2': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        'look-3': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+      },
       'pet-selfie-vlog': t2v(10),
       'phone-vlog-realism': t2v(15),
       'retro-found-footage': t2v(10, '4:3'),
@@ -521,6 +568,55 @@ describe('generation templates', () => {
         before: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
         after: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
       },
+      'fight-duel-one-take': t2v(15, '16:9'),
+      'fight-exchange-short': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 8 } } },
+      'fight-duel-locked': {
+        ...t2v(15, '16:9'),
+        'sheet-a': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3' } },
+        'sheet-b': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3' } },
+      },
+      'hero-orbit-reveal': {
+        result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 6, generate_audio: true } },
+        keyframe: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } },
+      },
+      'bullet-time-moment': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 6 } } },
+      'impact-frame-hit': t2v(10, '16:9'),
+      'reference-video-remix': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 10 } } },
+      'seamless-bridge': t2v(5, '16:9'),
+      'cinematic-15s-arc': t2v(15, '16:9'),
+      'landscape-3-shot': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: 'gemini-omni-1.1-flash-text-to-video',
+          params: { aspect_ratio: '16:9', duration: 9 },
+          shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
+        },
+      },
+      'epic-fantasy-scifi': t2v(15, '16:9'),
+      'trailer-beat-3-shot': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '21:9', duration: 12, generate_audio: true },
+          shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }],
+        },
+      },
+      'transformation-6-shot': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '16:9', duration: 15, generate_audio: true },
+          shots: [{ seconds: 3 }, { seconds: 2 }, { seconds: 2 }, { seconds: 3 }, { seconds: 3 }, { seconds: 2 }],
+        },
+      },
+      'long-form-acts': {
+        ...t2v(30, '16:9'),
+        'act-2': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 30, generate_audio: true } },
+        'act-3': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 30, generate_audio: true } },
+      },
       'vehicle-speed-cutlist': t2v(12, '16:9'),
       'sports-live-coverage': t2v(12, '16:9'),
       'extreme-sports-run': t2v(10),
@@ -626,21 +722,26 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'speed', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'promo', 'food', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
+      ...Object.fromEntries(FIGHT.map((id) => [id, 'fight'])),
       ...Object.fromEntries(ANIMATION.map((id) => [id, 'animation'])),
       ...Object.fromEntries(ECOMMERCE.map((id) => [id, 'ecommerce'])),
       ...Object.fromEntries(PRODUCT_SHOWCASE.map((id) => [id, 'product-showcase'])),
       ...Object.fromEntries(TALKING.map((id) => [id, 'talking'])),
+      ...Object.fromEntries(PROMO.map((id) => [id, 'promo'])),
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
+      ...Object.fromEntries(FASHION.map((id) => [id, 'fashion'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
       ...Object.fromEntries(FILM_STYLES.map((id) => [id, 'film-styles'])),
+      ...Object.fromEntries(CINEMATIC.map((id) => [id, 'cinematic'])),
       ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
+      ...Object.fromEntries(VIDEO_REMIX.map((id) => [id, 'video-remix'])),
       ...Object.fromEntries(['storyboard-grid-25', ...COMICS].map((id) => [id, 'comics-storyboards'])),
       'costume-sheet': 'character',
       'character-bible': 'character',
@@ -688,6 +789,7 @@ describe('creative goals and triggers', () => {
       ['comics-storyboards', COMICS_IMAGES],
       ['product-showcase', ['product-hero-still']],
       ['food', ['dish-hero-still']],
+      ['fashion', ['try-on-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
       ['posters', POSTERS],
       ['film-styles', ['film-style-still']],
@@ -695,15 +797,20 @@ describe('creative goals and triggers', () => {
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
       ['comics-storyboards', COMICS_VIDEOS],
+      ['fight', FIGHT],
       ['animation', ANIMATION],
       ['ecommerce', ECOMMERCE],
       ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
+      ['promo', PROMO],
       ['food', FOOD_VIDEOS],
+      ['fashion', FASHION_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
       ['talking', TALKING],
       ['film-styles', ['film-style-shot', 'era-walkthrough-montage']],
+      ['cinematic', CINEMATIC],
       ['speed', SPEED],
       ['sound', ['clip-ambience-foley']],
+      ['video-remix', VIDEO_REMIX],
     ]);
     expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['film-styles', ['style-sound-bed']],
@@ -1301,9 +1408,8 @@ describe('sound, music and voice templates (inner#1825)', () => {
    */
   const settingsOf = (node: TemplateGenerateNode): Settings => ({ type: node.type, mode: node.mode, model: node.model });
 
-  it('registers all eleven under the sound goal, which the panels list last', () => {
+  it('registers all eleven under the sound goal', () => {
     for (const id of SOUND) expect(byId(id)?.goal, id).toBe('sound');
-    expect(TEMPLATE_GOALS[TEMPLATE_GOALS.length - 1]).toBe('sound');
   });
 
   it('anchors each on the node type, mode, model and params the design gives', () => {

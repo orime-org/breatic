@@ -1026,6 +1026,7 @@ models:
 
   - name: "seedance-2.5-video-extend"
     display_name: "Seedance 2.5"
+    variant: "Extend"
     mode: "extend"
     takes_prompt: true
     tier: "internal"
@@ -1059,6 +1060,7 @@ models:
 
   - name: "wan-3.0-video-edit"
     display_name: "Wan 3.0"
+    variant: "Edit"
     mode: "edit"
     takes_prompt: true
     tier: "internal"

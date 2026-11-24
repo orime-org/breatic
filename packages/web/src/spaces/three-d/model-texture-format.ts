@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** Whether this browser decodes the texture formats GLTFLoader r173 probes before using EXT_texture_webp or EXT_texture_avif. */
 export interface TextureFormatSupport {

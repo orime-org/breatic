@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The element side of the video-layer controller (#1410 design §6.2): one `<video>` per visible or premounted video
@@ -38,7 +38,6 @@ const DOCUMENT: TimelineDocumentV1 = {
   tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 }, v2: { id: 'v2', kind: 'visual', order: 1 } },
   clips: { [A.id]: A, [B.id]: B },
   sources: { [SOURCE.id]: SOURCE },
-  operationReceipts: {},
 };
 
 afterEach(() => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Cancelling a task that waits for a free slot (inner#1968, test spec area G:
@@ -33,10 +33,10 @@ vi.mock("@breatic/shared", async (importOriginal) =>
 import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
-import { env, getNodeTaskConfig, getStreamRedis, initCore, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
-import { nodeTaskService, runningSlotService } from "@breatic/domain";
+import { env, getNodeTaskConfig, getStreamRedis, initCore, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
+import { nodeTaskService, runningSlotService, timelineExecutionRepo } from "@breatic/domain";
 import { canvasSpaceDocName, spaceTasksChangedChannel, TASK_FAILURE_REASONS } from "@breatic/shared";
-import * as timelineExecutionService from "@server/modules/timeline/timeline-execution.service.js";
+import { webAnimationExecutionService } from "@server/modules";
 import { PAYMENTS_ON, request, seedAccount, seedMember, type Account, type Actor } from "./paid-account-fixtures.js";
 
 let sql: ReturnType<typeof postgres>;
@@ -238,12 +238,14 @@ describe("G-29 cancelling a Timeline execution that has not started", () => {
       input: { prompt: "A red square slides in", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
       inputHash: `sha256:${crypto.randomUUID()}`,
       deadlineAt: new Date(Date.now() + budget),
+      origin: "web_animation_space",
     });
     if (row === null) throw new Error("fixture execution conflicted");
-    if (state === "queued") await timelineExecutionRepo.transition({ id: row.id, event: { type: "land", inputHash: row.inputHash } });
+    // Only rows written before #1490 are awaiting landing; nothing writes that state now.
+    if (state === "awaiting_landing") await sql`update timeline_executions set status = 'awaiting_landing' where id = ${row.id}`;
     const holds = async (): Promise<unknown[]> => [...(await sql`select id, status, amount, released_at from credit_holds where studio_id = ${a.studioId} order by id`)];
     const before = await holds();
-    await timelineExecutionService.cancel(a.userId, row.id);
+    await webAnimationExecutionService.cancel(a.userId, row.id, a.projectId);
     const [execution] = await sql<{ status: string }[]>`select status from timeline_executions where id = ${row.id}`;
     expect(execution!.status).toBe("cancelled");
     expect(await holds()).toEqual(before);

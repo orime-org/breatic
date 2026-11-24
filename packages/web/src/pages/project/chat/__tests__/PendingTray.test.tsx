@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The waiting area above the composer (inner#1717): the messages the server
@@ -86,6 +86,15 @@ describe('the waiting area', () => {
     expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent(t('chat.waiting.blocked'));
     expect(screen.getAllByTestId('chat-waiting-retract')).toHaveLength(2);
     expect(screen.getAllByTestId('chat-waiting-delete')).toHaveLength(2);
+  });
+
+  it.each([
+    ['self', 'Your own OpenRouter key'],
+    ['admin', 'The Studio Admin\'s OpenRouter key'],
+  ] as const)('says the paid tools need credits, and whose key pays for the model, when it is the %s payer\'s own key (inner#1953)', (ownKey, whose) => {
+    setup({ blocked: true, ownKey });
+    expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent('web search, image search and page reading run on our services and are paid in credits');
+    expect(screen.getByTestId('chat-waiting-tray')).toHaveTextContent(whose);
   });
 
   it.each([

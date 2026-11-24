@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -161,8 +161,8 @@ describe("a run as the application resolves it", () => {
 
 describe("the reseller upstreams", () => {
   it("declares fal and SandBase", () => {
-    expect(config.upstreams.fal).toEqual({ kind: "fal", base_url: "https://queue.fal.run", billing_url: "https://api.fal.ai/v1", key_env: "FAL_KEY", concurrency: 10 });
-    expect(config.upstreams.sandbase).toEqual({ kind: "sandbase", base_url: "https://api.sandbase.ai/v1", key_env: "SANDBASE_API_KEY", concurrency: 10, empty_output_wait_ms: 600_000 });
+    expect(config.upstreams.fal).toEqual({ kind: "fal", display_name: "fal", group: "reseller", key_url: "https://fal.ai/dashboard/keys", base_url: "https://queue.fal.run", billing_url: "https://api.fal.ai/v1", key_env: "FAL_KEY", concurrency: 10 });
+    expect(config.upstreams.sandbase).toEqual({ kind: "sandbase", display_name: "SandBase", group: "reseller", key_url: "https://www.sandbase.ai/console/keys", base_url: "https://api.sandbase.ai/v1", key_env: "SANDBASE_API_KEY", concurrency: 10, empty_output_wait_ms: 600_000 });
   });
 
   it("lists every catalog model", () => {

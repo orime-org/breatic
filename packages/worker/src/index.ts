@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * BullMQ Worker entry point.
@@ -34,8 +34,6 @@ import {
   getAgentConfig,
   getWorkerConfig,
   getTimelineConfig,
-  TIMELINE_QUEUE,
-  type TimelineExecutionJobData,
   assertKnownQueues,
   installDeadlineBoundDispatcher,
   flushServerAnalytics,
@@ -63,6 +61,8 @@ import {
   type MediaReadJob,
   type UploadFinishJob,
   type UsageLookupJob,
+  TIMELINE_QUEUE,
+  type TimelineExecutionJobData,
 } from "@breatic/domain";
 
 // Error monitoring starts before the first log line, so error logs from the
