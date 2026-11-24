@@ -1762,7 +1762,7 @@
           },
           "scene-2": {
             "name": "Scene 2",
-            "prompt": "(💡 Generate Cast sheet first)(💡 Generate Short drama episode first)Scene 2 of 3 of the short drama written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Short drama episode], which is scene 1: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen."
+            "prompt": "(💡 Generate Cast sheet first)(💡 Generate the first scene first)Scene 2 of 3 of the short drama written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Short drama episode], which is scene 1: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen."
           },
           "scene-3": {
             "name": "Scene 3",
