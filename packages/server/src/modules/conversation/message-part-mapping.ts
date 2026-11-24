@@ -222,7 +222,7 @@ export function toUiParts(parts: MessagePart[]): UiParts {
 /**
  * A stored failure with its line under the name this release reads.
  *
- * Carries the pre-#1378 name until #1387 removes it, in the release that also
+ * Carries the pre-#1378 name until inner#2130 removes it, in the release that also
  * runs the rename migration again: a row written before migration 0116, or by
  * a server of the previous release while a deploy rolls out, keeps the line
  * under `readerKey`.

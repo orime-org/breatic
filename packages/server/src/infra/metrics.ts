@@ -16,7 +16,7 @@
  *  - `http_requests_total` — a counter labelled by method + status, so
  *    error rate is `rate(http_requests_total{status=~"5.."}[5m])`.
  *  - `db_up` — a 1/0 SELECT-1 liveness gauge refreshed on each scrape.
- *    Pool statistics are not exported here (#1441); a drifted pool
+ *    Pool statistics are not exported here (inner#2110); a drifted pool
  *    surfaces as `db_up 0` / failing queries and as `db_wait_timeout` logs.
  *
  * Pinned to prom-client v14, which has no `@opentelemetry/api` dependency;

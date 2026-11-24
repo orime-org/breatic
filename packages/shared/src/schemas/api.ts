@@ -644,7 +644,7 @@ export const understandSchema = z.object({
   user_locale: z.string().optional(),
   /**
    * The same locale under its pre-#1378 name, sent by a page loaded before
-   * the deploy. Carries the old name until #1387 removes it, in the release
+   * the deploy. Carries the old name until inner#2130 removes it, in the release
    * that also runs the rename migration again.
    */
   reader_locale: z.string().optional(),

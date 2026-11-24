@@ -523,7 +523,7 @@ async function startReading(
     user_locale: body.user_locale ?? body.reader_locale,
     // Under the pre-#1378 name too, for a worker of the previous release
     // still running while a deploy rolls out. Carries the old name until
-    // #1387 removes it, in the release that also runs the rename migration
+    // inner#2130 removes it, in the release that also runs the rename migration
     // again.
     reader_locale: body.user_locale ?? body.reader_locale,
     ...reading,
