@@ -107,7 +107,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   const keys = useKeyFailureWords();
   const queryClient = useQueryClient();
   const queryKey = React.useMemo(() => spaceTasksQueryKey(projectId, spaceId), [projectId, spaceId]);
-  const { query } = useSpaceTasks(projectId, spaceId);
+  const { query, running } = useSpaceTasks(projectId, spaceId);
   React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const names = useCollaboratorNames();
   const [placing, setPlacing] = React.useState<ReadonlySet<string>>(new Set());
@@ -144,7 +144,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
     onFocused?.();
   }, [focusTaskId, data, filters, userId, onFocused]);
 
-  const anyRunning = data?.tasks.some((task) => task.status === 'running') ?? false;
+  const anyRunning = running > 0;
   React.useEffect(() => {
     if (!anyRunning) return;
     const timer = setInterval(() => setMinute((value) => value + 1), MINUTE_MS);

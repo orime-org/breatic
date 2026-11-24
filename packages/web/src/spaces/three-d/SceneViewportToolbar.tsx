@@ -78,7 +78,7 @@ export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ u
       {/* The count sits beside the button, since a div cannot sit inside one, and lets the pointer through to it. */}
       <div className='relative inline-flex'>
         <SceneIconButton data-testid='scene-tasks-trigger' label={t('spaces.threeD.tasks')} active={openPanel === 'tasks'} onClick={showTasks}>{icons.tasks}</SceneIconButton>
-        {runningTasks > 0 ? <Badge data-testid='scene-tasks-count' className='pointer-events-none absolute -right-1 -top-1 h-4 min-w-4 justify-center rounded-full border-popover bg-foreground px-1 py-0 text-2xs font-semibold tabular-nums leading-none text-background shadow-none hover:bg-foreground'>
+        {runningTasks > 0 ? <Badge data-testid='scene-tasks-count' className='pointer-events-none absolute -right-1 -top-1 h-4 min-w-4 justify-center rounded-full border-popover bg-foreground px-1 py-0 text-2xs font-semibold tabular-nums leading-none text-background shadow-none'>
           {runningTasks > COUNT_CAP ? `${COUNT_CAP}+` : runningTasks}
         </Badge> : null}
       </div>
