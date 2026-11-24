@@ -7,9 +7,8 @@
  * the list. Rows waiting for a running slot have no deadline yet and are the slot-wait sweep's.
  */
 
-import { announceSpaceTasksChange, logger } from "@breatic/core";
+import { announceSceneTasksChange, logger } from "@breatic/core";
 import { sceneTaskService } from "@breatic/domain";
-import { threeDSpaceDocName } from "@breatic/shared";
 
 /**
  * One round of the sweep.
@@ -19,7 +18,7 @@ import { threeDSpaceDocName } from "@breatic/shared";
 export async function sweepSceneTasks(): Promise<void> {
   for (const { projectId, spaceId } of await sceneTaskService.harvestExpiredScenes()) {
     try {
-      await announceSpaceTasksChange(threeDSpaceDocName(projectId, spaceId));
+      await announceSceneTasksChange({ projectId, spaceId });
     } catch (err) {
       logger.error({ err, projectId, spaceId }, "scene_task_sweep_publish_failed");
     }

@@ -212,7 +212,7 @@ export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/ass
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
 export { announceExecutionChange } from "@core/timeline/execution-change.js";
-export { announceSpaceTasksChange } from "@core/infra/space-tasks-change.js";
+export { announceSceneTasksChange, announceSpaceTasksChange } from "@core/infra/space-tasks-change.js";
 export {
   TIMELINE_QUEUE,
   TIMELINE_EXECUTION_JOB,

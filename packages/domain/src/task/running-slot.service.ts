@@ -17,6 +17,7 @@
  */
 
 import {
+  announceSceneTasksChange,
   announceSpaceTasksChange,
   db,
   getMembershipReadingForUser,
@@ -31,7 +32,7 @@ import {
   timelineExecutionRepo,
   type DbTx,
 } from "@breatic/core";
-import { canvasSpaceDocName, threeDSpaceDocName, timelineSpaceDocName, type TaskFailureReason, type TimelineExecution } from "@breatic/shared";
+import { canvasSpaceDocName, timelineSpaceDocName, type TaskFailureReason, type TimelineExecution } from "@breatic/shared";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
@@ -160,7 +161,7 @@ async function renewHoldings(creditHold: string, always: boolean, tx: DbTx): Pro
  */
 async function publish(places: readonly TaskRowPlace[], spaceDoc: string | null): Promise<unknown[]> {
   const sends: Promise<void>[] = places.map(async (place) => {
-    if (place.nodeId === null) return announceSpaceTasksChange(threeDSpaceDocName(place.projectId, place.spaceId));
+    if (place.nodeId === null) return announceSceneTasksChange(place);
     const counts = await nodeTaskRepo.countsFor(place.projectId, place.nodeId);
     return emitNodeTaskCounts(getStreamRedis(), canvasSpaceDocName(place.projectId, place.spaceId), place.nodeId, counts, undefined);
   });
@@ -182,7 +183,7 @@ async function failRows(taskId: string, errorMessage: string, sceneReason: TaskF
   for (const place of await nodeTaskRepo.listRunningForTask(taskId)) {
     if (place.nodeId === null) {
       await sceneTaskService.settleById(place.id, { outcome: "failed", errorMessage: sceneReason });
-      failures.push(...(await publish([], threeDSpaceDocName(place.projectId, place.spaceId))));
+      failures.push(...(await publish([place], null)));
       continue;
     }
     const settled = await nodeTaskService.settle({ taskId: place.id, outcome: "failed", errorMessage });

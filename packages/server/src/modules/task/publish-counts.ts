@@ -24,9 +24,9 @@
  * fixes.
  */
 
-import { announceSpaceTasksChange, getStreamRedis, logger } from "@breatic/core";
+import { announceSceneTasksChange, getStreamRedis, logger } from "@breatic/core";
 import { emitNodeTaskCounts } from "@breatic/domain";
-import { threeDSpaceDocName, type NodeTaskCounts } from "@breatic/shared";
+import type { NodeTaskCounts } from "@breatic/shared";
 
 /**
  * Publish a node's task counts, and carry on if that fails.
@@ -64,7 +64,7 @@ export async function publishCountsQuietly(
  */
 export async function announceSceneTasksQuietly(projectId: string, spaceId: string): Promise<void> {
   try {
-    await announceSpaceTasksChange(threeDSpaceDocName(projectId, spaceId));
+    await announceSceneTasksChange({ projectId, spaceId });
   } catch (err) {
     logger.error({ err, projectId, spaceId }, "space_tasks_publish_failed");
   }

@@ -7,7 +7,7 @@
  * tab of the Space reads its lists again.
  */
 
-import type { SpaceTasksVersionEvent } from "@breatic/shared";
+import { threeDSpaceDocName, type SpaceTasksVersionEvent } from "@breatic/shared";
 import { publishToStream, taskEventsStreamKey } from "@core/infra/event-stream.js";
 import { getStreamRedis } from "@core/infra/redis.js";
 
@@ -20,4 +20,16 @@ import { getStreamRedis } from "@core/infra/redis.js";
 export async function announceSpaceTasksChange(docName: string): Promise<void> {
   const event: SpaceTasksVersionEvent = { type: "space-tasks-version", docName };
   await publishToStream(getStreamRedis(), taskEventsStreamKey(), { ...event });
+}
+
+/**
+ * Announce that a 3D Space's own task rows changed.
+ * @param at - Where the rows are.
+ * @param at.projectId - The Project.
+ * @param at.spaceId - The 3D Space.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function announceSceneTasksChange(at: { projectId: string; spaceId: string }): Promise<void> {
+  await announceSpaceTasksChange(threeDSpaceDocName(at.projectId, at.spaceId));
 }

@@ -12,7 +12,7 @@ import type * as DomainModule from "@breatic/domain";
 
 const h = vi.hoisted(() => ({
   harvestExpiredScenes: vi.fn<() => Promise<{ projectId: string; spaceId: string }[]>>(),
-  announceSpaceTasksChange: vi.fn<(docName: string) => Promise<void>>(),
+  announceSceneTasksChange: vi.fn<(at: { projectId: string; spaceId: string }) => Promise<void>>(),
   error: vi.fn(),
 }));
 
@@ -20,7 +20,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
   const actual = await importOriginal<typeof CoreModule>();
   return {
     ...actual,
-    announceSpaceTasksChange: h.announceSpaceTasksChange,
+    announceSceneTasksChange: h.announceSceneTasksChange,
     logger: { info: vi.fn(), warn: vi.fn(), error: h.error, debug: vi.fn() },
   };
 });
@@ -37,7 +37,7 @@ import { sweepSceneTasks } from "@worker/handlers/scene-task-sweep.js";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  h.announceSpaceTasksChange.mockResolvedValue(undefined);
+  h.announceSceneTasksChange.mockResolvedValue(undefined);
 });
 
 describe("sweepSceneTasks", () => {
@@ -50,7 +50,7 @@ describe("sweepSceneTasks", () => {
     await sweepSceneTasks();
 
     expect(h.harvestExpiredScenes).toHaveBeenCalledTimes(1);
-    expect(h.announceSpaceTasksChange.mock.calls).toEqual([["project-p1/3d-s1"], ["project-p2/3d-s2"]]);
+    expect(h.announceSceneTasksChange.mock.calls).toEqual([[{ projectId: "p1", spaceId: "s1" }], [{ projectId: "p2", spaceId: "s2" }]]);
     expect(h.error).not.toHaveBeenCalled();
   });
 
@@ -59,7 +59,7 @@ describe("sweepSceneTasks", () => {
 
     await sweepSceneTasks();
 
-    expect(h.announceSpaceTasksChange).not.toHaveBeenCalled();
+    expect(h.announceSceneTasksChange).not.toHaveBeenCalled();
   });
 
   it("logs a Space whose announcement fails and still announces the others", async () => {
@@ -68,11 +68,11 @@ describe("sweepSceneTasks", () => {
       { projectId: "p2", spaceId: "s2" },
     ]);
     const err = new Error("stream unreachable");
-    h.announceSpaceTasksChange.mockRejectedValueOnce(err);
+    h.announceSceneTasksChange.mockRejectedValueOnce(err);
 
     await expect(sweepSceneTasks()).resolves.toBeUndefined();
 
-    expect(h.announceSpaceTasksChange.mock.calls).toEqual([["project-p1/3d-s1"], ["project-p2/3d-s2"]]);
+    expect(h.announceSceneTasksChange.mock.calls).toEqual([[{ projectId: "p1", spaceId: "s1" }], [{ projectId: "p2", spaceId: "s2" }]]);
     expect(h.error).toHaveBeenCalledTimes(1);
     expect(h.error).toHaveBeenCalledWith({ err, projectId: "p1", spaceId: "s1" }, "scene_task_sweep_publish_failed");
   });
@@ -81,6 +81,6 @@ describe("sweepSceneTasks", () => {
     h.harvestExpiredScenes.mockRejectedValue(new Error("database unreachable"));
 
     await expect(sweepSceneTasks()).rejects.toThrow("database unreachable");
-    expect(h.announceSpaceTasksChange).not.toHaveBeenCalled();
+    expect(h.announceSceneTasksChange).not.toHaveBeenCalled();
   });
 });
