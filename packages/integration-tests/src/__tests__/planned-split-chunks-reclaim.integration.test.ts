@@ -39,6 +39,7 @@ let settings: core.MiniToolsConfig;
 let publicUrl: (key: string) => string;
 let submitted: Job[];
 let failing: RegExp;
+let running: RegExp;
 const tokens: string[] = [];
 
 /** Inject dummy external credentials only. @throws {Error} On invalid fixture configuration. */
@@ -47,12 +48,14 @@ function configure(): void {
 }
 
 /**
- * The report for a job: failed when its id matches the failing pattern, otherwise every declared output written.
+ * The report for a job: still running when its id matches the running pattern, failed when it matches the failing
+ * pattern, otherwise every declared output written.
  * @param request - The job.
  * @returns The report.
  */
 function report(request: Job): Record<string, unknown> {
   const usage = { wallMs: 1000, cpuUsec: 2000000 };
+  if (running.test(request.jobId)) return { schemaVersion: 2, state: "running" };
   if (failing.test(request.jobId)) return { schemaVersion: 2, state: "failed", reason: "tool_failed", outputs: [], usage };
   return { schemaVersion: 2, state: "done", usage, outputs: request.outputs.map((output) => ({ outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "9".repeat(64),
     sizeBytes: 2048, contentType: output.contentType, width: 960, height: 540, durationSeconds: 2, cover: null, upright: null })) };
@@ -77,7 +80,7 @@ beforeEach(() => {
   settings.encoding.chunk_share = 12 / (core.getNodeTaskConfig().default_budget_ms / 1000);
   settings.encoding.max_parallel_chunks = 64;
   outside.config.mockImplementation(() => settings);
-  submitted = []; failing = /$^/;
+  submitted = []; failing = /$^/; running = /$^/;
   outside.snapshots.clear();
   outside.ingest.mockImplementation(async (_url: string, _secret: string, input: { action: string; storageKey: string }): Promise<unknown> => {
     const snapshot = outside.snapshots.get(input.storageKey);
@@ -185,6 +188,51 @@ describe("a failed run's done chunks (frames-split §5.4, §7.15, §7.19)", () =
     await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
       outputs: plan.outputs.map((output) => ({ ...output, result: { status: "failed", error } })) } as never);
     expect(await queued()).toEqual(done);
+  });
+
+  it("SR03 a chunk still running when the run fails has its work key registered for reclaim at the run's end", async () => {
+    const target = await seedStudioFixture(pg, "split-reclaim");
+    await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${target.projectId},${target.userId},'editor')`;
+    await seedDesignatedLot(pg, target, 1000);
+    const sourceId = randomUUID(); const sourceKey = `video/split-reclaim/${sourceId}.mp4`; const hash = randomBytes(32).toString("hex");
+    await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
+      VALUES (${sourceId},${target.studioId},${hash},${sourceKey},${publicUrl(sourceKey)},4096,'video/mp4','video','upload',${target.userId},960,540,${V})`;
+    const presented = await presentedSource(hash, sourceKey, publicUrl, { keyframes: KEYFRAMES });
+    outside.snapshots.set(sourceKey, presented.snapshot);
+    // The cut 2.5 s in, as a frame of the selected grid (frames-split §10.7).
+    const grid = { fps: presented.bundle.display.fps, frameCount: presented.bundle.display.frameCount };
+    const cuts = [Math.round((2.5 * grid.fps.numerator) / grid.fps.denominator)];
+    const body = { tool: "video.split", project_id: target.projectId, space_id: randomUUID(), run_id: randomUUID(),
+      draft: { version: 1, draftId: randomUUID(), revision: randomUUID(), source: { nodeId: randomUUID(), canonicalURL: publicUrl(sourceKey),
+        mediaInfo: { width: 960, height: 540, duration: V, mimeType: "video/mp4" } }, inputs: [], params: { cuts } },
+      analysis_refs: [], presentation_ref: presented.presentationRef,
+      outputs: planVideoSplit(grid, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
+    const admitted = await post(target.userId, body);
+    expect(admitted.status, await admitted.clone().text()).toBe(201);
+    // The running-task gate starts a pending task before its pickup does (inner#1968).
+    await runningSlotService.startWithinLimit({ id: body.run_id, jobId: body.run_id });
+    const { task, execution } = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
+    const plan = execution as unknown as { layout: { encodes: { outputIndex: number; chunks: unknown[] }[] }; outputs: { outputIndex: number; nodeId: string; recipe: unknown }[]; planFingerprint: string };
+    const encode = plan.layout.encodes.find((entry) => entry.outputIndex === 0);
+    expect(encode?.chunks.length).toBeGreaterThan(1);
+    // The first chunk of segment 0 never ends; its last chunk fails on every attempt.
+    const last = encode!.chunks.length - 1;
+    running = new RegExp(`:out:0:enc:0:`);
+    failing = new RegExp(`:out:0:enc:${last}:`);
+    const stored = await taskRepo.getMiniToolExecutionTask(task.id);
+    const deadlineAt = await taskDeadline(task.id, stored!.createdAt);
+    const run = ((await import("@worker/handlers/mini-tool/run-video-tool.js")) as unknown as Record<string, Runner>).runMiniToolVideoTool!;
+    const results = await untilFailure(run, execution, task.userId, deadlineAt);
+    expect(results.get(0)).toMatchObject({ status: "failed" });
+    const open = (await pg<{ key: string }[]>`SELECT output#>>'{miniToolPlanJob,outputs,0,storageKey}' AS key FROM task_upstream_steps
+      WHERE task_id=${task.id} AND output->'miniToolStep'->'result' IS NULL AND output#>>'{miniToolPlanJob,jobId}' LIKE '%:out:0:enc:0:%'`).map((row) => row.key);
+    expect(open).toHaveLength(1);
+    const queued = async (): Promise<string[]> => (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${open}) AND kind='derived'`).map((row) => row.storage_key);
+    expect(await queued()).toEqual([]);
+    const error = { code: "mini_tool_failed" };
+    await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
+      outputs: plan.outputs.map((output) => ({ ...output, result: { status: "failed", error } })) } as never);
+    expect(await queued()).toEqual(open);
   });
 
   it("SR02 a stitched segment's chunks are registered at its stitch, the failed segment's done chunks at the run's end", async () => {

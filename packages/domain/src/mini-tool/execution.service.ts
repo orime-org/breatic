@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ConsentSnapshot, TaskEntity } from "@breatic/shared";
-import { TaskStatus, t } from "@breatic/shared";
+import { TaskStatus, miniToolPlanJobRequestSchema, t, videoPresentationWorkKeyFor } from "@breatic/shared";
 import { z } from "zod";
 import { ConflictError, NotFoundError, db, projectAuthService, type DbTx } from "@breatic/core";
 import { canonicalMiniToolValue, miniToolExecutionOutputSchema, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
@@ -11,6 +11,8 @@ import { executionPlanFromTask, readMiniToolExecutionPlan, type MiniToolExecutio
 import { miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
 import { completeMiniToolConsumptionSet, completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import * as taskRepo from "@domain/task/task.repo.js";
+import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
+import { miniToolStepStateSchema } from "@domain/mini-tool/upstream-step.types.js";
 import * as assetRepo from "@domain/asset/asset.repo.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
@@ -95,7 +97,7 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
       status, errorMessage: error === null ? null : typeof error.code === "string" ? error.code : "mini_tool_failed", finish: true,
     });
     await synchronizeMiniToolDelivery(plan.task, record, tx);
-    await endRun(id, tx);
+    await endRun(plan, tx);
     await completeResolvedMiniToolConsumptionSet(id, tx);
     const task = await currentTask(id, tx);
     return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
@@ -256,15 +258,37 @@ async function requireRegistered(output: MiniToolExecutionOutput, tx: DbTx): Pro
 
 /**
  * What every end of a run does in its terminal transaction (frames-split §7.19): its `execution` and `prepared` pins end,
- * and every output grant it issued that nothing consumed is voided.
- * @param id - The run.
+ * the work object of every chunk still running is registered for reclaim, and every output grant it issued that nothing
+ * consumed is voided.
+ * @param plan - The locked run.
  * @param tx - The terminal write's transaction.
- * @throws {Error} When releasing a pin or voiding a grant fails.
+ * @throws {Error} When reading its steps, releasing a pin, registering a key or voiding a grant fails.
  */
-async function endRun(id: string, tx: DbTx): Promise<void> {
+async function endRun(plan: MiniToolExecutionPlan, tx: DbTx): Promise<void> {
+  const id = plan.task.id;
   await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
   await presentationPinService.release({ holderKind: "prepared", holderId: id }, tx);
+  // A chunk running at the end writes its work object later: its key is registered now, and the offline reclaim's
+  // protection period outlasts the job's deadline, so the object is reclaimed once written.
+  await presentationPinService.retire({ holderKind: "execution", holderId: id }, await runningChunkKeys(plan, tx), tx);
   await uploadGrantRepo.voidTaskGrants(id, "cancelled", tx);
+}
+
+/**
+ * The work keys of the run's chunks that have no terminal report: a chunk's single output is its work object (§93 D5-10).
+ * @param plan - The locked run.
+ * @param tx - The terminal write's transaction.
+ * @returns The keys.
+ * @throws {Error} When the steps cannot be read or a stored step is invalid.
+ */
+async function runningChunkKeys(plan: MiniToolExecutionPlan, tx: DbTx): Promise<string[]> {
+  return (await upstreamStepRepo.listSteps(plan.task.id, tx)).flatMap((step) => {
+    if (step.output.miniToolPlanJob === undefined) return [];
+    const request = miniToolPlanJobRequestSchema.parse(step.output.miniToolPlanJob);
+    const state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
+    const workKey = videoPresentationWorkKeyFor(plan.execution.sourceKey, request.jobId);
+    return (state?.result ?? null) === null && request.outputs.some((output) => output.storageKey === workKey) ? [workKey] : [];
+  });
 }
 
 /**
@@ -286,7 +310,7 @@ export async function endMiniToolExecutionOutsideRun(id: string, tx: DbTx): Prom
     outputs: current.outputs.map((output) => ({ ...output, result: { status: "failed", error: failure } })),
   });
   await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx);
-  await endRun(id, tx);
+  await endRun(plan, tx);
   if (plan.task.status !== "cancelled" && plan.task.result?.settlement === undefined) await completeMiniToolConsumptionSet(id, tx);
 }
 
@@ -312,7 +336,7 @@ export async function failMiniToolExecutionAdmission(taskId: string, error: NonN
     await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx, {
       status: "failed", errorMessage: typeof failure.code === "string" ? failure.code : "internal", finish: true,
     });
-    await endRun(id, tx);
+    await endRun(plan, tx);
     // Original intents register settlement under this same lock before paid IO.
     // An acknowledgement failure cannot release their hold or close their set.
     if (plan.task.result?.settlement === undefined) {
