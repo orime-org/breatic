@@ -274,7 +274,9 @@ test.describe('another member\'s 3D upload (inner#2061) @needs-ingest @needs-sto
       const panel = await openTasks(page);
       await expect(panel).toHaveText('Models you import or generate appear here.');
 
-      // Offline keeps the socket from coming back; closing it drops the connection the page already holds.
+      // Offline keeps the socket from coming back; closing it drops the connection the page already holds. The first
+      // call, still online, loads the modules the helper imports, which an offline page could not fetch.
+      await setTimelineConnection(page, projectId, id, true);
       await page.context().setOffline(true);
       await setTimelineConnection(page, projectId, id, false);
       const taskId = await openSceneUpload(other, id);
@@ -288,8 +290,8 @@ test.describe('another member\'s 3D upload (inner#2061) @needs-ingest @needs-sto
       await abandonSceneUpload(other, id, taskId);
       await expect(visibleSpace(page).getByTestId('scene-tasks-count')).toHaveCount(0);
     } finally {
-      await page.context().setOffline(false);
       try {
+        await page.context().setOffline(false);
         await otherContext.close();
       } finally {
         if (otherId) await cleanMembership(page, projectId, otherId);
