@@ -80,17 +80,6 @@ export const assetsApi = {
    *   that failed.
    * @throws {ApiException} When the request fails.
    */
-  /**
-   * Tell the server a focus crop's bytes never reached the edge (#1580), as a node's upload reports its row, so the
-   * crop stops showing as uploading in its node.
-   * @param storageKey - The key the crop's grant was opened on.
-   * @returns Nothing, once the server ended it.
-   * @throws {ApiException} When the request fails.
-   */
-  async reportFocusUploadFailure(storageKey: string): Promise<void> {
-    await apiPost('/assets/focus-uploads/failure', { storageKey, reason: 'aborted' });
-  },
-
   requestUploadTicket(params: UploadTicketRequest, signal?: AbortSignal): Promise<UploadTicketResponse> {
     return apiPost<UploadTicketResponse>('/assets/upload-ticket', {
       filename: params.filename,
@@ -109,6 +98,17 @@ export const assetsApi = {
       ...(params.purpose !== undefined && { purpose: params.purpose }),
       ...(params.label !== undefined && { label: params.label }),
     }, { ...NO_CLIENT_TIMEOUT, ...(signal !== undefined && { signal }) });
+  },
+
+  /**
+   * Tell the server a focus crop's bytes never reached the edge (#1580), as a node's upload reports its row, so the
+   * crop stops showing as uploading in its node.
+   * @param storageKey - The key the crop's grant was opened on.
+   * @returns Nothing, once the server ended it.
+   * @throws {ApiException} When the request fails.
+   */
+  async reportFocusUploadFailure(storageKey: string): Promise<void> {
+    await apiPost('/assets/focus-uploads/failure', { storageKey, reason: 'aborted' });
   },
 
   /**
