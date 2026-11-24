@@ -345,7 +345,7 @@ describe("the planned run's record follows its task through the running-task gat
   });
 });
 
-describe("planned admission on the selected version and failed-output retry (frames-split §7.11, §7.15)", () => {
+describe("planned admission on the selected version (frames-split §7.11)", () => {
   // frames-split §7.11: the press is admitted only on the selected version it names.
   it.each(["ref toolInputId", "ref planSha256", "nothing selected"])("refuses when %s, before claiming the run", async (bad) => {
     const f = await seed(); const start = startRecorder();
@@ -355,22 +355,5 @@ describe("planned admission on the selected version and failed-output retry (fra
     else snapshot.presentation = null;
     await expect(acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD)).rejects.toThrow();
     expect(start).not.toHaveBeenCalled(); expect(await readTask(f.body.run_id)).toBeNull();
-  });
-
-  it("a failed-output retry reuses the frozen plan without reading the current version and keeps the platform payer", async () => {
-    const f = await seed(); const start = startRecorder();
-    await acceptMiniToolExecution(f.body, f.userId, start, NO_HOLD);
-    const original = start.mock.calls[0]![0];
-    const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: original.planFingerprint,
-      resultVersion: 1, sourceBindings: [original.binding], outputs: original.outputs.map((output) => ({ ...output, late: false,
-        result: { status: "failed", error: { code: "mini_tool_failed" } } })), usage: [], billingState: "idle", error: { code: "mini_tool_failed" } });
-    await pg`UPDATE tasks SET status='failed',result=${pg.json({ miniToolExecution: JSON.parse(JSON.stringify(record)) })},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
-    outside.ingest.mockClear(); outside.reads.length = 0;
-    const retry = { tool: "video.extract-frames" as const, project_id: f.body.project_id, space_id: f.body.space_id, run_id: crypto.randomUUID(), retry: { runId: f.body.run_id, outputIndexes: [0] } };
-    await acceptMiniToolExecution(retry, f.otherEditorId, start, NO_HOLD);
-    const accepted = start.mock.calls[1]![0];
-    expect(accepted).toMatchObject({ taskId: retry.run_id, retry: retry.retry, outputs: original.outputs, chargeTo: "platform", credits: 0,
-      presentationRef: original.presentationRef, presentations: original.presentations, layout: original.layout });
-    expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
   });
 });

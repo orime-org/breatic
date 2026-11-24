@@ -131,7 +131,7 @@ async function completedPending(f: ExecutionFixture): Promise<void> {
   await openMiniToolPlanJob({ taskId: f.taskId, stepId: step.id, chunkIndex: 0, chargeTo: f.plan.chargeTo, request });
   await upstreamStepRepo.recordInline(step.id, { "miniToolAsset:0": f.registered.assetId }, 0);
   await miniToolExecutionService.finishMiniToolExecution(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 0, error: null,
-    outputs: [{ ...f.plan.outputs[0]!, late: false, result: f.registered }] });
+    outputs: [{ ...f.plan.outputs[0]!, result: f.registered }] });
 }
 
 describe("node-task parent-run recovery through original persistent owners", () => {

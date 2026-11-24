@@ -2,16 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Video focus crop admission (frames-split design §5.5 "受理", "计划形状", "配置", §7.11; test plan §68.1 F02, F11 and §68.2
- * FI08, FI09, FI11, FI12).
+ * Video focus crop admission (frames-split design §5.5 "受理", "计划形状", "配置", §7.11; test plan §68.1 F02 and §68.2
+ * FI08, FI11, FI12).
  *
  * A focus crop is admitted through the planned-run entry as tool `video.focus-crop`: its draft names the framed video node as
  * `source`, its only output is the panel node with a `frame` recipe carrying `crop`, it is checked against the selected
  * version like every fresh admission, it is platform-funded (quote 0, no hold, `chargeTo: "platform"` frozen in the plan) and
  * its task type is image. A replay of the same press is not a conflict. A new crop does not check the panel node for running
- * executions, so two crops on one panel run side by side; and the retry check that does look at output nodes counts only
- * executions that write their output node's content, so a running crop never blocks the retry of the panel node's own failed
- * result.
+ * executions, so two crops on one panel run side by side.
  *
  * Only the external presentation read is controlled, as in `execution-admission.integration.test.ts`. The platform-funded
  * set (`PLATFORM_FUNDED` and `miniToolChargeTo` in `packages/shared/src/mini-tools/platform-funded.ts`) is replaced in the
@@ -129,33 +127,6 @@ function recorder(): ReturnType<typeof vi.fn<(accepted: AcceptedMiniToolExecutio
   return vi.fn(async (_accepted: AcceptedMiniToolExecution): Promise<"pending"> => "pending");
 }
 
-/**
- * Seed a pending or running planned execution row reserving the given output node.
- * @param f - Where.
- * @param tool - Its tool.
- * @param nodeId - The output node it writes.
- * @returns Its id.
- * @throws {Error} On SQL failure.
- */
-async function reserve(f: Fixture & { spaceId: string }, tool: string, nodeId: string): Promise<string> {
-  const id = crypto.randomUUID();
-  await pg`INSERT INTO tasks (id,user_id,project_id,space_id,task_type,mode,source,status,model,params,result)
-    VALUES (${id},${f.userId},${f.projectId},${f.spaceId},${tool === "video.split" ? "video" : "image"},'append','mini_tool','running',${tool},
-      ${pg.json({ miniToolExecution: { tool, outputs: [{ outputIndex: 0, nodeId }] } })},${pg.json({})})`;
-  return id;
-}
-
-/**
- * The retry check's answer for one output node.
- * @param f - Where.
- * @param nodeId - The node.
- * @returns Whether a running execution reserves it.
- * @throws {Error} On SQL failure.
- */
-async function reserved(f: Fixture & { spaceId: string }, nodeId: string): Promise<boolean> {
-  return db.transaction(async (tx) => domain.taskRepo.hasActiveMiniToolExecutionNodes(f.projectId, f.spaceId, [nodeId], tx));
-}
-
 describe("video focus crop admission (design §5.5 受理, 计划形状, 配置; §7.11)", () => {
   it("F02 admits the crop on the selected version, freezes the panel node as its only output and holds nothing", async () => {
     const f = await seed(); const start = recorder();
@@ -216,24 +187,6 @@ describe("video focus crop admission (design §5.5 受理, 计划形状, 配置;
     // unchanged because of the freeze and not because the replacement missed.
     const fresh = await seed(crypto.randomUUID(), f);
     expect((await quoteMiniToolExecution(fresh.body as unknown as MiniToolPlannedRequest, f.userId)).credits).toBeGreaterThan(0);
-  });
-});
-
-describe("the retry check counts only executions that write their output node's content (design §5.5 计划形状, §7.11)", () => {
-  it("F11 a running focus crop does not reserve its panel node", async () => {
-    const f = await seed();
-    await reserve(f, "video.focus-crop", f.panelNodeId);
-    expect(await reserved(f, f.panelNodeId)).toBe(false);
-  });
-
-  it("FI09 a crop running on another tool's failed result does not block its retry, while two content writers still conflict", async () => {
-    const f = await seed();
-    // The panel node is a frame extract-frames failed to write; a crop is running on it.
-    await reserve(f, "video.focus-crop", f.panelNodeId);
-    expect(await reserved(f, f.panelNodeId)).toBe(false);
-    // Another execution writing that node's content still reserves it.
-    await reserve(f, "video.extract-frames", f.panelNodeId);
-    expect(await reserved(f, f.panelNodeId)).toBe(true);
   });
 });
 

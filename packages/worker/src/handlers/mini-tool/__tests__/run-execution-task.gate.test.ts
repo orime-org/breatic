@@ -14,7 +14,7 @@ import type { MiniToolExecutionJob } from "@breatic/domain";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { runMiniToolExecutionTask } from "../run-execution-task.js";
 
-const h = vi.hoisted(() => ({ gate: vi.fn(), start: vi.fn(), deadline: vi.fn(), delay: vi.fn(), finish: vi.fn(), run: vi.fn(),
+const h = vi.hoisted(() => ({ gate: vi.fn(), start: vi.fn(), deadline: vi.fn(), delay: vi.fn(), finish: vi.fn(), run: vi.fn(), mark: vi.fn(), register: vi.fn(),
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } }));
 vi.mock("@breatic/core", async (original) => {
   const actual = await original<typeof coreModule>();
@@ -23,11 +23,11 @@ vi.mock("@breatic/core", async (original) => {
 vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
   return { ...actual, runningSlotService: { ...actual.runningSlotService, startWithinLimit: h.gate },
-    miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start } };
+    miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start, markMiniToolExecutionCommitPoint: h.mark } };
 });
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
-vi.mock("@worker/handlers/mini-tool/run-video-tool.js", () => ({ runMiniToolVideoTool: h.run }));
-vi.mock("@worker/handlers/mini-tool/execution-completion.js", () => ({ finishMiniToolExecutionAndNotify: h.finish, commitMiniToolExecutionProgress: vi.fn() }));
+vi.mock("@worker/handlers/mini-tool/run-video-tool.js", () => ({ runMiniToolVideoTool: h.run, registerReportedOutputs: h.register }));
+vi.mock("@worker/handlers/mini-tool/execution-completion.js", () => ({ finishMiniToolExecutionAndNotify: h.finish }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
 
 const TASK = "50000000-0000-4000-8000-000000000001";
@@ -46,12 +46,14 @@ function job(): Job<MiniToolExecutionJob> {
 
 beforeEach(() => {
   vi.resetAllMocks();
-  const outputs = [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", result: null, late: false }];
+  const outputs = [{ outputIndex: 0, nodeId: "40000000-0000-4000-8000-000000000001", result: null }];
   h.start.mockResolvedValue({ task: { userId: "u", createdAt: CREATED, startedAt: STARTED },
     execution: { projectId: "p", spaceId: "s", planFingerprint: "f".repeat(64), outputs },
     record: { status: "running", resultVersion: 0, outputs } });
   h.deadline.mockResolvedValue(Date.now() + 3_600_000);
-  h.run.mockResolvedValue({ results: new Map([[0, { status: "registered" }]]), waiting: false });
+  h.run.mockResolvedValue({ results: new Map([[0, { status: "reported" }]]), waiting: false });
+  h.mark.mockResolvedValue({ state: "committed", record: { status: "running" } });
+  h.register.mockResolvedValue(new Map([[0, { status: "registered" }]]));
   h.finish.mockResolvedValue({ record: { status: "completed" } });
 });
 afterEach(() => vi.restoreAllMocks());

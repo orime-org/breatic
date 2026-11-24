@@ -35,7 +35,7 @@ afterAll(async () => { await pg.end(); initCore(process.env); });
  */
 function completion(f: ExecutionFixture, expectedVersion = 0): MiniToolExecutionCompletion {
   return { planFingerprint: f.plan.planFingerprint, expectedVersion, error: null,
-    outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }] };
+    outputs: [{ ...f.plan.outputs[0]!, result: f.registered }] };
 }
 /** Produce the independently fixed delivery sibling for the sole legal registered slot.
  * @throws {never} Never.
@@ -67,7 +67,7 @@ async function stored(f: ExecutionFixture): Promise<unknown> {
 async function oldManifest(f: ExecutionFixture, failed = false, registered = true): Promise<MiniToolExecutionRecord> {
   const current = miniToolExecutionRecordSchema.parse((await executionSnapshot(pg, f)).result.miniToolExecution);
   const record: MiniToolExecutionRecord = { ...current, status: failed ? "failed" : "completed", resultVersion: 1,
-    outputs: [{ ...f.plan.outputs[0]!, result: registered ? f.registered : { status: "failed", error: ERROR }, late: failed && registered }], error: failed ? ERROR : null };
+    outputs: [{ ...f.plan.outputs[0]!, result: registered ? f.registered : { status: "failed", error: ERROR }}], error: failed ? ERROR : null };
   await pg`UPDATE tasks SET status=${record.status},error_message=${failed ? ERROR.code : null},completed_at=clock_timestamp() WHERE id=${f.taskId}`;
   await storeExecutionFixture(pg, f, record);
   return record;
@@ -200,12 +200,11 @@ describe("planned registered media delivery SQL owner", () => {
     const before = await snapshot(f); await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, 1));
     expect(await snapshot(f)).toEqual(before); expect(await stored(f)).toEqual({ ...pending(f), version: 2, outputs: [{ outputIndex: 0, state: disposition }] });
   });
-  it("D01/D04 adds a genuine late registered slot as pending while keeping the original failed parent", async () => {
+  // frames-split §7.19: a failed run delivers nothing, and nothing registered after it opens a delivery slot.
+  it("D01/D04 refuses a registration onto a failed run and opens no delivery slot", async () => {
     const f = await seedExecution(pg, "running"); await returned(f); await oldManifest(f, true, false);
-    expect((await miniToolDeliveryService.readMiniToolDelivery(f.taskId)).delivery).toBeNull();
-    const result = await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, 1));
-    expect(result.record).toMatchObject({ status: "failed", error: ERROR, resultVersion: 2, outputs: [{ outputIndex: 0, result: f.registered, late: true }] });
-    expect(await stored(f)).toEqual(pending(f));
+    await expect(miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, 1))).rejects.toBeInstanceOf(Error);
+    expect(await stored(f)).toBeUndefined();
   });
   it("D04 preserves delivery across real known, recorded and settled consumption changes", async () => {
     const f = await seedExecution(pg, "running"); const original = await returned(f);

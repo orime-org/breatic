@@ -1177,3 +1177,16 @@ describe("product guide: full screen", () => {
     expect(text).not.toMatch(/play, seek and fullscreen/);
   });
 });
+
+// frames-split §7.19: a video tool run is rerun only as a whole, from its panel; no row offers to retry part of it.
+describe("a video tool's ended task row (frames-split §7.19)", () => {
+  beforeAll(() => { loadLocales(); });
+  it("says a video tool's failed, cancelled or expired row offers only Clear and the tool runs again from its panel", () => {
+    const text = renderProductGuide();
+    expect(text).toContain(`a video tool's failed row (including one that says "${t("canvas.task.failure.cancelled")}") or expired row offers only "${t("canvas.task.action.clear")}"; run the tool again from its panel`);
+    expect(text).not.toMatch(/was not retried already|a retried result runs again/);
+  });
+  it("still offers Retry for an upload still at hand", () => {
+    expect(renderProductGuide()).toContain(`offers "${t("canvas.task.action.retry")}" for an upload still at hand`);
+  });
+});

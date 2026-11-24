@@ -53,7 +53,7 @@ async function fixture(status: "running" | "failed" | "expired" = "running"): Pr
  */
 function completion(f: ExecutionFixture): MiniToolExecutionCompletion {
   return { planFingerprint: f.plan.planFingerprint, expectedVersion: 0,
-    outputs: [{ ...f.plan.outputs[0]!, result: structuredClone(f.registered), late: false }], error: null };
+    outputs: [{ ...f.plan.outputs[0]!, result: structuredClone(f.registered) }], error: null };
 }
 
 /** Observe the complete source history independently from the publication owner.
@@ -116,7 +116,7 @@ describe("planned publication keeps SQL output identity across real Redis entrie
     expect(stored).toEqual({ params: { miniToolExecution: f.plan } });
     const finished = await finishMiniToolExecutionAndNotify(f.taskId, completion(f), getStreamRedis());
     expect(finished.record).toMatchObject({ runId: f.taskId, planFingerprint: f.plan.planFingerprint, status: "completed", resultVersion: 1,
-      outputs: [{ ...f.plan.outputs[0], result: f.registered, late: false }] });
+      outputs: [{ ...f.plan.outputs[0], result: f.registered }] });
     const actual = await events(f); expect(actual).toHaveLength(1);
     expect(actual[0]!.id).toMatch(/^\d+-\d+$/);
     expectMediaEvent(actual[0]!.payload, f);

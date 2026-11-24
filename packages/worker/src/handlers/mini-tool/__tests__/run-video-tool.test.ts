@@ -10,17 +10,20 @@
  * `layout` as it is (D5-1), writes each output's job recipe with `frameRecipeOf` / `segmentRecipesOf` and the frozen
  * `container.encode` (D5-2), and submits each batch as a `run-batch` job through `advanceRegisteredMiniToolPlanJob` with
  * the frozen payer (D5-4, D5-5; W02, W03). A failed batch attempt's next attempt carries only the outputs not yet done, up
- * to the frozen `chunkRetries`; exhausted outputs fail one by one and the others are delivered (D5-3, §7.11).
+ * to the frozen `chunkRetries` (D5-3).
  *
- * The job boundary (`advanceRegisteredMiniToolPlanJob`), grants, steps, the SQL lifecycle and the completion owner are
- * mocked; the recipe builders stay real and read the plan colour the frozen version carries.
+ * A run is one whole (frames-split §7.19): each job's report is staged on its step (`advanceStagedMiniToolPlanJob`) and
+ * nothing is registered while the run runs; once every output is reported the pickup writes the commit point, registers
+ * every staged output (`registerMiniToolPlanJobOutputs`) and commits completed once. The first output that fails for good,
+ * expired included, fails every output at once, and no new attempt, chunk or stitch opens after it.
+ *
+ * The job boundaries, grants, steps, the SQL lifecycle and the completion owner are mocked; the recipe builders stay real
+ * and read the plan colour the frozen version carries.
  *
  * §93 D5-10: a segment in `layout.encodes` runs its frozen chunk windows as `run-chunk` jobs on the model-input preparation
  * path (work keys, `openMiniToolPlanJob` + `advanceMiniToolPlanJob`, a failed attempt's output retired with its result,
- * prepare-model-input.ts:110–125), then one `run-stitch` job through `advanceRegisteredMiniToolPlanJob` with the option
- * that retires the consumed chunk keys after the stitch commits. §93 D5-11 (design line 616, 622, 960): every poll commits
- * the newly finished outputs non-terminally (`commitMiniToolExecutionProgress`, mocked here as the domain entry), one
- * terminal commit follows once all outputs have ended, and a caught exception fails only outputs not yet committed.
+ * prepare-model-input.ts:110–125), then one staged `run-stitch` job with the option that retires the consumed chunk keys
+ * after the stitch commits.
  */
 import { createHash } from "node:crypto";
 import type { Job } from "bullmq";
@@ -30,7 +33,6 @@ import type * as domainModule from "@breatic/domain";
 import type { MiniToolExecutionCompletion, MiniToolExecutionJob, OpenMiniToolPlanJobInput } from "@breatic/domain";
 import { DeadlinePassed, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest, type StudioAssetEntity } from "@breatic/shared";
 import { videoContainerJobId } from "@breatic/shared/mini-tools";
-import type { RegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { AUDIO_INPUT_ID, chunkInputId, frameRecipeOf, segmentRecipesOf, SOURCE_INPUT_ID, toolInputOf } from "@worker/handlers/video-presentation-recipes.js";
 import { frozenVersion, type VersionFields } from "./frozen-presentation.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
@@ -39,8 +41,7 @@ import { runMiniToolExecutionTask } from "../run-execution-task.js";
 
 const h = vi.hoisted(() => ({
   start: vi.fn(), plan: vi.fn(), list: vi.fn(), ensure: vi.fn(), inline: vi.fn(), grants: vi.fn(), findById: vi.fn(), findCoverOf: vi.fn(),
-  advance: vi.fn(), finish: vi.fn(), deadline: vi.fn(), progress: vi.fn(), openPlan: vi.fn(), advancePlan: vi.fn(), record: vi.fn(),
-  readDelivery: vi.fn(), deliver: vi.fn(), wake: vi.fn(),
+  advance: vi.fn(), registerStep: vi.fn(), finish: vi.fn(), deadline: vi.fn(), mark: vi.fn(), openPlan: vi.fn(), advancePlan: vi.fn(), record: vi.fn(),
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
 vi.mock("@breatic/core", async (original) => {
@@ -52,19 +53,15 @@ vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
   return { ...actual, readMiniToolExecutionPlan: h.plan, openContainerOutputs: h.grants, openMiniToolPlanJob: h.openPlan, recordMiniToolStepResult: h.record,
     assetRepo: { ...actual.assetRepo, findById: h.findById, findCoverOf: h.findCoverOf },
-    miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start, commitMiniToolExecutionProgress: h.progress },
+    miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start, markMiniToolExecutionCommitPoint: h.mark },
     // The running-task gate lets every pickup through; its own cases are in run-execution-task.gate.test.ts.
     runningSlotService: { ...actual.runningSlotService, startWithinLimit: async () => ({ outcome: "started", started: new Date(), publishFailures: [] }) },
-    miniToolDeliveryService: { ...actual.miniToolDeliveryService, readMiniToolDelivery: h.readDelivery },
     upstreamStepRepo: { ...actual.upstreamStepRepo, listSteps: h.list, ensureSteps: h.ensure, recordInline: h.inline } };
 });
-vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance }));
-// Partial, so a progress wrapper added beside the terminal one runs for real over the mocked domain entry.
+vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceStagedMiniToolPlanJob: h.advance, registerMiniToolPlanJobOutputs: h.registerStep }));
 vi.mock("@worker/handlers/mini-tool/execution-completion.js", async (original) => ({ ...await original<Record<string, unknown>>(), finishMiniToolExecutionAndNotify: h.finish }));
 // Partial, so the reporting window end stays the real one.
 vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", async (original) => ({ ...await original<Record<string, unknown>>(), advanceMiniToolPlanJob: h.advancePlan }));
-// §93 D6 (design §7.11, §10.8): delivery after a progress commit; the delivery workers are mocked, the wrapper is real.
-vi.mock("@worker/handlers/mini-tool/delivery-worker.js", () => ({ deliverMiniToolOutput: h.deliver, wakePendingMiniToolDelivery: h.wake }));
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
 
@@ -90,9 +87,8 @@ let steps: Steps;
 let grantSequence: number;
 // Scripted batch outcomes by job id: which declared outputs the attempt wrote, and whether it failed or still runs.
 let scripted: Map<string, { written: number[]; state: "done" | "failed"; reason?: "expired" } | "running" | "throws">;
-// The public record the SQL lifecycle holds; the progress and terminal mocks advance it as the domain owner would.
-let staleProgress = 0;
-let current: Record<string, unknown> & { resultVersion: number; status: string; outputs: { result: unknown }[] };
+// The public record the SQL lifecycle holds; the commit point and terminal mocks advance it as the domain owner would.
+let current: Record<string, unknown> & { resultVersion: number; status: string; outputs: { result: unknown }[]; commitPoint?: string };
 
 // Two outputs per tool: grid frames 0 and 48; segments over grid frames [0, 48) and [48, 96); a focus crop has one.
 type Recipe = { kind: "frame"; frameIndex: number; crop?: { x: number; y: number; width: number; height: number } } | { kind: "segment"; range: { start: number; end: number } };
@@ -137,7 +133,7 @@ function plan(tool: Tool, layout: { batches: number[][]; encodes: { outputIndex:
  */
 function serve(execution: Record<string, unknown>): void {
   const task = { id: TASK, userId: USER, projectId: PROJECT, spaceId: SPACE, createdAt: new Date(), status: "running", source: "mini_tool", mode: "append" };
-  const outputs = (execution.outputs as { outputIndex: number; nodeId: string; recipe: unknown }[]).map((output) => ({ ...output, result: null, late: false }));
+  const outputs = (execution.outputs as { outputIndex: number; nodeId: string; recipe: unknown }[]).map((output) => ({ ...output, result: null }));
   current = { schemaVersion: 1, runId: TASK, status: "running", planFingerprint: execution.planFingerprint, resultVersion: 0,
     sourceBindings: [execution.binding], outputs, usage: [], billingState: "idle", error: null };
   h.start.mockImplementation(async () => ({ task, execution, record: structuredClone(current) }));
@@ -159,12 +155,13 @@ function asset(key: string, video: boolean): StudioAssetEntity {
 }
 
 /**
- * The job boundary: an attempt writes its scripted outputs (all declared ones by default), and a repeated call for the
- * same step answers its stored terminal report, as `advanceRegisteredMiniToolPlanJob` does.
+ * The staged job boundary: an attempt writes its scripted outputs (all declared ones by default) and stages its report on
+ * the step, and a repeated call for the same step answers its stored terminal report, as `advanceStagedMiniToolPlanJob`
+ * does.
  * @param input - The open-job input.
- * @returns The registered job.
+ * @returns The staged job.
  */
-async function advance(input: OpenMiniToolPlanJobInput): Promise<RegisteredMiniToolPlanJob> {
+async function advance(input: OpenMiniToolPlanJobInput): Promise<{ request: MiniToolPlanJobRequest; report: unknown }> {
   const step = steps.find((item) => item.id === input.stepId);
   if (step === undefined) throw new Error("Fixture advance lost its step");
   const request = (step.output.miniToolPlanJob as MiniToolPlanJobRequest | undefined) ?? input.request;
@@ -185,7 +182,44 @@ async function advance(input: OpenMiniToolPlanJobInput): Promise<RegisteredMiniT
   step.output = { ...step.output, miniToolStep: { schemaVersion: 1, scope: { taskId: TASK, stepId: step.id, kind: "container_job", endpoint: step.endpoint, itemIndex: step.itemIndex },
     deadlineAt: request.deadlineAt, requestBody: null, requestFingerprint: null, chargeTo: input.chargeTo, creditMultiplier: 1, attempts: [],
     result: { outcome: state, result: report, error: state === "failed" ? { code: "tool_failed" } : null }, error: null, conflicts: [] } };
-  return { request, report, assets: outputs.map((output) => ({ outputIndex: output.outputIndex, asset: asset(output.storageKey, video) })) };
+  return { request, report };
+}
+
+/**
+ * The registration boundary: every output a staged step reported becomes its canonical row, as
+ * `registerMiniToolPlanJobOutputs` does.
+ * @param input - The step.
+ * @param input.stepId - Its id.
+ * @returns Each reported output's row.
+ * @throws {Error} When the step has no staged report.
+ */
+async function registerStep(input: { stepId: string }): Promise<{ outputIndex: number; asset: StudioAssetEntity }[]> {
+  const step = steps.find((item) => item.id === input.stepId);
+  const request = step?.output.miniToolPlanJob as MiniToolPlanJobRequest | undefined;
+  const report = (step?.output.miniToolStep as { result?: { result?: { outputs: { outputIndex: number; storageKey: string }[] } } } | undefined)?.result?.result;
+  if (request === undefined || report === undefined) throw new Error("Fixture registration has no staged report");
+  const video = request.outputs.some((output) => output.contentType.startsWith("video/"));
+  return report.outputs.map((output) => ({ outputIndex: output.outputIndex, asset: asset(output.storageKey, video) }));
+}
+
+/**
+ * The domain commit point: a running record takes it once.
+ * @returns The committed state.
+ */
+async function mark(): Promise<{ state: "committed"; record: typeof current }> {
+  current = { ...current, commitPoint: current.commitPoint ?? "2026-11-24T08:00:00.000Z" };
+  return { state: "committed", record: structuredClone(current) };
+}
+
+/**
+ * Every output failed with one error, as a whole run fails.
+ * @param completion - The completion.
+ * @param error - The error.
+ */
+function allFailed(completion: MiniToolExecutionCompletion | null, error: Record<string, unknown>): void {
+  expect(completion!.error).toEqual(error);
+  expect(completion!.outputs.map((output) => output.result)).toEqual(completion!.outputs.map(() => ({ status: "failed", error })));
+  expect(h.mark).not.toHaveBeenCalled(); expect(h.registerStep).not.toHaveBeenCalled();
 }
 
 /**
@@ -235,40 +269,6 @@ async function record(value: { stepId: string; outcome: "done" | "failed"; resul
 }
 
 /**
- * The domain progress commit: resultVersion arbitration, committed results kept, the version moves only on a change.
- * @param _taskId - The run.
- * @param input - The commit.
- * @param input.expectedVersion - The version it read.
- * @param input.outputs - The complete indexed outputs.
- * @returns The new record.
- * @throws {Error} When the version is stale or a committed result would change.
- */
-async function progress(_taskId: string, input: { expectedVersion: number; outputs: { result: unknown }[] }): Promise<{ record: typeof current }> {
-  if (input.expectedVersion !== current.resultVersion) { staleProgress += 1; throw new Error("Fixture progress commit is stale"); }
-  let changed = false;
-  const outputs = current.outputs.map((held, index) => {
-    const next = input.outputs[index]!.result;
-    if (held.result !== null) {
-      if (next !== null && JSON.stringify(next) !== JSON.stringify(held.result)) throw new Error("Fixture progress would rewrite a committed result");
-      return held;
-    }
-    if (next === null) return held;
-    changed = true;
-    return { ...held, result: next };
-  });
-  if (changed) current = { ...current, outputs, resultVersion: current.resultVersion + 1 };
-  return { record: structuredClone(current) };
-}
-
-/**
- * The progress commits in order: each output's result status, null while pending.
- * @returns Their statuses.
- */
-function progressed(): (string | null)[][] {
-  return h.progress.mock.calls.map((call) => (call[1] as { outputs: { result: { status: string } | null }[] }).outputs.map((output) => output.result?.status ?? null));
-}
-
-/**
  * Run pickups until the completion owner is called (a StillRunning pickup is redelivered), at most eight.
  * @returns The completion it was given, or null when none was.
  */
@@ -309,7 +309,7 @@ function statuses(completion: MiniToolExecutionCompletion | null): (string | nul
 
 beforeEach(() => {
   vi.resetAllMocks();
-  steps = []; grantSequence = 0; scripted = new Map(); staleProgress = 0; version = frozenVersion();
+  steps = []; grantSequence = 0; scripted = new Map(); version = frozenVersion();
   h.deadline.mockResolvedValue(DEADLINE);
   h.list.mockImplementation(async () => steps);
   h.ensure.mockImplementation(async (_taskId: string, planned: StepPlan) => {
@@ -344,12 +344,8 @@ beforeEach(() => {
   });
   h.findCoverOf.mockResolvedValue(null);
   h.advance.mockImplementation(advance);
-  h.openPlan.mockImplementation(openPlan); h.advancePlan.mockImplementation(advancePlan); h.record.mockImplementation(record); h.progress.mockImplementation(progress);
-  // The delivery context: every registered output's slot is pending until delivered.
-  h.readDelivery.mockImplementation(async () => ({ task: { id: TASK }, execution: {}, record: structuredClone(current),
-    delivery: { schemaVersion: 1, planFingerprint: "d".repeat(64), version: 1, lastErrorCode: null,
-      outputs: current.outputs.flatMap((output, outputIndex) => output.result === null ? [] : [{ outputIndex, state: "pending" }]) } }));
-  h.deliver.mockImplementation(async (value: unknown) => value);
+  h.openPlan.mockImplementation(openPlan); h.advancePlan.mockImplementation(advancePlan); h.record.mockImplementation(record);
+  h.registerStep.mockImplementation(registerStep); h.mark.mockImplementation(mark);
   h.finish.mockImplementation(async (_taskId: string, completion: MiniToolExecutionCompletion) => ({ record: { status: completion.error === null ? "completed" : "failed" } }));
 });
 afterEach(() => { vi.useRealTimers(); });
@@ -375,6 +371,10 @@ describe("extract-frames and split run the frozen plan (§93 D5-1, D5-2, D5-4, D
     expect(completion!.outputs.map((output) => output.result)).toEqual(request!.outputs.map((output) => expect.objectContaining({
       status: "registered", assetId: asset(output.storageKey, false).id, kind: "image" })));
     expect(completion!.error).toBeNull();
+    // §7.19: the commit point is written once, then every staged output is registered with a presentation deadline.
+    expect(h.mark).toHaveBeenCalledExactlyOnceWith(TASK);
+    expect(h.mark.mock.invocationCallOrder[0]).toBeLessThan(h.registerStep.mock.invocationCallOrder[0]!);
+    expect(h.registerStep.mock.calls[0]![1]).toEqual({ deadlineAt: expect.any(Number) });
   });
 
   it("VT02 the frozen layout is used as it is, never re-planned (D5-1): two batches of one frame each", async () => {
@@ -400,31 +400,21 @@ describe("extract-frames and split run the frozen plan (§93 D5-1, D5-2, D5-4, D
     expect(statuses(completion)).toEqual(["registered", "registered"]);
   });
 
-  // §93 D5-11 (design line 622): a poll commits what finished non-terminally; the terminal commit waits for every output.
-  it("VT04 a running batch does not hold back the other: it is submitted, its finished output committed non-terminally, the terminal commit waits", async () => {
+  it("VT04 a running batch does not hold back the other: both are submitted, nothing is committed or registered until both are reported", async () => {
     serve(plan("video.extract-frames", { batches: [[0], [1]], encodes: [] }));
     scripted.set(batchId(0, 1), "running");
     const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1), batchId(1, 1)]);
-    expect(h.finish).not.toHaveBeenCalled();
-    expect(progressed()).toEqual([[null, "registered"]]);
-    // §93 D6: the committed output is delivered and pending delivery woken before this pickup ended with StillRunning.
-    expect(h.deliver.mock.calls.map((call) => call[1])).toEqual([1]);
-    expect(h.wake).toHaveBeenCalled();
-    expect(h.progress.mock.calls[0]![1]).toMatchObject({ planFingerprint: "d".repeat(64), expectedVersion: 0 });
-    const committed = structuredClone(current.outputs[1]!.result);
+    expect(h.finish).not.toHaveBeenCalled(); expect(h.mark).not.toHaveBeenCalled(); expect(h.registerStep).not.toHaveBeenCalled();
     scripted.delete(batchId(0, 1));
     const completion = await drive();
     expect(h.finish).toHaveBeenCalledTimes(1);
     expect(statuses(completion)).toEqual(["registered", "registered"]);
-    expect(completion!.outputs[1]!.result).toEqual(committed);
-    // Every progress commit read the version the previous one left (none was refused as stale).
-    expect(staleProgress).toBe(0);
   });
 });
 
-describe("per-output retries and delivery (§93 D5-3; design §7.11, §7.1.1)", () => {
+describe("server retries inside a run and the first failure (§93 D5-3; design §7.19)", () => {
   it("VT05 the next run-batch attempt carries only the outputs the failed attempt did not write", async () => {
     serve(plan("video.extract-frames", { batches: [[0, 1]], encodes: [] }, 1));
     scripted.set(batchId(0, 1), { written: [0], state: "failed" });
@@ -435,24 +425,22 @@ describe("per-output retries and delivery (§93 D5-3; design §7.11, §7.1.1)", 
     expect(completion!.error).toBeNull();
   });
 
-  it("VT06 an output whose attempts are exhausted at the frozen chunkRetries fails alone; the other is delivered", async () => {
+  it("VT06 an output whose attempts are exhausted at the frozen chunkRetries fails every output; nothing is registered", async () => {
     serve(plan("video.extract-frames", { batches: [[0, 1]], encodes: [] }, 1));
     scripted.set(batchId(0, 1), { written: [0], state: "failed" });
     scripted.set(batchId(0, 2), { written: [], state: "failed" });
     const completion = await drive();
     // chunkRetries 1: the first attempt and one retry, never a third.
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1), batchId(0, 2)]);
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
-    const first = submitted()[0]!.outputs[0]!;
-    expect(completion!.outputs[0]!.result).toMatchObject({ status: "registered", assetId: asset(first.storageKey, false).id });
+    allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
   });
 
-  it("VT07 a failed batch fails only its own outputs; another batch's outputs are delivered", async () => {
+  it("VT07 once a batch fails for good, no later batch is submitted and the run fails", async () => {
     serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 0));
-    scripted.set(batchId(1, 1), { written: [], state: "failed" });
+    scripted.set(batchId(0, 1), { written: [], state: "failed" });
     const completion = await drive();
-    expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1), batchId(1, 1)]);
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
+    expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1)]);
+    allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
   });
 });
 
@@ -491,19 +479,14 @@ describe("a video focus crop (§68; design §5.5)", () => {
   });
 });
 
-// §93 D5-11 (design line 622 「捕获异常时只把尚未提交的产物标失败」).
-describe("progress commits and the caught exception (§93 D5-11)", () => {
-  it("VP01 an exception after one output was committed fails only the output not yet committed", async () => {
+// frames-split §7.19: a tool failure is the run's failure.
+describe("a tool failure in a pickup (design §7.19)", () => {
+  it("VP01 a batch whose tool fails fails every output, the one already reported included, and registers nothing", async () => {
     serve(plan("video.extract-frames", { batches: [[0], [1]], encodes: [] }));
-    scripted.set(batchId(1, 1), "running");
-    const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
-    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
-    expect(progressed()).toEqual([["registered", null]]);
-    const committed = structuredClone(current.outputs[0]!.result);
     scripted.set(batchId(1, 1), "throws");
     const completion = await drive();
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
-    expect(completion!.outputs[0]!.result).toEqual(committed);
+    expect(statuses(completion)).toEqual(["failed", "failed"]);
+    expect(h.registerStep).not.toHaveBeenCalled();
   });
 });
 
@@ -520,7 +503,7 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
   const chunkId = (chunk: number, attempt = 1): string => videoContainerJobId({ kind: "run-chunk", taskId: TASK, output: 0, chunk, attempt });
   const stitchId = (attempt = 1): string => videoContainerJobId({ kind: "run-stitch", taskId: TASK, output: 0, attempt });
 
-  it("VC01 each frozen chunk window runs as an unregistered work object; the stitch binds them, registers the output and retires them", async () => {
+  it("VC01 each frozen chunk window runs as an unregistered work object; the stitch binds them, retires them and its output is registered", async () => {
     serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 2, [WHOLE]));
     const completion = await drive();
     const opened = h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput));
@@ -554,13 +537,13 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     expect(stitch.size).toBe(1);
   });
 
-  it("VC02 a chunk whose attempts are exhausted fails only its own segment; another segment is delivered and no stitch runs", async () => {
+  it("VC02 a chunk whose attempts are exhausted fails the run; no stitch runs and nothing is registered", async () => {
     // Output 1 [48, 96) overlaps output 0; the runner does not care.
     serve(plan("video.split", { batches: [[1]], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 0, [WHOLE, RECIPES["video.split"][1]!]));
     scripted.set(chunkId(1), { written: [], state: "failed" });
     const completion = await drive();
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1)]);
-    expect(statuses(completion)).toEqual(["failed", "registered"]);
+    allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
     // The failed attempt's own output is retired with its result, as on the preparation path.
     const failedChunk = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { retire?: string[] } }).find((value) => value.outcome === "failed");
     expect(failedChunk?.presentation?.retire).toEqual([videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(1))]);
@@ -578,41 +561,33 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     expect(opened).toEqual(expect.arrayContaining([chunkId(0), chunkId(1), videoContainerJobId({ kind: "run-chunk", taskId: TASK, output: 1, chunk: 0, attempt: 1 })]));
   });
 
-  it("VC06 a segment with a chunk failed for good waits for its running chunk, then fails with that chunk's object pinned", async () => {
+  it("VC06 a chunk failed for good fails the run in that pickup, without waiting for its running sibling chunk", async () => {
     serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 0, [WHOLE]));
-    // Both chunks are opened while they run; then chunk 0 fails for good while chunk 1 still runs.
     scripted.set(chunkId(0), "running");
     scripted.set(chunkId(1), "running");
     const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
     scripted.set(chunkId(0), { written: [], state: "failed" });
-    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
-    expect(h.finish).not.toHaveBeenCalled();
-    scripted.delete(chunkId(1));
-    const completion = await drive();
-    expect(statuses(completion)).toEqual(["failed"]);
-    const recorded = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { pin?: string[] } });
-    expect(recorded.find((value) => value.outcome === "done")?.presentation).toEqual({ pin: [videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(1))] });
+    await runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>);
+    expect(h.finish).toHaveBeenCalledTimes(1);
+    allFailed(h.finish.mock.calls[0]![1] as MiniToolExecutionCompletion, { code: "mini_tool_failed", message: "tool_failed" });
     expect(submitted()).toEqual([]);
   });
 
-  // Once a chunk of the segment failed for good its stitch never runs, so a sibling's next attempt would be charged and never used.
-  it("VC07 once a chunk failed for good, an earlier chunk whose attempt then fails opens no next attempt", async () => {
+  // Once a chunk failed for good no stitch runs, so a sibling's next attempt would be charged and never used.
+  it("VC07 once a chunk failed for good, the run fails in that pickup and no chunk opens another attempt", async () => {
     serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }] }, 1, [WHOLE]));
     scripted.set(chunkId(0), "running");
     scripted.set(chunkId(1), { written: [], state: "failed" }); scripted.set(chunkId(1, 2), { written: [], state: "failed" });
-    const job = { id: "queue-job", data: { taskId: TASK, source: "mini_tool", executionKind: "planned" }, attemptsMade: 0, stalledCounter: 0, moveToDelayed: vi.fn() };
-    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
-    expect(h.finish).not.toHaveBeenCalled();
-    scripted.set(chunkId(0), { written: [], state: "failed" });
     const completion = await drive();
-    expect(statuses(completion)).toEqual(["failed"]);
+    expect(h.finish).toHaveBeenCalledTimes(1);
+    allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
     expect(h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId)).not.toContain(chunkId(0, 2));
   });
 
-  // The stitch of a segment that is not output 0 declares and registers its own output index; a stitch whose attempts are
-  // exhausted fails only its segment with the last attempt's reason, and the batched output is delivered.
-  it("VC08 a stitch keeps its segment's output index and, once its attempts are exhausted, fails only that segment with its reason", async () => {
+  // The stitch of a segment that is not output 0 declares its own output index; a stitch whose attempts are exhausted fails
+  // the run with the last attempt's reason.
+  it("VC08 a stitch keeps its segment's output index and, once its attempts are exhausted, fails the run with its reason", async () => {
     serve(plan("video.split", { batches: [[0]], encodes: [{ outputIndex: 1, chunks: CHUNKS }] }, 1, [RECIPES["video.split"][0]!, WHOLE]));
     const stitchOf = (attempt: number): string => videoContainerJobId({ kind: "run-stitch", taskId: TASK, output: 1, attempt });
     scripted.set(stitchOf(1), { written: [], state: "failed" }); scripted.set(stitchOf(2), { written: [], state: "failed" });
@@ -620,8 +595,7 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     const stitches = submitted().filter((request) => request.jobId.includes(":stitch:"));
     expect(stitches.map((request) => request.jobId)).toEqual([stitchOf(1), stitchOf(2)]);
     expect(stitches.map((request) => request.outputs.map((output) => output.outputIndex))).toEqual([[1], [1]]);
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
-    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "mini_tool_failed", message: "tool_failed" } });
+    allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
   });
 
   // A done chunk is pinned with the run (the model-step rule, model-run-steps.ts advanceContainer), so the stitch's retire
@@ -632,60 +606,6 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     await drive();
     const recorded = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: { pin?: string[]; retire?: string[] } });
     expect(recorded.find((value) => value.outcome === "done")?.presentation).toEqual({ pin: [videoPresentationWorkKeyFor(SOURCE_KEY, chunkId(0))] });
-  });
-});
-
-// A retry run stores only the retried outputs, each under its original output index (execution-plan.service.ts), so the
-// runner reads an output by its index and never by its position in the stored outputs.
-describe("a retry run of outputs other than the first", () => {
-  const SPLIT3: Recipe[] = [{ kind: "segment", range: { start: 0, end: 32 } }, { kind: "segment", range: { start: 32, end: 64 } }, { kind: "segment", range: { start: 64, end: 96 } }];
-  const FRAMES3: Recipe[] = [{ kind: "frame", frameIndex: 0 }, { kind: "frame", frameIndex: 32 }, { kind: "frame", frameIndex: 64 }];
-  const NODES3 = [...NODES, "40000000-0000-4000-8000-000000000003"];
-  /**
-   * A retry plan of some outputs of a three-output run, each kept under its original output index.
-   * @param tool - The tool.
-   * @param recipes - The original run's three recipes.
-   * @param retried - The retried output indices.
-   * @param layout - The frozen layout over those indices.
-   * @returns The plan.
-   */
-  function retryPlan(tool: Tool, recipes: Recipe[], retried: number[], layout: { batches: number[][]; encodes: { outputIndex: number; chunks: { start: number; end: number }[] }[] }): Record<string, unknown> {
-    const base = plan(tool, layout, 2, recipes);
-    return { ...base, targetNodeIds: retried.map((index) => NODES3[index]!), outputSeconds: retried.map(() => 1),
-      outputs: retried.map((outputIndex) => ({ outputIndex, nodeId: NODES3[outputIndex]!, recipe: recipes[outputIndex]! })) };
-  }
-
-  it("VR01 split: retrying outputs 1 and 2 encodes each over its own range and registers it to its own index", async () => {
-    serve(retryPlan("video.split", SPLIT3, [1, 2], { batches: [[1, 2]], encodes: [] }));
-    const completion = await drive();
-    const [request] = submitted();
-    expect(request!.outputs.map(({ outputIndex, recipe }) => ({ outputIndex, recipe }))).toEqual([
-      { outputIndex: 1, recipe: segmentRecipesOf(version, SOURCE_KEY, { start: 32, end: 64 }, ENCODE, [{ start: 32, end: 64 }]).recipes[0] },
-      { outputIndex: 2, recipe: segmentRecipesOf(version, SOURCE_KEY, { start: 64, end: 96 }, ENCODE, [{ start: 64, end: 96 }]).recipes[0] },
-    ]);
-    expect(completion!.outputs.map((output) => ({ outputIndex: output.outputIndex, status: output.result?.status })))
-      .toEqual([{ outputIndex: 1, status: "registered" }, { outputIndex: 2, status: "registered" }]);
-    expect(completion!.outputs.map((output) => (output.result as { assetId?: string }).assetId))
-      .toEqual(request!.outputs.map((output) => asset(output.storageKey, true).id));
-  });
-
-  it("VR02 extract-frames: retrying output 1 reads its own grid frame and registers it to index 1", async () => {
-    serve(retryPlan("video.extract-frames", FRAMES3, [1], { batches: [[1]], encodes: [] }));
-    const completion = await drive();
-    const [request] = submitted();
-    expect(request!.outputs.map(({ outputIndex, recipe }) => ({ outputIndex, recipe })))
-      .toEqual([{ outputIndex: 1, recipe: frameRecipeOf(version, toolInputOf(version, SOURCE_KEY), 32).recipe }]);
-    expect(completion!.outputs.map((output) => ({ outputIndex: output.outputIndex, status: output.result?.status }))).toEqual([{ outputIndex: 1, status: "registered" }]);
-  });
-
-  it("VR03 split: retrying an oversized output 2 chunks its own range and stitches it to index 2", async () => {
-    const chunks = [{ start: 64, end: 80 }, { start: 80, end: 96 }];
-    serve(retryPlan("video.split", SPLIT3, [2], { batches: [], encodes: [{ outputIndex: 2, chunks }] }));
-    const completion = await drive();
-    const { recipes } = segmentRecipesOf(version, SOURCE_KEY, { start: 64, end: 96 }, ENCODE, chunks);
-    expect(h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.outputs[0]!.recipe)).toEqual(recipes.slice(0, 2));
-    expect(submitted().map((request) => request.outputs.map((output) => output.outputIndex))).toEqual([[2]]);
-    expect(completion!.outputs.map((output) => ({ outputIndex: output.outputIndex, status: output.result?.status }))).toEqual([{ outputIndex: 2, status: "registered" }]);
   });
 });
 
@@ -732,9 +652,9 @@ describe("the container of an oversized segment's chunks follows the plan's alph
   });
 });
 
-// An attempt due after the run's deadline ends its step as expired instead of throwing for the whole pickup, so the other
-// outputs of the same pickup settle; and an output registered in a pickup that then throws stays registered.
-describe("an attempt due after the deadline and an output registered before a throw", () => {
+// An attempt due after the run's deadline ends its step as expired instead of throwing for the whole pickup; an expired
+// output is the run's first failure, so the run ends expired (frames-split §7.19 到期).
+describe("an attempt due after the deadline", () => {
   const WHOLE = { kind: "segment" as const, range: { start: 0, end: 96 } };
   const CHUNKS = [{ start: 0, end: 48 }, { start: 48, end: 96 }];
   const LAYOUT = { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }, { outputIndex: 1, chunks: [{ start: 48, end: 96 }] }] };
@@ -813,7 +733,7 @@ describe("an attempt due after the deadline and an output registered before a th
       open: h.openPlan.mock.calls.slice(before.open).map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId) };
   }
 
-  it("DL01 a chunk due a new attempt after the deadline expires its segment while the other segment's stitch registered in the same pickup", async () => {
+  it("DL01 a chunk due a new attempt after the deadline ends the run expired, though the other segment's stitch reported done", async () => {
     serve(plan("video.split", LAYOUT, 1, RECIPES2));
     scripted.set(stitchOf(0), "running"); scripted.set(chunkOf(1, 0), "running");
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
@@ -822,12 +742,11 @@ describe("an attempt due after the deadline and an output registered before a th
     atDeadline.set(chunkOf(1, 0), failedReport);
     const counts = { ensure: h.ensure.mock.calls.length, grants: h.grants.mock.calls.length, open: h.openPlan.mock.calls.length };
     const completion = await drive();
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
-    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    allFailed(completion, { code: "expired" });
     expect(since(counts)).toEqual({ ensure: 0, grants: 0, open: [chunkOf(1, 0)] });
   });
 
-  it("DL02 a stitch due a new attempt after the deadline expires its segment and opens no grant, step or job", async () => {
+  it("DL02 a stitch due a new attempt after the deadline ends the run expired and opens no grant, step or job", async () => {
     serve(plan("video.split", LAYOUT, 1, RECIPES2));
     scripted.set(stitchOf(1), "running");
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
@@ -835,13 +754,12 @@ describe("an attempt due after the deadline and an output registered before a th
     atDeadline.set(stitchOf(1), failedReport);
     const counts = { ensure: h.ensure.mock.calls.length, grants: h.grants.mock.calls.length, open: h.openPlan.mock.calls.length };
     const completion = await drive();
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
-    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    allFailed(completion, { code: "expired" });
     expect(since(counts)).toMatchObject({ ensure: 0, grants: 0 });
     expect(submitted().map((request) => request.jobId)).not.toContain(stitchOf(1, 2));
   });
 
-  it("DL03 a batch due a new attempt after the deadline expires its outputs and opens no grant, step or job", async () => {
+  it("DL03 a batch due a new attempt after the deadline ends the run expired and opens no grant, step or job", async () => {
     serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 1));
     scripted.set(batchId(1, 1), "running");
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
@@ -849,65 +767,42 @@ describe("an attempt due after the deadline and an output registered before a th
     atDeadline.set(batchId(1, 1), failedReport);
     const counts = { ensure: h.ensure.mock.calls.length, grants: h.grants.mock.calls.length, open: h.openPlan.mock.calls.length };
     const completion = await drive();
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
-    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    allFailed(completion, { code: "expired" });
     expect(since(counts)).toMatchObject({ ensure: 0, grants: 0 });
     expect(submitted().map((request) => request.jobId)).not.toContain(batchId(1, 2));
   });
 
-  it("DL08 a batch attempt ingest expired at the deadline expires its unwritten outputs and opens no next attempt", async () => {
+  it("DL08 a batch attempt ingest expired at the deadline ends the run expired and opens no next attempt", async () => {
     serve(plan("video.split", { batches: [[0, 1]], encodes: [] }, 1));
     scripted.set(batchId(0, 1), { written: [0], state: "failed", reason: "expired" });
     const completion = await drive();
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
-    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    allFailed(completion, { code: "expired" });
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1)]);
   });
 
   // A worker backlog can run the first pickup after the deadline once the reporting window (two polls past it) has closed:
-  // what already finished is read and registered, and only what never finished expires.
-  it("DL09 a first pickup after the reporting window registers a stitch that reported done while a chunk still running expires", async () => {
+  // a job that never finished expires, and so does the run.
+  it("DL09 a first pickup after the reporting window ends the run expired while a chunk still runs, though a stitch reported done", async () => {
     serve(plan("video.split", LAYOUT, 1, RECIPES2));
     scripted.set(chunkOf(0, 0), "running"); scripted.set(stitchOf(1), "running");
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
     scripted.delete(stitchOf(1));
     vi.setSystemTime(DEADLINE + 2 * 5000 + 1);
     const completion = await drive();
-    expect(statuses(completion)).toEqual(["failed", "registered"]);
-    expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    allFailed(completion, { code: "expired" });
   });
 
-  it("DL10 a first pickup after the reporting window registers a batch that reported done while a batch still running expires", async () => {
+  it("DL10 a first pickup after the reporting window ends the run expired while a batch still runs, though another reported done", async () => {
     serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 1));
     scripted.set(batchId(0, 1), "running"); scripted.set(batchId(1, 1), "running");
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
     scripted.delete(batchId(1, 1));
     vi.setSystemTime(DEADLINE + 2 * 5000 + 1);
     const completion = await drive();
-    expect(statuses(completion)).toEqual(["failed", "registered"]);
-    expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    allFailed(completion, { code: "expired" });
   });
 
-  it("DL04 an output registered in a pickup that then throws stays registered in the terminal commit", async () => {
-    serve(plan("video.split", LAYOUT, 1, RECIPES2));
-    scripted.set(stitchOf(0), "running"); scripted.set(chunkOf(1, 0), "running");
-    await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
-    // Output 0's stitch registers; output 1's stitch registration then throws past the deadline, out of the runner, so only
-    // what the pickup settled before the throw keeps output 0 (no progress commit holds it).
-    scripted.delete(stitchOf(0)); scripted.delete(chunkOf(1, 0));
-    const boundary = h.advance.getMockImplementation()!;
-    h.advance.mockImplementation(async (input: OpenMiniToolPlanJobInput) => {
-      if (input.request.jobId === stitchOf(1)) { vi.setSystemTime(DEADLINE + 1); throw new Error("Fixture stitch registration failed"); }
-      return boundary(input);
-    });
-    const completion = await drive();
-    expect(h.progress).not.toHaveBeenCalled();
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
-    expect(completion!.outputs[0]!.result).toMatchObject({ status: "registered" });
-    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
-  });
-
-  it("DL05 the first pickup after the deadline registers an output whose stitch reported done before it, while the other output's next attempt expires", async () => {
+  it("DL05 the first pickup after the deadline ends the run expired when one output's next attempt expires, though the other's stitch reported done", async () => {
     serve(plan("video.split", LAYOUT, 1, RECIPES2));
     scripted.set(chunkOf(0, 0), "running"); scripted.set(stitchOf(1), "running");
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
@@ -916,9 +811,7 @@ describe("an attempt due after the deadline and an output registered before a th
     vi.setSystemTime(DEADLINE + 1);
     const counts = { ensure: h.ensure.mock.calls.length, grants: h.grants.mock.calls.length, open: h.openPlan.mock.calls.length };
     const completion = await drive();
-    expect(statuses(completion)).toEqual(["failed", "registered"]);
-    expect(completion!.outputs[0]!.result).toEqual({ status: "failed", error: { code: "expired" } });
-    expect(completion!.error).toEqual({ code: "expired" });
+    allFailed(completion, { code: "expired" });
     expect(since(counts)).toEqual({ ensure: 0, grants: 0, open: [chunkOf(0, 0)] });
   });
 
@@ -932,7 +825,7 @@ describe("an attempt due after the deadline and an output registered before a th
       .toEqual({ ensure: 0, grants: 0, open: 0, advance: 0 });
   });
 
-  it("DL07 a submitted job still running after the deadline is waited for until its reporting window ends, then its output expires", async () => {
+  it("DL07 a submitted job still running after the deadline is waited for until its reporting window ends, then the run ends expired", async () => {
     serve(plan("video.split", LAYOUT, 1, RECIPES2));
     scripted.set(stitchOf(1), "running");
     await expect(runMiniToolExecutionTask(job as unknown as Job<MiniToolExecutionJob>)).rejects.toBeInstanceOf(StillRunning);
@@ -942,7 +835,6 @@ describe("an attempt due after the deadline and an output registered before a th
     vi.setSystemTime(DEADLINE + 2 * 5000);
     const completion = await drive();
     expect(h.finish).toHaveBeenCalledTimes(1);
-    expect(statuses(completion)).toEqual(["registered", "failed"]);
-    expect(completion!.outputs[1]!.result).toEqual({ status: "failed", error: { code: "expired" } });
+    allFailed(completion, { code: "expired" });
   });
 });

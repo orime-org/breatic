@@ -17,7 +17,7 @@ export const EXECUTION_ERROR = { code: "registration_failed", message: "Original
 /** Build the independently prescribed complete indexed observation. */
 export function executionCompletion(f: ExecutionFixture, failed = false, expectedVersion = 0): MiniToolExecutionCompletion {
   return { planFingerprint: f.plan.planFingerprint, expectedVersion, error: failed ? EXECUTION_ERROR : null,
-    outputs: [{ ...f.plan.outputs[0]!, result: failed ? { status: "failed", error: EXECUTION_ERROR } : f.registered, late: false }] };
+    outputs: [{ ...f.plan.outputs[0]!, result: failed ? { status: "failed", error: EXECUTION_ERROR } : f.registered }] };
 }
 /** Read the public JSON without going through the public reader.
  * @throws {Error} On a fixture SQL failure.

@@ -220,3 +220,105 @@ describe("chunk outputs retired with a done stitch (§93 D5-10)", () => {
     expect(recorded.presentation?.retire ?? []).not.toEqual(expect.arrayContaining([CHUNKS[0]]));
   });
 });
+
+// frames-split §7.19 暂存后统一登记: a video tool's job is advanced and its report kept on the step, never registered; each
+// output is checked for over_cap and empty from the report before the done report is written, and a refused output is the
+// output's final failure. Registration is a second step, run only past the commit point, with the presentation deadline
+// counted from that moment for a video output.
+describe("staged advance and later registration (frames-split §7.19)", () => {
+  type Staged = { request: MiniToolPlanJobRequest; report: unknown };
+  type Api = {
+    advanceStagedMiniToolPlanJob?: (value: typeof input, options?: { retire?: readonly string[] }) => Promise<Staged>;
+    registerMiniToolPlanJobOutputs?: (value: { taskId: string; stepId: string }, options: { deadlineAt: number }) => Promise<{ outputIndex: number; asset: StudioAssetEntity }[]>;
+  };
+  /** The module's new entries, read at call time. @returns Them. */
+  async function api(): Promise<Required<Api>> {
+    const module = await import("../registered-plan-job.js") as unknown as Api;
+    expect(module.advanceStagedMiniToolPlanJob, "advanceStagedMiniToolPlanJob is exported").toBeTypeOf("function");
+    expect(module.registerMiniToolPlanJobOutputs, "registerMiniToolPlanJobOutputs is exported").toBeTypeOf("function");
+    return module as Required<Api>;
+  }
+  const video = { ...plan, outputs: plan.outputs.map((output) => ({ ...output, storageKey: `declared/${output.outputIndex}.mp4`, contentType: "video/mp4" })) };
+  const videoOutputs = outputs.map((output) => ({ ...output, storageKey: `declared/${output.outputIndex}.mp4`, contentType: "video/mp4", durationSeconds: 1.92 }));
+
+  it("ST01 stages a done report on the step and registers nothing", async () => {
+    const { advanceStagedMiniToolPlanJob } = await api();
+    expect(await advanceStagedMiniToolPlanJob(input)).toEqual({ request: plan, report: done });
+    expect(h.record).toHaveBeenCalledExactlyOnceWith({ taskId, stepId, identity, outcome: "done", result: done }, expect.objectContaining({ kind: "container_job" }));
+    expect(h.register).not.toHaveBeenCalled(); expect(h.inline).not.toHaveBeenCalled();
+  });
+
+  it("ST02 replays the stored report on re-entry without advancing the job again", async () => {
+    const { advanceStagedMiniToolPlanJob } = await api();
+    await advanceStagedMiniToolPlanJob(input); h.advance.mockClear(); h.record.mockClear();
+    expect(await advanceStagedMiniToolPlanJob(input)).toEqual({ request: plan, report: done });
+    expect(h.advance).not.toHaveBeenCalled(); expect(h.record).not.toHaveBeenCalled(); expect(h.register).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["over_cap", Number.MAX_SAFE_INTEGER],
+    ["empty", 0],
+  ] as const)("ST03 an output the report measures as %s is the job's final failure, recorded before any done report", async (reason, sizeBytes) => {
+    const { advanceStagedMiniToolPlanJob } = await api();
+    h.advance.mockResolvedValue({ ...done, outputs: [outputs[0], { ...outputs[1]!, sizeBytes }] });
+    const staged = await advanceStagedMiniToolPlanJob(input, { retire: ["video/source.mp4.work/chunk"] });
+    expect(staged.report).toMatchObject({ state: "failed", reason });
+    expect(h.record).toHaveBeenCalledTimes(1);
+    const recorded = h.record.mock.calls[0]![0] as RecordMiniToolStepResultInput;
+    expect(recorded).toMatchObject({ outcome: "failed", error: { code: reason } });
+    expect(recorded).not.toHaveProperty("presentation");
+    expect(h.register).not.toHaveBeenCalled();
+  });
+
+  it("ST04 a done stitch stages its report together with the retirement of the consumed chunk keys", async () => {
+    const { advanceStagedMiniToolPlanJob } = await api();
+    await advanceStagedMiniToolPlanJob(input, { retire: ["video/source.mp4.work/c0"] });
+    expect(h.record).toHaveBeenCalledExactlyOnceWith({ taskId, stepId, identity, outcome: "done", result: done, presentation: { retire: ["video/source.mp4.work/c0"] } },
+      expect.objectContaining({ kind: "container_job" }));
+  });
+
+  it("RG01 registers every output a staged step reported, in output order, caching each asset id", async () => {
+    const { advanceStagedMiniToolPlanJob, registerMiniToolPlanJobOutputs } = await api();
+    await advanceStagedMiniToolPlanJob(input);
+    expect(await registerMiniToolPlanJobOutputs({ taskId, stepId }, { deadlineAt: 1_900_000_000_000 })).toEqual(rows);
+    expect(h.inline.mock.calls.map((call) => call[1])).toEqual([{ "miniToolAsset:8": rows[0]!.asset.id }, { "miniToolAsset:9": rows[1]!.asset.id }]);
+    expect(h.advance).toHaveBeenCalledTimes(1);
+  });
+
+  it("RG02 a video output is registered with the presentation deadline it is given", async () => {
+    const { advanceStagedMiniToolPlanJob, registerMiniToolPlanJobOutputs } = await api();
+    h.open.mockResolvedValue({ request: video, consumption }); step.output.miniToolPlanJob = structuredClone(video);
+    h.advance.mockResolvedValue({ ...done, outputs: videoOutputs });
+    h.register.mockImplementation(async (measured: { storageKey: string }) =>
+      ({ status: "registered", assetId: rows.find(({ outputIndex }) => measured.storageKey === `declared/${outputIndex}.mp4`)!.asset.id }));
+    await advanceStagedMiniToolPlanJob({ ...input, request: video });
+    await registerMiniToolPlanJobOutputs({ taskId, stepId }, { deadlineAt: 1_900_000_000_000 });
+    expect(h.register.mock.calls.map((call) => call[1])).toEqual([{ presentation: { deadlineAt: 1_900_000_000_000 } }, { presentation: { deadlineAt: 1_900_000_000_000 } }]);
+  });
+
+  it("RG02 an output that is not a video is registered without a presentation deadline", async () => {
+    const { advanceStagedMiniToolPlanJob, registerMiniToolPlanJobOutputs } = await api();
+    await advanceStagedMiniToolPlanJob(input);
+    await registerMiniToolPlanJobOutputs({ taskId, stepId }, { deadlineAt: 1_900_000_000_000 });
+    expect(h.register.mock.calls.map((call) => call.length)).toEqual([1, 1]);
+  });
+
+  it("RG03 registering again reuses the cached registrations", async () => {
+    const { advanceStagedMiniToolPlanJob, registerMiniToolPlanJobOutputs } = await api();
+    await advanceStagedMiniToolPlanJob(input); await registerMiniToolPlanJobOutputs({ taskId, stepId }, { deadlineAt: 1 }); h.register.mockClear();
+    expect(await registerMiniToolPlanJobOutputs({ taskId, stepId }, { deadlineAt: 1 })).toEqual(rows);
+    expect(h.register).not.toHaveBeenCalled();
+  });
+
+  it("RG04 a registration the asset owner refuses throws, so the run goes back to the queue", async () => {
+    const { advanceStagedMiniToolPlanJob, registerMiniToolPlanJobOutputs } = await api();
+    await advanceStagedMiniToolPlanJob(input); h.register.mockResolvedValue({ status: "voided" });
+    await expect(registerMiniToolPlanJobOutputs({ taskId, stepId }, { deadlineAt: 1 })).rejects.toThrow("Planned output registration failed");
+  });
+
+  it("RG05 a step with no stored terminal report has nothing to register and throws", async () => {
+    const { registerMiniToolPlanJobOutputs } = await api();
+    await expect(registerMiniToolPlanJobOutputs({ taskId, stepId }, { deadlineAt: 1 })).rejects.toThrow();
+    expect(h.register).not.toHaveBeenCalled();
+  });
+});

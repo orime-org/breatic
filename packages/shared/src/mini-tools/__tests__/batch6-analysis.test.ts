@@ -168,6 +168,14 @@ describe("batch six analysis public contract", () => {
       expect(selectedIds(kind, [failed])).toEqual({ latestAccepted: earlyId, latestSuccessful: null });
     });
 
+    // frames-split §7.19 分析: an analysis the user cancelled keeps its own state, with no error and no successful result.
+    it("accepts cancelled with no error, and never as a successful result", () => {
+      const cancelled = { ...recordFor(kind), status: "cancelled" as const, result: null, error: null };
+      expect(api.miniToolAnalysisRecordSchema.parse(cancelled)).toEqual(cancelled);
+      expect(api.miniToolAnalysisRecordSchema.safeParse({ ...cancelled, error: { code: "cancelled" } }).success).toBe(false);
+      expect(selectedIds(kind, [cancelled])).toEqual({ latestAccepted: earlyId, latestSuccessful: null });
+    });
+
     it("rejects binding URL changes that disagree with the frozen source URL", () => {
       const record = recordFor(kind);
       const changedBinding = { ...binding, canonicalURL: "https://media.example.test/other.mp4" };

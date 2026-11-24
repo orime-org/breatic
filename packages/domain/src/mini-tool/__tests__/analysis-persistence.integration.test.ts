@@ -79,7 +79,7 @@ async function seed(kind: MiniToolAnalysisKind = "scene_cuts", status: Status = 
   const identity = { schemaVersion: 1, draftId: "20000000-0000-4000-8000-000000000001", revision: "30000000-0000-4000-8000-000000000001", analysisRunId: taskId, acceptedAt: at, kind, binding, analysisInput, inputFingerprint: await fingerprintMiniToolAnalysisInput(analysisInput) };
   const payload = { fps: { numerator: 4, denominator: 1 }, frameCount: 20, cuts: [{ frameIndex: 2, detectionScore: 85 }] };
   const result = miniToolAnalysisResultSchema.parse({ ...identity, ...payload });
-  const normalized = status === "cancelled" ? "failed" : status;
+  const normalized = status;
   const initial = miniToolAnalysisRecordSchema.parse({ ...identity, status: normalized, result: status === "completed" ? result : null, error: normalized === "failed" ? ERROR : null, usage: [{ marker: "original-usage" }], artifactUnavailable: false });
   const presentation = await presentedSource(sourceHash, sourceKey, publicUrl);
   outside.snapshots.set(sourceKey, presentation.snapshot);

@@ -52,7 +52,7 @@ function row(patch: Partial<CompatibleRow> = {}): CompatibleRow {
 function record(runId = RUN, version = 1): MiniToolExecutionRecord {
   return { schemaVersion: 1, runId, status: 'completed', planFingerprint: 'a'.repeat(64), resultVersion: version,
     sourceBindings: [{ assetId: '80000000-0000-4000-8000-000000000001', contentHash: 'b'.repeat(64), canonicalURL: 'https://assets.example.test/video/source.mp4', kind: 'video', mediaInfo: { width: 960, height: 540, duration: 5.055, mimeType: 'video/mp4' } }],
-    outputs: [{ outputIndex: 0, nodeId: NODE, recipe: { kind: 'segment', range: { start: 0, end: 30 } }, late: false, result: { status: 'registered', assetId: '90000000-0000-4000-8000-000000000001', canonicalURL: WINNER, kind: 'video', mimeType: 'video/webm', size: 1588436, contentHash: 'c'.repeat(64), width: 960, height: 540, duration: 5.013, cover: null } }],
+    outputs: [{ outputIndex: 0, nodeId: NODE, recipe: { kind: 'segment', range: { start: 0, end: 30 } }, result: { status: 'registered', assetId: '90000000-0000-4000-8000-000000000001', canonicalURL: WINNER, kind: 'video', mimeType: 'video/webm', size: 1588436, contentHash: 'c'.repeat(64), width: 960, height: 540, duration: 5.013, cover: null } }],
     usage: [{ consumptionKey: 'd'.repeat(64), state: 'pending', chargeTo: 'user', costUsd: null, credits: null }], billingState: 'waiting', error: null };
 }
 /** Supply the real view-layer node shape, with current user content independent from the restored result.

@@ -2,24 +2,24 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Delivery around the progress and terminal commits (inner#1306 test plan §93 D6; frames-split design §7.11 「registered，
- * 非终态提交」, §10.8 失败与提交). After a non-terminal progress commit, each newly registered output is delivered
- * (`deliverMiniToolOutput`) and pending delivery is woken (`wakePendingMiniToolDelivery`), before the pickup ends with
- * StillRunning; the terminal commit then delivers only positions whose delivery is still pending. The domain commits,
- * the delivery context read and the delivery workers are mocked; the wrappers in `execution-completion.ts` are real.
+ * Delivery after the completed commit (frames-split design §7.19 交付): a run delivers its outputs once, in the completed
+ * commit; the terminal commit delivers the positions whose delivery is still pending and wakes pending delivery. The
+ * domain commit, the delivery context read and the delivery workers are mocked; the wrapper in `execution-completion.ts`
+ * is real.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type * as domainModule from "@breatic/domain";
 import type * as coreModule from "@breatic/core";
-import { commitMiniToolExecutionProgress, finishMiniToolExecutionAndNotify } from "../execution-completion.js";
+import * as completionModule from "../execution-completion.js";
+import { finishMiniToolExecutionAndNotify } from "../execution-completion.js";
 
-const h = vi.hoisted(() => ({ progress: vi.fn(), finish: vi.fn(), read: vi.fn(), settle: vi.fn(), deliver: vi.fn(), wake: vi.fn(),
+const h = vi.hoisted(() => ({ finish: vi.fn(), read: vi.fn(), settle: vi.fn(), deliver: vi.fn(), wake: vi.fn(),
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() } }));
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof coreModule>(), logger: h.logger as unknown as typeof coreModule.logger }));
 vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
   return { ...actual, settleTaskForNode: h.settle,
-    miniToolExecutionService: { ...actual.miniToolExecutionService, commitMiniToolExecutionProgress: h.progress, finishMiniToolExecution: h.finish },
+    miniToolExecutionService: { ...actual.miniToolExecutionService, finishMiniToolExecution: h.finish },
     miniToolDeliveryService: { ...actual.miniToolDeliveryService, readMiniToolDelivery: h.read } };
 });
 vi.mock("@worker/handlers/mini-tool/delivery-worker.js", () => ({ deliverMiniToolOutput: h.deliver, wakePendingMiniToolDelivery: h.wake }));
@@ -44,7 +44,7 @@ function registered(index: number): Record<string, unknown> {
  * @returns The execution.
  */
 function execution(results: (Record<string, unknown> | null)[]): Record<string, unknown> {
-  const outputs = results.map((result, outputIndex) => ({ outputIndex, nodeId: `40000000-0000-4000-8000-00000000000${outputIndex}`, recipe: { kind: "segment", range: { start: outputIndex, end: outputIndex + 1 } }, late: false, result }));
+  const outputs = results.map((result, outputIndex) => ({ outputIndex, nodeId: `40000000-0000-4000-8000-00000000000${outputIndex}`, recipe: { kind: "segment", range: { start: outputIndex, end: outputIndex + 1 } }, result }));
   return { task: { id: TASK }, execution: { projectId: "10000000-0000-4000-8000-000000000001", spaceId: "20000000-0000-4000-8000-000000000001", planFingerprint: PLAN },
     record: { runId: TASK, status: "running", planFingerprint: PLAN, resultVersion: 1, outputs } };
 }
@@ -65,29 +65,7 @@ beforeEach(() => {
   h.deliver.mockImplementation(async (value: unknown) => value);
 });
 
-describe("delivery after a non-terminal progress commit (§93 D6; design §7.11, §10.8)", () => {
-  it("EC01 the newly registered output is delivered after the commit, then pending delivery is woken", async () => {
-    // Output 0 was registered and delivered by an earlier poll; output 1 is registered by this one.
-    const run = execution([registered(0), registered(1)]);
-    h.progress.mockResolvedValue(run);
-    h.read.mockResolvedValue(context(run, { 0: "published", 1: "pending" }));
-    await commitMiniToolExecutionProgress(TASK, { planFingerprint: PLAN, expectedVersion: 0, outputs: (run.record as { outputs: never[] }).outputs });
-    expect(h.deliver.mock.calls.map((call) => call[1])).toEqual([1]);
-    expect(h.wake).toHaveBeenCalledTimes(1);
-    expect(h.progress.mock.invocationCallOrder[0]).toBeLessThan(h.deliver.mock.invocationCallOrder[0]!);
-    expect(h.deliver.mock.invocationCallOrder[0]).toBeLessThan(h.wake.mock.invocationCallOrder[0]!);
-  });
-
-  it("EC02 a progress commit that registers nothing new delivers nothing", async () => {
-    const run = execution([registered(0), null]);
-    h.progress.mockResolvedValue(run);
-    h.read.mockResolvedValue(context(run, { 0: "published" }));
-    await commitMiniToolExecutionProgress(TASK, { planFingerprint: PLAN, expectedVersion: 1, outputs: (run.record as { outputs: never[] }).outputs });
-    expect(h.deliver).not.toHaveBeenCalled();
-  });
-});
-
-describe("delivery after the terminal commit (§93 D6; design §7.11)", () => {
+describe("delivery after the completed commit (design §7.19)", () => {
   it("EC03 the terminal commit delivers only positions whose delivery is still pending", async () => {
     const run = execution([registered(0), registered(1)]);
     h.finish.mockResolvedValue({ ...run, record: { ...(run.record as object), status: "completed", resultVersion: 2 } });
@@ -95,5 +73,17 @@ describe("delivery after the terminal commit (§93 D6; design §7.11)", () => {
     await finishMiniToolExecutionAndNotify(TASK, { planFingerprint: PLAN, expectedVersion: 1, outputs: (run.record as { outputs: never[] }).outputs, error: null }, REDIS);
     expect(h.deliver.mock.calls.map((call) => call[1])).toEqual([1]);
     expect(h.wake).toHaveBeenCalledTimes(1);
+  });
+
+  it("EC04 the completed commit delivers every output at once", async () => {
+    const run = execution([registered(0), registered(1)]);
+    h.finish.mockResolvedValue({ ...run, record: { ...(run.record as object), status: "completed", resultVersion: 1 } });
+    h.read.mockResolvedValue(context(run, { 0: "pending", 1: "pending" }));
+    await finishMiniToolExecutionAndNotify(TASK, { planFingerprint: PLAN, expectedVersion: 0, outputs: (run.record as { outputs: never[] }).outputs, error: null }, REDIS);
+    expect(h.deliver.mock.calls.map((call) => call[1])).toEqual([0, 1]);
+  });
+
+  it("EC05 there is no per-output progress commit to deliver after", () => {
+    expect((completionModule as Record<string, unknown>).commitMiniToolExecutionProgress).toBeUndefined();
   });
 });

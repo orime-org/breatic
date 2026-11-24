@@ -62,7 +62,7 @@ export async function seedExecution(pg: FixturePg, status: MiniToolExecutionReco
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,generation_task_id,width,height,duration_seconds)
     VALUES (${assetId},${target.studioId},${OUTPUT_HASH},${`video/winner/${assetId}.webm`},${canonicalURL},1588436,'video/webm','video','ai',${target.userId},${plan.taskId},960,540,5.013)`;
   const record: MiniToolExecutionRecord = { schemaVersion: 1, runId: plan.taskId, status, planFingerprint: plan.planFingerprint, resultVersion: 0,
-    sourceBindings: [structuredClone(plan.binding)], outputs: plan.outputs.map((o) => ({ ...o, result: null, late: false })), usage: [], billingState: "idle", error: null };
+    sourceBindings: [structuredClone(plan.binding)], outputs: plan.outputs.map((o) => ({ ...o, result: null })), usage: [], billingState: "idle", error: null };
   if (initialized) await pg`UPDATE tasks SET result=result || ${pg.json(z.json().parse({ miniToolExecution: record }))} WHERE id=${plan.taskId}`;
   const registered: MiniToolExecutionRegistered = { status: "registered", assetId, canonicalURL, kind: "video", mimeType: "video/webm", size: 1588436, contentHash: OUTPUT_HASH, width: 960, height: 540, duration: 5.013, cover: null };
   return { taskId: plan.taskId, userId: target.userId, viewerId, projectId: plan.projectId, studioId: target.studioId, plan, record, registered };

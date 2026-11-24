@@ -155,7 +155,7 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
     const queued = async (): Promise<string[]> => (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${doneChunks}) AND kind='derived'`).map((row) => row.storage_key).sort();
     const error = { code: "mini_tool_failed" };
     await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
-      outputs: plan.outputs.map((output) => ({ ...output, late: false, result: results.get(output.outputIndex)! })) } as never);
+      outputs: plan.outputs.map((output) => ({ ...output, result: results.get(output.outputIndex)! })) } as never);
     // A retryable failure keeps the run's pins, so its done chunks wait with them.
     expect(await queued()).toEqual([]);
     await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${task.id}`;
@@ -206,7 +206,7 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
     const stitched = chunkKeys(0, chunksOf(0)); const waiting = chunkKeys(1, last);
     const error = { code: "mini_tool_failed" };
     await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
-      outputs: plan.outputs.map((output) => ({ ...output, late: false, result: results.get(output.outputIndex)! })) } as never);
+      outputs: plan.outputs.map((output) => ({ ...output, result: results.get(output.outputIndex)! })) } as never);
     const queued = (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${[...stitched, ...waiting]}) AND kind='derived'`).map((row) => row.storage_key).sort();
     expect(queued).toEqual(stitched);
     const pinned = (await pg<{ storage_key: string }[]>`SELECT o.storage_key FROM presentation_pin_objects o JOIN presentation_pins p ON p.id=o.pin_id
@@ -256,7 +256,7 @@ describe("a split the queue cleanup ends closes its consumption set (execution d
       // An earlier pickup committed segment 0 non-terminally while segment 1 was still encoding.
       const plan = execution as unknown as { outputs: { outputIndex: number; nodeId: string; recipe: unknown }[]; planFingerprint: string };
       await miniToolExecutionService.commitMiniToolExecutionProgress(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0,
-        outputs: plan.outputs.map((output) => ({ ...output, late: false, result: output.outputIndex === 0 ? results.get(0)! : null })) } as never);
+        outputs: plan.outputs.map((output) => ({ ...output, result: output.outputIndex === 0 ? results.get(0)! : null })) } as never);
     }
     // The worker died at its terminal commit, so only the queue cleanup ends the run.
     const { cleanupFailedJobNodes } = await import("@worker/handlers/failed-job-cleanup.js");

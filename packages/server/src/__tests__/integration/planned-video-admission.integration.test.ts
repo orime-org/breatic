@@ -206,24 +206,20 @@ function estimate(tool: Tool, multiplier = 1): number {
   return Math.max(shared.ceilToCreditCent(creditsForUsd(containerCostUsd({ wallMs: operation.precheck_seconds * 1000, cpuUsec: null }, settings.classes[operation.container_class]!, settings.prices), multiplier)), MIN_TASK_CREDIT_COST);
 }
 
-/** Create a supplied terminal outcome through SQL; S5 does not execute a worker or nonterminal commit. @throws {Error} On invalid record or fixture SQL. */
+/** Create a supplied failed outcome through SQL; S5 does not execute a worker. @throws {Error} On invalid record or fixture SQL. */
 async function failedOriginal(f: Fixture): Promise<Parent> {
   await accept(f);
   const original = await parent(f.body.run_id); const plan = original.params.miniToolExecution;
-  const assetId = randomUUID(); const key = `video/s5-result/${assetId}.mp4`; const url = publicUrl(key);
-  await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,width,height,duration_seconds)
-    VALUES (${assetId},${f.studioId},${"d".repeat(64)},${key},${url},1234,'video/mp4','video','upload',${f.userId},960,540,0.2)`;
   const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
-    resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output, i) => ({ ...output, late: false,
-      result: i === 0 ? { status: "registered", assetId, canonicalURL: url, contentHash: "d".repeat(64), kind: "video", mimeType: "video/mp4", size: 1234, width: 960, height: 540, duration: 0.2, cover: null }
-        : { status: "failed", error: { code: "output_failed" } } })), usage: [], billingState: "idle", error: { code: "output_failed" } });
+    resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output) => ({ ...output, result: { status: "failed", error: { code: "output_failed" } } })),
+    usage: [], billingState: "idle", error: { code: "output_failed" } });
   await pg`UPDATE tasks SET status='failed',result=${pg.json(z.json().parse({ ...original.result, miniToolExecution: record }))},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
-  await pg`UPDATE node_tasks SET status=CASE WHEN node_id=${plan.outputs[0]!.nodeId} THEN 'done' ELSE 'failed' END,settled_at=clock_timestamp() WHERE task_id=${f.body.run_id}`;
+  await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${f.body.run_id}`;
   await creditHoldService.releaseHold(f.body.run_id);
   return parent(f.body.run_id);
 }
 
-/** Use original stable output indices; no fresh draft, version or recipe can override a retry. @throws {never} Never. */
+/** A request in the shape the removed retry took, naming outputs of an earlier run. @throws {never} Never. */
 function retry(f: Fixture, ids = [2], run = randomUUID()): { tool: Tool; project_id: string; space_id: string; run_id: string; retry: { runId: string; outputIndexes: number[] } } {
   return { tool: f.body.tool, project_id: f.projectId, space_id: f.body.space_id, run_id: run, retry: { runId: f.body.run_id, outputIndexes: ids } };
 }
@@ -239,31 +235,6 @@ async function blockedBy(gatePid: number): Promise<number> {
   ) SELECT count(DISTINCT waiter)::int AS count FROM blockers WHERE blocker=${gatePid}`;
   if (!row) throw new Error("Missing blocker projection");
   return row.count;
-}
-
-/**
- * Supply a valid failed retry that took over the original's failed output 2; its failed output 1 is left to a direct retry
- * (a taken-over output accepts no further retry, frames-split §7.15 可重试结束).
- * @throws {Error} On schema, admission or fixture SQL failure.
- */
-async function seedRetryChain(): Promise<{ f: Fixture; original: Parent; failedRetry: Parent }> {
-  const f = await seed(); const original = await failedOriginal(f); const body = retry(f, [2]);
-  await accept(f, body); const accepted = await parent(body.run_id); const plan = accepted.params.miniToolExecution;
-  const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
-    resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output) => ({ ...output, late: false,
-      result: { status: "failed", error: { code: "supplied_retry_failure" } } })), usage: [], billingState: "idle", error: { code: "supplied_retry_failure" } });
-  await pg`UPDATE tasks SET status='failed',result=${pg.json(z.json().parse({ ...accepted.result, miniToolExecution: record }))},completed_at=clock_timestamp() WHERE id=${body.run_id}`;
-  await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${body.run_id}`;
-  await creditHoldService.releaseHold(body.run_id);
-  return { f, original, failedRetry: await parent(body.run_id) };
-}
-
-/** Independently preserve the original executions' rows, holds and ledger facts. @throws {Error} On fixture SQL failure. */
-async function chainSnapshot(ids: string[]): Promise<Record<string, unknown>> {
-  return { parents: await Promise.all(ids.map((id) => parent(id))),
-    rows: [...await pg`SELECT id,node_id,task_id,status,started_by_user_id,started_at::text,settled_at::text,budget_ms FROM node_tasks WHERE task_id=ANY(${ids}::uuid[]) ORDER BY id`],
-    holds: [...await pg`SELECT reference_id,actor_user_id,amount::text,status,expires_at::text,released_at::text FROM credit_holds WHERE reference_id=ANY(${ids}::text[]) ORDER BY reference_id`],
-    ledger: [...await pg`SELECT id,reference_id,entry_type,amount::text FROM credit_ledger WHERE reference_id=ANY(${ids}::text[]) ORDER BY id`] };
 }
 
 /** Block real immutable-parent row locks, observe both contenders, then release and drain. @throws {Error} On failed lock probe or caller error. */
@@ -407,212 +378,14 @@ describe("S5 fresh frame and split execution admission", () => {
   });
 });
 
-describe("S5 independent failed-output retry admission", () => {
-  it("S5-R01 reuses only the selected failed original node/recipe/frozen refs, never today's draft or version", async () => {
+// frames-split §7.19: a run is rerun only as a whole, from the tool's panel; no request names failed outputs of an
+// earlier run to retry.
+describe("S5 no per-output retry admission (frames-split §7.19)", () => {
+  it("S5-R01 a request that names outputs of an earlier run to retry is refused and admits nothing", async () => {
     const f = await seed(); const before = await failedOriginal(f); const body = retry(f);
-    f.body.draft.params.cuts = []; f.body.draft.revision = randomUUID();
-    await pg`UPDATE studio_assets SET duration_seconds=99 WHERE id=${f.sourceId}`;
-    outside.ingest.mockClear(); outside.reads.length = 0; outside.snapshots.clear();
-    await accept(f, body); const plan = (await parent(body.run_id)).params.miniToolExecution;
-    expect(plan.outputs).toEqual([before.params.miniToolExecution.outputs[2]]); expect(plan.targetNodeIds).toEqual([f.body.outputs[2]!.nodeId]);
-    expect(plan.binding).toEqual(before.params.miniToolExecution.binding);
-    expect(plan.presentationRef).toEqual(before.params.miniToolExecution.presentationRef);
-    expect(plan.presentations).toEqual(before.params.miniToolExecution.presentations);
-    expect(plan.versionIds).toEqual(before.params.miniToolExecution.versionIds);
-    expect(await parent(f.body.run_id)).toEqual(before); expect(outside.ingest).not.toHaveBeenCalled(); expect(outside.reads).toEqual([]);
-    expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
-    const [hold] = await pg`SELECT amount::float8,status FROM credit_holds WHERE reference_id=${body.run_id}`;
-    expect(hold).toEqual({ amount: estimate("video.split"), status: "held" });
-    expect((await readMiniToolExecutionPlan(body.run_id)).execution.outputs).toEqual([before.params.miniToolExecution.outputs[2]]);
-  });
-  it("S5-R02 admits another current editor's new retry with its own actor and hold while preserving the original run", async () => {
-    const f = await seed(); const original = await failedOriginal(f); const body = retry(f);
-    expect((await post(f, f.body, randomUUID(), f.otherId)).status).toBe(409);
-    const response = await post(f, body, randomUUID(), f.otherId);
-    expect({ status: response.status, body: await response.json() }).toEqual({ status: 201, body: { data: { task_id: body.run_id, status: "pending" } } });
-    const accepted = await parent(body.run_id);
-    expect(accepted.user_id).toBe(f.otherId);
-    expect(accepted.params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[2]]);
-    expect([...(await pg`SELECT node_id,started_by_user_id FROM node_tasks WHERE task_id=${body.run_id}`)])
-      .toEqual([{ node_id: f.body.outputs[2]!.nodeId, started_by_user_id: f.otherId }]);
-    expect([...(await pg`SELECT studio_id,actor_user_id,amount::float8,status FROM credit_holds WHERE reference_id=${body.run_id}`)])
-      .toEqual([{ studio_id: f.studioId, actor_user_id: f.otherId, amount: estimate("video.split"), status: "held" }]);
-    expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
-    expect((await post(f, body)).status).toBe(409);
-    expect(await parent(body.run_id)).toEqual(accepted); expect(await parent(f.body.run_id)).toEqual(original);
-  });
-  it.each(["successful", "late registered", "pending", "unknown", "foreign output", "foreign project", "viewer", "removed"])("S5-R02 refuses retry of %s without changing the original outcome or funds", async (bad) => {
-    const f = await seed(); let before = await failedOriginal(f);
-    const valid = retry(f, [1]); await accept(f, valid);
-    const body = retry(f); let actor = f.userId;
-    if (bad === "successful") body.retry.outputIndexes = [0];
-    else if (bad === "late registered") {
-      const record = miniToolExecutionRecordSchema.parse(before.result.miniToolExecution);
-      record.outputs[2]!.result = structuredClone(record.outputs[0]!.result); record.outputs[2]!.late = true;
-      expect(miniToolExecutionRecordSchema.parse(record)).toEqual(record);
-      await pg`UPDATE tasks SET result=${pg.json(z.json().parse({ ...before.result, miniToolExecution: record }))} WHERE id=${f.body.run_id}`;
-      before = await parent(f.body.run_id);
-    } else if (bad === "unknown") body.retry.outputIndexes = [999];
-    else if (bad === "pending") {
-      const record = structuredClone(before.result.miniToolExecution) as { status: string; outputs: { result: unknown }[]; resultVersion: number; error: unknown };
-      record.status = "running"; record.resultVersion = 0; record.error = null; record.outputs.forEach((o) => { o.result = null; });
-      await pg`UPDATE tasks SET status='running',result=${pg.json(z.json().parse({ ...before.result, miniToolExecution: record }))},completed_at=null WHERE id=${f.body.run_id}`;
-      before = await parent(f.body.run_id);
-    } else if (bad === "foreign output") {
-      const other = await seed(); await failedOriginal(other); body.retry.runId = other.body.run_id;
-    } else if (bad === "foreign project") {
-      const other = await seedStudioFixture(pg, "s5-rp"); body.project_id = other.projectId;
-      await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${other.projectId},${f.userId},'editor')`;
-    } else if (bad === "viewer") actor = f.viewerId;
-    else if (bad === "removed") await pg`UPDATE project_members SET deleted_at=clock_timestamp() WHERE project_id=${f.projectId} AND user_id=${f.userId}`;
-    const response = await post(f, body, randomUUID(), actor);
-    expect(response.status).toBe(bad === "viewer" ? 403 : bad === "removed" || bad === "foreign project" || bad === "foreign output" ? 404 : 422);
-    expect(await effects(body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 }); expect(await parent(f.body.run_id)).toEqual(before);
-  });
-  it("S5-R03 replays a retry under either press key but refuses a changed selected subset", async () => {
-    const f = await seed(); const original = await failedOriginal(f); const body = retry(f); const key = randomUUID();
-    await accept(f, body, key); const before = await parent(body.run_id);
-    await accept(f, body, key); await accept(f, body);
-    expect(await parent(body.run_id)).toEqual(before); expect(await parent(f.body.run_id)).toEqual(original);
-    expect((await post(f, { ...body, retry: { ...body.retry, outputIndexes: [1] } })).status).toBe(409);
-    expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
-  });
-  it.each([false, true])("S5-R03 serializes concurrent retries on the original task with one active execution per output node (different IDs=%s)", async (different) => {
-    const f = await seed(); const before = await failedOriginal(f); const a = retry(f); const b = different ? retry(f) : structuredClone(a);
-    const responses = await contending(f.body.run_id, [() => post(f, a), () => post(f, b)]);
-    // The second of two different retries finds the output already taken over by the first (frames-split §7.15).
-    expect(responses.map((r) => r.status).sort()).toEqual(different ? [201, 422] : [201, 201]);
-    const counts = await Promise.all([...new Set([a.run_id, b.run_id])].map((id) => effects(id)));
-    expect(counts.reduce((n, c) => n + c.rows, 0)).toBe(1); expect(counts.reduce((n, c) => n + c.holds, 0)).toBe(1); expect(counts.reduce((n, c) => n + c.jobs, 0)).toBe(1);
+    expect((await post(f, body)).status).toBe(400);
+    expect(await effects(body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
     expect(await parent(f.body.run_id)).toEqual(before);
-    const rows = await pg`SELECT node_id,count(*)::int AS n FROM node_tasks WHERE node_id=${f.body.outputs[2]!.nodeId} AND status='running' GROUP BY node_id`;
-    expect([...rows]).toEqual([{ node_id: f.body.outputs[2]!.nodeId, n: 1 }]);
-  });
-  it("S5-R03 admits disjoint failed-node retries independently instead of excluding the whole original execution", async () => {
-    const f = await seed(); const original = await failedOriginal(f); const a = retry(f, [1]); const b = retry(f, [2]);
-    await accept(f, a); await accept(f, b);
-    expect((await parent(a.run_id)).params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[1]]);
-    expect((await parent(b.run_id)).params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[2]]);
-    expect(await effects(a.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
-    expect(await effects(b.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
-    expect(await parent(f.body.run_id)).toEqual(original);
-  });
-  it("S5-R04 keeps arbitrary failed subsets and repeated requests exactly once under real PG", async () => {
-    await fc.assert(fc.asyncProperty(fc.shuffledSubarray([1, 2], { minLength: 1, maxLength: 2 }), fc.integer({ min: 1, max: 3 }), async (ids, repeats) => {
-      const f = await seed(); const before = await failedOriginal(f); const body = retry(f, [...ids].sort());
-      for (let n = 0; n < repeats; n += 1) await accept(f, body);
-      const selected = before.params.miniToolExecution.outputs.filter((o) => ids.includes(o.outputIndex));
-      expect((await parent(body.run_id)).params.miniToolExecution.outputs).toEqual(selected);
-      expect(await parent(f.body.run_id)).toEqual(before); expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: selected.length, holds: 1, jobs: 1 });
-      expect([...(await pg`SELECT reference_id,amount::float8,status FROM credit_holds WHERE reference_id=${body.run_id}`)])
-        .toEqual([{ reference_id: body.run_id, amount: estimate("video.split"), status: "held" }]);
-      expect([...(await pg`SELECT reference_id FROM credit_ledger WHERE reference_id=${body.run_id}`)]).toEqual([]);
-    }), { seed: 130605, numRuns: 8 });
-  });
-  it("S5-R06 serializes direct and chained retries on their common root before admitting one execution for the same node", async () => {
-    const { f, original, failedRetry } = await seedRetryChain();
-    const before = await chainSnapshot([original.id, failedRetry.id]);
-    const chained = retry(f); chained.retry.runId = failedRetry.id;
-    const direct = retry(f);
-    const responses = await contending(original.id, [() => post(f, chained), () => post(f, direct, randomUUID(), f.otherId)]);
-    // The direct retry names an original output the failed retry already took over, so it is refused (frames-split §7.15).
-    expect(responses.map((response) => response.status).sort()).toEqual([201, 422]);
-    const counts = await Promise.all([effects(chained.run_id), effects(direct.run_id)]);
-    expect(counts.reduce((sum, count) => ({ tasks: sum.tasks + count.tasks, rows: sum.rows + count.rows, holds: sum.holds + count.holds, jobs: sum.jobs + count.jobs }), { tasks: 0, rows: 0, holds: 0, jobs: 0 }))
-      .toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
-    expect([...(await pg`SELECT node_id,count(*)::int AS n FROM node_tasks WHERE node_id=${f.body.outputs[2]!.nodeId} AND status='running' GROUP BY node_id`)])
-      .toEqual([{ node_id: f.body.outputs[2]!.nodeId, n: 1 }]);
-    expect(await chainSnapshot([original.id, failedRetry.id])).toEqual(before);
-  });
-  it("S5-R06 permits disjoint direct and chained retries instead of making their whole retry chain exclusive", async () => {
-    const { f, original, failedRetry } = await seedRetryChain();
-    const before = await chainSnapshot([original.id, failedRetry.id]);
-    const chained = retry(f); chained.retry.runId = failedRetry.id;
-    const direct = retry(f, [1]);
-    const responses = await contending(original.id, [() => post(f, chained), () => post(f, direct, randomUUID(), f.otherId)]);
-    expect(responses.map((response) => response.status)).toEqual([201, 201]);
-    expect(await effects(chained.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
-    expect(await effects(direct.run_id)).toEqual({ tasks: 1, rows: 1, holds: 1, jobs: 1 });
-    expect((await parent(chained.run_id)).params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[2]]);
-    expect((await parent(direct.run_id)).params.miniToolExecution.outputs).toEqual([original.params.miniToolExecution.outputs[1]]);
-    expect(await chainSnapshot([original.id, failedRetry.id])).toEqual(before);
-  });
-  it("S5-R06 rechecks the selected failed retry after its own row lock observes a late registered output", async () => {
-    const { f, original, failedRetry } = await seedRetryChain();
-    const before = await chainSnapshot([original.id, failedRetry.id]);
-    const late = miniToolExecutionRecordSchema.parse(failedRetry.result.miniToolExecution);
-    const successful = miniToolExecutionRecordSchema.parse(original.result.miniToolExecution).outputs[0]!.result;
-    const output = late.outputs.find((candidate) => candidate.outputIndex === 2);
-    if (!output || successful?.status !== "registered") throw new Error("Missing supplied canonical late outcome");
-    output.result = structuredClone(successful); output.late = true; late.resultVersion += 1;
-    expect(miniToolExecutionRecordSchema.parse(late)).toEqual(late);
-    const result = z.json().parse({ ...failedRetry.result, miniToolExecution: late });
-    let release!: () => void; let entered!: () => void; let gatePid = 0;
-    const gate = new Promise<void>((resolve) => { release = resolve; }); const ready = new Promise<void>((resolve) => { entered = resolve; });
-    // This connection holds only B, never the common root A.
-    const owner = pg.begin(async (tx) => {
-      const [backend] = await tx<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
-      if (!backend) throw new Error("Missing selected-task gate backend");
-      gatePid = backend.pid; await tx`SELECT id FROM tasks WHERE id=${failedRetry.id} FOR UPDATE`; entered(); await gate;
-      await tx`UPDATE tasks SET result=${tx.json(result)} WHERE id=${failedRetry.id}`;
-    });
-    await ready;
-    const body = retry(f); body.retry.runId = failedRetry.id;
-    const pending = post(f, body); void pending.catch(() => undefined);
-    try {
-      await waitUntilBlockedOn(pg, ["tasks", "for update"], 1); expect(await blockedBy(gatePid)).toBe(1);
-      release(); await owner;
-      expect((await pending).status).toBe(422);
-      expect(await effects(body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
-      const after = await chainSnapshot([original.id, failedRetry.id]);
-      expect(after.rows).toEqual(before.rows); expect(after.holds).toEqual(before.holds); expect(after.ledger).toEqual(before.ledger);
-      expect(await parent(original.id)).toEqual(original);
-      expect(await parent(failedRetry.id)).toEqual({ ...failedRetry, result });
-    } finally { release(); await owner; await Promise.allSettled([pending]); }
-  });
-  // frames-split §7.15 可重试结束: a failed output an admitted retry took over accepts no further retry; the next one starts
-  // from the run that took it over, and the record the node reads says which outputs were taken over.
-  it("S5-R07 refuses a second retry of an output an ended retry already took over, with no task, hold or pin, and shows it taken over", async () => {
-    const { f, original, failedRetry } = await seedRetryChain();
-    const before = await chainSnapshot([original.id, failedRetry.id]);
-    const again = retry(f);
-    const response = await post(f, again);
-    expect({ status: response.status, message: ((await response.json()) as { error: { message: string } }).error.message })
-      .toEqual({ status: 422, message: shared.t("server.mini_tool.alreadyRetried") });
-    expect(await effects(again.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
-    expect([...(await pg`SELECT id FROM presentation_pins WHERE holder_id=${again.run_id}`)]).toEqual([]);
-    expect(await chainSnapshot([original.id, failedRetry.id])).toEqual(before);
-    const token = randomBytes(24).toString("hex"); tokens.push(token); await core.setSession(core.getRedis(), token, f.userId);
-    const read = await app.request(`/api/v1/projects/${f.projectId}/mini-tool-runs/${original.id}`, { headers: { Cookie: `${core.sessionCookieName()}=${token}` } });
-    const record = ((await read.json()) as { data: { outputs: { outputIndex: number; takenOver?: boolean }[] } }).data;
-    expect(record.outputs.map((output) => [output.outputIndex, output.takenOver === true])).toEqual([[0, false], [1, false], [2, true]]);
-  });
-  it("S5-R05 settles a retry's actual container consumption and own hold once without charging or rewriting the original", async () => {
-    const f = await seed(); const original = await failedOriginal(f); const body = retry(f); await accept(f, body);
-    const [step] = await upstreamStepRepo.ensureSteps(body.run_id, [{ kind: "container_job", endpoint: "MiniToolContainerStd4", itemIndex: 0 }]);
-    if (!step) throw new Error("Missing retry consumption fixture step");
-    const identity = { kind: "container" as const, containerClass: "MiniToolContainerStd4", jobId: `retry-${body.run_id}`, chunkIndex: 0 };
-    const size = settings.classes.MiniToolContainerStd4!;
-    const pricing = { configVersion: "s5-supplied-usage", size: { vcpu: size.vcpu, memory_gib: size.memory_gib, disk_gb: size.disk_gb }, prices: settings.prices };
-    await openMiniToolConsumption({ taskId: body.run_id, stepId: step.id, identity, chargeTo: "user", creditMultiplier: 1, containerPricing: pricing });
-    const usage = { wallMs: 1000, cpuUsec: 100000 }; const usd = containerCostUsd(usage, pricing.size, pricing.prices);
-    const computing = await parent(body.run_id);
-    const active = miniToolExecutionRecordSchema.parse(computing.result.miniToolExecution);
-    const terminal = miniToolExecutionRecordSchema.parse({ ...active, status: "failed", resultVersion: 1, error: { code: "supplied_terminal_failure" },
-      outputs: active.outputs.map((output) => ({ ...output, result: { status: "failed", error: { code: "supplied_terminal_failure" } } })) });
-    await pg`UPDATE tasks SET status='failed',completed_at=clock_timestamp(),result=${pg.json(z.json().parse({ ...computing.result, miniToolExecution: terminal }))} WHERE id=${body.run_id}`;
-    const period = await completeMiniToolConsumptionSet(body.run_id);
-    const claimed = await claimMiniToolSettlement({ taskId: body.run_id, settlementVersion: period.version });
-    expect(claimed?.nextConsumption?.stepId).toBe(step.id);
-    if (!claimed) throw new Error("Retry settlement was not claimed");
-    await confirmMiniToolConsumption({ taskId: body.run_id, stepId: step.id, identity, claim: claimed.claim, costUsd: usd, costSource: "computed", raw: usage });
-    await recordMiniToolConsumption({ taskId: body.run_id, stepId: step.id, identity });
-    await settleMiniToolCharge(body.run_id); const once = await parent(body.run_id); await settleMiniToolCharge(body.run_id);
-    expect(await parent(body.run_id)).toEqual(once); expect(await parent(f.body.run_id)).toEqual(original);
-    const [hold] = await pg`SELECT status FROM credit_holds WHERE reference_id=${body.run_id}`; expect(hold).toEqual({ status: "released" });
-    const ledger = await pg`SELECT reference_id,amount::float8 FROM credit_ledger WHERE reference_id=${body.run_id}`;
-    expect([...ledger]).toEqual([{ reference_id: body.run_id, amount: -shared.ceilToCreditCent(creditsForUsd(usd, 1)) }]);
-    expect([...(await pg`SELECT reference_id FROM credit_ledger WHERE reference_id=${f.body.run_id}`)]).toEqual([]);
   });
 });
 
@@ -674,34 +447,6 @@ describe("E3 job layout, parallel cap and quote at admission (inner#1306 §90 E3
     expect(credits).toBeGreaterThanOrEqual(std4Credits(settings.encoding.encoder.start_seconds));
     const [hold] = await pg`SELECT amount::float8 FROM credit_holds WHERE reference_id=${f.body.run_id}`;
     expect(hold).toEqual({ amount: credits });
-  });
-
-  it("E3-R01 a failed-subset retry quotes max(precheck, the retried outputs' planned work) at the frozen standard-4 price, like a fresh run", async () => {
-    const f = await seed();
-    (Reflect.get(settings.executions, "video.split") as { precheck_seconds: number }).precheck_seconds = 1;
-    settings.prices.vcpu_second_usd = 0.01;
-    await failedOriginal(f);
-    const body = retry(f, [2]); await accept(f, body);
-    const credits = (await parent(body.run_id)).params.miniToolExecution.credits;
-    // The retried output's batch job alone costs its start seconds: more than the 1 s precheck floor.
-    expect(credits).toBeGreaterThan(std4Credits(1));
-    expect(credits).toBeGreaterThanOrEqual(std4Credits(settings.encoding.encoder.start_seconds));
-    const [hold] = await pg`SELECT amount::float8 FROM credit_holds WHERE reference_id=${body.run_id}`;
-    expect(hold).toEqual({ amount: credits });
-  });
-
-  it("E3-R02 a failed-subset retry quotes with the start seconds frozen at the original admission, not today's encoder.start_seconds", async () => {
-    const f = await seed();
-    (Reflect.get(settings.executions, "video.split") as { precheck_seconds: number }).precheck_seconds = 1;
-    settings.prices.vcpu_second_usd = 0.01;
-    await failedOriginal(f);
-    // Today's configuration changes after admission (§3.2 item 1; §7.11 a retry reuses frozen facts).
-    settings.encoding.encoder.start_seconds = 3000;
-    const body = retry(f, [2]); await accept(f, body);
-    const credits = (await parent(body.run_id)).params.miniToolExecution.credits;
-    // The retried output's job at the frozen 3 s start plus its small frozen work, far below 3000 s.
-    expect(credits).toBeGreaterThanOrEqual(std4Credits(3));
-    expect(credits).toBeLessThanOrEqual(std4Credits(10));
   });
 
   it("E3-A07 a target-policy preparation in progress does not block admission", async () => {
@@ -828,15 +573,6 @@ describe("E4 execution pins at admission (inner#1306 §90 E4-4, E4-5; design §7
       WHERE p.holder_id=${holderId} AND p.deleted_at IS NULL GROUP BY p.id ORDER BY p.holder_kind`;
   }
 
-  /**
-   * Derived queue rows under a source.
-   * @param key - The source key.
-   * @returns Keys.
-   */
-  async function queuedUnder(key: string): Promise<string[]> {
-    return (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE starts_with(storage_key, ${key})`).map((row) => row.storage_key);
-  }
-
   it("E4-P01 a fresh admission pins its tool input for the run, in the admission: no object on the original, the edit file on an edit source", async () => {
     const f = await seed(); await accept(f);
     expect(await livePins(f.body.run_id)).toEqual([{ holder_kind: "execution", tool_input_id: f.body.presentation_ref.source.toolInputId, keys: [] }]);
@@ -851,58 +587,7 @@ describe("E4 execution pins at admission (inner#1306 §90 E4-4, E4-5; design §7
     expect((await post(f)).ok).toBe(false);
     expect(await livePins(f.body.run_id)).toEqual([]);
   });
-
-  it("E4-P03 a retry of some failed outputs pins for itself and leaves the original's pins live", async () => {
-    const f = await seed(); await failedOriginal(f);
-    const t = f.body.presentation_ref.source.toolInputId;
-    const body = retry(f, [2]); await accept(f, body);
-    expect(await livePins(body.run_id)).toEqual([{ holder_kind: "execution", tool_input_id: t, keys: [] }]);
-    expect((await livePins(f.body.run_id)).map((row) => row.holder_kind)).toEqual(["execution"]);
-  });
-
-  it("E4-P04 the retry that takes over the last failed output releases the original's pins in its admission, registering nothing still pinned", async () => {
-    const f = await seed(); await failedOriginal(f);
-    const body = retry(f, [1, 2]); await accept(f, body);
-    expect(await livePins(f.body.run_id)).toEqual([]);
-    expect((await livePins(body.run_id)).map((row) => row.holder_kind)).toEqual(["execution"]);
-    expect(await queuedUnder(f.sourceKey)).toEqual([]);
-  });
-
-  it("E4-P05 failed outputs taken over by two retries in turn release the original only at the second", async () => {
-    const f = await seed(); await failedOriginal(f);
-    const first = retry(f, [2]); await accept(f, first);
-    expect(await livePins(f.body.run_id)).toHaveLength(1);
-    const second = retry(f, [1]); await accept(f, second);
-    expect(await livePins(f.body.run_id)).toEqual([]);
-    expect(await livePins(first.run_id)).toHaveLength(1);
-    expect(await livePins(second.run_id)).toHaveLength(1);
-  });
-
-  it("E4-P06 a refused retry releases nothing of the original", async () => {
-    const f = await seed(); await failedOriginal(f);
-    const body = retry(f, [0]);
-    expect((await post(f, body)).ok).toBe(false);
-    expect(await livePins(f.body.run_id)).toHaveLength(1);
-    expect(await livePins(body.run_id)).toEqual([]);
-  });
 });
-
-/**
- * An accepted extract-frames run whose one output failed, ended as SQL records it.
- * @param f - The fixture of an extract-frames request.
- * @returns The original parent.
- * @throws {Error} On invalid record or fixture SQL.
- */
-async function failedFrames(f: Fixture): Promise<Parent> {
-  await accept(f);
-  const original = await parent(f.body.run_id); const plan = original.params.miniToolExecution;
-  const record = miniToolExecutionRecordSchema.parse({ schemaVersion: 1, runId: f.body.run_id, status: "failed", planFingerprint: plan.planFingerprint,
-    resultVersion: 1, sourceBindings: [plan.binding], outputs: plan.outputs.map((output) => ({ ...output, late: false, result: { status: "failed", error: { code: "output_failed" } } })),
-    usage: [], billingState: "idle", error: { code: "output_failed" } });
-  await pg`UPDATE tasks SET status='failed',result=${pg.json(z.json().parse({ ...original.result, miniToolExecution: record }))},completed_at=clock_timestamp() WHERE id=${f.body.run_id}`;
-  await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${f.body.run_id}`;
-  return parent(f.body.run_id);
-}
 
 /**
  * Ask the quote endpoint for a fresh request.
@@ -963,26 +648,14 @@ describe("frame-grid requests and the platform-funded set at admission (§67.1, 
     expect([...(await pg`SELECT amount::float8,status FROM credit_holds WHERE reference_id=${f.body.run_id}`)]).toEqual([{ amount: estimate("video.split"), status: "held" }]);
   });
 
-  it("S5-R05 an extract-frames retry is quoted 0, holds nothing and takes chargeTo from the original's frozen plan", async () => {
-    const f = await seed("video.extract-frames"); await failedFrames(f);
-    const body = retry(f, [0]); await accept(f, body);
-    const plan = (await parent(body.run_id)).params.miniToolExecution;
-    expect({ credits: plan.credits, chargeTo: plan.chargeTo }).toEqual({ credits: 0, chargeTo: "platform" });
-    expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 0, jobs: 1 });
-  });
-
-  it("A02 changing the platform-funded set after admission changes neither the admitted run's plan nor its retry's payer or quote", async () => {
-    const f = await seed("video.extract-frames"); await failedFrames(f);
+  it("A02 changing the platform-funded set after admission leaves the admitted run's frozen plan as it was", async () => {
+    const f = await seed("video.extract-frames"); await accept(f);
     const before = await parent(f.body.run_id);
     outside.funded = new Set(["video.focus-crop"]);
     try {
-      const body = retry(f, [0]); await accept(f, body);
-      const plan = (await parent(body.run_id)).params.miniToolExecution;
-      expect({ credits: plan.credits, chargeTo: plan.chargeTo }).toEqual({ credits: 0, chargeTo: "platform" });
-      expect(await effects(body.run_id)).toEqual({ tasks: 1, rows: 1, holds: 0, jobs: 1 });
       expect((await parent(f.body.run_id)).params).toEqual(before.params);
+      expect(before.params.miniToolExecution.chargeTo).toBe("platform");
       // A fresh run after the change is user-paid: the set decides admission, the frozen value decides everything after it.
-      // This also proves the replaced set reached admission, so the frozen retry above is not passing because it missed.
       const fresh = await seed("video.extract-frames"); await accept(fresh);
       expect((await parent(fresh.body.run_id)).params.miniToolExecution.chargeTo).toBe("user");
     } finally { outside.funded = null; }

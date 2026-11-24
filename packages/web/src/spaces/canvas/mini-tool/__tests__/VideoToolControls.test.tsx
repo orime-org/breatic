@@ -52,6 +52,16 @@ describe('split scene detection and cut list (approved demo split state)', () =>
     render(<VideoToolControls {...base} analyses={[sceneRun]} toolId='video.split' draft={{ ...common, params: { cuts: [] } }} onChange={vi.fn()} />);
     expect(screen.getByTestId('video-detect-scenes')).toHaveTextContent(t('canvas.miniTool.videoUI.detectAgain'));
   });
+  // frames-split §7.19 分析: a detection the user cancelled has its own state and is no failure.
+  it('shows the failed detection row for a failed detection and none for a cancelled one', () => {
+    const { unmount } = render(<VideoToolControls {...base} analyses={[sceneRun]} toolId='video.split' draft={{ ...common, params: { cuts: [] } }} onChange={vi.fn()} />);
+    expect(screen.getByTestId('video-detection-error')).toBeInTheDocument();
+    unmount();
+    const cancelled = { ...sceneRun, status: 'cancelled', error: null } as unknown as MiniToolAnalysisRecord;
+    render(<VideoToolControls {...base} analyses={[cancelled]} toolId='video.split' draft={{ ...common, params: { cuts: [] } }} onChange={vi.fn()} />);
+    expect(screen.queryByTestId('video-detection-error')).toBeNull();
+    expect(screen.getByTestId('video-detect-scenes')).toHaveTextContent(t('canvas.miniTool.videoUI.detectAgain'));
+  });
   it('says how to add cuts while the list is empty', () => {
     const { unmount } = render(<VideoToolControls {...base} toolId='video.split' draft={{ ...common, params: { cuts: [] } }} onChange={vi.fn()} />);
     expect(screen.getByText(t('canvas.miniTool.videoUI.noCuts'))).toBeInTheDocument();

@@ -40,7 +40,7 @@ afterAll(async () => { await pg.end(); await yjsPg.end(); initCore(process.env);
 async function fixture(nodeStatus: "running" | "failed" | "expired" | "missing" = "running"): Promise<ExecutionFixture> {
   const f = await seedExecution(pg, "running");
   await miniToolExecutionService.finishMiniToolExecution(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 0,
-    outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }], error: null });
+    outputs: [{ ...f.plan.outputs[0]!, result: f.registered }], error: null });
   // Seed the independently specified delivery projection, not its future mapper.
   await pg`UPDATE tasks SET result=result || ${pg.json({ miniToolDelivery: pending(f) })} WHERE id=${f.taskId}`;
   if (nodeStatus !== "missing") {
@@ -136,7 +136,7 @@ describe("pure media delivery on the existing tasks queue", () => {
     try {
       await redis.set(key, "fixture wrong type");
       const result = await finishMiniToolExecutionAndNotify(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 1,
-        outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }], error: null }, redis);
+        outputs: [{ ...f.plan.outputs[0]!, result: f.registered }], error: null }, redis);
       expect(result.record.status).toBe("completed");
       expect(add).toHaveBeenCalledWith("deliver-mini-tool-results", { taskId: f.taskId, deliveryVersion: 1 }, expect.any(Object));
       expect(await deliveryState(f)).toEqual(pending(f, "delivery_publish_failed"));

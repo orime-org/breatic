@@ -4,7 +4,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as RequestModule from '../request';
 import type * as CreditsModule from '../credits';
-import type { MiniToolExecutionRecord, MiniToolExecutionRetryRequest, MiniToolPlannedRequest } from '@breatic/shared/mini-tools';
+import type { MiniToolExecutionRecord, MiniToolPlannedRequest } from '@breatic/shared/mini-tools';
 import { miniToolsApi } from '../mini-tools';
 import { apiGet, apiPost, runOnceRequest } from '../request';
 import { noteCreditsChanged } from '../credits';
@@ -26,7 +26,7 @@ const BODY: MiniToolPlannedRequest = {
 const RECORD: MiniToolExecutionRecord = {
   schemaVersion: 1, runId: RUN, status: 'completed', planFingerprint: 'b'.repeat(64), resultVersion: 1,
   sourceBindings: [{ assetId: SOURCE, contentHash: 'a'.repeat(64), canonicalURL: BODY.draft.source.canonicalURL, kind: 'video', mediaInfo: BODY.draft.source.mediaInfo }],
-  outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'segment', range: { start: 0, end: 7 } }, late: false, result: { status: 'registered', assetId: '20000000-0000-4000-8000-000000000008', canonicalURL: 'https://assets.example.test/canonical-alpha.webm', kind: 'video', mimeType: 'video/webm', size: 321, contentHash: 'c'.repeat(64), width: 400, height: 200, duration: 0.28, cover: null } }],
+  outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'segment', range: { start: 0, end: 7 } }, result: { status: 'registered', assetId: '20000000-0000-4000-8000-000000000008', canonicalURL: 'https://assets.example.test/canonical-alpha.webm', kind: 'video', mimeType: 'video/webm', size: 321, contentHash: 'c'.repeat(64), width: 400, height: 200, duration: 0.28, cover: null } }],
   usage: [], billingState: 'waiting', error: null,
 };
 
@@ -66,14 +66,5 @@ describe('planned mini-tool API public wire, independent of HTTP envelope transp
     vi.mocked(apiGet).mockResolvedValueOnce({ ...RECORD, outputs: [{ ...RECORD.outputs[0], result: null }] });
     await expect(miniToolsApi.getRun(PROJECT, RUN)).rejects.toThrow();
     expect(apiGet).toHaveBeenCalledExactlyOnceWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`);
-  });
-
-  it('retries a split run through retryPlannedVideoRun: the retry form, its press key and a credit refresh', async () => {
-    const retry: MiniToolExecutionRetryRequest = { tool: 'video.split', project_id: PROJECT, space_id: BODY.space_id, run_id: '20000000-0000-4000-8000-000000000009', retry: { runId: RUN, outputIndexes: [0] } };
-    const answer = { task_id: retry.run_id, status: 'pending' };
-    vi.mocked(apiPost).mockResolvedValueOnce(answer);
-    expect(await miniToolsApi.retryPlannedVideoRun(structuredClone(retry), 'retry-press-key')).toEqual(answer);
-    expect(apiPost).toHaveBeenCalledExactlyOnceWith('/mini-tools', retry, runOnceRequest('retry-press-key'));
-    expect(noteCreditsChanged).toHaveBeenCalledExactlyOnceWith(PROJECT);
   });
 });

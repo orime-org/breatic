@@ -66,7 +66,7 @@ describe("mini-tool transactions on a one-connection pool", () => {
   it("a progress commit of a registered output finishes", async () => {
     const f = await seedExecution(pg, "running");
     const { record } = await withinDeadline(miniToolExecutionService.commitMiniToolExecutionProgress(f.taskId, {
-      planFingerprint: f.plan.planFingerprint, expectedVersion: 0, outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }],
+      planFingerprint: f.plan.planFingerprint, expectedVersion: 0, outputs: [{ ...f.plan.outputs[0]!, result: f.registered }],
     }));
     expect(record.outputs[0]!.result).toEqual(f.registered);
   });

@@ -15,7 +15,7 @@ const KEY = "b".repeat(64);
 /** Construct only the independently frozen public wire fixture. */
 function record(): MiniToolExecutionRecord {
   return { schemaVersion: 1, runId: RUN, status: "pending", planFingerprint: "c".repeat(64), resultVersion: 0, sourceBindings: [structuredClone(BINDING)],
-    outputs: [{ outputIndex: 0, nodeId: NODE, recipe: { kind: "segment", range: { start: 0, end: 30 } }, result: null, late: false }], usage: [], billingState: "idle", error: null };
+    outputs: [{ outputIndex: 0, nodeId: NODE, recipe: { kind: "segment", range: { start: 0, end: 30 } }, result: null }], usage: [], billingState: "idle", error: null };
 }
 /** Construct the initial complete media snapshot, independently of the schema. */
 function done(): MiniToolExecutionRecord {
@@ -37,16 +37,36 @@ describe("planned execution public record (independent lifecycle oracle M/U/B)",
   it("M02 preserves unmeasured media values as null", () => {
     const r = done(); r.outputs[0]!.result = { ...MEDIA, width: null, height: null, duration: null }; expect(miniToolExecutionRecordSchema.parse(r)).toEqual(r);
   });
-  it("M06 retains failed status and first error beside a late registered slot", () => {
-    const r = done(); r.status = "failed"; r.error = { code: "registration_failed" }; r.resultVersion = 2; r.outputs[0]!.late = true;
+  // frames-split §7.19: a run is one whole, so a failed run holds no registered output and nothing is delivered late.
+  it("M06 rejects a failed record that still holds a registered output", () => {
+    const r = done(); r.status = "failed"; r.error = { code: "registration_failed" }; r.resultVersion = 2;
+    expect(miniToolExecutionRecordSchema.safeParse(r).success).toBe(false);
+  });
+  it("M06 retains failed status and its first error on every output", () => {
+    const r = record(); r.status = "failed"; r.resultVersion = 1; r.error = { code: "mini_tool_failed", message: "over_cap" };
+    r.outputs[0]!.result = { status: "failed", error: { code: "mini_tool_failed", message: "over_cap" } };
     expect(miniToolExecutionRecordSchema.parse(r)).toEqual(r);
   });
-  // frames-split §7.15 可重试结束: a failed output an admitted retry has taken over accepts no further retry, and the
-  // record the node reads says so per output.
-  it("M13 carries whether each failed output was taken over by a retry", () => {
-    const r = record(); r.status = "failed"; r.resultVersion = 1; r.error = { code: "expired" };
-    r.outputs[0] = { ...r.outputs[0]!, result: { status: "failed", error: { code: "expired" } }, takenOver: true };
+  it.each(["late", "takenOver"])("M13 rejects the retired per-output %s flag", (key) => {
+    const r = done(); expect(miniToolExecutionRecordSchema.safeParse({ ...r, outputs: [{ ...r.outputs[0], [key]: false }] }).success).toBe(false);
+  });
+  // frames-split §7.19 提交点: a running record past its commit point carries when it was written; its outputs are
+  // registered only by the one completed commit.
+  it("M14 accepts a running record past its commit point with no output result", () => {
+    const r = record(); r.status = "running"; r.commitPoint = "2026-11-24T08:00:00.000Z";
     expect(miniToolExecutionRecordSchema.parse(r)).toEqual(r);
+  });
+  it.each(["pending", "completed", "failed", "cancelled"] as const)("M14 rejects a commit point on a %s record", (status) => {
+    const r = status === "completed" ? done() : record(); r.status = status;
+    if (status === "failed") { r.resultVersion = 1; r.error = { code: "internal" }; r.outputs[0]!.result = { status: "failed", error: { code: "internal" } }; }
+    expect(miniToolExecutionRecordSchema.safeParse({ ...r, commitPoint: "2026-11-24T08:00:00.000Z" }).success).toBe(false);
+  });
+  it("M14 rejects a commit point that is not an instant", () => {
+    const r = record(); r.status = "running"; expect(miniToolExecutionRecordSchema.safeParse({ ...r, commitPoint: "soon" }).success).toBe(false);
+  });
+  it("M15 rejects a running record holding a registered output, whatever its version", () => {
+    const r = record(); r.status = "running"; r.resultVersion = 1; r.outputs[0]!.result = structuredClone(MEDIA);
+    expect(miniToolExecutionRecordSchema.safeParse(r).success).toBe(false);
   });
   it("M12 retains cancelled rather than mapping it to analysis failed", () => {
     const r = record(); r.status = "cancelled"; expect(miniToolExecutionRecordSchema.parse(r)).toEqual(r);

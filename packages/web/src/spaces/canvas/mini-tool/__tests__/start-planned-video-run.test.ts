@@ -6,20 +6,19 @@ import type * as ApiModule from '@web/data/api/mini-tools';
 import type * as ToastModule from '@web/lib/toast';
 import type { MiniToolPlannedRequest, VideoToolDraftById } from '@breatic/shared/mini-tools';
 import { miniToolPlannedRequestSchema, planVideoFrames, planVideoSplit } from '@breatic/shared/mini-tools';
-import { CANVAS_NODES_KEY, t } from '@breatic/shared';
+import { CANVAS_NODES_KEY } from '@breatic/shared';
 import { miniToolsApi } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
 import { addNode, readNodes, readEdges, removeNode } from '@web/data/yjs/canvas-space';
 import { docName, getDoc, destroyDoc } from '@web/data/yjs/manager';
 import { NODE_STEP } from '@web/spaces/canvas/drop-layout';
-import { plannedRetryIntent, preparePlannedVideoRun, retryPlannedVideoRun, startPlannedVideoRun, type PlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
+import { preparePlannedVideoRun, startPlannedVideoRun, type PlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import { miniToolIntent } from '@web/spaces/canvas/mini-tool/start-mini-tool-run';
 import { getRunning, resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
 import { useUploadMarksStore } from '@web/stores/upload-marks';
 import { spendCapMessage } from '@web/lib/spend-cap-message';
-import { toast } from '@web/lib/toast';
 
-vi.mock('@web/data/api/mini-tools', async (original) => ({ ...(await original<typeof ApiModule>()), miniToolsApi: { ...(await original<typeof ApiModule>()).miniToolsApi, runPlanned: vi.fn(), retryPlannedVideoRun: vi.fn() } }));
+vi.mock('@web/data/api/mini-tools', async (original) => ({ ...(await original<typeof ApiModule>()), miniToolsApi: { ...(await original<typeof ApiModule>()).miniToolsApi, runPlanned: vi.fn() } }));
 vi.mock('@web/lib/toast', async (original) => ({ ...(await original<typeof ToastModule>()), toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 
 const RESETS_AT = '2026-12-01T00:00:00.000Z';
@@ -215,39 +214,5 @@ describe('planned video press: independent frozen body and original graph', () =
     expect(targets()).toEqual([]);
     expect(vi.mocked(run.onBuilt).mock.calls).toHaveLength(builtCalls);
     expect(readNodes(getDoc(docName.canvasSpace(PROJECT, SPACE)))[0]).toMatchObject({ data: { content: URL } });
-  });
-});
-
-// One retry of a planned run's failed output, shared by the output node's task row and the host's tool panel (inner#1306 #24):
-// one intent per output, the retry body, the send and the refusal toast.
-describe('retrying a planned run\'s failed output', () => {
-  const RUN = '10000000-0000-4000-8000-000000000009';
-
-  it('sends one retry of that output under its intent and reports it done', async () => {
-    vi.mocked(miniToolsApi.retryPlannedVideoRun).mockResolvedValue({ task_id: TASK, status: 'pending' });
-    const onDone = vi.fn();
-    const first = retryPlannedVideoRun({ projectId: PROJECT, spaceId: SPACE, tool: 'video.split', runId: RUN, outputIndex: 2, onDone });
-    expect(getRunning(plannedRetryIntent(RUN, 2))).toBe(true);
-    const second = retryPlannedVideoRun({ projectId: PROJECT, spaceId: SPACE, tool: 'video.split', runId: RUN, outputIndex: 2, onDone });
-    await expect(first).resolves.toMatchObject({ kind: 'done' });
-    await second;
-    expect(miniToolsApi.retryPlannedVideoRun).toHaveBeenCalledOnce();
-    const [body] = vi.mocked(miniToolsApi.retryPlannedVideoRun).mock.calls[0]!;
-    expect(body).toMatchObject({ tool: 'video.split', project_id: PROJECT, space_id: SPACE, retry: { runId: RUN, outputIndexes: [2] } });
-    expect(onDone).toHaveBeenCalledOnce();
-  });
-
-  it('M1-06 says the spend limit when the retry is refused at it', async () => {
-    vi.mocked(miniToolsApi.retryPlannedVideoRun).mockRejectedValue(SPEND_CAP);
-    await retryPlannedVideoRun({ projectId: PROJECT, spaceId: SPACE, tool: 'video.split', runId: RUN, onDone: vi.fn() });
-    expect(toast.error).toHaveBeenCalledExactlyOnceWith(spendCapMessage('studio', '10', RESETS_AT));
-  });
-
-  it('says why the retry was refused', async () => {
-    vi.mocked(miniToolsApi.retryPlannedVideoRun).mockRejectedValue(new Error('down'));
-    const onDone = vi.fn();
-    await retryPlannedVideoRun({ projectId: PROJECT, spaceId: SPACE, tool: 'video.split', runId: RUN, onDone });
-    expect(toast.error).toHaveBeenCalledExactlyOnceWith(t('canvas.miniTool.panel.couldNotStart'));
-    expect(onDone).not.toHaveBeenCalled();
   });
 });

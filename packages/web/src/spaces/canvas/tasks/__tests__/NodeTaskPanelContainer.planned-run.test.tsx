@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * inner#1306 frames-split design §10.8 retry row: the task row of a failed output node of a planned run (here a split)
- * offers Retry; the retry names the original run and that node's own output index, read from the run's outputs by
- * node id, and goes through `miniToolsApi.retryPlannedVideoRun` to the existing retry admission.
+ * inner#1306 frames-split design §7.19: a planned run (here a split) is rerun only as a whole, from its tool's panel, so the
+ * task row of its failed output node offers only Clear, never Retry, and asks the run nothing.
  *
  * The request layer (`apiGet`, `apiPost`) is mocked and answers the task list and the run; translation is real.
  */
@@ -15,7 +14,7 @@ import { ReactFlow } from '@xyflow/react';
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t, type NodeTaskEntry } from '@breatic/shared';
-import { miniToolExecutionRequestSchema, type MiniToolExecutionRecord } from '@breatic/shared/mini-tools';
+import type { MiniToolExecutionRecord } from '@breatic/shared/mini-tools';
 
 const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('@web/data/api/request', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), apiGet: http.get, apiPost: http.post }));
@@ -50,15 +49,14 @@ function row(): NodeTaskEntry {
 /**
  * The split run: its first segment failed on another node, the second on this one, or still pending while it runs.
  * @param failed - Whether this node's output failed.
- * @param takenOver - Whether an admitted retry has taken this node's failed output over.
  * @returns The record.
  */
-function record(failed = true, takenOver = false): MiniToolExecutionRecord {
+function record(failed = true): MiniToolExecutionRecord {
   return { schemaVersion: 1, runId: RUN, status: 'failed', planFingerprint: 'a'.repeat(64), resultVersion: 1,
     sourceBindings: [{ assetId: '80000000-0000-4000-8000-000000000001', contentHash: 'b'.repeat(64), canonicalURL: 'https://assets.example.test/video/source.mp4', kind: 'video', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } }],
     outputs: [
-      { outputIndex: 0, nodeId: FIRST, recipe: { kind: 'segment', range: { start: 0, end: 2 } }, late: false, result: { status: 'failed', error: { code: 'mini_tool_failed' } } },
-      { outputIndex: 1, nodeId: OUTPUT, recipe: { kind: 'segment', range: { start: 2, end: 5 } }, late: false, result: failed ? { status: 'failed', error: { code: 'mini_tool_failed' } } : null, takenOver },
+      { outputIndex: 0, nodeId: FIRST, recipe: { kind: 'segment', range: { start: 0, end: 2 } }, result: { status: 'failed', error: { code: 'mini_tool_failed' } } },
+      { outputIndex: 1, nodeId: OUTPUT, recipe: { kind: 'segment', range: { start: 2, end: 5 } }, result: failed ? { status: 'failed', error: { code: 'mini_tool_failed' } } : null },
     ],
     usage: [], billingState: failed ? 'settled' : 'idle', error: failed ? { code: 'mini_tool_failed' } : null, ...(failed ? {} : { status: 'running' }) };
 }
@@ -66,13 +64,12 @@ function record(failed = true, takenOver = false): MiniToolExecutionRecord {
 /**
  * Answers the output node's task list and its run.
  * @param failed - Whether this node's output failed.
- * @param takenOver - Whether an admitted retry has taken this node's failed output over.
  * @returns Nothing.
  */
-function serve(failed = true, takenOver = false): void {
+function serve(failed = true): void {
   http.get.mockImplementation(async (path: string): Promise<unknown> => {
     if (path === `/canvas/nodes/${OUTPUT}/tasks`) return { tasks: [row()] };
-    if (path === `/projects/${PROJECT}/mini-tool-runs/${RUN}`) return record(failed, takenOver);
+    if (path === `/projects/${PROJECT}/mini-tool-runs/${RUN}`) return record(failed);
     throw new Error(`Unexpected GET ${path}`);
   });
 }
@@ -95,36 +92,21 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); client.clear(); resetRunOnceForTests(); canvasSessions.of(SPACE).getState().closeActivePanel(); vi.restoreAllMocks(); });
 
-describe('a failed planned output node retries its own output (frames-split §10.8 retry row)', () => {
-  it('offers Retry on the failed row and sends the original run with this node\'s output index', async () => {
+describe('a failed planned output node is rerun only as a whole (frames-split §7.19)', () => {
+  it('offers Clear and no Retry on the failed row, and reads no run to retry', async () => {
     serve();
-    http.post.mockResolvedValue({ task_id: '60000000-0000-4000-8000-000000000001', status: 'pending' });
-    mount();
-    fireEvent.click(await screen.findByRole('button', { name: t('canvas.task.action.retry') }));
-    await waitFor(() => expect(http.post).toHaveBeenCalledOnce());
-    const [path, body] = http.post.mock.calls[0] as [string, Record<string, unknown>];
-    expect(path).toBe('/mini-tools');
-    expect(body).toMatchObject({ tool: 'video.split', project_id: PROJECT, space_id: SPACE, retry: { runId: RUN, outputIndexes: [1] } });
-    expect(body.run_id).not.toBe(RUN);
-    expect(miniToolExecutionRequestSchema.safeParse(body).success).toBe(true);
-  });
-
-  // frames-split §7.15 可重试结束: a failed output an admitted retry took over accepts no further retry; the next one starts
-  // from the run that took it over.
-  it('offers no Retry on the old failed row once a retry has taken its output over', async () => {
-    serve(true, true);
     mount();
     await screen.findByTestId('node-task-row');
-    await waitFor(() => expect(http.get).toHaveBeenCalledWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`));
-    await waitFor(() => expect(client.getQueryState(['mini-tool-run', PROJECT, RUN])?.status).toBe('success'));
+    expect(await screen.findByRole('button', { name: t('canvas.task.action.clear') })).toBeTruthy();
     expect(screen.queryByRole('button', { name: t('canvas.task.action.retry') })).toBeNull();
+    expect(http.get).not.toHaveBeenCalledWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`);
+    expect(http.post).not.toHaveBeenCalled();
   });
 
-  it('offers no Retry while the run has no failed output on this node', async () => {
-    serve(false);
+  it('pressing Clear sends no mini-tool request', async () => {
+    serve();
     mount();
-    await screen.findByTestId('node-task-row');
-    await waitFor(() => expect(http.get).toHaveBeenCalledWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`));
-    expect(screen.queryByRole('button', { name: t('canvas.task.action.retry') })).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: t('canvas.task.action.clear') }));
+    await waitFor(() => expect(http.post.mock.calls.every((call) => call[0] !== '/mini-tools')).toBe(true));
   });
 });

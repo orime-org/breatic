@@ -3,7 +3,7 @@
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
-import { miniToolExecutionRetryRequestSchema, miniToolPlannedRequestSchema, miniToolSubmissionSchema } from "../planned-request-schema.js";
+import { miniToolPlannedRequestSchema, miniToolSubmissionSchema } from "../planned-request-schema.js";
 
 const RUN = "50000000-0000-4000-8000-000000000001";
 const SOURCE = "30000000-0000-4000-8000-000000000001";
@@ -32,7 +32,7 @@ function request(tool: "video.extract-frames" | "video.split" = "video.extract-f
   };
 }
 
-/** Build the retry wire shape: no current draft or replacement output mapping. @throws {never} Never. */
+/** Build the removed retry wire shape: no current draft or replacement output mapping. @throws {never} Never. */
 function retry(): Record<string, unknown> {
   return { tool: "video.split", project_id: "10000000-0000-4000-8000-000000000001", space_id: "20000000-0000-4000-8000-000000000001",
     run_id: "50000000-0000-4000-8000-000000000002", retry: { runId: RUN, outputIndexes: [1] } };
@@ -102,30 +102,8 @@ describe("S5 planned frame and segment request contracts", () => {
       node_ids: [NODES[0]], source: { url: "https://assets.example.test/source.mp4" }, params: { range: { start: 1, end: 3 } }, slots: {} };
     expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
   });
-  it("S5-Q04 accepts a new execution selecting original failed output identities", () => {
-    expect(miniToolSubmissionSchema.parse(retry())).toEqual(retry());
-  });
-  it("accepts a split failed-output retry and still refuses a tool outside the planned set", () => {
-    const body = changed(changed(retry(), "tool", "video.split"), "retry.outputIndexes", [0]);
-    expect(miniToolExecutionRetryRequestSchema.parse(body)).toEqual(body);
-    expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
-    expect(miniToolExecutionRetryRequestSchema.safeParse(changed(body, "tool", "video.cut")).success).toBe(false);
-    expect(miniToolSubmissionSchema.safeParse(changed(body, "tool", "video.unknown")).success).toBe(false);
-  });
-  it.each([
-    ["retry.outputIndexes", []], ["retry.outputIndexes", [1, 1]], ["retry.outputIndexes", [-1]], ["retry.outputIndexes", [0.5]],
-    ["retry.outputIndexes", [Number.MAX_SAFE_INTEGER + 1]], ["retry.runId", "invalid"], ["retry.runId", undefined],
-    ["run_id", RUN], ["draft", request().draft], ["outputs", request().outputs], ["presentation_ref", presentationRef], ["retry.recipe", { kind: "segment" }],
-  ])("S5-Q04 refuses invalid retry field %s=%s after accepting its valid control", (path, value) => {
-    const body = retry();
-    expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
-    expect(miniToolSubmissionSchema.safeParse(changed(body, String(path), value)).success).toBe(false);
-  });
-  it("S5-Q04 preserves arbitrary unique output IDs through the retry wire without accepting duplicates", () => {
-    fc.assert(fc.property(fc.uniqueArray(fc.integer({ min: 0, max: 1000 }), { minLength: 1, maxLength: 8 }), (ids) => {
-      const body = changed(retry(), "retry.outputIndexes", ids);
-      expect(miniToolSubmissionSchema.parse(body)).toEqual(body);
-      expect(miniToolSubmissionSchema.safeParse(changed(body, "retry.outputIndexes", [...ids, ids[0]])).success).toBe(false);
-    }), { seed: 130605, numRuns: 32 });
+  // frames-split §7.19: a run is rerun only as a whole; a submission that names outputs of an earlier run is refused.
+  it("S5-Q04 refuses a submission that names failed outputs of an earlier run", () => {
+    expect(miniToolSubmissionSchema.safeParse(retry()).success).toBe(false);
   });
 });

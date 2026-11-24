@@ -6,9 +6,8 @@ import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import { createPgClient, initCore, loadLocales } from "@breatic/core";
 import type { MiniToolExecutionRecord } from "@breatic/shared/mini-tools";
 import {
-  miniToolExecutionService, upstreamStepRepo, recordMiniToolStepResult, recordMiniToolConsumption,
+  miniToolExecutionService, runningSlotService, upstreamStepRepo, recordMiniToolStepResult, recordMiniToolConsumption,
   openMiniToolConsumption, completeMiniToolConsumptionSet, settleMiniToolCharge,
-  type MiniToolExecutionCompletion,
 } from "@domain/index.js";
 import { executionSnapshot, seedExecution, storeExecutionFixture, type ExecutionFixture } from "./execution-lifecycle-fixtures.js";
 import {
@@ -120,21 +119,16 @@ describe("planned lifecycle start and complete media-index transaction (W15/M)",
     c.outputs[0]!.result = { ...f.registered, assetId: randomUUID(), contentHash: "e".repeat(64), canonicalURL: "https://assets.example.test/video/other.webm" };
     await expect(miniToolExecutionService.finishMiniToolExecution(f.taskId, c)).rejects.toBeInstanceOf(Error); expect(await executionSnapshot(pg, f)).toEqual(before);
   });
-  it("M06 preserves first failed parent/error while publishing valid original late media as version2", async () => {
-    const f = await seedExecution(pg); await returned(f); await terminal(f, true);
-    const r = await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, false, 1));
-    expect(r.record).toMatchObject({ status: "failed", resultVersion: 2, error: ERROR, outputs: [{ ...f.plan.outputs[0], result: f.registered, late: true }] });
-    expect((await executionSnapshot(pg, f)).status).toBe("failed");
+  // frames-split §7.19: a run is one whole; once it failed, nothing is registered onto it late.
+  it("M06 refuses registered media on a failed run without a write", async () => {
+    const f = await seedExecution(pg); await returned(f); await terminal(f, true); const before = await executionSnapshot(pg, f);
+    await expect(miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, false, 1))).rejects.toBeInstanceOf(Error);
+    expect(await executionSnapshot(pg, f)).toEqual(before);
   });
-  it("M07 observes both late CAS contenders parked on the actual task lock", async () => {
-    const f = await seedExecution(pg); await returned(f); await terminal(f, true);
-    let release!: () => void; let entered!: () => void; const gate = new Promise<void>((r) => { release = r; }); const ready = new Promise<void>((r) => { entered = r; });
-    const owner = pg.begin(async (tx) => { await tx`SELECT id FROM tasks WHERE id=${f.taskId} FOR UPDATE`; entered(); await gate; }); await ready;
-    const a = miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, false, 1)); const b = miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, false, 1));
-    void a.catch(() => undefined); void b.catch(() => undefined);
-    try { await waitUntilBlockedOn(pg, ["tasks", "for update"], 2); release(); await owner;
-      const results = await Promise.all([a, b]); expect(results.map((r) => r.record.resultVersion)).toEqual([2, 2]); expect((await publicRecord(f)).resultVersion).toBe(2);
-    } finally { release(); await owner; await Promise.allSettled([a, b]); }
+  it("M06 refuses a failed completion that still carries a registered output", async () => {
+    const f = await seedExecution(pg, "running"); const before = await executionSnapshot(pg, f);
+    await expect(miniToolExecutionService.finishMiniToolExecution(f.taskId, { ...completion(f), error: ERROR })).rejects.toBeInstanceOf(Error);
+    expect(await executionSnapshot(pg, f)).toEqual(before);
   });
   it.each(["completed", "failed"] as const)("W15 repeats start on %s without erasing original fees, media or siblings", async (failedStatus) => {
     const f = await seedExecution(pg); const r = await terminal(f, failedStatus === "failed");
@@ -237,91 +231,150 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
   });
 });
 
-// §93 D5-11 (frames-split design §7.11 line 616 「registered，非终态提交」, line 622 「worker每次轮询把新完成产物做非终态提交，全部
-// 产物结束后做一次终态提交」, §10.8 失败与提交): the execution service gains a non-terminal commit of newly finished outputs,
-// arbitrated by resultVersion like the terminal one, never rewriting a committed result, at most one registration per
-// output. This round's choice of its name and input (may be vetoed): `commitMiniToolExecutionProgress(taskId,
-// { planFingerprint, expectedVersion, outputs })`, the complete indexed mapping with `result: null` for outputs still pending.
-describe("non-terminal progress commits (§93 D5-11)", () => {
-  type Progress = { planFingerprint: string; expectedVersion: number; outputs: MiniToolExecutionCompletion["outputs"] };
+// frames-split §7.19 提交点: once every output is reported, the run writes its commit point under the execution record lock,
+// in three cases: a running record without one takes it; a record that has one keeps it and goes on registering; any
+// other state stops. Past it, only the completed commit of every registered output ends the run, and the failure exits
+// refuse it.
+describe("the commit point (frames-split §7.19)", () => {
+  type Marked = { state: "committed" | "ended"; record: MiniToolExecutionRecord };
   /** The new entry, read at call time so its absence fails each case on its own. @returns It. */
-  function commit(): (taskId: string, progress: Progress) => Promise<{ record: MiniToolExecutionRecord }> {
-    const fn = (miniToolExecutionService as unknown as Record<string, unknown>).commitMiniToolExecutionProgress;
-    expect(fn, "commitMiniToolExecutionProgress is exported from the execution service").toBeTypeOf("function");
-    return fn as (taskId: string, progress: Progress) => Promise<{ record: MiniToolExecutionRecord }>;
+  function mark(): (taskId: string) => Promise<Marked> {
+    const fn = (miniToolExecutionService as unknown as Record<string, unknown>).markMiniToolExecutionCommitPoint;
+    expect(fn, "markMiniToolExecutionCommitPoint is exported from the execution service").toBeTypeOf("function");
+    return fn as (taskId: string) => Promise<Marked>;
   }
-  /** A progress commit of the fixture's registered output. @returns It. */
-  function progress(f: ExecutionFixture, expectedVersion = 0): Progress {
-    return { planFingerprint: f.plan.planFingerprint, expectedVersion, outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }] };
+  /** The stored commit point. @returns It, or undefined. */
+  async function stored(f: ExecutionFixture): Promise<unknown> {
+    return ((await executionSnapshot(pg, f)).result.miniToolExecution as Record<string, unknown>).commitPoint;
   }
 
-  it("NP01 commits a newly registered output while the run stays running and unbilled", async () => {
+  it("CP01 a running record takes its commit point while the task row stays running", async () => {
     const f = await seedExecution(pg, "running");
-    const { record } = await commit()(f.taskId, progress(f));
-    expect(record).toEqual({ ...f.record, status: "running", resultVersion: 1, outputs: progress(f).outputs });
+    const marked = await mark()(f.taskId);
+    expect(marked.state).toBe("committed");
+    expect(marked.record).toEqual({ ...f.record, status: "running", commitPoint: expect.any(String) });
+    expect(Number.isNaN(Date.parse(marked.record.commitPoint!))).toBe(false);
     const row = await executionSnapshot(pg, f);
-    expect({ status: row.status, completed_at: row.completed_at, billed_at: row.billed_at, error_message: row.error_message })
-      .toEqual({ status: "running", completed_at: null, billed_at: null, error_message: null });
-    expect(await publicRecord(f)).toEqual(record);
+    expect({ status: row.status, completed_at: row.completed_at, error_message: row.error_message }).toEqual({ status: "running", completed_at: null, error_message: null });
+    expect(await stored(f)).toBe(marked.record.commitPoint);
   });
 
-  it("NP02 a pending output stays pending: a progress commit with nothing new changes nothing", async () => {
-    const f = await seedExecution(pg, "running"); const before = await executionSnapshot(pg, f);
-    const { record } = await commit()(f.taskId, { ...progress(f), outputs: [{ ...f.plan.outputs[0]!, result: null, late: false }] });
-    expect(record).toEqual({ ...f.record, status: "running" });
+  it("CP02 a record past its commit point keeps it and goes on registering", async () => {
+    const f = await seedExecution(pg, "running"); const first = await mark()(f.taskId); const before = await executionSnapshot(pg, f);
+    const again = await mark()(f.taskId);
+    expect(again).toEqual(first);
     expect(await executionSnapshot(pg, f)).toEqual(before);
   });
 
-  it("NP03 a stale resultVersion is refused without a write", async () => {
-    const f = await seedExecution(pg, "running"); await commit()(f.taskId, progress(f));
+  it.each(["failed", "cancelled", "completed"] as const)("CP03 a %s run takes no commit point and writes nothing", async (status) => {
+    const f = await seedExecution(pg, "running"); if (status === "completed") await terminal(f); else await terminal(f, true);
+    if (status === "cancelled") await pg`UPDATE tasks SET status='cancelled' WHERE id=${f.taskId}`;
     const before = await executionSnapshot(pg, f);
-    const contender = { ...progress(f), outputs: [{ ...f.plan.outputs[0]!, result: { status: "failed" as const, error: ERROR }, late: false }] };
-    await expect(commit()(f.taskId, contender)).rejects.toBeInstanceOf(Error);
+    expect((await mark()(f.taskId)).state).toBe("ended");
     expect(await executionSnapshot(pg, f)).toEqual(before);
   });
 
-  it("NP04 repeating the same registration is idempotent: no second registration and no version change", async () => {
-    const f = await seedExecution(pg, "running"); const first = await commit()(f.taskId, progress(f)); const before = await executionSnapshot(pg, f);
-    expect((await commit()(f.taskId, progress(f, 1))).record).toEqual(first.record);
+  it("CP04 a pending run takes no commit point", async () => {
+    const f = await seedExecution(pg, "pending"); const before = await executionSnapshot(pg, f);
+    expect((await mark()(f.taskId)).state).toBe("ended");
     expect(await executionSnapshot(pg, f)).toEqual(before);
   });
 
-  it("NP05 a committed result is never rewritten, by another registration or by a failure", async () => {
-    const f = await seedExecution(pg, "running"); await commit()(f.taskId, progress(f)); const before = await executionSnapshot(pg, f);
-    const other = { ...progress(f, 1), outputs: [{ ...f.plan.outputs[0]!, late: false,
-      result: { ...f.registered, assetId: randomUUID(), contentHash: "e".repeat(64), canonicalURL: "https://assets.example.test/video/other.webm" } }] };
-    await expect(commit()(f.taskId, other)).rejects.toBeInstanceOf(Error);
-    await expect(commit()(f.taskId, { ...progress(f, 1), outputs: [{ ...f.plan.outputs[0]!, result: { status: "failed", error: ERROR }, late: false }] })).rejects.toBeInstanceOf(Error);
+  it("CP05 past the commit point the completed commit of every registered output ends the run and drops the commit point", async () => {
+    const f = await seedExecution(pg, "running"); await mark()(f.taskId);
+    const { record } = await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f));
+    expect(record).toMatchObject({ status: "completed", resultVersion: 1, error: null, outputs: completion(f).outputs });
+    expect(record).not.toHaveProperty("commitPoint");
+    const row = await executionSnapshot(pg, f);
+    expect(row.status).toBe("completed"); expect(row.completed_at).toEqual(expect.any(String));
+  });
+
+  it("CP06 past the commit point a failed commit is refused without a write", async () => {
+    const f = await seedExecution(pg, "running"); await mark()(f.taskId); const before = await executionSnapshot(pg, f);
+    await expect(miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, true))).rejects.toBeInstanceOf(Error);
     expect(await executionSnapshot(pg, f)).toEqual(before);
   });
 
-  it("NP06 a registration that is not the canonical winner is refused like the terminal commit's", async () => {
-    const f = await seedExecution(pg, "running"); const before = await executionSnapshot(pg, f);
-    await expect(commit()(f.taskId, { ...progress(f), outputs: [{ ...f.plan.outputs[0]!, late: false, result: { ...f.registered, size: f.registered.size + 1 } }] })).rejects.toBeInstanceOf(Error);
+  it("CP07 past the commit point an admission failure is refused without a write", async () => {
+    const f = await seedExecution(pg, "running"); await mark()(f.taskId); const before = await executionSnapshot(pg, f);
+    await expect(miniToolExecutionService.failMiniToolExecutionAdmission(f.taskId, ERROR)).rejects.toBeInstanceOf(Error);
     expect(await executionSnapshot(pg, f)).toEqual(before);
   });
 
-  it("NP07 the one terminal commit after progress keeps the committed output and ends the run", async () => {
-    const f = await seedExecution(pg, "running"); await commit()(f.taskId, progress(f));
-    const { record } = await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, false, 1));
-    expect(record).toMatchObject({ status: "completed", resultVersion: 2, outputs: progress(f).outputs, error: null });
-    expect((await executionSnapshot(pg, f)).status).toBe("completed");
+  it("CP08 past the commit point failing the task outside the run is refused and rolled back", async () => {
+    const f = await seedExecution(pg, "running"); await mark()(f.taskId); const before = await executionSnapshot(pg, f);
+    await expect(runningSlotService.failTask(f.taskId, "internal")).rejects.toBeInstanceOf(Error);
+    expect(await executionSnapshot(pg, f)).toEqual(before);
   });
 
-  // §93 D6 (frames-split design §7.11 「registered，非终态提交」, §10.8 失败与提交): the progress commit establishes the delivery
-  // slot of each newly registered output in the same transaction, so the worker can deliver it before the run ends.
-  it("NP09 a progress commit opens a pending delivery slot for the newly registered output in its own transaction", async () => {
+  it("CP09 concurrent commit points under the record lock agree on one instant", async () => {
+    const f = await seedExecution(pg, "running"); const commit = mark();
+    let release!: () => void; let entered!: () => void; const gate = new Promise<void>((r) => { release = r; }); const ready = new Promise<void>((r) => { entered = r; });
+    const owner = pg.begin(async (tx) => { await tx`SELECT id FROM tasks WHERE id=${f.taskId} FOR UPDATE`; entered(); await gate; }); await ready;
+    const a = commit(f.taskId); const b = commit(f.taskId); void a.catch(() => undefined); void b.catch(() => undefined);
+    try {
+      await waitUntilBlockedOn(pg, ["tasks", "for update"], 2); release(); await owner;
+      const [x, y] = await Promise.all([a, b]);
+      expect([x.state, y.state]).toEqual(["committed", "committed"]); expect(x.record.commitPoint).toBe(y.record.commitPoint);
+    } finally { release(); await owner; await Promise.allSettled([a, b]); }
+  });
+
+  it("CP10 the execution service no longer takes a per-output progress commit", () => {
+    expect((miniToolExecutionService as unknown as Record<string, unknown>).commitMiniToolExecutionProgress).toBeUndefined();
+  });
+});
+
+// frames-split §7.19 授权作废与对象回收: every terminal voids what is left of the run's unconsumed output grants in its own
+// transaction; a consumed grant stays consumed.
+describe("output grants at the run's end (frames-split §7.19)", () => {
+  /** Seed one output grant of the run. @returns Its key. */
+  async function grant(f: ExecutionFixture, consumed = false): Promise<string> {
+    const key = `video/grant/${randomUUID()}.mp4`;
+    await pg`INSERT INTO upload_grants (user_id,studio_id,storage_key,declared_size,expires_at,project_id,generation_task_id,consumed_at)
+      VALUES (${f.userId},${f.studioId},${key},1,now() + interval '2 hours',${f.projectId},${f.taskId},${consumed ? pg`now()` : null})`;
+    return key;
+  }
+  /** One grant's terminal fields. @returns Them. */
+  async function state(key: string): Promise<{ voided: boolean; consumed: boolean; reason: string | null }> {
+    const [row] = await pg<{ voided: boolean; consumed: boolean; reason: string | null }[]>`
+      SELECT voided_at IS NOT NULL AS voided, consumed_at IS NOT NULL AS consumed, failure_reason AS reason FROM upload_grants WHERE storage_key=${key}`;
+    return row!;
+  }
+
+  it.each([[false, "completed"], [true, "failed"]] as const)("GV01 a run ending %s voids its unconsumed grants and keeps the consumed one", async (failed, status) => {
+    const f = await seedExecution(pg, "running"); const open = await grant(f); const used = await grant(f, true);
+    expect((await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, failed))).record.status).toBe(status);
+    expect(await state(open)).toMatchObject({ voided: true, consumed: false });
+    expect(await state(used)).toEqual({ voided: false, consumed: true, reason: null });
+  });
+
+  it("GV02 an admission failure voids the run's unconsumed grants", async () => {
+    const f = await seedExecution(pg, "running"); const open = await grant(f);
+    await miniToolExecutionService.failMiniToolExecutionAdmission(f.taskId, ERROR);
+    expect(await state(open)).toMatchObject({ voided: true });
+  });
+
+  it.each(["cancel", "fail"] as const)("GV03 a waiting run ended outside the worker (%s) voids its unconsumed grants", async (how) => {
+    const f = await seedExecution(pg, "pending"); const open = await grant(f);
+    if (how === "cancel") await runningSlotService.cancelQueued(f.taskId); else await runningSlotService.failTask(f.taskId, "internal");
+    expect(await state(open)).toMatchObject({ voided: true });
+  });
+
+  it("GV04 a grant of another task is untouched", async () => {
+    const f = await seedExecution(pg, "running"); const other = await seedExecution(pg, "running"); const theirs = await grant(other);
+    await miniToolExecutionService.finishMiniToolExecution(f.taskId, completion(f, true));
+    expect(await state(theirs)).toEqual({ voided: false, consumed: false, reason: null });
+  });
+});
+
+// frames-split §7.19 作业开启: once a run has ended, opening a container job is refused in the same transaction under the
+// same task lock (consumption-producer.service.ts openMiniToolConsumption), so no plan job, meter or job is left behind.
+describe("opening a container job after the run ended (frames-split §7.19)", () => {
+  it.each(["failed", "cancelled"] as const)("OJ01 a %s run opens no job and leaves no plan job or consumption on the step", async (status) => {
     const f = await seedExecution(pg, "running");
-    await rejectWrite(f, "public", async () => { await expect(commit()(f.taskId, progress(f))).rejects.toBeInstanceOf(Error); });
-    expect((await executionSnapshot(pg, f)).result.miniToolDelivery).toBeUndefined();
-    await commit()(f.taskId, progress(f));
-    expect((await executionSnapshot(pg, f)).result.miniToolDelivery).toEqual({ schemaVersion: 1, planFingerprint: f.plan.planFingerprint, version: 1,
-      outputs: [{ outputIndex: 0, state: "pending" }], lastErrorCode: null });
-  });
-
-  it("NP08 a progress commit after the terminal one is refused", async () => {
-    const f = await seedExecution(pg); await terminal(f); const before = await executionSnapshot(pg, f);
-    await expect(commit()(f.taskId, progress(f, 1))).rejects.toBeInstanceOf(Error);
-    expect(await executionSnapshot(pg, f)).toEqual(before);
+    await pg`UPDATE tasks SET status=${status},completed_at=clock_timestamp() WHERE id=${f.taskId}`;
+    await expect(identity(f)).rejects.toBeInstanceOf(Error);
+    const steps = await pg<{ output: Record<string, unknown> | null }[]>`SELECT output FROM task_upstream_steps WHERE task_id=${f.taskId}`;
+    expect(steps.map((step) => [step.output?.miniToolPlanJob, step.output?.miniToolConsumption])).toEqual(steps.map(() => [undefined, undefined]));
   });
 });

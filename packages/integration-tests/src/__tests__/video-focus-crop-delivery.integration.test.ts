@@ -71,7 +71,7 @@ async function seedCrop(nodeStatus: NodeStatus = "running", outcome: "registered
   if (outcome === "registered") {
     // The real finish writes the manifest and record shapes; the plan is rewritten to the crop right after.
     await miniToolExecutionService.finishMiniToolExecution(f.taskId, { planFingerprint: f.plan.planFingerprint, expectedVersion: 0,
-      outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: false }], error: null });
+      outputs: [{ ...f.plan.outputs[0]!, result: f.registered }], error: null });
   }
   const assetId = randomUUID(); const canonicalURL = `https://assets.example.test/image/focus/${assetId}.png`;
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,generation_task_id,width,height)
@@ -91,13 +91,13 @@ async function seedCrop(nodeStatus: NodeStatus = "running", outcome: "registered
     const record = row!.record;
     record.planFingerprint = plan.planFingerprint;
     record.outputs = [{ ...record.outputs[0], ...plan.outputs[0] as object, result: { status: "registered", assetId, canonicalURL, kind: "image", contentHash: "c".repeat(64),
-      mimeType: "image/png", size: 20480, width: 960, height: 540, duration: null, cover: null }, late: false }];
+      mimeType: "image/png", size: 20480, width: 960, height: 540, duration: null, cover: null } }];
     const delivery = { schemaVersion: 1, planFingerprint: plan.planFingerprint, version: 1, outputs: [{ outputIndex: 0, state: "pending" }], lastErrorCode: null };
     await pg`UPDATE tasks SET result=result || ${pg.json({ miniToolExecution: record, miniToolDelivery: delivery })} WHERE id=${f.taskId}`;
   }
   else {
     // The unfinished record maps the crop's one output, still pending.
-    const record = { ...f.record, planFingerprint: plan.planFingerprint, outputs: [{ ...plan.outputs[0] as object, result: null, late: false }] };
+    const record = { ...f.record, planFingerprint: plan.planFingerprint, outputs: [{ ...plan.outputs[0] as object, result: null }] };
     await pg`UPDATE tasks SET result=result || ${pg.json({ miniToolExecution: record })} WHERE id=${f.taskId}`;
   }
   const startedAt = new Date(Date.now() - (nodeStatus === "expired" ? getNodeTaskConfig().default_budget_ms + 1 : 0));
@@ -274,7 +274,7 @@ describe("video focus crop delivery appends to the panel node (design §5.5 交�
   it("FI06 a failed crop settles the panel node's row failed and appends nothing", async () => {
     const f = await seedCrop("running", "unfinished");
     await finishMiniToolExecutionAndNotify(f.taskId, { planFingerprint: f.planFingerprint, expectedVersion: 0,
-      outputs: [{ outputIndex: 0, nodeId: f.panelNodeId, recipe: { kind: "frame", frameIndex: 42, crop: CROP }, result: failedResult("mini_tool_failed"), late: false } as never], error: null }, getStreamRedis());
+      outputs: [{ outputIndex: 0, nodeId: f.panelNodeId, recipe: { kind: "frame", frameIndex: 42, crop: CROP }, result: failedResult("mini_tool_failed") } as never], error: null }, getStreamRedis());
     expect([...await pg`SELECT status FROM node_tasks WHERE task_id=${f.taskId}`]).toEqual([{ status: "failed" }]);
     const published = await events(f);
     expect(published.some((entry) => "focusImageAppend" in entry.payload)).toBe(false);
