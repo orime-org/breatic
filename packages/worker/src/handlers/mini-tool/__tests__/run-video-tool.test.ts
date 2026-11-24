@@ -161,7 +161,7 @@ function asset(key: string, video: boolean): StudioAssetEntity {
  * @param input - The open-job input.
  * @returns The staged job.
  */
-async function advance(input: OpenMiniToolPlanJobInput): Promise<{ request: MiniToolPlanJobRequest; report: unknown }> {
+async function advance(input: OpenMiniToolPlanJobInput): Promise<{ request: MiniToolPlanJobRequest; report: unknown; refused: null }> {
   const step = steps.find((item) => item.id === input.stepId);
   if (step === undefined) throw new Error("Fixture advance lost its step");
   const request = (step.output.miniToolPlanJob as MiniToolPlanJobRequest | undefined) ?? input.request;
@@ -182,7 +182,7 @@ async function advance(input: OpenMiniToolPlanJobInput): Promise<{ request: Mini
   step.output = { ...step.output, miniToolStep: { schemaVersion: 1, scope: { taskId: TASK, stepId: step.id, kind: "container_job", endpoint: step.endpoint, itemIndex: step.itemIndex },
     deadlineAt: request.deadlineAt, requestBody: null, requestFingerprint: null, chargeTo: input.chargeTo, creditMultiplier: 1, attempts: [],
     result: { outcome: state, result: report, error: state === "failed" ? { code: "tool_failed" } : null }, error: null, conflicts: [] } };
-  return { request, report };
+  return { request, report, refused: null };
 }
 
 /**

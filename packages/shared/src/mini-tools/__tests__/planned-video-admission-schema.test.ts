@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { describe, expect, it } from "vitest";
-import fc from "fast-check";
 import { miniToolPlannedRequestSchema, miniToolSubmissionSchema } from "../planned-request-schema.js";
 
 const RUN = "50000000-0000-4000-8000-000000000001";

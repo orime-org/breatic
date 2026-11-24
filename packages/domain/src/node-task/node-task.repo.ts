@@ -225,6 +225,15 @@ function notWaitingForSlot(): SQL {
 }
 
 /**
+ * A row that is not a planned video tool run's while that run is still open: such a run alone decides its end (worker
+ * pickup, failed-job cleanup, sweep), and its terminal commit settles every row of it at once (frames-split §7.19).
+ * @returns The condition.
+ */
+function notOpenPlannedRun(): SQL {
+  return sql`not exists (select 1 from ${tasks} where ${tasks.id} = ${nodeTasks.taskId} and ${tasks.status} in ('pending', 'running') and ${tasks.source} = 'mini_tool' and ${tasks.params} ? 'miniToolExecution')`;
+}
+
+/**
  * Move every row on one node that outran its budget to `expired`.
  *
  * This is the whole of judging a task dead (#186, design §4.6): there is no
@@ -258,6 +267,7 @@ export async function harvestExpired(
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
         notWaitingForSlot(),
+        notOpenPlannedRun(),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )
@@ -582,6 +592,7 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
         isNull(nodeTasks.deletedAt),
         eq(nodeTasks.status, "running"),
         notWaitingForSlot(),
+        notOpenPlannedRun(),
         sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
       ),
     )

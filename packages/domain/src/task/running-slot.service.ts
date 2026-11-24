@@ -260,7 +260,8 @@ async function judgeExecution(row: { id: string; actorUserId: string; createdAt:
  * @returns The signals that failed.
  */
 async function closeFailed(row: taskRepo.GateTaskRow): Promise<unknown[]> {
-  await creditHoldRepo.releaseHold(row.id);
+  // A run whose settlement period is open releases its hold in its settlement's own transaction (settleMiniToolCharge).
+  if (!row.settling) await creditHoldRepo.releaseHold(row.id);
   return (await failRows(row.id, row.errorMessage ?? "internal", "internal")).publishFailures;
 }
 
@@ -375,7 +376,9 @@ export async function failTask(taskId: string, errorMessage: string): Promise<{ 
     if (moved) await endMiniToolOutsideRun(taskId, tx);
     return moved;
   });
-  return { failed, publishFailures: (await failRows(taskId, errorMessage, "internal")).publishFailures };
+  // The rows end with the reason the task row stores, so a cancel that committed first leaves them cancelled.
+  const ended = await taskRepo.findForGate(taskId);
+  return { failed, publishFailures: (await failRows(taskId, ended?.errorMessage ?? errorMessage, "internal")).publishFailures };
 }
 
 /**

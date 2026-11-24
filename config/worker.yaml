@@ -76,6 +76,14 @@ slot_wait_max_delay_ms: 30000
 slot_wait_sweep_interval_ms: 60000
 # How many stale waiters one round of that sweep looks at.
 slot_wait_sweep_batch_size: 200
+# ── Planned video tool run sweep (frames-split §7.19) ──
+# How often the sweep for planned runs whose job will not pick them up again runs.
+planned_run_sweep_interval_ms: 60000
+# How many running and how many pending planned runs one round looks at.
+planned_run_sweep_batch_size: 200
+# How old a pending planned run that never waited must be before its job is
+# read, so a run whose rows are open and whose job is still being queued is left alone.
+planned_run_sweep_grace_ms: 300000
 # How long a pickup tries for the person's gate lock, held only for the
 # milliseconds another pickup of theirs counts, before it goes back to the
 # queue for one poll interval without writing anything.

@@ -708,6 +708,20 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
 }
 
 /**
+ * Why a measured object is refused whatever it is: over the upload cap, or nothing arrived (a provider that answers 200
+ * with no body, a transport that hands back an empty buffer). The object is already in storage, so a refusal leaves it
+ * for the voided grant to name as an orphan. A video tool run checks its staged outputs with this before its done report
+ * is written (frames-split §7.19).
+ * @param sizeBytes - What the Worker measured.
+ * @returns The refusal, or null.
+ * @throws {never} Never.
+ */
+export function ingestReportRefusal(sizeBytes: number): "over_cap" | "empty" | null {
+  if (sizeBytes > getStorageConfig().upload.max_upload_bytes) return "over_cap";
+  return sizeBytes === 0 ? "empty" : null;
+}
+
+/**
  * Apply one report from the ingest Worker.
  * @param report - What happened to this upload.
  * @param options - Trusted parent presentation budget and channel hint.
@@ -741,24 +755,9 @@ export async function applyIngestReport(
   // The declared size got the ticket issued; this is the first time anyone has
   // measured what actually arrived. The object is already in storage, so this
   // refusal leaves it there and lets the voided grant name it as an orphan.
-  const { upload } = getStorageConfig();
   const sizeBytes = report.sizeBytes;
-  if (sizeBytes > upload.max_upload_bytes) {
-    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason: "over_cap" }));
-  }
-
-  // Nothing arrived. A provider that answers 200 with no body, or a transport
-  // that hands back an empty buffer, produces a completed report of zero bytes
-  // — and registering that would put an empty object on the node and let the
-  // generation reach its charge. Every one of these is either an address that
-  // answered with nothing in it, or a backend upload opened for bytes it
-  // expected to exist. A browser delivery is stopped a step
-  // earlier, where the Worker refuses a final part carrying no bytes
-  // (`packages/ingest/src/part-layout.ts`), and that refusal reaches the node
-  // the ordinary way.
-  if (sizeBytes === 0) {
-    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason: "empty" }));
-  }
+  const refused = ingestReportRefusal(sizeBytes);
+  if (refused !== null) return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason: refused }));
 
   const kind = assetService.detectAssetKind(contentType);
   // A picture turned upright is filed as its upright copy (inner#1367 §4.5).

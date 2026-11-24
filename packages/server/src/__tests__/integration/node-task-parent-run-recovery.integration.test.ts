@@ -12,7 +12,7 @@ import {
 } from "@breatic/core";
 import { miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import {
-  miniToolExecutionService, modelCatalog, nodeHistoryService, nodeTaskService, openMiniToolPlanJob, upstreamStepRepo, initProvider,
+  miniToolExecutionService, modelCatalog, nodeHistoryService, nodeTaskService, openMiniToolPlanJob, runningSlotService, upstreamStepRepo, initProvider,
 } from "@breatic/domain";
 import { miniToolPlanJobRequestSchema, type NodeTaskEntry } from "@breatic/shared";
 import * as nodeTaskRepo from "../../../../domain/src/node-task/node-task.repo.js";
@@ -106,6 +106,8 @@ async function admitted(): Promise<ExecutionFixture> {
     analysis_refs: [], outputs: [{ outputIndex: 0, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: 0, end: 1011 } } }] } as MiniToolPlannedRequest;
   const response = await app.request("/api/v1/mini-tools", { method: "POST", headers: { Cookie: await cookie(f.userId), "Content-Type": "application/json", "Idempotency-Key": randomUUID() }, body: JSON.stringify(body) });
   expect(response.status).toBe(201); expect(await response.json()).toEqual({ data: { task_id: body.run_id, status: "pending" } });
+  // The running-task gate starts a pending task before its pickup does (inner#1968).
+  await runningSlotService.startWithinLimit({ id: body.run_id, jobId: body.run_id });
   const context = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
   const plan = context.execution;
   const record = await miniToolExecutionService.getMiniToolExecution(f.projectId, body.run_id, viewerId);
@@ -181,10 +183,10 @@ describe("node-task parent-run recovery through original persistent owners", () 
     expect(response.status).toBe(200); expect((await list(f)).rows).toEqual([expect.objectContaining({ id: remaining, taskId: f.taskId })]);
     expect((await parentGet(f)).status).toBe(200); expect(await pg`SELECT id FROM node_history WHERE id=${history.id}`).toHaveLength(1);
   });
-  it("N08 harvest expires the row while retaining its parent identity and original parent state", async () => {
+  it("N08 harvest leaves the row of an open planned run to the run itself (frames-split §7.19)", async () => {
     const f = await seedExecution(pg); const id = await open(f);
     await pg`UPDATE node_tasks SET started_at=now()-((budget_ms+1000)*interval '1 millisecond') WHERE id=${id}`;
-    const result = await list(f); expect(result.response.status).toBe(200); expect(result.rows).toEqual([expect.objectContaining({ id, taskId: f.taskId, status: "expired" })]);
+    const result = await list(f); expect(result.response.status).toBe(200); expect(result.rows).toEqual([expect.objectContaining({ id, taskId: f.taskId, status: "running" })]);
     expect((await executionSnapshot(pg, f)).status).toBe("pending");
   });
   it.each([false, true])("N09 current viewer/archived member reads the original run without actor authority (archived=%s)", async (archived) => {

@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { DelayedError, type Job } from "bullmq";
-import { AppError, getMiniToolsConfig, getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
-import { failureOutcome, miniToolExecutionService,
+import { AppError, budgetDeadlineFrom, getMiniToolsConfig, getStreamRedis, getWorkerConfig, logger } from "@breatic/core";
+import { failureOutcome, miniToolExecutionService, type AcceptedMiniToolExecution,
   type MiniToolExecutionCompletion, type MiniToolExecutionJob } from "@breatic/domain";
 import { DeadlinePassed } from "@breatic/shared";
 import { isTerminalAttempt, verifyJobLockOwnership } from "@worker/handlers/dispatch.js";
-import { commitMiniToolExecutionProgress, finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
+import { finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
 import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { runMiniToolVideoTool, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
+import { registerReportedOutputs, runMiniToolVideoTool, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
@@ -17,11 +17,44 @@ import { passRunningGate } from "@worker/handlers/running-gate.js";
 import { MiniToolStepFailed } from "@worker/handlers/mini-tool/step-failed.js";
 
 /**
- * Run one planned pickup through its original SQL-owned lifecycle.
+ * Every output of a run failed with one error, as a run fails whole (frames-split §7.19).
+ * @param execution - The frozen run.
+ * @param expectedVersion - The record version the commit was read at.
+ * @param error - The run's first failure.
+ * @returns The completion.
+ * @throws {never} Never.
+ */
+export function failedCompletion(execution: AcceptedMiniToolExecution, expectedVersion: number, error: NonNullable<MiniToolExecutionCompletion["error"]>): MiniToolExecutionCompletion {
+  return { planFingerprint: execution.planFingerprint, expectedVersion, error,
+    outputs: execution.outputs.map((output) => ({ ...output, result: { status: "failed", error } })) };
+}
+
+/**
+ * Register every staged output of a run past its commit point and compose its completed commit (frames-split §7.19): the
+ * presentation deadline of a video output counts from this registration.
+ * @param execution - The frozen run.
+ * @param expectedVersion - The record version the commit was read at.
+ * @returns The completion.
+ * @throws {Error} When a registration fails; past the commit point the throw goes back to the queue.
+ */
+export async function completedCompletion(execution: AcceptedMiniToolExecution, expectedVersion: number): Promise<MiniToolExecutionCompletion> {
+  const results = await registerReportedOutputs(execution, budgetDeadlineFrom(Date.now()));
+  return { planFingerprint: execution.planFingerprint, expectedVersion, error: null,
+    outputs: execution.outputs.map((output) => {
+      const result = results.get(output.outputIndex);
+      if (result === undefined) throw new Error("A run past its commit point has an output with no registration");
+      return { ...output, result };
+    }) };
+}
+
+/**
+ * Run one planned pickup through its original SQL-owned lifecycle (frames-split §7.19): it stages what its jobs report; the
+ * first output that fails for good fails the run; once every output is reported it writes the commit point, registers every
+ * output and commits completed once. Past the commit point a throw goes back to the queue whatever the attempt or deadline.
  * @param job - The queue delivery of the accepted execution.
  * @param token - This pickup's existing queue-lock token.
  * @returns The pickup marker after persistence and permitted notifications.
- * @throws {Error} When initialization or a pre-return retry belongs to the queue.
+ * @throws {Error} When initialization, a registration past the commit point or a pre-return retry belongs to the queue.
  */
 export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, token?: string): Promise<Record<string, unknown>> {
   const taskId = job.data.taskId;
@@ -31,40 +64,31 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
   try {
     // A run first passes the running-task gate (inner#1968 design 3.9); one it finds ended is read as it stands.
     const gate = await passRunningGate(job, token, taskId);
-    const current = await miniToolExecutionService.startMiniToolExecution(taskId, job.id ?? taskId);
-    const { task, execution } = current;
-    // The record the run last read or wrote: progress commits move it within the pickup (§93 D5-11).
-    let record = current.record;
+    const { task, execution, record } = await miniToolExecutionService.startMiniToolExecution(taskId, job.id ?? taskId);
     ctx = { ...ctx, userId: task.userId, projectId: execution.projectId, spaceId: execution.spaceId };
     if (record.status === "cancelled") return { runId: taskId, status: record.status };
     let completion: MiniToolExecutionCompletion;
     if (record.status === "completed" || record.status === "failed") {
-      completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
-        outputs: record.outputs, error: record.error };
+      completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion, outputs: record.outputs, error: record.error };
       returned = true;
+    } else if (record.commitPoint !== undefined) {
+      // Past the commit point the run only completes: registration goes on, whatever the deadline (§7.19).
+      phase = "registration";
+      completion = await completedCompletion(execution, record.resultVersion);
     } else {
       const deadlineAt = await taskDeadline(taskId, gate.outcome === "started" ? gate.started : task.createdAt);
       phase = "computation";
-      // What this pickup settled so far, kept when a later step throws: an output registered here is never shown failed.
-      const settled: VideoToolPickup = { results: new Map(), waiting: false };
+      let pickup: VideoToolPickup | null = null;
+      let failure: NonNullable<MiniToolExecutionCompletion["error"]> | null = null;
       // No run-level deadline check: a pickup after the deadline still reads every job submitted before it, while each step
       // whose next attempt is due after it ends expired; only a wait is bounded, by the reporting window below.
       try {
-        const pickup = await runMiniToolVideoTool(execution, task.userId, deadlineAt, settled);
-        const outputs = execution.outputs.map((output, index) => ({ ...output, result: pickup.results.get(output.outputIndex) ?? record.outputs[index]?.result ?? null, late: false }));
-        // Each poll commits what finished non-terminally; the one terminal commit waits for every output (design §7.11, line 622).
-        if (pickup.waiting || outputs.some((output) => output.result === null)) {
-          const committed = record.outputs.map((output) => output.result?.status === "registered" ? output.result : null);
-          const registeredNow = outputs.map((output) => output.result?.status === "registered" ? output.result : null);
-          if (registeredNow.some((result, index) => result !== null && committed[index] === null)) {
-            record = (await commitMiniToolExecutionProgress(taskId, { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
-              outputs: outputs.map((output, index) => ({ ...output, result: registeredNow[index] ?? null })) })).record;
-          }
+        pickup = await runMiniToolVideoTool(execution, task.userId, deadlineAt);
+        const first = [...pickup.results.values()].find((result) => result.status === "failed");
+        if (first?.status === "failed") failure = first.error;
+        else if (pickup.waiting || execution.outputs.some((output) => !pickup!.results.has(output.outputIndex))) {
           throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
         }
-        const failed = outputs.find((output) => output.result?.status === "failed");
-        completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion, outputs,
-          error: failed?.result?.status === "failed" ? failed.result.error : null };
       } catch (thrown) {
         // A step still running once the reporting window has closed is never read again: the run ends expired.
         if (thrown instanceof StillRunning && Date.now() < planReportingEnd(deadlineAt)) {
@@ -76,17 +100,18 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
         const error = thrown instanceof DeadlinePassed || failureOutcome(deadlineAt) === "expired" ? new DeadlinePassed() : thrown;
         if (!isTerminalAttempt(job) && !verdictStands(error)) throw error;
         logger.error({ err: thrown, ctx: { ...ctx, phase } }, "mini_tool_execution_computation_failed");
-        const failure: NonNullable<MiniToolExecutionCompletion["error"]> = error instanceof DeadlinePassed ? { code: "expired" }
-            : error instanceof AppError || error instanceof MiniToolStepFailed ? { code: "mini_tool_failed", message: error.message }
-              : { code: "internal" };
-        // Only outputs not yet committed or registered in this pickup fail; a committed result is never rewritten (design line 622).
-        completion = { planFingerprint: execution.planFingerprint, expectedVersion: record.resultVersion,
-          outputs: execution.outputs.map((output, index) => {
-            const held = record.outputs[index]?.result;
-            const now = settled.results.get(output.outputIndex);
-            return { ...output, result: held?.status === "registered" ? held : now?.status === "registered" ? now : { status: "failed", error: failure }, late: false };
-          }),
-          error: failure };
+        failure = error instanceof DeadlinePassed ? { code: "expired" }
+          : error instanceof AppError || error instanceof MiniToolStepFailed ? { code: "mini_tool_failed", message: error.message }
+            : { code: "internal" };
+      }
+      if (failure !== null) completion = failedCompletion(execution, record.resultVersion, failure);
+      else {
+        phase = "commit";
+        const marked = await miniToolExecutionService.markMiniToolExecutionCommitPoint(taskId);
+        // Another path ended the run first: it registers nothing.
+        if (marked.state === "ended") return { runId: taskId, status: marked.record.status };
+        phase = "registration";
+        completion = await completedCompletion(execution, marked.record.resultVersion);
       }
     }
     phase = "ownership";

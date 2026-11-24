@@ -8,16 +8,14 @@ import {
   type MiniToolPlanTarget, type TaskEntity, type TaskStatusType, type VideoPresentationVersion,
 } from "@breatic/shared";
 import {
-  batchVideoRunOutputs, canonicalMiniToolValue, miniToolChargeTo, miniToolTaskType, miniToolPlannedRequestSchema, plannedFailureRetryable, estimateVideoJobSeconds,
-  hashMiniToolValue, miniToolExecutionRequestSchema, planVideoEncodeChunks, plannedStageJobs, planVideoFrames, planVideoSplit, type FramesExecutionLayout,
-  type MiniToolExecutionRequest, type MiniToolExecutionRetryRequest, type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding,
+  batchVideoRunOutputs, canonicalMiniToolValue, miniToolChargeTo, miniToolTaskType, miniToolPlannedRequestSchema, estimateVideoJobSeconds,
+  hashMiniToolValue, planVideoEncodeChunks, plannedStageJobs, planVideoFrames, planVideoSplit, type FramesExecutionLayout,
+  type MiniToolPlannedRequest, type MiniToolPresentationRef, type MiniToolSourceBinding,
   type MiniToolStageJobs, type VideoDecodeKey, type VideoEncodeKey, type VideoEncoderRates, type VideoJobWork,
 } from "@breatic/shared/mini-tools";
 import { resolveSource, toolSourceObjects } from "@domain/mini-tool/analysis.service.js";
 import { selectedToolInput } from "@domain/mini-tool/selected-tool-input.js";
 import { videoEncoderRates } from "@domain/asset/video-encoder-rates.js";
-import { executionPlanFromTask } from "@domain/mini-tool/execution-plan.service.js";
-import { recordFromPlan } from "@domain/mini-tool/execution.service.js";
 import { containerCostUsd } from "@domain/credit/container-cost.js";
 import { creditsForUsd } from "@domain/credit/usage-cost.js";
 import { MIN_TASK_CREDIT_COST } from "@domain/model-catalog/model-catalog.js";
@@ -31,7 +29,7 @@ interface ExecutionPlan {
   binding: MiniToolSourceBinding; sourceKey: string; draft: MiniToolPlannedRequest["draft"];
   analysisRefs: MiniToolPlannedRequest["analysis_refs"]; outputs: MiniToolPlannedRequest["outputs"][number][];
   model: string; credits: number; requestFingerprint: string; planFingerprint: string;
-  /** Who pays, frozen at admission from the platform-funded set; the runner and every retry read it (frames-split §5.5). */
+  /** Who pays, frozen at admission from the platform-funded set; the runner reads it (frames-split §5.5). */
   chargeTo: "platform" | "user";
 }
 /** A frozen standard-4 container policy: class, precheck floor, size, prices and output limits. */
@@ -44,16 +42,15 @@ type FrozenToolInput = {
   presentationRef: MiniToolPresentationRef;
   presentations: Record<"source", VideoPresentationVersion>;
   versionIds: Record<"source", string>;
-  retry?: MiniToolExecutionRetryRequest["retry"];
 };
 /** The original server-owned execution stored under tasks.params.miniToolExecution. */
 export type AcceptedMiniToolExecution = ExecutionPlan & FrozenToolInput & {
   tool: "video.extract-frames" | "video.split" | "video.focus-crop"; layout: FramesExecutionLayout;
   /** The container jobs each stage sends, counted from `layout` at admission (§97 D12-1); absent on plans admitted before. */
   stageJobs?: MiniToolStageJobs[];
-  /** The standard-4 policy and the encoder start seconds every job of the layout pays, frozen so a retry re-quotes from them. */
+  /** The standard-4 policy and the encoder start seconds every job of the layout pays, frozen at admission. */
   container: MiniToolContainerPolicy & { startSeconds: number; encode: { crf: number; preset: MiniToolPlanTarget["preset"] }; chunkRetries: number };
-  /** Each output's planned work in seconds without job start, frozen so a retry re-quotes its subset. */
+  /** Each output's planned work in seconds without job start, frozen at admission. */
   outputSeconds: number[];
 };
 /** The plan facts every tool shares, before its tool-specific fields. */
@@ -80,7 +77,7 @@ const statusSchema = z.enum(TaskStatus);
  * @throws {ConflictError} When lane, actor or request identity differs.
  * @throws {z.ZodError} When the persisted computation status is invalid.
  */
-function replay(task: TaskEntity, request: MiniToolExecutionRequest, userId: string, fingerprint: string): MiniToolExecutionAdmission {
+function replay(task: TaskEntity, request: MiniToolPlannedRequest, userId: string, fingerprint: string): MiniToolExecutionAdmission {
   const identity = replayIdentitySchema.safeParse(task.params.miniToolExecution);
   if (task.source !== "mini_tool" || task.taskType !== miniToolTaskType(request.tool) || task.userId !== userId
     || task.projectId !== request.project_id || task.spaceId !== request.space_id || !identity.success || identity.data.tool !== request.tool
@@ -308,7 +305,7 @@ function framesPlan(request: Extract<MiniToolPlannedRequest, { tool: "video.extr
   assertWithinParallelCap(stageJobs, config);
   const container = { ...containerPolicy(settings.container_class, settings.precheck_seconds, config),
     startSeconds: config.encoding.encoder.start_seconds,
-    // §93 D5-2: the run's encode parameters and retry cap, frozen (§5.4).
+    // §93 D5-2: the run's encode parameters and the server's per-job retry cap, frozen (§5.4).
     encode: { crf: config.presentation.crf, preset: config.presentation.preset }, chunkRetries: config.encoding.chunk_retries };
   const seconds = layoutSeconds(layout, new Map(outputs.map((output, index) => [output.outputIndex, works[index]!])), container.startSeconds);
   const chargeTo = miniToolChargeTo(request.tool);
@@ -360,32 +357,28 @@ export async function quoteMiniToolExecution(body: MiniToolPlannedRequest, userI
 /**
  * Admit or replay one complete execution through the existing task, hold and queue owners. A run that spends credits
  * holds its estimate in the transaction that claims its task row (inner#1968 design 3.10 U9), so a refusal leaves nothing.
- * @param body - Fresh or retry press-frozen inputs.
+ * @param body - The press-frozen inputs.
  * @param userId - The authenticated initiating actor.
  * @param start - Existing application's row and queue adapter; only a durable winner calls it.
  * @param hold - The application's credit admission, asked inside the claim.
  * @returns Original identity and current status.
- * @throws {NotFoundError} When current Project membership or original retry ownership is absent.
+ * @throws {NotFoundError} When current Project membership is absent.
  * @throws {ForbiddenError} When a viewer starts work.
  * @throws {ConflictError} When an identity is occupied or an output already has active execution.
- * @throws {ValidationError} When source, receipt, exact plan or failed subset is invalid.
+ * @throws {ValidationError} When source, receipt or exact plan is invalid.
  * @throws {Error} When preparation, persistence or startup fails.
  */
-export async function acceptMiniToolExecution(body: MiniToolExecutionRequest, userId: string, start: (accepted: AcceptedMiniToolExecution) => Promise<"pending" | "failed">,
+export async function acceptMiniToolExecution(body: MiniToolPlannedRequest, userId: string, start: (accepted: AcceptedMiniToolExecution) => Promise<"pending" | "failed">,
   hold: MiniToolHold): Promise<MiniToolExecutionAdmission> {
-  const request = miniToolExecutionRequestSchema.parse(structuredClone(body));
+  const request = miniToolPlannedRequestSchema.parse(structuredClone(body));
   const role = await projectAuthService.loadProjectRole(userId, request.project_id);
   if (role === null) throw new NotFoundError(t("server.error.not_found"));
   if (role === "viewer") throw new ForbiddenError(t("server.error.forbidden"));
   const fingerprint = await hashMiniToolValue(request);
   const previous = await taskRepo.getMiniToolExecutionTask(request.run_id);
   if (previous !== null) return replay(previous, request, userId, fingerprint);
-  let claim: { accepted: AcceptedMiniToolExecution; inserted: boolean };
-  if ("retry" in request) claim = await claimRetry(request, userId, fingerprint, hold);
-  else {
-    const plan = await prepare(request);
-    claim = await db.transaction((tx) => claimPrepared(plan, request, userId, fingerprint, tx, hold));
-  }
+  const plan = await prepare(request);
+  const claim = await db.transaction((tx) => claimPrepared(plan, request, userId, fingerprint, tx, hold));
   if (!claim.inserted) {
     const winner = await taskRepo.getMiniToolExecutionTask(request.run_id);
     if (winner === null) throw new ConflictError(t("server.idempotency.mismatch"));
@@ -400,7 +393,7 @@ export async function acceptMiniToolExecution(body: MiniToolExecutionRequest, us
 /**
  * Fingerprint and claim a fully verified plan, initializing its public output slots atomically.
  * @param plan - Complete server-owned executable facts.
- * @param request - The fresh or retry identity.
+ * @param request - The run's identity.
  * @param userId - The new execution's actor.
  * @param fingerprint - Complete request fingerprint.
  * @param tx - The admission transaction; the run's execution pin and its credit hold are written in it (§7.15).
@@ -408,101 +401,19 @@ export async function acceptMiniToolExecution(body: MiniToolExecutionRequest, us
  * @returns The frozen plan and whether its task UUID was claimed.
  * @throws {Error} When hashing, task or pin persistence fails, or the hold is refused.
  */
-async function claimPrepared(plan: ExecutionProjection, request: MiniToolExecutionRequest, userId: string, fingerprint: string, tx: DbTx,
+async function claimPrepared(plan: ExecutionProjection, request: MiniToolPlannedRequest, userId: string, fingerprint: string, tx: DbTx,
   hold: MiniToolHold): Promise<{ accepted: AcceptedMiniToolExecution; inserted: boolean }> {
   const accepted: AcceptedMiniToolExecution = { ...plan, requestFingerprint: fingerprint, planFingerprint: await hashMiniToolValue(plan) };
   const inserted = await taskRepo.claimMiniToolExecutionTask({ id: request.run_id, userId, projectId: request.project_id, spaceId: request.space_id,
     taskType: miniToolTaskType(request.tool), model: accepted.model, params: { miniToolExecution: accepted },
     result: { miniToolExecution: { schemaVersion: 1, runId: accepted.taskId, status: "pending", planFingerprint: accepted.planFingerprint,
-      resultVersion: 0, sourceBindings: [accepted.binding], outputs: accepted.outputs.map((output) => ({ ...output, result: null, late: false })), usage: [], billingState: "idle", error: null } },
+      resultVersion: 0, sourceBindings: [accepted.binding], outputs: accepted.outputs.map((output) => ({ ...output, result: null })), usage: [], billingState: "idle", error: null } },
   }, tx);
-  // The run's input's edit file stays alive until it can no longer be retried (§7.15 execution row).
+  // The run's input's edit file stays alive until the run ends (§7.15 execution row, §7.19).
   if (inserted) {
     await presentationPinService.acquire({ holderKind: "execution", holderId: accepted.taskId, toolInputId: accepted.presentationRef.source.toolInputId,
       objectKeys: toolSourceObjects(accepted.presentations.source) }, tx);
     if (accepted.credits !== 0) await hold(accepted.taskId, accepted.credits, tx);
   }
   return { accepted, inserted };
-}
-
-/**
- * Serialize retry claims on the immutable original task without modifying its plan, results or funds.
- * @param request - A new execution selecting original failed output indices.
- * @param userId - Any current Project editor starting this new execution.
- * @param fingerprint - Whole retry request identity.
- * @param hold - The application's credit admission, asked inside the claim.
- * @returns One new claimed task, or the existing same-run winner.
- * @throws {NotFoundError} When the original execution belongs to another Project, Space or tool.
- * @throws {ValidationError} When any selected slot is not failed, was registered late or was already taken over by a retry.
- * @throws {ConflictError} When an overlapping execution is still active.
- * @throws {Error} When original frozen planning or transactional persistence is invalid.
- */
-async function claimRetry(request: MiniToolExecutionRetryRequest, userId: string, fingerprint: string, hold: MiniToolHold): Promise<{ accepted: AcceptedMiniToolExecution; inserted: boolean }> {
-  // A retry of a failed retry shares the first execution's admission lock with
-  // direct retries; otherwise two different original rows could reserve one node.
-  let root = await taskRepo.getMiniToolExecutionTask(request.retry.runId);
-  if (root === null || root.projectId !== request.project_id || root.spaceId !== request.space_id || root.source !== "mini_tool"
-    || root.params.miniToolExecution === undefined) throw new NotFoundError(t("server.error.not_found"));
-  for (;;) {
-    const { execution } = await executionPlanFromTask(root);
-    if (execution.retry === undefined) break;
-    root = await taskRepo.getMiniToolExecutionTask(execution.retry.runId);
-    if (root === null || root.projectId !== request.project_id || root.spaceId !== request.space_id) throw new NotFoundError(t("server.error.not_found"));
-  }
-  const rootId = root.id;
-  return db.transaction(async (tx) => {
-    // Root lock covers reservation arbitration; the selected original's lock
-    // additionally fences late registration while its failed outputs are read.
-    const lockedRoot = await taskRepo.lockMiniToolExecutionTask(rootId, tx);
-    const original = rootId === request.retry.runId ? lockedRoot : await taskRepo.lockMiniToolExecutionTask(request.retry.runId, tx);
-    if (original === null || original.projectId !== request.project_id || original.spaceId !== request.space_id
-      || original.source !== "mini_tool") throw new NotFoundError(t("server.error.not_found"));
-    const plan = await executionPlanFromTask(original);
-    if (plan.execution.tool !== request.tool) throw new NotFoundError(t("server.error.not_found"));
-    const sameRun = await taskRepo.getMiniToolExecutionTask(request.run_id, tx);
-    if (sameRun !== null) {
-      replay(sameRun, request, userId, fingerprint);
-      return { accepted: (await executionPlanFromTask(sameRun)).execution, inserted: false };
-    }
-    const record = recordFromPlan(plan);
-    const selected = record.outputs.filter((output) => request.retry.outputIndexes.includes(output.outputIndex));
-    if (record.status === "cancelled" || selected.length !== request.retry.outputIndexes.length
-      || selected.some((output) => output.result?.status !== "failed" || output.late
-        || !plannedFailureRetryable(plan.execution.tool))) throw new ValidationError(t("server.mini_tool.foreignSource"));
-    // A failed output an admitted retry took over accepts no further retry; the next one starts from that retry (§7.15).
-    const takenOver = new Set(await taskRepo.listMiniToolRetriedOutputIndexes(original.id, tx));
-    if (selected.some((output) => takenOver.has(output.outputIndex))) throw new ValidationError(t("server.mini_tool.alreadyRetried"));
-    const outputs = plan.execution.outputs.filter((output) => request.retry.outputIndexes.includes(output.outputIndex));
-    if (await taskRepo.hasActiveMiniToolExecutionNodes(request.project_id, request.space_id, outputs.map((output) => output.nodeId), tx)) throw new ConflictError(t("server.idempotency.mismatch"));
-    const { requestFingerprint: _requestFingerprint, planFingerprint: _planFingerprint, ...frozen } = plan.execution;
-    const retried = { taskId: request.run_id, outputs, targetNodeIds: outputs.map((output) => output.nodeId), retry: request.retry };
-    const chosen = new Set(request.retry.outputIndexes);
-    const layout = { batches: frozen.layout.batches.map((batch) => batch.filter((index) => chosen.has(index))).filter((batch) => batch.length > 0),
-      encodes: frozen.layout.encodes.filter((encode) => chosen.has(encode.outputIndex)) };
-    const works = new Map(frozen.outputs.map((output, index) => [output.outputIndex, frozen.outputSeconds[index]!]));
-    const outputSeconds = outputs.map((output) => works.get(output.outputIndex)!);
-    // The same quote rule as a fresh run, over the retried outputs' frozen jobs, start seconds and standard-4 price (§5.4);
-    // the subset is drawn from the frozen plan, so nothing here reads today's configuration.
-    const seconds = layoutSeconds(layout, works, frozen.container.startSeconds);
-    // The payer is the original's frozen one (frames-split §5.5): a platform-funded run's retry quotes 0 as it did.
-    const credits = frozen.chargeTo === "platform" ? 0 : containerCredits(frozen.container, seconds);
-    const claim = await claimPrepared({ ...frozen, ...retried, layout, stageJobs: plannedStageJobs(layout), outputSeconds, credits }, request, userId, fingerprint, tx, hold);
-    if (claim.inserted) await releaseTakenOver(original.id, record, tx);
-    return claim;
-  });
-}
-
-/**
- * End the retryability of a run once every failed output has been taken over by an admitted retry, which holds its
- * own pins (§7.15 end of retryability): release the run's execution pin in the retry's admission transaction.
- * @param runId - The retried run.
- * @param record - Its current record.
- * @param tx - The retry admission's transaction, after the retry's own pins were written.
- * @returns Nothing.
- * @throws {Error} When the read or the release fails.
- */
-async function releaseTakenOver(runId: string, record: ReturnType<typeof recordFromPlan>, tx: DbTx): Promise<void> {
-  const taken = new Set(await taskRepo.listMiniToolRetriedOutputIndexes(runId, tx));
-  if (!record.outputs.every((output) => output.result?.status !== "failed" || taken.has(output.outputIndex))) return;
-  await presentationPinService.release({ holderKind: "execution", holderId: runId }, tx);
 }

@@ -3,7 +3,7 @@
 
 import { z } from "zod";
 import { miniToolSourceBindingSchema, type MiniToolSourceBinding } from "@shared/mini-tools/analysis-record.js";
-import { MINI_TOOL_RETRY_TOOLS, miniToolExecutionRecipeSchema, type MiniToolPlannedRequest } from "@shared/mini-tools/planned-request-schema.js";
+import { miniToolExecutionRecipeSchema, type MiniToolPlannedRequest } from "@shared/mini-tools/planned-request-schema.js";
 
 /** Public registered cover facts, independent from provider presentation derivatives. */
 export interface MiniToolExecutionCover {
@@ -18,13 +18,10 @@ export interface MiniToolExecutionRegistered {
   width: number | null; height: number | null; duration: number | null;
   cover: MiniToolExecutionCover | null;
 }
-/** One stable planned slot, including a terminal failure or an admissible late result. */
+/** One stable planned slot: null until the run ends, then registered for every output or failed for every output. */
 export interface MiniToolExecutionOutput {
   outputIndex: number; nodeId: string; recipe: MiniToolPlannedRequest["outputs"][number]["recipe"];
   result: MiniToolExecutionRegistered | { status: "failed"; error: Record<string, z.infer<ReturnType<typeof z.json>>> } | null;
-  late: boolean;
-  /** Whether an admitted retry has taken this failed output over; set on the read, never stored (frames-split §7.15). */
-  takenOver?: boolean;
 }
 /** A deliberately narrow public copy of the existing step-owned consumption fact. */
 export interface MiniToolExecutionUsage {
@@ -38,6 +35,8 @@ export interface MiniToolExecutionRecord {
   outputs: MiniToolExecutionOutput[]; usage: MiniToolExecutionUsage[];
   billingState: "idle" | "waiting" | "checking" | "settled";
   error: Record<string, z.infer<ReturnType<typeof z.json>>> | null;
+  /** When the run reached its commit point: every output reported, registration under way (frames-split §7.19). */
+  commitPoint?: string;
 }
 
 const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
@@ -55,9 +54,8 @@ const registeredSchema = z.strictObject({
 /** Complete stable slot facts; private provider and storage capabilities are rejected. */
 export const miniToolExecutionOutputSchema = z.strictObject({
   outputIndex: z.number().int().nonnegative(), nodeId: z.uuid(),
-  recipe: miniToolExecutionRecipeSchema, late: z.boolean(),
+  recipe: miniToolExecutionRecipeSchema,
   result: z.discriminatedUnion("status", [registeredSchema, z.strictObject({ status: z.literal("failed"), error: jsonObject })]).nullable(),
-  takenOver: z.boolean().optional(),
 });
 
 /** Actual consumption preserves its original amount's confirmation and recording state. */
@@ -77,6 +75,7 @@ export const miniToolExecutionRecordSchema: z.ZodType<MiniToolExecutionRecord> =
   planFingerprint: hashSchema, resultVersion: z.number().int().nonnegative(),
   sourceBindings: z.array(miniToolSourceBindingSchema).min(1), outputs: z.array(miniToolExecutionOutputSchema).min(1),
   usage: z.array(miniToolExecutionUsageSchema), billingState: z.enum(["idle", "waiting", "checking", "settled"]), error: jsonObject.nullable(),
+  commitPoint: z.iso.datetime().optional(),
 }).superRefine((record, ctx) => {
   if (new Set(record.outputs.map((output) => output.outputIndex)).size !== record.outputs.length
     || new Set(record.outputs.map((output) => output.nodeId)).size !== record.outputs.length
@@ -84,46 +83,23 @@ export const miniToolExecutionRecordSchema: z.ZodType<MiniToolExecutionRecord> =
     ctx.addIssue({ code: "custom", message: "Output and consumption identities must be unique" });
   }
   if (record.status === "pending" || record.status === "running") {
-    // A running execution may hold outputs registered by non-terminal progress commits (design §7.11); failures and late
-    // receipts come only with the terminal commit.
-    if (record.error !== null || record.outputs.some((output) => output.late || output.result?.status === "failed" ||
-      (output.result !== null && record.resultVersion === 0))) {
-      ctx.addIssue({ code: "custom", message: "Active execution has no terminal media snapshot" });
+    // A run registers nothing until its one completed commit (frames-split §7.19), past its commit point included.
+    if (record.error !== null || record.outputs.some((output) => output.result !== null)) {
+      ctx.addIssue({ code: "custom", message: "Active execution has no media snapshot" });
     }
   } else if (record.status !== "cancelled") {
     if (record.resultVersion === 0 || record.outputs.some((output) => output.result === null)) {
       ctx.addIssue({ code: "custom", message: "Terminal execution requires every planned output" });
     }
-    if (record.status === "completed" && (record.error !== null || record.outputs.some((output) => output.result?.status !== "registered" || output.late))) {
+    if (record.status === "completed" && (record.error !== null || record.outputs.some((output) => output.result?.status !== "registered"))) {
       ctx.addIssue({ code: "custom", message: "Completed execution requires its canonical registered outputs" });
     }
-    if (record.status === "failed" && record.error === null) ctx.addIssue({ code: "custom", message: "Failed execution retains its original error" });
+    if (record.status === "failed" && (record.error === null || record.outputs.some((output) => output.result?.status !== "failed"))) {
+      ctx.addIssue({ code: "custom", message: "Failed execution fails every output and retains its original error" });
+    }
   }
-  if (record.outputs.some((output) => output.late && (record.status !== "failed" || output.result?.status !== "registered"))) {
-    ctx.addIssue({ code: "custom", message: "Late media belongs to a preserved failed execution" });
+  if (record.commitPoint !== undefined && record.status !== "running") {
+    ctx.addIssue({ code: "custom", message: "Only a running execution carries a commit point" });
   }
 });
 
-/**
- * Whether a planned run's failed output can be retried, the one decision the terminal commit's pin release, retry
- * admission and the node share (frames-split §7.15 end of retryability): a frames or split output's failure is retryable,
- * a tool without retry never is.
- * @param tool - The run's tool.
- * @returns True when retrying the failed output can succeed.
- * @throws {never} Never.
- */
-export function plannedFailureRetryable(tool: string): boolean {
-  return (MINI_TOOL_RETRY_TOOLS as readonly string[]).includes(tool);
-}
-
-/**
- * Whether one output of a planned run can be retried now (frames-split §7.15 end of retryability): it failed, no admitted
- * retry has taken it over, and its failure is one a retry can clear (`plannedFailureRetryable`).
- * @param tool - The run's tool.
- * @param output - The run's output.
- * @returns True when the output offers a retry.
- * @throws {never} Never.
- */
-export function plannedOutputRetryable(tool: string, output: Pick<MiniToolExecutionOutput, "result" | "takenOver">): boolean {
-  return output.result?.status === "failed" && output.takenOver !== true && plannedFailureRetryable(tool);
-}

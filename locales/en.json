@@ -274,7 +274,6 @@
       "sourceTooLarge": "This tool takes files up to {size}.",
       "clipsTooLarge": "These clips are too large to join together.",
       "joinClipCount": "A join takes 2 to {max} clips.",
-      "alreadyRetried": "This result has already been retried.",
       "runTooLong": "This video is too long to process in one run: it would need more than {max, plural, one {# encoding job} other {# encoding jobs}}. Choose fewer or shorter outputs.",
       "tooManyOutputs": "One run can create up to {max, plural, one {# result} other {# results}}."
     },

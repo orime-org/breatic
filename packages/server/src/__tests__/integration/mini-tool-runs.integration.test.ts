@@ -36,7 +36,7 @@ async function get(f: ExecutionFixture, userId: string | null = f.viewerId, proj
 async function terminal(f: ExecutionFixture, status: "completed" | "failed" = "completed"): Promise<MiniToolExecutionRecord> {
   const record: MiniToolExecutionRecord = { ...f.record, status, resultVersion: status === "failed" ? 2 : 1,
     error: status === "failed" ? { code: "original_registration_failure" } : null,
-    outputs: [{ ...f.plan.outputs[0]!, result: f.registered, late: status === "failed" }], billingState: "waiting",
+    outputs: [{ ...f.plan.outputs[0]!, result: status === "failed" ? { status: "failed", error: { code: "original_registration_failure" } } : f.registered }], billingState: "waiting",
     usage: [{ consumptionKey: "c".repeat(64), state: "pending", chargeTo: "user", costUsd: null, credits: null }] };
   await pg`UPDATE tasks SET status=${status},completed_at=clock_timestamp() WHERE id=${f.taskId}`;
   await storeExecutionFixture(pg, f, record);
@@ -81,7 +81,7 @@ describe("GET project-scoped planned executions (independent Q/B oracle)", () =>
     const f = await seedExecution(pg); const record = await terminal(f); record.usage = [{ consumptionKey: "c".repeat(64), state, chargeTo: "user", costUsd: state === "pending" ? null : 0.3, credits: null }]; await storeExecutionFixture(pg, f, record);
     const response = await get(f); expect(response.status).toBe(200); expect(await response.json()).toEqual({ data: record }); expect((await executionSnapshot(pg, f)).billed_at).toBeNull();
   });
-  it("Q08 retains first failed status/error alongside version2 late canonical and recorded expense", async () => {
+  it("Q08 retains a failed run's status, its error on every output and recorded expense", async () => {
     const f = await seedExecution(pg); const record = await terminal(f, "failed"); record.usage = [{ consumptionKey: "c".repeat(64), state: "recorded", chargeTo: "user", costUsd: 0.3, credits: 30 }]; await storeExecutionFixture(pg, f, record);
     const response = await get(f); expect(response.status).toBe(200); expect(await response.json()).toEqual({ data: record });
   });

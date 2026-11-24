@@ -5,15 +5,14 @@ import type { ConsentSnapshot, TaskEntity } from "@breatic/shared";
 import { TaskStatus, t } from "@breatic/shared";
 import { z } from "zod";
 import { ConflictError, NotFoundError, db, projectAuthService, type DbTx } from "@breatic/core";
-import { canonicalMiniToolValue, miniToolExecutionOutputSchema, plannedFailureRetryable, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
+import { canonicalMiniToolValue, miniToolExecutionOutputSchema, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import type { AcceptedMiniToolExecution } from "@domain/mini-tool/execution-admission.service.js";
-import { executionPlanFromTask, type MiniToolExecutionPlan } from "@domain/mini-tool/execution-plan.service.js";
+import { executionPlanFromTask, readMiniToolExecutionPlan, type MiniToolExecutionPlan } from "@domain/mini-tool/execution-plan.service.js";
 import { miniToolSettlementSchema } from "@domain/mini-tool/consumption.types.js";
-import { miniToolStepStateSchema } from "@domain/mini-tool/upstream-step.types.js";
 import { completeMiniToolConsumptionSet, completeResolvedMiniToolConsumptionSet } from "@domain/mini-tool/consumption-producer.service.js";
 import * as taskRepo from "@domain/task/task.repo.js";
-import * as upstreamStepRepo from "@domain/task/upstreamStep.repo.js";
 import * as assetRepo from "@domain/asset/asset.repo.js";
+import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { synchronizeMiniToolDelivery } from "@domain/mini-tool/delivery-state.js";
 import * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
@@ -51,11 +50,15 @@ export async function startMiniToolExecution(taskId: string, jobId: string): Pro
   });
 }
 /**
- * Commit a complete indexed result under the original task lock.
+ * Commit the run's one terminal result under the original task lock (frames-split §7.19): every output registered and
+ * delivered at once, or every output failed. Past the commit point only the completed commit is taken; an ended run
+ * takes only the same result again.
  * @param taskId - The original accepted SQL task.
  * @param completion - The complete indexed observation; the call set closes from the persisted steps.
- * @returns The committed or preserved terminal state and original context.
- * @throws {Error} When original mapping, registration, media CAS or persistence fails.
+ * @returns The committed or replayed terminal state and original context.
+ * @throws {ConflictError} When the mapping, the version or an ended run's result differs.
+ * @throws {Error} When the run is cancelled, a failure comes past the commit point, a registration is not the canonical
+ * winner, or persistence fails.
  */
 export async function finishMiniToolExecution(taskId: string, completion: MiniToolExecutionCompletion): Promise<MiniToolExecution> {
   const id = z.uuid().parse(taskId);
@@ -70,90 +73,79 @@ export async function finishMiniToolExecution(taskId: string, completion: MiniTo
       throw new ConflictError(t("server.idempotency.mismatch"));
     }
     if (plan.task.status === "cancelled") throw new Error("Cancelled execution cannot begin another computation");
-    const outputs: MiniToolExecutionOutput[] = [];
-    for (const [index, output] of incoming.outputs.entries()) {
-      const held = current.outputs[index]!;
-      if (held.result?.status === "registered") {
-        if (canonicalMiniToolValue(held.result) !== canonicalMiniToolValue(output.result)) throw new ConflictError(t("server.idempotency.mismatch"));
-        outputs.push(held);
-      } else if (output.result?.status === "registered") {
-        await requireRegistered(output, tx);
-        if (plan.task.status === "failed") await requireLateReceipt(id, output, tx);
-        outputs.push({ ...output, late: plan.task.status === "failed" });
-      } else {
-        outputs.push(plan.task.status === "failed" ? held : { ...output, late: false });
-      }
-    }
-    const changed = canonicalMiniToolValue(current.outputs) !== canonicalMiniToolValue(outputs);
-    // A repeated terminal commit changes nothing; a running execution whose outputs progress commits already hold still ends here.
-    if (current.resultVersion > 0 && !changed && plan.task.status !== "pending" && plan.task.status !== "running") {
+    if (plan.task.status !== "pending" && plan.task.status !== "running") {
+      // An ended run takes its own result again and nothing else: no output is registered onto it late.
+      if (canonicalMiniToolValue(current.outputs) !== canonicalMiniToolValue(incoming.outputs)) throw new ConflictError(t("server.idempotency.mismatch"));
       await completeResolvedMiniToolConsumptionSet(id, tx);
-      return { task: await currentTask(id, tx), execution: plan.execution, record: recordFromPlan({ ...plan, task: await currentTask(id, tx) }) };
+      const task = await currentTask(id, tx);
+      return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
     }
     if (incoming.expectedVersion !== current.resultVersion) throw new ConflictError(t("server.idempotency.mismatch"));
-    const failed = plan.task.status === "failed" || outputs.some((output) => output.result?.status === "failed");
+    const failed = incoming.error !== null;
+    if (!incoming.outputs.every((output) => output.result?.status === (failed ? "failed" : "registered"))) {
+      throw new Error("A run commits every output registered with no error, or every output failed with its error");
+    }
+    if (failed && current.commitPoint !== undefined) throw new Error("Past the commit point only the completed commit is taken");
+    for (const output of incoming.outputs) if (output.result?.status === "registered") await requireRegistered(output, tx);
     const status = failed ? "failed" : "completed";
-    const error = plan.task.status === "failed" ? current.error : failed ? incoming.error ?? { code: "mini_tool_failed" } : null;
-    const record = miniToolExecutionRecordSchema.parse({ ...current, status, error, outputs, resultVersion: current.resultVersion + 1 });
+    const error = incoming.error;
+    const { commitPoint: _commitPoint, ...active } = current;
+    const record = miniToolExecutionRecordSchema.parse({ ...active, status, error, outputs: incoming.outputs, resultVersion: current.resultVersion + 1 });
     await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx, {
-      status, errorMessage: error === null ? null : typeof error.code === "string" ? error.code : "mini_tool_failed",
-      finish: plan.task.status === "pending" || plan.task.status === "running",
+      status, errorMessage: error === null ? null : typeof error.code === "string" ? error.code : "mini_tool_failed", finish: true,
     });
     await synchronizeMiniToolDelivery(plan.task, record, tx);
-    await releaseUnretryablePins(id, plan.execution.tool, record, tx);
+    await endRun(id, tx);
     await completeResolvedMiniToolConsumptionSet(id, tx);
     const task = await currentTask(id, tx);
     return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
   });
 }
-/** A non-terminal observation: the complete indexed mapping with `result: null` for outputs still pending (§93 D5-11). */
-export interface MiniToolExecutionProgress {
-  planFingerprint: string; expectedVersion: number; outputs: MiniToolExecutionRecord["outputs"];
-}
+/** Whether this call wrote the run's commit point, found it written, or found the run ended (frames-split §7.19). */
+export interface MiniToolExecutionCommitPoint { state: "committed" | "ended"; record: MiniToolExecutionRecord }
 /**
- * Commit newly registered outputs of a running execution without ending it (design §7.11, registered with a non-terminal commit): the
- * same resultVersion arbitration as the terminal commit, a committed result is never rewritten, a registration is checked
- * like the terminal one's and failures wait for the terminal commit. Each newly registered output gets its pending
- * delivery slot in the same transaction, so the worker can deliver it before the run ends (§10.8).
+ * Write the run's commit point under the execution record lock once every output is reported (frames-split §7.19): a
+ * running record without one takes it now; a record that has one keeps it, so the same run goes on registering; any other
+ * state answers ended and nothing is registered.
  * @param taskId - The original accepted SQL task.
- * @param progress - The complete indexed mapping and the version it was read at.
- * @returns The current state and original context, unchanged when nothing new is registered.
- * @throws {ConflictError} When the mapping, a committed result or the version differs.
- * @throws {Error} When the run has ended, a registration is not the canonical winner, or persistence fails.
+ * @returns The answer and the record as it stands after this call.
+ * @throws {Error} When the plan, the record or persistence is invalid.
  */
-export async function commitMiniToolExecutionProgress(taskId: string, progress: MiniToolExecutionProgress): Promise<MiniToolExecution> {
+export async function markMiniToolExecutionCommitPoint(taskId: string): Promise<MiniToolExecutionCommitPoint> {
   const id = z.uuid().parse(taskId);
-  const incoming = z.strictObject({
-    planFingerprint: z.string().regex(/^[a-f0-9]{64}$/), expectedVersion: z.number().int().nonnegative(), outputs: z.array(miniToolExecutionOutputSchema).min(1),
-  }).parse(progress);
   return db.transaction(async (tx) => {
     const plan = await lockedPlan(id, tx);
     const current = recordFromPlan(plan);
-    if (incoming.planFingerprint !== plan.execution.planFingerprint || !sameMapping(incoming.outputs, plan.execution)) {
-      throw new ConflictError(t("server.idempotency.mismatch"));
-    }
-    if (plan.task.status !== "pending" && plan.task.status !== "running") throw new Error("An ended execution takes no progress commit");
-    const outputs: MiniToolExecutionOutput[] = [];
-    for (const [index, output] of incoming.outputs.entries()) {
-      const held = current.outputs[index]!;
-      if (held.result?.status === "registered") {
-        if (output.result !== null && canonicalMiniToolValue(held.result) !== canonicalMiniToolValue(output.result)) throw new ConflictError(t("server.idempotency.mismatch"));
-        outputs.push(held);
-      } else if (output.result?.status === "registered") {
-        await requireRegistered(output, tx);
-        outputs.push({ ...output, late: false });
-      } else {
-        outputs.push(held);
-      }
-    }
-    if (canonicalMiniToolValue(current.outputs) === canonicalMiniToolValue(outputs)) return { task: plan.task, execution: plan.execution, record: current };
-    if (incoming.expectedVersion !== current.resultVersion) throw new ConflictError(t("server.idempotency.mismatch"));
-    const record = miniToolExecutionRecordSchema.parse({ ...current, outputs, resultVersion: current.resultVersion + 1 });
+    if (plan.task.status !== "running") return { state: "ended", record: current };
+    if (current.commitPoint !== undefined) return { state: "committed", record: current };
+    const record = miniToolExecutionRecordSchema.parse({ ...current, commitPoint: new Date().toISOString() });
     await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx);
-    await synchronizeMiniToolDelivery(plan.task, record, tx);
-    const task = await currentTask(id, tx);
-    return { task, execution: plan.execution, record: recordFromPlan({ ...plan, task }) };
+    return { state: "committed", record };
   });
+}
+
+/**
+ * Read a run as it stands, starting nothing: what the failed-job cleanup and the sweep decide its end from
+ * (frames-split §7.19).
+ * @param taskId - The original accepted SQL task.
+ * @returns Its parent, frozen plan and record.
+ * @throws {Error} When the run has no owning task or its plan or record is invalid.
+ */
+export async function readMiniToolExecution(taskId: string): Promise<MiniToolExecution> {
+  const plan = await readMiniToolExecutionPlan(z.uuid().parse(taskId));
+  return { task: plan.task, execution: plan.execution, record: recordFromPlan(plan) };
+}
+
+/**
+ * The planned runs the sweep looks at (frames-split §7.19): running ones, and pending ones that never waited for a
+ * running slot and are older than the grace window.
+ * @param limit - How many of each at most.
+ * @param graceMs - The grace window.
+ * @returns Their ids, which are also their job ids.
+ * @throws {Error} When a read fails.
+ */
+export async function plannedRunsToSweep(limit: number, graceMs: number): Promise<{ running: string[]; pending: string[] }> {
+  return taskRepo.listPlannedRunsToSweep(limit, graceMs);
 }
 
 /**
@@ -161,8 +153,7 @@ export async function commitMiniToolExecutionProgress(taskId: string, progress: 
  * @param projectId - The Project in the route path.
  * @param runId - The immutable execution run.
  * @param userId - The currently authenticated collaborator.
- * @returns Current computation, registered outputs, whether a retry took each output over (frames-split §7.15) and public
- * actual expenses.
+ * @returns Current computation, registered outputs and public actual expenses.
  * @throws {NotFoundError} When the task or project is hidden from this collaborator.
  * @throws {Error} When persisted planning or public metadata is inconsistent.
  */
@@ -172,9 +163,7 @@ export async function getMiniToolExecution(projectId: string, runId: string, use
     || task.params.miniToolExecution === undefined || await projectAuthService.loadProjectRole(userId, projectId) === null) {
     throw new NotFoundError(t("server.error.not_found"));
   }
-  const record = recordFromPlan(await executionPlanFromTask(task));
-  const taken = new Set(await taskRepo.listMiniToolRetriedOutputIndexes(task.id));
-  return { ...record, outputs: record.outputs.map((output) => taken.has(output.outputIndex) ? { ...output, takenOver: true } : output) };
+  return recordFromPlan(await executionPlanFromTask(task));
 }
 
 /**
@@ -230,7 +219,7 @@ export function recordFromPlan(plan: MiniToolExecutionPlan): MiniToolExecutionRe
   const stored = task.result?.miniToolExecution;
   const record = miniToolExecutionRecordSchema.parse(stored ?? {
     schemaVersion: 1, runId: task.id, status: task.status, planFingerprint: execution.planFingerprint, resultVersion: 0,
-    sourceBindings: [execution.binding], outputs: execution.outputs.map((output) => ({ ...output, result: null, late: false })),
+    sourceBindings: [execution.binding], outputs: execution.outputs.map((output) => ({ ...output, result: null })),
     usage: [], billingState, error: null,
   });
   if (record.runId !== task.id || record.planFingerprint !== execution.planFingerprint
@@ -240,21 +229,6 @@ export function recordFromPlan(plan: MiniToolExecutionPlan): MiniToolExecutionRe
   // The task row owns the status: the running-task gate starts a run and a queued cancel ends it on that row alone
   // (inner#1968 design 3.9).
   return { ...record, status: taskStatusSchema.parse(task.status), billingState };
-}
-
-/**
- * Verify a late observation against its original returned step and durable asset receipt.
- * @param taskId - The original accepted run.
- * @param output - The proposed late registered slot.
- * @param tx - The transaction holding the original parent lock.
- * @throws {Error} When no original returned step owns this registered slot.
- */
-async function requireLateReceipt(taskId: string, output: MiniToolExecutionOutput, tx: DbTx): Promise<void> {
-  const steps = await upstreamStepRepo.listSteps(taskId, tx);
-  const owned = steps.some((step) => step.itemIndex === output.outputIndex && step.output.miniToolStep !== undefined
-    && miniToolStepStateSchema.parse(step.output.miniToolStep).result?.outcome === "done"
-    && output.result?.status === "registered" && step.output[`miniToolAsset:${output.outputIndex}`] === output.result.assetId);
-  if (!owned) throw new Error("Late canonical output has no original returned receipt");
 }
 
 /**
@@ -281,44 +255,39 @@ async function requireRegistered(output: MiniToolExecutionOutput, tx: DbTx): Pro
 }
 
 /**
- * End a run's pins at a terminal write when nothing can retry it (frames-split §7.15 end of retryability): no output is
- * failed (it completed, or a failed run's failed outputs were all registered late), or its tool has no retry.
+ * What every end of a run does in its terminal transaction (frames-split §7.19): its `execution` and `prepared` pins end,
+ * and every output grant it issued that nothing consumed is voided.
  * @param id - The run.
- * @param tool - Its frozen tool.
- * @param record - The terminal record just stored.
  * @param tx - The terminal write's transaction.
- * @throws {Error} When releasing a pin fails.
+ * @throws {Error} When releasing a pin or voiding a grant fails.
  */
-async function releaseUnretryablePins(id: string, tool: string, record: MiniToolExecutionRecord, tx: DbTx): Promise<void> {
-  const failed = record.outputs.flatMap((output) => output.result?.status === "failed" ? [output.result.error] : []);
-  if (failed.length > 0 && plannedFailureRetryable(tool)) return;
+async function endRun(id: string, tx: DbTx): Promise<void> {
   await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
+  await presentationPinService.release({ holderKind: "prepared", holderId: id }, tx);
+  await uploadGrantRepo.voidTaskGrants(id, "cancelled", tx);
 }
 
 /**
- * End a planned run whose task ended outside the worker, cancelled before it started or failed by the stale-waiter sweep
- * (inner#1968 design 3.9), as its terminal state (frames-split §7.15): every output it never wrote fails with the task's
- * reason. A cancelled run cannot be retried, so its pins end; a failed one keeps them while its tool can retry it.
+ * End a planned run whose task ended outside the worker, cancelled before it started or failed by a sweep (inner#1968
+ * design 3.9), as its terminal state (frames-split §7.19): every output fails with the task's reason. A run past its
+ * commit point only completes, so this refuses it and the caller's transaction rolls back.
  * @param id - The run, whose task row the caller's transaction just ended.
  * @param tx - That transaction.
- * @throws {Error} When the original plan, the record or the atomic persistence is invalid.
+ * @throws {Error} When the run is past its commit point, or the original plan, the record or the persistence is invalid.
  */
 export async function endMiniToolExecutionOutsideRun(id: string, tx: DbTx): Promise<void> {
   const plan = await lockedPlan(id, tx);
   const current = recordFromPlan(plan);
+  if (current.commitPoint !== undefined) throw new Error("A run past its commit point only completes");
   if (current.outputs.every((output) => output.result !== null)) return;
   const failure = { code: plan.task.errorMessage ?? "internal" };
   const record = miniToolExecutionRecordSchema.parse({
     ...current, resultVersion: current.resultVersion + 1, error: failure,
-    outputs: current.outputs.map((output) => output.result === null ? { ...output, result: { status: "failed", error: failure }, late: false } : output),
+    outputs: current.outputs.map((output) => ({ ...output, result: { status: "failed", error: failure } })),
   });
   await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx);
-  if (plan.task.status === "cancelled") {
-    await presentationPinService.release({ holderKind: "execution", holderId: id }, tx);
-    return;
-  }
-  await releaseUnretryablePins(id, plan.execution.tool, record, tx);
-  if (plan.task.result?.settlement === undefined) await completeMiniToolConsumptionSet(id, tx);
+  await endRun(id, tx);
+  if (plan.task.status !== "cancelled" && plan.task.result?.settlement === undefined) await completeMiniToolConsumptionSet(id, tx);
 }
 
 /**
@@ -335,14 +304,15 @@ export async function failMiniToolExecutionAdmission(taskId: string, error: NonN
     const plan = await lockedPlan(id, tx);
     const current = recordFromPlan(plan);
     if (current.status !== "pending" && current.status !== "running") return current;
+    if (current.commitPoint !== undefined) throw new Error("A run past its commit point only completes");
     const record = miniToolExecutionRecordSchema.parse({
       ...current, status: "failed", resultVersion: current.resultVersion + 1, error: failure,
-      outputs: current.outputs.map((output) => ({ ...output, result: { status: "failed", error: failure }, late: false })),
+      outputs: current.outputs.map((output) => ({ ...output, result: { status: "failed", error: failure } })),
     });
     await taskRepo.storeMiniToolExecutionRecord(id, { ...record }, tx, {
       status: "failed", errorMessage: typeof failure.code === "string" ? failure.code : "internal", finish: true,
     });
-    await releaseUnretryablePins(id, plan.execution.tool, record, tx);
+    await endRun(id, tx);
     // Original intents register settlement under this same lock before paid IO.
     // An acknowledgement failure cannot release their hold or close their set.
     if (plan.task.result?.settlement === undefined) {

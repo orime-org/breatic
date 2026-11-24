@@ -17,12 +17,11 @@
  */
 import crypto from "node:crypto";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
-import { createPgClient, db, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
+import { createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as shared from "@breatic/shared";
 import { t } from "@breatic/shared";
 import type * as miniTools from "@breatic/shared/mini-tools";
 import type { MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
-import * as domain from "@domain/index.js";
 import { acceptMiniToolExecution, quoteMiniToolExecution, type AcceptedMiniToolExecution } from "@domain/index.js";
 
 /** A hold that takes nothing: the cases below that are about holding pass their own. */

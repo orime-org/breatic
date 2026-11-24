@@ -24,7 +24,7 @@ vi.mock("@breatic/domain", async (original) => {
   const actual = await original<typeof domainModule>();
   return { ...actual,
     runningSlotService: { ...actual.runningSlotService, failTask: h.failTask },
-    miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start, plannedRunsToSweep: h.list } };
+    miniToolExecutionService: { ...actual.miniToolExecutionService, readMiniToolExecution: h.start, plannedRunsToSweep: h.list } };
 });
 vi.mock("@worker/handlers/mini-tool/execution-completion.js", () => ({ finishMiniToolExecutionAndNotify: h.finish }));
 vi.mock("@worker/handlers/mini-tool/run-video-tool.js", () => ({ registerReportedOutputs: h.register }));

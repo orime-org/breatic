@@ -2,18 +2,16 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The container step runner of the planned video tools (inner#1306; frames-split design §5.4 job identities, §7.11, §7.15):
+ * The container step runner of the planned video tools (inner#1306; frames-split design §5.4 job identities, §7.15, §7.19):
  * each container step runs its attempts up to the frozen retries under its own job ids, a done output recorded and pinned
- * with the run and a failed attempt's output retired; a chunk list settles only once no chunk still runs.
+ * with the run and a failed attempt's output retired; a chunk list answers its first chunk failed for good at once.
  */
 import type { z } from "zod";
 import { getMiniToolsConfig } from "@breatic/core";
 import { miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepResult, upstreamStepRepo } from "@breatic/domain";
 import { DeadlinePassed, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
-import type { MiniToolExecutionRegistered } from "@breatic/shared/mini-tools";
 import { advanceMiniToolPlanJob, type EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
-import { registered } from "@worker/handlers/mini-tool/run-video-tool.js";
+import { advanceStagedMiniToolPlanJob, type StagedMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 
 /** The frozen facts every container step of a run reads. */
@@ -158,9 +156,8 @@ async function advanceAttempts(run: ContainerRun, planned: ContainerStep, deadli
 }
 
 /**
- * Advance every chunk step in each pickup (frames-split §5.4 parallel stage): the list settles only once no chunk still runs,
- * so each running chunk's object is recorded and pinned with the run; once a chunk has failed for good no chunk opens a new
- * attempt, only the attempts already opened are advanced.
+ * Advance every chunk step in each pickup (frames-split §5.4 parallel stage); once a chunk has failed for good no chunk
+ * opens a new attempt, and the list answers that failure in the same pickup (frames-split §7.19).
  * @param run - The run.
  * @param chunks - The chunk steps in order.
  * @param deadlineAt - The task deadline.
@@ -203,12 +200,15 @@ export async function advanceChunks(run: ContainerRun, chunks: readonly Containe
   // The attempts already opened go first, so a chunk failed for good is known before any chunk opens a new attempt.
   for (const k of chunks.keys()) await advance(k, false);
   for (const k of unopened) if (failure() === null) await advance(k, true);
+  // A chunk failed for good fails the run at once (frames-split §7.19): no running sibling is waited for.
+  const failed = failure();
+  if (failed !== null) return failed;
   if (running) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
-  return failure() ?? { keys: chunks.map((_chunk, k) => (ended.get(k) as { key: string }).key) };
+  return { keys: chunks.map((_chunk, k) => (ended.get(k) as { key: string }).key) };
 }
 
-/** A run's one registered output job. */
-export interface RegisteredStep {
+/** A run's one staged output job. */
+export interface StagedStep {
   stepKey: string;
   /** The output's upload name prefix. */
   namePrefix: string;
@@ -221,17 +221,19 @@ export interface RegisteredStep {
 }
 
 /**
- * Advance the job that writes one registered output of the run, up to the frozen retries.
+ * Advance the job that writes one output of the run, up to the frozen retries, and stage its report (frames-split §7.19):
+ * the output is registered only past the run's commit point.
  * @param run - The run.
  * @param planned - The step.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
- * @returns The registered output, the last attempt's reason once every attempt failed, or `expired` when a next attempt is
- * due after the deadline, ingest ended an attempt at it, or the job can no longer be submitted or waited for.
+ * @returns Reported once an attempt wrote the output; otherwise the failure: the last attempt's reason once every attempt
+ * failed, the refusal of a written output (over_cap, empty), or `expired` when a next attempt is due after the deadline,
+ * ingest ended an attempt at it, or the job can no longer be submitted or waited for.
  * @throws {StillRunning} While the job runs.
- * @throws {Error} When persistence, grants or registration fail.
+ * @throws {Error} When persistence or grants fail.
  */
-export async function advanceRegistered(run: ContainerRun, planned: RegisteredStep, userId: string, deadlineAt: number): Promise<MiniToolExecutionRegistered | { failed: string; expired?: true }> {
+export async function advanceStaged(run: ContainerRun, planned: StagedStep, userId: string, deadlineAt: number): Promise<{ reported: true } | { failed: string; expired?: true }> {
   const outputIndex = planned.outputIndex ?? 0;
   let reason = "tool_failed";
   for (let attempt = 1; attempt <= run.container.chunkRetries + 1; attempt += 1) {
@@ -250,17 +252,17 @@ export async function advanceRegistered(run: ContainerRun, planned: RegisteredSt
         inputs: built.inputs, outputs: [{ ...grant, outputIndex, recipe: built.recipe }] });
       step = await appendStep(run.taskId, { kind: "container_job", endpoint: run.container.containerClass, itemIndex: steps.length });
     }
-    let job: Awaited<ReturnType<typeof advanceRegisteredMiniToolPlanJob>>;
+    let job: StagedMiniToolPlanJob;
     try {
-      job = await advanceRegisteredMiniToolPlanJob({ taskId: run.taskId, stepId: step!.id, chunkIndex: step!.position, chargeTo: "user", request },
+      job = await advanceStagedMiniToolPlanJob({ taskId: run.taskId, stepId: step!.id, chunkIndex: step!.position, chargeTo: "user", request },
         planned.retire === undefined ? {} : { retire: planned.retire });
     } catch (error) {
-      // A job that can no longer be submitted or waited for expires this step; the pickup still reads every other step.
+      // A job that can no longer be submitted or waited for expires this step.
       if (error instanceof DeadlinePassed) return { failed: "expired", expired: true };
       throw error;
     }
-    const written = job.assets.find((entry) => entry.outputIndex === outputIndex);
-    if (job.report.state === "done" && written !== undefined) return await registered(written.asset) as MiniToolExecutionRegistered;
+    if (job.refused !== null) return { failed: job.refused };
+    if (job.report.state === "done" && job.report.outputs.some((output) => output.outputIndex === outputIndex)) return { reported: true };
     reason = job.report.state === "failed" ? job.report.reason : "tool_failed";
     // Ingest ended this attempt at the deadline, so no next attempt can be submitted.
     if (reason === "expired") return { failed: reason, expired: true };

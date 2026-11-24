@@ -4,7 +4,7 @@
 import { z } from "zod";
 import { miniToolPlanLimitsSchema, x264PresetSchema, videoPresentationVersionSchema, type TaskEntity } from "@breatic/shared";
 import {
-  canonicalMiniToolValue, hashMiniToolValue, miniToolExecutionRecipeSchema, miniToolExecutionRetryRequestSchema, miniToolPlannedRequestSchema,
+  canonicalMiniToolValue, hashMiniToolValue, miniToolExecutionRecipeSchema, miniToolPlannedRequestSchema,
   miniToolPresentationRefSchema, miniToolSourceBindingSchema, miniToolTaskType, videoFocusCropDraftSchema, videoToolAnalysisRefSchema, videoToolDraftSchema,
 } from "@breatic/shared/mini-tools";
 import type { AcceptedMiniToolExecution } from "@domain/mini-tool/execution-admission.service.js";
@@ -36,10 +36,7 @@ const frozenToolInput = {
   presentationRef: miniToolPresentationRefSchema,
   // The selected version: its display grid, tool source and source keyframe statistics (frames-split §7.11).
   presentations: z.strictObject({ source: videoPresentationVersionSchema }), versionIds: z.strictObject({ source: fingerprint }),
-  retry: miniToolExecutionRetryRequestSchema.shape.retry.optional(),
 };
-/** The recipe kind each tool's outputs carry. */
-const RECIPE_KIND = { "video.split": "segment", "video.extract-frames": "frame", "video.focus-crop": "frame" } as const;
 const storedPlanSchema = z.strictObject({ ...common, ...frozenToolInput, tool: z.enum(["video.extract-frames", "video.split", "video.focus-crop"]), layout,
   // The stage counts frozen beside the layout (§97 D12-1); plans admitted before them have none.
   stageJobs: stageJobs.optional(),
@@ -63,7 +60,7 @@ export async function readMiniToolExecutionPlan(taskId: string): Promise<MiniToo
 }
 
 /**
- * Validate frozen fresh plans or original-global-index retry subsets under the caller's lock.
+ * Validate a frozen plan under the caller's lock.
  * @param task - The original physical parent, never replacement queue data.
  * @returns Original parent and verified executable inputs.
  * @throws {z.ZodError} When persisted fields violate their versioned contract.
@@ -74,16 +71,8 @@ export async function executionPlanFromTask(task: TaskEntity): Promise<MiniToolE
   const stored = storedPlanSchema.parse(task.params.miniToolExecution);
   // A focus crop's draft is its request's own (frames-split §5.5); the panel tools' drafts are their node drafts.
   const draft = stored.tool === "video.focus-crop" ? videoFocusCropDraftSchema.parse(stored.draft) : videoToolDraftSchema(stored.tool).parse(stored.draft);
-  if (stored.retry !== undefined) {
-    const indexes = stored.outputs.map((output) => output.outputIndex);
-    if (stored.retry.runId === stored.taskId || canonicalMiniToolValue([...indexes].sort((a, b) => a - b)) !== canonicalMiniToolValue([...stored.retry.outputIndexes].sort((a, b) => a - b))
-      || new Set(indexes).size !== indexes.length || new Set(stored.outputs.map((output) => output.nodeId)).size !== stored.outputs.length
-      || stored.outputs.some((output, i) => output.nodeId === draft.source.nodeId || (i > 0 && output.outputIndex <= stored.outputs[i - 1]!.outputIndex)
-        || output.recipe.kind !== RECIPE_KIND[stored.tool])) throw new Error("Retry differs from its frozen subset");
-  } else {
-    miniToolPlannedRequestSchema.parse({ tool: stored.tool, project_id: stored.projectId, space_id: stored.spaceId, run_id: stored.taskId,
-      draft, analysis_refs: stored.analysisRefs, outputs: stored.outputs, presentation_ref: stored.presentationRef });
-  }
+  miniToolPlannedRequestSchema.parse({ tool: stored.tool, project_id: stored.projectId, space_id: stored.spaceId, run_id: stored.taskId,
+    draft, analysis_refs: stored.analysisRefs, outputs: stored.outputs, presentation_ref: stored.presentationRef });
   const execution = { ...stored, draft } as AcceptedMiniToolExecution;
   const { requestFingerprint: _requestFingerprint, planFingerprint, ...projection } = execution;
   if (task.taskType !== miniToolTaskType(execution.tool)

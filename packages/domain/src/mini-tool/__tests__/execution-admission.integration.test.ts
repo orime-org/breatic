@@ -11,7 +11,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } fro
 import type * as core from "@breatic/core";
 import { ConflictError, ForbiddenError, NotFoundError, createPgClient, getStorageAdapter, initCore, loadLocales } from "@breatic/core";
 import type * as shared from "@breatic/shared";
-import { miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
+import type { MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import { acceptMiniToolExecution, miniToolExecutionService, type AcceptedMiniToolExecution } from "@domain/index.js";
 
 /** These cases are about admission, not credits: every run here is platform-funded and holds nothing. */

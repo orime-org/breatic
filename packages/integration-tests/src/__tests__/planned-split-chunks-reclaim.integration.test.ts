@@ -3,9 +3,8 @@
 
 /**
  * A split segment encoded in chunks whose later chunk fails for good (frames-split design §5.4 用户运行的两层编码, §7.15
- * execution row and 可重试结束): each done chunk is pinned with the run when its result is recorded, so the failed segment's
- * done chunks are registered for reclaim once nothing can retry the run any more, here when a retry takes the failed
- * output over.
+ * execution row, §7.19): each done chunk is pinned with the run when its result is recorded, so the run's done chunks are
+ * registered for reclaim at the run's end, which a chunk failed for good brings at once.
  *
  * Real PostgreSQL admission, steps, pins and registration through the server app and the worker runner
  * `runMiniToolVideoTool`; the presentation snapshot, the stored ledger objects and the ingest `/jobs` boundary are faked.
@@ -16,7 +15,7 @@ import * as core from "@breatic/core";
 import type * as sharedModule from "@breatic/shared";
 import { videoPresentationWorkKeyFor } from "@breatic/shared";
 import { planVideoSplit, videoContainerJobId } from "@breatic/shared/mini-tools";
-import { creditHoldService, miniToolExecutionService, taskRepo } from "@breatic/domain";
+import { miniToolExecutionService, runningSlotService, taskRepo } from "@breatic/domain";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { seedDesignatedLot, seedStudioFixture } from "@server/__tests__/integration/studio-credit-fixtures.js";
@@ -116,8 +115,36 @@ async function post(userId: string, body: unknown): Promise<Response> {
   return app.request("/api/v1/mini-tools", { method: "POST", headers: { "Content-Type": "application/json", "Idempotency-Key": randomUUID(), Cookie: `${core.sessionCookieName()}=${token}` }, body: JSON.stringify(body) });
 }
 
-describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
-  it("SR01 are registered for reclaim once a retry takes the failed segment over", async () => {
+/**
+ * The work keys of every chunk of the run whose result was recorded done.
+ * @param taskId - The run.
+ * @param output - The segment.
+ * @returns Their keys, sorted.
+ * @throws {Error} On fixture SQL failure.
+ */
+async function doneChunkKeys(taskId: string, output: number): Promise<string[]> {
+  return (await pg<{ key: string }[]>`SELECT output#>>'{miniToolPlanJob,outputs,0,storageKey}' AS key FROM task_upstream_steps
+    WHERE task_id=${taskId} AND output#>>'{miniToolStep,result,outcome}'='done' AND output#>>'{miniToolPlanJob,jobId}' LIKE ${`%:out:${output}:enc:%`}`)
+    .map((row) => row.key).sort();
+}
+
+/**
+ * Pickups until an output fails for good, as a run fails whole (frames-split §7.19).
+ * @param run - The runner.
+ * @param args - Its arguments.
+ * @returns The last pickup's results.
+ * @throws {Error} When a pickup throws anything but StillRunning.
+ */
+async function untilFailure(run: Runner, ...args: Parameters<Runner>): Promise<Map<number, Record<string, unknown>>> {
+  let results = new Map<number, Record<string, unknown>>();
+  for (let pickup = 0; pickup < 60 && ![...results.values()].some((result) => result.status === "failed"); pickup += 1) {
+    try { results = (await run(...args)).results; } catch (error) { if (!(error instanceof StillRunning)) throw error; }
+  }
+  return results;
+}
+
+describe("a failed run's done chunks (frames-split §5.4, §7.15, §7.19)", () => {
+  it("SR01 are registered for reclaim at the failed end of the run", async () => {
     const target = await seedStudioFixture(pg, "split-reclaim");
     await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${target.projectId},${target.userId},'editor')`;
     await seedDesignatedLot(pg, target, 1000);
@@ -136,6 +163,8 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
       outputs: planVideoSplit(grid, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
     const admitted = await post(target.userId, body);
     expect(admitted.status, await admitted.clone().text()).toBe(201);
+    // The running-task gate starts a pending task before its pickup does (inner#1968).
+    await runningSlotService.startWithinLimit({ id: body.run_id, jobId: body.run_id });
     const { task, execution } = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
     const plan = execution as unknown as { layout: { encodes: { outputIndex: number; chunks: unknown[] }[] }; outputs: { outputIndex: number; nodeId: string; recipe: unknown }[]; planFingerprint: string };
     const encode = plan.layout.encodes.find((entry) => entry.outputIndex === 0);
@@ -146,26 +175,19 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
     const stored = await taskRepo.getMiniToolExecutionTask(task.id);
     const deadlineAt = await taskDeadline(task.id, stored!.createdAt);
     const run = ((await import("@worker/handlers/mini-tool/run-video-tool.js")) as unknown as Record<string, Runner>).runMiniToolVideoTool!;
-    let results = new Map<number, Record<string, unknown>>();
-    for (let pickup = 0; pickup < 60 && results.size < plan.outputs.length; pickup += 1) {
-      try { results = (await run(execution, task.userId, deadlineAt)).results; } catch (error) { if (!(error instanceof StillRunning)) throw error; }
-    }
+    const results = await untilFailure(run, execution, task.userId, deadlineAt);
     expect(results.get(0)).toMatchObject({ status: "failed" });
-    const doneChunks = Array.from({ length: last }, (_unused, chunk) => videoPresentationWorkKeyFor(sourceKey, videoContainerJobId({ kind: "run-chunk", taskId: task.id, output: 0, chunk, attempt: 1 })));
-    const queued = async (): Promise<string[]> => (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${doneChunks}) AND kind='derived'`).map((row) => row.storage_key).sort();
+    const done = await doneChunkKeys(task.id, 0);
+    expect(done.length).toBeGreaterThan(0);
+    const queued = async (): Promise<string[]> => (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${done}) AND kind='derived'`).map((row) => row.storage_key).sort();
+    expect(await queued()).toEqual([]);
     const error = { code: "mini_tool_failed" };
     await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
-      outputs: plan.outputs.map((output) => ({ ...output, result: results.get(output.outputIndex)! })) } as never);
-    // A retryable failure keeps the run's pins, so its done chunks wait with them.
-    expect(await queued()).toEqual([]);
-    await pg`UPDATE node_tasks SET status='failed',settled_at=clock_timestamp() WHERE task_id=${task.id}`;
-    await creditHoldService.releaseHold(task.id);
-    const retried = await post(target.userId, { tool: "video.split", project_id: target.projectId, space_id: body.space_id, run_id: randomUUID(), retry: { runId: task.id, outputIndexes: [0] } });
-    expect(retried.status, await retried.clone().text()).toBe(201);
-    expect(await queued()).toEqual([...doneChunks].sort());
+      outputs: plan.outputs.map((output) => ({ ...output, result: { status: "failed", error } })) } as never);
+    expect(await queued()).toEqual(done);
   });
 
-  it("SR02 a stitched segment's chunks are registered at its stitch while a retryable failed segment's done chunks stay pinned", async () => {
+  it("SR02 a stitched segment's chunks are registered at its stitch, the failed segment's done chunks at the run's end", async () => {
     const target = await seedStudioFixture(pg, "split-reclaim");
     await pg`INSERT INTO project_members (project_id,user_id,role) VALUES (${target.projectId},${target.userId},'editor')`;
     await seedDesignatedLot(pg, target, 1000);
@@ -184,6 +206,8 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
       outputs: planVideoSplit(grid, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
     const admitted = await post(target.userId, body);
     expect(admitted.status, await admitted.clone().text()).toBe(201);
+    // The running-task gate starts a pending task before its pickup does (inner#1968).
+    await runningSlotService.startWithinLimit({ id: body.run_id, jobId: body.run_id });
     const { task, execution } = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
     const plan = execution as unknown as { layout: { encodes: { outputIndex: number; chunks: unknown[] }[] }; outputs: { outputIndex: number; nodeId: string; recipe: unknown }[]; planFingerprint: string };
     const chunksOf = (output: number): number => plan.layout.encodes.find((entry) => entry.outputIndex === output)!.chunks.length;
@@ -195,34 +219,28 @@ describe("a failed segment's done chunks (frames-split §5.4, §7.15)", () => {
     const stored = await taskRepo.getMiniToolExecutionTask(task.id);
     const deadlineAt = await taskDeadline(task.id, stored!.createdAt);
     const run = ((await import("@worker/handlers/mini-tool/run-video-tool.js")) as unknown as Record<string, Runner>).runMiniToolVideoTool!;
-    let results = new Map<number, Record<string, unknown>>();
-    for (let pickup = 0; pickup < 60 && results.size < plan.outputs.length; pickup += 1) {
-      try { results = (await run(execution, task.userId, deadlineAt)).results; } catch (error) { if (!(error instanceof StillRunning)) throw error; }
-    }
-    expect(results.get(0)).toMatchObject({ status: "registered" });
+    const results = await untilFailure(run, execution, task.userId, deadlineAt);
+    expect(results.get(0)).toMatchObject({ status: "reported" });
     expect(results.get(1)).toMatchObject({ status: "failed" });
     const chunkKeys = (output: number, count: number): string[] => Array.from({ length: count }, (_unused, chunk) =>
       videoPresentationWorkKeyFor(sourceKey, videoContainerJobId({ kind: "run-chunk", taskId: task.id, output, chunk, attempt: 1 }))).sort();
-    const stitched = chunkKeys(0, chunksOf(0)); const waiting = chunkKeys(1, last);
+    const stitched = chunkKeys(0, chunksOf(0)); const done = await doneChunkKeys(task.id, 1);
+    const queued = async (): Promise<string[]> => (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${[...stitched, ...done]}) AND kind='derived'`).map((row) => row.storage_key).sort();
+    expect(await queued()).toEqual(stitched);
     const error = { code: "mini_tool_failed" };
     await miniToolExecutionService.finishMiniToolExecution(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0, error,
-      outputs: plan.outputs.map((output) => ({ ...output, result: results.get(output.outputIndex)! })) } as never);
-    const queued = (await pg<{ storage_key: string }[]>`SELECT storage_key FROM storage_reclaim_queue WHERE storage_key=ANY(${[...stitched, ...waiting]}) AND kind='derived'`).map((row) => row.storage_key).sort();
-    expect(queued).toEqual(stitched);
+      outputs: plan.outputs.map((output) => ({ ...output, result: { status: "failed", error } })) } as never);
+    expect(await queued()).toEqual([...stitched, ...done].sort());
     const pinned = (await pg<{ storage_key: string }[]>`SELECT o.storage_key FROM presentation_pin_objects o JOIN presentation_pins p ON p.id=o.pin_id
-      WHERE p.holder_kind='execution' AND p.holder_id=${task.id} AND p.deleted_at IS NULL AND o.storage_key=ANY(${[...stitched, ...waiting]})`).map((row) => row.storage_key).sort();
-    expect(pinned).toEqual(waiting);
+      WHERE p.holder_kind='execution' AND p.holder_id=${task.id} AND p.deleted_at IS NULL`).map((row) => row.storage_key);
+    expect(pinned).toEqual([]);
   });
 });
 
 // C15 for split (planned-terminal-closure.integration.test.ts): a container-only run the queue cleanup ends has no submit
-// attempt to wait for, so its consumption set closes and its measured usage settles. C15p: a segment a progress commit
-// already registered stays registered at cleanup (design line 622), so the cleanup's terminal commit is not refused.
+// attempt to wait for, so its consumption set closes and its measured usage settles; every output fails (frames-split §7.19).
 describe("a split the queue cleanup ends closes its consumption set (execution design §6.12)", () => {
-  it.each([
-    { name: "C15s a split whose jobs all ended", progress: false },
-    { name: "C15p a split whose first segment a progress commit registered", progress: true },
-  ])("$name closes at cleanup, releases its hold and charges its container usage", async ({ progress }) => {
+  it("C15s a split whose jobs all ended closes at cleanup, fails every output, releases its hold and charges its container usage", async () => {
     core.initCore({ ...process.env, PAYMENT_ENABLED: "true", CREDIT_MULTIPLIER: "1", STRIPE_SECRET_KEY: "sk_test_unused", STRIPE_WEBHOOK_SECRET: "whsec_unused",
       UPLOAD_BASE_URL: "https://assets.example.test", ...INGEST_ENV });
     const target = await seedStudioFixture(pg, "split-cleanup");
@@ -243,6 +261,8 @@ describe("a split the queue cleanup ends closes its consumption set (execution d
       outputs: planVideoSplit(grid, cuts).map((output) => ({ outputIndex: output.outputIndex, nodeId: randomUUID(), recipe: { kind: "segment", range: { start: output.start, end: output.end } } })) };
     const admitted = await post(target.userId, body);
     expect(admitted.status, await admitted.clone().text()).toBe(201);
+    // The running-task gate starts a pending task before its pickup does (inner#1968).
+    await runningSlotService.startWithinLimit({ id: body.run_id, jobId: body.run_id });
     const { task, execution } = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
     const stored = await taskRepo.getMiniToolExecutionTask(task.id);
     const deadlineAt = await taskDeadline(task.id, stored!.createdAt);
@@ -251,21 +271,14 @@ describe("a split the queue cleanup ends closes its consumption set (execution d
     for (let pickup = 0; pickup < 60 && results.size < body.outputs.length; pickup += 1) {
       try { results = (await run(execution, task.userId, deadlineAt)).results; } catch (error) { if (!(error instanceof StillRunning)) throw error; }
     }
-    expect([...results.values()].map((result) => result.status)).toEqual(body.outputs.map(() => "registered"));
-    if (progress) {
-      // An earlier pickup committed segment 0 non-terminally while segment 1 was still encoding.
-      const plan = execution as unknown as { outputs: { outputIndex: number; nodeId: string; recipe: unknown }[]; planFingerprint: string };
-      await miniToolExecutionService.commitMiniToolExecutionProgress(task.id, { planFingerprint: plan.planFingerprint, expectedVersion: 0,
-        outputs: plan.outputs.map((output) => ({ ...output, result: output.outputIndex === 0 ? results.get(0)! : null })) } as never);
-    }
+    expect([...results.values()].map((result) => result.status)).toEqual(body.outputs.map(() => "reported"));
     // The worker died at its terminal commit, so only the queue cleanup ends the run.
     const { cleanupFailedJobNodes } = await import("@worker/handlers/failed-job-cleanup.js");
     await cleanupFailedJobNodes(core.getStreamRedis(), { name: "execute-mini-tool", data: { taskId: task.id, source: "mini_tool", executionKind: "planned" }, finishedOn: Date.now() }, "worker died");
     const [ended] = await pg<{ status: string; complete: unknown }[]>`SELECT status,result#>'{settlement,consumptionSetComplete}' AS complete FROM tasks WHERE id=${task.id}`;
     expect(ended).toEqual({ status: "failed", complete: true });
     const { record } = await miniToolExecutionService.startMiniToolExecution(task.id, task.id);
-    expect(record.outputs.map((output) => output.result?.status)).toEqual(body.outputs.map((output) => progress && output.outputIndex === 0 ? "registered" : "failed"));
-    if (progress) expect(record.outputs[0]!.result).toEqual(results.get(0));
+    expect(record.outputs.map((output) => output.result?.status)).toEqual(body.outputs.map(() => "failed"));
     const { runMiniToolSettlement } = await import("@breatic/domain");
     for (let round = 0; round < 60; round += 1) {
       const wake = await taskRepo.waitingMiniToolSettlement(task.id);

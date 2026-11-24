@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import { logger, type getStreamRedis } from "@breatic/core";
-import { miniToolDeliveryService, miniToolExecutionService, settleTaskForNode, type MiniToolExecution, type MiniToolExecutionCompletion, type miniToolExecutionService as ExecutionService } from "@breatic/domain";
+import { miniToolDeliveryService, miniToolExecutionService, settleTaskForNode, type MiniToolExecution, type MiniToolExecutionCompletion } from "@breatic/domain";
 import { canvasSpaceDocName } from "@breatic/shared";
 import { deliverMiniToolOutput, wakePendingMiniToolDelivery } from "@worker/handlers/mini-tool/delivery-worker.js";
 
@@ -55,27 +55,3 @@ async function deliverPending(taskId: string, streamRedis?: ReturnType<typeof ge
   await wakePendingMiniToolDelivery(context);
 }
 
-/**
- * Commit a pickup's newly registered outputs non-terminally (design §7.11, §10.8), then deliver the ones whose slot the
- * commit opened before the pickup ends with StillRunning. A delivery failure is logged and left to the pending wake.
- * @param taskId - The original accepted task.
- * @param progress - The complete indexed mapping and the version it was read at.
- * @returns The committed execution.
- * @throws {Error} When the commit is refused or persistence fails.
- */
-export async function commitMiniToolExecutionProgress(taskId: string, progress: ExecutionService.MiniToolExecutionProgress): Promise<MiniToolExecution> {
-  let committed: MiniToolExecution;
-  try {
-    committed = await miniToolExecutionService.commitMiniToolExecutionProgress(taskId, progress);
-  } catch (err) {
-    logger.error({ err, ctx: { taskId, phase: "execution-progress" } }, "mini_tool_execution_progress_failed");
-    throw err;
-  }
-  try {
-    await deliverPending(taskId);
-  } catch (err) {
-    logger.error({ err, ctx: { taskId, projectId: committed.execution.projectId, spaceId: committed.execution.spaceId, phase: "progress-delivery" } },
-      "mini_tool_execution_delivery_failed");
-  }
-  return committed;
-}

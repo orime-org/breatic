@@ -10,7 +10,7 @@
  * runners never decide it again: `run-video-tool.ts` and `run-container-analysis.ts` open every job's consumption with the
  * frozen value, so a later change of the set never reaches an admitted run.
  *
- * Only the job boundary (`advanceRegisteredMiniToolPlanJob`), the step store and the request schema are replaced: the
+ * Only the job boundaries (`advanceStagedMiniToolPlanJob`, `advanceRegisteredMiniToolPlanJob`), the step store and the request schema are replaced: the
  * stored step already carries its request, so no recipe or grant is built, and the call that opens the job's consumption
  * is observed as it is made.
  */
@@ -33,7 +33,7 @@ vi.mock("@breatic/domain", async (original) => {
 // The stored request is the job's own; its recipe is not what this file checks, so any stored object is taken as it is.
 vi.mock("@breatic/shared", async (original) => ({ ...await original<typeof sharedModule>(),
   miniToolPlanJobRequestSchema: z.custom<MiniToolPlanJobRequest>((value) => typeof value === "object" && value !== null) }));
-vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance }));
+vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance, advanceStagedMiniToolPlanJob: h.advance }));
 
 const TASK = "50000000-0000-4000-8000-000000000011";
 const PROJECT = "10000000-0000-4000-8000-000000000011";

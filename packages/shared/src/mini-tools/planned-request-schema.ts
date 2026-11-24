@@ -45,25 +45,10 @@ export const miniToolPlannedRequestSchema = z.discriminatedUnion("tool", [frames
     ctx.addIssue({ code: "custom", path: ["outputs"], message: "Output destinations must be unique and distinct from the source" });
   }
 });
-/** A fresh planned execution, independent from legacy submissions and failed-output retries. */
+/** A planned execution, independent from legacy submissions. */
 export type MiniToolPlannedRequest = z.infer<typeof miniToolPlannedRequestSchema>;
 
-/**
- * The planned tools whose failed output can be retried (frames-split §7.15 end of retryability): the retry request takes exactly
- * these, and a failed output of any other tool is never retryable.
- */
-export const MINI_TOOL_RETRY_TOOLS = ["video.extract-frames", "video.split"] as const;
-
-/** A new execution reuses only original failed output identities, not current draft inputs. */
-export const miniToolExecutionRetryRequestSchema = z.strictObject({
-  tool: z.enum(MINI_TOOL_RETRY_TOOLS), project_id: z.uuid(), space_id: z.uuid(), run_id: z.uuid(),
-  retry: z.strictObject({ runId: z.uuid(), outputIndexes: z.array(index).min(1).refine((ids) => new Set(ids).size === ids.length) }),
-}).refine((request) => request.run_id !== request.retry.runId, { message: "A retry requires a new execution identity" });
-export type MiniToolExecutionRetryRequest = z.infer<typeof miniToolExecutionRetryRequestSchema>;
-/** The two planned admission forms share the same original HTTP entry. */
-export const miniToolExecutionRequestSchema = z.union([miniToolPlannedRequestSchema, miniToolExecutionRetryRequestSchema]);
-export type MiniToolExecutionRequest = z.infer<typeof miniToolExecutionRequestSchema>;
 /** Existing submissions retain their original public contract. */
-export type MiniToolSubmission = MiniToolRequest | MiniToolExecutionRequest;
+export type MiniToolSubmission = MiniToolRequest | MiniToolPlannedRequest;
 /** The admission union preserves legacy requests alongside complete planned submissions. */
-export const miniToolSubmissionSchema: z.ZodType<MiniToolSubmission> = z.union([miniToolRequestSchema, miniToolExecutionRequestSchema]);
+export const miniToolSubmissionSchema: z.ZodType<MiniToolSubmission> = z.union([miniToolRequestSchema, miniToolPlannedRequestSchema]);

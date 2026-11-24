@@ -982,9 +982,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.you"))} for your own. A done row offers ` +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
-      `hand or for a ${quoted(t("canvas.miniTool.video.extract-frames.label"))} or ` +
-      `${quoted(t("canvas.miniTool.video.split.label"))} result that can run again and was not retried already (a retried result runs again from ` +
-      `its newest row), and ${quoted(t("canvas.task.action.clear"))}; an expired one offers ` +
+      `hand, and ${quoted(t("canvas.task.action.clear"))}; a video tool's failed row (including one that says ` +
+      `${quoted(t("canvas.task.failure.cancelled"))}) or expired row offers only ${quoted(t("canvas.task.action.clear"))}; ` +
+      "run the tool again from its panel; any other expired one offers " +
       `${quoted(t("canvas.task.action.view"))} when a late result came, which opens the node's history at that ` +
       `result so you can restore it, and ${quoted(t("canvas.task.action.clear"))}.`,
     "Each person runs only so many tasks at once, a number that comes with the membership of the Studio's admin; " +

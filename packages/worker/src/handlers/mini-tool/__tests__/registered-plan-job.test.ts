@@ -226,7 +226,7 @@ describe("chunk outputs retired with a done stitch (§93 D5-10)", () => {
 // output's final failure. Registration is a second step, run only past the commit point, with the presentation deadline
 // counted from that moment for a video output.
 describe("staged advance and later registration (frames-split §7.19)", () => {
-  type Staged = { request: MiniToolPlanJobRequest; report: unknown };
+  type Staged = { request: MiniToolPlanJobRequest; report: unknown; refused: "over_cap" | "empty" | null };
   type Api = {
     advanceStagedMiniToolPlanJob?: (value: typeof input, options?: { retire?: readonly string[] }) => Promise<Staged>;
     registerMiniToolPlanJobOutputs?: (value: { taskId: string; stepId: string }, options: { deadlineAt: number }) => Promise<{ outputIndex: number; asset: StudioAssetEntity }[]>;
@@ -243,7 +243,7 @@ describe("staged advance and later registration (frames-split §7.19)", () => {
 
   it("ST01 stages a done report on the step and registers nothing", async () => {
     const { advanceStagedMiniToolPlanJob } = await api();
-    expect(await advanceStagedMiniToolPlanJob(input)).toEqual({ request: plan, report: done });
+    expect(await advanceStagedMiniToolPlanJob(input)).toEqual({ request: plan, report: done, refused: null });
     expect(h.record).toHaveBeenCalledExactlyOnceWith({ taskId, stepId, identity, outcome: "done", result: done }, expect.objectContaining({ kind: "container_job" }));
     expect(h.register).not.toHaveBeenCalled(); expect(h.inline).not.toHaveBeenCalled();
   });
@@ -251,7 +251,7 @@ describe("staged advance and later registration (frames-split §7.19)", () => {
   it("ST02 replays the stored report on re-entry without advancing the job again", async () => {
     const { advanceStagedMiniToolPlanJob } = await api();
     await advanceStagedMiniToolPlanJob(input); h.advance.mockClear(); h.record.mockClear();
-    expect(await advanceStagedMiniToolPlanJob(input)).toEqual({ request: plan, report: done });
+    expect(await advanceStagedMiniToolPlanJob(input)).toEqual({ request: plan, report: done, refused: null });
     expect(h.advance).not.toHaveBeenCalled(); expect(h.record).not.toHaveBeenCalled(); expect(h.register).not.toHaveBeenCalled();
   });
 
@@ -262,12 +262,16 @@ describe("staged advance and later registration (frames-split §7.19)", () => {
     const { advanceStagedMiniToolPlanJob } = await api();
     h.advance.mockResolvedValue({ ...done, outputs: [outputs[0], { ...outputs[1]!, sizeBytes }] });
     const staged = await advanceStagedMiniToolPlanJob(input, { retire: ["video/source.mp4.work/chunk"] });
-    expect(staged.report).toMatchObject({ state: "failed", reason });
+    expect(staged.refused).toBe(reason);
     expect(h.record).toHaveBeenCalledTimes(1);
     const recorded = h.record.mock.calls[0]![0] as RecordMiniToolStepResultInput;
     expect(recorded).toMatchObject({ outcome: "failed", error: { code: reason } });
     expect(recorded).not.toHaveProperty("presentation");
     expect(h.register).not.toHaveBeenCalled();
+    // Read again, the stored refusal is the same final failure.
+    h.advance.mockClear();
+    expect((await advanceStagedMiniToolPlanJob(input)).refused).toBe(reason);
+    expect(h.advance).not.toHaveBeenCalled();
   });
 
   it("ST04 a done stitch stages its report together with the retirement of the consumed chunk keys", async () => {

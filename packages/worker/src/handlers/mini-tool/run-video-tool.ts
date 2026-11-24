@@ -6,17 +6,19 @@
  * encoding and job identities, §7.11 per-output results, §7.15, §7.17, §10.8).
  *
  * Each pickup writes every output's job recipe on the frozen version's grid and tool source (§7.16) with the frozen
- * encode, and advances the frozen layout as it is: each batch is a `run-batch` job registered through
- * `advanceRegisteredMiniToolPlanJob`, whose next attempt carries only the outputs not yet written, up to the frozen
+ * encode, and advances the frozen layout as it is: each batch is a `run-batch` job staged through
+ * `advanceStagedMiniToolPlanJob`, whose next attempt carries only the outputs not yet written, up to the frozen
  * `chunkRetries`; an oversized segment runs its frozen chunk windows as `run-chunk` work objects
- * (`container-steps.ts`) and one registered `run-stitch` that retires them. The caller commits what each pickup finished.
+ * (`container-steps.ts`) and one staged `run-stitch` that retires them. A run is one whole (§7.19): nothing is registered
+ * while it runs, the first output that fails for good ends the pickup's work, and `registerReportedOutputs` registers
+ * every staged output once the caller has written the run's commit point.
  */
 
-import { assetRepo, openContainerOutputs, type AcceptedMiniToolExecution } from "@breatic/domain";
+import { assetRepo, openContainerOutputs, upstreamStepRepo, type AcceptedMiniToolExecution } from "@breatic/domain";
 import { DeadlinePassed, miniToolPlanJobRequestSchema, videoPresentationWorkKeyFor, type MiniToolPlanRecipe, type StudioAssetEntity } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, videoContainerJobId, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
-import { advanceChunks, advanceRegistered, jobStep } from "@worker/handlers/mini-tool/container-steps.js";
-import { advanceRegisteredMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
+import { advanceChunks, advanceStaged, jobStep, storedRequest } from "@worker/handlers/mini-tool/container-steps.js";
+import { advanceStagedMiniToolPlanJob, registerMiniToolPlanJobOutputs, type StagedMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { chunkInputId, frameRecipeOf, segmentRecipesOf, toolInputOf, type ToolInput } from "@worker/handlers/video-presentation-recipes.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 
@@ -24,8 +26,12 @@ import { StillRunning } from "@worker/handlers/still-running.js";
 type VideoTool = Extract<AcceptedMiniToolExecution, { tool: "video.extract-frames" | "video.split" | "video.focus-crop" }>;
 /** One output's result: registered, failed, or null while it still runs. */
 export type VideoToolResult = MiniToolExecutionOutput["result"];
-/** What one pickup observed of every output, by output index. */
-export interface VideoToolPickup { results: Map<number, NonNullable<VideoToolResult>>; waiting: boolean }
+/** A failed output's result. */
+type FailedResult = Extract<NonNullable<VideoToolResult>, { status: "failed" }>;
+/** What one pickup observed of an output: its report staged, or its final failure. */
+export type VideoToolOutcome = { status: "reported" } | FailedResult;
+/** What one pickup observed of every output, by output index, in the order it observed them. */
+export interface VideoToolPickup { results: Map<number, VideoToolOutcome>; waiting: boolean }
 /** The tool's PNG or video output, its recipe and the inputs it reads. */
 interface PlannedOutput { outputIndex: number; recipe: MiniToolPlanRecipe; inputs: ToolInput["inputs"] }
 
@@ -52,10 +58,20 @@ export async function registered(asset: StudioAssetEntity): Promise<NonNullable<
  * @returns The result.
  * @throws {never} Never.
  */
-export function failedResult(reason: string): NonNullable<VideoToolResult> {
+export function failedResult(reason: string): FailedResult {
   // A step that ended at the run's deadline expired, as the run itself does (run-execution-task's DeadlinePassed failure).
   if (reason === "expired") return { status: "failed", error: { code: "expired" } };
   return { status: "failed", error: { code: "mini_tool_failed", message: reason } };
+}
+
+/**
+ * Whether an output of the pickup failed for good: from then on nothing new opens (frames-split §7.19).
+ * @param pickup - The pickup.
+ * @returns True once any output failed.
+ * @throws {never} Never.
+ */
+function failedYet(pickup: VideoToolPickup): boolean {
+  return [...pickup.results.values()].some((result) => result.status === "failed");
 }
 
 /**
@@ -112,25 +128,25 @@ function plannedOutput(execution: VideoTool, outputIndex: number): PlannedOutput
 }
 
 /**
- * Advance one frozen batch (§93 D5-3): each attempt carries only the outputs earlier attempts did not write; outputs still
- * unwritten when the frozen retries are spent fail alone.
+ * Advance one frozen batch (§93 D5-3): each attempt carries only the outputs earlier attempts did not write, and each
+ * written output's report is staged; outputs still unwritten when the frozen retries are spent fail, and so does the run.
  * @param execution - The run.
  * @param batch - The batch index.
  * @param outputs - Its output indices.
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
  * @param pickup - The pickup's results, extended in place.
- * @returns Nothing once the batch is settled or still running.
- * @throws {Error} When persistence, grants or registration fail.
+ * @returns Nothing once the batch is settled, still running or stopped by a failure.
+ * @throws {Error} When persistence or grants fail.
  */
 async function advanceBatch(execution: VideoTool, batch: number, outputs: readonly number[], userId: string, deadlineAt: number,
   pickup: VideoToolPickup): Promise<void> {
   for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
     const pending = outputs.filter((index) => !pickup.results.has(index));
-    if (pending.length === 0) return;
+    if (pending.length === 0 || failedYet(pickup)) return;
     const jobId = videoContainerJobId({ kind: "run-batch", taskId: execution.taskId, batch, attempt });
     const found = await jobStep(execution.taskId, jobId, execution.container.containerClass, deadlineAt);
-    // An attempt due after the deadline is never opened: the outputs it would carry expire, the other batches settle.
+    // An attempt due after the deadline is never opened: the outputs it would carry expire.
     if (found === null) {
       for (const index of pending) pickup.results.set(index, failedResult("expired"));
       return;
@@ -146,12 +162,12 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
         inputs: [...new Map(planned.flatMap((output) => output.inputs).map((input) => [input.inputId, input])).values()],
         outputs: planned.map((output, index) => ({ ...grants[index], outputIndex: output.outputIndex, recipe: output.recipe })) });
     }
-    let job: Awaited<ReturnType<typeof advanceRegisteredMiniToolPlanJob>>;
+    let job: StagedMiniToolPlanJob;
     try {
       // Who pays is the payer admission froze (frames-split §5.5): the platform for frame extraction and focus crops.
-      job = await advanceRegisteredMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: execution.chargeTo, request });
+      job = await advanceStagedMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: execution.chargeTo, request });
     } catch (error) {
-      // A job that can no longer be submitted or waited for expires its unwritten outputs; the other batches are still read.
+      // A job that can no longer be submitted or waited for expires its unwritten outputs.
       if (error instanceof DeadlinePassed) {
         for (const index of pending) pickup.results.set(index, failedResult("expired"));
         return;
@@ -160,7 +176,12 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
       pickup.waiting = true;
       return;
     }
-    for (const entry of job.assets) pickup.results.set(entry.outputIndex, await registered(entry.asset));
+    // A written output refused for its size is the run's final failure, never retried.
+    if (job.refused !== null) {
+      for (const index of pending) pickup.results.set(index, failedResult(job.refused));
+      return;
+    }
+    for (const output of job.report.outputs) if (pending.includes(output.outputIndex)) pickup.results.set(output.outputIndex, { status: "reported" });
     if (job.report.state === "done") continue;
     // An attempt ingest ended at the deadline has no next one: its unwritten outputs expire.
     if (attempt === execution.container.chunkRetries + 1 || job.report.reason === "expired") {
@@ -171,8 +192,8 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
 }
 
 /**
- * Advance an oversized segment (§93 D5-10; design §5.4): its frozen chunk windows, then one registered stitch over them
- * that retires the consumed chunk keys; a chunk whose retries are spent fails only this segment.
+ * Advance an oversized segment (§93 D5-10; design §5.4): its frozen chunk windows, then one staged stitch over them that
+ * retires the consumed chunk keys; a chunk whose retries are spent fails the segment, and so the run.
  * @param execution - The run.
  * @param encode - The frozen encode plan of the output.
  * @param encode.outputIndex - The output.
@@ -206,9 +227,9 @@ async function advanceEncode(execution: VideoTool, encode: VideoTool["layout"]["
   if (!("keys" in chunks)) { pickup.results.set(outputIndex, failedResult(chunks.failed)); return; }
   const { keys } = chunks;
   const stitch = recipes.at(-1) as Extract<MiniToolPlanRecipe, { kind: "stitch"; inputId: string }>;
-  let written: Awaited<ReturnType<typeof advanceRegistered>>;
+  let written: Awaited<ReturnType<typeof advanceStaged>>;
   try {
-    written = await advanceRegistered({ taskId: execution.taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, container: execution.container, log: "split" },
+    written = await advanceStaged({ taskId: execution.taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, container: execution.container, log: "split" },
       { stepKey: `out:${outputIndex}:stitch`, namePrefix: grantOf(stitch).namePrefix, container: webm(stitch) ? "webm" : "mp4", outputIndex, retire: keys,
         build: () => Promise.resolve({ recipe: stitch, inputs: [...inputs.filter((input) => input.inputId === stitch.inputId), ...keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) },
       userId, deadlineAt);
@@ -217,24 +238,70 @@ async function advanceEncode(execution: VideoTool, encode: VideoTool["layout"]["
     pickup.waiting = true;
     return;
   }
-  pickup.results.set(outputIndex, "failed" in written ? failedResult(written.failed) : written);
+  pickup.results.set(outputIndex, "failed" in written ? failedResult(written.failed) : { status: "reported" });
 }
 
 /**
  * One pickup of a frames, split or video focus crop run (§93 D5-1..D5-10): advance every frozen batch and oversized segment
- * on the frozen version's grid and tool source, batches in parallel within the pickup (§5.4).
+ * on the frozen version's grid and tool source, stopping at the first output that fails for good (§7.19).
  * @param execution - The frozen run.
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
- * @param pickup - The pickup's results, filled in place as outputs settle, so a caller still holds the outputs registered
- * before a throw.
+ * @param pickup - The pickup's results, filled in place as outputs settle.
  * @returns Every output settled so far, and whether any job still runs.
- * @throws {Error} When persistence, grants or registration fail.
+ * @throws {Error} When persistence or grants fail.
  */
 export async function runMiniToolVideoTool(execution: AcceptedMiniToolExecution, userId: string, deadlineAt: number,
   pickup: VideoToolPickup = { results: new Map(), waiting: false }): Promise<VideoToolPickup> {
-  if (execution.tool !== "video.extract-frames" && execution.tool !== "video.split" && execution.tool !== "video.focus-crop") throw new Error("A frames or split runner requires a frames or split run");
-  for (const [batch, outputs] of execution.layout.batches.entries()) await advanceBatch(execution, batch, outputs, userId, deadlineAt, pickup);
-  for (const encode of execution.layout.encodes) await advanceEncode(execution, encode, userId, deadlineAt, pickup);
+  const tool = videoTool(execution);
+  for (const [batch, outputs] of tool.layout.batches.entries()) {
+    if (failedYet(pickup)) return pickup;
+    await advanceBatch(tool, batch, outputs, userId, deadlineAt, pickup);
+  }
+  for (const encode of tool.layout.encodes) {
+    if (failedYet(pickup)) return pickup;
+    await advanceEncode(tool, encode, userId, deadlineAt, pickup);
+  }
   return pickup;
+}
+
+/**
+ * A frames, split or video focus crop run.
+ * @param execution - The frozen run.
+ * @returns It.
+ * @throws {Error} When the run is of another tool.
+ */
+function videoTool(execution: AcceptedMiniToolExecution): VideoTool {
+  if (execution.tool !== "video.extract-frames" && execution.tool !== "video.split" && execution.tool !== "video.focus-crop") throw new Error("A frames or split runner requires a frames or split run");
+  return execution;
+}
+
+/**
+ * Register every output a run staged, once the run's commit point is written (frames-split §7.19): each
+ * output from the latest batch or stitch step whose report wrote it, a video output with a presentation deadline counted
+ * from this registration. Registering again reads the step's cached registrations back.
+ * @param execution - The frozen run.
+ * @param deadlineAt - The presentation deadline of a video output.
+ * @returns Each output's registered result, by output index.
+ * @throws {Error} When an output has no staged step, or a registration is refused or unavailable.
+ */
+export async function registerReportedOutputs(execution: AcceptedMiniToolExecution, deadlineAt: number): Promise<Map<number, NonNullable<VideoToolResult>>> {
+  const tool = videoTool(execution);
+  const staged = new Map<number, string>();
+  for (const step of [...await upstreamStepRepo.listSteps(tool.taskId)].sort((a, b) => a.position - b.position)) {
+    const request = storedRequest(step);
+    const report = (step.output.miniToolStep as { result?: { result?: { outputs?: { outputIndex: number }[] } } | null } | undefined)?.result?.result;
+    // A chunk's work object is never an output (§93 D5-10).
+    if (request === null || report?.outputs === undefined || request.outputs.some((output) => output.storageKey === videoPresentationWorkKeyFor(tool.sourceKey, request.jobId))) continue;
+    for (const output of report.outputs) staged.set(output.outputIndex, step.id);
+  }
+  const results = new Map<number, NonNullable<VideoToolResult>>();
+  for (const stepId of new Set(tool.outputs.map((output) => staged.get(output.outputIndex)))) {
+    if (stepId === undefined) throw new Error("A reported output has no staged step");
+    const wanted = tool.outputs.filter((output) => staged.get(output.outputIndex) === stepId).map((output) => output.outputIndex);
+    for (const entry of await registerMiniToolPlanJobOutputs({ taskId: tool.taskId, stepId }, { deadlineAt })) {
+      if (wanted.includes(entry.outputIndex)) results.set(entry.outputIndex, await registered(entry.asset));
+    }
+  }
+  return results;
 }

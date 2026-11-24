@@ -61,11 +61,11 @@ import {
 import { costWaitOf } from "@worker/handlers/cost-wait.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { isTranscription } from "@worker/handlers/transcribe-question.js";
-import { miniToolExecutionService, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
+import type { MiniToolAnalysisJob, MiniToolExecutionJob } from "@breatic/domain";
 import { MINI_TOOL_ANALYSIS_JOB } from "@breatic/shared/mini-tools";
 import { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@breatic/core";
 import { finishMiniToolAnalysisAndNotify } from "@worker/handlers/mini-tool/analysis-completion.js";
-import { finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
+import { recoverPlannedRun } from "@worker/handlers/mini-tool/recover-planned-run.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
@@ -124,21 +124,13 @@ export async function cleanupFailedJobNodes(
     if (job.name !== "execute-mini-tool" || job.data.executionKind !== "planned" || job.data.source !== "mini_tool") {
       throw new Error("Planned recovery requires its original queue discriminator");
     }
-    const current = await miniToolExecutionService.startMiniToolExecution(job.data.taskId, job.data.taskId);
-    if (current.record.status === "cancelled") return 0;
-    const terminal = current.record.status === "completed" || current.record.status === "failed";
-    const failure = { code: "internal" };
-    if (!terminal) logger.error({ err: new Error(reason), ctx: { taskId: job.data.taskId, reason } }, "mini_tool_execution_terminal_queue_failed");
-    await finishMiniToolExecutionAndNotify(job.data.taskId, {
-      planFingerprint: current.execution.planFingerprint, expectedVersion: current.record.resultVersion,
-      // A result a progress commit already registered is never rewritten (design line 622); only the rest fail.
-      outputs: terminal ? current.record.outputs : current.execution.outputs.map((output, index) => {
-        const held = current.record.outputs[index]?.result;
-        return { ...output, result: held?.status === "registered" ? held : { status: "failed", error: failure }, late: false };
-      }),
-      error: terminal ? current.record.error : failure,
-    }, streamRedis);
-    return current.execution.outputs.length;
+    // A planned run alone decides its end (frames-split §7.19); what this cannot end is left to the sweep.
+    try {
+      await recoverPlannedRun(job.data.taskId);
+    } catch (err) {
+      logger.error({ err, ctx: { taskId: job.data.taskId, reason } }, "mini_tool_execution_recovery_failed");
+    }
+    return 1;
   }
   if ("hostNodeId" in job.data) throw new Error("Analysis recovery requires its execution discriminator");
   let task = null as Awaited<ReturnType<typeof taskService.getByIdInternal>>;

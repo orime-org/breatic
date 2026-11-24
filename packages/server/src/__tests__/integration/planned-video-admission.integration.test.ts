@@ -13,18 +13,13 @@
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import type { Queue } from "bullmq";
-import fc from "fast-check";
 import { z } from "zod";
 import { afterAll, beforeAll, beforeEach, describe, expect, inject, it, vi } from "vitest";
 import * as core from "@breatic/core";
 import * as shared from "@breatic/shared";
 import * as miniTools from "@breatic/shared/mini-tools";
 import { hashMiniToolValue, miniToolExecutionRecordSchema, planVideoFrames, planVideoSplit } from "@breatic/shared/mini-tools";
-import {
-  claimMiniToolSettlement, completeMiniToolConsumptionSet, confirmMiniToolConsumption, containerCostUsd,
-  creditHoldService, creditsForUsd, MIN_TASK_CREDIT_COST, openMiniToolConsumption, readMiniToolExecutionPlan,
-  recordMiniToolConsumption, settleMiniToolCharge, upstreamStepRepo,
-} from "@breatic/domain";
+import { containerCostUsd, creditHoldService, creditsForUsd, MIN_TASK_CREDIT_COST, readMiniToolExecutionPlan } from "@breatic/domain";
 import { seedDesignatedLot, seedStudioFixture, type StudioFixture } from "./studio-credit-fixtures.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 import { editKeyOf, presentedSource, REMOVAL_PLAN, type PresentedOptions } from "./presentation-fixtures.js";
@@ -224,35 +219,6 @@ function retry(f: Fixture, ids = [2], run = randomUUID()): { tool: Tool; project
   return { tool: f.body.tool, project_id: f.projectId, space_id: f.body.space_id, run_id: run, retry: { runId: f.body.run_id, outputIndexes: ids } };
 }
 
-/** Count real lock waiters whose blocker chain reaches this gate's backend. @throws {Error} On fixture SQL failure. */
-async function blockedBy(gatePid: number): Promise<number> {
-  const [row] = await pg<{ count: number }[]>`WITH RECURSIVE blockers AS (
-    SELECT pid AS waiter,unnest(pg_blocking_pids(pid)) AS blocker FROM pg_stat_activity
-    WHERE datname=current_database() AND wait_event_type='Lock'
-      AND lower(query) LIKE '%tasks%' AND lower(query) LIKE '%for update%'
-    UNION
-    SELECT blockers.waiter,unnest(pg_blocking_pids(blockers.blocker)) FROM blockers
-  ) SELECT count(DISTINCT waiter)::int AS count FROM blockers WHERE blocker=${gatePid}`;
-  if (!row) throw new Error("Missing blocker projection");
-  return row.count;
-}
-
-/** Block real immutable-parent row locks, observe both contenders, then release and drain. @throws {Error} On failed lock probe or caller error. */
-async function contending<T>(id: string, calls: (() => Promise<T>)[]): Promise<T[]> {
-  let release!: () => void; let entered!: () => void; let gatePid = 0;
-  const gate = new Promise<void>((resolve) => { release = resolve; }); const ready = new Promise<void>((resolve) => { entered = resolve; });
-  const owner = pg.begin(async (tx) => {
-    const [backend] = await tx<{ pid: number }[]>`SELECT pg_backend_pid() AS pid`;
-    if (!backend) throw new Error("Missing gate backend");
-    gatePid = backend.pid; await tx`SELECT id FROM tasks WHERE id=${id} FOR UPDATE`; entered(); await gate;
-  });
-  await ready;
-  const pending = calls.map((call) => call()); pending.forEach((promise) => { void promise.catch(() => undefined); });
-  try { await waitUntilBlockedOn(pg, ["tasks", "for update"], calls.length); expect(await blockedBy(gatePid)).toBe(calls.length);
-    release(); await owner; return await Promise.all(pending); }
-  finally { release(); await owner; await Promise.allSettled(pending); }
-}
-
 describe("S5 fresh frame and split execution admission", () => {
   it("S5-A00 proves the independent planner literals on the selected grid", async () => {
     const f = await seed();
@@ -383,7 +349,7 @@ describe("S5 fresh frame and split execution admission", () => {
 describe("S5 no per-output retry admission (frames-split §7.19)", () => {
   it("S5-R01 a request that names outputs of an earlier run to retry is refused and admits nothing", async () => {
     const f = await seed(); const before = await failedOriginal(f); const body = retry(f);
-    expect((await post(f, body)).status).toBe(400);
+    expect((await post(f, body)).status).toBe(422);
     expect(await effects(body.run_id)).toEqual({ tasks: 0, rows: 0, holds: 0, jobs: 0 });
     expect(await parent(f.body.run_id)).toEqual(before);
   });

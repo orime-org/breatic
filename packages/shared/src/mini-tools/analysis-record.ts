@@ -36,7 +36,8 @@ export const miniToolAnalysisResultSchema = z.discriminatedUnion("kind", [
 export const miniToolAnalysisRecordSchema = z.strictObject({
   ...identityShape,
   kind: z.enum(["scene_cuts"]),
-  status: z.enum(["pending", "running", "completed", "failed"]),
+  // A cancelled analysis is no failure (frames-split §7.19): it has its own state and no error.
+  status: z.enum(["pending", "running", "completed", "failed", "cancelled"]),
   result: miniToolAnalysisResultSchema.nullable(),
   error: z.record(z.string(), z.json()).nullable(),
   usage: z.array(z.record(z.string(), z.json())),

@@ -11,7 +11,7 @@ import { and, eq, desc, inArray, isNotNull, isNull, sql, type SQL } from "drizzl
 import { db, type DbTx } from "@breatic/core";
 import { tasks } from "@breatic/core";
 import type { GenerationSource, TaskEntity } from "@breatic/shared";
-import { VIDEO_TOOL_IDS, type MiniToolMedium } from "@breatic/shared/mini-tools";
+import type { MiniToolMedium } from "@breatic/shared/mini-tools";
 import type { DueMiniToolSettlement, DueMiniToolSettlementPage, MiniToolSettlement, MiniToolSettlementClaim, MiniToolSettlementCursor } from "@domain/mini-tool/consumption.types.js";
 import type { MiniToolDeliveryState, MiniToolDeliveryCursor } from "@domain/mini-tool/delivery.service.js";
 
@@ -515,40 +515,24 @@ export async function claimMiniToolExecutionTask(data: {
 }
 
 /**
- * Detect output-node reservations, including claimed tasks whose node rows have not opened yet.
- * @param projectId - The target Project.
- * @param spaceId - The original canvas Space.
- * @param nodeIds - Exact original output destinations.
- * @param tx - The transaction holding the immutable original execution lock.
- * @returns Whether a pending or running planned execution that writes its output node's content already owns any
- *   destination; a video focus crop only appends to its panel node's focus images, so it never does (frames-split §5.5).
- * @throws {Error} When the database read fails.
+ * The planned video tool runs the sweep looks at (frames-split §7.19): every running one, and every pending one that
+ * never waited for a running slot and was created longer ago than the grace window, oldest first. A run's job id is its
+ * task id (planned-run.ts).
+ * @param limit - How many of each at most.
+ * @param graceMs - How old a pending run must be, so a run still being opened and queued is left alone.
+ * @returns The running and the pending run ids.
+ * @throws {Error} When a read fails.
  */
-export async function hasActiveMiniToolExecutionNodes(projectId: string, spaceId: string, nodeIds: string[], tx: DbTx): Promise<boolean> {
-  const rows = await tx.execute<{ id: string }>(sql`
-    SELECT ${tasks.id} AS id FROM ${tasks}
-    WHERE ${tasks.projectId} = ${projectId} AND ${tasks.spaceId} = ${spaceId}
-      AND ${tasks.source} = 'mini_tool' AND ${tasks.status} IN ('pending', 'running')
-      AND ${tasks.params}->'miniToolExecution'->>'tool' IN (${sql.join(VIDEO_TOOL_IDS.map((tool) => sql`${tool}`), sql`, `)})
-      AND EXISTS (SELECT 1 FROM jsonb_array_elements(${tasks.params}->'miniToolExecution'->'outputs') AS output
-        WHERE output->>'nodeId' IN (${sql.join(nodeIds.map((id) => sql`${id}`), sql`, `)}))
-    LIMIT 1`);
-  return rows.length > 0;
-}
-
-/**
- * The output indexes every execution admitted as a retry of one run has taken over.
- * @param runId - The retried run.
- * @param tx - The retry admission's transaction, or none for a plain read.
- * @returns The distinct output indexes.
- * @throws {Error} When the query fails.
- */
-export async function listMiniToolRetriedOutputIndexes(runId: string, tx?: DbTx): Promise<number[]> {
-  const rows = await (tx ?? db).execute<{ output_index: number }>(sql`
-    SELECT DISTINCT (output_index)::int AS output_index FROM ${tasks},
-      jsonb_array_elements_text(${tasks.params}->'miniToolExecution'->'retry'->'outputIndexes') AS output_index
-    WHERE ${tasks.source} = 'mini_tool' AND ${tasks.params}->'miniToolExecution'->'retry'->>'runId' = ${runId}`);
-  return rows.map((row) => Number(row.output_index));
+export async function listPlannedRunsToSweep(limit: number, graceMs: number): Promise<{ running: string[]; pending: string[] }> {
+  const planned = sql`${tasks.source} = 'mini_tool' AND ${tasks.params} ? 'miniToolExecution' AND ${tasks.deletedAt} IS NULL`;
+  const running = await db.execute<{ id: string }>(sql`
+    SELECT ${tasks.id} AS id FROM ${tasks} WHERE ${planned} AND ${tasks.status} = 'running'
+    ORDER BY ${tasks.startedAt} ASC LIMIT ${limit}`);
+  const pending = await db.execute<{ id: string }>(sql`
+    SELECT ${tasks.id} AS id FROM ${tasks} WHERE ${planned} AND ${tasks.status} = 'pending' AND ${tasks.slotWaitSince} IS NULL
+      AND ${tasks.createdAt} < now() - (${graceMs} * interval '1 millisecond')
+    ORDER BY ${tasks.createdAt} ASC LIMIT ${limit}`);
+  return { running: running.map((row) => row.id), pending: pending.map((row) => row.id) };
 }
 
 /**
@@ -905,6 +889,8 @@ export interface GateTaskRow {
   /** Full-precision text, so a comparison against another row's creation loses no microseconds. */
   createdAt: string;
   startedAt: Date | null;
+  /** Whether a video mini-tool run's settlement period is open, which releases its credit hold (frames-split §7.19). */
+  settling: boolean;
 }
 
 /**
@@ -942,6 +928,7 @@ export async function findForGate(id: string): Promise<GateTaskRow | null> {
       errorMessage: tasks.errorMessage,
       createdAt: sql<string>`${tasks.createdAt}::text`,
       startedAt: tasks.startedAt,
+      settling: sql<boolean>`coalesce(${tasks.result} ? 'settlement', false)`,
     })
     .from(tasks)
     .where(eq(tasks.id, id));

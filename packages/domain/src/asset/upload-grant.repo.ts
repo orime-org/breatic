@@ -449,3 +449,21 @@ export async function voidGrant(storageKey: string, reason: string, tx?: DbTx): 
     .returning({ id: uploadGrants.id });
   return rows.length > 0;
 }
+
+/**
+ * Void every grant a run issued that nothing consumed yet, as the run ends (frames-split §7.19): a write still in flight
+ * then reports to a voided grant and is never registered, and its object is the offline reclaim's.
+ * @param taskId - The run, the grants' `generation_task_id`.
+ * @param reason - Why, as the upload status query will answer it.
+ * @param tx - The run's terminal transaction.
+ * @returns How many grants this call voided.
+ * @throws {Error} When the database write fails.
+ */
+export async function voidTaskGrants(taskId: string, reason: string, tx: DbTx): Promise<number> {
+  const rows = await tx
+    .update(uploadGrants)
+    .set({ voidedAt: sql`now()`, failureReason: reason })
+    .where(and(eq(uploadGrants.generationTaskId, taskId), isNull(uploadGrants.consumedAt), isNull(uploadGrants.voidedAt)))
+    .returning({ id: uploadGrants.id });
+  return rows.length;
+}

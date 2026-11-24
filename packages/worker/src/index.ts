@@ -168,6 +168,7 @@ import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-swee
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
+import { sweepPlannedRuns } from "@worker/handlers/planned-run-sweep.js";
 
 /** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
 const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
@@ -177,6 +178,9 @@ const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
 
 /** Queue holding the recurring sweep of tasks waiting for a running slot whose job may be lost (inner#1968). */
 const SLOT_WAIT_SWEEP_QUEUE = "slot-wait-sweep";
+
+/** Queue holding the recurring sweep of planned video tool runs whose job may be lost (frames-split §7.19). */
+const PLANNED_RUN_SWEEP_QUEUE = "planned-run-sweep";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -195,6 +199,7 @@ const WORKER_QUEUES: readonly string[] = [
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
   SLOT_WAIT_SWEEP_QUEUE,
+  PLANNED_RUN_SWEEP_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -307,6 +312,20 @@ export async function startWorker(): Promise<void> {
     { name: SLOT_WAIT_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
   ).catch((err: unknown) => {
     logger.error({ err }, "slot_wait_sweep_schedule_failed");
+  });
+
+  // Planned video tool runs whose job was lost end by their own recovery (frames-split §7.19).
+  const plannedRunSweepQueue = createQueue(PLANNED_RUN_SWEEP_QUEUE);
+  const plannedRunSweep = createWorker<Record<string, never>>(PLANNED_RUN_SWEEP_QUEUE, () => sweepPlannedRuns(tasksQueue));
+  plannedRunSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "planned_run_sweep_failed");
+  });
+  void plannedRunSweepQueue.upsertJobScheduler(
+    PLANNED_RUN_SWEEP_QUEUE,
+    { every: getWorkerConfig().planned_run_sweep_interval_ms },
+    { name: PLANNED_RUN_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "planned_run_sweep_schedule_failed");
   });
 
   // Timeline web-animation executions (inner#1711). A job waiting on its container goes back to the queue as
@@ -630,6 +649,7 @@ export async function startWorker(): Promise<void> {
         () => timelineSweep.close(),
         () => creditChargeSweep.close(),
         () => slotWaitSweep.close(),
+        () => plannedRunSweep.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),

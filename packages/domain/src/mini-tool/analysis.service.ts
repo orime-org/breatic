@@ -251,7 +251,7 @@ export function recordFromTask(task: taskRepo.AnalysisTaskRow): MiniToolAnalysis
     const field = mismatchedIdentity(identity, stored);
     if (field !== null) throw new Error(`Persisted analysis ${field} differs from its accepted task`);
   }
-  const status = task.status === "cancelled" ? "failed" : task.status;
+  const status = task.status;
   return miniToolAnalysisRecordSchema.parse({
     // Once billed, the analysis reads as what it was charged.
     ...identity, status, result: stored?.result ?? null, usage: task.billedCredits === null ? stored?.usage ?? [] : [{ credits: task.billedCredits }],
@@ -410,7 +410,7 @@ async function recordLockedAnalysis(task: taskRepo.AnalysisTaskRow, incoming: Mi
   }
   const status = task.status === "cancelled" ? "cancelled" : current.status === "failed" ? "failed" : "completed";
   const analysis = miniToolAnalysisRecordSchema.parse({
-    ...current, status: status === "cancelled" ? "failed" : status, result: incoming,
+    ...current, status, result: incoming,
     error: status === "completed" ? null : current.error,
   });
   const updated = await taskRepo.storeMiniToolAnalysisTransition(task.id, {
@@ -453,7 +453,7 @@ export async function failMiniToolAnalysisAdmission(taskId: string, error: unkno
  */
 async function failLockedAnalysis(task: taskRepo.AnalysisTaskRow, failure: Record<string, unknown>, tx: DbTx): Promise<MiniToolAnalysisRecord> {
   const current = recordFromTask(task);
-  if (current.status === "completed" || current.status === "failed") return current;
+  if (current.status === "completed" || current.status === "failed" || current.status === "cancelled") return current;
   const analysis = miniToolAnalysisRecordSchema.parse({ ...current, status: "failed", error: failure });
   const updated = await taskRepo.storeMiniToolAnalysisTransition(task.id, {
     analysis, status: "failed", errorMessage: typeof failure.code === "string" ? failure.code : "mini_tool_analysis_failed", finish: true,

@@ -19,7 +19,7 @@ import type * as coreModule from "@breatic/core";
 import type * as domainModule from "@breatic/domain";
 import type { OpenMiniToolPlanJobInput } from "@breatic/domain";
 import type { MiniToolPlanJobRequest } from "@breatic/shared";
-import { advanceChunks, advanceRegistered, type ContainerRun, type ContainerStep } from "@worker/handlers/mini-tool/container-steps.js";
+import { advanceChunks, advanceStaged, type ContainerRun, type ContainerStep } from "@worker/handlers/mini-tool/container-steps.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 import { DeadlinePassed } from "@breatic/shared";
 
@@ -35,7 +35,7 @@ vi.mock("@breatic/domain", async (original) => {
 });
 // Partial, so the reporting window end stays the real one.
 vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", async (original) => ({ ...await original<Record<string, unknown>>(), advanceMiniToolPlanJob: h.advance }));
-vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.registered }));
+vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceStagedMiniToolPlanJob: h.registered }));
 
 const TASK = "50000000-0000-4000-8000-000000000001";
 const INPUT = "00000000-0000-4000-8000-000000000001";
@@ -133,28 +133,20 @@ beforeEach(() => {
 });
 
 describe("the shared chunk list (frames-split §5.4 parallel stage)", () => {
-  it("CL01 a chunk failed for good waits for its running sibling, whose object is pinned, and no chunk opens a new attempt after it", async () => {
+  // frames-split §7.19 首个失败之后: a chunk failed for good fails the run in that pickup, without waiting for a sibling.
+  it("CL01 a chunk failed for good ends the list in that pickup, while a sibling still runs, and no chunk opens a new attempt after it", async () => {
     // Pickup 1: every chunk's first attempt runs.
     for (const k of [0, 1, 2]) jobs.set(jobOf(k, 1), "running");
     expect(await pickup()).toBeInstanceOf(StillRunning);
     // Pickup 2: chunk 0 fails on both of its attempts, chunk 2's first attempt fails, chunk 1 still runs.
     jobs.set(jobOf(0, 1), "failed"); jobs.set(jobOf(0, 2), "failed"); jobs.set(jobOf(2, 1), "failed");
-    expect(await pickup()).toBeInstanceOf(StillRunning);
-    // Pickup 3: chunk 1 is done; the list ends with chunk 0's failure.
-    jobs.delete(jobOf(1, 1));
     expect(await pickup()).toEqual({ failed: "chunk 0: tool_failed" });
     expect(opened()).not.toContain(jobOf(2, 2));
-    const done = h.record.mock.calls.map((call) => call[0] as { outcome: string; presentation?: unknown }).filter((value) => value.outcome === "done");
-    expect(done.map((value) => value.presentation)).toEqual([{ pin: [steps.map((step) => step.output.miniToolPlanJob as MiniToolPlanJobRequest)
-      .find((request) => request.jobId === jobOf(1, 1))!.outputs[0]!.storageKey] }]);
   });
 
-  it("CL02 a later chunk failed for good keeps an earlier chunk from opening its next attempt", async () => {
-    // Pickup 1: chunks 0 and 1 run while chunk 2 fails on both of its attempts.
+  it("CL02 a later chunk failed for good ends the list at once and keeps an earlier chunk from opening its next attempt", async () => {
+    // Pickup 1: chunks 0 and 1 run while chunk 2 fails on both of its attempts: the list answers chunk 2's failure.
     jobs.set(jobOf(0, 1), "running"); jobs.set(jobOf(1, 1), "running"); jobs.set(jobOf(2, 1), "failed"); jobs.set(jobOf(2, 2), "failed");
-    expect(await pickup()).toBeInstanceOf(StillRunning);
-    // Pickup 2: chunk 0's first attempt fails; chunk 2, later in order, already failed for good, so chunk 0 opens no second attempt.
-    jobs.set(jobOf(0, 1), "failed"); jobs.delete(jobOf(1, 1));
     expect(await pickup()).toEqual({ failed: "chunk 2: tool_failed" });
     expect(opened()).not.toContain(jobOf(0, 2));
   });
@@ -196,23 +188,23 @@ describe("a container step ingest ended at its deadline ends expired", () => {
     expect(opened()).not.toContain(jobOf(0, 2));
   });
 
-  it("CL07 a registered stitch whose last attempt ingest expired ends with the expiry mark", async () => {
+  it("CL07 a staged stitch whose last attempt ingest expired ends with the expiry mark", async () => {
     h.grants.mockImplementation(async () => [{ storageKey: "derived/out.mp4", contentType: "video/mp4", coverKey: "derived/out.cover.jpg" }]);
     h.registered.mockImplementation(async (input: OpenMiniToolPlanJobInput) => {
       const step = steps.find((item) => item.id === input.stepId)!;
       step.output = { ...step.output, miniToolPlanJob: structuredClone(input.request) };
       const reason = input.request.jobId.endsWith(":a2") ? "expired" : "tool_failed";
-      return { request: input.request, report: { schemaVersion: 2, state: "failed", reason, outputs: [], usage: null }, assets: [] };
+      return { request: input.request, report: { schemaVersion: 2, state: "failed", reason, outputs: [], usage: null }, refused: null };
     });
     const planned = { stepKey: "stitch", namePrefix: "SPLIT", container: "mp4" as const, build: chunk(0).build };
-    expect(await advanceRegistered(RUN, planned, "60000000-0000-4000-8000-000000000001", DEADLINE)).toEqual({ failed: "expired", expired: true });
+    expect(await advanceStaged(RUN, planned, "60000000-0000-4000-8000-000000000001", DEADLINE)).toEqual({ failed: "expired", expired: true });
   });
 
-  it("CL08 a registered stitch that can no longer be submitted or waited for ends with the expiry mark instead of throwing", async () => {
+  it("CL08 a staged stitch that can no longer be submitted or waited for ends with the expiry mark instead of throwing", async () => {
     h.grants.mockImplementation(async () => [{ storageKey: "derived/out.mp4", contentType: "video/mp4", coverKey: "derived/out.cover.jpg" }]);
     h.registered.mockRejectedValue(new DeadlinePassed());
     const planned = { stepKey: "stitch", namePrefix: "SPLIT", container: "mp4" as const, build: chunk(0).build };
-    expect(await advanceRegistered(RUN, planned, "60000000-0000-4000-8000-000000000001", DEADLINE)).toEqual({ failed: "expired", expired: true });
+    expect(await advanceStaged(RUN, planned, "60000000-0000-4000-8000-000000000001", DEADLINE)).toEqual({ failed: "expired", expired: true });
   });
 
   it("CL09 a chunk that can no longer be waited for expires while every other submitted chunk is still read and recorded", async () => {

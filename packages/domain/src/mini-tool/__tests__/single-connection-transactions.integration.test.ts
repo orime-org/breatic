@@ -63,12 +63,10 @@ describe("mini-tool transactions on a one-connection pool", () => {
     expect(record.outputs[0]!.result).toEqual(f.registered);
   });
 
-  it("a progress commit of a registered output finishes", async () => {
+  it("writing a run's commit point finishes", async () => {
     const f = await seedExecution(pg, "running");
-    const { record } = await withinDeadline(miniToolExecutionService.commitMiniToolExecutionProgress(f.taskId, {
-      planFingerprint: f.plan.planFingerprint, expectedVersion: 0, outputs: [{ ...f.plan.outputs[0]!, result: f.registered }],
-    }));
-    expect(record.outputs[0]!.result).toEqual(f.registered);
+    const { state } = await withinDeadline(miniToolExecutionService.markMiniToolExecutionCommitPoint(f.taskId));
+    expect(state).toBe("committed");
   });
 
   it("settling a recorded charge finishes", async () => {

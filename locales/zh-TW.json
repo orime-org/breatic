@@ -274,7 +274,6 @@
       "sourceTooLarge": "這個工具只處理 {size} 以內的檔案。",
       "clipsTooLarge": "這些片段加起來太大，無法拼接。",
       "joinClipCount": "拼接需要 2 到 {max} 段。",
-      "alreadyRetried": "這個結果已經重試過了。",
       "runTooLong": "這個影片太長，一次執行處理不了（需要超過 {max} 個編碼作業）。請減少或縮短輸出。",
       "tooManyOutputs": "一次執行最多產生 {max} 個結果。"
     },
