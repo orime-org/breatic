@@ -122,7 +122,7 @@ async function history(f: ExecutionFixture): Promise<string> {
  */
 function expectMedia(payload: Record<string, unknown>, f: ExecutionFixture): void {
   expect(payload).toEqual({ type: "node-task-counts", docName: canvasSpaceDocName(f.projectId, f.plan.spaceId), nodeId: f.plan.outputs[0]!.nodeId,
-    counts: { running: 0, done: 1, failed: 0, expired: 0 },
+    counts: { running: 0, waiting: 0, done: 1, failed: 0, expired: 0 },
     result: { content: f.registered.canonicalURL, coverUrl: null, width: 960, height: 540, duration: 5.013, mimeType: "video/webm", size: 1588436 },
     resultOrigin: { kind: "mini-tool-output", runId: f.taskId, planFingerprint: f.plan.planFingerprint, outputIndex: 0 } });
 }
@@ -191,7 +191,7 @@ describe("pure media delivery on the existing tasks queue", () => {
     expect(await deliveryState(f)).toEqual({ ...pending(f), version: 2, outputs: [{ outputIndex: 0, state: "history_only" }] });
     const actual = await events(f); expect(actual).toHaveLength(1);
     expect(actual[0]!.payload).toEqual({ type: "node-task-counts", docName: canvasSpaceDocName(f.projectId, f.plan.spaceId), nodeId: f.plan.outputs[0]!.nodeId,
-      counts: { running: 0, done: 0, failed: status === "failed" ? 1 : 0, expired: status === "expired" ? 1 : 0 } });
+      counts: { running: 0, waiting: 0, done: 0, failed: status === "failed" ? 1 : 0, expired: status === "expired" ? 1 : 0 } });
     await history(f); expect([...await pg`SELECT id,status,settled_at::text FROM node_tasks WHERE task_id=${f.taskId}`]).toEqual(rows);
     expect(await invariants(f)).toEqual(before);
   });

@@ -83,7 +83,7 @@ async function events(f: ExecutionFixture): Promise<Array<{ id: string; payload:
  */
 function expectMediaEvent(payload: Record<string, unknown>, f: ExecutionFixture): void {
   expect(payload).toEqual({ type: "node-task-counts", docName: canvasSpaceDocName(f.projectId, f.plan.spaceId), nodeId: f.plan.outputs[0]!.nodeId,
-    counts: { running: 0, done: 1, failed: 0, expired: 0 },
+    counts: { running: 0, waiting: 0, done: 1, failed: 0, expired: 0 },
     result: { content: f.registered.canonicalURL, coverUrl: null, width: 960, height: 540, duration: 5.013, mimeType: "video/webm", size: 1588436 },
     resultOrigin: { kind: "mini-tool-output", runId: f.taskId, planFingerprint: f.plan.planFingerprint, outputIndex: 0 } });
 }
@@ -190,7 +190,7 @@ describe("planned publication keeps SQL output identity across real Redis entrie
     await finishMiniToolExecutionAndNotify(f.taskId, completion(f), getStreamRedis());
     const actual = await events(f); expect(actual).toHaveLength(1);
     expect(actual[0]!.payload).toEqual({ type: "node-task-counts", docName: canvasSpaceDocName(f.projectId, f.plan.spaceId), nodeId: f.plan.outputs[0]!.nodeId,
-      counts: { running: 0, done: 0, failed: status === "failed" ? 1 : 0, expired: status === "expired" ? 1 : 0 } });
+      counts: { running: 0, waiting: 0, done: 0, failed: status === "failed" ? 1 : 0, expired: status === "expired" ? 1 : 0 } });
     expect(actual[0]!.payload).not.toHaveProperty("result"); expect(actual[0]!.payload).not.toHaveProperty("resultOrigin");
     await expectPersistence(f, source, status);
     expect([...await pg`SELECT id,status,settled_at::text AS settled_at FROM node_tasks WHERE task_id=${f.taskId}`]).toEqual([before]);
