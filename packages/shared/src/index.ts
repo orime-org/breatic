@@ -132,7 +132,6 @@ export type {
   Space,
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
-  SpaceTasksChangedControlEvent,
   SceneLookSettledControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
@@ -172,7 +171,6 @@ export {
   SPACE_TASKS_VERSION,
   activityNewChannel,
   creditsChangedChannel,
-  spaceTasksChangedChannel,
   sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
@@ -205,7 +203,6 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
-  SPACE_TASKS_CHANGED_SIGNAL,
   SCENE_LOOK_SETTLED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
@@ -242,7 +239,6 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
-  SpaceTasksChangedSignal,
   SceneLookSettledSignal,
 } from "@shared/types/index.js";
 

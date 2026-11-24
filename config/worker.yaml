@@ -74,6 +74,9 @@ slot_wait_max_delay_ms: 30000
 slot_wait_sweep_interval_ms: 60000
 # How many stale waiters one round of that sweep looks at.
 slot_wait_sweep_batch_size: 200
+# How often the sweep runs that expires 3D Space task rows past their budget
+# and tells each such Space through its document.
+scene_task_sweep_interval_ms: 60000
 # How long a pickup tries for the person's gate lock, held only for the
 # milliseconds another pickup of theirs counts, before it goes back to the
 # queue for one poll interval without writing anything.

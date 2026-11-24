@@ -33,7 +33,7 @@ import * as assetUploadService from "@server/modules/asset/assetUpload.service.j
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
 import { INSUFFICIENT_STORAGE, assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { openUpload } from "@server/modules/asset/upload-opening.js";
-import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
+import { announceSceneTasksQuietly } from "@server/modules/task/publish-counts.js";
 
 /** One file the browser wants to upload. */
 export interface TicketItem {
@@ -328,7 +328,7 @@ async function prepareUpload(
         label: uploadRowOf(item).label,
         assetId: dedupHit.assetId,
       });
-      await publishSpaceTasksQuietly(projectId, item.space_id);
+      await announceSceneTasksQuietly(projectId, item.space_id);
     }
     return {
       kind: "alreadyExists",

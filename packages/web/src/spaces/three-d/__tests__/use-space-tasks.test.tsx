@@ -139,7 +139,7 @@ describe('useSpaceTasks', () => {
     await waitFor(() => expect(result.current.running).toBe(2));
     vi.mocked(listSpaceTasks).mockRejectedValue(new Error('offline'));
     await client.invalidateQueries({ queryKey: spaceTasksQueryKey(PROJECT, SPACE) });
-    await waitFor(() => expect(result.current.query.isError).toBe(true));
+    await waitFor(() => expect(client.getQueryState(spaceTasksQueryKey(PROJECT, SPACE))?.status).toBe('error'));
     expect(result.current.running).toBe(2);
   });
 });

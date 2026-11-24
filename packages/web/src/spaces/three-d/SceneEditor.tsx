@@ -39,6 +39,7 @@ import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { SceneObjectList } from '@web/spaces/three-d/SceneObjectList';
 import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
+import { useSpaceTasks } from '@web/spaces/three-d/use-space-tasks';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
 import type { SceneCameraView, SceneFrameCapture, SceneModelAcquire, SceneModelState, ScenePilotControl, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { SceneLookPictures, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
@@ -436,6 +437,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const returnTarget = React.useRef<HTMLElement | null>(null);
   const [panel, setPanel] = React.useState<ScenePanel>('properties');
   const [rightOpen, setRightOpen] = useExclusiveOverlay(`scene:${spaceId}:right`);
+  const { running: runningTasks } = useSpaceTasks(projectId, spaceId);
   const [importOpen, setImportOpen] = useExclusiveOverlay(`scene:${spaceId}:model-import`);
   const [importController, setImportController] = React.useState<ModelImportController | null>(null);
   const importLimits = controls.data?.import;
@@ -920,7 +922,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
       </div> : null}
       <div className={cn('pointer-events-auto col-start-3 mb-[var(--space-5)] ml-2 justify-self-end', chrome.stacked && 'row-start-2')}>
         <SceneViewportToolbar undo={snapshot.canEdit && snapshot.canUndo} redo={snapshot.canEdit && snapshot.canRedo}
-          onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} viewfinderHost={setViewfinderHost} />
+          onHistory={onHistory} hasSelection={selected.length > 0} onPanel={showPanel} minimap={minimap} minimapDisabled={framing} onMinimap={toggleMinimap} viewfinderHost={setViewfinderHost}
+          runningTasks={runningTasks} openPanel={rightOpen ? panel : null} />
       </div>
     </div>
     <SceneViewfinder host={viewfinderHost} bottomLift={chrome.lift} state={viewfinder} dispatch={viewfinderAction} stage={stageSize} rightPanelOpen={rightOpen} capture={frameCapture}

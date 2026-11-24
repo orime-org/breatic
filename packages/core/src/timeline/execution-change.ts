@@ -8,9 +8,8 @@
  * document and reads its lists again.
  */
 
-import { timelineSpaceDocName, type SpaceTasksVersionEvent, type TimelineExecution } from "@breatic/shared";
-import { publishToStream, taskEventsStreamKey } from "@core/infra/event-stream.js";
-import { getStreamRedis } from "@core/infra/redis.js";
+import { timelineSpaceDocName, type TimelineExecution } from "@breatic/shared";
+import { announceSpaceTasksChange } from "@core/infra/space-tasks-change.js";
 
 /**
  * Announce that an execution changed, to the Timeline it belongs to.
@@ -19,6 +18,5 @@ import { getStreamRedis } from "@core/infra/redis.js";
  * @throws {Error} When Redis rejects the publish.
  */
 export async function announceExecutionChange(row: Pick<TimelineExecution, "projectId" | "spaceId">): Promise<void> {
-  const event: SpaceTasksVersionEvent = { type: "space-tasks-version", docName: timelineSpaceDocName(row.projectId, row.spaceId) };
-  await publishToStream(getStreamRedis(), taskEventsStreamKey(), { ...event });
+  await announceSpaceTasksChange(timelineSpaceDocName(row.projectId, row.spaceId));
 }

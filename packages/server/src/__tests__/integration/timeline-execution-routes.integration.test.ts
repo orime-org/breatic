@@ -43,7 +43,6 @@ import {
   setSession,
   taskEventsStreamKey,
   timelineExecutionRepo,
-  type Redis,
 } from "@breatic/core";
 import { webAnimationSourceRepo } from "@breatic/domain";
 import { extractPromptText, readSignedPayload, t, timelineSpaceDocName } from "@breatic/shared";
@@ -64,8 +63,6 @@ const APP = "timeline-routes-test-driver";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
-let subscriber: Redis;
-const signals: { channel: string; message: Record<string, unknown> }[] = [];
 
 beforeAll(async () => {
   initCore(SUITE_ENV);
@@ -73,19 +70,12 @@ beforeAll(async () => {
   sql = postgres(inject("DATABASE_URL"), { max: 6, prepare: false, connection: { application_name: APP } });
   const { createApp } = await import("@server/app.js");
   app = createApp();
-  subscriber = getStreamRedis().duplicate();
-  subscriber.on("pmessage", (_pattern: string, channel: string, message: string) => {
-    signals.push({ channel, message: JSON.parse(message) as Record<string, unknown> });
-  });
-  await subscriber.psubscribe(`${env.REDIS_KEY_PREFIX}:project:*:space-tasks:changed`);
 });
 
 beforeEach(() => {
-  signals.length = 0;
 });
 
 afterAll(async () => {
-  await subscriber?.quit();
   await sql?.end({ timeout: 1 });
   initCore(process.env);
 });
@@ -294,19 +284,18 @@ async function succeed(execution: TimelineExecution): Promise<{ id: string }> {
 
 /**
  * What one Timeline Space was told, after giving late messages time to arrive: the changes on the task-events stream
- * for its document, and the space-tasks signals on its Project's channel.
+ * for its document.
  * @param projectId - The Project.
  * @param spaceId - The Space.
  * @returns Both.
  */
-async function signalsFor(projectId: string, spaceId: string): Promise<{ doc: Record<string, unknown>[]; meta: Record<string, unknown>[] }> {
+async function signalsFor(projectId: string, spaceId: string): Promise<{ doc: Record<string, unknown>[] }> {
   await new Promise((resolve) => setTimeout(resolve, 300));
   const docName = timelineSpaceDocName(projectId, spaceId);
   const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
     .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
     .filter((event) => event.docName === docName);
-  const meta = signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
-  return { doc, meta };
+  return { doc };
 }
 
 /**
@@ -621,13 +610,12 @@ describe("POST /timeline/executions/:id/cancel", () => {
       const fx = await seedProject();
       const row = await accepted(fx);
       if (state === "queued") await step(row.id, { type: "land", inputHash: row.inputHash });
-      signals.length = 0;
       const res = await cancel(fx.editor.cookie, row.id);
       expect(res.status, await res.clone().text()).toBe(200);
       expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ id: row.id, status: "cancelled" });
       expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("cancelled");
       expect(await holdsOf(fx.studioId)).toEqual([]);
-      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual({ doc: [{ type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) }], meta: [] });
+      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual({ doc: [{ type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) }] });
     },
   );
 

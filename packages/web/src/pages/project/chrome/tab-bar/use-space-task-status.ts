@@ -11,6 +11,7 @@ import { docName } from '@web/data/yjs/manager';
 import { useCanvasTaskState } from '@web/data/yjs/use-canvas-task-state';
 import { useSpacePeerTaskStatus } from '@web/spaces/canvas/use-space-peer-task-status';
 import { useTimelineExecutions } from '@web/spaces/timeline/use-timeline-executions';
+import { useSpaceTasks } from '@web/spaces/three-d/use-space-tasks';
 
 /**
  * Combine the existing task facts this browser knows for one Space.
@@ -34,5 +35,8 @@ export function useSpaceTaskStatus(projectId: string, spaceId: string, type: Spa
   const timeline = type === 'timeline';
   const executions = useTimelineExecutions(projectId, spaceId, { enabled: timeline });
   const executing = timeline && executions.data?.some((row) => !timelineExecutionEnded(row.status)) === true;
-  return operations || waiting || requests || tasks.running || peers || executing;
+  // Likewise a 3D Space's task list: another member's upload, a background generation, a row waiting for a slot.
+  const threeD = type === '3d';
+  const scene = useSpaceTasks(projectId, spaceId, threeD);
+  return operations || waiting || requests || tasks.running || peers || executing || (threeD && scene.running > 0);
 }

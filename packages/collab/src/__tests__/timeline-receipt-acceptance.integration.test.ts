@@ -16,7 +16,7 @@
 import { randomUUID } from "node:crypto";
 import * as Y from "yjs";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, inject, it } from "vitest";
-import { createPgClient, createQueue, env, getStreamRedis, initCore, taskEventsStreamKey, timelineExecutionRepo, type Redis } from "@breatic/core";
+import { createPgClient, createQueue, getStreamRedis, initCore, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
 import { projectMetaDocName, spaceContentDocName, timelineSpaceDocName, type TimelineExecution } from "@breatic/shared";
 import { attachTimelineRecord, initializeTimelineDocument } from "@breatic/shared/space-content";
 import { acceptTimelineReceipts } from "@collab/services/timeline-receipt-acceptance.js";
@@ -25,8 +25,6 @@ import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 
 let sql: ReturnType<typeof createPgClient>;
 let queue: ReturnType<typeof createQueue>;
-let subscriber: Redis;
-const signals: { channel: string; message: Record<string, unknown> }[] = [];
 const ownedDocs = new Set<string>();
 const ownedJobs = new Set<string>();
 
@@ -34,15 +32,9 @@ beforeAll(async () => {
   initCore(process.env);
   sql = createPgClient(inject("DATABASE_URL"), { name: "timeline-receipts-test-driver", max: 4, prepare: false });
   queue = createQueue("timeline");
-  subscriber = getStreamRedis().duplicate();
-  subscriber.on("pmessage", (_pattern: string, channel: string, message: string) => {
-    signals.push({ channel, message: JSON.parse(message) as Record<string, unknown> });
-  });
-  await subscriber.psubscribe(`${env.REDIS_KEY_PREFIX}:project:*:space-tasks:changed`);
 });
 
 beforeEach(() => {
-  signals.length = 0;
 });
 
 afterEach(async () => {
@@ -53,7 +45,6 @@ afterEach(async () => {
 });
 
 afterAll(async () => {
-  await subscriber?.quit();
   await queue?.close();
   await sql?.end({ timeout: 1 });
 });
@@ -187,19 +178,18 @@ async function storeAndAccept(documentName: string, state: Uint8Array): Promise<
 
 /**
  * What one Timeline Space was told, after giving late messages time to arrive: the changes on the task-events stream
- * for its document, and the space-tasks signals on its Project's channel.
+ * for its document.
  * @param projectId - The Project.
  * @param spaceId - The Space.
  * @returns Both.
  */
-async function signalsFor(projectId: string, spaceId: string): Promise<{ doc: Record<string, unknown>[]; meta: Record<string, unknown>[] }> {
+async function signalsFor(projectId: string, spaceId: string): Promise<{ doc: Record<string, unknown>[] }> {
   await new Promise((resolve) => setTimeout(resolve, 300));
   const docName = timelineSpaceDocName(projectId, spaceId);
   const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
     .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
     .filter((event) => event.docName === docName);
-  const meta = signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
-  return { doc, meta };
+  return { doc };
 }
 
 /**
@@ -222,7 +212,7 @@ describe("acceptTimelineReceipts", () => {
     const job = await queue.getJob(fx.execution.id);
     expect(job?.id).toBe(fx.execution.id);
     expect(job?.data).toMatchObject({ executionId: fx.execution.id });
-    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual({ doc: [{ type: "space-tasks-version", docName: fx.documentName }], meta: [] });
+    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual({ doc: [{ type: "space-tasks-version", docName: fx.documentName }] });
   });
 
   it("does nothing more when the same receipts are stored again", async () => {
@@ -299,7 +289,7 @@ describe("acceptTimelineReceipts", () => {
     expect((await read(copy.execution.id)).status).toBe("queued");
     expect(await read(source.execution.id)).toEqual(source.execution);
     expect(await queue.getJob(source.execution.id)).toBeUndefined();
-    expect(await signalsFor(source.projectId, source.spaceId)).toEqual({ doc: [], meta: [] });
+    expect(await signalsFor(source.projectId, source.spaceId)).toEqual({ doc: [] });
     expect((await signalsFor(copy.projectId, copy.spaceId)).doc).toHaveLength(1);
   });
 

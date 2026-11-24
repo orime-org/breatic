@@ -10,8 +10,6 @@
  *     activity signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:credits:changed` (server, worker) — relay the
  *     credits signal on the `meta` doc.
- *   - `{prefix}:project:{pid}:space-tasks:changed` (server, worker) — relay
- *     a 3D Space's task list signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:scene-look:settled` (collab's task listener) —
  *     relay how an uploaded 3D part picture was settled.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
@@ -53,16 +51,13 @@ import {
   projectMetaDocName,
   type ActivityNewControlEvent,
   type CreditsChangedControlEvent,
-  type SpaceTasksChangedControlEvent,
   type SceneLookSettledControlEvent,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
-  SPACE_TASKS_CHANGED_SIGNAL,
   SCENE_LOOK_SETTLED_SIGNAL,
   type ActivityNewSignal,
   type CreditsChangedSignal,
-  type SpaceTasksChangedSignal,
   type SceneLookSettledSignal,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
@@ -72,7 +67,6 @@ const logger = createLogger("project-control-sync");
 type ProjectControlEvent =
   | ActivityNewControlEvent
   | CreditsChangedControlEvent
-  | SpaceTasksChangedControlEvent
   | SceneLookSettledControlEvent
   | ProjectConnectionsCloseEvent;
 
@@ -87,7 +81,7 @@ type ProjectControlEvent =
 function relayOnMetaDoc(
   hocuspocus: Hocuspocus,
   projectId: string,
-  signal: ActivityNewSignal | CreditsChangedSignal | SpaceTasksChangedSignal | SceneLookSettledSignal,
+  signal: ActivityNewSignal | CreditsChangedSignal | SceneLookSettledSignal,
 ): void {
   const docName = projectMetaDocName(projectId);
   const doc = hocuspocus.documents?.get(docName);
@@ -103,7 +97,6 @@ function relayOnMetaDoc(
  * Decode one raw control-plane pub/sub message and dispatch it:
  * `project-activity:new` relays the activity signal on the meta doc;
  * `project-credits:changed` relays the credits signal on the meta doc;
- * `project-space-tasks:changed` relays a Space's task list signal on it;
  * `project-scene-look:settled` relays how an uploaded 3D part picture was settled as the `scene-look:settled` signal on it;
  * `project-connections:close` closes this instance's connections to the
  * project. Unknown / unparseable messages are logged and ignored.
@@ -135,17 +128,6 @@ async function handleEvent(
     // A charge made in this project committed; members' top bars read
     // their credits again.
     relayOnMetaDoc(hocuspocus, event.projectId, { t: CREDITS_CHANGED_SIGNAL, projectId: event.projectId });
-    return;
-  }
-
-  if (event.type === "project-space-tasks:changed") {
-    // A 3D Space's task list changed; members with that Space open read it
-    // again.
-    relayOnMetaDoc(hocuspocus, event.projectId, {
-      t: SPACE_TASKS_CHANGED_SIGNAL,
-      projectId: event.projectId,
-      spaceId: event.spaceId,
-    });
     return;
   }
 

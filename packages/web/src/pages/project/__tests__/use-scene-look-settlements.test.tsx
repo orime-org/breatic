@@ -50,7 +50,7 @@ describe('handing the uploader how collab settled their part picture (inner#1693
     send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement });
     send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement, userId: 'someone-else' });
     send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement, projectId: 'other' });
-    send({ t: 'space-tasks:changed', projectId: PROJECT, spaceId: 's-1' });
+    send({ t: 'credits:changed', projectId: PROJECT });
     send('not json');
 
     send({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement, outcome: 'written', picture: 'a-2' });

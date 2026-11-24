@@ -41,7 +41,7 @@ vi.mock("ai", () => ({
 
 import type * as DomainModule from "@breatic/domain";
 import type { Job, Queue } from "bullmq";
-import { createPgClient, createQueue, createWorker, env, getStreamRedis, initCore, loadLocales, type Redis, taskEventsStreamKey } from "@breatic/core";
+import { createPgClient, createQueue, createWorker, getStreamRedis, initCore, loadLocales, taskEventsStreamKey } from "@breatic/core";
 import { timelineSpaceDocName } from "@breatic/shared";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
@@ -58,8 +58,6 @@ import {
 let sql: ReturnType<typeof createPgClient>;
 let errorLogs: () => Record<string, unknown>[];
 let queue: Queue;
-let subscriber: Redis;
-const signals: { channel: string; message: Record<string, unknown> }[] = [];
 const network = vi.fn(async (input: RequestInfo | URL): Promise<Response> => {
   throw new Error(`the sweep must not call out, but requested ${String(input)}`);
 });
@@ -70,15 +68,9 @@ beforeAll(async () => {
   errorLogs = captureErrorLogs("timeline-sweep");
   sql = createPgClient(inject("DATABASE_URL"), { name: "timeline-sweep-driver", max: 4, prepare: false });
   queue = createQueue("timeline");
-  subscriber = getStreamRedis().duplicate();
-  subscriber.on("pmessage", (_pattern: string, channel: string, message: string) => {
-    signals.push({ channel, message: JSON.parse(message) as Record<string, unknown> });
-  });
-  await subscriber.psubscribe(`${env.REDIS_KEY_PREFIX}:project:*:space-tasks:changed`);
 });
 
 beforeEach(async () => {
-  signals.length = 0;
   network.mockClear();
   release.mockReset();
   vi.stubGlobal("fetch", network);
@@ -96,7 +88,6 @@ afterEach(() => {
 });
 
 afterAll(async () => {
-  await subscriber?.quit();
   await queue?.obliterate({ force: true });
   await queue?.close();
   await sql?.end({ timeout: 1 });
@@ -153,18 +144,17 @@ async function liveJob(executionId: string): Promise<{ state: string; data: unkn
 
 /**
  * What one Timeline Space was told, after giving late messages time to arrive: the changes on the task-events stream
- * for its document, and the space-tasks signals on its Project's channel.
+ * for its document.
  * @param fx - The execution.
  * @returns Both.
  */
-async function signalsFor(fx: ExecutionFixture): Promise<{ doc: Record<string, unknown>[]; meta: Record<string, unknown>[] }> {
+async function signalsFor(fx: ExecutionFixture): Promise<{ doc: Record<string, unknown>[] }> {
   await new Promise((resolve) => setTimeout(resolve, 300));
   const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
   const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
     .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
     .filter((event) => event.docName === docName);
-  const meta = signals.filter((s) => s.channel.includes(fx.projectId) && s.message.spaceId === fx.spaceId).map((s) => s.message);
-  return { doc, meta };
+  return { doc };
 }
 
 const WAITING = ["waiting", "delayed", "prioritized"];
@@ -185,7 +175,7 @@ describe("sweeping rows that never landed", () => {
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", fence: null });
     await expectNothingHeld(fx);
     expect(await liveJob(fx.execution.id)).toBeNull();
-    expect(await signalsFor(fx)).toEqual({ doc: [{ type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) }], meta: [] });
+    expect(await signalsFor(fx)).toEqual({ doc: [{ type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) }] });
   });
 
   it("leaves an awaiting-landing row whose Space was deleted alone until its original deadline, then expires it", async () => {
@@ -193,7 +183,7 @@ describe("sweeping rows that never landed", () => {
     await deleteSpace(fx.projectId, fx.spaceId);
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toEqual(fx.execution);
-    expect(await signalsFor(fx)).toEqual({ doc: [], meta: [] });
+    expect(await signalsFor(fx)).toEqual({ doc: [] });
     await sql`UPDATE timeline_executions SET deadline_at = now() - interval '1 minute' WHERE id = ${fx.execution.id}`;
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", failureReason: null, fence: null });

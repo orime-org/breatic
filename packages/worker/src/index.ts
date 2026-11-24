@@ -162,6 +162,7 @@ import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-swee
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
+import { sweepSceneTasks } from "@worker/handlers/scene-task-sweep.js";
 
 /** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
 const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
@@ -171,6 +172,9 @@ const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
 
 /** Queue holding the recurring sweep of tasks waiting for a running slot whose job may be lost (inner#1968). */
 const SLOT_WAIT_SWEEP_QUEUE = "slot-wait-sweep";
+
+/** Queue holding the recurring sweep of 3D Space task rows past their budget (inner#2061). */
+const SCENE_TASK_SWEEP_QUEUE = "scene-task-sweep";
 
 /** Every BullMQ queue this process runs a worker for. */
 const WORKER_QUEUES: readonly string[] = [
@@ -187,6 +191,7 @@ const WORKER_QUEUES: readonly string[] = [
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
   SLOT_WAIT_SWEEP_QUEUE,
+  SCENE_TASK_SWEEP_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -289,6 +294,20 @@ export function startWorker(): void {
     { name: SLOT_WAIT_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
   ).catch((err: unknown) => {
     logger.error({ err }, "slot_wait_sweep_schedule_failed");
+  });
+
+  // 3D Space task rows past their budget end as expired, and each such Space is told through its document (inner#2061).
+  const sceneTaskSweepQueue = createQueue(SCENE_TASK_SWEEP_QUEUE);
+  const sceneTaskSweep = createWorker<Record<string, never>>(SCENE_TASK_SWEEP_QUEUE, () => sweepSceneTasks());
+  sceneTaskSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "scene_task_sweep_failed");
+  });
+  void sceneTaskSweepQueue.upsertJobScheduler(
+    SCENE_TASK_SWEEP_QUEUE,
+    { every: getWorkerConfig().scene_task_sweep_interval_ms },
+    { name: SCENE_TASK_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "scene_task_sweep_schedule_failed");
   });
 
   // Timeline web-animation executions (inner#1711). A job waiting on its container goes back to the queue as
@@ -598,6 +617,7 @@ export function startWorker(): void {
         () => timelineSweep.close(),
         () => creditChargeSweep.close(),
         () => slotWaitSweep.close(),
+        () => sceneTaskSweep.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),

@@ -556,6 +556,24 @@ export async function insertSceneGenerationRow(data: {
 }
 
 /**
+ * A 3D Space's own row (no node) still running past its budget, the one
+ * judgement both the list read and the worker's sweep expire by (inner#2061).
+ * @returns The condition.
+ */
+function overdueSceneRow(): SQL {
+  return and(
+    isNull(nodeTasks.nodeId),
+    isNull(nodeTasks.deletedAt),
+    eq(nodeTasks.status, "running"),
+    notWaitingForSlot(),
+    sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
+  )!;
+}
+
+/** How an expired row is written. */
+const EXPIRED = { status: "expired", errorMessage: "expired", settledAt: sql`now()` } as const;
+
+/**
  * Move every running row of one 3D Space that outran its budget to `expired`,
  * the Space-level counterpart of {@link harvestExpired}.
  * @param projectId - Owning project.
@@ -565,20 +583,23 @@ export async function insertSceneGenerationRow(data: {
 export async function harvestExpiredInSpace(projectId: string, spaceId: string): Promise<number> {
   const rows = await db
     .update(nodeTasks)
-    .set({ status: "expired", errorMessage: "expired", settledAt: sql`now()` })
-    .where(
-      and(
-        eq(nodeTasks.projectId, projectId),
-        eq(nodeTasks.spaceId, spaceId),
-        isNull(nodeTasks.nodeId),
-        isNull(nodeTasks.deletedAt),
-        eq(nodeTasks.status, "running"),
-        notWaitingForSlot(),
-        sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond') < now()`,
-      ),
-    )
+    .set(EXPIRED)
+    .where(and(eq(nodeTasks.projectId, projectId), eq(nodeTasks.spaceId, spaceId), overdueSceneRow()))
     .returning({ id: nodeTasks.id });
   return rows.length;
+}
+
+/**
+ * Move every running 3D Space row that outran its budget, in any Space, to
+ * `expired` (the worker's sweep, inner#2061).
+ * @returns Where each moved row sits, one entry per row.
+ */
+export async function harvestExpiredScenes(): Promise<{ projectId: string; spaceId: string }[]> {
+  return db
+    .update(nodeTasks)
+    .set(EXPIRED)
+    .where(overdueSceneRow())
+    .returning({ projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId });
 }
 
 /**

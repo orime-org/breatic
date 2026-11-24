@@ -37,7 +37,7 @@ import { assertServable, assertTakesInput } from "@server/modules/task/model-ser
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { accountKeys, creditsToHold, runRoute, taskKeyRows, type RunKeys } from "@server/modules/task/run-keys.js";
 import { recordJobId, settleUnqueuedRun } from "@server/modules/task/generation-task.js";
-import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
+import { announceSceneTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 
 /**
@@ -274,11 +274,11 @@ export async function startSceneGeneration(
     logger.error({ err, taskId, projectId, spaceId, model: plan.entry.name }, "scene_generation_run_failed");
     // An open row is the answer: it holds the cause and the list shows it.
     if (opened === undefined) throw err;
-    await publishSpaceTasksQuietly(projectId, spaceId);
+    await announceSceneTasksQuietly(projectId, spaceId);
     return { task_id: taskId, row_id: opened, status: "failed" };
   }
 
   await recordJobId(taskId, queued.jobId, projectId, "scene_generation");
-  await publishSpaceTasksQuietly(projectId, spaceId);
+  await announceSceneTasksQuietly(projectId, spaceId);
   return { task_id: taskId, row_id: queued.rowId, status: "pending" };
 }

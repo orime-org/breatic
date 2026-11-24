@@ -38,7 +38,7 @@
  */
 
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
-import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import crypto from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
