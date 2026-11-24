@@ -25,6 +25,25 @@ export function splashCloseDelay(shownAt: number, now: number): number {
 }
 
 /**
+ * Wait until the splash may close: once it has appeared and shown the
+ * minimum, or at the deadline when it has not appeared by then.
+ * @param splash - The splash.
+ * @param splash.shown - Resolves with the time it appeared.
+ * @param splash.deadline - The time after which a splash that never appeared is given up.
+ * @param clock - The time source.
+ * @param clock.now - The time now, in milliseconds.
+ * @param clock.sleep - Resolves after a wait.
+ * @returns When the splash may close.
+ */
+export async function untilSplashMayClose(
+  splash: { shown: Promise<number>; deadline: number },
+  clock: { now(): number; sleep(ms: number): Promise<void> },
+): Promise<void> {
+  const shownAt = await Promise.race([splash.shown, clock.sleep(Math.max(0, splash.deadline - clock.now())).then(() => null)]);
+  if (shownAt !== null) await clock.sleep(splashCloseDelay(shownAt, clock.now()));
+}
+
+/**
  * What the splash page is told in its address.
  * @param brand - The build's brand.
  * @param brand.productName - The name under the logo.

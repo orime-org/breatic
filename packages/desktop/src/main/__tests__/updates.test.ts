@@ -14,7 +14,7 @@
 import { EventEmitter } from "node:events";
 import { describe, it, expect, vi } from "vitest";
 
-import { UPDATE_CHECK_INTERVAL_MS, createUpdates, type UpdatesDeps } from "@desktop/main/updates.js";
+import { UPDATE_CHECK_INTERVAL_MS, createUpdates, isFeedUnreachable, type UpdatesDeps } from "@desktop/main/updates.js";
 
 /** An updater standing in for electron-updater's autoUpdater. */
 class FakeUpdater extends EventEmitter {
@@ -148,5 +148,18 @@ describe("createUpdates", () => {
     updater.checkForUpdates.mockResolvedValue({ downloadPromise: Promise.reject(failure) });
     updates.start();
     await vi.waitFor(() => expect(deps.log).toHaveBeenCalledWith(failure));
+  });
+});
+
+describe("isFeedUnreachable", () => {
+  it("treats a network failure fetching the feed as the user's network", () => {
+    expect(isFeedUnreachable(new Error("net::ERR_INTERNET_DISCONNECTED"))).toBe(true);
+    expect(isFeedUnreachable(new Error("Error: net::ERR_NAME_NOT_RESOLVED at SimpleURLLoaderWrapper"))).toBe(true);
+  });
+
+  it("treats a broken release as the shell's own failure", () => {
+    expect(isFeedUnreachable(new Error("sha512 checksum mismatch, expected abc, got def"))).toBe(false);
+    expect(isFeedUnreachable(new Error("New version 1.2.0 is not signed by the application owner"))).toBe(false);
+    expect(isFeedUnreachable("net::ERR_FAILED")).toBe(false);
   });
 });

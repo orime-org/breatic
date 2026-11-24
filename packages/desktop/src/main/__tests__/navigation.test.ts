@@ -12,9 +12,9 @@
  * Asset downloads land in the client's save dialog.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure } from "@desktop/main/navigation.js";
+import { decideNavigation, decideWindowOpen, isCertificateError, isServerLoadFailure, stepHistory } from "@desktop/main/navigation.js";
 
 const SERVER = "https://app.example.com";
 
@@ -77,5 +77,28 @@ describe("isServerLoadFailure", () => {
 describe("isCertificateError", () => {
   it.each([[-202, true], [-200, true], [-299, true], [-105, false], [-300, false]])("treats %i as a certificate error: %s", (code, expected) => {
     expect(isCertificateError(code)).toBe(expected);
+  });
+});
+
+describe("stepHistory", () => {
+  /** A window's history with one entry behind and none ahead. */
+  function history(): { canGoBack: () => boolean; canGoForward: () => boolean; goBack: ReturnType<typeof vi.fn>; goForward: ReturnType<typeof vi.fn> } {
+    return { canGoBack: () => true, canGoForward: () => false, goBack: vi.fn(), goForward: vi.fn() };
+  }
+
+  it.each([["back", "browser-backward"], ["back", "back"]] as const)("goes back for %s (%s)", (_direction, command) => {
+    const h = history();
+    stepHistory(h, command);
+    expect(h.goBack).toHaveBeenCalledTimes(1);
+  });
+
+  it("does nothing where there is nowhere to go, or for another command", () => {
+    const h = history();
+    stepHistory(h, "browser-forward");
+    stepHistory(h, "forward");
+    stepHistory(h, "media-play-pause");
+    stepHistory(undefined, "back");
+    expect(h.goForward).not.toHaveBeenCalled();
+    expect(h.goBack).not.toHaveBeenCalled();
   });
 });

@@ -15,6 +15,18 @@
 /** How often a running client looks for a new version. */
 export const UPDATE_CHECK_INTERVAL_MS = 4 * 60 * 60 * 1000;
 
+/**
+ * Whether an update failure is the feed being unreachable, which is the
+ * user's network: electron-updater fetches through Electron's net, whose
+ * failures carry a Chromium `net::ERR_` code. Every other failure (a bad
+ * signature, a checksum mismatch, a missing latest.yml) is our release's.
+ * @param err - What the update flow threw.
+ * @returns True for a network failure.
+ */
+export function isFeedUnreachable(err: unknown): boolean {
+  return err instanceof Error && err.message.includes("net::ERR_");
+}
+
 /** The part of electron-updater's autoUpdater the flow uses. */
 export interface Updater {
   autoInstallOnAppQuit: boolean;

@@ -8,9 +8,9 @@
  * is still loading.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
-import { SPLASH_MAX_MS, SPLASH_MIN_MS, splashCloseDelay, splashQuery } from "@desktop/main/splash.js";
+import { SPLASH_MAX_MS, SPLASH_MIN_MS, splashCloseDelay, splashQuery, untilSplashMayClose } from "@desktop/main/splash.js";
 
 describe("splashCloseDelay", () => {
   it("waits out the rest of the minimum when the server loads quickly", () => {
@@ -34,6 +34,43 @@ describe("splashQuery", () => {
   });
 
   it("leaves the attribution off the official build", () => {
-    expect(splashQuery({ productName: "breatic", poweredBy: false, splashLogo: "logo.svg" }).poweredBy).toBe("0");
+    expect(splashQuery({ productName: "Breatic", poweredBy: false, splashLogo: "logo.svg" }).poweredBy).toBe("0");
+  });
+});
+
+describe("untilSplashMayClose", () => {
+  /** Fake time, the splash's appearance and a flag that the wait is over. */
+  function setup(): { appear(): void; done: () => boolean } {
+    vi.useFakeTimers({ now: 0 });
+    let appear = (): void => undefined;
+    const shown = new Promise<number>((resolve) => {
+      appear = () => resolve(Date.now());
+    });
+    let over = false;
+    void untilSplashMayClose({ shown, deadline: SPLASH_MAX_MS }, { now: () => Date.now(), sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)) }).then(() => {
+      over = true;
+    });
+    return { appear, done: () => over };
+  }
+
+  it("waits for a splash that has not appeared yet, then keeps it the minimum", async () => {
+    const { appear, done } = setup();
+    await vi.advanceTimersByTimeAsync(200);
+    expect(done()).toBe(false);
+    appear();
+    await vi.advanceTimersByTimeAsync(SPLASH_MIN_MS - 1);
+    expect(done()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(done()).toBe(true);
+    vi.useRealTimers();
+  });
+
+  it("gives up on a splash that never appears at the longest time", async () => {
+    const { done } = setup();
+    await vi.advanceTimersByTimeAsync(SPLASH_MAX_MS - 1);
+    expect(done()).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    expect(done()).toBe(true);
+    vi.useRealTimers();
   });
 });

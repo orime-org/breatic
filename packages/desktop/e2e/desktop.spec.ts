@@ -14,7 +14,7 @@
  * defaults to the worktree's own web port; set BREATIC_E2E_SERVER for another.
  */
 
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import { existsSync, mkdtempSync } from "node:fs";
 import { createServer, type IncomingMessage, type RequestListener, type Server, type ServerResponse } from "node:http";
@@ -67,9 +67,16 @@ async function account(): Promise<{ email: string; password: string }> {
  * @returns The running app.
  */
 function launch(userData: string, env: Record<string, string> = {}): Promise<ElectronApplication> {
-  const base = Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "BREATIC_SERVER_URL")) as Record<string, string>;
   // English, so the assertions read the same words on every machine.
-  return electron.launch({ args: [MAIN, `--user-data-dir=${userData}`, "--lang=en-US"], env: { ...base, ...env } });
+  return electron.launch({ args: [MAIN, `--user-data-dir=${userData}`, "--lang=en-US"], env: { ...launchEnv(), ...env } });
+}
+
+/**
+ * The environment a launch runs with: the test's own, without a development server override.
+ * @returns The environment.
+ */
+function launchEnv(): Record<string, string> {
+  return Object.fromEntries(Object.entries(process.env).filter(([key]) => key !== "BREATIC_SERVER_URL")) as Record<string, string>;
 }
 
 /**
@@ -363,6 +370,24 @@ test.describe("can't reach the server", () => {
     await app.close();
   });
 
+  test("Reload tries again, and once the server answers the window keeps the server's page", async () => {
+    const { app, page } = await launchOnStandIn();
+    await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible({ timeout: 30_000 });
+    await server.up(appPage);
+    // What Reload in the View menu and Cmd+R do.
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()
+        .find((window) => !window.webContents.getURL().startsWith("file:"))!
+        .webContents.reload();
+    });
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible();
+    // Nothing is drawn over the server's page once it has loaded.
+    await page.waitForTimeout(1_500);
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible();
+    await expect(page.getByText("Can't reach Breatic")).toHaveCount(0);
+    await app.close();
+  });
+
   test("a page on the server cannot ask for a retry", async () => {
     await server.up(appPage);
     const { app, page } = await launchOnStandIn();
@@ -379,10 +404,30 @@ test.describe("can't reach the server", () => {
     await app.close();
   });
 
-  test("a server address that redirects to another site says where it went and opens nothing", async () => {
+  test("the mouse's back and forward buttons step through the window's history", async () => {
+    await server.up(appPage);
+    const { app, page } = await launchOnStandIn();
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible({ timeout: 30_000 });
+    await page.goto(`${server.origin}/project/1`);
+    /** Press a mouse side button the way Windows and Linux report it. */
+    const press = (command: string): Promise<void> =>
+      app.evaluate(({ BrowserWindow }, name) => {
+        BrowserWindow.getAllWindows().find((window) => !window.webContents.getURL().startsWith("file:"))!.emit("app-command", {}, name);
+      }, command);
+    await press("browser-backward");
+    await expect(page).toHaveURL(`${server.origin}/studio`);
+    await press("browser-forward");
+    await expect(page).toHaveURL(`${server.origin}/project/1`);
+    await app.close();
+  });
+
+  for (const [label, location, shown] of [
+    ["another site", "https://www.example.test/landing?ref=desktop", () => "https://www.example.test/landing"],
+    ["a page of the server outside the app", "/oauth2/sign_in?rd=%2Fstudio", () => `${server.origin}/oauth2/sign_in`],
+  ] as const) test(`a server address that redirects to ${label} says where it went and opens nothing`, async () => {
     await server.up((_req, res) => {
       res.statusCode = 302;
-      res.setHeader("Location", "https://www.example.test/landing?ref=desktop");
+      res.setHeader("Location", location);
       res.end();
     });
     const { app, page } = await launchOnStandIn();
@@ -394,7 +439,7 @@ test.describe("can't reach the server", () => {
       };
     });
     await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible({ timeout: 30_000 });
-    await expect(page.getByText("This address goes to https://www.example.test/landing")).toBeVisible();
+    await expect(page.getByText(`This address goes to ${shown()}`)).toBeVisible();
     expect(await app.evaluate(() => (globalThis as { opened?: string[] }).opened ?? [])).toEqual([]);
     await app.close();
   });
@@ -411,8 +456,14 @@ test("the shell reports a session per launch and its errors under the brand, wit
     });
   }, SENTRY_PORT);
   try {
-    const app = await launch(freshData());
+    const userData = freshData();
+    const app = await launch(userData);
     const page = await windowWhere(app, (url) => url.startsWith(SERVER));
+
+    // A second launch hands its arguments to this one and ends, reporting nothing of its own.
+    const executable = await app.evaluate(() => process.execPath);
+    const second = spawn(executable, [MAIN, `--user-data-dir=${userData}`, "--lang=en-US"], { env: launchEnv(), stdio: "ignore" });
+    await new Promise((resolve) => second.once("exit", resolve));
 
     await app.evaluate(() => {
       void Promise.reject(new Error("e2e failure at https://studio.example.test/reset?token=SECRET"));
@@ -430,6 +481,10 @@ test("the shell reports a session per launch and its errors under the brand, wit
     // The launch's session record goes out when the session ends, at quit.
     await app.close();
     await expect.poll(() => bodies.some((body) => body.includes('"type":"session"')), { timeout: 10_000 }).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const sessions = bodies.filter((body) => body.includes('"type":"session"'));
+    expect(sessions).toHaveLength(1);
+    expect(sessions[0]).not.toContain('"status":"abnormal"');
   } finally {
     await stop(receiver);
   }

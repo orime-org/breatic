@@ -116,3 +116,23 @@ export function isServerLoadFailure(failure: { url: string; serverOrigin: string
 export function isCertificateError(errorCode: number): boolean {
   return errorCode <= -200 && errorCode > -300;
 }
+
+/** The part of a window's `navigationHistory` that Back and Forward use. */
+export interface HistorySteps {
+  canGoBack(): boolean;
+  canGoForward(): boolean;
+  goBack(): void;
+  goForward(): void;
+}
+
+/**
+ * Go back or forward in a window's history: the menu items, and the mouse's
+ * side buttons through `app-command` on Windows and Linux.
+ * @param history - The window's history, if there is a window.
+ * @param command - "back" or "forward" from the menu, or an app command.
+ */
+export function stepHistory(history: HistorySteps | undefined, command: string): void {
+  if (!history) return;
+  if ((command === "back" || command === "browser-backward") && history.canGoBack()) history.goBack();
+  if ((command === "forward" || command === "browser-forward") && history.canGoForward()) history.goForward();
+}
