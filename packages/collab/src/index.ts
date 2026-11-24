@@ -268,9 +268,10 @@ async function main(): Promise<void> {
   }
 
   // The control-plane client (DB2, the same Redis instance as the streams).
-  // Two consumers each .duplicate() it for a dedicated subscriber: ended
-  // sessions, below, before the port opens; project control sync (activity,
-  // credits, project connection closes), after it. The client uses the core
+  // Three consumers each .duplicate() it for a dedicated subscriber: ended
+  // sessions and the live-update relay's ended uploads, below, before the
+  // port opens; project control sync (activity, audio peaks ready, project
+  // connection closes), after it. The client uses the core
   // factory so it inherits the production-safety knobs (keepAlive,
   // commandTimeout: undefined for the subscribe path's blocking semantics,
   // READONLY-aware reconnect, error log tagging).

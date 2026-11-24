@@ -52,8 +52,8 @@ async function publish(target: FocusImageTarget, step: Step): Promise<void> {
 
 /**
  * Show the crop as uploading in its node, once its grant is open, with the upload's deadline: like a task row it
- * carries its own budget, which a crop with no node counts from its grant's opening. Only the other members learn of
- * the wait from it, so its loss is the caller's to log.
+ * carries its own budget, which a crop with no node counts from its grant's opening. Every member, the uploader too
+ * once its bytes are sent, learns of the wait from it; its loss only hides the wait, so it is the caller's to log.
  * @param target - The pool and the image.
  * @param storageKey - The key its grant was opened on; the grant's opening, by the database's clock, starts the budget.
  * @returns Nothing.

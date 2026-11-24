@@ -5,7 +5,8 @@
  * Finishing a browser upload (inner#1367 §4.2a).
  *
  * The route takes the permission to finish and queues this; the browser hears
- * 202 and learns the ending from the upload status query. Finishing runs as a
+ * 202 and learns the ending from the `upload:ended` message collab relays to
+ * the uploader (the Studio page from its one poll). Finishing runs as a
  * job because it lasts as long as the Worker takes to assemble, hash and read
  * the object, which is bounded by the upload's two hours and nothing shorter.
  */

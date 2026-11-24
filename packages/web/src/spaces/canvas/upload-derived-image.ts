@@ -6,10 +6,10 @@ import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
 import type { FocusCropImage } from '@web/spaces/canvas/focus/run-focus-crop';
 
 /**
- * Upload an image made in the browser from canvas content: a focus crop, a
- * mini-tool's drawing. It has no node of its own, so there is no handling to
- * fence and nothing for the server to announce to; the address is read from
- * the answer. It is registered in the ledger for attribution and dedup,
+ * Upload an image made in the browser from canvas content: a mini-tool's
+ * drawing, a 3D viewfinder shot. It has no node of its own, so there is no
+ * handling to fence and nothing for the server to announce to; the address is
+ * read from the answer. A focus crop goes through {@link uploadFocusCrop}. It is registered in the ledger for attribution and dedup,
  * without an activity-feed row of its own.
  * @param file - The image.
  * @param where - The project and Space it was made in.

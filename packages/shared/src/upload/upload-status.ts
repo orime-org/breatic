@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The upload status query (inner#1367 §4.2a): finishing an upload answers 202
- * and the browser asks how each of its uploads ended, several in one request.
+ * How an upload ended (inner#1367 §4.2a, #1580): finishing answers 202, and the
+ * ending reaches the page through the `upload:ended` message or, on the Studio
+ * page, through its one poll, which asks about several uploads in one request.
  */
 
 /**

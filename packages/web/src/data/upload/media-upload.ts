@@ -155,10 +155,10 @@ function failureOf(err: unknown): UploadFailureReason {
 }
 
 /**
- * The failure a finish that did not register ended in. The status query names
+ * The failure a finish that did not register ended in. The ending names
  * the reason the server recorded; only a format the edge refused has a
  * failure of its own, since re-sending the same bytes meets the same refusal.
- * @param ending - What the status query answered.
+ * @param ending - The ending handed in (`upload:ended`, or the Studio page's poll).
  * @returns The failure reason to report.
  */
 function failureOfEnding(ending: Exclude<UploadEnding, { state: 'completed' }>): UploadFailureReason {
@@ -251,7 +251,7 @@ export interface MediaUploadDeps {
  * Finishing runs on the server as a job (inner#1367 §4.2a). An upload with a
  * node behind it is over for the page once that job is queued: the server
  * writes the node through Yjs, and only a finish that did not register comes
- * back here, through `onFailure`, when the status query has its ending. A
+ * back here, through `onFailure`, when its ending is handed in (`upload:ended`, or the Studio page's poll). A
  * Document body block (`onHandedOff`) is over for the page once the server has
  * the bytes or already holds them: the server announces the ending and collab
  * writes the block (breatic#1574). Any other upload with no node waits for that

@@ -378,7 +378,8 @@ async function prepareUpload(
     recordUserAction,
   );
   // A focus crop shows as uploading in its node once its grant is open, as a node's upload shows its task row, until
-  // its ending takes it out or its deadline passes; a lost notice only hides the wait from the other members.
+  // its ending takes it out or its deadline passes; a lost notice only hides the wait, from the uploader too once the
+  // bytes are sent.
   const focusOpened = focusTargetOf(scope, item);
   if (focusOpened !== null) {
     await announceFocusImageUploading(focusOpened, key).catch((err: unknown) => {

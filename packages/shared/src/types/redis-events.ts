@@ -4,12 +4,16 @@
 /**
  * Cross-process control-plane events.
  *
- * Two pub/sub channels:
+ * Five pub/sub channels:
  *
  *   - `activity:new`       — relay a new activity row to the project's
  *                            connected clients
+ *   - `asset-peaks:ready`  — an audio's waveform peaks were written, per project
  *   - `connections:close`  — close every connection to a project after a
  *                            duplicate / archive / restore
+ *   - `sessions:revoked`   — sessions that ended, per deployment
+ *   - `uploads:ended`      — how an upload ended, for its uploader, per
+ *                            deployment
  *
  * Membership changes do not travel here: collab hears them from the trigger
  * on `project_members` (core `listenProjectMemberChanges`).

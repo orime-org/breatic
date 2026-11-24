@@ -11,7 +11,9 @@
  * ingest Worker), the ticket naming the image the crop becomes. Once the
  * bytes are registered, collab adds that image to the node's pool; the page
  * writes nothing. The pending rail entry, under the same id, is the caller's
- * local state: it goes when the image lands, or through `onFailure`.
+ * local state: it goes once the bytes are sent (the node's `focusUploads`,
+ * written by collab, shows the crop from then until it lands), or through
+ * `onFailure`.
  */
 
 import {
