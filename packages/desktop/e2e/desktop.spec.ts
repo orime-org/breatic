@@ -180,7 +180,7 @@ test("the build opens the server it carries, with no address to enter", async ()
 test("the splash shows the brand first, the first window stays hidden behind it, and it closes once the window is ready", async () => {
   const app = await launch(freshData());
   const splash = await windowWhere(app, (url) => url.includes("/splash/"));
-  await expect(splash.getByText("breatic", { exact: true })).toBeVisible();
+  await expect(splash.getByText("Breatic", { exact: true })).toBeVisible();
   await expect(splash.getByText("powered by")).toBeHidden();
   // The page's own load start comes before it is shown; the splash must outlive it by the minimum.
   const loadStart = await splash.evaluate(() => performance.timeOrigin);
@@ -332,7 +332,7 @@ test.describe("can't reach the server", () => {
 
   test("shows in the window that failed, retries by itself and comes back when the server answers", async () => {
     const { app, page } = await launchOnStandIn();
-    await expect(page.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText(`${server.origin}/studio`)).toBeVisible();
     await expect(page.getByText("Can't reach this address")).toBeVisible();
     await expect(page.getByText("Retrying automatically")).toBeVisible();
@@ -340,7 +340,7 @@ test.describe("can't reach the server", () => {
     await afterSplash(app);
     await expect
       .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map((window) => [window.getTitle(), window.isVisible()])))
-      .toEqual([["Can't reach breatic", true]]);
+      .toEqual([["Can't reach Breatic", true]]);
 
     await server.up(appPage);
     // The first automatic retry comes 5 s after the failure.
@@ -353,7 +353,7 @@ test.describe("can't reach the server", () => {
 
   test("Retry tries again at once", async () => {
     const { app, page } = await launchOnStandIn();
-    await expect(page.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible({ timeout: 30_000 });
     await server.up(appPage);
     const clicked = Date.now();
     await page.getByRole("button", { name: "Retry" }).click();
@@ -393,7 +393,7 @@ test.describe("can't reach the server", () => {
         opened.push(url);
       };
     });
-    await expect(page.getByRole("heading", { name: "Can't reach breatic" })).toBeVisible({ timeout: 30_000 });
+    await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible({ timeout: 30_000 });
     await expect(page.getByText("This address goes to https://www.example.test/landing")).toBeVisible();
     expect(await app.evaluate(() => (globalThis as { opened?: string[] }).opened ?? [])).toEqual([]);
     await app.close();

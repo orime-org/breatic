@@ -49,7 +49,7 @@ describe("loadBrand", () => {
     const brand = (await brands()).loadBrand(OFFICIAL, {});
     expect(brand).toMatchObject({
       id: "breatic",
-      productName: "breatic",
+      productName: "Breatic",
       appId: "ai.breatic.desktop",
       scheme: "ai.breatic.desktop",
       serverUrl: (JSON.parse(readFileSync(join(OFFICIAL, "brand.json"), "utf8")) as { serverUrl: string }).serverUrl,

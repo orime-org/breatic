@@ -35,8 +35,8 @@ async function configFor(env: Record<string, string>): Promise<Configuration> {
 describe("electron-builder configuration", () => {
   it("names the official app and registers its scheme", async () => {
     const config = await configFor({});
-    expect(config).toMatchObject({ appId: "ai.breatic.desktop", productName: "breatic", artifactName: "breatic-${version}-${os}-${arch}.${ext}" });
-    expect(config.protocols).toEqual([{ name: "breatic", schemes: ["ai.breatic.desktop"] }]);
+    expect(config).toMatchObject({ appId: "ai.breatic.desktop", productName: "Breatic", artifactName: "breatic-${version}-${os}-${arch}.${ext}" });
+    expect(config.protocols).toEqual([{ name: "Breatic", schemes: ["ai.breatic.desktop"] }]);
     expect(config.linux?.executableName).toBe("breatic");
   });
 
@@ -58,7 +58,7 @@ describe("electron-builder configuration", () => {
       "Name[zh_TW]": desktopText("zh-TW", "breatic")["desktop.menu.newWindow"],
       "Name[ja]": desktopText("ja", "breatic")["desktop.menu.newWindow"],
       "Name[ko]": desktopText("ko", "breatic")["desktop.menu.newWindow"],
-      Exec: `/opt/breatic/breatic ${NEW_WINDOW_ARG}`,
+      Exec: `/opt/Breatic/breatic ${NEW_WINDOW_ARG}`,
     });
   });
 
