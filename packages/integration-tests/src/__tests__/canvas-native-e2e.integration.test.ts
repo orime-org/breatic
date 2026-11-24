@@ -599,6 +599,12 @@ beforeAll(async () => {
 
   // 4. Start Collab task-listener on the dev task-events stream
   //    (`taskEventsStreamKey()`, `${ENV}:stream:task-events`, ENV="dev").
+  //    The stream is emptied first: its group is created from the start of the stream, and events earlier files left
+  //    for Space documents this in-memory server never stored would hold the listener's document slots on hand-overs
+  //    it can never reach.
+  const streamCleaner = createRedisClient(REDIS_STREAM_URL, { name: "itest-e2e-stream-reset" });
+  await streamCleaner.del(taskEventsStreamKey(), "dev:collab:task-events:last-id");
+  await streamCleaner.quit();
   coordination = createRedisClient(inject("REDIS_COLLAB_URL"), { name: "itest-e2e-coord" });
   taskConsumer = startTaskListener({
     hocuspocus,
