@@ -35,13 +35,11 @@ import {
   env,
   getNodeTaskConfig,
   getRedis,
-  getStreamRedis,
   getTimelineConfig,
   initCore,
   loadLocales,
   sessionCookieName,
   setSession,
-  taskEventsStreamKey,
   timelineExecutionRepo,
 } from "@breatic/core";
 import { webAnimationSourceRepo } from "@breatic/domain";
@@ -50,6 +48,7 @@ import { decodePreviewToken } from "@breatic/shared/space-content";
 import type { TimelineExecution } from "@breatic/shared";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
+import { spaceTasksChanges, streamMark } from "@server/__tests__/helpers/space-tasks-changes.js";
 
 const PREVIEW_BASE_URL = "https://preview.timeline.test";
 const SUITE_ENV = {
@@ -280,22 +279,6 @@ async function succeed(execution: TimelineExecution): Promise<{ id: string }> {
   });
   await step(execution.id, { type: "success", fence: running.fence, resultSourceVersionId: source.id });
   return source;
-}
-
-/**
- * What one Timeline Space was told, after giving late messages time to arrive: the changes on the task-events stream
- * for its document.
- * @param projectId - The Project.
- * @param spaceId - The Space.
- * @returns Both.
- */
-async function signalsFor(projectId: string, spaceId: string): Promise<{ doc: Record<string, unknown>[] }> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  const docName = timelineSpaceDocName(projectId, spaceId);
-  const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
-    .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
-    .filter((event) => event.docName === docName);
-  return { doc };
 }
 
 /**
@@ -610,12 +593,14 @@ describe("POST /timeline/executions/:id/cancel", () => {
       const fx = await seedProject();
       const row = await accepted(fx);
       if (state === "queued") await step(row.id, { type: "land", inputHash: row.inputHash });
+      const since = await streamMark();
       const res = await cancel(fx.editor.cookie, row.id);
       expect(res.status, await res.clone().text()).toBe(200);
       expect(((await res.json()) as { data: TimelineExecution }).data).toMatchObject({ id: row.id, status: "cancelled" });
       expect((await timelineExecutionRepo.findById(row.id))?.status).toBe("cancelled");
       expect(await holdsOf(fx.studioId)).toEqual([]);
-      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual({ doc: [{ type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) }] });
+      const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
+      expect(await spaceTasksChanges(docName, since)).toEqual([{ type: "space-tasks-version", docName }]);
     },
   );
 
@@ -635,12 +620,12 @@ describe("POST /timeline/executions/:id/cancel", () => {
     const row = await accepted(fx);
     await cancel(fx.editor.cookie, row.id);
     const ended = await timelineExecutionRepo.findById(row.id);
-    const told = await signalsFor(fx.projectId, fx.spaceId);
+    const since = await streamMark();
     const again = await cancel(fx.editor.cookie, row.id);
     expect(again.status).toBe(200);
     expect(((await again.json()) as { data: TimelineExecution }).data).toEqual(ended);
     expect(await timelineExecutionRepo.findById(row.id)).toEqual(ended);
-    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual(told);
+    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), since)).toEqual([]);
   });
 
   it("refuses a viewer with 403 and leaves the row in place", async () => {

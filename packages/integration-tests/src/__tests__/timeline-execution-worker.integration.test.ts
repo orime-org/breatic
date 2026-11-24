@@ -58,7 +58,8 @@ vi.mock("ai", () => ({
 import type * as DomainModule from "@breatic/domain";
 import fc from "fast-check";
 import { createHash, generateKeyPairSync } from "node:crypto";
-import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
+import { createPgClient, createQueue, env, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
+import { spaceTasksChanges, streamMark } from "@server/__tests__/helpers/space-tasks-changes.js";
 import { initProvider, provider, runningSlotService, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
 import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
 import { t } from "@breatic/shared";
@@ -273,31 +274,6 @@ function modelRows(executionId: string): Record<string, unknown>[] {
   ];
 }
 
-/** A spy on the stream Redis client's append, read by its recorded calls. */
-interface Spies {
-  xadd: { mock: { calls: unknown[][] } };
-}
-
-/**
- * How many changes a spied stream append sent for the execution's Timeline Space.
- * @param spies - The spy on the stream Redis client's append.
- * @param spies.xadd - The append spy.
- * @param fx - The execution.
- * @returns The count.
- */
-function signalsFor(spies: Spies, fx: ExecutionFixture): { doc: number } {
-  const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
-  return { doc: spies.xadd.mock.calls.filter((call) => call.some((arg) => typeof arg === "string" && arg.includes(`"docName":"${docName}"`) && arg.includes("space-tasks-version"))).length };
-}
-
-/**
- * Spy on the stream Redis client's append.
- * @returns The spy.
- */
-function spyOnSignals(): Spies {
-  return { xadd: vi.spyOn(getStreamRedis(), "xadd") };
-}
-
 /**
  * What the credit engine must be asked to charge: the recorded rows' credits, settled once.
  * @param fx - The execution.
@@ -445,9 +421,9 @@ describe("the running-task gate tells the Timeline Space through its document", 
 
   it("announces a claim once", async () => {
     const fx = await seed("queued");
-    const spies = spyOnSignals();
+    const since = await streamMark();
     expect(await runningSlotService.claimWithinLimit(fx.execution.id)).toMatchObject({ outcome: "started" });
-    expect(signalsFor(spies, fx)).toEqual({ doc: 1 });
+    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), since)).toHaveLength(1);
   });
 
   it("announces the first wait for a running slot once, and a later wait not again", async () => {
@@ -455,11 +431,12 @@ describe("the running-task gate tells the Timeline Space through its document", 
     await sql`insert into tasks(user_id, project_id, space_id, task_type, mode, model, status, params, started_at, created_at)
       select ${fx.userId}, ${fx.projectId}, ${fx.spaceId}, 'image', 'append', 'flux-schnell', 'running', '{}'::jsonb, now(), now()
       from generate_series(1, 2)`;
-    const spies = spyOnSignals();
+    const since = await streamMark();
     await expect(runningSlotService.claimWithinLimit(fx.execution.id)).rejects.toMatchObject({ name: "StillRunning" });
-    expect(signalsFor(spies, fx)).toEqual({ doc: 1 });
+    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), since)).toHaveLength(1);
+    const again = await streamMark();
     await expect(runningSlotService.claimWithinLimit(fx.execution.id)).rejects.toMatchObject({ name: "StillRunning" });
-    expect(signalsFor(spies, fx)).toEqual({ doc: 1 });
+    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), again)).toEqual([]);
   });
 });
 
@@ -488,10 +465,10 @@ describe("picking up a running execution again", () => {
     ingest.read = () => json(report(fx, "running", { phase: "writing" }));
     await pickUp(fx);
     expect((await read(fx.execution.id)).phase).toBe("writing");
-    const spies = spyOnSignals();
+    const since = await streamMark();
     await pickUp(fx);
     expect(await read(fx.execution.id)).toMatchObject({ status: "running", attempt: 3, phase: "writing" });
-    expect(signalsFor(spies, fx)).toEqual({ doc: 0 });
+    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), since)).toEqual([]);
   });
 
   it("signals the Space once when a pickup finds the job in a new phase", async () => {
@@ -499,11 +476,11 @@ describe("picking up a running execution again", () => {
     const ingest = installFakeIngest(fx);
     ingest.read = () => json(report(fx, "running", { phase: "writing" }));
     await pickUp(fx);
-    const spies = spyOnSignals();
+    const since = await streamMark();
     ingest.read = () => json(report(fx, "running", { phase: "validating" }));
     await pickUp(fx);
     expect((await read(fx.execution.id)).phase).toBe("validating");
-    expect(signalsFor(spies, fx)).toEqual({ doc: 1 });
+    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), since)).toHaveLength(1);
   });
 
   it("does not settle a report that has not ended", async () => {

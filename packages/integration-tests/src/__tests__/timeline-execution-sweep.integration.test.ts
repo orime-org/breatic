@@ -41,7 +41,8 @@ vi.mock("ai", () => ({
 
 import type * as DomainModule from "@breatic/domain";
 import type { Job, Queue } from "bullmq";
-import { createPgClient, createQueue, createWorker, getStreamRedis, initCore, loadLocales, taskEventsStreamKey } from "@breatic/core";
+import { createPgClient, createQueue, createWorker, initCore, loadLocales } from "@breatic/core";
+import { spaceTasksChanges, streamMark } from "@server/__tests__/helpers/space-tasks-changes.js";
 import { timelineSpaceDocName } from "@breatic/shared";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
@@ -142,21 +143,6 @@ async function liveJob(executionId: string): Promise<{ state: string; data: unkn
   return { state: await job.getState(), data: job.data, timestamp: job.timestamp };
 }
 
-/**
- * What one Timeline Space was told, after giving late messages time to arrive: the changes on the task-events stream
- * for its document.
- * @param fx - The execution.
- * @returns Both.
- */
-async function signalsFor(fx: ExecutionFixture): Promise<{ doc: Record<string, unknown>[] }> {
-  await new Promise((resolve) => setTimeout(resolve, 300));
-  const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
-  const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
-    .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
-    .filter((event) => event.docName === docName);
-  return { doc };
-}
-
 const WAITING = ["waiting", "delayed", "prioritized"];
 
 /**
@@ -171,19 +157,22 @@ async function expectNothingHeld(fx: ExecutionFixture): Promise<void> {
 describe("sweeping rows that never landed", () => {
   it("expires an awaiting-landing row past its original deadline, releasing nothing, and tells its Space's document", async () => {
     const fx = await seed("awaiting_landing", { late: true });
+    const since = await streamMark();
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", fence: null });
     await expectNothingHeld(fx);
     expect(await liveJob(fx.execution.id)).toBeNull();
-    expect(await signalsFor(fx)).toEqual({ doc: [{ type: "space-tasks-version", docName: timelineSpaceDocName(fx.projectId, fx.spaceId) }] });
+    const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
+    expect(await spaceTasksChanges(docName, since)).toEqual([{ type: "space-tasks-version", docName }]);
   });
 
   it("leaves an awaiting-landing row whose Space was deleted alone until its original deadline, then expires it", async () => {
     const fx = await seed("awaiting_landing");
     await deleteSpace(fx.projectId, fx.spaceId);
+    const since = await streamMark();
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toEqual(fx.execution);
-    expect(await signalsFor(fx)).toEqual({ doc: [] });
+    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), since)).toEqual([]);
     await sql`UPDATE timeline_executions SET deadline_at = now() - interval '1 minute' WHERE id = ${fx.execution.id}`;
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", failureReason: null, fence: null });
@@ -205,10 +194,10 @@ describe("sweeping rows that never landed", () => {
     await sweepTimelineExecutions(queue);
     const ended = await read(fx.execution.id);
     expect(ended.status).toBe("expired");
-    const told = await signalsFor(fx);
+    const since = await streamMark();
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toEqual(ended);
-    expect(await signalsFor(fx)).toEqual(told);
+    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), since)).toEqual([]);
   });
 });
 
