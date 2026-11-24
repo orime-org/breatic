@@ -212,6 +212,12 @@ const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked
 /** The templates that remix videos the user already has (inner#1819), in registry order. */
 const VIDEO_REMIX = ['reference-video-remix', 'seamless-bridge'];
 
+/** The space, renovation and real estate templates (inner#1823), in registry order. */
+const SPACES = ['space-tour-single-take', 'room-staging-still', 'renovation-before-after', 'day-to-night-exterior', 'before-after-reveal', 'listing-walkthrough-15s', 'property-full-tour'];
+
+/** The space templates a video panel lists. */
+const SPACES_VIDEOS = SPACES.filter((id) => id !== 'room-staging-still');
+
 /** The promo film and brand story templates (inner#1822), in registry order. */
 const PROMO = ['app-launch-promo', 'brand-origin-film', 'launch-story-3-beat', 'promo-film-assembled'];
 
@@ -365,6 +371,7 @@ describe('generation templates', () => {
       ...COMICS_IMAGES,
       'product-hero-still',
       'dish-hero-still',
+      'room-staging-still',
       'try-on-still',
       'fisheye-clone-pov',
       'flash-photo-dump-grid',
@@ -382,6 +389,7 @@ describe('generation templates', () => {
       ...PRODUCT_SHOWCASE_VIDEOS,
       ...PROMO,
       ...FOOD_VIDEOS,
+      ...SPACES_VIDEOS,
       ...FASHION_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
       ...TALKING,
@@ -449,6 +457,29 @@ describe('generation templates', () => {
         'part-2': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
         'part-3': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
         'part-4': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
+      },
+      'space-tour-single-take': t2v(15, '16:9'),
+      'room-staging-still': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: 'auto' } } },
+      'renovation-before-after': {
+        result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 8, generate_audio: true } },
+        before: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        after: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'day-to-night-exterior': {
+        result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 6, generate_audio: true } },
+        day: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        night: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'before-after-reveal': { result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 6, generate_audio: true } } },
+      'listing-walkthrough-15s': {
+        result: { type: 'video', mode: 'multi_shot', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true }, shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }] },
+      },
+      'property-full-tour': {
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
+        'room-2': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
+        'room-3': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
+        'room-4': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
         score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
       },
       'fashion-lookbook': t2v(15),
@@ -722,7 +753,7 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'promo', 'food', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'promo', 'food', 'spaces', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
@@ -734,6 +765,7 @@ describe('creative goals and triggers', () => {
       ...Object.fromEntries(TALKING.map((id) => [id, 'talking'])),
       ...Object.fromEntries(PROMO.map((id) => [id, 'promo'])),
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
+      ...Object.fromEntries(SPACES.map((id) => [id, 'spaces'])),
       ...Object.fromEntries(FASHION.map((id) => [id, 'fashion'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
@@ -789,6 +821,7 @@ describe('creative goals and triggers', () => {
       ['comics-storyboards', COMICS_IMAGES],
       ['product-showcase', ['product-hero-still']],
       ['food', ['dish-hero-still']],
+      ['spaces', ['room-staging-still']],
       ['fashion', ['try-on-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
       ['posters', POSTERS],
@@ -803,6 +836,7 @@ describe('creative goals and triggers', () => {
       ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
       ['promo', PROMO],
       ['food', FOOD_VIDEOS],
+      ['spaces', SPACES_VIDEOS],
       ['fashion', FASHION_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
       ['talking', TALKING],

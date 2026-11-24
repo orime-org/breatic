@@ -1485,6 +1485,7 @@
         "product-showcase": "Product showcase",
         "promo": "Promo films & brand stories",
         "food": "Food",
+        "spaces": "Spaces, renovation & real estate",
         "fashion": "Fashion lookbook",
         "social-hooks": "Social hooks",
         "talking": "Talking and dialogue",
@@ -2829,6 +2830,160 @@
         "step": {
           "trim": "The score comes out a few minutes long. Once it has generated, use Tools → Cut on it four times to cut back-to-back 15-second pieces (0–15 s, 15–30 s, 30–45 s, 45–60 s); connect each cut clip (named CUT-…) to its part in order and @ it where that part's prompt asks.",
           "join": "Select the four parts in order, right-click and choose Join."
+        }
+      },
+      "space-tour-single-take": {
+        "name": "Space tour in one take",
+        "description": "One steady walk through your space, ambient sound only",
+        "prompt": "A 15-second widescreen single take through [📎 Space], every surface, colour and piece of furniture as in the photo. The camera glides steadily forward at walking height with no cuts. Beginning: {✏️ where it starts, e.g. at the front door, looking down the hallway}. Then: through the doorway, the next area is revealed at the threshold: {✏️ the route, e.g. the living room opens to the left, then the dining table by the window}. Finally: {✏️ where it ends, e.g. it stops at the window with the garden outside}. The light changes by area, warm inside and brighter near the windows. Sound: only the room's own ambience, footsteps on the floor, faint birdsong outside. No music, no people, no text on screen.",
+        "input": {
+          "space": {
+            "name": "Space",
+            "note": "Add a photo of the space first, then generate."
+          }
+        }
+      },
+      "room-staging-still": {
+        "name": "Room staging",
+        "description": "Your empty room furnished, walls and camera unchanged",
+        "prompt": "Stage [📎 Room] with furniture in {✏️ the style, e.g. warm Scandinavian, light oak and linen} as {✏️ what the room is for, e.g. a living room for a young family}. Keep the walls, windows, doors, floor, ceiling, the light from the windows and the camera position exactly as in the photo; add only furniture, rugs, lamps, plants and decor, sized to the room's real scale. Photorealistic interior photography. No text.",
+        "input": {
+          "room": {
+            "name": "Room",
+            "note": "Add a photo of the empty room first, then generate."
+          }
+        }
+      },
+      "renovation-before-after": {
+        "name": "Renovation before and after",
+        "description": "Your room as it is, renovated, and the change in one take",
+        "prompt": "(💡 Generate Before first, then set it as the First frame)(💡 Generate After first, then set it as the End frame)An 8-second widescreen video with sound. It starts on the first frame and ends on the end frame: the same room, the same camera, and only the room changes, in one continuous take with the camera still. The change: {✏️ how it moves, e.g. old finishes peel away and the new ones sweep across the room from left to right}. Sound: the work in fast motion, tools and footsteps, settling into a quiet room. No text on screen.",
+        "node": {
+          "before": {
+            "name": "Before",
+            "prompt": "A widescreen interior photo of [📎 Room] exactly as it is now: the same walls, windows, floor, ceiling, furniture, wear and camera position as in the photo, nothing tidied or added, in its natural daylight. Photorealistic. No text."
+          },
+          "after": {
+            "name": "After",
+            "prompt": "(💡 Generate Before first)Edit [📎 Before]: keep the camera, framing, perspective, walls, windows and room size exactly as they are. Renovate it: {✏️ the renovation, e.g. a pale oak floor, white walls, a new kitchen island and warm pendant lights}. Photorealistic, in natural daylight. No text."
+          }
+        },
+        "input": {
+          "room": {
+            "name": "Room",
+            "note": "Add a photo of the room first, then generate Before."
+          }
+        }
+      },
+      "day-to-night-exterior": {
+        "name": "Day to night exterior",
+        "description": "Your building from daylight to lit-up night",
+        "prompt": "(💡 Generate Day first, then set it as the First frame)(💡 Generate Night first, then set it as the End frame)A 6-second widescreen video with sound. It starts on the first frame and ends on the end frame: the same building from the same camera, the sky moving from day through a warm dusk to night as the windows and outdoor lights come on one by one, in one continuous change with the camera still. Sound: evening ambience, birds settling and a distant street. No text on screen.",
+        "node": {
+          "day": {
+            "name": "Day",
+            "prompt": "A widescreen exterior photo of [📎 Exterior] in clear daylight: the same building, roof, windows, garden and camera position as in the photo, nothing added. Photorealistic. No text."
+          },
+          "night": {
+            "name": "Night",
+            "prompt": "(💡 Generate Day first)Edit [📎 Day]: keep the camera, framing and the building exactly as they are. Make it night: a deep blue sky, {✏️ the light at night, e.g. warm light in every window and soft garden lights along the path}. Photorealistic. No text."
+          }
+        },
+        "input": {
+          "exterior": {
+            "name": "Exterior",
+            "note": "Add a photo of the building first, then generate Day."
+          }
+        }
+      },
+      "before-after-reveal": {
+        "name": "Before and after reveal",
+        "description": "Your two photos as a social transformation clip",
+        "prompt": "A 6-second before-and-after with sound. It starts on the first frame and ends on the end frame, the same place from the same spot. The hook in the first 2 seconds: 0.0 s the before, still; 0.3 s a quick push in; 0.8 s the first sign of the work; 1.5 s a flash of the after; 2.0 s back to the work. Then the work happening in fast motion until the after state: {✏️ the work, e.g. the stained sofa is scrubbed, rinsed and dried}. Sound: the work's own sounds, scrubbing and spraying, a soft whoosh at the reveal. No text on screen.",
+        "input": {
+          "before": {
+            "name": "Before",
+            "note": "Add your before photo first, then pick it into the First frame slot."
+          },
+          "after": {
+            "name": "After",
+            "note": "Add your after photo first, then pick it into the End frame slot."
+          }
+        }
+      },
+      "listing-walkthrough-15s": {
+        "name": "15-second listing walkthrough",
+        "description": "Four photos of a home, one smooth walkthrough",
+        "shot": {
+          "1": "A drone approach to [📎 Exterior], the home exactly as in the photo, {✏️ the time of day, e.g. golden hour}, gliding down toward the front door. No text on screen.",
+          "2": "A threshold reveal: the camera passes through the front door into [📎 Living room], exactly as in the photo. No text on screen.",
+          "3": "A gimbal slide along [📎 Kitchen], exactly as in the photo, the light catching the counters. No text on screen.",
+          "4": "A slow push into [📎 Bedroom], exactly as in the photo, calm and bright. No text on screen.",
+          "5": "A window reveal: the camera turns to the bedroom window and the view opens up: {✏️ the view, e.g. treetops and a lake}. Soft piano and the room's ambience throughout. No text on screen."
+        },
+        "input": {
+          "exterior": {
+            "name": "Exterior",
+            "note": "Add a photo of the outside first, then generate."
+          },
+          "living": {
+            "name": "Living room",
+            "note": "Add a photo of the living room first, then generate."
+          },
+          "kitchen": {
+            "name": "Kitchen",
+            "note": "Add a photo of the kitchen first, then generate."
+          },
+          "bedroom": {
+            "name": "Bedroom",
+            "note": "Add a photo of the bedroom first, then generate."
+          }
+        }
+      },
+      "property-full-tour": {
+        "name": "Full property tour",
+        "description": "One 10-second part per room, made to one score, then joined",
+        "prompt": "Room 1 of 4 of a 40-second property tour, 10 seconds: [📎 Photo 1], every surface, colour and piece of furniture as in the photo. All parts share one look: {✏️ the home and the light, e.g. a bright family house, soft afternoon light, smooth gimbal moves}. The soundtrack is {✏️ @ here the first 10-second piece you cut from Score}. The camera: {✏️ the move in this room, e.g. a slow drone approach to the front door}. No people, no text on screen.",
+        "node": {
+          "room-2": {
+            "name": "Room 2",
+            "prompt": "Room 2 of 4 of a 40-second property tour, 10 seconds: [📎 Photo 2], every surface, colour and piece of furniture as in the photo. All parts share one look: {✏️ the home and the light, e.g. a bright family house, soft afternoon light, smooth gimbal moves}. The soundtrack is {✏️ @ here the second 10-second piece you cut from Score}. The camera: {✏️ the move in this room, e.g. a threshold reveal into the living room}. No people, no text on screen."
+          },
+          "room-3": {
+            "name": "Room 3",
+            "prompt": "Room 3 of 4 of a 40-second property tour, 10 seconds: [📎 Photo 3], every surface, colour and piece of furniture as in the photo. All parts share one look: {✏️ the home and the light, e.g. a bright family house, soft afternoon light, smooth gimbal moves}. The soundtrack is {✏️ @ here the third 10-second piece you cut from Score}. The camera: {✏️ the move in this room, e.g. a slide along the kitchen counters}. No people, no text on screen."
+          },
+          "room-4": {
+            "name": "Room 4",
+            "prompt": "Room 4 of 4 of a 40-second property tour, 10 seconds: [📎 Photo 4], every surface, colour and piece of furniture as in the photo. All parts share one look: {✏️ the home and the light, e.g. a bright family house, soft afternoon light, smooth gimbal moves}. The soundtrack is {✏️ @ here the fourth 10-second piece you cut from Score}. The camera: {✏️ the move in this room, e.g. a push to the bedroom window and the view}. No people, no text on screen."
+          },
+          "score": {
+            "name": "Score",
+            "prompt": "Instrumental music for a 40-second property tour of {✏️ the property type, e.g. a bright family house}: {✏️ the genre and tempo, e.g. light acoustic piano at 90 BPM}, one key throughout, warm and welcoming, rising gently toward the end. No vocals."
+          }
+        },
+        "input": {
+          "photo-1": {
+            "name": "Photo 1",
+            "note": "Add a photo of the first room first, then generate."
+          },
+          "photo-2": {
+            "name": "Photo 2",
+            "note": "Add a photo of the second room first, then generate."
+          },
+          "photo-3": {
+            "name": "Photo 3",
+            "note": "Add a photo of the third room first, then generate."
+          },
+          "photo-4": {
+            "name": "Photo 4",
+            "note": "Add a photo of the fourth room first, then generate."
+          }
+        },
+        "step": {
+          "trim": "The score comes out a few minutes long. Once it has generated, use Tools → Cut on it to cut back-to-back 10-second pieces (0–10 s, 10–20 s, 20–30 s, 30–40 s); connect each cut clip (named CUT-…) to its room in order and @ it where that room's prompt asks.",
+          "more": "More rooms? Copy a room node, connect the next room's photo to it, cut one more 10-second piece for it, and write its camera move.",
+          "join": "Select the rooms in order, right-click and choose Join."
         }
       }
     },
