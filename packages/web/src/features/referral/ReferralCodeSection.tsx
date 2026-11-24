@@ -18,6 +18,7 @@ import { carriedReferralCode, forgetCarriedReferralCode, forgetRefusedReferralCo
 import { membershipQueryKey } from '@web/features/membership/membership-query';
 import { SectionHeading } from '@web/features/membership/SectionHeading';
 import { referralQueryKey, useAccountReferral, zheOf } from '@web/features/referral/referral-query';
+import { REFERRAL_UI_SHOWN } from '@web/features/referral/referral-ui';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 import {
   clearReferralForm,
@@ -37,7 +38,8 @@ const ACCOUNT_REFUSALS = new Set(['already_bound', 'already_paid', 'not_eligible
  *
  * The section follows the cached view: while there is data it draws the data,
  * even when a background read fails; the skeleton and the error line are for
- * the first read only. A 404 (nothing is sold here, `selling` false) draws nothing.
+ * the first read only. A 404 (nothing is sold here, `selling` false) draws
+ * nothing, and so does a hidden program.
  * @returns The section, or null when there is nothing to show.
  */
 export function ReferralCodeSection(): React.JSX.Element | null {
@@ -48,6 +50,7 @@ export function ReferralCodeSection(): React.JSX.Element | null {
     void refetch();
   }, [refetch]);
 
+  if (!REFERRAL_UI_SHOWN) return null;
   if (data !== undefined) {
     if (data === null) return null;
     if (data.canBind) return <BindForm view={data} />;
