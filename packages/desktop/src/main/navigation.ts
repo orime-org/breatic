@@ -96,7 +96,7 @@ const ERR_ABORTED = -3;
 
 /**
  * Whether a failed load means the server cannot be reached.
- * @param failure - The `did-fail-load` details.
+ * @param failure - The `did-fail-provisional-load` details (Chromium committed an error entry).
  * @param failure.url - What was loading.
  * @param failure.serverOrigin - The server the client opened.
  * @param failure.isMainFrame - Whether it was the page itself.
@@ -141,9 +141,7 @@ export function stepHistory(history: HistorySteps | undefined, direction: "back"
  * Which way a Windows app command (`WM_APPCOMMAND`: a Browser Back or Forward
  * key, or a mouse button its driver maps to one) steps the history. Chrome
  * handles these in its browser window (`BrowserView::ExecuteWindowsCommand`);
- * the page never sees them. On Linux Electron derives the same command from
- * the side-button press Chromium already steps on, so it is listened to on
- * Windows only.
+ * the page never sees them.
  * @param command - The `app-command` name.
  * @returns The direction, or null for any other command.
  */

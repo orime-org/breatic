@@ -327,10 +327,11 @@ function track(window: BrowserWindow): LoadTracker {
     appWindows = appWindows.filter((other) => other !== window);
   });
   contents.on("did-start-navigation", (details) => tracker.navigationStarted(details));
-  contents.on("did-fail-provisional-load", (_event, errorCode, _description, url, isMainFrame) => tracker.loadFailed({ url, errorCode, isMainFrame }));
+  contents.on("did-fail-provisional-load", (_event, errorCode, _description, url, isMainFrame) => tracker.errorEntryCommitted({ url, errorCode, isMainFrame }));
   contents.on("did-navigate", () => tracker.pageCommitted());
   contents.on("did-finish-load", () => tracker.loadFinished());
   contents.on("did-stop-loading", () => tracker.loadStopped());
+  // Windows only: on Linux Electron also emits app-command for the side-button press Chromium already steps on.
   if (process.platform === "win32") {
     window.on("app-command", (_event, command) => {
       const direction = appCommandDirection(command);

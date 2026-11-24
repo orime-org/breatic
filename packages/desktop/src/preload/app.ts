@@ -14,7 +14,7 @@ import type { BrowserSignInResult, DesktopBridge } from "@breatic/shared";
 
 const bridge: DesktopBridge & { retry(automatic?: boolean): Promise<void> } = {
   platform: process.platform,
-  retry: (automatic) => ipcRenderer.invoke("unreachable:retry", automatic === true) as Promise<void>,
+  retry: (automatic) => ipcRenderer.invoke("unreachable:retry", automatic) as Promise<void>,
   signInWithBrowser: (referralCode) => ipcRenderer.invoke("sign-in:start", referralCode) as Promise<void>,
   cancelBrowserSignIn: () => ipcRenderer.invoke("sign-in:cancel") as Promise<void>,
   isBrowserSignInPending: () => ipcRenderer.invoke("sign-in:pending") as Promise<boolean>,

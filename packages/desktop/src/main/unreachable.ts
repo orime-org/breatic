@@ -171,8 +171,8 @@ export interface LoadTracker {
   redirectCancelled(target: string): void;
   /** `did-start-navigation`. */
   navigationStarted(nav: { url: string; isMainFrame: boolean; isSameDocument: boolean }): void;
-  /** `did-fail-provisional-load`: Chromium's error entry has committed (`did-fail-load` also fires when a committed page's body fails). */
-  loadFailed(failure: { url: string; errorCode: number; isMainFrame: boolean }): void;
+  /** `did-fail-provisional-load`: Chromium's error entry has committed. */
+  errorEntryCommitted(failure: { url: string; errorCode: number; isMainFrame: boolean }): void;
   /** `did-navigate`: a page has committed in the main frame. */
   pageCommitted(): void;
   /** `did-finish-load`. */
@@ -253,7 +253,7 @@ export function createLoadTracker(deps: LoadTrackerDeps): LoadTracker {
         scheduler.clear();
       }
     },
-    loadFailed({ url, errorCode, isMainFrame }): void {
+    errorEntryCommitted({ url, errorCode, isMainFrame }): void {
       if (!isServerLoadFailure({ url, serverOrigin: deps.serverOrigin, isMainFrame, errorCode })) return;
       const reason: UnreachableReason = redirectTarget
         ? { kind: "redirected", target: redirectTarget }

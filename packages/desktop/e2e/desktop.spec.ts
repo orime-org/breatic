@@ -405,6 +405,61 @@ test.describe("can't reach the server", () => {
     await app.close();
   });
 
+  test("the network coming back retries at once", async () => {
+    const { app, page } = await launchOnStandIn();
+    await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible({ timeout: 30_000 });
+    await server.up(appPage);
+    const cdp = await page.context().newCDPSession(page);
+    await cdp.send("Network.enable");
+    const conditions = { latency: 0, downloadThroughput: -1, uploadThroughput: -1 };
+    await cdp.send("Network.emulateNetworkConditions", { offline: true, ...conditions });
+    await expect.poll(() => page.evaluate(() => navigator.onLine)).toBe(false);
+    const online = Date.now();
+    await cdp.send("Network.emulateNetworkConditions", { offline: false, ...conditions });
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible();
+    // Well before the 5 s automatic retry.
+    expect(Date.now() - online).toBeLessThan(4_000);
+    await app.close();
+  });
+
+  test("the network coming back waits for a Back that is still loading, and Retry still goes", async () => {
+    /** The app's pages, never from the cache. */
+    const fresh = (_req: IncomingMessage, res: ServerResponse): void => {
+      res.setHeader("Cache-Control", "no-store");
+      appPage(_req, res);
+    };
+    await server.up(fresh);
+    const { app, page } = await launchOnStandIn();
+    await expect(page.getByRole("heading", { name: "Studio" })).toBeVisible({ timeout: 30_000 });
+    await server.down();
+    await page.goto(`${server.origin}/project/1`).catch(() => undefined);
+    await expect(page.getByRole("heading", { name: "Can't reach Breatic" })).toBeVisible();
+    // The server is back, but the Studio the user goes back to is slow to answer.
+    let retries = 0;
+    await server.up((req, res) => {
+      if (req.url === "/studio") return;
+      if (req.url === "/project/1") retries += 1;
+      fresh(req, res);
+    });
+    await app.evaluate(({ BrowserWindow }) => {
+      BrowserWindow.getAllWindows()
+        .find((window) => !window.webContents.getURL().startsWith("file:"))!
+        .webContents.navigationHistory.goBack();
+    });
+    await expect
+      .poll(() => app.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find((window) => !window.webContents.getURL().startsWith("file:"))!.webContents.isLoading()))
+      .toBe(true);
+    /** Run a script in the error entry at once; Playwright's own calls wait for the pending Back. */
+    const inErrorEntry = (script: string): Promise<unknown> =>
+      app.evaluate(({ BrowserWindow }, code) => BrowserWindow.getAllWindows().find((window) => !window.webContents.getURL().startsWith("file:"))!.webContents.mainFrame.executeJavaScript(code), script);
+    await inErrorEntry(`window.dispatchEvent(new Event("online"))`);
+    await page.waitForTimeout(1_000);
+    expect(retries).toBe(0);
+    await inErrorEntry(`document.querySelector("button").click()`);
+    await expect.poll(() => retries).toBe(1);
+    await app.close();
+  });
+
   test("a page on the server cannot ask for a retry", async () => {
     await server.up(appPage);
     const { app, page } = await launchOnStandIn();

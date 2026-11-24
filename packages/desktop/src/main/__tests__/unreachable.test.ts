@@ -184,7 +184,7 @@ describe("createLoadTracker", () => {
   /** The events of a load of `url` that ends in Chromium's error entry. */
   function failLoad(tracker: LoadTracker, errorCode: number, url = STUDIO): void {
     tracker.navigationStarted({ url, isMainFrame: true, isSameDocument: false });
-    tracker.loadFailed({ url, errorCode, isMainFrame: true });
+    tracker.errorEntryCommitted({ url, errorCode, isMainFrame: true });
     tracker.loadFinished();
     tracker.loadStopped();
   }
@@ -256,7 +256,7 @@ describe("createLoadTracker", () => {
     tracker.mainLoadStarted();
     tracker.navigationStarted({ url: STUDIO, isMainFrame: true, isSameDocument: false });
     tracker.redirectCancelled("https://www.other.test/x");
-    tracker.loadFailed({ url: STUDIO, errorCode: -20, isMainFrame: true });
+    tracker.errorEntryCommitted({ url: STUDIO, errorCode: -20, isMainFrame: true });
     tracker.loadFinished();
     expect(renders[0]?.shown.reason).toEqual({ kind: "redirected", target: "https://www.other.test/x" });
     vi.useRealTimers();
@@ -339,9 +339,9 @@ describe("createLoadTracker", () => {
 
   it("ignores failures that are not a main-frame load of the server", () => {
     const { tracker, renders, logs } = setup();
-    tracker.loadFailed({ url: STUDIO, errorCode: -102, isMainFrame: false });
-    tracker.loadFailed({ url: "https://checkout.stripe.com/x", errorCode: -102, isMainFrame: true });
-    tracker.loadFailed({ url: STUDIO, errorCode: -3, isMainFrame: true });
+    tracker.errorEntryCommitted({ url: STUDIO, errorCode: -102, isMainFrame: false });
+    tracker.errorEntryCommitted({ url: "https://checkout.stripe.com/x", errorCode: -102, isMainFrame: true });
+    tracker.errorEntryCommitted({ url: STUDIO, errorCode: -3, isMainFrame: true });
     tracker.loadFinished();
     expect(renders).toEqual([]);
     expect(logs).toEqual([]);
