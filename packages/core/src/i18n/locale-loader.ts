@@ -24,7 +24,6 @@ import { AsyncLocalStorage } from "node:async_hooks";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { resolve, basename } from "node:path";
 import {
-  mergeLocaleMessages,
   setLocaleMessages,
   setLocaleResolver,
   type Locale,
@@ -55,36 +54,73 @@ export function runWithLocale<T>(locale: Locale, fn: () => T): T {
 }
 
 /**
- * Load all locale JSON files from `localesDir` and register them with
- * the shared i18n engine. Defaults to the repo-root `locales/` directory,
- * anchored on `MONOREPO_ROOT` (which walks up to the pnpm-workspace.yaml,
- * with a Docker cwd fallback) rather than a relative `../../` hop —
- * the bundled output's directory depth differs between packages and
- * dev-vs-Docker, so a hard-coded relative path is fragile.
+ * Merge one catalog into another: nested objects merge key by key, and any
+ * other value from `over` replaces the one in `base`.
+ * @param base - The catalog loaded so far.
+ * @param over - The catalog laid on top of it.
+ * @returns A new catalog holding both.
+ */
+function mergeCatalogs(base: Record<string, unknown>, over: Record<string, unknown>): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(over)) {
+    const below = merged[key];
+    merged[key] =
+      isCatalog(below) && isCatalog(value) ? mergeCatalogs(below, value) : value;
+  }
+  return merged;
+}
+
+/**
+ * Whether a value is a nested catalog rather than a message.
+ * @param value - The value.
+ * @returns True for a plain object.
+ */
+function isCatalog(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+/**
+ * Load all locale JSON files and register them with the shared i18n engine.
+ * Defaults to the repo-root `locales/` directory, anchored on
+ * `MONOREPO_ROOT` (which walks up to the pnpm-workspace.yaml, with a Docker
+ * cwd fallback) rather than a relative `../../` hop — the bundled output's
+ * directory depth differs between packages and dev-vs-Docker, so a
+ * hard-coded relative path is fragile.
+ *
+ * Several directories are laid on top of one another in order, so a service
+ * that adds its own catalogs (the billing service) keeps the product's keys
+ * and adds or overrides only its own.
  *
  * Node service entry points should call this once at boot, before any
  * `t()` call runs.
- * @param localesDir - directory to scan for locale JSON files; defaults to the repo-root `locales/`
+ * @param localesDirs - the directory, or directories in order, to scan for locale JSON files; defaults to the repo-root `locales/`
  */
-export function loadLocales(localesDir?: string): void {
-  const dir = localesDir ?? resolve(MONOREPO_ROOT, "locales");
-  try {
-    for (const file of readdirSync(dir)) {
-      if (!file.endsWith(".json")) continue;
-      const locale = basename(file, ".json");
-      const raw = readFileSync(resolve(dir, file), "utf-8");
-      const data = JSON.parse(raw) as Record<string, unknown>;
-      setLocaleMessages(locale, data);
+export function loadLocales(localesDirs?: string | readonly string[]): void {
+  const dirs = localesDirs === undefined ? [resolve(MONOREPO_ROOT, "locales")] : typeof localesDirs === "string" ? [localesDirs] : localesDirs;
+  const catalogs = new Map<string, Record<string, unknown>>();
+  for (const dir of dirs) {
+    try {
+      for (const file of readdirSync(dir)) {
+        if (!file.endsWith(".json")) continue;
+        const locale = basename(file, ".json");
+        const data = JSON.parse(readFileSync(resolve(dir, file), "utf-8")) as Record<string, unknown>;
+        catalogs.set(locale, mergeCatalogs(catalogs.get(locale) ?? {}, data));
+      }
+      // The template style words (inner#1817) sit in their own catalogs so the
+      // web entry stays small; here they join the same locales.
+      const styles = resolve(dir, "template-styles");
+      if (!existsSync(styles)) continue;
+      for (const file of readdirSync(styles)) {
+        if (!file.endsWith(".json")) continue;
+        const locale = basename(file, ".json");
+        const base = catalogs.get(locale);
+        if (base === undefined) continue;
+        const data = JSON.parse(readFileSync(resolve(styles, file), "utf-8")) as Record<string, unknown>;
+        catalogs.set(locale, mergeCatalogs(base, data));
+      }
+    } catch {
+      // locales dir may not exist in test environments
     }
-  } catch {
-    // locales dir may not exist in test environments
   }
-  // The template style words (inner#1817) sit in their own catalogs so the
-  // web entry stays small; here they join the locales registered above.
-  const styles = resolve(dir, "template-styles");
-  if (!existsSync(styles)) return;
-  for (const file of readdirSync(styles)) {
-    if (!file.endsWith(".json")) continue;
-    mergeLocaleMessages(basename(file, ".json"), JSON.parse(readFileSync(resolve(styles, file), "utf-8")) as Record<string, unknown>);
-  }
+  for (const [locale, messages] of catalogs) setLocaleMessages(locale, messages);
 }

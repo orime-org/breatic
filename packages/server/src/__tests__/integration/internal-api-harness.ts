@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The back office's side of the internal API, for the suites that drive it
- * over a real socket (inner#1410 §4). Not a test file: the suites are
- * `internal-api-*.integration.test.ts`.
+ * The caller's side of the product's internal listener, for the suites that
+ * drive it over a real socket (inner#1410 §4): the back office's credit-grant,
+ * enterprise-membership and maintenance endpoints, the billing service's
+ * commerce endpoints, and the gate in front of all of them. Not a test file:
+ * the suites are `internal-api-*.integration.test.ts` and the other internal
+ * listener suites that import it.
  *
  * The internal app is served by `@hono/node-server` on a loopback port,
  * because the rate limit keys on the connection's address
@@ -19,10 +22,8 @@ import type { AddressInfo } from "node:net";
 import { serve } from "@hono/node-server";
 import type { Hono } from "hono";
 import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, expect, inject, vi } from "vitest";
+import { afterAll, beforeAll, beforeEach, inject } from "vitest";
 import { env, getRedis, initCore, loadLocales, signRequest } from "@breatic/core";
-import { fakeStripe } from "./fake-stripe-refunds.js";
-import { expectOnlyRejudged, mailsOf, type SeededLot, type WorldState } from "./credit-refund-fixtures.js";
 
 /** The current shared secret the suites start the app with. */
 export const SECRET = "internal-secret-current-0123456789abcdef";
@@ -30,20 +31,18 @@ export const SECRET = "internal-secret-current-0123456789abcdef";
 export const PREVIOUS_SECRET = "internal-secret-previous-0123456789abcdef";
 /** The back office admin id the requests carry. */
 export const ADMIN = "admin_7";
+/** The billing service's secret on this listener (inner#1993 §3.1). */
+export const COMMERCE_SECRET = "commerce-secret-current-0123456789abcdef";
 
-/**
- * Point core at an environment with payments and the internal API on.
- * Placeholder Stripe keys: every Stripe call goes to the injected fake.
- */
+/** Point core at an environment with charging and the internal API on. */
 export function initInternalCore(): void {
   initCore({
     ...process.env,
-    PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    CHARGING_ENABLED: "true",
     INTERNAL_API_ENABLED: "true",
     INTERNAL_API_SECRET: SECRET,
     INTERNAL_API_SECRET_PREVIOUS: PREVIOUS_SECRET,
+    COMMERCE_API_SECRET: COMMERCE_SECRET,
   });
 }
 
@@ -81,14 +80,20 @@ export function freshNonce(): string {
   return randomBytes(18).toString("base64url");
 }
 
-/** A fresh idempotency key in `REFKEY_PATTERN`. */
+/**
+ * A fresh labelled idempotency key, `bo-<label>-<uuid>`. The back office's
+ * write endpoints accept only `bo-<uuid>`, so this is for requests whose key
+ * the gate refuses or never reads.
+ * @param label - The label after `bo-`.
+ * @returns The key.
+ */
 export function freshKey(label = "op"): string {
   return `bo-${label}-${randomUUID()}`;
 }
 
 /** How one request is sent; anything left out is the honest value. */
 export interface CallOptions {
-  method?: "GET" | "POST";
+  method?: "GET" | "POST" | "PUT";
   /** JSON body; sent as `JSON.stringify(body)` unless `rawBody` is given. */
   body?: unknown;
   /** Exact bytes to send (and sign, unless `signedBody` says otherwise). */
@@ -183,17 +188,19 @@ export async function call(baseUrl: string, path: string, opts: CallOptions = {}
 }
 
 /**
- * Empty the internal API's rate-limit buckets, so one case's requests never
- * count against the next. All suites share one loopback address.
+ * Empty the internal listener's rate-limit buckets (`internal-api` and
+ * `commerce-api`), so one case's requests never count against the next. All suites share one loopback address.
  */
 export async function resetInternalRateLimit(): Promise<void> {
   const redis = getRedis();
-  let cursor = "0";
-  do {
-    const [next, keys] = await redis.scan(cursor, "MATCH", `${env.ENV}:ratelimit:internal-api*`, "COUNT", 500);
-    if (keys.length > 0) await redis.del(...keys);
-    cursor = next;
-  } while (cursor !== "0");
+  for (const name of ["internal-api", "commerce-api"]) {
+    let cursor = "0";
+    do {
+      const [next, keys] = await redis.scan(cursor, "MATCH", `${env.ENV}:ratelimit:${name}*`, "COUNT", 500);
+      if (keys.length > 0) await redis.del(...keys);
+      cursor = next;
+    } while (cursor !== "0");
+  }
 }
 
 /** What a suite reads inside its tests. */
@@ -206,8 +213,8 @@ export interface InternalSuite {
 
 /**
  * Register a suite's setup: core with the internal API on, locales, a raw
- * SQL client, the internal app on a loopback port; before each case the fake
- * Stripe is emptied and the rate-limit buckets cleared.
+ * SQL client, the internal app on a loopback port; before each case the
+ * rate-limit buckets are cleared.
  * @param appName - `application_name` for the suite's connections.
  * @returns A holder filled before the first case runs.
  */
@@ -233,30 +240,9 @@ export function useInternalApp(appName: string): InternalSuite {
     initCore(process.env);
   });
   beforeEach(async () => {
-    fakeStripe.reset();
     await resetInternalRateLimit();
   });
   return holder;
-}
-
-/**
- * Wait until every mail row of the lot has left `pending` and `sending`.
- * Rows are claimed and sent in the background right after the request
- * commits (§6.5 M1), so until then a row's status is still moving (a
- * snapshot taken now differs from one taken later), a same-key resend of a
- * `sending` row answers 409 request_in_progress, and a send still running
- * when the suite closes its connections fails its write-back.
- * @param sql - Raw client.
- * @param lot - The lot.
- */
-export async function mailsSettled(sql: ReturnType<typeof postgres>, lot: SeededLot): Promise<void> {
-  await vi.waitFor(
-    async () => {
-      const busy = (await mailsOf(sql, lot.lotId)).filter((m) => m.status === "pending" || m.status === "sending");
-      expect(busy).toEqual([]);
-    },
-    { timeout: 10_000, interval: 20 },
-  );
 }
 
 /**
@@ -266,81 +252,4 @@ export async function mailsSettled(sql: ReturnType<typeof postgres>, lot: Seeded
  */
 export function nonceKey(nonce: string): string {
   return `${env.ENV}:server:internal-nonce:${nonce}`;
-}
-
-/** Paths of the nine registered endpoints. */
-export const paths = {
-  preview: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund`,
-  approve: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/approve`,
-  reject: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/reject`,
-  settle: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/settle`,
-  sendBack: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/send-back`,
-  retry: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/retry`,
-  resolvedOutside: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/resolved-outside`,
-  restoreCredits: (lotId: string) => `/internal/v1/credit-lots/${lotId}/refund/restore-credits`,
-  resend: (operationId: string) => `/internal/v1/refund-operations/${operationId}/mail/resend`,
-};
-
-/**
- * Assert-friendly view of an error body: its code, and whether its detail
- * is a translated sentence rather than an untranslated `server.internal.*`
- * key or nothing at all.
- * @param json - The response body.
- * @returns The code, the reason (if any) and the detail check.
- */
-export function errorShape(json: { code?: unknown; reason?: unknown; detail?: unknown } | null): {
-  code: unknown;
-  reason: unknown;
-  detailTranslated: boolean;
-} {
-  const detail = json?.detail;
-  return {
-    code: json?.code,
-    reason: json?.reason,
-    detailTranslated: typeof detail === "string" && detail.length > 0 && !detail.startsWith("server."),
-  };
-}
-
-/**
- * The dispositions and resend rows holding an idempotency key.
- * @param sql - Raw client.
- * @param key - The key.
- * @returns Counts in both tables.
- */
-export async function holdersOf(sql: ReturnType<typeof postgres>, key: string): Promise<{ ops: number; mails: number }> {
-  const [ops] = await sql<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM credit_refund_operations WHERE idempotency_key = ${key}
-  `;
-  const [mails] = await sql<{ n: number }[]>`
-    SELECT count(*)::int AS n FROM refund_mail_outbox WHERE idempotency_key = ${key}
-  `;
-  return { ops: ops!.n, mails: mails!.n };
-}
-
-/**
- * Assert a 409 operation_in_progress that stored no disposition, held no
- * key and created no refund, the in-flight disposition keeping its status;
- * its re-judgement by the request's own Stripe read may add its event rows
- * (v6 §4.6, §6.4). The one definition every endpoint family's in-flight
- * refusal case uses.
- * @param sql - Raw client.
- * @param res - The answer.
- * @param lot - The lot.
- * @param before - The world before the request.
- * @param inFlightId - The disposition still in flight.
- * @param key - The request's idempotency key.
- */
-export async function expectRefusedAroundInFlight(
-  sql: ReturnType<typeof postgres>,
-  res: CallResult,
-  lot: SeededLot,
-  before: WorldState,
-  inFlightId: string,
-  key: string,
-): Promise<void> {
-  expect(res.status).toBe(409);
-  expect(errorShape(res.json)).toEqual({ code: "operation_in_progress", reason: undefined, detailTranslated: true });
-  await expectOnlyRejudged(sql, lot, before, inFlightId);
-  expect(await holdersOf(sql, key)).toEqual({ ops: 0, mails: 0 });
-  expect(fakeStripe.createCalls).toEqual([]);
 }

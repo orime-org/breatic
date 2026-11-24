@@ -555,21 +555,6 @@ export interface ProjectAssetPage {
   nextCursor: string | null;
 }
 
-/** Payment entity. */
-export interface PaymentEntity {
-  id: string;
-  userId: string;
-  stripeSessionId: string | null;
-  stripePaymentIntentId: string | null;
-  amountCents: number;
-  currency: string;
-  status: string;
-  creditsGranted: number;
-  metadata: Record<string, unknown>;
-  createdAt: Date;
-  updatedAt: Date;
-}
-
 /**
  * Where a credit lot stands in its own life, independent of where it is
  * designated. `refunding` is deliberately separate from `refunded`: Stripe

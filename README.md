@@ -113,7 +113,7 @@ After signing in, finish your personal Studio setup, create a project and add Do
 
 Installation uses published Docker images for web, API, background jobs and collaboration, backed by PostgreSQL and Redis. Uploads and media processing use an Ingest Worker and media container in **your Cloudflare account**, with storage in your R2 bucket. AI calls use your provider accounts and quota.
 
-This is not an offline or wholly on-premises installation. LAN access needs trusted HTTPS. Cloud services and model calls can incur charges; SMTP, Google sign-in and search are optional integrations; Stripe payments may be enabled only with written authorization from Orime, Inc. (LICENSE sections 10 and 11). Follow the installation guide for cloud provisioning and verification; its one-time Node/pnpm/Wrangler step does not mean running a development server for normal use.
+This is not an offline or wholly on-premises installation. LAN access needs trusted HTTPS. Cloud services and model calls can incur charges; SMTP, Google sign-in and search are optional integrations; selling credits or memberships may be enabled only with written authorization from Orime, Inc. (LICENSE sections 10 and 11). Follow the installation guide for cloud provisioning and verification; its one-time Node/pnpm/Wrangler step does not mean running a development server for normal use.
 
 ## Project status and help
 

@@ -151,7 +151,8 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
     assignedCredits: '3640.000000' as CreditDecimal,
     unassignedCredits: '1790.000000' as CreditDecimal,
     underRefundCredits: '0.000000' as CreditDecimal,
-    billing: true,
+    charging: true,
+    selling: true,
     studios: [studio()],
     ...over,
   };
@@ -364,7 +365,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('dashes all three where the deployment charges nobody', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       await openOn('overview');
       const body = await panel();
 
@@ -480,7 +481,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('does not reach the endpoint at all where nothing is charged', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       await openOn('lots');
       const body = await panel();
 
@@ -564,7 +565,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('lists usage even where nothing is charged', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       await openOn('ledger');
       const body = await panel();
 
@@ -574,9 +575,9 @@ describe('the credits overlay, section by section', () => {
       expect(body).toHaveTextContent('seedream-4.0');
     });
 
-    // inner#1968 E-08: with payments off the ledger says it is self-hosted.
+    // inner#1968 E-08: where credits are not charged the ledger says it is self-hosted.
     it('says self-hosted where nothing is charged', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       setLocale('zh-CN');
       try {
         await openOn('ledger');
@@ -881,7 +882,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it.each([
-      ['lots' as const, /No purchases yet/i],
+      ['lots' as const, /No credits yet/i],
       ['ledger' as const, /Nothing spent yet/i],
       ['assign' as const, /Nothing to assign/i],
       ['refunds' as const, /No credit packs bought yet/i],
@@ -1026,7 +1027,7 @@ describe('the credits overlay, section by section', () => {
     });
 
     it('offers no top-up where the deployment charges nobody', async () => {
-      fetchCreditOverview.mockResolvedValue(overview({ billing: false }));
+      fetchCreditOverview.mockResolvedValue(overview({ charging: false, selling: false }));
       await openOn('buy');
       const body = await panel();
 
@@ -1799,5 +1800,98 @@ describe('the credits overlay, section by section', () => {
         ).toBeNull();
       });
     });
+  });
+  describe('a deployment that records credits but sells none', () => {
+    beforeEach(() => {
+      fetchCreditOverview.mockResolvedValue(overview({ charging: true, selling: false }));
+    });
+
+    it('shows the account total, since credits are still recorded and deducted', async () => {
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('5,430');
+      expect(body).not.toHaveTextContent(/does not charge credits/i);
+      expect(body).not.toHaveTextContent(/does not sell credits/i);
+    });
+
+    it('shows each studio its balance', async () => {
+      await openOn('studios');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('2,400');
+      expect(body).not.toHaveTextContent(/does not charge credits/i);
+    });
+
+    it('lists the credit history this deployment holds, with no notice', async () => {
+      await openOn('lots');
+      const body = await panel();
+
+      expect(body).toHaveTextContent('$50.00');
+      expect(body).toHaveTextContent('Assigned to Orime Studio');
+      expect(body).not.toHaveTextContent(/does not sell credits/i);
+      expect(paymentHistory).toHaveBeenCalled();
+    });
+
+    it('lets the user assign the purchases this deployment holds, with no notice', async () => {
+      await openOn('assign');
+      const body = await panel();
+
+      expect(fetchCreditLots).toHaveBeenLastCalledWith(
+        expect.objectContaining({ lifecycle: 'active' }),
+      );
+      expect(body).not.toHaveTextContent(/does not sell credits/i);
+      expect(body).not.toHaveTextContent(/does not charge credits/i);
+    });
+
+    const empty = {
+      assignedCredits: '0.000000' as CreditDecimal,
+      unassignedCredits: '0.000000' as CreditDecimal,
+      underRefundCredits: '0.000000' as CreditDecimal,
+    };
+
+    it('tells an empty account that nothing can be bought here', async () => {
+      fetchCreditOverview.mockResolvedValue(overview({ ...empty, charging: true, selling: false }));
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/does not sell credits/i);
+      expect(body).toHaveTextContent(/none can be bought here/i);
+      expect(body).not.toHaveTextContent(/Buy credits on the left/i);
+    });
+
+    it('keeps the buy-then-assign notice for an empty account where credits are sold', async () => {
+      fetchCreditOverview.mockResolvedValue(overview({ ...empty, charging: true, selling: true }));
+      await openOn('overview');
+      const body = await panel();
+
+      expect(body).toHaveTextContent(/Buy credits on the left/i);
+      expect(body).not.toHaveTextContent(/does not sell credits/i);
+    });
+
+    it('says on the refunds section that purchases cannot be refunded here', async () => {
+      await openOn('refunds');
+      expect(await panel()).toHaveTextContent(/Purchases cannot be refunded here/i);
+      expect(await panel()).not.toHaveTextContent(/none can be bought here/i);
+    });
+
+    it('says on the buy section that none can be bought here', async () => {
+      await openOn('buy');
+      expect(await panel()).toHaveTextContent(/none can be bought here/i);
+    });
+
+    it.each(['buy', 'refunds'] as const)(
+      'tells the %s section that nothing is sold here and reads nothing for it',
+      async (section) => {
+        await openOn(section);
+        const body = await panel();
+
+        expect(body).toHaveTextContent(/does not sell credits/i);
+        expect(body).not.toHaveTextContent(/does not charge credits/i);
+        expect(paymentHistory).not.toHaveBeenCalled();
+        expect(paymentTiers).not.toHaveBeenCalled();
+        expect(fetchCreditLots).not.toHaveBeenCalled();
+      },
+    );
   });
 });

@@ -4,22 +4,23 @@
 /**
  * The `subscriptions` table's one home (task #106, design §5.2).
  *
- * In core rather than in server, although only server talks to Stripe: the
+ * In core rather than in server, although only server writes it: the
  * ceilings a tier carries are read here (`membership.repo.ts`), and a stored
  * subscription whose paid period ran out long ago says the tier on the account
  * is stale. That check has to reach the rows, and collab reaches the ceilings.
  *
- * Writing is one action, not several. A webhook, a redelivery of that same
- * webhook, an event that arrived out of order, and Stripe's answer to one of
- * our own calls all say the same thing — here is what
- * this subscription looks like now — so they all take the same path and it
- * converges on one row per Stripe subscription.
+ * Writing is one action, not several. Every delivery of the billing
+ * service's subscription facts, a redelivery or one that arrived out of
+ * order included, says the same thing — here is what this subscription looks
+ * like now — so they all take the same path and it converges on one row per
+ * Stripe subscription.
  */
 
-import { and, desc, eq, inArray, isNotNull, isNull, lte, sql, type SQL } from "drizzle-orm";
-import type { AnyPgColumn } from "drizzle-orm/pg-core";
+import { and, desc, eq, isNull, lte, sql, type SQL } from "drizzle-orm";
+import type { AnyPgColumn, PgDatabase } from "drizzle-orm/pg-core";
+import type { PostgresJsQueryResultHKT } from "drizzle-orm/postgres-js";
 import type { BillingPeriod, MembershipTier } from "@breatic/shared";
-import { db, type DbTx } from "@core/db/client.js";
+import type { DbTx } from "@core/db/client.js";
 import { subscriptions } from "@core/db/schema.js";
 import type {
   StripeSubscriptionStatus,
@@ -30,7 +31,7 @@ import type {
  * The database a caller reads and writes subscriptions through: the product
  * hands its projection's client or transaction, the private service its own.
  */
-export type SubscriptionConn = typeof db | DbTx;
+export type SubscriptionConn = PgDatabase<PostgresJsQueryResultHKT, Record<string, unknown>>;
 
 /** One stored subscription, whole. */
 export interface StoredSubscription extends SubscriptionRecord {
@@ -180,9 +181,9 @@ export async function listSubscriptions(
 /**
  * Writes what Stripe currently says about one subscription.
  *
- * Keyed on the Stripe id, so every path that learns the current state — the
- * webhook, a redelivery of it, an out-of-order event, our own calls —
- * converges on the same row rather than adding one.
+ * Keyed on the Stripe id, so every delivery of the current state — a
+ * redelivery or an out-of-order one included — converges on the same row
+ * rather than adding one.
  *
  * Every field is overwritten, including the ones being cleared. Leaving a
  * stale `payable_invoice_url` behind would put "finish paying" in front of
@@ -230,43 +231,20 @@ export async function upsertSubscription(
 }
 
 /**
- * Stamp a subscription's first activation, once: the write that does it is
- * the one a subscription start is reported for (inner#1442 design §4.8).
- * Called after the snapshot is stored, so the status checked is the one the
- * row holds, not one an out-of-order snapshot carried.
+ * Record when a subscription was first paid for, once: the first non-null
+ * moment sticks (`coalesce`). Runs whether or not the snapshot itself was
+ * stored, since an older snapshot can still be the one that first learns of
+ * the activation (inner#1993 §4.3).
  * @param stripeSubscriptionId - Stripe's id for it.
+ * @param firstActiveAt - When it was first paid for, or null while it never was.
  * @param tx - The transaction the snapshot was stored in.
- * @returns True when this call stamped it.
  */
-export async function markFirstActive(stripeSubscriptionId: string, tx: DbTx): Promise<boolean> {
-  const rows = await tx
+export async function recordFirstActive(stripeSubscriptionId: string, firstActiveAt: Date | null, tx: DbTx): Promise<void> {
+  if (firstActiveAt === null) return;
+  await tx
     .update(subscriptions)
-    .set({ firstActiveAt: new Date() })
-    .where(
-      and(
-        eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId),
-        isNull(subscriptions.firstActiveAt),
-        inArray(subscriptions.status, ["active", "trialing"]),
-      ),
-    )
-    .returning({ id: subscriptions.id });
-  return rows.length > 0;
-}
-
-/**
- * Whether an account has ever paid for a membership: one of its subscriptions
- * reached its first activation. Referral codes bind and discount only before.
- * @param userId - The account.
- * @param tx - The caller's transaction, when the answer must hold under its locks.
- * @returns True once any subscription carries `first_active_at`.
- */
-export async function hasPaidMembership(userId: string, tx?: DbTx): Promise<boolean> {
-  const rows = await (tx ?? db)
-    .select({ id: subscriptions.id })
-    .from(subscriptions)
-    .where(and(eq(subscriptions.userId, userId), isNull(subscriptions.deletedAt), isNotNull(subscriptions.firstActiveAt)))
-    .limit(1);
-  return rows.length > 0;
+    .set({ firstActiveAt })
+    .where(and(eq(subscriptions.stripeSubscriptionId, stripeSubscriptionId), isNull(subscriptions.firstActiveAt)));
 }
 
 /**

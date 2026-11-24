@@ -19,7 +19,7 @@ import { useAccountReferral, zheOf } from '@web/features/referral/referral-query
  * The "Promoter program" dialog the account menu opens (inner#1868 §10, table 12.11).
  *
  * It draws cached data even when a background read fails, and closes itself
- * if the read says payments are off.
+ * if the read says nothing is sold here (`selling` false).
  * @param props - Open state.
  * @param props.open - Whether the dialog is open.
  * @param props.onOpenChange - Called when it opens or closes.

@@ -40,7 +40,7 @@ vi.mock('@web/pages/auth/GoogleSignIn', () => ({
 }));
 
 import RegisterPage from '@web/pages/auth/RegisterPage';
-import { authApi } from '@web/data/api/auth';
+import { authApi, type SignupReferralOutcome } from '@web/data/api/auth';
 import { ApiException } from '@web/data/api/types';
 import { useCurrentUserStore } from '@web/stores';
 
@@ -88,7 +88,7 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
     expect(screen.getByRole('button', { name: 'Create account' })).toBeDisabled();
   });
 
-  it('has no field and sends no code while payments are off', async () => {
+  it('has no field and sends no code where nothing is sold', async () => {
     carry.code = 'ALICE';
     vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false });
     vi.mocked(authApi.register).mockResolvedValue({ status: 'created', user: USER, recoveryCode: 'AAAA-BBBB-CCCC-DDDD' } as never);
@@ -144,6 +144,34 @@ describe('the sign-up page referral field (inner#1868 table 12.13)', () => {
     expect(warning).toHaveBeenCalledWith(
       'The referral code is no longer valid and was not used. You can add a code in the membership panel.',
     );
+  });
+
+  it('shows no warning when step two reports the code is pending', async () => {
+    carry.code = 'ALICE';
+    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true });
+    vi.mocked(authApi.register).mockResolvedValue({ status: 'code_sent', expiresInSeconds: 600, resendAfterSeconds: 60 });
+    const pending: SignupReferralOutcome = 'pending';
+    vi.mocked(authApi.verifySignupCode).mockResolvedValue({ user: USER, referral: pending } as never);
+    const user = userEvent.setup();
+    setup();
+    await screen.findByLabelText('Referral code');
+    await submit(user);
+    await user.type(await screen.findByRole('textbox', { name: /code/i }), '123456');
+    await waitFor(() => expect(screen.getByTestId('onboarding-page')).toBeInTheDocument());
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it('shows no warning when Google made a new account whose code is pending', async () => {
+    vi.stubGlobal('__GOOGLE_CLIENT_ID__', 'test.apps.googleusercontent.com');
+    carry.code = 'ALICE';
+    const pending: SignupReferralOutcome = 'pending';
+    vi.mocked(authApi.google).mockResolvedValue({ user: USER, created: true, referral: pending } as never);
+    const user = userEvent.setup();
+    setup();
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Continue with Google' })).toBeEnabled());
+    await user.click(screen.getByRole('button', { name: 'Continue with Google' }));
+    expect(await screen.findByTestId('onboarding-page')).toBeInTheDocument();
+    expect(warning).not.toHaveBeenCalled();
   });
 
   it('forgets the carried code once Google made a new account with it', async () => {

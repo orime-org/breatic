@@ -99,7 +99,7 @@ Richte dein persönliches Studio ein, erstelle ein Project und füge über **+**
 
 Die Installation verwendet veröffentlichte Docker-Images für Web, API, Hintergrundaufgaben und Zusammenarbeit sowie PostgreSQL und Redis. Uploads und Medienverarbeitung benötigen einen Ingest Worker und einen Mediencontainer in **deinem Cloudflare-Konto**; gespeichert wird in deinem R2-Bucket. KI-Aufrufe verwenden deine Anbieterkonten und Kontingente.
 
-Dies ist keine Offline- oder vollständig lokale Installation. LAN-Zugriff benötigt vertrauenswürdiges HTTPS. Cloud-Dienste und Modellaufrufe können Kosten verursachen; SMTP, Google-Anmeldung und Suche sind optionale Integrationen; Stripe-Zahlungen dürfen nur mit schriftlicher Genehmigung von Orime, Inc. aktiviert werden (LICENSE, Abschnitte 10 und 11). Folge der Anleitung zur Cloud-Einrichtung und Prüfung. Der einmalige Node/pnpm/Wrangler-Schritt dient dem Deployment; für die normale Nutzung läuft kein Entwicklungsserver.
+Dies ist keine Offline- oder vollständig lokale Installation. LAN-Zugriff benötigt vertrauenswürdiges HTTPS. Cloud-Dienste und Modellaufrufe können Kosten verursachen; SMTP, Google-Anmeldung und Suche sind optionale Integrationen; der Verkauf von Credits oder Mitgliedschaften darf nur mit schriftlicher Genehmigung von Orime, Inc. aktiviert werden (LICENSE, Abschnitte 10 und 11). Folge der Anleitung zur Cloud-Einrichtung und Prüfung. Der einmalige Node/pnpm/Wrangler-Schritt dient dem Deployment; für die normale Nutzung läuft kein Entwicklungsserver.
 
 ## Status, Hilfe und Beiträge
 

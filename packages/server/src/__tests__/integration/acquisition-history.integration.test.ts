@@ -3,33 +3,24 @@
 
 /**
  * The acquisition history — how every credit this account holds got here
- * (task #267).
+ * (task #267), the product's half: its own lots (inner#1993 §3.2 #5).
  *
- * It was the purchase history, built from `payments`, and a screen built from
- * payments can only show purchases. Trial credits are the first credits that
- * came from no payment, so the screen answers a wider question and takes two
- * kinds of row:
- *
- *   1. Rows that opened credits: bought, granted, and whatever a back office
- *      grants later. These come from the lots.
- *
- *   2. Rows that opened none: a checkout still clearing, one the buyer
- *      abandoned. These have no lot and are the reason the old query started
- *      from payments — that half has to survive.
+ * Payments that opened no lot come from the billing service and are covered
+ * in commerce-purchase-history; this suite runs a deployment that sells
+ * nothing, so the history is the lots alone.
  *
  * What is pinned here:
  *
- *   - Both kinds arrive, and a row says which it is through what it carries:
- *     a granted row has no payment behind it and no price.
+ *   - A granted row says what it is through what it carries: no payment
+ *     behind it and no price.
  *
- *   - A purchase is dated by its checkout, not by the moment its credits
- *     opened. For a delayed payment method those are days apart, and the
- *     history has always shown the first.
+ *   - A purchase is dated by its checkout (its receipt's `ordered_at`), not
+ *     by the moment its credits opened. For a delayed payment method those
+ *     are days apart, and the history has always shown the first.
  *
- *   - Paging holds across the two kinds. Both cursor components fall back to
- *     whichever side of the row exists, so neither kind collapses the
- *     ordering — the failure the old comment on this query warned about, from
- *     the other direction.
+ *   - Paging holds across bought and granted rows. Both cursor components
+ *     fall back to whichever side of the row exists, so neither kind
+ *     collapses the ordering.
  *
  * Runs against the testcontainer Postgres started by @breatic/integration-tests/containers.
  */
@@ -53,7 +44,7 @@ vi.mock("ai", () => ({
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
 import type { PurchaseRow } from "@breatic/shared";
-import * as paymentService from "@server/modules/payment/payment.service.js";
+import { readPurchaseHistory } from "@server/modules/commerce/purchase-history.service.js";
 import { openPaymentSource } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "acquisition-history-test-driver";
@@ -61,12 +52,8 @@ const PG_DRIVER_LOCAL = "acquisition-history-test-driver";
 let sql: ReturnType<typeof postgres>;
 
 beforeAll(() => {
-  initCore({
-    ...process.env,
-    PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-  });
+  // No billing service: the history is the product's own lots.
+  initCore(process.env);
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
     prepare: false,
@@ -76,7 +63,6 @@ beforeAll(() => {
 
 afterAll(async () => {
   await sql?.end({ timeout: 1 });
-  initCore(process.env);
 });
 
 let seq = 0;
@@ -94,7 +80,7 @@ async function seedUser(): Promise<string> {
 }
 
 /**
- * A purchase that landed: a payment, and the lot it opened.
+ * A purchase that landed: its receipt, and the lot it opened.
  * @param userId - Who paid.
  * @param at - When the checkout happened.
  * @param lotAt - When the credits opened; the checkout moment when omitted.
@@ -107,36 +93,15 @@ async function seedLandedPurchase(
 ): Promise<string> {
   const id = await openPaymentSource(sql, at);
   await sql`
-    INSERT INTO payments
-      (id, user_id, amount_cents, total_cents, status, credits_granted, created_at)
-    VALUES (${id}, ${userId}, 1000, 1080, 'completed', 880, ${at})
+    INSERT INTO payment_receipts
+      (id, user_id, amount_cents, total_cents, currency, credits_granted, ordered_at)
+    VALUES (${id}, ${userId}, 1000, 1080, 'usd', 880, ${at})
   `;
   await sql`
     INSERT INTO credit_lots
       (source_id, source_kind, user_id, purchased_credits, remaining_credits,
        lifecycle, created_at)
     VALUES (${id}, 'payment', ${userId}, 880, 880, 'active', ${lotAt ?? at})
-  `;
-  return id;
-}
-
-/**
- * A checkout that opened no credits — still clearing, or abandoned.
- * @param userId - Who started it.
- * @param at - When.
- * @param status - Where it ended up.
- * @returns The payment's id.
- */
-async function seedUnlandedPayment(
-  userId: string,
-  at: string,
-  status: string,
-): Promise<string> {
-  const id = await openPaymentSource(sql, at);
-  await sql`
-    INSERT INTO payments
-      (id, user_id, amount_cents, status, credits_granted, created_at)
-    VALUES (${id}, ${userId}, 1000, ${status}, 0, ${at})
   `;
   return id;
 }
@@ -182,11 +147,7 @@ async function readAll(
   // Bounded so a cursor that never advances fails as a test rather than
   // hanging the suite.
   for (let page = 0; page < 20; page += 1) {
-    const got = await paymentService.getPurchaseHistory(
-      userId,
-      String(pageSize),
-      cursor,
-    );
+    const got = await readPurchaseHistory(userId, String(pageSize), cursor);
     all.push(...got.items);
     if (got.nextCursor === null) return all;
     cursor = got.nextCursor;
@@ -194,12 +155,12 @@ async function readAll(
   throw new Error("the cursor never reached the end");
 }
 
-describe("the acquisition history takes both kinds of row", () => {
+describe("the acquisition history takes bought and granted rows", () => {
   it("shows credits that were granted, with no payment and no price", async () => {
     const userId = await seedUser();
     const lotId = await seedGrant(userId, "2026-03-01T10:00:00Z");
 
-    const rows = (await paymentService.getPurchaseHistory(userId, "20", undefined))
+    const rows = (await readPurchaseHistory(userId, "20", undefined))
       .items;
     expect(rows).toHaveLength(1);
 
@@ -215,41 +176,16 @@ describe("the acquisition history takes both kinds of row", () => {
     expect(row.remainingCredits).toBe("100.000000");
   });
 
-  it("keeps a checkout that opened no credits", async () => {
-    const userId = await seedUser();
-    const paymentId = await seedUnlandedPayment(
-      userId,
-      "2026-03-01T10:00:00Z",
-      "pending",
-    );
-
-    const rows = (await paymentService.getPurchaseHistory(userId, "20", undefined))
-      .items;
-    expect(rows).toHaveLength(1);
-
-    const row = rows[0]!;
-    expect(row.rowId).toBe(paymentId);
-    expect(row.paymentId).toBe(paymentId);
-    expect(row.sourceKind).toBe("payment");
-    expect(row.status).toBe("pending");
-    expect(row.amountCents).toBe(1000);
-    // No lot behind it, so nothing the lot carries.
-    expect(row.remainingCredits).toBeNull();
-    expect(row.lifecycle).toBeNull();
-  });
-
   it("puts a purchase and a grant on one list, newest first", async () => {
     const userId = await seedUser();
     await seedLandedPurchase(userId, "2026-03-01T10:00:00Z");
     await seedGrant(userId, "2026-03-02T10:00:00Z");
-    await seedUnlandedPayment(userId, "2026-03-03T10:00:00Z", "expired");
 
     const kinds = (
-      await paymentService.getPurchaseHistory(userId, "20", undefined)
+      await readPurchaseHistory(userId, "20", undefined)
     ).items.map((r) => [r.sourceKind, r.status]);
 
     expect(kinds).toEqual([
-      ["payment", "expired"],
       ["gift", null],
       ["payment", "completed"],
     ]);
@@ -270,7 +206,7 @@ describe("what a row is dated by", () => {
     await seedGrant(userId, "2026-03-03T10:00:00Z");
 
     const kinds = (
-      await paymentService.getPurchaseHistory(userId, "20", undefined)
+      await readPurchaseHistory(userId, "20", undefined)
     ).items.map((r) => r.sourceKind);
 
     // Dated by the lot, the purchase would come first.
@@ -278,16 +214,17 @@ describe("what a row is dated by", () => {
   });
 });
 
-describe("paging across the two kinds", () => {
+describe("paging across bought and granted rows", () => {
   it("hands over every row exactly once, at a page size that splits them", async () => {
     const userId = await seedUser();
     const expected: string[] = [];
     for (let i = 0; i < 4; i += 1) {
       const at = `2026-04-0${i + 1}T10:00:00Z`;
       expected.push(await seedLandedPurchase(userId, at));
-      expected.push(await seedUnlandedPayment(userId, at, "expired"));
     }
-    expected.push(await seedGrant(userId, "2026-04-05T10:00:00Z"));
+    // Same instant as a purchase, so the page boundary falls inside the tie
+    // and the id component has to order a bought row against a granted one.
+    expected.push(await seedGrant(userId, "2026-04-03T10:00:00Z"));
 
     const seen = (await readAll(userId, 2)).map((r) => r.rowId);
 

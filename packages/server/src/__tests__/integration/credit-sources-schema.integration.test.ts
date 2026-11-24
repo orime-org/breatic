@@ -13,17 +13,17 @@
  * Structural promises, each with the failure it pins:
  *
  *   1. `credit_lots.source_id` is NOT NULL and UNIQUE. This is what makes a
- *      payment grant credits exactly once: a redelivered webhook reaches the
+ *      payment grant credits exactly once: a repeated grant reaches the
  *      same source and is refused at the insert. The constraint moved here
  *      from `payment_id` and has to keep doing that job.
  *
- *   2. A payment shares its source's primary key — `payments.id` IS the
- *      source id — so no payment row carries a column pointing somewhere
- *      else, and the two can never drift apart.
+ *   2. A payment's receipt shares its source's primary key —
+ *      `payment_receipts.id` IS the source id — so no receipt carries a
+ *      column pointing somewhere else, and the two can never drift apart.
  *
- *   3. `payments.source_kind` is a constant column, and the foreign key is
- *      composite: `(id, source_kind) → credit_sources (id, kind)`. Without
- *      it the database would accept a payment row whose source says
+ *   3. `payment_receipts.source_kind` is a constant column, and the foreign
+ *      key is composite: `(id, source_kind) → credit_sources (id, kind)`.
+ *      Without it the database would accept a receipt whose source says
  *      `kind='gift'`, and `kind` is the only column that says where a lot's
  *      money came from.
  *
@@ -118,15 +118,15 @@ async function seedSource(kind: string): Promise<string> {
 }
 
 /**
- * One completed payment, with the source row it is the child of.
+ * One completed payment's receipt, with the source row it is the child of.
  * @param userId - Who paid.
  * @returns The payment id, which is also the source id.
  */
 async function seedPayment(userId: string): Promise<string> {
   const id = await seedSource("payment");
   await sql`
-    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${id}, ${userId}, 1000, 'completed', 880)
+    INSERT INTO payment_receipts (id, user_id, amount_cents, currency, credits_granted, ordered_at)
+    VALUES (${id}, ${userId}, 1000, 'usd', 880, now())
   `;
   return id;
 }
@@ -197,7 +197,7 @@ describe("a payment as a kind of source", () => {
       SELECT kind FROM credit_sources WHERE id = ${paymentId}
     `;
     expect(rows[0]?.kind).toBe("payment");
-    expect((await columnsOf("payments")).has("source_id")).toBe(false);
+    expect((await columnsOf("payment_receipts")).has("source_id")).toBe(false);
   });
 
   it("cannot exist without its source row", async () => {
@@ -205,25 +205,25 @@ describe("a payment as a kind of source", () => {
 
     await expect(
       sql`
-        INSERT INTO payments (user_id, amount_cents, status, credits_granted)
-        VALUES (${userId}, 1000, 'completed', 880)
+        INSERT INTO payment_receipts (id, user_id, amount_cents, currency, credits_granted, ordered_at)
+        VALUES (gen_random_uuid(), ${userId}, 1000, 'usd', 880, now())
       `,
-    ).rejects.toThrow(/payments_source_fk/);
+    ).rejects.toThrow(/payment_receipts_source_fk/);
   });
 
   it("cannot be filed under a kind that is not payment", async () => {
     // The composite key is what holds this line. Without it the database
-    // takes a payment whose source says `gift`, and `kind` is the only
+    // takes a receipt whose source says `gift`, and `kind` is the only
     // column that says where a lot's money came from.
     const userId = await seedUser();
     const giftId = await seedSource("gift");
 
     await expect(
       sql`
-        INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-        VALUES (${giftId}, ${userId}, 1000, 'completed', 880)
+        INSERT INTO payment_receipts (id, user_id, amount_cents, currency, credits_granted, ordered_at)
+        VALUES (${giftId}, ${userId}, 1000, 'usd', 880, now())
       `,
-    ).rejects.toThrow(/payments_source_fk/);
+    ).rejects.toThrow(/payment_receipts_source_fk/);
   });
 
   it("cannot claim another kind, even one whose source exists", async () => {
@@ -235,11 +235,11 @@ describe("a payment as a kind of source", () => {
 
     await expect(
       sql`
-        INSERT INTO payments
-          (id, source_kind, user_id, amount_cents, status, credits_granted)
-        VALUES (${giftId}, 'gift', ${userId}, 1000, 'completed', 880)
+        INSERT INTO payment_receipts
+          (id, source_kind, user_id, amount_cents, currency, credits_granted, ordered_at)
+        VALUES (${giftId}, 'gift', ${userId}, 1000, 'usd', 880, now())
       `,
-    ).rejects.toThrow(/payments_source_kind_check/);
+    ).rejects.toThrow(/payment_receipts_source_kind_check/);
   });
 });
 
@@ -254,7 +254,7 @@ describe("credit_lots.source_id", () => {
     `;
     await lot;
 
-    // The second one is the redelivered webhook.
+    // The second one is the repeated grant.
     await expect(
       sql`
         INSERT INTO credit_lots

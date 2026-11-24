@@ -2,17 +2,18 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * 订阅的三处数据模型（#106 §5，迁移 0055）。
+ * The product's subscription data model (#106 §5, migration 0055). The
+ * subscriptions table is the product's projection of what the billing service
+ * holds (inner#1993).
  *
- * 三件结构性的事，单元测试一个都看不见：
+ * Two structural facts no unit test can see:
  *
- *   1. `users.stripe_customer_id` —— 认人链路的根。订阅事件上不带任何我们的
- *      标识，是先建 customer 再结账才让事件认得出账号。
- *   2. `subscriptions` 允许同一个账号有多行，唯一约束只在 Stripe 的订阅 id 上。
- *      把唯一约束加到 `user_id` 上会挡住「订过、退了、再订一次」——这是验收第
- *      7 条，而它一旦被挡住，表现是一个已经付了钱的用户拿不到会员。
- *   3. `stripe_webhook_events` 的主键就是幂等本身：同一个事件插第二次必须冲突。
- *      它没有 `deleted_at`，删一行等于允许重放。
+ *   1. `users.stripe_customer_id` — the root of identifying an account.
+ *   2. `subscriptions` allows several rows per account; the only unique
+ *      constraint is on the Stripe subscription id. A unique constraint on
+ *      `user_id` would block "subscribed, cancelled, subscribed again"
+ *      (acceptance item 7), and a user who has already paid would get no
+ *      membership.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -149,8 +150,8 @@ describe("subscriptions (#106 §5.2)", () => {
 
   it("refuses two rows for the same Stripe subscription", async () => {
     // The other half of the same decision: many rows per account, one row per
-    // Stripe subscription. Without it a redelivered `created` event would
-    // insert a second row for the same subscription and the account would
+    // Stripe subscription. Without it a repeated write of the same
+    // subscription would insert a second row for it and the account would
     // read as holding two memberships.
     const userId = await makeUser();
     try {
@@ -205,39 +206,5 @@ describe("subscriptions (#106 §5.2)", () => {
       await sql`DELETE FROM subscriptions WHERE user_id = ${userId}`;
       await sql`DELETE FROM users WHERE id = ${userId}`;
     }
-  });
-});
-
-describe("stripe_webhook_events (#106 §5.3)", () => {
-  it("makes a redelivered event collide on the primary key", async () => {
-    // This collision IS the idempotency: it is what tells the handler the
-    // event has already been processed, inside the same transaction as the
-    // tier change it guards.
-    const eventId = `evt_${Date.now()}_${Math.random()}`;
-    try {
-      await sql`
-        INSERT INTO stripe_webhook_events (event_id, type)
-        VALUES (${eventId}, 'customer.subscription.updated')
-      `;
-      await expect(
-        sql`
-          INSERT INTO stripe_webhook_events (event_id, type)
-          VALUES (${eventId}, 'customer.subscription.updated')
-        `,
-      ).rejects.toThrow();
-    } finally {
-      await sql`DELETE FROM stripe_webhook_events WHERE event_id = ${eventId}`;
-    }
-  });
-
-  it("has no deleted_at, because deleting a row would allow a replay", async () => {
-    const rows = await sql<{ column_name: string }[]>`
-      SELECT column_name
-      FROM information_schema.columns
-      WHERE table_schema = 'public' AND table_name = 'stripe_webhook_events'
-    `;
-    const names = rows.map((r) => r.column_name);
-    expect(names).toContain("created_at");
-    expect(names).not.toContain("deleted_at");
   });
 });

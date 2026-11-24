@@ -30,7 +30,7 @@ import { SectionSkeleton } from '@web/components/SectionSkeleton';
 import {
   ScrollCard,
   ListEnd,
-  Notice,
+  SellingOffNotice,
   Row,
   RowBalance,
   Rows,
@@ -97,12 +97,14 @@ function noteOf(
   return t('credits.refundHint.assigned');
 }
 
-/** Whose purchases, and whether billing is on at all. */
+/** Whose purchases, and whether credits are charged and sold here. */
 interface RefundsSectionProps {
   /** The signed-in account, for the query key. */
   userId: string | null;
-  /** Whether this deployment charges for generation at all. */
-  billing: boolean;
+  /** Whether this deployment records and deducts credits at all. */
+  charging: boolean;
+  /** Whether this deployment sells credits; the section exists only then. */
+  selling: boolean;
 }
 
 /**
@@ -110,14 +112,16 @@ interface RefundsSectionProps {
  *
  * A row's right column answers one question — can this be refunded. The ask
  * button when it can, the state when it cannot, and the state is the reason.
- * @param props - The account and whether billing is on.
+ * @param props - The account and whether credits are charged and sold here.
  * @param props.userId - The signed-in account, for the query key.
- * @param props.billing - Whether this deployment charges at all.
+ * @param props.charging - Whether this deployment records and deducts credits at all.
+ * @param props.selling - Whether this deployment sells credits.
  * @returns The section.
  */
 export function RefundsSection({
   userId,
-  billing,
+  charging,
+  selling,
 }: RefundsSectionProps): React.JSX.Element {
   const t = useTranslation();
   const read = React.useCallback(
@@ -128,9 +132,9 @@ export function RefundsSection({
   const paging = useCreditsPaging<CreditLotView>({
     queryKey: creditLotsKey(userId, 'all'),
     read,
-    enabled: billing && userId !== null,
+    enabled: selling && userId !== null,
   });
-  const terms = usePaymentTiers(billing);
+  const terms = usePaymentTiers(selling);
 
   // One instant for the whole screen, so two rows cannot land on opposite
   // sides of a window closing between them. Held across renders as well, so
@@ -145,7 +149,7 @@ export function RefundsSection({
       // Online purchase terms have an independent read so their heading and
       // loading/error states remain available while account lots are read.
       footer={
-        !billing ? undefined : (
+        !selling ? undefined : (
           <div className='mt-3 flex flex-col gap-2'>
             <h3 className='text-sm font-semibold'>{t('credits.onlinePurchaseRefundTitle')}</h3>
             {terms.isSuccess ? (
@@ -162,12 +166,8 @@ export function RefundsSection({
         )
       }
     >
-      {!billing ? (
-        <Notice
-          title={t('credits.billingOff.title')}
-          body={t('credits.billingOff.body')}
-          tone='info'
-        />
+      {!selling ? (
+        <SellingOffNotice charging={charging} body={t('credits.notSoldHere.refundsBody')} />
       ) : paging.isPending ? (
         <SectionSkeleton />
       ) : paging.isError ? (

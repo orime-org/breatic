@@ -156,8 +156,8 @@ async function seedPaying(): Promise<Seeded> {
   await sql`INSERT INTO project_members (project_id, user_id, role, added_by) VALUES (${project!.id}, ${user!.id}, 'owner', null)`;
   const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${sourceId}, ${user!.id}, 1000, 'completed', 100000) RETURNING id
+    INSERT INTO payment_receipts (id, user_id, amount_cents, currency, credits_granted, ordered_at)
+    VALUES (${sourceId}, ${user!.id}, 1000, 'usd', 100000, now()) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({ paymentId: payment!.id, userId: user!.id, purchasedCredits: 100000 });
   await sql`UPDATE credit_lots SET designated_studio_id = ${studio!.id} WHERE id = ${lot.id}`;

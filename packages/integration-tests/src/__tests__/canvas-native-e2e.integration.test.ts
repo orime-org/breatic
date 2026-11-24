@@ -1484,8 +1484,6 @@ describe("transcription results and usage cross the real settlement and collabor
       ...process.env,
       PAYMENT_ENABLED: "true",
       CREDIT_MULTIPLIER: "1",
-      STRIPE_SECRET_KEY: "sk_test_unused_by_transcription_suite",
-      STRIPE_WEBHOOK_SECRET: "whsec_unused_by_transcription_suite",
     });
     const granted = await serviceDb.transaction((tx) => creditLotService.grantTrialCredits({
       userId: FIXTURE_USER_ID,

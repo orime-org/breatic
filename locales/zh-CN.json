@@ -97,29 +97,6 @@
       "invite_mail_failed": "邮件没发出去，请重试。"
     },
     "payment": {
-      "tier_not_found": "未知的套餐：{tier}。可选：{available}",
-      "price_not_configured": "套餐 {tier} 的价格未配置",
-      "consent-credits-v1": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用的积分可在 30 天内全额退款。",
-      "consent-credits-v2": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用且未指定给 Studio 的积分可在 30 天内全额退款。",
-      "refund-credits-v1": {
-        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
-        "used": "只要花过其中任何一个，这一笔就不能再退了。",
-        "expired": "超过 30 天，不再受理退款。"
-      },
-      "refund-credits-v2": {
-        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
-        "used": "只要花过其中任何一个，这一笔就不能再退了。",
-        "expired": "超过 30 天，不再受理退款。",
-        "unassigned": "只有未指定给 Studio 的积分包才能退款。"
-      },
-      "refund-credits-v3": {
-        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
-        "used": "只要花过其中任何一个，这一笔就不能再退了。",
-        "expired": "超过 30 天，不再受理退款。",
-        "unassigned": "只有未指定给 Studio 的积分包才能退款。",
-        "purchased": "只有购买的积分包可以退款。"
-      },
-      "not_found": "找不到这笔购买。",
       "unavailable": "这个部署不出售积分。"
     },
     "conversation": {
@@ -138,40 +115,11 @@
       "voices_not_offered": "这个模型没有音色列表"
     },
     "membership": {
-      "already_subscribed": "你已有会员。",
-      "no_subscription": "你没有会员。",
-      "not_cancelling": "这个会员没有预约结束。",
-      "change_not_offered": "这项变更暂不提供。",
-      "change_unconfirmed": "变更已提交到 Stripe，但没能确认结果。请先联系我们，不要重复操作。",
-      "checkout_not_found": "找不到这笔结账。",
-      "checkout_unconfirmed": "暂时无法确认你的会员。",
-      "same_tier": "你已经在这一档会员。",
-      "payment_overdue": "这个会员有一期款项未付。",
-      "upgrade_pending": "这个会员有一笔升级仍在等待付款。",
       "unavailable": "会员当前不可用。"
     },
     "storage": {
       "quota_exceeded_upload": "Studio 存储已满，当前无法上传。",
       "quota_exceeded_generate": "Studio 存储已满，当前无法生成。"
-    },
-    "purchase_mail": {
-      "subject": "积分已到账",
-      "intro": "感谢购买。以下是这笔购买的内容，请留存。",
-      "label": {
-        "credits": "本次到账",
-        "balance": "当前余额",
-        "subtotal": "价格",
-        "tax": "税额",
-        "total": "实付合计",
-        "purchased_at": "购买时间",
-        "refund_by": "可退款截止",
-        "order_ref": "订单号"
-      },
-      "credits_amount": "{credits} 积分",
-      "fact_line": "{label}：{value}",
-      "consent_heading": "你在购买时同意的内容",
-      "refund_heading": "积分包退款规则",
-      "support": "对这笔购买有疑问，请写信到 <mailto>{email}</mailto>。"
     },
     "chat": {
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
@@ -281,51 +229,11 @@
       "in_progress": "这次请求仍在处理中。"
     },
     "internal": {
-      "lot_not_found": "没有这个编号、经付款购买的积分包。",
-      "operation_not_found": "没有这个编号的退款处置。",
-      "lot_state_changed": "积分包不在这个操作要求的状态。",
-      "operation_in_progress": "这笔积分包还有一个退款处置在进行中。",
-      "request_in_progress": "使用这个 Idempotency-Key 的请求还在执行。",
-      "stripe_blocks": "Stripe 上这笔付款的现状或这笔积分包的退款处置记录不允许这个操作，原因见 reason。",
-      "mail_not_resendable": "只有以已退款、已驳回或积分已恢复做完的处置才有可重发的买家邮件。",
-      "idempotency_key_reused": "这个 Idempotency-Key 已经用于另一个不同的请求。",
       "invalid_body": "请求体或路径不符合这个端点的要求。",
-      "invalid_idempotency_key": "Idempotency-Key 头缺失或格式不对。",
       "unreadable_body": "请求体不是合法的 JSON。"
     },
-    "refund_mail": {
-      "completed": {
-        "subject": "退款已完成",
-        "intro": "我们已把这笔购买的钱退回你的原付款方式，银行入账通常需要几个工作日。这笔购买的积分已从账号移除。"
-      },
-      "rejected": {
-        "subject": "退款申请未通过",
-        "intro": "这笔购买的退款申请没有通过。这笔积分已回到可用状态，可以继续指定给 Studio 使用。"
-      },
-      "restored": {
-        "subject": "积分已恢复",
-        "intro": "钱没能退回你的原付款方式。按和你的沟通，这笔购买的积分已恢复到账号，可以继续指定给 Studio 使用。"
-      },
-      "label": {
-        "amount": "退款金额",
-        "credits": "积分",
-        "purchased_at": "购买时间",
-        "refunded_at": "退款时间",
-        "requested_at": "申请退款时间",
-        "order_ref": "订单号"
-      },
-      "credits_amount": "{credits} 积分",
-      "fact_line": "{label}：{value}"
-    },
     "referral": {
-      "invalid_code": "推广码无效。",
-      "already_bound": "这个账号已经绑定过推广码。",
-      "already_paid": "推广码只能在第一次付会员费之前填写。",
-      "not_eligible": "企业版账号不能绑定推广码。",
-      "program_closed": "推广计划暂未开放申请。",
-      "terms_changed": "推广条款已更新，请重新阅读后再申请。",
-      "application_pending": "你已经有一份申请在审核中。",
-      "already_promoter": "你已经是推广者。"
+      "invalid_code": "推广码无效。"
     },
     "three_d": {
       "model_not_offered": "{model} 不是用于 {mode} 的 3D 模型。",
@@ -365,6 +273,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
+    },
+    "billing": {
+      "unavailable": "购买和会员服务暂时不可用，请稍后再试。"
     },
     "byok": {
       "disabled": "这个部署没有开启自带 key。",
@@ -2109,8 +2020,7 @@
       "retro-found-footage": {
         "name": "复古 DV 老录像",
         "description": "2000 年代初家用 DV 录下的一个小事件",
-        "prompt": "2000 年代初家用 DV 摄像机录下的老录像：分辨率低，焦点偏软，有视频噪点，颜色轻微溢出，白平衡有点偏，手动推拉变焦。地点：{✏️ 在哪儿拍的，例如傍晚后院的生日派对}。0–3 秒：已经在录，拍的人边走边拿着摄像机。3–8 秒：{✏️ 发生的一个小事件，例如蛋糕从桌上掉下来}，拍的人有反应，镜头甩过去跟拍。8–10 秒：硬切黑。光源跟地点一致，只有一个。声音：摄像机自带话筒录的声音，人声发闷，有风噪，没有音乐。画面里不出现文字。",
-        "input": {}
+        "prompt": "2000 年代初家用 DV 摄像机录下的老录像：分辨率低，焦点偏软，有视频噪点，颜色轻微溢出，白平衡有点偏，手动推拉变焦。地点：{✏️ 在哪儿拍的，例如傍晚后院的生日派对}。0–3 秒：已经在录，拍的人边走边拿着摄像机。3–8 秒：{✏️ 发生的一个小事件，例如蛋糕从桌上掉下来}，拍的人有反应，镜头甩过去跟拍。8–10 秒：硬切黑。光源跟地点一致，只有一个。声音：摄像机自带话筒录的声音，人声发闷，有风噪，没有音乐。画面里不出现文字。"
       },
       "time-freeze-rewind": {
         "name": "时间静止再倒流",
@@ -2126,8 +2036,7 @@
       "bullet-time-mishap": {
         "name": "子弹时间出糗",
         "description": "出糗的一瞬间冻住，镜头绕着转一圈",
-        "prompt": "{✏️ 谁出了什么糗，例如一只猫把满满一杯牛奶从餐桌上碰下去}。0–1 秒：已经在发生，糗事刚开始。1–6 秒：在最糟的那一刻时间完全停住，像一张定格的照片：主体、溅出来的东西和正在掉落的东西都纹丝不动地悬在半空，画面里什么都不动；只有镜头在动，在同样的高度和距离上绕着这个定格的瞬间转一整圈，先从侧面、再从背后、再从另一侧看，最后回到正面。6–8 秒：时间恢复，糗事做完。只有一个光源。声音：冻住时突然安静，镜头环绕时一声低沉的呼啸，最后是摔碎的声音。画面里不出现文字。",
-        "input": {}
+        "prompt": "{✏️ 谁出了什么糗，例如一只猫把满满一杯牛奶从餐桌上碰下去}。0–1 秒：已经在发生，糗事刚开始。1–6 秒：在最糟的那一刻时间完全停住，像一张定格的照片：主体、溅出来的东西和正在掉落的东西都纹丝不动地悬在半空，画面里什么都不动；只有镜头在动，在同样的高度和距离上绕着这个定格的瞬间转一整圈，先从侧面、再从背后、再从另一侧看，最后回到正面。6–8 秒：时间恢复，糗事做完。只有一个光源。声音：冻住时突然安静，镜头环绕时一声低沉的呼啸，最后是摔碎的声音。画面里不出现文字。"
       },
       "beat-sync-outfit-change": {
         "name": "卡点转身换装",
@@ -2143,8 +2052,7 @@
       "pov-continuous-shot": {
         "name": "第一人称一镜到底",
         "description": "第一人称视角走一段，一个镜头拍到底",
-        "prompt": "第一人称视角，一镜到底，摄像机装在走路的人头上、眼睛的高度，他的手时不时进入画面。地点和目的地：{✏️ 从哪儿走到哪儿，例如穿过夜市走到挂满灯笼的寺庙门口}。0–3 秒：第一帧画面里已经满是这个地方，已经在往前走。3–9 秒：{✏️ 路上经过什么、做了什么}。9–12 秒：走到了，视线停在{✏️ 最后看到的东西}上。没有剪切，没有变焦；镜头只是走、转头和停下。光来自这个地方本身。声音：脚步声、呼吸声和这个地方的声音，没有音乐。画面里不出现文字。",
-        "input": {}
+        "prompt": "第一人称视角，一镜到底，摄像机装在走路的人头上、眼睛的高度，他的手时不时进入画面。地点和目的地：{✏️ 从哪儿走到哪儿，例如穿过夜市走到挂满灯笼的寺庙门口}。0–3 秒：第一帧画面里已经满是这个地方，已经在往前走。3–9 秒：{✏️ 路上经过什么、做了什么}。9–12 秒：走到了，视线停在{✏️ 最后看到的东西}上。没有剪切，没有变焦；镜头只是走、转头和停下。光来自这个地方本身。声音：脚步声、呼吸声和这个地方的声音，没有音乐。画面里不出现文字。"
       },
       "carried-object-transition": {
         "name": "物件带转场",
@@ -4967,6 +4875,11 @@
       "title": "自部署不计积分",
       "body": "生成不扣积分，也不需要充值。用量仍然会记录下来。"
     },
+    "notSoldHere": {
+      "title": "这个部署不出售积分",
+      "body": "生成照常扣积分，但这里不能充值。",
+      "refundsBody": "这里不能退款。"
+    },
     "total": "账号总额",
     "unassigned": "未指定",
     "unassignedWithNextStep": "未指定，去左侧「指定」分给要用的 Studio",
@@ -4978,7 +4891,7 @@
       "title": "买了积分之后，还要指定给某个 Studio 才能用",
       "body": "左侧「购买积分」可以充值；充完在「指定」里把每个积分包分给要用它的 Studio。"
     },
-    "lotsEmpty": "还没有购买记录。",
+    "lotsEmpty": "还没有积分。",
     "lotsEmptyNotice": {
       "title": "积分是怎么来的，都列在这里",
       "body": "买来的、赠送的都会列出来，显示来源、花了多少、处理到哪一步，以及积分去了哪个 Studio。"

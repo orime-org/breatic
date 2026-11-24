@@ -2,35 +2,36 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * 一个部署卖不卖订阅，决定会员面板的两件事（#106 验收 6）。
+ * Whether a deployment sells memberships decides two things on the panel
+ * (#106 acceptance 6, inner#1993 §3.2 #17): where a billing service is
+ * configured, the prices and the outstanding invoice come from it; where none
+ * is, there are no prices and no subscription to describe.
  *
- * 自部署不接 Stripe，所以那边既没有价格可报，也没有订阅可描述。这两个分支
- * 此前在服务端一个测试都没有：改坏了不会红，而验收第 6 条要的正是「自部署
- * 路径完全不受影响」。
- *
- * 价格必须是 null 而不是 0 —— PRO 在有卖的地方是 12 美元，在这里说它免费
- * 是在描述一家不存在的店。前端据此把这一格画成「—」，跟免费档的「免费」
- * 是两回事。
+ * A price is null rather than 0 where none is quoted: saying PRO is free on a
+ * deployment that does not sell it describes a shop that does not exist. The
+ * page draws such a cell as "—", apart from the free tier's "Free".
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as Core from "@breatic/core";
 
-const { envRef } = vi.hoisted(() => ({ envRef: { PAYMENT_ENABLED: true } }));
+const { envRef } = vi.hoisted(() => ({ envRef: { SELLING: true } }));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (original) => ({
+  membershipPanelAnswerSchema: (await original<typeof Core>()).membershipPanelAnswerSchema,
   env: envRef,
+  logger: { error: vi.fn() },
+  getCommerceConfig: () => ({ catalog_cache_seconds: 300 }),
   getMembershipForUser: vi.fn(),
-  getSubscriptionPlan: (tier: string, period: string) => ({
-    priceCents:
-      (tier === "pro" ? 1999 : 7999) * (period === "year" ? 10 : 1),
-    currency: "usd",
-  }),
   getMembershipLimits: () => LIMITS,
-  COMPARABLE_MEMBERSHIP_TIERS: ["base", "pro", "team"],
-  BILLING_PERIODS: ["month", "year"],
 }));
 
-vi.mock("@server/modules/subscription/subscription-panel.js", () => ({
+vi.mock("@server/modules/commerce/commerce-client.js", () => ({
+  requestCommerce: vi.fn(),
+  userPath: (userId: string, sub: string) => `/users/${userId}${sub}`,
+}));
+
+vi.mock("@server/modules/account/subscription-panel.js", () => ({
   readStoredSubscriptionSummary: vi.fn(),
 }));
 
@@ -42,10 +43,9 @@ vi.mock("@server/modules/studio/studio.repo.js", () => ({
   countTeamStudiosAdministeredBy: vi.fn(),
 }));
 
-import {
-  getMembershipForUser,
-} from "@breatic/core";
-import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
+import { getMembershipForUser } from "@breatic/core";
+import { requestCommerce } from "@server/modules/commerce/commerce-client.js";
+import { readStoredSubscriptionSummary } from "@server/modules/account/subscription-panel.js";
 import * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
@@ -61,10 +61,14 @@ const LIMITS = {
 };
 
 const USER = "u-1";
+const PRICES = {
+  pro: { month: { priceCents: 1999, currency: "usd" }, year: { priceCents: 19990, currency: "usd" } },
+  team: { month: { priceCents: 7999, currency: "usd" }, year: { priceCents: 79990, currency: "usd" } },
+};
 
 beforeEach(() => {
   vi.clearAllMocks();
-  envRef.PAYMENT_ENABLED = true;
+  envRef.SELLING = true;
   vi.mocked(getMembershipForUser).mockResolvedValue({ tier: "pro", limits: LIMITS, storageLimitBytes: LIMITS.storage_bytes });
   vi.mocked(readStoredSubscriptionSummary).mockResolvedValue({
     state: "active",
@@ -72,34 +76,29 @@ beforeEach(() => {
     period: "month",
     currentPeriodEnd: "2026-09-18T00:00:00.000Z",
     cancelAtPeriodEnd: false,
-    payableInvoiceUrl: null,
   });
+  vi.mocked(requestCommerce).mockResolvedValue({ data: { prices: PRICES, payableInvoiceUrl: "https://invoice.example/1" } });
   vi.mocked(studioRepo.countTeamStudiosAdministeredBy).mockResolvedValue(1);
   vi.mocked(assetUsageService.accountStorageUsage).mockResolvedValue(0);
 });
 
-describe("readAccountMembership — 这个部署卖东西时", () => {
-  it("quotes a price per period for the priced tiers and neither for the free one", async () => {
+describe("readAccountMembership where the deployment sells", () => {
+  it("quotes the billing service's price per period for the priced tiers and neither for the free one", async () => {
     const result = await readAccountMembership(USER);
 
-    expect(result.catalog.map((offer) => offer.prices)).toEqual([
-      { month: null, year: null },
-      {
-        month: { priceCents: 1999, currency: "usd" },
-        year: { priceCents: 19990, currency: "usd" },
-      },
-      {
-        month: { priceCents: 7999, currency: "usd" },
-        year: { priceCents: 79990, currency: "usd" },
-      },
-    ]);
-    expect(result.subscription).not.toBeNull();
+    expect(result.catalog.map((offer) => offer.prices)).toEqual([{ month: null, year: null }, PRICES.pro, PRICES.team]);
+  });
+
+  it("describes the stored subscription with the billing service's outstanding invoice", async () => {
+    const result = await readAccountMembership(USER);
+
+    expect(result.subscription).toMatchObject({ state: "active", payableInvoiceUrl: "https://invoice.example/1" });
   });
 });
 
-describe("readAccountMembership — 这个部署不卖东西时（验收 6）", () => {
+describe("readAccountMembership where the deployment sells nothing (acceptance 6)", () => {
   beforeEach(() => {
-    envRef.PAYMENT_ENABLED = false;
+    envRef.SELLING = false;
   });
 
   it("leaves all three tiers empty over both periods rather than zero", async () => {
@@ -112,14 +111,15 @@ describe("readAccountMembership — 这个部署不卖东西时（验收 6）", 
     ]);
   });
 
-  it("没有订阅那一段，而且压根不去问 Stripe", async () => {
+  it("has no subscription section and asks nobody", async () => {
     const result = await readAccountMembership(USER);
 
     expect(result.subscription).toBeNull();
     expect(readStoredSubscriptionSummary).not.toHaveBeenCalled();
+    expect(requestCommerce).not.toHaveBeenCalled();
   });
 
-  it("档位和额度照常，不受影响", async () => {
+  it("still answers the tier and its limits", async () => {
     const result = await readAccountMembership(USER);
 
     expect(result.tier).toBe("pro");

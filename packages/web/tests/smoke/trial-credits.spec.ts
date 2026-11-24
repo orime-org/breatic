@@ -64,11 +64,11 @@ test.describe('a new account and its trial credits', () => {
     const overview = await api.get('/api/v1/credits/overview?amountFormat=decimal-v1');
     expect(overview.ok()).toBe(true);
     const held = (await overview.json()) as {
-      data: { billing: boolean; assignedCredits: string };
+      data: { charging: boolean; assignedCredits: string };
     };
     expect(
-      held.data.billing,
-      'this stack has payments off, so no trial credits are granted and this case has nothing to read',
+      held.data.charging,
+      'this stack charges nobody, so no trial credits are granted and this case has nothing to read',
     ).toBe(true);
     // A six-place decimal string; the trial grant is a whole number of credits.
     const granted = Number(held.data.assignedCredits);

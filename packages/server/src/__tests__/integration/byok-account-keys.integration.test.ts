@@ -31,7 +31,7 @@ vi.mock("ai", () => ({
 }));
 
 import postgres from "postgres";
-import { accountModelUpstreamsRepo, accountProviderKeysRepo, eraseAccountAnalytics, initCore, rawPg } from "@breatic/core";
+import { accountModelUpstreamsRepo, accountProviderKeysRepo, db, eraseAccountAnalytics, initCore } from "@breatic/core";
 
 try {
   initCore(process.env);
@@ -243,7 +243,7 @@ describe("account_provider_keys", () => {
     const text = sealedText("kept");
     const id = await save(userId, "fal", text);
 
-    await expect(rawPg.begin(async (tx) => {
+    await expect(db.transaction(async (tx) => {
       await accountProviderKeysRepo.eraseForAccounts([userId], tx);
       throw new Error("roll back");
     })).rejects.toThrow("roll back");

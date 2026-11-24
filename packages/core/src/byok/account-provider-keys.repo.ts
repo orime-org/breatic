@@ -9,10 +9,9 @@
  * that opens it.
  */
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
-import type { TransactionSql } from "postgres";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { AccountProviderKey, ProviderKeyBalanceState } from "@breatic/shared";
-import { db } from "@core/db/client.js";
+import { db, type DbTx } from "@core/db/client.js";
 import { accountProviderKeys, users } from "@core/db/schema.js";
 import { lockAccountRow } from "@core/auth/membership.repo.js";
 import { dropChoicesForUpstream } from "@core/byok/account-model-upstreams.repo.js";
@@ -236,8 +235,9 @@ export async function deleteKey(userId: string, upstream: string): Promise<boole
  * @param tx - The erase's transaction.
  * @returns Nothing.
  */
-export async function eraseForAccounts(userIds: readonly string[], tx: TransactionSql): Promise<void> {
-  await tx`
-    UPDATE account_provider_keys SET ciphertext = NULL, deleted_at = now(), updated_at = now()
-    WHERE user_id = ANY(${[...userIds]}::uuid[]) AND deleted_at IS NULL`;
+export async function eraseForAccounts(userIds: readonly string[], tx: DbTx): Promise<void> {
+  await tx
+    .update(accountProviderKeys)
+    .set({ ciphertext: null, deletedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(and(inArray(accountProviderKeys.userId, [...userIds]), isNull(accountProviderKeys.deletedAt)));
 }

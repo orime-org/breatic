@@ -1,0 +1,40 @@
+# ── The billing service (inner#1993) ──────────────────────────────────
+# Read by packages/core/src/config/commerce.ts: the server's outbox relay
+# runs when the internal API is on and COMMERCE_API_URL is set; the worker's
+# daily lot-mirror reconcile runs on the same condition.
+
+# How long a forwarded user request may take: a write covers the billing
+# service's own Stripe call and one call back to the product. The quick limit
+# is for calls a page waits on (the sign-up code check, the membership panel's
+# prices, the credit pack list, the referral sections, the purchase history's
+# billing-service half, the overview's reconcile, and the pending referral
+# binding a membership checkout or a later binding sends first).
+call_timeout_ms: 30000
+quick_call_timeout_ms: 3000
+
+# How long the membership panel keeps the prices it read from the billing
+# service; a failed read falls back to them.
+catalog_cache_seconds: 300
+
+# The relay is woken as soon as a row commits; this is the fallback wait
+# between passes (retries that came due, rows the worker wrote), and the most
+# rows one pass sends.
+relay_interval_ms: 5000
+relay_batch: 100
+
+# How long one delivery to the billing service may take. The row stays locked
+# for the call, so this is kept short.
+relay_call_timeout_ms: 10000
+
+# Deliveries the billing service could not take are retried with exponential
+# backoff between these bounds; after this many attempts the row moves to the
+# dead letters and an error is logged. 50 attempts at these bounds is about
+# two days of the billing service being down.
+relay_max_attempts: 50
+relay_backoff_base_seconds: 10
+relay_backoff_max_seconds: 3600
+
+# The daily lot-mirror reconcile: when it runs (cron, UTC), and how far back
+# a bought lot must have changed to be sent once more.
+lot_mirror_reconcile_cron: "0 3 * * *"
+lot_mirror_reconcile_window_days: 30

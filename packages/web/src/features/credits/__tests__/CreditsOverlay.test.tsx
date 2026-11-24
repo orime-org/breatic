@@ -68,7 +68,8 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
     assignedCredits: '0.000000' as CreditDecimal,
     unassignedCredits: '0.000000' as CreditDecimal,
     underRefundCredits: '0.000000' as CreditDecimal,
-    billing: true,
+    charging: true,
+    selling: true,
     studios: [],
     ...over,
   };

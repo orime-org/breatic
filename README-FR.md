@@ -99,7 +99,7 @@ Configurez votre Studio personnel, créez un Project et utilisez **+** pour ajou
 
 L’installation utilise des images Docker publiées pour le web, l’API, les tâches en arrière-plan et la collaboration, avec PostgreSQL et Redis. Les transferts et le traitement des médias utilisent un Ingest Worker et un conteneur média dans **votre compte Cloudflare**, avec stockage dans votre bucket R2. Les appels IA utilisent vos comptes fournisseurs et vos quotas.
 
-Il ne s’agit pas d’une installation hors ligne ou entièrement locale. L’accès en réseau local nécessite un HTTPS de confiance. Les services cloud et les appels aux modèles peuvent être payants ; SMTP, la connexion Google et la recherche sont optionnels ; les paiements Stripe ne peuvent être activés qu’avec une autorisation écrite d’Orime, Inc. (sections 10 et 11 de LICENSE). Suivez le guide pour configurer et vérifier le cloud. L’étape initiale Node/pnpm/Wrangler est une opération de déploiement, pas un serveur de développement à maintenir pour l’usage quotidien.
+Il ne s’agit pas d’une installation hors ligne ou entièrement locale. L’accès en réseau local nécessite un HTTPS de confiance. Les services cloud et les appels aux modèles peuvent être payants ; SMTP, la connexion Google et la recherche sont optionnels ; la vente de crédits ou d’abonnements ne peut être activée qu’avec une autorisation écrite d’Orime, Inc. (sections 10 et 11 de LICENSE). Suivez le guide pour configurer et vérifier le cloud. L’étape initiale Node/pnpm/Wrangler est une opération de déploiement, pas un serveur de développement à maintenir pour l’usage quotidien.
 
 ## État, aide et contributions
 

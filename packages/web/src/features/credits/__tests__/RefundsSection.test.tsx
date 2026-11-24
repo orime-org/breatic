@@ -112,7 +112,7 @@ function renderRefunds(): ReturnType<typeof render> {
   });
   return render(
     <QueryClientProvider client={client}>
-      <RefundsSection userId='u1' billing />
+      <RefundsSection userId='u1' charging selling />
     </QueryClientProvider>,
   );
 }

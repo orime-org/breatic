@@ -59,7 +59,7 @@ describe('useSignupReferral (inner#1868 §10, table 12.13)', () => {
     await waitFor(() => expect(result.current.field).toBe('shown'));
   });
 
-  it('hides the field and sends nothing while payments are off', async () => {
+  it('hides the field and sends nothing where nothing is sold', async () => {
     carry.code = 'ALICE';
     options.mockResolvedValue({ emailVerification: false, referralEnabled: false });
     const { result } = render();

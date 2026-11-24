@@ -39,7 +39,7 @@ vi.mock('@web/pages/auth/GoogleSignIn', () => ({
 }));
 
 import LoginPage from '@web/pages/auth/LoginPage';
-import { authApi } from '@web/data/api/auth';
+import { authApi, type SignupReferralOutcome } from '@web/data/api/auth';
 import { ApiException } from '@web/data/api/types';
 import { useCurrentUserStore } from '@web/stores';
 
@@ -144,7 +144,19 @@ describe('the sign-in page referral row (inner#1868 table 12.14)', () => {
     expect(carry.forget).not.toHaveBeenCalled();
   });
 
-  it('has no referral row while payments are off', async () => {
+  it('shows no warning when Google made a new account whose code is pending', async () => {
+    carry.code = 'ALICE';
+    const pending: SignupReferralOutcome = 'pending';
+    vi.mocked(authApi.google).mockResolvedValue({ user: USER, created: true, referral: pending } as never);
+    const user = userEvent.setup();
+    setup();
+    await screen.findByText(/will use referral code/);
+    await user.click(google());
+    await waitFor(() => expect(carry.forget).toHaveBeenCalledTimes(1));
+    expect(warning).not.toHaveBeenCalled();
+  });
+
+  it('has no referral row where nothing is sold', async () => {
     carry.code = 'ALICE';
     vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false });
     setup();
