@@ -360,23 +360,23 @@ worker 的 `lookupMiniToolConsumption` 只读取原容器完整计划报告。�
 
 `mini-tool-settlement` 队列只唤醒 SQL 费用周期，载荷是 taskId 与 settlementVersion；发现任务使用原精度游标逐页补投。worker 启动时先注册恢复 worker、安装持久周期调度并投一次立即扫描，失败则关闭该 worker 并让启动失败；单个实例退出不删除共享调度。一次认领最多记录一项消费，随后读取新周期再投递，known 费用跳过外部查询；已确认费用遇到 usage 写入失败仍保持 known。队列投递失败由周期扫描重发现，最终扣费后的通知失败只记应用层错误。发现周期、页大小和查询预算来自 `config/mini-tools.yaml`，队列并发统一来自 `config/worker.yaml`；这些恢复期限不替换原计算的两小时期限。
 
-共享的 `miniToolPlannedRequestSchema` 保留完整版本化草稿、run 身份、分析引用及逐索引输出映射。抽帧和分割携带完整 v2 `source_ledger` 回执及严格 `frame` / `segment` recipe。fresh 输出索引连续且有序，目标节点唯一并与源分开。`miniToolSubmissionSchema` 保留原 model/container 请求，并接受只带原 run 和失败输出索引的新 retry 请求；公共 recipe 不携带容器 storage key、命令或能力票据。
+共享的 `miniToolPlannedRequestSchema` 保留完整版本化草稿、run 身份、分析引用及逐索引输出映射。抽帧和分割携带完整 v2 `source_ledger` 回执及严格 `frame` / `segment` recipe。fresh 输出索引连续且有序，目标节点唯一并与源分开。`miniToolSubmissionSchema` 接受原 model/container 请求与计划请求；公共 recipe 不携带容器 storage key、命令或能力票据。
 
 `acceptMiniToolExecution` 在首个异步步骤前复制完整请求，先查目标 Project 当前编辑权限，再按 run UUID 读取原 SQL 任务。相同 actor、Project、Space 和完整请求指纹直接回放原身份及状态，不重新读取源资产或当前配置；不同身份或正文冲突。新抽帧和分割核当前注册源、ready 呈现与完整回执，用 shared `readVideoPresentationTable` 在同一截止和配置字节预算内读取精简表，再用共享 planner 逐项核对完整输出；不读完整帧表，不展开逐帧对象。容器估价复用实际规格和单价的既有换算、倍率、进位与最低额，冻结 `sourceLedger`、`container` 和完整计划指纹。产物上限与预估秒数来自 executions 配置；初值沿既有作业合同与预检惯例，不代表实测吞吐。task 主键唯一约束认领胜出者，只有胜出者调用应用层节点任务、hold 与排队适配器。
 
-Failed-output retry 是独立新执行：任何当前 Project editor 均可发起，新 actor 拥有任务、节点行和 hold，资金仍来自目标 Project 的 Studio。受理锁原不可变 task，校验当前失败结果、拒绝待定/成功/迟到登记，保留原全局索引、节点、recipe、源及回执；不读当前表或重算草稿。已被获准受理的 retry 接管的输出，不论该 retry 处于何种状态，再次 retry 一律拒绝（`server.mini_tool.alreadyRetried`），下一次从接管它的 retry 发起；`getMiniToolExecution` 把这类输出标为 `takenOver`。原记录与资金不变，新执行从原冻结计划估价，独立预扣及结算。重试链共用首执行的 admission 锁，并在需要时另锁所选原执行以仲裁迟到登记；事务内从 pending/running tasks 的冻结目标检测重叠，覆盖 claim 已提交但节点行尚未开启的窗口，允许不相交子集。SQL 事务不包含应用层节点、资金或队列操作。
+一次计划运行是一个整体：全部产物登记并一次交付，或全部失败；重新运行只从工具面板整体发起，没有按产物的重试。产物在运行中只暂存在各自步骤上，不登记；全部报告后，`markMiniToolExecutionCommitPoint` 在执行记录锁内写下提交点，之后登记全部产物，由唯一一次完成提交一起交付。过了提交点，登记出错回到队列，下次取到时只登记、不再运行工具，运行不再判失败。首个最终失败的产物让整个运行失败：之后不再开新的尝试、批次、块或拼接，每个产物都带这个失败原因。每个终态都在同一事务里解除 `execution` 与 `prepared` 钉住，把仍在运行的块的中间对象登记回收（回收保护期长于作业截止），并作废未消费的产物授权。SQL 事务不包含应用层节点、资金或队列操作。
 
 `POST /mini-tools` 用该联合 schema 保留原入口，计划请求经 `startPlannedMiniToolRun` 复用 `startRowedRun`：先开原目标的任务行，再冻结真实报价，最后按原 task UUID 排窄计划 job；consent 来自当前请求。`failMiniToolExecutionAdmission` 与计算和消费共用 task 主键锁，已完成结果保持；尚未产生消费周期的失败与空集合闭合、hold 释放同事务提交，已有提交 intent 或消费周期的任务保留原费用与 hold，不因队列回执异常猜测没有消耗。
 
-`readMiniToolExecutionPlan` 核对原任务所属通道、Project、Space、输出映射与完整计划指纹；retry 验证冻结子集并保留原全局输出索引，不要求重新编号。抽帧与视频聚焦裁切任务类型为 image，分割为 video。已登记结果以资产 ID 保存 receipt，重入读取仍存活的登记胜出行及封面，沿用其实际时长、MIME 和归属；展示派生失败由独立展示流程处理。
+`readMiniToolExecutionPlan` 核对原任务所属通道、Project、Space、输出映射与完整计划指纹。抽帧与视频聚焦裁切任务类型为 image，分割为 video。已登记结果以资产 ID 保存 receipt，重入读取仍存活的登记胜出行及封面，沿用其实际时长、MIME 和归属；展示派生失败由独立展示流程处理。
 
-`startMiniToolExecution` 在原任务锁内校验计划与父模型、初始化完整输出槽，再进入计算。`finishMiniToolExecution` 按同一锁合并 `tasks.result.miniToolExecution`，保留其他结果字段和结算周期；完整登记结果或失败槽形成初份媒体版本，重复结果保持版本，原失败任务的合法迟到登记以版本检查补入并保留原终态。费用身份、确认成本和 usage 记录的三个写入口在各自原事务内同步窄公共费用投影；媒体版本与费用周期独立。`getMiniToolExecution` 检查真实父 Project 的当前成员读权，从 tasks 投影结果及实际结算状态，读取过程不访问 worker 的上游步骤或触发媒体计算。
+`startMiniToolExecution` 在原任务锁内校验计划与父模型、初始化完整输出槽，再进入计算。`finishMiniToolExecution` 按同一锁合并 `tasks.result.miniToolExecution`，保留其他结果字段和结算周期；一次提交只接受全部产物已登记且没有错误、或全部产物失败且带原错误两种形状，形成唯一的媒体版本；已结束的运行只接受同一结果的重放。费用身份、确认成本和 usage 记录的三个写入口在各自原事务内同步窄公共费用投影；媒体版本与费用周期独立。`readMiniToolExecution` 不加锁读取运行的父任务、冻结计划和记录，供失败清理与巡检决定它的结束。
 
 终态提交、终态重放、迟到回执与迟到失败证明都在同一 task 锁内调用 `completeResolvedMiniToolConsumptionSet`：任务已终结，且原步骤中没有未决提交尝试或 identity 冲突时，任何工具的执行和分析都闭合调用集合；任务仍在运行或仍有未决尝试则保持未闭合，等解决最后一项的迟到回执或失败证明再闭合。闭合只看持久步骤，没有由完成字段选择的分支；金额 pending 不表示身份未齐。明确供应商失败保存原步骤失败及原话，后续读取沿原失败，不重新查询或提交。计划任务的未知内部异常公开为 `internal`，完整诊断留应用日志；明确 AppError 与供应商失败继续保留可公开的原话，原期限失败为 `expired`。
 
 协作媒体事件可携独立 `resultOrigin`，由 run ID、计划指纹与输出索引标识同一份计划结果。Collab 在节点 `miniToolResultOrigin` 中保留首次处理的身份，包含按原 stream 次序判旧的结果；同身份重送只可推进计数，不再次写媒体或推进原媒体 stream 水位。历史恢复与后续普通媒体写保留该身份，新复制节点排除它。此身份不使用整份 manifest 的版本，也不替代 stream/deadletter 的原消息 ID。
 
-Worker 在常规分派前识别 `execute-mini-tool` 的 `executionKind: planned`，队列只携原 task ID、来源和 consent；原 actor、Project、Space、模型及目标以 SQL 为准。等待沿 `StillRunning` 归还处理位，完成或失败的任务重放只恢复已有结果和历史。执行叶子在供应商结果持久后通知应用层返回分界，之后的登记错误不抛回计算队列；媒体 manifest 已完成时，历史或通知错误保留完成态。跨进程失败清理按原 `finishedOn` 和 planned 标识进入相同终结入口，费用及 hold 继续交原消费结算 owner。`GET /projects/:projectId/mini-tool-runs/:runId` 允许当前项目成员读取该执行，旧任务读取接口保留原发起者权限。
+Worker 在常规分派前识别 `execute-mini-tool` 的 `executionKind: planned`，队列只携原 task ID、来源和 consent；原 actor、Project、Space、模型及目标以 SQL 为准。等待沿 `StillRunning` 归还处理位，完成或失败的任务重放只恢复已有结果和历史。执行叶子在供应商结果持久后通知应用层返回分界，之后的登记错误不抛回计算队列；媒体 manifest 已完成时，历史或通知错误保留完成态。跨进程失败清理按原 `finishedOn` 和 planned 标识，与计划运行巡检（队列 `planned-run-sweep`，周期、批量与宽限来自 `config/worker.yaml`）共用 `recoverPlannedRun`：过了提交点的运行重新登记后完成，未过的按 `internal` 失败，仍 pending 的经运行槽结束；费用及 hold 继续交原消费结算 owner。节点任务的过期收割跳过仍在进行的计划运行的行，由运行自己结束。
 
 计划型容器的单次推进由 `advanceMiniToolPlanJob` 读取首次保存的完整请求：每次取出只读一次原作业，仅明确不存在且仍在原计算期限内才提交同一请求，提交的传输以原期限为界。读取已有作业的报告不开启新工作，上限为 `planReadUntil`：报告窗口结束（截止 + 2 次轮询）与此刻加传输层上限中较晚者；报告窗口结束时仍未终态的作业按过期结束。合法终态保留失败子集和实际用量，非终态通过 `StillRunning` 归还处理位；合同错误不会变成正常等待，应用日志保留原异常。该推进器不分配输出、不写资产或资金，完整执行器分别持有这些持久步骤。截止后不再开新作业，也不再追加步骤；下一次尝试落在截止之后的步骤以 `expired` 结束，各工具显示自己的超时原因（抽帧、分割为 `expired`）。截止后的 pickup 仍读取截止前提交的作业、冻结账本和已完成的供应商结果，并登记已经完成的输出。
 
