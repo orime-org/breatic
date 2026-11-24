@@ -9,6 +9,10 @@
  * Generation rows cost a real model run, so the rows here are served in the
  * list's answer; everything they are drawn by and acted on is the real page.
  * A real run's row is covered by three-d-generation.spec.ts.
+ *
+ * Another member's model upload is real (inner#2061): the list, the tab
+ * spinner and the Tasks count follow the Space document's task version, so
+ * they move with no task panel open and catch up after a lost connection.
  */
 
 import { expect, type Locator, type Page, type Route } from 'playwright/test';
@@ -18,6 +22,8 @@ import { credentialsFor } from '../helpers/credentials';
 import { cleanMembership, inviteMember } from '../helpers/project-members';
 import { openSmokeProject, smokeProjectId, smokeProjectUrl } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
+import { roomForUploads } from '../helpers/upload-budget';
+import { setTimelineConnection } from '../helpers/timeline-media';
 
 const created: string[] = [];
 
@@ -189,4 +195,105 @@ test('a viewer reads generation rows with no Retry, Remove or Place', async ({ p
       if (viewerId) await cleanMembership(page, projectId, viewerId);
     }
   }
+});
+
+/**
+ * Open a real 3D model upload in a Space, as the given member, without sending its bytes.
+ * @param member - A page signed in as an editor of the smoke Project.
+ * @param spaceId - The 3D Space.
+ * @returns The Space row the upload opened.
+ */
+async function openSceneUpload(member: Page, spaceId: string): Promise<string> {
+  await roomForUploads(1, 'B');
+  const ticket = await dataOf<{ taskId: string }>(await member.request.post('/api/v1/assets/upload-ticket', {
+    data: {
+      project_id: smokeProjectId(), purpose: 'scene_model', space_id: spaceId, label: 'Barn lamp', filename: 'lamp.glb',
+      content_type: 'model/gltf-binary', size: 4096, client_hash: [...crypto.getRandomValues(new Uint8Array(32))].map((b) => b.toString(16).padStart(2, '0')).join(''),
+    },
+  }), 'open a 3D model upload');
+  return ticket.taskId;
+}
+
+/**
+ * End an upload the member opened, as its browser does when the bytes never arrive.
+ * @param member - The uploader.
+ * @param spaceId - The 3D Space.
+ * @param taskId - The row.
+ */
+async function abandonSceneUpload(member: Page, spaceId: string, taskId: string): Promise<void> {
+  await dataOf(await member.request.post(`/api/v1/projects/${smokeProjectId()}/three-d/${spaceId}/tasks/${taskId}/failure`, {
+    data: { reason: 'aborted' },
+  }), 'report the upload failed');
+}
+
+test.describe('another member\'s 3D upload (inner#2061) @needs-ingest @needs-storage', () => {
+  test('lights the 3D tab and the Tasks count with no panel open, and its end clears both', async ({ page, browser, baseURL }) => {
+    const otherContext = await browser.newContext({ baseURL, storageState: stateFile('B') });
+    const projectId = smokeProjectId();
+    let otherId: string | undefined;
+    try {
+      await openSmokeProject(page);
+      const id = await createSpace(page, '3d', `scene-tasks-peer-${crypto.randomUUID()}`);
+      created.push(id);
+      await expect(visibleSpace(page).getByTestId('three-d-viewport')).toBeVisible();
+      const other = await inviteMember(page, otherContext, projectId, credentialsFor('B').email, 'editor');
+      otherId = await whoIs(other);
+      const busy = page.getByTestId(`space-tab-busy-${id}`);
+      const count = visibleSpace(page).getByTestId('scene-tasks-count');
+      await expect(busy).toHaveCount(0);
+      await expect(count).toHaveCount(0);
+
+      const taskId = await openSceneUpload(other, id);
+      await expect(busy).toBeVisible();
+      await expect(count).toHaveText('1');
+      await expect(visibleSpace(page).getByTestId('scene-tasks-panel')).toHaveCount(0);
+
+      await abandonSceneUpload(other, id, taskId);
+      await expect(busy).toHaveCount(0);
+      await expect(count).toHaveCount(0);
+    } finally {
+      try {
+        await otherContext.close();
+      } finally {
+        if (otherId) await cleanMembership(page, projectId, otherId);
+      }
+    }
+  });
+
+  test('shows the server\'s rows after a lost connection comes back', async ({ page, browser, baseURL }) => {
+    const otherContext = await browser.newContext({ baseURL, storageState: stateFile('B') });
+    const projectId = smokeProjectId();
+    let otherId: string | undefined;
+    try {
+      await openSmokeProject(page);
+      const id = await createSpace(page, '3d', `scene-tasks-reconnect-${crypto.randomUUID()}`);
+      created.push(id);
+      await expect(visibleSpace(page).getByTestId('three-d-viewport')).toBeVisible();
+      const other = await inviteMember(page, otherContext, projectId, credentialsFor('B').email, 'editor');
+      otherId = await whoIs(other);
+      const panel = await openTasks(page);
+      await expect(panel).toHaveText('Models you import or generate appear here.');
+
+      // Offline keeps the socket from coming back; closing it drops the connection the page already holds.
+      await page.context().setOffline(true);
+      await setTimelineConnection(page, projectId, id, false);
+      const taskId = await openSceneUpload(other, id);
+      // Disconnected, this page cannot have heard of the row.
+      await expect(panel.getByTestId(`scene-task-${taskId}`)).toHaveCount(0);
+      await page.context().setOffline(false);
+      await setTimelineConnection(page, projectId, id, true);
+
+      await expect(panel.getByTestId(`scene-task-${taskId}`)).toBeVisible({ timeout: 30_000 });
+      await expect(visibleSpace(page).getByTestId('scene-tasks-count')).toHaveText('1');
+      await abandonSceneUpload(other, id, taskId);
+      await expect(visibleSpace(page).getByTestId('scene-tasks-count')).toHaveCount(0);
+    } finally {
+      await page.context().setOffline(false);
+      try {
+        await otherContext.close();
+      } finally {
+        if (otherId) await cleanMembership(page, projectId, otherId);
+      }
+    }
+  });
 });
