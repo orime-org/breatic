@@ -19,6 +19,7 @@ import {
   numeric,
   integer,
   bigint,
+  smallint,
   timestamp,
   json,
   jsonb,

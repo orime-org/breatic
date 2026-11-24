@@ -35,7 +35,7 @@
 import type { ErrorHandler } from "hono";
 import { HTTPException } from "hono/http-exception";
 import { REQUEST_SHAPE_REASON, t } from "@breatic/shared";
-import { AppError, SpendCapReachedError, TooManyRequestsError, UnavailableError } from "@core/app-errors.js";
+import { AppError, SpendCapReachedError, TooManyRequestsError } from "@core/app-errors.js";
 import { RequestShapeError } from "@core/http/validate.js";
 
 /** What the error handler tells its service to log; core itself never logs. */
