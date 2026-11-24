@@ -368,7 +368,8 @@ test('an imported rigged model takes presets and one without bones says it has n
     const pick = async (name: string): Promise<void> => {
       await visibleSpace(page).getByTestId('scene-objects-trigger').click();
       await page.getByTestId(`scene-object-${objects.find((object) => object.name === name)!.id}`).click();
-      await showProperties(page);
+      // Selecting an object opens its properties by itself; pressing Properties as well could close them again.
+      await expect(page.getByTestId('scene-properties-panel')).toBeVisible();
     };
     await pick('Rigged character');
     const section = page.getByTestId('scene-pose-section');
