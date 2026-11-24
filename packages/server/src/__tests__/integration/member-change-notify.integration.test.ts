@@ -311,10 +311,10 @@ describe("stopping", () => {
    * The backends currently running a LISTEN, other than this session.
    * @returns Their count.
    */
-  async function listenBackends(): Promise<number> {
-    const [row] = await pgClient<{ n: number }[]>`select count(*)::int as n from pg_stat_activity
+  async function listenBackends(): Promise<number[]> {
+    const rows = await pgClient<{ pid: number }[]>`select pid from pg_stat_activity
       where query ilike 'listen %' and pid <> pg_backend_pid()`;
-    return row?.n ?? 0;
+    return rows.map((row) => row.pid);
   }
 
   it("delivers nothing and fails the probe once stopped", async () => {
@@ -338,12 +338,13 @@ describe("stopping", () => {
 
   it("does not report a restart once stopped", async () => {
     const listensBefore = listening;
-    await pgClient`select pg_terminate_backend(pid) from pg_stat_activity
-      where query ilike 'listen %' and pid <> pg_backend_pid()`;
-    await vi.waitFor(async () => expect(await listenBackends()).toBe(0));
-    // postgres.js re-listens on its own; once its backend is back, the restart
-    // it would have reported has happened.
-    await vi.waitFor(async () => expect(await listenBackends()).toBeGreaterThan(0), { timeout: 10_000 });
+    const killed = await listenBackends();
+    expect(killed.length).toBeGreaterThan(0);
+    await pgClient`select pg_terminate_backend(pid) from pg_stat_activity where pid in ${pgClient(killed)}`;
+    // postgres.js re-listens on its own, often before a poll could see zero
+    // backends; a LISTEN on a new backend shows the restart it would have
+    // reported has happened.
+    await vi.waitFor(async () => expect((await listenBackends()).some((pid) => !killed.includes(pid))).toBe(true), { timeout: 10_000 });
     await new Promise((resolve) => setTimeout(resolve, 300));
     expect(listening).toBe(listensBefore);
   });
