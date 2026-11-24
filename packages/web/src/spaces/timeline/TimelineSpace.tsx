@@ -296,7 +296,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }, [materialState.open, materialOpen, setMaterialOpen, material]);
   const clips = React.useMemo(() => orderedTimelineClips(document.clips), [document.clips]);
   const webLimits = useTimelineLimits(projectId)?.webAnimation;
-  // The tab bar polls this list while it has unfinished rows (useSpaceTaskStatus); this view shares its cache.
+  // The tab bar reads this list too (useSpaceTaskStatus), and SpaceTasksWatcher reads it again when the Space
+  // document's task version changes; this view shares its cache.
   const executions = useTimelineExecutions(projectId, spaceId);
   const rows = executions.data;
   const web = useTimelineWebResolution(projectId, spaceId, document);

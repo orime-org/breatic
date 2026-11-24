@@ -80,7 +80,8 @@ export interface SpaceTaskList {
 }
 
 /**
- * The query key one 3D Space's task list is cached under; the page's signal listener invalidates it.
+ * The query key one 3D Space's task list is cached under; `SpaceTasksWatcher` invalidates it when the Space document's
+ * task version changes.
  * @param projectId - The project.
  * @param spaceId - The 3D Space.
  * @returns The key.
