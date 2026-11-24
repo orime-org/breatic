@@ -88,6 +88,20 @@ describe("a template text node on the agent's side (inner#1824, CAP-3)", () => {
     expect(verdict).toMatchObject({ ok: false, refusal: "template-tweak-unfilled" });
   });
 
+  it("leaves a blank in a written node whose edge into a generation is only a creative link, as its words are not sent", () => {
+    // Vocal Remover takes no prompt, so an edge naming no into from words stands as a link and sends nothing.
+    const verdict = verdictFor({
+      nodes: [
+        { role: "written", type: "text", name: "Caption", prompt: [{ text: "Made by " }, BLANK] },
+        { role: "generate", type: "audio", name: "Stems", mode: "separate", model: "vocal-remover" },
+      ],
+      edges: [{ fromIndex: 0, toIndex: 1 }],
+      rationale: "r",
+      groupName: "Stems",
+    });
+    expect(verdict.ok ? undefined : verdict.refusal).not.toBe("template-tweak-unfilled");
+  });
+
   it("refuses a blank in a written node the agent wired into a generation without any template", () => {
     const verdict = verdictFor({
       nodes: [
