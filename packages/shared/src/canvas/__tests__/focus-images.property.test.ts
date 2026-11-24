@@ -4,7 +4,7 @@
 /**
  * One rule says what a focus image is, wherever it is read (#1580, test spec PT-8, D-11, D-33; design §2.4): the
  * pool read the page and collab use, and the `focusImage` the upload ticket takes, which also needs a UUID and the
- * node it lands on. The append collab and the page run is the same function too, exported once from
+ * node it lands on. The append collab runs, inside a crop's upload step, is one function too, exported once from
  * `@breatic/shared/space-content`.
  */
 
@@ -70,6 +70,7 @@ describe("the focus image rule has one home", () => {
 
   it("D-33 the append is written once, in shared, and web keeps no copy", () => {
     expect(source("web/src/data/yjs/canvas-space.ts")).not.toMatch(/function appendFocusImageCore/);
-    expect(source("collab/src/services/task-listener.ts")).toMatch(/appendFocusImageCore/);
+    expect(source("collab/src/services/task-listener.ts")).toMatch(/import \{ applyFocusImageUpload \} from "@breatic\/shared\/space-content"/);
+    expect(source("shared/src/canvas/focus-image-append.ts")).toMatch(/appendFocusImageCore\(data, event\.image\)/);
   });
 });

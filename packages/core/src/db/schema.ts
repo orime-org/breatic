@@ -3503,10 +3503,6 @@ export const uploadGrants = pgTable(
     // Not partial, so Drizzle emits it fine — but the migration is still
     // hand-written.
     uniqueIndex("upload_grants_storage_key_unique").on(table.storageKey),
-    // The deadline sweep's read of focus crops still uploading (#1580); partial, so hand-written.
-    index("upload_grants_open_focus_idx")
-      .on(table.createdAt)
-      .where(sql`${table.focusImage} IS NOT NULL AND ${table.consumedAt} IS NULL AND ${table.voidedAt} IS NULL`),
   ],
 );
 

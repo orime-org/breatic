@@ -57,21 +57,39 @@ function idsIn(raw: unknown, read: (value: unknown) => Array<{ id: string }>): S
 }
 
 /**
- * Take a crop off the node's uploading list, wherever it stands in it.
+ * Take off the node's uploading list every entry a test picks, and every entry no reader would show.
  * @param data - The node's data map.
- * @param id - The crop's id.
+ * @param gone - Whether a valid entry goes.
  */
-function dropUpload(data: Y.Map<unknown>, id: string): void {
+function dropUploads(data: Y.Map<unknown>, gone: (upload: FocusUpload) => boolean): void {
   const raw = data.get("focusUploads");
   if (!(raw instanceof Y.Array)) {
-    if (Array.isArray(raw)) data.set("focusUploads", Y.Array.from(validFocusUploads(raw).filter((u) => u.id !== id)));
+    if (Array.isArray(raw)) data.set("focusUploads", Y.Array.from(validFocusUploads(raw).filter((u) => !gone(u))));
     return;
   }
   const items = raw.toArray();
   for (let i = items.length - 1; i >= 0; i--) {
     const item: unknown = items[i];
-    if (typeof item === "object" && item !== null && (item as { id?: unknown }).id === id) raw.delete(i, 1);
+    if (!isValidFocusUpload(item) || gone(item)) raw.delete(i, 1);
   }
+}
+
+/**
+ * Take a crop off the node's uploading list, wherever it stands in it.
+ * @param data - The node's data map.
+ * @param id - The crop's id.
+ */
+function dropUpload(data: Y.Map<unknown>, id: string): void {
+  dropUploads(data, (u) => u.id === id);
+}
+
+/**
+ * Take off the node's uploading list every crop whose time is up, as a task row past its budget is over.
+ * @param data - The node's data map.
+ * @param now - The instant to judge by, from the database's clock.
+ */
+function dropOverdue(data: Y.Map<unknown>, now: number): void {
+  dropUploads(data, (u) => u.deadlineAt <= now);
 }
 
 /**
@@ -83,12 +101,13 @@ function dropUpload(data: Y.Map<unknown>, id: string): void {
  */
 export function applyFocusImageUpload(data: Y.Map<unknown>, event: FocusImageUploadEvent): void {
   if (event.state === "uploading") {
-    const { image } = event;
+    const { image, openedAt } = event;
     if (!isValidFocusUpload(image) || idsIn(data.get("focusImages"), validFocusImages).has(image.id)) return;
+    dropOverdue(data, openedAt);
     const raw = data.get("focusUploads");
     const held = idsIn(raw, validFocusUploads);
     if (held.has(image.id) || held.size >= MAX_FOCUS_ENTRIES) return;
-    const entry: FocusUpload = { id: image.id, name: image.name, width: image.width, height: image.height };
+    const entry: FocusUpload = { id: image.id, name: image.name, width: image.width, height: image.height, deadlineAt: image.deadlineAt };
     if (raw instanceof Y.Array) raw.push([entry]);
     else data.set("focusUploads", Y.Array.from([...validFocusUploads(raw), entry]));
     return;

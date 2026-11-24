@@ -5181,7 +5181,7 @@ function pendingFocusCount(
   nodeId: string,
 ): number {
   const data = nodes.find((n) => n.id === nodeId)?.data;
-  return uploadingFocusOf(session.getState().pendingFocusUploads, nodeId, typeof data === 'object' && data !== null ? data : undefined).length;
+  return uploadingFocusOf(session.getState().pendingFocusUploads, nodeId, typeof data === 'object' && data !== null ? data : undefined, Date.now()).length;
 }
 
 /**

@@ -398,6 +398,18 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
     });
   });
 
+  // With no row to report against, the key the grant was opened on is the one thing the uploader can name it by.
+  it('names the key of a transfer that never landed when no task row stands for the upload', async () => {
+    const deps = makeUploadDeps({
+      requestTicket: vi.fn().mockResolvedValue(TICKET_NO_NODE),
+      sendToIngest: vi.fn().mockRejectedValue(new BytesNotDelivered(new TypeError('Failed to fetch'))),
+    });
+
+    await runMediaUpload(file, { projectId: 'p1', spaceId: 's1' }, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'transfer', storageKey: TICKET.storageKey });
+  });
+
   // The edge read the stored bytes and turned them down. Nothing about sending
   // them again changes what they are, so this is told apart from a transfer
   // that broke: the same file re-sent meets the same refusal every time.

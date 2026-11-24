@@ -189,10 +189,14 @@ export interface FocusImage {
 
 /**
  * A focus crop still uploading, held in a node's `focusUploads` (#1580): the image it will become, without the address
- * its registration gives. It is the node's state, the way `taskCounts` is: collab writes it when the upload opens and
- * takes it away when the upload ends, and copying a node leaves it behind.
+ * its registration gives, and the upload's deadline. It is the node's state, the way `taskCounts` is: collab writes it
+ * when the upload opens and takes it away when the upload ends, and copying a node leaves it behind. Like a task row it
+ * carries its own budget: once `deadlineAt` has passed, readers no longer count it as uploading.
  */
-export type FocusUpload = Omit<FocusImage, "url">;
+export type FocusUpload = Omit<FocusImage, "url"> & {
+  /** When the upload's two hours run out, in epoch milliseconds. */
+  deadlineAt: number;
+};
 
 /**
  * One reply under an annotation, stored in the sticky's `replies` Y.Array

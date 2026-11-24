@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-import { uploadMedia } from '@web/data/upload/media-upload';
+import { assetsApi } from '@web/data/api/assets';
+import { UploadFailedError, uploadMedia } from '@web/data/upload/media-upload';
 import type { FocusCropImage } from '@web/spaces/canvas/focus/run-focus-crop';
 
 /**
@@ -43,10 +44,22 @@ export async function uploadFocusCrop(
   image: FocusCropImage,
   onSent?: () => void,
 ): Promise<void> {
-  await uploadMedia(file, {
-    projectId: where.projectId,
-    spaceId: where.spaceId,
-    derived: true,
-    focusImage: { nodeId: where.nodeId, ...image },
-  }, undefined, undefined, onSent);
+  try {
+    await uploadMedia(file, {
+      projectId: where.projectId,
+      spaceId: where.spaceId,
+      derived: true,
+      focusImage: { nodeId: where.nodeId, ...image },
+    }, undefined, undefined, onSent);
+  } catch (err) {
+    // Bytes that never reached the edge end nowhere else: told, the server ends the crop in its node, as a node
+    // upload's row is reported (upload-into-node.ts); an untold one shows as uploading until its deadline.
+    if (err instanceof UploadFailedError && err.storageKey !== undefined) {
+      const { storageKey } = err;
+      void assetsApi.reportFocusUploadFailure(storageKey).catch((reportErr: unknown) => {
+        console.warn('focus upload failure report rejected', storageKey, reportErr);
+      });
+    }
+    throw err;
+  }
 }

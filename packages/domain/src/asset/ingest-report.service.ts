@@ -877,3 +877,21 @@ async function withPeaksQueued(outcome: IngestReportOutcome): Promise<IngestRepo
   );
   return queued ? outcome : { ...outcome, peaksQueueFailed: true };
 }
+
+/**
+ * End a focus crop whose bytes never reached the edge, on its uploader's word, as a node's upload row is ended
+ * (`POST /canvas/node-tasks/:taskId/failure`): the finish needs an upload id only a completed transfer hands back, so
+ * nothing else would end it before its deadline. Only the uploader's own crop still open is taken.
+ * @param userId - Who reports.
+ * @param storageKey - The key the crop's grant was opened on.
+ * @returns What was decided.
+ * @throws {NotFoundError} When the key names no open focus crop of this user's, one answer for every case.
+ * @throws {Error} When the grant cannot be ended or its ending published.
+ */
+export async function reportFocusTransferFailed(userId: string, storageKey: string): Promise<IngestReportOutcome> {
+  const grant = await findGrantByKey(storageKey);
+  if (grant === null || grant.userId !== userId || grant.focusImage === null || grant.consumedAt !== null || grant.voidedAt !== null) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  return applyIngestReport({ storageKey, outcome: "aborted", reason: "aborted" });
+}

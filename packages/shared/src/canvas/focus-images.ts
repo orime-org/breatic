@@ -41,11 +41,12 @@ interface FocusImageUploadTarget {
 }
 
 /**
- * A focus crop's upload as it moves: `uploading` when it opens (the node shows it as running), `completed` with the
- * address of the registered asset (it moves into the pool), `failed` when it ends without one (it goes).
+ * A focus crop's upload as it moves: `uploading` when it opens (the node shows it as running until its deadline),
+ * `completed` with the address of the registered asset (it moves into the pool), `failed` when it ends without one (it
+ * goes). `openedAt` is when the upload opened, by the database's clock: entries whose deadline it has reached are over.
  */
 export type FocusImageUploadEvent =
-  | (FocusImageUploadTarget & { state: "uploading"; image: FocusUpload })
+  | (FocusImageUploadTarget & { state: "uploading"; openedAt: number; image: FocusUpload })
   | (FocusImageUploadTarget & { state: "completed"; image: FocusImage })
   | (FocusImageUploadTarget & { state: "failed"; id: string });
 
@@ -59,11 +60,11 @@ function isDimension(value: unknown): value is number {
 }
 
 /**
- * Whether one value is a focus crop still uploading, read from untrusted data.
+ * Whether one value has a focus crop's parts: an id, a name and two sides.
  * @param value - The value.
  * @returns True when it carries a non-empty id within bounds, a name within bounds and two valid sides.
  */
-export function isValidFocusUpload(value: unknown): value is FocusUpload {
+function isFocusCrop(value: unknown): value is Omit<FocusImage, "url"> {
   if (typeof value !== "object" || value === null) return false;
   const f = value as Record<string, unknown>;
   return (
@@ -74,12 +75,21 @@ export function isValidFocusUpload(value: unknown): value is FocusUpload {
 }
 
 /**
+ * Whether one value is a focus crop still uploading, read from untrusted data.
+ * @param value - The value.
+ * @returns True when it has a crop's parts and a finite deadline.
+ */
+export function isValidFocusUpload(value: unknown): value is FocusUpload {
+  return isFocusCrop(value) && Number.isFinite((value as { deadlineAt?: unknown }).deadlineAt);
+}
+
+/**
  * Whether one value is a focus image, read from untrusted data.
  * @param value - The value.
- * @returns True when it is a valid {@link FocusUpload} that also carries a non-empty address within bounds.
+ * @returns True when it has a crop's parts and a non-empty address within bounds.
  */
 export function isValidFocusImage(value: unknown): value is FocusImage {
-  if (!isValidFocusUpload(value)) return false;
+  if (!isFocusCrop(value)) return false;
   const url = (value as { url?: unknown }).url;
   return typeof url === "string" && url.length > 0 && url.length <= MAX_FOCUS_URL;
 }
@@ -107,7 +117,7 @@ export function validFocusImages(raw: unknown): FocusImage[] {
 /**
  * Narrow an untrusted `focusUploads` value to its valid entries, as {@link validFocusImages} does for the pool.
  * @param raw - The raw `data.focusUploads` value, as a plain array.
- * @returns The valid entries, each a fresh four-field object, the first of an id kept.
+ * @returns The valid entries, each a fresh five-field object, the first of an id kept.
  */
 export function validFocusUploads(raw: unknown): FocusUpload[] {
   if (!Array.isArray(raw)) return [];
@@ -117,7 +127,7 @@ export function validFocusUploads(raw: unknown): FocusUpload[] {
     if (kept.length >= MAX_FOCUS_ENTRIES) break;
     if (!isValidFocusUpload(f) || seen.has(f.id)) continue;
     seen.add(f.id);
-    kept.push({ id: f.id, name: f.name, width: f.width, height: f.height });
+    kept.push({ id: f.id, name: f.name, width: f.width, height: f.height, deadlineAt: f.deadlineAt });
   }
   return kept;
 }

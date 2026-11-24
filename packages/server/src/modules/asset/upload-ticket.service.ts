@@ -377,11 +377,11 @@ async function prepareUpload(
     { budgetMs: getNodeTaskConfig().default_budget_ms, ...uploadRowOf(item) },
     recordUserAction,
   );
-  // A focus crop shows as uploading in its node once its grant is open, as a node's upload shows its task row; the
-  // ending or the deadline sweep takes it out, and a lost notice only hides the wait from the other members.
+  // A focus crop shows as uploading in its node once its grant is open, as a node's upload shows its task row, until
+  // its ending takes it out or its deadline passes; a lost notice only hides the wait from the other members.
   const focusOpened = focusTargetOf(scope, item);
   if (focusOpened !== null) {
-    await announceFocusImageUploading(focusOpened).catch((err: unknown) => {
+    await announceFocusImageUploading(focusOpened, key).catch((err: unknown) => {
       logger.error({ err, key, userId, projectId }, "focus_image_uploading_publish_failed");
     });
   }

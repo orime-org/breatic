@@ -999,15 +999,22 @@ describe("focus crop events", () => {
   async function publishFocus(
     c: Case,
     events: Array<{ nodeId: string; image?: Record<string, unknown>; docName?: string; state?: "uploading" | "completed" | "failed"; id?: string }>,
+    extra: string[] = [],
   ): Promise<string[]> {
     const ids: string[] = [];
     for (const e of events) {
       const state = e.state ?? "completed";
-      const step = state === "failed" ? { state, id: e.id } : { state, image: e.image };
+      const step = state === "failed" ? { state, id: e.id } : state === "uploading" ? { state, openedAt: Date.now(), image: e.image } : { state, image: e.image };
       const payload = JSON.stringify({ type: FOCUS_IMAGE_UPLOAD_EVENT_TYPE, docName: e.docName ?? c.docName, nodeId: e.nodeId, ...step });
-      ids.push((await stream.xadd(c.streamKey, "*", "payload", payload))!);
+      ids.push((await stream.xadd(c.streamKey, "*", ...extra, "payload", payload))!);
     }
     return ids;
+  }
+
+  /** The crop `img` as its uploading step carries it, two hours from now. */
+  function uploadOf(img: Record<string, unknown>): Record<string, unknown> {
+    const { url: _url, ...crop } = img;
+    return { ...crop, deadlineAt: Date.now() + 7_200_000 };
   }
 
   /** The node's focus pool as stored, or undefined when the node or pool is absent. */
@@ -1044,7 +1051,7 @@ describe("focus crop events", () => {
     const nodeId = randomUUID();
     const c = await newCase({ [nodeId]: "image" });
     const img = image();
-    const { url: _url, ...upload } = img;
+    const upload = uploadOf(img);
     const first = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }]);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, first));
@@ -1062,12 +1069,25 @@ describe("focus crop events", () => {
     const kept = image();
     await seedPool(c, nodeId, [kept]);
     const img = image();
-    const { url: _url, ...upload } = img;
+    const upload = uploadOf(img);
     const ids = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }, { nodeId, state: "failed", id: img.id as string }]);
     listen(c, instanceA, "a");
     await until(() => handled(c.streamKey, ids));
     expect(await uploadsOf(c, nodeId)).toEqual([]);
     expect(await poolOf(c, nodeId)).toEqual({ isArray: true, items: [kept] });
+  });
+
+  it("never shows again a crop whose uploading step is replayed after its upload ended", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const img = image();
+    const upload = uploadOf(img);
+    const [openedId, endedId] = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }, { nodeId, state: "failed", id: img.id as string }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, [openedId!, endedId!]));
+    const replayed = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }], ["originId", openedId!]);
+    await until(() => handled(c.streamKey, replayed));
+    expect(await uploadsOf(c, nodeId)).toEqual([]);
   });
 
   /** Set the node's pool before the listener starts. */

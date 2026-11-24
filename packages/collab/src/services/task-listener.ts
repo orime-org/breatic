@@ -26,8 +26,8 @@
  * holder stored; what keeps an older event from undoing a newer one is the
  * version each node carries, for other Space types the version their document
  * holds, and for a Document upload the block itself: an address once written
- * never changes and `processing` never replaces an ending (`applyDocumentUpload`); a focus crop is written once
- * per id and step (`applyFocusImageUpload`).
+ * never changes and `processing` never replaces an ending (`applyDocumentUpload`); a focus crop carries a
+ * version per crop, kept beside the node versions, so an older step never brings back an upload that ended.
  *
  * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts and focus crops,
  * `project-{pid}/document-{spaceId}` for Document uploads and the content
@@ -45,6 +45,7 @@ import { applyFocusImageUpload } from "@breatic/shared/space-content";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { applySpaceTasksVersion } from "@collab/services/space-tasks-version.js";
+import { isNewerStreamId } from "@collab/services/stream-id.js";
 import { isLiveDoc } from "@collab/services/yjs-documents.repo.js";
 import {
   startGroupConsumer,
@@ -66,6 +67,15 @@ const RELEASE_WAITER_SCRIPT =
 /** Sets or renews the waiter mark unless another instance holds it. */
 const MARK_WAITER_SCRIPT =
   'local v = redis.call("get", KEYS[1]) if v == false or v == ARGV[1] then return redis.call("set", KEYS[1], ARGV[1], "PX", ARGV[2]) end return 0';
+
+/**
+ * Where a focus crop's version sits in its document's versions hash, apart from every node id.
+ * @param event - One step of the crop's upload.
+ * @returns The hash field.
+ */
+function focusVersionKey(event: FocusImageUploadEvent): string {
+  return `focus:${event.state === "failed" ? event.id : event.image.id}`;
+}
 
 /** How long a node's counts version is kept after its last write. */
 const COUNTS_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -322,11 +332,16 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
               continue;
             }
             if (event.type === FOCUS_IMAGE_UPLOAD_EVENT_TYPE) {
-              // A node the document no longer holds takes nothing, as a canvas upload's node does
-              // (node-task-counts.ts); the write itself refuses a duplicate id, a full list and a bad image.
-              const node: unknown = d.getMap(CANVAS_NODES_KEY).get(event.nodeId);
-              const data = node instanceof Y.Map ? node.get("data") : undefined;
-              if (data instanceof Y.Map) applyFocusImageUpload(data, event);
+              const key = focusVersionKey(event);
+              const version = entry.originId ?? entry.id;
+              if (isNewerStreamId(version, moved.get(key) ?? versions[key])) {
+                // A node the document no longer holds takes nothing, as a canvas upload's node does
+                // (node-task-counts.ts); the write itself refuses a duplicate id, a full list and a bad image.
+                const node: unknown = d.getMap(CANVAS_NODES_KEY).get(event.nodeId);
+                const data = node instanceof Y.Map ? node.get("data") : undefined;
+                if (data instanceof Y.Map) applyFocusImageUpload(data, event);
+                moved.set(key, version);
+              }
               outcomes.set(entry.id, "done");
               continue;
             }

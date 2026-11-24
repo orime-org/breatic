@@ -504,6 +504,25 @@ const requireUploadSession = createMiddleware<{ Variables: { uploadSession: Uplo
 });
 
 /**
+ * A focus crop whose bytes never reached the edge (#1580), told by its uploader, as a node's upload is told on
+ * `POST /canvas/node-tasks/:taskId/failure`: without this the crop stays uploading in its node until its deadline.
+ * The grant is read off the key and must be the caller's own open focus crop; anything else is one 404.
+ */
+assets.post(
+  "/focus-uploads/failure",
+  requireAuth,
+  validate("json", z.object({ storageKey: z.string().min(1).max(1024), reason: z.literal("aborted") }).strict()),
+  async (c) => {
+    const user = c.get("user");
+    const { storageKey } = c.req.valid("json");
+    const outcome = await ingestReportService.reportFocusTransferFailed(user.id, storageKey);
+    noteIngestSideEffects(storageKey, outcome);
+    logger.info({ storageKey, userId: user.id, status: outcome.status }, "focus_upload_transfer_failed");
+    return c.json({ data: { ended: true } });
+  },
+);
+
+/**
  * `POST /assets/uploads/{uploadId}/complete` — the browser handing back what
  * it holds, so this server can finish the upload for it (design §3.1).
  *

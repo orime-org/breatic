@@ -1457,10 +1457,52 @@ describe("POST /assets/upload-ticket — a focus crop (#1580)", () => {
     const { data } = (await res.json()) as { data: { storageKey: string } };
     const focus = payload.focusImage as Record<string, unknown>;
     expect(await focusOf(data.storageKey)).toEqual({ spaceId, nodeId: focus.nodeId, id: focus.id, name: "Source", width: 640, height: 480 });
-    // The crop shows as uploading in its node once the grant is open, as a node's upload shows its task row.
+    // The crop shows as uploading in its node once the grant is open, carrying its deadline as a node's task row does.
+    const [grant] = await sql<{ created_at: Date }[]>`SELECT created_at FROM upload_grants WHERE storage_key = ${data.storageKey}`;
     expect(await focusEvents(canvasSpaceDocName(seed.projectId, spaceId))).toEqual([expect.objectContaining({
-      state: "uploading", nodeId: focus.nodeId, image: { id: focus.id, name: "Source", width: 640, height: 480 },
+      state: "uploading",
+      nodeId: focus.nodeId,
+      openedAt: grant!.created_at.getTime(),
+      image: { id: focus.id, name: "Source", width: 640, height: 480, deadlineAt: await uploadDeadlineByKey(data.storageKey) },
     })]);
+  });
+
+  /** Report that a crop's bytes never left, as the page does when its transfer fails. */
+  async function reportFailure(cookie: string, storageKey: string): Promise<Response> {
+    return app.request("/api/v1/assets/focus-uploads/failure", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ storageKey, reason: "aborted" }),
+    });
+  }
+
+  it("ends a crop whose bytes never left as failed when its uploader reports it, as a node's upload row is", async () => {
+    const seed = await seedEditor();
+    const spaceId = crypto.randomUUID();
+    const payload = cropBody(spaceId);
+    const res = await requestTicket(seed.cookie, { ...payload, project_id: seed.projectId });
+    const { data } = (await res.json()) as { data: { storageKey: string } };
+    const reported = await reportFailure(seed.cookie, data.storageKey);
+    expect(reported.status).toBe(200);
+    const [grant] = await sql<{ voided_at: Date | null }[]>`SELECT voided_at FROM upload_grants WHERE storage_key = ${data.storageKey}`;
+    expect(grant!.voided_at).not.toBeNull();
+    const focus = payload.focusImage as Record<string, unknown>;
+    expect((await focusEvents(canvasSpaceDocName(seed.projectId, spaceId))).map((e) => e.state)).toEqual(["uploading", "failed"]);
+    expect((await focusEvents(canvasSpaceDocName(seed.projectId, spaceId)))[1]).toMatchObject({ nodeId: focus.nodeId, id: focus.id });
+  });
+
+  it("answers a failure report for anything but the caller's own open crop with 404", async () => {
+    const seed = await seedEditor();
+    const other = await seedEditor();
+    const crop = (await (await requestTicket(seed.cookie, { ...cropBody(crypto.randomUUID()), project_id: seed.projectId })).json()) as { data: { storageKey: string } };
+    const plain = (await (await requestTicket(seed.cookie, { ...body(), project_id: seed.projectId })).json()) as { data: { storageKey: string } };
+    expect((await reportFailure(other.cookie, crop.data.storageKey)).status).toBe(404);
+    expect((await reportFailure(seed.cookie, plain.data.storageKey)).status).toBe(404);
+    expect((await reportFailure(seed.cookie, `image/${crypto.randomUUID()}.png`)).status).toBe(404);
+    expect((await reportFailure(seed.cookie, crop.data.storageKey)).status).toBe(200);
+    expect((await reportFailure(seed.cookie, crop.data.storageKey)).status).toBe(404);
+    const voided = await sql<{ voided_at: Date | null }[]>`SELECT voided_at FROM upload_grants WHERE storage_key = ${plain.data.storageKey}`;
+    expect(voided[0]!.voided_at).toBeNull();
   });
 
   it("takes a source name cut through an emoji, storing it as well-formed text", async () => {

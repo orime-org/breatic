@@ -109,10 +109,13 @@ export function isUploadFailureReason(
  * that row and only keeps the File for a retry, keyed by it. Absent — the
  * ticket was refused, or the upload has no node (a focus crop, a chat
  * attachment, a cover, an avatar) — no row exists, nobody on the server is
- * going to give it an ending, and the browser says so locally.
+ * going to give it an ending, and the browser says so locally. `storageKey`
+ * names such an upload's grant when its bytes never reached the edge, so the
+ * caller that can end it on the server (a focus crop) can say which.
  */
 export interface UploadFailure {
   reason: UploadFailureReason;
+  storageKey?: string;
   taskId?: string;
 }
 
@@ -388,9 +391,11 @@ async function deliverTicket(
     stopWait();
     signal?.removeEventListener('abort', stopWait);
     signal?.throwIfAborted();
+    const reason = failureOf(err);
     sinks.onFailure({
-      reason: failureOf(err),
+      reason,
       ...(taskId !== undefined && { taskId }),
+      ...(taskId === undefined && reason === 'transfer' && { storageKey: answer.storageKey }),
     });
     return;
   }
@@ -513,8 +518,9 @@ export class UploadFailedError extends Error {
   /**
    * Name the reason the upload did not complete.
    * @param reason - The pipeline's verdict, also the message.
+   * @param storageKey - The grant of an upload with no row whose bytes never reached the edge.
    */
-  constructor(readonly reason: UploadFailureReason) {
+  constructor(readonly reason: UploadFailureReason, readonly storageKey?: string) {
     super(reason);
     this.name = 'UploadFailedError';
   }
@@ -548,7 +554,7 @@ export function uploadMedia(
       ...(onProgress !== undefined && { onProgress }),
       ...(onRegistering !== undefined && { onRegistering }),
       onSuccess: resolve,
-      onFailure: (outcome) => reject(new UploadFailedError(outcome.reason)),
+      onFailure: (outcome) => reject(new UploadFailedError(outcome.reason, outcome.storageKey)),
     }, signal).catch(reject);
   });
 }

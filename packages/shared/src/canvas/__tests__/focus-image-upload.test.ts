@@ -3,7 +3,8 @@
 
 /**
  * A focus crop's upload as collab writes it into the node (#1580): the crop shows as uploading in `focusUploads`, the
- * way a task row shows as running, and its ending either moves it into the pool or takes it away.
+ * way a task row shows as running, and its ending either moves it into the pool or takes it away. Like a task row it
+ * carries its own deadline, so one whose ending never came is cleared once its time is up.
  */
 
 import { describe, expect, it } from "vitest";
@@ -11,8 +12,11 @@ import * as Y from "yjs";
 import { applyFocusImageUpload } from "@shared/canvas/focus-image-append.js";
 import { FOCUS_IMAGE_UPLOAD_EVENT_TYPE, validFocusImages, validFocusUploads, type FocusImageUploadEvent } from "@shared/canvas/focus-images.js";
 
-const UPLOAD = { id: "crop-1", name: "Kyoto", width: 640, height: 360 };
-const IMAGE = { ...UPLOAD, url: "https://cdn.test/crop-1.png" };
+const OPENED_AT = 1_000_000;
+const BUDGET_MS = 7_200_000;
+const CROP = { id: "crop-1", name: "Kyoto", width: 640, height: 360 };
+const UPLOAD = { ...CROP, deadlineAt: OPENED_AT + BUDGET_MS };
+const IMAGE = { ...CROP, url: "https://cdn.test/crop-1.png" };
 const BASE = { type: FOCUS_IMAGE_UPLOAD_EVENT_TYPE, docName: "project-p/canvas-s", nodeId: "n1" } as const;
 
 /**
@@ -57,15 +61,15 @@ function pool(data: Y.Map<unknown>): unknown[] {
 describe("applyFocusImageUpload", () => {
   it("shows a crop that started uploading, once per id", () => {
     const { doc, data } = nodeData();
-    apply(doc, data, { ...BASE, state: "uploading", image: UPLOAD });
-    apply(doc, data, { ...BASE, state: "uploading", image: UPLOAD });
+    apply(doc, data, { ...BASE, state: "uploading", openedAt: OPENED_AT, image: UPLOAD });
+    apply(doc, data, { ...BASE, state: "uploading", openedAt: OPENED_AT, image: UPLOAD });
     expect(uploads(data)).toEqual([UPLOAD]);
     expect(pool(data)).toEqual([]);
   });
 
   it("moves a crop that ended well from uploading into the pool in one change", () => {
     const { doc, data } = nodeData();
-    apply(doc, data, { ...BASE, state: "uploading", image: UPLOAD });
+    apply(doc, data, { ...BASE, state: "uploading", openedAt: OPENED_AT, image: UPLOAD });
     const seen: Array<[number, number]> = [];
     doc.on("afterTransaction", () => seen.push([uploads(data).length, pool(data).length]));
     apply(doc, data, { ...BASE, state: "completed", image: IMAGE });
@@ -83,7 +87,7 @@ describe("applyFocusImageUpload", () => {
   it("takes away a crop that failed and leaves the pool alone", () => {
     const { doc, data } = nodeData();
     apply(doc, data, { ...BASE, state: "completed", image: { ...IMAGE, id: "other" } });
-    apply(doc, data, { ...BASE, state: "uploading", image: UPLOAD });
+    apply(doc, data, { ...BASE, state: "uploading", openedAt: OPENED_AT, image: UPLOAD });
     apply(doc, data, { ...BASE, state: "failed", id: UPLOAD.id });
     expect(uploads(data)).toEqual([]);
     expect(pool(data)).toEqual([{ ...IMAGE, id: "other" }]);
@@ -92,10 +96,20 @@ describe("applyFocusImageUpload", () => {
   it("never shows as uploading a crop the pool already holds, and a late failure never takes the image away", () => {
     const { doc, data } = nodeData();
     apply(doc, data, { ...BASE, state: "completed", image: IMAGE });
-    apply(doc, data, { ...BASE, state: "uploading", image: UPLOAD });
+    apply(doc, data, { ...BASE, state: "uploading", openedAt: OPENED_AT, image: UPLOAD });
     apply(doc, data, { ...BASE, state: "failed", id: UPLOAD.id });
     expect(uploads(data)).toEqual([]);
     expect(pool(data)).toEqual([IMAGE]);
+  });
+
+  it("clears entries whose time is up when the next upload opens, and keeps the ones still running", () => {
+    const { doc, data } = nodeData();
+    const later = OPENED_AT + 60_000;
+    apply(doc, data, { ...BASE, state: "uploading", openedAt: OPENED_AT, image: UPLOAD });
+    apply(doc, data, { ...BASE, state: "uploading", openedAt: later, image: { ...UPLOAD, id: "crop-2", deadlineAt: later + BUDGET_MS } });
+    const next = { ...UPLOAD, id: "crop-3", deadlineAt: UPLOAD.deadlineAt + BUDGET_MS };
+    apply(doc, data, { ...BASE, state: "uploading", openedAt: UPLOAD.deadlineAt, image: next });
+    expect(uploads(data)).toEqual([{ ...UPLOAD, id: "crop-2", deadlineAt: later + BUDGET_MS }, next]);
   });
 });
 
@@ -104,5 +118,9 @@ describe("validFocusUploads", () => {
     expect(validFocusUploads([UPLOAD, UPLOAD, { id: "", name: "x", width: 1, height: 1 }, { id: "b", name: "y", width: -1, height: 1 }, "junk"]))
       .toEqual([UPLOAD]);
     expect(validFocusUploads("not a list")).toEqual([]);
+  });
+
+  it("drops an entry with no deadline to judge it by", () => {
+    expect(validFocusUploads([CROP, { ...CROP, deadlineAt: Number.NaN }, { ...CROP, deadlineAt: "soon" }])).toEqual([]);
   });
 });

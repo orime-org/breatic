@@ -6,14 +6,14 @@
  *
  * A crop in a node's reference list is uploading the way a row in its task list is running: the backend publishes and
  * collab writes the node, the way a node's task counts reach it (`node-task-counts`) and a Document block receives
- * its upload (`document-upload-events`). The upload shows as uploading once its grant opens; its ending moves it into
- * the pool or takes it away. An ending is the only way the crop leaves `uploading`, so failing to publish one throws:
- * an upload finish job runs again, and a ticket answered by a dedup hit fails and the page shows the failure.
+ * its upload (`document-upload-events`). The upload shows as uploading once its grant opens, until its deadline; its
+ * ending moves it into the pool or takes it away. Failing to publish an ending throws: an upload finish job runs again,
+ * and a ticket answered by a dedup hit fails and the page shows the failure.
  */
 
-import { getStreamRedis, publishFocusImageUploadEvent } from "@breatic/core";
+import { budgetDeadlineFrom, getStreamRedis, publishFocusImageUploadEvent } from "@breatic/core";
 import { canvasSpaceDocName, FOCUS_IMAGE_UPLOAD_EVENT_TYPE, type FocusImageUploadEvent, type StudioAssetEntity } from "@breatic/shared";
-import type { GrantFocusImage, UploadGrant } from "@domain/asset/upload-grant.repo.js";
+import { findGrantByKey, type GrantFocusImage, type UploadGrant } from "@domain/asset/upload-grant.repo.js";
 
 /** Where a crop goes and what it becomes. */
 export interface FocusImageTarget {
@@ -51,15 +51,20 @@ async function publish(target: FocusImageTarget, step: Step): Promise<void> {
 }
 
 /**
- * Show the crop as uploading in its node, once its grant is open. Only the other members learn of the wait from it, so
- * its loss is the caller's to log.
+ * Show the crop as uploading in its node, once its grant is open, with the upload's deadline: like a task row it
+ * carries its own budget, which a crop with no node counts from its grant's opening. Only the other members learn of
+ * the wait from it, so its loss is the caller's to log.
  * @param target - The pool and the image.
+ * @param storageKey - The key its grant was opened on; the grant's opening, by the database's clock, starts the budget.
  * @returns Nothing.
- * @throws {Error} When publishing fails.
+ * @throws {Error} When no grant was opened on the key, or publishing fails.
  */
-export async function announceFocusImageUploading(target: FocusImageTarget): Promise<void> {
+export async function announceFocusImageUploading(target: FocusImageTarget, storageKey: string): Promise<void> {
+  const grant = await findGrantByKey(storageKey);
+  if (grant === null) throw new Error(`no upload grant on ${storageKey}`);
   const { id, name, width, height } = target.focusImage;
-  await publish(target, { state: "uploading", image: { id, name, width, height } });
+  const at = grant.createdAt.getTime();
+  await publish(target, { state: "uploading", openedAt: at, image: { id, name, width, height, deadlineAt: budgetDeadlineFrom(at) } });
 }
 
 /**
@@ -83,7 +88,7 @@ export async function announceFocusImage(
 }
 
 /**
- * End the crop's upload without an image: its grant was voided, its asset is gone, or its time ran out.
+ * End the crop's upload without an image: its grant was voided, or its asset is gone.
  * @param target - The pool and the image.
  * @returns Nothing.
  * @throws {Error} When publishing fails.
