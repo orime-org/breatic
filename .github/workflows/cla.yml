@@ -4,7 +4,8 @@ name: CLA
 # Co-authored-by) has accepted the current Breatic CLA, is an Orime, Inc.
 # account on a pull request an Orime, Inc. account opened, or has been cleared
 # by a maintainer for the pull request's current head. scripts/cla-check.mjs
-# decides and writes the required check `CLA signed`; docs/legal/cla/versions.json
+# decides and writes the required check `CLA signed` as a commit status on the
+# head, with everyone's result in the run's job summary; docs/legal/cla/versions.json
 # names the current version. Records are on the cla-signatures branch, which
 # stays unprotected so this workflow can write to it.
 #
@@ -19,9 +20,15 @@ on:
     types: [opened, reopened, synchronize, edited]
 
 permissions:
-  checks: write
+  statuses: write
   contents: write
   pull-requests: write
+
+# Runs for one pull request write its status one after another, so an earlier
+# verdict never lands after a later one.
+concurrency:
+  group: cla-${{ github.event.pull_request.number || github.event.issue.number }}
+  cancel-in-progress: false
 
 jobs:
   cla:

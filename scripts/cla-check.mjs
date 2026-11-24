@@ -22,12 +22,16 @@
  *   reviews.json          {"reviews": [{"pullRequest": 7, "headSha": "<full 40-character sha>",
  *                          "identity": {"id": 1001} | {"email": "a@example.com"}, "reason": "...",
  *                          "reviewer": "...", "reviewedAt": "..."}]}
- * The check output prints the reviews.json entry for each person still waiting.
+ * The run's job summary prints the reviews.json entry for each person still
+ * waiting.
  *
- * The required check `CLA signed` (GitHub Actions, app 15368) is written here
- * through the Checks API, updated in place when one already exists on the head.
+ * The required check `CLA signed` is a commit status on the PR head, written
+ * with the workflow token, so each run's write replaces the last one. A check
+ * run created through the API joins whichever Actions check suite GitHub picks
+ * on that commit, and disappears from the merge box once that workflow runs
+ * again on the same commit.
  */
-import { readFileSync } from 'node:fs';
+import { appendFileSync, readFileSync } from 'node:fs';
 
 /** Accounts of Orime, Inc. that open and author PRs without a CLA. */
 export const ALLOWLIST = [
@@ -35,8 +39,6 @@ export const ALLOWLIST = [
   { login: 'recombyn', id: 51704449 },
 ];
 
-/** The app the required check is bound to on main: GitHub Actions. */
-const ACTIONS_APP_ID = 15368;
 const CHECK_NAME = 'CLA signed';
 const RECORDS_BRANCH = 'cla-signatures';
 const COMMENT_MARKER = '<!-- breatic-cla-check -->';
@@ -207,7 +209,7 @@ export function acceptanceRecord({ signer, comment, pull, commits, version, repo
 }
 
 /**
- * A person's name for the check output.
+ * A person's name for the status summary.
  * @param {object} identity The identity.
  * @returns {string} `@login`, or the email for an author with no account.
  */
@@ -216,17 +218,18 @@ function nameOf(identity) {
 }
 
 /**
- * The `CLA signed` check run's conclusion and text.
+ * The `CLA signed` status's state and text; the summary goes to the job summary.
  * @param {{ok: boolean, people: object[]}} verdict The verdict.
  * @param {object} version The version.
- * @returns {{conclusion: string, title: string, summary: string}} The check run fields.
+ * @param {object} [pull] The PR, for the reviews.json entries.
+ * @returns {{state: string, description: string, summary: string}} The status fields and the summary.
  */
-export function checkRunOutput(verdict, version, pull) {
+export function statusOutput(verdict, version, pull) {
   const entry = (identity) => JSON.stringify({ pullRequest: pull?.number, headSha: pull?.headSha, identity: identity.id !== null ? { id: identity.id } : { email: identity.email }, reason: '<why>', reviewer: '<login>', reviewedAt: '<ISO instant>' });
   const lines = verdict.people.map((p) => `- ${p.ok ? 'passed' : 'not yet'}: ${nameOf(p.identity)} — ${p.reason}` + (p.ok || !pull ? '' : `\n  a maintainer's reviews.json entry after checking: \`${entry(p.identity)}\``));
   return {
-    conclusion: verdict.ok ? 'success' : 'failure',
-    title: verdict.ok ? `Everyone has accepted ${version.id}` : `Waiting on ${version.id} acceptance or a maintainer review`,
+    state: verdict.ok ? 'success' : 'failure',
+    description: verdict.ok ? `Everyone has accepted ${version.id}` : `Waiting on ${version.id} acceptance or a maintainer review`,
     summary: [
       ...lines,
       '',
@@ -342,34 +345,15 @@ async function prCommits(token, repository, pull) {
 }
 
 /**
- * Writes `CLA signed` on the head, updating the run already there.
- * @param {string} token The workflow token.
+ * The request that sets `CLA signed` on the head.
  * @param {string} repository `owner/name`.
  * @param {string} headSha The PR head.
- * @param {object} output The conclusion and text.
- * @returns {Promise<void>} Resolves once written.
+ * @param {{state: string, description: string}} output The status fields.
+ * @param {string} runUrl This workflow run, where the job summary lists everyone.
+ * @returns {{path: string, body: object}} The request.
  */
-async function writeCheck(token, repository, headSha, output) {
-  const { json } = await api(token, `/repos/${repository}/commits/${headSha}/check-runs?check_name=${encodeURIComponent(CHECK_NAME)}&filter=all&per_page=100`);
-  const body = { status: 'completed', conclusion: output.conclusion, output: { title: output.title, summary: output.summary } };
-  for (const request of checkRunRequests(json.check_runs, headSha)) {
-    await api(token, `/repos/${repository}${request.path}`, { method: request.method, body: { ...request.body, ...body } });
-  }
-}
-
-/**
- * Which `CLA signed` runs to write on a head: every run of that name this
- * script created through the API, updated in place, or one new run when there
- * is none. A run a workflow job created (the archived bot's, on pull requests
- * opened before the switch) cannot be changed by a token: GitHub answers 403.
- * @param {{id: number, app?: {id: number}, details_url?: string}[]} existingRuns The head's runs named `CLA signed`.
- * @param {string} headSha The PR head.
- * @returns {{method: string, path: string, body: object}[]} The requests.
- */
-export function checkRunRequests(existingRuns, headSha) {
-  const mine = existingRuns.filter((run) => run.app?.id === ACTIONS_APP_ID && !/\/actions\/runs\/\d+\/job\//.test(run.details_url ?? ''));
-  if (mine.length === 0) return [{ method: 'POST', path: '/check-runs', body: { name: CHECK_NAME, head_sha: headSha } }];
-  return mine.map((run) => ({ method: 'PATCH', path: `/check-runs/${run.id}`, body: {} }));
+export function statusRequest(repository, headSha, output, runUrl) {
+  return { path: `/repos/${repository}/statuses/${headSha}`, body: { state: output.state, context: CHECK_NAME, description: output.description, target_url: runUrl } };
 }
 
 /**
@@ -454,7 +438,11 @@ export async function main(env) {
     reviews: reviews.data.reviews,
     version,
   });
-  await writeCheck(token, repository, pull.headSha, checkRunOutput(verdict, version, pull));
+  const output = statusOutput(verdict, version, pull);
+  if (env.GITHUB_STEP_SUMMARY) appendFileSync(env.GITHUB_STEP_SUMMARY, `${output.description}\n\n${output.summary}\n`);
+  const status = statusRequest(repository, pull.headSha, output, `${env.GITHUB_SERVER_URL}/${repository}/actions/runs/${env.GITHUB_RUN_ID}`);
+  const written = await api(token, status.path, { method: 'POST', body: status.body });
+  if (written.status !== 201) throw new Error(`POST ${status.path} failed with ${written.status}: ${JSON.stringify(written.json)}`);
   await writeComment(token, repository, number, signRequestComment(verdict, version, repository), verdict.ok);
 }
 
