@@ -41,9 +41,9 @@ const bundle = {
 const inFlight = { targetPolicyVersion: 1, jobId: 'video-presentation-a', stage: 'encode', failure: null };
 const failedPrep = { targetPolicyVersion: 1, jobId: 'video-presentation-a', stage: 'plan', failure: 'too_long' };
 /** Nothing selected, work in flight: waiting-presentation (§7.12 step 2). */
-const waiting = { sourceBinding: binding, presentation: null, preparation: inFlight, pollAfterMs: 5000 };
+const waiting = { sourceBinding: binding, presentation: null, preparation: inFlight, pollAfterMs: 5000, coverURL: null };
 /** A selected version and no target work: usable (§7.12 step 5). */
-const usable = { sourceBinding: binding, presentation: bundle, preparation: null, pollAfterMs: null };
+const usable = { sourceBinding: binding, presentation: bundle, preparation: null, pollAfterMs: null, coverURL: null };
 
 /**
  * The response schema's verdict.
