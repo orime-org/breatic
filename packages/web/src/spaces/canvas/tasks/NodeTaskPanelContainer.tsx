@@ -9,22 +9,19 @@
  * behind a number is asked for only while somebody is looking at it.
  */
 
-import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { NodeToolbar, Position, useStore } from '@xyflow/react';
 import * as React from 'react';
 
 import type { NodeRef } from '@web/data/yjs/node-view';
 import type { NodeTaskCounts, NodeTaskEntry } from '@breatic/shared';
-import { miniToolById, plannedOutputRetryable, type MiniToolExecutionRetryRequest } from '@breatic/shared/mini-tools';
 
 import { canvasApi } from '@web/data/api/canvas';
-import { miniToolsApi } from '@web/data/api/mini-tools';
 import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
 import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { toastCancelFailure } from '@web/spaces/canvas/tasks/cancel-failure';
 import { NodeTaskPanel, countInList, inTaskList } from '@web/spaces/canvas/tasks/NodeTaskPanel';
-import { retryPlannedVideoRun } from '@web/spaces/canvas/mini-tool/start-planned-video-run';
 import type { TaskListKind } from '@web/spaces/canvas/tasks/TaskStatusDot';
 import { useTickingClock } from '@web/spaces/canvas/tasks/use-ticking-clock';
 import {
@@ -41,8 +38,6 @@ import {
 } from '@web/stores/task-actions-in-flight';
 
 /** The planned tools whose failed output retries from its task row. */
-const ROW_RETRY_TOOLS = ['video.extract-frames', 'video.split'] as const;
-
 /** The media a refusal can name formats for. */
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
 
@@ -152,44 +147,6 @@ function OpenNodeTaskPanel({
     gcTime: 0,
   });
   const entries = React.useMemo(() => query.data ?? [], [query.data]);
-  // The node row and its parent execution have separate identities. Read the
-  // full authoritative execution without writing its media back to the node;
-  // the existing result delivery owns that write. A matching label is only a
-  // lookup candidate: the project-scoped endpoint checks the actual plan.
-  const parentRunIds = React.useMemo(
-    () => [...new Set(entries.flatMap((entry) =>
-      entry.action === 'mini_tool' &&
-      miniToolById(entry.label)?.run.kind === 'planned' &&
-      typeof entry.taskId === 'string' && entry.taskId.length > 0
-        ? [entry.taskId]
-        : [],
-    ))],
-    [entries],
-  );
-  const runs = useQueries({
-    queries: parentRunIds.map((runId) => ({
-      queryKey: ['mini-tool-run', projectId, runId],
-      queryFn: () => miniToolsApi.getRun(projectId, runId),
-      retry: false,
-      // As with the node list, reopening or changing the counts must read the
-      // current persisted result and bill even when the usual cache is fresh.
-      staleTime: 0,
-      gcTime: 0,
-      refetchOnMount: 'always' as const,
-    })),
-  });
-  const retryFailed = React.useCallback((runId: string, tool: MiniToolExecutionRetryRequest['tool'], outputIndex: number): Promise<unknown> =>
-    retryPlannedVideoRun({ projectId, spaceId, tool, runId, outputIndex, onDone: () => { void query.refetch(); } }), [projectId, spaceId, query]);
-  // A planned output retries from its own failed task row (frames-split §10.8 retry row): the node's output of
-  // the parent run, matched by node id, when it failed for a reason a retry can clear.
-  const plannedRetryOf = React.useCallback((taskId: string): { runId: string; tool: MiniToolExecutionRetryRequest['tool']; outputIndex: number } | null => {
-    const entry = entries.find((candidate) => candidate.id === taskId);
-    const runId = entry?.taskId;
-    const tool = ROW_RETRY_TOOLS.find((id) => id === entry?.label);
-    if (entry?.status !== 'failed' || runId == null || tool === undefined) return null;
-    const output = runs[parentRunIds.indexOf(runId)]?.data?.outputs.find((candidate) => candidate.nodeId === nodeId);
-    return output !== undefined && plannedOutputRetryable(tool, output) ? { runId, tool, outputIndex: output.outputIndex } : null;
-  }, [entries, runs, parentRunIds, nodeId]);
   // Only the running list reads the clock, and only while it has a row: the
   // three settled states show fixed instants.
   const counting = React.useMemo(
@@ -199,10 +156,11 @@ function OpenNodeTaskPanel({
   );
   const now = useTickingClock(counting);
 
-  // A row offers Retry when this session holds its File, or when it is a planned output a retry can run again.
+  // A row offers Retry when this session holds its File; a video tool run is rerun only as a whole, from its panel
+  // (frames-split §7.19).
   const retryable = React.useCallback(
-    (taskId: string): boolean => hasRetryFile(projectId, spaceId, taskId) || plannedRetryOf(taskId) !== null,
-    [projectId, spaceId, plannedRetryOf],
+    (taskId: string): boolean => hasRetryFile(projectId, spaceId, taskId),
+    [projectId, spaceId],
   );
   // Read from a store, not this panel's state: a button still waits after the
   // panel is closed and opened again.
@@ -228,13 +186,12 @@ function OpenNodeTaskPanel({
   // re-send is a new task), so a second press would send the File twice.
   const retry = React.useCallback(
     (taskId: string): void => {
-      const planned = plannedRetryOf(taskId);
-      const work = planned === null ? onRetry(nodeId, taskId) : retryFailed(planned.runId, planned.tool, planned.outputIndex);
+      const work = onRetry(nodeId, taskId);
       if (work !== undefined) {
         trackTaskAction(taskActionKey(projectId, spaceId, taskId, 'retry'), work);
       }
     },
-    [onRetry, nodeId, projectId, spaceId, plannedRetryOf, retryFailed],
+    [onRetry, nodeId, projectId, spaceId],
   );
   // A row leaves the state this panel shows: cleared, or cancelled and ended.
   // The count cell this panel opened from is drawn only while its own state

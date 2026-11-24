@@ -4,12 +4,12 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as RequestModule from '../request';
 import type * as CreditsModule from '../credits';
-import type { MiniToolExecutionRecord, MiniToolPlannedRequest } from '@breatic/shared/mini-tools';
+import type { MiniToolPlannedRequest } from '@breatic/shared/mini-tools';
 import { miniToolsApi } from '../mini-tools';
-import { apiGet, apiPost, runOnceRequest } from '../request';
+import { apiPost, runOnceRequest } from '../request';
 import { noteCreditsChanged } from '../credits';
 
-vi.mock('../request', async (original) => ({ ...(await original<typeof RequestModule>()), apiGet: vi.fn(), apiPost: vi.fn() }));
+vi.mock('../request', async (original) => ({ ...(await original<typeof RequestModule>()), apiPost: vi.fn() }));
 vi.mock('../credits', async (original) => ({ ...(await original<typeof CreditsModule>()), noteCreditsChanged: vi.fn() }));
 
 const PROJECT = '20000000-0000-4000-8000-000000000001';
@@ -22,12 +22,6 @@ const BODY: MiniToolPlannedRequest = {
   // §95: the planned request now carries the selected bundle's presentation_ref (design §10.8; fixture migration, 4.4.5).
   analysis_refs: [], presentation_ref: { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } },
   outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'segment', range: { start: 0, end: 7 } } }],
-};
-const RECORD: MiniToolExecutionRecord = {
-  schemaVersion: 1, runId: RUN, status: 'completed', planFingerprint: 'b'.repeat(64), resultVersion: 1,
-  sourceBindings: [{ assetId: SOURCE, contentHash: 'a'.repeat(64), canonicalURL: BODY.draft.source.canonicalURL, kind: 'video', mediaInfo: BODY.draft.source.mediaInfo }],
-  outputs: [{ outputIndex: 0, nodeId: TARGET, recipe: { kind: 'segment', range: { start: 0, end: 7 } }, result: { status: 'registered', assetId: '20000000-0000-4000-8000-000000000008', canonicalURL: 'https://assets.example.test/canonical-alpha.webm', kind: 'video', mimeType: 'video/webm', size: 321, contentHash: 'c'.repeat(64), width: 400, height: 200, duration: 0.28, cover: null } }],
-  usage: [], billingState: 'waiting', error: null,
 };
 
 beforeEach(() => vi.clearAllMocks());
@@ -55,16 +49,4 @@ describe('planned mini-tool API public wire, independent of HTTP envelope transp
     expect(noteCreditsChanged).toHaveBeenCalledExactlyOnceWith(PROJECT);
   });
 
-  it('F12/F14 reads the exact project/run endpoint and retains registered canonical media while billing is waiting', async () => {
-    vi.mocked(apiGet).mockResolvedValueOnce(structuredClone(RECORD));
-    expect(await miniToolsApi.getRun(PROJECT, RUN)).toEqual(RECORD);
-    expect(apiGet).toHaveBeenCalledExactlyOnceWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`);
-    expect(apiPost).not.toHaveBeenCalled();
-  });
-
-  it('F12 rejects an invalid execution record instead of inventing terminal media', async () => {
-    vi.mocked(apiGet).mockResolvedValueOnce({ ...RECORD, outputs: [{ ...RECORD.outputs[0], result: null }] });
-    await expect(miniToolsApi.getRun(PROJECT, RUN)).rejects.toThrow();
-    expect(apiGet).toHaveBeenCalledExactlyOnceWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`);
-  });
 });

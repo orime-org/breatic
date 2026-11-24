@@ -18,7 +18,6 @@ import * as runFocusCrop from '@web/spaces/canvas/focus/run-focus-crop';
 import * as taskRowKindModule from '@web/spaces/canvas/tasks/task-row-kind';
 import * as sharedMiniTools from '@breatic/shared/mini-tools';
 import {
-  MINI_TOOL_RETRY_TOOLS,
   VIDEO_TOOL_IDS,
   miniToolPlannedRequestSchema,
   miniToolsFor,
@@ -155,9 +154,5 @@ describe('video focus crop press (design §5.5)', () => {
     const submenu = miniToolsFor('video').map((tool) => tool.id);
     expect(submenu).not.toContain('video.focus-crop');
     for (const id of VIDEO_TOOL_IDS) expect(submenu).toContain(id);
-  });
-
-  it('F11: a focus crop has no failed-output retry', () => {
-    expect(MINI_TOOL_RETRY_TOOLS).not.toContain('video.focus-crop');
   });
 });
