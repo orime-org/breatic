@@ -59,16 +59,25 @@ function generationRow(id: string, status: 'failed' | 'done' | 'running', starte
 }
 
 /**
- * Answer the Space's task list with three generation rows, on the server's own envelope and clock.
+ * Whether a request reads a 3D Space's task list. The Space reads it as soon as it opens, for its tab and its Tasks
+ * count, so a case serves its rows before it creates or opens the Space.
+ * @param url - The request's address.
+ * @returns True for a task list read.
+ */
+function isTaskList(url: URL): boolean {
+  return /\/three-d\/[^/]+\/tasks$/.test(url.pathname);
+}
+
+/**
+ * Answer every 3D Space task list this page reads with three generation rows, on the server's own envelope and clock.
  * @param page - The page reading the list.
- * @param spaceId - The 3D Space.
  * @param owner - The editor's account.
  * @param other - The other account.
  * @returns The served rows' ids.
  */
-async function serveRows(page: Page, spaceId: string, owner: string, other: string): Promise<ServedRows> {
+async function serveRows(page: Page, owner: string, other: string): Promise<ServedRows> {
   const rows: ServedRows = { failedOwn: crypto.randomUUID(), failedOther: crypto.randomUUID(), done: crypto.randomUUID() };
-  await page.route((url) => url.pathname.endsWith(`/three-d/${spaceId}/tasks`), async (route: Route) => {
+  await page.route(isTaskList, async (route: Route) => {
     const response = await route.fetch();
     const body = await response.json() as { data: { tasks: unknown[] } };
     body.data.tasks = [generationRow(rows.failedOwn, 'failed', owner), generationRow(rows.failedOther, 'failed', other), generationRow(rows.done, 'done', owner)];
@@ -106,12 +115,11 @@ test('an empty 3D Space task list says imported and generated models appear ther
 
 test('an editor filters generation rows and gets Retry, Remove and Place on them', async ({ page, browser, baseURL }) => {
   await openSmokeProject(page);
-  const id = await createSpace(page, '3d', `scene-tasks-editor-${crypto.randomUUID()}`);
-  created.push(id);
   const other = await browser.newContext({ baseURL, storageState: stateFile('B') });
   const otherId = (await dataOf<{ id: string }>(await other.request.get('/api/v1/auth/me'), 'read the other account')).id;
   await other.close();
-  const rows = await serveRows(page, id, await whoIs(page), otherId);
+  const rows = await serveRows(page, await whoIs(page), otherId);
+  created.push(await createSpace(page, '3d', `scene-tasks-editor-${crypto.randomUUID()}`));
   const panel = await openTasks(page);
   const row = (rowId: string): Locator => panel.getByTestId(`scene-task-${rowId}`);
   await expect(row(rows.failedOwn).getByRole('button')).toHaveText(['Retry', 'Remove']);
@@ -146,12 +154,10 @@ test('an editor filters generation rows and gets Retry, Remove and Place on them
 
 test('generation rows asked to rig say how the skeleton went (inner#1692)', async ({ page }) => {
   await openSmokeProject(page);
-  const id = await createSpace(page, '3d', `scene-tasks-rig-${crypto.randomUUID()}`);
-  created.push(id);
   const me = await whoIs(page);
   const rows = { failed: crypto.randomUUID(), rigged: crypto.randomUUID(), running: crypto.randomUUID() };
   const rig = { texture: false, pbr: false, rig_skeleton: true };
-  await page.route((url) => url.pathname.endsWith(`/three-d/${id}/tasks`), async (route: Route) => {
+  await page.route(isTaskList, async (route: Route) => {
     const response = await route.fetch();
     const body = await response.json() as { data: { tasks: unknown[] } };
     body.data.tasks = [
@@ -161,6 +167,7 @@ test('generation rows asked to rig say how the skeleton went (inner#1692)', asyn
     ];
     await route.fulfill({ response, json: body });
   });
+  created.push(await createSpace(page, '3d', `scene-tasks-rig-${crypto.randomUUID()}`));
   const panel = await openTasks(page);
   await expect(panel.getByTestId(`scene-task-${rows.failed}`)).toContainText('Skeleton rigging failed;');
   await expect(panel.getByTestId(`scene-task-${rows.rigged}`)).toContainText('Skeleton rigged');
@@ -178,7 +185,7 @@ test('a viewer reads generation rows with no Retry, Remove or Place', async ({ p
     const viewer = await inviteMember(page, viewerContext, projectId, credentialsFor('B').email, 'viewer');
     viewerId = await whoIs(viewer);
     // The viewer's own failed row too: only the role keeps Retry and Remove off it.
-    const rows = await serveRows(viewer, id, await whoIs(page), viewerId);
+    const rows = await serveRows(viewer, await whoIs(page), viewerId);
     await viewer.goto(smokeProjectUrl());
     await viewer.getByTestId('space-drawer-trigger').click();
     await viewer.getByTestId(`space-drawer-row-${id}`).getByRole('button').first().click();
