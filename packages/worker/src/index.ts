@@ -618,6 +618,7 @@ export function startWorker(): void {
         () => creditChargeSweep.close(),
         () => slotWaitSweep.close(),
         () => sceneTaskSweep.close(),
+        () => longMediaDispatch.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),
