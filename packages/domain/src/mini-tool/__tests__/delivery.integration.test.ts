@@ -216,7 +216,7 @@ describe("planned registered media delivery SQL owner", () => {
     await recordMiniToolConsumption({ taskId: f.taskId, ...original, claim }); expect(await stored(f)).toEqual(delivery);
     await completeMiniToolConsumptionSet(f.taskId); expect(await settleMiniToolCharge(f.taskId)).toMatchObject({ state: "settled", credits: 30 });
     expect(await stored(f)).toEqual(delivery);
-    expect((await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId)).resultVersion).toBe(1);
+    expect(((await miniToolExecutionService.readMiniToolExecution(f.taskId)).record).resultVersion).toBe(1);
   });
   it("D04 preserves an existing pending amount and held estimate while reading, deferring and acknowledging media", async () => {
     const f = await seedExecution(pg, "running"); await returned(f); await oldManifest(f);
@@ -308,7 +308,7 @@ describe("planned registered media delivery SQL owner", () => {
   it("D21 returns only the original public manifest while internal delivery diagnostics remain private", async () => {
     const f = await seedExecution(pg, "running"); const record = await oldManifest(f); await ready(f);
     await miniToolDeliveryService.deferMiniToolDelivery(f.taskId, { deliveryVersion: 1, outputIndex: 0, errorCode: PRIVATE_ERROR });
-    const before = await snapshot(f); const result = await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId);
+    const before = await snapshot(f); const result = (await miniToolExecutionService.readMiniToolExecution(f.taskId)).record;
     expect(result).toEqual(record); expect(miniToolExecutionRecordSchema.parse(result)).toEqual(record); expect(await snapshot(f)).toEqual(before);
   });
   it("D22 reads and acknowledges original canonical media after the original deadline without replacing F or allocating provider steps", async () => {

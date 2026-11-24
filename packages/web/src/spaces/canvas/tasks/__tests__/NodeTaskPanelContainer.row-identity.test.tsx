@@ -19,7 +19,6 @@ vi.mock('@web/spaces/canvas/tasks/use-ticking-clock', () => ({ useTickingClock: 
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { canvasApi } from '@web/data/api/canvas';
-import { apiGet } from '@web/data/api/request';
 import { NodeTaskPanelContainer } from '@web/spaces/canvas/tasks/NodeTaskPanelContainer';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { useTaskActionsInFlight } from '@web/stores/task-actions-in-flight';
@@ -57,12 +56,6 @@ function tree(hostNodes: Nodes = nodes(), projectId = PROJECT, onRetry: OnRetry 
     <NodeTaskPanelContainer nodes={hostNodes} projectId={projectId} spaceId={SPACE} readOnly={false} onRetry={onRetry} />
   </ReactFlow></TooltipProvider></QueryClientProvider>;
 }
-/** List only the project-scoped run requests; other existing API reads cannot satisfy these assertions.
- * @throws {never} Never.
- */
-function runPaths(): string[] {
-  return vi.mocked(apiGet).mock.calls.map(([path]) => path).filter((path) => path.includes('/mini-tool-runs/'));
-}
 
 beforeEach(() => {
   vi.clearAllMocks(); resetRetryFilesForTests(); useTaskActionsInFlight.setState({ inFlight: new Set() });
@@ -74,11 +67,6 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); });
 
 describe('node-task panel rows of a planned run (frames-split §7.19)', () => {
-  it('reads no parent run: a video tool run is rerun only as a whole, from its panel', async () => {
-    render(tree());
-    await screen.findByTestId('node-task-row');
-    expect(runPaths()).toEqual([]);
-  });
   it('N15 marking the settled row read still sends its row ID rather than the parent ID', async () => {
     render(tree()); fireEvent.click(await screen.findByTestId('task-action-finish'));
     await waitFor(() => expect(canvasApi.dismissNodeTask).toHaveBeenCalledWith(ROW, { projectId: PROJECT, spaceId: SPACE, nodeId: NODE }));

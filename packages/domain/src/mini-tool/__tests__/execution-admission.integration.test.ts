@@ -335,7 +335,7 @@ describe("the planned run's record follows its task through the running-task gat
   it.each(["running", "cancelled"] as const)("M2-06 a run the gate moves to %s reads with that status", async (status) => {
     const f = await seed(); await acceptMiniToolExecution(f.body, f.userId, startRecorder(), NO_HOLD);
     await pg`UPDATE tasks SET status=${status},started_at=CASE WHEN ${status}='running' THEN clock_timestamp() END WHERE id=${f.body.run_id}`;
-    expect((await miniToolExecutionService.getMiniToolExecution(f.body.project_id, f.body.run_id, f.userId)).status).toBe(status);
+    expect(((await miniToolExecutionService.readMiniToolExecution(f.body.run_id)).record).status).toBe(status);
   });
 
   it("M2-07 the first pickup of a run the gate started runs it", async () => {

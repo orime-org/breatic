@@ -4,7 +4,7 @@
 import type { ConsentSnapshot, TaskEntity } from "@breatic/shared";
 import { TaskStatus, miniToolPlanJobRequestSchema, t, videoPresentationWorkKeyFor } from "@breatic/shared";
 import { z } from "zod";
-import { ConflictError, NotFoundError, db, projectAuthService, type DbTx } from "@breatic/core";
+import { ConflictError, NotFoundError, db, type DbTx } from "@breatic/core";
 import { canonicalMiniToolValue, miniToolExecutionOutputSchema, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import type { AcceptedMiniToolExecution } from "@domain/mini-tool/execution-admission.service.js";
 import { executionPlanFromTask, readMiniToolExecutionPlan, type MiniToolExecutionPlan } from "@domain/mini-tool/execution-plan.service.js";
@@ -148,24 +148,6 @@ export async function readMiniToolExecution(taskId: string): Promise<MiniToolExe
  */
 export async function plannedRunsToSweep(limit: number, graceMs: number): Promise<{ running: string[]; pending: string[] }> {
   return taskRepo.listPlannedRunsToSweep(limit, graceMs);
-}
-
-/**
- * Read only original tasks and current project membership for a collaborator.
- * @param projectId - The Project in the route path.
- * @param runId - The immutable execution run.
- * @param userId - The currently authenticated collaborator.
- * @returns Current computation, registered outputs and public actual expenses.
- * @throws {NotFoundError} When the task or project is hidden from this collaborator.
- * @throws {Error} When persisted planning or public metadata is inconsistent.
- */
-export async function getMiniToolExecution(projectId: string, runId: string, userId: string): Promise<MiniToolExecutionRecord> {
-  const task = await taskRepo.getMiniToolExecutionTask(runId);
-  if (task === null || task.deletedAt !== null || task.projectId !== projectId || task.source !== "mini_tool"
-    || task.params.miniToolExecution === undefined || await projectAuthService.loadProjectRole(userId, projectId) === null) {
-    throw new NotFoundError(t("server.error.not_found"));
-  }
-  return recordFromPlan(await executionPlanFromTask(task));
 }
 
 /**

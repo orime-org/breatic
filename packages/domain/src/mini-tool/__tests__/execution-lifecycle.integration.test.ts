@@ -195,7 +195,7 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
   it("U08/U09 keeps registered output readable while billing remains pending and the hold is held", async () => {
     const f = await seedExecution(pg, "running"); await identity(f); await terminal(f);
     await pg`INSERT INTO credit_holds (studio_id,actor_user_id,reference_id,amount,status,expires_at) VALUES (${f.studioId},${f.userId},${f.taskId},30,'held','2099-01-01T00:00:00Z')`;
-    const r = await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId); expect(r.outputs[0]!.result).toEqual(f.registered); expect(r.billingState).toBe("waiting");
+    const r = (await miniToolExecutionService.readMiniToolExecution(f.taskId)).record; expect(r.outputs[0]!.result).toEqual(f.registered); expect(r.billingState).toBe("waiting");
     expect(await settleMiniToolCharge(f.taskId)).toEqual({ state: "pending" }); const [hold] = await pg`SELECT status FROM credit_holds WHERE reference_id=${f.taskId}`; expect(hold).toEqual({ status: "held" });
   });
   it("U10 settles a closed recorded task once while retaining the media and public fees", async () => {
@@ -204,13 +204,13 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim }); await terminal(f); await completeMiniToolConsumptionSet(f.taskId);
     const first = await settleMiniToolCharge(f.taskId); expect(first).toMatchObject({ state: "settled", credits: 30, first: true });
     expect(await settleMiniToolCharge(f.taskId)).toMatchObject({ state: "settled", credits: 30, first: false });
-    const r = await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId); expect(r).toMatchObject({ status: "completed", resultVersion: 1, billingState: "settled", usage: [{ consumptionKey: i.key, state: "recorded", chargeTo: "user", costUsd: 0.3, credits: 30 }] }); expect(r.outputs[0]!.result).toEqual(f.registered);
+    const r = (await miniToolExecutionService.readMiniToolExecution(f.taskId)).record; expect(r).toMatchObject({ status: "completed", resultVersion: 1, billingState: "settled", usage: [{ consumptionKey: i.key, state: "recorded", chargeTo: "user", costUsd: 0.3, credits: 30 }] }); expect(r.outputs[0]!.result).toEqual(f.registered);
   });
   it("B04 permits recorded actual expense beside an active idle cycle", async () => {
     const f = await seedExecution(pg, "running"); const i = await identity(f); const c = await claim(f);
     await confirmExecutionCost(f, i, c.claim, 0.3);
     await recordMiniToolConsumption({ taskId: f.taskId, stepId: i.stepId, identity: i.identity, claim: c.claim });
-    const r = await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId); expect(r).toMatchObject({ status: "running", resultVersion: 0, billingState: "idle", usage: [{ consumptionKey: i.key, state: "recorded", costUsd: 0.3, credits: 30 }] });
+    const r = (await miniToolExecutionService.readMiniToolExecution(f.taskId)).record; expect(r).toMatchObject({ status: "running", resultVersion: 0, billingState: "idle", usage: [{ consumptionKey: i.key, state: "recorded", costUsd: 0.3, credits: 30 }] });
   });
   it("U11 completing the call set preserves the actual live checking lease and media", async () => {
     const f = await seedExecution(pg, "running"); await identity(f); const c = await claim(f); await terminal(f); const before = await executionSnapshot(pg, f);
@@ -219,15 +219,15 @@ describe("step-owned actual consumption public mirror transaction (U/B)", () => 
   });
   it("B01 builds active0 from accepted F without writing on a read", async () => {
     const f = await seedExecution(pg, "pending", false); const before = await executionSnapshot(pg, f);
-    expect(await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId)).toEqual(f.record); expect(await executionSnapshot(pg, f)).toEqual(before);
+    expect((await miniToolExecutionService.readMiniToolExecution(f.taskId)).record).toEqual(f.record); expect(await executionSnapshot(pg, f)).toEqual(before);
   });
   it.each(["idle", "waiting", "checking", "settled"] as const)("B03 reads the actual %s period without a steps lookup", async (state) => {
     const f = await seedExecution(pg); await pg`UPDATE tasks SET result=result || ${pg.json({ settlement: { version: 1, state, pendingConsumptionKeys: [], nextAttemptAt: null, leaseToken: null, leaseUntil: null, lastError: null, consumptionSetComplete: false } })} WHERE id=${f.taskId}`;
-    expect((await miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId)).billingState).toBe(state);
+    expect(((await miniToolExecutionService.readMiniToolExecution(f.taskId)).record).billingState).toBe(state);
   });
   it("B05 refuses damaged persisted settlement instead of treating it as absent", async () => {
     const f = await seedExecution(pg); await pg`UPDATE tasks SET result=result || ${pg.json({ settlement: { state: "broken" } })} WHERE id=${f.taskId}`;
-    await expect(miniToolExecutionService.getMiniToolExecution(f.projectId, f.taskId, f.viewerId)).rejects.toBeInstanceOf(Error);
+    await expect(miniToolExecutionService.readMiniToolExecution(f.taskId)).rejects.toBeInstanceOf(Error);
   });
 });
 

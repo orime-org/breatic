@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: AGPL-3.0-only
 
-/** Real PG node-task/parent/history identities and real project-scoped HTTP; no provider or media IO. */
+/** Real PG node-task/parent/history identities and the real node-task list route; no provider or media IO. */
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Hono } from "hono";
 import { z } from "zod";
@@ -10,7 +10,7 @@ import {
   createPgClient, getNodeTaskConfig, getRedis, getStorageAdapter, getStreamRedis, initCore,
   initLogger, loadLocales, logger, revokeSession, sessionCookieName, setSession, taskEventsStreamKey,
 } from "@breatic/core";
-import { miniToolExecutionRecordSchema, type MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
+import type { MiniToolPlannedRequest } from "@breatic/shared/mini-tools";
 import {
   miniToolExecutionService, modelCatalog, nodeHistoryService, nodeTaskService, openMiniToolPlanJob, runningSlotService, upstreamStepRepo, initProvider,
 } from "@breatic/domain";
@@ -72,12 +72,6 @@ async function list(f: ExecutionFixture, userId: string | null = f.userId, nodeI
   const parsed = z.object({ data: z.object({ tasks: z.array(z.unknown()) }) }).safeParse(body);
   return { response, rows: parsed.success ? parsed.data.data.tasks as WireEntry[] : [] };
 }
-/** Read only the actual existing project execution resource, never the actor-only task endpoint.
- * @throws {Error} When the test HTTP or session store fails.
- */
-async function parentGet(f: ExecutionFixture, userId = f.viewerId, projectId = f.projectId): Promise<Response> {
-  return app.request(`/api/v1/projects/${projectId}/mini-tool-runs/${f.taskId}`, { headers: { Cookie: await cookie(userId) } });
-}
 /** Create one legal task without a planned F; action/label never authenticate this parent.
  * @throws {Error} When the fixture SQL fails.
  */
@@ -110,7 +104,7 @@ async function admitted(): Promise<ExecutionFixture> {
   await runningSlotService.startWithinLimit({ id: body.run_id, jobId: body.run_id });
   const context = await miniToolExecutionService.startMiniToolExecution(body.run_id, body.run_id);
   const plan = context.execution;
-  const record = await miniToolExecutionService.getMiniToolExecution(f.projectId, body.run_id, viewerId);
+  const record = (await miniToolExecutionService.readMiniToolExecution(body.run_id)).record;
   const assetId = randomUUID(); const key = `video/parent-winner/${assetId}.webm`; const canonicalURL = (await getStorageAdapter()).publicUrl(key);
   await pg`INSERT INTO studio_assets (id,studio_id,content_hash,storage_key,file_url,size_bytes,mime_type,kind,source,produced_by_user_id,generation_task_id,width,height,duration_seconds)
     VALUES (${assetId},${f.studioId},${"b".repeat(64)},${key},${canonicalURL},1588436,'video/webm','video','ai',${f.userId},${body.run_id},960,540,5.013)`;
@@ -136,7 +130,7 @@ async function completedPending(f: ExecutionFixture): Promise<void> {
     outputs: [{ ...f.plan.outputs[0]!, result: f.registered }] });
 }
 
-describe("node-task parent-run recovery through original persistent owners", () => {
+describe("node-task rows of a planned run through original persistent owners", () => {
   it("N01 preserves the distinct node-row and parent IDs through repository, service and real HTTP", async () => {
     const f = await admitted(); const [row] = await pg<{ id: string; task_id: string }[]>`SELECT id,task_id FROM node_tasks WHERE task_id=${f.taskId}`;
     expect(row?.task_id).toBe(f.taskId); expect(row?.id).not.toBe(f.taskId);
@@ -153,7 +147,6 @@ describe("node-task parent-run recovery through original persistent owners", () 
     const g = await open(f, undefined, "generate", generateParent, "legacy-video"); const t = await open(f, undefined, "mini_tool", toolParent);
     const result = await list(f); expect(result.response.status).toBe(200);
     expect(result.rows).toEqual(expect.arrayContaining([expect.objectContaining({ id: g, taskId: generateParent }), expect.objectContaining({ id: t, taskId: toolParent })]));
-    expect((await app.request(`/api/v1/projects/${f.projectId}/mini-tool-runs/${toolParent}`, { headers: { Cookie: await cookie(f.viewerId) } })).status).toBe(404);
   });
   it("N04 respects the actual nullable FK after a parent is physically removed", async () => {
     const f = await seedExecution(pg); const old = await legacy(f); const id = await open(f, undefined, "generate", old);
@@ -172,8 +165,6 @@ describe("node-task parent-run recovery through original persistent owners", () 
     const f = await seedExecution(pg); const secondNode = randomUUID(); const a = await open(f); const b = await open(f, secondNode);
     expect((await list(f)).rows).toEqual([expect.objectContaining({ id: a, taskId: f.taskId })]);
     expect((await list(f, f.userId, secondNode)).rows).toEqual([expect.objectContaining({ id: b, taskId: f.taskId })]);
-    const response = await parentGet(f); expect(response.status).toBe(200); const wire = await response.json() as { data: unknown };
-    expect(miniToolExecutionRecordSchema.parse(wire.data).outputs).toEqual(f.record.outputs);
   });
   it("N07 clears only the settled row and retains the parent and history", async () => {
     const f = await seedExecution(pg); const id = await open(f); const remaining = await open(f);
@@ -181,19 +172,13 @@ describe("node-task parent-run recovery through original persistent owners", () 
     await nodeTaskService.settle({ taskId: id, outcome: "failed", nodeHistoryId: history.id, errorMessage: "fixture failure" });
     const response = await app.request(`/api/v1/canvas/node-tasks/${id}?project_id=${f.projectId}&space_id=${f.plan.spaceId}&node_id=${f.plan.targetNodeIds[0]}`, { method: "DELETE", headers: { Cookie: await cookie(f.userId) } });
     expect(response.status).toBe(200); expect((await list(f)).rows).toEqual([expect.objectContaining({ id: remaining, taskId: f.taskId })]);
-    expect((await parentGet(f)).status).toBe(200); expect(await pg`SELECT id FROM node_history WHERE id=${history.id}`).toHaveLength(1);
+    expect(await pg`SELECT id FROM tasks WHERE id=${f.taskId}`).toHaveLength(1); expect(await pg`SELECT id FROM node_history WHERE id=${history.id}`).toHaveLength(1);
   });
   it("N08 harvest leaves the row of an open planned run to the run itself (frames-split §7.19)", async () => {
     const f = await seedExecution(pg); const id = await open(f);
     await pg`UPDATE node_tasks SET started_at=now()-((budget_ms+1000)*interval '1 millisecond') WHERE id=${id}`;
     const result = await list(f); expect(result.response.status).toBe(200); expect(result.rows).toEqual([expect.objectContaining({ id, taskId: f.taskId, status: "running" })]);
     expect((await executionSnapshot(pg, f)).status).toBe("pending");
-  });
-  it.each([false, true])("N09 current viewer/archived member reads the original run without actor authority (archived=%s)", async (archived) => {
-    const f = await seedExecution(pg); const id = await open(f);
-    if (archived) await pg`UPDATE projects SET archived_at=now(),archived_by_user_id=${f.userId} WHERE id=${f.projectId}`;
-    const listed = await list(f, f.viewerId); expect(listed.response.status).toBe(200); expect(listed.rows).toEqual([expect.objectContaining({ id, taskId: f.taskId })]);
-    expect((await parentGet(f)).status).toBe(200);
   });
   it.each(["unauthenticated", "nonmember", "wrong project"])("N10 refuses %s before harvesting another project's expired row", async (kind) => {
     const f = await seedExecution(pg); const outsider = await seedExecution(pg); const id = await open(f);
@@ -202,25 +187,18 @@ describe("node-task parent-run recovery through original persistent owners", () 
     expect(read.response.status).toBe(kind === "unauthenticated" ? 401 : kind === "wrong project" ? 200 : 404);
     if (kind === "wrong project") expect(read.rows).toEqual([]);
     const [row] = await pg`SELECT status FROM node_tasks WHERE id=${id}`; expect(row?.status).toBe("running");
-    if (kind !== "unauthenticated") expect((await parentGet(f, outsider.userId, kind === "wrong project" ? outsider.projectId : f.projectId)).status).toBe(404);
   });
-  it.each(["deleted", "membership removed"])("N11 retains the row while parent GET enforces %s", async (kind) => {
+  it.each(["deleted", "membership removed"])("N11 retains the row when its parent is %s", async (kind) => {
     const f = await seedExecution(pg); const id = await open(f);
     if (kind === "deleted") await pg`UPDATE tasks SET deleted_at=now() WHERE id=${f.taskId}`;
     else await pg`DELETE FROM project_members WHERE project_id=${f.projectId} AND user_id=${f.viewerId}`;
-    expect((await list(f)).rows).toEqual([expect.objectContaining({ id, taskId: f.taskId })]); expect((await parentGet(f)).status).toBe(404);
+    expect((await list(f)).rows).toEqual([expect.objectContaining({ id, taskId: f.taskId })]);
   });
-  it("N12 a fresh collaborator discovers the admitted parent through real rows and reads registered media while its bill is pending", async () => {
-    const f = await admitted(); await completedPending(f); const listed = await list(f, f.viewerId);
-    expect(listed.response.status).toBe(200); expect(listed.rows).toHaveLength(1); expect(listed.rows[0]).toMatchObject({ taskId: f.taskId });
-    const response = await parentGet(f); expect(response.status).toBe(200); const body = await response.json() as { data: unknown }; const record = miniToolExecutionRecordSchema.parse(body.data);
-    expect(record).toMatchObject({ runId: f.taskId, status: "completed", resultVersion: 1, billingState: "waiting", sourceBindings: [{ mediaInfo: { duration: 5.055 } }], outputs: [{ outputIndex: 0, nodeId: f.plan.targetNodeIds[0], result: { ...f.registered, duration: 5.013 } }] });
-  });
-  it("N13 repeated recovery GETs preserve SQL run/history and emit counts without a media result", async () => {
+  it("N13 repeated list reads preserve SQL run/history and emit counts without a media result", async () => {
     const f = await admitted(); await completedPending(f); const before = await executionSnapshot(pg, f);
     const historyBefore = await pg`SELECT * FROM node_history WHERE task_id=${f.taskId}`;
     const redis = getStreamRedis(); const start = await redis.xrevrange(taskEventsStreamKey(), "+", "-", "COUNT", 1); const afterId = start[0]?.[0] ?? "0-0";
-    for (let i = 0; i < 2; i++) { expect((await list(f, f.viewerId)).response.status).toBe(200); expect((await parentGet(f)).status).toBe(200); }
+    for (let i = 0; i < 2; i++) { expect((await list(f, f.viewerId)).response.status).toBe(200); }
     expect(await executionSnapshot(pg, f)).toEqual(before); expect(await pg`SELECT * FROM node_history WHERE task_id=${f.taskId}`).toEqual(historyBefore);
     const emitted = await redis.xrange(taskEventsStreamKey(), `(${afterId}`, "+");
     expect(emitted.length).toBeGreaterThanOrEqual(2);

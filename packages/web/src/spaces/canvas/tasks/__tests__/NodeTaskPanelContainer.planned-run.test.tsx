@@ -3,9 +3,9 @@
 
 /**
  * inner#1306 frames-split design §7.19: a planned run (here a split) is rerun only as a whole, from its tool's panel, so the
- * task row of its failed output node offers only Clear, never Retry, and asks the run nothing.
+ * task row of its failed output node offers only Clear, never Retry.
  *
- * The request layer (`apiGet`, `apiPost`) is mocked and answers the task list and the run; translation is real.
+ * The request layer (`apiGet`, `apiPost`) is mocked and answers the task list; translation is real.
  */
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -14,7 +14,6 @@ import { ReactFlow } from '@xyflow/react';
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { t, type NodeTaskEntry } from '@breatic/shared';
-import type { MiniToolExecutionRecord } from '@breatic/shared/mini-tools';
 
 const http = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
 vi.mock('@web/data/api/request', async (importOriginal) => ({ ...(await importOriginal<Record<string, unknown>>()), apiGet: http.get, apiPost: http.post }));
@@ -31,7 +30,6 @@ import { resetRunOnceForTests, useTaskActionsInFlight } from '@web/stores/task-a
 
 const PROJECT = '10000000-0000-4000-8000-000000000001';
 const SPACE = '20000000-0000-4000-8000-000000000001';
-const FIRST = '30000000-0000-4000-8000-000000000001';
 const OUTPUT = '30000000-0000-4000-8000-000000000002';
 const RUN = '50000000-0000-4000-8000-000000000001';
 type Nodes = React.ComponentProps<typeof NodeTaskPanelContainer>['nodes'];
@@ -47,29 +45,12 @@ function row(): NodeTaskEntry {
 }
 
 /**
- * The split run: its first segment failed on another node, the second on this one, or still pending while it runs.
- * @param failed - Whether this node's output failed.
- * @returns The record.
- */
-function record(failed = true): MiniToolExecutionRecord {
-  return { schemaVersion: 1, runId: RUN, status: 'failed', planFingerprint: 'a'.repeat(64), resultVersion: 1,
-    sourceBindings: [{ assetId: '80000000-0000-4000-8000-000000000001', contentHash: 'b'.repeat(64), canonicalURL: 'https://assets.example.test/video/source.mp4', kind: 'video', mediaInfo: { width: 960, height: 540, duration: 5, mimeType: 'video/mp4' } }],
-    outputs: [
-      { outputIndex: 0, nodeId: FIRST, recipe: { kind: 'segment', range: { start: 0, end: 2 } }, result: { status: 'failed', error: { code: 'mini_tool_failed' } } },
-      { outputIndex: 1, nodeId: OUTPUT, recipe: { kind: 'segment', range: { start: 2, end: 5 } }, result: failed ? { status: 'failed', error: { code: 'mini_tool_failed' } } : null },
-    ],
-    usage: [], billingState: failed ? 'settled' : 'idle', error: failed ? { code: 'mini_tool_failed' } : null, ...(failed ? {} : { status: 'running' }) };
-}
-
-/**
- * Answers the output node's task list and its run.
- * @param failed - Whether this node's output failed.
+ * Answers the output node's task list.
  * @returns Nothing.
  */
-function serve(failed = true): void {
+function serve(): void {
   http.get.mockImplementation(async (path: string): Promise<unknown> => {
     if (path === `/canvas/nodes/${OUTPUT}/tasks`) return { tasks: [row()] };
-    if (path === `/projects/${PROJECT}/mini-tool-runs/${RUN}`) return record(failed);
     throw new Error(`Unexpected GET ${path}`);
   });
 }
@@ -93,13 +74,12 @@ beforeEach(() => {
 afterEach(() => { cleanup(); client.clear(); resetRunOnceForTests(); canvasSessions.of(SPACE).getState().closeActivePanel(); vi.restoreAllMocks(); });
 
 describe('a failed planned output node is rerun only as a whole (frames-split §7.19)', () => {
-  it('offers Clear and no Retry on the failed row, and reads no run to retry', async () => {
+  it('offers Clear and no Retry on the failed row', async () => {
     serve();
     mount();
     await screen.findByTestId('node-task-row');
     expect(await screen.findByRole('button', { name: t('canvas.task.action.clear') })).toBeTruthy();
     expect(screen.queryByRole('button', { name: t('canvas.task.action.retry') })).toBeNull();
-    expect(http.get).not.toHaveBeenCalledWith(`/projects/${PROJECT}/mini-tool-runs/${RUN}`);
     expect(http.post).not.toHaveBeenCalled();
   });
 
