@@ -256,12 +256,19 @@ test('a multi-part video lands with the cover our worker pulled out of it @needs
     .toBe(true);
   expect(stored.coverUrl).not.toBe(stored.content);
 
-  // The cover is what the node shows over the video while its presentation is
-  // prepared; that preparation is held above, so the cover stays up.
-  const cover = visibleSpace(page).locator('.react-flow__node [data-testid="media-player"] img');
-  await expect(cover).toBeVisible();
-  expect(await cover.getAttribute('src')).toMatch(/^https?:\/\//);
-  await expect.poll(() => cover.evaluate((el: HTMLImageElement) => el.naturalWidth)).toBeGreaterThan(0);
+  // The cover is a picture the browser decodes.
+  const coverWidth = await page.evaluate(async (url) => new Promise<number>((resolve) => {
+    const image = new Image();
+    image.onload = (): void => resolve(image.naturalWidth);
+    image.onerror = (): void => resolve(0);
+    image.src = url;
+  }), stored.coverUrl);
+  expect(coverWidth).toBeGreaterThan(0);
+  // While its presentation is prepared (held above), a node whose original the browser plays plays that original, with no
+  // preparing notice over it (frames-split §7.9).
+  const node = visibleSpace(page).locator('.react-flow__node');
+  await expect(node.locator('[data-testid="media-player"] video')).toHaveCount(1);
+  await expect(node.getByTestId('video-preparation-notice')).toHaveCount(0);
 });
 
 // A4: the second drop of a file this studio already stores sends no bytes and
@@ -327,14 +334,14 @@ test('a video whose frame cannot be cut still lands, without a cover @needs-ffmp
     }, { timeout: 120_000 })
     .toBe(true);
 
-  // The node plays only through a prepared presentation, and these bytes cannot
-  // be prepared: it says the media is unavailable, and offers no Retry because
-  // a content failure comes out the same every time. Held for a while: a poster
-  // that arrives late would make this pass on timing rather than on the outcome.
+  // These bytes cannot be prepared: the node shows the candidate's failure, and offers no Retry because a content failure
+  // comes out the same every time (frames-split §7.9, §10.6). Held for a while: a poster that arrives late would make this
+  // pass on timing rather than on the outcome.
   const node = visibleSpace(page).locator('.react-flow__node');
-  await expect(node.getByText('Media unavailable')).toBeVisible({ timeout: 120_000 });
+  await expect(node.getByText('This video is unsupported by this tool')).toBeVisible({ timeout: 120_000 });
   await page.waitForTimeout(5_000);
   expect((await storedVideo(page)).coverUrl).toBe('');
+  await expect(node.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
   await expect(node.getByRole('button', { name: 'Retry preview' })).toHaveCount(0);
   await expect(node.locator('[data-testid="media-player"] img')).toHaveCount(0);
 });
