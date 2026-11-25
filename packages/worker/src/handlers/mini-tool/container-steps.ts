@@ -138,8 +138,9 @@ async function advanceAttempts(run: ContainerRun, planned: ContainerStep, deadli
       : storedRequest(existing)!;
     const step = existing ?? await appendStep(run.taskId, { kind: "container_job", endpoint: containerClass, itemIndex: steps.length });
     const { request, consumption } = await openMiniToolPlanJob({ taskId: run.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request: candidate });
-    // The job boundary answers only a terminal report; a running job throws StillRunning, and DeadlinePassed once it can no
-    // longer be submitted or waited for: this step expires, while the pickup still reads every other step.
+    // The job boundary answers a terminal report, or UNOPENED when the job never reached ingest and opening is withheld; a
+    // running job throws StillRunning, and DeadlinePassed once it can no longer be submitted or waited for: this step
+    // expires, while the pickup still reads every other step.
     let ended: EndedMiniToolPlanJob | Unopened;
     try {
       ended = await advanceMiniToolPlanJob(request, open);

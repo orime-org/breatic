@@ -137,9 +137,10 @@ function plannedOutput(execution: VideoTool, outputIndex: number): PlannedOutput
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
  * @param pickup - The pickup's results, extended in place.
- * @param open - Whether its next attempt may be opened.
- * @returns True when its next attempt waits to be opened; false once the batch is settled, still running or stopped by a
- * failure.
+ * @param open - Whether new work may start: a next attempt opened, or an opened attempt that ingest holds no record of
+ * submitted.
+ * @returns True when it would start new work and was left for a pass that may; false once the batch is settled, still
+ * running or stopped by a failure.
  * @throws {Error} When persistence or grants fail.
  */
 async function advanceBatch(execution: VideoTool, batch: number, outputs: readonly number[], userId: string, deadlineAt: number,
@@ -208,8 +209,9 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
  * @param pickup - The pickup's results, extended in place.
- * @param open - Whether a chunk's next attempt or the stitch may be opened.
- * @returns True when a chunk's next attempt or the stitch waits to be opened; false once the segment is settled or still
+ * @param open - Whether new work may start: a chunk's next attempt or the stitch opened, or an opened job that ingest holds
+ * no record of submitted.
+ * @returns True when it would start new work and was left for a pass that may; false once the segment is settled or still
  * running.
  * @throws {Error} When persistence, grants or registration fail.
  */
