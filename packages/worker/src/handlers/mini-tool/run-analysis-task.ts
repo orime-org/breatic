@@ -35,6 +35,8 @@ export async function runMiniToolAnalysisTask(
     const execution = await miniToolAnalysisService.startMiniToolAnalysisExecution(job.data.taskId, job.id ?? job.data.taskId);
     const { record, context } = execution;
     ctx = { ...context, jobId: job.id, phase: "computation" };
+    // A detection cancelled while it waited for a running slot ended there; its delayed job only finds it.
+    if (record.status === "cancelled") return { analysisRunId: record.analysisRunId, status: record.status };
     let completion: miniToolAnalysisService.MiniToolAnalysisCompletion;
     let marker: Record<string, unknown> = { analysisRunId: record.analysisRunId, status: record.status };
     if (record.status === "completed" || record.status === "failed") {

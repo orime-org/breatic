@@ -160,6 +160,16 @@ describe("original analysis task pickup", () => {
     expect(h.finish).toHaveBeenCalledExactlyOnceWith(TASK, { kind: "result", result }, h.stream);
   });
 
+  // A detection the user cancelled while it waited for a running slot is picked up once more by its delayed job (frames-split
+  // §7.19 analysis row): it ends as it stands, as a cancelled planned run does.
+  it("ends a cancelled analysis as it stands: no computation, grant or notification", async () => {
+    const cancelled = structuredClone(execution); cancelled.record = miniToolAnalysisRecordSchema.parse({ ...record, status: "cancelled" });
+    h.start.mockResolvedValue(cancelled);
+    h.gate.mockResolvedValue({ outcome: "ended", publishFailures: [] });
+    expect(await runMiniToolAnalysisTask(job(), "token", h.execute)).toEqual({ analysisRunId: TASK, status: "cancelled" });
+    expect(h.execute).not.toHaveBeenCalled(); expect(h.finish).not.toHaveBeenCalled(); expect(h.error).not.toHaveBeenCalled();
+  });
+
   it("replays an original failure without a late result", async () => {
     const original = structuredClone(execution); original.record = miniToolAnalysisRecordSchema.parse({ ...record, status: "failed", error: { code: "expired" } });
     h.start.mockResolvedValue(original);
