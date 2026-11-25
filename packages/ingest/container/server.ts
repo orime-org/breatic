@@ -10,8 +10,9 @@
  * asked for them, and answers with all of it. The run
  * takes one mini-tool job (inner#888), answers 202, and reports on its own
  * when the job ends.
- * The alpha preparation endpoint holds its request through verification and
- * reporting. It decides nothing about
+ * The presentation endpoint (`/presentation`) holds its request until the
+ * probe has planned the source's frame grid and answers with the plan or a
+ * failure code. It decides nothing about
  * what the media is: which stream carries the dimensions and whether a cover
  * is wanted are the caller's judgements, made where the stored bytes have
  * already been read.

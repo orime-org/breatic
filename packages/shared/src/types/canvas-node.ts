@@ -180,7 +180,7 @@ export type FocusCropOutcome = 'added' | 'refused';
  * explicit-selection rule as node references).
  */
 export interface FocusImage {
-  /** Stable id (frontend-generated UUID v4); `@` mentions reference it. */
+  /** Stable id: a frontend-generated UUID v4 for an image crop, the run's taskId for a video focus crop; `@` mentions reference it. */
   id: string;
   /** Public URL of the uploaded crop asset. */
   url: string;

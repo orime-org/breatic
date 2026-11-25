@@ -45,7 +45,7 @@ export const videoPresentationEncodingSchema = z.strictObject({
     startSeconds: z.number().nonnegative().finite(), encodePixelsPerSecond: rate, tonemapPixelsPerSecond: rate,
     decodeConvertPixelsPerSecond: rateTable([...SOURCE_DECODE_KEYS, ...EDIT_FILE_TIERS]),
     editEncodePixelsPerSecond: rateTable(EDIT_FILE_TIERS),
-    // Audio seconds encoded to AAC per second: the stem and stitch estimates (§5.4).
+    // Audio seconds encoded to AAC per second: the stitch estimate (§5.4).
     aacEncodeSecondsPerSecond: rate,
   }),
   edit: z.strictObject({

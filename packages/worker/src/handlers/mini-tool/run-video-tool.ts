@@ -117,7 +117,6 @@ function recipeOf(execution: VideoTool, outputIndex: number): VideoTool["outputs
  * @param outputIndex - The output.
  * @returns The planned output.
  * @throws {Error} When the run plans another recipe.
- * @throws {MiniToolStepFailed} When the frozen version cannot build the recipe.
  */
 function plannedOutput(execution: VideoTool, outputIndex: number): PlannedOutput {
   const recipe = recipeOf(execution, outputIndex);

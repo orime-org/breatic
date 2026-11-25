@@ -10,7 +10,7 @@ The business core shared by server and worker. These rules apply when you change
 
 ### Upstream step repos are worker-only
 
-**`task/upstreamStep.repo.ts` (`task_upstream_steps`) and `task/upstreamClone.repo.ts` (`studio_upstream_clones`) are written only by worker, and read only by worker except where server ends a planned video tool run outside the worker: `runningChunkKeys` in `mini-tool/execution.service.ts` reads the run's steps to queue its unfinished chunks' work objects for reclaim.** The first holds a container mini-tool's `container_job` step, a planned run's job steps and the upstream calls of tasks from before provider, which the worker turns into a provider ticket on their next pickup; the second is the clone cache the worker writes from provider's answers and hands back on every plan.
+**`task/upstreamStep.repo.ts` (`task_upstream_steps`) and `task/upstreamClone.repo.ts` (`studio_upstream_clones`) are written only by worker, and read only by worker except where server ends a planned video tool run outside the worker (a cancelled wait, an admission whose queueing failed): `runningChunkKeys` in `mini-tool/execution.service.ts` reads the run's steps to queue its unfinished chunks' work objects for reclaim, and `completeMiniToolConsumptionSet` in `mini-tool/consumption-producer.service.ts` reads them to close the run's consumption set.** The first holds a container mini-tool's `container_job` step, a planned run's job steps and the upstream calls of tasks from before provider, which the worker turns into a provider ticket on their next pickup; the second is the clone cache the worker writes from provider's answers and hands back on every plan.
 
 ## Credits
 

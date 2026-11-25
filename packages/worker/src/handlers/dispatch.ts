@@ -10,6 +10,7 @@
  * 3. Mini-tool → a model run through provider, or a container job
  * 4. Understand → media analysis / ASR
  * 5. Generation → a model run through provider
+ * 6. Mini-tool delivery and delivery discovery → runMiniToolDeliveryJob
  *
  * Anything else throws.
  */

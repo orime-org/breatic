@@ -291,7 +291,7 @@ RUN set -eu; \
     echo "The licence texts are in this directory."; \
   } > /usr/share/sox-source/SOURCE
 
-# Exercise the actual Python subprocess, actual weights and full raw-input
+# Exercise the actual Python subprocess, the pinned detector and full raw-input
 # contract during every image build. The test source is mounted, not shipped.
 RUN --network=none --mount=type=bind,source=packages/ingest/container/__tests__/analysis-runtime.test.py,target=/tmp/analysis-runtime.test.py,ro \
     python3 /tmp/analysis-runtime.test.py

@@ -99,7 +99,7 @@ export async function deferMiniToolSettlement(input: z.infer<typeof deferInputSc
     if (!await taskRepo.hasMiniToolSettlementLease(task.id, request.claim, tx)) return false;
     const previous = miniToolSettlementSchema.parse(task.result.settlement);
     const clock = await taskRepo.miniToolSettlementClock(task.id, getMiniToolsConfig().settlement, tx);
-    // A model step waiting on a later lookup is next due then; anything else retries after the configured delay.
+    // Every unrecorded consumption retries after the configured delay.
     const due = nextSettlementDue(await upstreamStepRepo.listSteps(task.id, tx), Date.parse(clock.retryAt)).at;
     await taskRepo.storeMiniToolSettlement(task.id, {
       ...previous, version: previous.version + 1, state: "waiting", nextAttemptAt: due === null ? clock.retryAt : new Date(due).toISOString(),

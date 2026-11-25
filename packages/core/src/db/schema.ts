@@ -3542,8 +3542,10 @@ export const storageReclaimQueue = pgTable(
     storageKey: text("storage_key").notNull(),
     /**
      * `dedup_loser` (a redundant upload copy, with the four columns below) or
-     * `derived` (a presentation object no live pin references, inner#1306
-     * §7.15; it belongs to a canonical key, so the four are null).
+     * `derived` (an object no live pin references, inner#1306 §7.15:
+     * content_hash, studio_id and source are null; kept_storage_key holds the
+     * canonical key of a presentation-derived object and is null for a run's or
+     * an analysis's intermediate).
      */
     kind: text("kind").$type<"dedup_loser" | "derived">().notNull().default("dedup_loser"),
     /** Its content fingerprint — identical to the surviving row's. */
@@ -3588,7 +3590,7 @@ export const storageReclaimQueue = pgTable(
   ],
 );
 
-// ── Presentation pins (0130, inner#1306 §7.15) ───────────────────────
+// ── Presentation pins (0133, inner#1306 §7.15) ───────────────────────
 
 /**
  * One holder's reference to derived presentation objects of one toolInputId

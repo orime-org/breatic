@@ -188,7 +188,7 @@ export async function submit(input: MaintenanceSubmission): Promise<MaintenanceA
       physicalReason = "executor_unavailable";
     else {
       const storage = getMaintenanceDependencies().storage;
-      // Derived rows have no kept object to check.
+      // A row without a kept key (a run's or an analysis's intermediate) has no kept object to check.
       const keptKeys = [...new Set(checkedPreview.items.flatMap(item => item.keptStorageKey === null ? [] : [item.keptStorageKey]))];
       for (let offset = 0; offset < keptKeys.length; offset += 4) {
         const results = await Promise.all(keptKeys.slice(offset, offset + 4).map(async (key) => {

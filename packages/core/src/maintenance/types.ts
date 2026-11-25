@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Exact, owner-approved physical scope; never expanded by suffix or prefix. A `derived` presentation object has no kept
- * key (null).
+ * Exact, owner-approved physical scope; never expanded by suffix or prefix. A `derived` row's kept key is the canonical
+ * key of a presentation-derived object, and null for a run's or an analysis's intermediate.
  */
 export interface ReclaimScope {
   id: string;

@@ -5,8 +5,8 @@
  * S6d D3: the standard-4 presentation recipes on real media and the frame grid (inner#1306 test plan §91 D3; frames-split
  * design §4.1, §4.3, §5.4, §7.16, §7.17; answers D-1, D-2, D-5, D-7, D-8).
  *
- * Each case runs the planned job owner (`runPlanJob`) as the standard-4 container does: it downloads the bound inputs,
- * runs the recipe and writes the output, then reports. A window recipe (`chunk_encode`) names its
+ * Each case runs the planned job owner (`runPlanJob`) as the standard-4 container does: it reads the tool source through
+ * the loopback reader (a stitch downloads its chunks), runs the recipe and writes the output, then reports. A window recipe (`chunk_encode`) names its
  * tool source's grid (`grid` {fps, gridStart, frameCount, realFrameCount}, read here from each fixture with the harness's
  * `gridOf`), the tool source (the original with its keyframe statistics), the grid frames [start, end) and the plan's
  * `target`. A chunk is encoded on its own clock from 0 at 1/fps, opens with a keyframe and carries no audio; the stitch

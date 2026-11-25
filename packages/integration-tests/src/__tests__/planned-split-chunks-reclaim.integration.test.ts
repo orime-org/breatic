@@ -285,7 +285,7 @@ describe("a failed run's done chunks (frames-split §5.4, §7.15, §7.19)", () =
   });
 });
 
-// C15 for split (planned-terminal-closure.integration.test.ts): a container-only run the queue cleanup ends has no submit
+// C15 for split: a container-only run the queue cleanup ends has no submit
 // attempt to wait for, so its consumption set closes and its measured usage settles; every output fails (frames-split §7.19).
 describe("a split the queue cleanup ends closes its consumption set (execution design §6.12)", () => {
   it("C15s a split whose jobs all ended closes at cleanup, fails every output, releases its hold and charges its container usage", async () => {

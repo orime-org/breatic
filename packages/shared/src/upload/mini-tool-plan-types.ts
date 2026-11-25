@@ -29,7 +29,7 @@ export interface MiniToolPlanGrid { fps: FrameRate; gridStart: MiniToolPlanExact
 export type MiniToolPlanToolSource = { kind: "original"; keyframes: SourceKeyframeStats } | { kind: "edit" };
 /** A half-open range of grid frames [start, end). */
 export interface MiniToolPlanFrames { start: number; end: number }
-/** The carrier an encode writes (§91 D-2): even coded size, where the picture sits, the plan matrix and conversion. */
+/** What an encode writes (§91 D-2), a presentation carrier or a split output: the coded size (even for H.264), where the picture sits, the plan matrix and conversion. */
 export interface MiniToolPlanTarget {
   width: number;
   height: number;

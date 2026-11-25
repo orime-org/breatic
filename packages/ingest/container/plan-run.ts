@@ -29,7 +29,7 @@ export interface PlanRunBody {
 }
 /**
  * The inputs a recipe reads through the loopback reader: every bound input except a stitch's chunks, which the concat
- * demuxer reads as local files and which together are no larger than the edit file the stitch writes.
+ * demuxer reads as local files and which together are about the size of the file the stitch writes.
  * @param recipe - The recipe.
  * @returns The input ids read in place.
  * @throws {never} Never.

@@ -86,7 +86,7 @@ async function produceConsumption(request: OpenMiniToolConsumptionInput, tx: DbT
     previous.consumptionSetComplete === true || previous.state === "settled") {
     throw new Error("Mini-tool consumption set no longer accepts new calls");
   }
-  // A model step's consumption is opened by its end (model-step.service.ts), never before its call.
+  // Only a container job's consumption is opened here: its identity is known before the job is submitted.
   if (request.identity.kind !== "container" || step.kind !== "container_job" || step.endpoint !== request.identity.containerClass) {
     throw new Error("Container consumption requires its actual owning class step");
   }

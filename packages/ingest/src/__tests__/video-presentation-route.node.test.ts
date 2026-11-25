@@ -3,8 +3,8 @@
 
 /**
  * The backend presentation boundary hands the store the whole admission the
- * backend sent, including the source ledger v2 request (inner#1306 test plan
- * §77, I01). The Durable Object and bucket are stand-ins; what is under test is
+ * backend sent, including its frozen limits, prices, probe facts and encoding
+ * (inner#1306 test plan §77, I01). The Durable Object and bucket are stand-ins; what is under test is
  * the mapping from the validated body to the admission.
  */
 
