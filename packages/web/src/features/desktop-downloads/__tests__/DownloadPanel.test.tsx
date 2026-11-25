@@ -200,6 +200,7 @@ describe('DownloadPanel position', () => {
         resized.push(callback);
       }
       observe(): void {}
+      unobserve(): void {}
       disconnect(): void {}
     });
     inClient({ open: true, items: [done] });
@@ -209,7 +210,7 @@ describe('DownloadPanel position', () => {
     left = 420;
     act(() => resized.forEach((callback) => callback()));
     expect(panel().style.left).toBe('420px');
-    view.rerender(<div><DownloadPanel /></div>);
+    view.rerender(<div>{null}<DownloadPanel /></div>);
     expect(panel().style.left).toBe('12px');
   });
 

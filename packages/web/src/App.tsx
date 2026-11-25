@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import { useSyncExternalStore } from 'react';
 import type * as React from 'react';
 
 import { AppRouter } from '@web/app/AppRouter';
@@ -13,20 +12,6 @@ import { DownloadPanel } from '@web/features/desktop-downloads/DownloadPanel';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';
 import { router } from '@web/app/routes';
-
-/**
- * The desktop client's Downloads panel, placed by the page the router shows.
- * It mounts beside the router, as the toasts do, so it reads the path from
- * the router itself.
- * @returns The panel; nothing in a browser.
- */
-function DesktopDownloads(): React.JSX.Element | null {
-  const pathname = useSyncExternalStore(
-    (onChange) => router.subscribe(onChange),
-    () => router.state.location.pathname,
-  );
-  return <DownloadPanel pathname={pathname} />;
-}
 
 /**
  * App root — providers stack (outer to inner):
@@ -78,7 +63,7 @@ export default function App(): React.JSX.Element {
               width — older, wider toasts showed past the newest as empty
               edges. Sonner shows three at a time; a fourth hides the oldest. */}
           <Toaster position='top-center' duration={3000} expand />
-          <DesktopDownloads />
+          <DownloadPanel />
         </AuthBootstrap>
       </TooltipProvider>
     </QueryClientProvider>

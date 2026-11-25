@@ -10,33 +10,34 @@ import { Progress } from '@web/components/ui/progress';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
+import { useDownloadPanelAnchorLeft } from '@web/features/desktop-downloads/DownloadPanelAnchor';
 import { getDesktopBridge } from '@web/lib/desktop-bridge';
-import { cn } from '@web/lib/utils';
+import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
+import { useCurrentUserStore } from '@web/stores/current-user';
 
-/** Which navigation the panel sits beside. */
-export type DownloadPanelPlacement = 'project' | 'studio' | 'page';
+/** The panel's width (`w-[320px]`), which keeps it inside the window. */
+const PANEL_WIDTH = 320;
+/** The gap from the window's edges where the page has no anchor (`--space-6`). */
+const EDGE_GAP = 12;
 
-/**
- * Which navigation the panel sits beside on a page (design §7.3.1).
- * @param pathname - The page's path.
- * @returns The placement.
- */
-export function downloadPanelPlacement(pathname: string): DownloadPanelPlacement {
-  if (pathname.startsWith('/project/')) return 'project';
-  if (pathname === '/studio' || pathname.startsWith('/studio/')) return 'studio';
-  return 'page';
+/** A place for the panel: its left edge and its distance from the window's bottom. */
+interface PanelPosition {
+  left: number;
+  bottom: number;
 }
 
 /**
- * The panel's left edge by placement: right of the Project page's left menu
- * (`LeftFloatingMenu`, 52px wide at `--space-5`), right of the Studio rail
- * (`w-60`, hidden below `md`), else the window edge.
+ * Hold a position inside the window, so the whole panel stays reachable.
+ * @param position - Where the panel would go.
+ * @param height - The panel's height now.
+ * @returns The position, pulled inside the window.
  */
-const LEFT: Record<DownloadPanelPlacement, string> = {
-  project: 'left-[calc(var(--space-5)+52px+var(--space-6))]',
-  studio: 'left-[var(--space-6)] md:left-[calc(15rem+var(--space-6))]',
-  page: 'left-[var(--space-6)]',
-};
+function insideWindow(position: PanelPosition, height: number): PanelPosition {
+  return {
+    left: Math.min(Math.max(0, position.left), Math.max(0, window.innerWidth - PANEL_WIDTH)),
+    bottom: Math.min(Math.max(0, position.bottom), Math.max(0, window.innerHeight - height)),
+  };
+}
 
 /**
  * One download's row.
@@ -98,11 +99,14 @@ const DownloadRow = React.memo(function DownloadRow({
 /**
  * The desktop client's Downloads panel (inner#2041, design §7.3.1): the list
  * the client keeps for this run, read again after every notice, newest row
- * only until the user expands it. Renders nothing in a browser.
+ * only until the user expands it. It sits where the page's
+ * `DownloadPanelAnchor` is (12px from the window's bottom-left corner on a page
+ * without one) until the user drags it by its title bar; the dragged place is
+ * kept per account, as the Agent column's width is, and held inside the window.
+ * Renders nothing in a browser.
  * @returns The panel, or nothing.
  */
 export function DownloadPanel(): React.JSX.Element | null {
-  const pathname = '/';
   const t = useTranslation();
   const bridge = getDesktopBridge();
   const [list, setList] = React.useState<DesktopDownloadList | null>(null);
@@ -142,6 +146,56 @@ export function DownloadPanel(): React.JSX.Element | null {
     void bridge?.dismissDownloads();
   }, [bridge]);
 
+  const userId = useCurrentUserStore((state) => state.user?.id);
+  const anchorLeft = useDownloadPanelAnchorLeft();
+  const [dragged, setDragged] = React.useState<PanelPosition | null>(() => readUserPreferences(userId).downloadPanelPosition);
+  // Another account signing in reads its own place.
+  React.useEffect(() => {
+    setDragged(readUserPreferences(userId).downloadPanelPosition);
+  }, [userId]);
+  const panelRef = React.useRef<HTMLElement>(null);
+  const [, setWindowSize] = React.useState(0);
+  React.useEffect(() => {
+    /**
+     * Draw again, so the position is held inside the new window size.
+     * @returns Nothing.
+     */
+    const onResize = (): void => setWindowSize((count) => count + 1);
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+  const position = insideWindow(dragged ?? { left: anchorLeft ?? EDGE_GAP, bottom: EDGE_GAP }, panelRef.current?.offsetHeight ?? 0);
+
+  const startDrag = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      // The title bar's buttons click; only the bar itself drags.
+      if (event.button !== 0 || (event.target as Element).closest('button')) return;
+      event.preventDefault();
+      const start = { x: event.clientX, y: event.clientY, ...position };
+      let moved: PanelPosition | null = null;
+      /**
+       * Follow the pointer.
+       * @param move - The pointer's move.
+       */
+      const onMove = (move: PointerEvent): void => {
+        moved = insideWindow(
+          { left: start.left + move.clientX - start.x, bottom: start.bottom - (move.clientY - start.y) },
+          panelRef.current?.offsetHeight ?? 0,
+        );
+        setDragged(moved);
+      };
+      /** Keep the place once the pointer lets go. */
+      const onUp = (): void => {
+        window.removeEventListener('pointermove', onMove);
+        window.removeEventListener('pointerup', onUp);
+        if (moved) writeUserPreference(userId, { downloadPanelPosition: moved });
+      };
+      window.addEventListener('pointermove', onMove);
+      window.addEventListener('pointerup', onUp);
+    },
+    [position, userId],
+  );
+
   if (!bridge || !list || !open || list.items.length === 0) return null;
 
   const { items } = list;
@@ -157,13 +211,12 @@ export function DownloadPanel(): React.JSX.Element | null {
 
   return (
     <section
+      ref={panelRef}
       data-testid='desktop-download-panel'
-      className={cn(
-        'fixed bottom-[var(--space-6)] z-40 w-[320px] overflow-hidden rounded-overlay border border-border bg-popover text-sm text-popover-foreground shadow-lg',
-        LEFT[downloadPanelPlacement(pathname)],
-      )}
+      className='fixed z-40 w-[320px] overflow-hidden rounded-overlay border border-border bg-popover text-sm text-popover-foreground shadow-lg'
+      style={{ left: position.left, bottom: position.bottom }}
     >
-      <header className='flex h-9 items-center gap-2 px-3'>
+      <header className='flex h-9 cursor-move select-none items-center gap-2 px-3' onPointerDown={startDrag}>
         <h2 className='font-semibold'>{t('desktopDownloads.title')}</h2>
         <span className='min-w-0 flex-1 truncate text-xs text-muted-foreground'>{summary}</span>
         {items.length > 1 && (

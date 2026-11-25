@@ -72,6 +72,7 @@ import { FollowBar } from '@web/features/follow/FollowBar';
 import { useFollowExitToast } from '@web/features/follow/use-follow-exit-toast';
 import { useFollowLeaderPresence } from '@web/features/follow/use-follow-leader-presence';
 import { useMemberViews } from '@web/features/follow/use-member-views';
+import { DownloadPanelAnchor } from '@web/features/desktop-downloads/DownloadPanelAnchor';
 import { followTarget } from '@web/features/follow/follow-target';
 import { useFollowStore, type FollowOther } from '@web/stores/follow';
 import { useRefreshOnReauth } from '@web/pages/project/use-refresh-on-reauth';
@@ -1108,6 +1109,8 @@ function ProjectWorkspace({
                   <div className='relative flex flex-1 flex-col overflow-hidden'>
                     <FollowBar spaceType={activeSpace?.type ?? null} />
                     <div className='relative min-h-0 flex-1'>
+                      {/* The desktop Downloads panel's default place: right of the canvas's left menu (52px at --space-5). */}
+                      <DownloadPanelAnchor className={activeSpace?.type === 'canvas' ? 'left-[calc(var(--space-5)+52px+var(--space-6))]' : undefined} />
                       {/* Every open tab holds its document's connection; the
                     one on screen shows its body, and a tab switched away from
                     keeps its body mounted and hidden (inner#1235). */}
