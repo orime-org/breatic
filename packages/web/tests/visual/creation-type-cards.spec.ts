@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -10,7 +10,7 @@ import { openSmokeProject } from '../helpers/project';
 
 interface Catalog {
   spaces: {
-    kind: { canvasSub: string; documentSub: string; threeDSub: string; timelineSub: string };
+    kind: { canvasSub: string; documentSub: string; threeDSub: string; timelineSub: string; webAnimationSub: string };
     create: { notAvailable: string; cancel: string };
   };
   studio: { container: { projects: { new: string }; dialog: { cancel: string } } };
@@ -18,17 +18,19 @@ interface Catalog {
 
 /**
  * Check the shared control through its rendered geometry and real hover/focus paths.
- * @throws {Error} When a card overflows, its description is missing or keyboard selection fails.
+ * @throws {Error} When the row does not start at its viewport's edge, its description is missing or keyboard selection fails.
  */
 async function checkCards(page: Page, dialog: Locator, prefix: string, catalog: Catalog, sample: string): Promise<void> {
   const group = dialog.getByRole('radiogroup');
-  await expect(group.getByRole('radio')).toHaveText(['Canvas', 'Document', '3D', 'Timeline']);
+  await expect(group.getByRole('radio')).toHaveText(['Canvas', 'Document', '3D', 'Timeline', 'Motion']);
   await dialog.evaluate((element) => Promise.all(element.getAnimations().map((animation) => animation.finished)));
   const layout = await group.evaluate((element) => {
     const groupRect = element.getBoundingClientRect();
+    const viewport = element.closest('[data-radix-scroll-area-viewport]');
+    if (viewport === null) throw new Error('The type cards must sit in a scroll viewport');
     return {
-      available: element.clientWidth,
-      content: element.scrollWidth,
+      scrollLeft: viewport.scrollLeft,
+      viewportLeft: viewport.getBoundingClientRect().left,
       left: groupRect.left,
       right: groupRect.right,
       cards: [...element.querySelectorAll('[role="radio"]')].map((card) => {
@@ -37,15 +39,18 @@ async function checkCards(page: Page, dialog: Locator, prefix: string, catalog: 
       }),
     };
   });
-  expect(layout.content).toBeLessThanOrEqual(layout.available);
+  // The row scrolls sideways when it is wider than the dialog; scrolled to its start, the first card sits at the
+  // viewport's edge.
+  expect(layout.scrollLeft).toBe(0);
+  expect(layout.cards[0].left).toBeCloseTo(layout.viewportLeft, 2);
   for (const card of layout.cards) {
     expect(card.top).toBeCloseTo(layout.cards[0].top, 2);
     expect(card.width).toBeCloseTo(layout.cards[0].width, 2);
     expect(card.left).toBeGreaterThanOrEqual(layout.left - 1);
     expect(card.right).toBeLessThanOrEqual(layout.right + 1);
   }
-  await expect(group.getByText('DEV', { exact: true })).toHaveCount(2);
-  for (const [type, title] of [['3d', '3D'], ['timeline', 'Timeline']]) {
+  await expect(group.getByText('DEV', { exact: true })).toHaveCount(3);
+  for (const [type, title] of [['3d', '3D'], ['timeline', 'Timeline'], ['web_animation', 'Motion']]) {
     const card = dialog.getByTestId(`${prefix}-${type}`);
     const marker = card.locator('..').getByText('DEV', { exact: true });
     await expect(marker).toBeVisible();
@@ -79,6 +84,7 @@ async function checkCards(page: Page, dialog: Locator, prefix: string, catalog: 
     ['document', catalog.spaces.kind.documentSub],
     ['3d', catalog.spaces.kind.threeDSub],
     ['timeline', catalog.spaces.kind.timelineSub],
+    ['web_animation', catalog.spaces.kind.webAnimationSub],
   ] as const;
   for (const [kind, description] of descriptions) {
     const card = dialog.getByTestId(`${prefix}-${kind}`);

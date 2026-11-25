@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Upload-grant repository (#1826, design §2.2 / §3.2) — the anti-spoof
@@ -30,6 +30,14 @@ import { z } from "zod";
  * asset row.
  */
 export type GrantAssetSource = StudioAssetEntity["source"] | "transfer";
+
+/** The 3D object part a picture upload is for (inner#1693 design 6.3). */
+export interface SceneLookTarget {
+  objectId: string;
+  part: string;
+  /** The part's `map` when the upload started, or null for none. */
+  startMap: string | null;
+}
 
 /**
  * A row of the upload-grant ledger.
@@ -80,6 +88,8 @@ export interface UploadGrant {
   assetSource: GrantAssetSource | null;
   /** The generation whose output these bytes are, when they are one. */
   generationTaskId: string | null;
+  /** The 3D object part a picture upload is for, and the picture it held at the start (inner#1693). */
+  sceneLook: SceneLookTarget | null;
   /** The uploading browser's analytics consent when the ticket was issued (inner#1442 §4.4.5). */
   analyticsConsent: ConsentSnapshot | null;
   createdAt: Date;
@@ -145,6 +155,9 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     // this column, and it writes what `register` accepts.
     assetSource: row.assetSource as GrantAssetSource | null,
     generationTaskId: row.generationTaskId,
+    sceneLook: row.sceneObjectId !== null && row.scenePart !== null
+      ? { objectId: row.sceneObjectId, part: row.scenePart, startMap: row.sceneStartMap }
+      : null,
     analyticsConsent: row.analyticsConsent,
     createdAt: row.createdAt,
   };
@@ -174,6 +187,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  *   not an ordinary upload.
  * @param input.context.generationTaskId - The generation that produced these
  *   bytes, when one did.
+ * @param input.context.sceneLook - The 3D object part a picture upload is for.
  * @param input.analyticsConsent - The uploading browser's analytics consent;
  *   absent reads as no consent.
  * @param tx - Optional enclosing upload admission transaction.
@@ -198,6 +212,7 @@ export async function issueGrant(input: {
     filename?: string | null;
     assetSource?: GrantAssetSource | null;
     generationTaskId?: string | null;
+    sceneLook?: SceneLookTarget | null;
   };
   analyticsConsent?: ConsentSnapshot;
 }, tx?: DbTx): Promise<UploadGrant> {
@@ -220,6 +235,9 @@ export async function issueGrant(input: {
       filename: input.context.filename ?? null,
       assetSource: input.context.assetSource ?? null,
       generationTaskId: input.context.generationTaskId ?? null,
+      sceneObjectId: input.context.sceneLook?.objectId ?? null,
+      scenePart: input.context.sceneLook?.part ?? null,
+      sceneStartMap: input.context.sceneLook?.startMap ?? null,
       analyticsConsent: input.analyticsConsent ?? null,
     })
     .returning();

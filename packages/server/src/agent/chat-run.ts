@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * One run of the Agent in one conversation, started by whichever entrance
@@ -45,6 +45,8 @@ export type RunEntrance =
       modelId?: string;
       /** The upstream that served the paused segment, which the resumed one stays on (inner#1743). */
       upstream?: string;
+      /** The account key row the paused segment ran on, which the resumed one runs on too (inner#1953). */
+      keyId?: string;
       locale: string;
     };
 
@@ -266,6 +268,7 @@ async function runIt(start: RunStart, open: (running: boolean) => void): Promise
         ended = e;
       },
       ...(operationKey === undefined ? {} : { operationKey }),
+      ...(entrance.kind === "card" && entrance.keyId !== undefined ? { resumeKeyId: entrance.keyId } : {}),
     };
     const started =
       entrance.kind === "card"

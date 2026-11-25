@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
@@ -16,7 +16,8 @@ import { OverviewSection } from '@web/features/credits/sections/OverviewSection'
  */
 function overview(assignedCredits: string, unassignedCredits: string, values: readonly string[] = []): CreditOverview {
   return {
-    billing: true,
+    charging: true,
+    selling: true,
     assignedCredits,
     unassignedCredits,
     underRefundCredits: '0.000000',

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { afterEach, describe, expect, it } from 'vitest';
 import * as Y from 'yjs';
@@ -323,21 +323,21 @@ describe('pose command (inner#1692 section 2.3)', () => {
   });
 
   it.each([
-    ['a rotation that is not normalized', { 'h:spine': [1, 1, 1, 1] }],
-    ['a rotation with three components', { 'n:Tail_1': [0, 0, 1] }],
-    ['a hips translation with four components', { 't:hips': [0, 0, 0, 1] }],
-    ['a non-finite component', { 'h:spine': [0, 0, Number.POSITIVE_INFINITY, 1] }],
-    ['a translation key other than hips', { 't:spine': [0, 1, 0] }],
-    ['a key with an unknown form', { 'x:spine': Q_HALF }],
-    ['a key that repeats the storage prefix', { 'pose.h:spine': Q_HALF }],
-    ['a key longer than 128 characters', { [`n:${'a'.repeat(200)}`]: Q_HALF }],
-    ['more than 256 keys', Object.fromEntries(Array.from({ length: 257 }, (_, index) => [`n:Bone_${index}`, Q_HALF]))],
-  ])('refuses %s and writes nothing, even beside a valid entry', (_label, set) => {
+    ['a rotation that is not normalized', { 'h:spine': [1, 1, 1, 1] }, 'invalid'],
+    ['a rotation with three components', { 'n:Tail_1': [0, 0, 1] }, 'invalid'],
+    ['a hips translation with four components', { 't:hips': [0, 0, 0, 1] }, 'invalid'],
+    ['a non-finite component', { 'h:spine': [0, 0, Number.POSITIVE_INFINITY, 1] }, 'invalid'],
+    ['a translation key other than hips', { 't:spine': [0, 1, 0] }, 'invalid'],
+    ['a key with an unknown form', { 'x:spine': Q_HALF }, 'invalid'],
+    ['a key that repeats the storage prefix', { 'pose.h:spine': Q_HALF }, 'invalid'],
+    ['a key longer than 128 characters', { [`n:${'a'.repeat(200)}`]: Q_HALF }, 'invalid'],
+    ['more than 256 keys', Object.fromEntries(Array.from({ length: 257 }, (_, index) => [`n:Bone_${index}`, Q_HALF])), 'poseBoneLimit'],
+  ] as const)('refuses %s and writes nothing, even beside a valid entry', (_label, set, reason) => {
     const doc = sceneDoc();
     applySceneCommand(doc, { type: 'create', objects: [POSED] }, Symbol(), true, NAME);
     const before = Y.encodeStateAsUpdate(doc);
-    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': Q_Z180, ...set }, true), Symbol(), true, NAME))
-      .toEqual({ ok: false, reason: 'invalid' });
+    expect(applySceneCommand(doc, pose({ 'h:leftUpperArm': Q_Z180, ...set } as never, true), Symbol(), true, NAME))
+      .toEqual({ ok: false, reason });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
 });
@@ -423,5 +423,34 @@ describe('pose collaboration with real Yjs replicas (inner#1692 acceptance 10 an
     expect(poseOf(alice)).toEqual(expected);
     expect(poseOf(bob)).toEqual(expected);
     history.destroy();
+  });
+});
+
+describe('the 256-bone cap under concurrent posing (inner#1693 round 2)', () => {
+  /** A pose of this many distinct node bones. */
+  const bones = (count: number, from = 0): Record<string, number[]> =>
+    Object.fromEntries(Array.from({ length: count }, (_, index) => [`n:Bone_${from + index}`, Q_IDENTITY]));
+
+  it('keeps an object readable when two members each pose a new bone at 255 and the merge passes 256', () => {
+    const left = sceneDoc();
+    applySceneCommand(left, { type: 'create', objects: [{ ...BASE, pose: bones(255) }] }, Symbol(), true, NAME);
+    const right = replica(left);
+    expect(applySceneCommand(left, pose({ 'n:Left': Q_Y90 }), Symbol(), true, NAME).ok).toBe(true);
+    expect(applySceneCommand(right, pose({ 'n:Right': Q_Y90 }), Symbol(), true, NAME).ok).toBe(true);
+    merge(left, right);
+    for (const replicaDoc of [left, right]) {
+      expect(readSceneDocument(replicaDoc).invalidObjects).toEqual([]);
+      expect(Object.keys(poseOf(replicaDoc) as object)).toHaveLength(257);
+    }
+    expect(applySceneCommand(left, pose({ 'n:Left': Q_X180 }), Symbol(), true, NAME)).toEqual({ ok: true, ids: [ID] });
+    expect(applySceneCommand(left, pose({ 'n:Third': Q_X180 }), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'poseBoneLimit' });
+  });
+
+  it('refuses a command or a new object that would hold more than 256 bones', () => {
+    const doc = sceneDoc();
+    expect(applySceneCommand(doc, { type: 'create', objects: [{ ...BASE, pose: bones(257) }] }, Symbol(), true, NAME)).toEqual({ ok: false, reason: 'invalid' });
+    applySceneCommand(doc, { type: 'create', objects: [BASE] }, Symbol(), true, NAME);
+    expect(applySceneCommand(doc, pose(bones(257), true), Symbol(), true, NAME)).toEqual({ ok: false, reason: 'poseBoneLimit' });
+    expect(applySceneCommand(doc, pose(bones(256), true), Symbol(), true, NAME)).toEqual({ ok: true, ids: [ID] });
   });
 });

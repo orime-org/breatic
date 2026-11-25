@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Character poses on a scene object (inner#1692, design 2.1): one flat
@@ -115,9 +115,8 @@ describe("ScenePoseSchema", () => {
     expect(poseSchema().safeParse({ [key]: value }).success).toBe(false);
   });
 
-  it("accepts the 256th key and rejects the 257th", () => {
-    expect(poseSchema().safeParse(poseOf(256)).success).toBe(true);
-    expect(poseSchema().safeParse(poseOf(257)).success).toBe(false);
+  it("judges a pose by its entries, not by how many there are: the count is capped where a command writes", () => {
+    expect(poseSchema().safeParse(poseOf(257)).success).toBe(true);
   });
 
   it("rejects a whole pose when one of its keys is invalid", () => {
@@ -144,7 +143,6 @@ describe("SceneObjectValuesSchema with a pose", () => {
   it.each([
     { pose: { "h:leftUpperArm": [0, 0, 0, 2] } },
     { pose: { "x:leftUpperArm": IDENTITY } },
-    { pose: poseOf(257) },
     { pose: "none" },
   ])("rejects values with an invalid pose %#", (invalid) => {
     expect(valuesSchema().safeParse({ ...VALUES, ...invalid }).success).toBe(false);

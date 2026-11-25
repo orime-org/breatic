@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The "buy credits" screen, and the confirmation step in front of it
@@ -78,7 +78,8 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
     assignedCredits: '0.000000' as CreditDecimal,
     unassignedCredits: '0.000000' as CreditDecimal,
     underRefundCredits: '0.000000' as CreditDecimal,
-    billing: true,
+    charging: true,
+    selling: true,
     studios: [],
     ...over,
   };
@@ -162,7 +163,7 @@ describe('the buy screen', () => {
   });
 
   it('offers nothing to buy where this deployment sells nothing', async () => {
-    renderBuy({ billing: false });
+    renderBuy({ selling: false });
     await waitFor(() => {
       expect(screen.queryAllByTestId('credit-pack')).toHaveLength(0);
     });

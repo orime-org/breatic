@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What this module takes in and hands back.
@@ -12,7 +12,7 @@
  */
 
 import { UNDERSTAND_MODEL } from "@breatic/shared";
-import type { Cost } from "@breatic/provider";
+import type { Cost, KeySet } from "@breatic/provider";
 
 /** Which of the three kinds an address turned out to hold. */
 export type MediaKind = "image" | "video" | "audio";
@@ -243,6 +243,11 @@ export interface UnderstandRequest {
    * what it cost and the upstream that billed it.
    */
   onBilled: (cost: Cost, upstream: string) => void;
+  /**
+   * The key set the call runs on (inner#1953): the payer's when its caller resolved one, so no step falls back to our
+   * keys; the deployment's when absent.
+   */
+  keys?: KeySet;
 }
 
 /** What one understanding call answered with. */

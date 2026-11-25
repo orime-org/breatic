@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Canvas node **view** layer — the component-facing projection of the
@@ -232,6 +232,8 @@ export interface VideoNodeView extends ContentNodeViewBase {
   /** Intrinsic pixel dimensions from the ledger (#209). See ImageNodeView. */
   width?: number;
   height?: number;
+  /** The Motion result this video was exported from (#1490). */
+  sourceAnimation?: { spaceId: string; executionId: string; videoUrl: string };
 }
 
 export interface ThreeDNodeView extends ContentNodeViewBase {
@@ -417,6 +419,7 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
           duration: data.duration,
           width: data.mediaWidth,
           height: data.mediaHeight,
+          ...(data.sourceAnimation === undefined ? {} : { sourceAnimation: data.sourceAnimation }),
           ...contentCommon,
         },
       };

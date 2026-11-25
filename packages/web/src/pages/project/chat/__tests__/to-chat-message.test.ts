@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * 一条消息在面板眼里长什么样。
@@ -352,5 +352,21 @@ describe('a turn that ended too long to finish (inner#1567)', () => {
     expect(tooLong).toMatchObject({ failed: true, failedReason: 'too_long' });
     expect(failed.failed).toBe(true);
     expect(failed.failedReason).toBeUndefined();
+  });
+});
+
+describe('a turn that failed on the payer\'s own key (inner#1953)', () => {
+  it('reads the reason, the upstream and why the key was refused off the failed mark', () => {
+    const refused = toChatMessage({
+      id: 'm',
+      role: 'assistant',
+      parts: [{ type: 'data-failed', data: { reason: 'account_key_failed', upstream: 'openrouter', keyReason: 'no_balance' } }],
+    });
+    const gone = toChatMessage({ id: 'n', role: 'assistant', parts: [{ type: 'data-failed', data: { reason: 'account_key_missing' } }] });
+    const plain = toChatMessage({ id: 'o', role: 'assistant', parts: [{ type: 'data-failed', data: {} }] });
+
+    expect(refused).toMatchObject({ failed: true, keyFailure: { reason: 'account_key_failed', upstream: 'openrouter', keyReason: 'no_balance' } });
+    expect(gone.keyFailure).toEqual({ reason: 'account_key_missing' });
+    expect(plain.keyFailure).toBeUndefined();
   });
 });

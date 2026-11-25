@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Answering one browser upload with an opened upload, a dedup hit or a
@@ -22,11 +22,13 @@ import {
   announceFocusImageUploading,
   assetService,
   type GrantFocusImage,
+  emitSceneLookPicture,
   safeExt,
   sceneTaskService,
   uploadDeadlineByKey,
   UploadOpenFailed,
   uploadTicketService,
+  type SceneLookTarget,
 } from "@breatic/domain";
 import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type FocusImageTicket, type NodeTaskAction } from "@breatic/shared";
 
@@ -49,11 +51,15 @@ export interface TicketItem {
   source?: "mini_tool" | undefined;
   tool_name?: string | undefined;
   derived?: boolean | undefined;
-  purpose?: "project_cover" | "studio_avatar" | "scene_model" | undefined;
+  purpose?: "project_cover" | "studio_avatar" | "scene_model" | "scene_look" | undefined;
   /** The model's name, on a scene model upload. */
   label?: string | undefined;
   /** The focus image a crop becomes, in the pool of the node it names on `space_id` (#1580). */
   focusImage?: FocusImageTicket | undefined;
+  /** The 3D object, part and the part's starting picture, on a part picture upload (inner#1693). */
+  object_id?: string | undefined;
+  part?: string | undefined;
+  start_map?: string | null | undefined;
 }
 
 /**
@@ -65,6 +71,16 @@ export interface TicketItem {
 function focusTargetOf(scope: TicketScope, item: TicketItem): { projectId: string; focusImage: GrantFocusImage } | null {
   if (item.focusImage === undefined || item.space_id === undefined || scope.projectId === undefined) return null;
   return { projectId: scope.projectId, focusImage: { ...item.focusImage, spaceId: item.space_id } };
+}
+
+/**
+ * The part a picture upload is for, when it is one.
+ * @param item - The file.
+ * @returns The object, part and starting picture, or null.
+ */
+function sceneLookOf(item: TicketItem): SceneLookTarget | null {
+  if (item.purpose !== "scene_look" || item.object_id === undefined || item.part === undefined) return null;
+  return { objectId: item.object_id, part: item.part, startMap: item.start_map ?? null };
 }
 
 /** The file name every transfer grant records. */
@@ -301,6 +317,14 @@ async function prepareUpload(
         spaceId: item.space_id,
       });
     }
+    // A part picture the studio already holds goes onto its part through the
+    // same announcement a stored upload makes; nothing else would make it.
+    const sceneLook = sceneLookOf(item);
+    if (sceneLook !== null && projectId !== undefined && item.space_id !== undefined) {
+      await emitSceneLookPicture({
+        projectId, spaceId: item.space_id, target: sceneLook, picture: dedupHit.assetId, userId, uploadKey: crypto.randomUUID(),
+      });
+    }
     // A Document block receives a hit the way a node does: the server announces the asset and collab writes the
     // block, and a lost announcement fails the request.
     if (projectId !== undefined && item.space_id !== undefined && item.upload_id !== undefined) {
@@ -371,7 +395,8 @@ async function prepareUpload(
         // Node-free models and covers write no row on the project activity feed.
         derived: item.purpose === "project_cover" || item.purpose === "scene_model" ? true : (item.derived ?? null),
         filename: item.filename,
-        assetSource: item.purpose === "scene_model" ? null : (item.purpose ?? null),
+        assetSource: item.purpose === "scene_model" || item.purpose === "scene_look" ? null : (item.purpose ?? null),
+        sceneLook: sceneLookOf(item),
       },
     },
     { budgetMs: getNodeTaskConfig().default_budget_ms, ...uploadRowOf(item) },

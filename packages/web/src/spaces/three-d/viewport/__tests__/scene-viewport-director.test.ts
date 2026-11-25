@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { Box3, HemisphereLight, PerspectiveCamera, Quaternion, Vector3, type Object3D, type Scene, type WebGLRenderTarget } from 'three';
@@ -436,6 +436,16 @@ describe('lights, ambient and shadows (design 3.6, 6.4)', () => {
     expect(hemisphere).toHaveLength(1);
     expect(hemisphere[0]?.color.getHexString()).toBe('ffeecc');
     expect(hemisphere[0]?.intensity).toBe(1.5);
+  });
+
+  it('lights the scene without a generated environment whatever the ambient (inner#1693 design 5.7)', async () => {
+    const opened = await open(props([]));
+    opened.frame();
+    const scene = (opened.runtime as unknown as { scene: Scene }).scene;
+    expect(scene.environment).toBeNull();
+    opened.runtime.update({ ...opened.initial, environment: { ambientColor: '#ffffff', ambientIntensity: 5.4 } } as SceneViewportProps);
+    opened.frame();
+    expect(scene.environment).toBeNull();
   });
 
   it('casts no shadow until a mesh program has been compiled, then within the budget', async () => {

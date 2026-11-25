@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A Studio transfer needs every live credit pack pointed at the studio to be
@@ -98,8 +98,8 @@ async function insertLot(
 ): Promise<string> {
   const sourceId = await openPaymentSource(sql);
   const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${sourceId}, ${userId}, 1000, 'completed', 500) RETURNING id
+    INSERT INTO payment_receipts (id, user_id, amount_cents, currency, credits_granted, ordered_at)
+    VALUES (${sourceId}, ${userId}, 1000, 'usd', 500, now()) RETURNING id
   `;
   const lot = await creditLotService.grantFromPayment({
     paymentId: payment!.id,

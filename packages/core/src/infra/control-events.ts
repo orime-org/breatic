@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Cross-process control-plane events (Redis pub/sub on DB2).
  *
- * Five fire-and-forget notification paths:
+ * Six fire-and-forget notification paths:
  *
  *   - `activity:new`      — server or worker publishes after writing an
  *                           activity row; every collab instance relays
@@ -17,6 +17,10 @@
  *                           ending exits; every collab instance relays it
  *                           to the uploader's meta connections. Per
  *                           deployment (#1580).
+ *   - `scene-look:settled` — collab's task listener publishes how an
+ *                           uploaded 3D part picture was settled; every
+ *                           collab instance relays it to the uploader's
+ *                           connections on the meta doc. Per project.
  *   - `connections:close` — collab's lifecycle consumer publishes after
  *                           a duplicate / archive / restore; every collab
  *                           instance closes its connections to the
@@ -61,12 +65,14 @@ import { env } from "@core/config/runtime.js";
 import {
   activityNewChannel,
   assetPeaksReadyChannel,
+  sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
   uploadEndedChannel,
   type ActivityNewControlEvent,
   type AssetPeaksReadyControlEvent,
+  type SceneLookSettledControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
@@ -121,6 +127,22 @@ export async function publishActivityNew(projectId: string): Promise<void> {
 export async function publishAssetPeaksReady(projectId: string, assetId: string, url: string): Promise<void> {
   const event: AssetPeaksReadyControlEvent = { type: "project-asset-peaks:ready", projectId, assetId, url, ts: Date.now() };
   await getStreamRedis().publish(assetPeaksReadyChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Announce how collab settled an uploaded picture for a 3D part (inner#1693
+ * design 6.3); every collab instance relays it to the uploader's connections on
+ * the project meta doc as the `scene-look:settled` stateless signal, and their
+ * page ends that part's upload and tells them when it was not written.
+ * Fire-and-forget like {@link publishActivityNew}: the picture is in the
+ * Project's pictures either way.
+ * @param settlement - The part, the picture, the uploader and the outcome.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishSceneLookSettled(settlement: Omit<SceneLookSettledControlEvent, "type" | "ts">): Promise<void> {
+  const event: SceneLookSettledControlEvent = { type: "project-scene-look:settled", ...settlement, ts: Date.now() };
+  await getStreamRedis().publish(sceneLookSettledChannel(env.REDIS_KEY_PREFIX, settlement.projectId), JSON.stringify(event));
 }
 
 /**

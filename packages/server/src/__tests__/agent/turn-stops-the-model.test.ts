@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The stop reaches the model and the tool, not just the route.
@@ -81,6 +81,8 @@ vi.mock("@breatic/domain", async (importOriginal) => {
     // Real: this is what is under test.
     streamTextRetry: actual.streamTextRetry,
     finalizeTurn: actual.finalizeTurn,
+    // The turn runs on the deployment's keys (inner#1953): resolving them reads configuration this file never sets up.
+    resolveKeys: async () => ({ keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null }),
     // The studio the turn's tools read material for; the ledger is not here.
     assetService: { ...actual.assetService, resolveOwnerStudioId: async () => "s0000000-0000-4000-8000-000000000001" },
     provider: (await import("../helpers/fake-provider.js")).fakeProvider(() =>

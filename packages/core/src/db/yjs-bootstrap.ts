@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Yjs initial-state encoders for project bootstrap.
@@ -244,5 +244,7 @@ export function defaultSpaceName(kind: SpaceKind): string {
       return "Timeline";
     case "3d":
       return "3D";
+    case "web_animation":
+      return "Motion";
   }
 }

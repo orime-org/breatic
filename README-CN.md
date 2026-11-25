@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>面向创意团队的实时协作 AI 工作空间。</strong></p>
-<p align="center">线上已开放 · 开源 · 桌面浏览器</p>
+<p align="center">线上已开放 · 源码可用 · 桌面浏览器</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_cn">官网</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -58,12 +58,13 @@
 | **一个项目，多个 Space** | 将创作简报、各个场景和不同创意方向组织在一起，每个 Space 有独立标签页。 |
 | **Document Space（文档空间）** | 用标题、列表和格式化文字编写剧本、镜头描述及制作清单。 |
 | **Canvas Space（画布空间）** | 在无限画布上排列参考素材和媒体，结合提示词、模型及参考输入生成、调整资产。 |
-| **3D（DEV）** | 在共享三维场景中布置内置对象、导入的 glTF 模型和 AI 生成的模型，编辑位置、旋转及缩放，用预设或逐个关节给角色摆姿势；在导演台里布置大家共用的机位和灯光，实时看到每台机位的画面；用取景框按画幅截取场景或任一机位的画面，添加到 Agent、Canvas 或剪贴板。 |
-| **Timeline（DEV）** | 将 Project 视频或本地上传视频编排在共享轨道上：移动、裁剪、分割、复制和删除片段，撤销自己的编辑并预览编排。描述一段网页动画，交给 DeepSeek 制作，在执行列表查看进度，再把结果作为片段加入轨道，按 Timeline 时钟播放。各轨的视频和网页动画按图层叠放、一起播放；在预览里选中图层即可移动、缩放、拉伸或旋转，也可以输入位置和大小。在播放条右端从 16:9、9:16、1:1、4:3、4:5、2:3、21:9 七种比例中选择画面比例，图层在画面中的相对位置保持不变。 |
+| **3D（DEV）** | 在共享三维场景中布置内置对象、导入的 glTF 模型和 AI 生成的模型，编辑位置、旋转及缩放，用预设或逐个关节给角色摆姿势；逐个部位改颜色、质感和表面图片；在导演台里布置大家共用的机位和灯光，实时看到每台机位的画面；用取景框按画幅截取场景或任一机位的画面，添加到 Agent、Canvas 或剪贴板。 |
+| **Timeline（DEV）** | 将 Project 视频或本地上传视频编排在共享轨道上：移动、裁剪、分割、复制和删除片段，撤销自己的编辑并预览编排。把 Motion Space 中已完成的网页动画作为片段加入轨道，按 Timeline 时钟播放；每次添加都是一份独立副本。各轨的视频和网页动画按图层叠放、一起播放；在预览里选中图层即可移动、缩放、拉伸或旋转，也可以输入位置和大小。在播放条右端从 16:9、9:16、1:1、4:3、4:5、2:3、21:9 七种比例中选择画面比例，图层在画面中的相对位置保持不变。 |
+| **Motion（DEV）** | 描述一段网页动画，交给 DeepSeek 制作；在已完成、进行中和失败三栏查看运行，播放并拖动定位已完成的结果，把一个结果修改成新结果，与协作者在时间点上添加批注，把结果导出为视频并放到 Canvas 上。 |
 | **项目中的 AI Agent** | 讨论创意、提供文档或画布上下文，结合已有素材查看和评审提案。 |
-| **实时协作** | 邀请协作者、设置项目访问权限，共同编辑实时同步的画布、文档、三维场景和 Timeline。 |
+| **实时协作** | 邀请协作者、设置项目访问权限，共同编辑实时同步的画布、文档、三维场景、Timeline 和 Motion。 |
 
-支持的媒体包括图片、视频、音频和 3D 资产，具体生成能力取决于已配置的供应商及模型权限。Canvas 和 Document Space 可用，3D 和 Timeline 在两个创建入口均带有 **DEV** 标记；3D 场景内的批注正在开发中。Timeline 当前支持多条画面轨上的视频和网页动画编辑与预览，网页动画只在开启该功能的部署中可用；更多素材类型和视频导出属于后续计划。
+支持的媒体包括图片、视频、音频和 3D 资产，具体生成能力取决于已配置的供应商及模型权限。Canvas 和 Document Space 可用，3D、Timeline 和 Motion 在两个创建入口均带有 **DEV** 标记；3D 场景内的批注正在开发中。Timeline 当前支持多条画面轨上的视频和网页动画编辑与预览；Motion 负责制作、修改和导出网页动画，网页动画只在开启该功能的部署中可用；Timeline 的更多素材类型和 Timeline 视频导出属于后续计划。
 
 ## 一起评审和修改
 
@@ -105,13 +106,13 @@ Agent 可以先提出改写方案，团队查看后再决定是否替换共享�
 | 个人、私密群体或组织内部自行部署 | [个人与局域网部署](self-host/LOCAL-CN.md) |
 | 修改源码或参与贡献 | [开发环境搭建](self-host/DEVELOPMENT-CN.md) |
 
-登录后完成个人 Studio 设置，创建项目，用 **+** 添加 Document、Canvas、3D 或 Timeline Space。写下简报、上传参考素材或布置内置三维对象。[使用指南](docs/USAGE-CN.md) 包含注册、首个项目、Space 操作和[快捷键](docs/USAGE-CN.md#keyboard-shortcuts)。
+登录后完成个人 Studio 设置，创建项目，用 **+** 添加 Document、Canvas、3D、Timeline 或 Motion Space。写下简报、上传参考素材或布置内置三维对象。[使用指南](docs/USAGE-CN.md) 包含注册、首个项目、Space 操作和[快捷键](docs/USAGE-CN.md#keyboard-shortcuts)。
 
 ### 自行部署前
 
 Web、API、后台任务和协作服务使用已发布的 Docker 镜像，依赖 PostgreSQL 与 Redis。上传和媒体处理通过部署到**你自己的 Cloudflare 账户**的 Ingest Worker 与媒体容器完成，文件保存在你的 R2 bucket；AI 调用使用你的供应商账户和额度。
 
-这不是离线或完全本地化部署，局域网访问需要可信 HTTPS。云服务与模型调用可能产生费用；SMTP、Google 登录、Stripe 支付和搜索是可选集成。按安装指南完成云端配置与验收，其中一次性的 Node/pnpm/Wrangler 配置步骤不代表日常使用需要启动开发服务器。
+这不是离线或完全本地化部署，局域网访问需要可信 HTTPS。云服务与模型调用可能产生费用；SMTP、Google 登录和搜索是可选集成；出售积分或会员须获得 Orime, Inc. 的书面授权方可启用（LICENSE 第 10 条和第 11 条）。按安装指南完成云端配置与验收，其中一次性的 Node/pnpm/Wrangler 配置步骤不代表日常使用需要启动开发服务器。
 
 ## 产品状态与帮助
 
@@ -137,11 +138,16 @@ Breatic 官方在线服务已开放使用，并持续开发。上文各功能的
 
 ## 许可证与允许用途
 
-Breatic 是**开源**项目，采用 [GNU Affero General Public License v3.0](LICENSE)（`AGPL-3.0-only`）。
+Breatic 是依据 [Breatic Source-Available License 2.0](LICENSE) 授权的**源码可用**软件。该许可证源自 Apache License 2.0，并附加了其他条件。它不是 OSI 认可的开源许可证。
 
-你可以出于任何目的使用、研究、修改和自行部署 Breatic，包括商业用途。如果你修改了 Breatic，并让其他人通过网络使用修改后的版本，就必须按同一许可证向他们提供完整源代码。完整条款以许可证为准。
+- 你可以获取、修改并自行部署 Breatic，用于个人用途、非商业性的私人团体或你所在组织的内部使用（包括在你的业务中使用），无需支付软件许可费（LICENSE 第 10 条）。
+- 你可以用 Breatic 制作并销售创作作品，例如影片、广告、图像、音频和 3D 资产；具体条件见 LICENSE 第 10 条和第 13 条。
+- 未获得 Orime, Inc. 另行书面授权时，你运营的实例必须以自部署模式（Self-Deployment Mode）运行：应用内积分购买、付费会员、订阅及其他付费运营功能保持关闭（LICENSE 第 10 条）。
+- 出于商业目的，向上述用途范围以外的人提供 Breatic 或其平台功能的实质性部分，需要另行获得书面授权（LICENSE 第 11 条）。
+- 在应用的标识区域保持 Breatic 名称和随附标志可见，并保持许可证与署名声明可供查阅（LICENSE 第 12 条）。Orime, Inc. 是 Breatic 商标的经授权许可方；品牌使用规则见 [TRADEMARKS.md](TRADEMARKS.md)。
+- 以较早许可证（包括 AGPL-3.0-only）发布的版本，继续适用其发布时的许可证（LICENSE 第 15 条）。
 
-Breatic 的名称和标识是 Orime, Inc. 的商标，不在许可证授权范围内，使用规则见 [TRADEMARKS.md](TRADEMARKS.md)。许可证不限制你用 Breatic 创作的内容。
+完整条款见 [LICENSE](LICENSE)。
 
 ### 生成内容
 

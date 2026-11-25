@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The join panel against the canvas session (inner#1825 §6.5): one numbered
@@ -31,7 +31,7 @@ import { toast } from '@web/lib/toast';
 import { canvasApi, type CanvasLimits } from '@web/data/api/canvas';
 import { apiGet } from '@web/data/api/request';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
 import { canvasSessions } from '@web/stores/canvas-session';
 

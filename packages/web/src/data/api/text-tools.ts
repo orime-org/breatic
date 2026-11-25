@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The text mini-tool client (inner#1860): the document's AI commands ask
@@ -12,6 +12,7 @@
 
 import type { TextToolLanguage, TextToolTone } from '@breatic/shared';
 
+import { readKeyFailure, type KeyFailure } from '@web/data/api/key-failure';
 import { apiGet } from '@web/data/api/request';
 import { sseStream } from '@web/data/stream/sse';
 
@@ -35,7 +36,7 @@ export type TextToolRequest =
 export type TextStreamEvent =
   | { readonly type: 'text_delta'; readonly text: string }
   | { readonly type: 'done' }
-  | { readonly type: 'error'; readonly message: string };
+  | { readonly type: 'error'; readonly message: string; readonly keyFailure?: KeyFailure };
 
 /** The budgets the browser windows a request to, and the pace it shows the answer at. */
 export interface TextToolsConfig {
@@ -70,7 +71,10 @@ function parseFrame(data: string, event: string): TextStreamEvent | null {
   }
   if (event === 'text_delta') return typeof payload['text'] === 'string' ? { type: 'text_delta', text: payload['text'] } : null;
   if (event === 'done') return { type: 'done' };
-  if (event === 'error') return { type: 'error', message: typeof payload['message'] === 'string' ? payload['message'] : '' };
+  if (event === 'error') {
+    const keyFailure = readKeyFailure(payload);
+    return { type: 'error', message: typeof payload['message'] === 'string' ? payload['message'] : '', ...(keyFailure === undefined ? {} : { keyFailure }) };
+  }
   return null;
 }
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Timeline layer transform in the preview (#1410): the selection handles move, scale, stretch and rotate a layer and
@@ -13,6 +13,7 @@ import { expect, type Locator, type Page } from 'playwright/test';
 import type { Doc } from 'yjs';
 
 import { liveModuleUrl, YJS_MANAGER } from '../helpers/live-module';
+import { MOTION_RUN_MS, makeInMotion, placeCopy, waitMotionFinished } from '../helpers/motion';
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { test } from '../helpers/slot';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
@@ -38,9 +39,6 @@ const IDENTITY: LayerTransform = { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, r
  * the handles sit on the frame's outer box, and the mouse lands on whole pixels.
  */
 const PX = 2;
-
-/** One real model run, from Execute to a ready copy; the design's cap is two hours. */
-const RUN_MS = 240_000;
 
 test.use({ viewport: { width: 1680, height: 1100 } });
 
@@ -508,28 +506,21 @@ test('two video tracks, the upper one scaled down, play together within two fram
 });
 
 test('a web-animation copy is selected and dragged in the preview like a video layer @needs-model @needs-ingest', async ({ page }) => {
-  // One real model run (up to RUN_MS) before the copy can be dragged.
-  test.setTimeout(360_000);
+  // One real model run in a Motion Space before the copy can be placed and dragged.
+  test.setTimeout(MOTION_RUN_MS + 120_000);
   const errors = watchTimelineErrors(page);
   await openSmokeProject(page);
-  const spaceId = await createSpace(page, 'timeline', `Timeline layer web copy ${crypto.randomUUID()}`);
+  const prompt = 'A red circle moves from left to right across a white background.';
+  const { motionId, executionId } = await makeInMotion(page, 'Motion for layer drag', { prompt, seconds: 4 });
+  const spaces = [motionId];
   let snapWas: boolean | null = null;
   try {
+    await waitMotionFinished(page, executionId);
+    const spaceId = await createSpace(page, 'timeline', `Timeline layer web copy ${crypto.randomUUID()}`);
+    spaces.push(spaceId);
     const outlet = visibleSpace(page);
     await expect(outlet.getByTestId('timeline-space-empty')).toBeVisible();
-    await outlet.getByTestId('timeline-create-web-animation').click();
-    const dialog = page.getByRole('dialog', { name: 'Create web animation', exact: true });
-    await expect(dialog.getByTestId('web-animation-add-at-playhead')).toHaveAttribute('aria-checked', 'true');
-    await dialog.getByTestId('web-animation-prompt').fill('A red circle moves from left to right across a white background.');
-    await dialog.getByTestId('web-animation-execute').click();
-    await expect(dialog).toHaveCount(0);
-    const placed = outlet.locator('[data-testid^="timeline-clip-"][data-kind="web-animation"]');
-    await expect(placed).toHaveCount(1);
-    await expect(placed).toHaveAttribute('data-state', 'ready', { timeout: RUN_MS + 60_000 });
-    const clipId = (await placed.getAttribute('data-clip-id')) ?? '';
-    expect(clipId).not.toBe('');
-    // The execution list opened with the run; close it so the side panel is back.
-    await outlet.getByTestId('timeline-close-executions').click();
+    const clipId = await placeCopy(page, executionId, prompt);
     const player = outlet.getByTestId('timeline-preview').locator(`hyperframes-player[data-clip-id="${clipId}"]`);
     await expect(player).toHaveAttribute('data-web-state', 'ready', { timeout: 30_000 });
 
@@ -552,6 +543,6 @@ test('a web-animation copy is selected and dragged in the preview like a video l
     expect(errors.unexpected).toEqual([]);
   } finally {
     if (snapWas !== null) await setSnap(page, snapWas);
-    await deleteSpace(page, spaceId);
+    for (const id of spaces.reverse()) await deleteSpace(page, id);
   }
 });

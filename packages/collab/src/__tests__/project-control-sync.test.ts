@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project control-plane subscriber tests.
@@ -25,6 +25,8 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import {
   activityNewChannel,
   projectConnectionsCloseChannel,
+  SCENE_LOOK_SETTLED_SIGNAL,
+  sceneLookSettledChannel,
 } from "@breatic/shared";
 
 // The deployment prefix under test. `vi.hoisted` because the `vi.mock` factory
@@ -128,6 +130,36 @@ describe("startProjectControlSync — activity:new", () => {
 
     expect(metaDoc.relayStateless).toHaveBeenCalledTimes(1);
     expect(metaDoc.broadcastStateless).not.toHaveBeenCalled();
+  });
+});
+
+describe("startProjectControlSync — scene-look:settled", () => {
+  it("relays how a part picture was settled to its uploader's connections on the project's meta doc", async () => {
+    const metaDoc: DocSpy = {
+      doc: new Y.Doc(),
+      broadcastStateless: vi.fn(),
+      relayStateless: vi.fn(),
+      connections: new Map(),
+    };
+    const { hocuspocus } = buildHocuspocus(metaDoc);
+    const { subscriber } = buildRedis();
+    startProjectControlSync(hocuspocus, subscriber as unknown as Redis);
+    await Promise.resolve();
+    const settlement = { projectId: PID, spaceId: "space-1", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged" };
+
+    subscriber.emit(
+      "pmessage",
+      `${TEST_PREFIX}:project:*`,
+      sceneLookSettledChannel(TEST_PREFIX, PID),
+      JSON.stringify({ type: "project-scene-look:settled", ...settlement, ts: Date.now() }),
+    );
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(metaDoc.relayStateless).toHaveBeenCalledWith(JSON.stringify({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement }), expect.any(Function));
+    const pick = (metaDoc.relayStateless as ReturnType<typeof vi.fn>).mock.calls[0]![1] as (connection: { context: unknown }) => boolean;
+    expect(pick({ context: { user: { id: "u" } } })).toBe(true);
+    expect(pick({ context: { user: { id: "someone-else" } } })).toBe(false);
   });
 });
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The ingest Worker: where the browser's bytes go (#173, design §4).
@@ -109,6 +109,7 @@ export { LongMediaContainer } from "@ingest/jobs/long-media-container.js";
 export { LongMediaJobTestObject } from "@ingest/jobs/long-media-container.js";
 export { WebReaderContainer } from "@ingest/web-reader-container.js";
 export { WebAnimationContainer } from "@ingest/jobs/web-animation-container.js";
+export { WebAnimationRenderContainer } from "@ingest/jobs/web-animation-render-container.js";
 
 /**
  * `/uploads/{uploadId}/parts/{n}`. The part number is captured as digits so
@@ -1521,7 +1522,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
 
   const webAnimationCancel = WEB_ANIMATION_CANCEL_PATH.exec(pathname);
   if (request.method === "POST" && webAnimationCancel) {
-    return cancelWebAnimationJob(request, env, webAnimationCancel[1] ?? "");
+    return cancelWebAnimationJob(request, env, webAnimationCancel[1] ?? "", webAnimationCancel[2] ?? "");
   }
 
   const preview = WEB_ANIMATION_PREVIEW_PATH.exec(pathname);

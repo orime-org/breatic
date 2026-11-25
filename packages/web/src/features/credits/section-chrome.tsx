@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { Loader2 } from 'lucide-react';
@@ -476,6 +476,32 @@ export function Notice({
       <div className='font-semibold'>{title}</div>
       <div className='mt-0.5 text-sm'>{body}</div>
     </div>
+  );
+}
+
+/** Whether this deployment records credits, and what the section says where they are not sold. */
+interface SellingOffNoticeProps {
+  /** Whether credits are recorded and deducted here. */
+  charging: boolean;
+  /** The section's own sentence for a deployment that charges but sells nothing. */
+  body: string;
+}
+
+/**
+ * What a section that exists only where credits are sold (buying, refunds)
+ * shows where they are not: that nothing is charged at
+ * all, or that credits are charged but not sold here.
+ * @param props - Whether credits are recorded, and the section's sentence.
+ * @param props.charging - Whether credits are recorded and deducted here.
+ * @param props.body - The section's own sentence for a deployment that charges but sells nothing.
+ * @returns The notice.
+ */
+export function SellingOffNotice({ charging, body }: SellingOffNoticeProps): React.JSX.Element {
+  const t = useTranslation();
+  return charging ? (
+    <Notice title={t('credits.notSoldHere.title')} body={body} tone='info' />
+  ) : (
+    <Notice title={t('credits.billingOff.title')} body={t('credits.billingOff.body')} tone='info' />
   );
 }
 

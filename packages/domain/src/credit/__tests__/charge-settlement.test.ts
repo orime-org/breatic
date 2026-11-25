@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A charge request settles once, in one commit (inner#1611, inner#1617). The
@@ -40,7 +40,7 @@ const h = vi.hoisted(() => ({
 
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<typeof CoreModule>()),
-  env: { PAYMENT_ENABLED: true, ENV: "test" },
+  env: { CHARGING_ENABLED: true, PAYMENT_ENABLED: false, ENV: "test" },
   db: {
     transaction: async (run: (tx: unknown) => Promise<unknown>): Promise<unknown> => {
       const result = await run({});

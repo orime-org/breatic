@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, cpSync, rmSync, existsSync } from 'node:fs';
@@ -7,16 +7,17 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
 
-for (const failure of ['', 'wrong-index', 'missing-digest', 'media-digest', 'web-reader-digest', 'missing-web-reader-digest', 'malformed-web-reader-digest', 'web-animation-digest', 'missing-web-animation-digest', 'malformed-web-animation-digest']) {
+for (const failure of ['', 'wrong-index', 'missing-digest', 'media-digest', 'web-reader-digest', 'missing-web-reader-digest', 'malformed-web-reader-digest', 'web-animation-digest', 'missing-web-animation-digest', 'malformed-web-animation-digest', 'web-animation-render-digest', 'missing-web-animation-render-digest']) {
   test(`publication validates the exact tested digests: ${failure || 'success'}`, () => {
     const dir = mkdtempSync(join(tmpdir(), 'publish-images-'));
     try {
       mkdirSync(join(dir, 'bin')); mkdirSync(join(dir, 'digests')); mkdirSync(join(dir, 'scripts'));
       for (const file of ['release.mjs', 'publish-images.sh']) cpSync(new URL(file, import.meta.url), join(dir, 'scripts', file));
-      for (const [i, name] of ['backend-amd64', 'backend-arm64', 'web-amd64', 'web-arm64', 'ingestMedia-amd64', 'ingestWebReader-amd64', 'ingestWebAnimation-amd64'].entries()) {
+      for (const [i, name] of ['backend-amd64', 'backend-arm64', 'web-amd64', 'web-arm64', 'ingestMedia-amd64', 'ingestWebReader-amd64', 'ingestWebAnimation-amd64', 'ingestWebAnimationRender-amd64'].entries()) {
         if (failure === 'missing-digest' && name === 'web-arm64') continue;
         if (failure === 'missing-web-reader-digest' && name === 'ingestWebReader-amd64') continue;
         if (failure === 'missing-web-animation-digest' && name === 'ingestWebAnimation-amd64') continue;
+        if (failure === 'missing-web-animation-render-digest' && name === 'ingestWebAnimationRender-amd64') continue;
         const malformed = (failure === 'malformed-web-reader-digest' && name === 'ingestWebReader-amd64') ||
           (failure === 'malformed-web-animation-digest' && name === 'ingestWebAnimation-amd64');
         writeFileSync(join(dir, 'digests', name), malformed ? `sha256:${'6'.repeat(63)}` : `sha256:${String(i + 1).repeat(64)}`);
@@ -26,11 +27,11 @@ import fs from 'node:fs';
 const args=process.argv.slice(2);
 fs.appendFileSync('calls', JSON.stringify([process.argv[1].split('/').at(-1).replace('.mjs',''), ...args])+'\\n');
 if(args[0]==='buildx' && args[2]==='inspect') {
-  const media=args[3].includes('ingest-media'), reader=args[3].includes('ingest-web-reader'), animation=args[3].includes('ingest-web-animation'), web=!reader && !animation && args[3].includes('-web');
+  const media=args[3].includes('ingest-media'), reader=args[3].includes('ingest-web-reader'), render=args[3].includes('ingest-web-animation-render'), animation=!render && args[3].includes('ingest-web-animation'), web=!reader && !animation && !render && args[3].includes('-web');
   if(args.includes('--raw')) {
     const start=web?3:1;
     console.log(JSON.stringify({manifests:['amd64','arm64'].map((architecture,i)=>({platform:{os:'linux',architecture},digest:'sha256:'+String(start+i+(process.env.FAILURE==='wrong-index'?1:0)).repeat(64)}))}));
-  } else console.log('sha256:'+(media?(process.env.FAILURE==='media-digest'?'9':'5'):reader?(process.env.FAILURE==='web-reader-digest'?'8':'6'):animation?(process.env.FAILURE==='web-animation-digest'?'9':'7'):web?'7':'6').repeat(64));
+  } else console.log('sha256:'+(media?(process.env.FAILURE==='media-digest'?'9':'5'):reader?(process.env.FAILURE==='web-reader-digest'?'8':'6'):animation?(process.env.FAILURE==='web-animation-digest'?'9':'7'):render?(process.env.FAILURE==='web-animation-render-digest'?'9':'8'):web?'7':'6').repeat(64));
 }
 `;
       // .mjs wrappers keep behavior independent of the invoking Node's module defaults.
@@ -58,7 +59,12 @@ if(args[0]==='buildx' && args[2]==='inspect') {
         assert.equal(manifest.images.ingestWebAnimation,animation+'@sha256:'+'7'.repeat(64));
         assert.deepEqual(manifest.imagePlatforms.ingestWebAnimation,['linux/amd64']);
         const calls=readFileSync(join(dir,'calls'),'utf8').trim().split('\n').map(JSON.parse);
-        assert.deepEqual(calls.filter(call=>call[3]==='create'&&call.at(-1).startsWith(animation)),
+        const render='ghcr.io/orime-org/breatic-ingest-web-animation-render';
+        assert.equal(manifest.images.ingestWebAnimationRender,render+'@sha256:'+'8'.repeat(64));
+        assert.deepEqual(manifest.imagePlatforms.ingestWebAnimationRender,['linux/amd64']);
+        assert.deepEqual(calls.filter(call=>call[3]==='create'&&call.at(-1).startsWith(render+'@')),
+          [['docker','buildx','imagetools','create','--prefer-index=false','--tag',render+':v0.2.0',render+'@sha256:'+'8'.repeat(64)]]);
+        assert.deepEqual(calls.filter(call=>call[3]==='create'&&call.at(-1).startsWith(animation+'@')),
           [['docker','buildx','imagetools','create','--prefer-index=false','--tag',animation+':v0.2.0',animation+'@sha256:'+'7'.repeat(64)]]);
         // Single-platform like the media image: tagged without wrapping it in an index.
         assert.deepEqual(calls.filter(call=>call[3]==='create'&&call.at(-1).startsWith(reader)),

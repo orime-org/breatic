@@ -1,8 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * Web-animation clips and operation receipts in the Timeline document (inner#1711 design §3.1). The tests write
+ * Web-animation clips in the Timeline document (inner#1711 design §3.1). The tests write
  * records directly, as a collaborator's update would.
  */
 
@@ -11,7 +11,7 @@ import * as Y from "yjs";
 
 import { attachTimelineRecord, initializeTimelineDocument, readTimelineContent } from "../document.js";
 import {
-  TimelineClipSchema, TimelineOperationReceiptSchema, TimelineWebAnimationClipSchema, TimelineVideoClipSchema,
+  TimelineClipSchema, TimelineWebAnimationClipSchema, TimelineVideoClipSchema,
 } from "../schema.js";
 
 const settings = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
@@ -51,7 +51,6 @@ const videoClip = {
   mute: false,
   transform: identityTransform,
 };
-const receipt = { executionId: EXECUTION, inputHash: "sha256:abc", landedAt: "2026-11-07T08:00:00.000Z" };
 
 /**
  * A seeded document with one second visual track.
@@ -93,17 +92,7 @@ describe("web-animation clip schema", () => {
   });
 });
 
-describe("operation receipt schema", () => {
-  it("accepts an execution id, input hash and landing time", () => {
-    expect(TimelineOperationReceiptSchema.parse(receipt)).toEqual(receipt);
-  });
-
-  it("refuses a receipt without an execution id", () => {
-    expect(TimelineOperationReceiptSchema.safeParse({ inputHash: "sha256:abc", landedAt: receipt.landedAt }).success).toBe(false);
-  });
-});
-
-describe("reading web-animation clips and receipts", () => {
+describe("reading web-animation clips", () => {
   it("reads web clips beside video clips", () => {
     const doc = seeded();
     attachTimelineRecord(doc.getMap("clips"), webClip.id, webClip);
@@ -127,24 +116,13 @@ describe("reading web-animation clips and receipts", () => {
     expect(damaged.clips).toEqual([broken.id]);
   });
 
-  it("reads receipts keyed by action id", () => {
+  it("ignores the operationReceipts root an older document still carries", () => {
     const doc = seeded();
-    doc.getMap("operationReceipts").set(ACTION, receipt);
+    doc.getMap("operationReceipts").set(ACTION, { executionId: EXECUTION, inputHash: "sha256:abc", landedAt: "2026-11-07T08:00:00.000Z" });
 
-    expect(readTimelineContent(doc).document.operationReceipts).toEqual({ [ACTION]: receipt });
-  });
+    const { document } = readTimelineContent(doc);
 
-  it("reads a document written before receipts existed as having none", () => {
-    const doc = seeded();
-
-    expect(readTimelineContent(doc).document.operationReceipts).toEqual({});
-  });
-
-  it("leaves out a receipt that fails its schema", () => {
-    const doc = seeded();
-    doc.getMap("operationReceipts").set(ACTION, receipt);
-    doc.getMap("operationReceipts").set("50000000-0000-4000-8000-000000000002", { executionId: "not-a-uuid" });
-
-    expect(readTimelineContent(doc).document.operationReceipts).toEqual({ [ACTION]: receipt });
+    expect(document.clips).toEqual({});
+    expect(Object.keys(document)).not.toContain("operationReceipts");
   });
 });

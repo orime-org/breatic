@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { z } from "zod";
 import { hasUnderstandAdapter } from "@provider/llm/understand/dispatch.js";
@@ -8,6 +8,7 @@ import { mediaAdapter } from "@provider/media/adapters.js";
 import { dialogueSchema } from "@provider/pricing/dialogue.js";
 import { pricingRuleSchema, rejectSchema, vendorRejectSchema, type Reject } from "@provider/pricing/estimate.js";
 import { formulaProblem } from "@provider/pricing/evaluate.js";
+import { hasKey, type KeySet } from "@provider/keys.js";
 import type { Candidate } from "@provider/routing/route.js";
 
 const choice = z.union([z.string(), z.number(), z.boolean()]);
@@ -33,6 +34,12 @@ const upstreamSchema = z.strictObject({
   billing_url: z.string().min(1).optional(),
   /** How long a run answered completed without outputs may still be storing them, in ms; SandBase reads it. */
   empty_output_wait_ms: z.number().int().positive().default(EMPTY_OUTPUT_WAIT_MS),
+  /** The name a user knows the upstream by, where they add their own key for it (inner#1953). */
+  display_name: z.string().min(1).optional(),
+  /** Whether it is a model vendor's own API or a reseller of many vendors' models, for listing it to a user. */
+  group: z.enum(["official", "reseller"]).optional(),
+  /** Where the upstream hands out keys (inner#1953). */
+  key_url: z.url().optional(),
 });
 
 /** How a written value is converted after its spelling: to a string, a number, or a one-item list. */
@@ -524,28 +531,18 @@ export function parseProviderConfig(input: ProviderConfigInput): ProviderConfig 
 }
 
 /**
- * Whether a key is configured.
- * @param keyOf - Reads one environment variable.
- * @param env - The variable.
- * @returns True when it holds a non-empty value.
- */
-export function hasKey(keyOf: (env: string) => string | undefined, env: string): boolean {
-  const value = keyOf(env);
-  return value !== undefined && value !== "";
-}
-
-/**
- * The routing candidates of one model in this deployment.
+ * The routing candidates of one model.
  * @param config - The validated configuration.
  * @param model - Our model id.
- * @param keyOf - Reads one environment variable; undefined or empty means not configured.
+ * @param keys - The key set the call runs on.
  * @returns One candidate per binding, with effective weights.
  * @throws {Error} When the model has no bindings.
+ * @throws {MalformedKey} When an account's key is not printable ASCII.
  */
-export function candidatesOf(config: ProviderConfig, model: string, keyOf: (env: string) => string | undefined): Candidate[] {
+export function candidatesOf(config: ProviderConfig, model: string, keys: KeySet): Candidate[] {
   const bindings = config.models[model];
   if (bindings === undefined) throw new Error(`Model ${model} has no upstream bindings`);
-  return bindings.map((b) => candidateOf(config, b.upstream, b.weight, keyOf));
+  return bindings.map((b) => candidateOf(config, b.upstream, b.weight, keys));
 }
 
 /**
@@ -553,12 +550,12 @@ export function candidatesOf(config: ProviderConfig, model: string, keyOf: (env:
  * @param config - The validated configuration.
  * @param upstream - The upstream.
  * @param weight - Its effective weight.
- * @param keyOf - Reads one environment variable.
+ * @param keys - The key set the call runs on.
  * @returns The candidate.
+ * @throws {MalformedKey} When an account's key is not printable ASCII.
  */
-export function candidateOf(config: ProviderConfig, upstream: string, weight: number, keyOf: (env: string) => string | undefined): Candidate {
-  const envVar = config.upstreams[upstream]!.key_env;
-  return { upstream, weight, configured: hasKey(keyOf, envVar), envVar };
+export function candidateOf(config: ProviderConfig, upstream: string, weight: number, keys: KeySet): Candidate {
+  return { upstream, weight, configured: hasKey(keys, upstream), envVar: config.upstreams[upstream]!.key_env };
 }
 
 /**

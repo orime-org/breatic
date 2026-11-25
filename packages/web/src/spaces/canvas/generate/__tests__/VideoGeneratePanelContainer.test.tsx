@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** The canvas hands the panels a getter; these trees answer 'this client'. */
 const LAST_WRITE_LOCAL = (): boolean => true;
@@ -49,6 +49,18 @@ vi.mock('@web/data/yjs/use-socket', () => ({
     }),
   ),
 }));
+// What the panel asks a price for: every estimate input the container hands the run check, the real hook still runs.
+const estimated = vi.hoisted(() => [] as { params: Record<string, unknown> }[]);
+vi.mock('@web/spaces/canvas/generate/use-credit-estimate', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@web/spaces/canvas/generate/use-credit-estimate')>();
+  return {
+    ...real,
+    useRunCheck: (...args: Parameters<typeof real.useRunCheck>) => {
+      estimated.push(args[1] as { params: Record<string, unknown> });
+      return real.useRunCheck(...args);
+    },
+  };
+});
 
 import * as Y from 'yjs';
 import { toast } from 'sonner';
@@ -1376,6 +1388,13 @@ describe('VideoGeneratePanelContainer', () => {
       ).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-driving-video')).toBeNull();
       expect(screen.queryByTestId('generate-video-tool-source-video')).toBeNull();
+    });
+
+    it('prices the run with the image the prompt @-mentions, as the submit sends it (inner#1953)', async () => {
+      // A charged step on a mentioned image (Kling O3's element description) shows in the estimate only if the
+      // estimate is asked with the images the run will send.
+      await openRefPanel(['ref-b']);
+      await waitFor(() => expect(estimated.at(-1)?.params.images).toEqual(['https://cdn/b.png']));
     });
 
     it('sends only the @-mentioned image, not everything connected', async () => {

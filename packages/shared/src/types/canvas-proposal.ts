@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The shape of a proposed group of canvas nodes (#229).
@@ -521,5 +521,16 @@ export interface ProposalRefused {
   reason: string;
 }
 
-/** What the tool answers with: the proposal itself, or why it was refused. */
-export type ProposalAnswer = (CanvasProposal & { placed: true }) | ProposalRefused;
+/**
+ * What the tool answers with: the proposal itself, or why it was refused. A placed one names the models the Studio's
+ * payer ran on their own key when it was proposed (inner#1953), which cost no credits.
+ */
+export type ProposalAnswer =
+  | (CanvasProposal & {
+      placed: true;
+      /** Models the Studio's payer runs on their own key (inner#1953). */
+      onPayerKey?: string[];
+      /** The generate nodes (by index) whose run describes its inputs on a language model on our keys, in credits. */
+      describedOnCredits?: number[];
+    })
+  | ProposalRefused;

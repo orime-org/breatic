@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Asking for a refund: the confirmation stays open, with its confirm button
@@ -112,7 +112,7 @@ function renderRefunds(): ReturnType<typeof render> {
   });
   return render(
     <QueryClientProvider client={client}>
-      <RefundsSection userId='u1' billing />
+      <RefundsSection userId='u1' charging selling />
     </QueryClientProvider>,
   );
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Real Yjs-database boundaries for empty Timeline upgrades and Project copies
@@ -123,7 +123,7 @@ describe("Timeline initialization in the real Yjs database", () => {
     expect(readTimelineDocument(decode(loaded))).toEqual({
       schemaVersion: 2, settings: SETTINGS,
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
-      clips: {}, sources: {}, operationReceipts: {},
+      clips: {}, sources: {},
     });
     expect(Array.from(present(await yjsRepo.fetchDocData(name)))).toEqual(Array.from(loaded));
   });

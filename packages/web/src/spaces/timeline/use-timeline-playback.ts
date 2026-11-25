@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { TIMELINE_PREVIEW_DEFAULTS, t, type TimelineDocumentV1, type TimelinePreviewSyncLimits } from '@breatic/shared';
@@ -775,11 +775,13 @@ export function useTimelinePlayback(input: TimelinePlaybackInput): TimelinePlayb
   // tab runs no effects, so the stop detaches everything and showing it again attaches every instance with a new hello.
   React.useEffect(() => host.listen(), [host]);
 
+  // The load timeout arriving after the instances attached starts their wait.
+  const { webLoadTimeoutMs } = input;
   React.useEffect(() => {
     host.sync(webLayers);
     setWebStates(host.states());
     evaluateNow.current?.();
-  }, [host, webLayers]);
+  }, [host, webLayers, webLoadTimeoutMs]);
 
   React.useEffect(() => {
     evaluateNow.current?.();

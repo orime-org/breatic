@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { apiGet, apiPost } from '@web/data/api/request';
 import type { UploadClientConfig } from '@breatic/shared';
@@ -75,6 +75,9 @@ export const assetsApi = {
    * @param params.focusImage - For a focus crop, the image it becomes and the node whose pool takes it.
    * @param params.purpose - Upload use context; models retain the ordinary upload source.
    * @param params.label - The name a 3D model is imported under.
+   * @param params.objectId - The 3D object a part picture is for.
+   * @param params.part - That object's part.
+   * @param params.startMap - The part's picture when the upload started, or null for none.
    * @param signal - Cancellation belonging to this authorization request.
    * @returns The opened upload, the existing asset to reuse, or the open
    *   that failed.
@@ -97,6 +100,9 @@ export const assetsApi = {
       ...(params.focusImage !== undefined && { focusImage: params.focusImage }),
       ...(params.purpose !== undefined && { purpose: params.purpose }),
       ...(params.label !== undefined && { label: params.label }),
+      ...(params.objectId !== undefined && { object_id: params.objectId }),
+      ...(params.part !== undefined && { part: params.part }),
+      ...(params.startMap !== undefined && { start_map: params.startMap }),
     }, { ...NO_CLIENT_TIMEOUT, ...(signal !== undefined && { signal }) });
   },
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
@@ -131,7 +131,7 @@ export default function LoginPage(): React.JSX.Element {
 
   /**
    * The referral row above the Google button: only a new Google account uses it.
-   * @returns The row for the current state, or null while payments are off.
+   * @returns The row for the current state, or null where nothing is sold (`selling` false).
    */
   function referralRow(): React.ReactNode {
     if (referral.field === 'loading') return <Skeleton data-testid='login-referral-loading' className='h-7 w-full' />;

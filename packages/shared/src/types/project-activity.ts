@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project activity feed contract (ADR 2026-07-04 project-activity-feed).
@@ -16,6 +16,7 @@
 import type { UploadStatus } from "@shared/upload/upload-status.js";
 import { z } from "zod";
 
+import type { SceneLookPictureSettlement } from "@shared/scene.js";
 import type { ProjectRole } from "@shared/types/role.js";
 
 /** Every event type the feed can carry (SQL CHECK mirrors this list). */
@@ -239,3 +240,20 @@ export interface AssetPeaksReadySignal {
   url: string;
 }
 
+/**
+ * Stateless WS signal to the uploader's meta connections when collab settled an
+ * uploaded 3D part picture (inner#1693 design 6.3); their page ends that part's
+ * upload and, when it was not written, tells them why.
+ */
+export const SCENE_LOOK_SETTLED_SIGNAL = "scene-look:settled" as const;
+
+export interface SceneLookSettledSignal {
+  t: typeof SCENE_LOOK_SETTLED_SIGNAL;
+  projectId: string;
+  spaceId: string;
+  objectId: string;
+  part: string;
+  picture: string;
+  userId: string;
+  outcome: SceneLookPictureSettlement;
+}

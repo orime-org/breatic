@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Tests for the membership-quota config: the shape every tier must have,
@@ -19,6 +19,7 @@ import {
   getMembershipConfig,
   getMembershipLimits,
   getSubscriptionStaleAfterDays,
+  subscriptionClock,
 } from "@core/config/membership.js";
 import { tierLimitsSchema } from "@breatic/shared";
 
@@ -192,6 +193,7 @@ describe("the real config/membership.yaml", () => {
   it("carries the renewal window, so every service that reads a tier has it", () => {
     expect(getMembershipConfig().stale_after_days).toBe(14);
     expect(getSubscriptionStaleAfterDays()).toBe(14);
+    expect(subscriptionClock().staleAfterMs).toBe(14 * 24 * 60 * 60 * 1000);
   });
 
   it("satisfies the schema", () => {

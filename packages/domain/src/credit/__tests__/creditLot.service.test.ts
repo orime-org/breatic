@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * 扣费开头解析 studio 失败时，两种错因的处置完全相反（任务 #11）。
@@ -85,8 +85,6 @@ beforeAll(() => {
   initCore({
     ...process.env,
     PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused",
   });
 });
 

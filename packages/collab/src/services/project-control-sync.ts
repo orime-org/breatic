@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Cross-process control-plane subscriber.
@@ -10,6 +10,8 @@
  *     activity signal on the `meta` doc.
  *   - `{prefix}:project:{pid}:asset-peaks:ready` (worker) — relay a written
  *     audio waveform on the `meta` doc, with the audio's address.
+ *   - `{prefix}:project:{pid}:scene-look:settled` (collab's task listener) —
+ *     relay how an uploaded 3D part picture was settled, to its uploader.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
  *     consumer) — close every connection to the project.
  *
@@ -49,9 +51,11 @@ import {
   projectMetaDocName,
   type ActivityNewControlEvent,
   type AssetPeaksReadyControlEvent,
+  type SceneLookSettledControlEvent,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
   ASSET_PEAKS_READY_SIGNAL,
+  SCENE_LOOK_SETTLED_SIGNAL,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
 import { relayOnMetaDoc } from "@collab/services/meta-signal.js";
@@ -61,6 +65,7 @@ const logger = createLogger("project-control-sync");
 type ProjectControlEvent =
   | ActivityNewControlEvent
   | AssetPeaksReadyControlEvent
+  | SceneLookSettledControlEvent
   | ProjectConnectionsCloseEvent;
 
 /**
@@ -68,7 +73,8 @@ type ProjectControlEvent =
  * `project-activity:new` relays the activity signal on the meta doc;
  * `project-connections:close` closes this instance's connections to the
  * project; `project-asset-peaks:ready` relays a written waveform on the meta
- * doc. Unknown / unparseable messages are logged and ignored.
+ * doc; `project-scene-look:settled` relays how an uploaded 3D part picture was
+ * settled as the `scene-look:settled` signal on it. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the relay and close handlers.
  * @param raw - Raw JSON message body received on the project control channel.
  * @throws {TypeError} When the message decodes to `null`; the subscriber logs it.
@@ -102,6 +108,19 @@ async function handleEvent(
       assetId: event.assetId,
       url: event.url,
     });
+    return;
+  }
+
+  if (event.type === "project-scene-look:settled") {
+    // Only the uploader's connections get it; their page ends that part's
+    // upload and tells them when the picture was not put on.
+    const { type: _type, ts: _ts, ...settlement } = event;
+    relayOnMetaDoc(
+      hocuspocus,
+      projectMetaDocName(event.projectId),
+      { t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement },
+      (context) => context?.user?.id === event.userId,
+    );
     return;
   }
 

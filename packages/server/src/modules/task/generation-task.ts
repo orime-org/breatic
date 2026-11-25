@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The task rows a generation leaves on the nodes it will write to (#186).
@@ -137,7 +137,7 @@ export async function failOpenedTasks(
  * @param opts.taskId - The id the task row takes.
  * @param opts.projectId - Owning project.
  * @param opts.userId - Who started it.
- * @param opts.credits - The run's estimate.
+ * @param opts.credits - The run's estimate; null holds nothing (the payer's own key pays, inner#1953).
  * @param opts.create - Writes the task row.
  * @returns The task row.
  * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the estimate.
@@ -147,10 +147,11 @@ export async function holdRowedRun<T>(opts: {
   taskId: string;
   projectId: string;
   userId: string;
-  credits: () => Promise<number>;
+  credits: () => Promise<number | null>;
   create: () => Promise<T>;
 }): Promise<T> {
-  await reserveForRun(opts.projectId, opts.userId, opts.taskId, await opts.credits());
+  const credits = await opts.credits();
+  if (credits !== null) await reserveForRun(opts.projectId, opts.userId, opts.taskId, credits);
   try {
     return await opts.create();
   } catch (err) {
@@ -235,7 +236,8 @@ export async function startRowedRun(opts: {
  * @param opts.projectId - The project it runs in.
  * @param opts.userId - Who submits it.
  * @param opts.check - The submission's own checks; throws its refusal, returns what the estimate reads.
- * @param opts.credits - The run's estimate, from what the checks returned.
+ * @param opts.credits - The run's estimate, from what the checks returned; null holds nothing (the payer's own key
+ *   pays, inner#1953).
  * @returns The new task id, and what the checks returned.
  * @throws {AppError} 403 or 404 without editor access, the checks' refusal, 402 when the studio cannot cover the estimate.
  */
@@ -243,12 +245,13 @@ export async function holdRun<T>(opts: {
   projectId: string;
   userId: string;
   check: () => Promise<T>;
-  credits: (checked: T) => Promise<number>;
+  credits: (checked: T) => Promise<number | null>;
 }): Promise<{ taskId: string; checked: T }> {
   await assertAccess(opts.projectId, opts.userId, "editor");
   const checked = await opts.check();
   const taskId = randomUUID();
-  await reserveForRun(opts.projectId, opts.userId, taskId, await opts.credits(checked));
+  const credits = await opts.credits(checked);
+  if (credits !== null) await reserveForRun(opts.projectId, opts.userId, taskId, credits);
   return { taskId, checked };
 }
 

@@ -1,18 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { candidateOf, candidatesOf, type MediaBinding } from "@provider/config/schema.js";
 import type { Cost } from "@provider/cost.js";
-import { costsOf, DeadlinePassed, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
+import { AccountKeyFailure, costsOf, DeadlinePassed, markCostsOf, NoUpstreamAvailable, SendNotAccepted, UpstreamRequestRejected, UpstreamTaskFailed, type UnavailableReason } from "@provider/errors.js";
 import { Aborted, HttpStatus, NoAnswer, NotSent } from "@provider/http/errors.js";
 import { fetchMedia, MediaRefused } from "@provider/http/fetch-media.js";
 import { boundSignal, sideBounds } from "@provider/http/request.js";
 import { outputUrls, type MediaAdapter, type Reach, type RequestBounds, type StepCodec, type StepContext, type StepOutput } from "@provider/media/adapter.js";
+import { assertAccountReaches, keyFailureOf, keyFor, keyScope, paidInRun, recordedKeys, ticketOwners, triedOn, type KeySet, type TicketOwners } from "@provider/keys.js";
 import { adapterOf } from "@provider/media/adapters.js";
 import { buildBody } from "@provider/media/body.js";
 import { assess, cloneKeyOf, heldClone, isPresent, stepCalls, stepSource, type CloneKind, type HeldClone } from "@provider/pricing/estimate.js";
 import type { Provider } from "@provider/provider.js";
-import { decide, passingStatus, type Failure } from "@provider/routing/decide.js";
+import { accountFailureOf, decide, passingStatus, type Failure } from "@provider/routing/decide.js";
 import { planRoute, type Candidate, type Route, type RoutePlan } from "@provider/routing/route.js";
 import { failedReason } from "@provider/routing/try-in-order.js";
 
@@ -93,6 +94,13 @@ export interface PlanOptions {
    * that bills by its length ranks after every upstream with a known price.
    */
   durations: Record<string, number[]>;
+  /**
+   * The keys the media steps run on; the deployment's when absent. On an account's keys the run uses only the first
+   * upstream the set holds a key for, and its failures are AccountKeyFailure.
+   */
+  keys?: KeySet;
+  /** The keys a description step (an understand call inside the run) runs on; the deployment's when absent. */
+  llmKeys?: KeySet;
 }
 
 /** The bounds of one call. */
@@ -100,6 +108,10 @@ export interface CallBounds {
   /** The task's deadline, in epoch milliseconds. */
   deadlineAt: number;
   signal?: AbortSignal;
+  /** The keys of the owner the ticket's media steps were planned on; the deployment's when absent. */
+  keys?: KeySet;
+  /** The keys of the owner its description step was planned on; the deployment's when absent. */
+  llmKeys?: KeySet;
 }
 
 /** The bounds of one send. */
@@ -185,8 +197,8 @@ interface Step {
   description?: string;
 }
 
-/** A ticket as provider reads it. */
-interface Ticket {
+/** A ticket as provider reads it; its owners say whose keys each part runs on, never the keys. */
+interface Ticket extends TicketOwners {
   version: number;
   model: string;
   route: Route;
@@ -208,6 +220,9 @@ interface Ticket {
   /** What a passed-over step's lost answer cost, known before the run finishes. */
   passedOverCosts?: Cost[];
 }
+
+/** The bounds of one request inside a call, and the key set the call runs on. */
+type Run = RequestBounds & { keys: KeySet };
 
 /** What a passed-over optional step tells the caller, by its kind. */
 const NOTICES: Readonly<Partial<Record<StepKind, MediaNotice>>> = { rig: "rig_failed" };
@@ -302,7 +317,9 @@ function inChain(error: unknown, test: (e: Error) => boolean): boolean {
  * @returns The runner.
  */
 export function createMediaRunner(provider: Provider, options: MediaRunnerOptions): MediaRunner {
-  const { config, keyOf } = provider;
+  const { config, deploymentKeys } = provider;
+  // Each key has its own slots: ours are sized for our account, and a payer's own key (inner#1953) has the upstream's
+  // limits of its own account, so neither waits behind the other.
   const inFlight = new Map<string, { count: number; waiting: (() => void)[] }>();
 
   /**
@@ -347,16 +364,17 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
   /**
    * Run one request inside the upstream's concurrency cap.
    * @param upstream - The upstream.
-   * @param bounds - The request's deadline and signal, which also end its wait for a slot.
+   * @param bounds - The request's deadline and signal, which also end its wait for a slot, and the keys it goes out on.
    * @param work - The request.
    * @returns What the request answered.
    * @throws {Aborted} When the bounds end while it waits for a slot.
    */
-  const capped = async <T>(upstream: string, bounds: RequestBounds, work: () => Promise<T>): Promise<T> => {
+  const capped = async <T>(upstream: string, bounds: Run, work: () => Promise<T>): Promise<T> => {
     const cap = config.upstreams[upstream]?.concurrency;
     if (cap === undefined) return work();
-    const slot = inFlight.get(upstream) ?? { count: 0, waiting: [] };
-    inFlight.set(upstream, slot);
+    const slotId = bounds.keys.owner === "account" ? keyScope(upstream, keyFor(bounds.keys, upstream)) : upstream;
+    const slot = inFlight.get(slotId) ?? { count: 0, waiting: [] };
+    inFlight.set(slotId, slot);
     // First in, first out: a released slot is handed to the head of the queue, so a
     // request that frees one and asks again at once cannot take it back.
     if (slot.count < cap) slot.count++;
@@ -366,16 +384,26 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     } finally {
       const next = slot.waiting.shift();
       if (next) next();
-      else slot.count--;
+      else if (--slot.count === 0) inFlight.delete(slotId);
     }
   };
 
   /**
    * How a call reaches an upstream.
    * @param upstream - The upstream.
+   * @param keys - The key set the call runs on.
    * @returns Its declaration and key.
    */
-  const reach = (upstream: string): Reach => ({ name: upstream, decl: config.upstreams[upstream]!, key: keyOf(config.upstreams[upstream]!.key_env) ?? "" });
+  const reach = (upstream: string, keys: KeySet): Reach => ({ name: upstream, decl: config.upstreams[upstream]!, key: keyFor(keys, upstream), owner: keys.owner });
+
+  /**
+   * The media steps' keys of a later call on a ticket, checked against the owner it recorded.
+   * @param ticket - The ticket.
+   * @param given - The keys the caller handed.
+   * @returns The keys.
+   * @throws {Error} When they are another owner's.
+   */
+  const mediaKeys = (ticket: Ticket, given: KeySet | undefined): KeySet => recordedKeys(ticket.keysOwner, given, deploymentKeys, `media steps of ${ticket.model}`);
 
   /**
    * The adapter of an upstream.
@@ -625,10 +653,10 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @returns One pending cost per prediction.
    */
   const acceptedLookups = (ticket: Ticket): Cost[] =>
-    ticket.steps.flatMap((step) => {
+    ticket.steps.flatMap((step): Cost[] => {
       const prediction = step.status === "done" ? step.output?.prediction : step.predictionId;
       return typeof prediction === "string" && prediction !== "" ? [{ state: "pending" as const, lookup: { upstream: ticket.upstream, predictionId: prediction } }] : [];
-    });
+    }).map(paidInRun(ticket, "media"));
 
   /**
    * A failed answer, with what the ticket cost and a lookup per accepted prediction, retiring
@@ -656,12 +684,12 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param extra - Clones and warnings to carry.
    * @returns The done answer, or failed when the run produced no output.
    */
-  const finish = async (ticket: Ticket, bounds: RequestBounds, extra: Partial<AnswerCommon>): Promise<MediaAnswer> => {
+  const finish = async (ticket: Ticket, bounds: Run, extra: Partial<AnswerCommon>): Promise<MediaAnswer> => {
     const done = carried(ticket);
     if (done.urls === undefined || done.urls.length === 0) return failed(ticket, new Error("The run produced no output"), extra.warnings);
     const costs = [...ticket.costs];
     const warnings = [...(extra.warnings ?? [])];
-    const up = reach(ticket.upstream);
+    const up = reach(ticket.upstream, bounds.keys);
     // Outside the cap, as the worker read it: a run that finished must not queue behind new submits. The reads share
     // one side request's bounds, so a hung billing endpoint holds the outputs for SIDE_REQUEST_MS at most.
     const side = sideBounds(bounds);
@@ -675,7 +703,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
      */
     const lookUp = async (prediction: string, into: Cost[]): Promise<void> => {
       const read = await adapterFor(ticket.upstream).billed(up, prediction, side, false);
-      into.push(read.cost);
+      into.push(paidInRun(ticket, "media")(read.cost));
       warnings.push(...read.warnings);
     };
     for (const prediction of done.predictions) await lookUp(prediction, costs);
@@ -706,9 +734,9 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param reason - Why it failed.
    * @returns The next answer.
    */
-  const passOver = async (ticket: Ticket, index: number, bounds: RequestBounds, reason: Error): Promise<MediaAnswer> => {
+  const passOver = async (ticket: Ticket, index: number, bounds: Run, reason: Error): Promise<MediaAnswer> => {
     const steps = ticket.steps.map((s, i) => (i === index ? { ...s, status: "failed" as const, output: { error: reason.message } } : s));
-    const lost = costsOf(reason);
+    const lost = costsOf(reason).map(paidInRun(ticket, "media"));
     const moved = next(ticket, { steps, ...(lost.length === 0 ? {} : { passedOverCosts: [...(ticket.passedOverCosts ?? []), ...lost] }) });
     const warnings = [{ code: "optional_step_failed", detail: { upstream: ticket.upstream, step: ticket.steps[index]!.kind, error: reason.message } }];
     return current(moved) === undefined ? finish(moved, bounds, { warnings }) : waiting(moved, { warnings });
@@ -723,7 +751,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param warnings - Anything to log when the run fails.
    * @returns The next answer.
    */
-  const endStep = (ticket: Ticket, index: number, bounds: RequestBounds, reason: Error, warnings: MediaWarning[] = []): Promise<MediaAnswer> | MediaAnswer =>
+  const endStep = (ticket: Ticket, index: number, bounds: Run, reason: Error, warnings: MediaWarning[] = []): Promise<MediaAnswer> | MediaAnswer =>
     isOptional(ticket, ticket.steps[index]!) ? passOver(ticket, index, bounds, reason) : failed(ticket, reason, warnings);
 
   /**
@@ -735,7 +763,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param warnings - Anything to log.
    * @returns The next answer.
    */
-  const completed = async (ticket: Ticket, index: number, output: StepOutput, bounds: RequestBounds, warnings: MediaWarning[]): Promise<MediaAnswer> => {
+  const completed = async (ticket: Ticket, index: number, output: StepOutput, bounds: Run, warnings: MediaWarning[]): Promise<MediaAnswer> => {
     const steps = ticket.steps.map((s, i) => (i === index ? { ...s, status: "done" as const, output } : s));
     const moved = next(ticket, { steps });
     const clones = madeClones(moved, steps[index]!);
@@ -759,18 +787,23 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param input - The run.
    * @param chosen - The caller's mode.
    * @param planOptions - The task's source keys, live clones and known clip lengths (by our param name).
+   * @param keys - The key set the media steps run on.
    * @returns The plan.
    * @throws {NoUpstreamAvailable} When no upstream of the route is configured and able to take the run.
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
+   * @throws {AccountKeyFailure} When an account's set holds a key for none of the model's upstreams.
+   * @throws {MalformedKey} When an account's key is not printable ASCII.
    */
-  const route = async (model: string, input: MediaInput, chosen: Route, planOptions: PlanOptions): Promise<RoutePlan> => {
+  const route = async (model: string, input: MediaInput, chosen: Route, planOptions: PlanOptions, keys: KeySet): Promise<RoutePlan> => {
     const rules = provider.pricingRules(model);
     const { durations } = planOptions;
     // A source sent without a known length is priced as a lower bound, and ranks after every known price.
     const durationsMissing = Object.keys(input.params).filter((p) => isPresent(input.params[p]) && durations[p] === undefined);
     // The live clones leave out each call an upstream holds, as planSteps does.
     const run = { params: input.params, prompt: input.prompt, durations, placeholders: [], durationsMissing, known: { sourceKeys: planOptions.sourceKeys, clones: planOptions.clones } };
-    const candidates = await Promise.all(candidatesOf(config, model, keyOf).map(async (c): Promise<Candidate> => {
+    const bound = candidatesOf(config, model, keys);
+    assertAccountReaches(model, keys, bound);
+    const candidates = await Promise.all(bound.map(async (c): Promise<Candidate> => {
       const read = await assess(rules, c.upstream, run);
       // The rules come from the same configuration as the candidates, so every candidate has one; undefined is for the type.
       /* v8 ignore next -- @preserve */
@@ -799,6 +832,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * @param planOptions - The task's key, source keys, clones and known clip lengths.
    * @returns The ticket on the first upstream of the order and its warnings, or the answer.
    * @throws {UpstreamRequestRejected} When the route names an upstream the model is not bound to.
+   * @throws {AccountKeyFailure} When an account's set holds a key for none of the model's upstreams.
+   * @throws {MalformedKey} When an account's key is not printable ASCII.
    */
   const open = async (
     model: string,
@@ -806,14 +841,15 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     chosen: Route,
     planOptions: PlanOptions,
   ): Promise<{ opened: Omit<Ticket, "steps">; warnings: MediaWarning[] } | MediaAnswer> => {
+    const keys = planOptions.keys ?? deploymentKeys;
     let plan: RoutePlan;
     try {
-      plan = await route(model, input, chosen, planOptions);
+      plan = await route(model, input, chosen, planOptions, keys);
     } catch (error) {
       if (error instanceof NoUpstreamAvailable) return { state: "failed", reason: error, costs: [], ...common({ warnings: checkFailures(model, error.reasons) }) };
       throw error;
     }
-    const [first, ...rest] = plan.order;
+    const [first, ...rest] = triedOn(keys, plan.order);
     const opened = ticketBase(model, input, chosen, planOptions, { upstream: first!.upstream, next: rest.map((c) => c.upstream), reasons: plan.skipped, accepted: false });
     return { opened, warnings: checkFailures(model, plan.skipped) };
   };
@@ -836,6 +872,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
     idempotencyKey: planOptions.idempotencyKey,
     sourceKeys: planOptions.sourceKeys,
     clones: planOptions.clones,
+    ...ticketOwners(planOptions.keys ?? deploymentKeys, planOptions.llmKeys ?? deploymentKeys),
     ...at,
     costs: [],
   });
@@ -857,13 +894,17 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
    * Write the element description: read the image and ask the understand model.
    * @param ticket - The ticket.
    * @param index - The describe step's place; the element step follows it.
-   * @param bounds - The deadline and signal.
+   * @param bounds - The deadline, signal and the keys the caller handed.
    * @returns The send answer for the element step; failed when the image is refused or not an image type, no understand upstream can ever serve, or one refuses the request (its cost kept).
    * @throws {SendNotAccepted} When the image host could not be reached or dropped the read, or every understand upstream failed in a passing way.
    * @throws {DeadlinePassed} When the deadline cut the read or the description.
    * @throws {UnderstandInterrupted} When the understand call ended otherwise (a lost answer, an error it cannot read), carrying what was billed; other unknown errors are thrown as they are.
+   * @throws {AccountKeyFailure} When the description ran on an account's key and the key or its upstream failed.
+   * @throws {Error} When the caller handed another owner's LLM keys than the step was planned on.
    */
-  const describe = async (ticket: Ticket, index: number, bounds: CallBounds): Promise<MediaAnswer> => {
+  const describe = async (ticket: Ticket, index: number, bounds: SendOptions): Promise<MediaAnswer> => {
+    const llmKeys = recordedKeys(ticket.llmKeysOwner, bounds.llmKeys, deploymentKeys, `description step of ${ticket.model}`);
+    const paid = paidInRun(ticket, "llm");
     const step = ticket.steps[index]!;
     const spec = bindingOf(ticket).extra_steps?.find((s) => s.kind === "element")?.describe;
     if (spec === undefined) throw new Error(`${ticket.model} has no description step on ${ticket.upstream}`);
@@ -898,18 +939,26 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         maxOutputTokens: spec.max_output_tokens,
         deadlineAt: bounds.deadlineAt,
         ...signal,
-      });
+      }, undefined, llmKeys);
     } catch (error) {
+      // What the description was billed rides on the error, marked with whose keys sent it, as a media submit's is.
+      markCostsOf(error, paid);
       // The same rules as a media submit: a lasting answer fails the run, a passing one is retried by the caller.
       if (error instanceof NoUpstreamAvailable) {
-        if (error.reasons.every((r) => r.kind !== "failed" || lasting(r.failure))) return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
+        if (error.reasons.every((r) => r.kind !== "failed" || lasting(r.failure))) return failed({ ...ticket, costs: [...ticket.costs, ...error.costs.map(paid)] }, error);
         // The error stays as the cause: it carries what the answers it moved past cost.
         throw new SendNotAccepted(ticket.upstream, error);
       }
       if (error instanceof UpstreamRequestRejected) {
-        return failed({ ...ticket, costs: [...ticket.costs, ...error.costs] }, error);
+        return failed({ ...ticket, costs: [...ticket.costs, ...error.costs.map(paid)] }, error);
       }
       if (cutByDeadline(error)) throw new DeadlinePassed(bounds.deadlineAt, error);
+      // On an account's LLM keys, as for a media submit: a lasting failure of the key, or any on the caller's last
+      // try, fails the run; a passing one (429, the upstream unreachable or 5xx) has the caller retry the same key.
+      if (error instanceof AccountKeyFailure) {
+        if (error.lasting || bounds.final === true) return failed({ ...ticket, costs: [...ticket.costs, ...costsOf(error).map(paid)] }, error);
+        throw new SendNotAccepted(ticket.upstream, error);
+      }
       // UnderstandInterrupted and anything else go as they are: costsOf reads what they carry.
       throw error;
     }
@@ -918,7 +967,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (i === index) return { ...s, status: "done" as const, output: {} };
       return i === index + 1 ? { ...s, description } : s;
     });
-    return waiting(next(ticket, { steps, costs: [...ticket.costs, ...answer.costs] }));
+    /**
+     * On an account's LLM keys, name the upstream that billed a description's cost, so the caller records it under that
+     * key and not the media steps' (inner#1953).
+     * @param cost - The cost.
+     * @returns The cost, named.
+     */
+    const named = (cost: Cost): Cost => (ticket.llmKeysOwner === "account" && cost.state !== "pending" ? { ...cost, upstream: answer.upstream } : cost);
+    return waiting(next(ticket, { steps, costs: [...ticket.costs, ...answer.costs.map(paid).map(named)] }));
   };
 
   return {
@@ -927,22 +983,35 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       return "state" in result ? result : waiting(planned(result.opened), { warnings: result.warnings });
     },
 
-    async send(raw, bounds) {
+    async send(raw, given) {
       const ticket = read(raw, "send");
+      const bounds: SendOptions & Run = { ...given, keys: mediaKeys(ticket, given.keys) };
       const at = current(ticket);
       if (at === undefined) throw new Error("The ticket has no step to send");
       if (at.step.kind === "describe") return describe(ticket, at.index, bounds);
       const body = bodyOf(ticket, at.step);
       let answer;
       try {
-        answer = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).submit(reach(ticket.upstream), at.step.endpoint, body, { ...bounds, maxMediaBytes: options.mediaLimits.maxMediaBytes }, at.step.kind));
+        answer = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).submit(reach(ticket.upstream, bounds.keys), at.step.endpoint, body, { ...bounds, maxMediaBytes: options.mediaLimits.maxMediaBytes }, at.step.kind));
       } catch (error) {
         const failure = classify(error, adapterFor(ticket.upstream));
         // On the caller's last try an optional step is given up, as the worker's step runner did on its last attempt.
         const givenUp = bounds.final === true && isOptional(ticket, at.step);
         if (failure?.kind === "no_answer" && givenUp) return passOver(ticket, at.index, bounds, error as Error);
-        if (failure === null || failure.kind === "no_answer") throw error;
+        if (failure === null || failure.kind === "no_answer") {
+          // What the lost answer was billed rides on the error, marked with whose keys sent it.
+          markCostsOf(error, paidInRun(ticket, "media"));
+          throw error;
+        }
         if (failure.kind === "aborted") throw cutAtDeadline(bounds) ? new DeadlinePassed(bounds.deadlineAt) : error;
+        // On an account's keys a failure of the key or its upstream never moves on: a lasting one, or any on the
+        // caller's last try, ends the step; a passing one has the caller retry the same ticket and key.
+        const turned = bounds.keys.owner === "account" ? accountFailureOf(failure, "media_submit") : undefined;
+        if (turned !== undefined) {
+          const keyFailure = keyFailureOf(ticket.model, ticket.upstream, turned, error);
+          if (turned.lasting || bounds.final === true) return endStep(ticket, at.index, bounds, keyFailure);
+          throw new SendNotAccepted(ticket.upstream, error);
+        }
         if (decide(failure, "media_submit", 0, 0) === "stop") {
           const refusal = error instanceof HttpStatus ? { status: error.status, cause: error } : { cause: error };
           const said = (error as Error).message + (error instanceof HttpStatus ? `: ${error.bodySnippet}` : "");
@@ -962,14 +1031,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         // Accepted and billed, but the step cannot go on: billed under its id, or missing without one.
         const id = answer.predictionId;
         const steps = id === undefined ? ticket.steps : ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: id } : s));
-        const costs: Cost[] = id === undefined ? [...ticket.costs, { state: "missing", reason: `${ticket.upstream} took the ${at.step.kind} step and named no id to bill it by` }] : ticket.costs;
+        const costs: Cost[] = id === undefined ? [...ticket.costs, paidInRun(ticket, "media")({ state: "missing", reason: `${ticket.upstream} took the ${at.step.kind} step and named no id to bill it by` })] : ticket.costs;
         const warnings = id === undefined ? [{ code: "cost_unavailable", detail: { model: ticket.model, upstream: ticket.upstream, step: at.step.kind } }] : [];
         return endStep({ ...ticket, accepted: true, steps, costs }, at.index, bounds, new UpstreamTaskFailed(ticket.upstream, answer.error), warnings);
       }
       if (answer.outputs !== undefined) {
         // Accepted and billed: an answer without a prediction id leaves nothing to look its cost up by.
         const accepted: Ticket = answer.predictionId === undefined
-          ? { ...ticket, accepted: true, costs: [...ticket.costs, { state: "missing", reason: `${ticket.upstream} finished the ${at.step.kind} step at once with no prediction id to bill` }] }
+          ? { ...ticket, accepted: true, costs: [...ticket.costs, paidInRun(ticket, "media")({ state: "missing", reason: `${ticket.upstream} finished the ${at.step.kind} step at once with no prediction id to bill` })] }
           : { ...ticket, accepted: true, steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, predictionId: answer.predictionId!, ...(answer.handle === undefined ? {} : { handle: answer.handle }) } : s)) };
         let output: StepOutput;
         try {
@@ -985,7 +1054,8 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
 
     async poll(raw, pollOptions) {
       const ticket = read(raw, "running");
-      const bounds: RequestBounds = {
+      const bounds: Run = {
+        keys: mediaKeys(ticket, pollOptions.keys),
         ...(pollOptions.finalAsk === true ? {} : { deadlineAt: pollOptions.deadlineAt }),
         ...(pollOptions.signal ? { signal: pollOptions.signal } : {}),
         maxMediaBytes: options.mediaLimits.maxMediaBytes,
@@ -995,10 +1065,14 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       if (at === undefined) return finish(ticket, bounds, {});
       let asked;
       try {
-        asked = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).ask(reach(ticket.upstream), at.step.predictionId!, bounds, { binding: bindingOf(ticket), handle: at.step.handle, kind: at.step.kind }));
+        asked = await capped(ticket.upstream, bounds, () => adapterFor(ticket.upstream).ask(reach(ticket.upstream, bounds.keys), at.step.predictionId!, bounds, { binding: bindingOf(ticket), handle: at.step.handle, kind: at.step.kind }));
       } catch (error) {
         const resendable = error instanceof NoAnswer || error instanceof NotSent || (error instanceof HttpStatus && passingStatus(error.status, "media_submit"));
         if (error instanceof Aborted && pollOptions.finalAsk !== true && cutAtDeadline(pollOptions)) throw new DeadlinePassed(pollOptions.deadlineAt);
+        // On an account's keys a lasting refusal of the key (revoked while the run went on) ends the step as a key
+        // failure; a passing one is asked again, as any other passing answer is.
+        const turned = bounds.keys.owner === "account" && error instanceof HttpStatus ? accountFailureOf(classify(error, adapterFor(ticket.upstream)), "media_submit") : undefined;
+        if (turned?.lasting === true) return endStep(ticket, at.index, bounds, keyFailureOf(ticket.model, ticket.upstream, turned, error));
         // An answer that says the same next time ends an optional step, as the worker's step runner read it: a 4xx other than
         // 408 and 429, or a 2xx that is not JSON.
         const lastingAnswer = (error instanceof HttpStatus && !resendable && error.status >= 400 && error.status < 500 && error.status !== 408)
@@ -1011,7 +1085,12 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (asked.handle === undefined) return waiting(ticket);
         return waiting(next(ticket, { steps: ticket.steps.map((s, i) => (i === at.index ? { ...s, handle: asked.handle } : s)) }));
       }
-      if (asked.state === "failed") return endStep(ticket, at.index, bounds, new UpstreamTaskFailed(ticket.upstream, asked.error));
+      if (asked.state === "failed") {
+        // A task the upstream failed on the account's side is a failure of the account's key (inner#1953).
+        const turned = bounds.keys.owner === "account" && asked.refusal !== undefined ? accountFailureOf({ kind: asked.refusal }, "media_submit") : undefined;
+        const reason = turned === undefined ? new UpstreamTaskFailed(ticket.upstream, asked.error) : keyFailureOf(ticket.model, ticket.upstream, turned, new UpstreamTaskFailed(ticket.upstream, asked.error));
+        return endStep(ticket, at.index, bounds, reason);
+      }
       let output: StepOutput;
       try {
         output = outputOf(ticket, at.step, asked.outputs, at.step.predictionId);
@@ -1026,8 +1105,9 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       return { costs: [...ticket.costs, ...(ticket.passedOverCosts ?? []), ...acceptedLookups(ticket)] };
     },
 
-    async recover(raw) {
+    async recover(raw, bounds) {
       const ticket = read(raw, "send");
+      mediaKeys(ticket, bounds.keys);
       const at = current(ticket);
       return waiting(ticket, { warnings: [{ code: "potential_duplicate_cost", detail: { model: ticket.model, upstream: ticket.upstream, step: at?.step.kind } }] });
     },
@@ -1039,7 +1119,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
       const binding = (config.models[model] ?? []).filter((b) => config.upstreams[b.upstream]?.kind === "wavespeed").sort((x, y) => x.weight - y.weight)[0];
       // Without a WaveSpeed binding no upstream can resume the run WaveSpeed took, and none has a reason of its own to name.
       if (binding === undefined) return { state: "failed", reason: new NoUpstreamAvailable(model, []), costs: [], ...common() };
-      const candidate = candidateOf(config, binding.upstream, binding.weight, keyOf);
+      const candidate = candidateOf(config, binding.upstream, binding.weight, planOptions.keys ?? deploymentKeys);
       if (!candidate.configured) {
         return { state: "failed", reason: new NoUpstreamAvailable(model, [{ upstream: candidate.upstream, kind: "missing_key", envVar: candidate.envVar }]), costs: [], ...common() };
       }
@@ -1063,7 +1143,7 @@ export function createMediaRunner(provider: Provider, options: MediaRunnerOption
         if (row.status === "failed") {
           return failed({ ...base, steps, costs }, new UpstreamTaskFailed(base.upstream, typeof output.error === "string" ? output.error : `step ${row.kind} failed`));
         }
-        if (row.inlineCostUsd > 0) costs.push({ state: "known", usd: row.inlineCostUsd, source: "reported" });
+        if (row.inlineCostUsd > 0) costs.push(paidInRun(base, "media")({ state: "known", usd: row.inlineCostUsd, source: "reported" }));
         const step: Step = {
           kind: row.kind,
           endpoint: row.endpoint,

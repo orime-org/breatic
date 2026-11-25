@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * How many tasks one person may run at once (inner#1968, test spec area G:
@@ -46,9 +46,9 @@ import { join } from "node:path";
 import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
-import { canvasSpaceDocName, threeDSpaceDocName, timelineSpaceDocName } from "@breatic/shared";
-import { createQueue, type TimelineExecutionJobData, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
-import { nodeTaskService, runningSlotService, sceneTaskService, taskService } from "@breatic/domain";
+import { canvasSpaceDocName, threeDSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
+import { createQueue, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
+import { nodeTaskService, runningSlotService, sceneTaskService, taskService, type TimelineExecutionJobData, timelineExecutionRepo } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
 import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
@@ -330,13 +330,15 @@ async function execution(p: Person, state: "awaiting_landing" | "queued" | "runn
     input: { prompt: "A red square slides in", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: `sha256:${crypto.randomUUID()}`,
     deadlineAt,
+    origin: "web_animation_space",
   });
   if (row === null) throw new Error("fixture execution conflicted");
   const step = async (event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<void> => {
     const result = await timelineExecutionRepo.transition({ id: row.id, event });
     if (!result.applied) throw new Error(`fixture step ${event.type} refused`);
   };
-  if (state !== "awaiting_landing") await step({ type: "land", inputHash: row.inputHash });
+  // Only rows written before #1490 are awaiting landing; nothing writes that state now.
+  if (state === "awaiting_landing") await sql`update timeline_executions set status = 'awaiting_landing' where id = ${row.id}`;
   if (state === "running" || state === "cancelling") await step({ type: "claim" });
   if (state === "cancelling") await step({ type: "cancel" });
   return row.id;
@@ -870,6 +872,21 @@ describe("G F8 a waiting Timeline execution has no deadline until it starts", ()
     for (const id of [recent, stale]) expect((await executionRow(id)).status).toBe("queued");
   });
 
+  it("G-43b an export waits behind the gate like a create: its pickup holds the row back as queued (#1490)", async () => {
+    const p = await person();
+    await running(p, 2);
+    const id = await execution(p, "queued");
+    await sql`update timeline_executions set kind = 'web_animation_export', engine = null,
+      input = ${sql.json({ kind: "web_animation_export", sourceVersionId: crypto.randomUUID(), width: 1080, height: 1920, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: "x.mp4" })}
+      where id = ${id}`;
+    const job = { data: { executionId: id } } as unknown as Job<TimelineExecutionJobData>;
+    const thrown = await runTimelineExecution(job).then(() => null, (err: unknown) => err);
+    expect((thrown as Error | null)?.name).toBe("StillRunning");
+    const row = await executionRow(id);
+    expect(row.status).toBe("queued");
+    expect(row.slot_wait_since).not.toBeNull();
+  });
+
   it("G-44 a waiter that starts gets a fresh deadline of start + budget, and later deadline checks use it", async () => {
     const p = await person();
     await running(p, 2);
@@ -1174,7 +1191,7 @@ describe("G the node's counts event says how many wait", () => {
   });
 });
 
-describe("G a 3D Space's waiting row and a waiting Timeline execution tell their Space's document (#1580)", () => {
+describe("G a 3D Space's waiting row and a waiting Motion execution tell their Space's document (#1580)", () => {
   it("first waiting and starting each tell the 3D Space's document, and the old channel nothing", async () => {
     const p = await person();
     await running(p, 2);
@@ -1197,11 +1214,11 @@ describe("G a 3D Space's waiting row and a waiting Timeline execution tell their
     }
   });
 
-  it("first waiting and starting each tell the Timeline's document, and the old channel nothing", async () => {
+  it("first waiting and starting each tell the Motion Space's document, and the old channel nothing", async () => {
     const p = await person();
     await running(p, 2);
     const id = await execution(p, "queued");
-    const docName = timelineSpaceDocName(p.projectId, p.spaceId);
+    const docName = webAnimationSpaceDocName(p.projectId, p.spaceId);
     const version = spaceTasksVersion(docName);
     const spaceSignals = await listenSpaceTaskSignals();
     try {

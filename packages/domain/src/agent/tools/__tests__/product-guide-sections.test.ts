@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The product guide is read a section at a time (breatic#1361).
@@ -78,7 +78,8 @@ const SPACE_SECTIONS: Record<string, readonly string[]> = {
     "Document snapshots",
   ],
   timeline: ["Timeline spaces"],
-  "3d": ["3D spaces"],
+  web_animation: ["Motion spaces"],
+  "3d": ["3D spaces", "3D appearance"],
 };
 
 beforeAll(() => {
@@ -251,8 +252,9 @@ describe("the index in the tool's description", () => {
     }
   });
 
-  it("indexes the Timeline spaces section as adding videos and web animations", () => {
-    expect(described()).toContain('Timeline: "Timeline spaces" (adding videos and web animations to a timeline and arranging them).');
+  it("indexes the Timeline spaces section as adding videos and copies of web animations, and Motion as making them", () => {
+    expect(described()).toContain('Timeline: "Timeline spaces" (adding videos and copies of web animations made in Motion to a timeline and arranging them).');
+    expect(described()).toContain('Motion: "Motion spaces" (making, modifying and exporting web animations, annotating them and putting their videos on a canvas).');
   });
 });
 

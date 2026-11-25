@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The preview sync thresholds web plays with (#1410 design §6.4): before the Timeline limits arrive the preview uses
@@ -57,7 +57,7 @@ describe('useTimelinePreviewLimits (#1410 design §6.4)', () => {
     vi.mocked(timelineApi.limits).mockResolvedValue({
       defaults: { width: 1920, height: 1080, fps: { num: 24, den: 1 } },
       assets: { pageSize: 50, pageMax: 100 },
-      webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9'], playerLoadTimeoutMs: 15_000, sourceRefreshIntervalMs: 10_000 },
+      webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9'], playerLoadTimeoutMs: 15_000 },
       preview: CONFIGURED,
     });
     const { result } = renderHook(() => useTimelinePreviewLimits(PROJECT), { wrapper: wrapper() });

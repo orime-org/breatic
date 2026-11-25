@@ -1,11 +1,25 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { TIMELINE_PREVIEW_DEFAULTS, type TimelineClientLimits, type TimelinePreviewSyncLimits } from '@breatic/shared';
 
 import { timelineApi } from '@web/data/api/timeline';
+
+/**
+ * The read of the Timeline configuration this Project's members may read, for a control that waits while it is read
+ * and says so when it failed.
+ * @param projectId - The Project.
+ * @param enabled - Whether to read it at all.
+ * @returns The read.
+ * @throws {never} Never.
+ */
+export function useTimelineLimitsQuery(projectId: string, enabled = true): UseQueryResult<TimelineClientLimits> {
+  const queryKey = React.useMemo(() => ['timeline-limits', projectId], [projectId]);
+  const queryFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.limits(projectId, signal), [projectId]);
+  return useQuery({ queryKey, queryFn, staleTime: Infinity, enabled });
+}
 
 /**
  * The Timeline configuration this Project's members may read: creation defaults, media paging and the web-animation
@@ -16,9 +30,7 @@ import { timelineApi } from '@web/data/api/timeline';
  * @throws {never} Never.
  */
 export function useTimelineLimits(projectId: string, enabled = true): TimelineClientLimits | undefined {
-  const queryKey = React.useMemo(() => ['timeline-limits', projectId], [projectId]);
-  const queryFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.limits(projectId, signal), [projectId]);
-  return useQuery({ queryKey, queryFn, staleTime: Infinity, enabled }).data;
+  return useTimelineLimitsQuery(projectId, enabled).data;
 }
 
 /**

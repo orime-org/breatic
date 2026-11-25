@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Generation models tool — which models back one mode of one node, and how.
  */
+import { ACCOUNT_LLM_UPSTREAM } from "@breatic/provider";
 import { tool, type Tool } from "ai";
 import { z } from "zod";
 
@@ -29,6 +30,8 @@ import {
   type WayKind,
 } from "@domain/model-catalog/mode-catalog.js";
 import { estimateModelCredits } from "@domain/model-catalog/model-catalog.js";
+import { payerKeyPlan, runDescribesInput } from "@domain/provider/provider-keys.js";
+import type { StudioKeyPlan } from "@domain/provider/account-keys.service.js";
 import { checkParams } from "@domain/agent/tools/proposal-params-check.js";
 import { proposalModelEntry } from "@domain/agent/tools/proposal-dialogue.js";
 import { gateWords, nodeLabel } from "@domain/agent/tools/proposal-refusals.js";
@@ -40,7 +43,49 @@ import { GET_PRODUCT_GUIDE } from "@domain/agent/tools/tool-names.js";
  * defaults, the keys it turned away, and for each setting whose value moves
  * the price, the value it is lowest at.
  */
-export type PricedModelInfo = ModelInfo & { price?: CreditEstimate; atParams?: true; rejected?: string[]; lowestAt?: Record<string, unknown> };
+export type PricedModelInfo = ModelInfo & {
+  price?: CreditEstimate;
+  atParams?: true;
+  rejected?: string[];
+  lowestAt?: Record<string, unknown>;
+  /** It runs on the Studio payer's own key (inner#1953), so a run of it costs no credits and carries no price. */
+  onPayerKey?: true;
+  /** On the payer's key, describing its inputs still runs on our language model and takes credits. */
+  describedOnCredits?: true;
+};
+
+/**
+ * What the catalog and proposal tools are handed in their context: the studio whose payer's keys a run goes out on
+ * (inner#1953), and whose material a proposal may name.
+ */
+export interface StudioToolContext extends Record<string, unknown> {
+  studioId: string;
+}
+
+/** Reads that context. */
+export const studioToolContextSchema: z.ZodType<StudioToolContext> = z.object({ studioId: z.string().min(1) });
+
+/**
+ * Whether a model runs on the Studio payer's own key (inner#1953), and if so whether describing its inputs takes
+ * credits because the language model runs on ours.
+ * @param plan - The payer's plan (`payerKeyPlan`), read once per tool call; null on our keys.
+ * @param model - The model.
+ * @param params - The params a run sends.
+ * @returns Undefined on our keys, else whether describing takes credits.
+ */
+export function payerKeyRun(plan: StudioKeyPlan | null, model: string, params: Readonly<Record<string, unknown>>): { describedOnCredits: boolean } | undefined {
+  if (plan === null || !Object.hasOwn(plan.models, model)) return undefined;
+  return { describedOnCredits: runDescribesInput(model, params) && !plan.upstreams.includes(ACCOUNT_LLM_UPSTREAM) };
+}
+
+/**
+ * What a run on the Studio payer's own key costs, in words.
+ * @param describedOnCredits - Whether describing its inputs takes credits.
+ * @returns The words.
+ */
+export function payerKeyWords(describedOnCredits: boolean): string {
+  return describedOnCredits ? "it runs on the Studio payer's own key, but describing its inputs takes credits" : "no credits; it runs on the Studio payer's own key";
+}
 
 /** The tool's answer: the mode's models, each priced. */
 export type PricedModelsForMode = ModelsForMode<PricedModelInfo>;
@@ -186,7 +231,10 @@ function entryWords(kind: WayKind, entry: Entry, box: string): string {
 function renderModel(model: PricedModelInfo): string {
   const at = model.atParams ? (model.rejected === undefined ? "at the params given" : "at the params it takes") : undefined;
   const refused = model.rejected === undefined ? "" : ` (${model.rejected.map((name) => `"${name}"`).join(", ")} not priced: not a setting or value it takes)`;
-  const price = model.price ? `${renderPrice(model.price, at)}${refused}, ` : "";
+  const notTaken = model.rejected === undefined ? "" : ` (${model.rejected.map((name) => `"${name}"`).join(", ")} not taken: not a setting or value it takes)`;
+  const price = model.onPayerKey
+    ? `${payerKeyWords(model.describedOnCredits === true)}${notTaken}, `
+    : model.price ? `${renderPrice(model.price, at)}${refused}, ` : "";
   const prompt = !model.takesPrompt
     ? " Takes no prompt: its words come from its sources."
     : model.promptWhen === undefined ? "" : ` Takes a prompt only while ${gateWords(model.promptWhen, false)}.`;
@@ -382,7 +430,7 @@ export async function lowestValues(model: ModelInfo): Promise<Record<string, unk
   return Object.fromEntries(found.flat());
 }
 
-export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsForMode> = tool({
+export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsForMode, StudioToolContext> = tool({
   description:
     "List the models behind one mode of one generation node, with what each " +
     "is good at, what a call costs, how long it takes, and every parameter " +
@@ -394,6 +442,7 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     "With target 3d it lists the 3D Space's models for t23d or i23d instead, with no nodeType, each with " +
     "the values it forces and why; propose those with propose_scene_generation.",
   inputSchema,
+  contextSchema: studioToolContextSchema,
   metadata: { runningLine: "chat.tool.checkingModels" },
   // The SDK's own conversion, which is what a running turn reaches -- the
   // model names a model and fills parameters out of this text, so it carries
@@ -405,9 +454,8 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
   }),
   execute: async (
     { target = "canvas", nodeType, mode, params }: z.infer<typeof inputSchema>,
-    // Unused: reads a cached catalog and prices it locally, so there is
-    // nothing to abandon. Declared so every tool has the same shape.
-    _options: { abortSignal?: AbortSignal },
+    // The signal is unused: a cached catalog priced locally, so there is nothing to abandon.
+    { context }: { abortSignal?: AbortSignal; context?: StudioToolContext },
   ): Promise<PricedModelsForMode> => {
     if (target === "3d" && nodeType !== undefined) {
       throw new Error(`target 3d takes no nodeType: the 3D Space has no nodes, so ask with target "3d" and mode t23d or i23d alone, not nodeType "${nodeType}".`);
@@ -417,8 +465,21 @@ export const generationModels: Tool<z.infer<typeof inputSchema>, PricedModelsFor
     }
     const answer = nodeType === undefined ? sceneModelsForMode(mode) : modelsForMode(nodeType, mode);
     if (!answer.available) return answer;
+    const plan = await payerKeyPlan(context?.studioId);
     const models = await Promise.all(
-      answer.models.map(async (model): Promise<PricedModelInfo> => priceModel(model, await lowestValues(model), params === undefined || nodeType === undefined ? undefined : takenParams(model, nodeType, mode, params))),
+      answer.models.map(async (model): Promise<PricedModelInfo> => {
+        const taken = params === undefined || nodeType === undefined ? undefined : takenParams(model, nodeType, mode, params);
+        const payer = payerKeyRun(plan, model.name, taken?.kept ?? {});
+        if (payer === undefined) return priceModel(model, await lowestValues(model), taken);
+        // Runnable on the payer's key wherever the deployment holds none of its keys.
+        const { missingKeys: _deploymentKeys, ...runnable } = model;
+        return {
+          ...runnable,
+          onPayerKey: true,
+          ...(payer.describedOnCredits && { describedOnCredits: true }),
+          ...(taken !== undefined && taken.rejected.length > 0 && { rejected: taken.rejected }),
+        };
+      }),
     );
     return { available: true, models };
   },

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Listening for committed changes the database triggers announce: `project_members` (inner#911), and the rows behind
@@ -61,7 +61,7 @@ const changeSchema = z.object({
   userId: z.string().regex(CANONICAL_UUID),
 });
 
-/** The channel the 0131 triggers notify on (#1580). */
+/** The channel the 0136 triggers notify on (#1580). */
 export const LIVE_UPDATES_CHANNEL = "live_updates";
 
 /**
@@ -215,7 +215,7 @@ export async function listenProjectMemberChanges(
 }
 
 /**
- * Start listening for the changes the 0131 triggers announce (#1580), on the same listen connection as membership
+ * Start listening for the changes the 0136 triggers announce (#1580), on the same listen connection as membership
  * changes.
  * @param handlers - Where updates, (re)starts and unreadable payloads go.
  * @returns The running listener, once the first LISTEN has been answered.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Email sign-up with a code (#287), used while an email backend is enabled.
@@ -20,7 +20,7 @@ import crypto from "node:crypto";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { SignupReferralRefused, createAccount, hashPassword } from "@server/modules/auth/auth.service.js";
 import type { SignupReferral, SignupReferralOutcome } from "@server/modules/auth/auth.service.js";
-import { findActiveCode } from "@server/modules/referral/referral-binding.service.js";
+import { checkReferralCode } from "@server/modules/commerce/referral-check.service.js";
 import { buildSignupCodeMail } from "@server/modules/auth/auth-mail.js";
 import { getSignupCodeConfig } from "@server/config/auth.js";
 import { logMailResult } from "@server/utils/log-mail.js";
@@ -156,17 +156,19 @@ return left
 `;
 
 /**
- * Checks a sign-up's referral code before any code is mailed (inner#1868 §5).
- * While payments are off the code is ignored.
+ * Checks a sign-up's referral code before any code is mailed (inner#1993
+ * §8.4). Where nothing is sold the code is ignored; a code the billing
+ * service could not be asked about is kept as given, to be decided when the
+ * account is created.
  * @param referral - The code the sign-up carried, if any.
- * @returns The code in stored form with its source, or undefined for none.
- * @throws {SignupReferralRefused} if the code is not an active code.
+ * @returns The code (in stored form when the billing service answered) with its source, or undefined for none.
+ * @throws {SignupReferralRefused} if the billing service says the code is not active.
  */
 async function checkSignupReferral(referral: SignupReferral | undefined): Promise<SignupReferral | undefined> {
-  if (referral === undefined || !env.PAYMENT_ENABLED) return undefined;
-  const found = await findActiveCode(referral.code);
-  if (found === null) throw new SignupReferralRefused();
-  return { code: found.code, source: referral.source };
+  if (referral === undefined || !env.SELLING) return undefined;
+  const checked = await checkReferralCode(referral.code);
+  if (checked.status === "inactive") throw new SignupReferralRefused();
+  return { code: checked.code, source: referral.source };
 }
 
 /**

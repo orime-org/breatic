@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The lint rules a backend service package is held to, as flat-config blocks
@@ -23,6 +23,10 @@ export interface BackendConfigOptions {
   packages: readonly string[];
   /** The repository root `config/provider/upstreams.yaml` is read from, for `no-upstream-literal`. */
   rootDir: string;
+  /** The two header lines every source file opens with, where they are not this repository's AGPL lines. */
+  licenseHeader?: { copyright: string; licence: string };
+  /** This repository's own tables with nothing to soft-delete, each with its reason (`schema-timestamps`). */
+  noSoftDelete?: Record<string, string>;
 }
 
 // eslint-plugin-jsdoc TypeScript preset (error level): enforces TSDoc-style
@@ -192,15 +196,22 @@ export function backendConfig(options: BackendConfigOptions): TSESLint.FlatConfi
     // so it falls past the error handler's typed branches and answers 500 for
     // a request the caller simply got wrong. The whole package, because reading
     // a parsed body outside the one wrapper is wrong wherever it is written.
-    // `req.text()` stays allowed: a Stripe signature is computed over the bytes
-    // as sent. Tests are exempt: they build requests rather than handle them.
+    // `req.text()` stays allowed: an internal API signature is computed over
+    // the bytes as sent. Tests are exempt: they build requests rather than handle them.
     { files: src, ignores: TEST_IGNORES, rules: { "breatic/no-raw-body-parse": "error" } },
     { files: src, ignores: TEST_IGNORES, rules: { "breatic/no-untranslated-error-message": "error" } },
     { files: each("src/**/*.{test,spec}.{ts,tsx}"), rules: { "breatic/test-file-location": "error" } },
-    { files: srcTsx, rules: { "breatic/no-missing-license-header": "error" } },
+    {
+      files: srcTsx,
+      rules: { "breatic/no-missing-license-header": options.licenseHeader === undefined ? "error" : ["error", options.licenseHeader] },
+    },
     { files: srcTsx, ignores: TEST_IGNORES_TSX, rules: { "breatic/no-relative-import": "error" } },
     { files: each("src/index.ts"), rules: { "breatic/service-observability": "error" } },
-    { files: src, ignores: TEST_IGNORES, rules: { "breatic/schema-timestamps": "error" } },
+    {
+      files: src,
+      ignores: TEST_IGNORES,
+      rules: { "breatic/schema-timestamps": options.noSoftDelete === undefined ? "error" : ["error", { noSoftDelete: options.noSoftDelete }] },
+    },
     { files: srcTsx, rules: { "breatic/no-deployed-host": "error" } },
     { files: srcTsx, ignores: TEST_IGNORES, rules: { "breatic/no-naked-fetch": "error" } },
     {

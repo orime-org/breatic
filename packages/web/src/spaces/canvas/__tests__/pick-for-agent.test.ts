@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What "Add to agent" hands over for an audio node with no voice picked
@@ -15,7 +15,7 @@ import { voicesApi } from '@web/data/api/voices';
 import { addNode, setNodeMode } from '@web/data/yjs/canvas-space';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
 import { firstVoiceKey } from '@web/spaces/canvas/generate/first-voice-query';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { handToAgent, pickForAgent } from '@web/spaces/canvas/pick-for-agent';
 import * as attach from '@web/stores/attach-to-chat';
 

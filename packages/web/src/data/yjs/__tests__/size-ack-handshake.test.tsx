@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Space document size cap (inner#1790 web spec 23.1 to 23.3,
@@ -43,7 +43,7 @@ import { clearAllDocSizes, readDocSize } from '@web/data/yjs/doc-size';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { readRequestedSpaces } from '@web/pages/project/chat/space-request-read';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 
 const { expectHandshake, resetServer, settle } = h7;
 type ScriptedServer = InstanceType<typeof h7.ScriptedServer>;

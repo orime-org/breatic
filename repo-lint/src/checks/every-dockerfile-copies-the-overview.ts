@@ -1,88 +1,87 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 
 /**
- * Every Dockerfile here has an instruction taking the overview into its image.
+ * Every Dockerfile here has instructions taking the overview, the licence and
+ * the trademark policy into its image.
  *
  * `THIRD-PARTY.md` names the components worth a reader's attention, the terms
  * each comes under, which half of a dual offer we elected, and where FFmpeg's
- * source is fetched from. The image is the thing that gets distributed, so a
- * copy sitting in the repository reaches nobody who received one.
- *
- * Measured when this went in: of the three Dockerfiles here, one copied it and
- * two did not. Nothing said so — a missing `COPY` builds a perfectly good image.
+ * source is fetched from. `LICENSE` is the licence every copy is received
+ * under (section 4(a) of it asks redistributors to pass it on), and
+ * `TRADEMARKS.md` the branding rules section 12 points at. The image is the
+ * thing that gets distributed, so a copy sitting in the repository reaches
+ * nobody who received one.
  *
  * What this reads is the instruction, not the built image: a `COPY` written
- * into a stage that is thrown away would satisfy it. That the file is really
- * in each image is measured instead — CI runs the media container and asserts
- * the path, and the other two were checked against the running images.
+ * into a stage that is thrown away would satisfy it. A file `.dockerignore`
+ * leaves out of the build context cannot be copied at all, so that is read too.
  */
 
-/** The file every published image has to carry, at the repository root. */
-const OVERVIEW = "THIRD-PARTY.md";
+/** The files every published image has to carry, at the repository root. */
+const NOTICES = ["THIRD-PARTY.md", "LICENSE", "TRADEMARKS.md"] as const;
 
 /**
  * Where the Dockerfiles are: a basename of `Dockerfile`, with or without a
- * dotted suffix. The three here are `Dockerfile`, `Dockerfile.web` and
- * `packages/ingest/Dockerfile`. A `Dockerfile-dev` or `Dockerfile2` would not
- * be selected; those spellings are not in use, and a new image adopting one
- * would need this widened.
+ * dotted suffix (`Dockerfile.web`), or ending in `.Dockerfile`
+ * (`packages/ingest/web-animation.Dockerfile`).
  */
-const DOCKERFILE = /(^|\/)Dockerfile(\.[^/]+)?$/;
+const DOCKERFILE = /(^|\/)(Dockerfile(\.[^/]+)?|[^/]+\.Dockerfile)$/;
 
 /**
- * A `COPY` whose source is the overview itself.
+ * A `COPY` whose source is the named file.
  *
  * Anchored at the start of a line, which is also what keeps prose out: a
- * Dockerfile comment is a whole line beginning with `#`, and two of this
- * repository's three Dockerfiles name `THIRD-PARTY.md` in a comment —
- * `Dockerfile:47,51` and `packages/ingest/Dockerfile:8,84`.
- *
- * The flags are optional and unconstrained because they do not change what the
- * instruction does with the file: `--chown` and `--chmod` set what lands, and
- * `--from` takes it out of an earlier stage. The trailing boundary is what
- * keeps `THIRD-PARTY.md.bak` from passing as the file the notice asks for.
+ * Dockerfile comment is a whole line beginning with `#`. The flags are optional
+ * and unconstrained because they do not change what the instruction does with
+ * the file. The trailing boundary is what keeps `THIRD-PARTY.md.bak` from
+ * passing as the file asked for.
+ * @param file The file's name at the repository root.
+ * @returns A pattern for a COPY of it.
  */
-const COPIES_IT = new RegExp(
-  String.raw`^\s*COPY\s+(?:--\S+\s+)*(?:\S*/)?${OVERVIEW.replace(".", String.raw`\.`)}\s`,
-  "mi",
-);
-
-/**
- * Whether a Dockerfile has an instruction taking the overview in.
- * @param dockerfile - The file's contents.
- * @returns True when a `COPY` names the overview as its source.
- */
-function copiesTheOverview(dockerfile: string): boolean {
-  return COPIES_IT.test(dockerfile);
+function copyOf(file: string): RegExp {
+  return new RegExp(String.raw`^\s*COPY\s+(?:--\S+\s+)*(?:\S*/)?${file.replace(".", String.raw`\.`)}\s`, "mi");
 }
 
 export const everyDockerfileCopiesTheOverview = {
   name: "every-dockerfile-copies-the-overview",
-  description: `Every Dockerfile has a COPY taking ${OVERVIEW} into its image`,
+  description: `Every Dockerfile has a COPY taking ${NOTICES.join(", ")} into its image`,
   run(context: CheckContext): Finding[] {
-    // Selected by shape rather than from a list of the three that exist today:
-    // a Dockerfile added later is covered without anyone remembering to
-    // register it, which is the difference between a rule and an inventory.
-    const dockerfiles = context.files(
-      (path) => DOCKERFILE.test(path),
-      "Dockerfiles",
-    );
+    // Selected by shape rather than from a list: a Dockerfile added later is
+    // covered without anyone remembering to register it.
+    const dockerfiles = context.files((path) => DOCKERFILE.test(path), "Dockerfiles");
 
-    return dockerfiles
-      .filter((path) => !copiesTheOverview(context.read(path)))
-      .map((path) => ({
-        file: path,
-        message:
-          `This image does not carry ${OVERVIEW}. The image is what gets ` +
-          `distributed, and the overview names what is inside it and under ` +
-          `what terms, so a copy left in the repository reaches nobody who ` +
-          `received one. Add a COPY for it. Where it goes is what a reader of ` +
-          `this image can reach: Dockerfile.web serves a static root, so it ` +
-          `puts the file there and a browser fetches /THIRD-PARTY.md; the ` +
-          `other two put it at /usr/share/doc/breatic/, beside the package ` +
-          `documentation their base image already keeps there.`,
-      }));
+    const findings: Finding[] = [];
+    for (const path of dockerfiles) {
+      const text = context.read(path);
+      for (const notice of NOTICES.filter((file) => !copyOf(file).test(text))) {
+        findings.push({
+          file: path,
+          message:
+            `This image does not carry ${notice}. The image is what gets ` +
+            `distributed, so a copy left in the repository reaches nobody who ` +
+            `received one. Add a COPY for it: Dockerfile.web puts it in the ` +
+            `static root so a browser can fetch it; the others put it at ` +
+            `/usr/share/doc/breatic/.`,
+        });
+      }
+    }
+
+    if (context.exists(".dockerignore")) {
+      const ignored = new Set(
+        context
+          .read(".dockerignore")
+          .split("\n")
+          .map((line) => line.trim().replace(/^\//, "")),
+      );
+      for (const notice of NOTICES.filter((file) => ignored.has(file))) {
+        findings.push({
+          file: ".dockerignore",
+          message: `.dockerignore leaves ${notice} out of the build context, so no image can COPY it. Remove that line.`,
+        });
+      }
+    }
+    return findings;
   },
 } satisfies Check;

@@ -1,105 +1,104 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
-
-import { randomUUID } from "node:crypto";
-import postgres from "postgres";
-import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { initCore, loadLocales } from "@breatic/core";
-
-import * as authService from "@server/modules/auth/auth.service";
-
-let sql: ReturnType<typeof postgres>;
-
-beforeAll(() => {
-  initCore({
-    ...process.env,
-    PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-  });
-  loadLocales();
-  sql = postgres(inject("DATABASE_URL"), { max: 2, prepare: false, connection: { application_name: "referral-signup-test" } });
-});
-afterAll(async () => { await sql?.end({ timeout: 1 }); });
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * Inserts an approved promoter holding a code in the given status.
- * @param status - The code's status.
- * @returns The code.
+ * The one-step email sign-up and Google sign-in carrying a referral code
+ * (inner#1993 §8.4): both refuse a code the billing service calls inactive,
+ * and a new account appends an active code to the outbox; signing in to an
+ * existing account uses no code.
  */
-async function code(status: "active" | "disabled" = "active"): Promise<string> {
-  const promoterId = randomUUID();
-  await sql`insert into users(id,email) values(${promoterId},${`${promoterId}@example.test`})`;
-  const value = `S${randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
-  const [app] = await sql<{ id: string }[]>`insert into promoter_applications
-    (user_id,status,country,channels,plan,terms_version,terms_accepted_at,decided_at,decided_by)
-    values(${promoterId},'approved','US',${sql.json(["x"])},'p','2026-11-07',now(),now(),'admin_7') returning id`;
-  await sql`insert into referral_codes(code,promoter_id,application_id,status) values(${value},${promoterId},${app!.id},${status})`;
-  return value;
+
+import { randomUUID } from "node:crypto";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("ai", () => ({
+  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
+  streamText: () => ({ fullStream: (async function* () {})(), text: Promise.resolve(""), usage: Promise.resolve({ totalTokens: 0 }) }),
+  stepCountIs: (_n: number) => () => false,
+  tool: (config: Record<string, unknown>) => config,
+}));
+
+import * as authService from "@server/modules/auth/auth.service";
+import { useCommerceApp } from "./commerce-harness.js";
+
+const suite = useCommerceApp("referral-signup-test");
+
+/** The stand-in calls the code active, in upper case. */
+function activeCodes(): void {
+  suite.reply = (req) => ({ status: 200, body: { active: true, code: String((req.body as { code: string }).code).toUpperCase() } });
+}
+
+/** The stand-in calls the code inactive. */
+function inactiveCodes(): void {
+  suite.reply = (req) => ({ status: 200, body: { active: false, code: (req.body as { code: string }).code } });
 }
 
 /**
- * Reads the binding of the account with this email.
+ * Reads the binding appended for the account with this email.
  * @param email - The account's email.
- * @returns The bound code and source, or null.
+ * @returns The appended code and source, or null.
  */
 async function bindingOfEmail(email: string): Promise<{ code: string; source: string } | null> {
-  const [row] = await sql<{ code: string; source: string }[]>`select c.code, b.source from referral_bindings b
-    join referral_codes c on c.id = b.referral_code_id join users u on u.id = b.user_id where u.email = ${email}`;
-  return row ?? null;
+  const [row] = await suite.sql<{ payload: { code: string; source: string } }[]>`select o.payload from commerce_outbox o
+    join users u on o.aggregate_key = 'referral:' || u.id::text where o.type = 'referral_binding' and u.email = ${email}`;
+  return row === undefined ? null : { code: row.payload.code, source: row.payload.source };
 }
 
 const email = (): string => `signup-${randomUUID()}@example.test`;
 
 describe("signing up by email with a referral code", () => {
-  it("creates the account and binds the code in one go", async () => {
-    const value = await code();
+  it("creates the account and appends the code in its stored form", async () => {
+    activeCodes();
     const address = email();
-    const result = await authService.register(address, "correct horse battery", null, { code: value.toLowerCase(), source: "signup_link" });
+    const result = await authService.register(address, "correct horse battery", null, { code: "friend-1", source: "signup_link" });
     expect(result.referral).toBe("applied");
-    expect(await bindingOfEmail(address)).toEqual({ code: value, source: "signup_link" });
+    expect(await bindingOfEmail(address)).toEqual({ code: "FRIEND-1", source: "signup_link" });
   });
 
-  it("refuses an invalid code with 422 and creates no account", async () => {
+  it("refuses an inactive code with 422 and creates no account", async () => {
+    inactiveCodes();
     const address = email();
     await expect(authService.register(address, "correct horse battery", null, { code: "NOPE-NOPE", source: "signup_typed" }))
       .rejects.toMatchObject({ statusCode: 422 });
-    expect(await sql`select 1 from users where email = ${address}`).toHaveLength(0);
+    expect(await suite.sql`select 1 from users where email = ${address}`).toHaveLength(0);
   });
 
-  it("creates the account with no binding when no code is given", async () => {
+  it("creates the account with no binding, asking nothing, when no code is given", async () => {
     const address = email();
     const result = await authService.register(address, "correct horse battery");
     expect(result.referral).toBeNull();
     expect(await bindingOfEmail(address)).toBeNull();
+    expect(suite.received).toEqual([]);
   });
 });
 
 describe("signing in with Google with a referral code", () => {
-  it("binds the code to a new account", async () => {
-    const value = await code();
+  it("appends the code for a new account", async () => {
+    activeCodes();
     const address = email();
-    const result = await authService.loginOrCreateGoogle(`g-${randomUUID()}`, address, true, null, { code: value, source: "signup_typed" });
+    const result = await authService.loginOrCreateGoogle(`g-${randomUUID()}`, address, true, null, { code: "FRIEND-2", source: "signup_typed" });
     expect(result.created).toBe(true);
     expect(result.referral).toBe("applied");
-    expect(await bindingOfEmail(address)).toEqual({ code: value, source: "signup_typed" });
+    expect(await bindingOfEmail(address)).toEqual({ code: "FRIEND-2", source: "signup_typed" });
   });
 
-  it("refuses an invalid code for a new account with 422 and creates nothing", async () => {
+  it("refuses an inactive code for a new account with 422 and creates nothing", async () => {
+    inactiveCodes();
     const address = email();
     await expect(authService.loginOrCreateGoogle(`g-${randomUUID()}`, address, true, null, { code: "NOPE-NOPE", source: "signup_link" }))
       .rejects.toMatchObject({ statusCode: 422 });
-    expect(await sql`select 1 from users where email = ${address}`).toHaveLength(0);
+    expect(await suite.sql`select 1 from users where email = ${address}`).toHaveLength(0);
   });
 
-  it("does not bind on signing in to an existing account and says the code was not used", async () => {
-    const value = await code();
+  it("does not ask or bind on signing in to an existing account, and says the code was not used", async () => {
     const googleId = `g-${randomUUID()}`;
     const address = email();
     await authService.loginOrCreateGoogle(googleId, address, true);
-    const again = await authService.loginOrCreateGoogle(googleId, address, true, null, { code: value, source: "signup_link" });
+    activeCodes();
+    const again = await authService.loginOrCreateGoogle(googleId, address, true, null, { code: "FRIEND-3", source: "signup_link" });
     expect(again.created).toBe(false);
     expect(again.referral).toBe("not_applied");
     expect(await bindingOfEmail(address)).toBeNull();
+    expect(suite.received).toEqual([]);
   });
 });

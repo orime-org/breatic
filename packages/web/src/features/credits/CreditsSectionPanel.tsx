@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import type { CreditsSectionId } from '@web/features/credits/credits-sections';
@@ -67,7 +67,7 @@ export function CreditsSectionPanel({
     case 'overview':
       return <OverviewSection overview={data} />;
     case 'lots':
-      return <PurchasesSection userId={userId} billing={data.billing} />;
+      return <PurchasesSection userId={userId} charging={data.charging} />;
     case 'ledger':
       return <LedgerSection userId={userId} overview={data} />;
     case 'studios':
@@ -75,8 +75,8 @@ export function CreditsSectionPanel({
     case 'buy':
       return <BuySection overview={data} />;
     case 'assign':
-      return <AssignSection userId={userId} billing={data.billing} />;
+      return <AssignSection userId={userId} charging={data.charging} />;
     case 'refunds':
-      return <RefundsSection userId={userId} billing={data.billing} />;
+      return <RefundsSection userId={userId} charging={data.charging} selling={data.selling} />;
   }
 }

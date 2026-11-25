@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `@breatic/core` — shared backend runtime.
@@ -76,7 +76,6 @@ export type {
   RunProjectMediaBackfillInput,
 } from "@core/asset/project-media-backfill.js";
 export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@core/config/node-tasks.js";
-export { getStripeWebhookRecordingWriteTimeoutMs } from "@core/config/stripe-webhook-recording.js";
 export { getMiniToolsConfig, reportGraceMs, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
@@ -95,17 +94,6 @@ export {
   subscriptionClock,
 } from "@core/config/membership.js";
 export type { MembershipConfig, MembershipLimits } from "@core/config/membership.js";
-export {
-  getSubscriptionPlans,
-  getSubscriptionPlan,
-  findOfferByPriceId,
-  getStripeCallTimeoutMs,
-  resetSubscriptionConfigCache,
-} from "@core/config/subscription.js";
-export type {
-  SubscriptionPlan,
-  SubscriptionPlans,
-} from "@core/config/subscription.js";
 export { jitterBackoffStrategy } from "@core/infra/retry.js";
 export { getAgentConfig, memoryReserveTokens, MEMORY_TITLE_MAX_CHARS, MEMORY_CONTENT_MAX_CHARS } from "@core/config/loader.js";
 
@@ -162,6 +150,7 @@ export {
 export {
   publishActivityNew,
   publishAssetPeaksReady,
+  publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
@@ -210,7 +199,7 @@ export { runWithContext, tryGetContext, getContext } from "@core/infra/request-c
 // the tier ceilings, which is why collab reads
 // `getProjectConcurrentEditorLimit` from here rather than walking to a
 // tier its own way. Server-private domain (auth /
-// project / payment / user.repo / stripe / mailer / pricing / ...)
+// project / user.repo / mailer / ...)
 // lives in @server/src; AIGC business shared by server+worker (credit /
 // task / node-history / agent / model-catalog) lives in
 // @breatic/domain — collab never touches it.
@@ -220,16 +209,8 @@ export * as projectAssetReferenceService from "@core/asset/project-asset-referen
 export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
-export * as timelineExecutionRepo from "@core/timeline/timeline-execution.repo.js";
 export { announceExecutionChange } from "@core/timeline/execution-change.js";
 export { announceSpaceTasksVersion } from "@core/infra/space-tasks-version.js";
-export {
-  TIMELINE_QUEUE,
-  TIMELINE_EXECUTION_JOB,
-  addTimelineExecutionJob,
-  type TimelineExecutionJobData,
-} from "@core/timeline/timeline-queue.js";
-export type { TimelineExecutionEvent, TimelineExecutionTransition, NewTimelineExecution } from "@core/timeline/timeline-execution.repo.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,
@@ -264,9 +245,8 @@ export type { EnterpriseMembershipWrite, EnterpriseMembershipProfile, Enterprise
 // ceilings above are read here too, and a subscription whose paid period ran
 // out says the tier on the account is stale.
 export {
-  hasPaidMembership,
   listSubscriptions,
-  markFirstActive,
+  recordFirstActive,
   upsertSubscription,
 } from "@core/auth/subscription.repo.js";
 export type {
@@ -313,6 +293,7 @@ export { logger, initLogger, createLogger } from "@core/infra/logger.js";
 export {
   AppError,
   NotFoundError,
+  UnavailableError,
   ForbiddenError,
   ConflictError,
   ValidationError,
@@ -368,11 +349,25 @@ export * from "@core/credit/enterprise-credit-purchase-contract.js";
 
 export * as accountActivityRepo from "@core/activity/account-activity.repo.js";
 export * as accountActivityCoverageRepo from "@core/activity/account-activity-coverage.repo.js";
+export * as accountProviderKeysRepo from "@core/byok/account-provider-keys.repo.js";
+export * as accountModelUpstreamsRepo from "@core/byok/account-model-upstreams.repo.js";
+export type { NewAccountProviderKey, ProviderKeyCheckRecord, SealedProviderKey } from "@core/byok/account-provider-keys.repo.js";
+export {
+  InvalidProviderKey,
+  ProviderKeySealBroken,
+  displayHintOf,
+  normalizeProviderKey,
+  openProviderKey,
+  providerKeyRingOf,
+  sealProviderKey,
+  type ProviderKeyRing,
+} from "@core/secrets/provider-key-box.js";
 
 // HTTP building blocks shared by every service that answers HTTP.
 export { validate, RequestShapeError } from "@core/http/validate.js";
 export * from "@core/http/internal-signature.js";
 export { closeAfterRefusal } from "@core/http/close-after-refusal.js";
+export { refuseUnstorableText } from "@core/http/refuse-unstorable-text.js";
 export { toPage } from "@core/http/keyset-page.js";
 export { frontendOrigin } from "@core/http/frontend-origin.js";
 export { fingerprint } from "@core/http/request-fingerprint.js";
@@ -391,7 +386,102 @@ export { getRateLimit, rateLimitsConfigSchema } from "@core/config/rate-limits.j
 export { createRunOnce, type RunContext, type RunOnceDeps, type RunOnceEvent } from "@core/http/run-once.js";
 export { getRunningLeaseMs, idempotencyConfigSchema } from "@core/config/idempotency.js";
 export { createAfterReply, type AfterReply, type AfterReplyDeps } from "@core/http/after-reply.js";
-export { createInternalAuth, type InternalAuthDeps, type InternalAuthEvent } from "@core/http/internal-auth.js";
+export {
+  createInternalAuth,
+  type InternalAuthDeps,
+  type InternalAuthEvent,
+  type SignerSecrets,
+} from "@core/http/internal-auth.js";
+export {
+  isUnavailable,
+  signedCall,
+  SignedCallError,
+  type SignedCallRequest,
+  type SignedCallResult,
+  type SignedCallTarget,
+} from "@core/http/signed-call.js";
+export {
+  startRelayLoop,
+  type RelayForward,
+  type RelayLoop,
+  type RelayLoopDeps,
+  type RelayLoopEvent,
+} from "@core/outbox/relay-loop.js";
+export { nextAttemptDelaySeconds } from "@core/outbox/backoff.js";
+export { commerceConfigSchema, getCommerceConfig, type CommerceConfig } from "@core/config/commerce.js";
+export * as commerceOutboxRepo from "@core/commerce/commerce-outbox.repo.js";
+export {
+  adClickSchema,
+  conversionContextSchema,
+  paymentGrantAnswerSchema,
+  paymentGrantRequestSchema,
+  type PaymentGrantAnswer,
+  type PaymentGrantRequest,
+  lotRefundFactsSchema,
+  conversionAnswerSchema,
+  referralCodeCheckAnswerSchema,
+  referralCodeCheckRequestSchema,
+  referralBindingBodySchema,
+  promoterApplicationBodySchema,
+  membershipPanelAnswerSchema,
+  type MembershipPanelAnswer,
+  KEYSET_INSTANT,
+  PRODUCT_UNAVAILABLE_REASON,
+  COMMERCE_SIGNERS,
+  MAIL_STATUS_IDS_MAX,
+  UNLANDED_PAYMENTS_LIMIT_MAX,
+  mailStatusAnswerSchema,
+  mailStatusRequestSchema,
+  unlandedPaymentRowSchema,
+  unlandedPaymentsAnswerSchema,
+  type UnlandedPaymentRow,
+  subscriptionConfirmAnswerSchema,
+  type SubscriptionConfirmAnswer,
+  accountLookupRequestSchema,
+  type AccountLookupRequest,
+  REFUND_STEPS,
+  refundStepAnswerSchema,
+  refundStepRequestSchema,
+  refundSettledSchema,
+  refundTellSchema,
+  type RefundSettled,
+  type RefundStep,
+  type RefundStepAnswer,
+  type RefundStepRequest,
+  type RefundTell,
+  subscriptionFactAnswerSchema,
+  subscriptionFactRequestSchema,
+  subscriptionFactSchema,
+  subscriptionNoticeSchema,
+  subscriptionStartedSchema,
+  type SubscriptionFact,
+  type SubscriptionFactAnswer,
+  type SubscriptionFactRequest,
+  type SubscriptionNotice,
+  type SubscriptionStarted,
+  conversionReportSchema,
+  type ConversionAnswer,
+  type ConversionReport,
+  refundLotFactsRequestSchema,
+  type LotRefundFacts,
+  type RefundLotFactsRequest,
+  COMMERCE_OUTBOX_TYPES,
+  accountErasureEventSchema,
+  inboxAnswerSchema,
+  inboxDeliverySchema,
+  lotRefundLifecycleEventSchema,
+  type AccountErasureEvent,
+  type CommerceOutboxType,
+  type InboxAnswer,
+  type InboxDelivery,
+  type LotRefundLifecycleEvent,
+  accountFactsSchema,
+  accountLookupAnswerSchema,
+  referralBindingEventSchema,
+  type AccountFacts,
+  type AccountLookupAnswer,
+  type ReferralBindingEvent,
+} from "@core/commerce/contract.js";
 export { createErrorHandler, type ErrorHandlerEvent } from "@core/http/error-handler.js";
 export { createInternalErrorHandler, type InternalErrorHandlerDeps } from "@core/http/internal-errors.js";
 export { createLogRequest, type InternalRequestLine } from "@core/http/log-request.js";

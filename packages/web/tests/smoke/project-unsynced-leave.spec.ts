@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as decoding from 'lib0/decoding';
 import { readFileSync } from 'node:fs';
@@ -272,7 +272,7 @@ test('a real pending Document upload keeps refresh and browser leave protected',
     await contentState(page, item, false);
     await page.getByTestId('connection-banner-reload').click();
     const dialog = page.getByRole('alertdialog');
-    await expect(dialog).toContainText('An upload or edit');
+    await expect(dialog).toContainText('An upload, edit or run');
     await dialog.getByRole('button', { name: 'Cancel', exact: true }).click();
     await expect(placeholder).toBeVisible();
     expect(await page.evaluate(() => {

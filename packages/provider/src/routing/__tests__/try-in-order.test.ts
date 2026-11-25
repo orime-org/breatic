@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, expect, it } from "vitest";
 import fc from "fast-check";
@@ -105,6 +105,18 @@ describe("tryInOrder", () => {
     const { attempt, calls } = scripted({ a: [{ kind: "http_status", status: 500 }, "ok-a"] });
     await expect(tryInOrder(plan(["a", "b"]), llm(attempt))).resolves.toEqual({ value: "ok-a", servedBy: "a" });
     expect(calls).toEqual(["a", "a"]);
+  });
+
+  it("LLM held to one upstream: a request that never left is retried there up to maxRetries", async () => {
+    const { attempt, calls } = scripted({ a: [{ kind: "not_sent" }, { kind: "not_sent" }, "ok-a"] });
+    await expect(tryInOrder({ ...plan(["a"]), heldToOne: true }, llm(attempt))).resolves.toEqual({ value: "ok-a", servedBy: "a" });
+    expect(calls).toEqual(["a", "a", "a"]);
+  });
+
+  it("LLM held to one upstream: past maxRetries an unsent request reports the upstream unavailable", async () => {
+    const { attempt, calls } = scripted({ a: [{ kind: "not_sent" }] });
+    await expect(tryInOrder({ ...plan(["a"]), heldToOne: true }, llm(attempt))).rejects.toBeInstanceOf(NoUpstreamAvailable);
+    expect(calls).toEqual(["a", "a", "a"]);
   });
 
   it("throws NoUpstreamAvailable with the skipped ones first and each failure after, when all switch away", async () => {

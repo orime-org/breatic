@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The product guide answers how the user operates our product.
@@ -177,6 +177,13 @@ describe("what the guide says", () => {
     expect(markup.split(`"${t("canvas.miniTool.image.expand.label")}"`)[0]).toMatch(
       /Cmd\+Z or Ctrl\+Z and the view bar's undo and redo step through the markup.*\[ and \] keys.*next one drawn when none is selected.*while a text is being typed, these keys act on the text itself/s,
     );
+  });
+
+  it("says the Space type row scrolls with the wheel and its arrow buttons, and names no arrow-key route", () => {
+    expect(webSource("spaces/SpaceKindPicker.tsx")).not.toMatch(/ArrowLeft|ArrowRight/);
+    const row = renderProductGuide().split("scrolls sideways")[1]?.split("Hovering them")[0] ?? "";
+    expect(row).toMatch(/faded edge with an arrow button.*mouse wheel scrolls the row/s);
+    expect(row).not.toMatch(/arrow keys/);
   });
 
   it("says a reference is wired, then chosen from the prompt's list", () => {
@@ -1003,7 +1010,7 @@ describe("what the guide says about each surface", () => {
   it("says what the read-only notice counts and what the leave prompt covers", () => {
     const wrong = section("When something is wrong");
     expect(wrong).toMatch(/every browser tab that has the space open counts, the user's own included/);
-    expect(wrong).toMatch(/local Canvas or Document edits have not synced/);
+    expect(wrong).toMatch(/local Canvas, Document or Motion edits \(such as an annotation\) have not synced/);
     expect(wrong).toMatch(/background Space tabs of the current Project/);
     expect(wrong).toMatch(/connection banner's refresh button asks/);
     expect(wrong).toMatch(/browser's own refresh or tab close uses its native confirmation/);
@@ -1164,5 +1171,58 @@ describe("product guide: full screen", () => {
     expect(text).toMatch(/row of icons over a picture or video holds only full screen/);
     expect(text).not.toMatch(/full-screen controls/);
     expect(text).not.toMatch(/play, seek and fullscreen/);
+  });
+});
+
+describe("Motion Spaces and the Timeline's web animations (#1490)", () => {
+  /**
+   * A message as the guide quotes it.
+   * @param key - The catalog key.
+   * @returns It between double quotes.
+   */
+  const q = (key: string): string => `"${t(key)}"`;
+
+  it("describes the Motion Space with its three entry buttons and what each opens", () => {
+    const motion = section("Motion spaces");
+    for (const key of ["spaces.webAnimation.executions", "spaces.webAnimation.annotations", "spaces.webAnimation.new"]) {
+      expect(t(key), key).not.toBe(key);
+      expect(motion, key).toContain(q(key));
+    }
+  });
+
+  it("says how a result is modified, exported to video and put on a canvas", () => {
+    const motion = section("Motion spaces");
+    for (const key of ["spaces.webAnimation.modify", "spaces.webAnimation.export", "spaces.webAnimation.viewVideo", "spaces.webAnimation.placeOnCanvas"]) {
+      expect(t(key), key).not.toBe(key);
+      expect(motion, key).toContain(q(key));
+    }
+  });
+
+  it("says how an annotation is added at the playhead and found again", () => {
+    const motion = section("Motion spaces");
+    expect(t("spaces.webAnimation.addAnnotation")).not.toBe("spaces.webAnimation.addAnnotation");
+    expect(motion).toContain(q("spaces.webAnimation.addAnnotation"));
+  });
+
+  it("has the Timeline add web animations from the Project's results and send making them to Motion", () => {
+    const timeline = section("Timeline spaces");
+    expect(timeline).toContain(q("timeline.webAnimation.add"));
+    expect(timeline).toContain(q("timeline.webAnimation.goMake"));
+    expect(timeline).not.toContain(q("timeline.webAnimation.dialog.execute"));
+    expect(timeline).not.toContain(q("spaces.webAnimation.executions"));
+  });
+
+  it("names every Space type whose content the chat chip cannot read, as the chip decides it", () => {
+    expect(webSource("pages/project/space-type.ts")).toContain("return type === 'canvas' || type === 'document';");
+    expect(renderProductGuide()).toContain("A Timeline's, a Motion Space's or a 3D Space's content cannot be read");
+  });
+
+  it("offers a Viewer Open in Motion only where the Timeline shows it: when the Project has a Motion Space", () => {
+    expect(webSource("spaces/timeline/TimelineSpace.tsx")).toContain("const canOpenInMotion = !readOnly || hasMotionSpace;");
+    expect(section("Timeline spaces")).toContain(`and see ${q("timeline.webAnimation.openInMotion")} only when the Project already has a Motion Space`);
+  });
+
+  it("names the canvas menu item that opens a video's source animation", () => {
+    expect(renderProductGuide()).toContain(q("canvas.nodeMenu.openSourceAnimation"));
   });
 });

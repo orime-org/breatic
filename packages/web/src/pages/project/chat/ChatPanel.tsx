@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { useQueryClient } from '@tanstack/react-query';
@@ -323,6 +323,7 @@ export function ChatPanel({
         items={waiting.pending}
         awaiting={waiting.awaiting}
         blocked={waiting.blocked}
+        ownKey={waiting.ownKey}
         capNote={waiting.capNote}
         busy={waiting.busy}
         onTakeBack={takeBack}

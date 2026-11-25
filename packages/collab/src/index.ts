@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Hocuspocus collaboration server entry point.
@@ -42,7 +42,7 @@ import {
   projectsRepo,
   type MemberChangeListener,
 } from "@breatic/core";
-import { getTimelineConfig, onDatabaseWaitTimeout } from "@breatic/core";
+import { getTimelineConfig, onDatabaseWaitTimeout, publishSceneLookSettled } from "@breatic/core";
 import { getCollabConfig, getReassemblyLimits } from "@collab/config.js";
 import { buildCollabHealthChecks } from "@collab/infra/health-checks.js";
 import { createCollabServer } from "@collab/hocuspocus.js";
@@ -369,6 +369,7 @@ async function main(): Promise<void> {
       handoffPollMs: cfg.event_handoff_poll_ms,
       handoffWaitMs: cfg.event_handoff_wait_ms,
     },
+    settleSceneLook: publishSceneLookSettled,
   });
 
   // Project-lifecycle commands (server outbox relay → yjs-DB copy and the

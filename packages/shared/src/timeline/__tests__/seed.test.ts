@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, expect, it } from "vitest";
 import * as Y from "yjs";
@@ -19,7 +19,6 @@ describe("Timeline content seeds", () => {
         tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
         clips: {},
         sources: {},
-        operationReceipts: {},
       });
     } finally {
       document.destroy();

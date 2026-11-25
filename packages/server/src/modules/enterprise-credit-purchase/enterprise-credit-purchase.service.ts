@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { db, env, enterpriseCreditPurchaseProfileSchema, enterpriseCreditPurchaseResultSchema, getEnterpriseMembershipProfile, lockRawMembershipSnapshot } from "@breatic/core";
 import type { EnterpriseCreditPurchaseProfile, EnterpriseCreditPurchaseResult, EnterpriseCreditPurchaseWrite } from "@breatic/core";
@@ -22,7 +22,7 @@ export async function profile(userId: string): Promise<EnterpriseCreditPurchaseA
   if (current === null) return { status: 404, body: { code: "not_found" } };
   const enterpriseState = current.reading.enterpriseState;
   const reasons = { ordinary: "not_enterprise", expired: "enterprise_expired", missing: "enterprise_missing" } as const;
-  const reason = enterpriseState === "active" ? env.PAYMENT_ENABLED ? null : "payments_disabled" : reasons[enterpriseState];
+  const reason = enterpriseState === "active" ? env.CHARGING_ENABLED ? null : "payments_disabled" : reasons[enterpriseState];
   return { status: 200, body: enterpriseCreditPurchaseProfileSchema.parse({ account: current.account, enterpriseState,
     revision: current.snapshot.enterprise?.revision ?? null, contractNumber: current.snapshot.enterprise?.contractNumber ?? null,
     expiresAt: current.snapshot.enterprise?.expiresAt ?? null, canPurchase: reason === null, reason }) };
@@ -54,7 +54,7 @@ export async function purchase(request: EnterpriseCreditPurchaseRequest): Promis
     const now = new Date();
     const operation = { key: request.key, accountId: request.userId, adminId: request.adminId, requestHash: request.hash, recordedAt: now.toISOString() };
     let result: EnterpriseCreditPurchaseResult;
-    if (!env.PAYMENT_ENABLED) result = { status: "refused", operation, code: "payments_disabled" };
+    if (!env.CHARGING_ENABLED) result = { status: "refused", operation, code: "payments_disabled" };
     else if (snapshot === null) result = { status: "refused", operation, code: "account_not_found" };
     else if (snapshot.storedTier !== "enterprise") result = { status: "refused", operation, code: "not_enterprise" };
     else if (snapshot.enterprise === null) result = { status: "refused", operation, code: "enterprise_missing" };

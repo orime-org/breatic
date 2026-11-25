@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, expect, it } from "vitest";
 
@@ -14,6 +14,7 @@ const IMPORT_DEFAULTS = {
   decoder_worker_limit: 1,
   max_texture_edge: 8192,
   max_texture_bytes: 268435456,
+  max_picture_header_bytes: 67108864,
   progress_publish_ms: 1000,
 };
 const IMPORT_FIELDS = Object.keys(IMPORT_DEFAULTS) as (keyof typeof IMPORT_DEFAULTS)[];
@@ -63,6 +64,7 @@ describe("scene model import budgets", () => {
       decoder_worker_limit: 2,
       max_texture_edge: 4096,
       max_texture_bytes: 100663296,
+      max_picture_header_bytes: 33554432,
       progress_publish_ms: 500,
     };
 

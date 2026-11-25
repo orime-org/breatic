@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Gemini 3.8 Flash TTS replaces 3.1 (#1521): bound to WaveSpeed (fal and SandBase follow once they are enabled), a
@@ -8,7 +8,6 @@
 
 import { describe, expect, it } from "vitest";
 import { buildBody } from "../../media/body.js";
-import { RETIRED } from "../../media/wavespeed/__tests__/departures.js";
 import { rejectedInput, type EstimateInput } from "../../pricing/estimate.js";
 import { createProvider } from "../../provider.js";
 import { catalog, shipped } from "./shipped.js";
@@ -107,16 +106,5 @@ describe("Gemini 3.8 Flash TTS", () => {
     expect(await refused("wavespeed", { prompt: lines(101), params: { speakers: PAIR } })).toEqual({ reason: expect.stringContaining("100"), limit: { field: "prompt", measure: "lines", max: 100 } });
     expect(await refused("wavespeed", { prompt: `${lines(100)}\n\n  \n`, params: { speakers: PAIR } })).toBeUndefined();
     expect(await refused("wavespeed", { prompt: lines(101) })).toBeUndefined();
-  });
-});
-
-describe("retired models", () => {
-  it("are exactly the bound models outside the catalog", () => {
-    const names = new Set(catalog().models.map((m) => m.name));
-    expect(Object.keys(config.media.models).filter((m) => !names.has(m)).sort()).toEqual([...RETIRED].sort());
-  });
-
-  it("keep Gemini 3.1 bound on all three upstreams, so a run opened on it finishes there", () => {
-    expect(provider.config.models["gemini-3.1-flash-text-to-speech"]!.map((b) => b.upstream)).toEqual(["wavespeed", "fal", "sandbase"]);
   });
 });

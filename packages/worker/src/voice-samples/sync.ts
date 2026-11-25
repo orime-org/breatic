@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Filling the one address every deployment plays the voice samples from
@@ -227,6 +227,7 @@ export function ticketedPredict(runner: MediaRunner, waiting: PredictionWaiting)
         const done = await runMedia({
           taskId: job.key,
           studioId: null,
+          cloneOwner: "deployment",
           model: job.model,
           displayName: job.model,
           input: async () => job.input,

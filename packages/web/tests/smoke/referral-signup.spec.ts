@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A referred sign-up, from the promoter's link to a discounted checkout
@@ -47,7 +47,10 @@ function seed<T>(script: string, input: unknown): T {
   }
 }
 
-test('a referred sign-up sees its first-period discount in the panel and at checkout @needs-payments', async ({
+// The referral program's entry points are hidden (`REFERRAL_UI_SHOWN` in
+// `src/features/referral/referral-ui.ts`, inner#2155); this case goes back to
+// `test` when that flag does.
+test.skip('a referred sign-up sees its first-period discount in the panel and at checkout @needs-payments', async ({
   page,
   baseURL,
 }) => {

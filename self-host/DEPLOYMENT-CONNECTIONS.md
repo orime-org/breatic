@@ -40,7 +40,7 @@ For a versioned production build, set the existing `VITE_APP_VERSION` to a uniqu
 
 Only Project checks it, initially and approximately every 3–3.5 minutes while visible. Foreground checks are throttled to 30 seconds. Development builds and builds without a valid release identifier do not poll. Missing, invalid or unreachable manifests are ignored. A different identifier, including a rollback, automatically opens the Project update dialog unless that release was postponed in the tab session. Later postpones it for the tab session; the top-bar trigger stays available to reopen it.
 
-The Update button reloads the page through the Project `beforeunload` guard. That guard checks the current Project's unconfirmed local Canvas and Document edits together with uploads and other registered browser operations. The update dialog shows its existing operation context; the browser controls the native leave confirmation and its user-interaction requirements. Content synchronization receipts confirm application to the collab document in memory; PostgreSQL persistence follows its own lifecycle. Refresh remains a user action, including after pending work finishes. Connection errors take priority over the notice.
+The Update button reloads the page through the Project `beforeunload` guard. That guard checks the current Project's unconfirmed local Canvas, Document and Motion edits together with uploads, other registered browser operations and run-once presses the server has not answered yet. The update dialog shows its existing operation context; the browser controls the native leave confirmation and its user-interaction requirements. Content synchronization receipts confirm application to the collab document in memory; PostgreSQL persistence follows its own lifecycle. Refresh remains a user action, including after pending work finishes. Connection errors take priority over the notice.
 
 Release the collab service with support for `sync:confirm` and `sync:confirmed` before releasing the web build that uses those messages. The receipt schema and Project confirmation lifecycle are described in [Canvas collaboration](../docs/ARCHITECTURE.md#canvas-collaboration).
 
@@ -73,56 +73,25 @@ What leaves when it is on:
 
 To turn it off again, empty the variables, restart the backend and rebuild the frontend.
 
-When you delete an account on request, soft-delete it first (set `users.deleted_at`), then run `pnpm analytics:delete-users <users.id> …` from the repository root. The command refuses any account that is not soft-deleted and lists those ids. It clears the account's latest consent report and the consent kept on its orders, upload tickets and ad uploads. When `AMPLITUDE_API_KEY` is set, pass `AMPLITUDE_SECRET_KEY=<project secret key>` for that run and the command also asks Amplitude to delete the account's events; the secret key is in the Amplitude project's settings, Amplitude schedules the deletion within 30 days and the command prints the scheduled day. Without `AMPLITUDE_API_KEY` it says there is nothing to delete at Amplitude and stops. How long Amplitude keeps events is set in its organization settings (Time to Live).
+When you delete an account on request, soft-delete it first (set `users.deleted_at`), then run `pnpm analytics:delete-users <users.id> …` from the repository root. The command refuses any account that is not soft-deleted and lists those ids. It clears the account's latest consent report and the consent kept on its upload tickets and ad uploads; on a deployment that sells, it also queues the billing service through `commerce_outbox` to clear the consent kept on the account's orders. When `AMPLITUDE_API_KEY` is set, pass `AMPLITUDE_SECRET_KEY=<project secret key>` for that run and the command also asks Amplitude to delete the account's events; the secret key is in the Amplitude project's settings, Amplitude schedules the deletion within 30 days and the command prints the scheduled day. Without `AMPLITUDE_API_KEY` it says there is nothing to delete at Amplitude and stops. How long Amplitude keeps events is set in its organization settings (Time to Live).
 
 ## Back office internal API
 
-`INTERNAL_API_ENABLED=true` starts a second server listener, called only by the Breatic back office, on `INTERNAL_API_HOST`:`INTERNAL_API_PORT` (default `127.0.0.1:3002`), plus the loop that finishes the credit-pack refunds it accepts. Every request carries an HMAC-SHA256 signature made with `INTERNAL_API_SECRET`, the same value the back office holds; with the API enabled and that secret empty, the services refuse to start. To rotate, move the old key to `INTERNAL_API_SECRET_PREVIOUS`: requests signed with either key are accepted until it is blanked. Requests are limited to 120 per 60 seconds per connection address (`internal-api` in `config/rate-limits.yaml`).
+`INTERNAL_API_ENABLED=true` starts a second server listener on `INTERNAL_API_HOST`:`INTERNAL_API_PORT` (default `127.0.0.1:3002`), called by the Breatic back office and, on a deployment that sells credits, by the billing service under `/internal/v1/commerce/`. Every request carries an HMAC-SHA256 signature: the back office signs with `INTERNAL_API_SECRET`, the billing service with `COMMERCE_API_SECRET`; with the API enabled and the secret it needs empty, the services refuse to start. To rotate, move the old key to `INTERNAL_API_SECRET_PREVIOUS` or `COMMERCE_API_SECRET_PREVIOUS`: requests signed with either key are accepted until it is blanked. Requests are limited per connection address: 120 per 60 seconds for the back office (`internal-api` in `config/rate-limits.yaml`) and 6000 per 60 seconds for the billing service (`commerce-api`).
 
-| Deployment | Product server | Back office connects to |
+| Deployment | Product server | Back office and billing service connect to |
 |---|---|---|
 | Local development | Binds `127.0.0.1:3002` | `http://127.0.0.1:3002` |
 | This `docker-compose.yml` | Binds `0.0.0.0` in the container; `expose: ["3002"]` only, no host port | `http://server:3002`, from a container on the same compose network |
 | Separate hosts in one VPC | Binds `0.0.0.0` in the container; publish `<private-ip>:3002:3002` | `http://<product private IP>:3002` |
 
-With separate hosts, the security group is the only network-level isolation: on Alibaba Cloud ECS, traffic to the public IP is translated to the primary private IP, and Docker-published ports bypass the host firewall. Allow inbound 3002 only from the back office server's private IP/32, and keep the product host's group free of intra-group allow rules (or use an enterprise security group). Make every deployment's verification probe 3002 from the public IP, and fail the deployment if the connection succeeds.
+On a deployment that sells, the server tells the billing service about lot changes, account erasures and referral bindings through `commerce_outbox`. A row the billing service refuses, or one still unsent after `relay_max_attempts` (`config/commerce.yaml`), moves to `commerce_outbox_dead_letters` with an error log `commerce_outbox_dead_lettered` and is not sent again. Once the cause is fixed, run `pnpm commerce:requeue-dead-letters --id <id>` (repeatable), or `--reason <reason> --since <ISO instant with zone>`, from the repository root. It lists the rows it picked; add `--apply` to put each back as a new unsent row with the same payload, all in one transaction, and the running relay sends them. A lot lifecycle row is resent as its lot's current lifecycle, never as the old event. The dead letters stay, marked requeued: a `--reason` selection skips the ones already requeued, and an `--id` naming one needs `--again`. A requeued row carries a new delivery id, so the billing service applies it again. Run `--apply` where the server's own environment is: without `COMMERCE_API_URL` the script refuses, since no relay would send the rows.
 
-Enterprise credit purchases use this signed listener's account profile, purchase and original-operation endpoints, described in [Enterprise credit purchases](../docs/ARCHITECTURE.md#enterprise-credit-purchases). Apply migration `0129_enterprise_credit_purchases.sql` before deploying the corresponding readers and writers. It adds the `enterprise` source kind and the `credit_enterprise_purchases` and `enterprise_credit_purchase_operations` tables. Configure the back office's read-only database role with SELECT on both tables, using the actual migration and role names as in the grants below. Verify that SELECT succeeds and INSERT, UPDATE and DELETE remain false for each table. The signed product endpoint executes the purchase transaction.
+With separate hosts, the security group is the only network-level isolation: on Alibaba Cloud ECS, traffic to the public IP is translated to the primary private IP, and Docker-published ports bypass the host firewall. Allow inbound 3002 only from the back office server's private IP/32 and, on a deployment that sells, the billing service's private IP/32, and keep the product host's group free of intra-group allow rules (or use an enterprise security group). Make every deployment's verification probe 3002 from the public IP, and fail the deployment if the connection succeeds.
 
-Purchase eligibility requires `PAYMENT_ENABLED=true` and current, complete enterprise membership. The confirmation contains the membership revision and contract read from the profile endpoint. The product stores the original creation decision under `Idempotency-Key: bo-<UUID>`; callers recover uncertain replies by reading that original key. Verify the deployed server revision and expected/applied migration watermarks through `GET /internal/v1/deployment-version`, then check current eligibility and original-key reading on the signed listener.
+Purchase eligibility requires `CHARGING_ENABLED=true` and current, complete enterprise membership. The confirmation contains the membership revision and contract read from the profile endpoint. The product stores the original creation decision under `Idempotency-Key: bo-<UUID>`; callers recover uncertain replies by reading that original key. Verify the deployed server revision and expected/applied migration watermarks through `GET /internal/v1/deployment-version`, then check current eligibility and original-key reading on the signed listener.
 
-Subscribe the product's Stripe webhook endpoint to `refund.created`, `refund.updated` and `refund.failed`.
-
-| Stripe access | What it needs |
-|---|---|
-| `STRIPE_SECRET_KEY` | Refunds are created (`refunds.create`) and listed (`refunds.list`); the preview and restoring credits also read `paymentIntents.retrieve` with `expand: ["latest_charge"]` for the charge's `disputed`. A restricted key needs write on Refunds and read on PaymentIntents and Charges. |
-| Operators' and support staff's Stripe Dashboard accounts | No refund permission: a read-only role, or a custom role without "Process refunds". A credit pack is refunded in full or not at all, only through the back office; a refund made in the Dashboard is never booked automatically, and the disposition that meets it stops for a person. |
-
-The back office reads refund records through its own read-only role: the five tables and two views created by migration `0094` (`credit_refunds_unresolved_failed`, `credit_lot_refund_failures`), plus `credit_refund_refusals` created by migration `0104`. Migration `0104` creates the refusal table and its constraints; access depends on the database's grants.
-
-Before running the migration, configure default privileges for the role that will actually create the table. Default privileges cover future tables created by that role in the named schema. Use the deployment's actual migration and read-only role names in these statements:
-
-```sql
-ALTER DEFAULT PRIVILEGES FOR ROLE migration_role IN SCHEMA public
-  GRANT SELECT ON TABLES TO backoffice_ro;
-```
-
-For an existing refusal table, its owner or a database administrator can grant access directly:
-
-```sql
-GRANT SELECT ON TABLE public.credit_refund_refusals TO backoffice_ro;
-```
-
-If migration `0094` used another creating role, also grant SELECT on its five tables and two views to the read-only role. After migration and grants, connect using the actual back office database account. Verify the query succeeds and the privilege check reports SELECT true and INSERT, UPDATE and DELETE false:
-
-```sql
-SELECT id FROM public.credit_refund_refusals LIMIT 0;
-SELECT
-  has_table_privilege(current_user, 'public.credit_refund_refusals', 'SELECT') AS can_select,
-  has_table_privilege(current_user, 'public.credit_refund_refusals', 'INSERT') AS can_insert,
-  has_table_privilege(current_user, 'public.credit_refund_refusals', 'UPDATE') AS can_update,
-  has_table_privilege(current_user, 'public.credit_refund_refusals', 'DELETE') AS can_delete;
-```
+Purchase eligibility requires `CHARGING_ENABLED=true` and current, complete enterprise membership. The confirmation contains the membership revision and contract read from the profile endpoint. The product stores the original creation decision under `Idempotency-Key: bo-<UUID>`; callers recover uncertain replies by reading that original key. Verify the deployed server revision and expected/applied migration watermarks through `GET /internal/v1/deployment-version`, then check current eligibility and original-key reading on the signed listener.
 
 ## Scope and verification
 

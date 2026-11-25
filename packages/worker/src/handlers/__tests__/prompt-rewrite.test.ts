@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Nano Banana 2's prompt is rewritten by an LLM into the structured JSON shape before the run is planned
@@ -11,9 +11,11 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 const h = vi.hoisted(() => ({ warn: vi.fn(), prepare: vi.fn() }));
 
 vi.mock("@breatic/core", () => ({ logger: { warn: h.warn } }));
-vi.mock("@breatic/domain", () => ({
+vi.mock("@breatic/domain", async () => ({
   generateTextRetry: vi.fn(),
   provider: () => ({ llm: { prepare: h.prepare } }),
+  // The real list: it is domain's, and the server reads the same one (inner#1953).
+  ...(await import("../../../../domain/src/provider/prompt-rewritten-models.js")),
 }));
 
 import { generateTextRetry } from "@breatic/domain";
@@ -42,7 +44,7 @@ describe("rewrittenPrompt", () => {
   it("uses the model's rewrite when it answers JSON", async () => {
     mockLlm.mockResolvedValue({ text: 'Here: {"subject":"a cat","lighting":"dusk"}' } as never);
 
-    expect(JSON.parse(await rewrittenPrompt("a cat", {}, FALLBACK, LATER))).toEqual({ subject: "a cat", lighting: "dusk" });
+    expect(JSON.parse((await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).prompt)).toEqual({ subject: "a cat", lighting: "dusk" });
   });
 
   it("tells the model the camera the user turned on", async () => {
@@ -66,15 +68,15 @@ describe("rewrittenPrompt", () => {
   it("sends the catalog's shape when the rewrite fails, and says so", async () => {
     mockLlm.mockRejectedValue(new Error("llm down"));
 
-    expect(await rewrittenPrompt("a cat", CAMERA, FALLBACK, LATER)).toBe(FALLBACK);
+    expect((await rewrittenPrompt("a cat", CAMERA, FALLBACK, LATER)).prompt).toBe(FALLBACK);
     expect(h.warn).toHaveBeenCalledWith(expect.objectContaining({ err: expect.any(Error) }), "nano_banana_prompt_rewrite_failed");
   });
 
   it("sends the catalog's shape when the model answers no JSON, or broken JSON", async () => {
     mockLlm.mockResolvedValue({ text: "no braces here" } as never);
-    expect(await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).toBe(FALLBACK);
+    expect((await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).prompt).toBe(FALLBACK);
 
     mockLlm.mockResolvedValue({ text: "{not json}" } as never);
-    expect(await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).toBe(FALLBACK);
+    expect((await rewrittenPrompt("a cat", {}, FALLBACK, LATER)).prompt).toBe(FALLBACK);
   });
 });

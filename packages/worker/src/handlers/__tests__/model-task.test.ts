@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A model run, a canvas generation or a model mini-tool, as provider is handed it (inner#1743): the prompt lifted
@@ -67,6 +67,8 @@ import { runModelTask, type ModelTask } from "@worker/handlers/model-task.js";
 
 const TASK: ModelTask = {
   taskId: "task-1",
+  actorUserId: "user-1",
+  feature: "canvas_generation",
   modality: "video",
   model: "kling-o3-pro",
   params: { prompt: "a <b>drone</b> shot", image: "https://cdn/x.png", duration: 5, node_ids: ["n1"], project_id: "p1", model: "x", stray: 1 },
@@ -92,7 +94,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   h.runMedia.mockResolvedValue({ outputs: [], costs: [], servedBy: "wavespeed" });
   h.resolveOwnerStudioId.mockResolvedValue("studio-1");
-  h.rewrittenPrompt.mockResolvedValue('{"subject":"rewritten"}');
+  h.rewrittenPrompt.mockResolvedValue({ prompt: '{"subject":"rewritten"}' });
 });
 
 describe("runModelTask", () => {
@@ -177,6 +179,7 @@ describe("Nano Banana 2's rewrite", () => {
       { resolution: "1k", enable_camera: true, camera: "ARRI Alexa 35" },
       JSON.stringify({ subject: "a cat", technical: { camera: "ARRI Alexa 35" } }),
       NANO.deadlineAt,
+      undefined,
     );
     expect(input.params).toEqual({ resolution: "1k" });
   });

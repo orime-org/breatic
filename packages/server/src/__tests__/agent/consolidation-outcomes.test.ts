@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * How one consolidation ends (#148, #1363, #1336, #961).
@@ -84,6 +84,8 @@ const llm = vi.hoisted(() => ({
   servedBy: vi.fn(() => "openrouter"),
 }));
 
+// The real watch domainMock hands over, whose hand-off is the shared double this file reads.
+vi.mock("../../../../domain/src/credit/generation-lookup.js", async () => ({ handOffLookups: (await import("../helpers/mock-core.js")).mocks.handOffLookups }));
 vi.mock("@breatic/domain", async (importOriginal) => {
   const { domainMock } = await import("../helpers/mock-core.js");
   const base = await domainMock();
@@ -250,7 +252,7 @@ describe("a consolidation that works", () => {
     // one model the config names for it, and is recorded and charged as it.
     await consolidate();
 
-    expect(llm.prepare).toHaveBeenCalledWith(CONSOLIDATION_MODEL, expect.anything());
+    expect(llm.prepare).toHaveBeenCalledWith(CONSOLIDATION_MODEL, expect.anything(), undefined, expect.objectContaining({ owner: "deployment" }));
     expect(llm.prepare).not.toHaveBeenCalledWith("anthropic/claude-opus-5.5", expect.anything());
     expect(chargeOnce.mock.calls[0]?.[2]).toMatchObject({ model: CONSOLIDATION_MODEL, provider: "openrouter" });
   });
@@ -349,7 +351,7 @@ describe("a consolidation that works", () => {
     // How each upstream is told is provider's, and its tests hold it.
     await consolidate();
 
-    expect(llm.prepare).toHaveBeenCalledWith(CONSOLIDATION_MODEL, { thinking: false, cache: false, temperature: 0 });
+    expect(llm.prepare).toHaveBeenCalledWith(CONSOLIDATION_MODEL, { thinking: false, cache: false, temperature: 0 }, undefined, expect.objectContaining({ owner: "deployment" }));
     expect(generateTextRetry.mock.calls[0]?.[0]).toMatchObject({
       model: { modelId: CONSOLIDATION_MODEL },
       providerOptions: {},

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The 3D catalog the repository ships (inner#1691, design 2.1 and 2.3): the
@@ -81,8 +81,8 @@ describe("the 3D model catalog", () => {
         };
       }),
     ).toEqual([
-      { name: T23D, display_name: "Tripo H3.1", mode: "t23d", variant: undefined },
-      { name: I23D, display_name: "Tripo H3.1", mode: "i23d", variant: "Single image" },
+      { name: T23D, display_name: "Tripo H3.1", mode: "t23d", variant: "Text-to-3D" },
+      { name: I23D, display_name: "Tripo H3.1", mode: "i23d", variant: "Image-to-3D" },
       {
         name: MULTIVIEW,
         display_name: "Tripo H3.1",

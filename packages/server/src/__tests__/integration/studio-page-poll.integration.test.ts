@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `GET /api/v1/studio-page/poll` — the Studio page's one poll (#1580, test spec K-01 to K-11; design §4): one answer

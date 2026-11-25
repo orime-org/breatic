@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The web-animation job and its model-call registry (inner#1711 design §3.5, §6).
@@ -135,7 +135,7 @@ describe("submit", () => {
     expect(result!.effects).toContain("start");
     expect(result!.refused).toBe(false);
     expect(report(result!.record)).toEqual({
-      state: "running", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null,
+      state: "running", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null, failureUpstream: null, failureKeyReason: null,
     });
   });
 
@@ -171,7 +171,7 @@ describe("cancel before any submit", () => {
 
     expect(result!.effects).toEqual([]);
     expect(report(result!.record)).toEqual({
-      state: "cancelled_before_submit", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null,
+      state: "cancelled_before_submit", phase: null, steps: [], calls: [], container: null, outputs: [], failureReason: null, failureUpstream: null, failureKeyReason: null,
     });
   });
 
@@ -383,6 +383,94 @@ describe("the end of a job", () => {
   });
 });
 
+describe("a key failure (inner#1953)", () => {
+  const refused: WebAnimationJobEvent = { type: "keyFailed", reason: "account_key_missing", upstream: "openrouter" };
+
+  it("fails a running job with no call in flight at once, with the refusal's reason, and stops the container", () => {
+    const [failed] = run(after([begin, started(1), ended(1)]), [refused]);
+
+    expect(failed!.effects).toEqual(["destroy"]);
+    expect(report(failed!.record)).toMatchObject({ state: "failed", failureReason: "account_key_missing", failureUpstream: "openrouter" });
+  });
+
+  it("waits for a call in flight, then fails with the refusal's reason when that call ends", () => {
+    const [stopping, done] = run(after([begin, started(1)]), [refused, ended(1)]);
+
+    expect(report(stopping!.record).state).toBe("stopping");
+    expect(report(done!.record)).toMatchObject({ state: "failed", failureReason: "account_key_missing", failureUpstream: "openrouter" });
+  });
+
+  it("fails with key_lost_on_restart when the job object lost the keys it was submitted with", () => {
+    const [failed] = run(after([begin, started(1), ended(1)]), [{ type: "keyFailed", reason: "key_lost_on_restart" }]);
+
+    expect(report(failed!.record)).toMatchObject({ state: "failed", failureReason: "key_lost_on_restart", failureUpstream: null });
+  });
+
+  it("keeps why the upstream refused the payer's own key", () => {
+    const [failed] = run(after([]), [{ type: "keyFailed", reason: "account_key_failed", upstream: "openrouter", keyReason: "no_balance" }]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "no_balance" });
+  });
+
+  it("names no upstream for a refusal that named none, nor for a failure of any other kind", () => {
+    const [noUpstream] = run(after([]), [{ type: "keyFailed", reason: "feature_disabled" }]);
+    const [other] = run(after([]), [{ type: "finished", ok: false, failureReason: "harness_failed", cpuUsec: 1 }]);
+
+    expect(report(noUpstream!.record).failureUpstream).toBeNull();
+    expect(report(other!.record).failureUpstream).toBeNull();
+  });
+
+  it("changes nothing on a job already stopping or ended", () => {
+    const stopping = after([begin, started(1), { type: "cancel", deadlineAt: REQUEST.deadlineAt }]);
+    const [same] = run(stopping, [refused]);
+
+    expect(same!.record).toBe(stopping);
+    expect(same!.effects).toEqual([]);
+  });
+});
+
+describe("a passing failure of the payer's own key (inner#1953)", () => {
+  const passing: WebAnimationJobEvent = { type: "keyPassing", reason: "account_key_failed", upstream: "openrouter", keyReason: "rate_limited" };
+  const harnessGaveUp: WebAnimationJobEvent = { type: "finished", ok: false, failureReason: "harness_failed", cpuUsec: 1 };
+
+  it("keeps the job running, and names the key's last failure when the runner then gives up", () => {
+    const [noted, failed] = run(after([begin, started(1), ended(1, "upstream_error")]), [passing, harnessGaveUp]);
+
+    expect(report(noted!.record).state).toBe("running");
+    expect(report(failed!.record)).toMatchObject({ state: "failed", failureReason: "account_key_failed", failureUpstream: "openrouter", failureKeyReason: "rate_limited" });
+  });
+
+  it("names the upstream for a failure of the upstream itself", () => {
+    const [, failed] = run(after([]), [{ type: "keyPassing", reason: "upstream_unavailable", upstream: "openrouter" }, harnessGaveUp]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "upstream_unavailable", failureUpstream: "openrouter", failureKeyReason: null });
+  });
+
+  it("forgets it once a later call completes, so a later failure is the runner's own", () => {
+    const [, , , , failed] = run(after([]), [passing, begin, started(1), ended(1), harnessGaveUp]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "harness_failed", failureUpstream: null });
+  });
+
+  it("forgets it once a later call begins, so a later call that fails for another reason is told as the runner's own", () => {
+    const [, , , , failed] = run(after([]), [passing, begin, started(1), ended(1, "interrupted"), harnessGaveUp]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "harness_failed", failureUpstream: null });
+  });
+
+  it("keeps the note of the last call when that call itself failed on the key", () => {
+    const [, , , failed] = run(after([]), [begin, passing, ended(1, "upstream_error"), harnessGaveUp]);
+
+    expect(report(failed!.record)).toMatchObject({ failureReason: "account_key_failed", failureKeyReason: "rate_limited" });
+  });
+
+  it("does not stand in the way of a run that finishes", () => {
+    const [, , , done] = run(after([]), [passing, writtenPackage, writtenManifest, { type: "finished", ok: true, failureReason: null, cpuUsec: 1 }]);
+
+    expect(report(done!.record).state).toBe("done");
+  });
+});
+
 describe("after the end", () => {
   const ends: Array<[string, WebAnimationJobEvent[]]> = [
     ["done", [writtenPackage, writtenManifest, { type: "finished", ok: true, failureReason: null, cpuUsec: 5 }]],
@@ -399,6 +487,7 @@ describe("after the end", () => {
       { type: "cancel", deadlineAt: REQUEST.deadlineAt }, { type: "deadline" }, { type: "containerGone" },
       writtenPackage, { type: "progress", phase: "validating", steps: ["late"] },
       { type: "finished", ok: true, failureReason: null, cpuUsec: 99 },
+      { type: "keyFailed", reason: "feature_disabled" },
       { type: "submit", request: REQUEST },
     ]);
 
@@ -421,6 +510,7 @@ describe("invariants over any sequence of events", () => {
     fc.constant(writtenPackage),
     fc.constant(writtenManifest),
     fc.boolean().map((ok): WebAnimationJobEvent => ({ type: "finished", ok, failureReason: ok ? null : "tool_failed", cpuUsec: 1 })),
+    fc.constantFrom("account_key_missing", "feature_disabled").map((reason): WebAnimationJobEvent => ({ type: "keyFailed", reason })),
   );
 
   it("keeps at most one call in flight, numbers calls 1, 2, 3 in order and stops the container at most once", () => {

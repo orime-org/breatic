@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Warming the model catalog when a canvas space opens (#1966).
@@ -19,7 +19,7 @@
 import { useQueryClient } from '@tanstack/react-query';
 import * as React from 'react';
 
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 
 /**
  * Prefetch the model catalog once for this mount.

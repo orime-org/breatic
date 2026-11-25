@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Control-plane publish/subscribe namespacing (#1831).
@@ -32,6 +32,7 @@ vi.mock("@core/config/runtime.js", () => ({ env: envMock }));
 
 import {
   publishActivityNew,
+  publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   publishUploadEnded,
@@ -82,6 +83,18 @@ describe("control-events — deployment prefix", () => {
       type: "project-connections:close",
       projectId: PID,
       reason: "archived",
+    });
+  });
+
+  it("publishes scene-look:settled on the prefixed channel, under the subscribe pattern, with who it is for and the outcome", async () => {
+    await publishSceneLookSettled({
+      projectId: PID, spaceId: "s", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged",
+    });
+    expect(lastChannel()).toBe(`dev:project:${PID}:scene-look:settled`);
+    expect(patternMatches(projectControlChannelPattern(), lastChannel())).toBe(true);
+    const payload = JSON.parse((publishMock.mock.calls.at(-1) as unknown as [string, string])[1]) as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      type: "project-scene-look:settled", projectId: PID, spaceId: "s", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged",
     });
   });
 

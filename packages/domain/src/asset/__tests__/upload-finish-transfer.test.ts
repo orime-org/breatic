@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * T34 (inner#1006 §4.3): finishing a transfer upload branches off before
@@ -90,6 +90,7 @@ function grantFor(assetSource: string | null): Record<string, unknown> {
     filename: "body.transfer",
     assetSource,
     generationTaskId: null,
+    sceneLook: null,
     analyticsConsent: null,
     createdAt: new Date(),
   };

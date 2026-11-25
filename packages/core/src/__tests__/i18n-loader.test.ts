@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * i18n loader tests — node-side adapter (`@breatic/core` loadLocales)
@@ -23,6 +23,8 @@ import {
 } from "@breatic/shared";
 import { loadLocales } from "../i18n/locale-loader.js";
 import { resolve } from "node:path";
+import { mkdtempSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 
 describe("i18n loader", () => {
   beforeAll(() => {
@@ -144,6 +146,17 @@ describe("i18n loader", () => {
       expect(t("server.auth.invalid_credentials")).not.toBe(
         "server.auth.invalid_credentials",
       );
+    });
+  });
+
+  describe("several directories", () => {
+    it("overlays a later directory's keys onto the earlier one's, keeping both", () => {
+      const overlay = mkdtempSync(resolve(tmpdir(), "locales-overlay-"));
+      writeFileSync(resolve(overlay, "en.json"), JSON.stringify({ server: { overlay_only: { hello: "Hello from the overlay" } } }));
+      resetLocales();
+      loadLocales([resolve(import.meta.dirname, "../../../../locales"), overlay]);
+      expect(t("server.overlay_only.hello")).toBe("Hello from the overlay");
+      expect(t("server.auth.invalid_credentials")).not.toBe("server.auth.invalid_credentials");
     });
   });
 });
