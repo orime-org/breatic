@@ -207,8 +207,8 @@ part receipts travel with the browser and come back to finish it.
 
 Web-animation execution (`WebAnimationContainer`, `WEB_ANIMATION`) and its
 export (`WebAnimationRenderContainer`, `WEB_ANIMATION_RENDER`) are off unless
-you enable them: their container, binding, export and `[assets]` blocks are
-commented out in the template, and `KEY_UNSEAL_PRIVATE_KEY` is unset.
+you enable them: their container, binding and export blocks are commented out
+in the template, and `KEY_UNSEAL_PRIVATE_KEY` is unset.
 Without a binding its job routes, cancel
 (`POST /jobs/{WebAnimationContainer|WebAnimationRenderContainer}/{id}/cancel`)
 included, answer 501 `feature_disabled`, and so does a creation submit without
@@ -221,12 +221,22 @@ loses the keys it held, and the run fails as `key_lost_on_restart`. Its image (`
 the DeepSeek Harness, the HyperFrames runtime and the font set) is large, so
 the first `wrangler dev` builds for a while.
 
-The font set is served as static assets from `assets/web-animation/fonts`,
-laid out from the pinned `@fontsource-variable/*` devDependencies by
+The font set is served as static assets from `assets/web-animation/fonts`
+whether or not web animation is enabled, because every Timeline preview with
+text reads it: `[assets]` and `[env.production.assets]` are on in the template,
+and `pnpm dev` refuses to start a Worker whose `wrangler.toml` lacks `[assets]`
+and prints the two lines to add. It is laid out from the pinned
+`@fontsource-variable/*` and `fontkit` devDependencies by
 `scripts/web-animation-fonts.mjs`, every released version beside the current
-one, because a stored package names the set it was packed with; `pnpm dev`
-runs it when `[assets]` is enabled and `deploy:worker` always does. The image runs the same script on the
-same versions, so the stylesheet a package embeds and the files the preview
+one, because a stored package names the set it was packed with; `pnpm dev` and
+`deploy:worker` run it on every start and deploy. Each version directory holds
+`faces.json` (file, `unicodeRange` and weight of each slice) and `glyphs.json`
+(the code points each slice really holds, read with fontkit and cut to its
+`unicodeRange`, disjoint inside a family; a slice left with none is not
+listed), which the Timeline preview reads through the schemas in
+`@breatic/shared`. A version's files are served immutable, so a change to
+either file means a new `font_set_version`. The images run the same script on
+the same versions, so the stylesheet a package embeds and the files the preview
 loads always match.
 
 ## Tests

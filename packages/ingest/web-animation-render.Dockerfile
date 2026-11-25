@@ -12,13 +12,13 @@
 
 # ── The font sets ─────────────────────────────────────────────────────────
 # Every released version, from the same script and pinned packages as the
-# creation container and the Worker's static assets.
+# creation container and the Worker's static assets, fontkit included.
 FROM node:24-bookworm-slim AS fonts
 COPY packages/ingest/package.json /tmp/ingest-package.json
 COPY packages/ingest/scripts/web-animation-fonts.mjs /fonts/packages/ingest/scripts/web-animation-fonts.mjs
 COPY config/timeline.yaml /fonts/config/timeline.yaml
 RUN set -eu; \
-  pinned=$(node -e 'const d = require("/tmp/ingest-package.json").devDependencies; console.log(Object.entries(d).filter(([n]) => n.startsWith("@fontsource-variable/")).map(([n, v]) => `${n}@${v}`).join(" "))'); \
+  pinned=$(node -e 'const d = require("/tmp/ingest-package.json").devDependencies; console.log(Object.entries(d).filter(([n]) => n.startsWith("@fontsource-variable/") || n === "fontkit").map(([n, v]) => `${n}@${v}`).join(" "))'); \
   cd /fonts/packages/ingest; \
   npm install --no-audit --no-fund --ignore-scripts --no-save $pinned; \
   node scripts/web-animation-fonts.mjs /out/fonts

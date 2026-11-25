@@ -177,11 +177,9 @@ storage = "sqlite"
 # KEY_UNSEAL_PRIVATE_KEY in `.dev.vars`, the private key that opens the model
 # keys each submit carries sealed; everything else works.
 #
-# To enable it, uncomment the four blocks below (the container, its binding,
-# its export and the static assets that serve the font set). `pnpm dev` lays
-# the font set out into `assets/` before starting wrangler whenever `[assets]`
-# is enabled. standard-2 is 1 vCPU, 6 GiB and 12 GB, the instance the worker
-# bills a run for (`web_animation.container` in config/timeline.yaml).
+# To enable it, uncomment the three blocks below (the container, its binding
+# and its export). standard-2 is 1 vCPU, 6 GiB and 12 GB, the instance the
+# worker bills a run for (`web_animation.container` in config/timeline.yaml).
 #
 # [[containers]]
 # class_name = "WebAnimationContainer"
@@ -200,7 +198,7 @@ storage = "sqlite"
 # storage = "sqlite"
 #
 # Exporting a web animation to video (#1490) renders it on a container of its
-# own; uncomment these three blocks with the four above. Without them the
+# own; uncomment these three blocks with the three above. Without them the
 # render job routes answer 501 `feature_disabled`. standard-4 is 4 vCPU, 12 GiB
 # and 20 GB, the instance the worker bills a render for
 # (`web_animation.render_container` in config/timeline.yaml).
@@ -220,9 +218,15 @@ storage = "sqlite"
 # [exports.WebAnimationRenderContainer]
 # type = "durable-object"
 # storage = "sqlite"
-#
-# [assets]
-# directory = "./assets"
+
+# The font set every Timeline preview with text reads (and every web-animation
+# package embeds), served as static assets under /web-animation/fonts/ whether
+# or not web animation is enabled (inner#1709). `pnpm dev` lays it out into
+# `assets/` before starting wrangler, and refuses to start a copy without this
+# block; `assets/_headers` lets any origin read it and caches a version's files
+# for a year.
+[assets]
+directory = "./assets"
 
 # Nothing else here keeps state between requests. What one upload needs
 # remembered — its multipart upload id and the parts that landed — travels with
@@ -424,6 +428,7 @@ storage = "sqlite"
 # [env.production.exports.WebAnimationRenderContainer]
 # type = "durable-object"
 # storage = "sqlite"
-#
-# [env.production.assets]
-# directory = "./assets"
+
+# The font set, as at the top level; `deploy:worker` lays it out first.
+[env.production.assets]
+directory = "./assets"
