@@ -9,7 +9,7 @@ import { DeadlinePassed } from "@breatic/shared";
 import { isTerminalAttempt, verifyJobLockOwnership } from "@worker/handlers/dispatch.js";
 import { finishMiniToolExecutionAndNotify } from "@worker/handlers/mini-tool/execution-completion.js";
 import { planReportingEnd } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { registerReportedOutputs, runMiniToolVideoTool, type VideoToolPickup } from "@worker/handlers/mini-tool/run-video-tool.js";
+import { firstFailure, registerReportedOutputs, runMiniToolVideoTool } from "@worker/handlers/mini-tool/run-video-tool.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { verdictStands } from "@worker/handlers/understand-failure.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
@@ -78,15 +78,14 @@ export async function runMiniToolExecutionTask(job: Job<MiniToolExecutionJob>, t
     } else {
       const deadlineAt = await taskDeadline(taskId, gate.outcome === "started" ? gate.started : task.createdAt);
       phase = "computation";
-      let pickup: VideoToolPickup | null = null;
       let failure: NonNullable<MiniToolExecutionCompletion["error"]> | null = null;
       // No run-level deadline check: a pickup after the deadline still reads every job submitted before it, while each step
       // whose next attempt is due after it ends expired; only a wait is bounded, by the reporting window below.
       try {
-        pickup = await runMiniToolVideoTool(execution, task.userId, deadlineAt);
-        const first = [...pickup.results.values()].find((result) => result.status === "failed");
-        if (first?.status === "failed") failure = first.error;
-        else if (pickup.waiting || execution.outputs.some((output) => !pickup!.results.has(output.outputIndex))) {
+        const pickup = await runMiniToolVideoTool(execution, task.userId, deadlineAt);
+        const first = firstFailure(pickup);
+        if (first !== undefined) failure = first.error;
+        else if (pickup.waiting || execution.outputs.some((output) => !pickup.results.has(output.outputIndex))) {
           throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
         }
       } catch (thrown) {

@@ -3,7 +3,7 @@
 
 /**
  * The extract-frames, split and video focus crop runners on the frozen plan (inner#1306 §93 D5-1..D5-11; frames-split design §5.4 user-run
- * encoding and job identities, §7.11 per-output results, §7.15, §7.17, §10.8).
+ * encoding and job identities, §7.15, §7.17, §7.19, §10.8).
  *
  * Each pickup writes every output's job recipe on the frozen version's grid and tool source (§7.16) with the frozen
  * encode, and advances the frozen layout as it is: each batch is a `run-batch` job staged through
@@ -65,13 +65,13 @@ export function failedResult(reason: string): FailedResult {
 }
 
 /**
- * Whether an output of the pickup failed for good: from then on nothing new opens (frames-split §7.19).
+ * The first output of the pickup that failed for good: from then on nothing new opens (frames-split §7.19).
  * @param pickup - The pickup.
- * @returns True once any output failed.
+ * @returns Its failure, or undefined while none failed.
  * @throws {never} Never.
  */
-function failedYet(pickup: VideoToolPickup): boolean {
-  return [...pickup.results.values()].some((result) => result.status === "failed");
+export function firstFailure(pickup: VideoToolPickup): FailedResult | undefined {
+  return [...pickup.results.values()].find((result): result is FailedResult => result.status === "failed");
 }
 
 /**
@@ -96,8 +96,7 @@ function grantOf(recipe: MiniToolPlanRecipe): { modality: "image" | "video"; nam
 }
 
 /**
- * An output's recipe by its output index: a retry run stores only the retried outputs, each under its original index, so
- * the index is not the output's position.
+ * An output's recipe by its output index.
  * @param execution - The run.
  * @param outputIndex - The output.
  * @returns Its recipe.
@@ -145,7 +144,7 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
   pickup: VideoToolPickup, open: boolean): Promise<boolean> {
   for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
     const pending = outputs.filter((index) => !pickup.results.has(index));
-    if (pending.length === 0 || failedYet(pickup)) return false;
+    if (pending.length === 0 || firstFailure(pickup) !== undefined) return false;
     const jobId = videoContainerJobId({ kind: "run-batch", taskId: execution.taskId, batch, attempt });
     const found = await jobStep(execution.taskId, jobId, execution.container.containerClass, deadlineAt, open);
     if (found === "unopened") return true;
@@ -269,11 +268,11 @@ export async function runMiniToolVideoTool(execution: AcceptedMiniToolExecution,
   ];
   const unopened: typeof steps = [];
   for (const step of steps) {
-    if (failedYet(pickup)) return pickup;
+    if (firstFailure(pickup) !== undefined) return pickup;
     if (await step(false)) unopened.push(step);
   }
   for (const step of unopened) {
-    if (failedYet(pickup)) return pickup;
+    if (firstFailure(pickup) !== undefined) return pickup;
     await step(true);
   }
   return pickup;

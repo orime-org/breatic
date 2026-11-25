@@ -285,7 +285,6 @@ export async function endMiniToolExecutionOutsideRun(id: string, tx: DbTx): Prom
   const plan = await lockedPlan(id, tx);
   const current = recordFromPlan(plan);
   if (current.commitPoint !== undefined) throw new Error("A run past its commit point only completes");
-  if (current.outputs.every((output) => output.result !== null)) return;
   const failure = { code: plan.task.errorMessage ?? "internal" };
   const record = miniToolExecutionRecordSchema.parse({
     ...current, resultVersion: current.resultVersion + 1, error: failure,

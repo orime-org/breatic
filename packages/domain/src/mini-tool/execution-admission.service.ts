@@ -364,7 +364,7 @@ export async function quoteMiniToolExecution(body: MiniToolPlannedRequest, userI
  * @returns Original identity and current status.
  * @throws {NotFoundError} When current Project membership is absent.
  * @throws {ForbiddenError} When a viewer starts work.
- * @throws {ConflictError} When an identity is occupied or an output already has active execution.
+ * @throws {ConflictError} When an identity is occupied.
  * @throws {ValidationError} When source, receipt or exact plan is invalid.
  * @throws {Error} When preparation, persistence or startup fails.
  */

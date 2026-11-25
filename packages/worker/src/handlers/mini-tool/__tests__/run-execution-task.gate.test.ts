@@ -26,7 +26,7 @@ vi.mock("@breatic/domain", async (original) => {
     miniToolExecutionService: { ...actual.miniToolExecutionService, startMiniToolExecution: h.start, markMiniToolExecutionCommitPoint: h.mark } };
 });
 vi.mock("@worker/handlers/task-deadline.js", () => ({ taskDeadline: h.deadline }));
-vi.mock("@worker/handlers/mini-tool/run-video-tool.js", () => ({ runMiniToolVideoTool: h.run, registerReportedOutputs: h.register }));
+vi.mock("@worker/handlers/mini-tool/run-video-tool.js", async (original) => ({ ...await original<Record<string, unknown>>(), runMiniToolVideoTool: h.run, registerReportedOutputs: h.register }));
 vi.mock("@worker/handlers/mini-tool/execution-completion.js", () => ({ finishMiniToolExecutionAndNotify: h.finish }));
 vi.mock("@worker/handlers/dispatch.js", () => ({ isTerminalAttempt: () => false, verifyJobLockOwnership: async () => true }));
 

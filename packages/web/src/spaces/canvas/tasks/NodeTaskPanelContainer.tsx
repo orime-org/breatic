@@ -37,7 +37,6 @@ import {
   type TaskActionRequest,
 } from '@web/stores/task-actions-in-flight';
 
-/** The planned tools whose failed output retries from its task row. */
 /** The media a refusal can name formats for. */
 const LISTED_MEDIA = ['image', 'video', 'audio'] as const;
 

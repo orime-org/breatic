@@ -43,11 +43,11 @@ export async function finishMiniToolExecutionAndNotify(taskId: string, completio
 /**
  * Deliver every registered output whose delivery slot is still pending, then wake pending delivery (design §7.11).
  * @param taskId - The original accepted task.
- * @param streamRedis - The application's task-event stream connection; the delivery worker's own when omitted.
+ * @param streamRedis - The application's task-event stream connection.
  * @returns Nothing once each pending position was tried.
  * @throws {Error} When the delivery context cannot be read.
  */
-async function deliverPending(taskId: string, streamRedis?: ReturnType<typeof getStreamRedis>): Promise<void> {
+async function deliverPending(taskId: string, streamRedis: ReturnType<typeof getStreamRedis>): Promise<void> {
   let context = await miniToolDeliveryService.readMiniToolDelivery(taskId);
   const pending = (context.delivery?.outputs ?? []).filter((slot) => slot.state === "pending"
     && context.record.outputs.some((output) => output.outputIndex === slot.outputIndex && output.result?.status === "registered"));
