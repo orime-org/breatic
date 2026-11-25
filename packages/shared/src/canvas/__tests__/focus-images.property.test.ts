@@ -70,7 +70,7 @@ describe("the focus image rule has one home", () => {
 
   it("D-33 the append is written once, in shared, and web keeps no copy", () => {
     expect(source("web/src/data/yjs/canvas-space.ts")).not.toMatch(/function appendFocusImageCore/);
-    expect(source("collab/src/services/task-listener.ts")).toMatch(/import \{ applyFocusImageUpload \} from "@breatic\/shared\/space-content"/);
+    expect(source("collab/src/services/task-listener.ts")).toMatch(/import \{[^}]*\bapplyFocusImageUpload\b[^}]*\} from "@breatic\/shared\/space-content"/);
     expect(source("shared/src/canvas/focus-image-append.ts")).toMatch(/appendFocusImageCore\(data, event\.image\)/);
   });
 });
