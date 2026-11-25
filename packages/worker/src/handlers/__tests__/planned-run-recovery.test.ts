@@ -49,8 +49,8 @@ function runAs(status: string, commitPoint?: string): void {
  * The recovery under test, loaded after the mocks.
  * @returns It.
  */
-async function recovery(): Promise<(taskId: string) => Promise<void>> {
-  const module = await import("@worker/handlers/mini-tool/recover-planned-run.js") as { recoverPlannedRun?: (taskId: string) => Promise<void> };
+async function recovery(): Promise<(taskId: string) => Promise<boolean>> {
+  const module = await import("@worker/handlers/mini-tool/recover-planned-run.js") as { recoverPlannedRun?: (taskId: string) => Promise<boolean> };
   expect(module.recoverPlannedRun, "recoverPlannedRun is exported").toBeTypeOf("function");
   return module.recoverPlannedRun!;
 }
@@ -87,6 +87,14 @@ describe("recovering a planned run whose job will not pick it up again (frames-s
     await (await recovery())(TASK);
     expect(h.failTask).toHaveBeenCalledExactlyOnceWith(TASK, "internal");
     expect(h.finish).not.toHaveBeenCalled(); expect(h.register).not.toHaveBeenCalled();
+  });
+
+  it("RR07 a node row update the pending run's ending could not publish is logged", async () => {
+    runAs("pending");
+    const err = new Error("stream unavailable");
+    h.failTask.mockResolvedValue({ failed: true, publishFailures: [err] });
+    await (await recovery())(TASK);
+    expect(h.logger.error).toHaveBeenCalledWith(expect.objectContaining({ err, taskId: TASK }), "running_slot_publish_failed");
   });
 
   it.each(["completed", "failed", "cancelled"])("RR04 a %s run is left as it stands", async (status) => {
@@ -162,11 +170,10 @@ describe("the planned run sweep (frames-split §7.19 巡检)", () => {
     expect(h.recover.mock.calls.map((call) => call[0])).toEqual([RUNNING[0], RUNNING[1]]);
   });
 
-  it("SW02 fails a pending run that never waited whose job has ended or is gone, through failTask", async () => {
+  it("SW02 ends a pending run that never waited whose job has ended or is gone, through the same recovery", async () => {
     h.list.mockResolvedValue({ running: [], pending: PENDING });
     await (await sweep())(queue({ [PENDING[1]!]: "delayed" }));
-    expect(h.failTask.mock.calls).toEqual([[PENDING[0], "internal"]]);
-    expect(h.recover).not.toHaveBeenCalled();
+    expect(h.recover.mock.calls.map((call) => call[0])).toEqual([PENDING[0]]);
   });
 
   it("SW03 one run that fails is logged and the rest are still swept", async () => {
