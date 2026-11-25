@@ -3,9 +3,13 @@
 
 import * as React from 'react';
 import { Clapperboard, Layers, MoreHorizontal, PictureInPicture2, Redo2, SlidersHorizontal, Undo2 } from 'lucide-react';
+import { Badge } from '@web/components/ui/badge';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { useTranslation } from '@web/i18n/use-translation';
 export type ScenePanel = 'properties' | 'objects' | 'tasks' | 'director';
+
+/** The largest running count the Tasks button spells out; more reads as `99+`. */
+const COUNT_CAP = 99;
 
 const icons = {
   undo: <Undo2 className='size-3.5' />, redo: <Redo2 className='size-3.5' />,
@@ -25,13 +29,15 @@ const icons = {
  * @param root0.minimapDisabled - Whether the minimap cannot be toggled now, as while the viewfinder is open.
  * @param root0.onMinimap - Toggles the native overview allocation.
  * @param root0.viewfinderHost - Receives the place the viewfinder renders its button into.
+ * @param root0.runningTasks - How many of the Space's task rows run, shown on the Tasks button; 0 shows nothing.
+ * @param root0.openPanel - The right panel on screen, whose button shows selected; null while the panel is closed.
  * @returns The floating action controls.
  * @throws {never} Actions delegate to the existing scene owner.
  */
-export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ undo, redo, onHistory, hasSelection, onPanel, minimap, minimapDisabled = false, onMinimap, viewfinderHost }: {
+export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ undo, redo, onHistory, hasSelection, onPanel, minimap, minimapDisabled = false, onMinimap, viewfinderHost, runningTasks, openPanel }: {
   undo: boolean; redo: boolean; onHistory: (step: 'undo' | 'redo') => void; hasSelection: boolean;
   onPanel: (panel: ScenePanel) => void; minimap: boolean; minimapDisabled?: boolean; onMinimap: () => void;
-  viewfinderHost: (host: HTMLDivElement | null) => void;
+  viewfinderHost: (host: HTMLDivElement | null) => void; runningTasks: number; openPanel: ScenePanel | null;
 }): React.JSX.Element {
   const t = useTranslation();
   /**
@@ -67,10 +73,16 @@ export const SceneViewportToolbar = React.memo(function SceneViewportToolbar({ u
   return <div className='flex rounded-md border border-border bg-popover py-1 shadow' data-testid='scene-viewport-toolbar'>
     <div className='flex items-center gap-0.5 border-r border-border px-1'><SceneIconButton label={t('spaces.threeD.undo')} disabled={!undo} onClick={undoStep}>{icons.undo}</SceneIconButton><SceneIconButton label={t('spaces.threeD.redo')} disabled={!redo} onClick={redoStep}>{icons.redo}</SceneIconButton></div>
     <div className='flex items-center gap-0.5 border-r border-border px-1'>
-      <SceneIconButton data-testid='scene-properties-trigger' label={t('spaces.threeD.properties')} disabled={!hasSelection} onClick={showProperties}>{icons.properties}</SceneIconButton>
-      <SceneIconButton data-testid='scene-objects-trigger' label={t('spaces.threeD.objects')} onClick={showObjects}>{icons.objects}</SceneIconButton>
-      <SceneIconButton data-testid='scene-tasks-trigger' label={t('spaces.threeD.tasks')} onClick={showTasks}>{icons.tasks}</SceneIconButton>
-      <SceneIconButton data-testid='scene-director-trigger' label={t('spaces.threeD.director.open')} onClick={showDirector}>{icons.director}</SceneIconButton>
+      <SceneIconButton data-testid='scene-properties-trigger' label={t('spaces.threeD.properties')} active={openPanel === 'properties'} disabled={!hasSelection} onClick={showProperties}>{icons.properties}</SceneIconButton>
+      <SceneIconButton data-testid='scene-objects-trigger' label={t('spaces.threeD.objects')} active={openPanel === 'objects'} onClick={showObjects}>{icons.objects}</SceneIconButton>
+      {/* The count sits beside the button, since a div cannot sit inside one, and lets the pointer through to it. */}
+      <div className='relative inline-flex'>
+        <SceneIconButton data-testid='scene-tasks-trigger' label={t('spaces.threeD.tasks')} active={openPanel === 'tasks'} onClick={showTasks}>{icons.tasks}</SceneIconButton>
+        {runningTasks > 0 ? <Badge data-testid='scene-tasks-count' className='pointer-events-none absolute -right-1 -top-1 h-4 min-w-4 justify-center rounded-full border-popover bg-foreground px-1 py-0 text-2xs font-semibold tabular-nums leading-none text-background shadow-none'>
+          {runningTasks > COUNT_CAP ? `${COUNT_CAP}+` : runningTasks}
+        </Badge> : null}
+      </div>
+      <SceneIconButton data-testid='scene-director-trigger' label={t('spaces.threeD.director.open')} active={openPanel === 'director'} onClick={showDirector}>{icons.director}</SceneIconButton>
     </div><div className='flex items-center gap-0.5 px-1'><div ref={viewfinderHost} className='contents' /><SceneIconButton label={t('spaces.threeD.minimap')} active={minimap && !minimapDisabled} disabled={minimapDisabled} onClick={onMinimap}>{icons.minimap}</SceneIconButton></div>
   </div>;
 });

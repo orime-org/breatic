@@ -10,6 +10,7 @@ import { docName } from '@web/data/yjs/manager';
 import { useCanvasTaskState } from '@web/data/yjs/use-canvas-task-state';
 import { useSpacePeerTaskStatus } from '@web/spaces/canvas/use-space-peer-task-status';
 import { useMotionRunning } from '@web/spaces/web-animation/use-motion-running';
+import { useSpaceTasks } from '@web/spaces/three-d/use-space-tasks';
 
 /**
  * Combine the existing task facts this browser knows for one Space.
@@ -30,5 +31,7 @@ export function useSpaceTaskStatus(projectId: string, spaceId: string, type: Spa
   const peers = useSpacePeerTaskStatus(provider?.awareness ?? null, tasks.contentNodeIds);
   // The tab bar outlives the hidden Space body, so it holds a Motion Space's one subscription to its count.
   const executing = useMotionRunning(projectId, spaceId, type === 'web_animation');
-  return operations || waiting || requests || tasks.running || peers || executing;
+  // Likewise a 3D Space's task list: another member's upload, a background generation, a row waiting for a slot.
+  const scene = useSpaceTasks(projectId, spaceId, type === '3d');
+  return operations || waiting || requests || tasks.running || peers || executing || scene.running > 0;
 }
