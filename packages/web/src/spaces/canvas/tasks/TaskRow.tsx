@@ -247,7 +247,7 @@ export const TaskRow = React.memo(function TaskRow({
           // way. It outranks the filename above, which only says which of the
           // listed files this row is about.
           className={
-            'pl-5 text-sm font-medium ' +
+            'pl-5 text-pretty text-sm font-medium ' +
             (entry.status === 'failed'
               ? 'text-status-error-foreground'
               : 'text-muted-foreground')

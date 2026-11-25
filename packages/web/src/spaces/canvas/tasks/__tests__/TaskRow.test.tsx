@@ -241,6 +241,12 @@ describe('TaskRow', () => {
     );
   });
 
+  it('keeps a lone word off the last line of why it ended', () => {
+    renderRow({ status: 'failed', errorMessage: 'The connection dropped.' });
+
+    expect(screen.getByText('The connection dropped.').className).toContain('text-pretty');
+  });
+
   it('says a cause we recognise in the user’s own language', () => {
     // The row is read by whoever opens the list, so a cause this product
     // knows travels as a code and becomes a sentence here. A sentence written
