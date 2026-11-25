@@ -99,11 +99,10 @@ const DownloadRow = React.memo(function DownloadRow({
  * The desktop client's Downloads panel (inner#2041, design §7.3.1): the list
  * the client keeps for this run, read again after every notice, newest row
  * only until the user expands it. Renders nothing in a browser.
- * @param props - The current path.
- * @param props.pathname - The current path, which decides the panel's left edge.
  * @returns The panel, or nothing.
  */
-export function DownloadPanel({ pathname }: { pathname: string }): React.JSX.Element | null {
+export function DownloadPanel(): React.JSX.Element | null {
+  const pathname = '/';
   const t = useTranslation();
   const bridge = getDesktopBridge();
   const [list, setList] = React.useState<DesktopDownloadList | null>(null);
