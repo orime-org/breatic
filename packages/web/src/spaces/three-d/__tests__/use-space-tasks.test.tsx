@@ -124,6 +124,23 @@ describe('useSpaceTasks', () => {
     expect(result.current.running).toBe(0);
   });
 
+  it('counts 0 when not enabled, even with running rows already in the cache', () => {
+    const { client, wrapper } = provider();
+    client.setQueryData(spaceTasksQueryKey(PROJECT, SPACE), list([row(1), row(2)]));
+    const { result } = renderHook(() => useSpaceTasks(PROJECT, SPACE, false), { wrapper });
+    expect(result.current.query.data?.tasks).toHaveLength(2);
+    expect(result.current.running).toBe(0);
+  });
+
+  it('hands back the key it reads under, the same across renders', () => {
+    const { wrapper } = provider();
+    const { result, rerender } = renderHook(() => useSpaceTasks(PROJECT, SPACE, false), { wrapper });
+    const first = result.current.queryKey;
+    rerender();
+    expect(result.current.queryKey).toEqual(spaceTasksQueryKey(PROJECT, SPACE));
+    expect(result.current.queryKey).toBe(first);
+  });
+
   it('reads the list on no timer, even when a running row reaches its deadline', async () => {
     vi.mocked(listSpaceTasks).mockResolvedValue(list([row(1, { deadlineAt: new Date(Date.now() + 20).toISOString() })]));
     const { wrapper } = provider();

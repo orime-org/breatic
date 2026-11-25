@@ -6,7 +6,7 @@ import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Bot, Crosshair, Hourglass, ListFilter, Sparkles, Upload } from 'lucide-react';
 import type { SceneGenerationOrigin } from '@breatic/shared';
-import { checkSpaceTask, isGenerationTask, removeSpaceTask, spaceTasksQueryKey, type SpaceTask } from '@web/data/api/scene';
+import { checkSpaceTask, isGenerationTask, removeSpaceTask, type SpaceTask } from '@web/data/api/scene';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
@@ -107,8 +107,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   const t = useTranslation();
   const keys = useKeyFailureWords();
   const queryClient = useQueryClient();
-  const queryKey = React.useMemo(() => spaceTasksQueryKey(projectId, spaceId), [projectId, spaceId]);
-  const { query, running } = useSpaceTasks(projectId, spaceId);
+  const { query, queryKey, running } = useSpaceTasks(projectId, spaceId);
   React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const names = useCollaboratorNames();
   const [placing, setPlacing] = React.useState<ReadonlySet<string>>(new Set());
