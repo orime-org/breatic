@@ -3,14 +3,14 @@
 
 /**
  * The app window's preload: the few calls the web app may make into the
- * client (inner#2041), and `retry` for the "can't reach" page the client writes
- * into Chromium's error entry (design 5.3). The main process checks every
- * sign-in call comes from the server's origin and every retry from that
- * window's error entry.
+ * client (inner#2041: sign-in and the download list), and `retry` for the
+ * "can't reach" page the client writes into Chromium's error entry (design
+ * 5.3). The main process checks every sign-in and download call comes from
+ * the server's origin and every retry from that window's error entry.
  */
 
 import { contextBridge, ipcRenderer } from "electron";
-import type { BrowserSignInResult, DesktopBridge } from "@breatic/shared";
+import type { BrowserSignInResult, DesktopBridge, DesktopDownloadList } from "@breatic/shared";
 
 const bridge: DesktopBridge & { retry(automatic?: boolean): Promise<void> } = {
   platform: process.platform,
@@ -30,6 +30,20 @@ const bridge: DesktopBridge & { retry(automatic?: boolean): Promise<void> } = {
       ipcRenderer.removeListener("sign-in:arrived", handler);
     };
   },
+  listDownloads: () => ipcRenderer.invoke("download:list") as Promise<DesktopDownloadList>,
+  onDownloadsChanged: (listener) => {
+    /**
+     * Forward the client's notice to the page's listener.
+     * @returns Nothing.
+     */
+    const handler = (): void => listener();
+    ipcRenderer.on("download:changed", handler);
+    return () => {
+      ipcRenderer.removeListener("download:changed", handler);
+    };
+  },
+  dismissDownloads: () => ipcRenderer.invoke("download:dismiss") as Promise<void>,
+  revealDownload: (id) => ipcRenderer.invoke("download:reveal", id) as Promise<void>,
 };
 
 contextBridge.exposeInMainWorld("breaticDesktop", bridge);

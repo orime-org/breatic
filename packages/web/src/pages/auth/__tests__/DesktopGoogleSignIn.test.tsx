@@ -42,6 +42,10 @@ function fakeBridge(state: { pending?: boolean; result?: BrowserSignInResult | n
     isBrowserSignInPending: vi.fn(async () => pending),
     takeBrowserSignInResult: vi.fn(async () => { const taken = result; result = null; pending = false; return taken; }),
     onBrowserSignInResult: vi.fn((listener: () => void) => { listeners.add(listener); return () => listeners.delete(listener); }),
+    listDownloads: vi.fn(async () => ({ open: false, items: [] })),
+    onDownloadsChanged: vi.fn(() => () => undefined),
+    dismissDownloads: vi.fn(async () => undefined),
+    revealDownload: vi.fn(async () => undefined),
   } satisfies DesktopBridge;
   /** Deliver a result the way the client does: store it, then notify. */
   const arrive = (next: BrowserSignInResult): void => {

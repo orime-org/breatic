@@ -5283,6 +5283,28 @@
       "later": "나중에",
       "upToDate": "{product}이(가) 최신 버전입니다",
       "failed": "업데이트를 확인할 수 없습니다"
+    },
+    "downloads": {
+      "quitTitleOne": "{count}개의 다운로드가 진행 중입니다",
+      "quitTitleOther": "{count}개의 다운로드가 진행 중입니다",
+      "quitDetail": "종료하면 다운로드가 취소됩니다.",
+      "quit": "종료",
+      "stay": "머무르기"
     }
+  },
+  "desktopDownloads": {
+    "title": "다운로드",
+    "running": "{count}개 다운로드 중",
+    "failed": "{count}개 실패",
+    "done": "다운로드 완료",
+    "showAll": "전체 {count}개",
+    "showLatest": "최신만 보기",
+    "savedIn": "{folder}에 저장됨",
+    "revealMac": "Finder에서 보기",
+    "revealOther": "폴더에서 보기",
+    "failedRow": "다운로드에 실패했습니다. 다시 다운로드하세요.",
+    "progress": "{received} / {total}",
+    "receivedOnly": "{received} 다운로드됨",
+    "close": "닫기"
   }
 }

@@ -5283,6 +5283,28 @@
       "later": "稍後",
       "upToDate": "{product} 已是最新版本",
       "failed": "無法檢查更新"
+    },
+    "downloads": {
+      "quitTitleOne": "有 {count} 個下載正在進行",
+      "quitTitleOther": "有 {count} 個下載正在進行",
+      "quitDetail": "結束會取消下載。",
+      "quit": "結束",
+      "stay": "留下"
     }
+  },
+  "desktopDownloads": {
+    "title": "下載",
+    "running": "{count} 個正在下載",
+    "failed": "{count} 個失敗",
+    "done": "下載完成",
+    "showAll": "全部 {count} 個",
+    "showLatest": "只看最新",
+    "savedIn": "儲存在 {folder}",
+    "revealMac": "在 Finder 中顯示",
+    "revealOther": "在資料夾中顯示",
+    "failedRow": "下載失敗，請重新下載",
+    "progress": "{received} / {total}",
+    "receivedOnly": "已下載 {received}",
+    "close": "關閉"
   }
 }

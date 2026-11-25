@@ -5,7 +5,7 @@
  * The desktop client's main process (inner#2041): windows on the server the build
  * carries, the "can't reach" page in the window that failed, Google sign-in
  * through the system browser, the navigation rules that keep each window on
- * the app, and the shell's error monitoring.
+ * the app, download feedback, and the shell's error monitoring.
  */
 
 import * as Sentry from "@sentry/electron/main";
@@ -19,11 +19,13 @@ import { createBrowserSignIn } from "@desktop/main/browser-sign-in.js";
 import { BRAND } from "@desktop/main/brand.js";
 import { BUILD } from "@desktop/main/build-info.js";
 import { appImageDesktopEntry, findDeepLink } from "@desktop/main/deep-link.js";
+import { createDownloads, downloadIpcHandlers, type DockWindow, type Downloads } from "@desktop/main/downloads.js";
 import { desktopSentryOptions, keepsIntegration, scrubBreadcrumb, scrubEvent } from "@desktop/main/error-monitoring.js";
 import { createLogger } from "@desktop/main/logger.js";
 import { buildDockMenuTemplate, buildMenuTemplate } from "@desktop/main/menu.js";
 import { appCommandDirection, decideNavigation, decideWindowOpen, stepHistory } from "@desktop/main/navigation.js";
 import { nextWindowBounds, wantsNewWindow, windowsUserTasks } from "@desktop/main/new-window.js";
+import { createQuitGuard, quitDialogText } from "@desktop/main/quit-guard.js";
 import { resolveServerUrl } from "@desktop/main/server-config.js";
 import { SPLASH_MAX_MS, splashQuery, untilSplashMayClose } from "@desktop/main/splash.js";
 import { desktopText, type DesktopText } from "@desktop/main/strings.js";
@@ -95,6 +97,10 @@ let splashDeadline = 0;
 let firstShown = false;
 /** Callbacks waiting to hear that a window's leave confirmation answered Stay. */
 const stayListeners = new Map<WebContents, () => void>();
+/** This run's downloads; set in start(), once the server is known. */
+let downloads: Downloads | null = null;
+/** Asks before a quit would cancel running downloads (design 7.3.1). */
+const quitGuard = createQuitGuard({ platform: process.platform, running: () => downloads?.running() ?? 0, ask: askToQuitWithDownloads });
 /** A packaged build with an update feed: electron-builder wrote app-update.yml beside the app. */
 const updatesEnabled = app.isPackaged && existsSync(join(process.resourcesPath, "app-update.yml"));
 const updates = createUpdates({
@@ -103,7 +109,7 @@ const updates = createUpdates({
   every: (task, ms) => void setInterval(task, ms),
   ask: askToRestart,
   tell: tellUpdateOutcome,
-  closeAllWindows,
+  closeAllWindows: async () => (await quitGuard.confirmRestart()) && closeAllWindows(),
   flushReports: async () => {
     await Sentry.flush(FLUSH_TIMEOUT_MS);
   },
@@ -135,6 +141,8 @@ app.on("window-all-closed", () => {
   if (process.platform !== "darwin") app.quit();
 });
 
+app.on("before-quit", (event) => quitGuard.beforeQuit(event, () => app.quit()));
+
 app.on("web-contents-created", (_event, contents) => attachPolicies(contents));
 
 if (primary) void app.whenReady().then(start).catch((err: unknown) => {
@@ -155,7 +163,17 @@ function start(): void {
   registerScheme();
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => callback(ALLOWED_PERMISSIONS.has(permission)));
   cancelRedirectsAway();
-  registerIpc();
+  downloads = createDownloads({
+    platform: process.platform,
+    serverOrigin,
+    appWindows: () => appWindows.filter((window) => !window.isDestroyed()),
+    openDockWindow,
+    downloadFinished: (path) => app.dock?.downloadFinished(path),
+    showItemInFolder: (path) => shell.showItemInFolder(path),
+  });
+  const tracked = downloads;
+  session.defaultSession.on("will-download", (_event, item) => tracked.track(item));
+  registerIpc(tracked);
   buildMenu();
   openSplash();
   updates.start();
@@ -254,8 +272,11 @@ function fromServer(event: IpcMainInvokeEvent): boolean {
   return event.senderFrame?.origin === serverOrigin;
 }
 
-/** The calls the app preload makes. */
-function registerIpc(): void {
+/**
+ * The calls the app preload makes.
+ * @param tracked - This run's downloads.
+ */
+function registerIpc(tracked: Downloads): void {
   ipcMain.handle("sign-in:start", async (event, referralCode: unknown) => {
     if (!fromServer(event)) return;
     const window = BrowserWindow.fromWebContents(event.sender);
@@ -266,6 +287,10 @@ function registerIpc(): void {
   });
   ipcMain.handle("sign-in:pending", (event) => fromServer(event) && signIn.isPending());
   ipcMain.handle("sign-in:take", (event) => (fromServer(event) ? signIn.take() : null));
+  const download = downloadIpcHandlers(tracked, (event) => fromServer(event as IpcMainInvokeEvent));
+  ipcMain.handle("download:list", download["download:list"]);
+  ipcMain.handle("download:dismiss", download["download:dismiss"]);
+  ipcMain.handle("download:reveal", download["download:reveal"]);
   ipcMain.handle("unreachable:retry", (event, automatic: unknown) => {
     const frame = event.senderFrame;
     if (frame) loads.get(event.sender.id)?.retryAsked({ isMainFrame: frame.parent === null, origin: frame.origin, url: frame.url }, automatic === true);
@@ -318,7 +343,10 @@ function track(window: BrowserWindow): LoadTracker {
     log: (level, entry) => logger[level](entry, "server_unreachable"),
   });
   loads.set(id, tracker);
-  window.on("close", () => saveWindowState(window));
+  window.on("close", (event) => {
+    saveWindowState(window);
+    quitGuard.windowClosing(event, { isLastAppWindow: appWindows.length === 1 && appWindows[0] === window, owner: window, close: () => window.close() });
+  });
   window.on("focus", () => {
     appWindows = [...appWindows.filter((other) => other !== window), window];
   });
@@ -450,6 +478,46 @@ async function askToRestart(version: string): Promise<"restart" | "later"> {
 }
 
 /**
+ * Ask whether to quit while downloads run; quitting cancels them.
+ * @param count - Downloads running.
+ * @param owner - The window closing, when a window's close asks.
+ * @returns True for Quit.
+ */
+async function askToQuitWithDownloads(count: number, owner?: unknown): Promise<boolean> {
+  const words = quitDialogText(text, count);
+  const options: MessageBoxOptions = { type: "warning", buttons: words.buttons, defaultId: 1, cancelId: 1, message: words.message, detail: words.detail };
+  const { response } = owner instanceof BrowserWindow ? await dialog.showMessageBox(owner, options) : await showBox(options);
+  return response === 0;
+}
+
+/**
+ * The never-shown window that carries the Dock progress on macOS: the Dock
+ * progress belongs to the app, and downloads go on after the last app window
+ * closes. It loads nothing and is not an app window; a closed one is made again.
+ * @returns The window's progress control.
+ */
+function openDockWindow(): DockWindow {
+  let window: BrowserWindow | null = null;
+  /**
+   * The window, made again if something closed it.
+   * @returns A live window.
+   */
+  const live = (): BrowserWindow => {
+    if (!window || window.isDestroyed()) {
+      window = new BrowserWindow({ show: false, width: 1, height: 1, webPreferences: { contextIsolation: true, sandbox: true, nodeIntegration: false } });
+    }
+    return window;
+  };
+  return {
+    setProgressBar: (value) => live().setProgressBar(value),
+    destroy: () => {
+      if (window && !window.isDestroyed()) window.destroy();
+      window = null;
+    },
+  };
+}
+
+/**
  * Tell the user how a check they asked for ended.
  * @param outcome - Nothing new, or the check failed.
  */
@@ -562,7 +630,10 @@ function attachPolicies(contents: WebContents): void {
     const choice = owner ? dialog.showMessageBoxSync(owner, options) : dialog.showMessageBoxSync(options);
     // preventDefault lets the page go, ignoring its beforeunload.
     if (choice === 0) event.preventDefault();
-    else stayListeners.get(contents)?.();
+    else {
+      quitGuard.stayed();
+      stayListeners.get(contents)?.();
+    }
   });
 }
 

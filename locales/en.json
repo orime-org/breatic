@@ -5283,6 +5283,28 @@
       "later": "Later",
       "upToDate": "{product} is up to date",
       "failed": "Couldn't check for updates"
+    },
+    "downloads": {
+      "quitTitleOne": "{count} download is in progress",
+      "quitTitleOther": "{count} downloads are in progress",
+      "quitDetail": "Quitting cancels downloads in progress.",
+      "quit": "Quit",
+      "stay": "Stay"
     }
+  },
+  "desktopDownloads": {
+    "title": "Downloads",
+    "running": "{count} downloading",
+    "failed": "{count} failed",
+    "done": "Complete",
+    "showAll": "All {count}",
+    "showLatest": "Latest only",
+    "savedIn": "Saved in {folder}",
+    "revealMac": "Show in Finder",
+    "revealOther": "Show in folder",
+    "failedRow": "Download failed. Please download it again.",
+    "progress": "{received} / {total}",
+    "receivedOnly": "{received} downloaded",
+    "close": "Close"
   }
 }

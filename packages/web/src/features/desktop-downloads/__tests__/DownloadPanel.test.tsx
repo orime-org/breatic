@@ -8,10 +8,11 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor } from '@testing-library/react';
 import type { DesktopBridge, DesktopDownloadList } from '@breatic/shared';
 
 import { DownloadPanel, downloadPanelPlacement } from '@web/features/desktop-downloads/DownloadPanel';
+import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 
 const MiB = 1024 * 1024;
 
@@ -66,13 +67,13 @@ afterEach(() => {
 
 describe('DownloadPanel', () => {
   it('renders nothing in a browser', () => {
-    const { container } = render(<DownloadPanel pathname='/studio' />);
+    const { container } = renderWithTooltips(<DownloadPanel pathname='/studio' />);
     expect(container).toBeEmptyDOMElement();
   });
 
   it('subscribes before reading the list, and shows only the newest row', async () => {
     const { order } = inClient({ open: true, items: [running, done, failed] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     expect(await screen.findByText('clip.mp4')).toBeInTheDocument();
     expect(order.slice(0, 2)).toEqual(['subscribe', 'list']);
     expect(screen.getByText('10 MiB / 86 MiB')).toBeInTheDocument();
@@ -81,7 +82,7 @@ describe('DownloadPanel', () => {
 
   it('expands to every row and collapses back to the newest', async () => {
     inClient({ open: true, items: [running, done, failed] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     fireEvent.click(await screen.findByRole('button', { name: 'All 3' }));
     expect(screen.getByText('still.png')).toBeInTheDocument();
     expect(screen.getByText('voice.mp3')).toBeInTheDocument();
@@ -91,14 +92,14 @@ describe('DownloadPanel', () => {
 
   it('offers no expand button for a single download', async () => {
     inClient({ open: true, items: [running] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     await screen.findByText('clip.mp4');
     expect(screen.queryByRole('button', { name: /^All / })).not.toBeInTheDocument();
   });
 
   it('sums up running, then failed, then done in the title bar', async () => {
     const { change } = inClient({ open: true, items: [running, failed] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     expect(await screen.findByText('1 downloading')).toBeInTheDocument();
     await change({ open: true, items: [done, failed] });
     expect(await screen.findByText('1 failed')).toBeInTheDocument();
@@ -108,7 +109,7 @@ describe('DownloadPanel', () => {
 
   it('reads the list again on each notice and replaces what it shows', async () => {
     const { change, bridge } = inClient({ open: true, items: [running] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     await screen.findByText('clip.mp4');
     await change({ open: true, items: [{ ...running, received: 43 * MiB }] });
     expect(await screen.findByText('43 MiB / 86 MiB')).toBeInTheDocument();
@@ -117,13 +118,13 @@ describe('DownloadPanel', () => {
 
   it('shows the amount alone when the size is unknown', async () => {
     inClient({ open: true, items: [{ ...running, total: 0 }] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     expect(await screen.findByText('10 MiB downloaded')).toBeInTheDocument();
   });
 
   it('names the folder of a finished download and reveals it in Finder on macOS', async () => {
     const { bridge } = inClient({ open: true, items: [done] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     expect(await screen.findByText('Saved in Downloads')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Show in Finder' }));
     expect(bridge.revealDownload).toHaveBeenCalledWith('2');
@@ -131,26 +132,26 @@ describe('DownloadPanel', () => {
 
   it('reveals in the folder on Windows and Linux', async () => {
     inClient({ open: true, items: [done] }, 'win32');
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     expect(await screen.findByRole('button', { name: 'Show in folder' })).toBeInTheDocument();
   });
 
   it('says a failed download failed', async () => {
     inClient({ open: true, items: [failed] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     expect(await screen.findByText('Download failed. Please download it again.')).toBeInTheDocument();
   });
 
   it('closes through the client', async () => {
     const { bridge } = inClient({ open: true, items: [done] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     fireEvent.click(await screen.findByRole('button', { name: 'Close' }));
     expect(bridge.dismissDownloads).toHaveBeenCalled();
   });
 
   it('stays hidden while the client holds it closed, and appears when it opens', async () => {
     const { change, bridge } = inClient({ open: false, items: [running] });
-    render(<DownloadPanel pathname='/studio' />);
+    renderWithTooltips(<DownloadPanel pathname='/studio' />);
     await waitFor(() => expect(bridge.listDownloads).toHaveBeenCalled());
     expect(screen.queryByText('clip.mp4')).not.toBeInTheDocument();
     await change({ open: true, items: [running] });

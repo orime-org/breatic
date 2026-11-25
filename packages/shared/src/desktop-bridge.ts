@@ -39,6 +39,14 @@ export interface DesktopBridge {
   takeBrowserSignInResult(): Promise<BrowserSignInResult | null>;
   /** Hear that a result has arrived; returns the unsubscribe. */
   onBrowserSignInResult(listener: () => void): () => void;
+  /** This run's downloads and whether the Downloads panel is open. */
+  listDownloads(): Promise<DesktopDownloadList>;
+  /** Hear that the download list changed (the notice carries nothing; read it again); returns the unsubscribe. */
+  onDownloadsChanged(listener: () => void): () => void;
+  /** Close the Downloads panel: finished rows go, running ones stay. */
+  dismissDownloads(): Promise<void>;
+  /** Show a finished download's file in its folder. */
+  revealDownload(id: string): Promise<void>;
 }
 
 /**

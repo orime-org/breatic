@@ -5283,6 +5283,28 @@
       "later": "後で",
       "upToDate": "{product} は最新です",
       "failed": "アップデートを確認できませんでした"
+    },
+    "downloads": {
+      "quitTitleOne": "{count} 件のダウンロードが進行中です",
+      "quitTitleOther": "{count} 件のダウンロードが進行中です",
+      "quitDetail": "終了するとダウンロードはキャンセルされます。",
+      "quit": "終了",
+      "stay": "とどまる"
     }
+  },
+  "desktopDownloads": {
+    "title": "ダウンロード",
+    "running": "{count} 件ダウンロード中",
+    "failed": "{count} 件失敗",
+    "done": "ダウンロード完了",
+    "showAll": "すべて（{count} 件）",
+    "showLatest": "最新のみ",
+    "savedIn": "保存先：{folder}",
+    "revealMac": "Finder で表示",
+    "revealOther": "フォルダに表示",
+    "failedRow": "ダウンロードに失敗しました。もう一度ダウンロードしてください。",
+    "progress": "{received} / {total}",
+    "receivedOnly": "{received} ダウンロード済み",
+    "close": "閉じる"
   }
 }
