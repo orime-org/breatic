@@ -135,19 +135,6 @@ export async function registerMiniToolPlanJobOutputs(staged: { taskId: string; s
  * @throws {Error} When original-plan validation, progress, persistence or registration fails.
  */
 export async function advanceRegisteredMiniToolPlanJob(input: OpenMiniToolPlanJobInput, options: { retire?: readonly string[] } = {}): Promise<RegisteredMiniToolPlanJob> {
-  const { request, consumption } = await openMiniToolPlanJob(input);
-  const step = await ownedStep(input.taskId, input.stepId);
-  const state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
-  let report: EndedMiniToolPlanJob;
-  if (state?.result !== null && state?.result !== undefined) {
-    report = terminalReport(request, state.result.result);
-  } else {
-    report = terminalReport(request, await advanceMiniToolPlanJob(request));
-    await recordMiniToolStepResult({
-      taskId: input.taskId, stepId: input.stepId, identity: consumption.identity, outcome: report.state, result: report,
-      ...(report.state === "failed" ? { error: { code: report.reason } } : {}),
-      ...(report.state === "done" && options.retire !== undefined && options.retire.length > 0 ? { presentation: { retire: [...options.retire] } } : {}),
-    }, { kind: "container_job", parse: (value) => terminalReport(request, value) });
-  }
+  const { request, report } = await advanceStagedMiniToolPlanJob(input, options);
   return { request, report, assets: await registerMiniToolPlanJobOutputs({ taskId: input.taskId, stepId: input.stepId }) };
 }
