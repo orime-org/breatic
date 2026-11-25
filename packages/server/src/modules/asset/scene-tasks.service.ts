@@ -22,7 +22,7 @@ import {
 } from "@breatic/domain";
 import { modesOf, picturesOf, t, type SceneGenerationOrigin, type SceneTaskNotice, type TaskEntity } from "@breatic/shared";
 import * as projectService from "@server/modules/project/project.service.js";
-import { announceSceneTasksQuietly } from "@server/modules/task/publish-counts.js";
+import { publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 
 type SpaceRow = NonNullable<Awaited<ReturnType<typeof sceneTaskService.findById>>>;
@@ -113,7 +113,7 @@ export async function listSpaceTasks(
 ): Promise<{ serverNow: string; tasks: SpaceTaskWire[] }> {
   await projectService.assertAccess(projectId, userId, "viewer");
   const { tasks, harvested } = await sceneTaskService.harvestAndList(projectId, spaceId);
-  if (harvested > 0) await announceSceneTasksQuietly(projectId, spaceId);
+  if (harvested > 0) await publishSpaceTasksQuietly(projectId, spaceId);
   const runs = await sceneTaskService.runsOf(tasks);
   return {
     serverNow: new Date().toISOString(),
@@ -198,7 +198,7 @@ async function checkRun(row: SpaceRow): Promise<GenerationCheck> {
   const outcome = sceneTaskService.generationOutcome(stored);
   if (run.billedAt === null || outcome.outcome === "failed") return "ended";
   const settled = await sceneTaskService.settle(row, outcome);
-  if (settled.assetWritten) await announceSceneTasksQuietly(row.projectId, row.spaceId);
+  if (settled.assetWritten) await publishSpaceTasksQuietly(row.projectId, row.spaceId);
   return "has_result";
 }
 
@@ -253,7 +253,7 @@ export async function removeSpaceTask(
   if (!(await sceneTaskService.remove(taskId))) {
     throw new ConflictError(t("server.error.conflict"));
   }
-  await announceSceneTasksQuietly(projectId, spaceId);
+  await publishSpaceTasksQuietly(projectId, spaceId);
   return { removed: true };
 }
 
@@ -279,6 +279,6 @@ export async function reportSpaceTaskFailure(
   await projectService.assertAccess(row.projectId, userId, "editor");
   if (row.startedByUserId !== userId) throw new ForbiddenError(t("server.error.forbidden"));
   const { applied } = await sceneTaskService.settle(row, { outcome: "failed", errorMessage: reason });
-  await announceSceneTasksQuietly(projectId, spaceId);
+  await publishSpaceTasksQuietly(projectId, spaceId);
   return { applied };
 }

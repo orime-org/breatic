@@ -96,8 +96,9 @@ function passes(task: SpaceTask, filters: TaskFilters, userId: string): boolean 
  *
  * The rows are the server's; this page adds what only it knows about the
  * uploads it sends, and its own filters. The list is the Space's shared read
- * ({@link useSpaceTasks}), read again when the Space's document records a
- * change, a row past its deadline included.
+ * ({@link useSpaceTasks}), read again when the server writes a new change
+ * version into the 3D Space's document (`SpaceTasksWatcher`), which it also
+ * does when a running row reaches its deadline (#1580).
  * @param props - Space identity, edit right, the page's uploads and the row actions.
  * @returns The list.
  */
@@ -197,13 +198,13 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   const cancel = React.useCallback((task: SpaceTask): void => {
     void busyWhile(task.id, setCancelling, async () => {
       try {
-        await canvasApi.cancelTask(task.id, projectId);
+        await canvasApi.cancelTask(task.id);
       } catch (error) {
         toastCancelFailure(error, cancelFailed);
       }
       await queryClient.invalidateQueries({ queryKey });
     });
-  }, [busyWhile, projectId, queryClient, queryKey, cancelFailed]);
+  }, [busyWhile, queryClient, queryKey, cancelFailed]);
 
   /**
    * Place one finished model.

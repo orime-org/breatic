@@ -290,9 +290,6 @@ async function bill(input: ConsolidationBill): Promise<void> {
         "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
       );
     }
-    if (outcome?.signalFailure) {
-      logger.error({ err: outcome.signalFailure, userId, conversationId, projectId }, "credits_signal_failed");
-    }
   } catch (err) {
     // A recorded request that failed to settle waits pending for the sweep.
     logger.error(

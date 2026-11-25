@@ -24,8 +24,6 @@ import type { Redis } from "@breatic/core";
 import type { Hocuspocus } from "@hocuspocus/server";
 import {
   activityNewChannel,
-  CREDITS_CHANGED_SIGNAL,
-  creditsChangedChannel,
   projectConnectionsCloseChannel,
   SCENE_LOOK_SETTLED_SIGNAL,
   sceneLookSettledChannel,
@@ -135,36 +133,8 @@ describe("startProjectControlSync — activity:new", () => {
   });
 });
 
-describe("startProjectControlSync — credits:changed", () => {
-  it("relays the credits signal on the project's meta doc", async () => {
-    const metaDoc: DocSpy = {
-      doc: new Y.Doc(),
-      broadcastStateless: vi.fn(),
-      relayStateless: vi.fn(),
-      connections: new Map(),
-    };
-    const { hocuspocus } = buildHocuspocus(metaDoc);
-    const { subscriber } = buildRedis();
-    startProjectControlSync(hocuspocus, subscriber as unknown as Redis);
-    await Promise.resolve();
-
-    subscriber.emit(
-      "pmessage",
-      `${TEST_PREFIX}:project:*`,
-      creditsChangedChannel(TEST_PREFIX, PID),
-      JSON.stringify({ type: "project-credits:changed", projectId: PID, ts: Date.now() }),
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(metaDoc.relayStateless).toHaveBeenCalledWith(
-      JSON.stringify({ t: CREDITS_CHANGED_SIGNAL, projectId: PID }),
-    );
-  });
-});
-
 describe("startProjectControlSync — scene-look:settled", () => {
-  it("relays to the project's meta doc how a part picture was settled, for whom", async () => {
+  it("relays how a part picture was settled to its uploader's connections on the project's meta doc", async () => {
     const metaDoc: DocSpy = {
       doc: new Y.Doc(),
       broadcastStateless: vi.fn(),
@@ -186,7 +156,10 @@ describe("startProjectControlSync — scene-look:settled", () => {
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(metaDoc.relayStateless).toHaveBeenCalledWith(JSON.stringify({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement }));
+    expect(metaDoc.relayStateless).toHaveBeenCalledWith(JSON.stringify({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement }), expect.any(Function));
+    const pick = metaDoc.relayStateless.mock.calls[0]![1] as (connection: { context: unknown }) => boolean;
+    expect(pick({ context: { user: { id: "u" } } })).toBe(true);
+    expect(pick({ context: { user: { id: "someone-else" } } })).toBe(false);
   });
 });
 

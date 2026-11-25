@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The top bar's figure is read again whenever it may have moved (inner#1611):
- * when this user's own spend returns, and when anyone's generation in the
- * project ends. Focus refetching is off app-wide, so nothing else does it.
+ * The top bar's figure is read again whenever the Studio's credits move (inner#1611, #1580): collab says so with
+ * `credits:changed`, for this user's runs and everyone else's, and nothing else reads it again.
  */
 
 import type { ReactNode } from 'react';
@@ -13,7 +12,6 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ACTIVITY_NEW_SIGNAL, CREDITS_CHANGED_SIGNAL } from '@breatic/shared';
 
-import { noteCreditsChanged } from '@web/data/api/credits';
 import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
 
 const PROJECT = 'p-1';
@@ -69,26 +67,12 @@ afterEach(() => {
 });
 
 describe('useProjectCreditsRefresh', () => {
-  it('reads the figure again when this user\'s own spend in this project returns', () => {
-    const view = mount(null);
-    noteCreditsChanged(PROJECT);
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', PROJECT, 'credits'] });
-    view.unmount();
-  });
-
-  it('leaves the figure alone for another project\'s spend', () => {
-    const view = mount(null);
-    noteCreditsChanged('p-2');
-    expect(invalidate).not.toHaveBeenCalled();
-    view.unmount();
-  });
-
-  it('reads the figure again when a generation in the project ends, for anyone', () => {
+  it('leaves the figure alone for activity that is not a credit change', () => {
     const { provider, send } = providerDouble();
     const view = mount(provider);
     send({ t: ACTIVITY_NEW_SIGNAL, projectId: PROJECT });
     vi.runAllTimers();
-    expect(invalidate).toHaveBeenCalledWith({ queryKey: ['project', PROJECT, 'credits'] });
+    expect(invalidate).not.toHaveBeenCalled();
     view.unmount();
   });
 
@@ -115,9 +99,11 @@ describe('useProjectCreditsRefresh', () => {
   });
 
   it('stops listening once unmounted', () => {
-    const view = mount(null);
+    const { provider, send } = providerDouble();
+    const view = mount(provider);
     view.unmount();
-    noteCreditsChanged(PROJECT);
+    send({ t: CREDITS_CHANGED_SIGNAL, projectId: PROJECT });
+    vi.runAllTimers();
     expect(invalidate).not.toHaveBeenCalled();
   });
 });

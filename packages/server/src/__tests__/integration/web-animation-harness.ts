@@ -12,6 +12,7 @@ import postgres from "postgres";
 import type { Hono } from "hono";
 import { afterAll, beforeAll, beforeEach, expect, inject } from "vitest";
 import {
+  env,
   getNodeTaskConfig,
   getRedis,
   getStreamRedis,
@@ -20,6 +21,7 @@ import {
   sessionCookieName,
   setSession,
   taskEventsStreamKey,
+  type Redis,
 } from "@breatic/core";
 import { webAnimationSourceRepo, timelineExecutionRepo } from "@breatic/domain";
 import { t, webAnimationSpaceDocName, type TimelineExecution } from "@breatic/shared";
@@ -55,6 +57,7 @@ export interface ExecutionFixture {
 export interface WebAnimationHarness {
   readonly sql: ReturnType<typeof postgres>;
   readonly app: Hono;
+  readonly signals: { channel: string; message: Record<string, unknown> }[];
   seedUser(): Promise<Member & { studioId: string }>;
   seedProject(credits?: number): Promise<ProjectFixture>;
   insertExecution(fixture: ExecutionFixture): Promise<TimelineExecution>;
@@ -65,6 +68,7 @@ export interface WebAnimationHarness {
   succeed(execution: TimelineExecution, size?: { width: number; height: number; durationFrames: number }): Promise<{ id: string }>;
   holdsOf(studioId: string): Promise<{ reference_id: string; status: string; amount: number }[]>;
   grantedProjects(executionId: string): Promise<string[]>;
+  signalsFor(projectId: string, spaceId: string): Promise<Record<string, unknown>[]>;
   /** Change versions published for a Space's document since the case began; a Motion Space's unless named. */
   executionChangesFor(projectId: string, spaceId: string, docNameOf?: (projectId: string, spaceId: string) => string): Promise<Record<string, unknown>[]>;
   expectNotFound(res: Response): Promise<void>;
@@ -88,6 +92,8 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
   };
   let sql: ReturnType<typeof postgres> | undefined;
   let app: Hono | undefined;
+  let subscriber: Redis | undefined;
+  const signals: { channel: string; message: Record<string, unknown> }[] = [];
   let seq = 0;
   let streamFrom = "0";
 
@@ -97,13 +103,20 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
     sql = postgres(inject("DATABASE_URL"), { max: 6, prepare: false, connection: { application_name: appName } });
     const { createApp } = await import("@server/app.js");
     app = createApp();
+    subscriber = getStreamRedis().duplicate();
+    subscriber.on("pmessage", (_pattern: string, channel: string, message: string) => {
+      signals.push({ channel, message: JSON.parse(message) as Record<string, unknown> });
+    });
+    await subscriber.psubscribe(`${env.REDIS_KEY_PREFIX}:project:*:space-tasks:changed`);
   });
 
   beforeEach(() => {
+    signals.length = 0;
     streamFrom = `${Date.now()}-0`;
   });
 
   afterAll(async () => {
+    await subscriber?.quit();
     await sql?.end({ timeout: 1 });
     initCore(process.env);
   });
@@ -134,6 +147,7 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
       if (app === undefined) throw new Error("The harness has not started");
       return app;
     },
+    signals,
 
     async seedUser() {
       const [user] = await db()<{ id: string }[]>`
@@ -231,6 +245,11 @@ export function useWebAnimationHarness(appName: string): WebAnimationHarness {
         SELECT project_id FROM timeline_execution_grants WHERE execution_id = ${executionId} AND deleted_at IS NULL ORDER BY project_id
       `;
       return rows.map((row) => row.project_id);
+    },
+
+    async signalsFor(projectId, spaceId) {
+      await new Promise((resolve) => setTimeout(resolve, 300));
+      return signals.filter((s) => s.channel.includes(projectId) && s.message.spaceId === spaceId).map((s) => s.message);
     },
 
     async executionChangesFor(projectId, spaceId, docNameOf = webAnimationSpaceDocName) {

@@ -76,7 +76,7 @@ const uploadDeadlineByKey = vi.fn();
 const noteIngestSideEffects = vi.fn();
 const assertStudioStorageAllowance = vi.fn();
 const openDone = vi.fn();
-const announceSceneTasksQuietly = vi.fn();
+const publishSpaceTasksQuietly = vi.fn();
 const emitSceneLookPicture = vi.fn();
 
 vi.mock("@breatic/core", () => ({
@@ -115,7 +115,7 @@ vi.mock("@server/modules/asset/storageQuota.service.js", () => ({
 }));
 vi.mock("@server/modules/asset/upload-opening.js", () => ({ openUpload }));
 vi.mock("@server/modules/asset/ingest-side-effects.js", () => ({ noteIngestSideEffects }));
-vi.mock("@server/modules/task/publish-counts.js", () => ({ announceSceneTasksQuietly }));
+vi.mock("@server/modules/task/publish-counts.js", () => ({ publishSpaceTasksQuietly }));
 
 const { issueTransferTicket, issueUploadTicket, issueUploadTicketBatch } = await import(
   "@server/modules/asset/upload-ticket.service.js"
@@ -470,7 +470,7 @@ describe("scene model upload provenance", () => {
     expect(openDone).toHaveBeenCalledWith({
       projectId: SCOPE.projectId, spaceId: SCENE_SPACE, startedByUserId: SCOPE.userId, label: "Lamp", assetId,
     });
-    expect(announceSceneTasksQuietly).toHaveBeenCalledWith(SCOPE.projectId, SCENE_SPACE);
+    expect(publishSpaceTasksQuietly).toHaveBeenCalledWith(SCOPE.projectId, SCENE_SPACE);
     expect(admitStorage).not.toHaveBeenCalled();
     expect(openUpload).not.toHaveBeenCalled();
     expect(openSignedUpload).not.toHaveBeenCalled();

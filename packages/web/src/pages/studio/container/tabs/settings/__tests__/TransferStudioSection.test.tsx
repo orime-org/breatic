@@ -11,7 +11,7 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import type { ReactElement } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -183,5 +183,39 @@ describe('TransferStudioSection', () => {
     settle();
     await waitFor(() => expect(send).not.toHaveAttribute('aria-busy'));
     expect(screen.getByTestId('settings-transfer-dialog')).toBeInTheDocument();
+  });
+});
+
+describe('TransferStudioSection with no change for ten minutes (#1580 K-27)', () => {
+  it('reads the live transfer once; the Studio page poll reads it again when it changes', async () => {
+    vi.useFakeTimers();
+    try {
+      vi.mocked(studiosApi.liveTransfer).mockReset().mockResolvedValue(null);
+      const view = renderSection(<TransferStudioSection slug={SLUG} members={MEMBERS} />);
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(0);
+      });
+      await act(async () => {
+        await vi.advanceTimersByTimeAsync(10 * 60_000);
+      });
+      expect(studiosApi.liveTransfer).toHaveBeenCalledTimes(1);
+      view.unmount();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+// #1580: the offer is kept current by the Studio page's poll only while the section is on screen, so each time it
+// mounts it reads once, however fresh the cached answer is.
+describe('TransferStudioSection mounting again', () => {
+  it('reads the live transfer again on a new mount even while the cached answer is fresh', async () => {
+    vi.mocked(studiosApi.liveTransfer).mockReset().mockResolvedValue(null);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    const first = render(<QueryClientProvider client={client}><TransferStudioSection slug={SLUG} members={MEMBERS} /></QueryClientProvider>);
+    await waitFor(() => expect(studiosApi.liveTransfer).toHaveBeenCalledTimes(1));
+    first.unmount();
+    render(<QueryClientProvider client={client}><TransferStudioSection slug={SLUG} members={MEMBERS} /></QueryClientProvider>);
+    await waitFor(() => expect(studiosApi.liveTransfer).toHaveBeenCalledTimes(2));
   });
 });

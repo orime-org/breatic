@@ -10,7 +10,7 @@
  */
 
 import { timelineSpaceDocName, webAnimationSpaceDocName, type TimelineExecution } from "@breatic/shared";
-import { announceSpaceTasksChange } from "@core/infra/space-tasks-change.js";
+import { announceSpaceTasksVersion } from "@core/infra/space-tasks-version.js";
 
 /**
  * Announce that an execution changed, to the Space it belongs to.
@@ -20,5 +20,5 @@ import { announceSpaceTasksChange } from "@core/infra/space-tasks-change.js";
  */
 export async function announceExecutionChange(row: Pick<TimelineExecution, "projectId" | "spaceId" | "origin">): Promise<void> {
   const docNameOf = row.origin === "timeline" ? timelineSpaceDocName : webAnimationSpaceDocName;
-  await announceSpaceTasksChange(docNameOf(row.projectId, row.spaceId));
+  await announceSpaceTasksVersion(docNameOf(row.projectId, row.spaceId));
 }

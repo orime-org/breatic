@@ -38,8 +38,6 @@ export const workerConfigSchema = z.object({
   slot_wait_sweep_interval_ms: z.number().int().positive().default(60_000),
   /** How many stale waiters one round of that sweep looks at. */
   slot_wait_sweep_batch_size: z.number().int().positive().default(200),
-  /** How often the sweep runs that expires the 3D Space task rows past their budget (inner#2061). */
-  scene_task_sweep_interval_ms: z.number().int().positive().default(60_000),
   /** How long a pickup tries for the person's running-task gate lock before going back to the queue. */
   slot_lock_wait_ms: z.number().int().nonnegative().default(200),
   /** The sweep that settles charge requests still pending (inner#1617). */
@@ -48,6 +46,13 @@ export const workerConfigSchema = z.object({
       interval_ms: z.number().int().positive().default(60_000),
       min_age_ms: z.number().int().nonnegative().default(30_000),
       batch_size: z.number().int().positive().default(100),
+    })
+    .strict()
+    .prefault({}),
+  /** The sweep that tells pages what came due (#1580): notifications, holds, Project transfers, 3D rows. */
+  deadline_sweep: z
+    .object({
+      interval_ms: z.number().int().positive().default(30_000),
     })
     .strict()
     .prefault({}),

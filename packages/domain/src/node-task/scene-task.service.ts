@@ -171,16 +171,6 @@ export async function settle(
 }
 
 /**
- * Expire every 3D Space row past its budget, in any Space (the worker's sweep, inner#2061).
- * @returns Each Space that had a row expired, once.
- */
-export async function harvestExpiredScenes(): Promise<{ projectId: string; spaceId: string }[]> {
-  const spaces = new Map<string, { projectId: string; spaceId: string }>();
-  for (const row of await repo.harvestExpiredScenes()) spaces.set(`${row.projectId}/${row.spaceId}`, row);
-  return [...spaces.values()];
-}
-
-/**
  * Read a Space's list, judging overdue rows dead first.
  * @param projectId - Owning project.
  * @param spaceId - The Space.

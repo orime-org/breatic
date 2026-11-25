@@ -79,6 +79,7 @@ export { budgetDeadlineFrom, getNodeTaskConfig, type NodeTaskConfig } from "@cor
 export { getMiniToolsConfig, reportGraceMs, type MiniToolsConfig } from "@core/config/mini-tools.js";
 export { getUnderstandConfig, type UnderstandConfig } from "@core/config/understand.js";
 export { getSceneConfig, type SceneConfig } from "@core/config/scene.js";
+export { getStudioPageConfig, studioPageConfigSchema, type StudioPageConfig } from "@core/config/studio-page.js";
 export {
   getUsagePricing,
   parseUsagePricing,
@@ -139,6 +140,7 @@ export { getMailLayout, type MailLayout } from "@core/config/mail.js";
 export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
 export {
   publishDocumentUploadEvent,
+  publishFocusImageUploadEvent,
   publishNodeEvent,
   publishToStream,
   STREAM_MAXLEN,
@@ -147,11 +149,13 @@ export {
 } from "@core/infra/event-stream.js";
 export {
   publishActivityNew,
-  publishCreditsChanged,
+  publishAssetPeaksReady,
   publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
   sessionsRevokedChannelName,
+  uploadEndedChannelName,
+  publishUploadEnded,
 } from "@core/infra/control-events.js";
 export {
   PROJECT_MEMBER_CHANGED_CHANNEL,
@@ -159,6 +163,13 @@ export {
   type MemberChange,
   type MemberChangeHandlers,
   type MemberChangeListener,
+  LIVE_UPDATES_CHANNEL,
+  listenLiveUpdates,
+  publishNotificationsChanged,
+  publishStudioCreditsChanged,
+  type LiveUpdate,
+  type LiveUpdatesHandlers,
+  type LiveUpdatesListener,
 } from "@core/infra/member-change-listener.js";
 export {
   decideClientIdentity,
@@ -199,7 +210,7 @@ export * as assetRepo from "@core/asset/asset.repo.js";
 export { StorageKeyRetiredError, type RegisterAssetInput } from "@core/asset/asset.repo.js";
 export * as projectEditsRepo from "@core/project/project-edits.repo.js";
 export { announceExecutionChange } from "@core/timeline/execution-change.js";
-export { announceSceneTasksChange, announceSpaceTasksChange } from "@core/infra/space-tasks-change.js";
+export { announceSpaceTasksVersion } from "@core/infra/space-tasks-version.js";
 export {
   projectActivitiesRepo,
   encodeActivityCursor,

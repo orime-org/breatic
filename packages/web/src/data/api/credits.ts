@@ -94,30 +94,6 @@ export async function fetchProjectCredits(projectId: string): Promise<ProjectCre
   return projectCreditsViewSchema.parse(await apiGet<unknown>(`/projects/${encodeURIComponent(projectId)}/credits`, { params: { amountFormat: CREDIT_AMOUNT_FORMAT } }));
 }
 
-/** Who wants to hear that a project's credits may have moved. */
-const creditsListeners = new Set<(projectId: string) => void>();
-
-/**
- * Say that a project's credits may have moved: a request that holds or spends
- * them returned, admitted or refused (inner#1611).
- * @param projectId - The project.
- */
-export function noteCreditsChanged(projectId: string): void {
-  for (const listener of creditsListeners) listener(projectId);
-}
-
-/**
- * Hear when a project's credits may have moved.
- * @param listener - Called with the project's id.
- * @returns A function that stops listening.
- */
-export function onCreditsChanged(listener: (projectId: string) => void): () => void {
-  creditsListeners.add(listener);
-  return () => {
-    creditsListeners.delete(listener);
-  };
-}
-
 /**
  * Read one studio's credits.
  * @param slug - The studio being viewed.

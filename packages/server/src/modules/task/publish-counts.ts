@@ -24,9 +24,9 @@
  * fixes.
  */
 
-import { announceSceneTasksChange, getStreamRedis, logger } from "@breatic/core";
+import { announceSpaceTasksVersion, getStreamRedis, logger } from "@breatic/core";
 import { emitNodeTaskCounts } from "@breatic/domain";
-import type { NodeTaskCounts } from "@breatic/shared";
+import { threeDSpaceDocName, type NodeTaskCounts } from "@breatic/shared";
 
 /**
  * Publish a node's task counts, and carry on if that fails.
@@ -56,15 +56,15 @@ export async function publishCountsQuietly(
 }
 
 /**
- * Tell a 3D Space through its document that its task list changed
- * (inner#2061), and carry on if that fails: the page reads the list again
- * on the next change or when it opens the Space.
+ * Tell a 3D Space's document that its task list changed (#1580), and carry on
+ * if that fails: the row is already written, and a tab reads the list again on
+ * the Space's next change or when it opens the Space.
  * @param projectId - Project the Space belongs to.
  * @param spaceId - The Space whose list changed.
  */
-export async function announceSceneTasksQuietly(projectId: string, spaceId: string): Promise<void> {
+export async function publishSpaceTasksQuietly(projectId: string, spaceId: string): Promise<void> {
   try {
-    await announceSceneTasksChange({ projectId, spaceId });
+    await announceSpaceTasksVersion(threeDSpaceDocName(projectId, spaceId));
   } catch (err) {
     logger.error({ err, projectId, spaceId }, "space_tasks_publish_failed");
   }

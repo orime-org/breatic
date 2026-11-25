@@ -56,7 +56,7 @@ const APP = "web-animation-routes-test-driver";
 const h = useWebAnimationHarness(APP);
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
-const { seedUser, seedProject, insertExecution, grant, step, fail, succeed, executionChangesFor, expectNotFound, fillStorage, grantedProjects } = h;
+const { seedUser, seedProject, insertExecution, grant, step, fail, succeed, signalsFor, executionChangesFor, expectNotFound, fillStorage, grantedProjects } = h;
 
 let queue: ReturnType<typeof createQueue>;
 
@@ -229,9 +229,10 @@ describe("POST /timeline/executions — create from a Motion Space", () => {
     expect(await executionChangesFor(fx.projectId, fx.spaceId)).toEqual([
       { type: "space-tasks-version", docName: webAnimationSpaceDocName(fx.projectId, fx.spaceId) },
     ]);
+    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
   });
 
-  it("announces a cancel to the Motion Space's document", async () => {
+  it("announces a cancel to the Motion Space's document and nowhere else", async () => {
     const fx = await seedProject();
     const data = await acceptRow(fx.editor.cookie, createBody(fx), 201);
     const before = (await executionChangesFor(fx.projectId, fx.spaceId)).length;
@@ -240,6 +241,7 @@ describe("POST /timeline/executions — create from a Motion Space", () => {
     });
     expect(res.status, await res.clone().text()).toBe(200);
     expect((await executionChangesFor(fx.projectId, fx.spaceId)).length).toBe(before + 1);
+    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
   });
 
   it("adds the row's job to the timeline queue as soon as it is accepted, without waiting for the sweep", async () => {

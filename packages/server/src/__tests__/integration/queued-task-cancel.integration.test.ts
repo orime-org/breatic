@@ -36,9 +36,9 @@ import type { Hono } from "hono";
 import { getNodeTaskConfig, getStreamRedis, initCore, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
 import { nodeTaskService, runningSlotService, timelineExecutionRepo } from "@breatic/domain";
 import { canvasSpaceDocName, TASK_FAILURE_REASONS, threeDSpaceDocName } from "@breatic/shared";
+import { listenSpaceTaskSignals, spaceTasksVersion } from "@server/__tests__/integration/helpers/space-task-signals.js";
 import { webAnimationExecutionService } from "@server/modules";
 import { PAYMENTS_ON, request, seedAccount, seedMember, type Account, type Actor } from "./paid-account-fixtures.js";
-import { spaceTasksChanges, streamMark } from "@server/__tests__/helpers/space-tasks-changes.js";
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
@@ -213,11 +213,15 @@ describe("G-28 a 3D generation that has not started", () => {
     expect(res.status, await res.clone().text()).toBe(201);
     const data = ((await res.json()) as { data: Record<string, unknown> }).data;
     const taskId = String(data.task_id ?? data.taskId);
-    const since = await streamMark();
+    const docName = threeDSpaceDocName(a.projectId, a.spaceId);
+    const spaceSignals = await listenSpaceTaskSignals();
+    await spaceSignals.mark();
     const answer = await cancel(a, taskId);
+    const told = await spaceSignals.read({ projectId: a.projectId, spaceId: a.spaceId, docName });
+    await spaceSignals.stop();
     expect(answer.status, await answer.clone().text()).toBe(200);
     expect(((await answer.json()) as { data: unknown }).data).toEqual({ cancelled: true, counts: null });
-    expect(await spaceTasksChanges(threeDSpaceDocName(a.projectId, a.spaceId), since)).toEqual([{ type: "space-tasks-version", docName: threeDSpaceDocName(a.projectId, a.spaceId) }]);
+    expect(told).toEqual({ doc: [spaceTasksVersion(docName)], meta: [] });
     expect(await standing(taskId)).toMatchObject({ task: "cancelled", hold: "released", node: { status: "failed", error_message: "cancelled" } });
   });
 });

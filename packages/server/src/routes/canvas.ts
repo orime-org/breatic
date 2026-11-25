@@ -107,9 +107,8 @@ canvas.use("*", requireAuth);
  *
  * `waveformMaxSeconds` / `waveformMaxBytes`: the longest and largest audio the
  * cut band decodes in the browser while its peaks file is missing; past either
- * the band stays plain. `waveformPeaksRetryMs` / `waveformPeaksRetryMaxMs`: how
- * often, and for how long, an open band re-reads a missing peaks file
- * (inner#1305).
+ * the band stays plain; a band past either reads its peaks again when the
+ * server announces them (#1580).
  * `joinMaxClips`: the most clips one join takes, its source included; the
  * join panel's add tile and slot pick stop there (inner#1825 §6.3).
  * @param c - Hono context (auth required, no params)
@@ -124,8 +123,6 @@ canvas.get("/limits", (c) => {
       understandLongMediaMaxBytes: getUnderstandConfig().long_media.max_source_bytes,
       waveformMaxSeconds: getMiniToolsConfig().waveform_max_seconds,
       waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
-      waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,
-      waveformPeaksRetryMaxMs: getMiniToolsConfig().waveform_peaks_retry_max_ms,
       joinMaxClips: getMiniToolsConfig().join_max_clips,
     },
   });

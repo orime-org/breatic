@@ -273,29 +273,35 @@ function modelRows(executionId: string): Record<string, unknown>[] {
   ];
 }
 
-/** A spy on the stream Redis client's append, read by its recorded calls. */
+/** Spies on the stream Redis client's append and publish, read by their recorded calls. */
 interface Spies {
   xadd: { mock: { calls: unknown[][] } };
+  publish: { mock: { calls: unknown[][] } };
 }
 
 /**
- * How many execution changes a spied stream append sent for the execution's Motion Space.
- * @param spies - The spy on the stream Redis client's append.
+ * How many execution changes a spied stream append sent for the execution's Motion Space, and how many Space
+ * task-list signals a spied publish sent for its Project.
+ * @param spies - The spies on the stream Redis client's append and publish.
  * @param spies.xadd - The append spy.
+ * @param spies.publish - The publish spy.
  * @param fx - The execution.
- * @returns The count.
+ * @returns Both counts.
  */
-function signalsFor(spies: Spies, fx: ExecutionFixture): number {
+function signalsFor(spies: Spies, fx: ExecutionFixture): { doc: number; meta: number } {
   const docName = webAnimationSpaceDocName(fx.projectId, fx.spaceId);
-  return spies.xadd.mock.calls.filter((call) => call.some((arg) => typeof arg === "string" && arg.includes(`"docName":"${docName}"`) && arg.includes("space-tasks-version"))).length;
+  const doc = spies.xadd.mock.calls.filter((call) => call.some((arg) => typeof arg === "string" && arg.includes(`"docName":"${docName}"`) && arg.includes("space-tasks-version"))).length;
+  // The old Project channel, written out because its builder is gone; nothing may send on it.
+  const channel = `${env.REDIS_KEY_PREFIX}:project:${fx.projectId}:space-tasks:changed`;
+  return { doc, meta: spies.publish.mock.calls.filter(([published]) => published === channel).length };
 }
 
 /**
- * Spy on the stream Redis client's append.
- * @returns The spy.
+ * Spy on the stream Redis client's append and publish.
+ * @returns The spies.
  */
 function spyOnSignals(): Spies {
-  return { xadd: vi.spyOn(getStreamRedis(), "xadd") };
+  return { xadd: vi.spyOn(getStreamRedis(), "xadd"), publish: vi.spyOn(getStreamRedis(), "publish") };
 }
 
 /**
@@ -462,7 +468,7 @@ describe("picking up a running execution again", () => {
     const spies = spyOnSignals();
     await pickUp(fx);
     expect(await read(fx.execution.id)).toMatchObject({ status: "running", attempt: 3, phase: "writing" });
-    expect(signalsFor(spies, fx)).toBe(0);
+    expect(signalsFor(spies, fx)).toEqual({ doc: 0, meta: 0 });
   });
 
   it("signals the Space once when a pickup finds the job in a new phase", async () => {
@@ -474,7 +480,7 @@ describe("picking up a running execution again", () => {
     ingest.read = () => json(report(fx, "running", { phase: "validating" }));
     await pickUp(fx);
     expect((await read(fx.execution.id)).phase).toBe("validating");
-    expect(signalsFor(spies, fx)).toBe(1);
+    expect(signalsFor(spies, fx)).toEqual({ doc: 1, meta: 0 });
   });
 
   it("does not settle a report that has not ended", async () => {

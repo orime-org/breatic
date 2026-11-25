@@ -8,7 +8,8 @@
  * Data path:
  *   server / worker → Redis stream → consumer group (one round per document) →
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
- *   (canvas), applyDocumentUpload (a Document body's media upload, breatic#1574),
+ *   (canvas), applyFocusImageUpload (a focus crop's upload into its node, uploading then pool, #1580),
+ *   applyDocumentUpload (a Document body's media upload, breatic#1574),
  *   applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES) or
  *   applySceneLookPicture (a 3D object's part picture)
  *
@@ -32,9 +33,10 @@
  * holder stored; what keeps an older event from undoing a newer one is the
  * version each node carries, for other Space types the version their document
  * holds, and for a Document upload the block itself: an address once written
- * never changes and `processing` never replaces an ending (`applyDocumentUpload`).
+ * never changes and `processing` never replaces an ending (`applyDocumentUpload`); a focus crop carries a
+ * version per crop, kept beside the node versions, so an older step never brings back an upload that ended.
  *
- * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts,
+ * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts and focus crops,
  * `project-{pid}/document-{spaceId}` for Document uploads, the content
  * document of a Space type in `SPACE_TASKS_TYPES` for change versions and
  * `project-{pid}/3d-{spaceId}` for part pictures, one doc per Space. Any other
@@ -46,14 +48,16 @@ import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
 import type {
-  DocumentUploadEvent, NodeTaskCountsEvent, SceneLookPictureEvent, SceneLookPictureSettlement, SceneLookSettledControlEvent,
-  SpaceTasksVersionEvent,
+  DocumentUploadEvent, FocusImageUploadEvent, NodeTaskCountsEvent, SceneLookPictureEvent, SceneLookPictureSettlement,
+  SceneLookSettledControlEvent, SpaceTasksVersionEvent,
 } from "@breatic/shared";
-import { applyDocumentUpload, documentBodyFragment, parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
+import { applyDocumentUpload, CANVAS_NODES_KEY, documentBodyFragment, FOCUS_IMAGE_UPLOAD_EVENT_TYPE, parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
+import { applyFocusImageUpload } from "@breatic/shared/space-content";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { applySpaceTasksVersion } from "@collab/services/space-tasks-version.js";
 import { applySceneLookPicture } from "@collab/services/scene-look-picture.js";
+import { isNewerStreamId } from "@collab/services/stream-id.js";
 import { isLiveDoc } from "@collab/services/yjs-documents.repo.js";
 import {
   startGroupConsumer,
@@ -75,6 +79,15 @@ const RELEASE_WAITER_SCRIPT =
 /** Sets or renews the waiter mark unless another instance holds it. */
 const MARK_WAITER_SCRIPT =
   'local v = redis.call("get", KEYS[1]) if v == false or v == ARGV[1] then return redis.call("set", KEYS[1], ARGV[1], "PX", ARGV[2]) end return 0';
+
+/**
+ * Where a focus crop's version sits in its document's versions hash, apart from every node id.
+ * @param event - One step of the crop's upload.
+ * @returns The hash field.
+ */
+function focusVersionKey(event: FocusImageUploadEvent): string {
+  return `focus:${event.state === "failed" ? event.id : event.image.id}`;
+}
 
 /** How long a node's counts version, and the mark of an applied part picture upload, are kept after their last write. */
 const COUNTS_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
@@ -115,7 +128,7 @@ export interface TaskListenerDeps {
 }
 
 /** An event the listener writes. */
-type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | DocumentUploadEvent | SceneLookPictureEvent;
+type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | DocumentUploadEvent | FocusImageUploadEvent | SceneLookPictureEvent;
 
 /** One parsed event and the stream entry it came from. */
 interface Item {
@@ -202,13 +215,16 @@ function readItem(entry: StreamEntry): TaskEvent | { skip: string } {
     return { skip: "task_event_unparseable_skipped" };
   }
   const type = typeof event === "object" && event !== null ? (event as { type?: unknown }).type : undefined;
-  if (type !== "node-task-counts" && type !== "space-tasks-version" && type !== "document-upload" && type !== "scene-look-picture") {
+  if (
+    type !== "node-task-counts" && type !== "space-tasks-version" && type !== "document-upload"
+    && type !== FOCUS_IMAGE_UPLOAD_EVENT_TYPE && type !== "scene-look-picture"
+  ) {
     return { skip: "task_event_unknown_type_skipped" };
   }
   const docName = (event as { docName?: unknown }).docName;
   const parsed = typeof docName === "string" ? parseDocName(docName) : null;
   const fits = parsed !== null && (
-    type === "node-task-counts" ? parsed.kind === "canvas"
+    type === "node-task-counts" || type === FOCUS_IMAGE_UPLOAD_EVENT_TYPE ? parsed.kind === "canvas"
       : type === "document-upload" ? parsed.kind === "document"
         : type === "scene-look-picture" ? parsed.kind === "3d"
           : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
@@ -352,6 +368,20 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
             }
             if (event.type === "document-upload") {
               applyDocumentUpload(documentBodyFragment(d), event);
+              outcomes.set(entry.id, "done");
+              continue;
+            }
+            if (event.type === FOCUS_IMAGE_UPLOAD_EVENT_TYPE) {
+              const key = focusVersionKey(event);
+              const version = entry.originId ?? entry.id;
+              if (isNewerStreamId(version, moved.get(key) ?? versions[key])) {
+                // A node the document no longer holds takes nothing, as a canvas upload's node does
+                // (node-task-counts.ts); the write itself refuses a duplicate id, a full list and a bad image.
+                const node: unknown = d.getMap(CANVAS_NODES_KEY).get(event.nodeId);
+                const data = node instanceof Y.Map ? node.get("data") : undefined;
+                if (data instanceof Y.Map) applyFocusImageUpload(data, event);
+                moved.set(key, version);
+              }
               outcomes.set(entry.id, "done");
               continue;
             }

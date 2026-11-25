@@ -40,7 +40,6 @@ const UPLOAD_CONFIG: UploadConfig = {
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 500,
   uploadIdleTimeoutMs: 60000,
-  uploadStatusPollSeconds: 5,
 };
 
 /** Builds and mounts the real document editor and its production undo. */

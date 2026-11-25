@@ -25,7 +25,7 @@
 import { accountActivityRepo, db } from "@breatic/core";
 import { canvasSpaceDocName, type NodeTaskAction } from "@breatic/shared";
 import { nodeTaskService, sceneTaskService, uploadGrantService } from "@breatic/domain";
-import { publishCountsQuietly, announceSceneTasksQuietly } from "@server/modules/task/publish-counts.js";
+import { publishCountsQuietly, publishSpaceTasksQuietly } from "@server/modules/task/publish-counts.js";
 
 /** What `issueUploadGrant` takes, so a lane passes its own through unchanged. */
 type GrantInput = Parameters<typeof uploadGrantService.issueUploadGrant>[0];
@@ -132,7 +132,7 @@ export async function openUpload(
     return { key, studioId, taskId: opened.id, counts: opened.counts, nodeId, spaceId, projectId };
   });
   if ("sceneSpace" in admitted && admitted.sceneSpace) {
-    await announceSceneTasksQuietly(admitted.sceneSpace.projectId, admitted.sceneSpace.spaceId);
+    await publishSpaceTasksQuietly(admitted.sceneSpace.projectId, admitted.sceneSpace.spaceId);
   }
   if ("counts" in admitted && admitted.counts) {
     await publishCountsQuietly(canvasSpaceDocName(admitted.projectId, admitted.spaceId), admitted.nodeId, admitted.counts);

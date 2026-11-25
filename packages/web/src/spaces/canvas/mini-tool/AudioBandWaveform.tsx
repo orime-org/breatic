@@ -6,7 +6,7 @@ import * as React from 'react';
 import { getCachedWaveformLimits } from '@web/data/api/canvas';
 import { waveformDecodable } from '@web/spaces/canvas/mini-tool/audio-waveform';
 import { AudioWaveform } from '@web/spaces/canvas/mini-tool/AudioWaveform';
-import { useAudioPeaks, type PeaksRetry } from '@web/spaces/canvas/mini-tool/use-audio-peaks';
+import { useAudioPeaks } from '@web/spaces/canvas/mini-tool/use-audio-peaks';
 
 interface AudioBandWaveformProps {
   url: string;
@@ -18,9 +18,9 @@ interface AudioBandWaveformProps {
  * What the cut band draws under an audio source (inner#1305 §4.4): the
  * waveform from the peaks file beside it, at any length; while that file is
  * missing, the browser's own decode of a source within the ceilings; anything
- * else leaves the band plain. A band past the ceilings reads the missing file
- * again on the served interval, so audio just made turns into a waveform once
- * its peaks are written.
+ * else leaves the band plain. A band open before the peaks file is written
+ * reads it again when the server announces it, so audio just made turns into a
+ * waveform once its peaks are there.
  * @param root0 - Props.
  * @param root0.url - The audio's address.
  * @param root0.duration - Its length in seconds, when known.
@@ -34,14 +34,7 @@ export const AudioBandWaveform = React.memo(function AudioBandWaveform({
 }: AudioBandWaveformProps): React.JSX.Element | null {
   const limits = getCachedWaveformLimits();
   const decodable = waveformDecodable({ url, duration, sizeBytes }, limits);
-  const retryMs = limits?.peaksRetryMs;
-  const retryMaxMs = limits?.peaksRetryMaxMs;
-  const retry = React.useMemo<PeaksRetry | null>(
-    () =>
-      decodable || retryMs === undefined || retryMaxMs === undefined ? null : { everyMs: retryMs, forMs: retryMaxMs },
-    [decodable, retryMs, retryMaxMs],
-  );
-  const peaks = useAudioPeaks(url, retry);
+  const peaks = useAudioPeaks(url);
   if (peaks.kind === 'ready' && duration !== undefined) {
     return <AudioWaveform src={url} peaks={peaks.peaks} duration={duration} />;
   }

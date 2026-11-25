@@ -54,10 +54,9 @@ import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dis
 import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
 import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
-import { sweepSceneTasks } from "@worker/handlers/scene-task-sweep.js";
-import { spaceTasksChanges, streamMark } from "@server/__tests__/helpers/space-tasks-changes.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
+import { listenSpaceTaskSignals, spaceTasksVersion } from "@server/__tests__/integration/helpers/space-task-signals.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -1048,46 +1047,6 @@ describe("G F8 a task the gate has not judged keeps its node row's deadline", ()
     expect((await nodeRow(waitScene.nodeTaskId!)).status).toBe("running");
   });
 
-  it("the 3D sweep expires every overdue 3D row in any Space and announces each such Space once, leaving waiting, recent and node rows alone", async () => {
-    const p = await person();
-    const q = await person();
-    const now = await dbNow();
-    const overdue = new Date(now.getTime() - B - 1);
-    const waiting = { since: now, checkedAt: now, limit: 2 };
-    const sceneA = await seedTask(p, { scene: true, nodeStartedAt: overdue });
-    const sceneB = await seedTask(p, { scene: true, nodeStartedAt: overdue });
-    const otherSpace = await seedTask(q, { scene: true, nodeStartedAt: overdue });
-    const waitScene = await seedTask(p, { scene: true, nodeStartedAt: overdue, waiting });
-    const recentScene = await seedTask(p, { scene: true, nodeStartedAt: now });
-    const onNode = await seedTask(p, { node: true, nodeStartedAt: overdue });
-    const since = await streamMark();
-
-    await sweepSceneTasks();
-
-    for (const row of [sceneA, sceneB, otherSpace]) {
-      expect(await nodeRow(row.nodeTaskId!)).toMatchObject({ status: "expired", error_message: "expired" });
-    }
-    for (const row of [waitScene, recentScene, onNode]) expect((await nodeRow(row.nodeTaskId!)).status).toBe("running");
-    for (const who of [p, q]) {
-      const doc = threeDSpaceDocName(who.projectId, who.spaceId);
-      expect(await spaceTasksChanges(doc, since)).toEqual([{ type: "space-tasks-version", docName: doc }]);
-    }
-  });
-
-  it("the 3D sweep and a list read expire an overdue row once between them, and the second finds nothing to announce", async () => {
-    const p = await person();
-    const now = await dbNow();
-    const row = await seedTask(p, { scene: true, nodeStartedAt: new Date(now.getTime() - B - 1) });
-    const doc = threeDSpaceDocName(p.projectId, p.spaceId);
-    const since = await streamMark();
-
-    await sweepSceneTasks();
-    expect((await sceneTaskService.harvestAndList(p.projectId, p.spaceId)).harvested).toBe(0);
-
-    expect(await nodeRow(row.nodeTaskId!)).toMatchObject({ status: "expired", error_message: "expired" });
-    expect(await spaceTasksChanges(doc, since)).toEqual([{ type: "space-tasks-version", docName: doc }]);
-  });
-
   it("both harvests expire an overdue waiting row whose task already ended, so a cancel that committed before its rows settled leaves none behind", async () => {
     const p = await person();
     const now = await dbNow();
@@ -1232,48 +1191,49 @@ describe("G the node's counts event says how many wait", () => {
   });
 });
 
-describe("G a Motion execution's wait and start reach its own Space document", () => {
-  it("the first wait and the claim each put one change on the Motion document", async () => {
+describe("G a 3D Space's waiting row and a waiting Motion execution tell their Space's document (#1580)", () => {
+  it("first waiting and starting each tell the 3D Space's document, and the old channel nothing", async () => {
+    const p = await person();
+    await running(p, 2);
+    const t = await seedTask(p, { scene: true });
+    const docName = threeDSpaceDocName(p.projectId, p.spaceId);
+    const version = spaceTasksVersion(docName);
+    const spaceSignals = await listenSpaceTaskSignals();
+    try {
+      await spaceSignals.mark();
+      const told = () => spaceSignals.read({ projectId: p.projectId, spaceId: p.spaceId, docName });
+      expect(await pick(t.taskId)).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      expect(await pick(t.taskId)).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+      expect(await pick(t.taskId)).toEqual({ started: true });
+      expect(await told()).toEqual({ doc: [version, version], meta: [] });
+    } finally {
+      await spaceSignals.stop();
+    }
+  });
+
+  it("first waiting and starting each tell the Motion Space's document, and the old channel nothing", async () => {
     const p = await person();
     await running(p, 2);
     const id = await execution(p, "queued");
     const docName = webAnimationSpaceDocName(p.projectId, p.spaceId);
-    /**
-     * The space-tasks-version events the stream carries for this Motion Space.
-     * @returns How many.
-     */
-    const changes = async (): Promise<number> => {
-      const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
-      return raw
-        .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
-        .filter((e) => e.type === "space-tasks-version" && e.docName === docName).length;
-    };
-    const before = await changes();
-    expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
-    expect(await changes()).toBe(before + 1);
-    expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
-    expect(await changes()).toBe(before + 1);
-    await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
-    expect(await pick(id, "timeline_executions")).toEqual({ started: true });
-    expect(await changes()).toBe(before + 2);
-  });
-});
-
-describe("G a 3D Space's waiting row tells the Space's list", () => {
-  it("first waiting and starting each signal the Space's tasks changed", async () => {
-    const p = await person();
-    await running(p, 2);
-    const t = await seedTask(p, { scene: true });
-    const doc = threeDSpaceDocName(p.projectId, p.spaceId);
-    const since = await streamMark();
-    const version = { type: "space-tasks-version", docName: doc };
-    expect(await pick(t.taskId)).toMatchObject({ waiting: true });
-    expect(await spaceTasksChanges(doc, since)).toEqual([version]);
-    expect(await pick(t.taskId)).toMatchObject({ waiting: true });
-    expect(await spaceTasksChanges(doc, since)).toEqual([version]);
-    await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
-    expect(await pick(t.taskId)).toEqual({ started: true });
-    expect(await spaceTasksChanges(doc, since)).toEqual([version, version]);
+    const version = spaceTasksVersion(docName);
+    const spaceSignals = await listenSpaceTaskSignals();
+    try {
+      await spaceSignals.mark();
+      const told = () => spaceSignals.read({ projectId: p.projectId, spaceId: p.spaceId, docName });
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+      expect(await pick(id, "timeline_executions")).toEqual({ started: true });
+      expect(await told()).toEqual({ doc: [version, version], meta: [] });
+    } finally {
+      await spaceSignals.stop();
+    }
   });
 });
 

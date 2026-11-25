@@ -75,7 +75,7 @@ import { Queue } from "bullmq";
 import type { Hono } from "hono";
 import { createQueue, getStreamRedis, initCore, loadLocales, taskEventsStreamKey } from "@breatic/core";
 import { formatCredits, t, threeDSpaceDocName } from "@breatic/shared";
-import { spaceTasksChanges } from "@server/__tests__/helpers/space-tasks-changes.js";
+import { listenSpaceTaskSignals, spaceTasksVersion, type SpaceTaskSignals } from "@server/__tests__/integration/helpers/space-task-signals.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
 import { holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
@@ -84,6 +84,7 @@ import { PAYMENTS_ON, dbNow, request, seedAccount, seedMember, type Account, typ
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
 let queue: ReturnType<typeof createQueue>;
+let spaceSignals: SpaceTaskSignals;
 /** Jobs the `tasks` queue accepted, by task id. */
 const queued = new Map<string, { projectId: string; jobId: string | undefined }>();
 /** What each entry's estimate came to on an unrefused run. */
@@ -96,6 +97,7 @@ beforeAll(async () => {
   sql = postgres(inject("DATABASE_URL"), { max: 4, prepare: false, connection: { application_name: "credit-admission-order-test" } });
   app = (await import("@server/app.js")).createApp();
   queue = createQueue("tasks");
+  spaceSignals = await listenSpaceTaskSignals();
   const original = Queue.prototype.add;
   vi.spyOn(Queue.prototype, "add").mockImplementation(async function (this: Queue, ...args: Parameters<Queue["add"]>) {
     const data = args[1] as { taskId?: string; projectId?: string };
@@ -113,6 +115,7 @@ beforeEach(() => {
 
 afterAll(async () => {
   vi.restoreAllMocks();
+  await spaceSignals?.stop();
   await queue?.close();
   await sql?.end({ timeout: 1 });
   initCore(process.env);
@@ -303,6 +306,16 @@ async function nodeEvents(nodeId: string): Promise<string[]> {
   return entries.map(([, fields]) => fields.join(" ")).filter((payload) => payload.includes(nodeId));
 }
 
+/**
+ * Assert the 3D Space's document was told its tasks changed at least once, and the old channel nothing.
+ * @param a - Whose Space.
+ */
+async function expectDocumentTold(a: { projectId: string; spaceId: string }): Promise<void> {
+  const docName = threeDSpaceDocName(a.projectId, a.spaceId);
+  const told = await spaceSignals.read({ projectId: a.projectId, spaceId: a.spaceId, docName });
+  expect(told.meta).toEqual([]);
+  expect(told.doc).toContainEqual(spaceTasksVersion(docName));
+}
 
 describe("H-38 to H-44 credit admission order (design 3.10 U9)", () => {
   it("H-38 a studio with no balance refuses each entry with 402 and leaves nothing", async () => {
@@ -422,7 +435,7 @@ describe("H-38 to H-44 credit admission order (design 3.10 U9)", () => {
     expect(status).toBe("failed");
     expect(await taskRows(a)).toEqual([expect.objectContaining({ id: taskId, status: "failed", error_message: "internal" })]);
     expect(await nodeRows(a)).toEqual([expect.objectContaining({ task_id: taskId, status: "failed", error_message: "internal" })]);
-    expect((await spaceTasksChanges(threeDSpaceDocName(a.projectId, a.spaceId))).length).toBeGreaterThanOrEqual(1);
+    await expectDocumentTold(a);
     expect((await expectL5(a)).settled).toEqual([taskId]);
   });
 

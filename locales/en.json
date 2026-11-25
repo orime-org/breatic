@@ -765,7 +765,6 @@
       "pickEnded": "Selection ended.",
       "pickEndedByPeer": "Ended by a collaborator.",
       "focusSourceBusyByPeer": "A collaborator is processing the source.",
-      "focusCropDiscarded": "The node was deleted — the focus crop was discarded.",
       "duration": "Duration",
       "durationSeconds": "{n}s",
       "generateAudio": "Generate audio",

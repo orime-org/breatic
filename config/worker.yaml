@@ -76,9 +76,6 @@ slot_wait_max_delay_ms: 30000
 slot_wait_sweep_interval_ms: 60000
 # How many stale waiters one round of that sweep looks at.
 slot_wait_sweep_batch_size: 200
-# How often the sweep runs that expires 3D Space task rows past their budget
-# and tells each such Space through its document.
-scene_task_sweep_interval_ms: 60000
 # How long a pickup tries for the person's gate lock, held only for the
 # milliseconds another pickup of theirs counts, before it goes back to the
 # queue for one poll interval without writing anything.
@@ -98,3 +95,11 @@ credit_charge_sweep:
   min_age_ms: 30000
   # Requests one round settles at most.
   batch_size: 100
+
+# ── Deadline sweep (#1580) ───────────────────────
+# Notifications and credit holds that expire, Project transfers that time out
+# and 3D rows past their budget change nothing in the database on their own;
+# the sweep finds what came due since its last round and tells the pages, so a
+# due item stays on an open page for at most this long.
+deadline_sweep:
+  interval_ms: 30000

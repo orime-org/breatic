@@ -7,8 +7,8 @@
  *
  * The document body's lane for an outside address. It takes the same gates
  * as `POST /canvas/ingest-url` and queues the same job; what differs is that
- * no node task row is opened, and the browser reads how the fetch ended from
- * `GET /assets/upload-status` under the storage key this answers.
+ * no node task row is opened, and how the fetch ended is read by the storage
+ * key this answers (the status read the `upload:ended` message carries).
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -37,7 +37,7 @@ import {
   sessionCookieName,
   loadLocales,
 } from "@breatic/core";
-import { ingestReportService } from "@breatic/domain";
+import { ingestReportService, uploadStatusService } from "@breatic/domain";
 import { getRateLimit } from "@server/config/rate-limits.js";
 import type { Hono } from "hono";
 
@@ -249,8 +249,8 @@ describe("POST /assets/ingest-url — a Document block's fetch ending (breatic#1
 });
 
 describe("POST /assets/ingest-url — when the queue will not take the job", () => {
-  it("answers 500 and the status query reads the fetch as failed", async () => {
-    const { projectId, cookie } = await seedEditor();
+  it("answers 500 and the status read reads the fetch as failed", async () => {
+    const { projectId, cookie, userId } = await seedEditor();
     const add = vi.spyOn(Queue.prototype, "add").mockRejectedValue(new Error("OOM command not allowed"));
     try {
       const res = await submit(cookie, { project_id: projectId });
@@ -262,12 +262,8 @@ describe("POST /assets/ingest-url — when the queue will not take the job", () 
       SELECT storage_key, voided_at FROM upload_grants WHERE project_id = ${projectId}
     `;
     expect(grants).toHaveLength(1);
-    const status = await app.request(
-      `/api/v1/assets/upload-status?key=${encodeURIComponent(grants[0]!.storage_key)}`,
-      { headers: { cookie } },
-    );
-    const answer = (await status.json()) as { data: { items: { state: string }[] } };
-    expect(answer.data.items[0]!.state).toBe("failed");
+    const [status] = await uploadStatusService.statusOf(userId, [grants[0]!.storage_key]);
+    expect(status!.state).toBe("failed");
   });
 });
 

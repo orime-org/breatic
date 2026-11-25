@@ -160,11 +160,11 @@ import {
 } from "@worker/handlers/long-media-dispatch.js";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
+import { DEADLINE_SWEEP_QUEUE, sweepDeadlines } from "@worker/handlers/deadline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
 import { reconcileLotMirror } from "@worker/handlers/commerce-lot-mirror.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
-import { sweepSceneTasks } from "@worker/handlers/scene-task-sweep.js";
 
 /** Queue holding the recurring sweep of Timeline executions that have not ended (inner#1711). */
 const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
@@ -177,9 +177,6 @@ const COMMERCE_LOT_MIRROR_QUEUE = "commerce-lot-mirror";
 
 /** Queue holding the recurring sweep of tasks waiting for a running slot whose job may be lost (inner#1968). */
 const SLOT_WAIT_SWEEP_QUEUE = "slot-wait-sweep";
-
-/** Queue holding the recurring sweep of 3D Space task rows past their budget (inner#2061). */
-const SCENE_TASK_SWEEP_QUEUE = "scene-task-sweep";
 
 /** Every BullMQ queue this process can run a worker for; `config/worker.yaml` may name only these. */
 const WORKER_QUEUES: readonly string[] = [
@@ -197,7 +194,6 @@ const WORKER_QUEUES: readonly string[] = [
   CREDIT_CHARGE_SWEEP_QUEUE,
   COMMERCE_LOT_MIRROR_QUEUE,
   SLOT_WAIT_SWEEP_QUEUE,
-  SCENE_TASK_SWEEP_QUEUE,
 ];
 
 /** Cap graceful shutdown so a stuck drain can't hold the process. */
@@ -322,20 +318,6 @@ export function startWorker(): void {
     logger.error({ err }, "slot_wait_sweep_schedule_failed");
   });
 
-  // 3D Space task rows past their budget end as expired, and each such Space is told through its document (inner#2061).
-  const sceneTaskSweepQueue = createQueue(SCENE_TASK_SWEEP_QUEUE);
-  const sceneTaskSweep = createWorker<Record<string, never>>(SCENE_TASK_SWEEP_QUEUE, () => sweepSceneTasks());
-  sceneTaskSweep.on("failed", (job, err) => {
-    logger.error({ err, jobId: job?.id }, "scene_task_sweep_failed");
-  });
-  void sceneTaskSweepQueue.upsertJobScheduler(
-    SCENE_TASK_SWEEP_QUEUE,
-    { every: getWorkerConfig().scene_task_sweep_interval_ms },
-    { name: SCENE_TASK_SWEEP_QUEUE, data: {}, opts: defaultJobOpts() },
-  ).catch((err: unknown) => {
-    logger.error({ err }, "scene_task_sweep_schedule_failed");
-  });
-
   // Timeline web-animation executions (inner#1711). A job waiting on its container goes back to the queue as
   // delayed; one that used up its retries is only logged, and the sweep adds it again under the original deadline.
   const timelineQueue = createQueue(TIMELINE_QUEUE);
@@ -364,6 +346,22 @@ export function startWorker(): void {
     { name: timelineSweepJob, data: {}, opts: defaultJobOpts() },
   ).catch((err: unknown) => {
     logger.error({ err }, "timeline_sweep_schedule_failed");
+  });
+
+  // What came due behind open pages (#1580): notifications, credit holds,
+  // Project transfers and 3D rows, told on the same channels as the writes.
+  const deadlineSweepQueue = createQueue(DEADLINE_SWEEP_QUEUE);
+  const deadlineSweep = createWorker<Record<string, never>>(DEADLINE_SWEEP_QUEUE, () => sweepDeadlines());
+  deadlineSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "deadline_sweep_failed");
+  });
+  const deadlineSweepJob = "deadline-sweep";
+  void deadlineSweepQueue.upsertJobScheduler(
+    deadlineSweepJob,
+    { every: getWorkerConfig().deadline_sweep.interval_ms },
+    { name: deadlineSweepJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "deadline_sweep_schedule_failed");
   });
 
   // Its own queue, because `runTask` is a generation: past the dispatch it
@@ -643,11 +641,10 @@ export function startWorker(): void {
         () => worker.close(),
         () => timelineWorker.close(),
         () => timelineSweep.close(),
+        () => deadlineSweep.close(),
         () => creditChargeSweep.close(),
         () => lotMirror?.close() ?? Promise.resolve(),
         () => slotWaitSweep.close(),
-        () => sceneTaskSweep.close(),
-        () => longMediaDispatch.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),

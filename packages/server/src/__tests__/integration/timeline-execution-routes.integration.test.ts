@@ -39,7 +39,8 @@ const APP = "timeline-routes-test-driver";
 const h = useWebAnimationHarness(APP);
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
-const { seedUser, seedProject, holdsOf, grantedProjects, grant, step, succeed, executionChangesFor, expectNotFound } = h;
+const { seedUser, seedProject, holdsOf, grantedProjects, grant, step, succeed, signalsFor, executionChangesFor, expectNotFound } = h;
+const signals = h.signals;
 
 beforeAll(() => {
   sql = h.sql;
@@ -420,6 +421,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
       const row = state === "queued" ? await accepted(fx) : await insertBefore1490(fx);
       // A Motion run belongs to its Motion Space; a run made before #1490 belongs to its Timeline.
       const docNameOf = state === "queued" ? webAnimationSpaceDocName : timelineSpaceDocName;
+      signals.length = 0;
       const before = await executionChangesFor(fx.projectId, fx.spaceId, docNameOf);
       const res = await cancel(fx.editor.cookie, fx, row.id);
       expect(res.status, await res.clone().text()).toBe(200);
@@ -429,6 +431,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
       expect(await executionChangesFor(fx.projectId, fx.spaceId, docNameOf)).toEqual([
         ...before, { type: "space-tasks-version", docName: docNameOf(fx.projectId, fx.spaceId) },
       ]);
+      expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
     },
   );
 
@@ -469,6 +472,7 @@ describe("POST /timeline/executions/:id/cancel", () => {
     expect(((await again.json()) as { data: unknown }).data).toEqual(first);
     expect(await timelineExecutionRepo.findById(row.id)).toEqual(ended);
     expect(await executionChangesFor(fx.projectId, fx.spaceId)).toHaveLength(told);
+    expect(await signalsFor(fx.projectId, fx.spaceId)).toEqual([]);
   });
 
   it("refuses a viewer with 403 and leaves the row in place", async () => {

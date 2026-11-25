@@ -20,9 +20,10 @@
  * `now()` — which means a timed-out offer keeps `status = 'pending'` and holds
  * the project's slot until something flips it. Nothing would, since a timed-out
  * offer is by definition the case where nobody acted, and here the cost is the whole
- * project: no further transfer could ever be started. So {@link createPending}
- * reaps stale pendings in the same transaction that takes the slot, exactly as
- * the invite tables learned to (#1769).
+ * project: no further transfer could ever be started. So `expireDueTransfers`
+ * (transfer-expiry.service) ends a timed-out offer, and the deadline sweep and
+ * filing a new offer both run it, the latter in the transaction that takes the
+ * slot (#1769, #1580).
  *
  * LOCKING BY ID, NOT BY STATUS. {@link lockRequest} locks on `id` alone and
  * reports the status it found. Adding `status = 'pending'` to the lock's WHERE
@@ -36,7 +37,7 @@
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, projectTransfers } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { mintShareToken } from "@server/utils/share-token.js";
+import { mintShareToken } from "@domain/request/share-token.js";
 import type { RequestFailedReason } from "@breatic/shared";
 
 /** Where a transfer sits in its lifecycle. */
@@ -71,70 +72,59 @@ export interface LiveProjectTransfer {
 }
 
 /**
- * Fail a timed-out pending on one project as `expired`, freeing its slot.
+ * Fail the pending transfers that are due as `expired`, freeing each Project's slot.
  *
- * Only ever touches EXPIRED pendings: a live one must still trip the index,
- * because a second simultaneous offer for the same project is a real duplicate
- * and refusing it is the point.
- *
- * `decided_at` stays null. It records that a PERSON ended this offer; nobody
- * did here, and the moment it died is already `expires_at`.
- * Returns the bell entries of the rows it reaped. The reaper is the one settle
- * path that cannot retire them itself — this is a repo, and the bell lives in
- * another module's table — so it hands them up to the service, which does.
- * Skipping that leaves an entry announcing a offer that is over, and the
- * invariant "a settled offer has no live bell entry" would then rest on an
- * unrelated filter in the unread query rather than on this write.
- * @param projectId - The project being offered.
- * @param tx - The enclosing transaction, shared with the insert that follows.
- * @returns The notification ids of the rows reaped (empty when none were).
+ * Only ever touches DUE pendings: a live one must still trip the index, because a second simultaneous offer for the
+ * same Project is a real duplicate and refusing it is the point. `decided_at` stays null. The bell entries these rows
+ * announced are handed back for the caller to take down in the same transaction (`expireDueTransfers`).
+ * @param scope - Which transfers: one Project's, or every Project's when absent.
+ * @param scope.projectId - The Project, when only its transfers count.
+ * @param scope.now - The instant they are judged at; the database's own time when absent.
+ * @param tx - The enclosing transaction.
+ * @returns How many it failed, and the bell entries they had.
  */
 export async function expireStalePending(
-  projectId: string,
+  scope: { projectId?: string; now?: Date },
   tx: DbTx,
-): Promise<string[]> {
+): Promise<{ count: number; notificationIds: string[] }> {
   const rows = await tx
     .update(projectTransfers)
     .set({ status: "failed", failedReason: "expired" })
     .where(
       and(
-        eq(projectTransfers.projectId, projectId),
+        scope.projectId === undefined ? undefined : eq(projectTransfers.projectId, scope.projectId),
         eq(projectTransfers.status, "pending"),
         isNull(projectTransfers.deletedAt),
-        lte(projectTransfers.expiresAt, sql`now()`),
+        lte(projectTransfers.expiresAt, scope.now ?? sql`now()`),
       ),
     )
     .returning({ notificationId: projectTransfers.notificationId });
-  return rows
-    .map((r) => r.notificationId)
-    .filter((id): id is string => id !== null);
+  return {
+    count: rows.length,
+    notificationIds: rows.map((r) => r.notificationId).filter((id): id is string => id !== null),
+  };
 }
 
-/** A freshly filed transfer, and the bell entries its reap left to take down. */
+/** A freshly filed transfer. */
 export interface CreatedProjectTransfer {
   id: string;
   /** The token that names this request in a decision link. */
   shareToken: string;
-  /** Entries of timed-out rows the insert reaped; the caller retires them. */
-  retiredNotificationIds: string[];
 }
 
 /**
- * Insert a pending transfer, reaping any stale one on the project first.
+ * Insert a pending transfer.
  *
- * Reap and insert share one transaction, so the slot is never free for anyone
- * else in between. A caller already inside a transaction passes it in; the
- * common case opens its own, because "free the slot and take it" is only
- * correct as one step.
+ * A timed-out offer still holds the project's one pending slot; the caller ends
+ * it first with `expireDueTransfers`, in the same transaction, so the slot is
+ * never free for anyone else in between.
  * @param input - The offer to create.
  * @param input.projectId - Project being offered.
  * @param input.fromUserId - The current owner making the offer.
  * @param input.toUserId - The member being offered ownership.
  * @param input.expiresAt - When this offer stops being answerable.
  * @param input.tx - Optional enclosing transaction.
- * @returns The new transfer's id, plus the bell entries of anything reaped — the
- *   caller retires those, since taking them down is a cross-module write this
- *   repo cannot make.
+ * @returns The new transfer's id and share token.
  * @throws {Error} 23505 when a LIVE pending already holds this project.
  */
 export async function createPending(input: {
@@ -144,34 +134,22 @@ export async function createPending(input: {
   expiresAt: Date;
   tx?: DbTx;
 }): Promise<CreatedProjectTransfer> {
-  /**
-   * Free the slot and take it, on whichever transaction we end up inside.
-   * @param tx - The transaction both steps share.
-   * @returns The new transfer's id and anything the reap took down with it.
-   * @throws {Error} 23505 from the insert, or a missing returned row.
-   */
-  const run = async (tx: DbTx): Promise<CreatedProjectTransfer> => {
-    const retiredNotificationIds = await expireStalePending(input.projectId, tx);
-    const rows = await tx
-      .insert(projectTransfers)
-      .values({
-        projectId: input.projectId,
-        fromUserId: input.fromUserId,
-        toUserId: input.toUserId,
-        status: "pending",
-        shareToken: mintShareToken(),
-        expiresAt: input.expiresAt,
-      })
-      .returning({ id: projectTransfers.id, shareToken: projectTransfers.shareToken });
-    const row = rows[0];
-    if (!row) {
-      throw new Error(
-        "projectTransfersRepo.createPending: insert returned no row",
-      );
-    }
-    return { id: row.id, shareToken: row.shareToken, retiredNotificationIds };
-  };
-  return input.tx ? run(input.tx) : db.transaction(run);
+  const rows = await (input.tx ?? db)
+    .insert(projectTransfers)
+    .values({
+      projectId: input.projectId,
+      fromUserId: input.fromUserId,
+      toUserId: input.toUserId,
+      status: "pending",
+      shareToken: mintShareToken(),
+      expiresAt: input.expiresAt,
+    })
+    .returning({ id: projectTransfers.id, shareToken: projectTransfers.shareToken });
+  const row = rows[0];
+  if (!row) {
+    throw new Error("projectTransfersRepo.createPending: insert returned no row");
+  }
+  return { id: row.id, shareToken: row.shareToken };
 }
 
 /**
