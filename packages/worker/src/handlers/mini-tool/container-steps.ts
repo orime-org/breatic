@@ -10,7 +10,7 @@ import type { z } from "zod";
 import { getMiniToolsConfig } from "@breatic/core";
 import { miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepResult, upstreamStepRepo } from "@breatic/domain";
 import { DeadlinePassed, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
-import { advanceMiniToolPlanJob, type EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { advanceMiniToolPlanJob, UNOPENED, type EndedMiniToolPlanJob, type Unopened } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { advanceStagedMiniToolPlanJob, type StagedMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 
@@ -66,14 +66,14 @@ async function appendStep(taskId: string, planned: { kind: Step["kind"]; endpoin
  * @param deadlineAt - The task deadline.
  * @param open - Whether a new step may be appended.
  * @returns The step and its stored request, if it has one; null when no step holds the job and the deadline has passed;
- * `unopened` when no step holds it and none may be appended.
+ * `UNOPENED` when no step holds it and none may be appended.
  * @throws {Error} When persistence fails.
  */
-export async function jobStep(taskId: string, jobId: string, endpoint: string, deadlineAt: number, open: boolean): Promise<{ step: Step; request: MiniToolPlanJobRequest | null } | null | "unopened"> {
+export async function jobStep(taskId: string, jobId: string, endpoint: string, deadlineAt: number, open: boolean): Promise<{ step: Step; request: MiniToolPlanJobRequest | null } | null | Unopened> {
   const steps = await upstreamStepRepo.listSteps(taskId);
   const found = steps.find((step) => storedRequest(step)?.jobId === jobId);
   if (found !== undefined) return { step: found, request: storedRequest(found) };
-  if (!open) return "unopened";
+  if (!open) return UNOPENED;
   if (Date.now() >= deadlineAt) return null;
   return { step: await appendStep(taskId, { kind: "container_job", endpoint, itemIndex: steps.length }), request: null };
 }
@@ -104,20 +104,21 @@ export interface ContainerStep {
  * @param run - The run.
  * @param planned - The step.
  * @param deadlineAt - The task deadline.
- * @param open - Whether a next attempt may be opened; when not, only an attempt already opened is advanced.
+ * @param open - Whether new work may start: a next attempt opened, or an opened attempt that ingest holds no record of
+ * submitted; when not, only what ingest already runs is read.
  * @returns The output, the failure (`expired` when a next attempt is due after the deadline, ingest ended an attempt at it,
- * or a job can no longer be submitted or waited for), or null when the next attempt is not opened.
+ * or a job can no longer be submitted or waited for), or `UNOPENED` when new work would start.
  * @throws {StillRunning} While a job runs.
  * @throws {Error} When persistence or the job boundary fails.
  */
-async function advanceAttempts(run: ContainerRun, planned: ContainerStep, deadlineAt: number, open: boolean): Promise<StepEnded | null> {
+async function advanceAttempts(run: ContainerRun, planned: ContainerStep, deadlineAt: number, open: boolean): Promise<StepEnded | Unopened> {
   let reason = "tool_failed";
   const { containerClass } = run.container;
   for (let attempt = 1; attempt <= run.container.chunkRetries + 1; attempt += 1) {
     const jobId = planned.jobId(attempt);
     const steps = await upstreamStepRepo.listSteps(run.taskId);
     const existing = steps.find((step) => storedRequest(step)?.jobId === jobId);
-    if (existing === undefined && !open) return null;
+    if (existing === undefined && !open) return UNOPENED;
     // An attempt opened after the deadline is never submitted, so it is never opened: the step ends expired, and the other
     // steps and outputs of the pickup settle as they stand.
     if (existing === undefined && Date.now() >= deadlineAt) return { ...planned.failed("expired"), expired: true };
@@ -139,13 +140,14 @@ async function advanceAttempts(run: ContainerRun, planned: ContainerStep, deadli
     const { request, consumption } = await openMiniToolPlanJob({ taskId: run.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: "user", request: candidate });
     // The job boundary answers only a terminal report; a running job throws StillRunning, and DeadlinePassed once it can no
     // longer be submitted or waited for: this step expires, while the pickup still reads every other step.
-    let ended: EndedMiniToolPlanJob;
+    let ended: EndedMiniToolPlanJob | Unopened;
     try {
-      ended = await advanceMiniToolPlanJob(request);
+      ended = await advanceMiniToolPlanJob(request, open);
     } catch (error) {
       if (error instanceof DeadlinePassed) return { ...planned.failed("expired"), expired: true };
       throw error;
     }
+    if ("unopened" in ended) return ended;
     const report = readMiniToolPlanJobReport(request, ended) as EndedMiniToolPlanJob;
     const output = request.outputs[0]!.storageKey;
     await recordMiniToolStepResult({ taskId: run.taskId, stepId: step.id, identity: consumption.identity, outcome: report.state, result: report,
@@ -164,30 +166,31 @@ async function advanceAttempts(run: ContainerRun, planned: ContainerStep, deadli
  * @param run - The run.
  * @param chunks - The chunk steps in order.
  * @param deadlineAt - The task deadline.
- * @param open - Whether a chunk's next attempt may be opened; when not, a chunk waiting for one answers `unopened`.
- * @returns Every chunk's output in order, the failure of the first chunk in order that failed for good, or `unopened`.
+ * @param open - Whether new work may start for a chunk; when not, a chunk that would start new work answers `UNOPENED`.
+ * @returns Every chunk's output in order, the failure of the first chunk in order that failed for good, or `UNOPENED`.
  * @throws {StillRunning} While a chunk runs.
  * @throws {Error} When persistence or the job boundary fails.
  */
-export async function advanceChunks(run: ContainerRun, chunks: readonly ContainerStep[], deadlineAt: number, open: boolean): Promise<{ keys: string[] } | Exclude<StepEnded, { key: string }> | { unopened: true }> {
+export async function advanceChunks(run: ContainerRun, chunks: readonly ContainerStep[], deadlineAt: number, open: boolean): Promise<{ keys: string[] } | Exclude<StepEnded, { key: string }> | Unopened> {
   const ended = new Map<number, StepEnded>();
-  const unopened: number[] = [];
   let running = false;
   /**
-   * Advance one chunk, noting whether it ended, still runs or waits for its next attempt to be opened.
+   * Advance one chunk, noting whether it ended or still runs.
    * @param k - The chunk.
-   * @param open - Whether its next attempt may be opened.
-   * @returns Nothing.
+   * @param mayOpen - Whether it may start new work.
+   * @returns Whether it would start new work and was left for a pass that may.
    * @throws {Error} When persistence or the job boundary fails.
    */
-  const advance = async (k: number, open: boolean): Promise<void> => {
+  const advance = async (k: number, mayOpen: boolean): Promise<boolean> => {
     try {
-      const at = await advanceAttempts(run, chunks[k]!, deadlineAt, open);
-      if (at === null) unopened.push(k); else ended.set(k, at);
+      const at = await advanceAttempts(run, chunks[k]!, deadlineAt, mayOpen);
+      if ("unopened" in at) return true;
+      ended.set(k, at);
     } catch (error) {
       if (!(error instanceof StillRunning)) throw error;
       running = true;
     }
+    return false;
   };
   /**
    * The first chunk in order that failed for good.
@@ -202,12 +205,15 @@ export async function advanceChunks(run: ContainerRun, chunks: readonly Containe
     return null;
   };
   // The attempts already opened go first, so a chunk failed for good is known before any chunk opens a new attempt.
-  for (const k of chunks.keys()) await advance(k, false);
-  if (open) for (const k of unopened.splice(0)) if (failure() === null) await advance(k, true);
+  const unopened: number[] = [];
+  for (const k of chunks.keys()) if (await advance(k, false)) unopened.push(k);
+  if (failure() === null && unopened.length > 0) {
+    if (!open) return UNOPENED;
+    for (const k of unopened) if (failure() === null) await advance(k, true);
+  }
   // A chunk failed for good fails the run at once (frames-split §7.19): no running sibling is waited for.
   const failed = failure();
   if (failed !== null) return failed;
-  if (unopened.length > 0) return { unopened: true };
   if (running) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
   return { keys: chunks.map((_chunk, k) => (ended.get(k) as { key: string }).key) };
 }
@@ -232,14 +238,15 @@ export interface StagedStep {
  * @param planned - The step.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
- * @param open - Whether its next attempt may be opened; when not, a step waiting for one answers `unopened`.
+ * @param open - Whether new work may start: a next attempt opened, or an opened attempt that ingest holds no record of
+ * submitted; when not, a step that would start new work answers `UNOPENED`.
  * @returns Reported once an attempt wrote the output; otherwise the failure: the last attempt's reason once every attempt
  * failed, the refusal of a written output (over_cap, empty), or `expired` when a next attempt is due after the deadline,
- * ingest ended an attempt at it, or the job can no longer be submitted or waited for; or `unopened`.
+ * ingest ended an attempt at it, or the job can no longer be submitted or waited for; or `UNOPENED`.
  * @throws {StillRunning} While the job runs.
  * @throws {Error} When persistence or grants fail.
  */
-export async function advanceStaged(run: ContainerRun, planned: StagedStep, userId: string, deadlineAt: number, open: boolean): Promise<{ reported: true } | { failed: string; expired?: true } | { unopened: true }> {
+export async function advanceStaged(run: ContainerRun, planned: StagedStep, userId: string, deadlineAt: number, open: boolean): Promise<{ reported: true } | { failed: string; expired?: true } | Unopened> {
   const outputIndex = planned.outputIndex ?? 0;
   let reason = "tool_failed";
   for (let attempt = 1; attempt <= run.container.chunkRetries + 1; attempt += 1) {
@@ -248,7 +255,7 @@ export async function advanceStaged(run: ContainerRun, planned: StagedStep, user
     let step = steps.find((candidate) => storedRequest(candidate)?.jobId === jobId);
     let request = step === undefined ? null : storedRequest(step);
     if (request === null) {
-      if (!open) return { unopened: true };
+      if (!open) return UNOPENED;
       // An attempt opened after the deadline is never submitted, so no grant, step or job is opened for it.
       if (Date.now() >= deadlineAt) return { failed: "expired", expired: true };
       const built = await planned.build();
@@ -259,15 +266,16 @@ export async function advanceStaged(run: ContainerRun, planned: StagedStep, user
         inputs: built.inputs, outputs: [{ ...grant, outputIndex, recipe: built.recipe }] });
       step = await appendStep(run.taskId, { kind: "container_job", endpoint: run.container.containerClass, itemIndex: steps.length });
     }
-    let job: StagedMiniToolPlanJob;
+    let job: StagedMiniToolPlanJob | Unopened;
     try {
       job = await advanceStagedMiniToolPlanJob({ taskId: run.taskId, stepId: step!.id, chunkIndex: step!.position, chargeTo: "user", request },
-        planned.retire === undefined ? {} : { retire: planned.retire });
+        { ...(planned.retire === undefined ? {} : { retire: planned.retire }), open });
     } catch (error) {
       // A job that can no longer be submitted or waited for expires this step.
       if (error instanceof DeadlinePassed) return { failed: "expired", expired: true };
       throw error;
     }
+    if ("unopened" in job) return job;
     if (job.refused !== null) return { failed: job.refused };
     if (job.report.state === "done" && job.report.outputs.some((output) => output.outputIndex === outputIndex)) return { reported: true };
     reason = job.report.state === "failed" ? job.report.reason : "tool_failed";

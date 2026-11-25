@@ -67,6 +67,19 @@ describe("frozen planned job advancement", () => {
     expect(h.submit).not.toHaveBeenCalled();
   });
 
+  // A pickup reads every opened attempt before it starts any work (frames-split §7.19): a read that finds no job opens
+  // nothing while opening is withheld.
+  it("with opening withheld, a job ingest holds no record of is not submitted and answers unopened", async () => {
+    h.read.mockResolvedValue(null);
+    expect(await advanceMiniToolPlanJob(plan, false)).toEqual({ unopened: true });
+    expect(h.submit).not.toHaveBeenCalled();
+  });
+
+  it.each([done, failed])("with opening withheld, a read $state report is still returned", async (report) => {
+    h.read.mockResolvedValue(report);
+    expect(await advanceMiniToolPlanJob(plan, false)).toEqual(report);
+  });
+
   it("submits only the missing original request under the original computation deadline", async () => {
     h.read.mockResolvedValue(null);
     await expect(advanceMiniToolPlanJob(plan)).rejects.toBeInstanceOf(StillRunning);

@@ -12,6 +12,10 @@ import { StillRunning } from "@worker/handlers/still-running.js";
 
 /** A terminal report retains the successful indexed subset even when computation failed. */
 export type EndedMiniToolPlanJob = Extract<MiniToolPlanJobReport, { state: "done" | "failed" }>;
+/** A job, attempt or step that is left for the pass of a pickup that may open new work (frames-split §7.19). */
+export interface Unopened { unopened: true }
+/** The one value of `Unopened`. */
+export const UNOPENED: Unopened = Object.freeze({ unopened: true });
 
 /**
  * The end of a planned job's reporting window: two polls past its deadline, the last instant a job ingest still holds can
@@ -77,7 +81,27 @@ function rethrowPlanFailure(error: unknown, request: MiniToolPlanJobRequest, pha
  * @throws {DeadlinePassed} When no new submission or further wait fits its original budget.
  * @throws {Error} When the request, permanent response or report contract is invalid.
  */
-export async function advanceMiniToolPlanJob(request: MiniToolPlanJobRequest): Promise<EndedMiniToolPlanJob> {
+export async function advanceMiniToolPlanJob(request: MiniToolPlanJobRequest): Promise<EndedMiniToolPlanJob>;
+/**
+ * Advance one already persisted media job; a job ingest holds no record of is submitted only when opening is allowed.
+ * @param request - The complete request frozen together with its expense before external IO.
+ * @param open - Whether a job ingest holds no record of may be submitted now.
+ * @returns The validated terminal report, or `UNOPENED` when the job is not at ingest and may not be submitted.
+ * @throws {StillRunning} When the original job is pending or its transport is temporarily unavailable.
+ * @throws {DeadlinePassed} When no new submission or further wait fits its original budget.
+ * @throws {Error} When the request, permanent response or report contract is invalid.
+ */
+export async function advanceMiniToolPlanJob(request: MiniToolPlanJobRequest, open: boolean): Promise<EndedMiniToolPlanJob | Unopened>;
+/**
+ * The implementation of both forms.
+ * @param request - The complete request frozen together with its expense before external IO.
+ * @param open - Whether a job ingest holds no record of may be submitted now.
+ * @returns The validated terminal report, or `UNOPENED`.
+ * @throws {StillRunning} When the original job is pending or its transport is temporarily unavailable.
+ * @throws {DeadlinePassed} When no new submission or further wait fits its original budget.
+ * @throws {Error} When the request, permanent response or report contract is invalid.
+ */
+export async function advanceMiniToolPlanJob(request: MiniToolPlanJobRequest, open = true): Promise<EndedMiniToolPlanJob | Unopened> {
   const job = miniToolPlanJobRequestSchema.parse(request);
   const poll = getMiniToolsConfig().poll_interval_ms;
   const reportingEnd = planReportingEnd(job.deadlineAt);
@@ -88,6 +112,7 @@ export async function advanceMiniToolPlanJob(request: MiniToolPlanJobRequest): P
     rethrowPlanFailure(error, job, "read", reportingEnd, poll);
   }
   if (report === null) {
+    if (!open) return UNOPENED;
     // An absent answer can arrive after the GET's start time; the report window
     // never authorizes starting work after its original computation deadline.
     const submissionBound = untilDeadline(job.deadlineAt);

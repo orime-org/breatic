@@ -86,7 +86,10 @@ type GrantInput = Parameters<typeof domainModule.openContainerOutputs>[0];
 let steps: Steps;
 let grantSequence: number;
 // Scripted batch outcomes by job id: which declared outputs the attempt wrote, and whether it failed or still runs.
-let scripted: Map<string, { written: number[]; state: "done" | "failed"; reason?: "expired" } | "running" | "throws">;
+// "unsubmitted": the job's request is stored but its submission never reached ingest; a submission attempt fails transiently.
+let scripted: Map<string, { written: number[]; state: "done" | "failed"; reason?: "expired" } | "running" | "throws" | "unsubmitted">;
+// The job ids a pickup tried to submit for an "unsubmitted" job.
+let submissions: string[];
 // The public record the SQL lifecycle holds; the commit point and terminal mocks advance it as the domain owner would.
 let current: Record<string, unknown> & { resultVersion: number; status: string; outputs: { result: unknown }[]; commitPoint?: string };
 
@@ -161,12 +164,17 @@ function asset(key: string, video: boolean): StudioAssetEntity {
  * @param input - The open-job input.
  * @returns The staged job.
  */
-async function advance(input: OpenMiniToolPlanJobInput): Promise<{ request: MiniToolPlanJobRequest; report: unknown; refused: null }> {
+async function advance(input: OpenMiniToolPlanJobInput, options?: { open?: boolean }): Promise<Record<string, unknown>> {
   const step = steps.find((item) => item.id === input.stepId);
   if (step === undefined) throw new Error("Fixture advance lost its step");
   const request = (step.output.miniToolPlanJob as MiniToolPlanJobRequest | undefined) ?? input.request;
   step.output = { ...step.output, miniToolPlanJob: structuredClone(request) };
   const script = scripted.get(request.jobId);
+  if (script === "unsubmitted") {
+    if (options?.open === false) return { unopened: true };
+    submissions.push(request.jobId);
+    throw new StillRunning(Date.now() + 5000);
+  }
   if (script === "running") throw new StillRunning(Date.now() + 5000);
   if (script === "throws") throw new ContainerJobFailed("tool_failed");
   const declared = request.outputs.map((output) => output.outputIndex);
@@ -239,10 +247,16 @@ async function openPlan(input: OpenMiniToolPlanJobInput): Promise<{ request: Min
  * A chunk job's report: done with its one work output unless scripted to fail; a running job throws StillRunning, as
  * `advanceMiniToolPlanJob` does.
  * @param request - The chunk request.
+ * @param open - Whether a job ingest holds no record of may be submitted.
  * @returns The report.
  */
-async function advancePlan(request: MiniToolPlanJobRequest): Promise<Record<string, unknown>> {
+async function advancePlan(request: MiniToolPlanJobRequest, open = true): Promise<Record<string, unknown>> {
   const script = scripted.get(request.jobId);
+  if (script === "unsubmitted") {
+    if (!open) return { unopened: true };
+    submissions.push(request.jobId);
+    throw new StillRunning(Date.now() + 5000);
+  }
   if (script === "running") throw new StillRunning(Date.now() + 5000);
   const output = request.outputs[0]!;
   const written = [{ outputIndex: output.outputIndex, storageKey: output.storageKey, sha256: "9".repeat(64), sizeBytes: 2048, contentType: output.contentType }];
@@ -309,7 +323,7 @@ function statuses(completion: MiniToolExecutionCompletion | null): (string | nul
 
 beforeEach(() => {
   vi.resetAllMocks();
-  steps = []; grantSequence = 0; scripted = new Map(); version = frozenVersion();
+  steps = []; grantSequence = 0; scripted = new Map(); submissions = []; version = frozenVersion();
   h.deadline.mockResolvedValue(DEADLINE);
   h.list.mockImplementation(async () => steps);
   h.ensure.mockImplementation(async (_taskId: string, planned: StepPlan) => {
@@ -444,6 +458,17 @@ describe("server retries inside a run and the first failure (§93 D5-3; design �
   });
   // A pickup reads every attempt already opened before it opens any: a later batch's final failure keeps an earlier
   // batch from opening its next attempt, which would be charged and never used.
+  it("VT10 an opened attempt whose submission never reached ingest is not submitted before a later batch's final failure is read", async () => {
+    serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 0));
+    scripted.set(batchId(0, 1), "unsubmitted"); scripted.set(batchId(1, 1), "running");
+    expect(await drive()).toBeNull();
+    submissions = [];
+    scripted.set(batchId(1, 1), { written: [], state: "failed" });
+    const completion = await drive();
+    expect(submissions).toEqual([]);
+    allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
+  });
+
   it("VT09 a later batch that failed for good keeps an earlier batch from opening its next attempt in the same pickup", async () => {
     serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 1));
     scripted.set(batchId(0, 1), "running");
@@ -531,7 +556,7 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     const stitch = submitted()[0]!;
     expect(stitch.outputs[0]!.recipe).toEqual(recipes[2]);
     expect(stitch.inputs).toEqual(expect.arrayContaining([{ inputId: chunkInputId(0), storageKey: keys[0] }, { inputId: chunkInputId(1), storageKey: keys[1] }]));
-    expect(h.advance.mock.calls[0]![1]).toEqual({ retire: keys });
+    expect(h.advance.mock.calls[0]![1]).toEqual({ retire: keys, open: true });
     expect(statuses(completion)).toEqual(["registered"]);
   });
 
@@ -595,6 +620,19 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     expect(h.finish).toHaveBeenCalledTimes(1);
     allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
     expect(h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId)).not.toContain(chunkId(0, 2));
+  });
+
+  it("VC10 an opened chunk whose submission never reached ingest is not submitted before another segment's final failure is read", async () => {
+    serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }, { outputIndex: 1, chunks: [{ start: 48, end: 96 }] }] }, 0,
+      [WHOLE, RECIPES["video.split"][1]!]));
+    const otherChunk = videoContainerJobId({ kind: "run-chunk", taskId: TASK, output: 1, chunk: 0, attempt: 1 });
+    scripted.set(chunkId(0), "unsubmitted"); scripted.set(otherChunk, "running");
+    expect(await drive()).toBeNull();
+    submissions = [];
+    scripted.set(otherChunk, { written: [], state: "failed" });
+    const completion = await drive();
+    expect(submissions).toEqual([]);
+    allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
   });
 
   it("VC09 another segment's chunk that failed for good keeps a segment from opening its stitch in the same pickup", async () => {

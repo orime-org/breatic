@@ -19,6 +19,7 @@ import { DeadlinePassed, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport
   type StudioAssetEntity } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, videoContainerJobId, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceStaged, jobStep, storedRequest } from "@worker/handlers/mini-tool/container-steps.js";
+import type { Unopened } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { advanceStagedMiniToolPlanJob, registerMiniToolPlanJobOutputs, type StagedMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { chunkInputId, frameRecipeOf, segmentRecipesOf, toolInputOf, type ToolInput } from "@worker/handlers/video-presentation-recipes.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
@@ -148,7 +149,7 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
     if (pending.length === 0 || firstFailure(pickup) !== undefined) return false;
     const jobId = videoContainerJobId({ kind: "run-batch", taskId: execution.taskId, batch, attempt });
     const found = await jobStep(execution.taskId, jobId, execution.container.containerClass, deadlineAt, open);
-    if (found === "unopened") return true;
+    if (found !== null && "unopened" in found) return true;
     // An attempt due after the deadline is never opened: the outputs it would carry expire.
     if (found === null) {
       for (const index of pending) pickup.results.set(index, failedResult("expired"));
@@ -165,10 +166,10 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
         inputs: [...new Map(planned.flatMap((output) => output.inputs).map((input) => [input.inputId, input])).values()],
         outputs: planned.map((output, index) => ({ ...grants[index], outputIndex: output.outputIndex, recipe: output.recipe })) });
     }
-    let job: StagedMiniToolPlanJob;
+    let job: StagedMiniToolPlanJob | Unopened;
     try {
       // Who pays is the payer admission froze (frames-split §5.5): the platform for frame extraction and focus crops.
-      job = await advanceStagedMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: execution.chargeTo, request });
+      job = await advanceStagedMiniToolPlanJob({ taskId: execution.taskId, stepId: step.id, chunkIndex: step.position, chargeTo: execution.chargeTo, request }, { open });
     } catch (error) {
       // A job that can no longer be submitted or waited for expires its unwritten outputs.
       if (error instanceof DeadlinePassed) {
@@ -179,6 +180,8 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
       pickup.waiting = true;
       return false;
     }
+    // A job whose submission never reached ingest is submitted only by a pass that may start new work.
+    if ("unopened" in job) return true;
     // A written output refused for its size is the run's final failure, never retried.
     if (job.refused !== null) {
       for (const index of pending) pickup.results.set(index, failedResult(job.refused));

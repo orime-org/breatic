@@ -342,3 +342,12 @@ describe("a staged report's written outputs (frames-split §7.19 running staged 
     expect(h.advance).not.toHaveBeenCalled();
   });
 });
+
+describe("a staged advance with opening withheld (frames-split §7.19)", () => {
+  it("answers unopened and records nothing when its stored job was never submitted", async () => {
+    h.advance.mockResolvedValue({ unopened: true });
+    expect(await advanceStagedMiniToolPlanJob(input, { open: false })).toEqual({ unopened: true });
+    expect(h.advance).toHaveBeenCalledExactlyOnceWith(plan, false);
+    expect(h.record).not.toHaveBeenCalled();
+  });
+});

@@ -6,7 +6,7 @@ import { assetRepo, ingestReportService, miniToolStepStateSchema, openMiniToolPl
 import { miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type StudioAssetEntity, type MiniToolPlanJobRequest } from "@breatic/shared";
 import { z } from "zod";
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import type { EndedMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import type { EndedMiniToolPlanJob, Unopened } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 
 /** Why every report of a staged output is refused whatever it is (frames-split §7.19). */
@@ -61,7 +61,28 @@ async function ownedStep(taskId: string, stepId: string): Promise<upstreamStepRe
  * @returns The persisted report and its refusal, if any.
  * @throws {Error} When original-plan validation, progress or persistence fails.
  */
-export async function advanceStagedMiniToolPlanJob(input: OpenMiniToolPlanJobInput, options: { retire?: readonly string[] } = {}): Promise<StagedMiniToolPlanJob> {
+export async function advanceStagedMiniToolPlanJob(input: OpenMiniToolPlanJobInput, options?: { retire?: readonly string[] }): Promise<StagedMiniToolPlanJob>;
+/**
+ * Advance the original job and keep its terminal report on its step, submitting a job ingest holds no record of only when
+ * opening is allowed (frames-split §7.19).
+ * @param input - The task-owned candidate plan and original expense policy.
+ * @param options - What the job consumed and whether it may be submitted.
+ * @param options.retire - Intermediate keys (a stitch's chunks) retired with a done result, never before (§7.15, §93 D5-10).
+ * @param options.open - Whether a job ingest holds no record of may be submitted now.
+ * @returns The persisted report and its refusal, or `UNOPENED` when the job is not at ingest and may not be submitted.
+ * @throws {Error} When original-plan validation, progress or persistence fails.
+ */
+export async function advanceStagedMiniToolPlanJob(input: OpenMiniToolPlanJobInput, options: { retire?: readonly string[]; open: boolean }): Promise<StagedMiniToolPlanJob | Unopened>;
+/**
+ * The implementation of both forms.
+ * @param input - The task-owned candidate plan and original expense policy.
+ * @param options - What the job consumed and whether it may be submitted.
+ * @param options.retire - Intermediate keys retired with a done result, never before.
+ * @param options.open - Whether a job ingest holds no record of may be submitted now; true when absent.
+ * @returns The persisted report and its refusal, or `UNOPENED`.
+ * @throws {Error} When original-plan validation, progress or persistence fails.
+ */
+export async function advanceStagedMiniToolPlanJob(input: OpenMiniToolPlanJobInput, options: { retire?: readonly string[]; open?: boolean } = {}): Promise<StagedMiniToolPlanJob | Unopened> {
   const { request, consumption } = await openMiniToolPlanJob(input);
   const step = await ownedStep(input.taskId, input.stepId);
   const state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
@@ -69,7 +90,9 @@ export async function advanceStagedMiniToolPlanJob(input: OpenMiniToolPlanJobInp
     const code = state.result.error?.code;
     return { request, report: terminalReport(request, state.result.result), refused: code === "over_cap" || code === "empty" ? code : null };
   }
-  const report = terminalReport(request, await advanceMiniToolPlanJob(request));
+  const advanced = options.open === false ? await advanceMiniToolPlanJob(request, false) : await advanceMiniToolPlanJob(request);
+  if ("unopened" in advanced) return advanced;
+  const report = terminalReport(request, advanced);
   // A failed attempt's written outputs are staged too (the next attempt carries only the rest), so every report is checked.
   const refused = report.outputs.map((output) => ingestReportService.ingestReportRefusal(output.sizeBytes)).find((reason) => reason !== null) ?? null;
   await recordMiniToolStepResult({
