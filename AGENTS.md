@@ -6,7 +6,7 @@ Rules for coding agents live only in `AGENTS.md` files: this one for the whole r
 
 ## Project overview
 
-breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 10 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end and the `ingest` Cloudflare Worker. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d, timeline or web_animation, shown as Motion); never invent a `Workspace` entity or name.
+breatic is the real-time collaborative AI workspace for creative teams: a TypeScript pnpm + turbo monorepo of 11 packages, with three Node services (`server`, `worker`, `collab`), the `web` front end, the `ingest` Cloudflare Worker and the `desktop` Electron client. The product nouns are Studio, Project and Space (a Space type is canvas, document, 3d, timeline or web_animation, shown as Motion); never invent a `Workspace` entity or name.
 
 - **breatic is a content-creation tool, not a design tool.** Benchmark it against content-creation products and describe it that way in copy, docs and the Agent's product guide.
 - **The person using the product is the user, never the reader, in identifiers, comments, docs, tests and text sent to the model.** breatic is a tool, and whoever works in it is its user. Check: does this word mean someone using breatic? Then `user`; screen readers, code that reads data and people reading documentation keep `reader`.
@@ -46,7 +46,7 @@ Full Docker deployment: `cp .env.docker .env`, follow [self-host/LOCAL.md](self-
 **TypeScript is strict everywhere: no `any` (use `unknown`), no `var`, no `require()`.** The same lint level applies to every package, front end included.
 
 - **Every first-party TypeScript file, tests included, starts with the two-line SPDX header (`// Copyright (c) 2026 Orime, Inc.` and `// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0`); the shadcn vendor directory `packages/web/src/components/ui/` carries none.** `breatic/no-missing-license-header` checks both lines; `pnpm lint:fix` writes it.
-- **Non-test code imports through the package's own alias (`@shared`, `@core`, `@domain`, `@collab`, `@worker`, `@server`, `@web`, `@ingest`, `@integration-tests`, `@provider`), never `./` or `../`, and nothing uses `@/`.** A unique prefix per package keeps imports resolvable when one package's source is compiled inside another's; `breatic/no-relative-import` enforces it and `pnpm lint:fix` rewrites violations. Judging whether a tsconfig alias is dead: invoke `/build-tooling` ([skill](.claude/skills/build-tooling/SKILL.md)).
+- **Non-test code imports through the package's own alias (`@shared`, `@core`, `@domain`, `@collab`, `@worker`, `@server`, `@web`, `@desktop`, `@ingest`, `@integration-tests`, `@provider`), never `./` or `../`, and nothing uses `@/`.** A unique prefix per package keeps imports resolvable when one package's source is compiled inside another's; `breatic/no-relative-import` enforces it and `pnpm lint:fix` rewrites violations. Judging whether a tsconfig alias is dead: invoke `/build-tooling` ([skill](.claude/skills/build-tooling/SKILL.md)).
 - **There is no Prettier; formatting is ESLint's job.** Never run `prettier`: it reflows whole files against the ESLint `indent` rule. Fix format with `pnpm lint:fix` (`eslint --fix`), which touches only violating lines.
 - **Test files live in a `__tests__/` directory beside the code they test (`breatic/test-file-location`).** When moving a test there, deepen its relative imports and the path argument of every `vi.mock("./x")`; a missed `vi.mock` path fails silently as `.mockResolvedValueOnce is not a function`.
 - **`no-cjk` keeps CJK out of tracked and untracked non-ignored `.ts .mts .cts .tsx .css .yaml .yml .sh .mjs .cjs` files, every `AGENTS.md` and project skills; it exempts the JSON catalogs under `locales/`, its two allowlisted data files and test files (`TEST_FILE` in `repo-lint/src/file-kinds.ts`).** The test exemption exists only because the guard cannot tell required CJK from careless CJK: test names, assertions and comments are still English, and CJK is allowed only when the behaviour under test is multilingual or the data must be CJK. Scaffolding under `src/` that only tests import (`packages/web/src/test-utils/a11y.ts`) is scanned.
@@ -168,6 +168,7 @@ Each is a rule above, enforced by lint where it can be: business logic in routes
 |---|---|
 | [packages/collab/AGENTS.md](packages/collab/AGENTS.md) | Hocuspocus collaboration service |
 | [packages/core/AGENTS.md](packages/core/AGENTS.md) | backend kernel: infrastructure, schema, migrations, auth, config |
+| [packages/desktop/AGENTS.md](packages/desktop/AGENTS.md) | Electron desktop client: brands, the shell around the web app, its end-to-end cases |
 | [packages/domain/AGENTS.md](packages/domain/AGENTS.md) | server and worker AIGC business: assets, credits, tasks, agent |
 | [packages/ingest/AGENTS.md](packages/ingest/AGENTS.md) | Cloudflare upload Worker and media containers |
 | [packages/integration-tests/AGENTS.md](packages/integration-tests/AGENTS.md) | cross-service integration tests |
