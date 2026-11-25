@@ -24,6 +24,7 @@ import type { ContainerFailure, ContainerOp } from "@shared/mini-tools/types.js"
 import { clipRefusal, inputRefusal, lengthArgs, mediumOf, opSteps, outputFileName, outputRefusal, readProgressLength, type ExtraInput } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, NOTHING_FOUND, type ProbeReport } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
+import { withDecodedDisplay } from "@ingest/container/decoded-display.js";
 import { pngSize } from "@ingest/png-size.js";
 
 import { cpuUsec, runCommand, runSteps } from "./run-steps.js";
@@ -121,7 +122,9 @@ export async function runJob(job: RunBody): Promise<void> {
      */
     const fetched = async (url: string, file: string, first: boolean): Promise<ProbeReport> => {
       await download(url, file).catch(ours);
-      const probed = readProbeOutput((await runCommand("ffprobe", probeArgs(file, "own-file"))).stdout.toString("utf8"));
+      // An input is read at its first decoded frame's display (frames-split D07), the size it was filed at.
+      const probed = await withDecodedDisplay(readProbeOutput((await runCommand("ffprobe", probeArgs(file, "own-file"))).stdout.toString("utf8")), file,
+        "own-file", (program, args) => runCommand(program, [...args]).then((out) => out.stdout, () => null));
       const refused = (first ? inputRefusal(job.op, probed) : null) ?? clipRefusal(job.op, probed);
       if (refused !== null) {
         reason = refused;

@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The picture Chromium shows (measured in Chromium 151 and Chrome 157): no container cropping, neither a Matroska PixelCrop
- * nor an MP4 clean aperture, and a non-square sample aspect ratio at its natural size. The uploaded source's size, its cover
- * and the earlier batches' video tools all take the picture that way. Run on the real ffprobe and ffmpeg 8.0.1, with the
- * production argument lists.
+ * The picture a source shows is FFmpeg's (frames-split design D07, §4.3): the first frame of its default decode, with a
+ * Matroska PixelCrop or an MP4 clean aperture and the display matrix applied, made square by its sample aspect ratio. The
+ * uploaded source's size, its cover and the earlier batches' video tools all take that picture, the same one the frame-grid
+ * plan's display takes. Run on the real ffprobe and ffmpeg 8.0.1, with the production argument lists.
  */
 
 import { execFile } from "node:child_process";
@@ -16,6 +16,7 @@ import { promisify } from "node:util";
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 
+import { withDecodedDisplay } from "@ingest/container/decoded-display.js";
 import { opSteps } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, type ProbeReport } from "@ingest/media-metadata.js";
 import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
@@ -26,24 +27,42 @@ const run = promisify(execFile);
 let dir = "";
 
 /**
- * The probe report the container reads off a local file.
- * @param name - The fixture.
+ * The probe report the container reads off a local source: ffprobe's report with the display of its first decoded frame.
+ * @param name - The fixture, or a path.
  * @returns The report.
  */
 async function probed(name: string): Promise<ProbeReport> {
-  return readProbeOutput((await run("ffprobe", probeArgs(join(dir, name), "own-file"))).stdout);
+  const path = name.startsWith("/") ? name : join(dir, name);
+  const report = readProbeOutput((await run("ffprobe", probeArgs(path, "own-file"))).stdout);
+  return withDecodedDisplay(report, path, "own-file", async (program, args) =>
+    (await run(program, [...args], { encoding: "buffer", maxBuffer: 1 << 24 })).stdout);
 }
 
 /**
- * The size of a video file's first stream as ffmpeg decodes it with codec cropping only, as Chromium shows it.
+ * The first frame of a file's default decode as RGB bytes: the container crop runs as FFmpeg's crop filter in the stream's own
+ * pixel format (a 4:2:0 crop of left 3, top 1 lands at 2, 0), and the picture is converted after it, through PNG.
+ * @param path - The file.
+ * @returns The bytes.
+ */
+async function decodedRgb(path: string): Promise<Buffer> {
+  const png = `${path}.first.png`;
+  await run("ffmpeg", ["-v", "error", "-nostdin", "-y", "-i", path, "-map", "0:v:0", "-frames:v", "1", "-vf", "null", "-c:v", "png", png]);
+  return (await run("ffmpeg", ["-v", "error", "-i", png, "-vf", "format=rgb24", "-f", "rawvideo", "-"], { encoding: "buffer", maxBuffer: 1 << 24 })).stdout;
+}
+
+/**
+ * The first frame of a file's default decode, made square by its sample aspect ratio, measured with showinfo.
  * @param path - The file.
  * @returns The width and height.
  */
 async function decodedSize(path: string): Promise<[number, number]> {
-  const { stderr } = await run("ffmpeg", ["-hide_banner", "-apply_cropping", "codec", "-i", path, "-vf", "showinfo", "-frames:v", "1", "-f", "null", "-"]);
-  const found = / s:(\d+)x(\d+) /u.exec(stderr);
-  expect(found, stderr).not.toBeNull();
-  return [Number(found![1]), Number(found![2])];
+  const { stderr } = await run("ffmpeg", ["-hide_banner", "-i", path, "-map", "0:v:0", "-vf", "showinfo", "-frames:v", "1", "-f", "null", "-"]);
+  const line = stderr.split("\n").find((entry) => entry.includes("Parsed_showinfo") && entry.includes(" s:"));
+  expect(line, stderr).toBeDefined();
+  const [width, height] = / s:(\d+)x(\d+)/u.exec(line!)!.slice(1).map(Number) as [number, number];
+  const [num, den] = /sar:(\d+)\/(\d+)/u.exec(line!)!.slice(1).map(Number) as [number, number];
+  const sar = num === 0 || den === 0 ? 1 : num / den;
+  return sar > 1 ? [Math.round(width * sar), height] : sar < 1 ? [width, Math.round(height / sar)] : [width, height];
 }
 
 beforeAll(async () => {
@@ -77,14 +96,17 @@ afterAll(async () => {
 });
 
 describe("the size an uploaded source is filed at", () => {
+  // The container crop takes three columns and one row off 160x96; FFmpeg's decode keeps 4:2:0 sides even.
   it.each([
-    ["crop.mkv", { width: 160, height: 96 }],
-    ["crop-turned.mkv", { width: 96, height: 160 }],
-    ["clap.mp4", { width: 160, height: 96 }],
+    ["crop.mkv", { width: 156, height: 94 }],
+    ["crop-turned.mkv", { width: 94, height: 156 }],
+    ["clap.mp4", null],
     ["sar.mp4", { width: 480, height: 240 }],
     ["sar89.mp4", { width: 720, height: 540 }],
-  ])("%s files as %o", async (name, size) => {
-    expect(pickMediaMetadata(await probed(name))).toMatchObject(size);
+  ])("%s files as the first decoded frame's display %o", async (name, stated) => {
+    const [width, height] = await decodedSize(join(dir, name));
+    if (stated !== null) expect({ width, height }, "the measured decode").toEqual(stated);
+    expect(pickMediaMetadata(await probed(name))).toMatchObject({ width, height });
   });
 });
 
@@ -103,13 +125,9 @@ describe("the cover cut from an uploaded source", () => {
     return (await run("ffmpeg", ["-v", "error", "-i", file, "-vf", "format=rgb24", "-f", "rawvideo", "-"], { encoding: "buffer", maxBuffer: 1 << 24 })).stdout;
   }
 
-  // A cropped stream's cover is the cover of the same stream without the crop.
-  it.each([
-    ["crop.mkv", "whole.mkv"],
-    ["crop-turned.mkv", "turned.mkv"],
-    ["clap.mp4", "whole.mp4"],
-  ])("%s is the picture Chromium shows, the cover of %s", async (name, twin) => {
-    const [got, want] = [await cover(name), await cover(twin)];
+  // A cropped stream's cover is its first decoded frame, the container crop applied.
+  it.each([["crop.mkv"], ["crop-turned.mkv"], ["clap.mp4"]])("%s is the picture FFmpeg's default decode shows", async (name) => {
+    const [got, want] = [await cover(name), await decodedRgb(join(dir, name))];
     expect(got.length).toBe(want.length);
     expect(got.reduce((sum, value, index) => sum + Math.abs(value - want[index]!), 0) / got.length).toBeLessThan(0.5);
   });
@@ -127,7 +145,7 @@ describe("an anamorphic source", () => {
   }
   const mean = (a: Buffer, b: Buffer): number => (a.length === b.length ? a.reduce((sum, value, index) => sum + Math.abs(value - b[index]!), 0) / a.length : Number.POSITIVE_INFINITY);
 
-  it("has a cover of the picture Chromium shows, 480x240", async () => {
+  it("has a cover of its square-pixel picture, 480x240", async () => {
     const { stdout } = await run("ffmpeg", coverArgs(join(dir, "sar.mp4"), "own-file", await probed("sar.mp4")), { encoding: "buffer", maxBuffer: 1 << 24 });
     const file = join(dir, "sar-cover.png");
     await writeFile(file, stdout);
@@ -136,7 +154,7 @@ describe("an anamorphic source", () => {
     expect(mean(await rgb(file, "null"), await rgb(join(dir, "sar.mp4"), "scale=480:240"))).toBeLessThan(3);
   });
 
-  // The panel gives a rectangle in the size the video element shows (videoWidth x videoHeight); the right half of 480x240.
+  // The panel gives a rectangle in the source's filed size; the right half of 480x240.
   it("crops the rectangle the panel drew on the shown picture, with square pixels", async () => {
     const output = join(dir, "sar-rect.mp4");
     await runSteps(opSteps("crop", { rect: { x: 240, y: 0, w: 240, h: 240 } }, join(dir, "sar.mp4"), output, dir, await probed("sar.mp4")));
@@ -145,14 +163,14 @@ describe("an anamorphic source", () => {
     expect(mean(got, await rgb(join(dir, "sar.mp4"), "scale=480:240,crop=240:240:240:0"))).toBeLessThan(mean(got, await rgb(join(dir, "sar.mp4"), "crop=240:240:120:0")));
   }, 60_000);
 
-  // The panel's rectangle for the whole of an 8:9 picture is 720x540, Chromium's videoWidth x videoHeight.
+  // The panel's rectangle for the whole of an 8:9 picture is 720x540, its filed size.
   it("crops the whole of a taller-shown picture as the panel drew it", async () => {
     const output = join(dir, "sar89-rect.mp4");
     await runSteps(opSteps("crop", { rect: { x: 0, y: 0, w: 720, h: 540 } }, join(dir, "sar89.mp4"), output, dir, await probed("sar89.mp4")));
     expect((await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height", "-of", "csv=p=0", output])).stdout.trim()).toBe("720,540");
   }, 60_000);
 
-  it("adjusts into the picture Chromium shows, 480x240 with square pixels", async () => {
+  it("adjusts into its square-pixel picture, 480x240", async () => {
     const output = join(dir, "sar-adjust.mp4");
     await runSteps(opSteps("adjust", { value: {} }, join(dir, "sar.mp4"), output, dir, await probed("sar.mp4")));
     expect((await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height,sample_aspect_ratio", "-of", "csv=p=0", output])).stdout.trim()).toMatch(/^480,240,(1:1|N\/A)$/u);
@@ -170,22 +188,24 @@ describe("the depth of a cropped cover", () => {
 });
 
 describe("the earlier batches' video tools on an uploaded source", () => {
-  // The outputs carry the picture uncropped: an H.264 encode at its coded size, and a stream copy of H.264 with the crop as
-  // an MP4 clean aperture, which Chromium does not apply.
+  // The outputs carry the source's filed picture: an H.264 encode of the cropped frame, or a stream copy of H.264 whose MP4
+  // clean aperture FFmpeg applies on decode.
   it.each([
-    ["crop", { rect: null }, "crop.mkv", [160, 96]],
-    ["audio_denoise", { intensity: 0.5 }, "crop.mkv", [160, 96]],
-    ["audio_denoise", { intensity: 0.5 }, "crop264.mkv", [160, 96]],
-    ["crop", { rect: null }, "crop264.mkv", [160, 96]],
-    ["adjust", { value: {} }, "crop.mkv", [160, 96]],
-    ["adjust", { value: {} }, "crop-turned.mkv", [96, 160]],
-    ["crop", { rect: { x: 0, y: 0, w: 160, h: 96 } }, "crop.mkv", [160, 96]],
-    ["adjust", { value: {} }, "clap.mp4", [160, 96]],
-  ] as const)("%s with %o on %s comes out %o", async (op, params, name, size) => {
+    ["crop", { rect: null }, "crop.mkv"],
+    ["audio_denoise", { intensity: 0.5 }, "crop.mkv"],
+    ["audio_denoise", { intensity: 0.5 }, "crop264.mkv"],
+    ["crop", { rect: null }, "crop264.mkv"],
+    ["adjust", { value: {} }, "crop.mkv"],
+    ["adjust", { value: {} }, "crop-turned.mkv"],
+    ["crop", { rect: { x: 0, y: 0, w: 156, h: 94 } }, "crop.mkv"],
+    ["adjust", { value: {} }, "clap.mp4"],
+  ] as const)("%s with %o on %s comes out at the source's filed size", async (op, params, name) => {
+    const source = await probed(name);
+    const filed = pickMediaMetadata(source);
     const output = join(dir, `${op}-${name}.mp4`);
-    await runSteps(opSteps(op, params, join(dir, name), output, dir, await probed(name)));
-    expect(await decodedSize(output)).toEqual(size);
-    expect(pickMediaMetadata(readProbeOutput((await run("ffprobe", probeArgs(output, "own-file"))).stdout))).toMatchObject({ width: size[0], height: size[1] });
+    await runSteps(opSteps(op, params, join(dir, name), output, dir, source));
+    expect(await decodedSize(output)).toEqual([filed.width, filed.height]);
+    expect(pickMediaMetadata(await probed(output))).toMatchObject({ width: filed.width, height: filed.height });
   }, 60_000);
 
   // Every H.264 output of the earlier batches is High 4:2:0 8-bit, which every browser plays; a crop to full chroma first
@@ -196,14 +216,14 @@ describe("the earlier batches' video tools on an uploaded source", () => {
     expect((await run("ffprobe", ["-v", "error", "-select_streams", "v:0", "-show_entries", "stream=profile,pix_fmt", "-of", "csv=p=0", output])).stdout.trim()).toBe("High,yuv420p");
   }, 60_000);
 
-  // The tools see the picture uncropped: an adjust of a cropped source is the adjust of the same source without the crop.
-  it("adjust on crop.mkv is the adjust of whole.mkv", async () => {
-    const outputs = [join(dir, "adjust-crop.mp4"), join(dir, "adjust-whole.mp4")];
-    await runSteps(opSteps("adjust", { value: {} }, join(dir, "crop.mkv"), outputs[0]!, dir, await probed("crop.mkv")));
-    await runSteps(opSteps("adjust", { value: {} }, join(dir, "whole.mkv"), outputs[1]!, dir, await probed("whole.mkv")));
+  // The tools see the cropped picture: an adjust of a cropped source is its first decoded frame.
+  it("adjust on crop.mkv is the adjust of its decoded picture", async () => {
+    const output = join(dir, "adjust-crop.mp4");
+    await runSteps(opSteps("adjust", { value: {} }, join(dir, "crop.mkv"), output, dir, await probed("crop.mkv")));
     const raw = async (path: string): Promise<Buffer> =>
       (await run("ffmpeg", ["-v", "error", "-i", path, "-frames:v", "1", "-vf", "format=rgb24", "-f", "rawvideo", "-"], { encoding: "buffer", maxBuffer: 1 << 24 })).stdout;
-    const [got, want] = [await raw(outputs[0]!), await raw(outputs[1]!)];
-    expect(got.reduce((sum, value, index) => sum + Math.abs(value - want[index]!), 0) / got.length).toBeLessThan(0.5);
+    const [got, want] = [await raw(output), await decodedRgb(join(dir, "crop.mkv"))];
+    expect(got.length).toBe(want.length);
+    expect(got.reduce((sum, value, index) => sum + Math.abs(value - want[index]!), 0) / got.length).toBeLessThan(2);
   }, 60_000);
 });

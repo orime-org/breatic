@@ -1,0 +1,78 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: AGPL-3.0-only
+
+/**
+ * The picture a video source shows (frames-split design D07, §4.3): the first frame of FFmpeg's default decode, with a
+ * Matroska PixelCrop or an MP4 clean aperture and the display matrix applied, made square by its sample aspect ratio
+ * (`squareDisplay`). The frame-grid plan's display and the size an upload is filed at are both read here.
+ */
+
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+import { realVideoStream, squareDisplay, type ProbeReport } from "@ingest/media-metadata.js";
+import { protocolsFor, type ReadFrom } from "@ingest/probe-command.js";
+
+/** Runs one program and answers its stdout; null, or a throw, when it failed. */
+export type CommandRun = (program: string, args: readonly string[]) => Promise<Buffer | null>;
+
+/**
+ * Decode the first frames of one video stream with FFmpeg's default decode into a NUT sample, and read the sample's video
+ * stream back (ffprobe reports HEVC with an alpha layer as opaque, so the decoded sample is what tells its format).
+ * @param run - Runs ffmpeg and ffprobe.
+ * @param input - The source.
+ * @param protocols - The protocols ffmpeg may read the source through.
+ * @param streamIndex - The video stream.
+ * @param frames - How many frames to decode.
+ * @param sample - The NUT file to write.
+ * @returns The decoded stream's ffprobe fields, or null when a command failed or the sample has no video.
+ * @throws {Error} When `run` throws.
+ */
+export async function decodedSample(run: CommandRun, input: string, protocols: string, streamIndex: number, frames: number,
+  sample: string): Promise<Record<string, unknown> | null> {
+  const made = await run("ffmpeg", ["-v", "error", "-nostdin", "-y", "-protocol_whitelist", protocols, "-i", input, "-map", `0:${String(streamIndex)}`,
+    "-frames:v", String(frames), "-c:v", "rawvideo", "-f", "nut", sample]);
+  if (made === null) return null;
+  const read = await run("ffprobe", ["-v", "error", "-protocol_whitelist", "file", "-show_streams", "-of", "json", sample]);
+  if (read === null) return null;
+  const streams = (JSON.parse(read.toString("utf8")) as { streams?: unknown }).streams;
+  const video = Array.isArray(streams)
+    ? streams.find((stream): stream is Record<string, unknown> => typeof stream === "object" && stream !== null && (stream as Record<string, unknown>).codec_type === "video")
+    : undefined;
+  return video ?? null;
+}
+
+/**
+ * The square-pixel display of a decoded sample's frame.
+ * @param decoded - The decoded stream's ffprobe fields.
+ * @returns The display width and height.
+ * @throws {TypeError} When the decoded size is not positive.
+ */
+export function decodedDisplay(decoded: Record<string, unknown>): { width: number; height: number } {
+  return squareDisplay({ width: Number(decoded.width), height: Number(decoded.height),
+    sar: typeof decoded.sample_aspect_ratio === "string" ? decoded.sample_aspect_ratio : undefined });
+}
+
+/**
+ * A source's probe with the display of its real video stream's first decoded frame; the probe as it was when the source has
+ * no real video stream or the decode fails.
+ * @param report - The source's ffprobe report.
+ * @param input - The source.
+ * @param from - Whether the source is the served object or a local file.
+ * @param run - Runs ffmpeg and ffprobe.
+ * @returns The report, with `display` when one was decoded.
+ * @throws {Error} When the sample's directory cannot be made or removed.
+ */
+export async function withDecodedDisplay(report: ProbeReport, input: string, from: ReadFrom, run: CommandRun): Promise<ProbeReport> {
+  const video = realVideoStream(report);
+  if (video === undefined) return report;
+  const directory = await mkdtemp(join(tmpdir(), "decoded-display-"));
+  try {
+    const decoded = await decodedSample(run, input, protocolsFor(from), video.index, 1, join(directory, "sample.nut")).catch(() => null);
+    if (decoded === null || !(Number(decoded.width) > 0) || !(Number(decoded.height) > 0)) return report;
+    return { ...report, display: decodedDisplay(decoded) };
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+}

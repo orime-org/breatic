@@ -66,22 +66,3 @@ export function resolveVideoColorMatrix(stream: Record<string, unknown>): string
   return height >= 720 ? "bt709" : "bt601";
 }
 
-/**
- * The square-pixel display size of the first decoded frame (§4.3 rotation/SAR row, D07): a sample aspect ratio above 1 widens
- * it, below 1 heightens it, rounded; 0:1 reads as 1:1.
- * @param frame - The decoded frame's size and sample aspect ratio.
- * @param frame.width - Its width.
- * @param frame.height - Its height.
- * @param frame.sar - Its sample aspect ratio, `n:d` or `n/d`, if any.
- * @returns The display width and height.
- * @throws {TypeError} When the size is not positive.
- */
-export function squareDisplay(frame: { width: number; height: number; sar?: string }): { width: number; height: number } {
-  const { width, height } = frame;
-  if (!Number.isSafeInteger(width) || !Number.isSafeInteger(height) || width <= 0 || height <= 0) throw new TypeError("Expected the decoded frame size");
-  const match = /^(\d+)[:/](\d+)$/u.exec(frame.sar ?? "");
-  const ratio = match === null || Number(match[1]) === 0 || Number(match[2]) === 0 ? 1 : Number(match[1]) / Number(match[2]);
-  if (ratio > 1) return { width: Math.round(width * ratio), height };
-  if (ratio < 1) return { width, height: Math.round(height / ratio) };
-  return { width, height };
-}

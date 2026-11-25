@@ -45,6 +45,7 @@ import {
   PREVIEW_MAX_BYTES,
   peaksArgs,
   coverArgs,
+  PROBE_MAX_BYTES,
   previewArgs,
   agentPictureArgs,
   readProbeOutput,
@@ -62,6 +63,7 @@ import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
 import { probeServedObject } from "@ingest/container/served-object-read.js";
+import { withDecodedDisplay } from "@ingest/container/decoded-display.js";
 import { handlePresentationRun, PRESENTATION_RUN_PATH } from "@ingest/container/presentation-run.js";
 import { runLongMediaProbe, type LongMediaProbeRunRequest } from "./long-media-probe.js";
 import { readLongMediaSegmentRunRequest, runLongMediaSegment } from "./long-media-segment.js";
@@ -92,10 +94,14 @@ async function probe(
   signal: AbortSignal,
 ): Promise<{ report: ProbeReport; cover: Uint8Array | null }> {
   const probed = await probeServedObject(objectUrl, signal);
-  const report =
+  const read =
     probed === null
       ? NOTHING_FOUND
       : readProbeOutput(probed.toString("utf8"));
+  // A video is filed at its first decoded frame's display (frames-split D07), which its cover also takes.
+  const report = wantCover
+    ? await withDecodedDisplay(read, objectUrl, "object", (program, args) => runTool(program, [...args], { maxBytes: PROBE_MAX_BYTES, signal }))
+    : read;
 
   // Nothing to lift a frame from: an audio file with no art, or one whose only
   // video stream is attached album art. `pickMediaMetadata` is the one place

@@ -15,7 +15,7 @@ import { AUDIO_PEAK_RATE } from "@shared/audio-peaks.js";
 import type { AgentPictureSpec } from "@shared/upload/agent-picture-types.js";
 import type { LongMediaJobRequest } from "@shared/media/long-media-job-types.js";
 
-import { CODEC_CROPPING_ONLY, shownFilters } from "@ingest/shown-picture.js";
+import { shownFilters } from "@ingest/shown-picture.js";
 import { NOTHING_FOUND } from "@ingest/media-metadata.js";
 import type { ProbeReport, ProbeStream } from "@ingest/media-metadata.js";
 
@@ -316,7 +316,7 @@ export function alphaDecoderArgs(codecName: string | null | undefined, alphaMode
  */
 export function coverDecoderArgs(report: ProbeReport): string[] {
   const video = report.streams.find((stream) => stream.codecType === "video" && !stream.attachedPic);
-  return video === undefined ? [] : [...CODEC_CROPPING_ONLY, ...alphaDecoderArgs(video.codecName, video.alphaMode)];
+  return video === undefined ? [] : alphaDecoderArgs(video.codecName, video.alphaMode);
 }
 
 /**

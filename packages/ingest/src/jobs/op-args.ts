@@ -18,7 +18,7 @@ import { buildAdjustVideoFilter, parseAdjustValue } from "@shared/adjust-value.j
 import { DENOISE_NOISE_FLOOR_DB, denoiseReductionDb } from "@shared/audio-denoise.js";
 import { buildCompressorFilter, type DynamicsValue } from "@shared/audio-dynamics.js";
 import { PEAK_LIMITER, buildEqFilter } from "@shared/audio-eq.js";
-import { CODEC_CROPPING_ONLY, shownFilters } from "@ingest/shown-picture.js";
+import { shownFilters } from "@ingest/shown-picture.js";
 import { pickMediaMetadata, realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
 import { ffmpegSeconds, landingDemuxer, readMicroseconds, seekBeforeLanding, seekLandingArgs } from "@ingest/probe-command.js";
 
@@ -140,7 +140,7 @@ function hdrFilter(transfer: string, source: ProbeReport): string {
 }
 
 /**
- * The filters that take the source's decoded frames, which keep codec cropping only (`CODEC_CROPPING_ONLY`), to the
+ * The filters that take the source's frames, as FFmpeg's default decode gives them, to the
  * picture it shows (`shownFilters`: a non-square sample aspect ratio scaled to the shown size), followed by the given
  * filters; a crop rectangle from the panel is in that shown picture.
  * @param source - The source's probe.
@@ -301,7 +301,7 @@ export function opRuns(
   workDir: string,
   source: ProbeReport,
 ): string[][] {
-  const head = [...QUIET, ...SOURCE, ...CODEC_CROPPING_ONLY, "-i", input];
+  const head = [...QUIET, ...SOURCE, "-i", input];
   switch (op) {
     case "crop": {
       const rect = params.rect as { x: number; y: number; w: number; h: number } | null;
@@ -875,7 +875,7 @@ function cutSteps(params: Record<string, unknown>, input: string, output: string
       return [{
         kind: "run",
         program: "ffmpeg",
-        args: [...QUIET, "-seek_timestamp", "1", "-ss", ffmpegSeconds(seekUs), ...SOURCE, ...CODEC_CROPPING_ONLY, ...landingDemuxer(stderr), "-i", input,
+        args: [...QUIET, "-seek_timestamp", "1", "-ss", ffmpegSeconds(seekUs), ...SOURCE, ...landingDemuxer(stderr), "-i", input,
           ...(seekUs < targetUs ? ["-ss", ffmpegSeconds(targetUs - seekUs)] : []), "-t", ffmpegSeconds(toUs - fromUs),
           "-vf", shown(source, EVEN), ...H264, ...AAC, ...FASTSTART, output],
       }];

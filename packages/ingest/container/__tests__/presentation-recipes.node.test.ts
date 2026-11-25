@@ -532,7 +532,7 @@ describe('stitch (§5.4 块的时间、拼接)', () => {
 });
 
 describe('the cover of a transparent video (§3.5; storage cover row)', () => {
-  it.each([['alpha.webm', ['-apply_cropping', 'codec', '-c:v', 'libvpx-vp9']], ['alpha.mov', ['-apply_cropping', 'codec']]] as const)('CV01 the cover cut from %s keeps its alpha', async (name, decoder) => {
+  it.each([['alpha.webm', ['-c:v', 'libvpx-vp9']], ['alpha.mov', []]] as const)('CV01 the cover cut from %s keeps its alpha', async (name, decoder) => {
     const path = join(dir, name);
     const report = readProbeOutput((await run('ffprobe', probeArgs(path, 'own-file'), { maxBuffer: 1 << 24 })).stdout);
     expect(coverDecoderArgs(report)).toEqual(decoder);

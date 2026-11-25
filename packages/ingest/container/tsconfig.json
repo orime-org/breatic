@@ -35,6 +35,7 @@
     "./plan-run.ts",
     "./mini-tool-run.ts",
     "./physical-video-probe.ts",
+    "./decoded-display.ts",
     "./analysis-pipeline.ts",
     "./analysis-detection.ts",
     "../src/jobs/container-report.ts",

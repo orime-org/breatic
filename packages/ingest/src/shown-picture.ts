@@ -2,17 +2,12 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * The picture a video source shows, as Chromium shows it (measured in Chromium 151 and Chrome 157): container cropping is not
- * applied, neither a Matroska PixelCrop nor an MP4 clean aperture, so every decode of a source keeps codec cropping only
- * (`CODEC_CROPPING_ONLY`; FFmpeg's decoders would apply both); a non-square sample aspect ratio is shown at Chromium's natural
- * size (`naturalSize` in `@ingest/media-metadata.js`), which the plan's display geometry and the size an upload is filed at
- * both take.
+ * The picture a video source shows is FFmpeg's (frames-split design D07): its default decode applies the container crop (a
+ * Matroska PixelCrop or an MP4 clean aperture) and the display matrix, and a non-square sample aspect ratio is scaled to the
+ * size the source is filed at (`squareDisplay` in `@ingest/media-metadata.js`), the same size the frame-grid plan takes.
  */
 
 import { pickMediaMetadata, realVideoStream, type ProbeReport } from "@ingest/media-metadata.js";
-
-/** The decoder input options that apply codec cropping and no container cropping. */
-export const CODEC_CROPPING_ONLY: readonly string[] = ["-apply_cropping", "codec"];
 
 /** One entry of a stream's ffprobe side data, as far as the picture's turn reads it. */
 export interface PictureSideData { side_data_type?: unknown; displaymatrix?: unknown; rotation?: unknown; [field: string]: unknown }
@@ -42,8 +37,8 @@ export function displayTurn(side: readonly PictureSideData[] | undefined): Displ
 }
 
 /**
- * The filters that take a source's decoded frames, which keep codec cropping only and are turned by FFmpeg's autorotate, to
- * the picture it shows: a non-square sample aspect ratio scaled to the size the source is filed at, with square pixels.
+ * The filters that take a source's frames, as FFmpeg's default decode gives them, to the picture it shows: a non-square sample
+ * aspect ratio scaled to the size the source is filed at, with square pixels.
  * @param report - The source's probe.
  * @returns The filter chain text, or null when the decoded frames are the shown picture.
  * @throws {never} Never.

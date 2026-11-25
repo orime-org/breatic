@@ -22,7 +22,8 @@ import { PRESENTATION_RUN_PATH, type PresentationProbeAnswer, type PresentationP
 import { classifyVideoAlpha } from '@ingest/video-alpha-classification.js';
 import { download } from '@ingest/container/mini-tool-run.js';
 import { PlanCommandExit, runPlanCommand, runPlanCommandWithStderr } from '@ingest/container/plan-command.js';
-import { packetProbeArgs, parsePackets, resolveVideoColorMatrix, squareDisplay } from '@ingest/container/physical-video-probe.js';
+import { packetProbeArgs, parsePackets, resolveVideoColorMatrix } from '@ingest/container/physical-video-probe.js';
+import { decodedDisplay, decodedSample } from '@ingest/container/decoded-display.js';
 import { PLAYBACK_GOP_SECONDS } from '@ingest/container/playback-command.js';
 
 // The two builder digests, embedded by the container build (`esbuild --define`, packages/ingest/Dockerfile); run from source,
@@ -228,11 +229,8 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   // The first frame of FFmpeg's default decode (container cropping and autorotation applied): its size, sample aspect ratio and
   // pixel format, decoded by ffmpeg (ffprobe reports HEVC with an alpha layer as opaque). The sample is bounded by the frozen count.
   pixelFormats ??= json(await runPlanCommand('ffprobe', ['-v', 'error', '-show_pixel_formats', '-of', 'json'], options));
-  const sample = join(directory, 'sample.nut');
-  await runPlanCommand('ffmpeg', ['-v', 'error', '-nostdin', '-y', '-protocol_whitelist', 'file', '-i', input, '-map', `0:${String(video.index)}`,
-    '-frames:v', String(body.probe.sampleFrames), '-c:v', 'rawvideo', '-f', 'nut', sample], options);
-  const decoded = record((json(await runPlanCommand('ffprobe', ['-v', 'error', '-protocol_whitelist', 'file', '-show_streams', '-of', 'json', sample], options)).streams as unknown[] | undefined)
-    ?.map(record).find((stream) => stream.codec_type === 'video') ?? null);
+  const decoded = record(await decodedSample((program, args) => runPlanCommand(program, args, options), input, 'file', Number(video.index),
+    body.probe.sampleFrames, join(directory, 'sample.nut')));
   const sampled = decoded.pix_fmt;
   if (typeof sampled !== 'string') throw new ProbeFailure('classification_unknown');
   // NUT converts formats it has no tag for to rgb555le, dropping alpha and depth; such a sample's format is the stream's own.
@@ -240,7 +238,7 @@ async function plan(body: PresentationProbeRequest, input: string, directory: st
   const bitDepth = pixelDepth(pixelFormats, pixFmt);
   const alpha = classifyVideoAlpha({ ...raw, streams: streams.map((stream) => (stream === video ? { ...stream, pix_fmt: pixFmt } : stream)) }, pixelFormats);
   if (alpha === 'unknown') throw new ProbeFailure('classification_unknown');
-  const display = squareDisplay({ width: Number(decoded.width), height: Number(decoded.height), sar: typeof decoded.sample_aspect_ratio === 'string' ? decoded.sample_aspect_ratio : undefined });
+  const display = decodedDisplay(decoded);
 
   // Every video packet as FFmpeg's demuxer gives it (§3.2 item 7, §4.1 frame rate row).
   const packets = parsePackets((await runPlanCommand('ffprobe', packetProbeArgs(input, String(video.index)), options)).toString('utf8'));

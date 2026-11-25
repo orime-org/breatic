@@ -195,9 +195,27 @@ describe("a stream the display matrix says to turn", () => {
   });
 });
 
-// A video's sample aspect ratio is part of what it shows, at the size Chromium shows (measured in Chromium 151 and Chrome
-// 157): a ratio above 1 widens the picture, below 1 makes it taller, rounded; a quarter turn swaps the sides. A still
-// image's pixel aspect is not shown by browsers. Container cropping is not shown either: a stream reports none.
+// A video is filed at its first decoded frame's square-pixel display (frames-split D07, `squareDisplay`): the container
+// reads it off FFmpeg's default decode, container crop and display matrix applied. A report without it falls back to the
+// stream: its sample aspect ratio widens (above 1) or heightens (below 1) the picture, rounded, and a quarter turn swaps
+// the sides. A still image's pixel aspect is not shown by browsers.
+describe("a video's filed size", () => {
+  it("is the first decoded frame's display when the container read one", () => {
+    const cropped = { ...report([{ ...VIDEO_STREAM, width: 160, height: 96 }], 2), display: { width: 156, height: 94 } };
+    expect(pickMediaMetadata(cropped)).toMatchObject({ width: 156, height: 94 });
+  });
+
+  it("takes a decoded display as already turned", () => {
+    const turned = { ...report([{ ...VIDEO_STREAM, width: 160, height: 96, rotation: 90 }], 2), display: { width: 94, height: 156 } };
+    expect(pickMediaMetadata(turned)).toMatchObject({ width: 94, height: 156 });
+  });
+
+  it("is a still image's stored pixels even with a decoded display", () => {
+    const still = { ...report([{ ...VIDEO_STREAM, width: 360, height: 240 }], 0.04), display: { width: 480, height: 240 } };
+    expect(mediaNumbersFor("image/jpeg", still)).toMatchObject({ width: 360, height: 240 });
+  });
+});
+
 describe("a video whose pixels are not square", () => {
   const ANAMORPHIC = { ...VIDEO_STREAM, width: 360, height: 240, sampleAspectRatio: { numerator: 4, denominator: 3 } };
 
@@ -213,16 +231,16 @@ describe("a video whose pixels are not square", () => {
     ["8:9 (NTSC 4:3), taller", { numerator: 8, denominator: 9 }, { width: 720, height: 540 }],
     ["10:11, taller and rounded", { numerator: 10, denominator: 11 }, { width: 720, height: 528 }],
     ["40:33, wider and rounded", { numerator: 40, denominator: 33 }, { width: 873, height: 480 }],
-  ])("files 720x480 at SAR %s as Chromium shows it", (_case, sampleAspectRatio, size) => {
+  ])("files 720x480 at SAR %s square", (_case, sampleAspectRatio, size) => {
     expect(pickMediaMetadata(report([{ ...VIDEO_STREAM, width: 720, height: 480, sampleAspectRatio }], 2))).toMatchObject(size);
   });
 
-  // Chromium rounds the double product (VideoAspectRatio::GetNaturalSize): 102 · (13/12) is 110.49999999999999 there, so 110
-  // (measured in Chromium 151 and Chrome 157), though the exact product 110.5 would round to 111.
+  // The double product is rounded: 102 · (13/12) is 110.49999999999999, so 110, though the exact product 110.5 would
+  // round to 111.
   it.each([
     [102, 80, { numerator: 13, denominator: 12 }, { width: 110, height: 80 }],
     [120, 78, { numerator: 12, denominator: 17 }, { width: 120, height: 110 }],
-  ])("files %ix%i at SAR %o with Chromium's double rounding", (width, height, sampleAspectRatio, size) => {
+  ])("files %ix%i at SAR %o with the double product rounded", (width, height, sampleAspectRatio, size) => {
     expect(pickMediaMetadata(report([{ ...VIDEO_STREAM, width, height, sampleAspectRatio }], 2))).toMatchObject(size);
   });
 

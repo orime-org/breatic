@@ -480,15 +480,14 @@ describe("what the display matrix reads as", () => {
 // a video with a display matrix reports the same angle in both places.
 // Measured on ffmpeg 8.0.1 — what the container ships — with the production
 // argument list; the JSON below is that output with the empty sections dropped.
-// Chromium shows no container cropping (a Matroska PixelCrop or an MP4 clean aperture), and FFmpeg's decoders would apply
-// both: the cover decodes with codec cropping only and crops nothing.
+// The cover is the source's picture as FFmpeg's default decode shows it (frames-split D07): the container crop applies.
 describe("what the cover of a cropped stream is cut from", () => {
-  it("decodes with codec cropping only and adds no crop", () => {
+  it("decodes with FFmpeg's default cropping and adds no crop of its own", () => {
     const read = readProbeOutput(JSON.stringify({ streams: [{ index: 0, codec_type: "video", codec_name: "vp9", width: 160, height: 96, disposition: { attached_pic: 0 },
       side_data_list: [{ side_data_type: "Frame Cropping", crop_top: 1, crop_bottom: 0, crop_left: 3, crop_right: 0 }] }], format: { duration: "2.000000", format_name: "matroska,webm" } }));
     const args = coverArgs(URL_FOR_KEY, "object", read);
 
-    expect(args.slice(0, args.indexOf("-i"))).toEqual(expect.arrayContaining(["-apply_cropping", "codec"]));
+    expect(args.slice(0, args.indexOf("-i"))).not.toContain("-apply_cropping");
     expect(args[args.indexOf("-vf") + 1]).toBe("scale='min(1920,iw)':'min(1920,ih)':force_original_aspect_ratio=decrease");
   });
 });
