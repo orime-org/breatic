@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ConsentSnapshot, TaskEntity } from "@breatic/shared";
-import { TaskStatus, miniToolPlanJobRequestSchema, t, videoPresentationWorkKeyFor } from "@breatic/shared";
+import { TaskStatus, miniToolPlanJobRequestSchema, t, videoPresentationWorkKeyFor, writesWorkObject } from "@breatic/shared";
 import { z } from "zod";
 import { ConflictError, NotFoundError, db, type DbTx } from "@breatic/core";
 import { canonicalMiniToolValue, miniToolExecutionOutputSchema, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
@@ -268,8 +268,8 @@ async function runningChunkKeys(plan: MiniToolExecutionPlan, tx: DbTx): Promise<
     if (step.output.miniToolPlanJob === undefined) return [];
     const request = miniToolPlanJobRequestSchema.parse(step.output.miniToolPlanJob);
     const state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
-    const workKey = videoPresentationWorkKeyFor(plan.execution.sourceKey, request.jobId);
-    return (state?.result ?? null) === null && request.outputs.some((output) => output.storageKey === workKey) ? [workKey] : [];
+    return (state?.result ?? null) === null && writesWorkObject(request, plan.execution.sourceKey)
+      ? [videoPresentationWorkKeyFor(plan.execution.sourceKey, request.jobId)] : [];
   });
 }
 

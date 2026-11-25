@@ -14,8 +14,9 @@
  * every staged output once the caller has written the run's commit point.
  */
 
-import { assetRepo, openContainerOutputs, upstreamStepRepo, type AcceptedMiniToolExecution } from "@breatic/domain";
-import { DeadlinePassed, miniToolPlanJobRequestSchema, videoPresentationWorkKeyFor, type MiniToolPlanRecipe, type StudioAssetEntity } from "@breatic/shared";
+import { assetRepo, miniToolStepStateSchema, openContainerOutputs, upstreamStepRepo, type AcceptedMiniToolExecution } from "@breatic/domain";
+import { DeadlinePassed, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, videoPresentationWorkKeyFor, writesWorkObject, type MiniToolPlanRecipe,
+  type StudioAssetEntity } from "@breatic/shared";
 import { miniToolExecutionOutputSchema, videoContainerJobId, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
 import { advanceChunks, advanceStaged, jobStep, storedRequest } from "@worker/handlers/mini-tool/container-steps.js";
 import { advanceStagedMiniToolPlanJob, registerMiniToolPlanJobOutputs, type StagedMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
@@ -303,9 +304,11 @@ export async function registerReportedOutputs(execution: AcceptedMiniToolExecuti
   const staged = new Map<number, string>();
   for (const step of [...await upstreamStepRepo.listSteps(tool.taskId)].sort((a, b) => a.position - b.position)) {
     const request = storedRequest(step);
-    const report = (step.output.miniToolStep as { result?: { result?: { outputs?: { outputIndex: number }[] } } | null } | undefined)?.result?.result;
     // A chunk's work object is never an output (§93 D5-10).
-    if (request === null || report?.outputs === undefined || request.outputs.some((output) => output.storageKey === videoPresentationWorkKeyFor(tool.sourceKey, request.jobId))) continue;
+    if (request === null || step.output.miniToolStep === undefined || writesWorkObject(request, tool.sourceKey)) continue;
+    const result = miniToolStepStateSchema.parse(step.output.miniToolStep).result;
+    const report = result === null ? null : readMiniToolPlanJobReport(request, result.result);
+    if (report?.state !== "done" && report?.state !== "failed") continue;
     for (const output of report.outputs) staged.set(output.outputIndex, step.id);
   }
   const results = new Map<number, NonNullable<VideoToolResult>>();
