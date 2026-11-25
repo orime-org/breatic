@@ -19,8 +19,9 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { withDecodedDisplay } from "@ingest/container/decoded-display.js";
 import { opSteps } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, type ProbeReport } from "@ingest/media-metadata.js";
-import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
+import { coverArgs, PROBE_MAX_BYTES, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { runSteps } from "../run-steps.js";
+import { toolCommandRun } from "../run-tool.js";
 import { writePixelCropped } from "./helpers/matroska-pixel-crop.js";
 
 const run = promisify(execFile);
@@ -107,6 +108,15 @@ describe("the size an uploaded source is filed at", () => {
     const [width, height] = await decodedSize(join(dir, name));
     if (stated !== null) expect({ width, height }, "the measured decode").toEqual(stated);
     expect(pickMediaMetadata(await probed(name))).toMatchObject({ width, height });
+  });
+
+  // The upload's probe decodes through the container's own tool runner, where FFmpeg writes the sample to a file.
+  it("files crop.mkv at 156x94 through the container's tool runner", async () => {
+    const path = join(dir, "crop.mkv");
+    const report = readProbeOutput((await run("ffprobe", probeArgs(path, "own-file"))).stdout);
+    const read = await withDecodedDisplay(report, path, "own-file",
+      toolCommandRun({ maxBytes: PROBE_MAX_BYTES, signal: new AbortController().signal }));
+    expect(pickMediaMetadata(read)).toMatchObject({ width: 156, height: 94 });
   });
 });
 

@@ -11,6 +11,8 @@
 import { execFile, spawn } from "node:child_process";
 import { Readable, pipeline } from "node:stream";
 
+import type { CommandRun } from "@ingest/container/decoded-display.js";
+
 /** What one tool run is given. */
 export interface ToolRun {
   /** The most stdout may hold. */
@@ -19,6 +21,8 @@ export interface ToolRun {
   signal: AbortSignal;
   /** Bytes or a stream to hand the tool on stdin, when it reads from there. */
   input?: Uint8Array | ReadableStream<Uint8Array>;
+  /** The tool writes its result to a file named in its arguments, so an empty stdout is its answer. */
+  writesFile?: boolean;
 }
 
 /**
@@ -31,7 +35,7 @@ export interface ToolRun {
  * @param args - Its argument list.
  * @param run - Its output ceiling, its signal and its input.
  * @returns What it wrote, or null when it failed, was cut off or produced
- *   nothing.
+ *   nothing without `writesFile`.
  */
 export async function runTool(
   program: string,
@@ -65,7 +69,7 @@ export async function runTool(
           resolve(null);
           return;
         }
-        if (stdout.length === 0) {
+        if (stdout.length === 0 && run.writesFile !== true) {
           console.error("media_tool_wrote_nothing", { program });
           resolve(null);
           return;
@@ -100,6 +104,15 @@ export async function runTool(
     // already says how it went.
     pipeline(source, child.stdin, () => {});
   });
+}
+
+/**
+ * A `CommandRun` over `runTool`, for reads that hand FFmpeg a file to write.
+ * @param run - The output ceiling and the run's signal.
+ * @returns The runner.
+ */
+export function toolCommandRun(run: Pick<ToolRun, "maxBytes" | "signal">): CommandRun {
+  return (program, args) => runTool(program, [...args], { ...run, writesFile: true });
 }
 
 /**
