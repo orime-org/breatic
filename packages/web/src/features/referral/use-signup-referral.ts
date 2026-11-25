@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { authApi, type SignupReferralFields } from '@web/data/api/auth';
 import { carriedReferralCode, forgetCarriedReferralCode, forgetRefusedReferralCode } from '@web/lib/referral-carry';
+import { REFERRAL_UI_SHOWN } from '@web/features/referral/referral-ui';
 
 /** The deployment options query, shared by every page that reads them. */
 export const AUTH_OPTIONS_QUERY_KEY = ['auth', 'options'] as const;
@@ -32,18 +33,26 @@ export interface SignupReferral {
  * The field exists only while the deployment takes payments; while that is
  * being read the pages show a placeholder and keep their buttons waiting, and
  * when it cannot be read the field shows anyway, since the server ignores a
- * code it does not want. The field shows exactly what is sent.
+ * code it does not want. The field shows exactly what is sent. While the
+ * program's entry points are hidden the field is absent and nothing is read.
  * @returns The field's state and its actions.
  */
 export function useSignupReferral(): SignupReferral {
-  const options = useQuery({ queryKey: AUTH_OPTIONS_QUERY_KEY, queryFn: () => authApi.options(), retry: false });
+  const options = useQuery({
+    queryKey: AUTH_OPTIONS_QUERY_KEY,
+    queryFn: () => authApi.options(),
+    retry: false,
+    enabled: REFERRAL_UI_SHOWN,
+  });
   const [carried] = React.useState(carriedReferralCode);
   const [value, setValue] = React.useState(carried ?? '');
   const [error, setError] = React.useState<string | null>(null);
 
-  const field: SignupReferralField = options.isPending
-    ? 'loading'
-    : options.isError || options.data.referralEnabled ? 'shown' : 'hidden';
+  const field: SignupReferralField = !REFERRAL_UI_SHOWN
+    ? 'hidden'
+    : options.isPending
+      ? 'loading'
+      : options.isError || options.data.referralEnabled ? 'shown' : 'hidden';
 
   const change = React.useCallback((next: string): void => {
     setValue(next);

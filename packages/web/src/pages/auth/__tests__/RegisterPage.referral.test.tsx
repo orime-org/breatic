@@ -4,6 +4,9 @@
 import type * as AuthModule from '@web/data/api/auth';
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// These cases cover the program's entry points as they behave once shown again (inner#2155).
+vi.mock('@web/features/referral/referral-ui', () => ({ REFERRAL_UI_SHOWN: true }));
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
