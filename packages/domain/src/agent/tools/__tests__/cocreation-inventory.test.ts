@@ -85,8 +85,8 @@ describe("propose_canvas_action says its mechanism, not when to propose", () => 
     expect(proposeSaid()).toMatch(/with no material, several generations,? each with its (?:own )?full prompt,? in one named group/i);
   });
 
-  it("says clips for a Timeline are made as video on a canvas", () => {
-    expect(proposeSaid()).toMatch(/clips? (?:for|used in|in) a timeline[^.]*\bvideo\b[^.]*\bcanvas\b/i);
+  it("says clips for a Timeline are made as a video, picture or sound on a canvas", () => {
+    expect(proposeSaid()).toMatch(/clips? (?:for|used in|in) a timeline[^.]*\bvideo, picture or sound\b[^.]*\bcanvas\b/i);
   });
 });
 

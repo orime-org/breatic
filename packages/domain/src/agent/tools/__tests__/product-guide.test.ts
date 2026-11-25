@@ -15,7 +15,7 @@ import { resolve } from "node:path";
 
 import { describe, it, expect, beforeAll } from "vitest";
 import { getAgentConfig, getMiniToolsConfig, loadLocales, runWithLocale } from "@breatic/core";
-import { CHAT_MESSAGE_MAX_CHARS, GENERATION_TEMPLATES, TEMPLATE_GOALS, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
+import { CHAT_MESSAGE_MAX_CHARS, GENERATION_TEMPLATES, TEMPLATE_GOALS, TIMELINE_MAX_GAIN, canConnect, canGenerate, t, templateGoalsFor } from "@breatic/shared";
 import { MINI_TOOLS } from "@breatic/shared/mini-tools";
 
 import { CANVAS_TOOLS, TOOL_MAP } from "@domain/agent/tools/index.js";
@@ -86,11 +86,12 @@ const TABLE_ROWS = "export const TABLE_MENU_ROWS";
 const source = readFileSync(resolve(import.meta.dirname, "..", "product-guide.ts"), "utf8");
 
 /** A `t("…")` call the guide makes: the id, and the sample values it fills in, if any. */
-type MessageCall = [id: string, values: Record<string, number> | undefined];
+type MessageCall = [id: string, values: Record<string, number | string> | undefined];
 
 /**
  * Every `t("…")` call the guide spells out, with the sample values a call
- * such as `t("chat.sources.count", { count: 3 })` fills its message with.
+ * such as `t("chat.sources.count", { count: 3 })` fills its message with, or the
+ * case a select message picks, such as `t("timeline.video", { kind: "text" })`.
  * @returns The calls, in source order.
  */
 function messageCalls(): MessageCall[] {
@@ -100,7 +101,7 @@ function messageCalls(): MessageCall[] {
     m[1] ?? "",
     m[2] === undefined
       ? undefined
-      : (JSON.parse(m[2].replace(/: ([a-z]\w*)/g, (_, name: string) => `: ${String(locals[name])}`).replace(/(\w+):/g, '"$1":')) as Record<string, number>),
+      : (JSON.parse(m[2].replace(/: ([a-z]\w*)/g, (_, name: string) => `: ${String(locals[name])}`).replace(/(\w+):/g, '"$1":')) as Record<string, number | string>),
   ]);
 }
 
@@ -897,8 +898,9 @@ describe("the guide's source", () => {
     const calls = (source.match(/\bt\([^)]*\)/g) ?? []).filter((call) => !registry.includes(call));
     expect(calls.length).toBeGreaterThan(0);
     // A sample number, or a number read from the deployment's config into a
-    // local of the guide, may fill a message that carries one; nothing else goes in.
-    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: (?:\d+|[a-z]\w*),?)+ ?\})?\)$/);
+    // local of the guide, may fill a message that carries one, and a select
+    // message may be given the case it shows; nothing else goes in.
+    for (const call of calls) expect(call).toMatch(/^t\("[\w.-]+"(?:, \{(?: ?\w+: (?:\d+|[a-z]\w*|"[a-z]+"),?)+ ?\})?\)$/);
   });
 
   it("names the join's clip cap the deployment serves (round 2)", () => {
@@ -912,14 +914,40 @@ describe("the guide's source", () => {
 });
 
 describe("what the guide says about each surface", () => {
-  it("names a missing video among the Timeline conflict reasons (inner#1708 M3)", () => {
-    expect(t("timeline.conflictReason.missing_source")).toBe("Its video is missing");
-    expect(section("Timeline spaces")).toContain(`"${t("timeline.conflictReason.missing_source")}"`);
+  it("names the Timeline toolbar's icon buttons in the order the toolbar shows them (inner#1709)", () => {
+    const source = webSource("spaces/timeline/TimelineSpace.tsx");
+    const start = source.indexOf("role='toolbar'");
+    const bar = source.slice(source.indexOf("\n", start), source.indexOf("<TimelineTrackArea", start));
+    const keys = [...bar.matchAll(/label=\{t\('([\w.]+)'\)\}/g)].map((match) => match[1] as string);
+    expect(keys).toEqual([
+      "timeline.addMedia", "timeline.webAnimation.add", "timeline.edit.addText", "timeline.edit.undo", "timeline.edit.redo",
+      "timeline.edit.split", "timeline.edit.duplicate", "timeline.edit.delete", "timeline.edit.magnet", "timeline.edit.snap",
+      "timeline.edit.linkage", "timeline.edit.zoom",
+    ]);
+    const toolbar = section("Timeline spaces").split("The toolbar below the play bar")[1] ?? "";
+    const at = keys.map((key) => toolbar.indexOf(`"${t(key)}"`));
+    expect(at.every((index) => index >= 0), keys.join()).toBe(true);
+    expect(at).toEqual([...at].sort((a, b) => a - b));
+  });
+
+  it("says any track holds any kind and what a picture, a text and a sound add (inner#1709)", () => {
+    const timeline = section("Timeline spaces");
+    expect(timeline).toContain("Any track holds any kind of clip");
+    expect(timeline).not.toMatch(/visual track/);
+    for (const key of ["timeline.edit.addText", "timeline.text.body", "timeline.text.size", "timeline.audio.gain", "timeline.audio.mute", "timeline.upload.processing"]) {
+      expect(t(key), key).not.toBe(key);
+      expect(timeline, key).toContain(`"${t(key)}"`);
+    }
+    expect(timeline).toContain(`a slider from 0% to ${String(Math.floor(TIMELINE_MAX_GAIN * 100))}%`);
+  });
+
+  it("fills every select message it quotes, leaving no raw message in the text", () => {
+    expect(renderProductGuide()).not.toMatch(/\{\w+, (?:select|plural)/);
   });
 
   it("says how the Timeline adds a top track, cancels a drag and snaps (inner#1708 G1)", () => {
     const timeline = section("Timeline spaces");
-    expect(timeline).toMatch(/Alt\+Up on the top visual track adds a new visual track/);
+    expect(timeline).toMatch(/Alt\+Up on the top track adds a new track/);
     expect(timeline).toMatch(/Esc cancels a drag without changing anything/);
     expect(timeline).toMatch(/other clip edges, the playhead and frame 0/);
   });

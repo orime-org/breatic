@@ -26,6 +26,7 @@ import {
   MAX_SPACES_PER_PROJECT,
   SCENE_LOOK_MAX_PARTS,
   SCENE_POSE_MAX_KEYS,
+  TIMELINE_MAX_GAIN,
   canConnect,
   canGenerate,
   t,
@@ -82,7 +83,7 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
       ["Document snapshots", "saving, previewing, comparing, restoring, renaming and deleting snapshots of a document"],
     ],
   },
-  { group: "Timeline", sections: [["Timeline spaces", "adding videos and copies of web animations made in Motion to a timeline and arranging them"]] },
+  { group: "Timeline", sections: [["Timeline spaces", "adding videos, pictures, sounds, texts and copies of web animations made in Motion to a timeline and arranging them"]] },
   { group: "Motion", sections: [["Motion spaces", "making, modifying and exporting web animations, annotating them and putting their videos on a canvas"]] },
   { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard, and the director console's cameras, lights and ambient light in a 3D space"],
     ["3D appearance", "changing each part of a 3D object: colour, finish presets, gloss, metallic, opacity, transmission, glow, images and their tiling, and resetting"]] },
@@ -1559,19 +1560,30 @@ export function renderProductGuide(): string {
       `${quoted(t("chat.documentProposal.mediaLeftOut", { count: 1 }))}`,
     "",
     "## Timeline spaces",
-    `The central video preview sits above the toolbar and the tracks. ${quoted(t("timeline.play"))} and ` +
+    `The central preview sits above the toolbar and the tracks. ${quoted(t("timeline.play"))} and ` +
       `${quoted(t("timeline.pause"))} control playback; the slider below the preview selects its integer frame. ` +
       "At the right end of that play bar a menu shows the frame's aspect ratio and size, such as 16:9 · 1920×1080, and offers 16:9, 9:16, 1:1, 4:3, 4:5, 2:3 and 21:9; " +
       "a new Timeline starts at 16:9. Choosing one changes the frame for everyone in the Space and is one undo step: the black preview frame takes that shape within the preview area, " +
       "and each layer keeps its place relative to the frame, its scale and its rotation. A Timeline whose frame is not one of these sizes shows its size in the menu with no ratio checked. " +
       "A Viewer sees the menu disabled. " +
-      `The bottom visual track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
-      `${quoted(t("timeline.track", { index: 2 }))}, and the preview draws every clip at the playhead, stacked from the bottom track up, each placed by its own position, size and angle. ` +
-      "Each clip shows its name and its length as a timecode (hours:minutes:seconds:frames), as does the position beside the play button. Click a clip to select it, or an empty part of a track to clear the selection; " +
-      "the panel on the right shows its source name, " +
-      `${quoted(t("timeline.edit.track"))}, ${quoted(t("timeline.startFrame"))}, ${quoted(t("timeline.edit.inPoint"))} and ` +
-      `${quoted(t("timeline.edit.duration"))}, then its video's length in frames at the Timeline's frame rate. Type a whole frame and press Enter or leave the field to apply it. ` +
-      `For a video or a web animation copy it also shows ${quoted(t("timeline.edit.transform"))}: ${quoted(t("timeline.edit.positionX"))} and ${quoted(t("timeline.edit.positionY"))} in pixels of the Timeline's frame, ` +
+      `The bottom track is ${quoted(t("timeline.mainTrack"))}; tracks above it are named like ` +
+      `${quoted(t("timeline.track", { index: 2 }))}. Any track holds any kind of clip: a video, a picture, a sound, a text or a web animation copy. ` +
+      "The preview draws every clip at the playhead that has a picture (every kind but sound), stacked from the bottom track up, each placed by its own position, size and angle. " +
+      "Each clip shows an icon for its kind and its name, with its length below as a timecode (hours:minutes:seconds:frames), as does the position beside the play button: " +
+      "a video is blue with a film icon, a picture green with a picture icon and a sound teal with a music note, each named after its file; a text is orange with a T icon and named by its first line; " +
+      "a web animation copy is violet with a code icon. Click a clip to select it, or an empty part of a track to clear the selection; " +
+      `the panel on the right shows its name (a text's reads ${quoted(t("timeline.video", { kind: "text" }))}), ` +
+      `${quoted(t("timeline.edit.track"))} (a menu of every track and ${quoted(t("timeline.edit.newTrack"))}), ${quoted(t("timeline.startFrame"))}, ` +
+      `${quoted(t("timeline.edit.inPoint"))} (for a video, a sound or a web animation copy only) and ${quoted(t("timeline.edit.duration"))}. ` +
+      "Type a whole frame and press Enter or leave the field to apply it. " +
+      `A picture or a text has no length of its own: the panel's last line reads ${quoted(t("timeline.sourceExtent", { kind: "image", frames: 0, fps: 0 }))}, and it can be made as long as you like. ` +
+      "A video or a sound cannot run past its file: the last line gives the file's length in frames at the Timeline's frame rate, such as " +
+      `${quoted(t("timeline.sourceExtent", { kind: "audio", frames: 120, fps: 24 }))}. ` +
+      `A text also shows ${quoted(t("timeline.text.body"))}, a box for its words, applied when you leave it (emptying it puts the old words back and says ` +
+      `${quoted(t("timeline.text.bodyEmpty"))}), and ${quoted(t("timeline.text.size"))}, the height of its letters in pixels of the Timeline's frame, kept within the range the frame allows. ` +
+      `A video or a sound also shows ${quoted(t("timeline.audio.gain"))}, a slider from 0% to ${Math.floor(TIMELINE_MAX_GAIN * 100)}% applied when you let go, one undo step each time, ` +
+      `and a ${quoted(t("timeline.audio.mute"))} switch that silences the clip and turns the slider off; a Viewer sees the volume as a percentage, or ${quoted(t("timeline.audio.mute"))}. ` +
+      `Every clip but a sound also shows ${quoted(t("timeline.edit.transform"))}: ${quoted(t("timeline.edit.positionX"))} and ${quoted(t("timeline.edit.positionY"))} in pixels of the Timeline's frame, ` +
       `${quoted(t("timeline.edit.scaleX"))} and ${quoted(t("timeline.edit.scaleY"))} from 1% to 10000%, and ${quoted(t("timeline.edit.rotation"))}; ` +
       `the ${quoted(t("timeline.edit.lockRatio"))} switch below them, on by default, makes a change to one scale change the other in proportion; a Viewer sees the values as text and no switch. ` +
       `For a clip that is not at the playhead the group shows ${quoted(t("timeline.edit.offFrame"))} Its values can still be changed. ` +
@@ -1580,57 +1592,71 @@ export function renderProductGuide(): string {
       "and drag the round handle above it to rotate it around its centre. With snapping on, the layer's edges and centre lines snap to the frame's edges and centre lines and a guide line shows. " +
       "Playback pauses when a drag starts, each release is one undo step, and Esc cancels a drag without changing anything. A layer can be moved partly or wholly out of the frame; its handles stay reachable. " +
       "Drag a clip to move it, onto another track to change track, or into the dashed row above the top track to create a " +
-      "new visual track. Drag the edges of the selected clip to trim it. " +
-      `The toolbar has ${quoted(t("timeline.edit.undo"))}, ${quoted(t("timeline.edit.redo"))}, ` +
-      `${quoted(t("timeline.edit.split"))} (splits the selected clip at the playhead), ` +
-      `${quoted(t("timeline.edit.duplicate"))} (places a copy right after it) and ${quoted(t("timeline.edit.delete"))}, ` +
-      `then three icon switches whose names show on hover, ${quoted(t("timeline.edit.magnet"))}, ${quoted(t("timeline.edit.snap"))} and ` +
-      `${quoted(t("timeline.edit.linkage"))}, and the ${quoted(t("timeline.edit.zoom"))} slider. The switches are yours and are kept for your account in this browser. ` +
+      "new track. Drag the edges of the selected clip to trim it: a picture or a text stretches either way without limit (its left edge stops at frame 0), a video or a sound only as far as its file. " +
+      "The toolbar below the play bar is one row of icon buttons whose names show on hover, followed by the shortcut where there is one: " +
+      `a plus, ${quoted(t("timeline.addMedia"))}; a code icon, ${quoted(t("timeline.webAnimation.add"))}; a T, ${quoted(t("timeline.edit.addText"))}; ` +
+      `then two curved arrows, ${quoted(t("timeline.edit.undo"))} and ${quoted(t("timeline.edit.redo"))}, faded when there is nothing to undo or redo; ` +
+      `then scissors, ${quoted(t("timeline.edit.split"))} (splits the selected clip at the playhead), two sheets, ` +
+      `${quoted(t("timeline.edit.duplicate"))} (places a copy right after it) and a bin, ${quoted(t("timeline.edit.delete"))}, which with no clip selected say to select one first; ` +
+      `then three switches that look pressed while on, a magnet, ${quoted(t("timeline.edit.magnet"))}, an arrow to a line, ${quoted(t("timeline.edit.snap"))} and a chain link, ` +
+      `${quoted(t("timeline.edit.linkage"))}; and at the right end the ${quoted(t("timeline.edit.zoom"))} slider, named on hover too. The switches are yours and are kept for your account in this browser. ` +
+      `A Viewer sees ${quoted(t("timeline.addMedia"))} and the editing buttons faded, and no ${quoted(t("timeline.edit.addText"))}. ` +
       `With ${quoted(t("timeline.edit.magnet"))} on, clips on ${quoted(t("timeline.mainTrack"))} play end to end: a dropped clip is inserted ` +
       "and later clips move along, a deleted or trimmed clip closes its gap, and the start frame there is read only " +
       `(${quoted(t("timeline.edit.magnetStartHint"))}). On other tracks, or with the magnet off, a clip dropped on another ` +
       "covers it: the covered part is trimmed away, a clip covered in the middle splits in two, and a deleted clip leaves a gap. " +
-      `With ${quoted(t("timeline.edit.linkage"))} on, clips above a main-track clip move or are deleted with it. ` +
+      `With ${quoted(t("timeline.edit.linkage"))} on, clips above a main-track clip, sounds included, move or are deleted with it. ` +
       `${quoted(t("timeline.edit.snap"))} lines dragged edges up with other clip edges, the playhead and frame 0. ` +
       `An empty track above the main track shows ${quoted(t("timeline.edit.deleteTrack"))}. ` +
       "Keys: Left and Right move the selected clip one frame (Shift one second); on the main track with the magnet on they swap it with the clip before or after it; " +
       "with nothing selected they move the playhead; " +
-      "Alt+Up and Alt+Down change its track, and Alt+Up on the top visual track adds a new visual track; Esc cancels a drag without changing anything; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
-      "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off. " +
-      `Clips marked ${quoted(t("timeline.conflict"))} are listed under ${quoted(t("timeline.conflictList"))} below the properties ` +
-      `(${quoted(t("timeline.noConflicts"))} when there are none); pressing a row selects the clip, moves the playhead to its start ` +
-      "and scrolls the tracks to it. Each row names the clip's track and says why, as do the selected clip's properties, for example " +
-      `${quoted(t("timeline.conflictReason.missing_track"))}, which changing the clip's track fixes, or ` +
-      `${quoted(t("timeline.conflictReason.missing_source"))}, which deleting the clip fixes. ` +
-      `A row reading ${quoted(t("timeline.conflictReason.damaged"))} offers ${quoted(t("timeline.edit.delete"))}. ${quoted(t("timeline.conflictHelp"))}`,
-    `${quoted(t("timeline.addMedia"))} in the track controls opens a form with ` +
-      `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}. ` +
-      `The Project list shows registered videos; ${quoted(t("timeline.material.more"))} reads its next page. ` +
-      `For a local file press ${quoted(t("timeline.material.chooseFile"))}. The form's ` +
-      `${quoted(t("timeline.edit.track"))} starts at the selected clip's track or ${quoted(t("timeline.mainTrack"))} and also offers ` +
+      "Alt+Up and Alt+Down change its track, and Alt+Up on the top track adds a new track; Esc cancels a drag without changing anything; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
+      "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off.",
+    `${quoted(t("timeline.edit.addText"))} places a new text reading ${quoted(t("timeline.text.default"))} at the playhead for a set length, on the lowest track above every clip drawn there ` +
+      "that is free for that long, or on a new top track, without moving or trimming any other clip. The new text is selected, with the cursor in its " +
+      `${quoted(t("timeline.text.body"))} box ready for typing. The preview draws a text's lines centred in the frame, then places it by its position, size and angle like any layer.`,
+    `${quoted(t("timeline.addMedia"))} opens a form with ` +
+      `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}, and beside them ` +
+      `${quoted(t("timeline.video", { kind: "video" }))}, ${quoted(t("timeline.video", { kind: "image" }))} and ${quoted(t("timeline.video", { kind: "audio" }))} to choose the kind. ` +
+      "The Project list shows the Project's registered files of that kind, a picture with its width and height, a video or a sound with its length; " +
+      `${quoted(t("timeline.material.more"))} reads its next page. ` +
+      `For a local file press ${quoted(t("timeline.material.chooseFile", { kind: "video" }))}, whose name follows the kind (such as ${quoted(t("timeline.material.chooseFile", { kind: "image" }))}). The form's ` +
+      `${quoted(t("timeline.edit.track"))} starts at the selected clip's track or ${quoted(t("timeline.mainTrack"))} and lists every track and ` +
       `${quoted(t("timeline.edit.newTrack"))}; ${quoted(t("timeline.startFrame"))} starts at the sequence end and can be changed explicitly. ` +
       `${quoted(t("timeline.material.confirm"))} confirms that position and adds a separate clip each time; on the main track with the magnet on, the form names the clip it will follow and the clip is inserted there, keeping the main track end to end. ` +
-      `A local file is placed at once at that captured position as a clip named after the file, the form closes and the file uploads in the background; ` +
-      `the Space tab shows a spinner while it uploads, and the clip becomes the uploaded video when it finishes. Until then the clip is a plain card with a dashed border and reads ` +
-      `${quoted(t("timeline.upload.progress", { progress: 42 }))} or ${quoted(t("timeline.upload.uploading"))}, and the uploader's properties panel shows a progress bar; it can be moved, trimmed, split, duplicated or deleted like a video, ` +
-      `and the preview shows nothing for it, only a note at the top right with its track. A failed upload turns the clip red and reads ${quoted(t("timeline.upload.failed"))}, and the uploader's properties panel says why; ` +
-      `when sending the same file again can help, that panel offers ${quoted(t("timeline.retry"))}. ` +
-      `An upload that finished while its uploader may not edit reads ${quoted(t("timeline.upload.waiting"))}, and if the uploader leaves before it finishes the clip turns grey and reads ` +
-      `${quoted(t("timeline.upload.unfinished"))}; anyone who can edit can delete it. Undoing the placement removes the clip while the upload continues. ` +
+      "A video or a sound added this way runs its whole file, a picture a set length its edges can stretch. " +
+      "A local file is placed at once at that captured position as a clip named after the file, the form closes and the file uploads in the background; " +
+      "the Space tab shows a spinner while the file is being sent. Until it is ready the clip is a plain card with a dashed border and reads " +
+      `${quoted(t("timeline.upload.progress", { progress: 42 }))} or ${quoted(t("timeline.upload.uploading"))}, then ${quoted(t("timeline.upload.processing"))} once the file has been sent, ` +
+      "and the uploader's properties panel shows a progress bar. Once the file has been sent it finishes on the server even if the uploader closes the page, " +
+      "and the clip becomes a video, picture or sound clip, by what the file turned out to be, for everyone in the Space. " +
+      "Meanwhile it can be moved, trimmed, split, duplicated or deleted like any clip, it has no position and size, a picture's has no in point, " +
+      "and the preview shows nothing for it, only a note at the top right with its track. " +
+      `A failed upload turns the clip red and reads ${quoted(t("timeline.upload.failed"))}. When the server failed it, every member's properties panel says why; ` +
+      `when the file never reached the server, only the uploader's panel says why and the others read ${quoted(t("timeline.upload.failed"))}. ` +
+      `On the uploader's page, when sending the same file again can help, the panel offers ${quoted(t("timeline.retry"))}; otherwise it adds ${quoted(t("timeline.upload.removeAndReadd"))} ` +
+      `If the uploader leaves before the file has been sent, the clip turns grey and reads ${quoted(t("timeline.upload.unfinished"))}, and its panel adds ` +
+      `${quoted(t("timeline.upload.removeAndReadd"))} Anyone who can edit can delete it. Undoing the placement removes the clip; the file still uploads to the Project's media, but no clip is added. ` +
       `A permission change requires another confirmation after editing is available. ` +
       `${quoted(t("timeline.cancel"))} ends the current material selection. ` +
-      "Switching to another Space keeps uploading. Closing the Space while an upload runs uses the existing warning. " +
+      "Switching to another Space keeps uploading. Closing the Space while a file is being sent uses the existing warning. " +
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
-    "Several videos play together on one clock. " +
-      "A video still loading is noted at the top right of the preview with its track as loading, " +
-      `and a video that cannot be loaded is noted there with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
-      "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
-      `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
+    "Videos, pictures, texts, sounds and web animation copies play together on one clock, and every video and sound at the playhead is heard at the same time, each at its own volume. " +
+      "A video or a sound still loading is noted at the top right of the preview with its track as loading. " +
+      "A video, picture or sound whose file cannot be read is noted there with its track and why, the same reason its clip shows under its name and its properties panel shows: " +
+      `${quoted(t("timeline.media.forbidden", { kind: "video" }))} when you may not read it, with ${quoted(t("timeline.media.contactAdmin"))} in the panel, ` +
+      `or ${quoted(t("timeline.media.readFailed", { kind: "audio" }))} otherwise, with ${quoted(t("timeline.retry"))} in the note and the panel; ` +
+      "the other layers keep playing, and a retry reloads only that layer, with the preview waiting for it before going on together. " +
+      `A text whose fonts fail to load is still drawn, in a fallback font, and noted there with its track as its fonts having failed to load, with ${quoted(t("timeline.retry"))}; ` +
+      "playback goes on. " +
+      "While a layer it needs is getting ready (a video or a sound loading, a picture decoding, a text's fonts loading), " +
+      `small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
       `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,
     `Web animations are made in Motion Spaces. ${quoted(t("timeline.webAnimation.add"))}, beside ${quoted(t("timeline.addMedia"))}, opens a list of the Project's finished web animations, ` +
       "read again each time it opens and grouped by the Space that made them (Motion Spaces first, then ones made in a Timeline before Motion existed, then " +
       `${quoted(t("timeline.webAnimation.picker.deletedSpace"))}); each row shows its name, aspect ratio and length. A web animation still being made is not listed until it finishes. ` +
-      "Pressing a row places a separate copy at the playhead, above the highest video there or on a new top track, and closes the list; open it again and press the same row to place another copy. " +
+      "Pressing a row places a separate copy at the playhead, on the lowest track above every video, picture and text there that is free for its length, or on a new top track, and closes the list; " +
+      "open it again and press the same row to place another copy. " +
       `${quoted(t("timeline.webAnimation.picker.loadMore"))} reads more, and with none it says ${quoted(t("timeline.webAnimation.picker.empty"))}. ` +
       `${quoted(t("timeline.webAnimation.goMake"))} at its bottom opens the newest Motion Space, or makes one named Motion when the Project has none. ` +
       "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
@@ -1641,7 +1667,7 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.webAnimation.openInMotion"))}, which opens the newest Motion Space (one named Motion is made when the Project has none) with that run ` +
       `highlighted under ${quoted(t("spaces.webAnimation.failed"))} in ${quoted(t("spaces.webAnimation.madeInTimeline"))}, where ` +
       `${quoted(t("timeline.webAnimation.retry"))} opens the dialog filled in as before. ` +
-      "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy bound to a web animation that has not finished, or ended without a result, is noted at the top right of the " +
+      "In the preview copies stack by track with the other clips, so a copy wholly covered by a higher layer is not seen. A copy bound to a web animation that has not finished, or ended without a result, is noted at the top right of the " +
       "preview with its track and its status, a copy whose page is still loading shows nothing and is noted there as loading, " +
       "and a copy whose page cannot be loaded is noted there as unavailable with " +
       `${quoted(t("timeline.retry"))}. Viewers see the copies and their panels, without ${quoted(t("timeline.webAnimation.add"))}, and see ` +
