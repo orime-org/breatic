@@ -2,33 +2,41 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The video layers of the Timeline preview (#1410 design §6.2): one `<video>` per visible or premounted video clip,
- * keyed by clip id. The controller owns each element's lifecycle, its seek and play requests and its per-lane sync
- * state; the playback hook owns the clock and decides when lanes seek, play or wait.
+ * The media lanes of the Timeline preview (#1410 design §6.2, inner#1709): one `<video>` per visible
+ * or premounted video clip and one `<audio>` per audible or premounted sound clip, keyed by clip id. The controller owns
+ * each element's lifecycle, its seek and play requests, its per-lane sync state and its node in the preview's audio
+ * graph; the playback hook owns the clock and the `AudioContext`, and decides when lanes seek, play or wait.
  *
  * The sync rules are ported from the HyperFrames runtime (`@hyperframes/core` 0.8.186 `dist/runtime/media.js`,
  * Apache-2.0); each ported function names its source lines.
  */
 
-import type { TimelineDocumentV1, TimelineRate, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
+import {
+  TIMELINE_MAX_GAIN, type TimelineAudioClip, type TimelineAudioSource, type TimelineDocumentV1, type TimelineRate, type TimelineVideoClip,
+  type TimelineVideoSource,
+} from '@breatic/shared';
 
-/** One visible or premounted video clip as the Space hands it over, with its asset state. */
-export interface TimelineVideoLayer {
+import { corsUrl } from '@web/lib/cors-url';
+
+/** One visible or premounted video or sound clip as the Space hands it over, with its asset state. */
+export interface TimelineMediaLayer {
   clipId: string;
+  /** A `<video>` or an `<audio>`; a video by default. */
+  kind?: 'video' | 'audio';
   /** The file address once the asset is ready. */
   fileUrl: string | null;
   coverUrl: string | null;
   state: 'loading' | 'ready' | 'failed';
 }
 
-/** What a video layer's preview note shows. */
-export type TimelineVideoLayerState = TimelineVideoLayer['state'];
+/** What a media layer's preview note shows. */
+export type TimelineMediaLayerState = TimelineMediaLayer['state'];
 
-/** One video lane: an element and what the playback asked of it. */
-export interface VideoLane {
+/** One media lane: an element and what the playback asked of it. */
+export interface MediaLane {
   readonly clipId: string;
-  readonly element: HTMLVideoElement;
-  layer: TimelineVideoLayer;
+  readonly element: HTMLMediaElement;
+  layer: TimelineMediaLayer;
   /** Not placed yet since it entered, its file changed or it was retried; the playback seeks it to its target on the next check. */
   fresh: boolean;
   /** The source time the lane is to show, and whether it has not landed there yet. */
@@ -47,34 +55,40 @@ export interface VideoLane {
   tailSeek: boolean;
   /** The clip placement the lane was last placed for: start, in-point, speed and source. */
   mapping: string;
+  /** Its source and gain nodes while an `AudioContext` is attached. */
+  audio: { source: MediaElementAudioSourceNode; gain: GainNode } | null;
 }
 
 /** The clip and its source a lane plays, read from the current document. */
-export interface VideoLaneClip { clip: TimelineVideoClip; source: TimelineVideoSource }
+export type MediaLaneClip = { clip: TimelineVideoClip; source: TimelineVideoSource } | { clip: TimelineAudioClip; source: TimelineAudioSource };
 
-/** The video-layer controller the playback hook creates once. */
-export interface VideoLayerController {
+/** The media-layer controller the playback hook creates once. */
+export interface MediaLayerController {
   /** Create the elements of layers that entered, update changed files and remove the elements of layers that left. */
-  sync: (layers: readonly TimelineVideoLayer[]) => void;
+  sync: (layers: readonly TimelineMediaLayer[]) => void;
   /** A clip's element. */
-  element: (clipId: string) => HTMLVideoElement | undefined;
+  element: (clipId: string) => HTMLMediaElement | undefined;
   /** Every lane, in the order the layers were handed over. */
-  lanes: () => VideoLane[];
+  lanes: () => MediaLane[];
   /** Each lane's state for its preview note. */
-  states: () => ReadonlyMap<string, TimelineVideoLayerState>;
-  /** Apply each clip's speed, gain and mute to its element again. */
+  states: () => ReadonlyMap<string, TimelineMediaLayerState>;
+  /** Apply each clip's speed, gain and mute again. */
   configure: () => void;
-  /** Pause and remove every element. */
+  /** Route every lane, and each lane made later, through its own gain node into this context. */
+  attachAudio: (context: AudioContext) => void;
+  /** Disconnect every lane's nodes; the lanes and their elements stay. */
+  detachAudio: () => void;
+  /** Disconnect, release and remove every element. */
   dispose: () => void;
 }
 
 /** What the controller reads and reports. */
-export interface VideoLayerControllerOptions {
+export interface MediaLayerControllerOptions {
   document: () => TimelineDocumentV1;
   /** Called when an element reports something the playback checks. */
   onChange: () => void;
-  /** Makes a clip's element. */
-  createMedia: (clipId: string) => HTMLVideoElement;
+  /** Makes a clip's element of the given kind. */
+  createMedia: (clipId: string, kind: 'video' | 'audio') => HTMLMediaElement;
 }
 
 const MEDIA_EVENTS = [
@@ -83,17 +97,23 @@ const MEDIA_EVENTS = [
 ] as const;
 
 /**
- * The clip a lane plays and its source, when both are in the document.
+ * The video or sound clip a lane plays and its source, when both are in the document.
  * @param document - The current document.
  * @param clipId - The lane's clip.
- * @returns The video clip and source, or null.
+ * @returns The clip and source, or null.
  * @throws {never} Never.
  */
-export function videoLaneClip(document: TimelineDocumentV1, clipId: string): VideoLaneClip | null {
+export function mediaLaneClip(document: TimelineDocumentV1, clipId: string): MediaLaneClip | null {
   const clip = document.clips[clipId];
-  if (clip?.kind !== 'video') return null;
-  const source = document.sources[clip.sourceId];
-  return source === undefined ? null : { clip, source };
+  if (clip?.kind === 'video') {
+    const source = document.sources[clip.sourceId];
+    return source?.kind === 'video' ? { clip, source } : null;
+  }
+  if (clip?.kind === 'audio') {
+    const source = document.sources[clip.sourceId];
+    return source?.kind === 'audio' ? { clip, source } : null;
+  }
+  return null;
 }
 
 /**
@@ -105,7 +125,7 @@ export function videoLaneClip(document: TimelineDocumentV1, clipId: string): Vid
  * @returns The source time in seconds.
  * @throws {never} Never.
  */
-export function videoLaneSourceSeconds(clip: TimelineVideoClip, source: TimelineVideoSource, fps: TimelineRate, seconds: number): number {
+export function mediaLaneSourceSeconds(clip: MediaLaneClip['clip'], source: MediaLaneClip['source'], fps: TimelineRate, seconds: number): number {
   const inPoint = clip.sourceInFrame * source.timebase.den / source.timebase.num;
   return inPoint + (seconds - clip.startFrame * fps.den / fps.num) * clip.rate.num / clip.rate.den;
 }
@@ -116,7 +136,7 @@ export function videoLaneSourceSeconds(clip: TimelineVideoClip, source: Timeline
  * @returns Its start, in-point, speed and source.
  * @throws {never} Never.
  */
-export function videoLaneMapping(clip: TimelineVideoClip): string {
+export function mediaLaneMapping(clip: MediaLaneClip['clip']): string {
   return `${clip.startFrame}:${clip.sourceInFrame}:${clip.rate.num}/${clip.rate.den}:${clip.sourceId}`;
 }
 
@@ -127,7 +147,7 @@ export function videoLaneMapping(clip: TimelineVideoClip): string {
  * @returns Whether it failed.
  * @throws {never} Never.
  */
-export function videoLaneFailed(lane: VideoLane): boolean {
+export function mediaLaneFailed(lane: MediaLane): boolean {
   // jsdom reports a missing error as undefined, the platform as null.
   return lane.layer.state === 'failed' || Boolean(lane.element.error);
 }
@@ -138,23 +158,51 @@ export function videoLaneFailed(lane: VideoLane): boolean {
  * @returns The controller.
  * @throws {never} Never.
  */
-export function createVideoLayerController(options: VideoLayerControllerOptions): VideoLayerController {
-  const lanes = new Map<string, VideoLane>();
+export function createMediaLayerController(options: MediaLayerControllerOptions): MediaLayerController {
+  const lanes = new Map<string, MediaLane>();
+  let context: AudioContext | null = null;
 
   /**
-   * Apply the clip's speed, gain and mute.
+   * Route a lane through its own gain node into the attached context.
+   * @param lane - The lane.
+   * @throws {DOMException} When the element already feeds another context.
+   */
+  function connect(lane: MediaLane): void {
+    if (context === null || lane.audio !== null) return;
+    const source = context.createMediaElementSource(lane.element);
+    const gain = context.createGain();
+    source.connect(gain);
+    gain.connect(context.destination);
+    lane.audio = { source, gain };
+  }
+
+  /**
+   * Take a lane's nodes out of the graph.
+   * @param lane - The lane.
+   * @throws {never} Never.
+   */
+  function disconnect(lane: MediaLane): void {
+    if (lane.audio === null) return;
+    lane.audio.source.disconnect();
+    lane.audio.gain.disconnect();
+    lane.audio = null;
+  }
+
+  /**
+   * Apply the clip's speed, and its gain and mute to its gain node; the element itself plays at full volume (design §5.2).
    * @param lane - The lane.
    * @throws {DOMException} When the browser refuses a media setting.
    */
-  function configureLane(lane: VideoLane): void {
-    const found = videoLaneClip(options.document(), lane.clipId);
+  function configureLane(lane: MediaLane): void {
+    const found = mediaLaneClip(options.document(), lane.clipId);
     if (found === null) return;
     const rate = found.clip.rate.num / found.clip.rate.den;
     // `media.js:479-481`: a rate is written only when it differs.
     if (Math.abs(lane.element.playbackRate - rate) > 1e-6) lane.element.playbackRate = rate;
     lane.steer = 0;
-    lane.element.volume = Math.min(1, found.clip.gain);
-    lane.element.muted = found.clip.mute;
+    lane.element.volume = 1;
+    lane.element.muted = false;
+    if (lane.audio !== null) lane.audio.gain.gain.value = found.clip.mute ? 0 : Math.min(found.clip.gain, TIMELINE_MAX_GAIN);
   }
 
   /**
@@ -163,23 +211,31 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
    * @param layer - Its layer.
    * @throws {never} Never.
    */
-  function attach(lane: VideoLane, layer: TimelineVideoLayer): void {
-    if (layer.fileUrl !== null && lane.element.src !== layer.fileUrl) lane.element.src = layer.fileUrl;
+  function attach(lane: MediaLane, layer: TimelineMediaLayer): void {
+    // Web Audio reads the samples only from a CORS-mode response (design §5.2); a refused one is an element error.
+    if (layer.fileUrl !== null) {
+      const src = corsUrl(layer.fileUrl);
+      if (lane.element.src !== src) lane.element.src = src;
+    }
+    if (!(lane.element instanceof HTMLVideoElement)) return;
     if (layer.coverUrl !== null) lane.element.poster = layer.coverUrl;
     else lane.element.removeAttribute('poster');
   }
 
   /**
-   * Stop and detach one lane.
+   * Stop one lane: its nodes leave the graph, then its element pauses, drops its file and is removed (design §7.4).
    * @param lane - The lane.
    * @throws {never} Never.
    */
-  function remove(lane: VideoLane): void {
+  function remove(lane: MediaLane): void {
     lane.token += 1;
     lane.pendingPlay = false;
     for (const event of MEDIA_EVENTS) lane.element.removeEventListener(event, options.onChange);
     lanes.delete(lane.clipId);
+    disconnect(lane);
     lane.element.pause();
+    lane.element.removeAttribute('src');
+    lane.element.load();
     lane.element.remove();
   }
 
@@ -187,19 +243,21 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
     sync(layers): void {
       const wanted = new Set(layers.map((layer) => layer.clipId));
       for (const lane of [...lanes.values()]) if (!wanted.has(lane.clipId)) remove(lane);
-      const ordered = new Map<string, VideoLane>();
+      const ordered = new Map<string, MediaLane>();
       for (const layer of layers) {
         let lane = lanes.get(layer.clipId);
         if (lane === undefined) {
-          const element = options.createMedia(layer.clipId);
+          const element = options.createMedia(layer.clipId, layer.kind ?? 'video');
           element.setAttribute('data-clip-id', layer.clipId);
+          element.crossOrigin = 'anonymous';
           element.preload = 'auto';
-          element.playsInline = true;
+          if (element instanceof HTMLVideoElement) element.playsInline = true;
           lane = {
             clipId: layer.clipId, element, layer, fresh: true, target: 0, awaitingSeek: true, seekAssigned: false,
-            pendingPlay: false, token: 0, steer: 0, lastDrift: null, tailSeek: false, mapping: '',
+            pendingPlay: false, token: 0, steer: 0, lastDrift: null, tailSeek: false, mapping: '', audio: null,
           };
           attach(lane, layer);
+          connect(lane);
           configureLane(lane);
           for (const event of MEDIA_EVENTS) element.addEventListener(event, options.onChange);
         } else {
@@ -225,16 +283,29 @@ export function createVideoLayerController(options: VideoLayerControllerOptions)
     },
     element: (clipId) => lanes.get(clipId)?.element,
     lanes: () => [...lanes.values()],
-    states(): ReadonlyMap<string, TimelineVideoLayerState> {
-      const states = new Map<string, TimelineVideoLayerState>();
-      for (const lane of lanes.values()) states.set(lane.clipId, videoLaneFailed(lane) ? 'failed' : lane.layer.state);
+    states(): ReadonlyMap<string, TimelineMediaLayerState> {
+      const states = new Map<string, TimelineMediaLayerState>();
+      for (const lane of lanes.values()) states.set(lane.clipId, mediaLaneFailed(lane) ? 'failed' : lane.layer.state);
       return states;
     },
     configure(): void {
       for (const lane of lanes.values()) configureLane(lane);
     },
+    attachAudio(next): void {
+      for (const lane of lanes.values()) disconnect(lane);
+      context = next;
+      for (const lane of lanes.values()) {
+        connect(lane);
+        configureLane(lane);
+      }
+    },
+    detachAudio(): void {
+      for (const lane of lanes.values()) disconnect(lane);
+      context = null;
+    },
     dispose(): void {
       for (const lane of [...lanes.values()]) remove(lane);
+      context = null;
     },
   };
 }

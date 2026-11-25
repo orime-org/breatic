@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { DndContext, PointerSensor, useDraggable, useDroppable, useSensor, useSensors, type DragEndEvent, type DragMoveEvent, type DragStartEvent } from '@dnd-kit/core';
-import { Code, Film, Trash2 } from 'lucide-react';
+import { Code, Film, Image as ImageIcon, Music, Trash2, Type } from 'lucide-react';
 import { newId, TIMELINE_MAIN_TRACK_ID, type TimelineClip as TimelineClipRecord, type TimelineDocumentV1, type TimelineExecution, type TimelineExecutionStatus, type TimelineWebResolution } from '@breatic/shared';
 import { timelineClipSource } from '@web/data/yjs/timeline-arrangement';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
@@ -17,8 +17,9 @@ import { cn } from '@web/lib/utils';
 import { previewTimelineGesture, timelineGestureCommand, timelineInsertMarkerFrame, type TimelineGestureMode, type TimelineGesturePreview } from '@web/spaces/timeline/timeline-gesture';
 import type { TimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
+import { timelineClipKind, timelineClipName } from '@web/spaces/timeline/timeline-clip-name';
 import { TIMELINE_TRACK_HEADER_PX, timelineRulerStep } from '@web/spaces/timeline/timeline-zoom';
-import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
+import { timelineMediaProblem, useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 import { timelineUploadText, type TimelineUploadView } from '@web/spaces/timeline/use-timeline-upload-views';
 
 const DRAG_ACTIVATION_PX = 3;
@@ -26,14 +27,25 @@ const HEADER_STYLE = { width: TIMELINE_TRACK_HEADER_PX };
 // Text that stays beside the sticky track headers while the lanes scroll: the zone hint, clip text, drop readouts.
 const BESIDE_HEADERS = { left: TIMELINE_TRACK_HEADER_PX };
 // The palette sits outside @theme, so its colours are written as arbitrary values; the `color:` hint tells Tailwind a var() is a colour.
+// Each kind has its palette colour (inner#1709): video blue, web violet, picture green, text orange, sound teal.
 const CLIP_FILL = {
-  ready: 'border-[color:var(--color-palette-blue-border)] bg-[color:var(--color-palette-blue-bg)] hover-enabled:bg-[color:var(--color-palette-blue-highlight)]',
-  web: 'border-[color:var(--color-palette-violet-border)] bg-[color:var(--color-palette-violet-bg)] hover-enabled:bg-[color:var(--color-palette-violet-highlight)]',
-  conflict: 'border-status-error-border bg-status-error-bg hover-enabled:border-status-error',
+  video: 'border-[color:var(--color-palette-blue-border)] bg-[color:var(--color-palette-blue-bg)] hover-enabled:bg-[color:var(--color-palette-blue-highlight)]',
+  'web-animation': 'border-[color:var(--color-palette-violet-border)] bg-[color:var(--color-palette-violet-bg)] hover-enabled:bg-[color:var(--color-palette-violet-highlight)]',
+  image: 'border-[color:var(--color-palette-green-border)] bg-[color:var(--color-palette-green-bg)] hover-enabled:bg-[color:var(--color-palette-green-highlight)]',
+  text: 'border-[color:var(--color-palette-orange-border)] bg-[color:var(--color-palette-orange-bg)] hover-enabled:bg-[color:var(--color-palette-orange-highlight)]',
+  audio: 'border-[color:var(--color-palette-teal-border)] bg-[color:var(--color-palette-teal-bg)] hover-enabled:bg-[color:var(--color-palette-teal-highlight)]',
+  failed: 'border-status-error-border bg-status-error-bg hover-enabled:border-status-error',
   slot: 'border-border bg-card',
   unfinished: 'border-border bg-muted',
 };
-const SELECTED_FILL = { video: 'bg-[color:var(--color-palette-blue-highlight)]', web: 'bg-[color:var(--color-palette-violet-highlight)]' };
+const SELECTED_FILL = {
+  video: 'bg-[color:var(--color-palette-blue-highlight)]', 'web-animation': 'bg-[color:var(--color-palette-violet-highlight)]',
+  image: 'bg-[color:var(--color-palette-green-highlight)]', text: 'bg-[color:var(--color-palette-orange-highlight)]', audio: 'bg-[color:var(--color-palette-teal-highlight)]',
+};
+const KIND_ICON = {
+  video: <Film className='size-4 shrink-0' />, 'web-animation': <Code className='size-4 shrink-0' />, image: <ImageIcon className='size-4 shrink-0' />,
+  text: <Type className='size-4 shrink-0' />, audio: <Music className='size-4 shrink-0' />,
+};
 
 /**
  * What a web-animation copy on a track shows: its picture is ready, its execution is still running, its execution
@@ -57,9 +69,11 @@ export interface TimelineWebClipView {
 /** What the track area needs from the editor. */
 interface TimelineTrackAreaProps {
   projectId: string;
+  /** The page's view document (inner#1709). */
   document: TimelineDocumentV1;
   labels: TimelineTrackLabels;
-  readyIds: ReadonlySet<string>;
+  /** Clips whose element or picture failed to load, so their file reads as unreadable. */
+  failedIds: ReadonlySet<string>;
   selectedId: string | null;
   frame: number;
   extent: number;
@@ -90,7 +104,8 @@ interface ClipProps {
   webView: TimelineWebClipView | undefined;
   uploadView: TimelineUploadView | undefined;
   selected: boolean;
-  conflict: boolean;
+  /** Whether its element or picture failed to load. */
+  elementFailed: boolean;
   dragging: boolean;
   readOnly: boolean;
   pixelsPerFrame: number;
@@ -122,7 +137,7 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
  * @param props.webView - What a web-animation copy shows.
  * @param props.uploadView - What an upload placeholder shows.
  * @param props.selected - Whether it is selected.
- * @param props.conflict - Whether the arrangement reports a conflict.
+ * @param props.elementFailed - Whether its element or picture failed to load.
  * @param props.dragging - Whether a gesture is moving it.
  * @param props.readOnly - Whether editing is unavailable.
  * @param props.pixelsPerFrame - The current zoom.
@@ -131,17 +146,21 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
  * @returns The clip.
  * @throws {never} Never.
  */
-const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId, webView, uploadView, selected, conflict, dragging, readOnly, pixelsPerFrame, fps, onSelect }: ClipProps): React.JSX.Element {
+const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId, webView, uploadView, selected, elementFailed, dragging, readOnly, pixelsPerFrame, fps, onSelect }: ClipProps): React.JSX.Element {
   const t = useTranslation();
-  const assetName = useTimelineAsset(projectId, assetId).data?.displayName || null;
+  const asset = useTimelineAsset(projectId, assetId);
   const isWeb = clip.kind === 'web-animation';
+  const kind = timelineClipKind(clip);
   const upload = clip.kind === 'upload' ? uploadView ?? null : null;
-  const name = isWeb ? webView?.title || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : assetName ?? t('timeline.video');
+  const name = timelineClipName(clip, { assetName: asset.data?.displayName ?? null, webTitle: webView?.title ?? null }, t);
+  const problem = assetId === '' ? null : timelineMediaProblem(asset, elementFailed);
   const status = isWeb && (webView?.state === 'pending' || webView?.state === 'failed') ? webView.status : null;
   const phase = status === 'running' ? webView?.phase ?? null : null;
   // A failure's reason, which names the file, is read in the properties; the track keeps the short status.
-  const detail = upload !== null ? upload.state === 'failed' ? t('timeline.upload.failed') : timelineUploadText(t, upload, name) : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
-    : phase === null ? t(`timeline.webAnimation.status.${status}`) : `${t(`timeline.webAnimation.status.${status}`)} · ${t(`timeline.webAnimation.phase.${phase}`)}`;
+  const detail = upload !== null ? upload.state === 'failed' ? t('timeline.upload.failed') : timelineUploadText(t, upload, name)
+    : problem !== null ? t(problem === 'forbidden' ? 'timeline.media.forbidden' : 'timeline.media.readFailed', { kind })
+      : status === null ? formatTimelineTimecode(clip.durationFrames, fps)
+        : phase === null ? t(`timeline.webAnimation.status.${status}`) : `${t(`timeline.webAnimation.status.${status}`)} · ${t(`timeline.webAnimation.phase.${phase}`)}`;
   const failedCopy = (isWeb && webView?.state === 'failed') || upload?.state === 'failed';
   const dashed = (isWeb && webView?.state === 'pending') || (upload !== null && upload.state !== 'failed');
   // Only the pointer listeners are used: the clip is already a focusable Button, and dnd-kit's
@@ -153,17 +172,16 @@ const TimelineClip = React.memo(function TimelineClip({ projectId, clip, assetId
     <Button ref={setNodeRef} {...(readOnly ? {} : listeners)} data-testid={`timeline-clip-${clip.id}`} data-clip-id={clip.id} data-track-id={clip.trackId} type='button' variant={null} size={null}
       data-kind={clip.kind} data-state={isWeb ? webView?.state ?? 'unresolved' : upload?.state} aria-pressed={selected} onClick={select} onFocus={select}
       className={cn('flex size-full min-w-0 flex-col items-start justify-center overflow-clip rounded-chrome border px-2 text-left text-xs',
-        !readOnly && 'cursor-grab', conflict || failedCopy ? CLIP_FILL.conflict : upload !== null ? CLIP_FILL[upload.state === 'unfinished' ? 'unfinished' : 'slot']
-          : isWeb ? CLIP_FILL.web : CLIP_FILL.ready, dashed && 'border-dashed',
-        selected && 'border-active-border', selected && !conflict && !failedCopy && upload === null && SELECTED_FILL[isWeb ? 'web' : 'video'])}>
+        !readOnly && 'cursor-grab', failedCopy ? CLIP_FILL.failed : upload !== null ? CLIP_FILL[upload.state === 'unfinished' ? 'unfinished' : 'slot']
+          : CLIP_FILL[kind], dashed && 'border-dashed',
+        selected && 'border-active-border', selected && !failedCopy && upload === null && SELECTED_FILL[kind])}>
       {/* overflow-clip keeps the button from becoming the scroller, so this text can stick beside the track headers. */}
       <span className='sticky flex min-w-0 max-w-full flex-col gap-0.5' style={BESIDE_HEADERS}>
         <span className='flex min-w-0 items-center gap-2'>
-          {isWeb ? <Code className='size-4 shrink-0' /> : <Film className='size-4 shrink-0' />}
+          {KIND_ICON[kind]}
           <span className='min-w-0 truncate leading-normal'>{name}</span>
-          {conflict && <span className='shrink-0 text-status-error-foreground'>{t('timeline.conflict')}</span>}
         </span>
-        <span className={cn('truncate text-2xs tabular-nums', failedCopy ? 'text-status-error-foreground' : 'text-foreground-secondary')}>{detail}</span>
+        <span className={cn('truncate text-2xs tabular-nums', failedCopy || problem !== null ? 'text-status-error-foreground' : 'text-foreground-secondary')}>{detail}</span>
       </span>
     </Button>
     {selected && !readOnly && <><TrimHandle clipId={clip.id} mode='trim-start' /><TrimHandle clipId={clip.id} mode='trim-end' /></>}
@@ -226,7 +244,7 @@ function previewOf(view: DragView, data: { mode: TimelineGestureMode; clipId: st
  * @throws {never} Never.
  */
 export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Element {
-  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, web, webClips, uploads, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
+  const { projectId, document, labels, failedIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, web, webClips, uploads, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
   const t = useTranslation();
   const [gesture, setGesture] = React.useState<Gesture | null>(null);
   const cancelled = React.useRef(false);
@@ -343,7 +361,7 @@ export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Elem
             </div>
             <div data-testid={`timeline-lane-${track.id}`} className='relative flex-1' onPointerDown={clearOnBlank}>
               {clips.map((clip) => <TimelineClip key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
-                webView={webClips.get(clip.id)} uploadView={uploads.get(clip.id)} selected={selectedId === clip.id} conflict={!readyIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
+                webView={webClips.get(clip.id)} uploadView={uploads.get(clip.id)} selected={selectedId === clip.id} elementFailed={failedIds.has(clip.id)} dragging={gesture?.clipId === clip.id && preview !== null}
                 readOnly={readOnly} pixelsPerFrame={pixelsPerFrame} fps={document.settings.fps} onSelect={onSelect} />)}
               {showGhost && preview !== null && <>
                 <div className='pointer-events-none absolute inset-y-1 rounded-chrome border border-active-border bg-muted/60' style={ghostStyle} />

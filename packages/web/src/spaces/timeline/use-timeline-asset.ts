@@ -5,6 +5,7 @@ import * as React from 'react';
 import { useQueries, useQuery, type UseQueryResult } from '@tanstack/react-query';
 
 import { timelineApi } from '@web/data/api/timeline';
+import { ApiException } from '@web/data/api/types';
 
 /**
  * The query key every Timeline reader of one registered asset shares.
@@ -27,7 +28,9 @@ export function timelineAssetKey(projectId: string, assetId: string): readonly [
 export function useTimelineAsset(projectId: string, assetId: string): UseQueryResult<Awaited<ReturnType<typeof timelineApi.resolveAsset>>> {
   const queryKey = React.useMemo(() => timelineAssetKey(projectId, assetId), [projectId, assetId]);
   const queryFn = React.useCallback(({ signal }: { signal: AbortSignal }) => timelineApi.resolveAsset(projectId, assetId, signal), [projectId, assetId]);
-  return useQuery({ queryKey, queryFn, enabled: assetId !== '' });
+  // A read that failed is tried again from its retry, not by every reader mounting later (a newly selected clip's
+  // properties show the same failure its track already shows, inner#1709).
+  return useQuery({ queryKey, queryFn, enabled: assetId !== '', retryOnMount: false });
 }
 
 /** One registered asset as the preview reads it. */
@@ -54,4 +57,20 @@ export function useTimelineAssets(projectId: string, assetIds: readonly string[]
   const combine = React.useCallback((results: TimelineAssetQuery[]): ReadonlyMap<string, TimelineAssetQuery> =>
     new Map(assetIds.map((assetId, index) => [assetId, results[index]!] as const)), [assetIds]);
   return useQueries({ queries, combine });
+}
+
+/** Why a clip's file cannot be read (inner#1709): the user may not read it, or reading it failed. */
+export type TimelineMediaProblem = 'forbidden' | 'readFailed';
+
+/**
+ * The problem an asset read and its element report: a 403 from the asset read is no permission; any other read error,
+ * or a failed element, is a read failure. Cached data stays usable when a refetch fails.
+ * @param asset - The asset read, if any.
+ * @param elementFailed - Whether the clip's element or decode failed.
+ * @returns The problem, or null when the file can be read.
+ * @throws {never} Never.
+ */
+export function timelineMediaProblem(asset: TimelineAssetQuery | undefined, elementFailed = false): TimelineMediaProblem | null {
+  if (asset?.data === undefined && asset?.isError === true) return asset.error instanceof ApiException && asset.error.status === 403 ? 'forbidden' : 'readFailed';
+  return elementFailed ? 'readFailed' : null;
 }

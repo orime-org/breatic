@@ -43,7 +43,8 @@ import { CREATION_DRAFT_CLOSED, transitionCreationDraft, type CreationDraftInput
 import { DEFAULT_WEB_ANIMATION_ENGINE, cancelIntent, exportIntent, executionStepKeys, isWebAnimationAspect } from '@web/spaces/web-animation/execution-text';
 import { MOTION_PANELS_CLOSED, transitionMotionPanels, type MotionTab } from '@web/spaces/web-animation/motion-panels';
 import { ListLoadError, listShows } from '@web/spaces/web-animation/list-states';
-import { BarButton, PreviewUnavailable, formatMotionTime, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
+import { BarButton } from '@web/components/BarButton';
+import { PreviewUnavailable, formatMotionTime, playable, rowSeconds } from '@web/spaces/web-animation/motion-parts';
 import { requestTitle, webAnimationTitle } from '@web/spaces/web-animation/web-animation-title';
 import { MotionAnnotationsPanel } from '@web/spaces/web-animation/MotionAnnotationsPanel';
 import { MotionExecutionsPanel } from '@web/spaces/web-animation/MotionExecutionsPanel';

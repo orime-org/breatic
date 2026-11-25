@@ -3,19 +3,20 @@
 
 import * as React from 'react';
 import type * as Y from 'yjs';
-import { ArrowRightToLine, Code, Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Undo2 } from 'lucide-react';
+import { ArrowRightToLine, Code, Copy, Film, Link2, Magnet, Pause, Play, Plus, Redo2, Scissors, Trash2, Type, Undo2 } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  getLocale, newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, type TimelineFramePreset, timelineLayerContains, timelineLayerCorners, timelineLayerStyle,
+  durationToFrames, getLocale, newId, TIMELINE_MAIN_TRACK_ID, timelineLayerBase, type TimelineFramePreset, timelineLayerContains, timelineLayerCorners, timelineLayerStyle,
   type TimelineClip, type TimelineDocumentV1, type TimelineLayerBox, type TimelineLayerTransform, type TimelineWebAnimationClip,
 } from '@breatic/shared';
 import { webAnimationDurationFrames, webAnimationExecutionFailed } from '@breatic/shared/space-content';
-import { resolveTimelineArrangement, timelineClipSource, timelineWebSourceOf, type TimelineArrangementReason } from '@web/data/yjs/timeline-arrangement';
-import { isTimelineSizeRefusal, removeTimelineClip } from '@web/data/yjs/timeline-document';
+import { arrangeTimelineClips, timelineClipSource, timelineWebSourceOf } from '@web/data/yjs/timeline-arrangement';
+import { isTimelineSizeRefusal } from '@web/data/yjs/timeline-document';
 import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeline-edit';
-import { timelineStackOrder, visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
+import { audibleTimelineClipsAt, timelineStackOrder, visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
 import { orderedTimelineClips, timelineTrackRank } from '@web/data/yjs/timeline-order';
 
+import { BarButton } from '@web/components/BarButton';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Separator } from '@web/components/ui/separator';
@@ -31,7 +32,6 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import { useTranslation } from '@web/i18n/use-translation';
 import { isEditableTarget } from '@web/lib/is-editable-target';
 import { toast } from '@web/lib/toast';
-import { cn } from '@web/lib/utils';
 import { stopFollowing } from '@web/stores/follow';
 import type { SpaceBodyProps } from '@web/spaces';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
@@ -48,16 +48,20 @@ import { timelineUploadText, useTimelineUploadViews } from '@web/spaces/timeline
 import { formatTimelineTimecode } from '@web/spaces/timeline/timeline-timecode';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
 import { useTimelineDocument } from '@web/spaces/timeline/use-timeline-document';
+import { timelineClipKind, timelineClipName } from '@web/spaces/timeline/timeline-clip-name';
+import { TimelineImageLayer, TimelineTextLayer, type TimelineImageState } from '@web/spaces/timeline/TimelineStillLayers';
+import { retryTimelineFonts, useTimelineTextFonts } from '@web/spaces/timeline/timeline-text-fonts';
 import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-prefs';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 import { usePublishTimelineView } from '@web/spaces/timeline/use-publish-timeline-view';
 import { userMovedScroll, type TrackScroll } from '@web/spaces/timeline/timeline-follow-scroll';
-import { useTimelineAsset, useTimelineAssets } from '@web/spaces/timeline/use-timeline-asset';
+import { timelineMediaProblem, useTimelineAsset, useTimelineAssets } from '@web/spaces/timeline/use-timeline-asset';
 import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
 import { TimelineWebAnimationPicker } from '@web/spaces/timeline/TimelineWebAnimationPicker';
 import type { PlayableRow } from '@web/spaces/web-animation/motion-parts';
 import { TimelineWebPreview, PreviewNote, type TimelineUploadNote, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
-import { useTimelineLimits, useTimelinePreviewLimits } from '@web/spaces/timeline/use-timeline-limits';
+import { useTimelineLimitsQuery, useTimelinePreviewLimits } from '@web/spaces/timeline/use-timeline-limits';
+import { timelineApi } from '@web/data/api/timeline';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
 import { endedSentenceKey } from '@web/spaces/web-animation/execution-text';
 import { requestTitle, type TitleTranslator } from '@web/spaces/web-animation/web-animation-title';
@@ -67,118 +71,15 @@ import { EMPTY_WEB_INSTANCE_POOL, allocateWebInstances } from '@web/spaces/timel
 
 
 /** The existing content document and its supported native projection. */
-interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: TimelineDocumentV1; damagedClipIds: readonly string[] }
-
-/** One conflicting placement listed with its frames. */
-interface TimelineConflictRowProps {
-  projectId: string;
-  clip: TimelineClip;
-  assetId: string;
-  /** A web copy's or upload placeholder's name; null names a video by its asset. */
-  name: string | null;
-  track: string;
-  reason: TimelineArrangementReason['code'] | null;
-  selected: boolean;
-  onLocate: (clipId: string) => void;
-}
-
-/** A clip record that can no longer be read, listed so an Editor can delete it. */
-interface TimelineDamagedRowProps { clipId: string; readOnly: boolean; onDelete: (clipId: string) => void }
-
-/**
- * List one damaged clip record with its reason and, for an Editor, a delete control.
- * @param props - The record and the delete callback.
- * @param props.clipId - The damaged record's id.
- * @param props.readOnly - Whether editing is unavailable.
- * @param props.onDelete - Deletes the record.
- * @returns The row.
- * @throws {never} Never.
- */
-function TimelineDamagedRow({ clipId, readOnly, onDelete }: TimelineDamagedRowProps): React.JSX.Element {
-  const t = useTranslation();
-  const remove = React.useCallback((): void => onDelete(clipId), [onDelete, clipId]);
-  return <div data-testid={`timeline-conflict-${clipId}`} className='flex w-full min-w-0 items-center gap-2 rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-2 text-xs'>
-    <Film className='size-4 shrink-0' />
-    <span className='min-w-0 flex-1 truncate leading-normal text-status-error-foreground'>{t('timeline.conflictReason.damaged')}</span>
-    {!readOnly && <Button data-testid={`timeline-damaged-delete-${clipId}`} variant='outline' size='compact' onClick={remove} icon={<Trash2 className='mr-1.5 size-3.5' />}>{t('timeline.edit.delete')}</Button>}
-  </div>;
-}
+interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; stored: TimelineDocumentV1 }
 
 const DEFAULT_PIXELS_PER_FRAME = 2;
-const LOCATE_MARGIN_PX = 24;
 // The zoom slider moves in powers of two so every zoom level is equally reachable.
 const ZOOM_STEP = 0.1;
 
-/**
- * List one conflicting placement; pressing it selects it and brings it into view.
- * @param props - The placement and its selection.
- * @param props.projectId - The Project authorizing its source.
- * @param props.clip - The placement.
- * @param props.assetId - Its registered asset.
- * @param props.name - A web copy's or upload placeholder's name, or null to use its video's name.
- * @param props.track - Its track's name.
- * @param props.reason - The first reason it conflicts.
- * @param props.selected - Whether it is selected.
- * @param props.onLocate - Selects it, seeks to it and scrolls the tracks to it.
- * @returns The conflict row.
- * @throws {never} Never.
- */
-function TimelineConflictRow({ projectId, clip, assetId, name: label, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
-  const t = useTranslation();
-  const asset = useTimelineAsset(projectId, assetId);
-  const name = label ?? (asset.data?.displayName || t('timeline.video'));
-  const locate = React.useCallback((): void => onLocate(clip.id), [onLocate, clip.id]);
-  return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={locate}
-    className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:border-status-error', selected && 'border-active-border')}>
-    <span className='flex w-full min-w-0 items-center gap-2'>
-      {clip.kind === 'web-animation' ? <Code className='size-4 shrink-0' /> : <Film className='size-4 shrink-0' />}
-      <Tooltip>
-        <TooltipTrigger asChild><span className='min-w-0 truncate leading-normal'>{name}</span></TooltipTrigger>
-        <TooltipContent portal className='max-w-sm break-all'>{name}</TooltipContent>
-      </Tooltip>
-    </span>
-    {reason !== null && <span data-testid={`timeline-reason-${clip.id}`} className='w-full truncate text-status-error-foreground'>{t(`timeline.conflictReason.${reason}`)}</span>}
-    <span className='w-full tabular-nums text-muted-foreground'>{`${track} · ${t('timeline.clipFrames', { start: clip.startFrame, duration: clip.durationFrames })}`}</span>
-  </Button>;
-}
-
-/**
- * A toolbar button's shortcut, in the type the menus use for theirs.
- * @param props - The shortcut.
- * @param props.children - The shortcut label.
- * @returns The shortcut.
- * @throws {never} Never.
- */
-function ToolbarShortcut({ children }: { children: string }): React.JSX.Element {
-  return <kbd className='font-sans text-xs tracking-widest text-muted-foreground'>{children}</kbd>;
-}
-
-/** One of the editing switches. */
-interface TimelineSwitchProps { testId: string; label: string; shortcut?: string; pressed: boolean; icon: React.ReactElement<{ className?: string }>; onToggle: () => void }
-
-/**
- * An editing switch drawn as an icon button whose tooltip names it and its shortcut.
- * @param props - The switch.
- * @param props.testId - Its test id.
- * @param props.label - Its name.
- * @param props.shortcut - Its key, when it has one.
- * @param props.pressed - Whether it is on.
- * @param props.icon - Its icon.
- * @param props.onToggle - Turns it on or off.
- * @returns The switch.
- * @throws {never} Never.
- */
-function TimelineSwitch({ testId, label, shortcut, pressed, icon, onToggle }: TimelineSwitchProps): React.JSX.Element {
-  return <Tooltip>
-    <TooltipTrigger asChild>
-      <Button data-testid={testId} variant='outline' size='sm' aria-label={label} aria-pressed={pressed} onClick={onToggle} icon={icon}
-        className='px-2 aria-pressed:border-active-border aria-pressed:bg-accent-strong aria-pressed:hover-enabled:bg-accent-strong' />
-    </TooltipTrigger>
-    <TooltipContent className='flex items-center gap-2'>{label}{shortcut !== undefined && <span className='tracking-widest text-muted-foreground'>{shortcut}</span>}</TooltipContent>
-  </Tooltip>;
-}
 const PANEL = 'flex flex-col gap-2 rounded-chrome border border-border p-3 text-xs';
 const NO_KEYS: ReadonlySet<string> = new Set();
+const NO_IMAGE_STATES: ReadonlyMap<string, { state: TimelineImageState; size: { width: number; height: number } | null }> = new Map();
 
 /**
  * What a web copy on a track shows, named by the one title rule from what made it (#1490 design §8.1).
@@ -204,6 +105,45 @@ function webClipView(clip: TimelineWebAnimationClip, web: Parameters<typeof time
     status: execution.status, phase: execution.status === 'running' ? execution.phase : null, failureReason: execution.failureReason,
   };
 }
+/** The selected clip's properties with what its asset read says (inner#1709). */
+type TimelineSelectedPropertiesProps = Omit<React.ComponentProps<typeof TimelineClipProperties>, 'name' | 'media'> & {
+  projectId: string;
+  /** Whether its element or picture failed to load. */
+  elementFailed: boolean;
+  /** Loads its layer again. */
+  onRetry: (clipId: string) => void;
+};
+
+/**
+ * The selected clip's properties: named by kind (a text is named "Text"), with why its file cannot be read. Mounted per
+ * clip, so a read that already failed shows its failure at once rather than being tried again by this reader.
+ * @param props - The properties and the asset facts.
+ * @param props.projectId - The authorizing Project.
+ * @param props.elementFailed - Whether its element or picture failed to load.
+ * @param props.onRetry - Loads its layer again.
+ * @returns The properties.
+ * @throws {never} Never.
+ */
+function TimelineSelectedProperties({ projectId, elementFailed, onRetry, ...props }: TimelineSelectedPropertiesProps): React.JSX.Element {
+  const t = useTranslation();
+  const locale = getLocale();
+  const { clip } = props;
+  const assetId = timelineClipSource(props.document.sources, clip)?.assetId ?? '';
+  const asset = useTimelineAsset(projectId, assetId);
+  const problem = assetId === '' ? null : timelineMediaProblem(asset, elementFailed);
+  const kind = timelineClipKind(clip);
+  const retry = React.useCallback((): void => onRetry(clip.id), [onRetry, clip.id]);
+  const media = React.useMemo(() => problem === null ? null : {
+    text: t(problem === 'forbidden' ? 'timeline.media.forbidden' : 'timeline.media.readFailed', { kind }),
+    next: problem === 'forbidden' ? t('timeline.media.contactAdmin') : null,
+    onRetry: problem === 'readFailed' ? retry : null,
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the text follows the locale, which `t` itself does not.
+  }, [problem, kind, retry, t, locale]);
+  const name = clip.kind === 'text' ? t('timeline.video', { kind: 'text' }) : clip.kind === 'web-animation' ? t('timeline.webAnimation.copy')
+    : timelineClipName(clip, { assetName: asset.data?.displayName ?? null, webTitle: null }, t);
+  return <TimelineClipProperties {...props} name={name} media={media} />;
+}
+
 const MAGNET_ICON = <Magnet className='size-4' />;
 // The preview handles carry react-moveable, loaded the first time an editable layer is selected (#1410 design §4.3).
 const TimelineLayerHandles = React.lazy(() => import('@web/spaces/timeline/TimelineLayerHandles').then((module) => ({ default: module.TimelineLayerHandles })));
@@ -211,21 +151,50 @@ const NOTE_LAYER_STYLE = { zIndex: 20 } as const;
 const OPERATION_LAYER_STYLE = { zIndex: 10 } as const;
 const SNAP_ICON = <ArrowRightToLine className='size-4' />;
 const LINKAGE_ICON = <Link2 className='size-4' />;
+const ADD_MEDIA_ICON = <Plus className='size-4' />;
+const ADD_WEB_ICON = <Code className='size-4' />;
+const ADD_TEXT_ICON = <Type className='size-4' />;
+const UNDO_ICON = <Undo2 className='size-4' />;
+const REDO_ICON = <Redo2 className='size-4' />;
+const SPLIT_ICON = <Scissors className='size-4' />;
+const DUPLICATE_ICON = <Copy className='size-4' />;
+const DELETE_ICON = <Trash2 className='size-4' />;
+const SPLIT_KEY = formatShortcut({ mod: true, key: 'B' });
+const DUPLICATE_KEY = formatShortcut({ mod: true, key: 'D' });
+const DELETE_KEY = formatShortcut({ key: 'Delete' });
+const UNDO_KEY = formatShortcut({ mod: true, key: 'Z' });
+const REDO_KEY = formatShortcut({ mod: true, shift: true, key: 'Z' });
 
 /**
- * Arrange registered videos on tracks, edit them and preview the shared integer-frame sequence.
+ * Whether a clip plays between a frame and the premount lead after it.
+ * @param clip - The clip.
+ * @param frame - The current frame.
+ * @param lead - The premount lead in frames.
+ * @returns Whether it is visible now or starts within the lead.
+ * @throws {never} Never.
+ */
+function nearFrame(clip: TimelineClip, frame: number, lead: number): boolean {
+  return frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - lead;
+}
+
+/**
+ * Arrange videos, pictures, sounds, texts and web animations on tracks, edit them and preview the shared
+ * integer-frame sequence (inner#1709).
  * @param props - The open Timeline's supported content and current role.
  * @param props.projectId - The owning Project.
  * @param props.spaceId - The open Space tab's identity.
  * @param props.readOnly - The existing Project role's editing restriction.
  * @param props.doc - The content document held by the existing Space connection.
- * @param props.document - Its validated native Timeline projection.
- * @param props.damagedClipIds - Clip records that can no longer be read.
- * @returns The preview, toolbar, tracks, properties and conflicts.
+ * @param props.stored - Its validated native Timeline projection, as stored.
+ * @returns The preview, toolbar, tracks and properties.
  * @throws {never} Never.
  */
-function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, damagedClipIds }: TimelineEditorProps): React.JSX.Element {
+function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: TimelineEditorProps): React.JSX.Element {
   const t = useTranslation();
+  // The stored document reaches only the web resolution; every reader below sees the view document, whose clips are
+  // the ones that can be shown, each at the length it plays (inner#1709).
+  const web = useTimelineWebResolution(projectId, spaceId, stored);
+  const document = React.useMemo((): TimelineDocumentV1 => ({ ...stored, clips: arrangeTimelineClips(stored, web) }), [stored, web]);
   // `t` stays the same function across a language switch; memos that build text depend on the locale it reads.
   const locale = getLocale();
   const [frame, setFrame] = React.useState(0);
@@ -246,7 +215,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }, [session, t]);
   // Background uploads live with the document, so a hidden tab keeps uploading and writing results.
   const uploads = React.useMemo(() => getTimelineUploads(doc, name, {
-    projectId, spaceId, onRegistered: () => { void queryClient.invalidateQueries({ queryKey: ['timeline-videos', projectId] }); },
+    projectId, spaceId, onLanded: (kind) => { void queryClient.invalidateQueries({ queryKey: ['timeline-media', projectId, kind] }); },
   }), [doc, name, projectId, spaceId, queryClient]);
   const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: editWithNotice, startUpload: uploads.start }), [doc, name, projectId, spaceId, queryClient, editWithNotice, uploads]);
   const materialState = React.useSyncExternalStore(material.subscribe, material.getSnapshot);
@@ -259,18 +228,15 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     if (materialState.open && !materialOpen) material.close();
   }, [materialState.open, materialOpen, setMaterialOpen, material]);
   const clips = React.useMemo(() => orderedTimelineClips(document.clips), [document.clips]);
-  const webLimits = useTimelineLimits(projectId)?.webAnimation;
-  const web = useTimelineWebResolution(projectId, spaceId, document);
+  const limitsQuery = useTimelineLimitsQuery(projectId);
+  const limits = limitsQuery.data;
+  const webLimits = limits?.webAnimation;
   // Edits of web copies plan against the extents this resolution gives.
   session.setWebResolution(web);
-  const arrangement = React.useMemo(() => resolveTimelineArrangement(document, web), [document, web]);
-  const readyIds = React.useMemo(() => new Set(arrangement.readyClipIds), [arrangement.readyClipIds]);
-  const reasons = React.useMemo(() => new Map(arrangement.conflicts.map((placement) => [placement.clipId, placement.reasons[0]?.code ?? null])), [arrangement.conflicts]);
   const selectedId = history.selectedClipId;
   const selected = selectedId === null ? undefined : document.clips[selectedId];
-  const selectedAssetId = selected === undefined ? '' : timelineClipSource(document.sources, selected)?.assetId ?? '';
-  const selectedResource = useTimelineAsset(projectId, selectedAssetId);
-  const visible = React.useMemo(() => visibleTimelineClipsAt(document, readyIds, frame), [document, readyIds, frame]);
+  const visible = React.useMemo(() => visibleTimelineClipsAt(document, frame), [document, frame]);
+  const audible = React.useMemo(() => audibleTimelineClipsAt(document, frame), [document, frame]);
   // The preview frame is contained in the area measured around it, and its factor (display pixels per canvas pixel)
   // places every layer and handle (#1502 design §6.2).
   const [previewArea, setPreviewArea] = React.useState<HTMLDivElement | null>(null);
@@ -302,15 +268,21 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   // A visible placeholder draws no picture and hides nothing below it; the preview notes it by track.
   const uploadNotes = React.useMemo(() => visible.flatMap((clip, index): TimelineUploadNote[] => {
     const view = clip.kind === 'upload' ? uploadViews.get(clip.id) : undefined;
-    return view === undefined ? [] : [{ clipId: clip.id, z: index + 1, text: t('timeline.upload.preview', { track: labels.nameOf(clip.trackId) ?? clip.trackId, state: view.state }) }];
+    return view === undefined || clip.kind !== 'upload' ? [] : [{ clipId: clip.id, z: index + 1, text: t('timeline.upload.preview', { track: labels.nameOf(clip.trackId) ?? clip.trackId, state: view.state, kind: clip.upload.kind }) }];
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the text follows the locale, which `t` itself does not.
   }), [visible, uploadViews, labels, t, locale]);
   const selectedUploadView = selected?.kind === 'upload' ? uploadViews.get(selected.id) : undefined;
   const selectedUploadId = selected?.kind === 'upload' ? selected.upload.uploadId : null;
   const selectedUploadName = selected?.kind === 'upload' ? selected.upload.name : '';
   const retryUpload = React.useCallback((): void => { if (selectedUploadId !== null) uploads.retry(selectedUploadId); }, [uploads, selectedUploadId]);
-  const selectedUpload = React.useMemo(() => selectedUploadView === undefined ? null
-    : { text: timelineUploadText(t, selectedUploadView, selectedUploadName), failed: selectedUploadView.state === 'failed', progress: selectedUploadView.progress, onRetry: selectedUploadView.retryable && !readOnly ? retryUpload : null },
+  // A placeholder nobody can finish or retry from here is deleted and added again (design §4.5).
+  const selectedUpload = React.useMemo(() => {
+    if (selectedUploadView === undefined) return null;
+    const { state, retryable, progress } = selectedUploadView;
+    const text = timelineUploadText(t, selectedUploadView, selectedUploadName);
+    const readd = state === 'unfinished' || (state === 'failed' && !retryable);
+    return { text: readd ? `${text} ${t('timeline.upload.removeAndReadd')}` : text, failed: state === 'failed', progress, onRetry: retryable && !readOnly ? retryUpload : null };
+  },
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the text follows the locale, which `t` itself does not.
   [selectedUploadView, selectedUploadName, readOnly, retryUpload, t, locale]);
   // The web preview's instance pool (inner#1711 design §7.4): visible copies, copies within the premount lead and
@@ -330,14 +302,15 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   // Either kind of failure unloads the instance once its copy leaves, so the next copy asks for its page again.
   const unloadKeys = React.useMemo(() => unregistrable.size === 0 ? failedKeys : new Set([...failedKeys, ...unregistrable]), [failedKeys, unregistrable]);
   const [heldPool, setHeldPool] = React.useState(EMPTY_WEB_INSTANCE_POOL);
-  const pool = React.useMemo(() => allocateWebInstances(heldPool, { document, readyClipIds: readyIds, frame, premountFrames, idleInstancesMax, sourceOf, failedKeys: unloadKeys }),
-    [heldPool, document, readyIds, frame, premountFrames, idleInstancesMax, sourceOf, unloadKeys]);
+  const pool = React.useMemo(() => allocateWebInstances(heldPool, { document, frame, premountFrames, idleInstancesMax, sourceOf, failedKeys: unloadKeys }),
+    [heldPool, document, frame, premountFrames, idleInstancesMax, sourceOf, unloadKeys]);
   // Allocation is idempotent, so holding its result settles in one extra render.
   if (pool !== heldPool) setHeldPool(pool);
   const webEntries = React.useMemo(() => {
     const assigned = new Map(pool.assignments.flatMap((assignment) => assignment.clipId === null ? [] : [[assignment.clipId, assignment] as const]));
     const shown = visible.flatMap((clip, index): TimelineWebEntry[] => {
-      if (clip.kind !== 'web-animation') return [];
+      // A copy whose reference is not resolved yet has nothing to draw or say until it is.
+      if (clip.kind !== 'web-animation' || webClips.get(clip.id)?.state === 'unresolved') return [];
       const assignment = assigned.get(clip.id);
       const resolved = assignment === undefined ? undefined : web.sources[assignment.sourceVersionId];
       const track = labels.nameOf(clip.trackId) ?? clip.trackId;
@@ -356,7 +329,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
         instance: assignment.targetFrame === null ? instance : { ...instance, targetFrame: assignment.targetFrame } }];
     });
     return [...shown, ...hidden];
-  }, [visible, web, labels, pool, factor, canvas, transformOf]);
+  }, [visible, web, webClips, labels, pool, factor, canvas, transformOf]);
   const [players, setPlayers] = React.useState<ReadonlyMap<string, WebAnimationPlayerElement>>(() => new Map());
   const registerPlayer = React.useCallback((key: string, player: WebAnimationPlayerElement | null): void => setPlayers((current) => {
     if ((current.get(key) ?? null) === player) return current;
@@ -387,32 +360,77 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     return player === undefined ? [] : [{ ...spec, player }];
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the specs change only when their signature does.
   }), [layerSignature, players]);
-  // Every visible video clip and every one starting within the premount lead, bottom-up; each has its own element
-  // (#1410 design §6.2), and its asset is read through the cache the properties panel shares.
+  // The media lanes: the video or sound clip heard on each track now and every one starting within the premount lead,
+  // bottom-up; each has its own element (#1410 design §6.2, inner#1709), and its asset is read through
+  // the cache the properties panel shares. Pictures are drawn on the same terms.
   const rank = React.useMemo(() => timelineTrackRank(document.tracks), [document.tracks]);
-  const videoClips = React.useMemo(() => clips.flatMap((clip) => clip.kind === 'video' && readyIds.has(clip.id) && rank.has(clip.trackId)
-    && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - premountFrames ? [clip] : [])
-    .sort(timelineStackOrder(rank)), [clips, readyIds, rank, frame, premountFrames]);
-  const assetSignature = [...new Set(videoClips.flatMap((clip) => document.sources[clip.sourceId]?.assetId ?? []))].sort().join(' ');
-  const videoAssetIds = React.useMemo(() => (assetSignature === '' ? [] : assetSignature.split(' ')), [assetSignature]);
-  const assets = useTimelineAssets(projectId, videoAssetIds);
-  const assetOf = React.useCallback((clip: TimelineClip) => clip.kind === 'video' ? assets.get(document.sources[clip.sourceId]?.assetId ?? '') : undefined, [assets, document.sources]);
-  const videoSpecs = videoClips.map((clip) => {
+  const laneClips = React.useMemo(() => {
+    const heard = new Set(audible.map((clip) => clip.id));
+    return clips.flatMap((clip) => (clip.kind === 'video' || clip.kind === 'audio') && rank.has(clip.trackId)
+      && (heard.has(clip.id) || (clip.startFrame > frame && nearFrame(clip, frame, premountFrames))) ? [clip] : [])
+      .sort(timelineStackOrder(rank));
+  }, [clips, audible, rank, frame, premountFrames]);
+  const imageClips = React.useMemo(() => clips.flatMap((clip) => clip.kind === 'image' && rank.has(clip.trackId)
+    && (visible.includes(clip) || (clip.startFrame > frame && nearFrame(clip, frame, premountFrames))) ? [clip] : []), [clips, visible, rank, frame, premountFrames]);
+  const assetSignature = [...new Set([...laneClips, ...imageClips].flatMap((clip) => timelineClipSource(document.sources, clip)?.assetId ?? []))].sort().join(' ');
+  const mediaAssetIds = React.useMemo(() => (assetSignature === '' ? [] : assetSignature.split(' ')), [assetSignature]);
+  const assets = useTimelineAssets(projectId, mediaAssetIds);
+  const assetOf = React.useCallback((clip: TimelineClip) => {
+    const assetId = timelineClipSource(document.sources, clip)?.assetId;
+    return assetId === undefined ? undefined : assets.get(assetId);
+  }, [assets, document.sources]);
+  const videoSpecs = laneClips.map((clip) => {
     const asset = assetOf(clip);
     // Cached data stays usable when a refetch fails; only a read that never returned data fails the layer (#1410 design §6.2).
     const state = asset?.data !== undefined ? 'ready' as const : asset?.isError === true ? 'failed' as const : 'loading' as const;
-    return { clipId: clip.id, fileUrl: state === 'ready' ? asset?.data?.fileUrl ?? null : null, coverUrl: asset?.data?.coverUrl ?? null, state };
+    return { clipId: clip.id, kind: clip.kind === 'audio' ? 'audio' as const : 'video' as const, fileUrl: state === 'ready' ? asset?.data?.fileUrl ?? null : null, coverUrl: asset?.data?.coverUrl ?? null, state };
   });
   const videoSignature = JSON.stringify(videoSpecs);
   // The layer set keeps its identity while its content is unchanged, so playing on does not resync the elements.
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the specs change only when their signature does.
   const videoLayers = React.useMemo(() => videoSpecs, [videoSignature]);
+  // Pictures: each reports its decode and decoded size; a retry mounts it again (design §5.1, §6.6).
+  const [imageStates, setImageStates] = React.useState(NO_IMAGE_STATES);
+  const [imageAttempts, setImageAttempts] = React.useState<ReadonlyMap<string, number>>(() => new Map());
+  const reportImage = React.useCallback((clipId: string, state: TimelineImageState, size: { width: number; height: number } | null): void => setImageStates((current) => {
+    const before = current.get(clipId);
+    if (before?.state === state && (size === null || (before.size?.width === size.width && before.size.height === size.height))) return current;
+    return new Map(current).set(clipId, { state, size: size ?? before?.size ?? null });
+  }), []);
+  const imageStateOf = React.useCallback((clip: TimelineClip): TimelineImageState => {
+    const asset = assetOf(clip);
+    if (asset?.data === undefined) return asset?.isError === true ? 'failed' : 'loading';
+    return imageStates.get(clip.id)?.state ?? 'loading';
+  }, [assetOf, imageStates]);
+  // Each text's rendered size, in display pixels: its layer's base box (design §5.1).
+  const [textSizes, setTextSizes] = React.useState<ReadonlyMap<string, { width: number; height: number }>>(() => new Map());
+  const reportTextSize = React.useCallback((clipId: string, size: { width: number; height: number }): void => setTextSizes((current) => {
+    const before = current.get(clipId);
+    return before?.width === size.width && before.height === size.height ? current : new Map(current).set(clipId, size);
+  }), []);
+  // Texts: the visible ones and those within the premount lead load their font slices (design §5.3).
+  const textBodies = React.useMemo(() => new Map(clips.flatMap((clip) => clip.kind === 'text' && rank.has(clip.trackId) && nearFrame(clip, frame, premountFrames) ? [[clip.id, clip.text.body] as const] : [])),
+    [clips, rank, frame, premountFrames]);
+  const textSignature = JSON.stringify([...textBodies]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- the bodies change only when their signature does.
+  const stableTextBodies = React.useMemo(() => textBodies, [textSignature]);
+  // Undefined while the limits are read, or when a server that predates them answered without the font set.
+  const fontBase = limitsQuery.isError ? null : limits?.text?.fontBaseUrl;
+  const textFonts = useTimelineTextFonts(fontBase, stableTextBodies);
+  const retryFonts = React.useCallback((): void => { if (typeof fontBase === 'string') retryTimelineFonts(fontBase); else void limitsQuery.refetch(); }, [fontBase, limitsQuery]);
+  // A visible picture still decoding, or a visible text whose slices are loading, holds play (design §5.4).
+  const stillPending = visible.some((clip) => (clip.kind === 'image' && imageStateOf(clip) === 'loading') || (clip.kind === 'text' && (textFonts.get(clip.id) ?? 'loading') === 'loading'));
   const preview = useTimelinePreviewLimits(projectId);
   const playback = useTimelinePlayback({
-    document, readyClipIds: readyIds, frame, onFrame: setFrame, videoLayers, enabled: true, preview,
-    webLayers, webPending, webLoadTimeoutMs: webLimits?.playerLoadTimeoutMs,
+    document, frame, onFrame: setFrame, videoLayers, enabled: true, preview,
+    webLayers, webPending, stillPending, webLoadTimeoutMs: webLimits?.playerLoadTimeoutMs,
   });
   const { seek, retryVideo, retryWeb, videoElement, videoStates } = playback;
+  // Clips whose element or picture failed, so their file reads as unreadable on the track and in the properties.
+  const failedIds = React.useMemo(() => new Set([
+    ...[...videoStates].flatMap(([clipId, state]) => state === 'failed' ? [clipId] : []),
+    ...[...imageStates].flatMap(([clipId, { state }]) => state === 'failed' ? [clipId] : []),
+  ]), [videoStates, imageStates]);
   /**
    * A layer's base box in canvas pixels: its registered size contained in the canvas (#1410 design §2).
    * @param clip - The layer's clip.
@@ -424,31 +442,46 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       const data = assetOf(clip)?.data;
       return timelineLayerBase(canvas, { width: data?.width ?? null, height: data?.height ?? null });
     }
+    if (clip.kind === 'image') {
+      // The registered size, else the decoded one (design §2.2); unknown until one of them is.
+      const source = timelineClipSource(document.sources, clip);
+      const size = source?.kind === 'image' && source.width !== null && source.height !== null ? source : imageStates.get(clip.id)?.size ?? null;
+      return size === null ? null : timelineLayerBase(canvas, size);
+    }
+    if (clip.kind === 'text') {
+      const size = textSizes.get(clip.id);
+      if (size === undefined || factor <= 0 || size.width <= 0 || size.height <= 0) return null;
+      const width = size.width / factor;
+      const height = size.height / factor;
+      return { left: (canvas.width - width) / 2, top: (canvas.height - height) / 2, width, height };
+    }
     if (clip.kind === 'web-animation') {
       const sourceId = sourceOf(clip);
       const viewport = sourceId === null ? undefined : web.sources[sourceId]?.viewport;
       return viewport === undefined ? null : timelineLayerBase(canvas, viewport);
     }
     return null;
-  }, [assetOf, canvas, sourceOf, web.sources]);
+  }, [assetOf, canvas, sourceOf, web.sources, document.sources, imageStates, textSizes, factor]);
   // The layers a click can pick and a selection can handle: visible ready videos and web copies with a source (#1410
   // design §4.2).
   // A video's asset state is read in this render; its element's error arrives through `videoStates`.
   const pickable = React.useMemo(() => {
     const assetStates = new Map(videoLayers.map((layer) => [layer.clipId, layer.state]));
     return visible.flatMap((clip) => {
-      const unready = clip.kind === 'video' && (assetStates.get(clip.id) !== 'ready' || videoStates.get(clip.id) === 'failed');
+      const unready = (clip.kind === 'video' && (assetStates.get(clip.id) !== 'ready' || videoStates.get(clip.id) === 'failed'))
+        || (clip.kind === 'image' && imageStateOf(clip) === 'failed');
       const base = unready ? null : baseOf(clip);
       return base === null ? [] : [{ clip, base }];
     });
-  }, [visible, baseOf, videoLayers, videoStates]);
+  }, [visible, baseOf, videoLayers, videoStates, imageStateOf]);
   // Each video element sits in the frame on its base box with its transform, stacked by track; a premounted one waits
   // there hidden.
   const videoHost = React.useRef<HTMLDivElement>(null);
   React.useLayoutEffect(() => {
     const host = videoHost.current;
     if (host === null) return;
-    for (const clip of videoClips) {
+    for (const clip of laneClips) {
+      if (clip.kind !== 'video') continue;
       const element = videoElement(clip.id);
       if (element === undefined) continue;
       if (element.parentElement !== host) host.append(element);
@@ -506,11 +539,12 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const commit = React.useCallback((command: TimelineEditCommand, options?: TimelineEditOptions): TimelineEditPlan | null => {
     if (readOnly) return null;
     const plan = editWithNotice(command, options);
-    // A size refusal was told by its own toast.
-    if (!plan.ok && !isTimelineSizeRefusal(plan)) toast.warning(t(`timeline.errors.${plan.reason}`));
+    // A size refusal was told by its own toast; a refusal names the kind of the clip it is about.
+    const clipId = 'clipId' in command.parameters ? command.parameters.clipId : undefined;
+    const subject = clipId === undefined ? undefined : document.clips[clipId];
+    if (!plan.ok && !isTimelineSizeRefusal(plan)) toast.warning(t(`timeline.errors.${plan.reason}`, { kind: subject === undefined ? 'other' : timelineClipKind(subject) }));
     return plan;
-  }, [readOnly, editWithNotice, t]);
-  const removeDamaged = React.useCallback((clipId: string): void => { if (!readOnly) removeTimelineClip(doc, clipId, session.origin); }, [readOnly, doc, session]);
+  }, [readOnly, editWithNotice, t, document.clips]);
   const commitCommand = React.useCallback((command: TimelineEditCommand): void => { commit(command); }, [commit]);
   const vanished = React.useCallback((): void => { toast.warning(t('timeline.errors.clip_removed')); }, [t]);
 
@@ -602,16 +636,6 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   // Effects run only while the Space body is shown, so the view is out only then.
   usePublishTimelineView({ awareness, viewport: trackScroller, pixelsPerFrame, headerPx: TIMELINE_TRACK_HEADER_PX,
     frame, intent: playback.intent, anchor: playback.anchor });
-  const locateClip = React.useCallback((clipId: string): void => {
-    session.select(clipId);
-    const clip = document.clips[clipId];
-    if (clip === undefined) return;
-    seekTo(clip.startFrame);
-    const viewport = trackScroller;
-    const left = clip.startFrame * pixelsPerFrame;
-    // The lanes visible right of the sticky track headers; the margin keeps the start off the headers' edge.
-    if (viewport !== null && (left < viewport.scrollLeft || left >= viewport.scrollLeft + viewport.clientWidth - TIMELINE_TRACK_HEADER_PX)) viewport.scrollTo({ left: Math.max(0, left - LOCATE_MARGIN_PX) });
-  }, [session, document.clips, seekTo, pixelsPerFrame, trackScroller]);
 
   const nudge = React.useCallback((frames: number): void => {
     if (readOnly || selected === undefined) { seekTo(frame + frames); return; }
@@ -779,18 +803,31 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     draggedId.current = null;
   }, [handledId, t]);
   const [notesLayer, setNotesLayer] = React.useState<HTMLDivElement | null>(null);
-  const videoNotes = visible.flatMap((clip, index) => {
-    const state = clip.kind === 'video' ? videoStates.get(clip.id) : undefined;
-    if (state !== 'loading' && state !== 'failed') return [];
+  // The preview notes of drawn and heard layers that are loading or cannot be read, and of texts whose fonts failed
+  // (design §6.6), each by its track.
+  const mediaNotes = [...visible, ...audible.filter((clip) => clip.kind === 'audio')].flatMap((clip, index) => {
     const track = labels.nameOf(clip.trackId) ?? clip.trackId;
-    return [{ clipId: clip.id, z: index + 1, state, track }];
+    const kind = timelineClipKind(clip);
+    if (clip.kind === 'text') return textFonts.get(clip.id) === 'failed' ? [{ clipId: clip.id, z: index + 1, text: t('timeline.preview.fontFailed', { track }), retry: true }] : [];
+    if (clip.kind !== 'video' && clip.kind !== 'audio' && clip.kind !== 'image') return [];
+    const state = clip.kind === 'image' ? imageStateOf(clip) : videoStates.get(clip.id);
+    // A picture notes only a failure; a video or sound also notes that it loads, as videos did before.
+    if (state === 'loading' && clip.kind !== 'image') return [{ clipId: clip.id, z: index + 1, text: t('timeline.preview.mediaLoading', { track, kind }), retry: false }];
+    const problem = timelineMediaProblem(assetOf(clip), state === 'failed');
+    if (problem === null) return [];
+    const text = t(problem === 'forbidden' ? 'timeline.media.forbidden' : 'timeline.media.readFailed', { kind });
+    return [{ clipId: clip.id, z: index + 1, text: t('timeline.preview.media', { track, text }), retry: problem === 'readFailed' }];
   });
-  const retryVideoLayer = React.useCallback((clipId: string): void => {
-    // The asset is read again first: a file address that stopped loading may have expired (#1410 design §6.2).
+  const retryLayer = React.useCallback((clipId: string): void => {
     const clip = document.clips[clipId];
-    if (clip !== undefined) void assetOf(clip)?.refetch();
-    retryVideo(clipId);
-  }, [document.clips, assetOf, retryVideo]);
+    if (clip === undefined) return;
+    if (clip.kind === 'text') { retryFonts(); return; }
+    // The asset is read again first: a file address that stopped loading may have expired (#1410 design §6.2).
+    const asset = assetOf(clip);
+    if (asset?.isError === true || clip.kind !== 'image') void asset?.refetch();
+    if (clip.kind === 'image') setImageAttempts((current) => new Map(current).set(clipId, (current.get(clipId) ?? 0) + 1));
+    else retryVideo(clipId);
+  }, [document.clips, assetOf, retryVideo, retryFonts]);
 
   const openMaterial = React.useCallback((): void => {
     if (readOnly) return;
@@ -803,9 +840,30 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const chooseFrame = React.useCallback((preset: TimelineFramePreset): void => {
     commit({ operation: 'set_frame', parameters: { preset }, placement });
   }, [commit, placement]);
-  const inConflict = clips.some((clip) => !readyIds.has(clip.id) && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames);
+  // Add text (design §6.3): a default text at the playhead for the configured length and size, selected, its body
+  // focused for typing.
+  const [focusTextId, setFocusTextId] = React.useState<string | null>(null);
+  const addText = React.useCallback(async (): Promise<void> => {
+    if (readOnly) return;
+    const at = frame;
+    let media: NonNullable<typeof limits>['media'];
+    try {
+      media = (await queryClient.fetchQuery({ queryKey: ['timeline-limits', projectId], queryFn: ({ signal }) => timelineApi.limits(projectId, signal), staleTime: Infinity })).media;
+    } catch {
+      toast.error(t('timeline.unavailable'));
+      return;
+    }
+    const clipId = newId();
+    const plan = commit({ operation: 'add_text', parameters: {
+      clipId, startFrame: at, newTrackId: newId(), text: { body: t('timeline.text.default'), size: media.textSize },
+      durationFrames: durationToFrames(media.textDurationSeconds, document.settings.fps),
+    }, placement });
+    if (plan?.ok !== true) return;
+    setFocusTextId(clipId);
+    session.select(clipId);
+  }, [readOnly, frame, queryClient, projectId, commit, t, document.settings.fps, placement, session]);
+  const pressAddText = React.useCallback((): void => { void addText(); }, [addText]);
   const noSelection = selected === undefined;
-  const hasConflicts = arrangement.hasConflicts || damagedClipIds.length > 0;
   // Click-focusable, not tab-reachable: where the keyboard goes when the focused element leaves the page.
   return <div ref={root} data-testid='timeline-space' data-project-id={projectId} data-space-id={spaceId} tabIndex={-1} data-space-focus-root='' className='flex h-full min-h-0 min-w-0 bg-background outline-none'>
     {/* The tracks take their content's height up to half the column; the preview takes the rest. */}
@@ -817,9 +875,18 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
           <div className='relative shrink-0' style={previewStyle}>
             <div data-testid='timeline-preview' className='absolute inset-0 isolate flex items-center justify-center overflow-hidden rounded-content-sm border border-border bg-black'>
               <div ref={videoHost} className='pointer-events-none absolute inset-0' />
+              {imageClips.map((clip) => {
+                const asset = assetOf(clip)?.data;
+                if (asset === undefined) return null;
+                const index = visible.indexOf(clip);
+                const base = baseOf(clip);
+                return <TimelineImageLayer key={`${clip.id}:${imageAttempts.get(clip.id) ?? 0}`} clipId={clip.id} src={asset.fileUrl} z={index + 1} shown={index >= 0} onState={reportImage}
+                  box={base === null ? null : timelineLayerStyle(canvas, base, transformOf(clip), factor)} />;
+              })}
+              {visible.map((clip, index) => clip.kind === 'text' && <TimelineTextLayer key={clip.id} clipId={clip.id} body={clip.text.body} fontSize={clip.text.size * fit.height}
+                maxWidth={fit.width} canvas={canvas} transform={transformOf(clip)} factor={factor} z={index + 1} onSize={reportTextSize} />)}
               <TimelineWebPreview projectId={projectId} entries={webEntries} states={playback.webStates} sharing={sharing} onPlayer={registerPlayer} onRetry={retryWeb} onUnavailable={reportUnavailable} uploadNotes={uploadNotes} notes={notesLayer} />
               {clips.length === 0 && <div data-testid='timeline-space-empty' className='flex flex-col items-center gap-3 p-6 text-center text-sm text-white/60'><Film className='size-8' /><p>{t('timeline.empty')}</p></div>}
-              {inConflict && visible.length === 0 && <p className='p-6 text-center text-sm text-status-error-foreground'>{t('timeline.conflictHelp')}</p>}
             </div>
             {!readOnly && <div data-testid='timeline-layer-overlay' className='absolute inset-px' style={OPERATION_LAYER_STYLE}>
               <div ref={hitLayer} data-testid='timeline-layer-hit' className='absolute inset-0' onPointerDown={pickFromHitLayer} />
@@ -830,9 +897,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             </div>}
             <div data-testid='timeline-preview-notes' className='pointer-events-none absolute inset-px' style={NOTE_LAYER_STYLE}>
               <div ref={setNotesLayer} className='absolute right-3 top-3 flex flex-col items-end gap-1.5 *:pointer-events-auto'>
-                {videoNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z}
-                  text={t(note.state === 'failed' ? 'timeline.preview.videoUnavailable' : 'timeline.preview.videoLoading', { track: note.track })}>
-                  {note.state === 'failed' && <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryVideoLayer(note.clipId)}>{t('timeline.retry')}</Button>}
+                {mediaNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z} text={note.text}>
+                  {note.retry && <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryLayer(note.clipId)}>{t('timeline.retry')}</Button>}
                 </PreviewNote>)}
               </div>
             </div>
@@ -849,28 +915,31 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={onSeek} min={0} max={Math.max(1, duration - 1)} step={1} disabled={duration === 0} className='min-w-0 flex-1' />
         <TimelineFrameRatio width={canvas.width} height={canvas.height} readOnly={readOnly} onChoose={chooseFrame} />
       </div>
-      <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 flex-wrap items-center justify-between gap-2 border-t border-border px-4 py-2'>
-        <div className='flex flex-wrap items-center gap-2'>
-          <Button data-testid='timeline-add-media' variant='outline' size='sm' className='gap-1.5' disabled={readOnly} onClick={openMaterial} icon={<Plus className='size-4' />}>{t('timeline.addMedia')}</Button>
-          {!readOnly && <Button data-testid='timeline-add-web-animation' variant='outline' size='sm' className='gap-1.5' onClick={openPicker} icon={<Code className='size-4' />}>{t('timeline.webAnimation.add')}</Button>}
-          <Button data-testid='timeline-undo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canUndo} onClick={undo} icon={<Undo2 className='size-4' />}>{t('timeline.edit.undo')}</Button>
-          <Button data-testid='timeline-redo' variant='outline' size='sm' className='gap-1.5' disabled={readOnly || !history.canRedo} onClick={redo} icon={<Redo2 className='size-4' />}>{t('timeline.edit.redo')}</Button>
-          <Separator orientation='vertical' className='h-5' />
-          <Button data-testid='timeline-split' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn('gap-1.5', noSelection && 'opacity-50')} onClick={split} icon={<Scissors className='size-4' />}>{t('timeline.edit.split')}<ToolbarShortcut>{formatShortcut({ mod: true, key: 'B' })}</ToolbarShortcut></Button>
-          <Button data-testid='timeline-duplicate' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn('gap-1.5', noSelection && 'opacity-50')} onClick={duplicate} icon={<Copy className='size-4' />}>{t('timeline.edit.duplicate')}<ToolbarShortcut>{formatShortcut({ mod: true, key: 'D' })}</ToolbarShortcut></Button>
-          <Button data-testid='timeline-delete' variant='outline' size='sm' disabled={readOnly} aria-disabled={noSelection} className={cn('gap-1.5', noSelection && 'opacity-50')} onClick={remove} icon={<Trash2 className='size-4' />}>{t('timeline.edit.delete')}<ToolbarShortcut>{formatShortcut({ key: 'Delete' })}</ToolbarShortcut></Button>
-        </div>
-        <div className='flex flex-wrap items-center gap-2'>
-          <TimelineSwitch testId='timeline-toggle-magnet' label={t('timeline.edit.magnet')} pressed={prefs.magnet} icon={MAGNET_ICON} onToggle={toggleMagnet} />
-          <TimelineSwitch testId='timeline-toggle-snap' label={t('timeline.edit.snap')} shortcut='N' pressed={prefs.snap} icon={SNAP_ICON} onToggle={toggleSnap} />
-          <TimelineSwitch testId='timeline-toggle-linkage' label={t('timeline.edit.linkage')} pressed={prefs.linkage} icon={LINKAGE_ICON} onToggle={toggleLinkage} />
-          <span className='flex items-center gap-2'>
-            <span className='text-xs text-muted-foreground'>{t('timeline.edit.zoom')}</span>
-            <Slider data-testid='timeline-zoom' aria-label={t('timeline.edit.zoom')} value={zoomValue} onValueChange={changeZoom} min={Math.log2(minZoom)} max={Math.log2(TIMELINE_MAX_PIXELS_PER_FRAME)} step={ZOOM_STEP} className='w-28' />
-          </span>
-        </div>
+      <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 items-center gap-1.5 border-t border-border px-4 py-1.5'>
+        <BarButton testId='timeline-add-media' label={t('timeline.addMedia')} icon={ADD_MEDIA_ICON} disabled={readOnly} onClick={openMaterial} />
+        {!readOnly && <BarButton testId='timeline-add-web-animation' label={t('timeline.webAnimation.add')} icon={ADD_WEB_ICON} onClick={openPicker} />}
+        {!readOnly && <BarButton testId='timeline-add-text' label={t('timeline.edit.addText')} icon={ADD_TEXT_ICON} onClick={pressAddText} />}
+        <Separator orientation='vertical' className='mx-1 h-5' />
+        <BarButton testId='timeline-undo' label={t('timeline.edit.undo')} shortcut={UNDO_KEY} icon={UNDO_ICON} disabled={readOnly || !history.canUndo} onClick={undo} />
+        <BarButton testId='timeline-redo' label={t('timeline.edit.redo')} shortcut={REDO_KEY} icon={REDO_ICON} disabled={readOnly || !history.canRedo} onClick={redo} />
+        <Separator orientation='vertical' className='mx-1 h-5' />
+        <BarButton testId='timeline-split' label={t('timeline.edit.split')} shortcut={SPLIT_KEY} icon={SPLIT_ICON} disabled={readOnly} unavailable={noSelection} onClick={split} />
+        <BarButton testId='timeline-duplicate' label={t('timeline.edit.duplicate')} shortcut={DUPLICATE_KEY} icon={DUPLICATE_ICON} disabled={readOnly} unavailable={noSelection} onClick={duplicate} />
+        <BarButton testId='timeline-delete' label={t('timeline.edit.delete')} shortcut={DELETE_KEY} icon={DELETE_ICON} disabled={readOnly} unavailable={noSelection} onClick={remove} />
+        <Separator orientation='vertical' className='mx-1 h-5' />
+        <BarButton testId='timeline-toggle-magnet' label={t('timeline.edit.magnet')} pressed={prefs.magnet} icon={MAGNET_ICON} onClick={toggleMagnet} />
+        <BarButton testId='timeline-toggle-snap' label={t('timeline.edit.snap')} shortcut='N' pressed={prefs.snap} icon={SNAP_ICON} onClick={toggleSnap} />
+        <BarButton testId='timeline-toggle-linkage' label={t('timeline.edit.linkage')} pressed={prefs.linkage} icon={LINKAGE_ICON} onClick={toggleLinkage} />
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <span className='ml-2 flex items-center'>
+              <Slider data-testid='timeline-zoom' aria-label={t('timeline.edit.zoom')} value={zoomValue} onValueChange={changeZoom} min={Math.log2(minZoom)} max={Math.log2(TIMELINE_MAX_PIXELS_PER_FRAME)} step={ZOOM_STEP} className='w-28' />
+            </span>
+          </TooltipTrigger>
+          <TooltipContent>{t('timeline.edit.zoom')}</TooltipContent>
+        </Tooltip>
       </div>
-      <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={setTrackScroller}
+      <TimelineTrackArea projectId={projectId} document={document} labels={labels} failedIds={failedIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={setTrackScroller}
         pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} web={web} webClips={webClips} uploads={uploadViews} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     </div>
     <aside data-testid='timeline-side-panel' className='flex w-72 shrink-0 flex-col border-l border-border'>
@@ -878,19 +947,9 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
         <div className='flex flex-col gap-3'>
           <section className={PANEL}>
             {selected === undefined ? <p className='text-muted-foreground'>{t('timeline.selectClip')}</p>
-              : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} web={web} clip={selected} atFrame={selectedAtFrame} conflict={!readyIds.has(selected.id)} reason={reasons.get(selected.id) ?? null}
-                labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
-                name={selected.kind === 'web-animation' ? t('timeline.webAnimation.copy') : selected.kind === 'upload' ? selected.upload.name : selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')}
-                webCopy={selectedWebCopy} upload={selectedUpload} />}
-          </section>
-          <section data-testid='timeline-conflicts' className={PANEL}>
-            <h3 className='text-sm font-semibold'>{t('timeline.conflictList')}</h3>
-            {hasConflicts ? <>
-              <p className='text-muted-foreground'>{t('timeline.conflictHelp')}</p>
-              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
-                name={clip.kind === 'web-animation' ? webClips.get(clip.id)?.title || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : null} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
-              {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
-            </> : <p className='text-muted-foreground'>{t('timeline.noConflicts')}</p>}
+              : <TimelineSelectedProperties key={selected.id} projectId={projectId} spaceId={spaceId} document={document} web={web} clip={selected} atFrame={selectedAtFrame}
+                labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand} focusBody={focusTextId === selected.id}
+                elementFailed={failedIds.has(selected.id)} onRetry={retryLayer} webCopy={selectedWebCopy} upload={selectedUpload} />}
           </section>
         </div>
       </ScrollArea>
@@ -913,5 +972,5 @@ export function TimelineSpace(props: SpaceBodyProps): React.JSX.Element {
   const state = useTimelineDocument(doc, connection.hasEverSynced);
   if (!connection.hasEverSynced) return <div data-testid={connection.status === 'authFailed' ? 'timeline-space-unavailable' : 'timeline-space-loading'} className='flex h-full items-center justify-center p-6 text-sm text-muted-foreground'>{t(connection.status === 'authFailed' ? 'timeline.unavailable' : 'timeline.loading')}</div>;
   if (state.document === null) return <div data-testid='timeline-space-error' className='flex h-full items-center justify-center p-6 text-sm text-muted-foreground'>{t('timeline.incompatible')}</div>;
-  return <TimelineEditor {...props} doc={doc} document={state.document} damagedClipIds={state.damaged.clips} />;
+  return <TimelineEditor {...props} doc={doc} stored={state.document} />;
 }

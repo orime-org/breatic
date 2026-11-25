@@ -189,7 +189,8 @@ export function referenceOverflow(item: TimelineClip, source: TimelineVideoSourc
 export function totalOverflow(document: TimelineDocumentV1): number {
   return Object.values(document.clips).reduce((sum, item) => {
     const source = document.sources[sourceIdOf(item) ?? ''];
-    return source === undefined ? sum : sum + referenceOverflow(item, source);
+    // The property suites seed only video sources.
+    return source === undefined ? sum : sum + referenceOverflow(item, source as TimelineVideoSource);
   }, 0);
 }
 

@@ -27,15 +27,16 @@ export interface SpaceExecutionQuery {
 
 export const timelineApi = {
   /**
-   * Read one page of registered videos accepted by this Project.
+   * Read one page of registered videos, pictures or sounds accepted by this Project (inner#1709).
    * @param projectId - The Project being edited.
    * @param cursor - The previous page's opaque cursor.
    * @param signal - Cancellation for this read.
-   * @returns Canonical registered video metadata and the next page cursor.
+   * @param kind - Which registered media to list; videos by default.
+   * @returns Canonical registered asset metadata and the next page cursor.
    * @throws {ApiException} When the authenticated request fails.
    */
-  listVideos(projectId: string, cursor?: string, signal?: AbortSignal): Promise<ProjectAssetPage> {
-    return apiGet(`/projects/${projectId}/assets`, { params: { kind: 'video', cursor }, signal });
+  listVideos(projectId: string, cursor?: string, signal?: AbortSignal, kind: 'video' | 'image' | 'audio' = 'video'): Promise<ProjectAssetPage> {
+    return apiGet(`/projects/${projectId}/assets`, { params: { kind, cursor }, signal });
   },
   /**
    * Resolve a clip's fixed registered asset through current Project access.

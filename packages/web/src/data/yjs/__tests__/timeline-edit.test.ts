@@ -11,7 +11,7 @@ import { timelineSourceOverflow, validateTimelineRange } from '@web/data/yjs/tim
 import type { TimelineEditPlan, TimelineEditRefusal } from '@web/data/yjs/timeline-edit';
 import { TIMELINE_MAIN_TRACK_ID, TimelineClipSchema } from '@breatic/shared';
 import { TimelineEditCommandSchema } from '@web/data/yjs/timeline-edit';
-import type { TimelineClip, TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
+import type { TimelineClip, TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 import { applyTimelineEdit, readTimelineDocument } from '@web/data/yjs/timeline-document';
 import {
@@ -790,7 +790,8 @@ describe('planTimelineEdit invariants over random documents', () => {
       const was = before.clips[item.id];
       const source = next.sources[sourceIdOf(item) ?? ''];
       if (was === undefined || source === undefined) continue;
-      if (referenceOverflow(was, source) === 0) expect(referenceOverflow(item, source), `clip ${item.id} became invalid`).toBe(0);
+      // The property suite seeds only video sources.
+      if (referenceOverflow(was, source as TimelineVideoSource) === 0) expect(referenceOverflow(item, source as TimelineVideoSource), `clip ${item.id} became invalid`).toBe(0);
     }
 
     // Main track packed from frame 0, by the lengths the clips play, after a magnetic edit that involves it.
