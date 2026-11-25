@@ -69,7 +69,7 @@ function web(id: number, startFrame: number, durationFrames: number, sourceInFra
  * @throws {never} Never.
  */
 function documentOf(clips: Array<TimelineVideoClip | TimelineWebAnimationClip>): TimelineDocumentV1 {
-  const tracks: TimelineTrack[] = [{ id: MAIN, kind: 'visual', order: 0 }, { id: V2, kind: 'visual', order: 1 }, { id: V3, kind: 'visual', order: 2 }];
+  const tracks: TimelineTrack[] = [{ id: MAIN, order: 0 }, { id: V2, order: 1 }, { id: V3, order: 2 }];
   return {
     schemaVersion: 2,
     settings: { width: 1920, height: 1080, fps: FPS },
@@ -286,7 +286,6 @@ function renderPlayback(props: HarnessProps): RenderHookResult<PlaybackResult, H
     const allocation = input.fresh === true ? frame : null;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the layer set changes only when its content (or, with `fresh`, the frame) does.
     const webLayers = React.useMemo(() => layersNow, [signature, input.layersAt, allocation]);
-    const readyClipIds = React.useMemo(() => new Set(Object.keys(input.document.clips)), [input.document]);
     const latest = React.useRef(input);
     latest.current = input;
     const createMedia = React.useCallback((clipId: string): HTMLVideoElement => mediaOf(latest.current.videos, clipId), []);
@@ -294,7 +293,7 @@ function renderPlayback(props: HarnessProps): RenderHookResult<PlaybackResult, H
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the video layers change only when their content does.
     const videoLayers = React.useMemo(() => videoLayersAt(input.document, frame), [videoSignature]);
     const playbackInput: PlaybackInput = {
-      document: input.document, readyClipIds, frame, onFrame, videoLayers, createMedia,
+      document: input.document, frame, onFrame, videoLayers, createMedia,
       enabled: true, webLayers, webLoadTimeoutMs: input.limitsPending === true ? undefined : TIMEOUT_MS,
     };
     return { ...useTimelinePlayback(playbackInput), frame };
@@ -464,7 +463,6 @@ describe('a Space tab hidden while an instance loads', () => {
     const clip = web(1, 0, 48);
     const layers = [{ key: `${SRC}:0`, clip, fps: FPS, role: 'visible' as const, player: fixture.player }];
     const document = documentOf([clip]);
-    const readyClipIds = new Set([clip.id]);
     const result: { current: ReturnType<typeof useTimelinePlayback> | null } = { current: null };
     let iframeLoads = 0;
     fixture.iframe.addEventListener('load', () => { iframeLoads += 1; });
@@ -477,7 +475,7 @@ describe('a Space tab hidden while an instance loads', () => {
     function Body(): null {
       const [frame, setFrame] = React.useState(0);
       result.current = useTimelinePlayback({
-        document, readyClipIds, frame, onFrame: setFrame, videoLayers: NO_VIDEO_LAYERS,
+        document, frame, onFrame: setFrame, videoLayers: NO_VIDEO_LAYERS,
         enabled: true, webLayers: layers, webLoadTimeoutMs: TIMEOUT_MS,
       });
       return null;
@@ -1035,7 +1033,6 @@ describe('premounted and idle instances (inner#1711 design §7.4)', () => {
     const fixture = playerFixture();
     const video = videoFixture(30 / 24);
     const document = documentOf([VIDEO, LATER]);
-    const readyClipIds = new Set(Object.keys(document.clips));
     const layersAt = pooled(LATER, fixture);
     const result: { current: (ReturnType<typeof useTimelinePlayback> & { frame: number }) | null } = { current: null };
     const createMedia = (clipId: string): HTMLVideoElement => mediaOf({ [VIDEO.id]: video }, clipId);
@@ -1055,7 +1052,7 @@ describe('premounted and idle instances (inner#1711 design §7.4)', () => {
       // eslint-disable-next-line react-hooks/exhaustive-deps -- the video layers change only when their content does.
       const videoLayers = React.useMemo(() => videoLayersAt(document, frame), [videoSignature]);
       const playback = useTimelinePlayback({
-        document, readyClipIds, frame, onFrame: setFrame, videoLayers, createMedia,
+        document, frame, onFrame: setFrame, videoLayers, createMedia,
         enabled: true, webLayers, webLoadTimeoutMs: TIMEOUT_MS,
       });
       result.current = { ...playback, frame };

@@ -414,8 +414,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
   const textSignature = JSON.stringify([...textBodies]);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the bodies change only when their signature does.
   const stableTextBodies = React.useMemo(() => textBodies, [textSignature]);
-  // Undefined while the limits are read, or when a server that predates them answered without the font set.
-  const fontBase = limitsQuery.isError ? null : limits?.text?.fontBaseUrl;
+  // Undefined while the limits are read.
+  const fontBase = limitsQuery.isError ? null : limits?.text.fontBaseUrl;
   const textFonts = useTimelineTextFonts(fontBase, stableTextBodies);
   const retryFonts = React.useCallback((): void => { if (typeof fontBase === 'string') retryTimelineFonts(fontBase); else void limitsQuery.refetch(); }, [fontBase, limitsQuery]);
   // A visible picture still decoding, or a visible text whose slices are loading, holds play (design §5.4).

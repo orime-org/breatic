@@ -23,11 +23,6 @@ const END_TOLERANCE_SECONDS = 0.001;
 export interface TimelinePlaybackInput {
   /** The page's view document (inner#1709): only clips that can be shown, each at the length it plays. */
   document: TimelineDocumentV1;
-  /**
-   * Not read: the view document holds only the clips that play (inner#1709). Accepted so callers written
-   * against the earlier input still type-check.
-   */
-  readyClipIds?: ReadonlySet<string>;
   frame: number;
   onFrame: (frame: number) => void;
   /**

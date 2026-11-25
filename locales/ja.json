@@ -5329,7 +5329,7 @@
     },
     "media": {
       "forbidden": "この{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}を読み取る権限がありません",
-      "contactAdmin": "Project の Admin に連絡してください",
+      "contactAdmin": "Studio Admin に連絡してください",
       "readFailed": "{kind, select, video {動画} image {画像} audio {音声} text {テキスト} other {動画}}を読み取れませんでした"
     },
     "text": {

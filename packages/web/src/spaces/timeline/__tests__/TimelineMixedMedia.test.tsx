@@ -891,7 +891,7 @@ describe('media that cannot be read (design §6.6, acceptance 7)', () => {
     fireEvent.click(clip);
     const panel = screen.getByTestId('timeline-side-panel');
     expect(panel).toHaveTextContent('没有权限读取此图片');
-    expect(panel).toHaveTextContent('联系 Project 管理员');
+    expect(panel).toHaveTextContent('联系 Studio Admin');
   });
 
   it('says a sound could not be read and retries only that asset', async () => {

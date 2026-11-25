@@ -37,8 +37,8 @@ import { act, renderHook, type RenderHookResult } from '@testing-library/react';
 import fc from 'fast-check';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { TIMELINE_PREVIEW_DEFAULTS, type TimelineDocumentV1, type TimelineTrack, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
-import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
+import { TIMELINE_PREVIEW_DEFAULTS, TimelineClipSchema, type TimelineDocumentV1, type TimelineTrack, type TimelineVideoClip, type TimelineVideoSource } from '@breatic/shared';
+import { arrangeTimelineClips, EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 
 vi.mock('@web/lib/toast', () => ({ toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
@@ -54,7 +54,7 @@ const EPSILON = 1e-6;
 // Room for the drift the playback measures on its continuous clock against the frame the checks read, over one tick.
 const JUMP_MARGIN = 0.1;
 const { resumeSeekSeconds: RESUME_SECONDS, driftHardSyncSeconds: HARD_SYNC_SECONDS } = TIMELINE_PREVIEW_DEFAULTS;
-const TRACKS: TimelineTrack[] = [{ id: 'visual-1', kind: 'visual', order: 0 }, { id: 'v2', kind: 'visual', order: 1 }];
+const TRACKS: TimelineTrack[] = [{ id: 'visual-1', order: 0 }, { id: 'v2', order: 1 }];
 const CLIP_IDS = ['30000000-0000-4000-8000-000000000001', '30000000-0000-4000-8000-000000000002'] as const;
 
 /**
@@ -368,16 +368,21 @@ function renderPlayback(document: TimelineDocumentV1, lanes: readonly LaneSpec[]
       if (spec === undefined) throw new Error(`unknown clip ${clipId}`);
       return createFake(clipId, spec).element;
     }, []);
-    const ready = React.useMemo(() => new Set(resolveTimelineArrangement(document).readyClipIds), []);
-    const layersNow = Object.values(document.clips)
-      .filter((clip) => ready.has(clip.id) && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - PREMOUNT_FRAMES)
+    // The page's view document (inner#1709): reading drops the clips the schema refuses (`readTimelineContent`, such as
+    // a generated start before frame 0), then only the clips that play remain, each at the length it plays.
+    const view = React.useMemo((): TimelineDocumentV1 => {
+      const stored = { ...document, clips: Object.fromEntries(Object.entries(document.clips).filter(([, clip]) => TimelineClipSchema.safeParse(clip).success)) };
+      return { ...stored, clips: arrangeTimelineClips(stored, EMPTY_TIMELINE_WEB_RESOLUTION) };
+    }, []);
+    const layersNow = Object.values(view.clips)
+      .filter((clip) => frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - PREMOUNT_FRAMES)
       .sort((a, b) => (a.trackId === 'visual-1' ? 0 : 1) - (b.trackId === 'visual-1' ? 0 : 1))
       .map((clip) => ({ clipId: clip.id, fileUrl: `https://cdn.test/${clip.id}.mp4`, coverUrl: null, state: 'ready' as const }));
     const signature = JSON.stringify(layersNow);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the layer set changes only when its content does.
     const videoLayers = React.useMemo(() => layersNow, [signature]);
     return {
-      ...useTimelinePlayback({ document, readyClipIds: ready, frame, onFrame, videoLayers, createMedia, enabled: true }),
+      ...useTimelinePlayback({ document: view, frame, onFrame, videoLayers, createMedia, enabled: true }),
       frame,
     };
   });

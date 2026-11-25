@@ -11,7 +11,7 @@
  *   holds after this allocation: `{ key, sourceVersionId, role, clipId, targetFrame }`, where `role` is `visible`,
  *   `premount` or `idle`, `clipId` is null only for `idle`, and `targetFrame` is the premounted copy's first visible
  *   frame (null otherwise). The pool may carry private bookkeeping (ordinals, idle order) beside `assignments`.
- * - `input`: `{ document, readyClipIds, frame, premountFrames, idleInstancesMax, sourceOf, failedKeys }`; `sourceOf`
+ * - `input`: `{ document, frame, premountFrames, idleInstancesMax, sourceOf, failedKeys }`; `sourceOf`
  *   gives a web copy's resolved source version (null for a placeholder), `failedKeys` the instances the host failed.
  *
  * Keys are `sourceVersionId:n`; n counts up per source version for the life of the pool and is never reused.
@@ -54,7 +54,6 @@ interface Step { document: TimelineDocumentV1; frame: number; premountFrames?: n
 function allocate(previous: WebInstancePool, step: Step): WebInstancePool {
   return allocateWebInstances(previous, {
     document: step.document,
-    readyClipIds: new Set(Object.keys(step.document.clips)),
     frame: step.frame,
     premountFrames: step.premountFrames ?? LEAD,
     idleInstancesMax: step.idleInstancesMax ?? IDLE_MAX,

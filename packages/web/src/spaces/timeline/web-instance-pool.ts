@@ -39,8 +39,6 @@ export interface WebInstancePool {
 export interface WebInstanceAllocationInput {
   /** The page's view document (inner#1709): only clips that can be shown, each at the length it plays. */
   document: TimelineDocumentV1;
-  /** Not read: the view document holds only the clips that play. Accepted so earlier callers still type-check. */
-  readyClipIds?: ReadonlySet<string>;
   frame: number;
   /** The premount lead in Timeline frames; 0 premounts nothing. */
   premountFrames: number;

@@ -5329,7 +5329,7 @@
     },
     "media": {
       "forbidden": "沒有權限讀取此{kind, select, video {影片} image {圖片} audio {音訊} text {文字} other {影片}}",
-      "contactAdmin": "聯絡 Project Admin",
+      "contactAdmin": "聯絡 Studio Admin",
       "readFailed": "{kind, select, video {影片} image {圖片} audio {音訊} text {文字} other {影片}}讀取失敗"
     },
     "text": {

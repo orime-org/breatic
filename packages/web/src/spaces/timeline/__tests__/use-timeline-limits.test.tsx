@@ -59,6 +59,8 @@ describe('useTimelinePreviewLimits (#1410 design §6.4)', () => {
       assets: { pageSize: 50, pageMax: 100 },
       webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9'], playerLoadTimeoutMs: 15_000 },
       preview: CONFIGURED,
+      media: { imageDurationSeconds: 5, textDurationSeconds: 5, textSize: 0.06 },
+      text: { fontBaseUrl: 'https://ingest.test/web-animation/fonts/v1/' },
     });
     const { result } = renderHook(() => useTimelinePreviewLimits(PROJECT), { wrapper: wrapper() });
     await waitFor(() => expect(result.current).toEqual(CONFIGURED));

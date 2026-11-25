@@ -34,7 +34,7 @@ afterEach(() => {
  */
 function showFields(selected: TimelineVideoClip = SELECTED): ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>> {
   const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
-  renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} clip={selected} name='Clip' conflict={false}
+  renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} clip={selected} name='Clip'
     labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />);
   return onCommit;
 }
@@ -148,7 +148,7 @@ function showLive(selected: TimelineVideoClip = SELECTED): { onCommit: ReturnTyp
    * @returns The element, keyed by the clip id as TimelineSpace renders it.
    * @throws {never} Never.
    */
-  const panel = (item: TimelineVideoClip, options: PanelOptions = {}): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={timeline([item], undefined, [SOURCE, SHORT_SOURCE])} clip={item} name='Clip' conflict={false}
+  const panel = (item: TimelineVideoClip, options: PanelOptions = {}): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={timeline([item], undefined, [SOURCE, SHORT_SOURCE])} clip={item} name='Clip'
     labels={LABELS} readOnly={options.readOnly ?? false} placement={options.placement ?? OFF} atFrame onCommit={onCommit} />;
   const view = renderWithTooltips(panel(selected));
   return { onCommit, show: (next, options) => view.rerender(panel(next, options)) };
@@ -434,7 +434,7 @@ describe('TimelineClipProperties names the source length and rate (inner#1708 vi
       ...base, settings: { ...base.settings, fps: ntsc },
       sources: { [SOURCE.id]: { ...SOURCE, timebase: ntsc } },
     };
-    renderWithTooltips(<TimelineClipProperties spaceId='space' document={document} clip={SELECTED} name='Clip' conflict={false}
+    renderWithTooltips(<TimelineClipProperties spaceId='space' document={document} clip={SELECTED} name='Clip'
       labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={vi.fn()} />);
     expect(screen.getByTestId('timeline-clip-source')).toHaveTextContent(t('timeline.sourceExtent', { kind: 'video', frames: SOURCE.extentFrames, fps: 29.97 }));
   });
@@ -472,7 +472,7 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
    */
   function showPlaced(selected: TimelineClip = PLACED, readOnly = false, atFrame = true): ReturnType<typeof vi.fn<(command: TimelineEditCommand) => void>> {
     const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
-    renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} web={RESOLUTION} clip={selected} name='Clip' conflict={false}
+    renderWithTooltips(<TimelineClipProperties spaceId='space' document={timeline([selected])} web={RESOLUTION} clip={selected} name='Clip'
       labels={LABELS} readOnly={readOnly} placement={OFF} atFrame={atFrame} onCommit={onCommit} />);
     return onCommit;
   }
@@ -516,7 +516,7 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
     const portrait = clip(cid(27), V2, 10, 14, { transform: { ...STORED, frameX: 0.25, frameY: -0.25 } });
     const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
     renderWithTooltips(<TimelineClipProperties spaceId='space' document={{ ...timeline([portrait]), settings: { width: 1080, height: 1920, fps: FPS } }} clip={portrait} name='Clip'
-      conflict={false} labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />);
+      labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />);
     expect(fieldText('timeline-clip-x')).toBe('270');
     expect(fieldText('timeline-clip-y')).toBe('-480');
     typeAndEnter('timeline-clip-x', '540');
@@ -531,7 +531,7 @@ describe('TimelineClipProperties position and size (breatic#1410)', () => {
       const onCommit = vi.fn<(command: TimelineEditCommand) => void>();
       const start = clip(cid(28), V2, 10, 14, { transform: { ...STORED, frameX: 0, frameY: 0 } });
       const panel = (item: TimelineVideoClip): React.JSX.Element => <TimelineClipProperties key={item.id} spaceId='space' document={{ ...timeline([item]), settings: WIDE }} clip={item}
-        name='Clip' conflict={false} labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />;
+        name='Clip' labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />;
       const view = renderWithTooltips(panel(start));
       try {
         typeAndEnter('timeline-clip-x', String(x));
@@ -802,7 +802,7 @@ describe('TimelineClipProperties for text, picture and sound clips (inner#1709 d
       clips: { [selected.id]: selected },
       sources: { [SOURCE.id]: SOURCE, [IMAGE_SOURCE.id]: IMAGE_SOURCE, [AUDIO_SOURCE.id]: AUDIO_SOURCE },
     } as unknown as TimelineDocumentV1;
-    renderWithTooltips(<TimelineClipProperties spaceId='space' document={document} clip={selected} name='Clip' conflict={false}
+    renderWithTooltips(<TimelineClipProperties spaceId='space' document={document} clip={selected} name='Clip'
       labels={LABELS} readOnly={false} placement={OFF} atFrame onCommit={onCommit} />);
     return onCommit;
   }

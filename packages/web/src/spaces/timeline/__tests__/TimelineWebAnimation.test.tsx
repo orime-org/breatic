@@ -90,6 +90,8 @@ const LIMITS = {
   defaults: SETTINGS,
   assets: { pageSize: 50, pageMax: 100 },
   webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000 },
+  media: { imageDurationSeconds: 5, textDurationSeconds: 5, textSize: 0.06 },
+  text: { fontBaseUrl: 'https://ingest.test/web-animation/fonts/v1/' },
 };
 const CONNECTED: SocketState = {
   provider: null, synced: true, hasEverSynced: true, status: 'connected', writeAccess: 'granted', authFailedReason: null,
@@ -201,7 +203,7 @@ describe('track toolbar', () => {
     seed();
     showTimeline();
     expect(await screen.findByTestId('timeline-add-web-animation')).toHaveAccessibleName(t('timeline.webAnimation.add'));
-    expect(toolbarButtons()).toEqual(['timeline-add-media', 'timeline-add-web-animation', ...EDITING]);
+    expect(toolbarButtons()).toEqual(['timeline-add-media', 'timeline-add-web-animation', 'timeline-add-text', ...EDITING]);
   });
 
   it('offers Add web animation while the Timeline limits are still read', async () => {

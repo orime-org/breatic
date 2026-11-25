@@ -319,6 +319,8 @@ beforeEach(() => {
     defaults: SETTINGS, assets: { pageSize: 50, pageMax: 100 },
     webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000 },
     preview: TIMELINE_PREVIEW_DEFAULTS,
+    media: { imageDurationSeconds: 5, textDurationSeconds: 5, textSize: 0.06 },
+    text: { fontBaseUrl: 'https://ingest.test/web-animation/fonts/v1/' },
   });
   vi.mocked(handOffSpaceMedia).mockReset().mockResolvedValue();
   vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
@@ -568,7 +570,7 @@ describe('TimelineSpace browser metadata boundary', () => {
     showTimeline();
     await addProjectVideo();
     expect(Object.values(layout().clips)[0]?.durationFrames).toBe(48);
-    expect(Object.values(layout().sources)[0]?.durationOrigin).toBe('registered');
+    expect(Object.values(layout().sources)[0]).toMatchObject({ kind: 'video', durationOrigin: 'registered' });
     expect(videos.filter((video) => video.preload === 'metadata')).toEqual([]);
   });
 
@@ -682,7 +684,7 @@ describe('TimelineSpace local uploads in the background', () => {
     fireEvent.click(screen.getByTestId('timeline-material-local'));
     fireEvent.change(screen.getByTestId('timeline-file-input'), { target: { files: [new File(['x'], 'broken.mp4', { type: 'video/mp4' })] } });
     fireEvent.click(screen.getByTestId('timeline-confirm-material'));
-    expect(await screen.findByTestId('timeline-material-error')).toHaveTextContent(t('timeline.errors.metadata_unavailable'));
+    expect(await screen.findByTestId('timeline-material-error')).toHaveTextContent(t('timeline.errors.metadata_unavailable', { kind: 'video' }));
     expect(Object.keys(layout().clips)).toEqual([]);
     expect(handOffSpaceMedia).not.toHaveBeenCalled();
   });

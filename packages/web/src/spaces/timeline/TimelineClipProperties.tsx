@@ -63,8 +63,6 @@ interface TimelineClipPropertiesProps {
   media?: TimelineMediaIssue | null;
   /** Focus the text body when the panel opens, as after adding a text (inner#1709). */
   focusBody?: boolean;
-  /** Not read: conflicts are no longer shown (inner#1709). Accepted so earlier callers still type-check. */
-  conflict?: boolean;
   labels: TimelineTrackLabels;
   readOnly: boolean;
   placement: TimelineEditPlacement;

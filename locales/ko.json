@@ -5329,7 +5329,7 @@
     },
     "media": {
       "forbidden": "이 {kind, select, video {동영상} image {이미지} audio {오디오} text {텍스트} other {동영상}}을(를) 읽을 권한이 없습니다",
-      "contactAdmin": "Project Admin에게 문의하세요",
+      "contactAdmin": "Studio Admin에게 문의하세요",
       "readFailed": "{kind, select, video {동영상} image {이미지} audio {오디오} text {텍스트} other {동영상}}을(를) 읽지 못했습니다"
     },
     "text": {

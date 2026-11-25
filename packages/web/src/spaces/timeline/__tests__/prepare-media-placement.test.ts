@@ -330,7 +330,7 @@ describe('prepareTimelineMediaPlacement', () => {
 
   it('reports a sub track a peer removed after the draft captured it', () => {
     const doc = seededDoc();
-    addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+    addTrack(doc, { id: 'visual-2', order: 1 });
     const draft = placementInput({ trackId: 'visual-2' });
     doc.getMap('tracks').delete('visual-2');
     refusedOnApply(doc, draft, 'track_missing');
@@ -369,13 +369,13 @@ describe('prepareTimelineMediaPlacement', () => {
 
   it('refuses a new track id that is already taken', () => {
     const doc = seededDoc();
-    addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+    addTrack(doc, { id: 'visual-2', order: 1 });
     refusedOnApply(doc, placementInput({ newTrackId: 'visual-2' }), 'id_taken');
   });
 
   it.each([0, 1, 47, 48, 95, 96])('accepts a sub-track placement at frame %s over an existing clip as an overwrite', (startFrame) => {
     const doc = seededDoc();
-    addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+    addTrack(doc, { id: 'visual-2', order: 1 });
     const base = occupy(doc, 0);
     expect(applyTimelineEdit(doc, { operation: 'move', parameters: { clipId: OTHER_CLIP_ID, startFrame: 48, trackId: 'visual-2' }, placement: OFF }, 'setup').ok).toBe(true);
     const result = prepareUnchanged(doc, placementInput({ trackId: 'visual-2', startFrame }));
@@ -406,7 +406,7 @@ describe('prepareTimelineMediaPlacement', () => {
   it('allows simultaneous video placements on different visual tracks', () => {
     const doc = seededDoc();
     occupy(doc, 72);
-    addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+    addTrack(doc, { id: 'visual-2', order: 1 });
     expect(prepareUnchanged(doc, placementInput({ trackId: 'visual-2' }))).toEqual({
       ok: true, command: expectedCommand({ trackId: 'visual-2' }),
     });
@@ -414,7 +414,7 @@ describe('prepareTimelineMediaPlacement', () => {
 
   it.each([120, 96])('keeps the original upload draft target after another clip moves to %s', (movedStart) => {
     const doc = seededDoc();
-    addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+    addTrack(doc, { id: 'visual-2', order: 1 });
     const draft = placementInput({ asset: null, trackId: 'visual-2', startFrame: 72 });
     occupy(doc, 0);
     expect(applyTimelineEdit(doc, { operation: 'move', parameters: { clipId: OTHER_CLIP_ID, startFrame: movedStart, trackId: 'visual-2' }, placement: OFF }, 'peer').ok).toBe(true);
@@ -431,7 +431,7 @@ describe('prepareTimelineMediaPlacement', () => {
       fc.integer({ min: -48, max: 48 }),
       (baseFrame, offset) => {
         const doc = seededDoc();
-        addTrack(doc, { id: 'visual-2', kind: 'visual', order: 1 });
+        addTrack(doc, { id: 'visual-2', order: 1 });
         const occupiedStart = baseFrame + 48;
         const existing = occupy(doc, 0);
         expect(applyTimelineEdit(doc, { operation: 'move', parameters: { clipId: OTHER_CLIP_ID, startFrame: occupiedStart, trackId: 'visual-2' }, placement: OFF }, 'setup').ok).toBe(true);

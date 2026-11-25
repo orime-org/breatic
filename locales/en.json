@@ -5329,7 +5329,7 @@
     },
     "media": {
       "forbidden": "No permission to read this {kind, select, video {video} image {image} audio {audio} text {text} other {video}}",
-      "contactAdmin": "Contact the Project admin",
+      "contactAdmin": "Contact the Studio Admin",
       "readFailed": "{kind, select, video {Video} image {Image} audio {Audio} text {Text} other {Video}} could not be read"
     },
     "text": {
