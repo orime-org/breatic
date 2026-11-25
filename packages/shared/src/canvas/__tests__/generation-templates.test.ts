@@ -1714,6 +1714,15 @@ describe('short drama templates (inner#1824)', () => {
     return template;
   };
 
+  it('sets the episode script out as a setup block and one block per scene, a blank line before each, in every language', () => {
+    const scenes = drama('short-drama-episode').nodes.filter((node) => node.role === 'generate' && node.type === 'video').length;
+    for (const locale of LOCALES) {
+      const blocks = (raw(locale, 'canvas.template.short-drama-episode.node.script.text') ?? '').split('\n\n');
+      expect(blocks.length, locale).toBe(1 + scenes);
+      expect(blocks.every((block) => block.trim().length > 0), locale).toBe(true);
+    }
+  });
+
   /** Edges in one order, to compare as a set. */
   const sorted = (edges: readonly GenerationTemplate['edges'][number][]): GenerationTemplate['edges'][number][] =>
     [...edges].sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`));

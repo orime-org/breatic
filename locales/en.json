@@ -1754,7 +1754,7 @@
         "node": {
           "script": {
             "name": "Script",
-            "text": "Title: {✏️ the title, e.g. The Letter}\nCharacters: {✏️ who is in it, e.g. Mia, a tired night nurse; Lena, her younger sister}\nPlace and light: {✏️ where and when, e.g. a small hospital break room at night, lit by one flickering fluorescent tube}\nScene 1: {✏️ what happens first, with the lines, e.g. Lena bursts in holding a hospital letter. Lena: \"What is this?\"}\nScene 2: {✏️ what happens next, with the lines, e.g. Mia admits she has known for months. Mia: \"I wanted to protect you.\"}\nScene 3: {✏️ how it ends, with the lines, e.g. Lena tears the letter up, then sits down beside her sister. Lena: \"We tell her together.\"}"
+            "text": "Title: {✏️ the title, e.g. The Letter}\nCharacters: {✏️ who is in it, e.g. Mia, a tired night nurse; Lena, her younger sister}\nPlace and light: {✏️ where and when, e.g. a small hospital break room at night, lit by one flickering fluorescent tube}\n\nScene 1: {✏️ what happens first, with the lines, e.g. Lena bursts in holding a hospital letter. Lena: \"What is this?\"}\n\nScene 2: {✏️ what happens next, with the lines, e.g. Mia admits she has known for months. Mia: \"I wanted to protect you.\"}\n\nScene 3: {✏️ how it ends, with the lines, e.g. Lena tears the letter up, then sits down beside her sister. Lena: \"We tell her together.\"}"
           },
           "cast": {
             "name": "Cast sheet",
