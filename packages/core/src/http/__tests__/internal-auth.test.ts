@@ -3,8 +3,9 @@
 
 /**
  * One internal listener's authentication built by `createInternalAuth`: it
- * checks against the secrets its service hands it, remembers nonces under the
- * service's prefix, and reports every refusal instead of logging.
+ * checks each signer against the secrets its service names for that signer,
+ * keeps each signer to the paths the service allows it, remembers nonces under
+ * the service's prefix, and reports every refusal instead of logging.
  */
 
 import { Hono } from "hono";
@@ -14,10 +15,15 @@ import { createInternalAuth } from "@core/http/internal-auth.js";
 import { signRequest } from "@core/http/internal-signature.js";
 
 const SECRET = "listener-secret";
+const PARTNER_SECRET = "partner-secret";
 const set = vi.fn();
 const report = vi.fn();
 const internalAuth = createInternalAuth({
-  secrets: () => ({ current: SECRET, previous: "" }),
+  secretsFor: (signer) => {
+    if (signer === "refused") return null;
+    return { current: signer === "partner" ? PARTNER_SECRET : SECRET, previous: "" };
+  },
+  mayAccess: (signer, path) => (signer === "partner") === path.startsWith("/internal/v1/partner/"),
   redis: () => ({ set }) as unknown as Redis,
   keyPrefix: () => "test",
   report,
@@ -26,28 +32,36 @@ const internalAuth = createInternalAuth({
 const app = new Hono();
 app.use("*", internalAuth());
 app.get("/internal/v1/x", (c) => c.json({ admin: c.get("internalAdmin") }));
+app.get("/internal/v1/partner/x", (c) => c.json({ admin: c.get("internalAdmin") }));
 
 /**
- * A GET to the test route signed with `secret`.
+ * A GET signed with `secret`.
  * @param secret - The secret to sign with.
  * @param nonce - The request's nonce.
+ * @param signer - Who the request says signed it.
+ * @param path - The path requested.
  * @returns The response.
  */
-function signedGet(secret: string, nonce = "nonce-0123456789ab"): Promise<Response> {
+function signedGet(
+  secret: string,
+  nonce = "nonce-0123456789ab",
+  signer = "admin-1",
+  path = "/internal/v1/x",
+): Promise<Response> {
   const timestamp = String(Math.floor(Date.now() / 1000));
   const parts = {
     method: "GET",
-    pathWithQuery: "/internal/v1/x",
+    pathWithQuery: path,
     timestamp,
     nonce,
-    adminId: "admin-1",
+    adminId: signer,
     idempotencyKey: null,
     body: "",
   };
   return Promise.resolve(
-    app.request("/internal/v1/x", {
+    app.request(path, {
       headers: {
-        "x-internal-admin": "admin-1",
+        "x-internal-admin": signer,
         "x-internal-timestamp": timestamp,
         "x-internal-nonce": nonce,
         "x-internal-signature": signRequest(secret, parts),
@@ -83,6 +97,34 @@ describe("createInternalAuth", () => {
     const res = await signedGet(SECRET);
     expect(res.status).toBe(401);
     expect(report).toHaveBeenCalledWith({ kind: "rejected", step: "nonce", path: "/internal/v1/x" });
+  });
+
+  it("checks each signer against the secret its service names for that signer", async () => {
+    set.mockResolvedValue("OK");
+    const ok = await signedGet(PARTNER_SECRET, "nonce-partner-000001", "partner", "/internal/v1/partner/x");
+    expect(ok.status).toBe(200);
+    expect(await ok.json()).toEqual({ admin: "partner" });
+    const wrongKey = await signedGet(SECRET, "nonce-partner-000002", "partner", "/internal/v1/partner/x");
+    expect(wrongKey.status).toBe(401);
+    expect(report).toHaveBeenCalledWith({ kind: "rejected", step: "signature", path: "/internal/v1/partner/x" });
+  });
+
+  it("refuses a signer its service accepts no secret for, before looking at the signature", async () => {
+    const res = await signedGet(SECRET, "nonce-refused-000001", "refused");
+    expect(res.status).toBe(401);
+    expect(await res.json()).toEqual({ code: "unauthorized" });
+    expect(report).toHaveBeenCalledWith({ kind: "rejected", step: "signer", path: "/internal/v1/x" });
+    expect(set).not.toHaveBeenCalled();
+  });
+
+  it("answers 403 to a correctly signed request for a path its signer may not reach, without using its nonce", async () => {
+    const intoPartner = await signedGet(SECRET, "nonce-forbid-0000001", "admin-1", "/internal/v1/partner/x");
+    expect(intoPartner.status).toBe(403);
+    expect(await intoPartner.json()).toEqual({ code: "forbidden" });
+    expect(report).toHaveBeenCalledWith({ kind: "forbidden", signer: "admin-1", path: "/internal/v1/partner/x" });
+    const outOfPartner = await signedGet(PARTNER_SECRET, "nonce-forbid-0000002", "partner", "/internal/v1/x");
+    expect(outOfPartner.status).toBe(403);
+    expect(set).not.toHaveBeenCalled();
   });
 
   it("answers 503 and reports when the nonce store is unreachable", async () => {

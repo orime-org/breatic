@@ -80,10 +80,10 @@ export interface SpaceTaskList {
 }
 
 /**
- * The query key one 3D Space's task list is cached under; `SpaceTasksWatcher` invalidates it when the Space document's
- * task version changes.
+ * The key every background-work list of one Space is cached under (3D tasks, Motion and Timeline executions);
+ * `SpaceTasksWatcher` invalidates it when the Space document's task version changes.
  * @param projectId - The project.
- * @param spaceId - The 3D Space.
+ * @param spaceId - The Space.
  * @returns The key.
  */
 export function spaceTasksQueryKey(projectId: string, spaceId: string): readonly [string, string, string] {

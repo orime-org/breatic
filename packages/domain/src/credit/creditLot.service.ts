@@ -38,6 +38,7 @@ import {
   serializeCreditPosition,
 } from "@domain/credit/credit-math.js";
 import {
+  commerceOutboxRepo,
   db,
   env,
   publishCreditsChanged,
@@ -124,7 +125,7 @@ export interface ChargeInput {
 
 /** What actually happened to a charge. */
 export interface ChargeOutcome {
-  /** Whether any credits were taken. False when payments are off, or nothing could be charged. */
+  /** Whether any credits were taken. False where credits are not charged (`CHARGING_ENABLED`), or nothing could be charged. */
   billed: boolean;
   /** Credits actually taken. */
   charged: CreditDecimal;
@@ -160,12 +161,12 @@ export interface ChargeOutcome {
  * @param input - The completed payment.
  * @param input.paymentId - The payment row, which is also its source id: a
  *   payment shares its source's primary key. Unique across lots, so a
- *   redelivered webhook fails here.
+ *   repeated payment grant fails here.
  * @param input.userId - Who paid.
  * @param input.purchasedCredits - How many credits it bought.
- * @param outer - The caller's transaction, when it has one. Fulfillment grants
- *   inside the same transaction that claims the event and moves the payment's
- *   status, so all three roll back together.
+ * @param outer - The caller's transaction, when it has one. A payment grant
+ *   runs inside the transaction that claims the billing service's request key
+ *   and writes the payment receipt, so all of them roll back together.
  * @returns The new lot.
  * @throws {Error} If a lot already exists for this payment — the unique constraint rejects the insert.
  */
@@ -184,7 +185,7 @@ export async function grantFromPayment(
    * @returns The new lot.
    */
   const run = async (tx: DbTx): Promise<CreditLotEntity> =>
-    creditLotRepo.createLot(
+    mirrored(await creditLotRepo.createLot(
       {
         // The payment's own id, which is also its source id — see
         // `createSource`. Opening a source here would hand every redelivery
@@ -199,7 +200,7 @@ export async function grantFromPayment(
         designatedStudioId: null,
       },
       tx,
-    );
+    ), tx);
   // The caller may already hold the transaction that decided this payment is
   // ours to grant. Opening a second one here would let the grant commit
   // while the decision rolls back.
@@ -260,7 +261,7 @@ export async function grantTrialCredits(
   input: { userId: string; studioId: string; credits: number },
   tx: DbTx,
 ): Promise<CreditLotEntity | null> {
-  if (!env.PAYMENT_ENABLED) return null;
+  if (!env.CHARGING_ENABLED) return null;
   if (input.credits <= 0) return null;
 
   const opened = await creditSourceRepo.claimSource(
@@ -339,9 +340,9 @@ async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome>
     referenceId: input.referenceId,
   };
 
-  // Payment-disabled deployments still need usage records to report what
+  // Deployments that charge nothing still need usage records to report what
   // they produced, even though no purchase is charged.
-  if (!env.PAYMENT_ENABLED) {
+  if (!env.CHARGING_ENABLED) {
     await creditLotRepo.recordStandaloneUsage({
       ...usageEntry,
       amount: fromMicroCredits(-amountMicro),
@@ -520,7 +521,7 @@ async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
   if (settled === null) return null;
   const { outcome, projectId } = settled;
   // Only a charge against a studio's pool changes what its users see.
-  if (projectId === null || outcome.studioId === null || !env.PAYMENT_ENABLED) return outcome;
+  if (projectId === null || outcome.studioId === null || !env.CHARGING_ENABLED) return outcome;
   try {
     await publishCreditsChanged(projectId);
     return outcome;
@@ -768,7 +769,7 @@ export async function requestRefund(input: {
       // arrives, the buyer reads one answer.
       throw REFUSAL_ERRORS.already_asked();
     }
-    return asked;
+    return mirrored(asked, tx);
   });
 }
 
@@ -778,6 +779,58 @@ export async function requestRefund(input: {
 // row lock and decided the edge applies; the disposition and its ledger row
 // commit together or not at all. A lot no longer in the state the edge starts
 // from answers 409 and nothing is written.
+
+/**
+ * Tell the billing service where a lot now stands, in the transaction that
+ * moved it (inner#1993 §5.1); lots nobody paid for are left out.
+ * @param lot - The lot as it now stands.
+ * @param tx - The transaction that moved it.
+ * @returns The same lot.
+ */
+async function mirrored(lot: CreditLotEntity, tx: DbTx): Promise<CreditLotEntity> {
+  await commerceOutboxRepo.appendLotLifecycle(lot, tx);
+  return lot;
+}
+
+/**
+ * Resend bought lots' current lifecycle to the billing service, once a day
+ * (inner#1993 §5.4), so its mirror converges even when a delivery was lost.
+ * Each lot is read under its own lock, in a transaction of its own, so the
+ * snapshot is ordered after any edge that committed before it.
+ * @param windowDays - How far back a lot must have changed to be resent.
+ * @returns How many lots were resent.
+ * @throws {Error} When the database fails; lots already resent stay resent.
+ */
+export async function resendLotMirror(windowDays: number): Promise<number> {
+  if (!env.SELLING) return 0;
+  const ids = await creditLotRepo.listLotIdsForMirror(windowDays);
+  await resendLotStates(ids);
+  return ids.length;
+}
+
+/**
+ * Append the current lifecycle of each named lot to `commerce_outbox`, the
+ * product's outbox to the billing service (inner#1993 §5.2, §5.4): the daily reconcile's step, and how a
+ * dead-lettered lot event is requeued, since copying an old event back would
+ * put a stale lifecycle after a newer one. Each lot is read under its own
+ * lock, in a transaction of its own; ids that name no lot are skipped and lots
+ * nobody paid for are left out.
+ * Called inside an open transaction, as the requeue does, each becomes a
+ * savepoint of it.
+ * @param lotIds - The lots.
+ * @returns How many lifecycle rows were appended.
+ * @throws {Error} When the database fails; lots already appended stay appended, unless an enclosing transaction rolls back.
+ */
+export async function resendLotStates(lotIds: readonly string[]): Promise<number> {
+  let appended = 0;
+  for (const id of lotIds) {
+    await db.transaction(async (tx) => {
+      const lot = await creditLotRepo.lockLot(id, tx);
+      if (lot && (await commerceOutboxRepo.appendLotLifecycle(lot, tx))) appended += 1;
+    });
+  }
+  return appended;
+}
 
 /**
  * The 409 every refund edge answers when the lot has moved on.
@@ -801,7 +854,7 @@ export async function markRefunding(
 ): Promise<CreditLotEntity> {
   const lot = await creditLotRepo.markRefunding(input.lotId, tx);
   if (!lot) throw refundStateChanged();
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**
@@ -836,7 +889,7 @@ export async function settleRefund(
     },
     tx,
   );
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**
@@ -854,7 +907,7 @@ export async function sendBackRefund(
 ): Promise<CreditLotEntity> {
   const lot = await creditLotRepo.markSentBack(input.lotId, tx);
   if (!lot) throw refundStateChanged();
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**
@@ -883,7 +936,7 @@ export async function rejectRefund(
     },
     tx,
   );
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**
@@ -919,7 +972,7 @@ export async function restoreRefundedCredits(
     },
     tx,
   );
-  return lot;
+  return mirrored(lot, tx);
 }
 
 /**
@@ -1036,7 +1089,8 @@ export async function getOverview(userId: string): Promise<CreditOverview> {
     assignedCredits: fromMicroCredits(studios.reduce((sum, s) => sum + toMicroCredits(s.spendable), 0n)),
     unassignedCredits: unassigned,
     underRefundCredits: fromMicroCredits(toMicroCredits(underRefund)),
-    billing: env.PAYMENT_ENABLED,
+    charging: env.CHARGING_ENABLED,
+    selling: env.SELLING,
     studios,
   };
 }

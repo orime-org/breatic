@@ -5,12 +5,11 @@ import { expect, type Page, type Request, type Response } from 'playwright/test'
 import type { AccountActivityKind, ProjectVisitLookup, ProjectVisitOpened, ProjectVisitReceipt, ProjectVisitRequest } from '@breatic/shared';
 import type * as YjsManagerModule from '@web/data/yjs/manager';
 import type * as CollabSocketModule from '@web/data/yjs/collab-socket';
-import { spawn } from 'node:child_process';
-import { resolve } from 'node:path';
 import { writeFile } from 'node:fs/promises';
 import { test } from './slot';
 import { dataOf } from './api';
 import { liveModuleUrl, YJS_MANAGER } from './live-module';
+import { runRepoScript } from './repo-script';
 
 /** The agreed wire receipt; the browser must not invent a second response shape. */
 export type VisitReceipt = ProjectVisitReceipt;
@@ -53,18 +52,8 @@ export interface VisitDbSnapshot { events: Array<{ kind: AccountActivityKind; vi
 
 /** Read actual persisted events using the configured root bootstrap, without reading env files. @throws {Error} When ownership or DB inspection fails. */
 export async function inspectVisitDb(receipt: VisitReceipt): Promise<VisitDbSnapshot> {
-  const output = await new Promise<string>((resolveOutput, reject) => {
-    const child = spawn('pnpm', ['exec', 'tsx', '--tsconfig', 'packages/server/tsconfig.json', 'scripts/inspect-smoke-project-visits.ts'], {
-      cwd: resolve(__dirname, '../../../..'), stdio: ['pipe', 'pipe', 'pipe'], timeout: 30_000,
-    });
-    let stdout = ''; let stderr = '';
-    child.stdout.on('data', (chunk: Buffer) => { stdout += chunk.toString(); });
-    child.stderr.on('data', (chunk: Buffer) => { stderr += chunk.toString(); });
-    child.on('error', reject);
-    child.on('close', (code) => { if (code === 0) resolveOutput(stdout); else reject(new Error(`Owned visit DB inspection failed (${code}): ${stderr}`)); });
-    child.stdin.end(JSON.stringify({ accountId: receipt.account_id, projectId: receipt.project_id, visitId: receipt.visit_id }));
-  });
-  return JSON.parse(output) as VisitDbSnapshot;
+  return runRepoScript<VisitDbSnapshot>('scripts/inspect-smoke-project-visits.ts',
+    { accountId: receipt.account_id, projectId: receipt.project_id, visitId: receipt.visit_id }, 'Owned visit DB inspection');
 }
 
 /** Wait for a real page-entry response. @throws {Error} When the original request never finishes. */

@@ -82,7 +82,8 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
       ["Document snapshots", "saving, previewing, comparing, restoring, renaming and deleting snapshots of a document"],
     ],
   },
-  { group: "Timeline", sections: [["Timeline spaces", "adding videos and web animations to a timeline and arranging them"]] },
+  { group: "Timeline", sections: [["Timeline spaces", "adding videos and copies of web animations made in Motion to a timeline and arranging them"]] },
+  { group: "Motion", sections: [["Motion spaces", "making, modifying and exporting web animations, annotating them and putting their videos on a canvas"]] },
   { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard, and the director console's cameras, lights and ambient light in a 3D space"],
     ["3D appearance", "changing each part of a 3D object: colour, finish presets, gloss, metallic, opacity, transmission, glow, images and their tiling, and resetting"]] },
 ];
@@ -389,10 +390,12 @@ export function renderProductGuide(): string {
       "already in view.",
     "To the right of the tabs, past a thin divider, are three icon buttons. The first, a plus sign, opens " +
       `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ${quoted(t("spaces.kind.document"))}, ` +
-      `${quoted(t("spaces.kind.threeD"))} or ${quoted(t("spaces.kind.timeline"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
-      `The four cards show an icon and name in one row. Hovering them shows ${quoted(t("spaces.kind.canvasSub"))}, ` +
-      `${quoted(t("spaces.kind.documentSub"))}, ${quoted(t("spaces.kind.threeDSub"))} and ${quoted(t("spaces.kind.timelineSub"))}, respectively. ` +
-      `The ${quoted(t("spaces.kind.threeD"))} and ${quoted(t("spaces.kind.timeline"))} cards have a ${quoted(t("spaces.kind.developmentBadge"))} badge at their top right to mark them as in development. ` +
+      `${quoted(t("spaces.kind.threeD"))}, ${quoted(t("spaces.kind.timeline"))} or ${quoted(t("spaces.kind.webAnimation"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
+      "The five cards show an icon and name in one row that starts at the left and scrolls sideways: a faded edge with an arrow button shows on a side that has more cards, " +
+      "and the mouse wheel scrolls the row. " +
+      `Hovering them shows ${quoted(t("spaces.kind.canvasSub"))}, ` +
+      `${quoted(t("spaces.kind.documentSub"))}, ${quoted(t("spaces.kind.threeDSub"))}, ${quoted(t("spaces.kind.timelineSub"))} and ${quoted(t("spaces.kind.webAnimationSub"))}, respectively. ` +
+      `The ${quoted(t("spaces.kind.threeD"))}, ${quoted(t("spaces.kind.timeline"))} and ${quoted(t("spaces.kind.webAnimation"))} cards have a ${quoted(t("spaces.kind.developmentBadge"))} badge at their top right to mark them as in development. ` +
       `Type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
       "(a counter shows how many characters are left) and press " +
       `${quoted(t("spaces.create.submit"))}, which stays greyed until there is a name, or ` +
@@ -515,7 +518,7 @@ export function renderProductGuide(): string {
       "document's text, or a canvas's nodes and the links between them -- and hovering it shows " +
       `${quoted(t("chat.composer.spaceContextOn"))}. Off, the Agent is not told which Space is open or what is ` +
       "in it; the chip has a dashed border and grey words, and hovering it shows " +
-      `${quoted(t("chat.composer.spaceContextOff"))}. A timeline's content cannot be read: with a timeline ` +
+      `${quoted(t("chat.composer.spaceContextOff"))}. A Timeline's, a Motion Space's or a 3D Space's content cannot be read: with one ` +
       "open and the chip on, the Agent is told it is open but not what is in it, and hovering shows " +
       `${quoted(t("chat.composer.spaceContextOnUnreadable"))}; off, hovering shows ` +
       `${quoted(t("chat.composer.spaceContextOffUnreadable"))}. On or off, every message tells the Agent the ` +
@@ -596,7 +599,7 @@ export function renderProductGuide(): string {
       "right. Allowing reads those Spaces, including ones not open in a tab, and the assistant goes on with what " +
       "they hold; nothing is read until it is pressed, every time. While it reads and sends, neither button can be " +
       `pressed. The card then reads ${quoted(t("chat.spaceRequest.shared"))} and lists the Spaces, marking each ` +
-      `one that could not be read: ${quoted(t("chat.spaceRequest.state.unreadable"))} (a Timeline or 3D Space), ` +
+      `one that could not be read: ${quoted(t("chat.spaceRequest.state.unreadable"))} (a Timeline, Motion or 3D Space), ` +
       `${quoted(t("chat.spaceRequest.state.gone"))}, ${quoted(t("chat.spaceRequest.state.timedOut"))} or ` +
       `${quoted(t("chat.spaceRequest.state.failed"))}. Declining reads ` +
       `${quoted(t("chat.spaceRequest.declined"))}. Typing a message in the box instead also closes the card, ` +
@@ -771,6 +774,9 @@ export function renderProductGuide(): string {
       "greyed while the source holds nothing. If it cannot begin it says " +
       `${quoted(t("canvas.transcribe.couldNotStart"))} If the source is deleted as it starts, ` +
       `${quoted(t("canvas.transcribe.sourceGone"))}`,
+    `- On a video put on the canvas from a Motion Space, ${quoted(t("canvas.nodeMenu.openSourceAnimation"))}, after those: it opens that Motion Space with the web animation ` +
+      "the video was exported from selected. It is not offered once the node shows another video (regenerated, uploaded over or replaced). " +
+      `When that Space is gone it says ${quoted(t("spaces.webAnimation.sourceSpaceGone"))} When the animation cannot be found there it says ${quoted(t("spaces.webAnimation.notFound"))}`,
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools, ` +
       "greyed while the node holds nothing.",
     `- ${quoted(t("canvas.contextMenu.copy"))} (Cmd/Ctrl+C) and ${quoted(t("canvas.contextMenu.duplicate"))} ` +
@@ -1613,25 +1619,66 @@ export function renderProductGuide(): string {
       "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
       `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
       `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,
-    `${quoted(t("timeline.webAnimation.create"))}, beside ${quoted(t("timeline.addMedia"))}, opens a dialog to have an animated web page made: ` +
-      `${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
-      `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1, starting at the one closest to the Timeline's frame), ${quoted(t("timeline.webAnimation.dialog.duration"))} and the switch ` +
-      `${quoted(t("timeline.webAnimation.dialog.addAtPlayhead"))}, which starts on. ${quoted(t("timeline.webAnimation.dialog.execute"))} starts the run; ` +
-      "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
-      "With the switch on, a dashed placeholder clip goes in at the playhead, above the highest video there or on a new top track, and shows the result once it is ready. " +
-      `${quoted(t("timeline.webAnimation.executions"))}, next to it, opens the list in the right panel (an X at its top right closes it), with ${quoted(t("timeline.webAnimation.list.completed"))} and ` +
-      `${quoted(t("timeline.webAnimation.list.inProgress"))}. Pressing a row shows its steps, its usage, the step a run stopped at and why a failed run failed, a preview of a finished result with its own slider ` +
-      `(${quoted(t("timeline.webAnimation.unavailable"))} with ${quoted(t("timeline.retry"))} when it cannot be loaded) and what you can do with it: ` +
-      `${quoted(t("timeline.webAnimation.cancel"))} while it runs, ${quoted(t("timeline.webAnimation.addPlaceholder"))} to place its placeholder at the playhead, ` +
-      `${quoted(t("timeline.webAnimation.addToTimeline"))} for a finished result, which adds a separate copy at the playhead each time it is pressed, and ` +
-      `${quoted(t("timeline.webAnimation.retry"))} after a failure, a cancel or an expiry, which opens the dialog filled in as before (${quoted(t("timeline.webAnimation.dialog.retryTitle"))}). ` +
-      `A run past the number of tasks one person runs at once waits its turn, says ${quoted(t("canvas.task.status.waiting"))} on its row and why, and can be cancelled. ` +
+    `Web animations are made in Motion Spaces. ${quoted(t("timeline.webAnimation.add"))}, beside ${quoted(t("timeline.addMedia"))}, opens a list of the Project's finished web animations, ` +
+      "read again each time it opens and grouped by the Space that made them (Motion Spaces first, then ones made in a Timeline before Motion existed, then " +
+      `${quoted(t("timeline.webAnimation.picker.deletedSpace"))}); each row shows its name, aspect ratio and length. A web animation still being made is not listed until it finishes. ` +
+      "Pressing a row places a separate copy at the playhead, above the highest video there or on a new top track, and closes the list; open it again and press the same row to place another copy. " +
+      `${quoted(t("timeline.webAnimation.picker.loadMore"))} reads more, and with none it says ${quoted(t("timeline.webAnimation.picker.empty"))}. ` +
+      `${quoted(t("timeline.webAnimation.goMake"))} at its bottom opens the newest Motion Space, or makes one named Motion when the Project has none. ` +
       "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
-      "other copies and the execution in the list as they are. The selected copy's panel names the request it came from. " +
-      "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy whose run has not finished, or ended without a result, is noted at the top right of the " +
-      "preview with its track and its run's status, a copy whose page is still loading shows nothing and is noted there as loading, " +
+      "other copies and the web animation itself as they are. A copy is named by its request; a modification's copy is named after the request it was modified from " +
+      "followed by its own change. The selected copy's panel shows the whole request and, for a modification, a line naming the request it was modified from. " +
+      "A copy placed in a Timeline before Motion existed can be bound to a web animation that never finished; while it runs the copy is dashed, " +
+      "and once it failed, was cancelled or expired the copy is red, and its panel says why and offers " +
+      `${quoted(t("timeline.webAnimation.openInMotion"))}, which opens the newest Motion Space (one named Motion is made when the Project has none) with that run ` +
+      `highlighted under ${quoted(t("spaces.webAnimation.failed"))} in ${quoted(t("spaces.webAnimation.madeInTimeline"))}, where ` +
+      `${quoted(t("timeline.webAnimation.retry"))} opens the dialog filled in as before. ` +
+      "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy bound to a web animation that has not finished, or ended without a result, is noted at the top right of the " +
+      "preview with its track and its status, a copy whose page is still loading shows nothing and is noted there as loading, " +
       "and a copy whose page cannot be loaded is noted there as unavailable with " +
-      `${quoted(t("timeline.retry"))}. Viewers can open the list and read every row, without ${quoted(t("timeline.webAnimation.create"))} or any of its actions.`,
+      `${quoted(t("timeline.retry"))}. Viewers see the copies and their panels, without ${quoted(t("timeline.webAnimation.add"))}, and see ` +
+      `${quoted(t("timeline.webAnimation.openInMotion"))} only when the Project already has a Motion Space.`,
+    "## Motion spaces",
+    `A Space of the ${quoted(t("spaces.kind.webAnimation"))} type makes web animations: animated web pages written by a model, played on a clock and exported as video. ` +
+      "The selected web animation fills the Space. Every control is on one floating bar at the bottom, as icon buttons named on hover: play and the time first, then a " +
+      "slider with a small mark for each annotation (hovering a mark shows what it says, pressing it opens it), then what the shown result offers, then a details button (three dots), and at the right end " +
+      `${quoted(t("spaces.webAnimation.executions"))}, ${quoted(t("spaces.webAnimation.annotations"))} and ${quoted(t("spaces.webAnimation.new"))}. ` +
+      `With no finished web animation yet the middle says ${quoted(t("spaces.webAnimation.empty"))} with ${quoted(t("spaces.webAnimation.new"))}; otherwise the newest finished one is shown. ` +
+      `A result whose page cannot be loaded shows ${quoted(t("timeline.webAnimation.unavailable"))} with ${quoted(t("timeline.retry"))}.`,
+    `${quoted(t("spaces.webAnimation.new"))} opens a dialog: ${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
+      `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1) and ${quoted(t("timeline.webAnimation.dialog.duration"))}. ${quoted(t("timeline.webAnimation.dialog.execute"))} starts it; ` +
+      "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
+      `The middle keeps showing what it showed; the list opens on the ${quoted(t("spaces.webAnimation.inProgress"))} tab with the new run highlighted.`,
+    `${quoted(t("spaces.webAnimation.executions"))} and ${quoted(t("spaces.webAnimation.annotations"))} each open a panel on the right of the Space, one at a time; pressing the button again, ` +
+      `the panel's X or Esc closes it. The ${quoted(t("spaces.webAnimation.executions"))} button shows how many are in progress. Its panel has ${quoted(t("spaces.webAnimation.completed"))}, ` +
+      `${quoted(t("spaces.webAnimation.inProgress"))} and ${quoted(t("spaces.webAnimation.failed"))} with their counts; each row shows the name, frame, length and time. ` +
+      "Only a finished web animation or video shows in the middle: pressing a row in the first tab shows it. " +
+      `A row in progress also shows its stage, with ${quoted(t("timeline.webAnimation.cancel"))} for runs of this Project; ` +
+      `a run past the number of tasks one person runs at once waits its turn, says ${quoted(t("timeline.webAnimation.status.queued"))} with an hourglass and why, and can be cancelled. ` +
+      `A row under ${quoted(t("spaces.webAnimation.failed"))} ` +
+      `(failed, cancelled or expired) shows why, with ${quoted(t("timeline.webAnimation.retry"))}, which opens the dialog filled in as before, or ${quoted(t("spaces.webAnimation.reexport"))} for a video. ` +
+      `An empty ${quoted(t("spaces.webAnimation.inProgress"))} tab says ${quoted(t("spaces.webAnimation.emptyInProgress"))}, and an empty ${quoted(t("spaces.webAnimation.failed"))} tab says ${quoted(t("spaces.webAnimation.emptyFailed"))}. ` +
+      `Ones made in a Timeline before Motion existed are listed at the end under ${quoted(t("spaces.webAnimation.madeInTimeline"))}, and can be modified and exported like the others. ` +
+      "A modification is named after the request it was modified from followed by its own change, and an exported video after the web animation it renders.",
+    `On a finished web animation the bar offers ${quoted(t("spaces.webAnimation.addAnnotation"))}, ${quoted(t("spaces.webAnimation.modify"))} and ${quoted(t("spaces.webAnimation.export"))}. ` +
+      `${quoted(t("spaces.webAnimation.modify"))} opens the dialog titled ${quoted(t("spaces.webAnimation.dialog.modifyTitle"))}, with a small preview of the shown web animation at the top, ` +
+      `to describe the change under ${quoted(t("spaces.webAnimation.dialog.instruction"))}; the aspect ratio and length start as the shown one's, and once either differs the dialog says ` +
+      `${quoted(t("spaces.webAnimation.dialog.relayout"))} It makes a new web animation from the shown one, which stays as it was with its annotations. ` +
+      `${quoted(t("spaces.webAnimation.export"))} renders it to a video in this Space: the middle keeps what it showed and the list opens on ${quoted(t("spaces.webAnimation.inProgress"))} with the export highlighted. ` +
+      `While its export is being made or finished, the button reads ${quoted(t("spaces.webAnimation.viewVideo"))}: it shows the video once it is finished, and before that opens ${quoted(t("spaces.webAnimation.inProgress"))} with the export highlighted. ` +
+      `On a finished video the bar offers ${quoted(t("spaces.webAnimation.download"))}, ${quoted(t("spaces.webAnimation.placeOnCanvas"))} and ${quoted(t("spaces.webAnimation.viewSource"))}. ` +
+      `${quoted(t("spaces.webAnimation.placeOnCanvas"))} lists the Project's canvases (it is unavailable with ${quoted(t("spaces.webAnimation.noCanvas"))} when there are none) and puts the video on the chosen one ` +
+      `near the middle of its last view, then says it was put there with a button to view it, ${quoted(t("spaces.webAnimation.viewPlaced"))}, which opens that Canvas with the video selected. ` +
+      `The details button shows the name, the request, the steps, the usage and ${quoted(t("spaces.webAnimation.modifiedFromLabel"))} for a modification ` +
+      "(pressing the web animation it names shows that one, at its earliest open annotation when it has any).",
+    `${quoted(t("spaces.webAnimation.addAnnotation"))} pauses playback at the current time; click the picture to mark a spot, or just write, then send. ` +
+      `The ${quoted(t("spaces.webAnimation.annotations"))} button shows how many are open; its panel lists this Space's annotations grouped by web animation and ordered by time, ` +
+      "with a switch between open and all. Pressing one, its mark on the slider or its pin on the picture shows that web animation at that time with the annotation's card " +
+      "beside its spot, and opens this panel with the annotation in view (switched to all when it is resolved). In the card you can reply, resolve or reopen it; " +
+      "the card stays open while you work elsewhere, and its X or Esc closes it. A reply you have not sent stays in its card until you send it. " +
+      "Closing an annotation you have started writing asks before throwing it away. Everyone in the Space sees annotations as they are written. " +
+      `When too many people are connected, the top of the Space says ${quoted(t("spaces.webAnimation.readOnlyNotice"))}`,
+    `Viewers can open both panels, play, read annotations and download videos, without ${quoted(t("spaces.webAnimation.new"))} or any action that changes something.`,
     "## 3D spaces",
     `${quoted(t("spaces.kind.threeD"))} is a collaborative scene alongside Canvas and Document, opened as a Space tab. ` +
       "The new Project and new Space dialogs offer the same type picker. The scene is shared; the viewing camera and selection are personal. " +
@@ -2323,7 +2370,7 @@ export function renderProductGuide(): string {
       "plan of the studio's admin allows (only their upgrade raises it), and every browser tab that has the " +
       "space open counts, the user's own included. Closing other tabs on it and reconnecting, which reloads " +
       "the page, can free one.",
-    "- Going elsewhere in the site while local Canvas or Document edits have not synced, or an upload or file read is unfinished, asks " +
+    "- Going elsewhere in the site while local Canvas, Document or Motion edits (such as an annotation) have not synced, an upload or file read is unfinished, or a generation, tool run or Motion execution the server has not yet accepted is waiting, asks " +
       `${quoted(t("project.leaveGuard.title"))} with ${quoted(t("project.leaveGuard.stay"))} and ${quoted(t("project.leaveGuard.leave"))}. ` +
       "This covers content in background Space tabs of the current Project too. " +
       `The notice says ${quoted(t("project.leaveGuard.unsyncedDescription"))} for unsynced edits, ` +

@@ -116,7 +116,7 @@ Production code 严禁"先实现再补 test"。但**原型 / spike / explore** �
 
 ### 关键路径定义(6 类)
 
-1. **支付**(Stripe webhook / 扣费 / 退款)
+1. **支付**(扣费 / 收款服务往来 / 退款步骤)
 2. **鉴权**(login / OAuth / token / session / 跨租户)
 3. **数据完整性**(soft delete / 级联 / FK)
 4. **AI tool call**(web_search / web_fetch / 交互工具)
@@ -153,7 +153,7 @@ Production code 严禁"先实现再补 test"。但**原型 / spike / explore** �
 
 ### Anti-pattern 5 — 大段 mock 关键路径
 
-❌ Integration / E2E test 中把数据库 / API / Stripe 等关键路径 mock 掉,test 实际只测 mock 行为
+❌ Integration / E2E test 中把数据库 / API / 收款服务等关键路径 mock 掉,test 实际只测 mock 行为
 
 ✅ Integration / E2E **不 mock 关键路径**;mock 只用于 unit test 的 dependency isolation
 

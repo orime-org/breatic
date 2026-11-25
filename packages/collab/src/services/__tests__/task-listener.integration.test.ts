@@ -22,7 +22,7 @@ import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/co
 import { eq } from "drizzle-orm";
 import {
   CANVAS_NODES_KEY, documentBodyFragment, documentSpaceDocName, SCENE_FORMAT_VERSION, SPACE_TASKS_KEY, SPACE_TASKS_VERSION,
-  threeDSpaceDocName, timelineSpaceDocName,
+  threeDSpaceDocName, timelineSpaceDocName, webAnimationSpaceDocName,
   type DocumentUploadEvent, type NodeTaskCountsEvent, type SceneLookPictureEvent, type SceneLookSettledControlEvent,
 } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
@@ -186,8 +186,8 @@ const VERSIONED_SPACES = [
 ] as const;
 
 /**
- * A fresh stream, key prefix and empty document of a Space type that takes a change version.
- * @param docNameOf - How the Space type names its document; a Timeline by default.
+ * A fresh stream, key prefix and empty Space document of a type that takes a change version.
+ * @param docNameOf - Builds the Space's document name; a Timeline by default.
  * @returns The case's names.
  */
 async function newSpaceTasksCase(docNameOf: (projectId: string, spaceId: string) => string = timelineSpaceDocName): Promise<Case> {
@@ -835,6 +835,15 @@ describe("task events across two collab instances", () => {
     const replayed = await publishSpaceTasksVersion(c, 1, ["originId", olderId!]);
     await until(() => handled(c.streamKey, replayed));
     expect(await readSpaceTasksVersion(c.docName)).toBe(newerId);
+  });
+
+  it("writes the stream id of a Motion Space's latest execution change into its document", async () => {
+    const c = await newSpaceTasksCase(webAnimationSpaceDocName);
+    const ids = await publishSpaceTasksVersion(c, 2);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readSpaceTasksVersion(c.docName)).toBe(ids[1]);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
   });
 
   it("acknowledges and skips a space-tasks version for a document whose type takes none (a canvas)", async () => {

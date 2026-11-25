@@ -68,11 +68,11 @@ REDIS_QUEUE_URL=redis://localhost:6379/1
 REDIS_STREAM_URL=redis://localhost:6379/2
 REDIS_COLLAB_URL=redis://localhost:6379/3
 REDIS_KEY_PREFIX=local-breatic
-PAYMENT_ENABLED=false
+CHARGING_ENABLED=false
 EMAIL_BACKEND=console
 ```
 
-`PAYMENT_ENABLED=false` disables application payments and the corresponding credit checks; **external model charges still apply**. `EMAIL_BACKEND=console` prints email content to local logs without delivering it. Email/password registration works without Google OAuth. Signing up asks for a six-digit code; with `console` it is in the server log line `[console] email`. With `EMAIL_BACKEND=disabled` there is no code step and a recovery code is shown instead; save it.
+`CHARGING_ENABLED=false` turns off credit recording and the corresponding credit checks; **external model charges still apply**. `EMAIL_BACKEND=console` prints email content to local logs without delivering it. Email/password registration works without Google OAuth. Signing up asks for a six-digit code; with `console` it is in the server log line `[console] email`. With `EMAIL_BACKEND=disabled` there is no code step and a recovery code is shown instead; save it.
 
 This guide assumes one local instance. Required free ports are `5432`, `6379`, `3000`, `3001`, `1234`, `1235`, `9101`, `8000` and, for local Ingest, `8787`; with `INTERNAL_API_ENABLED=true`, also `3002`. Do not accidentally connect to another instance's data. See the `.env.dev` header for multi-instance isolation.
 
@@ -173,7 +173,7 @@ Every model call goes through the provider layer, which tries a model's upstream
 
 One text key does not cover image, video, audio, speech or 3D generation. Each of those models lists its upstreams in `config/provider/media/<type>.yaml`; set the key of at least one of them, for example `WAVESPEED_API_KEY` or `FAL_KEY`. Every model stays in the list whatever is configured; a run of one with no configured upstream is refused, naming the variables it needs. Unconfigured models are outside your current acceptance checks.
 
-Google sign-in, real SMTP email, Stripe and Brave search are optional integrations. Without written authorization from Orime, Inc., an instance must run in Self-Deployment Mode with `PAYMENT_ENABLED=false` (LICENSE sections 10 and 11). Configure them in the relevant `.env.dev` sections when needed. Enabling `PAYMENT_ENABLED` does not solve model-provider quota issues.
+Google sign-in, real SMTP email and Brave search are optional integrations. Without written authorization from Orime, Inc., an instance must run in Self-Deployment Mode with `COMMERCE_API_URL` blank, selling no credits or memberships (LICENSE sections 10 and 11). Configure them in the relevant `.env.dev` sections when needed. Enabling `CHARGING_ENABLED` does not solve model-provider quota issues.
 
 ## 6. Start databases and run both migrations
 

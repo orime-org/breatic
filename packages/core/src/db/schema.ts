@@ -13,14 +13,13 @@ import {
   pgTable,
   uuid,
   varchar,
-  char,
   text,
   boolean,
   doublePrecision,
   numeric,
   integer,
-  smallint,
   bigint,
+  smallint,
   timestamp,
   json,
   jsonb,
@@ -47,8 +46,7 @@ import type { CreditGrantResult, CreditGrantWrite } from "@core/credit/credit-gr
 import type { EnterpriseCreditPurchaseResult, EnterpriseCreditPurchaseWrite } from "@core/credit/enterprise-credit-purchase-contract.js";
 import type { EnterpriseMembershipResult, EnterpriseMembershipWrite } from "@core/auth/enterprise-membership-contract.js";
 import type { ReclaimScope, ReclaimDecision, ReclaimControlDecision, ReclaimItemResult, ReclaimRun } from "@core/maintenance/types.js";
-import { PROJECT_NAME_MAX_CHARS, STRIPE_WEBHOOK_RESULTS } from "@breatic/shared";
-import type { SignupReferralSource, StripeWebhookResult } from "@breatic/shared";
+import { PROJECT_NAME_MAX_CHARS } from "@breatic/shared";
 
 // ── Helpers ──────────────────────────────────────────────────────────
 
@@ -125,18 +123,10 @@ export const users = pgTable(
     // fresh code is generated + re-shown.
     recoveryCodeHash: text("recovery_code_hash"),
     recoveryCodeUsedAt: timestamp("recovery_code_used_at", { withTimezone: true }),
-    // The Stripe customer this account pays through (0055, #106).
-    //
-    // Written before the first Checkout Session is created, never after an
-    // event arrives — which is the whole point of it. Subscription events
-    // carry no identifier of ours (`client_reference_id` reaches the Session
-    // object only), so the customer on the event is what names the account.
-    // Letting Stripe create the customer at checkout would mean first seeing
-    // that id inside an event with nothing to match it against.
-    //
-    // Nullable: an account that has never tried to pay us has no customer,
-    // and creating one per registration would make a Stripe object per signup.
-    // One customer per account, reused across every subscription it ever has.
+    // The Stripe customer this account paid through before billing moved to
+    // the billing service (0055, #106; inner#1993). The billing service keeps
+    // customers in its own database now; nothing here reads or writes this
+    // column, which a later migration drops with the moved billing tables.
     stripeCustomerId: varchar("stripe_customer_id", { length: 255 }),
     // The account's language (0084, #286): every email to this account is
     // rendered in it. Written at sign-up from the language the request was
@@ -179,12 +169,14 @@ export const users = pgTable(
  * sits in that rule's allowlist: deleting a row would leave a history that no
  * longer adds up to the value on the account.
  *
- * `reference_id` holds whatever the trigger was identified by upstream — a
- * Stripe subscription or event id once subscriptions land. It is deliberately
+ * `reference_id` holds whatever the trigger was identified by upstream: the
+ * Stripe event id, or the checkout, recheck, reconcile or user action the
+ * billing service read the subscription for (`checkout:<sessionId>`,
+ * `action:cancel:<subId>`, …). It is deliberately
  * NOT what makes a redelivered webhook safe: comparing tiers converges on the
- * last call and cannot tell a replay from a new event, so the subscription
- * work keys idempotency on event identity the way `updatePaymentStatusCAS`
- * and `creditLotService.chargeOnce` already do.
+ * last call and cannot tell a replay from a new event, so subscription facts
+ * are keyed on their delivery id through `commerce_requests`, the way
+ * `creditLotService.chargeOnce` keys a charge.
  */
 export const membershipTierChanges = pgTable(
   "membership_tier_changes",
@@ -1168,7 +1160,7 @@ export const conversationAttachments = pgTable(
   ],
 );
 
-// ── 7. Payments ──────────────────────────────────────────────────────
+// ── 7. Credit sources ────────────────────────────────────────────────
 
 /**
  * What a lot of credits came from (0079, #259).
@@ -1295,57 +1287,6 @@ export const accountModelUpstreams = pgTable(
   ],
 );
 
-/** One promoter application; partial unique indexes and CHECKs live in 0118 (inner#1868). */
-export const promoterApplications = pgTable("promoter_applications", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
-  status: text("status").$type<"pending" | "approved" | "rejected">().notNull(),
-  country: char("country", { length: 2 }).notNull(),
-  channels: jsonb("channels").$type<string[]>().notNull(),
-  plan: text("plan").notNull(),
-  termsVersion: varchar("terms_version", { length: 32 }).notNull(),
-  termsAcceptedAt: timestamp("terms_accepted_at", { withTimezone: true }).notNull(),
-  decidedAt: timestamp("decided_at", { withTimezone: true }),
-  decidedBy: varchar("decided_by", { length: 64 }),
-  decisionReason: text("decision_reason"),
-  applicantNote: text("applicant_note"),
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-  ...timestamps,
-});
-
-/** An approved promoter's code; stored upper-case, never deleted because bindings point at it. */
-export const referralCodes = pgTable("referral_codes", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  code: varchar("code", { length: 20 }).notNull().unique(),
-  promoterId: uuid("promoter_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
-  applicationId: uuid("application_id").notNull().unique().references(() => promoterApplications.id, { onDelete: "restrict" }),
-  status: text("status").$type<"active" | "disabled" | "removed">().default("active").notNull(),
-  removedAt: timestamp("removed_at", { withTimezone: true }),
-  ...timestamps,
-});
-
-/** The one code an account carries, written once and kept for commission. */
-export const referralBindings = pgTable("referral_bindings", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userId: uuid("user_id").notNull().unique().references(() => users.id, { onDelete: "restrict" }),
-  referralCodeId: uuid("referral_code_id").notNull().references(() => referralCodes.id, { onDelete: "restrict" }),
-  source: text("source").$type<SignupReferralSource | "later">().notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
-
-/** Every back-office referral write under its idempotency key, with its original answer. */
-export const referralOperations = pgTable("referral_operations", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  key: text("key").notNull().unique(),
-  kind: text("kind").$type<"approve" | "reject" | "disable" | "enable" | "remove">().notNull(),
-  targetId: uuid("target_id").notNull(),
-  requestHash: varchar("request_hash", { length: 64 }).notNull(),
-  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
-  requestBody: jsonb("request_body").$type<Record<string, unknown>>().notNull(),
-  result: jsonb("result").$type<{ status: "applied" | "refused" } & Record<string, unknown>>().notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
-
 /** Compensation evidence outlives its lot; kind and deferred operation FK live in 0109. */
 export const creditCompensations = pgTable("credit_compensations", {
   id: uuid("id").primaryKey(),
@@ -1375,139 +1316,28 @@ export const creditGifts = pgTable("credit_gifts", {
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [foreignKey({ name: "credit_gifts_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict")]);
 
-export const payments = pgTable(
-  "payments",
-  {
-    // Declared without a default, so an insert has to name this id: it is also
-    // the id of the row's `credit_sources` receipt, which the composite foreign
-    // key requires to already exist, and only the caller that opened that
-    // receipt knows it. The column in the database keeps the
-    // `gen_random_uuid()` it was created with; the foreign key is what refuses
-    // an id nobody opened a receipt for.
-    id: uuid("id").primaryKey(),
-    /**
-     * Constant, and half of the composite key below. On its own it says
-     * nothing; paired with `id` it is what makes the database refuse a payment
-     * whose source row claims some other kind.
-     */
-    sourceKind: varchar("source_kind", { length: 16 })
-      .default("payment")
-      .notNull(),
-    userId: uuid("user_id")
-      .notNull()
-      .references(() => users.id, { onDelete: "restrict" }),
-    stripeSessionId: varchar("stripe_session_id", { length: 255 }),
-    stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-    amountCents: integer("amount_cents").notNull(),
-    currency: varchar("currency", { length: 10 }).default("usd").notNull(),
-    status: varchar("status", { length: 20 }).default("pending").notNull(),
-    creditsGranted: doublePrecision("credits_granted").default(0).notNull(),
-    // What Stripe worked out this purchase comes to, tax included, read back
-    // off the Checkout Session (0066, #13). Filled the first time we read a
-    // session Stripe has already priced: for a delayed payment method that is
-    // when its session completes, days before the money moves; for every
-    // other purchase it is settlement itself, written alongside the CAS. So a
-    // value here says nothing about whether the money moved — `status`
-    // answers that. NULL until then: Stripe cannot work out the tax without
-    // knowing where the buyer is, and `amount_cents` beside them is the
-    // pre-tax face value from our own price table, which is why a refund of a
-    // landed purchase pays back `total_cents` instead.
-    taxCents: integer("tax_cents"),
-    totalCents: integer("total_cents"),
-    metadata: jsonb("metadata").$type<Record<string, unknown>>().default({}),
-    ...timestamps,
-  },
-  (table) => [
-    index("payments_user_id_idx").on(table.userId),
-    uniqueIndex("payments_stripe_session_id_idx").on(table.stripeSessionId),
-    // `expired` (0066, #13) is how an abandoned checkout leaves "processing":
-    // the buyer clicking back expires the session on the spot, and the two
-    // slower paths (the session's own expiry, and reconciling) land here too.
-    // Without it the purchase record would show a payment as in flight for as
-    // long as the session lives, with nothing in flight.
-    check(
-      "payments_status_check",
-      sql`${table.status} IN ('pending', 'completed', 'failed', 'expired')`,
-    ),
-    // The CHECK pinning `source_kind` to 'payment' lives in 0079, beside the
-    // other hand-written ones.
-    foreignKey({
-      name: "payments_source_fk",
-      columns: [table.id, table.sourceKind],
-      foreignColumns: [creditSources.id, creditSources.kind],
-    }).onDelete("restrict"),
-  ],
-);
-
-// ── 7b. Purchase consent and confirmation mail ───────────────────────
-
 /**
- * The consent a buyer gave when they paid (0066, #13).
- *
- * Legal evidence. The row is written from inside the fulfillment transaction,
- * so the consent and the credits it paid for commit together. All four
- * callers of `fulfillPayment` reach this write, and `payment_id` being UNIQUE
- * is what makes the later ones no-ops rather than a second, contradicting
- * record.
- *
- * `consented_at` is the instant the checkout request arrived carrying the
- * tick, stamped on our own clock and kept on the payment row until this one
- * is written. The buyer ticks on our own confirm dialog, one request earlier;
- * settling can arrive days later by way of reconciliation, so the moment this
- * row is written is not the moment they agreed.
- *
- * Append-only: `created_at` and no `deleted_at`. A consent record outlives
- * the statutory retention period and deleting one would destroy the evidence
- * it exists to be — the written reason this table is waived from the
- * soft-delete mandate.
+ * The product's record of a completed payment (inner#1993 §4.2): written when
+ * the billing service grants the payment, shaped like the gift and
+ * compensation receipts so a lot's source reads without the billing tables.
+ * CHECKs, the backfill and the index live in 0131.
  */
-export const purchaseConsents = pgTable("purchase_consents", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  paymentId: uuid("payment_id")
-    .notNull()
-    .unique()
-    .references(() => payments.id, { onDelete: "restrict" }),
-  userId: uuid("user_id")
-    .notNull()
-    .references(() => users.id, { onDelete: "restrict" }),
-  locale: varchar("locale", { length: 10 }).notNull(),
-  consentTextVersion: varchar("consent_text_version", { length: 20 }).notNull(),
-  refundTextVersion: varchar("refund_text_version", { length: 20 }),
-  consentedAt: timestamp("consented_at", { withTimezone: true }).notNull(),
-  stripePaymentIntentId: varchar("stripe_payment_intent_id", { length: 255 }),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
-
-/**
- * One purchase-confirmation email per payment (0066, #13).
- *
- * The row is born `pending` inside the fulfillment transaction, so a purchase
- * that landed always has one. A purchase that has not landed has none, and
- * the purchase history reaches this table through a left join. A resend is
- * offered from every state but `sent`, and from `sending` only once that send
- * has gone stale.
- *
- * `updated_at` carries `$onUpdate`, which the `sending` timeout depends on:
- * a process replaced between claiming `sending` and writing the result would
- * otherwise strand that row forever, with no background sweep to free it.
- *
- * Append-only in the sense that matters here: it lives as long as the payment
- * it records, and there is nothing a user could delete — the written reason
- * for its soft-delete waiver.
- */
-export const purchaseMailOutbox = pgTable("purchase_mail_outbox", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  paymentId: uuid("payment_id")
-    .notNull()
-    .unique()
-    .references(() => payments.id, { onDelete: "restrict" }),
-  status: varchar("status", { length: 20 }).default("pending").notNull(),
-  attempts: integer("attempts").default(0).notNull(),
-  lastError: text("last_error"),
-  ...timestamps,
-});
+export const paymentReceipts = pgTable("payment_receipts", {
+  id: uuid("id").primaryKey(),
+  sourceKind: varchar("source_kind", { length: 16 }).default("payment").notNull(),
+  userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "restrict" }),
+  amountCents: integer("amount_cents").notNull(),
+  taxCents: integer("tax_cents"),
+  totalCents: integer("total_cents"),
+  currency: varchar("currency", { length: 10 }).notNull(),
+  creditsGranted: numeric("credits_granted", { precision: 20, scale: 6 }).notNull(),
+  /** When the payment was ordered; the purchase history sorts by it. */
+  orderedAt: timestamp("ordered_at", { withTimezone: true }).notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("payment_receipts_user_ordered_idx").on(table.userId, table.orderedAt, table.id),
+  foreignKey({ name: "payment_receipts_source_fk", columns: [table.id, table.sourceKind], foreignColumns: [creditSources.id, creditSources.kind] }).onDelete("restrict"),
+]);
 
 // ── 7b. Subscriptions ────────────────────────────────────────────────
 
@@ -1593,9 +1423,9 @@ export const subscriptions = pgTable(
     payableInvoiceUrl: text("payable_invoice_url"),
     // When the snapshot this row was written from was taken (0058).
     //
-    // Several paths write here — the webhook and our own calls to Stripe —
-    // and each asks Stripe first and writes second, so the one that asked
-    // first can still commit last while holding the older answer. Comparing
+    // Each write is the billing service's snapshot of what Stripe said, and
+    // deliveries can arrive out of order, so the one read first can still
+    // commit last while holding the older answer. Comparing
     // this decides which view is newer, which is what lets them fetch outside
     // any lock: whoever saw Stripe more recently wins, whatever the commit
     // order.
@@ -1613,55 +1443,6 @@ export const subscriptions = pgTable(
   ],
 );
 
-// ── 7c. Stripe Webhook Events ────────────────────────────────────────
-
-/**
- * Which Stripe events have been processed (0055, #106 §5.3).
- *
- * The primary key IS the idempotency: the insert goes in the same transaction
- * as the tier change it guards, and a redelivery collides. `changeMembership
- * Tier` compares tiers rather than event identity, so it converges on the last
- * call and cannot tell a replay from a new event — which is exactly why this
- * table exists rather than a check inside it.
- *
- * Append-only, so `created_at` alone and no `deleted_at`: deleting a row would
- * make the event it names replayable, which is the one thing this table is for.
- */
-export const stripeWebhookEvents = pgTable("stripe_webhook_events", {
-  eventId: varchar("event_id", { length: 255 }).primaryKey(),
-  type: varchar("type", { length: 80 }).notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .defaultNow()
-    .notNull(),
-});
-
-/** Each verified HTTP request has an independent recording lifecycle. */
-export const stripeWebhookAttempts = pgTable("stripe_webhook_attempts", {
-  id: uuid("id").primaryKey(),
-  eventId: varchar("event_id", { length: 255 }).notNull(),
-  eventType: varchar("event_type", { length: 80 }).notNull(),
-  livemode: boolean("livemode").notNull(),
-  accountId: varchar("account_id", { length: 255 }),
-  endpointId: varchar("endpoint_id", { length: 255 }),
-  connectedAccountId: varchar("connected_account_id", { length: 255 }),
-  environment: text("environment").notNull(),
-  receivedAt: timestamp("received_at", { withTimezone: true }).notNull(),
-  finishedAt: timestamp("finished_at", { withTimezone: true }),
-  responseStatus: smallint("response_status"),
-  result: varchar("result", { length: 80 }).$type<StripeWebhookResult>(),
-  ...timestamps,
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-}, (table) => [
-  check("stripe_webhook_attempts_completion", sql`
-    (${table.finishedAt} is null and ${table.responseStatus} is null and ${table.result} is null)
-    or (${table.finishedAt} is not null and ${table.responseStatus} is not null and ${table.result} is not null
-      and ${table.responseStatus} between 100 and 599
-      and ${table.result} in (${sql.raw(STRIPE_WEBHOOK_RESULTS.map((result) => `'${result}'`).join(", "))}))
-  `),
-  index("stripe_webhook_attempts_received_idx").on(desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
-  index("stripe_webhook_attempts_event_idx").on(table.eventId, desc(table.receivedAt), desc(table.id)).where(sql`${table.deletedAt} is null`),
-]);
-
 // ── 8c. Credit Lots & Ledger ─────────────────────────────────────────
 
 /**
@@ -1675,17 +1456,14 @@ export const stripeWebhookAttempts = pgTable("stripe_webhook_attempts", {
  * be a thing that can still be pointed at.
  *
  * `source_id` is NOT NULL and unique, and that is the whole of "a payment
- * grants credits exactly once". The `payments` table cannot carry that rule:
- * `stripe_payment_intent_id` has no unique index, and the one on
- * `stripe_session_id` sits on a nullable column, where Postgres admits any
- * number of NULLs. A redelivered webhook reaches the same `payments` row and
- * is refused here, at the insert.
+ * grants credits exactly once": a repeated payment grant from the billing
+ * service reaches the same source and is refused here, at the insert.
  *
- * `payments` and this table hold different facts about the same event and
- * both keep their own status: `payments.status` says whether the money
- * arrived, `lifecycle` says whether the credits still exist. Putting them in
- * one row would give one row two state machines written by two paths, and
- * every state in the design has a single writer.
+ * `payment_receipts` and this table hold different facts about the same
+ * payment: the receipt records what was paid, `lifecycle` says whether the
+ * credits still exist. Putting them in one row would give one row two state
+ * machines written by two paths, and every state in the design has a single
+ * writer.
  *
  * `designated_studio_id` NULL means unassigned, which means unspendable — a
  * lot has to be pointed at a studio before anything can be charged to it. A
@@ -1797,7 +1575,7 @@ export const creditLots = pgTable(
  * spender seeing what they used.
  *
  * `lot_id` is nullable for the three situations where usage is recorded but
- * no purchase is drawn down: payments disabled, a route that carries no
+ * no purchase is drawn down: charging switched off (`CHARGING_ENABLED`), a route that carries no
  * project to pick a pool from, and a studio with nothing spendable left.
  * `payer_user_id` is absent on `debt_incurred` alone (0064, with a CHECK
  * requiring it everywhere else): a debt is what a studio owes, recorded
@@ -1880,206 +1658,6 @@ export const creditLedger = pgTable(
 );
 
 // ── 8d. Credit-pack refund disposition (0094, inner#1410) ────────────
-
-/**
- * One disposition of a credit pack's refund request: an approval, a
- * rejection, or one of the operator's ways of finishing an approval that did
- * not complete on its own.
- *
- * `status` is the disposition's own state machine (inner#1410 §6.2);
- * `result` is set exactly when it is `succeeded`. The CHECKs and the partial
- * unique index `credit_refund_operations_one_in_flight` — at most one
- * `started` or `awaiting_stripe` row per lot — live in 0094. The id also
- * derives the Stripe idempotency key `credit-refund-<id>` and the refund's
- * `metadata.refund_operation_id`.
- */
-export const creditRefundOperations = pgTable(
-  "credit_refund_operations",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    lotId: uuid("lot_id")
-      .notNull()
-      .references(() => creditLots.id, { onDelete: "restrict" }),
-    paymentId: uuid("payment_id")
-      .notNull()
-      .references(() => payments.id, { onDelete: "restrict" }),
-    kind: varchar("kind", { length: 20 }).notNull(),
-    status: varchar("status", { length: 20 }).notNull(),
-    result: varchar("result", { length: 20 }),
-    attentionReason: varchar("attention_reason", { length: 40 }),
-    attentionDetail: text("attention_detail"),
-    attentionClosedAt: timestamp("attention_closed_at", { withTimezone: true }),
-    attentionClosedBy: uuid("attention_closed_by").references(
-      (): AnyPgColumn => creditRefundOperations.id,
-      { onDelete: "restrict" },
-    ),
-    idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull().unique(),
-    requestHash: varchar("request_hash", { length: 64 }).notNull(),
-    requestedBy: varchar("requested_by", { length: 64 }).notNull(),
-    reason: text("reason").notNull(),
-    notify: boolean("notify").notNull(),
-    // The ask this disposition answered, copied from the lot at insert: the
-    // buyer may ask again after a rejection, which rewrites the lot's column.
-    refundRequestedAt: timestamp("refund_requested_at", { withTimezone: true }),
-    confirmedRefundIds: text("confirmed_refund_ids").array().default(sql`'{}'`).notNull(),
-    confirmedSucceededCents: bigint("confirmed_succeeded_cents", { mode: "number" }),
-    // resolve_outside and restore_credits: the failed refunds the operator
-    // answered for, as the confirmation page showed them.
-    failedRefundIds: text("failed_refund_ids").array().default(sql`'{}'`).notNull(),
-    settledSucceededCents: bigint("settled_succeeded_cents", { mode: "number" }),
-    stripeRefundId: varchar("stripe_refund_id", { length: 255 }),
-    firstCalledAt: timestamp("first_called_at", { withTimezone: true }),
-    attemptCount: integer("attempt_count").default(0).notNull(),
-    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }),
-    lastError: text("last_error"),
-    leaseToken: uuid("lease_token"),
-    lockedUntil: timestamp("locked_until", { withTimezone: true }),
-    ...timestamps,
-    finishedAt: timestamp("finished_at", { withTimezone: true }),
-  },
-  (table) => [
-    uniqueIndex("credit_refund_operations_one_in_flight")
-      .on(table.lotId)
-      .where(sql`${table.status} IN ('started', 'awaiting_stripe')`),
-    index("credit_refund_operations_lot_idx").on(table.lotId, table.createdAt),
-    index("credit_refund_operations_due_idx")
-      .on(table.status, table.nextAttemptAt)
-      .where(sql`${table.status} IN ('started', 'awaiting_stripe')`),
-  ],
-);
-
-/**
- * Final internal-API refusals retain their request key and literal response.
- * Targets deliberately have no foreign key: a missing target is recordable.
- * Contract CHECKs live in migration 0104_credit_refund_refusals.
- */
-export const creditRefundRefusals = pgTable("credit_refund_refusals", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  idempotencyKey: varchar("idempotency_key", { length: 255 }).notNull().unique(),
-  requestHash: varchar("request_hash", { length: 64 }).notNull(),
-  requestKind: varchar("request_kind", { length: 20 }).notNull(),
-  targetKind: varchar("target_kind", { length: 20 }).notNull(),
-  targetId: uuid("target_id").notNull(),
-  requestedBy: varchar("requested_by", { length: 64 }).notNull(),
-  requestReason: text("request_reason").notNull(),
-  responseStatus: smallint("response_status").notNull(),
-  responseBody: jsonb("response_body").$type<{ code: string; detail?: string; reason?: string }>().notNull(),
-  ...timestamps,
-  deletedAt: timestamp("deleted_at", { withTimezone: true }),
-});
-
-/**
- * Every step of every disposition, appended in the same transaction as the
- * step itself. `from_status` is NULL for the step that created the row.
- */
-export const creditRefundOperationEvents = pgTable(
-  "credit_refund_operation_events",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    operationId: uuid("operation_id")
-      .notNull()
-      .references(() => creditRefundOperations.id, { onDelete: "restrict" }),
-    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-    event: varchar("event", { length: 40 }).notNull(),
-    fromStatus: varchar("from_status", { length: 20 }),
-    toStatus: varchar("to_status", { length: 20 }).notNull(),
-    detail: jsonb("detail").$type<Record<string, unknown>>().default({}).notNull(),
-  },
-  (table) => [
-    index("credit_refund_operation_events_operation_idx").on(
-      table.operationId,
-      table.createdAt,
-    ),
-  ],
-);
-
-/**
- * What Stripe says about one refund of a credit pack's payment.
- *
- * A copy, written by every read of Stripe (`applyRefundSnapshot`). Stripe's
- * refund object keeps no memory of having succeeded, so `ever_succeeded`
- * does, and only ever turns from false to true. `operation_id` is NULL for a
- * refund made outside the product; `resolved_by_operation_id` is the
- * disposition that answered for a refund which failed after the lot was
- * booked as refunded.
- */
-export const creditRefunds = pgTable(
-  "credit_refunds",
-  {
-    stripeRefundId: varchar("stripe_refund_id", { length: 255 }).primaryKey(),
-    paymentId: uuid("payment_id")
-      .notNull()
-      .references(() => payments.id, { onDelete: "restrict" }),
-    lotId: uuid("lot_id")
-      .notNull()
-      .references(() => creditLots.id, { onDelete: "restrict" }),
-    operationId: uuid("operation_id").references(() => creditRefundOperations.id, {
-      onDelete: "restrict",
-    }),
-    amountCents: bigint("amount_cents", { mode: "number" }).notNull(),
-    currency: varchar("currency", { length: 3 }).notNull(),
-    status: varchar("status", { length: 20 }).notNull(),
-    failureReason: varchar("failure_reason", { length: 64 }),
-    // Stripe's reason while the refund is pending; NULL in every other status.
-    pendingReason: varchar("pending_reason", { length: 20 }),
-    everSucceeded: boolean("ever_succeeded").default(false).notNull(),
-    resolvedByOperationId: uuid("resolved_by_operation_id").references(
-      () => creditRefundOperations.id,
-      { onDelete: "restrict" },
-    ),
-    ...timestamps,
-  },
-  (table) => [
-    index("credit_refunds_payment_idx").on(table.paymentId),
-    index("credit_refunds_lot_idx").on(table.lotId),
-  ],
-);
-
-/**
- * One email to a buyer about a disposition. `auto` rows are written when the
- * disposition finishes, at most one per disposition (the partial unique
- * index `refund_mail_outbox_one_auto` in 0094); `resend` rows are written by
- * the operator's resend and carry who asked and why.
- */
-export const refundMailOutbox = pgTable(
-  "refund_mail_outbox",
-  {
-    id: uuid("id").defaultRandom().primaryKey(),
-    operationId: uuid("operation_id")
-      .notNull()
-      .references(() => creditRefundOperations.id, { onDelete: "restrict" }),
-    kind: varchar("kind", { length: 20 }).notNull(),
-    origin: varchar("origin", { length: 10 }).notNull(),
-    requestedBy: varchar("requested_by", { length: 64 }),
-    reason: text("reason"),
-    idempotencyKey: varchar("idempotency_key", { length: 255 }).unique(),
-    requestHash: varchar("request_hash", { length: 64 }),
-    status: varchar("status", { length: 20 }).default("pending").notNull(),
-    lastError: text("last_error"),
-    sentAt: timestamp("sent_at", { withTimezone: true }),
-    ...timestamps,
-  },
-  (table) => [
-    uniqueIndex("refund_mail_outbox_one_auto")
-      .on(table.operationId)
-      .where(sql`${table.origin} = 'auto'`),
-    index("refund_mail_outbox_status_idx")
-      .on(table.status, table.createdAt)
-      .where(sql`${table.status} IN ('pending', 'sending')`),
-  ],
-);
-
-/** The daily reconcile's progress: one row, keyed by `name` (`daily`). */
-export const creditRefundReconcileStatus = pgTable("credit_refund_reconcile_status", {
-  name: varchar("name", { length: 32 }).primaryKey(),
-  lastStartedAt: timestamp("last_started_at", { withTimezone: true }),
-  lastFinishedAt: timestamp("last_finished_at", { withTimezone: true }),
-  lastOkAt: timestamp("last_ok_at", { withTimezone: true }),
-  lastError: text("last_error"),
-  failingPaymentIds: uuid("failing_payment_ids").array().default(sql`'{}'`).notNull(),
-  nextRetryAt: timestamp("next_retry_at", { withTimezone: true }),
-  ...timestamps,
-});
 
 /**
  * One paid call the agent made (#296): a model call, a search, a media read,
@@ -2462,14 +2040,22 @@ export const timelineExecutions = pgTable(
     actionId: text("action_id").notNull(),
     input: jsonb("input").$type<Record<string, unknown>>().notNull(),
     inputHash: text("input_hash").notNull(),
-    engine: text("engine").notNull(),
-    status: text("status").notNull().default("awaiting_landing"),
+    /** Empty for an export, which calls no model (0133, #1490). */
+    engine: text("engine"),
+    /** `awaiting_landing` is held only by rows written before #1490 (0133). */
+    status: text("status").notNull().default("queued"),
+    /** Where it was asked for: `web_animation_space`, or `timeline` before #1490 (0133). */
+    origin: text("origin").notNull(),
     phase: text("phase"),
+    /** How far a running export's render got, as a whole percent (0133, #1490). */
+    progress: smallint("progress"),
     steps: jsonb("steps").$type<unknown[]>().notNull().default(sql`'[]'::jsonb`),
     attempt: integer("attempt").notNull().default(0),
     fence: uuid("fence"),
     deadlineAt: timestamp("deadline_at", { withTimezone: true }).notNull(),
     resultSourceVersionId: uuid("result_source_version_id"),
+    /** An export's registered video (0133, #1490). */
+    resultAssetId: uuid("result_asset_id").references(() => studioAssets.id, { onDelete: "restrict" }),
     failureReason: text("failure_reason"),
     /** The upstream a failure of the payer's own key names (0131, inner#1953); null for any other failure. */
     failureUpstream: text("failure_upstream"),
@@ -2504,6 +2090,12 @@ export const timelineExecutions = pgTable(
     index("timeline_executions_open_idx")
       .on(table.createdAt)
       .where(sql`${table.deletedAt} IS NULL AND ${table.status} IN ('awaiting_landing', 'queued', 'running', 'cancelling')`),
+    index("timeline_executions_space_order_idx")
+      .on(table.spaceId, desc(table.createdAt), desc(table.id))
+      .where(sql`${table.deletedAt} IS NULL`),
+    uniqueIndex("timeline_executions_export_source_idx")
+      .on(table.projectId, table.spaceId, sql`(${table.input}->>'sourceVersionId')`)
+      .where(sql`${table.kind} = 'web_animation_export' AND ${table.status} NOT IN ('failed', 'cancelled', 'expired') AND ${table.deletedAt} IS NULL`),
   ],
 );
 
@@ -2587,10 +2179,19 @@ export const timelineExecutionGrants = pgTable(
     projectId: uuid("project_id")
       .notNull()
       .references(() => projects.id, { onDelete: "restrict" }),
+    /** Its execution's creation time and origin, copied on insert so a Project's list reads in order (0133, #1490). */
+    executionCreatedAt: timestamp("execution_created_at", { withTimezone: true }).notNull(),
+    executionOrigin: text("execution_origin").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
+    index("timeline_execution_grants_order_idx")
+      .on(table.projectId, desc(table.executionCreatedAt), desc(table.executionId))
+      .where(sql`${table.deletedAt} IS NULL`),
+    index("timeline_execution_grants_origin_order_idx")
+      .on(table.projectId, table.executionOrigin, desc(table.executionCreatedAt), desc(table.executionId))
+      .where(sql`${table.deletedAt} IS NULL`),
     uniqueIndex("timeline_execution_grants_live_idx")
       .on(table.executionId, table.projectId)
       .where(sql`${table.deletedAt} IS NULL`),
@@ -2672,6 +2273,61 @@ export const projectLifecycleOutbox = pgTable(
       .where(sql`${table.sentAt} IS NULL`),
   ],
 );
+
+/**
+ * One write the billing service asked of the product, claimed in the same
+ * transaction as the write and holding its answer, so a repeat of the key
+ * replays it (inner#1993 §3.3). The status CHECK lives in 0131.
+ */
+export const commerceRequests = pgTable("commerce_requests", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  key: text("key").notNull().unique(),
+  kind: text("kind").notNull(),
+  requestHash: varchar("request_hash", { length: 64 }).notNull(),
+  status: text("status").$type<"applied" | "refused">().notNull(),
+  answer: jsonb("answer").$type<unknown>().notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/**
+ * Events for the billing service, appended in the business transaction and
+ * sent by the relay (inner#1993 §5.1). `id` is the delivery id the receiver
+ * keys on; `seq` orders the rows of one aggregate.
+ */
+export const commerceOutbox = pgTable(
+  "commerce_outbox",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    seq: bigint("seq", { mode: "bigint" }).generatedAlwaysAsIdentity().notNull().unique(),
+    aggregateKey: text("aggregate_key").notNull(),
+    type: text("type").notNull(),
+    payload: jsonb("payload").$type<unknown>().notNull(),
+    attempts: integer("attempts").notNull().default(0),
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).defaultNow().notNull(),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("commerce_outbox_unsent_idx").on(table.aggregateKey, table.seq).where(sql`${table.sentAt} IS NULL`),
+  ],
+);
+
+/** Outbox rows given up for good (refused, answered `permanent_failure`, or out of attempts), kept for a person to look at and requeue. */
+export const commerceOutboxDeadLetters = pgTable("commerce_outbox_dead_letters", {
+  id: uuid("id").primaryKey(),
+  seq: bigint("seq", { mode: "bigint" }).notNull().unique(),
+  aggregateKey: text("aggregate_key").notNull(),
+  type: text("type").notNull(),
+  payload: jsonb("payload").$type<unknown>().notNull(),
+  attempts: integer("attempts").notNull(),
+  lastError: text("last_error"),
+  reason: text("reason").notNull(),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull(),
+  failedAt: timestamp("failed_at", { withTimezone: true }).defaultNow().notNull(),
+  /** When it was last put back into the outbox; a requeue by reason skips it then. */
+  requeuedAt: timestamp("requeued_at", { withTimezone: true }),
+});
 
 // ── Notifications ──────────────────────────────────────────────────
 //

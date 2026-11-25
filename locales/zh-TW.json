@@ -92,29 +92,6 @@
       "invite_mail_failed": "郵件未能寄出，請重試。"
     },
     "payment": {
-      "tier_not_found": "未知的方案：{tier}。可選：{available}",
-      "price_not_configured": "方案 {tier} 的價格未設定",
-      "consent-credits-v1": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用的點數可在 30 天內全額退款。",
-      "consent-credits-v2": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用且未指定給 Studio 的點數可在 30 天內全額退款。",
-      "refund-credits-v1": {
-        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
-        "used": "只要花過其中任何一個，這一筆就不能再退了。",
-        "expired": "超過 30 天，不再受理退款。"
-      },
-      "refund-credits-v2": {
-        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
-        "used": "只要花過其中任何一個，這一筆就不能再退了。",
-        "expired": "超過 30 天，不再受理退款。",
-        "unassigned": "只有未指定給 Studio 的點數包才能退款。"
-      },
-      "refund-credits-v3": {
-        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
-        "used": "只要花過其中任何一個，這一筆就不能再退了。",
-        "expired": "超過 30 天，不再受理退款。",
-        "unassigned": "只有未指定給 Studio 的點數包才能退款。",
-        "purchased": "只有購買的點數包可以退款。"
-      },
-      "not_found": "找不到這筆購買。",
       "unavailable": "這個部署不出售點數。"
     },
     "text_tool": {
@@ -138,40 +115,11 @@
       "voices_not_offered": "這個模型沒有音色列表"
     },
     "membership": {
-      "already_subscribed": "你已有會員。",
-      "no_subscription": "你沒有會員。",
-      "not_cancelling": "這個會員沒有預約結束。",
-      "change_not_offered": "這項變更暫不提供。",
-      "change_unconfirmed": "變更已提交到 Stripe，但沒能確認結果。請先聯絡我們，不要重複操作。",
-      "checkout_not_found": "找不到這筆結帳。",
-      "checkout_unconfirmed": "暫時無法確認你的會員。",
-      "same_tier": "你已經在這一檔會員。",
-      "payment_overdue": "這個會員有一期款項未付。",
-      "upgrade_pending": "這個會員有一筆升級仍在等待付款。",
       "unavailable": "會員目前無法使用。"
     },
     "storage": {
       "quota_exceeded_upload": "Studio 儲存空間已滿，目前無法上傳。",
       "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。"
-    },
-    "purchase_mail": {
-      "subject": "點數已入帳",
-      "intro": "感謝購買。以下是這筆購買的內容，請留存。",
-      "label": {
-        "credits": "本次入帳",
-        "balance": "目前餘額",
-        "subtotal": "價格",
-        "tax": "稅額",
-        "total": "實付合計",
-        "purchased_at": "購買時間",
-        "refund_by": "可退款截止",
-        "order_ref": "訂單編號"
-      },
-      "credits_amount": "{credits} 點",
-      "fact_line": "{label}：{value}",
-      "consent_heading": "你在購買時同意的內容",
-      "refund_heading": "點數包退款規則",
-      "support": "對這筆購買有疑問，請寫信到 <mailto>{email}</mailto>。"
     },
     "chat": {
       "message_too_long": "這則訊息太長了。最多 {limit, number} 個字元，這則有 {actual, number} 個。",
@@ -281,51 +229,11 @@
       "in_progress": "這次請求仍在處理中。"
     },
     "internal": {
-      "lot_not_found": "沒有這個編號、經付款購買的點數包。",
-      "operation_not_found": "沒有這個編號的退款處置。",
-      "lot_state_changed": "點數包不在這個操作要求的狀態。",
-      "operation_in_progress": "這筆點數包還有一個退款處置在進行中。",
-      "request_in_progress": "使用這個 Idempotency-Key 的請求還在執行。",
-      "stripe_blocks": "Stripe 上這筆付款的現狀或這筆點數包的退款處置紀錄不允許這個操作，原因見 reason。",
-      "mail_not_resendable": "只有以已退款、已駁回或點數已恢復完成的處置才有可重寄的買家郵件。",
-      "idempotency_key_reused": "這個 Idempotency-Key 已經用於另一個不同的請求。",
       "invalid_body": "請求內容或路徑不符合這個端點的要求。",
-      "invalid_idempotency_key": "Idempotency-Key 標頭缺少或格式不對。",
       "unreadable_body": "請求內容不是有效的 JSON。"
     },
-    "refund_mail": {
-      "completed": {
-        "subject": "退款已完成",
-        "intro": "我們已把這筆購買的款項退回你的原付款方式，銀行入帳通常需要幾個工作天。這筆購買的點數已從帳號移除。"
-      },
-      "rejected": {
-        "subject": "退款申請未通過",
-        "intro": "這筆購買的退款申請沒有通過。這筆點數已回到可用狀態，可以繼續指定給 Studio 使用。"
-      },
-      "restored": {
-        "subject": "點數已恢復",
-        "intro": "款項沒能退回你的原付款方式。依照和你的溝通，這筆購買的點數已恢復到帳號，可以繼續指定給 Studio 使用。"
-      },
-      "label": {
-        "amount": "退款金額",
-        "credits": "點數",
-        "purchased_at": "購買時間",
-        "refunded_at": "退款時間",
-        "requested_at": "申請退款時間",
-        "order_ref": "訂單編號"
-      },
-      "credits_amount": "{credits} 點",
-      "fact_line": "{label}：{value}"
-    },
     "referral": {
-      "invalid_code": "推廣碼無效。",
-      "already_bound": "這個帳號已經綁定過推廣碼。",
-      "already_paid": "推廣碼只能在第一次付會員費之前填寫。",
-      "not_eligible": "企業版帳號不能綁定推廣碼。",
-      "program_closed": "推廣計畫暫未開放申請。",
-      "terms_changed": "推廣條款已更新，請重新閱讀後再申請。",
-      "application_pending": "你已經有一份申請在審核中。",
-      "already_promoter": "你已經是推廣者。"
+      "invalid_code": "推廣碼無效。"
     },
     "three_d": {
       "model_not_offered": "{model} 不是用於 {mode} 的 3D 模型。",
@@ -365,6 +273,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
+    },
+    "billing": {
+      "unavailable": "購買和會員服務暫時無法使用，請稍後再試。"
     },
     "byok": {
       "disabled": "這個部署沒有開啟自帶 key。",
@@ -1062,7 +973,8 @@
       "snapshot": "儲存快照",
       "download": "下載",
       "understand": "理解",
-      "transcribe": "轉寫"
+      "transcribe": "轉寫",
+      "openSourceAnimation": "開啟來源動畫"
     },
     "edge": {
       "delete": "刪除連線"
@@ -1573,6 +1485,7 @@
         "product-showcase": "產品展示",
         "promo": "宣傳片與品牌故事",
         "food": "美食",
+        "spaces": "空間、改造與房產",
         "fashion": "時裝 lookbook",
         "social-hooks": "社群鉤子",
         "talking": "口播與對話",
@@ -2107,8 +2020,7 @@
       "retro-found-footage": {
         "name": "復古 DV 老錄影",
         "description": "2000 年代初家用 DV 錄下的一個小事件",
-        "prompt": "2000 年代初家用 DV 攝影機錄下的老錄影：解析度低，焦點偏軟，有視訊雜訊，顏色輕微溢出，白平衡有點偏，手動推拉變焦。地點：{✏️ 在哪裡拍的，例如傍晚後院的生日派對}。0–3 秒：已經在錄，拍的人邊走邊拿著攝影機。3–8 秒：{✏️ 發生的一個小事件，例如蛋糕從桌上掉下來}，拍的人有反應，鏡頭甩過去跟拍。8–10 秒：硬切黑。光源跟地點一致，只有一個。聲音：攝影機內建麥克風錄的聲音，人聲悶悶的，有風切聲，沒有音樂。畫面裡不出現文字。",
-        "input": {}
+        "prompt": "2000 年代初家用 DV 攝影機錄下的老錄影：解析度低，焦點偏軟，有視訊雜訊，顏色輕微溢出，白平衡有點偏，手動推拉變焦。地點：{✏️ 在哪裡拍的，例如傍晚後院的生日派對}。0–3 秒：已經在錄，拍的人邊走邊拿著攝影機。3–8 秒：{✏️ 發生的一個小事件，例如蛋糕從桌上掉下來}，拍的人有反應，鏡頭甩過去跟拍。8–10 秒：硬切黑。光源跟地點一致，只有一個。聲音：攝影機內建麥克風錄的聲音，人聲悶悶的，有風切聲，沒有音樂。畫面裡不出現文字。"
       },
       "time-freeze-rewind": {
         "name": "時間靜止再倒流",
@@ -2124,8 +2036,7 @@
       "bullet-time-mishap": {
         "name": "子彈時間出糗",
         "description": "出糗的一瞬間凍住，鏡頭繞著轉一圈",
-        "prompt": "{✏️ 誰出了什麼糗，例如一隻貓把滿滿一杯牛奶從餐桌上碰下去}。0–1 秒：已經在發生，糗事剛開始。1–6 秒：在最糟的那一刻時間完全停住，像一張定格的照片：主體、濺出來的東西和正在掉落的東西都紋絲不動地懸在半空，畫面裡什麼都不動；只有鏡頭在動，在同樣的高度和距離上繞著這個定格的瞬間轉一整圈，先從側面、再從背後、再從另一側看，最後回到正面。6–8 秒：時間恢復，糗事做完。只有一個光源。聲音：凍住時突然安靜，鏡頭環繞時一聲低沉的呼嘯，最後是摔碎的聲音。畫面裡不出現文字。",
-        "input": {}
+        "prompt": "{✏️ 誰出了什麼糗，例如一隻貓把滿滿一杯牛奶從餐桌上碰下去}。0–1 秒：已經在發生，糗事剛開始。1–6 秒：在最糟的那一刻時間完全停住，像一張定格的照片：主體、濺出來的東西和正在掉落的東西都紋絲不動地懸在半空，畫面裡什麼都不動；只有鏡頭在動，在同樣的高度和距離上繞著這個定格的瞬間轉一整圈，先從側面、再從背後、再從另一側看，最後回到正面。6–8 秒：時間恢復，糗事做完。只有一個光源。聲音：凍住時突然安靜，鏡頭環繞時一聲低沉的呼嘯，最後是摔碎的聲音。畫面裡不出現文字。"
       },
       "beat-sync-outfit-change": {
         "name": "卡點轉身換裝",
@@ -2141,8 +2052,7 @@
       "pov-continuous-shot": {
         "name": "第一人稱一鏡到底",
         "description": "第一人稱視角走一段，一個鏡頭拍到底",
-        "prompt": "第一人稱視角，一鏡到底，攝影機裝在走路的人頭上、眼睛的高度，他的手不時進入畫面。地點和目的地：{✏️ 從哪裡走到哪裡，例如穿過夜市走到掛滿燈籠的廟門口}。0–3 秒：第一格畫面裡已經滿是這個地方，已經在往前走。3–9 秒：{✏️ 路上經過什麼、做了什麼}。9–12 秒：走到了，視線停在{✏️ 最後看到的東西}上。沒有剪接，沒有變焦；鏡頭只是走、轉頭和停下。光來自這個地方本身。聲音：腳步聲、呼吸聲和這個地方的聲音，沒有音樂。畫面裡不出現文字。",
-        "input": {}
+        "prompt": "第一人稱視角，一鏡到底，攝影機裝在走路的人頭上、眼睛的高度，他的手不時進入畫面。地點和目的地：{✏️ 從哪裡走到哪裡，例如穿過夜市走到掛滿燈籠的廟門口}。0–3 秒：第一格畫面裡已經滿是這個地方，已經在往前走。3–9 秒：{✏️ 路上經過什麼、做了什麼}。9–12 秒：走到了，視線停在{✏️ 最後看到的東西}上。沒有剪接，沒有變焦；鏡頭只是走、轉頭和停下。光來自這個地方本身。聲音：腳步聲、呼吸聲和這個地方的聲音，沒有音樂。畫面裡不出現文字。"
       },
       "carried-object-transition": {
         "name": "物件帶轉場",
@@ -2921,6 +2831,160 @@
           "trim": "生成出來的配樂通常有幾分鐘長。生成後，在它上面用 工具 → 剪切 截四次，截出首尾相接的四段 15 秒（0–15 秒、15–30 秒、30–45 秒、45–60 秒）；按順序把截好的片段（名字以 CUT- 開頭）分別連到對應的那一段，在那一段提示詞要求的位置 @ 它。",
           "join": "按順序選取四段，按右鍵選「拼接」。"
         }
+      },
+      "space-tour-single-take": {
+        "name": "空間一鏡到底",
+        "description": "平穩走過你的空間，只有環境聲",
+        "prompt": "一段 15 秒、橫式的一鏡到底，穿過 [📎 空間]，每個表面、顏色和家具都和照片裡一樣。鏡頭以步行高度平穩向前滑行，不切鏡。開始：{✏️ 從哪裡開始，例如在大門口，望向走廊}。接著：穿過門口，在門檻處揭示下一個區域：{✏️ 路線，例如左邊打開客廳，再到窗邊的餐桌}。最後：{✏️ 在哪裡結束，例如停在窗前，窗外是花園}。光線隨區域變化，室內溫暖，靠窗更亮。聲音：只有房間自己的環境聲，腳步踩在地板上，窗外隱約的鳥叫。沒有音樂，沒有人，畫面裡不出現文字。",
+        "input": {
+          "space": {
+            "name": "空間",
+            "note": "先放入一張空間的照片，再生成"
+          }
+        }
+      },
+      "room-staging-still": {
+        "name": "空屋軟裝",
+        "description": "給你的空房間布置好家具，牆和機位不變",
+        "prompt": "給 [📎 房間] 布置{✏️ 風格，例如溫暖的北歐風，淺色橡木和亞麻}的家具，用作{✏️ 房間用途，例如一個年輕家庭的客廳}。牆、窗、門、地面、天花板、窗外進來的光和機位都和照片裡完全一樣；只加家具、地毯、燈、植物和擺件，尺寸符合房間的真實比例。照片級真實的室內攝影。不出現文字。",
+        "input": {
+          "room": {
+            "name": "房間",
+            "note": "先放入一張空房間的照片，再生成"
+          }
+        }
+      },
+      "renovation-before-after": {
+        "name": "裝修前後",
+        "description": "你的房間現在的樣子、裝修後的樣子，一鏡變過去",
+        "prompt": "(💡 先生成改造前，再把它選進首幀)(💡 先生成改造後，再把它選進尾幀)一段 8 秒、橫式、有聲音的影片。從首幀開始，到尾幀結束：同一個房間、同一個機位，只有房間在變，一鏡到底，鏡頭不動。怎麼變：{✏️ 變化的方式，例如舊的牆面地面一層層剝落，新的從左到右掃過整個房間}。聲音：快轉的施工聲，工具和腳步，最後落在安靜的房間裡。畫面裡不出現文字。",
+        "node": {
+          "before": {
+            "name": "改造前",
+            "prompt": "一張橫幅室內照片，[📎 房間] 就是現在的樣子：牆、窗、地面、天花板、家具、舊痕跡和機位都和照片裡一樣，不整理、不添加，自然日光。照片級真實。不出現文字。"
+          },
+          "after": {
+            "name": "改造後",
+            "prompt": "(💡 先生成改造前)編輯 [📎 改造前]：機位、構圖、透視、牆、窗和房間大小都保持原樣。把它裝修成：{✏️ 裝修內容，例如淺色橡木地板、白牆、新的廚房中島和溫暖的吊燈}。照片級真實，自然日光。不出現文字。"
+          }
+        },
+        "input": {
+          "room": {
+            "name": "房間",
+            "note": "先放入一張房間的照片，再生成改造前"
+          }
+        }
+      },
+      "day-to-night-exterior": {
+        "name": "外景日轉夜",
+        "description": "你的房子從白天到亮燈的夜晚",
+        "prompt": "(💡 先生成白天，再把它選進首幀)(💡 先生成夜晚，再把它選進尾幀)一段 6 秒、橫式、有聲音的影片。從首幀開始，到尾幀結束：同一棟房子、同一個機位，天空從白天經過溫暖的黃昏到夜晚，窗戶和室外的燈一盞盞亮起，一個連續的變化，鏡頭不動。聲音：傍晚的環境聲，歸巢的鳥和遠處的街道。畫面裡不出現文字。",
+        "node": {
+          "day": {
+            "name": "白天",
+            "prompt": "一張橫幅外景照片，[📎 外景] 在晴朗的日光下：同一棟房子、屋頂、窗戶、花園和機位都和照片裡一樣，不添加東西。照片級真實。不出現文字。"
+          },
+          "night": {
+            "name": "夜晚",
+            "prompt": "(💡 先生成白天)編輯 [📎 白天]：機位、構圖和房子都保持原樣。變成夜晚：深藍的天空，{✏️ 夜裡的燈光，例如每扇窗都透出暖光，小路邊亮著柔和的庭院燈}。照片級真實。不出現文字。"
+          }
+        },
+        "input": {
+          "exterior": {
+            "name": "外景",
+            "note": "先放入一張房子外觀的照片，再生成白天"
+          }
+        }
+      },
+      "before-after-reveal": {
+        "name": "前後對比揭曉",
+        "description": "用你的兩張照片做社群式的改造短片",
+        "prompt": "一段 6 秒、有聲音的前後對比。從首幀開始，到尾幀結束，同一個地方、同一個位置拍。前 2 秒的鉤子：0.0 秒定住的改造前；0.3 秒快速推近；0.8 秒第一下動手；1.5 秒閃一下改造後；2.0 秒回到幹活。然後快轉的幹活過程，直到改造後的樣子：{✏️ 幹的活，例如沾了汙漬的沙發被刷洗、沖淨、晾乾}。聲音：幹活本身的聲音，刷洗和噴水聲，揭曉時一聲輕輕的呼嘯。畫面裡不出現文字。",
+        "input": {
+          "before": {
+            "name": "改造前",
+            "note": "先放入你改造前的照片，再把它選進首幀槽"
+          },
+          "after": {
+            "name": "改造後",
+            "note": "先放入你改造後的照片，再把它選進尾幀槽"
+          }
+        }
+      },
+      "listing-walkthrough-15s": {
+        "name": "15 秒房源導覽",
+        "description": "一套房子的四張照片，一段流暢的導覽",
+        "shot": {
+          "1": "空拍機接近 [📎 外景]，房子和照片裡完全一樣，{✏️ 時間，例如黃金時刻}，向大門緩緩下降。畫面裡不出現文字。",
+          "2": "門檻揭示：鏡頭穿過大門進入 [📎 客廳]，和照片裡完全一樣。畫面裡不出現文字。",
+          "3": "雲台沿 [📎 廚房] 橫移，和照片裡完全一樣，光落在檯面上。畫面裡不出現文字。",
+          "4": "緩緩推進 [📎 臥室]，和照片裡完全一樣，安靜明亮。畫面裡不出現文字。",
+          "5": "窗邊揭示景觀：鏡頭轉向臥室的窗，窗外的景色展開：{✏️ 景色，例如樹梢和湖面}。全程輕柔的鋼琴和房間的環境聲。畫面裡不出現文字。"
+        },
+        "input": {
+          "exterior": {
+            "name": "外景",
+            "note": "先放入一張外觀照片，再生成"
+          },
+          "living": {
+            "name": "客廳",
+            "note": "先放入一張客廳照片，再生成"
+          },
+          "kitchen": {
+            "name": "廚房",
+            "note": "先放入一張廚房照片，再生成"
+          },
+          "bedroom": {
+            "name": "臥室",
+            "note": "先放入一張臥室照片，再生成"
+          }
+        }
+      },
+      "property-full-tour": {
+        "name": "完整看房影片",
+        "description": "每個房間一段 10 秒，按同一條配樂做，再拼接",
+        "prompt": "一段 40 秒看房影片的第 1 個房間（共 4 個），10 秒：[📎 照片 1]，每個表面、顏色和家具都和照片裡一樣。各段共用一種畫面風格：{✏️ 房子和光線，例如明亮的家庭住宅，柔和的午後光線，平穩的雲台運鏡}。配樂是{✏️ 在這裡 @ 你從配樂裡截出的第一段 10 秒}。運鏡：{✏️ 這個房間的運鏡，例如空拍機緩緩接近大門}。沒有人，畫面裡不出現文字。",
+        "node": {
+          "room-2": {
+            "name": "房間 2",
+            "prompt": "一段 40 秒看房影片的第 2 個房間（共 4 個），10 秒：[📎 照片 2]，每個表面、顏色和家具都和照片裡一樣。各段共用一種畫面風格：{✏️ 房子和光線，例如明亮的家庭住宅，柔和的午後光線，平穩的雲台運鏡}。配樂是{✏️ 在這裡 @ 你從配樂裡截出的第二段 10 秒}。運鏡：{✏️ 這個房間的運鏡，例如穿過門檻進入客廳}。沒有人，畫面裡不出現文字。"
+          },
+          "room-3": {
+            "name": "房間 3",
+            "prompt": "一段 40 秒看房影片的第 3 個房間（共 4 個），10 秒：[📎 照片 3]，每個表面、顏色和家具都和照片裡一樣。各段共用一種畫面風格：{✏️ 房子和光線，例如明亮的家庭住宅，柔和的午後光線，平穩的雲台運鏡}。配樂是{✏️ 在這裡 @ 你從配樂裡截出的第三段 10 秒}。運鏡：{✏️ 這個房間的運鏡，例如沿廚房檯面橫移}。沒有人，畫面裡不出現文字。"
+          },
+          "room-4": {
+            "name": "房間 4",
+            "prompt": "一段 40 秒看房影片的第 4 個房間（共 4 個），10 秒：[📎 照片 4]，每個表面、顏色和家具都和照片裡一樣。各段共用一種畫面風格：{✏️ 房子和光線，例如明亮的家庭住宅，柔和的午後光線，平穩的雲台運鏡}。配樂是{✏️ 在這裡 @ 你從配樂裡截出的第四段 10 秒}。運鏡：{✏️ 這個房間的運鏡，例如推向臥室的窗和窗外的景色}。沒有人，畫面裡不出現文字。"
+          },
+          "score": {
+            "name": "配樂",
+            "prompt": "一段給 40 秒看房影片用的純器樂，房產是{✏️ 房產類型，例如明亮的家庭住宅}：{✏️ 曲風和速度，例如輕快的原聲鋼琴，90 BPM}，全程一個調，溫暖親切，結尾輕輕揚起。沒有人聲。"
+          }
+        },
+        "input": {
+          "photo-1": {
+            "name": "照片 1",
+            "note": "先放入第一個房間的照片，再生成"
+          },
+          "photo-2": {
+            "name": "照片 2",
+            "note": "先放入第二個房間的照片，再生成"
+          },
+          "photo-3": {
+            "name": "照片 3",
+            "note": "先放入第三個房間的照片，再生成"
+          },
+          "photo-4": {
+            "name": "照片 4",
+            "note": "先放入第四個房間的照片，再生成"
+          }
+        },
+        "step": {
+          "trim": "生成出來的配樂通常有幾分鐘長。生成後，在它上面用 工具 → 剪切，截出首尾相接的幾段 10 秒（0–10 秒、10–20 秒、20–30 秒、30–40 秒）；按順序把截好的片段（名字以 CUT- 開頭）分別連到對應的房間，在那個房間提示詞要求的位置 @ 它。",
+          "more": "房間更多？複製一個房間節點，把下一個房間的照片連上去，給它再截一段 10 秒的配樂，寫好它的運鏡。",
+          "join": "按順序選取各個房間，按右鍵選「拼接」。"
+        }
       }
     },
     "promptMark": {
@@ -3094,11 +3158,11 @@
   "project": {
     "leaveGuard": {
       "title": "有未完成的操作,確定離開?",
-      "description": "上傳或編輯還沒同步完,現在離開可能遺失。",
+      "description": "上傳、編輯或執行還沒完成，現在離開可能遺失。",
       "stay": "留下",
       "leave": "仍然離開",
       "unsyncedDescription": "部分修改尚未同步，現在重新整理或離開可能遺失這些修改。",
-      "combinedDescription": "部分修改尚未同步，且仍有上傳或編輯操作正在進行。現在重新整理或離開可能遺失這些工作。",
+      "combinedDescription": "部分修改尚未同步，且仍有上傳、編輯或執行正在進行。現在重新整理或離開可能遺失這些工作。",
       "completeDescription": "修改已同步，操作已完成。",
       "completeTitle": "可以繼續"
     },
@@ -3260,7 +3324,9 @@
       "document": "Document",
       "documentSub": "富文本 + 協作",
       "timeline": "Timeline",
-      "timelineSub": "影片 / 音訊剪輯"
+      "timelineSub": "影片 / 音訊剪輯",
+      "webAnimation": "Motion",
+      "webAnimationSub": "用程式碼生成動畫，可匯出影片"
     },
     "create": {
       "title": "新增 Space",
@@ -3272,7 +3338,9 @@
       "namePlaceholder": "例:Cyberpunk Concept",
       "nameRemaining": "{count, plural, other {還可輸入 # 個字元}}",
       "cancel": "取消",
-      "submit": "建立"
+      "submit": "建立",
+      "scrollTypesStart": "向左捲動類型",
+      "scrollTypesEnd": "向右捲動類型"
     },
     "rename": {
       "inputAriaLabel": "重新命名 Space",
@@ -3852,6 +3920,67 @@
       "reason": "這個 Space 已滿。",
       "text": "文字沒有寫入：這個 Space 已滿。",
       "wait": "這個 Space 已滿，刪除一些內容後會自動完成。"
+    },
+    "webAnimation": {
+      "addAnnotation": "新增註解",
+      "annotateAt": "在 {time} 新增註解",
+      "annotationFailed": "註解未能儲存。",
+      "videoTag": "MP4",
+      "annotationPlaceholder": "寫下要修改的地方",
+      "annotations": "註解",
+      "annotationsAll": "全部",
+      "annotationsOpen": "未解決",
+      "baseWithAnnotations": "{base}（{count} 則未解決註解）",
+      "canvasUnreachable": "無法連線到這個 Canvas。",
+      "chooseCanvas": "放到哪個 Canvas",
+      "closePanel": "關閉",
+      "completed": "已完成",
+      "details": "詳情",
+      "dialog": {
+        "instruction": "要改的地方",
+        "instructionPlaceholder": "例如：標題慢一點，背景再暗一些",
+        "modifyDescription": "修改自「{base}」",
+        "modifyKeepsOriginal": "原結果保持不變。",
+        "modifyTitle": "修改網頁動畫",
+        "relayout": "畫面會按新尺寸重新排版。"
+      },
+      "discardAnnotation": "捨棄這則註解？",
+      "discard": "捨棄",
+      "keepWriting": "繼續寫",
+      "download": "下載",
+      "empty": "還沒有網頁動畫",
+      "emptyInProgress": "沒有進行中的",
+      "emptyFailed": "沒有失敗的",
+      "executions": "執行列表",
+      "export": "匯出影片",
+      "hasPoint": "有位置",
+      "inProgress": "進行中",
+      "failed": "失敗",
+      "limitsUnavailable": "設定載入失敗，請再試一次。",
+      "listError": "清單載入失敗。",
+      "madeInTimeline": "以前在 Timeline 裡做的",
+      "modifiedFromLabel": "修改自",
+      "modify": "修改",
+      "new": "新增",
+      "noAnnotations": "還沒有註解",
+      "noCanvas": "本 Project 還沒有 Canvas",
+      "noOpenAnnotations": "沒有未解決的註解",
+      "notFound": "找不到這筆網頁動畫。",
+      "pickPoint": "點畫面標出位置，或直接在下方寫",
+      "placeOnCanvas": "放到 Canvas",
+      "placed": "已放到「{name}」",
+      "viewPlaced": "查看",
+      "placing": "影片仍在放到 Canvas 上。",
+      "readOnlyNotice": "協作人數已滿，註解暫時只能檢視。新增、修改、匯出照常可用。",
+      "reexport": "重新匯出",
+      "replies": "{count} 則回覆",
+      "sourceLabel": "來源動畫",
+      "titleModifiedFrom": "修改自「{base}」：{request}",
+      "titleVideo": "影片 · {source}",
+      "unlistedResult": "其他結果",
+      "viewSource": "檢視來源動畫",
+      "viewVideo": "檢視影片",
+      "sourceSpaceGone": "來源動畫所在的 Space 已不存在。"
     }
   },
   "menu": {
@@ -4746,6 +4875,11 @@
       "title": "自部署不計點數",
       "body": "生成不扣點數，也不需要儲值。用量仍會記錄下來。"
     },
+    "notSoldHere": {
+      "title": "這個部署不出售點數",
+      "body": "生成照常扣點數，但這裡不能儲值。",
+      "refundsBody": "這裡不能退款。"
+    },
     "total": "帳號總額",
     "unassigned": "未指定",
     "unassignedWithNextStep": "未指定，到左側「指定」分給要用的 Studio",
@@ -4757,7 +4891,7 @@
       "title": "買了點數之後，還要指定給某個 Studio 才能用",
       "body": "左側「購買點數」可以儲值；儲值後在「指定」裡把每個點數包分給要用它的 Studio。"
     },
-    "lotsEmpty": "還沒有購買記錄。",
+    "lotsEmpty": "還沒有點數。",
     "lotsEmptyNotice": {
       "title": "點數是怎麼來的，都列在這裡",
       "body": "買來的、贈送的都會列出來，顯示來源、花了多少、處理到哪一步，以及點數去了哪個 Studio。"
@@ -5022,8 +5156,6 @@
       "offFrame": "這個片段不在目前的影格。"
     },
     "webAnimation": {
-      "create": "製作網頁動畫",
-      "executions": "執行列表",
       "copy": "網頁動畫副本",
       "durationShort": "{seconds} 秒",
       "dialog": {
@@ -5035,15 +5167,7 @@
         "engine": "引擎",
         "aspect": "比例",
         "duration": "時長（秒）",
-        "addAtPlayhead": "在播放頭位置加入 Timeline",
         "execute": "執行"
-      },
-      "list": {
-        "close": "關閉執行列表",
-        "completed": "已完成",
-        "inProgress": "進行中",
-        "emptyCompleted": "還沒有已完成的執行。",
-        "emptyInProgress": "沒有進行中的執行。"
       },
       "status": {
         "awaiting_landing": "儲存中",
@@ -5056,26 +5180,28 @@
         "expired": "已過期"
       },
       "step": {
-        "landing": "儲存執行請求"
+        "landing": "儲存執行請求",
+        "savingVideo": "儲存影片"
       },
       "phase": {
         "writing": "編寫網頁",
-        "validating": "校驗定位與清單",
-        "saving": "儲存源包"
+        "validating": "檢查畫面",
+        "saving": "儲存源包",
+        "rendering": "算繪影片"
       },
       "usageLabel": "用量",
       "usage": "{credits} 點",
-      "usagePending": "結束後結算",
       "unavailable": "網頁動畫不可用",
       "cancel": "取消",
-      "addToTimeline": "新增至 Timeline",
-      "addPlaceholder": "先加入 Timeline",
       "retry": "重新執行",
       "failure": {
         "feature_disabled": "網頁動畫暫不可用。",
         "check": "頁面沒有通過檢查。",
         "stopped": "製作意外中斷。",
         "unknown": "執行失敗。",
+        "render": "影片算繪失敗。",
+        "frameMismatch": "算繪出的影片與動畫長度不一致。",
+        "saveVideo": "影片儲存失敗。",
         "key_lost": "任務中斷，請重新執行。"
       },
       "preview": {
@@ -5083,6 +5209,18 @@
         "failed": "{track}：網頁動畫{status, select, failed {失敗} cancelled {已取消} expired {已過期} other {不可用}}，不顯示",
         "unavailable": "{track}：網頁動畫不可用",
         "loading": "{track}：網頁動畫載入中…"
+      },
+      "add": "新增網頁動畫",
+      "goMake": "到 Motion 製作",
+      "openInMotion": "在 Motion 中開啟",
+      "modifiedFrom": "修改自：{base}",
+      "picker": {
+        "title": "新增網頁動畫",
+        "description": "選一個結果，在播放頭處放一份副本。",
+        "empty": "本 Project 還沒有網頁動畫",
+        "deletedSpace": "已刪除的 Space",
+        "loadMore": "載入更多",
+        "error": "網頁動畫載入失敗。"
       }
     },
     "upload": {

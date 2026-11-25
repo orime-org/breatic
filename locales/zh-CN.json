@@ -97,29 +97,6 @@
       "invite_mail_failed": "邮件没发出去，请重试。"
     },
     "payment": {
-      "tier_not_found": "未知的套餐：{tier}。可选：{available}",
-      "price_not_configured": "套餐 {tier} 的价格未配置",
-      "consent-credits-v1": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用的积分可在 30 天内全额退款。",
-      "consent-credits-v2": "我要求立即交付积分，并知悉**一旦我使用其中任何一个，这笔购买将不能再退款**。未使用且未指定给 Studio 的积分可在 30 天内全额退款。",
-      "refund-credits-v1": {
-        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
-        "used": "只要花过其中任何一个，这一笔就不能再退了。",
-        "expired": "超过 30 天，不再受理退款。"
-      },
-      "refund-credits-v2": {
-        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
-        "used": "只要花过其中任何一个，这一笔就不能再退了。",
-        "expired": "超过 30 天，不再受理退款。",
-        "unassigned": "只有未指定给 Studio 的积分包才能退款。"
-      },
-      "refund-credits-v3": {
-        "unused": "30 天内购买、一个积分都没花？全额退回原付款卡。",
-        "used": "只要花过其中任何一个，这一笔就不能再退了。",
-        "expired": "超过 30 天，不再受理退款。",
-        "unassigned": "只有未指定给 Studio 的积分包才能退款。",
-        "purchased": "只有购买的积分包可以退款。"
-      },
-      "not_found": "找不到这笔购买。",
       "unavailable": "这个部署不出售积分。"
     },
     "conversation": {
@@ -138,40 +115,11 @@
       "voices_not_offered": "这个模型没有音色列表"
     },
     "membership": {
-      "already_subscribed": "你已有会员。",
-      "no_subscription": "你没有会员。",
-      "not_cancelling": "这个会员没有预约结束。",
-      "change_not_offered": "这项变更暂不提供。",
-      "change_unconfirmed": "变更已提交到 Stripe，但没能确认结果。请先联系我们，不要重复操作。",
-      "checkout_not_found": "找不到这笔结账。",
-      "checkout_unconfirmed": "暂时无法确认你的会员。",
-      "same_tier": "你已经在这一档会员。",
-      "payment_overdue": "这个会员有一期款项未付。",
-      "upgrade_pending": "这个会员有一笔升级仍在等待付款。",
       "unavailable": "会员当前不可用。"
     },
     "storage": {
       "quota_exceeded_upload": "Studio 存储已满，当前无法上传。",
       "quota_exceeded_generate": "Studio 存储已满，当前无法生成。"
-    },
-    "purchase_mail": {
-      "subject": "积分已到账",
-      "intro": "感谢购买。以下是这笔购买的内容，请留存。",
-      "label": {
-        "credits": "本次到账",
-        "balance": "当前余额",
-        "subtotal": "价格",
-        "tax": "税额",
-        "total": "实付合计",
-        "purchased_at": "购买时间",
-        "refund_by": "可退款截止",
-        "order_ref": "订单号"
-      },
-      "credits_amount": "{credits} 积分",
-      "fact_line": "{label}：{value}",
-      "consent_heading": "你在购买时同意的内容",
-      "refund_heading": "积分包退款规则",
-      "support": "对这笔购买有疑问，请写信到 <mailto>{email}</mailto>。"
     },
     "chat": {
       "message_too_long": "这条消息太长了。最多 {limit, number} 个字符，这条有 {actual, number} 个。",
@@ -281,51 +229,11 @@
       "in_progress": "这次请求仍在处理中。"
     },
     "internal": {
-      "lot_not_found": "没有这个编号、经付款购买的积分包。",
-      "operation_not_found": "没有这个编号的退款处置。",
-      "lot_state_changed": "积分包不在这个操作要求的状态。",
-      "operation_in_progress": "这笔积分包还有一个退款处置在进行中。",
-      "request_in_progress": "使用这个 Idempotency-Key 的请求还在执行。",
-      "stripe_blocks": "Stripe 上这笔付款的现状或这笔积分包的退款处置记录不允许这个操作，原因见 reason。",
-      "mail_not_resendable": "只有以已退款、已驳回或积分已恢复做完的处置才有可重发的买家邮件。",
-      "idempotency_key_reused": "这个 Idempotency-Key 已经用于另一个不同的请求。",
       "invalid_body": "请求体或路径不符合这个端点的要求。",
-      "invalid_idempotency_key": "Idempotency-Key 头缺失或格式不对。",
       "unreadable_body": "请求体不是合法的 JSON。"
     },
-    "refund_mail": {
-      "completed": {
-        "subject": "退款已完成",
-        "intro": "我们已把这笔购买的钱退回你的原付款方式，银行入账通常需要几个工作日。这笔购买的积分已从账号移除。"
-      },
-      "rejected": {
-        "subject": "退款申请未通过",
-        "intro": "这笔购买的退款申请没有通过。这笔积分已回到可用状态，可以继续指定给 Studio 使用。"
-      },
-      "restored": {
-        "subject": "积分已恢复",
-        "intro": "钱没能退回你的原付款方式。按和你的沟通，这笔购买的积分已恢复到账号，可以继续指定给 Studio 使用。"
-      },
-      "label": {
-        "amount": "退款金额",
-        "credits": "积分",
-        "purchased_at": "购买时间",
-        "refunded_at": "退款时间",
-        "requested_at": "申请退款时间",
-        "order_ref": "订单号"
-      },
-      "credits_amount": "{credits} 积分",
-      "fact_line": "{label}：{value}"
-    },
     "referral": {
-      "invalid_code": "推广码无效。",
-      "already_bound": "这个账号已经绑定过推广码。",
-      "already_paid": "推广码只能在第一次付会员费之前填写。",
-      "not_eligible": "企业版账号不能绑定推广码。",
-      "program_closed": "推广计划暂未开放申请。",
-      "terms_changed": "推广条款已更新，请重新阅读后再申请。",
-      "application_pending": "你已经有一份申请在审核中。",
-      "already_promoter": "你已经是推广者。"
+      "invalid_code": "推广码无效。"
     },
     "three_d": {
       "model_not_offered": "{model} 不是用于 {mode} 的 3D 模型。",
@@ -365,6 +273,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {这个 Document 的快照已满 # 张。删掉旧的快照后再保存。}}"
+    },
+    "billing": {
+      "unavailable": "购买和会员服务暂时不可用，请稍后再试。"
     },
     "byok": {
       "disabled": "这个部署没有开启自带 key。",
@@ -1062,7 +973,8 @@
       "snapshot": "保存快照",
       "download": "下载",
       "understand": "理解",
-      "transcribe": "转写"
+      "transcribe": "转写",
+      "openSourceAnimation": "打开源动画"
     },
     "edge": {
       "delete": "删除连线"
@@ -1573,6 +1485,7 @@
         "product-showcase": "产品展示",
         "promo": "宣传片与品牌故事",
         "food": "美食",
+        "spaces": "空间、改造与房产",
         "fashion": "时装 lookbook",
         "social-hooks": "社媒钩子",
         "talking": "口播与对话",
@@ -2107,8 +2020,7 @@
       "retro-found-footage": {
         "name": "复古 DV 老录像",
         "description": "2000 年代初家用 DV 录下的一个小事件",
-        "prompt": "2000 年代初家用 DV 摄像机录下的老录像：分辨率低，焦点偏软，有视频噪点，颜色轻微溢出，白平衡有点偏，手动推拉变焦。地点：{✏️ 在哪儿拍的，例如傍晚后院的生日派对}。0–3 秒：已经在录，拍的人边走边拿着摄像机。3–8 秒：{✏️ 发生的一个小事件，例如蛋糕从桌上掉下来}，拍的人有反应，镜头甩过去跟拍。8–10 秒：硬切黑。光源跟地点一致，只有一个。声音：摄像机自带话筒录的声音，人声发闷，有风噪，没有音乐。画面里不出现文字。",
-        "input": {}
+        "prompt": "2000 年代初家用 DV 摄像机录下的老录像：分辨率低，焦点偏软，有视频噪点，颜色轻微溢出，白平衡有点偏，手动推拉变焦。地点：{✏️ 在哪儿拍的，例如傍晚后院的生日派对}。0–3 秒：已经在录，拍的人边走边拿着摄像机。3–8 秒：{✏️ 发生的一个小事件，例如蛋糕从桌上掉下来}，拍的人有反应，镜头甩过去跟拍。8–10 秒：硬切黑。光源跟地点一致，只有一个。声音：摄像机自带话筒录的声音，人声发闷，有风噪，没有音乐。画面里不出现文字。"
       },
       "time-freeze-rewind": {
         "name": "时间静止再倒流",
@@ -2124,8 +2036,7 @@
       "bullet-time-mishap": {
         "name": "子弹时间出糗",
         "description": "出糗的一瞬间冻住，镜头绕着转一圈",
-        "prompt": "{✏️ 谁出了什么糗，例如一只猫把满满一杯牛奶从餐桌上碰下去}。0–1 秒：已经在发生，糗事刚开始。1–6 秒：在最糟的那一刻时间完全停住，像一张定格的照片：主体、溅出来的东西和正在掉落的东西都纹丝不动地悬在半空，画面里什么都不动；只有镜头在动，在同样的高度和距离上绕着这个定格的瞬间转一整圈，先从侧面、再从背后、再从另一侧看，最后回到正面。6–8 秒：时间恢复，糗事做完。只有一个光源。声音：冻住时突然安静，镜头环绕时一声低沉的呼啸，最后是摔碎的声音。画面里不出现文字。",
-        "input": {}
+        "prompt": "{✏️ 谁出了什么糗，例如一只猫把满满一杯牛奶从餐桌上碰下去}。0–1 秒：已经在发生，糗事刚开始。1–6 秒：在最糟的那一刻时间完全停住，像一张定格的照片：主体、溅出来的东西和正在掉落的东西都纹丝不动地悬在半空，画面里什么都不动；只有镜头在动，在同样的高度和距离上绕着这个定格的瞬间转一整圈，先从侧面、再从背后、再从另一侧看，最后回到正面。6–8 秒：时间恢复，糗事做完。只有一个光源。声音：冻住时突然安静，镜头环绕时一声低沉的呼啸，最后是摔碎的声音。画面里不出现文字。"
       },
       "beat-sync-outfit-change": {
         "name": "卡点转身换装",
@@ -2141,8 +2052,7 @@
       "pov-continuous-shot": {
         "name": "第一人称一镜到底",
         "description": "第一人称视角走一段，一个镜头拍到底",
-        "prompt": "第一人称视角，一镜到底，摄像机装在走路的人头上、眼睛的高度，他的手时不时进入画面。地点和目的地：{✏️ 从哪儿走到哪儿，例如穿过夜市走到挂满灯笼的寺庙门口}。0–3 秒：第一帧画面里已经满是这个地方，已经在往前走。3–9 秒：{✏️ 路上经过什么、做了什么}。9–12 秒：走到了，视线停在{✏️ 最后看到的东西}上。没有剪切，没有变焦；镜头只是走、转头和停下。光来自这个地方本身。声音：脚步声、呼吸声和这个地方的声音，没有音乐。画面里不出现文字。",
-        "input": {}
+        "prompt": "第一人称视角，一镜到底，摄像机装在走路的人头上、眼睛的高度，他的手时不时进入画面。地点和目的地：{✏️ 从哪儿走到哪儿，例如穿过夜市走到挂满灯笼的寺庙门口}。0–3 秒：第一帧画面里已经满是这个地方，已经在往前走。3–9 秒：{✏️ 路上经过什么、做了什么}。9–12 秒：走到了，视线停在{✏️ 最后看到的东西}上。没有剪切，没有变焦；镜头只是走、转头和停下。光来自这个地方本身。声音：脚步声、呼吸声和这个地方的声音，没有音乐。画面里不出现文字。"
       },
       "carried-object-transition": {
         "name": "物件带转场",
@@ -2921,6 +2831,160 @@
           "trim": "生成出来的配乐通常有几分钟长。生成后，在它上面用 工具 → 剪切 截四次，截出首尾相接的四段 15 秒（0–15 秒、15–30 秒、30–45 秒、45–60 秒）；按顺序把截好的片段（名字以 CUT- 开头）分别连到对应的那一段，在那一段提示词要求的位置 @ 它。",
           "join": "按顺序选中四段，右键选「拼接」。"
         }
+      },
+      "space-tour-single-take": {
+        "name": "空间一镜到底",
+        "description": "平稳走过你的空间，只有环境声",
+        "prompt": "一段 15 秒、横屏的一镜到底，穿过 [📎 空间]，每个表面、颜色和家具都和照片里一样。镜头以步行高度平稳向前滑行，不切镜。开始：{✏️ 从哪里开始，例如在大门口，望向走廊}。接着：穿过门口，在门槛处揭示下一个区域：{✏️ 路线，例如左边打开客厅，再到窗边的餐桌}。最后：{✏️ 在哪里结束，例如停在窗前，窗外是花园}。光线随区域变化，室内温暖，靠窗更亮。声音：只有房间自己的环境声，脚步踩在地板上，窗外隐约的鸟叫。没有音乐，没有人，画面里不出现文字。",
+        "input": {
+          "space": {
+            "name": "空间",
+            "note": "先放入一张空间的照片，再生成"
+          }
+        }
+      },
+      "room-staging-still": {
+        "name": "空房软装",
+        "description": "给你的空房间布置好家具，墙和机位不变",
+        "prompt": "给 [📎 房间] 布置{✏️ 风格，例如温暖的北欧风，浅色橡木和亚麻}的家具，用作{✏️ 房间用途，例如一个年轻家庭的客厅}。墙、窗、门、地面、天花板、窗外进来的光和机位都和照片里完全一样；只加家具、地毯、灯、植物和摆件，尺寸符合房间的真实比例。照片级真实的室内摄影。不出现文字。",
+        "input": {
+          "room": {
+            "name": "房间",
+            "note": "先放入一张空房间的照片，再生成"
+          }
+        }
+      },
+      "renovation-before-after": {
+        "name": "装修前后",
+        "description": "你的房间现在的样子、装修后的样子，一镜变过去",
+        "prompt": "(💡 先生成改造前，再把它选进首帧)(💡 先生成改造后，再把它选进尾帧)一段 8 秒、横屏、有声音的视频。从首帧开始，到尾帧结束：同一个房间、同一个机位，只有房间在变，一镜到底，镜头不动。怎么变：{✏️ 变化的方式，例如旧的墙面地面一层层剥落，新的从左到右扫过整个房间}。声音：快进的施工声，工具和脚步，最后落在安静的房间里。画面里不出现文字。",
+        "node": {
+          "before": {
+            "name": "改造前",
+            "prompt": "一张横幅室内照片，[📎 房间] 就是现在的样子：墙、窗、地面、天花板、家具、旧痕迹和机位都和照片里一样，不整理、不添加，自然日光。照片级真实。不出现文字。"
+          },
+          "after": {
+            "name": "改造后",
+            "prompt": "(💡 先生成改造前)编辑 [📎 改造前]：机位、构图、透视、墙、窗和房间大小都保持原样。把它装修成：{✏️ 装修内容，例如浅色橡木地板、白墙、新的厨房岛台和温暖的吊灯}。照片级真实，自然日光。不出现文字。"
+          }
+        },
+        "input": {
+          "room": {
+            "name": "房间",
+            "note": "先放入一张房间的照片，再生成改造前"
+          }
+        }
+      },
+      "day-to-night-exterior": {
+        "name": "外景日转夜",
+        "description": "你的房子从白天到亮灯的夜晚",
+        "prompt": "(💡 先生成白天，再把它选进首帧)(💡 先生成夜晚，再把它选进尾帧)一段 6 秒、横屏、有声音的视频。从首帧开始，到尾帧结束：同一栋房子、同一个机位，天空从白天经过温暖的黄昏到夜晚，窗户和室外的灯一盏盏亮起，一个连续的变化，镜头不动。声音：傍晚的环境声，归巢的鸟和远处的街道。画面里不出现文字。",
+        "node": {
+          "day": {
+            "name": "白天",
+            "prompt": "一张横幅外景照片，[📎 外景] 在晴朗的日光下：同一栋房子、屋顶、窗户、花园和机位都和照片里一样，不添加东西。照片级真实。不出现文字。"
+          },
+          "night": {
+            "name": "夜晚",
+            "prompt": "(💡 先生成白天)编辑 [📎 白天]：机位、构图和房子都保持原样。变成夜晚：深蓝的天空，{✏️ 夜里的灯光，例如每扇窗都透出暖光，小路边亮着柔和的庭院灯}。照片级真实。不出现文字。"
+          }
+        },
+        "input": {
+          "exterior": {
+            "name": "外景",
+            "note": "先放入一张房子外观的照片，再生成白天"
+          }
+        }
+      },
+      "before-after-reveal": {
+        "name": "前后对比揭晓",
+        "description": "用你的两张照片做社媒式的改造短片",
+        "prompt": "一段 6 秒、有声音的前后对比。从首帧开始，到尾帧结束，同一个地方、同一个位置拍。前 2 秒的钩子：0.0 秒定住的改造前；0.3 秒快速推近；0.8 秒第一下动手；1.5 秒闪一下改造后；2.0 秒回到干活。然后快进的干活过程，直到改造后的样子：{✏️ 干的活，例如沾了污渍的沙发被刷洗、冲净、晾干}。声音：干活本身的声音，刷洗和喷水声，揭晓时一声轻轻的呼啸。画面里不出现文字。",
+        "input": {
+          "before": {
+            "name": "改造前",
+            "note": "先放入你改造前的照片，再把它选进首帧槽"
+          },
+          "after": {
+            "name": "改造后",
+            "note": "先放入你改造后的照片，再把它选进尾帧槽"
+          }
+        }
+      },
+      "listing-walkthrough-15s": {
+        "name": "15 秒房源游览",
+        "description": "一套房子的四张照片，一段流畅的游览",
+        "shot": {
+          "1": "无人机接近 [📎 外景]，房子和照片里完全一样，{✏️ 时间，例如黄金时刻}，向大门缓缓下降。画面里不出现文字。",
+          "2": "门槛揭示：镜头穿过大门进入 [📎 客厅]，和照片里完全一样。画面里不出现文字。",
+          "3": "云台沿 [📎 厨房] 横移，和照片里完全一样，光落在台面上。画面里不出现文字。",
+          "4": "缓缓推进 [📎 卧室]，和照片里完全一样，安静明亮。画面里不出现文字。",
+          "5": "窗边揭示景观：镜头转向卧室的窗，窗外的景色展开：{✏️ 景色，例如树梢和湖面}。全程轻柔的钢琴和房间的环境声。画面里不出现文字。"
+        },
+        "input": {
+          "exterior": {
+            "name": "外景",
+            "note": "先放入一张外观照片，再生成"
+          },
+          "living": {
+            "name": "客厅",
+            "note": "先放入一张客厅照片，再生成"
+          },
+          "kitchen": {
+            "name": "厨房",
+            "note": "先放入一张厨房照片，再生成"
+          },
+          "bedroom": {
+            "name": "卧室",
+            "note": "先放入一张卧室照片，再生成"
+          }
+        }
+      },
+      "property-full-tour": {
+        "name": "完整看房视频",
+        "description": "每个房间一段 10 秒，按同一条配乐做，再拼接",
+        "prompt": "一段 40 秒看房视频的第 1 个房间（共 4 个），10 秒：[📎 照片 1]，每个表面、颜色和家具都和照片里一样。各段共用一种画面风格：{✏️ 房子和光线，例如明亮的家庭住宅，柔和的午后光线，平稳的云台运镜}。配乐是{✏️ 在这里 @ 你从配乐里截出的第一段 10 秒}。运镜：{✏️ 这个房间的运镜，例如无人机缓缓接近大门}。没有人，画面里不出现文字。",
+        "node": {
+          "room-2": {
+            "name": "房间 2",
+            "prompt": "一段 40 秒看房视频的第 2 个房间（共 4 个），10 秒：[📎 照片 2]，每个表面、颜色和家具都和照片里一样。各段共用一种画面风格：{✏️ 房子和光线，例如明亮的家庭住宅，柔和的午后光线，平稳的云台运镜}。配乐是{✏️ 在这里 @ 你从配乐里截出的第二段 10 秒}。运镜：{✏️ 这个房间的运镜，例如穿过门槛进入客厅}。没有人，画面里不出现文字。"
+          },
+          "room-3": {
+            "name": "房间 3",
+            "prompt": "一段 40 秒看房视频的第 3 个房间（共 4 个），10 秒：[📎 照片 3]，每个表面、颜色和家具都和照片里一样。各段共用一种画面风格：{✏️ 房子和光线，例如明亮的家庭住宅，柔和的午后光线，平稳的云台运镜}。配乐是{✏️ 在这里 @ 你从配乐里截出的第三段 10 秒}。运镜：{✏️ 这个房间的运镜，例如沿厨房台面横移}。没有人，画面里不出现文字。"
+          },
+          "room-4": {
+            "name": "房间 4",
+            "prompt": "一段 40 秒看房视频的第 4 个房间（共 4 个），10 秒：[📎 照片 4]，每个表面、颜色和家具都和照片里一样。各段共用一种画面风格：{✏️ 房子和光线，例如明亮的家庭住宅，柔和的午后光线，平稳的云台运镜}。配乐是{✏️ 在这里 @ 你从配乐里截出的第四段 10 秒}。运镜：{✏️ 这个房间的运镜，例如推向卧室的窗和窗外的景色}。没有人，画面里不出现文字。"
+          },
+          "score": {
+            "name": "配乐",
+            "prompt": "一段给 40 秒看房视频用的纯器乐，房产是{✏️ 房产类型，例如明亮的家庭住宅}：{✏️ 曲风和速度，例如轻快的原声钢琴，90 BPM}，全程一个调，温暖亲切，结尾轻轻扬起。没有人声。"
+          }
+        },
+        "input": {
+          "photo-1": {
+            "name": "照片 1",
+            "note": "先放入第一个房间的照片，再生成"
+          },
+          "photo-2": {
+            "name": "照片 2",
+            "note": "先放入第二个房间的照片，再生成"
+          },
+          "photo-3": {
+            "name": "照片 3",
+            "note": "先放入第三个房间的照片，再生成"
+          },
+          "photo-4": {
+            "name": "照片 4",
+            "note": "先放入第四个房间的照片，再生成"
+          }
+        },
+        "step": {
+          "trim": "生成出来的配乐通常有几分钟长。生成后，在它上面用 工具 → 剪切，截出首尾相接的几段 10 秒（0–10 秒、10–20 秒、20–30 秒、30–40 秒）；按顺序把截好的片段（名字以 CUT- 开头）分别连到对应的房间，在那个房间提示词要求的位置 @ 它。",
+          "more": "房间更多？复制一个房间节点，把下一个房间的照片连上去，给它再截一段 10 秒的配乐，写好它的运镜。",
+          "join": "按顺序选中各个房间，右键选「拼接」。"
+        }
       }
     },
     "promptMark": {
@@ -3094,11 +3158,11 @@
   "project": {
     "leaveGuard": {
       "title": "有未完成的操作,确定离开?",
-      "description": "上传或编辑还没同步完,现在离开可能丢失。",
+      "description": "上传、编辑或运行还没完成，现在离开可能丢失。",
       "stay": "留下",
       "leave": "仍然离开",
       "unsyncedDescription": "部分修改尚未同步，现在刷新或离开可能丢失这些修改。",
-      "combinedDescription": "部分修改尚未同步，且仍有上传或编辑操作正在进行。现在刷新或离开可能丢失这些工作。",
+      "combinedDescription": "部分修改尚未同步，且仍有上传、编辑或运行正在进行。现在刷新或离开可能丢失这些工作。",
       "completeDescription": "修改已同步，操作已完成。",
       "completeTitle": "可以继续"
     },
@@ -3260,7 +3324,9 @@
       "document": "Document",
       "documentSub": "富文本 + 协作",
       "timeline": "Timeline",
-      "timelineSub": "视频 / 音频剪辑"
+      "timelineSub": "视频 / 音频剪辑",
+      "webAnimation": "Motion",
+      "webAnimationSub": "用代码生成动画，可导出视频"
     },
     "create": {
       "title": "新建 Space",
@@ -3272,7 +3338,9 @@
       "namePlaceholder": "例:Cyberpunk Concept",
       "nameRemaining": "{count, plural, other {还可输入 # 个字符}}",
       "cancel": "取消",
-      "submit": "创建"
+      "submit": "创建",
+      "scrollTypesStart": "向左滚动类型",
+      "scrollTypesEnd": "向右滚动类型"
     },
     "rename": {
       "inputAriaLabel": "重命名 Space",
@@ -3852,6 +3920,67 @@
       "reason": "这个 Space 已满。",
       "text": "文字没有写入：这个 Space 已满。",
       "wait": "这个 Space 已满，删除一些内容后会自动完成。"
+    },
+    "webAnimation": {
+      "addAnnotation": "添加批注",
+      "annotateAt": "在 {time} 添加批注",
+      "annotationFailed": "批注没有保存成功。",
+      "videoTag": "MP4",
+      "annotationPlaceholder": "写下要改的地方",
+      "annotations": "批注",
+      "annotationsAll": "全部",
+      "annotationsOpen": "未解决",
+      "baseWithAnnotations": "{base}（{count} 条未解决批注）",
+      "canvasUnreachable": "无法连接到这个 Canvas。",
+      "chooseCanvas": "放到哪个 Canvas",
+      "closePanel": "关闭",
+      "completed": "已完成",
+      "details": "详情",
+      "dialog": {
+        "instruction": "要改的地方",
+        "instructionPlaceholder": "例如：标题慢一点，背景再暗一些",
+        "modifyDescription": "修改自「{base}」",
+        "modifyKeepsOriginal": "原结果保持不变。",
+        "modifyTitle": "修改网页动画",
+        "relayout": "画面会按新尺寸重新排版。"
+      },
+      "discardAnnotation": "放弃这条批注？",
+      "discard": "放弃",
+      "keepWriting": "继续写",
+      "download": "下载",
+      "empty": "还没有网页动画",
+      "emptyInProgress": "没有进行中的",
+      "emptyFailed": "没有失败的",
+      "executions": "执行列表",
+      "export": "导出视频",
+      "hasPoint": "有位置",
+      "inProgress": "进行中",
+      "failed": "失败",
+      "limitsUnavailable": "设置加载失败，请重试。",
+      "listError": "列表加载失败。",
+      "madeInTimeline": "以前在 Timeline 里做的",
+      "modifiedFromLabel": "修改自",
+      "modify": "修改",
+      "new": "新建",
+      "noAnnotations": "还没有批注",
+      "noCanvas": "本 Project 还没有 Canvas",
+      "noOpenAnnotations": "没有未解决的批注",
+      "notFound": "找不到这条网页动画。",
+      "pickPoint": "点画面标出位置，或直接在下面写",
+      "placeOnCanvas": "放到 Canvas",
+      "placed": "已放到「{name}」",
+      "viewPlaced": "查看",
+      "placing": "视频还在放到 Canvas 上。",
+      "readOnlyNotice": "协作人数已满，批注暂时只能查看。新建、修改、导出照常可用。",
+      "reexport": "重新导出",
+      "replies": "{count} 条回复",
+      "sourceLabel": "源动画",
+      "titleModifiedFrom": "修改自「{base}」：{request}",
+      "titleVideo": "视频 · {source}",
+      "unlistedResult": "其他结果",
+      "viewSource": "查看源动画",
+      "viewVideo": "查看视频",
+      "sourceSpaceGone": "源动画所在的 Space 已不在。"
     }
   },
   "menu": {
@@ -4746,6 +4875,11 @@
       "title": "自部署不计积分",
       "body": "生成不扣积分，也不需要充值。用量仍然会记录下来。"
     },
+    "notSoldHere": {
+      "title": "这个部署不出售积分",
+      "body": "生成照常扣积分，但这里不能充值。",
+      "refundsBody": "这里不能退款。"
+    },
     "total": "账号总额",
     "unassigned": "未指定",
     "unassignedWithNextStep": "未指定，去左侧「指定」分给要用的 Studio",
@@ -4757,7 +4891,7 @@
       "title": "买了积分之后，还要指定给某个 Studio 才能用",
       "body": "左侧「购买积分」可以充值；充完在「指定」里把每个积分包分给要用它的 Studio。"
     },
-    "lotsEmpty": "还没有购买记录。",
+    "lotsEmpty": "还没有积分。",
     "lotsEmptyNotice": {
       "title": "积分是怎么来的，都列在这里",
       "body": "买来的、赠送的都会列出来，显示来源、花了多少、处理到哪一步，以及积分去了哪个 Studio。"
@@ -5022,8 +5156,6 @@
       "offFrame": "这个片段不在当前帧。"
     },
     "webAnimation": {
-      "create": "制作网页动画",
-      "executions": "执行列表",
       "copy": "网页动画副本",
       "durationShort": "{seconds} 秒",
       "dialog": {
@@ -5035,15 +5167,7 @@
         "engine": "引擎",
         "aspect": "比例",
         "duration": "时长（秒）",
-        "addAtPlayhead": "在播放头位置加入 Timeline",
         "execute": "执行"
-      },
-      "list": {
-        "close": "关闭执行列表",
-        "completed": "已完成",
-        "inProgress": "进行中",
-        "emptyCompleted": "还没有已完成的执行。",
-        "emptyInProgress": "没有进行中的执行。"
       },
       "status": {
         "awaiting_landing": "保存中",
@@ -5056,26 +5180,28 @@
         "expired": "已过期"
       },
       "step": {
-        "landing": "保存执行请求"
+        "landing": "保存执行请求",
+        "savingVideo": "保存视频"
       },
       "phase": {
         "writing": "编写网页",
-        "validating": "校验定位与清单",
-        "saving": "保存源包"
+        "validating": "检查画面",
+        "saving": "保存源包",
+        "rendering": "渲染视频"
       },
       "usageLabel": "用量",
       "usage": "{credits} 积分",
-      "usagePending": "结束后结算",
       "unavailable": "网页动画不可用",
       "cancel": "取消",
-      "addToTimeline": "添加到 Timeline",
-      "addPlaceholder": "先加入 Timeline",
       "retry": "重新执行",
       "failure": {
         "feature_disabled": "网页动画暂不可用。",
         "check": "页面没有通过检查。",
         "stopped": "制作意外中断。",
         "unknown": "执行失败。",
+        "render": "视频渲染失败。",
+        "frameMismatch": "渲染出的视频与动画长度不一致。",
+        "saveVideo": "视频保存失败。",
         "key_lost": "任务中断，请重新运行。"
       },
       "preview": {
@@ -5083,6 +5209,18 @@
         "failed": "{track}：网页动画{status, select, failed {失败} cancelled {已取消} expired {已过期} other {不可用}}，不显示",
         "unavailable": "{track}：网页动画不可用",
         "loading": "{track}：网页动画加载中…"
+      },
+      "add": "添加网页动画",
+      "goMake": "去 Motion 制作",
+      "openInMotion": "在 Motion 中打开",
+      "modifiedFrom": "修改自：{base}",
+      "picker": {
+        "title": "添加网页动画",
+        "description": "选一个结果，在播放头处放一份副本。",
+        "empty": "本 Project 还没有网页动画",
+        "deletedSpace": "已删除的 Space",
+        "loadMore": "加载更多",
+        "error": "网页动画加载失败。"
       }
     },
     "upload": {

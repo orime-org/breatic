@@ -64,6 +64,7 @@ import {
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useDocumentProposalRouting } from '@web/pages/project/use-document-proposal-routing';
 import { useCanvasRevealRouting } from '@web/pages/project/use-canvas-reveal-routing';
+import { useSpaceOpenRequestRouting } from '@web/pages/project/use-space-open-request-routing';
 import { useFollowRouting } from '@web/pages/project/use-follow-routing';
 import { usePublishView } from '@web/pages/project/use-publish-view';
 import { FollowBar } from '@web/features/follow/FollowBar';
@@ -398,6 +399,13 @@ function ProjectWorkspace({
   useDocumentProposalRouting(spaces, tabs.openIds, tabs.activeId, openSpace, metaSynced);
   // A 3D capture's "View" press opens its canvas here, where the strip is held (#1411).
   useCanvasRevealRouting(spaces, tabs.activeId, openSpace, metaSynced);
+  // "Make in Motion", "Open in Motion" and a canvas video's "Open source animation" open or make a Motion Space
+  // here (#1490 design §8.5); a Space this page makes is reported to the request when its token comes back.
+  const createSpaceRef = React.useRef<(type: SpaceType, name: string) => Promise<void>>(() => Promise.resolve());
+  const createForRequest = React.useCallback((type: SpaceType, name: string): Promise<void> => createSpaceRef.current(type, name), []);
+  const openRequestRouting = useSpaceOpenRequestRouting(spaces, tabs.activeId, metaSynced, openSpace, createForRequest);
+  const openRequests = React.useRef(openRequestRouting);
+  openRequests.current = openRequestRouting;
 
   // ---- Following a member (#920) ----
   // This tab's Space in front and whom this user follows go out on the meta
@@ -642,6 +650,7 @@ function ProjectWorkspace({
     // The token says WHICH Space the create produced; showing it is this
     // page's own business and cannot fail.
     dispatchTabs({ type: 'open', spaceId: mine.id });
+    openRequests.current.created(mine.id);
   }, [spaces, spaceOpInProgress, setSpaceOpInProgress]);
 
   // Safety timeout - if the collab broadcast never lands, free the UI
@@ -652,6 +661,7 @@ function ProjectWorkspace({
     const handle = setTimeout(() => {
       setSpaceOpInProgress(null);
       pendingCreateTokenRef.current = null;
+      openRequests.current.createFailed();
       toast.error(t('project.space.timeout.create'), {
         description: t('project.space.timeout.retry'),
       });
@@ -784,6 +794,8 @@ function ProjectWorkspace({
       throw err;
     }
   };
+
+  createSpaceRef.current = onCreateSpace;
 
   /** Soft-delete a Space - `space:delete` RPC. */
   /**

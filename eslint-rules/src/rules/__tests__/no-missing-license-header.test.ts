@@ -68,3 +68,28 @@ ruleTester.run("no-missing-license-header", noMissingLicenseHeader, {
     },
   ],
 });
+
+const PROPRIETARY = {
+  copyright: "// Copyright (c) 2026 Orime, Inc. All rights reserved.",
+  licence: "// SPDX-License-Identifier: LicenseRef-Orime-Proprietary",
+};
+const PROPRIETARY_HEADER = `${PROPRIETARY.copyright}\n${PROPRIETARY.licence}`;
+
+ruleTester.run("no-missing-license-header with a repository's own header", noMissingLicenseHeader, {
+  valid: [{ code: `${PROPRIETARY_HEADER}\n\nexport const x = 1;\n`, options: [PROPRIETARY] }],
+  invalid: [
+    {
+      // The default header does not satisfy a repository that names its own.
+      code: `${HEADER}\n\nexport const x = 1;\n`,
+      options: [PROPRIETARY],
+      errors: [{ messageId: "missingHeader" }],
+      output: `${PROPRIETARY_HEADER}\n\nexport const x = 1;\n`,
+    },
+    {
+      code: `export const x = 1;\n`,
+      options: [PROPRIETARY],
+      errors: [{ messageId: "missingHeader" }],
+      output: `${PROPRIETARY_HEADER}\n\nexport const x = 1;\n`,
+    },
+  ],
+});

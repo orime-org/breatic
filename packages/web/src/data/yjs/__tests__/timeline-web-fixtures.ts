@@ -33,18 +33,46 @@ export const EXEC_EXPIRED = '90000000-0000-4000-8000-000000000005';
 /** An execution the resolution does not return. */
 export const EXEC_GONE = '90000000-0000-4000-8000-0000000000ff';
 
+/** The Motion Space the fixtures' executions were made in. */
+export const MOTION_SPACE = 'a0000000-0000-4000-8000-0000000000aa';
+/** Made `SRC_A`: a create. */
+export const EXEC_A = '90000000-0000-4000-8000-0000000000a1';
+
 /** What `GET /timeline/web-sources` answers for every reference above except the `_GONE` ones. */
 export const RESOLUTION: TimelineWebResolution = {
   sources: {
-    [SRC_A]: { durationFrames: 48, fps: FPS, viewport: { width: 1920, height: 1080 } },
-    [SRC_B]: { durationFrames: 96, fps: FPS, viewport: { width: 1080, height: 1920 } },
+    [SRC_A]: {
+      durationFrames: 48, fps: FPS, viewport: { width: 1920, height: 1080 },
+      executionId: EXEC_A, spaceId: MOTION_SPACE, origin: 'web_animation_space', kind: 'web_animation_create', request: 'Gold dot along an arc',
+    },
+    [SRC_B]: {
+      durationFrames: 96, fps: FPS, viewport: { width: 1080, height: 1920 },
+      executionId: EXEC_DONE, spaceId: MOTION_SPACE, origin: 'web_animation_space', kind: 'web_animation_modify', request: 'Slower',
+      base: { executionId: EXEC_A, request: 'Gold dot along an arc' },
+    },
   },
   executions: {
-    [EXEC_RUNNING]: { status: 'running', resultSourceVersionId: null, acceptedDurationFrames: 72, fps: FPS },
-    [EXEC_DONE]: { status: 'succeeded', resultSourceVersionId: SRC_B, acceptedDurationFrames: 96, fps: FPS },
-    [EXEC_FAILED]: { status: 'failed', resultSourceVersionId: null, acceptedDurationFrames: 48, fps: FPS },
-    [EXEC_CANCELLED]: { status: 'cancelled', resultSourceVersionId: null, acceptedDurationFrames: 24, fps: FPS },
-    [EXEC_EXPIRED]: { status: 'expired', resultSourceVersionId: null, acceptedDurationFrames: 24, fps: FPS },
+    [EXEC_RUNNING]: {
+      status: 'running', resultSourceVersionId: null, acceptedDurationFrames: 72, fps: FPS,
+      executionId: EXEC_RUNNING, spaceId: MOTION_SPACE, origin: 'web_animation_space', kind: 'web_animation_create', request: 'Brand name fades in', phase: 'writing', failureReason: null,
+    },
+    [EXEC_DONE]: {
+      status: 'succeeded', resultSourceVersionId: SRC_B, acceptedDurationFrames: 96, fps: FPS,
+      executionId: EXEC_DONE, spaceId: MOTION_SPACE, origin: 'web_animation_space', kind: 'web_animation_modify', request: 'Slower', phase: null, failureReason: null,
+      base: { executionId: EXEC_A, request: 'Gold dot along an arc' },
+    },
+    [EXEC_FAILED]: {
+      status: 'failed', resultSourceVersionId: null, acceptedDurationFrames: 48, fps: FPS,
+      executionId: EXEC_FAILED, spaceId: MOTION_SPACE, origin: 'web_animation_space', kind: 'web_animation_create', request: 'A carousel of three products', phase: null, failureReason: 'harness_failed',
+    },
+    [EXEC_CANCELLED]: {
+      status: 'cancelled', resultSourceVersionId: null, acceptedDurationFrames: 24, fps: FPS,
+      executionId: EXEC_CANCELLED, spaceId: MOTION_SPACE, origin: 'web_animation_space', kind: 'web_animation_create', request: 'Cancelled request', phase: null, failureReason: null,
+    },
+    [EXEC_EXPIRED]: {
+      status: 'expired', resultSourceVersionId: null, acceptedDurationFrames: 24, fps: FPS,
+      executionId: EXEC_EXPIRED, spaceId: MOTION_SPACE, origin: 'web_animation_space', kind: 'web_animation_create', request: 'Expired request', phase: null, failureReason: null,
+    },
   },
 };
 
@@ -102,11 +130,6 @@ export function webClip(
   };
 }
 
-/** The extent an `add_web_animation` or `land_execution` command carries (design §3.3). */
-export type WebExtent =
-  | { durationFrames: number; fps: { num: number; den: number } }
-  | { acceptedDurationFrames: number; fps: { num: number; den: number } };
-
 /**
  * Add a succeeded result as a new copy.
  * @param clipId - The new copy's id.
@@ -114,7 +137,7 @@ export type WebExtent =
  * @param startFrame - Where it starts.
  * @param newTrackId - The id a new top track would take.
  * @param placement - The editing user's switches.
- * @param durationFrames - The result's length, as the execution list row says.
+ * @param durationFrames - The result's length, as its row in the Add web animation picker says.
  * @returns The command.
  * @throws {never} Never.
  */
@@ -124,50 +147,6 @@ export function addResult(
   return {
     operation: 'add_web_animation',
     parameters: { clipId, from: { sourceVersionId }, startFrame, newTrackId, extent: { durationFrames, fps: FPS } },
-    placement,
-  } as TimelineEditCommand;
-}
-
-/**
- * Add an in-progress execution as a placeholder copy.
- * @param clipId - The new copy's id.
- * @param executionId - The execution.
- * @param startFrame - Where it starts.
- * @param newTrackId - The id a new top track would take.
- * @param placement - The editing user's switches.
- * @param acceptedDurationFrames - The accepted length.
- * @returns The command.
- * @throws {never} Never.
- */
-export function addPlaceholder(
-  clipId: string, executionId: string, startFrame: number, newTrackId: string, placement: TimelineEditPlacement, acceptedDurationFrames = 72,
-): TimelineEditCommand {
-  return {
-    operation: 'add_web_animation',
-    parameters: { clipId, from: { executionId }, startFrame, newTrackId, extent: { acceptedDurationFrames, fps: FPS } },
-    placement,
-  } as TimelineEditCommand;
-}
-
-/** A receipt as `land_execution` writes it. */
-export interface ReceiptFixture { executionId: string; inputHash: string; landedAt: string }
-
-/**
- * Land an accepted action, optionally with its placeholder copy.
- * @param actionId - The dialog's action id.
- * @param receipt - The receipt.
- * @param placement - The editing user's switches.
- * @param addClip - The placeholder to add with it.
- * @returns The command.
- * @throws {never} Never.
- */
-export function land(
-  actionId: string, receipt: ReceiptFixture, placement: TimelineEditPlacement,
-  addClip?: { clipId: string; startFrame: number; newTrackId: string; extent: WebExtent },
-): TimelineEditCommand {
-  return {
-    operation: 'land_execution',
-    parameters: addClip === undefined ? { actionId, receipt } : { actionId, receipt, addClip },
     placement,
   } as TimelineEditCommand;
 }

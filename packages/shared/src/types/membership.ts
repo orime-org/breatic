@@ -13,9 +13,9 @@
  * separate question with a settled answer: the tier of that studio's current
  * admin, so a transfer moves the studio onto the new admin's tier.
  *
- * Not to be confused with the `tier` already in this codebase around
- * payments (`config/pricing.yaml`, `payment.service.ts`) — those are credit
- * PACKS, an unrelated leg of the product. Membership is always spelled out
+ * Not to be confused with the `tier` of a credit pack (`GET /payment/tiers`,
+ * priced by the billing service) — those are credit PACKS, an unrelated leg
+ * of the product. Membership is always spelled out
  * as `membershipTier` in code for that reason.
  */
 
@@ -146,9 +146,9 @@ export type SubscribableMembershipTier = Exclude<
  *
  * Derived from {@link COMPARABLE_MEMBERSHIP_TIERS} rather than written out
  * again, so a fourth priced tier lands here by itself — and, because
- * `config/subscription.yaml` is required to carry a plan for every member of
- * this list, the missing plan is named on the first read instead of reaching
- * Stripe as an undefined price id.
+ * the billing service's price configuration is required to carry a plan for
+ * every member of this list, the missing plan is named on the first read
+ * instead of reaching Stripe as an undefined price id.
  */
 export const SUBSCRIBABLE_MEMBERSHIP_TIERS =
   COMPARABLE_MEMBERSHIP_TIERS.filter(

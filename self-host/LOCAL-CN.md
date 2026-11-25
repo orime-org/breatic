@@ -61,12 +61,12 @@ WEB_BIND_ADDRESS=127.0.0.1
 ENV=dev
 COOKIE_DOMAIN=
 ALLOWED_ORIGINS=http://localhost
-PAYMENT_ENABLED=false
+CHARGING_ENABLED=false
 EMAIL_BACKEND=console
 REDIS_KEY_PREFIX=personal
 ```
 
-这里的 `ENV=dev` 是现有代码中允许 HTTP 会话 cookie 的运行配置，**不表示启动开发服务器**；容器仍运行编译产物。切换 HTTPS 后使用 `ENV=prod`。支付关闭不会免除外部模型费用；`console` 邮件只输出日志，不投递真实邮件。真实邮件、Google 登录、Stripe 和搜索可按模板另行配置。没有 Orime, Inc. 的书面授权，实例只能运行在自部署模式，`PAYMENT_ENABLED` 保持 `false`（LICENSE 第 10、11 条）。
+这里的 `ENV=dev` 是现有代码中允许 HTTP 会话 cookie 的运行配置，**不表示启动开发服务器**；容器仍运行编译产物。切换 HTTPS 后使用 `ENV=prod`。积分扣费关闭不会免除外部模型费用；`console` 邮件只输出日志，不投递真实邮件。真实邮件、Google 登录和搜索可按模板另行配置。没有 Orime, Inc. 的书面授权，实例只能运行在自部署模式，`COMMERCE_API_URL` 留空、不出售积分或会员（LICENSE 第 10、11 条）。
 
 保留容器内部连接地址：
 
@@ -102,7 +102,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 一次请求装不下的大段文字（很长的粘贴文本节点、它的历史快照、带大附件的 Agent 消息、长 Document 的快照）会作为临时传输文件上传到 `transfer/` 前缀下，由服务端用 S3 凭据读回。在 bucket 上加一条 R2 生命周期规则：前缀 `transfer/` 的对象 1 天后删除。使用自己的资产域名时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/transfer/` 开头的请求；`r2.dev` 地址配不了这条规则。参考 [对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
 
-Timeline 网页动画是可选功能，默认关闭，开启方法见 [packages/ingest/README.md](../packages/ingest/README.md#web-animation)。它的源包存放在私有的 `web-animation/` 前缀下，只能经 Worker 的签名预览路由读取。在自己的资产域名上开启时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/web-animation/` 开头的请求；`r2.dev` 地址配不了这条规则。
+网页动画（Motion Space 及其在 Timeline 上的副本）是可选功能，默认关闭，开启方法见 [packages/ingest/README.md](../packages/ingest/README.md#web-animation)。它的源包存放在私有的 `web-animation/` 前缀下，只能经 Worker 的签名预览路由读取。在自己的资产域名上开启时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/web-animation/` 开头的请求；`r2.dev` 地址配不了这条规则。
 
 在 bucket 的 CORS 设置中保存：
 
@@ -390,7 +390,7 @@ docker compose ps -a
 | 上传跨域失败 | 更新正式 Worker 的来源并重新发布；局域网地址不能仍填写 localhost |
 | 图片 404 或裁剪失败 | 核对 R2 bucket、公开读取地址和 GET CORS；上传 CORS 无法代替读取 CORS |
 | 视频无封面 | 检查 Cloudflare 媒体容器发布、运行及日志，不要禁用容器 |
-| AI 报错 | 核对所选模型供应商、密钥、额度及网络；站内支付开关不解决供应商问题 |
+| AI 报错 | 核对所选模型供应商、密钥、额度及网络；积分扣费开关（`CHARGING_ENABLED`）不解决供应商问题 |
 | 收不到邮件 | console 只写 `docker compose logs server`；真实发送需 SMTP |
 
 Cloudflare 日志可在发布机器运行 `pnpm --filter @breatic/ingest exec wrangler tail --env production` 查看。分享日志前删除密钥、cookie 和签名令牌。

@@ -3,9 +3,9 @@
 
 /**
  * What the membership panel is told, read from our own data (#106 §11, #307) —
- * real PG, Stripe double.
+ * real PG.
  *
- * Opening the panel never calls Stripe. A subscription still marked live but
+ * The subscription comes from the product's own projection. A subscription still marked live but
  * past its deadline reads as ended in every part of the answer: the tier, the
  * ceilings and the subscription lines.
  */
@@ -35,14 +35,6 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-const stripe = {
-  subscriptions: { list: vi.fn() },
-};
-
-vi.mock("@server/infra/stripe.js", () => ({
-  getStripeClient: () => stripe,
-}));
-
 import postgres from "postgres";
 import {
   env,
@@ -54,7 +46,7 @@ import {
   upsertSubscription,
 } from "@breatic/core";
 import type { StripeSubscriptionStatus } from "@breatic/core";
-import { readStoredSubscriptionSummary } from "@server/modules/subscription/subscription-panel.js";
+import { readStoredSubscriptionSummary } from "@server/modules/account/subscription-panel.js";
 import { readAccountMembership } from "@server/modules/account/membership.service.js";
 
 try {
@@ -68,16 +60,17 @@ let sql: ReturnType<typeof postgres>;
 let seq = 0;
 
 beforeAll(() => {
-  // 这个套件里有两条断言要走「这个部署卖订阅」那条分支，而集成测试的环境默认
-  // 是关的。在 beforeAll 里注入（不是模块顶层）—— 别的套件在自己模块加载时
-  // 调过 initCore，只有这里的调用发生在它们之后，flag 才落得住；开关一开
-  // schema 就要求两个 Stripe 密钥非空，这里给占位串，本套件的 Stripe 客户端
-  // 整个是替身、一次都不会真连。
+  // Some assertions need the deployment to sell; set here rather than at
+  // module load, so this call lands after every other suite's initCore.
   initCore({
     ...process.env,
-    PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    // A billing service nobody answers on: the panel quotes no prices, and
+    // the subscription is read from the product's own projection regardless.
+    CHARGING_ENABLED: "true",
+    INTERNAL_API_ENABLED: "true",
+    INTERNAL_API_SECRET: "internal-secret-current-0123456789abcdef",
+    COMMERCE_API_URL: "http://127.0.0.1:9",
+    COMMERCE_API_SECRET: "commerce-secret-current-0123456789abcdef",
   });
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
@@ -198,9 +191,9 @@ describe("readStoredSubscriptionSummary — what the panel is told (#106 §11)",
     }
   });
 
-  it("hands over the payment link while a charge is being retried", async () => {
-    // The other half of keeping the tier through `past_due`: the person has to
-    // be able to see what happened and pay it themselves.
+  it("reads a charge being retried as retrying and leaves the payment link to the billing service", async () => {
+    // The link a stored row still holds may be stale; the billing service's
+    // panel answer quotes the current one (membership.service.ts).
     const userId = await makeUser("pro", `cus_panel_f_${Date.now()}`);
     try {
       await storeRow(userId, {
@@ -211,7 +204,7 @@ describe("readStoredSubscriptionSummary — what the panel is told (#106 §11)",
       const summary = await readStoredSubscriptionSummary(userId);
 
       expect(summary.state).toBe("retrying");
-      expect(summary.payableInvoiceUrl).toBe("https://invoice.example/pay");
+      expect(summary).not.toHaveProperty("payableInvoiceUrl");
     } finally {
       await dropUser(userId);
     }
@@ -219,17 +212,16 @@ describe("readStoredSubscriptionSummary — what the panel is told (#106 §11)",
 });
 
 describe("readAccountMembership — answered from our own data (#307)", () => {
-  it("never calls Stripe, even for an account Stripe knows (A1)", async () => {
+  it("answers the subscription from the stored projection (A1)", async () => {
     // Precondition: without the flag the selling branch is not exercised and
     // every assertion below would pass for the wrong reason.
-    expect(env.PAYMENT_ENABLED, "this suite needs payments switched on").toBe(true);
+    expect(env.SELLING, "this suite needs a billing service configured").toBe(true);
     const userId = await makeUser("pro", `cus_local_${Date.now()}`);
     try {
       await storeRow(userId);
 
       const membership = await readAccountMembership(userId);
 
-      expect(stripe.subscriptions.list).not.toHaveBeenCalled();
       expect(membership.tier).toBe("pro");
       expect(membership.subscription?.state).toBe("active");
       expect(membership.limits).toEqual(getMembershipLimits("pro"));
@@ -239,7 +231,7 @@ describe("readAccountMembership — answered from our own data (#307)", () => {
   });
 
   it("reads a subscription nobody heard from past its window as ended, everywhere (A2)", async () => {
-    expect(env.PAYMENT_ENABLED, "this suite needs payments switched on").toBe(true);
+    expect(env.SELLING, "this suite needs a billing service configured").toBe(true);
     const userId = await makeUser("pro", `cus_lapsed_${Date.now()}`);
     try {
       await storeRow(userId, {
@@ -261,7 +253,7 @@ describe("readAccountMembership — answered from our own data (#307)", () => {
   });
 
   it("reads a cancelling subscription as ended right after its period end (A3)", async () => {
-    expect(env.PAYMENT_ENABLED, "this suite needs payments switched on").toBe(true);
+    expect(env.SELLING, "this suite needs a billing service configured").toBe(true);
     const userId = await makeUser("pro", `cus_cancelled_${Date.now()}`);
     try {
       await storeRow(userId, {

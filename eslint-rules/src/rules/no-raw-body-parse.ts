@@ -9,9 +9,9 @@ import { createRule } from "#rules/create-rule";
  * Their results are the shape a schema exists to check, so reading one
  * directly means the check either did not happen or happened by hand.
  * `text()`, `arrayBuffer()` and `raw.body` are deliberately absent: they
- * return the bytes as sent, which is the only correct input for a webhook
- * signature (`payment.ts` verifies Stripe's over the raw body) or a bounded
- * stream read.
+ * return the bytes as sent, which is the only correct input for a request
+ * signature (the internal listener's HMAC check in `core/src/http/internal-auth.ts`
+ * signs the raw body) or a bounded stream read.
  */
 const PARSED_BODY_READERS = new Set(["json", "parseBody", "formData"]);
 

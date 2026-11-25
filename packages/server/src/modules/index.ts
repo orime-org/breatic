@@ -33,7 +33,6 @@ export * as attachmentService from "@server/modules/conversation/conversation-at
 export * as agentInstructionsService from "@server/modules/conversation/agent-instructions.service.js";
 export * as runningTurnsService from "@server/modules/conversation/running-turns.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";
-export * as paymentService from "@server/modules/payment/payment.service.js";
 export { precheckAgentTurn, precheckCredits, reserveForRun } from "@server/modules/credit/credit-precheck.service.js";
 export * as creditViewService from "@server/modules/credit/credit-view.service.js";
 export {
@@ -48,10 +47,8 @@ export * as projectJoinRequestService from "@server/modules/project-join-request
 export * as notificationService from "@server/modules/notification/notification.service.js";
 export * as studioService from "@server/modules/studio/studio.service.js";
 export * as textToolService from "@server/modules/text-tool/text-tool.service.js";
-export * as timelineExecutionService from "@server/modules/timeline/timeline-execution.service.js";
+export * as webAnimationExecutionService from "@server/modules/web-animation/web-animation-execution.service.js";
 export * as documentVersionService from "@server/modules/document-version/document-version.service.js";
-export * as stripeWebhookRecordingService from "@server/modules/stripe-webhook/recording.service.js";
-export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/dispatch.service.js";
 
 export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
 

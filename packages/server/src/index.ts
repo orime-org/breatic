@@ -17,7 +17,6 @@ import { createInternalApp } from "@server/internal-app.js";
 import {
   env,
   getAgentConfig,
-  getSubscriptionPlans,
   onDatabaseWaitTimeout,
   adsConversionState,
   closeDb,
@@ -38,15 +37,14 @@ import {
   logger,
   initLogger,
   loadLocales,
+  getCommerceConfig,
 } from "@breatic/core";
 import { getTrialGrantCredits } from "@server/config/credits.js";
-import { getPricingTiers } from "@server/config/pricing.js";
 import { getMaintenanceConfig } from "@server/config/maintenance.js";
 import { startMaintenanceLoop } from "@server/modules/maintenance/maintenance-loop.js";
-import { getCreditRefundConfig } from "@server/config/credit-refund.js";
 import { renderMetrics } from "@server/infra/metrics.js";
 import { startLifecycleRelay } from "@server/modules/project/lifecycle-relay.js";
-import { startRefundLoop } from "@server/modules/credit-refund/refund-loop.js";
+import { startCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
 import { settleAfterReply, pendingAfterReply } from "@server/utils/after-reply.js";
 import { getServerShutdownDeadlineMs } from "@server/config/limits.js";
 import { markShuttingDown } from "@server/agent/shutdown-flag.js";
@@ -162,39 +160,25 @@ try {
   await exitProcess(1);
 }
 
-// The three files that say what this deployment charges and gives: membership
-// plans, credit packs and the trial grant. Unlike the configs above they are
-// not in the repository — they name real prices, real Stripe objects and a
-// deployment's own grant, so each deployment writes its own from the
-// `.template` beside it. Loading them here is what makes a deployment that
-// forgot to fail at boot instead of at the moment somebody tries to pay or
-// signs up: the loaders are lazy, and the first read would otherwise be a
-// request.
-//
-// Only when this deployment sells something. A self-hosted install with
-// payments off never reaches these loaders, so requiring the files of it
-// would refuse to start over files it has no use for.
-//
-// A copy of a price template with nothing filled in is refused too, without
-// a second check: every price in it is 0, and both price schemas require a
-// positive integer. The trial grant may be 0.
-if (env.PAYMENT_ENABLED) {
+// The trial grant is the deployment's own file (`config/credits.yaml`, written
+// from the `.template` beside it). Loading it here fails a deployment that
+// forgot it at boot instead of at the first sign-up, and only where credits
+// are charged: a deployment that charges nothing never reads it.
+if (env.CHARGING_ENABLED) {
   try {
-    getSubscriptionPlans();
-    getPricingTiers();
     getTrialGrantCredits();
   } catch (err) {
-    logger.error({ err }, "payment_config_invalid");
+    logger.error({ err }, "credits_config_invalid");
     await exitProcess(1);
   }
 }
 
-// The refund time limits are read lazily by the internal API and the refund
-// loop; a malformed file must stop the boot, not the first approval.
+// The internal listener's settings are read lazily; a malformed file must
+// stop the boot, not the first request.
 if (env.INTERNAL_API_ENABLED) {
   try {
-    getCreditRefundConfig();
     getMaintenanceConfig();
+    if (env.SELLING) getCommerceConfig();
   } catch (err) {
     logger.error({ err }, "internal_api_config_invalid");
     await exitProcess(1);
@@ -283,9 +267,11 @@ server.on("error", (err) => {
 // side cannot run inside the business transaction).
 const lifecycleRelay = startLifecycleRelay();
 
-// The refund disposition loop (inner#1410 §7.1); it runs whenever the
-// internal API is on, since it finishes every disposition the API accepts.
-const refundLoop = startRefundLoop();
+// The commerce outbox relay, which sends `commerce_outbox` rows to the billing
+// service (inner#1993 §5.1): it runs where the billing service can call back,
+// which is the internal listener.
+const commerceRelay = env.INTERNAL_API_ENABLED && env.SELLING ? startCommerceRelay() : null;
+
 const maintenanceLoop = startMaintenanceLoop();
 
 // Health probe - separate port so probe traffic stays off the main
@@ -351,15 +337,15 @@ async function shutdown(signal: string): Promise<void> {
     drains: [
       () => {
         lifecycleRelay.stop();
+        commerceRelay?.stop();
         return Promise.resolve();
       },
       // Work a route left running after its reply (an Agent chat run, a
       // password-reset send) still needs the pools, so they close once it has
       // finished.
       () =>
-        // The loop's last tick can still queue a buyer mail, so it stops
-        // before the after-reply work is waited for.
-        Promise.all([refundLoop.stop(), maintenanceLoop.stop()])
+        maintenanceLoop
+          .stop()
           .then(() => settleAfterReply())
           .then(() => Promise.allSettled([flushServerAnalytics(), closeDb(), closeRedis(), closeQueues(), closeChatSubscriberRedis()])),
     ],

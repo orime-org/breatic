@@ -28,6 +28,17 @@ vi.mock("@breatic/domain", async (importOriginal) => {
   return { ...actual, creditHoldService: { ...actual.creditHoldService, releaseHold: release } };
 });
 
+// A batch of two, so a handful of rows spans several batches. A proxy, not a copy, keeps the live `logger` binding
+// that `captureErrorLogs` replaces.
+vi.mock("@breatic/core", async (importOriginal) => {
+  const actual = await importOriginal<typeof CoreModule>();
+  const getTimelineConfig = (): ReturnType<typeof actual.getTimelineConfig> => {
+    const config = actual.getTimelineConfig();
+    return { ...config, web_animation: { ...config.web_animation, sweep_batch_size: 2 } };
+  };
+  return new Proxy(actual, { get: (target, key) => (key === "getTimelineConfig" ? getTimelineConfig : Reflect.get(target, key)) });
+});
+
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -39,11 +50,11 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
+import type * as CoreModule from "@breatic/core";
 import type * as DomainModule from "@breatic/domain";
 import type { Job, Queue } from "bullmq";
-import { createPgClient, createQueue, createWorker, initCore, loadLocales } from "@breatic/core";
-import { spaceTasksChanges, streamMark } from "@server/__tests__/helpers/space-tasks-changes.js";
-import { timelineSpaceDocName } from "@breatic/shared";
+import { createPgClient, createQueue, createWorker, getStreamRedis, initCore, loadLocales, taskEventsStreamKey } from "@breatic/core";
+import { webAnimationSpaceDocName } from "@breatic/shared";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import {
@@ -143,6 +154,21 @@ async function liveJob(executionId: string): Promise<{ state: string; data: unkn
   return { state: await job.getState(), data: job.data, timestamp: job.timestamp };
 }
 
+/**
+ * What one Motion Space was told, after giving late messages time to arrive: the execution changes on the task-events
+ * stream for its document.
+ * @param fx - The execution.
+ * @returns The changes.
+ */
+async function signalsFor(fx: ExecutionFixture): Promise<Record<string, unknown>[]> {
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  const docName = webAnimationSpaceDocName(fx.projectId, fx.spaceId);
+  const doc = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+"))
+    .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
+    .filter((event) => event.docName === docName);
+  return doc;
+}
+
 const WAITING = ["waiting", "delayed", "prioritized"];
 
 /**
@@ -157,22 +183,19 @@ async function expectNothingHeld(fx: ExecutionFixture): Promise<void> {
 describe("sweeping rows that never landed", () => {
   it("expires an awaiting-landing row past its original deadline, releasing nothing, and tells its Space's document", async () => {
     const fx = await seed("awaiting_landing", { late: true });
-    const since = await streamMark();
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", fence: null });
     await expectNothingHeld(fx);
     expect(await liveJob(fx.execution.id)).toBeNull();
-    const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
-    expect(await spaceTasksChanges(docName, since)).toEqual([{ type: "space-tasks-version", docName }]);
+    expect(await signalsFor(fx)).toEqual([{ type: "space-tasks-version", docName: webAnimationSpaceDocName(fx.projectId, fx.spaceId) }]);
   });
 
   it("leaves an awaiting-landing row whose Space was deleted alone until its original deadline, then expires it", async () => {
     const fx = await seed("awaiting_landing");
     await deleteSpace(fx.projectId, fx.spaceId);
-    const since = await streamMark();
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toEqual(fx.execution);
-    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), since)).toEqual([]);
+    expect(await signalsFor(fx)).toEqual([]);
     await sql`UPDATE timeline_executions SET deadline_at = now() - interval '1 minute' WHERE id = ${fx.execution.id}`;
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toMatchObject({ status: "expired", failureReason: null, fence: null });
@@ -194,10 +217,10 @@ describe("sweeping rows that never landed", () => {
     await sweepTimelineExecutions(queue);
     const ended = await read(fx.execution.id);
     expect(ended.status).toBe("expired");
-    const since = await streamMark();
+    const told = await signalsFor(fx);
     await sweepTimelineExecutions(queue);
     expect(await read(fx.execution.id)).toEqual(ended);
-    expect(await spaceTasksChanges(timelineSpaceDocName(fx.projectId, fx.spaceId), since)).toEqual([]);
+    expect(await signalsFor(fx)).toEqual(told);
   });
 });
 
@@ -209,6 +232,12 @@ describe("sweeping rows that should have a job", () => {
     expect(WAITING).toContain(job?.state);
     expect(job?.data).toMatchObject({ executionId: fx.execution.id });
     expect((await read(fx.execution.id)).status).toBe("queued");
+  });
+
+  it("adds the job of every open row in one sweep, however many batches they span", async () => {
+    const rows = [await seed("running"), await seed("running"), await seed("queued"), await seed("queued"), await seed("queued")];
+    await sweepTimelineExecutions(queue);
+    for (const fx of rows) expect(WAITING).toContain((await liveJob(fx.execution.id))?.state);
   });
 
   it.each(["running", "cancelling"] as const)("adds the missing job of a %s row", async (state) => {

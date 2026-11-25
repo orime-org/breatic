@@ -246,6 +246,7 @@ describe("defaultSpaceName", () => {
     expect(defaultSpaceName("document")).toBe("Document");
     expect(defaultSpaceName("timeline")).toBe("Timeline");
     expect(defaultSpaceName("3d")).toBe("3D");
+    expect(defaultSpaceName("web_animation")).toBe("Motion");
   });
 });
 

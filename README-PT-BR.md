@@ -57,11 +57,12 @@ Colaboração significa que várias pessoas podem editar o mesmo espaço de trab
 | **Document Spaces** | Escreva roteiros, descrições de tomadas e listas de produção com texto formatado. |
 | **Canvas Spaces** | Organize referências e mídia em um canvas infinito; gere e refine recursos com prompts, modelos e referências. |
 | **3D (DEV)** | Posicione objetos integrados em uma cena compartilhada e edite posição, rotação e escala. |
-| **Timeline (DEV)** | Organize vídeos do Project ou vídeos locais enviados em faixas compartilhadas: mova, recorte, divida, duplique e exclua clipes, desfaça suas próprias edições e visualize a sequência. Descreva uma Web Animation, peça ao DeepSeek para criá-la, acompanhe-a na lista de execuções e adicione o resultado como clipes que tocam no relógio da Timeline. Vídeos e Web Animations de todas as faixas tocam juntos como camadas sobrepostas; selecione uma camada na prévia para movê-la, redimensioná-la, esticá-la ou girá-la, ou digite sua posição e tamanho. Escolha a proporção do quadro entre sete opções (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) no fim da barra de reprodução; as camadas mantêm seu lugar no quadro. |
+| **Timeline (DEV)** | Organize vídeos do Project ou vídeos locais enviados em faixas compartilhadas: mova, recorte, divida, duplique e exclua clipes, desfaça suas próprias edições e visualize a sequência. Adicione Web Animations concluídas dos Motion Spaces como clipes que tocam no relógio da Timeline; cada adição é uma cópia independente. Vídeos e Web Animations de todas as faixas tocam juntos como camadas sobrepostas; selecione uma camada na prévia para movê-la, redimensioná-la, esticá-la ou girá-la, ou digite sua posição e tamanho. Escolha a proporção do quadro entre sete opções (16:9, 9:16, 1:1, 4:3, 4:5, 2:3, 21:9) no fim da barra de reprodução; as camadas mantêm seu lugar no quadro. |
+| **Motion (DEV)** | Descreva uma Web Animation e peça ao DeepSeek para criá-la, acompanhe as execuções concluídas, em andamento e com falha, reproduza e navegue pelos resultados concluídos, modifique um resultado para gerar um novo, anote momentos com colaboradores, exporte um resultado como vídeo e coloque o vídeo em um Canvas. |
 | **Agente de IA no projeto** | Discuta ideias, forneça contexto de documentos ou do canvas e avalie propostas junto aos seus materiais. |
-| **Colaboração em tempo real** | Convide colaboradores, defina permissões e trabalhe em canvases, documentos, cenas 3D e Timelines sincronizados. |
+| **Colaboração em tempo real** | Convide colaboradores, defina permissões e trabalhe em canvases, documentos, cenas 3D, Timelines e Motion Spaces sincronizados. |
 
-Os recursos podem ser imagens, vídeos, áudio e arquivos 3D. A geração depende dos provedores configurados e do acesso aos modelos. Canvas e Document estão disponíveis; 3D e Timeline têm a indicação **DEV**. A Timeline atual permite editar e visualizar vídeos e Web Animations em várias faixas visuais; Web Animation só está disponível nas implantações que a ativam. Outros tipos de mídia e a exportação de vídeo estão planejados. A geração por modelos e as anotações dentro da cena 3D estão em desenvolvimento.
+Os recursos podem ser imagens, vídeos, áudio e arquivos 3D. A geração depende dos provedores configurados e do acesso aos modelos. Canvas e Document estão disponíveis; 3D, Timeline e Motion têm a indicação **DEV**. A Timeline atual permite editar e visualizar vídeos e Web Animations em várias faixas visuais; o Motion cria, modifica e exporta Web Animations, que só estão disponíveis nas implantações que as ativam. Outros tipos de mídia na Timeline e a exportação de vídeo da Timeline estão planejados. A geração por modelos e as anotações dentro da cena 3D estão em desenvolvimento.
 
 ## Avaliem as alterações juntos
 
@@ -92,13 +93,13 @@ Você pode nomear Spaces como “Abertura · 0–10 s”, “Cena principal · 1
 - **Instalação própria:** siga o [guia de instalação pessoal e em rede local (inglês)](self-host/LOCAL.md).
 - **Desenvolvimento:** veja a [configuração do ambiente (inglês)](self-host/DEVELOPMENT.md).
 
-Configure seu Studio pessoal, crie um Project e use **+** para adicionar Document, Canvas, 3D ou Timeline Spaces. Comece com um briefing, envie referências ou posicione objetos 3D integrados. O [guia de uso (inglês)](docs/USAGE.md) inclui os [atalhos de teclado](docs/USAGE.md#keyboard-shortcuts).
+Configure seu Studio pessoal, crie um Project e use **+** para adicionar Document, Canvas, 3D, Timeline ou Motion Spaces. Comece com um briefing, envie referências ou posicione objetos 3D integrados. O [guia de uso (inglês)](docs/USAGE.md) inclui os [atalhos de teclado](docs/USAGE.md#keyboard-shortcuts).
 
 ### Antes de hospedar por conta própria
 
 A instalação usa imagens Docker publicadas para web, API, tarefas em segundo plano e colaboração, com PostgreSQL e Redis. Os envios e o processamento de mídia usam um Ingest Worker e um contêiner de mídia na **sua conta Cloudflare**, com armazenamento no seu bucket R2. As chamadas de IA usam suas contas de provedores e cotas.
 
-Não é uma instalação off-line nem totalmente local. O acesso pela LAN exige HTTPS confiável. Serviços de nuvem e chamadas a modelos podem gerar custos; SMTP, login com Google e busca são integrações opcionais; pagamentos Stripe só podem ser ativados com autorização por escrito da Orime, Inc. (seções 10 e 11 da LICENSE). Siga o guia para configurar e verificar a nuvem. A etapa inicial com Node/pnpm/Wrangler é de implantação, não um servidor de desenvolvimento necessário no uso diário.
+Não é uma instalação off-line nem totalmente local. O acesso pela LAN exige HTTPS confiável. Serviços de nuvem e chamadas a modelos podem gerar custos; SMTP, login com Google e busca são integrações opcionais; a venda de créditos ou assinaturas só pode ser ativada com autorização por escrito da Orime, Inc. (seções 10 e 11 da LICENSE). Siga o guia para configurar e verificar a nuvem. A etapa inicial com Node/pnpm/Wrangler é de implantação, não um servidor de desenvolvimento necessário no uso diário.
 
 ## Status, ajuda e contribuições
 

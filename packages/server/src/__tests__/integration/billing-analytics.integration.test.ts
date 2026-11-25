@@ -3,41 +3,19 @@
 
 /**
  * Purchase and subscription events (inner#1442 design §4.8, §4.9) — real PG
- * and Redis, doubled Stripe client.
+ * and Redis, a recording analytics client and the real ads upload queue.
  *
- * A purchase or subscription finishes in a webhook or a later visit with no
- * cookie of the buying browser, so each follows the consent the order or the
- * subscription carried from checkout; a renewal has no browser behind it and
- * follows the account's latest choice.
+ * The billing service decides what a purchase or a subscription start
+ * reports and under which consent (inner#1993 §3.3); the product reports it
+ * once, after the grant or the fact commits, under exactly that consent.
  */
 
-import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
-
-vi.mock("ai", () => ({
-  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
-  streamText: () => ({
-    fullStream: (async function* () {})(),
-    text: Promise.resolve(""),
-    usage: Promise.resolve({ totalTokens: 0 }),
-  }),
-  stepCountIs: (_n: number) => () => false,
-  tool: (config: Record<string, unknown>) => config,
-}));
-
-const stripe = {
-  checkout: { sessions: { retrieve: vi.fn(), expire: vi.fn() } },
-  subscriptions: { retrieve: vi.fn() },
-};
-vi.mock("@server/infra/stripe.js", () => ({ getStripeClient: () => stripe }));
-vi.mock("@server/modules/payment/purchase-mail.js", () => ({ sendPurchaseConfirmation: vi.fn() }));
-vi.mock("@server/utils/send-best-effort-mail.js", () => ({ sendBestEffortMail: vi.fn() }));
-
-import type Stripe from "stripe";
+import { randomUUID } from "node:crypto";
+import { describe, it, expect, beforeAll, beforeEach, afterAll, inject } from "vitest";
 import postgres from "postgres";
 import {
   ADS_CONVERSION_QUEUE,
   createQueue,
-  getSubscriptionPlan,
   getUploadStatus,
   initCore,
   initServerAnalytics,
@@ -45,9 +23,11 @@ import {
   resetServerAnalyticsForTest,
   setAdsConversionConfigForTest,
   type OutgoingEvent,
+  type PaymentGrantRequest,
+  type SubscriptionFactRequest,
 } from "@breatic/core";
-import { CONSENT_REVISION } from "@breatic/shared";
-import { openPaymentSource } from "./payment-source.js";
+import { grantPayment } from "@server/modules/commerce/payment-grant.service.js";
+import { applySubscriptionFact } from "@server/modules/commerce/commerce-subscription-facts.service.js";
 
 try {
   initCore(process.env);
@@ -56,11 +36,7 @@ try {
 }
 loadLocales();
 
-const { fulfillPayment, handlePaymentFailed, paidOrder } = await import("@server/modules/payment/payment.service.js");
-const { handleSubscriptionEvent } = await import("@server/modules/subscription/subscription-events.js");
-
 let sql: ReturnType<typeof postgres>;
-let seq = 0;
 const sent: OutgoingEvent[] = [];
 const recentClick = (): { gclid: string; at: string } => ({ gclid: "click-9", at: new Date().toISOString() });
 
@@ -78,7 +54,6 @@ beforeAll(() => {
 });
 
 beforeEach(() => {
-  vi.clearAllMocks();
   sent.splice(0);
 });
 
@@ -90,218 +65,148 @@ afterAll(async () => {
 });
 
 /**
- * An account with a Stripe customer.
- * @returns Its id and customer id.
+ * One account.
+ * @returns Its id.
  */
-async function account(): Promise<{ userId: string; customerId: string }> {
-  seq += 1;
-  const stamp = `${Date.now()}-${seq}`;
-  const customerId = `cus_billing_${stamp}`;
-  const [row] = await sql<{ id: string }[]>`
-    INSERT INTO users (email, email_verified, stripe_customer_id)
-    VALUES (${`billing-${stamp}@example.test`}, true, ${customerId}) RETURNING id
-  `;
-  return { userId: row!.id, customerId };
+async function account(): Promise<string> {
+  const userId = randomUUID();
+  await sql`INSERT INTO users (id, email, email_verified) VALUES (${userId}, ${`billing-${userId}@example.test`}, true)`;
+  return userId;
 }
 
 /**
- * A pending credit order carrying the given checkout metadata.
- * @param metadata - What `createCheckout` would have stored.
- * @returns The order's ids.
+ * A grant for 1700 credits bought for 2000 cents.
+ * @param userId - The buyer.
+ * @param conversion - The order's conversion context.
+ * @returns The request.
  */
-async function pendingOrder(metadata: Record<string, unknown>): Promise<{ userId: string; paymentId: string; sessionId: string }> {
-  const { userId } = await account();
-  // As long as a real Checkout Session id: `cs_test_` plus 58 characters.
-  const sessionId = `cs_test_${`${Date.now()}_${seq}_`.padEnd(58, "a")}`;
-  const sourceId = await openPaymentSource(sql);
-  await sql`
-    INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, credits_granted, currency, status, metadata)
-    VALUES (${sourceId}, ${userId}, ${sessionId}, 2000, 1700, 'usd', 'pending',
-            ${sql.json({ locale: "en", consentedAt: new Date().toISOString(), ...metadata })})
-  `;
-  stripe.checkout.sessions.retrieve.mockResolvedValue({
-    id: sessionId,
-    mode: "payment",
-    status: "complete",
-    payment_status: "paid",
-    amount_subtotal: 2000,
-    amount_total: 2240,
+function grant(userId: string, conversion: PaymentGrantRequest["conversion"]): PaymentGrantRequest {
+  return {
+    userId,
+    purchasedCredits: 1700,
+    amountCents: 2000,
+    taxCents: 240,
+    totalCents: 2240,
     currency: "usd",
-    total_details: { amount_tax: 240 },
-    payment_intent: `pi_${sessionId}`,
-    metadata: {},
-  });
-  return { userId, paymentId: sourceId, sessionId };
+    orderedAt: new Date().toISOString(),
+    conversion,
+  };
 }
 
 describe("credit purchases", () => {
   it("reports the grant once, under the order's consent, and queues its conversion", async () => {
-    const { userId, paymentId, sessionId } = await pendingOrder({
-      analyticsConsent: { analytics: true, ads: true },
-      adClick: recentClick(),
-    });
+    const userId = await account();
+    const paymentId = randomUUID();
+    const transactionId = `purchase:${paymentId}`;
+    const request = grant(userId, { consent: { analytics: true, ads: true }, click: recentClick(), transactionId });
 
-    await fulfillPayment(sessionId, { id: `evt_${sessionId}`, type: "checkout.session.completed" });
-    await fulfillPayment(sessionId, null);
+    await grantPayment(paymentId, request);
+    await grantPayment(paymentId, request);
 
     expect(sent).toEqual([
       expect.objectContaining({
         event_type: "credit_purchase_completed",
         user_id: userId,
-        insert_id: `purchase:${paymentId}`,
+        insert_id: transactionId,
         event_properties: { credits: 1700, amount_cents: 2000, currency: "usd" },
       }),
     ]);
-    // Google Ads caps a transaction id at 64 characters; a Session id alone is 66.
-    expect(`purchase:${paymentId}`.length).toBeLessThanOrEqual(64);
-    await expect.poll(() => getUploadStatus({ conversion: "credit_purchase", transactionId: `purchase:${paymentId}` })).toBe("queued");
+    await expect.poll(() => getUploadStatus({ conversion: "credit_purchase", transactionId })).toBe("queued");
     // The upload keeps no link to the order, so the order's row is never held by it.
     const columns = await sql<{ column_name: string }[]>`
       SELECT column_name FROM information_schema.columns WHERE table_name = 'ads_conversion_uploads'
     `;
     expect(columns.map((c) => c.column_name)).not.toContain("payment_id");
-    // The browser reports the same id the server queued: it reads it from here.
-    expect(await paidOrder(sessionId)).toEqual({
-      paid: true, amountCents: 2000, currency: "usd", transactionId: `purchase:${paymentId}`,
-    });
-  });
-
-  it("gives each order its own transaction id", async () => {
-    const first = await pendingOrder({});
-    const second = await pendingOrder({});
-    await fulfillPayment(first.sessionId, null);
-    await fulfillPayment(second.sessionId, null);
-    const a = (await paidOrder(first.sessionId)).transactionId;
-    const b = (await paidOrder(second.sessionId)).transactionId;
-    expect(a).not.toBe(b);
-    expect(await paidOrder(first.sessionId)).toMatchObject({ transactionId: a });
   });
 
   it("reports nothing for an order placed without consent", async () => {
-    const { paymentId, sessionId } = await pendingOrder({});
-    await fulfillPayment(sessionId, null);
+    const userId = await account();
+    const paymentId = randomUUID();
+    const transactionId = `purchase:${paymentId}`;
+
+    await grantPayment(paymentId, grant(userId, { consent: { analytics: false, ads: false }, click: recentClick(), transactionId }));
     await new Promise((resolve) => setTimeout(resolve, 50));
+
     expect(sent).toEqual([]);
-    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId: `purchase:${paymentId}` })).toBeNull();
+    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId })).toBeNull();
+  });
+});
+
+describe("credit purchases whose consent was erased", () => {
+  it("replays the stored grant for a retry whose conversion changed, granting and reporting nothing more", async () => {
+    const userId = await account();
+    const paymentId = randomUUID();
+    const transactionId = `purchase:${paymentId}`;
+
+    const request = grant(userId, { consent: { analytics: true, ads: true }, click: recentClick(), transactionId });
+
+    const first = await grantPayment(paymentId, request);
+    // The account was erased before the retry: the billing service dropped the order's consent and click.
+    const again = await grantPayment(paymentId, { ...request, conversion: { consent: { analytics: false, ads: false }, click: null, transactionId } });
+
+    expect(first.httpStatus).toBe(200);
+    expect(again).toEqual(first);
+    expect(await sql`SELECT count(*)::int AS n FROM credit_lots WHERE source_id = ${paymentId}`).toEqual([{ n: 1 }]);
+    expect(sent.filter((e) => e.event_type === "credit_purchase_completed")).toHaveLength(1);
   });
 
-  it("reports a delayed payment that failed", async () => {
-    const { paymentId, sessionId } = await pendingOrder({ analyticsConsent: { analytics: true, ads: false } });
-    await handlePaymentFailed(sessionId);
-    expect(sent).toEqual([
-      expect.objectContaining({
-        event_type: "credit_purchase_failed",
-        insert_id: `purchase-failed:${paymentId}`,
-        event_properties: { success: false, error_code: "async_payment_failed" },
-      }),
-    ]);
-    expect((await paidOrder(sessionId)).paid).toBe(false);
+  it("grants a first delivery that arrives with the consent erased and queues no conversion", async () => {
+    const userId = await account();
+    const paymentId = randomUUID();
+    const transactionId = `purchase:${paymentId}`;
+
+    const answer = await grantPayment(paymentId, grant(userId, { consent: { analytics: false, ads: false }, click: null, transactionId }));
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(answer.httpStatus).toBe(200);
+    expect(await sql`SELECT count(*)::int AS n FROM credit_lots WHERE source_id = ${paymentId}`).toEqual([{ n: 1 }]);
+    expect(await getUploadStatus({ conversion: "credit_purchase", transactionId })).toBeNull();
+    expect(sent).toEqual([]);
   });
 });
 
 describe("subscriptions", () => {
-  const plan = getSubscriptionPlan("pro", "month");
-  const periodEnd = Math.floor(Date.now() / 1000) + 30 * 24 * 3600;
-
-  /**
-   * A subscription as Stripe describes it.
-   * @param customerId - Its customer.
-   * @param status - Its status.
-   * @returns The object.
-   */
-  function stripeSub(customerId: string, status: string): Stripe.Subscription {
-    return {
-      id: `sub_billing_${customerId}`,
-      customer: customerId,
-      status,
-      cancel_at_period_end: false,
-      pending_update: null,
-      latest_invoice: null,
-      metadata: {
-        analyticsConsent: JSON.stringify({ analytics: true, ads: true }),
-        adClick: JSON.stringify(recentClick()),
+  it("reports the start once, under the consent the billing service sent, and queues its conversion", async () => {
+    const userId = await account();
+    const sub = `sub_${randomUUID()}`;
+    const transactionId = `sub:${sub}`;
+    const request: SubscriptionFactRequest = {
+      userId,
+      fact: {
+        stripeSubscriptionId: sub,
+        tier: "pro",
+        period: "month",
+        status: "active",
+        currentPeriodEnd: "2099-01-01T00:00:00.000Z",
+        cancelAtPeriodEnd: false,
+        hasPendingUpdate: false,
+        pendingTier: null,
+        pendingPeriod: null,
+        observedAt: new Date().toISOString(),
+        firstActiveAt: new Date().toISOString(),
       },
-      items: {
-        data: [
-          {
-            id: "si_1",
-            current_period_end: periodEnd,
-            price: { id: plan.stripePriceId, unit_amount: plan.priceCents, currency: plan.currency, recurring: { interval: "month" } },
-          },
-        ],
+      notices: [],
+      started: {
+        properties: { tier: "pro", interval: "month", amountCents: 1599, currency: "usd" },
+        consent: { analytics: true, ads: true },
+        click: recentClick(),
+        transactionId,
       },
-    } as unknown as Stripe.Subscription;
-  }
+      referenceId: "evt_started",
+    };
+    const delivery = randomUUID();
 
-  /**
-   * A webhook event.
-   * @param type - Its type.
-   * @param object - Its data object.
-   * @returns The event.
-   */
-  function event(type: string, object: unknown): Stripe.Event {
-    seq += 1;
-    if (type.startsWith("customer.subscription.")) stripe.subscriptions.retrieve.mockResolvedValue(object);
-    return { id: `evt_billing_${Date.now()}_${seq}`, type, data: { object } } as unknown as Stripe.Event;
-  }
+    await applySubscriptionFact(delivery, request);
+    await applySubscriptionFact(delivery, request);
 
-  it("reports the first activation once, under the subscription's consent", async () => {
-    const { userId, customerId } = await account();
-    await handleSubscriptionEvent(event("customer.subscription.created", stripeSub(customerId, "incomplete")));
-    expect(sent).toEqual([]);
-
-    await handleSubscriptionEvent(event("customer.subscription.updated", stripeSub(customerId, "active")));
-    await handleSubscriptionEvent(event("customer.subscription.updated", stripeSub(customerId, "active")));
-    const txn = `sub:sub_billing_${customerId}`;
     expect(sent).toEqual([
       expect.objectContaining({
         event_type: "subscription_started",
         user_id: userId,
-        insert_id: txn,
-        event_properties: { tier: "pro", interval: "month", amount_cents: plan.priceCents, currency: plan.currency },
+        insert_id: transactionId,
+        event_properties: { tier: "pro", interval: "month", amount_cents: 1599, currency: "usd" },
       }),
     ]);
-    await expect.poll(() => getUploadStatus({ conversion: "subscription", transactionId: txn })).toBe("queued");
-  });
-
-  it("reports a renewal under the latest reported consent, and nothing without one", async () => {
-    const { userId, customerId } = await account();
-    await handleSubscriptionEvent(event("customer.subscription.created", stripeSub(customerId, "active")));
-    sent.splice(0);
-    const renewal = { id: `in_${customerId}`, customer: customerId, billing_reason: "subscription_cycle" };
-
-    await handleSubscriptionEvent(event("invoice.paid", renewal));
-    expect(sent).toEqual([]);
-
-    await sql`UPDATE users SET consent_seen = ${sql.json({
-      analytics: { value: true, revision: CONSENT_REVISION },
-      ads: { value: false, revision: CONSENT_REVISION },
-      reportedAt: new Date().toISOString(),
-    })} WHERE id = ${userId}`;
-    const paid = event("invoice.paid", renewal);
-    await handleSubscriptionEvent(paid);
-    expect(sent).toEqual([
-      expect.objectContaining({ event_type: "subscription_renewed", user_id: userId, insert_id: paid.id }),
-    ]);
-  });
-
-  it("hands the return page the conversion once the subscription is active", async () => {
-    const { subscriptionConversion } = await import("@server/modules/subscription/subscription-analytics.js");
-    const write = { stripeSubscriptionId: "sub_x", status: "active", tier: "pro", period: "month" } as const;
-    expect(subscriptionConversion(write, null)).toEqual({
-      transactionId: "sub:sub_x",
-      amountCents: plan.priceCents,
-      currency: plan.currency,
-    });
-    expect(subscriptionConversion({ ...write, status: "incomplete" }, null)).toBeNull();
-  });
-
-  it("ignores a paid invoice that is not a renewal", async () => {
-    const { customerId } = await account();
-    const outcome = await handleSubscriptionEvent(
-      event("invoice.paid", { id: "in_first", customer: customerId, billing_reason: "subscription_create" }),
-    );
-    expect(outcome.status).toBe("acknowledged");
-    expect(sent).toEqual([]);
+    await expect.poll(() => getUploadStatus({ conversion: "subscription", transactionId })).toBe("queued");
   });
 });

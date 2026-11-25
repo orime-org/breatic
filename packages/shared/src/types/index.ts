@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export type {
   UserEntity,
@@ -19,7 +18,6 @@ export type {
   ConversationAttachmentEntity,
   ProjectAgentInstructionsEntity,
   AssetKind,
-  PaymentEntity,
   CreditLotEntity,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,
@@ -72,6 +70,8 @@ export {
   canGenerate,
   CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";
+export { SPACE_TASKS_KEY, SPACE_TASKS_TYPES, SPACE_TASKS_VERSION } from "@shared/types/space-tasks.js";
+export type { SpaceTasksVersionEvent } from "@shared/types/space-tasks.js";
 export type {
   NodeType,
   AttachRef,
@@ -237,8 +237,6 @@ export type {
 } from "@shared/types/project-invite.js";
 
 export type { SpaceType, Space } from "@shared/types/space.js";
-export { SPACE_TASKS_KEY, SPACE_TASKS_TYPES, SPACE_TASKS_VERSION } from "@shared/types/space-tasks.js";
-export type { SpaceTasksVersionEvent } from "@shared/types/space-tasks.js";
 export { SpaceTypeSchema } from "@shared/types/space.js";
 
 export {

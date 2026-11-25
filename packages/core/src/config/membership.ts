@@ -89,10 +89,9 @@ export const membershipConfigSchema = z.object({
    * still collecting for, and taking the tier away would punish somebody
    * whose card is about to go through.
    *
-   * It lives here rather than in `config/subscription.yaml` because it decides
-   * which tier an account is on, and every service that reads a tier (collab
-   * sizing a document's editor seats among them) has this file, while the
-   * price file is mounted into server alone (inner#1636).
+   * It lives in this file because it decides which tier an account is on,
+   * and every service that reads a tier (collab sizing a document's editor
+   * seats among them) has this file (inner#1636).
    */
   stale_after_days: z.number().int().positive(),
 });

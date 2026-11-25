@@ -60,6 +60,7 @@ import * as Y from "yjs";
 import {
   parseDocName,
   SpaceRpcRequestSchema,
+  confirmsSync,
   SyncConfirmRequestSchema,
   DocSizeSeenSchema,
   type ProjectRole,
@@ -787,7 +788,7 @@ export async function createCollabServer(infra: CollabServerInfra): Promise<{ se
           return;
         }
       }
-      if (parsed.kind === "canvas" || parsed.kind === "document") {
+      if (confirmsSync(parsed.kind)) {
         const request = SyncConfirmRequestSchema.safeParse(json);
         if (!request.success) return;
         try {

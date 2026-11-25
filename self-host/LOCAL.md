@@ -61,12 +61,12 @@ WEB_BIND_ADDRESS=127.0.0.1
 ENV=dev
 COOKIE_DOMAIN=
 ALLOWED_ORIGINS=http://localhost
-PAYMENT_ENABLED=false
+CHARGING_ENABLED=false
 EMAIL_BACKEND=console
 REDIS_KEY_PREFIX=personal
 ```
 
-In the current application, `ENV=dev` permits session cookies over HTTP. **It does not start development servers**: these containers still run compiled application code. Use `ENV=prod` after switching to HTTPS. Disabling payments does not eliminate external AI charges. `console` writes email to logs rather than delivering it. Real email, Google sign-in, Stripe and search can be configured separately using the template. Without written authorization from Orime, Inc., an instance must run in Self-Deployment Mode with `PAYMENT_ENABLED=false` (LICENSE sections 10 and 11).
+In the current application, `ENV=dev` permits session cookies over HTTP. **It does not start development servers**: these containers still run compiled application code. Use `ENV=prod` after switching to HTTPS. Disabling credit charging does not eliminate external AI charges. `console` writes email to logs rather than delivering it. Real email, Google sign-in and search can be configured separately using the template. Without written authorization from Orime, Inc., an instance must run in Self-Deployment Mode with `COMMERCE_API_URL` blank, selling no credits or memberships (LICENSE sections 10 and 11).
 
 Keep container-internal connection addresses:
 
@@ -102,7 +102,7 @@ Assets are currently read through public URLs. A private Breatic instance does n
 
 Text too large for one request (a long pasted text node, its history snapshot, an Agent message with large attachments, a snapshot of a long Document) is uploaded as a temporary transfer file under the `transfer/` prefix and read back by the server with the S3 credentials. Add an R2 lifecycle rule to the bucket that deletes objects with the prefix `transfer/` after 1 day. On a custom asset domain, also add a Cloudflare WAF custom rule that blocks requests whose path starts with `/transfer/`; an `r2.dev` address cannot carry this rule. See [Object lifecycles](https://developers.cloudflare.com/r2/buckets/object-lifecycles/).
 
-Timeline web animation is optional and off unless you enable it ([packages/ingest/README.md](../packages/ingest/README.md#web-animation)). Its packages are stored under the private `web-animation/` prefix and are read only through the Worker's signed preview route. If you enable it on a custom asset domain, add a Cloudflare WAF custom rule that blocks requests whose path starts with `/web-animation/`; an `r2.dev` address cannot carry this rule.
+Web animation (Motion Spaces and their copies on a Timeline) is optional and off unless you enable it ([packages/ingest/README.md](../packages/ingest/README.md#web-animation)). Its packages are stored under the private `web-animation/` prefix and are read only through the Worker's signed preview route. If you enable it on a custom asset domain, add a Cloudflare WAF custom rule that blocks requests whose path starts with `/web-animation/`; an `r2.dev` address cannot carry this rule.
 
 Save the following bucket CORS configuration:
 
@@ -392,7 +392,7 @@ Repeat section 6. If rollback requires database recovery, stop the application a
 | Upload CORS error | Update the deployed Worker's origin list and redeploy; a LAN setup must not still name only localhost |
 | Image returns 404 or cropping fails | Check the R2 bucket, public read URL and GET CORS; upload CORS does not replace read CORS |
 | Video has no cover | Check the Cloudflare media container's deployment, runtime and logs; do not disable it |
-| AI errors | Check the selected provider, credentials, quota and connectivity; the application payment switch cannot fix provider access |
+| AI errors | Check the selected provider, credentials, quota and connectivity; the credit charging switch (`CHARGING_ENABLED`) cannot fix provider access |
 | No email arrives | Console mode writes to `docker compose logs server`; real delivery needs SMTP |
 
 On the publishing machine, inspect cloud logs with `pnpm --filter @breatic/ingest exec wrangler tail --env production`. Remove credentials, cookies and signed tokens before sharing logs.

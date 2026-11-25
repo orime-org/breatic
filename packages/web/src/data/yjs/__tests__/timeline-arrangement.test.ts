@@ -45,7 +45,6 @@ function documentOf(
     tracks: Object.fromEntries(trackList.map((item) => [item.id, item])),
     clips: Object.fromEntries(clips.map((item) => [item.id, item])),
     sources,
-    operationReceipts: {},
   };
 }
 
