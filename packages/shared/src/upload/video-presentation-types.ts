@@ -8,16 +8,8 @@ export interface VideoPresentationRegisteredMetadata { width: number | null; hei
 
 /** Owned pixel rectangle, independent of renderer configuration. */
 export interface VideoPresentationRect { x: number; y: number; width: number; height: number }
-/** Owned canonical classification and presentation readiness. */
-export interface VideoPresentation {
-  schemaVersion: 1;
-  sourceFingerprint: string;
-  original: { width: number; height: number; duration: number };
-  state: 'classifying' | 'native' | 'alpha_pending' | 'alpha_ready' | 'failed';
-  alpha?: { manifestURL: string };
-  attempt?: { jobId: string; deadlineAt: number };
-  error?: string;
-}
+/** The original's registered display size and duration. */
+export interface VideoPresentationOriginal { width: number; height: number; duration: number }
 /** Frozen operational and subprocess ceilings for one auxiliary attempt. */
 export interface VideoPresentationProcessLimits {
   maxSourceBytes: number;

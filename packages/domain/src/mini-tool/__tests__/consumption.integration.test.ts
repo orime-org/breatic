@@ -27,9 +27,6 @@ interface Consumption {
     size: { vcpu: number; memory_gib: number; disk_gb: number };
     prices: { vcpu_second_usd: number; memory_gib_second_usd: number; disk_gb_second_usd: number };
   } | null;
-  // A model step's cost wait (inner#1306 §11.4).
-  servedBy?: string | null; costs?: unknown[]; waiting?: { lookup: unknown; cost?: unknown }[];
-  known?: number; attempts?: number; windowEndsAt?: number; nextLookupAt?: number | null;
 }
 
 interface RecordInput {
@@ -332,7 +329,7 @@ describe("mini-tool consumption producer persistence", () => {
     expect((await snapshot(fixture)).step.output.miniToolConsumption).toBeUndefined();
   });
 
-  // A model step's consumption is opened by its end (model-step.service.ts), never through the generic producer.
+  // The producer opens only a container job's consumption.
   it("refuses to open a model step's consumption", async () => {
     const fixture = await seed({ state: "pending", parentStatus: "running" });
     await rawPg`UPDATE tasks SET result = result - 'settlement', completed_at = NULL WHERE id = ${fixture.taskId}`;

@@ -5,7 +5,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { budgetDeadlineFrom, ConflictError, NotFoundError, ValidationError, createQueue, defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from '@breatic/core';
 import { t, videoPresentationAtIngest, videoPresentationAwaitsServer, videoPresentationResponseSchema,
   videoPresentationSourceBindingSchema,
-  type StudioAssetEntity, type VideoPresentation, type VideoPresentationIngestPreparation, type VideoPresentationIngestRequest, type VideoPresentationPricing,
+  type StudioAssetEntity, type VideoPresentationOriginal, type VideoPresentationIngestPreparation, type VideoPresentationIngestRequest, type VideoPresentationPricing,
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding } from '@breatic/shared';
 import { findById, findCoverOf, findLiveByStorageKey } from '@domain/asset/asset.repo.js';
 import { videoEncoderRates } from '@domain/asset/video-encoder-rates.js';
@@ -83,7 +83,7 @@ async function sourceBinding(row: StudioAssetEntity): Promise<VideoPresentationS
  * @returns Complete positive original geometry and duration, or none.
  * @throws {never} Unknown values stay unknown.
  */
-function originalOf(row: StudioAssetEntity): VideoPresentation['original'] | null {
+function originalOf(row: StudioAssetEntity): VideoPresentationOriginal | null {
   return Number.isSafeInteger(row.width) && Number.isSafeInteger(row.height) && row.width !== null && row.height !== null && row.width > 0 && row.height > 0 &&
     row.durationSeconds !== null && Number.isFinite(row.durationSeconds) && row.durationSeconds > 0 ? { width: row.width, height: row.height, duration: row.durationSeconds } : null;
 }

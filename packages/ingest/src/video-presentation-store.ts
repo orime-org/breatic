@@ -16,7 +16,7 @@ import {
   type VideoPresentationDisplay, type VideoPresentationEncoding, type VideoPresentationIngestPricing, type VideoPresentationIngestSnapshot,
   type VideoPresentationPrepareAnswer, type VideoPresentationProcessLimits, type VideoPresentationUsageFact, type VideoPresentationVersion,
 } from '@breatic/shared';
-import type { VideoPresentation, VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
+import type { VideoPresentationOriginal, VideoPresentationRegisteredMetadata } from '@shared/upload/video-presentation-types.js';
 import { alphaPackedPlanesMatch, type VideoPresentationEditReceipt, type VideoPresentationPlan } from '@shared/upload/video-presentation-version.js';
 import { videoDurationsMatch } from '@shared/upload/video-duration.js';
 import { decodePrerollFrames, planFrameGrid } from '@shared/upload/frame-grid.js';
@@ -40,7 +40,7 @@ export interface VideoPresentationAdmission {
   jobId: string;
   deadlineAt: number;
   contentType: string;
-  original: VideoPresentation['original'] | null;
+  original: VideoPresentationOriginal | null;
   registeredMetadata?: VideoPresentationRegisteredMetadata;
   repair?: boolean;
   limits?: VideoPresentationProcessLimits;

@@ -1266,7 +1266,7 @@ export {
   videoPresentationKeyFor,
   packedGeometrySchema,
   type PackedGeometry,
-  type VideoPresentation,
+  type VideoPresentationOriginal,
   type VideoPresentationRect,
 } from "@shared/upload/video-presentation.js";
 export {

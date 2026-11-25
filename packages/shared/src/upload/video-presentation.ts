@@ -3,7 +3,7 @@
 
 import { z } from 'zod';
 import type { VideoPresentationRect } from '@shared/upload/video-presentation-types.js';
-export type { VideoPresentation, VideoPresentationRect } from '@shared/upload/video-presentation-types.js';
+export type { VideoPresentationOriginal, VideoPresentationRect } from '@shared/upload/video-presentation-types.js';
 
 export const pixel = z.number().int().positive().max(Number.MAX_SAFE_INTEGER);
 export const coordinate = z.number().int().nonnegative().max(Number.MAX_SAFE_INTEGER);
