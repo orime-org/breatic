@@ -53,8 +53,8 @@ async function ownedStep(taskId: string, stepId: string): Promise<upstreamStepRe
 
 /**
  * Advance the original job and keep its terminal report on its step (frames-split §7.19): nothing is registered.
- * A done report whose output is over the upload cap or empty is the job's final failure, recorded as failed before any done
- * report, so its chunks are not retired.
+ * A report with a written output over the upload cap or empty is the job's final failure, recorded as failed, so its chunks
+ * are not retired.
  * @param input - The task-owned candidate plan and original expense policy.
  * @param options - What the job consumed.
  * @param options.retire - Intermediate keys (a stitch's chunks) retired with a done result, never before (§7.15, §93 D5-10).
@@ -70,8 +70,8 @@ export async function advanceStagedMiniToolPlanJob(input: OpenMiniToolPlanJobInp
     return { request, report: terminalReport(request, state.result.result), refused: code === "over_cap" || code === "empty" ? code : null };
   }
   const report = terminalReport(request, await advanceMiniToolPlanJob(request));
-  const refused = report.state === "done"
-    ? report.outputs.map((output) => ingestReportService.ingestReportRefusal(output.sizeBytes)).find((reason) => reason !== null) ?? null : null;
+  // A failed attempt's written outputs are staged too (the next attempt carries only the rest), so every report is checked.
+  const refused = report.outputs.map((output) => ingestReportService.ingestReportRefusal(output.sizeBytes)).find((reason) => reason !== null) ?? null;
   await recordMiniToolStepResult({
     taskId: input.taskId, stepId: input.stepId, identity: consumption.identity, outcome: refused === null ? report.state : "failed", result: report,
     ...(refused !== null ? { error: { code: refused } } : report.state === "failed" ? { error: { code: report.reason } } : {}),

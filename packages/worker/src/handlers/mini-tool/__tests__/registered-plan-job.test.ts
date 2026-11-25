@@ -18,7 +18,7 @@ vi.mock("@breatic/domain", async (original) => {
 vi.mock("@breatic/core", async (original) => ({ ...await original<typeof coreModule>(), logger: { error: h.error } }));
 vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", () => ({ advanceMiniToolPlanJob: h.advance }));
 
-import { advanceRegisteredMiniToolPlanJob } from "../registered-plan-job.js";
+import { advanceRegisteredMiniToolPlanJob, advanceStagedMiniToolPlanJob } from "../registered-plan-job.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 
 const taskId = "10000000-0000-4000-8000-000000000001";
@@ -324,5 +324,21 @@ describe("staged advance and later registration (frames-split §7.19)", () => {
     const { registerMiniToolPlanJobOutputs } = await api();
     await expect(registerMiniToolPlanJobOutputs({ taskId, stepId }, { deadlineAt: 1 })).rejects.toThrow();
     expect(h.register).not.toHaveBeenCalled();
+  });
+});
+
+describe("a staged report's written outputs (frames-split §7.19 running staged row)", () => {
+  it.each([
+    { name: "a done report's 0-byte output", report: { ...done, outputs: [outputs[0]!, { ...outputs[1]!, sizeBytes: 0 }] }, code: "empty" },
+    { name: "a failed report's 0-byte output", report: { ...failed, outputs: [{ ...outputs[1]!, sizeBytes: 0 }] }, code: "empty" },
+    { name: "a failed report's output over the upload cap", report: { ...failed, outputs: [{ ...outputs[1]!, sizeBytes: Number.MAX_SAFE_INTEGER }] }, code: "over_cap" },
+  ])("refuses $name before it is staged, and the refusal is the step's final failure", async ({ report, code }) => {
+    h.advance.mockResolvedValue(report);
+    expect((await advanceStagedMiniToolPlanJob(input)).refused).toBe(code);
+    expect(h.record.mock.calls[0]?.[0]).toMatchObject({ outcome: "failed", error: { code } });
+    expect(h.register).not.toHaveBeenCalled();
+    h.advance.mockClear();
+    expect((await advanceStagedMiniToolPlanJob(input)).refused).toBe(code);
+    expect(h.advance).not.toHaveBeenCalled();
   });
 });
