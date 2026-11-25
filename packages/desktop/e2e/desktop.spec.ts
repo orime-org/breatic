@@ -5,7 +5,7 @@
  * The desktop client started for real against a local server (inner#2041): the
  * server the build carries, the splash, signing in by email and staying signed
  * in after a restart, more windows, links handed to the system, "can't reach"
- * in the window that failed, and the shell's error reports.
+ * in the window that failed, the shell's error reports, and download feedback.
  *
  * Run with the dev stack up: `pnpm --filter @breatic/desktop test:e2e`. It
  * builds the client with SERVER written in (BREATIC_DEFAULT_SERVER_URL) and a
@@ -683,3 +683,117 @@ test("browser sign-in hands the account to the client through a link on its sche
   await app.close();
 });
 
+
+test.describe("download feedback", () => {
+  let files: StandIn;
+
+  test.beforeAll(async () => {
+    files = await standIn();
+  });
+
+  test.afterEach(async () => {
+    await files.down();
+  });
+
+  /**
+   * Save every download into a directory without the save dialog, as a user picking it would.
+   * @param app - The running app.
+   * @param dir - Where downloads go.
+   */
+  async function saveInto(app: ElectronApplication, dir: string): Promise<void> {
+    await app.evaluate(({ session }, target) => {
+      session.defaultSession.on("will-download", (_event, item) => item.setSavePath(`${target}/${item.getFilename()}`));
+    }, dir);
+  }
+
+  /**
+   * Start a download in the first visible window, as the client does for an asset link.
+   * @param app - The running app.
+   * @param url - What to download.
+   */
+  async function download(app: ElectronApplication, url: string): Promise<void> {
+    await app.evaluate(({ BrowserWindow }, link) => {
+      BrowserWindow.getAllWindows().find((window) => window.isVisible())!.webContents.downloadURL(link);
+    }, url);
+  }
+
+  test("a download shows in the Downloads panel, stays across a reload and in a new window, and reveals its file", async () => {
+    const app = await launch(freshData());
+    const page = await windowWhere(app, (url) => url.startsWith(SERVER));
+    await afterSplash(app);
+    const dir = mkdtempSync(join(tmpdir(), "breatic-download-"));
+    await saveInto(app, dir);
+    await app.evaluate(({ shell }) => {
+      shell.showItemInFolder = (path: string) => {
+        (globalThis as { revealed?: string }).revealed = path;
+      };
+    });
+    await files.up((_req, res) => {
+      res.setHeader("Content-Type", "application/octet-stream");
+      res.setHeader("Content-Disposition", 'attachment; filename="clip.bin"');
+      res.end(randomBytes(64 * 1024));
+    });
+    await download(app, `${files.origin}/clip.bin`);
+
+    const panel = page.getByTestId("desktop-download-panel");
+    await expect(panel.getByText("clip.bin")).toBeVisible({ timeout: 30_000 });
+    const folder = dir.split("/").at(-1)!;
+    await expect(panel.getByText(`Saved in ${folder}`)).toBeVisible();
+    expect(existsSync(join(dir, "clip.bin"))).toBe(true);
+    await panel.getByRole("button", { name: process.platform === "darwin" ? "Show in Finder" : "Show in folder" }).click();
+    await expect.poll(() => app.evaluate(() => (globalThis as { revealed?: string }).revealed)).toBe(join(dir, "clip.bin"));
+
+    await page.reload();
+    await expect(page.getByTestId("desktop-download-panel").getByText("clip.bin")).toBeVisible({ timeout: 30_000 });
+
+    await app.evaluate(({ Menu }) => {
+      const items = Menu.getApplicationMenu()?.items.flatMap((menu) => menu.submenu?.items ?? []) ?? [];
+      items.find((item) => item.label === "New Window")?.click();
+    });
+    await expect.poll(() => appWindows(app).filter((window) => window.url().startsWith(SERVER)).length).toBe(2);
+    const second = appWindows(app).filter((window) => window.url().startsWith(SERVER)).find((window) => window !== page)!;
+    await expect(second.getByTestId("desktop-download-panel").getByText("clip.bin")).toBeVisible({ timeout: 30_000 });
+    await app.close();
+  });
+
+  for (const how of ["quit", "close the last window"] as const) {
+    test(`with a download running, ${how} asks once and then ends the app`, async () => {
+      test.skip(how === "close the last window" && process.platform === "darwin", "macOS keeps the app running without windows");
+      const app = await launch(freshData());
+      const page = await windowWhere(app, (url) => url.startsWith(SERVER));
+      await afterSplash(app);
+      await saveInto(app, mkdtempSync(join(tmpdir(), "breatic-download-")));
+      const asked = join(mkdtempSync(join(tmpdir(), "breatic-asked-")), "asked.txt");
+      // Record each quit dialog in a file, which outlives the app, and answer Quit.
+      await app.evaluate(({ dialog }, file) => {
+        const fs = process.getBuiltinModule("node:fs");
+        dialog.showMessageBox = (async (...args: unknown[]) => {
+          const options = args.at(-1) as { message?: string };
+          fs.appendFileSync(file, `${options.message ?? ""}\n`);
+          return { response: 0, checkboxChecked: false };
+        });
+      }, asked);
+      // A body that never ends keeps the download running.
+      await files.up((_req, res) => {
+        res.setHeader("Content-Type", "application/octet-stream");
+        res.setHeader("Content-Disposition", 'attachment; filename="long.bin"');
+        res.setHeader("Content-Length", String(64 * 1024 * 1024));
+        res.write(randomBytes(64 * 1024));
+      });
+      await download(app, `${files.origin}/long.bin`);
+      await expect(page.getByTestId("desktop-download-panel").getByText("long.bin")).toBeVisible({ timeout: 30_000 });
+
+      const ended = app.waitForEvent("close");
+      if (how === "quit") {
+        void app.evaluate(({ app: electronApp }) => electronApp.quit()).catch(() => undefined);
+      } else {
+        void app.evaluate(({ BrowserWindow }) => {
+          for (const window of BrowserWindow.getAllWindows()) window.close();
+        }).catch(() => undefined);
+      }
+      await ended;
+      const { readFileSync } = await import("node:fs");
+      expect(readFileSync(asked, "utf-8").trim().split("\n")).toEqual(["1 download is in progress"]);
+    });
+  }
+});
