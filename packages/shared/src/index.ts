@@ -324,6 +324,8 @@ export {
   parseDesktopSignInReturn,
   type BrowserSignInResult,
   type DesktopBridge,
+  type DesktopDownload,
+  type DesktopDownloadList,
 } from "@shared/desktop-bridge.js";
 
 // ── API Schemas ─────────────────────────────────────────────────────

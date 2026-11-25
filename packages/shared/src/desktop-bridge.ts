@@ -13,6 +13,18 @@ export interface BrowserSignInResult {
   verifier: string;
 }
 
+/** One download in the client's list for this run. */
+export type DesktopDownload =
+  | { id: string; name: string; state: "progressing"; received: number; total: number }
+  | { id: string; name: string; state: "completed"; folder: string }
+  | { id: string; name: string; state: "failed" };
+
+/** This run's downloads, newest first, and whether the Downloads panel is open. */
+export interface DesktopDownloadList {
+  open: boolean;
+  items: DesktopDownload[];
+}
+
 /** The desktop client's bridge; absent in a browser. */
 export interface DesktopBridge {
   /** `process.platform` of the machine the client runs on. */
