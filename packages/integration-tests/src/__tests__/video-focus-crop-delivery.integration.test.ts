@@ -274,7 +274,7 @@ describe("video focus crop delivery appends to the panel node (design §5.5 交�
   it("FI06 a failed crop settles the panel node's row failed and appends nothing", async () => {
     const f = await seedCrop("running", "unfinished");
     await finishMiniToolExecutionAndNotify(f.taskId, { planFingerprint: f.planFingerprint, expectedVersion: 0,
-      outputs: [{ outputIndex: 0, nodeId: f.panelNodeId, recipe: { kind: "frame", frameIndex: 42, crop: CROP }, result: failedResult("mini_tool_failed") } as never], error: null }, getStreamRedis());
+      outputs: [{ outputIndex: 0, nodeId: f.panelNodeId, recipe: { kind: "frame", frameIndex: 42, crop: CROP }, result: failedResult("mini_tool_failed") } as never], error: failedResult("mini_tool_failed").error }, getStreamRedis());
     expect([...await pg`SELECT status FROM node_tasks WHERE task_id=${f.taskId}`]).toEqual([{ status: "failed" }]);
     const published = await events(f);
     expect(published.some((entry) => "focusImageAppend" in entry.payload)).toBe(false);
