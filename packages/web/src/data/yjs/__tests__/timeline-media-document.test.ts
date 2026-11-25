@@ -124,7 +124,7 @@ describe('adding pictures and sounds (design §3.2)', () => {
 
 describe('set_text and set_audio write only their fields (design §3.2)', () => {
   it('sets only the text of a text clip', () => {
-    const doc = docWith([textClip(cid(1), V2, 0, 120)]);
+    const doc = docWith([textClip(cid(1), V2, 0, 120)], []);
     const changes = recordChanges(doc);
     expect(applyTimelineEdit(doc, setText(cid(1), { body: 'Line one\nLine two', size: 0.12 }, ON), ORIGIN).ok).toBe(true);
     expect(changes).toEqual([`clips/${cid(1)}:text`]);
@@ -132,7 +132,7 @@ describe('set_text and set_audio write only their fields (design §3.2)', () => 
   });
 
   it('sets only the gain and mute of a sound clip, as one undo step', () => {
-    const doc = docWith([audioClip(cid(1), V2, 0, 120)]);
+    const doc = docWith([audioClip(cid(1), V2, 0, 120)], [AUDIO]);
     const undo = undoManager(doc);
     const changes = recordChanges(doc);
     expect(applyTimelineEdit(doc, setAudio(cid(1), 2, true, ON), ORIGIN).ok).toBe(true);

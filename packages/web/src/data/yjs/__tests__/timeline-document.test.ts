@@ -372,7 +372,7 @@ describe('Timeline native edit transactions', () => {
     expect(readTimelineDocument(doc).sources).toEqual({});
   });
 
-  it('refuses an unavailable source without writing: source_unavailable for an addition, missing_source for an existing clip', () => {
+  it('refuses an unavailable source without writing: source_unavailable for an addition, target_missing for an existing clip that cannot be shown', () => {
     const missingSourceId = '10000000-0000-4000-8000-000000000009';
     const added = seededDoc();
     expect(applyTimelineEdit(added, add, ORIGIN).ok).toBe(true);
@@ -385,9 +385,9 @@ describe('Timeline native edit transactions', () => {
     const sourcelessBytes = Y.encodeStateAsUpdate(sourceless);
     const updates = vi.fn();
     sourceless.on('update', updates);
-    // An existing clip without its source is refused as missing_source (inner#1708 P1); source_unavailable is for additions.
-    expect(applyTimelineEdit(sourceless, move(cid(8), 100, ON), ORIGIN)).toEqual({ ok: false, reason: 'missing_source' });
-    expect(applyTimelineEdit(sourceless, setRange(cid(8), 0, 0, 5, ON), ORIGIN)).toEqual({ ok: false, reason: 'missing_source' });
+    // An existing clip without its source is not shown and takes part in no edit (inner#1709); source_unavailable is for additions.
+    expect(applyTimelineEdit(sourceless, move(cid(8), 100, ON), ORIGIN)).toEqual({ ok: false, reason: 'target_missing' });
+    expect(applyTimelineEdit(sourceless, setRange(cid(8), 0, 0, 5, ON), ORIGIN)).toEqual({ ok: false, reason: 'target_missing' });
     expect(updates).not.toHaveBeenCalled();
     expect(Y.encodeStateAsUpdate(sourceless)).toEqual(sourcelessBytes);
   });

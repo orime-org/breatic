@@ -3,6 +3,7 @@
 
 import type { TimelineClip, TimelineDocumentV1 } from '@breatic/shared';
 
+import { pickTimelineClipAt } from '@web/data/yjs/timeline-arrangement';
 import { timelineTrackRank } from '@web/data/yjs/timeline-order';
 
 /**
@@ -16,39 +17,90 @@ export function timelineStackOrder(rank: ReadonlyMap<string, number>): (a: Timel
 }
 
 /**
- * Every ready clip the preview stacks at a frame, bottom-up by track rank (#1410 design §6.1). Each layer is placed by
- * its own transform, so a video no longer hides the layers below it.
- * @param document - The current document.
- * @param readyClipIds - Clips the arrangement resolved as ready.
+ * Whether a clip is drawn: every kind but sound (inner#1709).
+ * @param clip - The clip.
+ * @returns True when the preview draws it.
+ * @throws {never} Never.
+ */
+export function isDrawnTimelineClip(clip: TimelineClip): boolean {
+  return clip.kind !== 'audio';
+}
+
+/**
+ * Whether a clip is heard: a video or a sound (inner#1709).
+ * @param clip - The clip.
+ * @returns True when the preview plays its sound.
+ * @throws {never} Never.
+ */
+function isHeard(clip: TimelineClip): boolean {
+  return clip.kind === 'video' || clip.kind === 'audio';
+}
+
+/**
+ * Per track, the one clip that `keep` admits at a frame, bottom-up by track rank.
+ * @param document - The view document.
+ * @param frame - The Timeline frame.
+ * @param keep - Which clips take part.
+ * @returns The picked clips, bottom-up.
+ * @throws {never} Never.
+ */
+function pickedAt(document: TimelineDocumentV1, frame: number, keep: (clip: TimelineClip) => boolean): TimelineClip[] {
+  const rank = timelineTrackRank(document.tracks);
+  return [...rank.keys()].flatMap((trackId) => {
+    const clip = pickTimelineClipAt(document.clips, trackId, frame, keep);
+    return clip === undefined ? [] : [clip];
+  }).sort(timelineStackOrder(rank));
+}
+
+/**
+ * The clips the preview draws at a frame, bottom-up by track rank (#1410 design §6.1, inner#1709): per
+ * track the one drawn clip that plays there. Each layer is placed by its own transform, so a video no longer hides the
+ * layers below it.
+ * @param document - The view document, whose clips are the ones `arrangeTimelineClips` keeps.
  * @param frame - The Timeline frame.
  * @returns The visible clips, bottom-up.
  * @throws {never} Never.
  */
-export function visibleTimelineClipsAt(document: TimelineDocumentV1, readyClipIds: ReadonlySet<string>, frame: number): TimelineClip[] {
-  const rank = timelineTrackRank(document.tracks);
-  return Object.values(document.clips)
-    .filter((clip) => rank.has(clip.trackId) && readyClipIds.has(clip.id) && frame >= clip.startFrame && frame < clip.startFrame + clip.durationFrames)
-    .sort(timelineStackOrder(rank));
+export function visibleTimelineClipsAt(document: TimelineDocumentV1, frame: number): TimelineClip[] {
+  return pickedAt(document, frame, isDrawnTimelineClip);
 }
 
 /**
- * The next frame after `frame` where play must check its layers (#1410 design §6.3): the start of a ready clip after
- * now, or the end of a web copy showing now, since its instance can pass to another copy there. Where only videos end,
- * the layers left go on, as nothing below them is hidden.
- * @param document - The current document.
- * @param readyClipIds - Clips the arrangement resolved as ready.
+ * The clips the preview hears at a frame (inner#1709): per track the one video or sound clip that plays there.
+ * @param document - The view document.
+ * @param frame - The Timeline frame.
+ * @returns The audible clips, bottom-up.
+ * @throws {never} Never.
+ */
+export function audibleTimelineClipsAt(document: TimelineDocumentV1, frame: number): TimelineClip[] {
+  return pickedAt(document, frame, isHeard);
+}
+
+/**
+ * The next frame after `frame` where play must check its layers (#1410 design §6.3, inner#1709): the start
+ * of a clip after now; the end of a shown web copy, picture or text, since the frame changes there; and the end of a
+ * clip playing now over another clip of its track that goes on past it, which comes back there. Where only a video or
+ * a sound ends, the layers left go on.
+ * @param document - The view document.
  * @param frame - The current Timeline frame.
  * @param endFrame - The Timeline end, returned when no boundary comes first.
  * @returns The next boundary frame.
  * @throws {never} Never.
  */
-export function nextTimelinePlaybackBoundary(document: TimelineDocumentV1, readyClipIds: ReadonlySet<string>, frame: number, endFrame: number): number {
+export function nextTimelinePlaybackBoundary(document: TimelineDocumentV1, frame: number, endFrame: number): number {
   const rank = timelineTrackRank(document.tracks);
+  const clips = Object.values(document.clips).filter((clip) => rank.has(clip.trackId));
   let next = endFrame;
-  for (const clip of Object.values(document.clips)) {
-    if (!rank.has(clip.trackId) || !readyClipIds.has(clip.id)) continue;
-    const at = clip.startFrame > frame ? clip.startFrame : clip.kind === 'web-animation' ? clip.startFrame + clip.durationFrames : endFrame;
-    if (at > frame) next = Math.min(next, at);
+  for (const clip of clips) if (clip.startFrame > frame) next = Math.min(next, clip.startFrame);
+  for (const keep of [isDrawnTimelineClip, isHeard]) {
+    for (const trackId of rank.keys()) {
+      const playing = pickTimelineClipAt(document.clips, trackId, frame, keep);
+      if (playing === undefined) continue;
+      const end = playing.startFrame + playing.durationFrames;
+      const ending = playing.kind === 'web-animation' || playing.kind === 'image' || playing.kind === 'text';
+      const uncovers = clips.some((other) => other.trackId === trackId && keep(other) && other.startFrame <= frame && other.startFrame + other.durationFrames > end);
+      if (ending || uncovers) next = Math.min(next, end);
+    }
   }
   return next;
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as Y from 'yjs';
-import { TimelineVideoClipSchema, type TimelineVideoSource, type TimelineWebResolution } from '@breatic/shared';
+import { TimelineVideoClipSchema, type TimelineSource, type TimelineWebResolution } from '@breatic/shared';
 import { readTimelineSource } from '@breatic/shared/space-content';
 
 import { MAX_UNDO_DEPTH } from '@web/data/yjs/canvas-space';
@@ -100,7 +100,7 @@ function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined)
  * deletes only this session's items, so a peer's concurrent or earlier edits can leave a revived clip without
  * fields or without its source, or a source without a clip. While the Space's size holds writes back nothing is
  * repaired: a pop allowed then only deletes. Once the Space is below the limit, the next transaction writes back
- * any missing source (`restoreMissingSources`), and the next edit that writes, clip removal or pop drops the
+ * any missing source (`restoreMissingSources`), and the next edit that writes or pop drops the
  * sources no clip names (inner#1790).
  * @param doc - The document.
  * @param name - Its canonical name.
@@ -109,7 +109,7 @@ function mergeSnapshots(base: RecordSnapshot, extra: RecordSnapshot | undefined)
  * @param known - Source values this session has seen.
  * @throws {never} Never.
  */
-function repairAfterPop(doc: Y.Doc, name: string, records: RecordSnapshot | undefined, clipsBefore: ReadonlySet<string>, known: Readonly<Record<string, TimelineVideoSource>>): void {
+function repairAfterPop(doc: Y.Doc, name: string, records: RecordSnapshot | undefined, clipsBefore: ReadonlySet<string>, known: Readonly<Record<string, TimelineSource>>): void {
   if (timelineSizeHolds(name)) return;
   // It runs inside the pop's own write, which stated the kind.
   writeSpaceDoc(name, { kind: 'add', notify: false }, () => doc.transact(() => {
@@ -164,7 +164,7 @@ function createTimelineEditSession(doc: Y.Doc, name: string): TimelineEditSessio
   let clipsBeforePop = new Set<string>();
   // Every readable source seen since the session opened, as plain JSON; a source never changes once written, so any
   // copy is current, and only these are ever written back.
-  const known: Record<string, TimelineVideoSource> = Object.create(null) as Record<string, TimelineVideoSource>;
+  const known: Record<string, TimelineSource> = Object.create(null) as Record<string, TimelineSource>;
   let canWrite = false;
   let web = EMPTY_TIMELINE_WEB_RESOLUTION;
   /**

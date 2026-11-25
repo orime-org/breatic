@@ -9,6 +9,16 @@ import {
 export { timelineSourceRoom, type TimelineSourceExtent } from '@breatic/shared';
 
 /**
+ * Whether a clip is a still with no in-point: a picture, a text or a picture placeholder (inner#1709).
+ * @param clip - The clip.
+ * @returns True when its in-point stays 0.
+ * @throws {never} Never.
+ */
+function isStill(clip: TimelineClip): boolean {
+  return clip.kind === 'image' || clip.kind === 'text' || (clip.kind === 'upload' && clip.upload.kind === 'image');
+}
+
+/**
  * Whether a clip's frame bounds are a stored clip's: safe integers, a non-negative start and in-point, a positive
  * duration and a safe end.
  * @param clip - The placement bounds.
@@ -85,10 +95,11 @@ export function timelineSourceSeconds(clip: TimelineClip, source: TimelineSource
  * @param source - Its source descriptor.
  * @param fps - The Timeline frame rate.
  * @param frames - Timeline frames.
- * @returns The source frame offset, or null when it is not a whole source frame.
+ * @returns The source frame offset, or null when it is not a whole source frame; 0 for a still, which has no in-point.
  * @throws {never} Never.
  */
 export function timelineSourceOffset(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate, frames: number): number | null {
+  if (isStill(clip)) return 0;
   const num = BigInt(frames) * BigInt(fps.den) * BigInt(clip.rate.num) * BigInt(source.timebase.num);
   const den = BigInt(fps.num) * BigInt(clip.rate.den) * BigInt(source.timebase.den);
   return num % den === 0n ? Number(num / den) : null;
@@ -99,10 +110,11 @@ export function timelineSourceOffset(clip: TimelineClip, source: TimelineSourceE
  * @param clip - The clip with its in-point and speed.
  * @param source - Its source descriptor.
  * @param fps - The Timeline frame rate.
- * @returns The whole Timeline frames available before the head.
+ * @returns The whole Timeline frames available before the head; unlimited for a still.
  * @throws {never} Never.
  */
 export function timelineHeadRoom(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate): number {
+  if (isStill(clip)) return Number.MAX_SAFE_INTEGER;
   const num = BigInt(clip.sourceInFrame) * BigInt(source.timebase.den) * BigInt(fps.num) * BigInt(clip.rate.den);
   const den = BigInt(source.timebase.num) * BigInt(fps.den) * BigInt(clip.rate.num);
   return Number(num / den);

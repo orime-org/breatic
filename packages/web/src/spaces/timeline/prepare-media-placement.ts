@@ -45,7 +45,7 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
     return { ok: false, reason: 'invalid_range' };
   }
   const command: TimelineEditCommand = {
-    operation: 'add_video',
+    operation: 'add_media',
     parameters: {
       source: {
         id: input.sourceId, kind: 'video', assetId: asset.assetId, timebase: current.settings.fps,
