@@ -6,8 +6,9 @@
  * itself (inner#2041, design §9.1.1). The client's own code and pages therefore
  * never write the official product name or its scheme: they read the brand
  * the build was made for. Only the workspace package scope, the bridge
- * name the pages call, the build's environment variable names and the
- * splash's "powered by" attribution are allowed.
+ * name the pages call, the build's environment variable names, the
+ * licence identifier in each file's header and the splash's "powered by"
+ * attribution are allowed.
  */
 
 import { describe, it, expect } from "vitest";
@@ -15,7 +16,7 @@ import { readdirSync, readFileSync, statSync } from "node:fs";
 import { join, relative } from "node:path";
 
 const SRC = join(import.meta.dirname, "..", "..");
-const ALLOWED = [/@breatic\//g, /\bbreaticDesktop\b/g, /\bBREATIC_[A-Z_]+\b/g, /^const ATTRIBUTION = "Breatic";$/gm];
+const ALLOWED = [/@breatic\//g, /\bbreaticDesktop\b/g, /\bBREATIC_[A-Z_]+\b/g, /LicenseRef-Breatic-Source-Available-2\.0/g, /^const ATTRIBUTION = "Breatic";$/gm];
 
 /**
  * Every source file under a directory, tests left out.
