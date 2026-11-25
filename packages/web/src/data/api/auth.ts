@@ -65,8 +65,12 @@ export function deriveDisplayName(u: {
   return localPart && localPart.length > 0 ? localPart : u.email;
 }
 
-/** What became of the referral code a sign-up carried (inner#1868): bound, or not used. */
-export type SignupReferralOutcome = 'applied' | 'not_applied';
+/**
+ * What became of the referral code a sign-up carried (inner#1868): bound,
+ * kept for the billing service to decide (`pending`, no warning: it binds
+ * once delivered), or not used.
+ */
+export type SignupReferralOutcome = 'applied' | 'pending' | 'not_applied';
 
 /** The referral code a sign-up carries, and whether it came from a share link. */
 export interface SignupReferralFields {

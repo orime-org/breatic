@@ -31,6 +31,8 @@ concurrency:
     long-media-dispatch: 1
     # One charge sweep round runs at a time; settlements lock their own rows.
     credit-charge-sweep: 1
+    # One lot-mirror resend runs at a time; each lot is locked in turn.
+    commerce-lot-mirror: 1
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential

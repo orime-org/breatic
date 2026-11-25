@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export type {
   UserEntity,
@@ -19,7 +18,6 @@ export type {
   ConversationAttachmentEntity,
   ProjectAgentInstructionsEntity,
   AssetKind,
-  PaymentEntity,
   CreditLotEntity,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,

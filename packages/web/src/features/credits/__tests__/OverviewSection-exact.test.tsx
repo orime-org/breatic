@@ -16,7 +16,8 @@ import { OverviewSection } from '@web/features/credits/sections/OverviewSection'
  */
 function overview(assignedCredits: string, unassignedCredits: string, values: readonly string[] = []): CreditOverview {
   return {
-    billing: true,
+    charging: true,
+    selling: true,
     assignedCredits,
     unassignedCredits,
     underRefundCredits: '0.000000',

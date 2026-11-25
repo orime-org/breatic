@@ -31,12 +31,12 @@ import { formatLocalDay } from '@web/lib/format-day';
 import { toast } from '@web/lib/toast';
 import { paymentHistoryKey } from '@web/features/credits/account-reads';
 
-/** Whose purchases, and whether billing is on at all. */
+/** Whose credit history, and whether credits are charged here. */
 interface PurchasesSectionProps {
   /** The signed-in account, for the query key. */
   userId: string | null;
-  /** Whether this deployment charges for generation at all. */
-  billing: boolean;
+  /** Whether this deployment records and deducts credits; the list exists only then. */
+  charging: boolean;
 }
 
 /**
@@ -46,14 +46,18 @@ interface PurchasesSectionProps {
  * abandoned are both here — those are what somebody comes to this screen to
  * ask about. Neither has credits behind it, so the figures that come from a
  * lot are absent on those rows rather than shown as zero.
- * @param props - The account and whether billing is on.
+ *
+ * It follows `charging`: a deployment that charges but sells nothing still
+ * holds trial grants, gifts and receipts carried over from before, and the
+ * server answers those without a billing service.
+ * @param props - The account and whether credits are charged here.
  * @param props.userId - The signed-in account, for the query key.
- * @param props.billing - Whether this deployment charges at all.
+ * @param props.charging - Whether this deployment records and deducts credits at all.
  * @returns The section.
  */
 export function PurchasesSection({
   userId,
-  billing,
+  charging,
 }: PurchasesSectionProps): React.JSX.Element {
   const t = useTranslation();
   const read = React.useCallback(
@@ -66,7 +70,7 @@ export function PurchasesSection({
     // and ids the refund action cannot use.
     queryKey: paymentHistoryKey(userId),
     read,
-    enabled: billing && userId !== null,
+    enabled: charging && userId !== null,
   });
 
   return (
@@ -74,12 +78,8 @@ export function PurchasesSection({
       scrolls={false}
       title={t('credits.section.lots')}
     >
-      {!billing ? (
-        <Notice
-          title={t('credits.billingOff.title')}
-          body={t('credits.billingOff.body')}
-          tone='info'
-        />
+      {!charging ? (
+        <Notice title={t('credits.billingOff.title')} body={t('credits.billingOff.body')} tone='info' />
       ) : paging.isPending ? (
         <SectionSkeleton />
       ) : paging.isError ? (

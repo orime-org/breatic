@@ -4,13 +4,13 @@
 /**
  * User repository — data access for the users table.
  *
- * Reads and writes account rows: identity, password, recovery codes, the
- * Stripe customer and the Agent model last picked.
+ * Reads and writes account rows: identity, password, recovery codes and the
+ * Agent model last picked.
  */
 
 import { eq, and, or, isNull, inArray, sql } from "drizzle-orm";
 import { db, getDefaultMembershipTier, asKnownTier } from "@breatic/core";
-import { users } from "@breatic/core";
+import { studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import { normalizeEmail } from "@breatic/shared";
 import type { Attribution, UserEntity } from "@breatic/shared";
@@ -53,6 +53,55 @@ export async function getUserById(userId: string, tx?: DbTx): Promise<UserEntity
     .where(and(eq(users.id, userId), isNull(users.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/** An account's facts the billing service reads, deleted accounts included. */
+export interface AccountFacts {
+  userId: string;
+  email: string;
+  locale: string;
+  deleted: boolean;
+}
+
+/**
+ * Read an account's facts, whether or not it is deleted; null is the one
+ * answer to "did this account ever exist".
+ * @param userId - The account.
+ * @param tx - The enclosing transaction, if any.
+ * @returns Its facts, or null when no such account ever existed.
+ */
+export async function readAccountFacts(userId: string, tx?: DbTx): Promise<AccountFacts | null> {
+  const [row] = await (tx ?? db)
+    .select({ userId: users.id, email: users.email, locale: users.locale, deletedAt: users.deletedAt })
+    .from(users)
+    .where(eq(users.id, userId))
+    .limit(1);
+  return row === undefined ? null : { userId: row.userId, email: row.email, locale: row.locale, deleted: row.deletedAt !== null };
+}
+
+/**
+ * Read many accounts' facts with the name of each one's personal Studio,
+ * deleted accounts included; ids that never existed are left out.
+ * @param ids - The accounts.
+ * @returns One row per known account, in no particular order.
+ */
+export async function lookupAccountFacts(ids: string[]): Promise<Array<AccountFacts & { personalStudioName: string | null }>> {
+  if (ids.length === 0) return [];
+  const rows = await db
+    .select({ userId: users.id, email: users.email, locale: users.locale, deletedAt: users.deletedAt, personalStudioName: studios.name })
+    .from(users)
+    .leftJoin(
+      studios,
+      and(eq(studios.createdByUserId, users.id), eq(studios.type, "personal"), isNull(studios.deletedAt)),
+    )
+    .where(inArray(users.id, ids));
+  return rows.map((row) => ({
+    userId: row.userId,
+    email: row.email,
+    locale: row.locale,
+    deleted: row.deletedAt !== null,
+    personalStudioName: row.personalStudioName,
+  }));
 }
 
 /**
@@ -188,41 +237,6 @@ export async function updateUser(
 }
 
 /**
- * Read which Stripe customer an account pays through.
- * @param userId - The account to look up.
- * @returns Its Stripe customer id, or null when it has never paid us.
- */
-export async function getStripeCustomerId(
-  userId: string,
-): Promise<string | null> {
-  const rows = await db
-    .select({ stripeCustomerId: users.stripeCustomerId })
-    .from(users)
-    .where(and(eq(users.id, userId), isNull(users.deletedAt)))
-    .limit(1);
-  return rows[0]?.stripeCustomerId ?? null;
-}
-
-/**
- * Record which Stripe customer an account pays through.
- *
- * Written before the first Checkout Session exists, which is what makes a
- * later subscription event identifiable: those events carry the customer and
- * nothing of ours.
- * @param userId - The account.
- * @param stripeCustomerId - Stripe's id for its customer.
- */
-export async function setStripeCustomerId(
-  userId: string,
-  stripeCustomerId: string,
-): Promise<void> {
-  await db
-    .update(users)
-    .set({ stripeCustomerId, updatedAt: new Date() })
-    .where(eq(users.id, userId));
-}
-
-/**
  * The Agent model an account last picked (#1363); a new conversation starts on it.
  * @param userId - The account.
  * @returns The model, or null before the first pick.
@@ -247,30 +261,6 @@ export async function setAgentModel(userId: string, agentModel: string, tx?: DbT
     .update(users)
     .set({ agentModel, updatedAt: new Date() })
     .where(eq(users.id, userId));
-}
-
-/**
- * Read which account a Stripe customer belongs to.
- *
- * The identification chain for every subscription event: the event names a
- * customer, and this turns it back into an account.
- * @param stripeCustomerId - The customer named on a Stripe object.
- * @returns The account id, or null when no live account claims it.
- */
-export async function findUserIdByStripeCustomerId(
-  stripeCustomerId: string,
-): Promise<string | null> {
-  const rows = await db
-    .select({ id: users.id })
-    .from(users)
-    .where(
-      and(
-        eq(users.stripeCustomerId, stripeCustomerId),
-        isNull(users.deletedAt),
-      ),
-    )
-    .limit(1);
-  return rows[0]?.id ?? null;
 }
 
 /**

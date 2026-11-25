@@ -20,7 +20,15 @@
  * shared with collab's consumer).
  */
 
-import { getStreamRedis, lifecycleStreamKey, publishToStream, logger } from "@breatic/core";
+import {
+  getStreamRedis,
+  lifecycleStreamKey,
+  logger,
+  publishToStream,
+  startRelayLoop,
+  type RelayLoop,
+  type RelayLoopEvent,
+} from "@breatic/core";
 import { forwardNextUnsent } from "@server/modules/project/lifecycle-outbox.repo.js";
 
 /** How often the relay scans the outbox for unsent rows. */
@@ -29,51 +37,37 @@ const POLL_INTERVAL_MS = 1000;
 const BATCH_SIZE = 50;
 
 /** Handle to stop the relay loop on shutdown. */
-export interface LifecycleRelay {
-  /** Stop polling; in-flight publishes settle, no new pass is scheduled. */
-  stop(): void;
+export type LifecycleRelay = RelayLoop;
+
+/**
+ * Log one relay event.
+ * @param event - What the loop saw.
+ */
+function report(event: RelayLoopEvent): void {
+  switch (event.kind) {
+    case "forward_failed":
+    case "dead_lettered":
+      logger.error({ err: event.err, outboxId: event.id }, "lifecycle_relay_forward_failed");
+      return;
+    case "pass_failed":
+      logger.error({ err: event.err }, "lifecycle_relay_poll_failed");
+  }
 }
 
 /**
- * Start the outbox relay loop.
- *
- * Self-scheduling (a new pass is queued only after the previous one
- * settles) so a slow batch can never overlap itself. The first pass
- * runs immediately.
+ * Start the outbox relay loop (core's `startRelayLoop`); the first pass runs
+ * immediately.
  * @returns A handle whose `stop()` halts the loop
  */
 export function startLifecycleRelay(): LifecycleRelay {
   const redis = getStreamRedis();
-  let stopped = false;
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  /** One drain pass: forward every unsent row, then re-arm the timer. */
-  async function tick(): Promise<void> {
-    if (stopped) return;
-    try {
-      for (let i = 0; i < BATCH_SIZE && !stopped; i++) {
-        const forwarded = await forwardNextUnsent((event) =>
-          publishToStream(redis, lifecycleStreamKey(), event as unknown as Record<string, unknown>).then(() => undefined),
-        );
-        if (!forwarded) break;
-        if (forwarded.error !== undefined) {
-          logger.error({ err: forwarded.error, outboxId: forwarded.id }, "lifecycle_relay_forward_failed");
-          break;
-        }
-      }
-    } catch (err) {
-      logger.error({ err }, "lifecycle_relay_poll_failed");
-    } finally {
-      if (!stopped) timer = setTimeout(() => void tick(), POLL_INTERVAL_MS);
-    }
-  }
-
-  void tick();
-
-  return {
-    stop(): void {
-      stopped = true;
-      if (timer) clearTimeout(timer);
-    },
-  };
+  return startRelayLoop({
+    forwardNext: () =>
+      forwardNextUnsent((event) =>
+        publishToStream(redis, lifecycleStreamKey(), event as unknown as Record<string, unknown>).then(() => undefined),
+      ),
+    intervalMs: POLL_INTERVAL_MS,
+    batchSize: BATCH_SIZE,
+    report,
+  });
 }

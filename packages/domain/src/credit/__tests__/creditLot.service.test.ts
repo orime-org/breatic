@@ -86,8 +86,6 @@ beforeAll(() => {
   initCore({
     ...process.env,
     PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused",
   });
 });
 

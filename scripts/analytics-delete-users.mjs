@@ -8,9 +8,10 @@
  * soft-deleted and lists them.
  *
  * It first removes, in this database, the accounts' latest reported consent,
- * the consent kept on their orders, upload tickets and ad uploads, and their
- * own provider keys and model choices.
- * Then, on a deployment that sends product analytics (`AMPLITUDE_API_KEY`
+ * the consent kept on their upload tickets and ad uploads, and their own
+ * provider keys and model choices, and, on a deployment that sells, queues
+ * the billing service (through the outbox) to drop the consent kept on their
+ * orders. Then, on a deployment that sends product analytics (`AMPLITUDE_API_KEY`
  * set), it asks Amplitude to delete their events; otherwise it says so and
  * stops. A failure at Amplitude leaves the database part done; run it again.
  *

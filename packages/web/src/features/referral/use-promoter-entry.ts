@@ -7,9 +7,10 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { promoterEntryAction, referralQueryOptions, useAccountReferral } from '@web/features/referral/referral-query';
+import { REFERRAL_UI_SHOWN } from '@web/features/referral/referral-ui';
 
 export interface PromoterEntry {
-  /** Whether the account menu lists the entry: everywhere except a deployment that takes no payments. */
+  /** Whether the account menu lists the entry: while the program's entry points show, everywhere except a deployment that takes no payments. */
   shown: boolean;
   /** Whether the promoter dialog is open. */
   dialogOpen: boolean;
@@ -48,5 +49,5 @@ export function usePromoterEntry(menuOpen: boolean): PromoterEntry {
     );
   }, [client, userId, closedNotice]);
 
-  return { shown: data !== null, dialogOpen, setDialogOpen, select };
+  return { shown: REFERRAL_UI_SHOWN && data !== null, dialogOpen, setDialogOpen, select };
 }

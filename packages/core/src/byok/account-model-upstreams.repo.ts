@@ -7,9 +7,8 @@
  * a model without one runs on the deployment's keys.
  */
 
-import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { and, asc, eq, inArray, isNull, sql } from "drizzle-orm";
 import type { AccountModelUpstream } from "@breatic/shared";
-import type { TransactionSql } from "postgres";
 import { db, type DbTx } from "@core/db/client.js";
 import { lockAccountRow } from "@core/auth/membership.repo.js";
 import { accountModelUpstreams, accountProviderKeys } from "@core/db/schema.js";
@@ -110,8 +109,9 @@ export async function dropChoicesForUpstream(userId: string, upstream: string, t
  * @param tx - The erase's transaction.
  * @returns Nothing.
  */
-export async function eraseForAccounts(userIds: readonly string[], tx: TransactionSql): Promise<void> {
-  await tx`
-    UPDATE account_model_upstreams SET deleted_at = now(), updated_at = now()
-    WHERE user_id = ANY(${[...userIds]}::uuid[]) AND deleted_at IS NULL`;
+export async function eraseForAccounts(userIds: readonly string[], tx: DbTx): Promise<void> {
+  await tx
+    .update(accountModelUpstreams)
+    .set({ deletedAt: sql`now()`, updatedAt: sql`now()` })
+    .where(and(inArray(accountModelUpstreams.userId, [...userIds]), isNull(accountModelUpstreams.deletedAt)));
 }

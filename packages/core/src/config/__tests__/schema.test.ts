@@ -526,8 +526,7 @@ describe("parseConfig — internal API", () => {
     ).not.toThrow();
   });
 
-  // Same refusal, and the same wording, as PAYMENT_ENABLED without its Stripe
-  // secrets: the error has to name the variable the operator must set.
+  // The error has to name the variable the operator must set.
   it.each([
     ["unset", undefined],
     ["empty", ""],
@@ -584,5 +583,88 @@ describe("parseConfig — variables left from the multi-region release", () => {
     };
     const config = parseConfig(baseEnv(left)) as Record<string, unknown>;
     for (const key of Object.keys(left)) expect(config).not.toHaveProperty(key);
+  });
+});
+
+describe("parseConfig — charging and selling switches", () => {
+  const SELLING = {
+    CHARGING_ENABLED: "true",
+    COMMERCE_API_URL: "http://commerce.internal:3500",
+    COMMERCE_API_SECRET: "commerce-key",
+    INTERNAL_API_ENABLED: "true",
+    INTERNAL_API_SECRET: "internal-key",
+  };
+
+  it("charges nothing and sells nothing when neither switch is set", () => {
+    const cfg = parseConfig(baseEnv());
+    expect(cfg.CHARGING_ENABLED).toBe(false);
+    expect(cfg.SELLING).toBe(false);
+    expect(cfg.COMMERCE_API_URL).toBe("");
+    expect(cfg.COMMERCE_API_SECRET).toBe("");
+    expect(cfg.COMMERCE_API_SECRET_PREVIOUS).toBe("");
+  });
+
+  // Self-hosted deployments and five self-host documents still use the old name.
+  it("falls back to PAYMENT_ENABLED when CHARGING_ENABLED is unset or blank", () => {
+    expect(parseConfig(baseEnv({ PAYMENT_ENABLED: "true" })).CHARGING_ENABLED).toBe(true);
+    expect(
+      parseConfig(baseEnv({ PAYMENT_ENABLED: "true", CHARGING_ENABLED: "  " })).CHARGING_ENABLED,
+    ).toBe(true);
+    expect(parseConfig(baseEnv({ PAYMENT_ENABLED: "false" })).CHARGING_ENABLED).toBe(false);
+  });
+
+  it("takes CHARGING_ENABLED over PAYMENT_ENABLED when both are set", () => {
+    expect(
+      parseConfig(baseEnv({ PAYMENT_ENABLED: "true", CHARGING_ENABLED: "false" })).CHARGING_ENABLED,
+    ).toBe(false);
+    expect(parseConfig(baseEnv({ PAYMENT_ENABLED: "false", CHARGING_ENABLED: "true" })).CHARGING_ENABLED).toBe(true);
+  });
+
+  it("sells when the billing service address is set, and drops its trailing slashes", () => {
+    const cfg = parseConfig(baseEnv({ ...SELLING, COMMERCE_API_URL: "http://commerce.internal:3500//" }));
+    expect(cfg.SELLING).toBe(true);
+    expect(cfg.COMMERCE_API_URL).toBe("http://commerce.internal:3500");
+    expect(cfg.COMMERCE_API_SECRET).toBe("commerce-key");
+  });
+
+  it("treats a blank address as no billing service", () => {
+    const cfg = parseConfig(baseEnv({ COMMERCE_API_URL: "   " }));
+    expect(cfg.SELLING).toBe(false);
+    expect(cfg.COMMERCE_API_URL).toBe("");
+  });
+
+  it("refuses to start selling without charging", () => {
+    expect(() => parseConfig(baseEnv({ ...SELLING, CHARGING_ENABLED: "false" }))).toThrow(
+      /^FATAL: .*COMMERCE_API_URL.*CHARGING_ENABLED.*Refusing to start\.$/s,
+    );
+  });
+
+  it.each([
+    ["unset", undefined],
+    ["empty", ""],
+    ["whitespace only", "   "],
+  ])("refuses to start selling with the commerce secret %s", (_label, secret) => {
+    const env = baseEnv(SELLING);
+    if (secret === undefined) delete env["COMMERCE_API_SECRET"];
+    else env["COMMERCE_API_SECRET"] = secret;
+    expect(() => parseConfig(env)).toThrow(/^FATAL: .*COMMERCE_API_SECRET.*Refusing to start\.$/s);
+  });
+
+  it("refuses to start selling with the internal listener off, since the billing service calls back there", () => {
+    expect(() => parseConfig(baseEnv({ ...SELLING, INTERNAL_API_ENABLED: "false" }))).toThrow(
+      /^FATAL: .*COMMERCE_API_URL.*INTERNAL_API_ENABLED.*Refusing to start\.$/s,
+    );
+  });
+
+  it("refuses to start with a previous commerce secret of only whitespace", () => {
+    expect(() => parseConfig(baseEnv({ ...SELLING, COMMERCE_API_SECRET_PREVIOUS: "  " }))).toThrow(
+      /^FATAL: .*COMMERCE_API_SECRET_PREVIOUS.*Refusing to start\.$/s,
+    );
+  });
+
+  it("accepts a previous commerce secret during a rotation", () => {
+    expect(parseConfig(baseEnv({ ...SELLING, COMMERCE_API_SECRET_PREVIOUS: "old-key" })).COMMERCE_API_SECRET_PREVIOUS).toBe(
+      "old-key",
+    );
   });
 });

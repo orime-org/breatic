@@ -23,7 +23,7 @@ vi.mock('@web/data/api/auth', async (original) => ({
 
 /**
  * Provides the query client with the deployment options already read, so the
- * page renders in its final state: payments off, no referral row.
+ * page renders in its final state: nothing sold, no referral row.
  * @param props - The children.
  * @param props.children - The page under test.
  * @returns The wrapped page.

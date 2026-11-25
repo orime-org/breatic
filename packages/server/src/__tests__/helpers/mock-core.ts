@@ -520,7 +520,7 @@ export const coreMock = async (importOriginal: () => Promise<Record<string, unkn
     // the per-deployment suffix is covered by session-store's own test.
     sessionCookieName: () => "breatic_session",
     // Config
-    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: MOCK_FRONTEND_ORIGIN, COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
+    env: { ENV: "dev", PORT: 3000, CREDIT_MULTIPLIER: 2.5, BRAVE_SEARCH_API_KEY: "test-search-key", ALLOWED_ORIGINS: MOCK_FRONTEND_ORIGIN, COOKIE_DOMAIN: "", STORAGE_PROVIDER: "r2", GOOGLE_CLIENT_ID: "test-client.apps.googleusercontent.com", PAYMENT_ENABLED: true, CHARGING_ENABLED: true, SELLING: true, EMAIL_BACKEND: "disabled", INGEST_SHARED_SECRET: "test-ingest-secret", INGEST_BASE_URL: "https://ingest.test.example" },
     // The real repository root, so a config loader the app runs on every
     // request (the request body limit reads config/limits.yaml) finds the
     // shipped yaml instead of ENOENT. Suites that need other values mock the

@@ -92,29 +92,6 @@
       "invite_mail_failed": "郵件未能寄出，請重試。"
     },
     "payment": {
-      "tier_not_found": "未知的方案：{tier}。可選：{available}",
-      "price_not_configured": "方案 {tier} 的價格未設定",
-      "consent-credits-v1": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用的點數可在 30 天內全額退款。",
-      "consent-credits-v2": "我要求立即交付點數，並知悉**一旦我使用其中任何一個，這筆購買將不能再退款**。未使用且未指定給 Studio 的點數可在 30 天內全額退款。",
-      "refund-credits-v1": {
-        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
-        "used": "只要花過其中任何一個，這一筆就不能再退了。",
-        "expired": "超過 30 天，不再受理退款。"
-      },
-      "refund-credits-v2": {
-        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
-        "used": "只要花過其中任何一個，這一筆就不能再退了。",
-        "expired": "超過 30 天，不再受理退款。",
-        "unassigned": "只有未指定給 Studio 的點數包才能退款。"
-      },
-      "refund-credits-v3": {
-        "unused": "30 天內購買、一個點數都沒花？全額退回原付款卡。",
-        "used": "只要花過其中任何一個，這一筆就不能再退了。",
-        "expired": "超過 30 天，不再受理退款。",
-        "unassigned": "只有未指定給 Studio 的點數包才能退款。",
-        "purchased": "只有購買的點數包可以退款。"
-      },
-      "not_found": "找不到這筆購買。",
       "unavailable": "這個部署不出售點數。"
     },
     "text_tool": {
@@ -138,40 +115,11 @@
       "voices_not_offered": "這個模型沒有音色列表"
     },
     "membership": {
-      "already_subscribed": "你已有會員。",
-      "no_subscription": "你沒有會員。",
-      "not_cancelling": "這個會員沒有預約結束。",
-      "change_not_offered": "這項變更暫不提供。",
-      "change_unconfirmed": "變更已提交到 Stripe，但沒能確認結果。請先聯絡我們，不要重複操作。",
-      "checkout_not_found": "找不到這筆結帳。",
-      "checkout_unconfirmed": "暫時無法確認你的會員。",
-      "same_tier": "你已經在這一檔會員。",
-      "payment_overdue": "這個會員有一期款項未付。",
-      "upgrade_pending": "這個會員有一筆升級仍在等待付款。",
       "unavailable": "會員目前無法使用。"
     },
     "storage": {
       "quota_exceeded_upload": "Studio 儲存空間已滿，目前無法上傳。",
       "quota_exceeded_generate": "Studio 儲存空間已滿，目前無法生成。"
-    },
-    "purchase_mail": {
-      "subject": "點數已入帳",
-      "intro": "感謝購買。以下是這筆購買的內容，請留存。",
-      "label": {
-        "credits": "本次入帳",
-        "balance": "目前餘額",
-        "subtotal": "價格",
-        "tax": "稅額",
-        "total": "實付合計",
-        "purchased_at": "購買時間",
-        "refund_by": "可退款截止",
-        "order_ref": "訂單編號"
-      },
-      "credits_amount": "{credits} 點",
-      "fact_line": "{label}：{value}",
-      "consent_heading": "你在購買時同意的內容",
-      "refund_heading": "點數包退款規則",
-      "support": "對這筆購買有疑問，請寫信到 <mailto>{email}</mailto>。"
     },
     "chat": {
       "message_too_long": "這則訊息太長了。最多 {limit, number} 個字元，這則有 {actual, number} 個。",
@@ -281,51 +229,11 @@
       "in_progress": "這次請求仍在處理中。"
     },
     "internal": {
-      "lot_not_found": "沒有這個編號、經付款購買的點數包。",
-      "operation_not_found": "沒有這個編號的退款處置。",
-      "lot_state_changed": "點數包不在這個操作要求的狀態。",
-      "operation_in_progress": "這筆點數包還有一個退款處置在進行中。",
-      "request_in_progress": "使用這個 Idempotency-Key 的請求還在執行。",
-      "stripe_blocks": "Stripe 上這筆付款的現狀或這筆點數包的退款處置紀錄不允許這個操作，原因見 reason。",
-      "mail_not_resendable": "只有以已退款、已駁回或點數已恢復完成的處置才有可重寄的買家郵件。",
-      "idempotency_key_reused": "這個 Idempotency-Key 已經用於另一個不同的請求。",
       "invalid_body": "請求內容或路徑不符合這個端點的要求。",
-      "invalid_idempotency_key": "Idempotency-Key 標頭缺少或格式不對。",
       "unreadable_body": "請求內容不是有效的 JSON。"
     },
-    "refund_mail": {
-      "completed": {
-        "subject": "退款已完成",
-        "intro": "我們已把這筆購買的款項退回你的原付款方式，銀行入帳通常需要幾個工作天。這筆購買的點數已從帳號移除。"
-      },
-      "rejected": {
-        "subject": "退款申請未通過",
-        "intro": "這筆購買的退款申請沒有通過。這筆點數已回到可用狀態，可以繼續指定給 Studio 使用。"
-      },
-      "restored": {
-        "subject": "點數已恢復",
-        "intro": "款項沒能退回你的原付款方式。依照和你的溝通，這筆購買的點數已恢復到帳號，可以繼續指定給 Studio 使用。"
-      },
-      "label": {
-        "amount": "退款金額",
-        "credits": "點數",
-        "purchased_at": "購買時間",
-        "refunded_at": "退款時間",
-        "requested_at": "申請退款時間",
-        "order_ref": "訂單編號"
-      },
-      "credits_amount": "{credits} 點",
-      "fact_line": "{label}：{value}"
-    },
     "referral": {
-      "invalid_code": "推廣碼無效。",
-      "already_bound": "這個帳號已經綁定過推廣碼。",
-      "already_paid": "推廣碼只能在第一次付會員費之前填寫。",
-      "not_eligible": "企業版帳號不能綁定推廣碼。",
-      "program_closed": "推廣計畫暫未開放申請。",
-      "terms_changed": "推廣條款已更新，請重新閱讀後再申請。",
-      "application_pending": "你已經有一份申請在審核中。",
-      "already_promoter": "你已經是推廣者。"
+      "invalid_code": "推廣碼無效。"
     },
     "three_d": {
       "model_not_offered": "{model} 不是用於 {mode} 的 3D 模型。",
@@ -365,6 +273,9 @@
     },
     "document": {
       "versions_full": "{limit, plural, other {這個 Document 的快照已滿 # 張。刪掉舊的快照後再儲存。}}"
+    },
+    "billing": {
+      "unavailable": "購買和會員服務暫時無法使用，請稍後再試。"
     },
     "byok": {
       "disabled": "這個部署沒有開啟自帶 key。",
@@ -2212,8 +2123,7 @@
       "retro-found-footage": {
         "name": "復古 DV 老錄影",
         "description": "2000 年代初家用 DV 錄下的一個小事件",
-        "prompt": "2000 年代初家用 DV 攝影機錄下的老錄影：解析度低，焦點偏軟，有視訊雜訊，顏色輕微溢出，白平衡有點偏，手動推拉變焦。地點：{✏️ 在哪裡拍的，例如傍晚後院的生日派對}。0–3 秒：已經在錄，拍的人邊走邊拿著攝影機。3–8 秒：{✏️ 發生的一個小事件，例如蛋糕從桌上掉下來}，拍的人有反應，鏡頭甩過去跟拍。8–10 秒：硬切黑。光源跟地點一致，只有一個。聲音：攝影機內建麥克風錄的聲音，人聲悶悶的，有風切聲，沒有音樂。畫面裡不出現文字。",
-        "input": {}
+        "prompt": "2000 年代初家用 DV 攝影機錄下的老錄影：解析度低，焦點偏軟，有視訊雜訊，顏色輕微溢出，白平衡有點偏，手動推拉變焦。地點：{✏️ 在哪裡拍的，例如傍晚後院的生日派對}。0–3 秒：已經在錄，拍的人邊走邊拿著攝影機。3–8 秒：{✏️ 發生的一個小事件，例如蛋糕從桌上掉下來}，拍的人有反應，鏡頭甩過去跟拍。8–10 秒：硬切黑。光源跟地點一致，只有一個。聲音：攝影機內建麥克風錄的聲音，人聲悶悶的，有風切聲，沒有音樂。畫面裡不出現文字。"
       },
       "time-freeze-rewind": {
         "name": "時間靜止再倒流",
@@ -2229,8 +2139,7 @@
       "bullet-time-mishap": {
         "name": "子彈時間出糗",
         "description": "出糗的一瞬間凍住，鏡頭繞著轉一圈",
-        "prompt": "{✏️ 誰出了什麼糗，例如一隻貓把滿滿一杯牛奶從餐桌上碰下去}。0–1 秒：已經在發生，糗事剛開始。1–6 秒：在最糟的那一刻時間完全停住，像一張定格的照片：主體、濺出來的東西和正在掉落的東西都紋絲不動地懸在半空，畫面裡什麼都不動；只有鏡頭在動，在同樣的高度和距離上繞著這個定格的瞬間轉一整圈，先從側面、再從背後、再從另一側看，最後回到正面。6–8 秒：時間恢復，糗事做完。只有一個光源。聲音：凍住時突然安靜，鏡頭環繞時一聲低沉的呼嘯，最後是摔碎的聲音。畫面裡不出現文字。",
-        "input": {}
+        "prompt": "{✏️ 誰出了什麼糗，例如一隻貓把滿滿一杯牛奶從餐桌上碰下去}。0–1 秒：已經在發生，糗事剛開始。1–6 秒：在最糟的那一刻時間完全停住，像一張定格的照片：主體、濺出來的東西和正在掉落的東西都紋絲不動地懸在半空，畫面裡什麼都不動；只有鏡頭在動，在同樣的高度和距離上繞著這個定格的瞬間轉一整圈，先從側面、再從背後、再從另一側看，最後回到正面。6–8 秒：時間恢復，糗事做完。只有一個光源。聲音：凍住時突然安靜，鏡頭環繞時一聲低沉的呼嘯，最後是摔碎的聲音。畫面裡不出現文字。"
       },
       "beat-sync-outfit-change": {
         "name": "卡點轉身換裝",
@@ -2246,8 +2155,7 @@
       "pov-continuous-shot": {
         "name": "第一人稱一鏡到底",
         "description": "第一人稱視角走一段，一個鏡頭拍到底",
-        "prompt": "第一人稱視角，一鏡到底，攝影機裝在走路的人頭上、眼睛的高度，他的手不時進入畫面。地點和目的地：{✏️ 從哪裡走到哪裡，例如穿過夜市走到掛滿燈籠的廟門口}。0–3 秒：第一格畫面裡已經滿是這個地方，已經在往前走。3–9 秒：{✏️ 路上經過什麼、做了什麼}。9–12 秒：走到了，視線停在{✏️ 最後看到的東西}上。沒有剪接，沒有變焦；鏡頭只是走、轉頭和停下。光來自這個地方本身。聲音：腳步聲、呼吸聲和這個地方的聲音，沒有音樂。畫面裡不出現文字。",
-        "input": {}
+        "prompt": "第一人稱視角，一鏡到底，攝影機裝在走路的人頭上、眼睛的高度，他的手不時進入畫面。地點和目的地：{✏️ 從哪裡走到哪裡，例如穿過夜市走到掛滿燈籠的廟門口}。0–3 秒：第一格畫面裡已經滿是這個地方，已經在往前走。3–9 秒：{✏️ 路上經過什麼、做了什麼}。9–12 秒：走到了，視線停在{✏️ 最後看到的東西}上。沒有剪接，沒有變焦；鏡頭只是走、轉頭和停下。光來自這個地方本身。聲音：腳步聲、呼吸聲和這個地方的聲音，沒有音樂。畫面裡不出現文字。"
       },
       "carried-object-transition": {
         "name": "物件帶轉場",
@@ -5070,6 +4978,11 @@
       "title": "自部署不計點數",
       "body": "生成不扣點數，也不需要儲值。用量仍會記錄下來。"
     },
+    "notSoldHere": {
+      "title": "這個部署不出售點數",
+      "body": "生成照常扣點數，但這裡不能儲值。",
+      "refundsBody": "這裡不能退款。"
+    },
     "total": "帳號總額",
     "unassigned": "未指定",
     "unassignedWithNextStep": "未指定，到左側「指定」分給要用的 Studio",
@@ -5081,7 +4994,7 @@
       "title": "買了點數之後，還要指定給某個 Studio 才能用",
       "body": "左側「購買點數」可以儲值；儲值後在「指定」裡把每個點數包分給要用它的 Studio。"
     },
-    "lotsEmpty": "還沒有購買記錄。",
+    "lotsEmpty": "還沒有點數。",
     "lotsEmptyNotice": {
       "title": "點數是怎麼來的，都列在這裡",
       "body": "買來的、贈送的都會列出來，顯示來源、花了多少、處理到哪一步，以及點數去了哪個 Studio。"

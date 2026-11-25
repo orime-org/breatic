@@ -31,6 +31,26 @@ export class AppError extends Error {
   }
 }
 
+/**
+ * A service this one forwards to is out of reach (503). `reason` names which,
+ * so the browser can tell it apart from other failures.
+ */
+export class UnavailableError extends AppError {
+  /** Which service is unavailable, sent as `error.reason`. */
+  public readonly reason: string;
+
+  /**
+   * Construct a 503 error.
+   * @param message - What to tell the user, already in their language.
+   * @param reason - Which service is unavailable.
+   */
+  constructor(message: string, reason: string) {
+    super(503, message);
+    this.name = "UnavailableError";
+    this.reason = reason;
+  }
+}
+
 /** Resource not found (404). */
 export class NotFoundError extends AppError {
   /**

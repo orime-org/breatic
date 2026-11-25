@@ -8,8 +8,8 @@ import {
   ALLOWLIST,
   acceptanceRecord,
   appendSignature,
-  checkRunOutput,
-  checkRunRequests,
+  statusOutput,
+  statusRequest,
   currentVersion,
   isAcceptance,
   isMaintainerRecheck,
@@ -109,7 +109,7 @@ test('case 4 and 4b: an earlier acceptance covers later pull requests, and accep
 test('case 5: an employee with a personal acceptance passes, and the output says corporate rights were not verified', () => {
   const verdict = judge({ signatures: [signed(ALICE)] });
   assert.equal(verdict.ok, true);
-  assert.match(checkRunOutput(verdict, V2).summary, /corporate rights were not verified/i);
+  assert.match(statusOutput(verdict, V2).summary, /corporate rights were not verified/i);
   const listed = judge({ signatures: [signed(ALICE)], reviewRequired: [{ id: ALICE.id, reason: 'corporate' }] });
   assert.equal(listed.ok, false);
 });
@@ -211,19 +211,14 @@ test('maintainer records match when numbers were written as strings', () => {
   assert.equal(judge({ signatures: [signed(ALICE)], reviewRequired: required, reviews: [review] }).ok, true);
 });
 
-test('case 18: every Actions run named CLA signed on the head is updated in place, and one is created only when none exists', () => {
-  const runs = [{ id: 1, app: { id: 15368 } }, { id: 2, app: { id: 999 } }, { id: 3, app: { id: 15368 } }];
-  assert.deepEqual(checkRunRequests(runs, 'h1').map((r) => `${r.method} ${r.path}`), ['PATCH /check-runs/1', 'PATCH /check-runs/3']);
-  const created = checkRunRequests([{ id: 2, app: { id: 999 } }], 'h1');
-  assert.deepEqual(created, [{ method: 'POST', path: '/check-runs', body: { name: 'CLA signed', head_sha: 'h1' } }]);
-});
-
-test('a CLA signed run left by a workflow job (the archived bot) is never patched; a new run is created beside it', () => {
-  // GitHub answers 403 to a token updating a check run that a workflow job created (seen on #1546).
-  const jobRun = { id: 7, app: { id: 15368 }, details_url: 'https://github.com/o/r/actions/runs/43838287048/job/7' };
-  assert.deepEqual(checkRunRequests([jobRun], 'h1').map((r) => `${r.method} ${r.path}`), ['POST /check-runs']);
-  const apiRun = { id: 8, app: { id: 15368 }, details_url: 'https://github.com/o/r/runs/8' };
-  assert.deepEqual(checkRunRequests([jobRun, apiRun], 'h1').map((r) => `${r.method} ${r.path}`), ['PATCH /check-runs/8']);
+test('case 18: CLA signed is written as a commit status on the head, so the latest write is the one GitHub reads', () => {
+  const verdict = judge({ people: [ALICE, BOB], signatures: [signed(ALICE)] });
+  const output = statusOutput(verdict, V2);
+  const request = statusRequest('o/r', 'h1', output, 'https://github.com/o/r/actions/runs/9');
+  assert.equal(request.path, '/repos/o/r/statuses/h1');
+  assert.deepEqual(request.body, { state: 'failure', context: 'CLA signed', description: output.description, target_url: 'https://github.com/o/r/actions/runs/9' });
+  assert.ok(output.description.length <= 140);
+  assert.equal(statusRequest('o/r', 'h1', statusOutput(judge({ signatures: [signed(ALICE)] }), V2), 'u').body.state, 'success');
 });
 
 test('only a maintainer comment of "recheck" re-judges', () => {
@@ -234,8 +229,8 @@ test('only a maintainer comment of "recheck" re-judges', () => {
 
 test('the check output names each person and why they passed or not', () => {
   const verdict = judge({ people: [ALICE, BOB], signatures: [signed(ALICE)] });
-  const { summary, conclusion } = checkRunOutput(verdict, V2);
-  assert.equal(conclusion, 'failure');
+  const { summary, state } = statusOutput(verdict, V2);
+  assert.equal(state, 'failure');
   assert.match(summary, /alice/);
   assert.match(summary, /bob/);
 });
@@ -244,7 +239,7 @@ test('the check output prints the reviews.json entry a maintainer can paste for 
   const ghost = { id: null, login: null, email: 'ghost@x' };
   const pull = pr({ headSha: 'a'.repeat(40) });
   const verdict = judge({ pull, people: [ALICE, BOB, ghost], signatures: [signed(ALICE)] });
-  const { summary } = checkRunOutput(verdict, V2, pull);
+  const { summary } = statusOutput(verdict, V2, pull);
   assert.ok(summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { id: BOB.id }, reason: '<why>', reviewer: '<login>', reviewedAt: '<ISO instant>' })));
   assert.ok(summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { email: 'ghost@x' }, reason: '<why>', reviewer: '<login>', reviewedAt: '<ISO instant>' })));
   assert.ok(!summary.includes(JSON.stringify({ pullRequest: 7, headSha: 'a'.repeat(40), identity: { id: ALICE.id }, reason: '<why>', reviewer: '<login>', reviewedAt: '<ISO instant>' })));

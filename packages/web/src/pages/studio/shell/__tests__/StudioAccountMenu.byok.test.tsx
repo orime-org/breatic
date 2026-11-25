@@ -10,6 +10,9 @@
 
 import * as React from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+// These cases cover the program's entry points as they behave once shown again (inner#2155).
+vi.mock('@web/features/referral/referral-ui', () => ({ REFERRAL_UI_SHOWN: true }));
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';

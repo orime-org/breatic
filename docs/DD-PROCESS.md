@@ -23,7 +23,7 @@
 | AIGC provider 选型(image / video / audio / 3d / tts / understand 模型路由) | 架构/长期维护 + 跨界 |
 | Agent 定义变更(system prompt / tools 列表 / 生成模板) | 安全模型(prompt injection)+ 架构/长期维护 |
 | 核心架构变更(记忆与归纳 / 历史回放 / Yjs 结构 / Redis Streams) | 架构/长期维护 + 跨界 |
-| 积分 / 计费机制(pricing / Stripe webhook / 扣费幂等) | 安全模型 + 已扩散 |
+| 积分 / 计费机制(扣费幂等 / 收款服务往来) | 安全模型 + 已扩散 |
 | 部署形态变更(Docker / nginx / CI 流水线) | 架构/长期维护 + 已扩散 |
 | 全前端重写 / 长 living branch | 架构/长期维护 + 跨界 + 已扩散 |
 | 面板 / 会话 / 上传 / 长跑作业的生命周期(加载态 · 就绪态 · 失败态 · 在飞请求 · 离场清理) | 状态机 |

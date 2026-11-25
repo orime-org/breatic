@@ -3,6 +3,9 @@
 
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+// These cases cover the program's entry points as they behave once shown again (inner#2155).
+vi.mock('@web/features/referral/referral-ui', () => ({ REFERRAL_UI_SHOWN: true }));
 import { act, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -105,7 +108,7 @@ describe('the referral code section (inner#1868 tables 12.9, 12.10)', () => {
     expect(await screen.findByLabelText('Referral code')).toBeInTheDocument();
   });
 
-  it('draws nothing while payments are off', async () => {
+  it('draws nothing where nothing is sold', async () => {
     api.get.mockRejectedValue(refusal(404));
     setup();
     await waitFor(() => expect(api.get).toHaveBeenCalled());

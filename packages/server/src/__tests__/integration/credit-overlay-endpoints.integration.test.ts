@@ -40,7 +40,7 @@ import {
   sessionCookieName,
 } from "@breatic/core";
 import { creditLotService, creditLotRepo } from "@breatic/domain";
-import { openPaymentSource } from "./payment-source.js";
+import { openPaymentSource, recordPaymentReceipt } from "./payment-source.js";
 import { chargeNow } from "./studio-credit-fixtures.js";
 
 const PG_DRIVER_LOCAL = "credit-overlay-test-driver";
@@ -140,12 +140,9 @@ async function seedLot(
   designateTo: string | null = null,
 ): Promise<string> {
   const sourceId = await openPaymentSource(sql);
-  const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${sourceId}, ${userId}, ${amountCents}, 'completed', ${credits}) RETURNING id
-  `;
+  await recordPaymentReceipt(sql, { id: sourceId, userId, amountCents, credits });
   const lot = await creditLotService.grantFromPayment({
-    paymentId: payment!.id,
+    paymentId: sourceId,
     userId,
     purchasedCredits: credits,
   });
@@ -494,9 +491,10 @@ describe("the overview says whether the deployment charges at all (plan §4.4)",
     const data = await readOverview(fx.cookie);
 
     // Three zeros and no studios look exactly like a deployment that charges
-    // nobody. `PAYMENT_ENABLED` is readable only on the server, so the server
-    // has to say.
-    expect(data['billing']).toBe(true);
+    // nobody. The switches are readable only on the server, so the server has
+    // to say. No billing service is configured here, so nothing is sold.
+    expect(data['charging']).toBe(true);
+    expect(data['selling']).toBe(false);
   });
 });
 
@@ -524,14 +522,9 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     // `automatic_tax` is on for every checkout, so this is the ordinary case
     // wherever there is tax, not an edge one.
     const sourceId = await openPaymentSource(sql);
-    const [payment] = await sql<{ id: string }[]>`
-      INSERT INTO payments (
-        id, user_id, amount_cents, tax_cents, total_cents, status, credits_granted
-      )
-      VALUES (${sourceId}, ${fx.userId}, 1000, 120, 1120, 'completed', 880) RETURNING id
-    `;
+    await recordPaymentReceipt(sql, { id: sourceId, userId: fx.userId, amountCents: 1000, taxCents: 120, totalCents: 1120, credits: 880 });
     await creditLotService.grantFromPayment({
-      paymentId: payment!.id,
+      paymentId: sourceId,
       userId: fx.userId,
       purchasedCredits: 880,
     });
@@ -543,6 +536,21 @@ describe("purchases show what was paid and where they point (plan §4.5 §4.6)",
     // opens the assign or refund screen and reads a different number has no
     // way to tell which one is on their statement.
     expect(lot!['paidCents']).toBe(1120);
+  });
+
+  it("reads what was paid from the payment's receipt, with no payment row behind it", async () => {
+    const fx = await seedFixture();
+    // Once payments are taken by the billing service, the product keeps only
+    // the receipt; the lot list must read the figure from there.
+    const sourceId = await openPaymentSource(sql);
+    await recordPaymentReceipt(sql, { id: sourceId, userId: fx.userId, amountCents: 1000, taxCents: 120, totalCents: 1120, currency: "eur", credits: 880 });
+    await creditLotService.grantFromPayment({ paymentId: sourceId, userId: fx.userId, purchasedCredits: 880 });
+
+    const page = await readLots(fx.cookie);
+    const lot = page.items[0];
+
+    expect(lot!['paidCents']).toBe(1120);
+    expect(lot!['currency']).toBe("eur");
   });
 
   it("names the studio a purchase points at", async () => {

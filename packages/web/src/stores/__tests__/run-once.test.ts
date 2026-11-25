@@ -75,6 +75,7 @@ beforeEach(() => {
 afterEach(() => {
   resetRunOnceForTests();
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 describe('runOnce', () => {
@@ -168,6 +169,9 @@ describe('runOnce', () => {
       .mockRejectedValueOnce(failed(error))
       .mockResolvedValueOnce('done');
     const onDone = vi.fn();
+    // The first re-send waits a jittered time that can round to 0 ms; pin it
+    // above zero so the press is still waiting when the case first looks.
+    vi.spyOn(Math, 'random').mockReturnValue(0.5);
     void runOnce('generate:s:n', { scope: 'generate', prepare: () => body, send, onDone });
     await vi.advanceTimersByTimeAsync(0);
     expect(getRunning('generate:s:n')).toBe(true);

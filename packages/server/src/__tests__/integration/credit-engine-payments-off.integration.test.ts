@@ -34,8 +34,8 @@ const PG_DRIVER_LOCAL = "credit-engine-off-test-driver";
 let sql: ReturnType<typeof postgres>;
 
 beforeAll(() => {
-  // 显式关掉，而不是指望进程环境恰好是关的 —— 同一个 worker 里的别的套件
-  // 会为了自己的需要把它打开。
+  // Switched off explicitly: other suites in the same worker switch it on for
+  // their own needs, so the process environment cannot be relied on.
   initCore({ ...process.env, PAYMENT_ENABLED: "false" });
   sql = postgres(inject("DATABASE_URL"), {
     max: 4,
@@ -51,7 +51,7 @@ afterAll(async () => {
 
 let seq = 0;
 
-/** 一个用户 + 他的 studio + 一个 project。 */
+/** One user with their studio and one project. */
 async function seedFixture(): Promise<{
   userId: string;
   studioId: string;
@@ -83,12 +83,14 @@ async function seedFixture(): Promise<{
   return { userId, studioId, projectId: project!.id };
 }
 
-describe("支付关闭", () => {
-  it("开关确实是关的", () => {
+describe("payments off", () => {
+  it("has the switch really off", () => {
     expect(env.PAYMENT_ENABLED).toBe(false);
+    // CHARGING_ENABLED is unset here, so it falls back to the old name.
+    expect(env.CHARGING_ENABLED).toBe(false);
   });
 
-  it("照写用量记录，lot_id 为空而付款方照填", async () => {
+  it("still writes the usage row, with no lot_id and the payer filled in", async () => {
     const fx = await seedFixture();
 
     const outcome = await chargeNow({
@@ -100,7 +102,7 @@ describe("支付关闭", () => {
       referenceId: `off-task-${Date.now()}`,
     });
 
-    // 不扣费，也不是「扣不出来」：这个部署本来就不收费。
+    // Nothing is deducted, and not because nothing could be: this deployment charges nobody.
     expect(outcome).toMatchObject({ billed: false, charged: "0.000000", shortfall: "0.000000" });
 
     const [row] = await sql<
@@ -117,8 +119,8 @@ describe("支付关闭", () => {
       WHERE payer_user_id = ${fx.userId} AND entry_type = 'spend'
     `;
     expect(row?.lot_id).toBeNull();
-    // 账号流水恒按付款方取，所以这一行必须带着人，否则自部署那边一条
-    // 用量都看不见。
+    // The account ledger is always read by payer, so the row must name one or a
+    // self-hosted deployment sees no usage at all.
     expect(row?.payer_user_id).toBe(fx.userId);
     expect(row?.studio_id).toBe(fx.studioId);
     expect(row?.amount).toBe("-42.500000");
@@ -151,8 +153,8 @@ describe("支付关闭", () => {
     expect(await sql`SELECT 1 FROM credit_ledger WHERE reference_id = ${referenceId}`).toHaveLength(1);
   });
 
-  it("一笔都没有也不报错、不失败", async () => {
-    // 这正是每个开发环境的日常：库里一行 credit_lots 都没有。
+  it("neither errors nor fails when there is no credit lot at all", async () => {
+    // Every development environment is in this state: no credit_lots row exists.
     const fx = await seedFixture();
     await expect(
       chargeNow({
@@ -166,8 +168,8 @@ describe("支付关闭", () => {
 
 describe("the account ledger on a deployment that charges nobody", () => {
   it("lists the usage, marked as having drawn on no purchase", async () => {
-    // 这个部署里每一行用量的 lot_id 都是空的。验收项 13 说消耗流水照常
-    // 显示，而这一项的脚注也已经对用户说了「下面是用量记录」。
+    // Every usage row on this deployment has no lot_id. The ledger still shows
+    // spending, and its footnote already tells the user these are usage records.
     const fx = await seedFixture();
     await chargeNow({
       projectId: fx.projectId,
@@ -189,8 +191,8 @@ describe("the account ledger on a deployment that charges nobody", () => {
   });
 });
 
-describe("支付关闭时的已消耗（任务 #12，计划 §4.6）", () => {
-  it("无包可扣的用量算进这个 studio 的已消耗", async () => {
+describe("consumption while payments are off", () => {
+  it("counts usage that drew on no credit lot as this studio's consumption", async () => {
     const fx = await seedFixture();
     await chargeNow({
       projectId: fx.projectId,

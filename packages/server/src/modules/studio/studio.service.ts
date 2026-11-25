@@ -81,7 +81,7 @@ export async function createPersonalStudio(
         {
           userId,
           studioId: studio.id,
-          credits: env.PAYMENT_ENABLED ? getTrialGrantCredits() : 0,
+          credits: env.CHARGING_ENABLED ? getTrialGrantCredits() : 0,
         },
         tx,
       );

@@ -39,9 +39,9 @@ import {
   studios,
   studioMembers,
   projects,
-  payments,
+  paymentReceipts,
 } from "@breatic/core";
-import { GRANTED_SOURCE_KINDS, IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
+import { GRANTED_SOURCE_KINDS, HELD_LIFECYCLES, IN_FLIGHT_REFUND_LIFECYCLES } from "@breatic/shared";
 import type {
   CreditLotEntity,
   CreditSourceKind,
@@ -159,7 +159,7 @@ function toLedgerEntity(
  * studio each one is for mid-purchase puts two decisions in one flow.
  * Designation is its own step.
  *
- * The unique constraint on `source_id` is what makes a redelivered webhook a
+ * The unique constraint on `source_id` is what makes a repeated payment grant a
  * failed insert rather than a second grant, so this deliberately does not
  * swallow the conflict — the caller decides what a duplicate means.
  * @param data - Where this lot's credits came from and who holds them.
@@ -291,58 +291,21 @@ export async function lockLiveLot(
 }
 
 /**
- * The two facts of a lot the refund disposition reads besides the lot row:
- * what its ledger sums to, and when the buyer asked for the refund.
- * @param lotId - The lot.
+ * The lot a payment opened, read in the caller's transaction.
+ * @param paymentId - The payment, which is the lot's source.
  * @param tx - The caller's transaction.
- * @returns The ledger sum as Postgres `numeric` text, and the ask time.
+ * @returns The lot's id and when it was granted, or null.
  */
-export async function readRefundFacts(
-  lotId: string,
+export async function findLotGrantedFromPayment(
+  paymentId: string,
   tx: DbTx,
-): Promise<{ ledgerSum: string; refundRequestedAt: Date | null }> {
-  const [ledger] = await tx
-    .select({ sum: sql<string>`COALESCE(SUM(${creditLedger.amount}), 0)::text` })
-    .from(creditLedger)
-    .where(eq(creditLedger.lotId, lotId));
-  const [lot] = await tx
-    .select({ refundRequestedAt: creditLots.refundRequestedAt })
-    .from(creditLots)
-    .where(eq(creditLots.id, lotId));
-  return { ledgerSum: ledger?.sum ?? "0", refundRequestedAt: lot?.refundRequestedAt ?? null };
-}
-
-/**
- * Whether a payment opened a lot, unlocked.
- * @param paymentId - The payment.
- * @returns The lot's id, or null.
- */
-export async function findLotIdByPayment(paymentId: string): Promise<string | null> {
-  const rows = await db
-    .select({ id: creditLots.id })
+): Promise<{ id: string; createdAt: Date } | null> {
+  const rows = await tx
+    .select({ id: creditLots.id, createdAt: creditLots.createdAt })
     .from(creditLots)
     .where(eq(creditLots.sourceId, paymentId))
     .limit(1);
-  return rows[0]?.id ?? null;
-}
-
-/**
- * {@link lockLot}, for the lot a payment opened. `source_id` is unique, so a
- * payment opens at most one lot.
- * @param paymentId - The payment the lot was granted from.
- * @param tx - The transaction holding the lock.
- * @returns The locked lot, or null if the payment opened none.
- */
-export async function lockLotByPayment(
-  paymentId: string,
-  tx: DbTx,
-): Promise<CreditLotEntity | null> {
-  const rows = await tx
-    .select()
-    .from(creditLots)
-    .where(eq(creditLots.sourceId, paymentId))
-    .for("update");
-  return rows[0] ? toLotEntity(rows[0]) : null;
+  return rows[0] ?? null;
 }
 
 /**
@@ -732,6 +695,21 @@ export async function sumGrantedForUser(userId: string): Promise<string> {
 }
 
 /**
+ * Credits an account still holds across its live lots: active and under
+ * refund (`HELD_LIFECYCLES`), which is the figure the credits overlay totals and a purchase
+ * confirmation states (inner#1993 §3.3 `accounts`).
+ * @param userId - The account.
+ * @returns The sum as decimal text.
+ */
+export async function sumHeldForUser(userId: string): Promise<string> {
+  const rows = await db
+    .select({ total: sql<string>`COALESCE(SUM(${creditLots.remainingCredits}), 0)::text` })
+    .from(creditLots)
+    .where(and(eq(creditLots.userId, userId), inArray(creditLots.lifecycle, HELD_LIFECYCLES), isNull(creditLots.deletedAt)));
+  return rows[0]?.total ?? "0";
+}
+
+/**
  * What one account has under refund, in `numeric`.
  *
  * The two in-flight lifecycles only. A `refunded` lot is no longer held — the
@@ -1098,19 +1076,19 @@ export async function listLotsByUser(
   const rows = await db
     .select({
       lot: creditLots,
-      // What the buyer paid for it, tax included, which lives on the payment
-      // rather than the lot. Working it back from the credit count would not
-      // do: the price table gets replaced, and an old lot was bought at the
-      // price of its own day.
+      // What the buyer paid for it, tax included, which lives on the payment's
+      // receipt rather than the lot. Working it back from the credit count
+      // would not do: the price table gets replaced, and an old lot was bought
+      // at the price of its own day. The receipt is the product's own copy
+      // (inner#1993 §4.2), so this list reads the same while the billing
+      // service is down.
       //
       // `total_cents` is what Stripe worked out and is the figure the purchase
-      // history prints; a lot only exists on a purchase that landed, so it is
-      // set by the same statement that settled the payment. The face value
-      // stands in for the rare session Stripe gave no total for — and reading
-      // the face value everywhere is what made the same purchase show one
-      // figure here and another in the history.
-      paidCents: sql<number | null>`coalesce(${payments.totalCents}, ${payments.amountCents})`,
-      currency: payments.currency,
+      // history prints. The face value stands in for the rare session Stripe
+      // gave no total for — and reading the face value everywhere is what made
+      // the same purchase show one figure here and another in the history.
+      paidCents: sql<number | null>`coalesce(${paymentReceipts.totalCents}, ${paymentReceipts.amountCents})`,
+      currency: paymentReceipts.currency,
       // A studio that is gone holds nothing: the moment it is deleted its
       // projects stop working, so a purchase pointed at it is pointed
       // nowhere. Both columns answer that way, which is the same answer
@@ -1132,16 +1110,8 @@ export async function listLotsByUser(
       // Both ways of drawing on it count — a generation and the repayment of
       // a studio's debt — which is what `SPENDING_ENTRY_TYPES` names.
       // Served by `credit_ledger_lot_idx`.
-      everSpent: sql<boolean>`EXISTS (
-        SELECT 1 FROM ${creditLedger}
-        WHERE ${creditLedger.lotId} = ${creditLots.id}
-          AND ${inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES)}
-      )`,
-      everRestored: sql<boolean>`EXISTS (
-        SELECT 1 FROM ${creditLedger}
-        WHERE ${creditLedger.lotId} = ${creditLots.id}
-          AND ${creditLedger.entryType} = 'refund_reversed'
-      )`,
+      everSpent: everSpentSql(),
+      everRestored: everRestoredSql(),
       // What the caller's cursor is built from. The mapped `Date` beside it
       // has already lost the microseconds this column keeps.
       cursorAt: sql<string>`${creditLots.createdAt}::text`,
@@ -1151,7 +1121,7 @@ export async function listLotsByUser(
     // inward left every granted lot off this list: the credits counted
     // towards what the account holds and appeared on no screen that could
     // act on them.
-    .leftJoin(payments, eq(payments.id, creditLots.sourceId))
+    .leftJoin(paymentReceipts, eq(paymentReceipts.id, creditLots.sourceId))
     .leftJoin(studios, eq(studios.id, creditLots.designatedStudioId))
     .where(
       and(
@@ -1184,6 +1154,176 @@ export async function listLotsByUser(
     everRestored: row.everRestored,
     cursorAt: row.cursorAt,
   }));
+}
+
+/**
+ * The enclosing row's lot id, table-qualified. Drizzle drops the table name
+ * from columns of a single-table select, and inside a subquery on
+ * `credit_ledger` a bare `id` would resolve to the ledger's own id.
+ */
+const OUTER_LOT_ID = sql`${creditLots}.${sql.identifier("id")}`;
+
+/**
+ * Whether anything was ever drawn from the lot in the enclosing row, as a
+ * correlated `EXISTS`; served by `credit_ledger_lot_idx`.
+ * @returns The SQL fragment.
+ */
+function everSpentSql(): SQL<boolean> {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM ${creditLedger}
+    WHERE ${creditLedger.lotId} = ${OUTER_LOT_ID}
+      AND ${inArray(creditLedger.entryType, SPENDING_ENTRY_TYPES)}
+  )`;
+}
+
+/**
+ * Whether credits were ever restored to the lot in the enclosing row after a
+ * refund failed, as a correlated `EXISTS`.
+ * @returns The SQL fragment.
+ */
+function everRestoredSql(): SQL<boolean> {
+  return sql<boolean>`EXISTS (
+    SELECT 1 FROM ${creditLedger}
+    WHERE ${creditLedger.lotId} = ${OUTER_LOT_ID}
+      AND ${creditLedger.entryType} = 'refund_reversed'
+  )`;
+}
+
+/** One live lot's facts a refund decision reads (inner#1993 §3.3 `refund-lots/facts`). */
+export interface LotRefundFactsRow extends CreditLotEntity {
+  refundRequestedAt: Date | null;
+  ledgerSum: string;
+  everSpent: boolean;
+  everRestored: boolean;
+  designated: boolean;
+}
+
+/**
+ * Read many live lots' refund facts at once; ids of deleted or unknown lots
+ * are left out.
+ * @param lotIds - The lots.
+ * @returns One row per live lot, in no particular order.
+ */
+export async function readLotRefundFacts(lotIds: string[]): Promise<LotRefundFactsRow[]> {
+  if (lotIds.length === 0) return [];
+  const rows = await db
+    .select({
+      lot: creditLots,
+      ledgerSum: sql<string>`(SELECT COALESCE(SUM(${creditLedger.amount}), 0)::text FROM ${creditLedger} WHERE ${creditLedger.lotId} = ${OUTER_LOT_ID})`,
+      everSpent: everSpentSql(),
+      everRestored: everRestoredSql(),
+    })
+    .from(creditLots)
+    .where(and(inArray(creditLots.id, lotIds), isNull(creditLots.deletedAt)));
+  return rows.map((row) => ({
+    ...toLotEntity(row.lot),
+    refundRequestedAt: row.lot.refundRequestedAt,
+    ledgerSum: row.ledgerSum,
+    everSpent: row.everSpent,
+    everRestored: row.everRestored,
+    designated: row.lot.designatedStudioId !== null,
+  }));
+}
+
+/**
+ * The bought lots the daily lot-mirror reconcile resends (inner#1993 §5.4):
+ * those that changed within the window, whatever their lifecycle. Every
+ * lifecycle move sets `updated_at`, so a delivery that may have been lost is
+ * always inside it; a lot in a final state that reached the mirror long ago
+ * changes nothing there and is not sent again. Soft-deleted lots are
+ * included; the billing service mirrors them too.
+ * @param windowDays - How far back a lot must have changed.
+ * @returns Their ids, oldest first.
+ */
+export async function listLotIdsForMirror(windowDays: number): Promise<string[]> {
+  const rows = await db
+    .select({ id: creditLots.id })
+    .from(creditLots)
+    .where(
+      and(
+        eq(creditLots.sourceKind, "payment"),
+        sql`${creditLots.updatedAt} > now() - make_interval(days => ${windowDays})`,
+      ),
+    )
+    .orderBy(asc(creditLots.createdAt), asc(creditLots.id));
+  return rows.map((r) => r.id);
+}
+
+/** One row of the product's half of purchase history. */
+export interface LotHistoryRow {
+  /** The payment's id for a bought lot, the lot's own id otherwise. */
+  rowId: string;
+  sourceKind: string;
+  sourceId: string;
+  /** Set on a bought lot only. */
+  paymentId: string | null;
+  amountCents: number | null;
+  taxCents: number | null;
+  totalCents: number | null;
+  currency: string;
+  creditsGranted: string;
+  /** Null for a completed payment with no live lot. */
+  remainingCredits: string | null;
+  /** Null for a completed payment with no live lot. */
+  lifecycle: string | null;
+  designatedStudioId: string | null;
+  designatedStudioName: string | null;
+  /** When the lot was ordered (bought) or granted. */
+  createdAt: Date;
+  /** The same instant as a keyset position (`KEYSET_INSTANT`). */
+  cursorAt: string;
+}
+
+/**
+ * The product's half of purchase history (inner#1993 §3.2 #5): one account's
+ * live lots and its payment receipts, full-joined, newest first. A bought lot
+ * is dated by its order and carries its receipt; a receipt with no live lot
+ * (a soft-deleted lot, or a payment that never opened one) comes back on its
+ * own, as the in-product history did. The billing service answers the other
+ * half, the payments the product has no receipt for, on the same keyset.
+ *
+ * Each side is narrowed to the account before the join: a predicate above a
+ * full join names neither side alone, so Postgres would read both tables
+ * whole.
+ * @param userId - Whose history.
+ * @param limit - The page size; one more row is read to tell whether more exist.
+ * @param cursor - The previous page's last `(cursorAt, rowId)`.
+ * @returns Up to `limit + 1` rows.
+ */
+export async function listLotHistory(
+  userId: string,
+  limit: number,
+  cursor: { createdAt: string; id: string } | null,
+): Promise<LotHistoryRow[]> {
+  const myLots = db.select().from(creditLots).where(and(eq(creditLots.userId, userId), isNull(creditLots.deletedAt))).as("my_lots");
+  const myReceipts = db.select().from(paymentReceipts).where(eq(paymentReceipts.userId, userId)).as("my_receipts");
+  const rowAt = sql`COALESCE(${myReceipts.orderedAt}, ${myLots.createdAt})`;
+  const rowId = sql`COALESCE(${myReceipts.id}, ${myLots.id})`;
+  const liveStudio = sql`CASE WHEN ${studios.deletedAt} IS NULL THEN`;
+  return db
+    .select({
+      rowId: sql<string>`${rowId}`,
+      sourceKind: sql<string>`COALESCE(${myLots.sourceKind}, ${myReceipts.sourceKind})`,
+      sourceId: sql<string>`COALESCE(${myLots.sourceId}, ${myReceipts.id})`,
+      paymentId: myReceipts.id,
+      amountCents: myReceipts.amountCents,
+      taxCents: myReceipts.taxCents,
+      totalCents: myReceipts.totalCents,
+      currency: sql<string>`COALESCE(${myReceipts.currency}, 'usd')`,
+      creditsGranted: sql<string>`COALESCE(${myLots.purchasedCredits}, ${myReceipts.creditsGranted})::text`,
+      remainingCredits: sql<string | null>`${myLots.remainingCredits}::text`,
+      lifecycle: sql<string | null>`${myLots.lifecycle}`,
+      designatedStudioId: sql<string | null>`${liveStudio} ${studios.id} ELSE NULL END`,
+      designatedStudioName: sql<string | null>`${liveStudio} ${studios.name} ELSE NULL END`,
+      createdAt: sql`${rowAt}`.mapWith(creditLots.createdAt),
+      cursorAt: sql<string>`to_char(${rowAt} AT TIME ZONE 'UTC', 'YYYY-MM-DD HH24:MI:SS.US"+00"')`,
+    })
+    .from(myLots)
+    .fullJoin(myReceipts, eq(myReceipts.id, myLots.sourceId))
+    .leftJoin(studios, eq(studios.id, myLots.designatedStudioId))
+    .where(cursor === null ? undefined : sql`(${rowAt}, ${rowId}) < (${cursor.createdAt}::timestamptz, ${cursor.id}::uuid)`)
+    .orderBy(sql`${rowAt} DESC`, sql`${rowId} DESC`)
+    .limit(limit + 1);
 }
 
 /** One lot a studio holds, with the buyer's display name. */
@@ -1638,16 +1778,3 @@ export async function sumSpendableByStudio(userId: string): Promise<
     }));
 }
 
-/**
- * Read one lot by id, without locking it.
- * @param lotId - The lot to read.
- * @returns The lot, or null if there is no live row with that id.
- */
-export async function findLotById(lotId: string): Promise<CreditLotEntity | null> {
-  const rows = await db
-    .select()
-    .from(creditLots)
-    .where(and(eq(creditLots.id, lotId), isNull(creditLots.deletedAt)))
-    .limit(1);
-  return rows[0] ? toLotEntity(rows[0]) : null;
-}

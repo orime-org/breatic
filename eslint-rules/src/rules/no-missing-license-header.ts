@@ -3,14 +3,17 @@
 import { type TSESLint, type TSESTree } from "@typescript-eslint/utils";
 import { createRule } from "#rules/create-rule";
 
-/** The copyright line, which must be the file's first line. */
+/** This repository's copyright line, which must be the file's first line. */
 const COPYRIGHT_LINE = "// Copyright (c) 2026 Orime, Inc.";
 
 /** The licence line, which must directly follow the copyright line. */
 const SPDX_LINE = "// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0";
 
-/** What a file missing the header gets prepended, blank line included. */
-const HEADER = `${COPYRIGHT_LINE}\n${SPDX_LINE}\n\n`;
+/** The two header lines a repository that reuses the rule under other terms names. */
+interface HeaderOptions {
+  copyright?: string;
+  licence?: string;
+}
 
 /**
  * A line that is header material, whether or not it is the right one.
@@ -58,7 +61,7 @@ function staleHeaderLines(lines: readonly string[]): number {
  * second copy in a script would drift, and nothing would report the drift
  * until a file was found carrying the wrong licence.
  */
-export const noMissingLicenseHeader = createRule<[], "missingHeader">({
+export const noMissingLicenseHeader = createRule<[HeaderOptions], "missingHeader">({
   name: "no-missing-license-header",
   meta: {
     type: "problem",
@@ -66,14 +69,22 @@ export const noMissingLicenseHeader = createRule<[], "missingHeader">({
       description: "First-party source files start with the SPDX header",
     },
     fixable: "code",
-    schema: [],
+    schema: [
+      {
+        type: "object",
+        properties: { copyright: { type: "string" }, licence: { type: "string" } },
+        additionalProperties: false,
+      },
+    ],
     messages: {
       missingHeader:
         "Missing the SPDX header. Every first-party source file opens with the copyright and licence lines — run `eslint --fix` to insert them.",
     },
   },
-  defaultOptions: [],
-  create(context) {
+  defaultOptions: [{}],
+  create(context, [options]) {
+    const copyrightLine = options.copyright ?? COPYRIGHT_LINE;
+    const spdxLine = options.licence ?? SPDX_LINE;
     return {
       /**
        * Checks the first two lines of the file.
@@ -82,21 +93,21 @@ export const noMissingLicenseHeader = createRule<[], "missingHeader">({
       Program(node: TSESTree.Program): void {
         const lines = context.sourceCode.getLines();
         const [first, second] = lines;
-        if (first === COPYRIGHT_LINE && second === SPDX_LINE) return;
+        if (first === copyrightLine && second === spdxLine) return;
 
         const stale = staleHeaderLines(lines);
         context.report({
           node,
           messageId: "missingHeader",
           fix: (fixer: TSESLint.RuleFixer): TSESLint.RuleFix => {
-            if (stale === 0) return fixer.insertTextBeforeRange([0, 0], HEADER);
+            if (stale === 0) return fixer.insertTextBeforeRange([0, 0], `${copyrightLine}\n${spdxLine}\n\n`);
             const end = context.sourceCode.getIndexFromLoc({
               line: stale,
               column: lines[stale - 1]?.length ?? 0,
             });
             return fixer.replaceTextRange(
               [0, end],
-              `${COPYRIGHT_LINE}\n${SPDX_LINE}`,
+              `${copyrightLine}\n${spdxLine}`,
             );
           },
         });
