@@ -1474,8 +1474,8 @@ export function renderProductGuide(): string {
       "only when one does. A template applied from the panel and a proposal both arrive this way: notes where " +
       "something comes first, and every node they wire into the reference list @'d. A template applied from the " +
       "panel also carries ✏️ marks, in its prompts and in its text node's words; a proposal arrives with its " +
-      "prompts, and the words of every text node it connects to a generation, already written, so only a text " +
-      "node standing on its own may carry ✏️ marks left for the user. A 📎 mark in " +
+      "prompts, and the words of every text node it @s in a prompt or a lyrics box, already written, so only a " +
+      "text node @'d nowhere may carry ✏️ marks left for the user. A 📎 mark in " +
       "square brackets, where a prompt carries one, asks the user to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the user can write; they replace it with their own. An orange " +

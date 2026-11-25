@@ -677,8 +677,8 @@ describe("what the guide says", () => {
   it("says a template from the panel and a proposal @ the nodes they wire into the reference list, and nothing in a slot", () => {
     const cards = section("Proposal cards");
     expect(cards).toMatch(/A template applied from the panel and a proposal both arrive this way: notes where something comes first, and every node they wire into the reference list @'d\./);
-    // A proposal's blanks are written before it is sent, but for a text node standing on its own (inner#1824).
-    expect(cards).toMatch(/a proposal arrives with its prompts, and the words of every text node it connects to a generation, already written, so only a text node standing on its own may carry ✏️ marks left for the user\./);
+    // A proposal's blanks are written wherever a generation sends them; a text node @'d nowhere keeps its own (inner#1824).
+    expect(cards).toMatch(/a proposal arrives with its prompts, and the words of every text node it @s in a prompt or a lyrics box, already written, so only a text node @'d nowhere may carry ✏️ marks left for the user\./);
     expect(cards).not.toMatch(/a 📎 mark is left only where/);
   });
 
