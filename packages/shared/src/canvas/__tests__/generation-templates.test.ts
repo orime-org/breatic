@@ -266,10 +266,10 @@ const ANIMATION = ['cartoon-gag', '3d-cartoon-short', 'stop-motion-short', 'anim
 const MV = ['mv-style-sheet', 'mv-performer-sheet', 'beat-synced-music-clip', 'music-first-mv', 'song-with-lyrics', 'mv-chorus-performance', 'mv-full'];
 
 /** The music video templates an image panel lists. */
-const MV_IMAGES = ['mv-style-sheet', 'mv-performer-sheet'];
+const MV_IMAGES = ['mv-style-sheet', 'mv-performer-sheet', 'mv-full'];
 
 /** The music video templates a video panel lists. */
-const MV_VIDEOS = ['beat-synced-music-clip', 'music-first-mv', 'mv-chorus-performance', 'mv-full'];
+const MV_VIDEOS = ['beat-synced-music-clip', 'music-first-mv', 'mv-chorus-performance'];
 
 /** The e-commerce ad templates (inner#1811), in registry order. */
 const ECOMMERCE = [
@@ -727,9 +727,9 @@ describe('generation templates', () => {
         look: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
       },
       'mv-full': {
-        result: H3_15,
+        result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
         style: { type: 'image', mode: 't2i', model: GPT_T2I, params: { aspect_ratio: '16:9' } },
-        'performer-sheet': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        'section-1': H3_15,
         'section-2': H3_15,
         'section-3': H3_15,
         'section-4': H3_15,
@@ -1836,21 +1836,29 @@ describe('music video templates (inner#1826)', () => {
     expect(chorus.inputs).toEqual([{ key: 'performer', type: 'image', feeds: ['look'] }, { key: 'chorus', type: 'audio', into: 'audio' }]);
   });
 
-  it('wires the style board and the performer sheet into every section of the full video, the style board into the sheet and each section into the next', () => {
+  it('keeps every generated video taken into an H3 pool at 14 seconds or less, as H3 runs a little over its duration and takes a reference video of at most 15', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      const nodes = new Map(generateNodes(template).map((node) => [node.key, node]));
+      for (const edge of template.edges) {
+        const from = nodes.get(edge.from);
+        if (edge.into !== 'pool' || from?.type !== 'video' || nodes.get(edge.to)?.model !== 'minimax-h3-reference-to-video') continue;
+        expect(from.params.duration, `${template.id} ${edge.from} > ${edge.to}`).toBeLessThanOrEqual(14);
+      }
+    }
+  });
+
+  it('anchors the full video on the performer sheet and wires it and the style board into every section, no section into another', () => {
     const full = mv('mv-full');
-    const sections = ['result', 'section-2', 'section-3', 'section-4'];
+    const sections = ['section-1', 'section-2', 'section-3', 'section-4'];
     const key = (edge: GenerationTemplate['edges'][number]): string => `${edge.from}>${edge.to}>${String(edge.into)}`;
     expect(full.edges.map(key).sort()).toEqual(
       [
-        { from: 'style', to: 'performer-sheet', into: 'pool' },
+        { from: 'style', to: 'result', into: 'pool' },
         ...sections.map((to) => ({ from: 'style', to, into: 'pool' })),
-        ...sections.map((to) => ({ from: 'performer-sheet', to, into: 'pool' })),
-        { from: 'result', to: 'section-2', into: 'pool' },
-        { from: 'section-2', to: 'section-3', into: 'pool' },
-        { from: 'section-3', to: 'section-4', into: 'pool' },
+        ...sections.map((to) => ({ from: 'result', to, into: 'pool' })),
       ].map(key).sort(),
     );
-    expect(full.inputs).toEqual([{ key: 'performer', type: 'image', feeds: ['performer-sheet'] }]);
+    expect(full.inputs).toEqual([{ key: 'performer', type: 'image' }]);
     expect(full.steps).toEqual(['trim', 'more', 'join']);
   });
 });
