@@ -251,6 +251,13 @@ describe("planned startup facts preserve unknown consumption, with only the cont
     expect(storage.get("job")).toMatchObject({ request: PLAN, startFacts: { ...NO_START_FACTS, startRequested: true, startResolved: true, runningObserved: true, runDispatchAttempted: true } });
   });
 
+  // Across the Durable Object RPC boundary only the error's name and message survive, and the route answers 503 by name.
+  it("names a run the container would not take JobStartFailed, so the route still answers 503 after RPC", async () => {
+    const { object } = owner(false);
+    runtime.fetchStatus = 503;
+    await expect(object.submit(PLAN)).rejects.toMatchObject({ name: "JobStartFailed" });
+  });
+
   it("retains the accepted request when outbound setup fails before any start call", async () => {
     const { object, storage } = owner(false);
     runtime.outboundError = new Error("outbound capability setup failed");
