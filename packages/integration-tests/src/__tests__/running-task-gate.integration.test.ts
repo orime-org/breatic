@@ -46,7 +46,7 @@ import { join } from "node:path";
 import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
-import { canvasSpaceDocName, threeDSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
+import { canvasSpaceDocName, threeDSpaceDocName, timelineSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
 import { createQueue, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
 import { nodeTaskService, runningSlotService, sceneTaskService, taskService, type TimelineExecutionJobData, timelineExecutionRepo } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
@@ -317,9 +317,10 @@ async function holdings(taskId: string): Promise<{ credit: { status: string; exp
  * @param p - Whose.
  * @param state - Where it starts.
  * @param deadlineAt - Its deadline; two hours on by default.
+ * @param origin - Which Space type it belongs to, whose document its changes are told to; Motion by default.
  * @returns Its id.
  */
-async function execution(p: Person, state: "awaiting_landing" | "queued" | "running" | "cancelling", deadlineAt = new Date(Date.now() + 2 * 3_600_000)): Promise<string> {
+async function execution(p: Person, state: "awaiting_landing" | "queued" | "running" | "cancelling", deadlineAt = new Date(Date.now() + 2 * 3_600_000), origin: "web_animation_space" | "timeline" = "web_animation_space"): Promise<string> {
   const row = await timelineExecutionRepo.insert({
     projectId: p.projectId,
     spaceId: p.spaceId,
@@ -330,7 +331,7 @@ async function execution(p: Person, state: "awaiting_landing" | "queued" | "runn
     input: { prompt: "A red square slides in", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: `sha256:${crypto.randomUUID()}`,
     deadlineAt,
-    origin: "web_animation_space",
+    origin,
   });
   if (row === null) throw new Error("fixture execution conflicted");
   const step = async (event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<void> => {
@@ -1219,6 +1220,28 @@ describe("G a 3D Space's waiting row and a waiting Motion execution tell their S
     await running(p, 2);
     const id = await execution(p, "queued");
     const docName = webAnimationSpaceDocName(p.projectId, p.spaceId);
+    const version = spaceTasksVersion(docName);
+    const spaceSignals = await listenSpaceTaskSignals();
+    try {
+      await spaceSignals.mark();
+      const told = () => spaceSignals.read({ projectId: p.projectId, spaceId: p.spaceId, docName });
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+      expect(await pick(id, "timeline_executions")).toEqual({ started: true });
+      expect(await told()).toEqual({ doc: [version, version], meta: [] });
+    } finally {
+      await spaceSignals.stop();
+    }
+  });
+
+  it("first waiting and starting each tell the Timeline Space's document, and the old channel nothing", async () => {
+    const p = await person();
+    await running(p, 2);
+    const id = await execution(p, "queued", undefined, "timeline");
+    const docName = timelineSpaceDocName(p.projectId, p.spaceId);
     const version = spaceTasksVersion(docName);
     const spaceSignals = await listenSpaceTaskSignals();
     try {
