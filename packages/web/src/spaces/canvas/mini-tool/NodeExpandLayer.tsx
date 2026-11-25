@@ -8,7 +8,7 @@ import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canv
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';
-import { expandFillStyle } from '@web/spaces/canvas/mini-tool/ExpandFrameOverlay';
+import { checkerboardStyle } from '@web/spaces/canvas/_shared/checkerboard';
 
 interface NodeExpandLayerProps {
   /** The node this layer belongs to. */
@@ -50,7 +50,7 @@ export function NodeExpandLayer({ nodeId, wrapper }: NodeExpandLayerProps): Reac
     <div
       data-testid='mini-tool-expand-cover'
       className='pointer-events-none absolute'
-      style={{ left: at.x, top: at.y, width: box.width, height: box.height, ...expandFillStyle(handleScale(zoom), { x: 0, y: 0 }) }}
+      style={{ left: at.x, top: at.y, width: box.width, height: box.height, ...checkerboardStyle(handleScale(zoom), { x: 0, y: 0 }) }}
     />
   );
 }
