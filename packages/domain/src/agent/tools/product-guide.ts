@@ -978,7 +978,9 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.task.kind.upload"))} with an up arrow, followed by the file's name; ` +
       `${quoted(t("canvas.task.kind.generate"))} with a sparkle, ${quoted(t("canvas.task.kind.understand"))}, ` +
       `or ${quoted(t("canvas.task.kind.transcribe"))} with a caption icon, each ` +
-      "followed by the model's name; or a tool's own icon and name, with nothing after it. At the line's right end is who started it, " +
+      "followed by the model's name; or a tool's own icon and name, with nothing after it. A video focus crop's row sits on the node " +
+      `whose panel made the crop and reads ${quoted(t("canvas.generatePanel.focusCropTag"))} with a crop icon, followed by the ` +
+      "source node's name. At the line's right end is who started it, " +
       `${quoted(t("canvas.task.you"))} for your own. A done row offers ` +
       `${quoted(t("canvas.task.action.finish"))}, which takes the row away (its result is already on the ` +
       `node); a failed one says why and offers ${quoted(t("canvas.task.action.retry"))} for an upload still at ` +
@@ -1234,8 +1236,16 @@ export function renderProductGuide(): string {
       `it while a cut lies past the updated video's end shows ${quoted(t("canvas.miniTool.videoUI.settingsOutOfRange"))} and ` +
       "marks that cut's row red; move or remove the cut, then press it again.",
     `While a video is being prepared, its tools show ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} and ` +
-      "cannot run yet; the node plays the original meanwhile when the browser can. If preparing fails for a reason " +
-      `that may pass, the panel shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))} with ` +
+      "cannot run yet; the node plays the original meanwhile when the browser can, and otherwise shows its cover with " +
+      `${quoted(t("canvas.miniTool.videoUI.preparingVideo"))}. The node shows a preparation failure itself too, with the same ` +
+      "words and Retry as the panel, and a prepared video whose playback cannot load shows " +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
+      `A tool panel's heading says how many outputs a run makes, such as ${quoted(t("canvas.miniTool.videoUI.outputCount", { count: 3 }))}; ` +
+      `a time that cannot be read shows ${quoted(t("canvas.miniTool.videoUI.invalidNumber"))} and the tool cannot run until it is fixed; ` +
+      `while the connection is lost the panel says ${quoted(t("canvas.miniTool.videoUI.connectionUnavailable"))} and takes no edits. ` +
+      "If preparing fails for a reason " +
+      `that may pass, the panel shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))}, or ` +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} when the prepared video cannot be shown, with ` +
       `${quoted(t("canvas.task.action.retry"))}; Retry stays busy until the video's facts have refreshed, and ` +
       "closing the panel does not cancel accepted work. A video longer than can be prepared shows " +
       `${quoted(t("canvas.miniTool.videoUI.tooLongToPrepare"))} and other unusable content shows ` +
@@ -1247,18 +1257,22 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.miniTool.videoUI.currentFrameUnavailable"))} explains why Current cannot run; ` +
       `the other modes can still run. ` +
       "The current-frame mode uses the frame actually shown by the player. One preview of the selected frame fills " +
-      "the row below the modes; click it to move the player there. " +
+      "the row below the modes; click it to move the player there; if it cannot be read it shows " +
+      `${quoted(t("canvas.miniTool.videoUI.mediaError"))} with ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}. ` +
       `In ${quoted(t("canvas.miniTool.video.split.label"))}, ${quoted(t("canvas.miniTool.videoUI.detectScenes"))} ` +
       `finds candidate cut points within this same tool; after a detection the button reads ${quoted(t("canvas.miniTool.videoUI.detectAgain"))}, and a detection that failed shows ` +
       `${quoted(t("canvas.miniTool.videoUI.detectionError"))} with ${quoted(t("canvas.task.action.retry"))}, which detects again. Below the button, once the video's frames are read, each cut is a numbered ` +
       "handle on the filmstrip: drag it, or click it and move it one frame with the arrow keys or remove it with Delete; " +
-      "clicking the strip elsewhere moves the player there. Under the strip a line counts the cut points and segments, " +
+      "clicking the strip elsewhere moves the player there. With no cuts the panel says " +
+      `${quoted(t("canvas.miniTool.videoUI.noCuts"))} A detection that finishes after the cuts were edited leaves the edit ` +
+      `as it is and says ${quoted(t("canvas.miniTool.videoUI.detectionSuperseded"))} ` +
+      "Under the strip a line counts the cut points and segments, " +
       `${quoted(t("canvas.miniTool.videoUI.atCursor"))} adds a cut at the player cursor (greyed where one already is), each cut's ` +
       "seconds can be edited in its own numbered row, and the bin beside a cut removes it. A bar below has one numbered " +
       "button per segment, as wide as its share of the video; clicking one plays exactly that segment in the node's player, " +
       `with ${quoted(t("canvas.miniTool.videoUI.stopPreview"))} beside its range while it plays. ` +
       "The segment count reflects the complete split plan" + splitLimit() + ". " +
-      `A failed preview offers ${quoted(t("canvas.miniTool.videoUI.retryPreview"))}.`,
+      `A segment that cannot play says ${quoted(t("canvas.miniTool.videoUI.mediaError"))}.`,
     "Choosing a tool opens its panel under the node, in the place the generation panel opens; the two never show " +
       "together. The panel is headed with the tool's name and holds that tool's settings, a box to pick a second " +
       "piece of media from the canvas when the tool needs one (picking works as in the generation panel, and a " +
@@ -1389,7 +1403,11 @@ export function renderProductGuide(): string {
       "the background from the full-quality video and uses no credits: after confirming, it waits as a card in that " +
       "strip until the frame is ready, and a message still says when it finishes into a full pool or fails, even with " +
       "the panel closed. While the video is still being prepared, the bar shows " +
-      `${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} and the crop cannot be confirmed. If the source node ` +
+      `${quoted(t("canvas.miniTool.videoUI.preparingVideo"))} in place of its timeline, and neither a ratio nor the crop can be ` +
+      `chosen; if preparing fails it shows ${quoted(t("canvas.miniTool.videoUI.preparationFailed"))} (or ` +
+      `${quoted(t("canvas.miniTool.videoUI.sourceUnavailable"))} when the video could not be read) with ` +
+      `${quoted(t("canvas.task.action.retry"))}, or ${quoted(t("canvas.miniTool.videoUI.tooLongToPrepare"))} or ` +
+      `${quoted(t("canvas.miniTool.videoUI.ledgerUnsupported"))} without it. If the source node ` +
       "is replaced, starts processing or is deleted while you crop it, the bar under it closes and a " +
       `message says what happened, such as ${quoted(t("canvas.generatePanel.focusSourceDeleted"))} Picking goes ` +
       "on: click a source node again. If the picture changed just as you pressed " +
@@ -1642,7 +1660,9 @@ export function renderProductGuide(): string {
       "Switching to another Space keeps uploading. Closing the Space while an upload runs uses the existing warning. " +
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
     "Several videos play together on one clock. " +
-      "A video still loading is noted at the top right of the preview with its track as loading, " +
+      "A video still loading is noted at the top right of the preview with its track as loading; one still being " +
+      `prepared that the browser cannot play reads ${quoted(t("canvas.miniTool.videoUI.preparingVideo"))}, and one whose ` +
+      `preparation failed says why, with ${quoted(t("timeline.retry"))} when trying again can help; ` +
       `and a video that cannot be loaded is noted there with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
       "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
       `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +

@@ -78,18 +78,12 @@ const STYLE_SET_WORDS: Readonly<Record<string, Described>> = Object.fromEntries(
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.videoUI.analysisFailed": { excluded: REASONS.SAYS_TRY_AGAIN },
-  "canvas.miniTool.videoUI.detectionSuperseded": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "canvas.miniTool.videoUI.mediaError": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.videoUI.cutPoint": { excluded: REASONS.SCREEN_READER, look: /each cut's seconds can be edited in its own numbered row/ },
-  "canvas.miniTool.videoUI.connectionUnavailable": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.miniTool.videoUI.viewerMode": { excluded: REASONS.VIEWERS_ONLY },
-  "canvas.miniTool.videoUI.outputCount": { excluded: REASONS.FILLS_A_VALUE },
   "canvas.miniTool.videoUI.removeCut": { excluded: REASONS.SCREEN_READER, look: /the bin beside a cut removes it/ },
   "canvas.miniTool.videoUI.cutSummary": { described: /a line counts the cut points and segments/ },
   "canvas.miniTool.videoUI.segmentPreview": { described: /beside its range while it plays/ },
   "canvas.miniTool.videoUI.outputCapExceeded": { described: /with more the panel says the limit in red/ },
-  "canvas.miniTool.videoUI.invalidNumber": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
-  "canvas.miniTool.videoUI.noCuts": { excluded: REASONS.SAYS_WHAT_TO_TYPE },
   "canvas.miniTool.videoUI.tooManyOutputs": { described: /one run makes up to \d+ segments/ },
   ...STYLE_SET_WORDS,
   // inner#1968: waiting for a running-task slot, and the spend-limit refusals.
@@ -291,7 +285,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.generatePanel.styleTip": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "canvas.generatePanel.focusCropExpired": { excluded: REASONS.SAYS_TRY_AGAIN },
   "canvas.generatePanel.focusCropDiscarded": { excluded: REASONS.SAYS_WHAT_HAPPENED },
-  "canvas.generatePanel.focusCropTag": { excluded: REASONS.SCREEN_READER, look: /a crop icon before the source node's name/ },
   "canvas.generatePanel.focusSourceBusy": { described: /is replaced, starts processing or is deleted while you crop it, the bar under it closes and a message says what happened/ },
   "canvas.generatePanel.focusSourceBusyByPeer": { described: /is replaced, starts processing or is deleted while you crop it, the bar under it closes and a message says what happened/ },
   "canvas.generatePanel.focusSourceDeletedByPeer": { described: /is replaced, starts processing or is deleted while you crop it, the bar under it closes and a message says what happened/ },
