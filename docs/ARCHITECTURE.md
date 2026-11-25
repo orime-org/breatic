@@ -1226,7 +1226,7 @@ Login and registration cards (including the signup-code step) show their build i
 | 环节 | 做法 |
 |---|---|
 | 进程边界 | 所有窗口 `nodeIntegration: false`、`contextIsolation: true`、`sandbox: true`;preload(`src/preload/app.ts`)只暴露 `window.breaticDesktop`(类型在 shared 的 `desktop-bridge.ts`),主进程的每个 `ipcMain.handle` 先核对调用方框架的 origin |
-| 窗口与导航 | 可开多个窗口(菜单「新建窗口」、新窗口链接);窗口内只留服务器上的应用页面(shared 的 `APP_ROUTE_PREFIXES`)和 Stripe 付款流程,服务器上的其余路径和别的地址交给系统浏览器;新窗口请求带 `download=1` 的在客户端里下载(`navigation.ts`);最后关闭的窗口的大小和位置记在数据目录的 `window-state.json` |
+| 窗口与导航 | 可开多个窗口(菜单「新建窗口」、新窗口链接);窗口内只留服务器上的应用页面(shared 的 `APP_ROUTE_PREFIXES`)和 Stripe 付款流程,服务器上的其余路径和别的地址交给系统浏览器;新窗口请求带 `download=1` 的在客户端里下载(`navigation.ts`);出错页和 404 页的「返回首页」在客户端里指向 `/studio`(web 用 `getDesktopBridge()` 判断是否在客户端里);最后关闭的窗口的大小和位置记在数据目录的 `window-state.json` |
 | 启动画面 | 本地页面(`src/splash/`),服务器还没答复时就能显示;第一个窗口首次加载结束时(最晚启动后 4 秒)关掉,至少停 1 秒,随后显示第一个窗口(`index.ts` 的 `reveal`、`splash.ts`) |
 | 连不上 | 主框架加载失败、Chromium 提交了出错页时,主进程往这个出错页写入我们的「连不上」页面(`src/unreachable/`,颜色和按钮尺寸照 web 的 `tokens.css`,`render.test.ts` 核对);自动重试从 5 秒起每次翻倍、最长 60 秒,网络恢复时立刻重试一次,用户也可以点「重试」;页面加载成功或用户离开出错页就停止并重置间隔(`unreachable.ts`) |
 | 登录 | 邮箱登录就在窗口里。Google 不让嵌入式网页登录,所以走系统浏览器:客户端生成 verifier 和它的 SHA-256(challenge),打开 `{服务器}/desktop/sign-in?challenge=…`;用户在浏览器里点「继续」后,页面 `POST /auth/desktop-handoff` 拿到绑定 challenge 的一次性码,跳到 `{协议名}://sign-in?code=…&challenge=…` 把码交回客户端;客户端窗口里的页面再带 verifier `POST /auth/desktop-exchange` 换成自己的会话(RFC 8252 加 RFC 7636)。Redis 只存码的 SHA-256,兑换用 GETDEL,第一次使用即作废;码的有效期是 `config/auth.yaml` 的 `desktop_handoff.ttl_seconds`,浏览器那次会话结束时码也失效。回跳协议名由服务端的 `DESKTOP_APP_SCHEME` 决定(合作方部署设成自己品牌的协议名),页面不用地址里带来的协议;它必须是反向域名,网站能注册的协议名启动即拒 |
