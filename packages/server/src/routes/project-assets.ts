@@ -11,7 +11,7 @@ const projectAssets = new Hono<{ Variables: AuthVariables }>();
 const projectParams = z.object({ projectId: z.uuid() });
 const assetParams = projectParams.extend({ assetId: z.uuid() });
 const mediaQuery = z.object({
-  kind: z.enum(["image", "video"]).default("video"),
+  kind: z.enum(["image", "video", "audio"]).default("video"),
   cursor: z.string().min(1).max(512).optional(),
   limit: z.coerce.number().int().positive().max(MAX_TIMELINE_ASSET_PAGE_SIZE).optional(),
 });

@@ -53,7 +53,7 @@ import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/sh
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
-import { announceDocumentUploadAsset, announceDocumentUploadFailure, documentTargetOf } from "@domain/asset/document-upload-events.js";
+import { announceSpaceUploadAsset, announceSpaceUploadFailure, spaceUploadTargetOf } from "@domain/asset/space-upload-events.js";
 import { announceFocusImage, announceFocusImageFailed, focusImageTargetOf } from "@domain/asset/focus-image-events.js";
 import { referenceUploadAsset, settleUploadTerminal, type UploadTerminal } from "@domain/asset/upload-terminal.service.js";
 import { settledUploadStatus } from "@domain/asset/upload-status.service.js";
@@ -661,17 +661,17 @@ async function recordRegisteredUploadHistory(
  * @param terminal - The result of serialized database arbitration.
  * @param sideEffects - Best-effort work whose failures the caller must log.
  * @returns The same canonical result for completions and their later replays.
- * @throws {Error} When the uploader cannot be told, or history recovery, success publication or a Document block's
+ * @throws {Error} When the uploader cannot be told, or history recovery, success publication or a Space placeholder's
  *   failure publication cannot finish; the finish runs again and tells it again.
  */
 async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}): Promise<IngestReportOutcome> {
   const { grant } = terminal;
-  const documentTarget = documentTargetOf(grant);
+  const spaceTarget = spaceUploadTargetOf(grant);
   const focusTarget = focusImageTargetOf(grant);
   if (terminal.state === "void") {
     await publishUploadEnded(grant.userId, settledUploadStatus(grant, null));
     const reason = grant.failureReason ?? "aborted";
-    if (documentTarget !== null) await announceDocumentUploadFailure(documentTarget, reason);
+    if (spaceTarget !== null) await announceSpaceUploadFailure(spaceTarget, reason);
     if (focusTarget !== null) await announceFocusImageFailed(focusTarget);
     const countsPublishFailed = await announceFailure(grant, reason);
     const scene = await settleSceneUpload(grant, { outcome: "failed", errorMessage: reason });
@@ -686,7 +686,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
     if (focusTarget !== null) await announceFocusImageFailed(focusTarget);
     return { status: "stale", ...sideEffects };
   }
-  if (documentTarget !== null) await announceDocumentUploadAsset(documentTarget, asset);
+  if (spaceTarget !== null) await announceSpaceUploadAsset(spaceTarget, asset);
   if (focusTarget !== null) await announceFocusImage(focusTarget, asset);
   const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
   const coverUrl = cover?.fileUrl ?? null;
@@ -724,7 +724,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
  * @param report - What happened to this upload.
  * @returns What was decided, for the route to answer with.
  * @throws {NotFoundError} When the key names no grant we ever issued.
- * @throws {Error} When registration, association, terminal commitment, success publication or a Document block's failure publication fails.
+ * @throws {Error} When registration, association, terminal commitment, success publication or a Space placeholder's failure publication fails.
  */
 export async function applyIngestReport(
   report: IngestReport,

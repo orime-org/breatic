@@ -49,4 +49,8 @@ export interface TimelineClientLimits {
     idleInstancesMax?: number;
   };
   preview: TimelinePreviewSyncLimits;
+  /** A new picture's and text clip's length in seconds, and a new text clip's size as a share of the frame height. */
+  media: { imageDurationSeconds: number; textDurationSeconds: number; textSize: number };
+  /** Where the preview reads the text font set: the ingest Worker's `/web-animation/fonts/v<version>/`, ending in a slash. */
+  text: { fontBaseUrl: string };
 }

@@ -10,11 +10,12 @@
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
  *   (canvas), applyFocusImageUpload (a focus crop's upload into its node, uploading then pool, #1580),
  *   applyDocumentUpload (a Document body's media upload, breatic#1574),
+ *   applyTimelineUpload (a Timeline upload clip's upload, inner#1709),
  *   applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES) or
  *   applySceneLookPicture (a 3D object's part picture)
  *
- * A change version, a Document upload and a part picture are written only into
- * a live Space document.
+ * A change version, a Document or Timeline upload and a part picture are written
+ * only into a live Space document.
  *
  * For node counts and change versions collab executes and does not judge:
  * which task moved, what the counts now are, whether a result rides along —
@@ -32,12 +33,13 @@
  * has not received yet is the hand-over record, the state vector the previous
  * holder stored; what keeps an older event from undoing a newer one is the
  * version each node carries, for other Space types the version their document
- * holds, and for a Document upload the block itself: an address once written
- * never changes and `processing` never replaces an ending (`applyDocumentUpload`); a focus crop carries a
+ * holds, and for a Document or Timeline upload the placeholder itself: an address once written
+ * never changes and `processing` never replaces an ending (`applyDocumentUpload`), and a Timeline placeholder once
+ * turned into a clip is gone, so a later event finds nothing to write (`applyTimelineUpload`); a focus crop carries a
  * version per crop, kept beside the node versions, so an older step never brings back an upload that ended.
  *
  * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts and focus crops,
- * `project-{pid}/document-{spaceId}` for Document uploads, the content
+ * `project-{pid}/document-{spaceId}` for Document uploads, `project-{pid}/timeline-{spaceId}` for Timeline uploads, the content
  * document of a Space type in `SPACE_TASKS_TYPES` for change versions and
  * `project-{pid}/3d-{spaceId}` for part pictures, one doc per Space. Any other
  * doc name is skipped.
@@ -52,7 +54,7 @@ import type {
   SceneLookSettledControlEvent, SpaceTasksVersionEvent,
 } from "@breatic/shared";
 import { applyDocumentUpload, CANVAS_NODES_KEY, documentBodyFragment, FOCUS_IMAGE_UPLOAD_EVENT_TYPE, parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
-import { applyFocusImageUpload } from "@breatic/shared/space-content";
+import { applyFocusImageUpload, applyTimelineUpload, type TimelineUploadEvent } from "@breatic/shared/space-content";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { applySpaceTasksVersion } from "@collab/services/space-tasks-version.js";
@@ -128,7 +130,8 @@ export interface TaskListenerDeps {
 }
 
 /** An event the listener writes. */
-type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | DocumentUploadEvent | FocusImageUploadEvent | SceneLookPictureEvent;
+type TaskEvent =
+  | NodeTaskCountsEvent | SpaceTasksVersionEvent | DocumentUploadEvent | TimelineUploadEvent | FocusImageUploadEvent | SceneLookPictureEvent;
 
 /** One parsed event and the stream entry it came from. */
 interface Item {
@@ -202,7 +205,7 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
 }
 
 /**
- * Read one entry as a task event: a node's counts for a canvas document, a media upload for a Document, a change
+ * Read one entry as a task event: a node's counts for a canvas document, a media upload for a Document or a Timeline, a change
  * version for a document of a Space type listed in `SPACE_TASKS_TYPES`, or a stored part picture for a 3D document.
  * @param entry - The stream entry.
  * @returns The event, or why it is skipped.
@@ -216,7 +219,7 @@ function readItem(entry: StreamEntry): TaskEvent | { skip: string } {
   }
   const type = typeof event === "object" && event !== null ? (event as { type?: unknown }).type : undefined;
   if (
-    type !== "node-task-counts" && type !== "space-tasks-version" && type !== "document-upload"
+    type !== "node-task-counts" && type !== "space-tasks-version" && type !== "document-upload" && type !== "timeline-upload"
     && type !== FOCUS_IMAGE_UPLOAD_EVENT_TYPE && type !== "scene-look-picture"
   ) {
     return { skip: "task_event_unknown_type_skipped" };
@@ -226,6 +229,7 @@ function readItem(entry: StreamEntry): TaskEvent | { skip: string } {
   const fits = parsed !== null && (
     type === "node-task-counts" || type === FOCUS_IMAGE_UPLOAD_EVENT_TYPE ? parsed.kind === "canvas"
       : type === "document-upload" ? parsed.kind === "document"
+        : type === "timeline-upload" ? parsed.kind === "timeline"
         : type === "scene-look-picture" ? parsed.kind === "3d"
           : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
   if (!fits) return { skip: "task_event_unknown_doc_skipped" };
@@ -368,6 +372,12 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
             }
             if (event.type === "document-upload") {
               applyDocumentUpload(documentBodyFragment(d), event);
+              outcomes.set(entry.id, "done");
+              continue;
+            }
+            if (event.type === "timeline-upload") {
+              // A placeholder the Timeline no longer holds takes nothing, as a Document block does.
+              applyTimelineUpload(d, event);
               outcomes.set(entry.id, "done");
               continue;
             }

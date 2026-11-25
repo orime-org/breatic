@@ -8,6 +8,7 @@ import { AppError, ForbiddenError, NotFoundError } from "@core/app-errors.js";
 import * as assetRepo from "@core/asset/asset.repo.js";
 import { decodeActivityCursor, encodeActivityCursor } from "@core/activity/project-activities.repo.js";
 import { loadProjectRole } from "@core/auth/projectAuth.service.js";
+import { env } from "@core/config/env.js";
 import { getTimelineConfig } from "@core/config/timeline.js";
 import { db, type DbTx } from "@core/db/client.js";
 import { findLiveOwnerStudioId } from "@core/project/projects.repo.js";
@@ -23,8 +24,8 @@ export interface RecordProjectAssetReferencesInput {
 /** A current member reading one Project's registered media. */
 export interface ResolveProjectAssetInput { projectId: string; assetId: string; userId: string }
 
-/** A keyset read of one Project's registered videos, or of its images when `kind` says so. */
-export interface ListProjectMediaInput { projectId: string; userId: string; kind?: "image" | "video"; cursor?: string; limit?: number }
+/** A keyset read of one Project's registered videos, or of its images or sounds when `kind` says so. */
+export interface ListProjectMediaInput { projectId: string; userId: string; kind?: "image" | "video" | "audio"; cursor?: string; limit?: number }
 
 /** Explicit media identities captured from an accepted Space or provider result. */
 export interface ReferenceRegisteredProjectMediaInput { projectId: string; assetIds?: readonly string[]; urls?: readonly string[] }
@@ -295,6 +296,13 @@ export async function getTimelineLimits(projectId: string, userId: string): Prom
       resumeSeekSeconds: config.preview.resume_seek_seconds,
       driftSteerRate: config.preview.drift_steer_rate,
     },
+    media: {
+      imageDurationSeconds: config.media.image_duration_seconds,
+      textDurationSeconds: config.media.text_duration_seconds,
+      textSize: config.media.text_size,
+    },
+    // The ingest Worker serves the font set as static files; every deployment configures this base (inner#1709 §5.3).
+    text: { fontBaseUrl: `${env.INGEST_BASE_URL}/web-animation/fonts/v${config.web_animation.font_set_version}/` },
   };
 }
 

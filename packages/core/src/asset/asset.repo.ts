@@ -493,7 +493,7 @@ export interface ProjectMediaQuery {
   studioId: string;
   assetId?: string;
   /** The kind a list reads; a read by `assetId` ignores it. Defaults to video. */
-  kind?: "image" | "video";
+  kind?: "image" | "video" | "audio";
   cursor?: ProjectAssetCursor;
   limit: number;
 }

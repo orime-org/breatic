@@ -21,6 +21,7 @@
 
 import type Redis from "ioredis";
 import type { DocumentUploadEvent, FocusImageUploadEvent, NodeEvent } from "@breatic/shared";
+import type { TimelineUploadEvent } from "@breatic/shared/space-content";
 import { env } from "@core/config/env.js";
 
 /** Approximate length cap of every stream we write, dead-letter streams included. */
@@ -73,15 +74,16 @@ export async function publishToStream(
 }
 
 /**
- * Publish a Document body upload's state for collab to write into the block (breatic#1574).
+ * Publish a Space placeholder's upload state for collab to write into it: a Document body block (breatic#1574) or a
+ * Timeline upload clip (inner#1709).
  * @param redis - Redis client for the stream DB.
  * @param event - The upload's event.
  * @returns Nothing.
  * @throws {Error} When the stream rejects the entry.
  */
-export async function publishDocumentUploadEvent(
+export async function publishSpaceUploadEvent(
   redis: Redis,
-  event: DocumentUploadEvent,
+  event: DocumentUploadEvent | TimelineUploadEvent,
 ): Promise<void> {
   await publishToStream(
     redis,

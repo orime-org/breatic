@@ -139,7 +139,7 @@ export { describeMailResult, sendMail } from "@core/infra/mailer.js";
 export { getMailLayout, type MailLayout } from "@core/config/mail.js";
 export type { MailLogCtx, MailLogLine, SendMailOptions, SendMailResult } from "@core/infra/mailer.js";
 export {
-  publishDocumentUploadEvent,
+  publishSpaceUploadEvent,
   publishFocusImageUploadEvent,
   publishNodeEvent,
   publishToStream,

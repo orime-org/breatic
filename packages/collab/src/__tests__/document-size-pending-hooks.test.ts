@@ -878,13 +878,13 @@ describe("section 7: lifecycle hooks (design 4.3)", () => {
     expect(rec(DOC)).toMatchObject({ exact: enc(doc), current: enc(doc), heldSum: 0 });
   });
 
-  it("L-01b afterLoadDocument stores a Timeline's pixel transforms as frame offsets and version 2 before recording the exact size (#1502 design §5)", async () => {
+  it("L-01b afterLoadDocument stores a Timeline's pixel transforms as frame offsets and version 3 before recording the exact size (#1502 design §5)", async () => {
     await boot();
     collabRedis.set.mockImplementation(async () => "OK");
     const doc = stored(TL, pixelTimelineDoc());
     await runLoadHook(doc);
     expect(logger.error).not.toHaveBeenCalled();
-    expect(doc.getMap("timeline").get("schemaVersion")).toBe(2);
+    expect(doc.getMap("timeline").get("schemaVersion")).toBe(3);
     expect((doc.getMap("clips").get(TIMELINE_CLIP) as Y.Map<unknown>).get("transform")).toEqual({ frameX: 0.1, frameY: -0.1, scaleX: 1, scaleY: 1, rotation: 0 });
     expect(rec(TL)).toMatchObject({ exact: enc(doc), current: enc(doc), heldSum: 0 });
   });
