@@ -3,13 +3,12 @@
 
 /**
  * Video focus crop, the bar under a source with no selected version (frames-split design §5.5 "界面状态", §7.12; test plan
- * §68.1 F04). The source video follows the one panel derivation the seven video tools use: while it is preparing the bar
+ * §68.1 F04). The source video follows the one panel derivation the video tools use: while it is preparing the bar
  * says so and Confirm cannot be pressed; a temporary failure offers the existing retry; a content failure says the video
  * cannot be used.
  *
- * The bar is told the source's state through a proposed `sourceState` prop (the derivation's own vocabulary) and
- * `onRetrySource`; the proposed test ids are listed in the report. The props are passed through a widened component type,
- * so the file typechecks while the behaviour is missing.
+ * The bar is told the source's state through its `sourceState` prop (the derivation's own vocabulary) and retries through
+ * `onRetrySource`.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,17 +16,12 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import * as React from 'react';
 
 import { FocusCropControls } from '@web/spaces/canvas/focus/FocusCropControls';
+import type { VideoToolPanelState } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { cropCanvas, draw, installLayout, type MediaNodeData } from '@web/spaces/canvas/crop/__tests__/crop-harness';
 
-type SourceState = 'waiting-presentation' | 'retryable' | 'unsupported' | 'usable';
-const Bar = FocusCropControls as unknown as React.FC<{
-  onConfirm: () => boolean;
-  onBackToPick: () => void;
-  sourceState: SourceState;
-  onRetrySource: () => void;
-  sourceReadFailed?: boolean;
-}>;
+type SourceState = VideoToolPanelState;
+const Bar = FocusCropControls;
 const VIDEO: { id: string } & MediaNodeData = { id: 'n1', kind: 'video', src: 'https://cdn/clip.mp4' };
 
 /**

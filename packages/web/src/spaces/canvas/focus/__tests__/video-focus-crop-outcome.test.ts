@@ -7,9 +7,6 @@
  * request under its own run-once intent, and the placeholder stays until this browser sees the crop end: an admission
  * refusal or a released press removes it right away; otherwise the canvas layer settles it from the panel node's task row
  * (R) and the result marker (M) by the §7.18 table.
- *
- * Names the design does not fix are proposed here and read through a cast of the real module, so the file typechecks
- * while the behaviour is missing: `runVideoFocusCrop(press)` and `videoFocusCropSettlement(read)` in `run-focus-crop.ts`.
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -21,7 +18,15 @@ import { miniToolsApi } from '@web/data/api/mini-tools';
 import { ApiException } from '@web/data/api/types';
 import { toast } from '@web/lib/toast';
 import type { CropRect } from '@web/lib/crop-math';
-import * as runFocusCrop from '@web/spaces/canvas/focus/run-focus-crop';
+import {
+  runVideoFocusCrop,
+  videoFocusCropRowOf,
+  videoFocusCropSettlement,
+  type VideoFocusCropPress,
+  type VideoFocusCropRead as SettlementRead,
+  type VideoFocusCropRow as RowEntry,
+  type VideoFocusCropSettlement as Settlement,
+} from '@web/spaces/canvas/focus/run-focus-crop';
 import { canvasSessions } from '@web/stores/canvas-session';
 import { getRunning, resetRunOnceForTests, spaceTaskIntent, type RunOnceOutcome } from '@web/stores/task-actions-in-flight';
 
@@ -41,53 +46,16 @@ const CROP: CropRect = { x: 480, y: 270, width: 960, height: 540 };
 const STARTED = Date.parse('2026-11-19T10:00:00.000Z');
 const BUDGET = 2 * 60 * 60 * 1000;
 
-/** What one confirmed video marquee hands the press (proposed `VideoFocusCropPress`). */
-interface VideoFocusCropPress {
-  projectId: string;
-  spaceId: string;
-  panelNodeId: string;
-  source: VideoToolSourceRef;
-  sourceName: string;
-  presentationRef: MiniToolPresentationRef;
-  frameIndex: number;
-  crop: CropRect;
-}
 type Answer = ApiModule.MiniToolPlannedRunAnswer;
 
-/** What the canvas layer read for one placeholder (proposed input of `videoFocusCropSettlement`). */
-interface SettlementRead {
-  /** The panel node's task row whose taskId is the run_id: `admitting` before the press is answered, `cleared` when absent after admission. */
-  row: 'admitting' | 'cleared' | { status: 'running' | 'done' | 'failed' | 'expired'; startedAt: string; budgetMs: number; errorMessage: string | null };
-  /** `focusCropOutcomes[run_id]`, absent until collab handled the append. */
-  outcome: 'added' | 'refused' | undefined;
-  /** Wall clock, ms. */
-  now: number;
-}
-/** The task-list entry fields the canvas layer reads a row from. */
-interface RowEntry { status: 'running' | 'done' | 'failed' | 'expired'; startedAt: string; budgetMs: number; errorMessage: string | null }
-/** What the canvas layer does with the placeholder. */
-interface Settlement {
-  placeholder: 'keep' | 'remove';
-  toast: null | 'referencePoolFull' | 'error';
-  /** When a done row without its marker must be read again (its startedAt + budgetMs); null otherwise. */
-  recheckAt: number | null;
-}
-
-const api = runFocusCrop as unknown as {
-  runVideoFocusCrop?: (press: VideoFocusCropPress) => Promise<RunOnceOutcome<Answer>>;
-  videoFocusCropSettlement?: (read: SettlementRead) => Settlement;
-  videoFocusCropRowOf?: (entry: RowEntry | undefined) => SettlementRead['row'];
-};
 
 /**
  * Press confirm once.
  * @param over - Fields to change.
  * @returns The press outcome.
- * @throws {Error} When the press does not exist yet.
  */
 function pressConfirm(over: Partial<VideoFocusCropPress> = {}): Promise<RunOnceOutcome<Answer>> {
-  if (typeof api.runVideoFocusCrop !== 'function') throw new Error('run-focus-crop exports no runVideoFocusCrop');
-  return api.runVideoFocusCrop({ projectId: PROJECT, spaceId: SPACE, panelNodeId: PANEL, source: SOURCE, sourceName: 'Clip 7',
+  return runVideoFocusCrop({ projectId: PROJECT, spaceId: SPACE, panelNodeId: PANEL, source: SOURCE, sourceName: 'Clip 7',
     presentationRef: PRESENTATION_REF, frameIndex: 42, crop: CROP, ...over });
 }
 
@@ -95,11 +63,9 @@ function pressConfirm(over: Partial<VideoFocusCropPress> = {}): Promise<RunOnceO
  * Settle one read.
  * @param read - What was read.
  * @returns The settlement.
- * @throws {Error} When the derivation does not exist yet.
  */
 function settle(read: SettlementRead): Settlement {
-  if (typeof api.videoFocusCropSettlement !== 'function') throw new Error('run-focus-crop exports no videoFocusCropSettlement');
-  return api.videoFocusCropSettlement(read);
+  return videoFocusCropSettlement(read);
 }
 
 /**
@@ -258,11 +224,9 @@ describe('F14: the row the canvas layer reads from the panel node\'s task list (
    * Read one entry.
    * @param entry - The run's task-list entry, or none.
    * @returns The row.
-   * @throws {Error} When the reader does not exist yet.
    */
   function rowOf(entry: RowEntry | undefined): SettlementRead['row'] {
-    if (typeof api.videoFocusCropRowOf !== 'function') throw new Error('run-focus-crop exports no videoFocusCropRowOf');
-    return api.videoFocusCropRowOf(entry);
+    return videoFocusCropRowOf(entry);
   }
 
   it('F14: carries the row\'s failure reason, so a cancel is told apart from a failure', () => {

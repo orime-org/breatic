@@ -5,21 +5,18 @@
  * Video focus crop, the press side (frames-split design §5.5 "受理", "计划形状", "登记", "测试"; test plan §68.1).
  * A confirmed video marquee is no longer exported in the browser: it becomes one planned `video.focus-crop` request whose
  * only output is the panel node, framed in the selected version's display geometry (`P.display`).
- *
- * The names this file calls that do not exist yet are read through a cast of the real module, so the file typechecks
- * while the behaviour is missing and the failure names the missing function.
  */
 
 import { describe, expect, it } from 'vitest';
 import { MAX_FOCUS_NAME } from '@web/data/focus-images';
 import { toNaturalCrop, type CropRect } from '@web/lib/crop-math';
-import * as cropSource from '@web/spaces/canvas/focus/crop-source';
-import * as runFocusCrop from '@web/spaces/canvas/focus/run-focus-crop';
-import * as taskRowKindModule from '@web/spaces/canvas/tasks/task-row-kind';
-import * as sharedMiniTools from '@breatic/shared/mini-tools';
+import { intrinsicSize } from '@web/spaces/canvas/focus/crop-source';
+import { videoFocusCropRequest, type VideoFocusCropPress } from '@web/spaces/canvas/focus/run-focus-crop';
+import { taskRowKind } from '@web/spaces/canvas/tasks/task-row-kind';
 import {
   VIDEO_TOOL_IDS,
   miniToolPlannedRequestSchema,
+  miniToolTaskType,
   miniToolsFor,
   type MiniToolPlannedRequest,
   type MiniToolPresentationRef,
@@ -39,37 +36,6 @@ const SOURCE: VideoToolSourceRef = {
 const PRESENTATION_REF: MiniToolPresentationRef = { source: { toolInputId: 'd'.repeat(64), planSha256: 'f'.repeat(64) } };
 const CROP: CropRect = { x: 480, y: 270, width: 960, height: 540 };
 
-/** What one confirmed video marquee hands the press (proposed `VideoFocusCropPress`). */
-interface VideoFocusCropPress {
-  projectId: string;
-  spaceId: string;
-  panelNodeId: string;
-  source: VideoToolSourceRef;
-  sourceName: string;
-  presentationRef: MiniToolPresentationRef;
-  frameIndex: number;
-  crop: CropRect;
-}
-
-/** The proposed request builder in `run-focus-crop.ts`. */
-const press = runFocusCrop as unknown as {
-  videoFocusCropRequest?: (press: VideoFocusCropPress, runId: string) => MiniToolPlannedRequest;
-};
-/** The proposed shared task-type rule (`miniToolTaskType` in `tools.ts`, design §5.5 "计划形状"). */
-const shared = sharedMiniTools as unknown as { miniToolTaskType?: (tool: string) => 'image' | 'video' };
-/** `intrinsicSize` taking the selected version's display size (design §10.12 crop-source row). */
-const crop = cropSource as unknown as {
-  intrinsicSize: (el: HTMLVideoElement, display?: { width: number; height: number }) => { width: number; height: number };
-};
-/** `taskRowKind` reading the frozen source name a focus-crop row carries (design §10.12 task-row-kind row). */
-const rowKind = taskRowKindModule as unknown as {
-  taskRowKind: (
-    entry: { action: 'mini_tool'; label: string; sourceName?: string | null },
-    t: (key: string) => string,
-    displayNameOf: (id: string) => string | null,
-  ) => { label: string; detail: string | null };
-};
-
 /**
  * The press for one marquee.
  * @param over - Fields to change.
@@ -81,14 +47,12 @@ function pressOf(over: Partial<VideoFocusCropPress> = {}): VideoFocusCropPress {
 }
 
 /**
- * Build the request through the proposed builder.
+ * Build the request for one marquee.
  * @param over - Fields to change.
  * @returns The request.
- * @throws {Error} When the builder does not exist yet.
  */
 function requestOf(over: Partial<VideoFocusCropPress> = {}): MiniToolPlannedRequest {
-  if (typeof press.videoFocusCropRequest !== 'function') throw new Error('run-focus-crop exports no videoFocusCropRequest');
-  return press.videoFocusCropRequest(pressOf(over), RUN);
+  return videoFocusCropRequest(pressOf(over), RUN);
 }
 
 /**
@@ -109,7 +73,7 @@ describe('video focus crop press (design §5.5)', () => {
     // The played file is 640x360; the selected version displays the tool source at 1920x1080 (design §5.5 "用户操作").
     const el = playedVideo(640, 360);
     const display = { width: 1920, height: 1080 };
-    const space = crop.intrinsicSize(el, display);
+    const space = intrinsicSize(el, display);
     expect(space).toEqual(display);
     // The same on-screen marquee (a quarter in from each edge of a 400x225 box) lands on the same source pixels.
     expect(toNaturalCrop({ x: 100, y: 56.25, width: 200, height: 112.5 }, { width: 400, height: 225 }, space)).toEqual(CROP);
@@ -117,7 +81,7 @@ describe('video focus crop press (design §5.5)', () => {
 
   it('F03: a focus-crop task row reads as the action and the frozen source name, not the raw tool id', () => {
     const t = (key: string): string => `«${key}»`;
-    const kind = rowKind.taskRowKind({ action: 'mini_tool', label: 'video.focus-crop', sourceName: 'Clip 7' }, t, () => null);
+    const kind = taskRowKind({ action: 'mini_tool', label: 'video.focus-crop', sourceName: 'Clip 7' }, t, () => null);
     expect(kind.label).not.toBe('video.focus-crop');
     expect(kind.label).toMatch(/^«canvas\..+»$/);
     expect(kind.detail).toBe('Clip 7');
@@ -142,10 +106,9 @@ describe('video focus crop press (design §5.5)', () => {
   });
 
   it('F05: miniToolTaskType gives image for the two frame tools and video for every other planned tool', () => {
-    expect(typeof shared.miniToolTaskType).toBe('function');
-    expect(shared.miniToolTaskType!('video.focus-crop')).toBe('image');
-    expect(shared.miniToolTaskType!('video.extract-frames')).toBe('image');
-    for (const tool of VIDEO_TOOL_IDS.filter((id) => id !== 'video.extract-frames')) expect(shared.miniToolTaskType!(tool)).toBe('video');
+    expect(miniToolTaskType('video.focus-crop')).toBe('image');
+    expect(miniToolTaskType('video.extract-frames')).toBe('image');
+    for (const tool of VIDEO_TOOL_IDS.filter((id) => id !== 'video.extract-frames')) expect(miniToolTaskType(tool)).toBe('video');
   });
 
   it('F06: the video submenu and VIDEO_TOOL_IDS keep the panel tools and never list video.focus-crop', () => {
