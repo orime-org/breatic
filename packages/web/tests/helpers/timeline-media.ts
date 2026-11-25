@@ -326,7 +326,7 @@ export async function withTimelinePeer(
  * Drive the existing shared socket with a balanced temporary meta-provider reference.
  * @throws {Error} When this context's live Project metadata or transport is missing.
  */
-export async function setTimelineConnection(page: Page, projectId: string, spaceId: string, connected: boolean): Promise<void> {
+export async function setCollabConnection(page: Page, projectId: string, spaceId: string, connected: boolean): Promise<void> {
   const urls = {
     manager: await liveModuleUrl(page, YJS_MANAGER),
     socket: await liveModuleUrl(page, 'data/yjs/collab-socket.tsx'),
@@ -344,7 +344,7 @@ export async function setTimelineConnection(page: Page, projectId: string, space
     const name = manager.docName.projectMeta(projectId);
     if (name !== `project-${projectId}/meta` || !manager.hasDoc(name)) throw new Error('The current Project meta document is missing');
     const doc = manager.getDoc(name);
-    if (doc.getMap('spaces').size === 0 || !doc.getMap('spaces').has(spaceId)) throw new Error('The live Project metadata does not contain this Timeline');
+    if (doc.getMap('spaces').size === 0 || !doc.getMap('spaces').has(spaceId)) throw new Error('The live Project metadata does not contain this Space');
     const provider = socket.acquireDocProvider(name, doc);
     try {
       const transport = provider.configuration.websocketProvider;

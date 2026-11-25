@@ -23,7 +23,7 @@ import { cleanMembership, inviteMember } from '../helpers/project-members';
 import { openSmokeProject, smokeProjectId, smokeProjectUrl } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { roomForUploads } from '../helpers/upload-budget';
-import { setTimelineConnection } from '../helpers/timeline-media';
+import { setCollabConnection } from '../helpers/timeline-media';
 
 const created: string[] = [];
 
@@ -283,14 +283,14 @@ test.describe('another member\'s 3D upload (inner#2061) @needs-ingest @needs-sto
 
       // Offline keeps the socket from coming back; closing it drops the connection the page already holds. The first
       // call, still online, loads the modules the helper imports, which an offline page could not fetch.
-      await setTimelineConnection(page, projectId, id, true);
+      await setCollabConnection(page, projectId, id, true);
       await page.context().setOffline(true);
-      await setTimelineConnection(page, projectId, id, false);
+      await setCollabConnection(page, projectId, id, false);
       const taskId = await openSceneUpload(other, id);
       // Disconnected, this page cannot have heard of the row.
       await expect(panel.getByTestId(`scene-task-${taskId}`)).toHaveCount(0);
       await page.context().setOffline(false);
-      await setTimelineConnection(page, projectId, id, true);
+      await setCollabConnection(page, projectId, id, true);
 
       await expect(panel.getByTestId(`scene-task-${taskId}`)).toBeVisible({ timeout: 30_000 });
       await expect(visibleSpace(page).getByTestId('scene-tasks-count')).toHaveText('1');
