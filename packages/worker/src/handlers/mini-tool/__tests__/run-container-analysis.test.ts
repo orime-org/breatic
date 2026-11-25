@@ -32,7 +32,7 @@ vi.mock("@breatic/domain", async (original) => {
     miniToolAnalysisService: { ...actual.miniToolAnalysisService, finishMiniToolAnalysis: h.finish },
     upstreamStepRepo: { ...actual.upstreamStepRepo, listSteps: h.list, ensureSteps: h.ensure, recordInline: h.inline } };
 });
-vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceRegisteredMiniToolPlanJob: h.advance }));
+vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", async (original) => ({ ...await original<Record<string, unknown>>(), advanceRegisteredMiniToolPlanJob: h.advance }));
 vi.mock("@worker/handlers/mini-tool/read-analysis-json.js", () => ({ readMiniToolAnalysisJson: h.read }));
 
 const TASK = "10000000-0000-4000-8000-000000000001";

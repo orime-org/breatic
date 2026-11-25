@@ -53,6 +53,16 @@ async function ownedStep(taskId: string, stepId: string): Promise<upstreamStepRe
 }
 
 /**
+ * A step's persisted state, if any.
+ * @param step - The step.
+ * @returns The state.
+ * @throws {z.ZodError} When the stored state is malformed.
+ */
+export function stateOf(step: upstreamStepRepo.UpstreamStep): z.infer<typeof miniToolStepStateSchema> | null {
+  return step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
+}
+
+/**
  * Advance the original job and keep its terminal report on its step (frames-split §7.19): nothing is registered.
  * A report with a written output over the upload cap or empty is the job's final failure, recorded as failed, so its chunks
  * are not retired.
@@ -86,12 +96,12 @@ export async function advanceStagedMiniToolPlanJob(input: OpenMiniToolPlanJobInp
 export async function advanceStagedMiniToolPlanJob(input: OpenMiniToolPlanJobInput, options: { retire?: readonly string[]; open?: boolean } = {}): Promise<StagedMiniToolPlanJob | Unopened> {
   const { request, consumption } = await openMiniToolPlanJob(input);
   const step = await ownedStep(input.taskId, input.stepId);
-  const state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
+  const state = stateOf(step);
   if (state?.result !== null && state?.result !== undefined) {
     const code = state.result.error?.code;
     return { request, report: terminalReport(request, state.result.result), refused: code === "over_cap" || code === "empty" ? code : null };
   }
-  const advanced = options.open === false ? await advanceMiniToolPlanJob(request, false) : await advanceMiniToolPlanJob(request);
+  const advanced = await advanceMiniToolPlanJob(request, options.open ?? true);
   if ("unopened" in advanced) return advanced;
   const report = terminalReport(request, advanced);
   // A failed attempt's written outputs are staged too (the next attempt carries only the rest), so every report is checked.
@@ -118,7 +128,7 @@ export async function advanceStagedMiniToolPlanJob(input: OpenMiniToolPlanJobInp
 export async function registerMiniToolPlanJobOutputs(staged: { taskId: string; stepId: string }, options?: { deadlineAt: number }): Promise<RegisteredMiniToolPlanJob["assets"]> {
   let step = await ownedStep(staged.taskId, staged.stepId);
   const request = miniToolPlanJobRequestSchema.parse(step.output.miniToolPlanJob);
-  const state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
+  const state = stateOf(step);
   if (state?.result === null || state?.result === undefined) throw new Error("Planned job has no staged report to register");
   const report = terminalReport(request, state.result.result);
   const assets: RegisteredMiniToolPlanJob["assets"] = [];

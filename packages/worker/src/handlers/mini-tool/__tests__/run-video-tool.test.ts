@@ -58,7 +58,7 @@ vi.mock("@breatic/domain", async (original) => {
     runningSlotService: { ...actual.runningSlotService, startWithinLimit: async () => ({ outcome: "started", started: new Date(), publishFailures: [] }) },
     upstreamStepRepo: { ...actual.upstreamStepRepo, listSteps: h.list, ensureSteps: h.ensure, recordInline: h.inline } };
 });
-vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceStagedMiniToolPlanJob: h.advance, registerMiniToolPlanJobOutputs: h.registerStep }));
+vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", async (original) => ({ ...await original<Record<string, unknown>>(), advanceStagedMiniToolPlanJob: h.advance, registerMiniToolPlanJobOutputs: h.registerStep }));
 vi.mock("@worker/handlers/mini-tool/execution-completion.js", async (original) => ({ ...await original<Record<string, unknown>>(), finishMiniToolExecutionAndNotify: h.finish }));
 // Partial, so the reporting window end stays the real one.
 vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", async (original) => ({ ...await original<Record<string, unknown>>(), advanceMiniToolPlanJob: h.advancePlan }));

@@ -77,7 +77,7 @@ beforeEach(() => {
 describe("original planned job registration", () => {
   it("persists the exact terminal report and usage before registering indexed canonical outputs", async () => {
     expect(await advanceRegisteredMiniToolPlanJob(input)).toEqual({ request: plan, report: done, assets: rows });
-    expect(h.advance).toHaveBeenCalledExactlyOnceWith(plan);
+    expect(h.advance).toHaveBeenCalledExactlyOnceWith(plan, true);
     expect(h.record).toHaveBeenCalledWith({ taskId, stepId, identity, outcome: "done", result: done }, expect.objectContaining({ kind: "container_job" }));
     expect(h.record.mock.invocationCallOrder[0]).toBeLessThan(h.register.mock.invocationCallOrder[0]!);
     expect(step.output.miniToolConsumption).toEqual(consumption); expect(step.output.sibling).toBe("preserved");
@@ -87,7 +87,7 @@ describe("original planned job registration", () => {
   it("uses the first frozen request even when a caller allocates a changed candidate", async () => {
     const candidate = { ...input, request: { ...plan, deadlineAt: plan.deadlineAt + 5000, outputs: plan.outputs.map((output) => ({ ...output, storageKey: `unused/${output.outputIndex}.txt` })) } };
     expect(await advanceRegisteredMiniToolPlanJob(candidate)).toEqual({ request: plan, report: done, assets: rows });
-    expect(h.advance).toHaveBeenCalledExactlyOnceWith(plan);
+    expect(h.advance).toHaveBeenCalledExactlyOnceWith(plan, true);
   });
 
   it.each([failed, { ...failed, usage: null }])("registers only a failed job's actual subset while preserving its complete report", async (report) => {

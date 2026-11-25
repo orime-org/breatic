@@ -35,7 +35,7 @@ vi.mock("@breatic/domain", async (original) => {
 });
 // Partial, so the reporting window end stays the real one.
 vi.mock("@worker/handlers/mini-tool/advance-plan-job.js", async (original) => ({ ...await original<Record<string, unknown>>(), advanceMiniToolPlanJob: h.advance }));
-vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", () => ({ advanceStagedMiniToolPlanJob: h.registered }));
+vi.mock("@worker/handlers/mini-tool/registered-plan-job.js", async (original) => ({ ...await original<Record<string, unknown>>(), advanceStagedMiniToolPlanJob: h.registered }));
 
 const TASK = "50000000-0000-4000-8000-000000000001";
 const INPUT = "00000000-0000-4000-8000-000000000001";

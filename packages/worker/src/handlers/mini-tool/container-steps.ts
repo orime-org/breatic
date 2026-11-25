@@ -6,12 +6,11 @@
  * each container step runs its attempts up to the frozen retries under its own job ids, a done output recorded and pinned
  * with the run and a failed attempt's output retired; a chunk list answers its first chunk failed for good at once.
  */
-import type { z } from "zod";
 import { getMiniToolsConfig } from "@breatic/core";
-import { miniToolStepStateSchema, openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepResult, upstreamStepRepo } from "@breatic/domain";
+import { openContainerOutputs, openMiniToolPlanJob, recordMiniToolStepResult, upstreamStepRepo } from "@breatic/domain";
 import { DeadlinePassed, miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type MiniToolPlanJobRequest, type MiniToolPlanRecipe } from "@breatic/shared";
 import { advanceMiniToolPlanJob, UNOPENED, type EndedMiniToolPlanJob, type Unopened } from "@worker/handlers/mini-tool/advance-plan-job.js";
-import { advanceStagedMiniToolPlanJob, type StagedMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
+import { advanceStagedMiniToolPlanJob, stateOf, type StagedMiniToolPlanJob } from "@worker/handlers/mini-tool/registered-plan-job.js";
 import { StillRunning } from "@worker/handlers/still-running.js";
 
 /** The frozen facts every container step of a run reads. */
@@ -76,16 +75,6 @@ export async function jobStep(taskId: string, jobId: string, endpoint: string, d
   if (!open) return UNOPENED;
   if (Date.now() >= deadlineAt) return null;
   return { step: await appendStep(taskId, { kind: "container_job", endpoint, itemIndex: steps.length }), request: null };
-}
-
-/**
- * A step's persisted state, if any.
- * @param step - The step.
- * @returns The state.
- * @throws {z.ZodError} When the stored state is malformed.
- */
-export function stateOf(step: Step): z.infer<typeof miniToolStepStateSchema> | null {
-  return step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
 }
 
 /** One unregistered container step: its attempts' job ids, the output key of each, and its recipe. */
