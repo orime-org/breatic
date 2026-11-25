@@ -567,7 +567,12 @@ export class VideoPresentationStore {
     }
     const measured = await this.measure(receipt, measuredCarrier);
     if (measured === null) return false;
-    const carrier = { storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), ...measured, contentType: receipt.contentType };
+    // §10.6: a packed carrier measured over the frozen `max_packed_bytes` fails the candidate as content.
+    if (receipt.geometry !== undefined && admission.limits !== undefined && measured.size > admission.limits.maxPackedBytes) {
+      await this.candidateEvent(state, job, { kind: 'Er', jobId: admission.jobId, code: 'packed_over_cap' });
+      return false;
+    }
+    const carrier ={ storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), ...measured, contentType: receipt.contentType };
     const toolSource = { edit, keyframes: facts.source.keyframes, sourceDecodeKey: facts.source.sourceDecodeKey };
     let playback: VideoPresentationVersion['playback'];
     const maxShortSide = admission.encoding?.carrier.maxShortSide ?? Number.MAX_SAFE_INTEGER;

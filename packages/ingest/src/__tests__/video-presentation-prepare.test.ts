@@ -820,10 +820,11 @@ describe('done receipts stored and answered per unit (§5.1 step 4; §3.5 alpha 
    * @param store - The store.
    * @param key - The source key.
    * @param options - What differs in the probe.
+   * @param change - What differs in the admission.
    * @returns The capability and the carrier.
    */
-  async function packedStitch(store: MachineStore, key: string, options: ProbeOptions = {}): Promise<{ capability: Identity; carrier: Awaited<ReturnType<typeof writeOutput>> }> {
-    const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned(options)));
+  async function packedStitch(store: MachineStore, key: string, options: ProbeOptions = {}, change: Record<string, unknown> = {}): Promise<{ capability: Identity; carrier: Awaited<ReturnType<typeof writeOutput>> }> {
+    const answer = await admitAndPrepare(store, key, 'job-a', fakePort(planned(options)), D, Date.now(), change);
     const capability = capabilityOf(key, answer);
     await counted(store, capability);
     await encodeAndOpenStitch(store, key, capability);
@@ -886,6 +887,33 @@ describe('done receipts stored and answered per unit (§5.1 step 4; §3.5 alpha 
       const manifest = alphaPackedManifestSchema.parse(JSON.parse(await object!.text()));
       expect(manifest).toMatchObject(UHD_GEOMETRY);
       expect(alphaPackedManifestMatchesVersion(manifest, version)).toBe(true);
+    });
+  });
+
+  it('RD06 a packed carrier measured over the frozen max_packed_bytes fails the candidate packed_over_cap and does not publish (§10.6)', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      // The stored carrier is 4 bytes; the admission froze a 3-byte cap.
+      const limits = { ...admission(key, 'job-a').limits, maxPackedBytes: 3 };
+      const { capability, carrier } = await packedStitch(store, key, {}, { limits });
+      const receipts = [{ role: 'carrier', packing: 'alpha-packed', ...carrier.receipt, geometry: GEOMETRY }];
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts })).toBe(true);
+      await store.advanceStage(capability, 'publish');
+      const view = await store.read(key, H);
+      expect(view.selected.kind).not.toBe('ready');
+      expect(view.candidate).toMatchObject({ jobId: 'job-a', state: 'failed', failure: 'packed_over_cap' });
+    });
+  });
+
+  it('RD07 a packed carrier at exactly max_packed_bytes publishes', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const limits = { ...admission(key, 'job-a').limits, maxPackedBytes: 4 };
+      const { capability, carrier } = await packedStitch(store, key, {}, { limits });
+      const receipts = [{ role: 'carrier', packing: 'alpha-packed', ...carrier.receipt, geometry: GEOMETRY }];
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts })).toBe(true);
+      expect(await store.advanceStage(capability, 'publish')).toBe(true);
+      expect((await store.read(key, H)).selected.kind).toBe('ready');
     });
   });
 
