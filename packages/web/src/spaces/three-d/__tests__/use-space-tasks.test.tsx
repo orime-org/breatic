@@ -116,6 +116,18 @@ describe('useSpaceTasks', () => {
     await waitFor(() => expect(listSpaceTasks).toHaveBeenCalledTimes(2));
   });
 
+  it('serves the panel, the tab and the Tasks count from one read', async () => {
+    vi.mocked(listSpaceTasks).mockResolvedValue(list([row(1)]));
+    const { wrapper } = provider();
+    const { result } = renderHook(() => [
+      useSpaceTasks(PROJECT, SPACE, true),
+      useSpaceTasks(PROJECT, SPACE, true),
+      useSpaceTasks(PROJECT, SPACE, true),
+    ], { wrapper });
+    await waitFor(() => expect(result.current.map((reader) => reader.running)).toEqual([1, 1, 1]));
+    expect(listSpaceTasks).toHaveBeenCalledTimes(1);
+  });
+
   it('reads nothing when not enabled', async () => {
     const { wrapper } = provider();
     const { result } = renderHook(() => useSpaceTasks(PROJECT, SPACE, false), { wrapper });

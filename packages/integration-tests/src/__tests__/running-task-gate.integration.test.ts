@@ -1192,7 +1192,7 @@ describe("G the node's counts event says how many wait", () => {
   });
 });
 
-describe("G a 3D Space's waiting row and a waiting Motion execution tell their Space's document (#1580)", () => {
+describe("G a 3D Space's waiting row and a waiting Motion or Timeline execution tell their Space's document (#1580)", () => {
   it("first waiting and starting each tell the 3D Space's document, and the old channel nothing", async () => {
     const p = await person();
     await running(p, 2);
