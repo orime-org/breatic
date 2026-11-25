@@ -16,7 +16,7 @@ export type MiniToolOutputRefusal = "over_cap" | "empty";
 export interface StagedMiniToolPlanJob {
   request: MiniToolPlanJobRequest;
   report: EndedMiniToolPlanJob;
-  /** The refusal of a done report's output: the job's final failure, never retried. */
+  /** The refusal of a written output (over_cap, empty) in any report: the job's final failure, never retried. */
   refused: MiniToolOutputRefusal | null;
 }
 /** Actual registered rows retain their original global output indices. */
