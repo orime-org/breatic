@@ -18,6 +18,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TimelineDocumentV1, TimelineTrack, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
 import { toast } from '@web/lib/toast';
+import { corsUrl } from '@web/lib/cors-url';
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 
 vi.mock('@web/lib/toast', () => ({ toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn() } }));
@@ -624,7 +625,7 @@ describe('useTimelinePlayback', () => {
     tick(4000);
     hook.rerender({ ...hook.props, assets: {} });
     await settle();
-    expect(media.element.src).toBe(urlOf(CLIP.id));
+    expect(media.element.src).toBe(corsUrl(urlOf(CLIP.id)));
     expect(hook.result.current.state).toBe('playing');
     tick(4250);
     expect(hook.result.current.frame).toBe(6);
@@ -745,7 +746,7 @@ describe('useTimelinePlayback', () => {
     const hook = renderPlayback(media);
     act(() => hook.result.current.toggle());
     hook.rerender({ ...hook.props, urls: { [CLIP.id]: 'https://cdn.test/replacement.mp4' } });
-    expect(media.srcs.at(-1)).toBe('https://cdn.test/replacement.mp4');
+    expect(media.srcs.at(-1)).toBe(corsUrl('https://cdn.test/replacement.mp4'));
     await act(async () => {
       media.facts.paused = false;
       pending.resolve();
@@ -1313,7 +1314,7 @@ describe('useTimelinePlayback review regressions', () => {
     expect(hook.result.current.state).toBe('playing');
     act(() => hook.result.current.retryVideo(clip.id));
     expect(media.load).toHaveBeenCalledTimes(1);
-    expect(media.srcs).toEqual([urlOf(clip.id)]);
+    expect(media.srcs).toEqual([corsUrl(urlOf(clip.id))]);
     expect(media.facts.error).toBeNull();
     expect(media.facts.currentTime).toBe(0);
     expect(hook.result.current.intent).toBe('play');
@@ -1334,8 +1335,10 @@ describe('useTimelinePlayback review regressions', () => {
     mediaEvent(media, 'canplay', { readyState: 4 });
     await settle();
     expect(media.element.playbackRate).toBe(2);
-    expect(media.element.volume).toBe(0.4);
-    expect(media.element.muted).toBe(true);
+    // Gain and mute go through Web Audio; the element itself plays at full volume, unmuted (inner#1709 design §5.2).
+    expect(media.element.volume).toBe(1);
+    expect(media.element.muted).toBe(false);
+    expect(media.element.crossOrigin).toBe('anonymous');
     expect(media.play).toHaveBeenCalledTimes(1);
     expect(hook.result.current.videoStates.get(clip.id)).toBe('ready');
     expect(hook.result.current.state).toBe('playing');

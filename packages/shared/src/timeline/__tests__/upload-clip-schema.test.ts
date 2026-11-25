@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The `upload` clip: a placeholder for a local video still uploading in the background (#1434 design §2). The schema
- * checks only the clip's own `upload` fields; its range against `upload.durationSeconds` is the arrangement's
- * `invalid_range` conflict, so a range a concurrent trim pushed past the end must still read.
+ * The `upload` clip: a placeholder for a local file still uploading in the background (#1434 design §2), naming the
+ * kind it will become (inner#1709 design §2.3). The schema checks only the clip's own `upload` fields; its range
+ * against `upload.durationSeconds` is not checked here, so a range a concurrent trim pushed past the end must still
+ * read.
  */
 
 import { describe, expect, it } from "vitest";
@@ -20,7 +21,7 @@ const uploadClip = {
   id: "60000000-0000-4000-8000-000000000001",
   trackId: "visual-1",
   kind: "upload" as const,
-  upload: { uploadId: UPLOAD, name: "beach.mp4", durationSeconds: 2.5 },
+  upload: { uploadId: UPLOAD, name: "beach.mp4", kind: "video" as const, durationSeconds: 2.5 },
   startFrame: 0,
   sourceInFrame: 0,
   durationFrames: 60,

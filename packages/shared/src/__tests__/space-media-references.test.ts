@@ -307,7 +307,7 @@ describe("semantic Space media references", () => {
     expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [assetId], urls: [] });
   });
 
-  it.each([1, 2])("reads source identities from a version %i Timeline (#1502 design §5)", (version) => {
+  it.each([1, 2, 3])("reads source identities from a version %i Timeline (#1502 design §5, inner#1709 design §2.1)", (version) => {
     const doc = trackedDoc();
     initializeTimelineDocument(doc, settings);
     timelineSource(doc, "10000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000001");
@@ -321,7 +321,7 @@ describe("semantic Space media references", () => {
     const doc = trackedDoc();
     initializeTimelineDocument(doc, settings);
     timelineSource(doc, "10000000-0000-4000-8000-000000000001", "20000000-0000-4000-8000-000000000001");
-    doc.getMap("timeline").set("schemaVersion", 3);
+    doc.getMap("timeline").set("schemaVersion", 4);
     const before = Y.encodeStateAsUpdate(doc);
     expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [], urls: [] });
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
@@ -389,5 +389,44 @@ describe("Timeline media references read every stored source shape (inner#1708 Q
     doc.getMap("sources").set(id, record);
     for (const [key, value] of Object.entries({ ...sourceTemplate, id, assetId: mapAsset })) record.set(key, value);
     expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [plainAsset, mapAsset], urls: [] });
+  });
+});
+
+describe("Timeline media references collect image and audio sources (inner#1709 design §2.4)", () => {
+  it("collects the asset ids of image and audio sources beside a video one", () => {
+    const doc = trackedDoc();
+    initializeTimelineDocument(doc, settings);
+    const videoAsset = "20000000-0000-4000-8000-000000000001";
+    const imageAsset = "20000000-0000-4000-8000-000000000002";
+    const audioAsset = "20000000-0000-4000-8000-000000000003";
+    const unmeasuredAsset = "20000000-0000-4000-8000-000000000004";
+    timelineSource(doc, "10000000-0000-4000-8000-000000000001", videoAsset);
+    const sources = doc.getMap("sources");
+    sources.set("10000000-0000-4000-8000-000000000002", { id: "10000000-0000-4000-8000-000000000002", kind: "image", assetId: imageAsset, width: 800, height: 600 });
+    sources.set("10000000-0000-4000-8000-000000000003", { ...sourceTemplate, id: "10000000-0000-4000-8000-000000000003", kind: "audio", assetId: audioAsset });
+    sources.set("10000000-0000-4000-8000-000000000004", { id: "10000000-0000-4000-8000-000000000004", kind: "image", assetId: unmeasuredAsset, width: null, height: null });
+    const before = Y.encodeStateAsUpdate(doc);
+    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [videoAsset, imageAsset, audioAsset, unmeasuredAsset], urls: [] });
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it("collects an image source stored as a Y.Map", () => {
+    const doc = trackedDoc();
+    initializeTimelineDocument(doc, settings);
+    const id = "10000000-0000-4000-8000-000000000002";
+    const assetId = "20000000-0000-4000-8000-000000000002";
+    const record = new Y.Map<unknown>();
+    doc.getMap("sources").set(id, record);
+    for (const [key, value] of Object.entries({ id, kind: "image", assetId, width: 800, height: 600 })) record.set(key, value);
+    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [assetId], urls: [] });
+  });
+
+  it("skips a source of no known kind", () => {
+    const doc = trackedDoc();
+    initializeTimelineDocument(doc, settings);
+    const imageAsset = "20000000-0000-4000-8000-000000000002";
+    doc.getMap("sources").set("10000000-0000-4000-8000-000000000002", { id: "10000000-0000-4000-8000-000000000002", kind: "image", assetId: imageAsset, width: 800, height: 600 });
+    doc.getMap("sources").set("10000000-0000-4000-8000-000000000005", { id: "10000000-0000-4000-8000-000000000005", kind: "text", assetId: "20000000-0000-4000-8000-000000000005" });
+    expect(readSpaceMediaReferences("timeline", doc)).toEqual({ assetIds: [imageAsset], urls: [] });
   });
 });

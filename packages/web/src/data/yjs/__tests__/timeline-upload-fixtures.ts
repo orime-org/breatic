@@ -40,7 +40,7 @@ export function uploadClip(
     id,
     trackId,
     kind: 'upload',
-    upload: { uploadId: UPLOAD_ID, name: UPLOAD_NAME, durationSeconds: UPLOAD_SECONDS },
+    upload: { uploadId: UPLOAD_ID, name: UPLOAD_NAME, kind: 'video', durationSeconds: UPLOAD_SECONDS },
     startFrame,
     sourceInFrame: 0,
     durationFrames,
@@ -66,6 +66,24 @@ export function addUpload(clip: TimelineUploadClip, placement: TimelineEditPlace
     parameters: newTrackId === undefined ? { clip } : { clip, newTrackId },
     placement,
   } as unknown as TimelineEditCommand;
+}
+
+/**
+ * The `timeline-upload` event collab applies when the upload registers (inner#1709 design §4.2).
+ * @param durationSeconds - The registered duration; null when the server could not read one.
+ * @param kind - What the registered asset is.
+ * @param uploadId - The upload.
+ * @returns The completed event.
+ * @throws {never} Never.
+ */
+export function completedUpload(durationSeconds: number | null, kind: 'video' | 'image' | 'audio' = 'video', uploadId = UPLOAD_ID): {
+  type: 'timeline-upload'; docName: string; uploadId: string; state: 'completed';
+  result: { assetId: string; kind: 'video' | 'image' | 'audio'; durationSeconds: number | null; width: number | null; height: number | null };
+} {
+  return {
+    type: 'timeline-upload', docName: 'project-p/timeline', uploadId, state: 'completed',
+    result: { assetId: ASSET_ID, kind, durationSeconds: kind === 'image' ? null : durationSeconds, width: 1920, height: 1080 },
+  };
 }
 
 /**

@@ -439,3 +439,50 @@ describe('trimming a clip whose source is missing (inner#1708 S1)', () => {
     expect(short?.durationFrames).toBeGreaterThanOrEqual(1);
   });
 });
+
+/**
+ * A still picture or a text clip has no in-point (inner#1709 design §2.4, §3.3): both edges stretch without limit, the
+ * left edge only down to frame 0 off the main track, and every preview and commit keeps `sourceInFrame` at 0.
+ */
+describe('previewTimelineGesture for pictures and text (inner#1709 design §3.3)', () => {
+  const IMAGE_SOURCE = { id: '10000000-0000-4000-8000-0000000000a1', kind: 'image', assetId: '20000000-0000-4000-8000-0000000000a1', width: 1920, height: 1080 };
+  const PLACEMENT = { startFrame: 100, sourceInFrame: 0, durationFrames: 48, rate: { num: 1, den: 1 }, gain: 1, mute: false, transform: { frameX: 0, frameY: 0, scaleX: 1, scaleY: 1, rotation: 0 } };
+  const IMAGE = { ...PLACEMENT, id: cid(41), trackId: 'v2', kind: 'image', sourceId: IMAGE_SOURCE.id };
+  const TEXT = { ...PLACEMENT, id: cid(42), trackId: 'v2', kind: 'text', text: { body: 'Title', size: 0.06 } };
+  const MAIN_IMAGE = { ...IMAGE, id: cid(43), trackId: MAIN, startFrame: 0 };
+  const MIXED = {
+    schemaVersion: 3,
+    settings: { width: 1920, height: 1080, fps: { num: 24, den: 1 } },
+    tracks: { [MAIN]: { id: MAIN, order: 0 }, v2: { id: 'v2', order: 1 } },
+    clips: { [IMAGE.id]: IMAGE, [TEXT.id]: TEXT, [MAIN_IMAGE.id]: MAIN_IMAGE },
+    sources: { [IMAGE_SOURCE.id]: IMAGE_SOURCE },
+  } as unknown as TimelineDocumentV1;
+
+  it.each([['picture', IMAGE.id], ['text', TEXT.id]])('stretches a %s clip\'s left edge to the left with the in-point at 0', (_kind, id) => {
+    const preview = previewTimelineGesture(MIXED, id, 'trim-start', -30, null, FREE);
+    expect(preview).toMatchObject({ startFrame: 70, sourceInFrame: 0, durationFrames: 78 });
+    expect(timelineGestureCommand(MIXED, preview!, 'trim-start', OFF, newTrack)).toEqual({
+      operation: 'set_range', parameters: { clipId: id, startFrame: 70, sourceInFrame: 0, durationFrames: 78 }, placement: OFF,
+    });
+  });
+
+  it.each([['picture', IMAGE.id], ['text', TEXT.id]])('stops a %s clip\'s left edge at frame 0 off the main track', (_kind, id) => {
+    expect(previewTimelineGesture(MIXED, id, 'trim-start', -500, null, FREE)).toMatchObject({ startFrame: 0, sourceInFrame: 0, durationFrames: 148 });
+  });
+
+  it.each([['picture', IMAGE.id], ['text', TEXT.id]])('trims a %s clip\'s head to the right with the in-point still 0', (_kind, id) => {
+    const preview = previewTimelineGesture(MIXED, id, 'trim-start', 10, null, FREE);
+    expect(preview).toMatchObject({ startFrame: 110, sourceInFrame: 0, durationFrames: 38 });
+    expect(timelineGestureCommand(MIXED, preview!, 'trim-start', OFF, newTrack)).toEqual({
+      operation: 'set_range', parameters: { clipId: id, startFrame: 110, sourceInFrame: 0, durationFrames: 38 }, placement: OFF,
+    });
+  });
+
+  it('lengthens a picture\'s head on the magnetic main track with its start kept and the in-point at 0', () => {
+    expect(previewTimelineGesture(MIXED, MAIN_IMAGE.id, 'trim-start', -30, null, { ...FREE, magnet: true })).toMatchObject({ startFrame: 0, sourceInFrame: 0, durationFrames: 78 });
+  });
+
+  it.each([['picture', IMAGE.id], ['text', TEXT.id]])('stretches a %s clip\'s right edge without a limit', (_kind, id) => {
+    expect(previewTimelineGesture(MIXED, id, 'trim-end', 100000, null, FREE)?.durationFrames).toBe(100048);
+  });
+});

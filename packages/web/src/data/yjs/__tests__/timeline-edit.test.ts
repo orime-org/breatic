@@ -5,10 +5,11 @@ import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 import { encodeStateAsUpdate } from 'yjs';
 
+import { arrangeTimelineClips } from '@web/data/yjs/timeline-arrangement';
 import { planTimelineEdit } from '@web/data/yjs/timeline-edit';
 import { timelineSourceOverflow, validateTimelineRange } from '@web/data/yjs/timeline-time';
 import type { TimelineEditPlan, TimelineEditRefusal } from '@web/data/yjs/timeline-edit';
-import { TIMELINE_MAIN_TRACK_ID, TimelineDocumentV1Schema } from '@breatic/shared';
+import { TIMELINE_MAIN_TRACK_ID, TimelineClipSchema } from '@breatic/shared';
 import { TimelineEditCommandSchema } from '@web/data/yjs/timeline-edit';
 import type { TimelineClip, TimelineDocumentV1, TimelineVideoClip } from '@breatic/shared';
 import type { TimelineEditCommand, TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
@@ -17,15 +18,25 @@ import {
   FPS, LINK_ONLY, MAGNET_ONLY, MAIN, OFF, ON, SHORT_SOURCE, SOURCE, V2, V3, V4,
   cid, clip, idFactory, overlapSpans, overlappedFrames, referenceOverflow, seededDoc, sourceIdOf, starts, timeline, totalOverflow, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
-import { RESOLUTION, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
+import { EMPTY_RESOLUTION, RESOLUTION, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 import { uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 
 type Accepted = Extract<TimelineEditPlan, { ok: true }>;
 
-// Every refusal the planner may give (inner#1708 Q4: there is no overlap refusal).
+// Every refusal the planner may give (inner#1708 Q4: there is no overlap refusal; inner#1709 design §3.5: covers_missing_source is gone).
 const REASONS: TimelineEditRefusal[] = [
-  'target_missing', 'track_missing', 'invalid_range', 'id_taken', 'main_track', 'track_not_empty', 'source_unavailable', 'missing_source', 'covers_missing_source',
+  'target_missing', 'track_missing', 'invalid_range', 'id_taken', 'main_track', 'track_not_empty', 'source_unavailable', 'missing_source',
 ];
+
+/**
+ * The view document the page edits (inner#1709 design §3.5): only the clips that can be shown, each at the length it plays.
+ * @param document - The stored document.
+ * @returns The view.
+ * @throws {never} Never.
+ */
+function viewOf(document: TimelineDocumentV1): TimelineDocumentV1 {
+  return { ...document, clips: arrangeTimelineClips(document, EMPTY_RESOLUTION) };
+}
 
 /**
  * Narrow a plan to its accepted branch, failing with the refusal reason otherwise.
@@ -87,7 +98,7 @@ const remove = (clipId: string, placement: TimelineEditPlacement): TimelineEditC
 const deleteTrack = (trackId: string, placement: TimelineEditPlacement = ON): TimelineEditCommand =>
   ({ operation: 'delete_track', parameters: { trackId }, placement });
 const addVideo = (added: TimelineVideoClip, placement: TimelineEditPlacement, newTrackId?: string, source = SOURCE): TimelineEditCommand =>
-  ({ operation: 'add_video', parameters: { source, clip: added, ...(newTrackId === undefined ? {} : { newTrackId }) }, placement });
+  ({ operation: 'add_media', parameters: { source, clip: added, ...(newTrackId === undefined ? {} : { newTrackId }) }, placement } as unknown as TimelineEditCommand);
 // The seven frame presets and their sizes (breatic#1502 design §2), written out so the expectation is not read from the code under test.
 const FRAME_PRESETS = [
   ['16:9', 1920, 1080], ['9:16', 1080, 1920], ['1:1', 1080, 1080], ['4:3', 1440, 1080], ['4:5', 1080, 1350], ['2:3', 1080, 1620], ['21:9', 2520, 1080],
@@ -181,10 +192,10 @@ describe('timelineSourceOverflow', () => {
     });
 
     it('refuses a set_range that runs past the source end', () => {
-      const document = TimelineDocumentV1Schema.parse({
+      const document: TimelineDocumentV1 = {
         ...timeline([clip(A, MAIN, 0, 10)], [track(MAIN, 0)], [SOURCE50]),
         settings: { width: 1920, height: 1080, fps: FPS25 },
-      });
+      };
       expect(reasonOf(plan(document, setRange(A, 0, 0, 100, ON)))).toBe('invalid_range');
       expect(reasonOf(plan(document, setRange(A, 0, 0, 50, ON)))).toBe('ok');
     });
@@ -272,7 +283,7 @@ describe('planTimelineEdit move', () => {
 
   it('creates a new top track for a drop on the blank area above the tracks', () => {
     const result = accepted(plan(base, move(C, 10, ON, { newTrackId: V3 })));
-    expect(result.next.tracks[V3]).toEqual({ id: V3, kind: 'visual', order: 2 });
+    expect(result.next.tracks[V3]).toEqual({ id: V3, order: 2 });
     expect(starts(result.next, MAIN)).toEqual([[A, 0, 48], [B, 48, 24]]);
     expect(starts(result.next, V3)).toEqual([[C, 10, 48]]);
     expect(result.created).toEqual([]);
@@ -289,7 +300,7 @@ describe('planTimelineEdit move', () => {
   });
 });
 
-describe('planTimelineEdit add_video', () => {
+describe('planTimelineEdit add_media with a video (inner#1709 design §3.2)', () => {
   it('inserts on the magnetic main track and ripples later clips and their overlays', () => {
     const result = accepted(plan(base, addVideo(clip(D, MAIN, 50, 10), ON)));
     expect(starts(result.next, MAIN)).toEqual([[A, 0, 48], [D, 48, 10], [B, 58, 24], [C, 82, 48]]);
@@ -323,7 +334,7 @@ describe('planTimelineEdit add_video', () => {
 
   it('creates the requested new track on top and places the clip on it', () => {
     const result = accepted(plan(base, addVideo(clip(D, MAIN, 7, 10), ON, V3)));
-    expect(result.next.tracks[V3]).toEqual({ id: V3, kind: 'visual', order: 2 });
+    expect(result.next.tracks[V3]).toEqual({ id: V3, order: 2 });
     expect(result.next.clips[D]).toMatchObject({ trackId: V3, startFrame: 7 });
     expect(starts(result.next, MAIN)).toEqual(starts(base, MAIN));
     expect(result.created).toEqual([D]);
@@ -394,7 +405,7 @@ describe('planTimelineEdit set_range', () => {
     const bumpedTrack = result.next.clips[OB]?.trackId;
     expect(bumpedTrack).not.toBe(V2);
     expect(bumpedTrack).toMatch(/^50000000-/);
-    expect(result.next.tracks[bumpedTrack ?? '']).toEqual({ id: bumpedTrack, kind: 'visual', order: 2 });
+    expect(result.next.tracks[bumpedTrack ?? '']).toEqual({ id: bumpedTrack, order: 2 });
     expect(result.bumped).toEqual([OB]);
     expect(result.created).toEqual([]);
   });
@@ -437,7 +448,7 @@ describe('planTimelineEdit set_range', () => {
     const result = accepted(plan(current, setRange(A, 0, 0, 20, ON)));
     const landed = result.next.clips[OB]?.trackId ?? '';
     expect([V2, V3]).not.toContain(landed);
-    expect(result.next.tracks[landed]).toMatchObject({ kind: 'visual' });
+    expect(result.next.tracks[landed]).toEqual({ id: landed, order: 2 });
     expect(result.bumped).toEqual([OB]);
   });
 
@@ -576,13 +587,13 @@ describe('planTimelineEdit source availability', () => {
     expect(reasonOf(plan(base, addVideo(clip(D, V2, 200, 10, { sourceId: MISSING_SOURCE_ID }), ON, undefined, SHORT_SOURCE)))).toBe('source_unavailable');
   });
 
-  it('refuses editing a clip whose source is absent from the document as missing_source (inner#1708 P1)', () => {
+  it('does not find a clip whose source is absent from the document, which the view leaves out (inner#1709 design §3.5)', () => {
     for (const placement of [ON, OFF]) {
-      expect(reasonOf(plan(sourceless, move(Z, 100, placement)))).toBe('missing_source');
-      expect(reasonOf(plan(sourceless, move(Z, 100, placement, { trackId: MAIN })))).toBe('missing_source');
-      expect(reasonOf(plan(sourceless, setRange(Z, 0, 0, 5, placement)))).toBe('missing_source');
-      expect(reasonOf(plan(sourceless, split(Z, 5, cid(52), placement)))).toBe('missing_source');
-      expect(reasonOf(plan(sourceless, duplicate(Z, cid(53), placement)))).toBe('missing_source');
+      expect(reasonOf(plan(sourceless, move(Z, 100, placement)))).toBe('target_missing');
+      expect(reasonOf(plan(sourceless, move(Z, 100, placement, { trackId: MAIN })))).toBe('target_missing');
+      expect(reasonOf(plan(sourceless, setRange(Z, 0, 0, 5, placement)))).toBe('target_missing');
+      expect(reasonOf(plan(sourceless, split(Z, 5, cid(52), placement)))).toBe('target_missing');
+      expect(reasonOf(plan(sourceless, duplicate(Z, cid(53), placement)))).toBe('target_missing');
     }
   });
 
@@ -626,27 +637,36 @@ describe('planTimelineEdit on documents holding merged conflicts', () => {
     expect(plan(outOfRange, setRange(X, 0, 900, 100, ON)).ok).toBe(true);
   });
 
-  it('allows covering the middle of an out-of-source clip or splitting it, keeping its overflow; refuses duplicating it', () => {
+  it('covers the middle of a clip longer than its source or splits it by the length it plays, writing the touched parts at that length (inner#1709 design §3.5)', () => {
+    // X plays 50 frames: source frames 950 to 999.
     const covered = accepted(plan(outOfRange, move(Y, 20, ON)));
-    expect(totalOverflow(covered.next)).toBe(totalOverflow(outOfRange));
+    expect(totalOverflow(covered.next)).toBe(0);
+    expect(covered.next.clips[X]).toMatchObject({ startFrame: 0, sourceInFrame: 950, durationFrames: 20 });
+    const right = covered.created[0] ?? '';
+    expect(covered.next.clips[right]).toMatchObject({ startFrame: 30, sourceInFrame: 980, durationFrames: 20 });
     const cut = accepted(plan(outOfRange, split(X, 30, cid(27), ON)));
-    expect(totalOverflow(cut.next)).toBe(totalOverflow(outOfRange));
-    expect(reasonOf(plan(outOfRange, duplicate(X, cid(28), ON)))).toBe('invalid_range');
+    expect(totalOverflow(cut.next)).toBe(0);
+    expect(cut.next.clips[X]).toMatchObject({ durationFrames: 30 });
+    expect(cut.next.clips[cid(27)]).toMatchObject({ startFrame: 30, sourceInFrame: 980, durationFrames: 20 });
+  });
+
+  it('refuses a split after the end a clip longer than its source plays to (inner#1709 design §3.5)', () => {
+    expect(reasonOf(plan(outOfRange, split(X, 60, cid(27), ON)))).toBe('invalid_range');
+  });
+
+  it('duplicates a clip longer than its source from the end it plays to (inner#1709 design §10)', () => {
+    const result = accepted(plan(outOfRange, duplicate(X, cid(28), OFF)));
+    expect(result.next.clips[cid(28)]).toMatchObject({ startFrame: 50, sourceInFrame: 950, durationFrames: 50 });
   });
 
   const orphanId = cid(31);
   const orphan = timeline([clip(orphanId, 'gone', 0, 10)]);
 
-  it('lets a clip whose track was removed be deleted, trimmed, split and moved to an existing track', () => {
-    expect(plan(orphan, remove(orphanId, ON)).ok).toBe(true);
-    expect(plan(orphan, setRange(orphanId, 0, 0, 5, ON)).ok).toBe(true);
-    expect(plan(orphan, split(orphanId, 5, cid(32), ON)).ok).toBe(true);
-    expect(accepted(plan(orphan, move(orphanId, 0, ON, { trackId: V2 }))).next.clips[orphanId]?.trackId).toBe(V2);
-  });
-
-  it('refuses placing a clip on its removed track', () => {
-    expect(reasonOf(plan(orphan, duplicate(orphanId, cid(33), ON)))).toBe('track_missing');
-    expect(reasonOf(plan(orphan, move(orphanId, 20, ON)))).toBe('track_missing');
+  it('does not find a clip whose track was removed, which the view leaves out (inner#1709 design §3.5)', () => {
+    for (const command of [
+      remove(orphanId, ON), setRange(orphanId, 0, 0, 5, ON), split(orphanId, 5, cid(32), ON), move(orphanId, 0, ON, { trackId: V2 }),
+      duplicate(orphanId, cid(33), ON), move(orphanId, 20, ON),
+    ]) expect(reasonOf(plan(orphan, command)), command.operation).toBe('target_missing');
   });
 });
 
@@ -671,11 +691,14 @@ describe('planTimelineEdit linkage after packing', () => {
 
 describe('planTimelineEdit invariants over random documents', () => {
   const TRACK_CHOICES = [MAIN, MAIN, V2, V2, V3, 'gone'];
+  const MISSING_SOURCE_ID = '10000000-0000-4000-8000-0000000000ff';
   const clipArbitrary = fc.record({
     track: fc.integer({ min: 0, max: TRACK_CHOICES.length - 1 }),
     startFrame: fc.integer({ min: 0, max: 300 }),
     durationFrames: fc.integer({ min: 1, max: 80 }),
     sourceInFrame: fc.oneof(fc.integer({ min: 0, max: 100 }), fc.integer({ min: 900, max: 990 })),
+    // One clip in six names a source the document lacks (inner#1709 design §3.5).
+    sourceless: fc.integer({ min: 0, max: 5 }).map((value) => value === 0),
   });
   const commandArbitrary = fc.record({
     operation: fc.integer({ min: 0, max: 7 }),
@@ -739,7 +762,9 @@ describe('planTimelineEdit invariants over random documents', () => {
    */
   function checkAccepted(before: TimelineDocumentV1, command: TimelineEditCommand, touchesMain: boolean, result: Accepted): void {
     const next = result.next;
-    expect(TimelineDocumentV1Schema.safeParse(next).success).toBe(true);
+    // Every record the plan holds is one the schema takes (inner#1709 design §3.5), and tracks are `{ id, order }`.
+    for (const item of Object.values(next.clips)) expect(TimelineClipSchema.safeParse(item).success, JSON.stringify(item)).toBe(true);
+    for (const item of Object.values(next.tracks)) expect(Object.keys(item).sort()).toEqual(['id', 'order']);
     // Only set_frame changes the settings, and then only the width and height (breatic#1502 design §3.1).
     if (command.operation === 'set_frame') {
       const [, width, height] = FRAME_PRESETS.find(([key]) => key === command.parameters.preset) ?? [];
@@ -750,13 +775,14 @@ describe('planTimelineEdit invariants over random documents', () => {
       expect(next.settings).toEqual(before.settings);
     }
     // The planner leaves sources to the writer (inner#1708 Q1): the current ones, plus an added source it does not hold.
-    const added = command.operation === 'add_video' && before.sources[command.parameters.source.id] === undefined
-      ? { [command.parameters.source.id]: command.parameters.source } : {};
+    const adding = command as unknown as { operation: string; parameters: { source: { id: string } } };
+    const added = adding.operation === 'add_media' && before.sources[adding.parameters.source.id] === undefined
+      ? { [adding.parameters.source.id]: adding.parameters.source } : {};
     expect(next.sources).toEqual({ ...before.sources, ...added });
 
-    // No new overlapped frames on any track.
-    const overlapBefore = overlappedFrames(before);
-    for (const frame of overlappedFrames(next)) expect(overlapBefore.has(frame), `new overlapped frame ${frame}`).toBe(true);
+    // No new overlapped frames on any track, by the lengths the clips play (inner#1709 design §3.5).
+    const overlapBefore = overlappedFrames(viewOf(before));
+    for (const frame of overlappedFrames(viewOf(next))) expect(overlapBefore.has(frame), `new overlapped frame ${frame}`).toBe(true);
 
     // Out-of-source frames never grow, and a clip valid before stays valid.
     expect(totalOverflow(next)).toBeLessThanOrEqual(totalOverflow(before));
@@ -767,10 +793,10 @@ describe('planTimelineEdit invariants over random documents', () => {
       if (referenceOverflow(was, source) === 0) expect(referenceOverflow(item, source), `clip ${item.id} became invalid`).toBe(0);
     }
 
-    // Main track packed from frame 0 after a magnetic edit that involves it.
+    // Main track packed from frame 0, by the lengths the clips play, after a magnetic edit that involves it.
     if (command.placement.magnet && touchesMain) {
       let at = 0;
-      for (const [, startFrame, durationFrames] of starts(next, MAIN)) {
+      for (const [, startFrame, durationFrames] of starts(viewOf(next), MAIN)) {
         expect(startFrame).toBe(at);
         at += durationFrames;
       }
@@ -778,9 +804,9 @@ describe('planTimelineEdit invariants over random documents', () => {
 
     // Splitting preserves the covered duration.
     if (command.operation === 'split') {
-      const sum = (document: TimelineDocumentV1): number => Object.values(document.clips).reduce((total, item) => total + item.durationFrames, 0);
+      const sum = (document: TimelineDocumentV1): number => Object.values(viewOf(document).clips).reduce((total, item) => total + item.durationFrames, 0);
       expect(sum(next)).toBe(sum(before));
-      const original = before.clips[command.parameters.clipId];
+      const original = viewOf(before).clips[command.parameters.clipId];
       expect((next.clips[command.parameters.clipId]?.durationFrames ?? 0) + (next.clips[command.parameters.newClipId]?.durationFrames ?? 0))
         .toBe(original?.durationFrames);
     }
@@ -799,7 +825,7 @@ describe('planTimelineEdit invariants over random documents', () => {
     for (const id of result.bumped) expect(next.clips[id]?.trackId).not.toBe(before.clips[id]?.trackId);
   }
 
-  it('keeps every invariant across random edit sequences, including merged overlaps and out-of-source starts', () => {
+  it('keeps every invariant across random edit sequences, including merged overlaps, out-of-source starts, removed tracks and missing sources', () => {
     let acceptedCount = 0;
     fc.assert(fc.property(
       fc.array(clipArbitrary, { maxLength: 7 }),
@@ -808,7 +834,9 @@ describe('planTimelineEdit invariants over random documents', () => {
       (clipSeeds, withV3, commandSeeds) => {
         const tracks = withV3 ? [track(MAIN, 0), track(V2, 1), track(V3, 2)] : [track(MAIN, 0), track(V2, 1)];
         let current = timeline(
-          clipSeeds.map((seed, index) => clip(cid(index + 1), TRACK_CHOICES[seed.track] ?? MAIN, seed.startFrame, seed.durationFrames, { sourceInFrame: seed.sourceInFrame })),
+          clipSeeds.map((seed, index) => clip(cid(index + 1), TRACK_CHOICES[seed.track] ?? MAIN, seed.startFrame, seed.durationFrames, {
+            sourceInFrame: seed.sourceInFrame, ...(seed.sourceless ? { sourceId: MISSING_SOURCE_ID } : {}),
+          })),
           tracks,
         );
         const fresh = idFactory('60000000');
@@ -863,7 +891,10 @@ describe('planTimelineEdit leaves sources to the writer (inner#1708 Q1)', () => 
   });
 });
 
-describe('planTimelineEdit around a clip whose source is already missing (inner#1708 P1)', () => {
+// A clip whose source record is missing cannot be shown, so it is in no edit (inner#1709 design §3.5): it is not a
+// target, it does not follow linkage, packing the main track deletes it, and an overwrite trims its tail, deletes it
+// when its head is covered and keeps only its left part when its middle is covered, never reading its source.
+describe('planTimelineEdit around a clip whose source is already missing (inner#1708 P1, inner#1709 design §3.5)', () => {
   const MISSING = '10000000-0000-4000-8000-0000000000ff';
   const X = cid(61);
   const M = cid(62);
@@ -871,32 +902,25 @@ describe('planTimelineEdit around a clip whose source is already missing (inner#
   /** Main A[0,10), X[10,20) without its source, C[20,30). */
   const packed = timeline([clip(A, MAIN, 0, 10), clip(X, MAIN, 10, 10, { sourceId: MISSING }), clip(C, MAIN, 20, 10)]);
 
-  /**
-   * Assert X moved to `startFrame` and kept every other field.
-   * @param result - The accepted plan.
-   * @param before - X before the edit.
-   * @param startFrame - Its expected start.
-   * @throws {Error} When X changed otherwise.
-   */
-  function expectOnlyMoved(result: Accepted, before: TimelineClip | undefined, startFrame: number): void {
-    expect(result.next.clips[X]).toEqual({ ...before, startFrame });
-    expect(result.next.sources[MISSING]).toBe(undefined);
-  }
-
   it.each([
-    ['deleting the clip before it', remove(A, MAGNET_ONLY), 0],
-    ['trimming the clip before it shorter', setRange(A, 0, 0, 5, MAGNET_ONLY), 5],
-    ['duplicating the clip before it', duplicate(A, cid(64), MAGNET_ONLY), 20],
-    ['moving the clip after it in front of it', move(C, 10, MAGNET_ONLY), 20],
-    ['adding a clip at frame 0', addVideo(clip(cid(65), MAIN, 0, 10), MAGNET_ONLY), 20],
-  ] as const)('repacks it on the magnetic main track when %s', (_name, command, startFrame) => {
-    expectOnlyMoved(accepted(plan(packed, command)), packed.clips[X], startFrame);
+    ['deleting the clip before it', remove(A, MAGNET_ONLY), [[C, 0, 10]]],
+    ['trimming the clip before it shorter', setRange(A, 0, 0, 5, MAGNET_ONLY), [[A, 0, 5], [C, 5, 10]]],
+    ['duplicating the clip before it', duplicate(A, cid(64), MAGNET_ONLY), [[A, 0, 10], [cid(64), 10, 10], [C, 20, 10]]],
+    ['moving the clip after it to frame 10', move(C, 10, MAGNET_ONLY), [[A, 0, 10], [C, 10, 10]]],
+    ['adding a clip at frame 0', addVideo(clip(cid(65), MAIN, 0, 10), MAGNET_ONLY), [[cid(65), 0, 10], [A, 10, 10], [C, 20, 10]]],
+  ] as const)('deletes it and packs the shown clips end to end when %s on the magnetic main track', (_name, command, main) => {
+    const result = accepted(plan(packed, command));
+    expect(result.next.clips[X]).toBeUndefined();
+    expect(starts(result.next, MAIN)).toEqual(main);
   });
 
-  it('shifts it with its main clip under linkage', () => {
+  it('leaves it in place under linkage when its main clip moves, bumping nothing for it', () => {
     const linked = timeline([clip(A, MAIN, 0, 48), clip(M, MAIN, 48, 48), clip(X, V2, 60, 10, { sourceId: MISSING })]);
     const result = accepted(plan(linked, remove(A, ON)));
-    expect(result.next.clips[X]).toEqual({ ...linked.clips[X], startFrame: 12 });
+    expect(result.next.clips[X]).toEqual(linked.clips[X]);
+    expect(result.next.clips[M]?.startFrame).toBe(0);
+    expect(result.bumped).toEqual([]);
+    expect(Object.keys(result.next.tracks).sort()).toEqual([MAIN, V2].sort());
   });
 
   it.each([
@@ -905,12 +929,9 @@ describe('planTimelineEdit around a clip whose source is already missing (inner#
     ['split', split(X, 15, cid(66), OFF)],
     ['duplicate', duplicate(X, cid(66), OFF)],
     ['a track change', move(X, 10, OFF, { trackId: V2 })],
-  ] as const)('refuses %s of the clip itself with missing_source', (_name, command) => {
-    expect(plan(packed, command)).toEqual({ ok: false, reason: 'missing_source' });
-  });
-
-  it('deletes the clip itself', () => {
-    expect(accepted(plan(packed, remove(X, MAGNET_ONLY))).next.clips[X]).toBe(undefined);
+    ['delete', remove(X, MAGNET_ONLY)],
+  ] as const)('refuses %s of the clip itself as target_missing', (_name, command) => {
+    expect(plan(packed, command)).toEqual({ ok: false, reason: 'target_missing' });
   });
 
   describe('when an overwrite reaches it on a sub track', () => {
@@ -925,32 +946,32 @@ describe('planTimelineEdit around a clip whose source is already missing (inner#
       expect(accepted(plan(covered(20), move(W, 90, OFF))).next.clips[X]).toEqual({ ...covered(20).clips[X], durationFrames: 90 });
     });
 
-    it('refuses to trim its head, which needs its source, as covers_missing_source (R2)', () => {
-      expect(plan(covered(20), move(W, 0, OFF))).toEqual({ ok: false, reason: 'covers_missing_source' });
+    it('deletes it when its head is covered', () => {
+      const result = accepted(plan(covered(20), move(W, 0, OFF)));
+      expect(result.next.clips[X]).toBeUndefined();
+      expect(starts(result.next, V2)).toEqual([[W, 0, 20]]);
     });
 
-    it('refuses to split it, which needs its source, as covers_missing_source (R2)', () => {
-      expect(plan(covered(20), move(W, 40, OFF))).toEqual({ ok: false, reason: 'covers_missing_source' });
+    it('keeps only its left part when its middle is covered', () => {
+      const result = accepted(plan(covered(20), move(W, 40, OFF)));
+      expect(result.next.clips[X]).toEqual({ ...covered(20).clips[X], durationFrames: 40 });
+      expect(starts(result.next, V2)).toEqual([[X, 0, 40], [W, 40, 20]]);
+      expect(result.created).toEqual([]);
     });
 
-    it.each([
-      ['an addition over its head', addVideo(clip(cid(67), V2, 0, 20), OFF)],
-      ['an addition over its middle', addVideo(clip(cid(67), V2, 40, 20), OFF)],
-    ] as const)('refuses %s as covers_missing_source (R2)', (_name, command) => {
-      expect(plan(covered(20), command)).toEqual({ ok: false, reason: 'covers_missing_source' });
+    it('deletes it under an addition over its head and keeps its left part under one over its middle', () => {
+      const head = accepted(plan(covered(20), addVideo(clip(cid(67), V2, 0, 20), OFF)));
+      expect(head.next.clips[X]).toBeUndefined();
+      const middle = accepted(plan(covered(20), addVideo(clip(cid(67), V2, 40, 20), OFF)));
+      expect(starts(middle.next, V2)).toEqual([[X, 0, 40], [cid(67), 40, 20], [W, 200, 20]]);
     });
 
-    it('refuses a duplicate that lands on its head as covers_missing_source (R2)', () => {
+    it('deletes it under a duplicate or a set_range that lands on its head', () => {
       // W[200,220) duplicates to [220,240), over the head of X2[230,330) which lacks its source.
       const X2 = cid(68);
       const current = timeline([clip(W, V2, 200, 20), clip(X2, V2, 230, 100, { sourceId: MISSING })]);
-      expect(plan(current, duplicate(W, cid(69), OFF))).toEqual({ ok: false, reason: 'covers_missing_source' });
-    });
-
-    it('refuses a set_range that extends over its head as covers_missing_source (R2)', () => {
-      const X2 = cid(68);
-      const current = timeline([clip(W, V2, 200, 20), clip(X2, V2, 230, 100, { sourceId: MISSING })]);
-      expect(plan(current, setRange(W, 200, 0, 40, OFF))).toEqual({ ok: false, reason: 'covers_missing_source' });
+      expect(accepted(plan(current, duplicate(W, cid(69), OFF))).next.clips[X2]).toBeUndefined();
+      expect(accepted(plan(current, setRange(W, 200, 0, 40, OFF))).next.clips[X2]).toBeUndefined();
     });
   });
 });
@@ -1034,7 +1055,7 @@ describe('planTimelineEdit set_transform (breatic#1410, breatic#1502)', () => {
 
   it('bounds frameX and frameY in frames, whatever the frame size', () => {
     for (const [, width, height] of FRAME_PRESETS) {
-      const sized: TimelineDocumentV1 = TimelineDocumentV1Schema.parse({ ...base, settings: { ...base.settings, width, height } });
+      const sized: TimelineDocumentV1 = ({ ...base, settings: { ...base.settings, width, height } });
       expect(accepted(plan(sized, setTransform(O, { ...IDENTITY, frameX: 10, frameY: -10 }))).next.clips[O]?.transform, `${width}x${height}`)
         .toEqual({ ...IDENTITY, frameX: 10, frameY: -10 });
       const doc = seededDoc(sized);
@@ -1099,7 +1120,7 @@ describe('planTimelineEdit set_frame (breatic#1502)', () => {
   });
 
   it.each(FRAME_PRESETS)('sets the frame to %s as %i x %i and changes nothing else', (preset, width, height) => {
-    const current = preset === '16:9' ? TimelineDocumentV1Schema.parse({ ...placed, settings: { ...placed.settings, width: 1080, height: 1920 } }) : placed;
+    const current = preset === '16:9' ? ({ ...placed, settings: { ...placed.settings, width: 1080, height: 1920 } }) : placed;
     const result = accepted(plan(current, setFrame(preset, ON)));
     expect(result.next).toEqual({ ...current, settings: { width, height, fps: FPS } });
     expect(result.created).toEqual([]);
@@ -1108,7 +1129,7 @@ describe('planTimelineEdit set_frame (breatic#1502)', () => {
 
   it('keeps a fractional frame rate', () => {
     const ntsc = { num: 30000, den: 1001 };
-    const current = TimelineDocumentV1Schema.parse({ ...timeline([]), settings: { width: 1920, height: 1080, fps: ntsc } });
+    const current = ({ ...timeline([]), settings: { width: 1920, height: 1080, fps: ntsc } });
     expect(accepted(plan(current, setFrame('4:5'))).next.settings).toEqual({ width: 1080, height: 1350, fps: ntsc });
   });
 
@@ -1134,7 +1155,7 @@ describe('planTimelineEdit set_frame (breatic#1502)', () => {
   });
 
   it('sets the preset over a frame size outside the seven, which reads as no preset', () => {
-    const odd = TimelineDocumentV1Schema.parse({ ...placed, settings: { ...placed.settings, width: 1280, height: 720 } });
+    const odd = ({ ...placed, settings: { ...placed.settings, width: 1280, height: 720 } });
     expect(accepted(plan(odd, setFrame('16:9'))).next.settings).toEqual({ width: 1920, height: 1080, fps: FPS });
   });
 

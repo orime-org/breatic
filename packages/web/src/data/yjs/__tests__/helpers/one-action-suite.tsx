@@ -275,7 +275,7 @@ const S2 = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', assetId: '20
 const S3 = { ...SOURCE, id: '10000000-0000-4000-8000-000000000003', assetId: '20000000-0000-4000-8000-000000000003' };
 
 const COMMANDS: Record<string, TimelineEditCommand> = {
-  add_video: { operation: 'add_video', parameters: { source: S3, clip: clip(cid(9), MAIN, 200, 50, { sourceId: S3.id }) }, placement: ON } as TimelineEditCommand,
+  add_media: { operation: 'add_media', parameters: { source: S3, clip: clip(cid(9), MAIN, 200, 50, { sourceId: S3.id }) }, placement: ON } as TimelineEditCommand,
   move: { operation: 'move', parameters: { clipId: cid(2), startFrame: 300, trackId: V2 }, placement: ON } as TimelineEditCommand,
   set_range: { operation: 'set_range', parameters: { clipId: cid(2), startFrame: 100, sourceInFrame: 10, durationFrames: 50 }, placement: ON } as TimelineEditCommand,
   split: { operation: 'split', parameters: { clipId: cid(1), frame: 50, newClipId: cid(7) }, placement: ON } as TimelineEditCommand,
@@ -594,7 +594,7 @@ export function defineOneActionSuite(chosen: OneActionTransport): void {
       expectM1(count, 'S');
     });
 
-    it.each(['add_video', 'split', 'duplicate'])('MS-12 redoing %s after its undo is one message (S)', async (op) => {
+    it.each(['add_media', 'split', 'duplicate'])('MS-12 redoing %s after its undo is one message (S)', async (op) => {
       const { doc, socket, session } = await timelineBoard();
       expect(session.edit(COMMANDS[op]!).ok).toBe(true);
       session.undo();
@@ -610,7 +610,7 @@ export function defineOneActionSuite(chosen: OneActionTransport): void {
       expectM1(count, 'R');
     });
 
-    it.each(['add_video', 'split', 'duplicate', 'move', 'set_range', 'delete_track'])(
+    it.each(['add_media', 'split', 'duplicate', 'move', 'set_range', 'delete_track'])(
       'MS-14 control: undoing %s stays one message', async (op) => {
         const { doc, socket, session } = await timelineBoard();
         if (op === 'delete_track') {

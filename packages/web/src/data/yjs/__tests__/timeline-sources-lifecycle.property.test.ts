@@ -198,7 +198,7 @@ function commandFor(doc: Y.Doc, step: Action, next: () => number): TimelineEditC
   const trackId = step.onMain ? MAIN : 'v2';
   if (step.kind === 'add') {
     const source = [SOURCE, SHORT_SOURCE, freshSource(next())][step.sourcePick] ?? SOURCE;
-    return { operation: 'add_video', parameters: { source, clip: clip(cid(next()), trackId, step.frame, step.length, { sourceId: source.id }) }, placement };
+    return { operation: 'add_media', parameters: { source, clip: clip(cid(next()), trackId, step.frame, step.length, { sourceId: source.id }) }, placement };
   }
   const document = readTimelineDocument(doc);
   const ids = Object.keys(document.clips).sort();
@@ -236,7 +236,7 @@ describe('Timeline sources across two collaborating sessions (inner#1708 L9)', (
         expect(normalized(a)).toBe(normalized(b));
 
         const final = applyTimelineEdit(finalOnB ? b : a, {
-          operation: 'add_video', parameters: { source: SOURCE, clip: clip(cid(next()), 'v2', 5000, 10) }, placement: { magnet: false, linkage: false },
+          operation: 'add_media', parameters: { source: SOURCE, clip: clip(cid(next()), 'v2', 5000, 10) }, placement: { magnet: false, linkage: false },
         }, FINAL);
         expect(final.ok).toBe(true);
         await settleAll(docs);

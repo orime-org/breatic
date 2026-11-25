@@ -41,7 +41,7 @@ interface Fixture {
 interface AssetFixture {
   id: string;
   fileUrl: string;
-  kind: "image" | "video";
+  kind: "image" | "video" | "audio";
 }
 
 let sql: ReturnType<typeof createPgClient>;
@@ -138,9 +138,9 @@ async function seedFixture(): Promise<Fixture> {
  * @returns The physical asset identity and URL.
  * @throws {Error} When a fixture write fails.
  */
-async function seedAsset(fixture: Fixture, kind: "video" | "image" = "video", coverAssetId?: string): Promise<AssetFixture> {
+async function seedAsset(fixture: Fixture, kind: "video" | "image" | "audio" = "video", coverAssetId?: string): Promise<AssetFixture> {
   const id = randomUUID();
-  const storageKey = `test-media/${id}.${kind === "video" ? "mp4" : "png"}`;
+  const storageKey = `test-media/${id}.${{ video: "mp4", image: "png", audio: "mp3" }[kind]}`;
   const adapter = await getStorageAdapter();
   const fileUrl = adapter.publicUrl(storageKey);
   expect(adapter.keyFromUrl(fileUrl)).toBe(storageKey);
@@ -148,8 +148,9 @@ async function seedAsset(fixture: Fixture, kind: "video" | "image" = "video", co
     (id, studio_id, content_hash, storage_key, file_url, size_bytes, mime_type,
       kind, source, produced_by_user_id, width, height, duration_seconds, cover_asset_id)
     VALUES (${id}, ${fixture.studioId}, ${createHash("sha256").update(id).digest("hex")},
-      ${storageKey}, ${fileUrl}, 8192, ${kind === "video" ? "video/mp4" : "image/png"},
-      ${kind}, 'upload', ${fixture.ownerId}, 1280, 720, ${kind === "video" ? 7.375 : null}, ${coverAssetId ?? null})`;
+      ${storageKey}, ${fileUrl}, 8192, ${{ video: "video/mp4", image: "image/png", audio: "audio/mpeg" }[kind]},
+      ${kind}, 'upload', ${fixture.ownerId}, ${kind === "audio" ? null : 1280}, ${kind === "audio" ? null : 720},
+      ${{ video: 7.375, image: null, audio: 3.5 }[kind]}, ${coverAssetId ?? null})`;
   owned.assets.push(id);
   return { id, fileUrl, kind };
 }
@@ -234,7 +235,23 @@ describe("Project registered media HTTP reads", () => {
         resumeSeekSeconds: config.preview.resume_seek_seconds,
         driftSteerRate: config.preview.drift_steer_rate,
       },
+      media: {
+        imageDurationSeconds: config.media.image_duration_seconds,
+        textDurationSeconds: config.media.text_duration_seconds,
+        textSize: config.media.text_size,
+      },
+      text: { fontBaseUrl: `https://ingest.test.invalid/web-animation/fonts/v${config.web_animation.font_set_version}/` },
     });
+  });
+
+  it("gives web a new picture's and text clip's length, a new text clip's size and where the text fonts are read (inner#1709 design §3.4, §5.3)", async () => {
+    const fixture = await seedFixture();
+    const [, , limitsPath] = readPaths(fixture.projectId, randomUUID());
+    const limits = await readData<Record<string, unknown>>(limitsPath!, fixture.cookie);
+    // The approved values pin each key; toEqual against config alone would accept a key missing on both sides.
+    expect(limits["media"]).toEqual({ imageDurationSeconds: 5, textDurationSeconds: 5, textSize: 0.06 });
+    // INGEST_BASE_URL in the integration environment is https://ingest.test.invalid; font set version 3.
+    expect(limits["text"]).toEqual({ fontBaseUrl: "https://ingest.test.invalid/web-animation/fonts/v3/" });
   });
 
   it("gives web the multi-video preview sync thresholds from config/timeline.yaml (#1410 design §6.4)", async () => {
@@ -385,10 +402,34 @@ describe("Project registered media HTTP reads", () => {
     expect((await readData<ProjectAssetPage>(`${listPath}?kind=video`, fixture.cookie)).items.map((item) => item.assetId)).toEqual([video.id]);
   });
 
+  it("lists only the Project's sounds when asked for kind=audio (inner#1709 design §6.2)", async () => {
+    const fixture = await seedFixture();
+    const video = await seedAsset(fixture, "video");
+    const image = await seedAsset(fixture, "image");
+    const audio = await seedAsset(fixture, "audio");
+    await seedAsset(fixture, "audio"); // Same Studio, but not accepted by this Project.
+    const refs = await projectAssetReferenceService.recordProjectAssetReferences({
+      projectId: fixture.projectId, assetIds: [video.id, image.id, audio.id],
+      displayNames: { [audio.id]: "voice-over.mp3" },
+    });
+    const expected = {
+      assetId: audio.id,
+      projectReferenceId: refs.find((ref) => ref.assetId === audio.id)!.id,
+      displayName: "voice-over.mp3", kind: "audio", fileUrl: audio.fileUrl,
+      coverUrl: null, width: null, height: null, durationSeconds: 3.5,
+      mimeType: "audio/mpeg", sizeBytes: 8192,
+    };
+    const [listPath] = readPaths(fixture.projectId, audio.id);
+    expect(await readData<ProjectAssetPage>(`${listPath}?kind=audio`, fixture.cookie)).toEqual({ items: [expected], nextCursor: null });
+    // The other kinds' lists stay without the sound.
+    expect((await readData<ProjectAssetPage>(`${listPath}?kind=video`, fixture.cookie)).items.map((item) => item.assetId)).toEqual([video.id]);
+    expect((await readData<ProjectAssetPage>(`${listPath}?kind=image`, fixture.cookie)).items.map((item) => item.assetId)).toEqual([image.id]);
+  });
+
   it("rejects query schema violations and the API limit above 1000 with 422", async () => {
     const fixture = await seedFixture();
     const queries = [
-      "kind=audio", "kind=unknown", "limit=0", "limit=-1", "limit=1.5", "limit=abc", "limit=1001",
+      "kind=unknown", "limit=0", "limit=-1", "limit=1.5", "limit=abc", "limit=1001",
       "cursor=", `cursor=${"a".repeat(513)}`,
     ];
     for (const query of queries) {

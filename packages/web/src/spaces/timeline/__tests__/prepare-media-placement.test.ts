@@ -96,9 +96,9 @@ function prepareUnchanged(doc: Y.Doc, input: PlacementInput): PlacementResult {
  * @returns The complete native add command with no playback URL in its source.
  * @throws {never} Never.
  */
-function expectedCommand(overrides: Partial<TimelineVideoClip> = {}, placement: TimelineEditPlacement = OFF): Extract<TimelineEditCommand, { operation: 'add_video' }> {
+function expectedCommand(overrides: Partial<TimelineVideoClip> = {}, placement: TimelineEditPlacement = OFF): Extract<TimelineEditCommand, { operation: 'add_media' }> {
   return {
-    operation: 'add_video',
+    operation: 'add_media',
     parameters: {
       source: {
         id: SOURCE_ID, kind: 'video', assetId: ASSET.assetId, timebase: SETTINGS.fps,
@@ -123,9 +123,9 @@ function expectedCommand(overrides: Partial<TimelineVideoClip> = {}, placement: 
  * @returns The complete existing command for later preservation assertions.
  * @throws {Error} When the shared edit boundary rejects this fixture.
  */
-function occupy(doc: Y.Doc, startFrame: number): Extract<TimelineEditCommand, { operation: 'add_video' }> {
+function occupy(doc: Y.Doc, startFrame: number): Extract<TimelineEditCommand, { operation: 'add_media' }> {
   const base = expectedCommand();
-  const command: Extract<TimelineEditCommand, { operation: 'add_video' }> = {
+  const command: Extract<TimelineEditCommand, { operation: 'add_media' }> = {
     ...base,
     parameters: {
       source: { ...base.parameters.source, id: OTHER_SOURCE_ID },
@@ -180,16 +180,16 @@ describe('prepareTimelineMediaPlacement', () => {
     const command = expectedCommand();
     expect(result).toEqual({ ok: true, command });
     expect(readTimelineDocument(doc)).toEqual({
-      schemaVersion: 2, settings: SETTINGS,
-      tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
+      schemaVersion: 3, settings: SETTINGS,
+      tracks: { 'visual-1': { id: 'visual-1', order: 0 } },
       clips: {}, sources: {},
     });
     if (!result.ok) throw new Error('Expected a prepared native command');
     expect(TimelineEditCommandSchema.parse(result.command)).toEqual(command);
     expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
     expect(readTimelineDocument(doc)).toEqual({
-      schemaVersion: 2, settings: SETTINGS,
-      tracks: { 'visual-1': { id: 'visual-1', kind: 'visual', order: 0 } },
+      schemaVersion: 3, settings: SETTINGS,
+      tracks: { 'visual-1': { id: 'visual-1', order: 0 } },
       clips: { [CLIP_ID]: command.parameters.clip },
       sources: { [SOURCE_ID]: command.parameters.source },
     });
@@ -248,8 +248,37 @@ describe('prepareTimelineMediaPlacement', () => {
     expect(prepareUnchanged(seededDoc(), placementInput({ asset: null, decodedDurationSeconds: 2 }))).toEqual({ ok: false, reason: 'source_unavailable' });
   });
 
-  it.each(['image', 'audio', 'file'] as const)('does not place a registered %s as video', (kind) => {
-    expect(prepareUnchanged(seededDoc(), placementInput({ asset: { ...ASSET, kind } }))).toEqual({ ok: false, reason: 'source_unavailable' });
+  it('does not place a registered file that is no video, picture or sound', () => {
+    expect(prepareUnchanged(seededDoc(), placementInput({ asset: { ...ASSET, kind: 'file' } }))).toEqual({ ok: false, reason: 'source_unavailable' });
+  });
+
+  it('places a registered sound for the length of its file, as a video is placed (inner#1709 design §3.2)', () => {
+    const base = expectedCommand();
+    const sound = { ...ASSET, kind: 'audio', width: null, height: null, mimeType: 'audio/mpeg' } as ProjectRegisteredAsset;
+    const result = prepareUnchanged(seededDoc(), placementInput({ asset: sound }));
+    expect(result).toEqual({ ok: true, command: {
+      ...base,
+      parameters: {
+        source: { ...base.parameters.source, kind: 'audio' },
+        clip: { ...base.parameters.clip, kind: 'audio' },
+      },
+    } });
+  });
+
+  it.each([
+    ['with its registered size', 1280, 720],
+    ['without a registered size', null, null],
+  ] as const)('places a registered picture %s for the configured picture length, its in-point at 0 (inner#1709 design §2.2, §3.2)', (_case, width, height) => {
+    const base = expectedCommand();
+    const picture = { ...ASSET, kind: 'image', width, height, durationSeconds: null, mimeType: 'image/png' } as ProjectRegisteredAsset;
+    const result = prepareUnchanged(seededDoc(), { ...placementInput({ asset: picture }), imageDurationSeconds: 5 } as PlacementInput);
+    expect(result).toEqual({ ok: true, command: {
+      ...base,
+      parameters: {
+        source: { id: SOURCE_ID, kind: 'image', assetId: ASSET.assetId, width, height },
+        clip: { ...base.parameters.clip, kind: 'image', sourceInFrame: 0, durationFrames: 120 },
+      },
+    } });
   });
 
   it.each([undefined, 0, -1, Number.NaN, Number.POSITIVE_INFINITY, Number.NEGATIVE_INFINITY])(
@@ -307,10 +336,13 @@ describe('prepareTimelineMediaPlacement', () => {
     refusedOnApply(doc, draft, 'track_missing');
   });
 
-  it('refuses an audio track rather than choosing a different visual track', () => {
+  it('places onto any existing track, a record an old page wrote with a kind included (inner#1709 design §2.1, §3.1)', () => {
     const doc = seededDoc();
-    addTrack(doc, { id: 'audio-1', kind: 'audio', order: 1 });
-    refusedOnApply(doc, placementInput({ trackId: 'audio-1' }), 'track_missing');
+    addTrack(doc, { id: 'audio-1', kind: 'audio', order: 1 } as unknown as TimelineTrack);
+    const result = prepareUnchanged(doc, placementInput({ trackId: 'audio-1' }));
+    if (!result.ok) throw new Error('Expected a prepared command');
+    expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
+    expect(readTimelineDocument(doc).clips[CLIP_ID]?.trackId).toBe('audio-1');
   });
 
   it('never overwrites an existing clip with a reused clip identity', () => {
@@ -331,7 +363,7 @@ describe('prepareTimelineMediaPlacement', () => {
     expect(result).toEqual({ ok: true, command: { ...base, parameters: { ...base.parameters, newTrackId: 'track-new' } } });
     if (!result.ok) throw new Error('Expected a prepared command');
     expect(applyTimelineEdit(doc, result.command, 'local').ok).toBe(true);
-    expect(readTimelineDocument(doc).tracks['track-new']).toEqual({ id: 'track-new', kind: 'visual', order: 1 });
+    expect(readTimelineDocument(doc).tracks['track-new']).toEqual({ id: 'track-new', order: 1 });
     expect(readTimelineDocument(doc).clips[CLIP_ID]?.trackId).toBe('track-new');
   });
 

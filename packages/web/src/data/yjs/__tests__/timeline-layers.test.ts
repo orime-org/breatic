@@ -1,126 +1,204 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
+/**
+ * Layers and lanes at a frame (breatic#1410 design §6.1, inner#1709 design §2.4, §3.5).
+ *
+ * Every function here reads the view document: its clips are the ones `arrangeTimelineClips` keeps, each at the length
+ * it plays. `visibleTimelineClipsAt(document, frame)` is, bottom-up by track, the one clip per track that is drawn at the
+ * frame (every kind but sound); `audibleTimelineClipsAt(document, frame)` is the one video or sound clip per track
+ * heard at the frame; on a track where clips overlap, the one starting later covers the other.
+ * `nextTimelinePlaybackBoundary(document, frame, endFrame)` stops where a clip starts, where a shown web copy, picture
+ * or text ends, and where a covered clip comes back into view.
+ */
+
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
 
-import { resolveTimelineArrangement } from '@web/data/yjs/timeline-arrangement';
-import { nextTimelinePlaybackBoundary, visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
+import type { TimelineClip, TimelineDocumentV1 } from '@breatic/shared';
+
+import { arrangeTimelineClips } from '@web/data/yjs/timeline-arrangement';
+import { audibleTimelineClipsAt, nextTimelinePlaybackBoundary, visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
 import { orderedTimelineTracks, timelineTrackRank } from '@web/data/yjs/timeline-order';
-import type { TimelineClip } from '@breatic/shared';
-import { MAIN, V2, V3, cid, clip, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
-import { webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
+import { MAIN, SOURCE, V2, V3, cid, clip, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
+import {
+  AUDIO, IMAGE, audioClip, imageClip, mixedTimeline, textClip, type MediaClip,
+} from '@web/data/yjs/__tests__/timeline-media-fixtures';
+import { EMPTY_RESOLUTION, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 
 const LOW = cid(1);
 const TOP = cid(2);
+const TRACKS = [track(MAIN, 0), track(V2, 1), track(V3, 2)];
 const layered = timeline([clip(LOW, MAIN, 0, 480), clip(TOP, V2, 100, 48)]);
-const allReady = new Set([LOW, TOP]);
+
+/**
+ * A view document of any clips on main, v2 and v3.
+ * @param clips - The clips.
+ * @returns The document.
+ * @throws {never} Never.
+ */
+function view(clips: readonly MediaClip[]): TimelineDocumentV1 {
+  return mixedTimeline(clips, TRACKS, [SOURCE, IMAGE, AUDIO]);
+}
 
 /**
  * The ids visible at a frame, bottom-up.
- * @param document - The document.
- * @param ready - The ready clips.
+ * @param document - The view document.
  * @param frame - The frame.
  * @returns The ids.
  * @throws {never} Never.
  */
-function visibleIds(document: Parameters<typeof visibleTimelineClipsAt>[0], ready: ReadonlySet<string>, frame: number): string[] {
-  return visibleTimelineClipsAt(document, ready, frame).map((item) => item.id);
+function visibleIds(document: TimelineDocumentV1, frame: number): string[] {
+  return visibleTimelineClipsAt(document, frame).map((item) => item.id);
 }
 
-// Every ready clip covering the frame is drawn, bottom-up; an upper video no longer hides what is under it (breatic#1410 design §6.1).
-describe('visibleTimelineClipsAt stacks every ready clip', () => {
+/**
+ * The ids heard at a frame, sorted.
+ * @param document - The view document.
+ * @param frame - The frame.
+ * @returns The ids.
+ * @throws {never} Never.
+ */
+function audibleIds(document: TimelineDocumentV1, frame: number): string[] {
+  return audibleTimelineClipsAt(document, frame).map((item) => item.id).sort();
+}
+
+describe('visibleTimelineClipsAt stacks one drawn clip per track (breatic#1410, inner#1709)', () => {
   it('keeps the lower clip under the upper one while the upper clip covers the frame', () => {
-    expect(visibleIds(layered, allReady, 99)).toEqual([LOW]);
-    expect(visibleIds(layered, allReady, 100)).toEqual([LOW, TOP]);
-    expect(visibleIds(layered, allReady, 147)).toEqual([LOW, TOP]);
-    expect(visibleIds(layered, allReady, 148)).toEqual([LOW]);
-    expect(visibleTimelineClipsAt(layered, allReady, 120)).toEqual([layered.clips[LOW], layered.clips[TOP]]);
+    expect(visibleIds(layered, 99)).toEqual([LOW]);
+    expect(visibleIds(layered, 100)).toEqual([LOW, TOP]);
+    expect(visibleIds(layered, 147)).toEqual([LOW, TOP]);
+    expect(visibleIds(layered, 148)).toEqual([LOW]);
+    expect(visibleTimelineClipsAt(layered, 120)).toEqual([layered.clips[LOW], layered.clips[TOP]]);
   });
 
-  it('leaves out a clip that is not ready, and shows nothing in a gap, past the end or with nothing ready', () => {
-    expect(visibleIds(layered, new Set([LOW]), 120)).toEqual([LOW]);
+  it('shows nothing in a gap or past the end', () => {
     const gapped = timeline([clip(LOW, MAIN, 0, 10), clip(TOP, MAIN, 20, 10)]);
-    expect(visibleIds(gapped, allReady, 15)).toEqual([]);
-    expect(visibleIds(gapped, allReady, 30)).toEqual([]);
-    expect(visibleIds(layered, new Set(), 120)).toEqual([]);
+    expect(visibleIds(gapped, 15)).toEqual([]);
+    expect(visibleIds(gapped, 30)).toEqual([]);
   });
 
   it('orders clips on tracks sharing an order by the ordered tracks', () => {
     const tied = timeline([clip(TOP, V2, 0, 10), clip(LOW, V3, 0, 10)], [track(MAIN, 0), track(V2, 1), track(V3, 1)]);
-    expect(visibleIds(tied, allReady, 5)).toEqual([TOP, LOW]);
+    expect(visibleIds(tied, 5)).toEqual([TOP, LOW]);
+  });
+
+  it('draws pictures and texts on any track and never draws a sound clip', () => {
+    const document = view([clip(cid(1), MAIN, 0, 48), audioClip(cid(2), V2, 0, 48), imageClip(cid(3), V3, 0, 48), textClip(cid(4), MAIN, 48, 48)]);
+    expect(visibleIds(document, 10)).toEqual([cid(1), cid(3)]);
+    expect(visibleIds(document, 50)).toEqual([cid(4)]);
+  });
+
+  it('draws only the later-starting of two overlapping clips on one track', () => {
+    const document = view([clip(cid(2), V2, 0, 100), imageClip(cid(1), V2, 40, 20), clip(cid(3), MAIN, 0, 100)]);
+    expect(visibleIds(document, 39)).toEqual([cid(3), cid(2)]);
+    expect(visibleIds(document, 40)).toEqual([cid(3), cid(1)]);
+    expect(visibleIds(document, 60)).toEqual([cid(3), cid(2)]);
+  });
+});
+
+describe('audibleTimelineClipsAt (inner#1709 design §2.4)', () => {
+  it('hears every video and sound clip on any track, and no picture, text or web copy', () => {
+    const document = view([
+      clip(cid(1), MAIN, 0, 48), audioClip(cid(2), V2, 0, 48), audioClip(cid(3), V3, 0, 100),
+      imageClip(cid(4), MAIN, 48, 48), textClip(cid(5), V2, 48, 48), webClip(cid(6), V3, 100, 48),
+    ]);
+    expect(audibleIds(document, 10)).toEqual([cid(1), cid(2), cid(3)].sort());
+    expect(audibleIds(document, 50)).toEqual([cid(3)]);
+    expect(audibleIds(document, 110)).toEqual([]);
+  });
+
+  it('hears only the later-starting of two overlapping video or sound clips on one track', () => {
+    const document = view([audioClip(cid(2), V2, 0, 100), clip(cid(1), V2, 30, 20)]);
+    expect(audibleIds(document, 29)).toEqual([cid(2)]);
+    expect(audibleIds(document, 30)).toEqual([cid(1)]);
+    expect(audibleIds(document, 50)).toEqual([cid(2)]);
   });
 });
 
 describe('nextTimelinePlaybackBoundary', () => {
-  it('stops at every ready clip start strictly after the frame, and not where a video ends', () => {
-    expect(nextTimelinePlaybackBoundary(layered, allReady, 90, 480)).toBe(100);
-    expect(nextTimelinePlaybackBoundary(layered, allReady, 100, 480)).toBe(480);
-    expect(nextTimelinePlaybackBoundary(layered, allReady, 148, 480)).toBe(480);
-  });
-
-  it('ignores clips that are not ready', () => {
-    expect(nextTimelinePlaybackBoundary(layered, new Set([LOW]), 90, 480)).toBe(480);
+  it('stops at every clip start strictly after the frame, and not where a video ends', () => {
+    expect(nextTimelinePlaybackBoundary(layered, 90, 480)).toBe(100);
+    expect(nextTimelinePlaybackBoundary(layered, 100, 480)).toBe(480);
+    expect(nextTimelinePlaybackBoundary(layered, 148, 480)).toBe(480);
   });
 
   it('crosses a gap to the next clip start', () => {
     const gapped = timeline([clip(LOW, MAIN, 0, 10), clip(TOP, MAIN, 20, 10)]);
-    expect(nextTimelinePlaybackBoundary(gapped, allReady, 10, 30)).toBe(20);
+    expect(nextTimelinePlaybackBoundary(gapped, 10, 30)).toBe(20);
   });
 
   it('is capped by the end frame', () => {
-    expect(nextTimelinePlaybackBoundary(layered, allReady, 100, 120)).toBe(120);
-    expect(nextTimelinePlaybackBoundary(layered, new Set(), 0, 480)).toBe(480);
+    expect(nextTimelinePlaybackBoundary(layered, 100, 120)).toBe(120);
+    expect(nextTimelinePlaybackBoundary(timeline([]), 0, 480)).toBe(480);
   });
-});
 
-describe('nextTimelinePlaybackBoundary under an upper layer (breatic#1410 design §6.1)', () => {
+  it('stops where a shown picture or text ends, since the frame changes there (inner#1709 design §2.4)', () => {
+    const document = view([clip(cid(1), MAIN, 0, 200), imageClip(cid(2), V2, 0, 48), textClip(cid(3), V3, 10, 60)]);
+    expect(nextTimelinePlaybackBoundary(document, 0, 200)).toBe(10);
+    expect(nextTimelinePlaybackBoundary(document, 10, 200)).toBe(48);
+    expect(nextTimelinePlaybackBoundary(document, 48, 200)).toBe(70);
+    expect(nextTimelinePlaybackBoundary(document, 70, 200)).toBe(200);
+  });
+
+  it('stops where a sound clip starts but not where it ends', () => {
+    const document = view([clip(cid(1), MAIN, 0, 200), audioClip(cid(2), V2, 30, 40)]);
+    expect(nextTimelinePlaybackBoundary(document, 0, 200)).toBe(30);
+    expect(nextTimelinePlaybackBoundary(document, 30, 200)).toBe(200);
+  });
+
+  it('stops where a covered clip comes back into view as the clip over it on its track ends', () => {
+    const document = view([clip(cid(2), V2, 0, 100), clip(cid(1), V2, 40, 20)]);
+    expect(nextTimelinePlaybackBoundary(document, 40, 100)).toBe(60);
+  });
+
   it('stops at a lower clip edge under an upper clip', () => {
     const M1 = cid(11);
     const M2 = cid(12);
     const UPPER = cid(13);
     const hidden = timeline([clip(M1, MAIN, 0, 48), clip(M2, MAIN, 48, 192), clip(UPPER, V2, 0, 240)], [track(MAIN, 0), track(V2, 1)]);
-    const ready = new Set([M1, M2, UPPER]);
-    expect(visibleIds(hidden, ready, 47)).toEqual([M1, UPPER]);
-    expect(visibleIds(hidden, ready, 48)).toEqual([M2, UPPER]);
-    expect(nextTimelinePlaybackBoundary(hidden, ready, 0, 240)).toBe(48);
-    expect(nextTimelinePlaybackBoundary(hidden, ready, 48, 240)).toBe(240);
+    expect(visibleIds(hidden, 47)).toEqual([M1, UPPER]);
+    expect(visibleIds(hidden, 48)).toEqual([M2, UPPER]);
+    expect(nextTimelinePlaybackBoundary(hidden, 0, 240)).toBe(48);
+    expect(nextTimelinePlaybackBoundary(hidden, 48, 240)).toBe(240);
   });
 
-  it('returns the next ready clip start or end of a web copy showing at the frame; in between nothing appears and no showing copy leaves', () => {
+  it('lets nothing appear, be heard anew, or a shown web copy, picture or text leave before the next boundary, for overlapping mixed clips (fast-check)', () => {
     const seed = fc.record({
       layer: fc.integer({ min: 0, max: 2 }),
       startFrame: fc.integer({ min: 0, max: 60 }),
       durationFrames: fc.integer({ min: 1, max: 40 }),
-      ready: fc.boolean(),
-      web: fc.boolean(),
+      kind: fc.constantFrom('video', 'web', 'image', 'text', 'audio'),
     });
-    // V3's order is drawn from 1 or 2, so V2 and V3 sometimes tie (inner#1708 E3).
-    fc.assert(fc.property(fc.array(seed, { maxLength: 6 }), fc.integer({ min: 0, max: 100 }), fc.constantFrom(1, 2), (seeds, frame, v3Order) => {
+    fc.assert(fc.property(fc.array(seed, { maxLength: 7 }), fc.integer({ min: 0, max: 100 }), fc.constantFrom(1, 2), (seeds, frame, v3Order) => {
       const layers = [MAIN, V2, V3];
-      const clips: TimelineClip[] = seeds.map((item, index) => (item.web ? webClip : clip)(cid(index + 1), layers[item.layer] ?? MAIN, item.startFrame, item.durationFrames));
-      const document = timeline(clips, [track(MAIN, 0), track(V2, 1), track(V3, v3Order)]);
-      const ready = new Set(clips.filter((_item, index) => seeds[index]?.ready === true).map((item) => item.id));
+      // One start per track and frame, so the reference needs no tie rule.
+      const unique = seeds.filter((item, index) => seeds.findIndex((other) => other.layer === item.layer && other.startFrame === item.startFrame) === index);
+      const clips: MediaClip[] = unique.map((item, index) => {
+        const build = { video: clip, web: webClip, image: imageClip, text: textClip, audio: audioClip }[item.kind];
+        return build(cid(index + 1), layers[item.layer] ?? MAIN, item.startFrame, item.durationFrames);
+      });
+      const document = mixedTimeline(clips, [track(MAIN, 0), track(V2, 1), track(V3, v3Order)], [SOURCE, IMAGE, AUDIO]);
       const end = 110;
-      // Reference model, independent of the code under test: every ready clip covering the frame, as a set.
-      const covering = (at: number): string[] => clips.filter((item) => ready.has(item.id) && item.startFrame <= at && at < item.startFrame + item.durationFrames)
-        .map((item) => item.id).sort();
-      const shown = (at: number): string[] => visibleIds(document, ready, at).slice().sort();
-      const readyClips = clips.filter((item) => ready.has(item.id));
-      const startsAt = (at: number): boolean => readyClips.some((item) => item.startFrame === at);
-      // The web copies showing at the frame: a video's end is not a boundary, a showing web copy's end is.
-      const showingWeb = readyClips.filter((item) => item.kind === 'web-animation' && item.startFrame <= frame && frame < item.startFrame + item.durationFrames);
-      const webEndsAt = (at: number): boolean => showingWeb.some((item) => item.startFrame + item.durationFrames === at);
-      const next = nextTimelinePlaybackBoundary(document, ready, frame, end);
-      expect(shown(frame)).toEqual(covering(frame));
+      // Reference model, independent of the code under test: per track, the latest-starting covering clip.
+      const top = (at: number, keep: (item: MediaClip) => boolean): string[] => layers.flatMap((trackId) => {
+        const covering = clips.filter((item) => keep(item) && item.trackId === trackId && item.startFrame <= at && at < item.startFrame + item.durationFrames);
+        const latest = covering.sort((a, b) => b.startFrame - a.startFrame)[0];
+        return latest === undefined ? [] : [latest.id];
+      }).sort();
+      const drawn = (at: number): string[] => top(at, (item) => item.kind !== 'audio');
+      const heard = (at: number): string[] => top(at, (item) => item.kind === 'video' || item.kind === 'audio');
+      const ending = clips.filter((item) => item.kind === 'web-animation' || item.kind === 'image' || item.kind === 'text');
+      const next = nextTimelinePlaybackBoundary(document, frame, end);
+      expect(visibleIds(document, frame).slice().sort()).toEqual(drawn(frame));
+      expect(audibleIds(document, frame)).toEqual(heard(frame));
       expect(next).toBeGreaterThan(frame);
+      const shownEnding = ending.filter((item) => drawn(frame).includes(item.id));
       for (let at = frame + 1; at < next; at += 1) {
-        expect(startsAt(at) || webEndsAt(at), `a boundary at ${at} before ${next}`).toBe(false);
-        // Only videos may leave before the boundary: nothing appears, and every showing web copy stays.
-        for (const id of shown(at)) expect(shown(frame), `${id} appeared at ${at} before ${next}`).toContain(id);
-        for (const item of showingWeb) expect(shown(at)).toContain(item.id);
+        for (const id of drawn(at)) expect(drawn(frame), `${id} appeared at ${at} before ${next}`).toContain(id);
+        for (const id of heard(at)) expect(heard(frame), `${id} was heard at ${at} before ${next}`).toContain(id);
+        for (const item of shownEnding) expect(drawn(at), `${item.id} left at ${at} before ${next}`).toContain(item.id);
       }
-      if (next < end) expect(startsAt(next) || webEndsAt(next), `nothing starts or ends at ${next}`).toBe(true);
     }), { numRuns: 300 });
   });
 });
@@ -130,11 +208,10 @@ describe('nextTimelinePlaybackBoundary cost (inner#1708 D5)', () => {
     const clips: TimelineClip[] = Array.from({ length: 1000 }, (_item, index) => clip(cid(index + 2), MAIN, index * 2, 2));
     const cover = clip(cid(1), V2, 0, 2000);
     const document = timeline([...clips, cover], [track(MAIN, 0), track(V2, 1)]);
-    const ready = new Set([cover.id, ...clips.map((item) => item.id)]);
     // Warm the code paths so the measurement is not dominated by compilation. The next main clip's start counts.
-    expect(nextTimelinePlaybackBoundary(document, ready, 0, 2010)).toBe(2);
+    expect(nextTimelinePlaybackBoundary(document, 0, 2010)).toBe(2);
     const started = performance.now();
-    for (let call = 0; call < 60; call += 1) nextTimelinePlaybackBoundary(document, ready, 0, 2010);
+    for (let call = 0; call < 60; call += 1) nextTimelinePlaybackBoundary(document, 0, 2010);
     expect(performance.now() - started).toBeLessThan(60);
   });
 });
@@ -152,33 +229,31 @@ describe('tracks sharing an order (inner#1708 E3)', () => {
     const onLower = cid(1);
     const onUpper = cid(2);
     const tied = timeline([clip(onLower, V2, 0, 10), clip(onUpper, V3, 0, 10)], [track(MAIN, 0), track(V2, 1), track(V3, 1)]);
-    const ready = new Set([onLower, onUpper]);
     expect(orderedTimelineTracks(tied.tracks).map((item) => item.id)).toEqual([MAIN, V2, V3]);
-    expect(visibleIds(tied, ready, 5)).toEqual([onLower, onUpper]);
+    expect(visibleIds(tied, 5)).toEqual([onLower, onUpper]);
   });
 
   it('finds the boundary where a web copy on the upper tied track ends over a longer lower one, and none where a video there ends', () => {
     const onLower = cid(1);
     const onUpper = cid(2);
     const tracks = [track(MAIN, 0), track(V2, 1), track(V3, 1)];
-    const ready = new Set([onLower, onUpper]);
     const tiedWeb = timeline([clip(onLower, V2, 0, 40), webClip(onUpper, V3, 0, 10)], tracks);
-    expect(nextTimelinePlaybackBoundary(tiedWeb, ready, 0, 50)).toBe(10);
-    expect(visibleIds(tiedWeb, ready, 10)).toEqual([onLower]);
+    expect(nextTimelinePlaybackBoundary(tiedWeb, 0, 50)).toBe(10);
+    expect(visibleIds(tiedWeb, 10)).toEqual([onLower]);
     const tiedVideo = timeline([clip(onLower, V2, 0, 40), clip(onUpper, V3, 0, 10)], tracks);
-    expect(nextTimelinePlaybackBoundary(tiedVideo, ready, 0, 50)).toBe(50);
+    expect(nextTimelinePlaybackBoundary(tiedVideo, 0, 50)).toBe(50);
   });
 });
 
-describe('a clip whose source is missing (inner#1708 M1)', () => {
-  it('is not shown; the clip below it is', () => {
+describe('the view document leaves out a clip whose source is missing (inner#1709 design §3.5)', () => {
+  it('draws the clip below it and finds no boundary at its start', () => {
     const below = cid(1);
     const above = cid(2);
-    const document = timeline([clip(below, MAIN, 0, 48), clip(above, V2, 10, 20, { sourceId: '10000000-0000-4000-8000-0000000000ff' })]);
-    const ready = new Set(resolveTimelineArrangement(document).readyClipIds);
-    expect(ready.has(above)).toBe(false);
-    expect(visibleIds(document, ready, 15)).toEqual([below]);
-    // The video below ends at 48, which is no boundary; the clip above is not ready, so its start is none either.
-    expect(nextTimelinePlaybackBoundary(document, ready, 0, 60)).toBe(60);
+    const raw = timeline([clip(below, MAIN, 0, 48), clip(above, V2, 10, 20, { sourceId: '10000000-0000-4000-8000-0000000000ff' })]);
+    const document = { ...raw, clips: arrangeTimelineClips(raw, EMPTY_RESOLUTION) };
+    expect(document.clips[above]).toBeUndefined();
+    expect(visibleIds(document, 15)).toEqual([below]);
+    // The video below ends at 48, which is no boundary; the clip above is not in the view, so its start is none either.
+    expect(nextTimelinePlaybackBoundary(document, 0, 60)).toBe(60);
   });
 });
