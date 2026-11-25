@@ -442,6 +442,18 @@ describe("server retries inside a run and the first failure (§93 D5-3; design �
     expect(submitted().map((request) => request.jobId)).toEqual([batchId(0, 1)]);
     allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
   });
+  // A pickup reads every attempt already opened before it opens any: a later batch's final failure keeps an earlier
+  // batch from opening its next attempt, which would be charged and never used.
+  it("VT09 a later batch that failed for good keeps an earlier batch from opening its next attempt in the same pickup", async () => {
+    serve(plan("video.split", { batches: [[0], [1]], encodes: [] }, 1));
+    scripted.set(batchId(0, 1), "running");
+    scripted.set(batchId(1, 1), { written: [], state: "failed" }); scripted.set(batchId(1, 2), "running");
+    expect(await drive()).toBeNull();
+    scripted.set(batchId(0, 1), { written: [], state: "failed" }); scripted.set(batchId(1, 2), { written: [], state: "failed" });
+    const completion = await drive();
+    expect(submitted().map((request) => request.jobId)).not.toContain(batchId(0, 2));
+    allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
+  });
 });
 
 // §7.16: a version with an edit file is read from it; the original is bound beside it for a segment's audio (§4.4).
@@ -583,6 +595,19 @@ describe("an oversized segment: run-chunk jobs and one run-stitch (§93 D5-10)",
     expect(h.finish).toHaveBeenCalledTimes(1);
     allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
     expect(h.openPlan.mock.calls.map((call) => (call[0] as OpenMiniToolPlanJobInput).request.jobId)).not.toContain(chunkId(0, 2));
+  });
+
+  it("VC09 another segment's chunk that failed for good keeps a segment from opening its stitch in the same pickup", async () => {
+    serve(plan("video.split", { batches: [], encodes: [{ outputIndex: 0, chunks: CHUNKS }, { outputIndex: 1, chunks: [{ start: 48, end: 96 }] }] }, 1,
+      [WHOLE, RECIPES["video.split"][1]!]));
+    const otherChunk = (attempt: number): string => videoContainerJobId({ kind: "run-chunk", taskId: TASK, output: 1, chunk: 0, attempt });
+    scripted.set(chunkId(0), "running");
+    scripted.set(otherChunk(1), { written: [], state: "failed" }); scripted.set(otherChunk(2), "running");
+    expect(await drive()).toBeNull();
+    scripted.delete(chunkId(0)); scripted.set(otherChunk(2), { written: [], state: "failed" });
+    const completion = await drive();
+    expect(submitted().map((request) => request.jobId)).not.toContain(stitchId());
+    allFailed(completion, { code: "mini_tool_failed", message: "tool_failed" });
   });
 
   // The stitch of a segment that is not output 0 declares its own output index; a stitch whose attempts are exhausted fails

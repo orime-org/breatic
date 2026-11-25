@@ -136,20 +136,23 @@ function plannedOutput(execution: VideoTool, outputIndex: number): PlannedOutput
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
  * @param pickup - The pickup's results, extended in place.
- * @returns Nothing once the batch is settled, still running or stopped by a failure.
+ * @param open - Whether its next attempt may be opened.
+ * @returns True when its next attempt waits to be opened; false once the batch is settled, still running or stopped by a
+ * failure.
  * @throws {Error} When persistence or grants fail.
  */
 async function advanceBatch(execution: VideoTool, batch: number, outputs: readonly number[], userId: string, deadlineAt: number,
-  pickup: VideoToolPickup): Promise<void> {
+  pickup: VideoToolPickup, open: boolean): Promise<boolean> {
   for (let attempt = 1; attempt <= execution.container.chunkRetries + 1; attempt += 1) {
     const pending = outputs.filter((index) => !pickup.results.has(index));
-    if (pending.length === 0 || failedYet(pickup)) return;
+    if (pending.length === 0 || failedYet(pickup)) return false;
     const jobId = videoContainerJobId({ kind: "run-batch", taskId: execution.taskId, batch, attempt });
-    const found = await jobStep(execution.taskId, jobId, execution.container.containerClass, deadlineAt);
+    const found = await jobStep(execution.taskId, jobId, execution.container.containerClass, deadlineAt, open);
+    if (found === "unopened") return true;
     // An attempt due after the deadline is never opened: the outputs it would carry expire.
     if (found === null) {
       for (const index of pending) pickup.results.set(index, failedResult("expired"));
-      return;
+      return false;
     }
     const { step, request: stored } = found;
     let request = stored;
@@ -170,25 +173,26 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
       // A job that can no longer be submitted or waited for expires its unwritten outputs.
       if (error instanceof DeadlinePassed) {
         for (const index of pending) pickup.results.set(index, failedResult("expired"));
-        return;
+        return false;
       }
       if (!(error instanceof StillRunning)) throw error;
       pickup.waiting = true;
-      return;
+      return false;
     }
     // A written output refused for its size is the run's final failure, never retried.
     if (job.refused !== null) {
       for (const index of pending) pickup.results.set(index, failedResult(job.refused));
-      return;
+      return false;
     }
     for (const output of job.report.outputs) if (pending.includes(output.outputIndex)) pickup.results.set(output.outputIndex, { status: "reported" });
     if (job.report.state === "done") continue;
     // An attempt ingest ended at the deadline has no next one: its unwritten outputs expire.
     if (attempt === execution.container.chunkRetries + 1 || job.report.reason === "expired") {
       for (const index of outputs) if (!pickup.results.has(index)) pickup.results.set(index, failedResult(job.report.reason));
-      return;
+      return false;
     }
   }
+  return false;
 }
 
 /**
@@ -201,11 +205,13 @@ async function advanceBatch(execution: VideoTool, batch: number, outputs: readon
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
  * @param pickup - The pickup's results, extended in place.
- * @returns Nothing once the segment is settled or still running.
+ * @param open - Whether a chunk's next attempt or the stitch may be opened.
+ * @returns True when a chunk's next attempt or the stitch waits to be opened; false once the segment is settled or still
+ * running.
  * @throws {Error} When persistence, grants or registration fail.
  */
 async function advanceEncode(execution: VideoTool, encode: VideoTool["layout"]["encodes"][number], userId: string, deadlineAt: number,
-  pickup: VideoToolPickup): Promise<void> {
+  pickup: VideoToolPickup, open: boolean): Promise<boolean> {
   const { outputIndex } = encode;
   const recipe = recipeOf(execution, outputIndex);
   if (recipe.kind !== "segment") throw new Error("Only a segment is encoded in chunks");
@@ -218,13 +224,14 @@ async function advanceEncode(execution: VideoTool, encode: VideoTool["layout"]["
       encode.chunks.map((_window, chunk) => ({ contentType: webm(recipes[chunk]!) ? "video/webm" : "video/mp4",
         jobId: (attempt) => videoContainerJobId({ kind: "run-chunk", taskId: execution.taskId, output: outputIndex, chunk, attempt }),
         outputKey: (jobId) => videoPresentationWorkKeyFor(execution.sourceKey, jobId), failed: (reason) => ({ failed: reason }),
-        build: () => Promise.resolve({ recipe: recipes[chunk]!, inputs: inputs.slice(0, 1) }) })), deadlineAt);
+        build: () => Promise.resolve({ recipe: recipes[chunk]!, inputs: inputs.slice(0, 1) }) })), deadlineAt, open);
   } catch (error) {
     if (!(error instanceof StillRunning)) throw error;
     pickup.waiting = true;
-    return;
+    return false;
   }
-  if (!("keys" in chunks)) { pickup.results.set(outputIndex, failedResult(chunks.failed)); return; }
+  if ("unopened" in chunks) return true;
+  if (!("keys" in chunks)) { pickup.results.set(outputIndex, failedResult(chunks.failed)); return false; }
   const { keys } = chunks;
   const stitch = recipes.at(-1) as Extract<MiniToolPlanRecipe, { kind: "stitch"; inputId: string }>;
   let written: Awaited<ReturnType<typeof advanceStaged>>;
@@ -232,35 +239,42 @@ async function advanceEncode(execution: VideoTool, encode: VideoTool["layout"]["
     written = await advanceStaged({ taskId: execution.taskId, projectId: execution.projectId, sourceKey: execution.sourceKey, container: execution.container, log: "split" },
       { stepKey: `out:${outputIndex}:stitch`, namePrefix: grantOf(stitch).namePrefix, container: webm(stitch) ? "webm" : "mp4", outputIndex, retire: keys,
         build: () => Promise.resolve({ recipe: stitch, inputs: [...inputs.filter((input) => input.inputId === stitch.inputId), ...keys.map((storageKey, chunk) => ({ inputId: chunkInputId(chunk), storageKey }))] }) },
-      userId, deadlineAt);
+      userId, deadlineAt, open);
   } catch (error) {
     if (!(error instanceof StillRunning)) throw error;
     pickup.waiting = true;
-    return;
+    return false;
   }
+  if ("unopened" in written) return true;
   pickup.results.set(outputIndex, "failed" in written ? failedResult(written.failed) : { status: "reported" });
+  return false;
 }
 
 /**
  * One pickup of a frames, split or video focus crop run (§93 D5-1..D5-10): advance every frozen batch and oversized segment
- * on the frozen version's grid and tool source, stopping at the first output that fails for good (§7.19).
+ * on the frozen version's grid and tool source, stopping at the first output that fails for good (§7.19). Every attempt
+ * already opened is read before any is opened, so a failure anywhere in the run is known before new work starts.
  * @param execution - The frozen run.
  * @param userId - Who ran the tool.
  * @param deadlineAt - The task deadline.
- * @param pickup - The pickup's results, filled in place as outputs settle.
  * @returns Every output settled so far, and whether any job still runs.
  * @throws {Error} When persistence or grants fail.
  */
-export async function runMiniToolVideoTool(execution: AcceptedMiniToolExecution, userId: string, deadlineAt: number,
-  pickup: VideoToolPickup = { results: new Map(), waiting: false }): Promise<VideoToolPickup> {
+export async function runMiniToolVideoTool(execution: AcceptedMiniToolExecution, userId: string, deadlineAt: number): Promise<VideoToolPickup> {
   const tool = videoTool(execution);
-  for (const [batch, outputs] of tool.layout.batches.entries()) {
+  const pickup: VideoToolPickup = { results: new Map(), waiting: false };
+  const steps = [
+    ...tool.layout.batches.map((outputs, batch) => (open: boolean) => advanceBatch(tool, batch, outputs, userId, deadlineAt, pickup, open)),
+    ...tool.layout.encodes.map((encode) => (open: boolean) => advanceEncode(tool, encode, userId, deadlineAt, pickup, open)),
+  ];
+  const unopened: typeof steps = [];
+  for (const step of steps) {
     if (failedYet(pickup)) return pickup;
-    await advanceBatch(tool, batch, outputs, userId, deadlineAt, pickup);
+    if (await step(false)) unopened.push(step);
   }
-  for (const encode of tool.layout.encodes) {
+  for (const step of unopened) {
     if (failedYet(pickup)) return pickup;
-    await advanceEncode(tool, encode, userId, deadlineAt, pickup);
+    await step(true);
   }
   return pickup;
 }

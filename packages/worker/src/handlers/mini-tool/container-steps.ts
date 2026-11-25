@@ -64,13 +64,16 @@ async function appendStep(taskId: string, planned: { kind: Step["kind"]; endpoin
  * @param jobId - The job id.
  * @param endpoint - The class the job runs on.
  * @param deadlineAt - The task deadline.
- * @returns The step and its stored request, if it has one; null when no step holds the job and the deadline has passed.
+ * @param open - Whether a new step may be appended.
+ * @returns The step and its stored request, if it has one; null when no step holds the job and the deadline has passed;
+ * `unopened` when no step holds it and none may be appended.
  * @throws {Error} When persistence fails.
  */
-export async function jobStep(taskId: string, jobId: string, endpoint: string, deadlineAt: number): Promise<{ step: Step; request: MiniToolPlanJobRequest | null } | null> {
+export async function jobStep(taskId: string, jobId: string, endpoint: string, deadlineAt: number, open: boolean): Promise<{ step: Step; request: MiniToolPlanJobRequest | null } | null | "unopened"> {
   const steps = await upstreamStepRepo.listSteps(taskId);
   const found = steps.find((step) => storedRequest(step)?.jobId === jobId);
   if (found !== undefined) return { step: found, request: storedRequest(found) };
+  if (!open) return "unopened";
   if (Date.now() >= deadlineAt) return null;
   return { step: await appendStep(taskId, { kind: "container_job", endpoint, itemIndex: steps.length }), request: null };
 }
@@ -161,11 +164,12 @@ async function advanceAttempts(run: ContainerRun, planned: ContainerStep, deadli
  * @param run - The run.
  * @param chunks - The chunk steps in order.
  * @param deadlineAt - The task deadline.
- * @returns Every chunk's output in order, or the failure of the first chunk in order that failed for good.
+ * @param open - Whether a chunk's next attempt may be opened; when not, a chunk waiting for one answers `unopened`.
+ * @returns Every chunk's output in order, the failure of the first chunk in order that failed for good, or `unopened`.
  * @throws {StillRunning} While a chunk runs.
  * @throws {Error} When persistence or the job boundary fails.
  */
-export async function advanceChunks(run: ContainerRun, chunks: readonly ContainerStep[], deadlineAt: number): Promise<{ keys: string[] } | Exclude<StepEnded, { key: string }>> {
+export async function advanceChunks(run: ContainerRun, chunks: readonly ContainerStep[], deadlineAt: number, open: boolean): Promise<{ keys: string[] } | Exclude<StepEnded, { key: string }> | { unopened: true }> {
   const ended = new Map<number, StepEnded>();
   const unopened: number[] = [];
   let running = false;
@@ -199,10 +203,11 @@ export async function advanceChunks(run: ContainerRun, chunks: readonly Containe
   };
   // The attempts already opened go first, so a chunk failed for good is known before any chunk opens a new attempt.
   for (const k of chunks.keys()) await advance(k, false);
-  for (const k of unopened) if (failure() === null) await advance(k, true);
+  if (open) for (const k of unopened.splice(0)) if (failure() === null) await advance(k, true);
   // A chunk failed for good fails the run at once (frames-split §7.19): no running sibling is waited for.
   const failed = failure();
   if (failed !== null) return failed;
+  if (unopened.length > 0) return { unopened: true };
   if (running) throw new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
   return { keys: chunks.map((_chunk, k) => (ended.get(k) as { key: string }).key) };
 }
@@ -227,13 +232,14 @@ export interface StagedStep {
  * @param planned - The step.
  * @param userId - The run's user.
  * @param deadlineAt - The task deadline.
+ * @param open - Whether its next attempt may be opened; when not, a step waiting for one answers `unopened`.
  * @returns Reported once an attempt wrote the output; otherwise the failure: the last attempt's reason once every attempt
  * failed, the refusal of a written output (over_cap, empty), or `expired` when a next attempt is due after the deadline,
- * ingest ended an attempt at it, or the job can no longer be submitted or waited for.
+ * ingest ended an attempt at it, or the job can no longer be submitted or waited for; or `unopened`.
  * @throws {StillRunning} While the job runs.
  * @throws {Error} When persistence or grants fail.
  */
-export async function advanceStaged(run: ContainerRun, planned: StagedStep, userId: string, deadlineAt: number): Promise<{ reported: true } | { failed: string; expired?: true }> {
+export async function advanceStaged(run: ContainerRun, planned: StagedStep, userId: string, deadlineAt: number, open: boolean): Promise<{ reported: true } | { failed: string; expired?: true } | { unopened: true }> {
   const outputIndex = planned.outputIndex ?? 0;
   let reason = "tool_failed";
   for (let attempt = 1; attempt <= run.container.chunkRetries + 1; attempt += 1) {
@@ -242,6 +248,7 @@ export async function advanceStaged(run: ContainerRun, planned: StagedStep, user
     let step = steps.find((candidate) => storedRequest(candidate)?.jobId === jobId);
     let request = step === undefined ? null : storedRequest(step);
     if (request === null) {
+      if (!open) return { unopened: true };
       // An attempt opened after the deadline is never submitted, so no grant, step or job is opened for it.
       if (Date.now() >= deadlineAt) return { failed: "expired", expired: true };
       const built = await planned.build();
