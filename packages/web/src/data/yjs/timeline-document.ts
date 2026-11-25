@@ -3,22 +3,24 @@
 
 import * as Y from 'yjs';
 import {
-  durationToFrames, newId as createId, TimelineVideoClipSchema, type ProjectRegisteredAsset, type TimelineDocumentV1, type TimelineVideoSource, type TimelineWebResolution,
+  durationToFrames, newId as createId, orderedTimelineClips, timelineSourceRoom, timelineUploadExtent, TimelineVideoClipSchema, type ProjectRegisteredAsset,
+  type TimelineDocumentV1, type TimelineVideoSource, type TimelineWebResolution,
 } from '@breatic/shared';
 import {
-  attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, readTimelineSource, timelineDocumentNeedsUpgrade,
-  timelineRecordJson, upgradeTimelineDocument,
+  attachTimelineRecord as attachRecord, freezeTimelineRecord as freezeRecord, readTimelineDocument, reconcileTimelineSources,
+  timelineDocumentNeedsUpgrade, TIMELINE_UPLOAD_ORIGIN, upgradeTimelineDocument,
 } from '@breatic/shared/space-content';
 
 import { readDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';
 import { writeSpaceDoc, type SpaceRefusal, type SpaceWriteKind } from '@web/data/yjs/space-write';
-import { EMPTY_TIMELINE_WEB_RESOLUTION, timelineUploadExtent } from '@web/data/yjs/timeline-arrangement';
-import { orderedTimelineClips } from '@web/data/yjs/timeline-order';
-import { timelineSourceRoom } from '@web/data/yjs/timeline-time';
+import { EMPTY_TIMELINE_WEB_RESOLUTION } from '@web/data/yjs/timeline-arrangement';
 import { TimelineEditCommandSchema, planTimelineEdit, type TimelineEditCommand, type TimelineEditPlan } from '@web/data/yjs/timeline-edit';
 
-export { readTimelineContent, readTimelineDocument, type TimelineDamagedRecords } from '@breatic/shared/space-content';
+export {
+  missingTimelineSourceIds, readTimelineContent, readTimelineDocument, reconcileTimelineSources, restoreTimelineSources, timelineClipSourceId,
+  TIMELINE_UPLOAD_ORIGIN, type TimelineDamagedRecords,
+} from '@breatic/shared/space-content';
 
 /**
  * The size-state name of a Timeline document; one not in the document cache has no size state, which
@@ -73,97 +75,6 @@ export function removeTimelineClip(doc: Y.Doc, id: string, origin: unknown): voi
       if (sweep) reconcileTimelineSources(doc, {}, []);
     }, origin);
   });
-}
-
-/**
- * The source id a clip record names, read from the raw record so a damaged record still counts as a reference.
- * @param record - A value of the clips map, or its JSON.
- * @returns Its string `sourceId`, if any.
- * @throws {never} Never.
- */
-export function timelineClipSourceId(record: unknown): string | undefined {
-  const json = timelineRecordJson(record);
-  const id = typeof json === 'object' && json !== null ? (json as { sourceId?: unknown }).sourceId : undefined;
-  return typeof id === 'string' ? id : undefined;
-}
-
-/**
- * The source ids the clip records name, damaged records included.
- * @param doc - The content document.
- * @returns The referenced source ids.
- * @throws {never} Never.
- */
-function timelineReferencedSourceIds(doc: Y.Doc): Set<string> {
-  const referenced = new Set<string>();
-  doc.getMap<unknown>('clips').forEach((record) => {
-    const id = timelineClipSourceId(record);
-    if (id !== undefined) referenced.add(id);
-  });
-  return referenced;
-}
-
-/**
- * The referenced sources that `sources` lacks or holds unreadable and `values` holds.
- * @param sources - The sources map.
- * @param referenced - The referenced source ids.
- * @param values - Source values by id that this writer may write.
- * @returns Their ids.
- * @throws {never} Never.
- */
-function missingSourceIds(sources: Y.Map<unknown>, referenced: Iterable<string>, values: Readonly<Record<string, TimelineVideoSource>>): string[] {
-  // Own keys only: a damaged clip may name any string, including an Object.prototype property.
-  return [...referenced].filter((id) => readTimelineSource(sources.get(id), id) === undefined && Object.hasOwn(values, id));
-}
-
-/**
- * The referenced sources, damaged clip records included, that `sources` lacks or holds unreadable and `values` holds.
- * @param doc - The content document.
- * @param values - Source values by id that this writer may write.
- * @returns Their ids.
- * @throws {never} Never.
- */
-export function missingTimelineSourceIds(doc: Y.Doc, values: Readonly<Record<string, TimelineVideoSource>>): string[] {
-  return missingSourceIds(doc.getMap<unknown>('sources'), timelineReferencedSourceIds(doc), values);
-}
-
-/**
- * Write referenced sources inside the caller's transaction: the ones in `reset` even when present, and any that is
- * missing, each from `values` when it holds it. Concurrent writes to one key keep only one of them, so a fresh
- * write narrows the window in which a peer's removal leaves a reference without its source; writing back a missing
- * one closes it.
- * @param doc - The content document.
- * @param values - Source values by id that this writer may write.
- * @param reset - Ids of sources a reference was just created or revived for.
- * @returns The referenced source ids.
- * @throws {never} Never.
- */
-export function restoreTimelineSources(doc: Y.Doc, values: Readonly<Record<string, TimelineVideoSource>>, reset: Iterable<string>): Set<string> {
-  const sources = doc.getMap<unknown>('sources');
-  const referenced = timelineReferencedSourceIds(doc);
-  /**
-   * Write one source value from `values`.
-   * @param id - The source id.
-   * @throws {never} Never.
-   */
-  const write = (id: string): void => {
-    if (Object.hasOwn(values, id)) sources.set(id, freezeRecord(structuredClone(values[id])));
-  };
-  for (const id of new Set(reset)) if (referenced.has(id)) write(id);
-  for (const id of missingSourceIds(sources, referenced, values)) write(id);
-  return referenced;
-}
-
-/**
- * Bring `sources` to exactly the sources the clip records name, inside the caller's transaction.
- * @param doc - The content document.
- * @param values - Source values by id that this writer may write.
- * @param reset - Ids of sources a reference was just created or revived for.
- * @throws {never} Never.
- */
-export function reconcileTimelineSources(doc: Y.Doc, values: Readonly<Record<string, TimelineVideoSource>>, reset: Iterable<string>): void {
-  const referenced = restoreTimelineSources(doc, values, reset);
-  const sources = doc.getMap<unknown>('sources');
-  for (const id of [...sources.keys()]) if (!referenced.has(id)) sources.delete(id);
 }
 
 /** Origin of the record format conversion; no undo manager tracks it. */
@@ -298,8 +209,6 @@ function writeRecords(parent: Y.Map<unknown>, before: Readonly<Record<string, ob
   }
 }
 
-/** Origin of an upload's conversion into video clips; no undo manager tracks it, so no user's history holds it. */
-export const TIMELINE_UPLOAD_ORIGIN = Symbol('timeline-upload');
 
 // The fields a video clip keeps when a placeholder becomes one; anything else on the record is dropped.
 const VIDEO_CLIP_FIELDS: ReadonlySet<string> = new Set(Object.keys(TimelineVideoClipSchema.shape));

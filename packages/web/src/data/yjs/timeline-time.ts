@@ -2,26 +2,11 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import {
-  assertTimelineRate as assertRate, timelineDurationFraction as durationFraction,
-  type TimelineClip, type TimelineFraction as Fraction, type TimelineRate,
+  assertTimelineRate as assertRate, timelineSourceRoom,
+  type TimelineClip, type TimelineFraction as Fraction, type TimelineRate, type TimelineSourceExtent,
 } from '@breatic/shared';
 
-/**
- * What frame arithmetic reads from a clip's source: a registered video, whose measured `durationSeconds` may end
- * between frames, or a web-animation source, which is a whole number of frames at its timebase.
- */
-export interface TimelineSourceExtent { timebase: TimelineRate; extentFrames: number; durationSeconds?: string }
-
-/**
- * A source's length in seconds as an exact fraction.
- * @param source - The source.
- * @returns Its measured duration, or its whole frames at its timebase when it has none.
- * @throws {RangeError} When a measured duration is invalid.
- */
-function sourceDuration(source: TimelineSourceExtent): Fraction {
-  if (source.durationSeconds !== undefined) return durationFraction(source.durationSeconds);
-  return { num: BigInt(source.extentFrames) * BigInt(source.timebase.den), den: BigInt(source.timebase.num) };
-}
+export { timelineSourceRoom, type TimelineSourceExtent } from '@breatic/shared';
 
 /**
  * Whether a clip's frame bounds are a stored clip's: safe integers, a non-negative start and in-point, a positive
@@ -92,30 +77,6 @@ export function timelineSourceSeconds(clip: TimelineClip, source: TimelineSource
   }
   const sample = sampleFraction(clip, source, fps, frame);
   return Number(sample.num) / Number(sample.den);
-}
-
-/**
- * How many clip frames, counted from its in-point, sample inside the source.
- * @param clip - The placement with its in-point and speed.
- * @param source - Its source descriptor.
- * @param fps - The Timeline frame rate.
- * @returns The frame count, capped at Number.MAX_SAFE_INTEGER.
- * @throws {RangeError} When a rate or the source duration is invalid.
- */
-export function timelineSourceRoom(clip: TimelineClip, source: TimelineSourceExtent, fps: TimelineRate): number {
-  assertRate(fps);
-  assertRate(source.timebase);
-  assertRate(clip.rate);
-  // Frame j samples in·tb.den/tb.num + j·step seconds, step = fps.den·rate.num / (fps.num·rate.den);
-  // it is inside while that stays below the duration, so the count is ceil of the bound on j.
-  const duration = sourceDuration(source);
-  const tbNum = BigInt(source.timebase.num);
-  const stepDen = BigInt(fps.num) * BigInt(clip.rate.den);
-  const bound = (duration.num * tbNum - BigInt(clip.sourceInFrame) * BigInt(source.timebase.den) * duration.den) * stepDen;
-  const per = BigInt(fps.den) * BigInt(clip.rate.num) * tbNum * duration.den;
-  if (bound <= 0n) return 0;
-  const room = (bound + per - 1n) / per;
-  return room > BigInt(Number.MAX_SAFE_INTEGER) ? Number.MAX_SAFE_INTEGER : Number(room);
 }
 
 /**

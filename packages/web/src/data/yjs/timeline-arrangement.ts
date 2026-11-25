@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import {
-  durationToFrames, type TimelineClip, type TimelineDocumentV1, type TimelineRate, type TimelineUploadClip, type TimelineVideoSource,
-  type TimelineWebResolution,
+  timelineUploadExtent, type TimelineClip, type TimelineDocumentV1, type TimelineVideoSource, type TimelineWebResolution,
 } from '@breatic/shared';
+
+export { timelineUploadExtent } from '@breatic/shared';
 
 import { compareTimelineIds } from '@web/data/yjs/timeline-order';
 import { timelineClipIntervalValid, validateTimelineRange, type TimelineSourceExtent } from '@web/data/yjs/timeline-time';
@@ -25,23 +26,6 @@ export function timelineWebSourceOf(web: TimelineWebResolution, clip: Extract<Ti
   if (baseSourceResultId !== null) return baseSourceResultId;
   const execution = operationId === null ? undefined : web.executions[operationId];
   return execution?.status === 'succeeded' ? execution.resultSourceVersionId : null;
-}
-
-/**
- * The extent an upload placeholder is measured against: the file the browser read, conformed like a registered video.
- * @param fps - The document frame rate.
- * @param clip - The placeholder.
- * @returns The extent, or undefined when the duration is too long to count in frames.
- * @throws {never} Never.
- */
-export function timelineUploadExtent(fps: TimelineRate, clip: TimelineUploadClip): TimelineSourceExtent | undefined {
-  try {
-    const { durationSeconds } = clip.upload;
-    return { timebase: fps, extentFrames: durationToFrames(durationSeconds, fps), durationSeconds: String(durationSeconds) };
-  } catch {
-    // A duration whose frame count is not a safe integer cannot be measured, like a missing source.
-    return undefined;
-  }
 }
 
 /**

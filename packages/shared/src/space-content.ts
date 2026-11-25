@@ -4,9 +4,13 @@
 
 export {
   attachTimelineRecord, freezeTimelineRecord, initializeTimelineDocument, readTimelineContent, readTimelineDocument, readTimelineSource, timelineRecordJson,
-  timelineDocumentNeedsUpgrade, upgradeTimelineDocument,
+  timelineDocumentNeedsUpgrade, upgradeTimelineDocument, timelineClipSourceId, missingTimelineSourceIds, restoreTimelineSources,
+  reconcileTimelineSources,
   type TimelineDamagedRecords,
 } from "@shared/timeline/document.js";
+export {
+  applyTimelineUpload, TIMELINE_UPLOAD_ORIGIN, type TimelineUploadEvent, type TimelineUploadResult,
+} from "@shared/timeline-upload.js";
 export { readSpaceMediaReferences, type SpaceMediaReferences } from "@shared/space-media-references.js";
 export {
   WEB_ANIMATION_RUNTIME, WebAnimationManifestSchema, matchWebAnimationManifest, encodePreviewToken, decodePreviewToken,

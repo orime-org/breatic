@@ -64,3 +64,9 @@ preview:
   # While the preview waits, lanes not waited for are sought back to the held frame only when further off than this.
   resume_seek_seconds: 0.15
   drift_steer_rate: 0.03
+media:
+  # Where a new still picture or text clip starts; the user may stretch it without limit.
+  image_duration_seconds: 5
+  text_duration_seconds: 5
+  # A new text clip's size, as a share of the frame height.
+  text_size: 0.06
