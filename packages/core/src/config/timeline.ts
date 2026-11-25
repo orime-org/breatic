@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -38,22 +38,27 @@ const webAnimationSchema = z.object({
   preview_premount_ms: positiveInt.default(2000),
   /** How many loaded preview pages no copy uses that the preview keeps for reuse before unloading the oldest. */
   preview_idle_instances_max: positiveInt.default(8),
-  /** How often the worker sweeps executions that have not ended, and how many it reads per sweep. */
+  /** How often the worker sweeps executions that have not ended, and how many it reads per batch; a sweep reads them all. */
   sweep_interval_ms: positiveInt.default(30_000),
   sweep_batch_size: positiveInt.default(200),
   /** How long a pickup waits before asking the container job again. */
   poll_interval_ms: positiveInt.default(5_000),
-  /**
-   * The polling interval of web builds from before Timeline state moved into its document (#1568); the current web reads
-   * none. Remove, with `sourceRefreshIntervalMs` in the limits answer, in the release after #1568 ships.
-   */
-  source_refresh_interval_ms: positiveInt.default(10_000),
   /** The container instance the cost of a run is computed for, priced by `config/mini-tools.yaml`. */
   container: z.object({
     vcpu: z.number().positive().default(1),
     memory_gib: z.number().positive().default(6),
     disk_gb: z.number().positive().default(12),
   }).prefault({}),
+  /** The frame rate a create freezes (#1490); a modification and an export keep their base's. */
+  fps: z.object({ num: positiveInt, den: positiveInt }).default({ num: 24, den: 1 }),
+  /** The render container an export runs on and is billed for, priced by `config/mini-tools.yaml` (#1490). */
+  render_container: z.object({
+    vcpu: z.number().positive().default(4),
+    memory_gib: z.number().positive().default(12),
+    disk_gb: z.number().positive().default(20),
+  }).prefault({}),
+  /** The renderer's quality for an export. */
+  render_quality: z.string().min(1).default("standard"),
 }).superRefine((config, ctx) => {
   if (config.duration_seconds.min > config.duration_seconds.max) {
     ctx.addIssue({ code: "custom", path: ["duration_seconds", "min"], message: "duration_seconds.min exceeds max" });

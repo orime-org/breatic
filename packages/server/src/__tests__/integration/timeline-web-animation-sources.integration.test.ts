@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The immutable web-animation source version and the call-level usage identity (inner#1711 design §3.4, §3.5).
@@ -13,8 +13,8 @@
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
-import { initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { createUsageRecorder, webAnimationSourceRepo } from "@breatic/domain";
+import { initCore, loadLocales } from "@breatic/core";
+import { createUsageRecorder, webAnimationSourceRepo, timelineExecutionRepo } from "@breatic/domain";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -50,6 +50,7 @@ async function seedExecution(): Promise<{ executionId: string; projectId: string
     input: { prompt: "A red square", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: "sha256:input",
     deadlineAt: new Date(Date.now() + 2 * 60 * 60 * 1000),
+    origin: "web_animation_space",
   });
   if (row === null) throw new Error("Fixture execution conflicted");
   return { executionId: row.id, projectId, userId };

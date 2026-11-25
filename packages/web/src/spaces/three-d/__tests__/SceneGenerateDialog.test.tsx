@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, render, screen, waitFor, within } from '@testing-library/react';
@@ -13,6 +13,7 @@ import { ApiException } from '@web/data/api/types';
 import { spendCapMessage } from '@web/lib/spend-cap-message';
 import { toast } from '@web/lib/toast';
 import { resetRunOnceForTests } from '@web/stores/task-actions-in-flight';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { SceneGenerateDialog } from '@web/spaces/three-d/SceneGenerateDialog';
 import { toastsShown } from '@web/test-utils/shown-toasts';
 import { I23D, MODE_LABEL, MULTIVIEW, PROJECT, RAW_CATALOG, SPACE, T23D, projectImage, valueLabel } from '@web/spaces/three-d/__tests__/scene-generate-fixtures';
@@ -573,6 +574,25 @@ async function startFrontUpload(user: ReturnType<typeof userEvent.setup>): Promi
 
 describe('SceneGenerateDialog view slot uploads (inner#1691 design 7.1)', () => {
   beforeEach(() => { upload.run.mockReset(); });
+
+  it('holds the Space busy while a view picture uploads, so closing the tab or leaving the page asks first', async () => {
+    const user = userEvent.setup();
+    renderDialog();
+    await ready();
+    const busy = (): boolean => useSpaceOperationsStore.getState().hasOperations(SPACE);
+    const sinks = await startFrontUpload(user);
+    expect(busy()).toBe(true);
+    sinks.onSuccess({ assetId: 'up1', fileUrl: 'https://cdn.test/up1.png', kind: 'image', width: 512, height: 512 });
+    await waitFor(() => expect(busy()).toBe(false));
+    // A dialog closed mid-upload drops the upload and lets the Space go.
+    await user.click(screen.getByTestId('scene-generate-view-1-add'));
+    await user.click(await screen.findByTestId('scene-generate-view-upload'));
+    await user.upload(screen.getByTestId('scene-generate-view-file-input'), new File(['png'], 'back.png', { type: 'image/png' }));
+    await waitFor(() => expect(upload.run).toHaveBeenCalledTimes(2));
+    expect(busy()).toBe(true);
+    cleanup();
+    expect(busy()).toBe(false);
+  });
 
   it('shows the upload progress in its slot and keeps Generate unavailable until it lands', async () => {
     const user = userEvent.setup();

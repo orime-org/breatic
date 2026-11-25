@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The public app's request body limit over a real socket (inner#1006 §3):
- * T01–T06, T08–T10, T12(c), T17, the raw-body regressions X01–X03, and a
+ * T01–T06, T08–T10, T12(c), T17, the raw-body regression X03, and a
  * keep-alive regression: a body within the limit that a route refuses unread
  * must not break the next request on the same connection; and how a refusal
  * closes its connection (inner#1782 test spec P1–P7).
@@ -33,19 +33,6 @@ vi.mock("ai", () => ({
   tool: (config: Record<string, unknown>) => config,
 }));
 
-/** The webhook verifies with stripe-node's own check under this suite's secret. */
-const WEBHOOK_SECRET = "whsec_request_body_limit_suite";
-
-vi.mock("@server/infra/stripe.js", async () => {
-  const { default: StripeSdk } = await import("stripe");
-  const verifier = new StripeSdk("sk_test_unused_by_this_suite");
-  return {
-    getStripeClient: () => verifier,
-    verifyWebhookSignature: (payload: string | Buffer, signature: string) =>
-      verifier.webhooks.constructEvent(payload, signature, "whsec_request_body_limit_suite"),
-  };
-});
-
 /** Every log line, by level; core's logger is a proxy a spy cannot see into. */
 const logged = vi.hoisted(() => {
   const record = { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn(), fatal: vi.fn(), trace: vi.fn() };
@@ -64,7 +51,6 @@ vi.mock("@server/config/limits.js", async (importOriginal) => ({
 }));
 
 import postgres from "postgres";
-import Stripe from "stripe";
 import type { Hono } from "hono";
 import {
   env,
@@ -128,7 +114,7 @@ const CHUNK = 65_536;
 /**
  * The limit the sizes below are computed for: the 1 MiB default of
  * `request_body_max_bytes`. Written out so the cases that pass on main today
- * (T01, T03, T05, X01–X03) do not depend on the getter that does not exist
+ * (T01, T03, T05, X03) do not depend on the getter that does not exist
  * yet; the first case pins it to `getRequestBodyMaxBytes()`.
  * @returns 1048576.
  */
@@ -497,7 +483,7 @@ describe("§2 a body within the limit that a route refuses unread", () => {
 });
 
 describe("§2 every entrance is behind the limit (T08)", () => {
-  it("register, the Stripe webhook, project create, upload ticket and chat all answer 413 and run nothing", async () => {
+  it("register, project create, upload ticket and chat all answer 413 and run nothing", async () => {
     const a = await seedOwner();
     const over = limit() + 1;
     const idempotencyKey = randomUUID();
@@ -506,11 +492,6 @@ describe("§2 every entrance is behind the limit (T08)", () => {
         path: "/api/v1/auth/register",
         headers: { "Content-Type": "application/json" },
         body: padded({ email: `rbl-register-${Date.now()}@example.com`, password: "password-123" }, over),
-      },
-      {
-        path: "/api/v1/payment/webhook",
-        headers: { "Content-Type": "application/json", "stripe-signature": "t=1,v1=deadbeef" },
-        body: padded({ id: "evt_rbl", type: "customer.created" }, over),
       },
       {
         path: "/api/v1/projects",
@@ -537,7 +518,6 @@ describe("§2 every entrance is behind the limit (T08)", () => {
 
     expect(answers).toEqual(cases.map((c) => ({ path: c.path, status: 413, body: tooLarge() })));
 
-    expect(logsNamed("Stripe webhook signature verification failed")).toEqual([]);
     expect(await getRedis().keys(`${env.REDIS_KEY_PREFIX}:server:idempotency:${a.userId}:*`)).toEqual([]);
   });
 });
@@ -621,55 +601,7 @@ describe("§2.2 the browser learns the limit (T17)", () => {
   });
 });
 
-describe("§9 routes that read the raw body still read the same bytes (X01–X03)", () => {
-  const signer = new Stripe("sk_test_unused_by_this_suite");
-
-  /**
-   * A signed event Stripe could send and nothing here handles.
-   * @returns The payload and its signature header.
-   */
-  function signedEvent(): { payload: Buffer; signature: string } {
-    const payload = JSON.stringify({
-      id: `evt_rbl_${randomUUID()}`,
-      object: "event",
-      api_version: "2025-01-27.acacia",
-      created: Math.floor(Date.now() / 1000),
-      livemode: false,
-      pending_webhooks: 1,
-      request: { id: null, idempotency_key: null },
-      type: "customer.created",
-      data: { object: { id: `cus_rbl_${seq}`, object: "customer" } },
-    });
-    return { payload: Buffer.from(payload, "utf-8"), signature: signer.webhooks.generateTestHeaderString({ payload, secret: WEBHOOK_SECRET }) };
-  }
-
-  it("X01: a signed webhook with Content-Length verifies and is acknowledged", async () => {
-    const { payload, signature } = signedEvent();
-
-    const res = await send("/api/v1/payment/webhook", {
-      headers: { "Content-Type": "application/json", "stripe-signature": signature },
-      body: payload,
-    });
-
-    expect(res.status).toBe(200);
-    expect(JSON.parse(res.text)).toEqual({ received: true });
-    expect(logsNamed("Stripe webhook signature verification failed")).toEqual([]);
-  });
-
-  it("X02: the same signed webhook sent chunked verifies too", async () => {
-    const { payload, signature } = signedEvent();
-
-    const res = await send("/api/v1/payment/webhook", {
-      headers: { "Content-Type": "application/json", "stripe-signature": signature },
-      body: payload,
-      chunkSize: 64,
-    });
-
-    expect(res.status).toBe(200);
-    expect(JSON.parse(res.text)).toEqual({ received: true });
-    expect(logsNamed("Stripe webhook signature verification failed")).toEqual([]);
-  });
-
+describe("§9 routes that read the raw body still read the same bytes (X03)", () => {
   it("X03: a project press resent chunked hashes the same and is replayed", async () => {
     const a = await seedOwner();
     const body = Buffer.from(

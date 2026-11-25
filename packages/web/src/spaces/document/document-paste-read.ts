@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What a paste or a drop carries (inner#1351 + inner#1390 design §5.4.1,
@@ -23,6 +23,7 @@ import { formulaMarkdownToHTML } from '@web/spaces/document/document-math-markdo
 import { routeAddress } from '@web/spaces/document/document-media-address';
 import { HTML_MEDIA_ELEMENTS, HTML_MEDIA_SELECTOR, isMediaBlockType, type MediaBlockType } from '@web/spaces/document/document-media-types';
 import { readClipboardSlice } from '@web/spaces/document/document-paste-slice';
+import { QUOTED } from '@web/spaces/document/document-list-block';
 import { evenPastedTables, evenTables } from '@web/spaces/document/document-table-paste';
 
 /** A block as BlockNote's JSON writes one. */
@@ -388,14 +389,15 @@ const LIST_ITEMS = new Set(['bulletListItem', 'numberedListItem', 'checkListItem
  * @param indices - The numbers.
  * @param media - The media read.
  * @param found - Collects the numbers found.
+ * @param quoted - Whether the line they stood in is quoted.
  * @returns The blocks.
  */
-function mediaBlocks(indices: readonly number[], media: readonly MarkedMedium[], found: Set<number>): ReadBlock[] {
+function mediaBlocks(indices: readonly number[], media: readonly MarkedMedium[], found: Set<number>, quoted: boolean): ReadBlock[] {
   return indices.flatMap((index) => {
     const medium = media[index];
     if (medium === undefined || found.has(index)) return [];
     found.add(index);
-    return [{ type: medium.type, props: medium.props }];
+    return [{ type: medium.type, props: quoted ? { ...medium.props, [QUOTED]: true } : medium.props }];
   });
 }
 
@@ -447,6 +449,8 @@ function placeMarkers(blocks: readonly ReadBlock[], media: readonly MarkedMedium
     const pieces = splitAtMarkers(block.content as Inline[]);
     if (pieces.length === 1) return [{ ...block, children }];
     const code = block.type === 'codeBlock';
+    // A medium and a list item's later words are lines of the quote their block is in.
+    const quoted = block.props?.[QUOTED] === true;
     const runs = pieces.map((piece, index) =>
       'medium' in piece ? piece : { words: cleanCut(piece.words, code, index < pieces.length - 1, index > 0) },
     );
@@ -459,13 +463,17 @@ function placeMarkers(blocks: readonly ReadBlock[], media: readonly MarkedMedium
     if (LIST_ITEMS.has(block.type)) {
       const [front, ...rest] = runs;
       const nested = rest.flatMap((piece): ReadBlock[] =>
-        'medium' in piece ? mediaBlocks([piece.medium], media, found) : hasWords(piece) ? [{ type: 'paragraph', content: piece.words }] : [],
+        'medium' in piece
+          ? mediaBlocks([piece.medium], media, found, quoted)
+          : hasWords(piece)
+            ? [{ type: 'paragraph', props: quoted ? { [QUOTED]: true } : {}, content: piece.words }]
+            : [],
       );
       return [{ ...block, content: (front as { words: Inline[] }).words, children: [...nested, ...children] }];
     }
     const out: ReadBlock[] = [];
     for (const piece of runs) {
-      if ('medium' in piece) out.push(...mediaBlocks([piece.medium], media, found));
+      if ('medium' in piece) out.push(...mediaBlocks([piece.medium], media, found, quoted));
       else if (hasWords(piece)) out.push({ ...block, content: piece.words, children: [] });
     }
     if (children.length > 0) {
@@ -509,18 +517,80 @@ function inertBody(html: string): HTMLElement {
   return new DOMParser().parseFromString(html, 'text/html').body;
 }
 
+/** Elements that read as blocks of their own; anything else inside a quote is part of a line. */
+const BLOCK_ELEMENTS = new Set([
+  'ADDRESS', 'ARTICLE', 'ASIDE', 'BLOCKQUOTE', 'DD', 'DETAILS', 'DIV', 'DL', 'DT', 'FIGURE', 'FOOTER', 'H1', 'H2', 'H3',
+  'H4', 'H5', 'H6', 'HEADER', 'HR', 'LI', 'MAIN', 'OL', 'P', 'PRE', 'SECTION', 'TABLE', 'UL',
+]);
+
+/** Blocks that take the quote, as BlockNote reads `data-quoted` on them. */
+const QUOTABLE = 'p, h1, h2, h3, h4, h5, h6, li, pre, hr, table';
+
+/**
+ * The words written straight into an element, each run between its blocks
+ * put in a paragraph of its own, so a quote's loose words read as a line.
+ * @param element - A quote or a table cell.
+ */
+function wrapLooseWords(element: Element): void {
+  let run: Node[] = [];
+  /**
+   * Puts the run gathered so far in a paragraph, unless it is only white space.
+   * @param before - The block the paragraph goes in front of, or null for the end.
+   */
+  const close = (before: Node | null): void => {
+    if (run.some((node) => node.nodeType !== Node.TEXT_NODE || node.textContent!.trim() !== '')) {
+      const line = element.ownerDocument.createElement('p');
+      line.append(...run);
+      element.insertBefore(line, before);
+    }
+    run = [];
+  };
+  for (const node of [...element.childNodes]) {
+    if (node.nodeType === Node.ELEMENT_NODE && BLOCK_ELEMENTS.has((node as Element).tagName)) close(node);
+    else run.push(node);
+  }
+  close(null);
+}
+
+/** Whether HTML holds a quote. */
+const HAS_QUOTE = /<blockquote[\s>]/i;
+
+/**
+ * Outside quotes as the quote prop: a quote here is `quoted` on each block
+ * rather than a container (the `quote` block is left out of the schema), so
+ * every block inside a `<blockquote>` is marked and the container dropped. A
+ * quote nested in a quote is one level of quote, the only one there is. The
+ * comments around the page come back with it: Notion's `notionvc` one, ahead
+ * of `<html>`, is what tells BlockNote to keep its line breaks.
+ * @param html - The pasted HTML.
+ * @returns It, its quotes as the prop.
+ */
+function quotesAsProps(html: string): string {
+  const page = new DOMParser().parseFromString(html, 'text/html');
+  for (const quote of [...page.body.querySelectorAll('blockquote')].reverse()) {
+    for (const cell of [quote, ...quote.querySelectorAll('td, th')]) wrapLooseWords(cell);
+    for (const block of quote.querySelectorAll(QUOTABLE)) block.setAttribute('data-quoted', 'true');
+    quote.replaceWith(...quote.childNodes);
+  }
+  return [...page.childNodes]
+    .map((node) => (node instanceof Comment ? `<!--${node.data}-->` : node instanceof Element ? node.outerHTML : ''))
+    .join('');
+}
+
 /**
  * Blocks read from outside HTML with the words BlockNote's own paste puts in:
  * read, written as BlockNote's HTML and read again (`pasteHTML`), the second
  * read giving each run of white space as the one space a page shows. The
  * first read keeps every space of the words (`preserveWhitespace`), and
- * Notion's line breaks come out of it as line breaks.
+ * Notion's line breaks come out of it as line breaks. Quotes are read as the
+ * quote prop first (`quotesAsProps`).
  * @param reader - The editor.
  * @param html - The HTML.
  * @returns The blocks.
  */
 function pastedBlocks(reader: BlockReader, html: string): ReadBlock[] {
-  return reader.tryParseHTMLToBlocks(reader.blocksToFullHTML(reader.tryParseHTMLToBlocks(html) as never)) as ReadBlock[];
+  const read = HAS_QUOTE.test(html) ? quotesAsProps(html) : html;
+  return reader.tryParseHTMLToBlocks(reader.blocksToFullHTML(reader.tryParseHTMLToBlocks(read) as never)) as ReadBlock[];
 }
 
 /**

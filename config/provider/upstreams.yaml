@@ -5,27 +5,42 @@
 # billing_url is where a fal upstream's costs are read, its platform API;
 # empty_output_wait_ms is how long a SandBase run answered completed without
 # outputs is waited for.
+# display_name, group (official: the model vendor's own API; reseller: one
+# that resells many vendors' models) and key_url are how the bring-your-own-key
+# settings list an upstream a user can add a key for.
 
 upstreams:
   wavespeed:
     kind: wavespeed
+    display_name: WaveSpeed
+    group: reseller
+    key_url: https://wavespeed.ai/accesskey
     base_url: https://api.wavespeed.ai/api/v3
     key_env: WAVESPEED_API_KEY
     concurrency: 50
   fal:
     kind: fal
+    display_name: fal
+    group: reseller
+    key_url: https://fal.ai/dashboard/keys
     base_url: https://queue.fal.run
     billing_url: https://api.fal.ai/v1
     key_env: FAL_KEY
     concurrency: 10
   sandbase:
     kind: sandbase
+    display_name: SandBase
+    group: reseller
+    key_url: https://www.sandbase.ai/console/keys
     base_url: https://api.sandbase.ai/v1
     key_env: SANDBASE_API_KEY
     concurrency: 10
     empty_output_wait_ms: 600000
   openrouter:
     kind: openrouter
+    display_name: OpenRouter
+    group: reseller
+    key_url: https://openrouter.ai/settings/keys
     base_url: https://openrouter.ai/api/v1
     key_env: OPENROUTER_API_KEY
   anthropic:

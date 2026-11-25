@@ -8,7 +8,48 @@
 # `[[containers]]` block naming this file carries `image_build_context = "../.."`.
 # Record the digest of every image deployed (inner#1711 V6).
 
-# ── Build: the runner, the font set, the runtime and dsh ─────────────────
+# Each pinned download is its own stage, so a change to the runner's source
+# rebuilds only the runner and never fetches them again.
+
+# ── The font sets ─────────────────────────────────────────────────────────
+# Every released version, laid out by the same script and from the same pinned
+# package versions as the Worker's static assets, so the stylesheet a package
+# embeds names exactly the files the preview serves.
+FROM node:24-bookworm-slim AS fonts
+COPY packages/ingest/package.json /tmp/ingest-package.json
+COPY packages/ingest/scripts/web-animation-fonts.mjs /fonts/packages/ingest/scripts/web-animation-fonts.mjs
+COPY config/timeline.yaml /fonts/config/timeline.yaml
+RUN set -eu; \
+  pinned=$(node -e 'const d = require("/tmp/ingest-package.json").devDependencies; console.log(Object.entries(d).filter(([n]) => n.startsWith("@fontsource-variable/")).map(([n, v]) => `${n}@${v}`).join(" "))'); \
+  cd /fonts/packages/ingest; \
+  npm install --no-audit --no-fund --ignore-scripts --no-save $pinned; \
+  node scripts/web-animation-fonts.mjs /out/fonts
+
+# ── The HyperFrames runtime ───────────────────────────────────────────────
+# At the version every Manifest names (WEB_ANIMATION_RUNTIME in shared), with
+# its Apache-2.0 licence.
+FROM node:24-bookworm-slim AS runtime
+COPY packages/shared/src/timeline/web-animation-runtime.ts /shared/src/timeline/web-animation-runtime.ts
+RUN set -eu; \
+  version=$(sed -n 's/.*version: "\([0-9.]*\)".*/\1/p' /shared/src/timeline/web-animation-runtime.ts); \
+  mkdir -p /tmp/hyperframes /out/runtime; \
+  cd /tmp/hyperframes; \
+  npm pack --silent "@hyperframes/core@$version"; \
+  tar -xzf "hyperframes-core-$version.tgz" package/dist/hyperframe.runtime.iife.js package/LICENSE; \
+  cp package/dist/hyperframe.runtime.iife.js /out/runtime/; \
+  cp package/LICENSE /out/runtime/LICENSE
+
+# ── dsh ───────────────────────────────────────────────────────────────────
+# The DeepSeek Harness at its exact release candidate. Two parts of its closure
+# are removed: the LibreOffice kit (MPL-2.0, only the office skill uses it) and
+# sharp's native packages under @img (libvips is LGPL-3.0, only image
+# attachments use it). dsh boots and runs our profile without either.
+FROM node:24-bookworm-slim AS dsh
+RUN set -eu; \
+  npm install --prefix /opt/dsh --no-audit --no-fund --ignore-scripts @deepseek-ai/dsh@0.2.2-rc.1; \
+  rm -rf /opt/dsh/node_modules/@deepseek-ai/libreoffice-kit* /opt/dsh/node_modules/@img
+
+# ── The runner ────────────────────────────────────────────────────────────
 FROM node:24-bookworm-slim AS build
 WORKDIR /src
 COPY scripts/release.mjs /src/scripts/release.mjs
@@ -17,7 +58,8 @@ ARG VCS_REF=unknown
 RUN mkdir -p /out && node scripts/release.mjs build-info "$RELEASE_VERSION" "$VCS_REF" /out/build-info.json
 
 # The runner, bundled into one file with the Worker's shared agreement and the
-# three shared modules it reads, resolved through tsconfig's paths.
+# three shared modules it reads (frame time, the runtime version and the
+# frame-ready bridge), resolved through tsconfig's paths.
 COPY packages/ingest/tsconfig.json ./
 COPY packages/ingest/src ./src
 COPY packages/ingest/container ./container
@@ -30,37 +72,6 @@ RUN npm install --no-audit --no-fund --global esbuild@0.25.12 \
     --bundle --platform=node --format=esm --target=node24 \
     --tsconfig=tsconfig.json \
     --outfile=/out/server.mjs
-
-# The font set, laid out by the same script and from the same pinned package
-# versions as the Worker's static assets, so the stylesheet a package embeds
-# names exactly the files the preview serves.
-COPY packages/ingest/package.json /tmp/ingest-package.json
-COPY packages/ingest/scripts/web-animation-fonts.mjs /fonts/packages/ingest/scripts/web-animation-fonts.mjs
-COPY config/timeline.yaml /fonts/config/timeline.yaml
-RUN set -eu; \
-  pinned=$(node -e 'const d = require("/tmp/ingest-package.json").devDependencies; console.log(Object.entries(d).filter(([n]) => n.startsWith("@fontsource-variable/")).map(([n, v]) => `${n}@${v}`).join(" "))'); \
-  cd /fonts/packages/ingest; \
-  npm install --no-audit --no-fund --ignore-scripts --no-save $pinned; \
-  node scripts/web-animation-fonts.mjs /out/fonts
-
-# The HyperFrames runtime at the version every Manifest names
-# (WEB_ANIMATION_RUNTIME in shared), with its Apache-2.0 licence.
-RUN set -eu; \
-  version=$(sed -n 's/.*version: "\([0-9.]*\)".*/\1/p' /shared/src/timeline/web-animation-runtime.ts); \
-  mkdir -p /tmp/hyperframes /out/runtime; \
-  cd /tmp/hyperframes; \
-  npm pack --silent "@hyperframes/core@$version"; \
-  tar -xzf "hyperframes-core-$version.tgz" package/dist/hyperframe.runtime.iife.js package/LICENSE; \
-  cp package/dist/hyperframe.runtime.iife.js /out/runtime/; \
-  cp package/LICENSE /out/runtime/LICENSE
-
-# The DeepSeek Harness at its exact release candidate. Two parts of its closure
-# are removed: the LibreOffice kit (MPL-2.0, only the office skill uses it) and
-# sharp's native packages under @img (libvips is LGPL-3.0, only image
-# attachments use it). dsh boots and runs our profile without either.
-RUN set -eu; \
-  npm install --prefix /opt/dsh --no-audit --no-fund --ignore-scripts @deepseek-ai/dsh@0.2.2-rc.1; \
-  rm -rf /opt/dsh/node_modules/@deepseek-ai/libreoffice-kit* /opt/dsh/node_modules/@img
 
 # ── The image that runs ──────────────────────────────────────────────────
 # Node 24 (dsh needs >=24.9 and node:sqlite) and Debian's Chromium, which only
@@ -88,11 +99,13 @@ RUN set -eu; \
   } > /usr/share/chromium-source/SOURCE
 
 COPY THIRD-PARTY.md /usr/share/doc/breatic/THIRD-PARTY.md
+COPY LICENSE /usr/share/doc/breatic/LICENSE
+COPY TRADEMARKS.md /usr/share/doc/breatic/TRADEMARKS.md
 
 RUN useradd --create-home --home-dir /home/runner runner
-COPY --from=build /opt/dsh /opt/dsh
-COPY --from=build /out/fonts /app/fonts
-COPY --from=build /out/runtime /app/runtime
+COPY --from=dsh /opt/dsh /opt/dsh
+COPY --from=fonts /out/fonts /app/fonts
+COPY --from=runtime /out/runtime /app/runtime
 COPY --from=build /out/server.mjs /app/server.mjs
 COPY --from=build /out/build-info.json /app/build-info.json
 COPY --chown=runner:runner packages/ingest/container/web-animation-dsh-profile /home/runner/.dsh/profiles/breatic-web-animation

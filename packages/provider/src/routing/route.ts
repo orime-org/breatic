@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { NoUpstreamAvailable, UpstreamRequestRejected, type UnavailableReason } from "@provider/errors.js";
 import { byPrice, type RejectedInput, type Route } from "@provider/pricing/estimate.js";
@@ -29,6 +29,8 @@ export interface RoutePlan {
   model: string;
   order: Candidate[];
   skipped: UnavailableReason[];
+  /** True when the call stays on its one upstream (an account's key, inner#1953): a request that never left is retried there too. */
+  heldToOne?: true;
 }
 
 /**

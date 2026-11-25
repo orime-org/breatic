@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A Space tab reads its background-work lists again when collab writes a new change version into the Space's document
@@ -10,7 +10,7 @@ import * as React from 'react';
 import { act, render } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { describe, expect, it, vi } from 'vitest';
-import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, timelineSpaceDocName } from '@breatic/shared';
+import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION, webAnimationSpaceDocName } from '@breatic/shared';
 
 import { getDoc } from '@web/data/yjs/manager';
 import { SpaceTasksWatcher } from '@web/pages/project/SpaceTasksWatcher';
@@ -23,7 +23,7 @@ const PROJECT = '60000000-0000-4000-8000-000000000002';
  */
 function mount(): { client: QueryClient; name: string; spaceId: string; view: ReturnType<typeof render> } {
   const spaceId = crypto.randomUUID();
-  const name = timelineSpaceDocName(PROJECT, spaceId);
+  const name = webAnimationSpaceDocName(PROJECT, spaceId);
   const client = new QueryClient();
   const view = render(<QueryClientProvider client={client}><SpaceTasksWatcher projectId={PROJECT} spaceId={spaceId} name={name} /></QueryClientProvider>);
   return { client, name, spaceId, view };

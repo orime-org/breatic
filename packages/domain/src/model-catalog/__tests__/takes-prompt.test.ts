@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `takes_prompt` (#1966) — whether a model consumes the text the user writes.
@@ -48,12 +48,12 @@ describe("takes_prompt is declared by every model (#1966)", () => {
     expect(missing).toEqual([]);
   });
 
-  it("covers all 71 catalogued models across the five modalities", () => {
+  it("covers all 70 catalogued models across the five modalities", () => {
     const total = MODALITIES.reduce(
       (sum, m) => sum + getFullModelConfig(m).models.length,
       0,
     );
-    expect(total).toBe(71);
+    expect(total).toBe(70);
   });
 });
 

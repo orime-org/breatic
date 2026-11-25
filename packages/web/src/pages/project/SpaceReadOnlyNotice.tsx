@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { TriangleAlert } from 'lucide-react';
+import type { SpaceType } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
 import { useSpaceConnection } from '@web/data/yjs/space-connection';
@@ -15,6 +16,11 @@ interface SpaceReadOnlyNoticeProps {
    * see the note on causes in {@link SpaceReadOnlyNotice}.
    */
   readOnly?: boolean;
+  /**
+   * The Space's type. A Motion Space says its own sentence: only its annotations live in the document, while making,
+   * modifying and exporting go through the server and keep working (#1490 design §7.3).
+   */
+  spaceType?: SpaceType;
 }
 
 /**
@@ -57,10 +63,12 @@ interface SpaceReadOnlyNoticeProps {
  * around it, reads write access as unknown, and so shows nothing.
  * @param root0 - Who is looking.
  * @param root0.readOnly - True when this person's role is view-only.
+ * @param root0.spaceType - The Space's type, which picks the sentence.
  * @returns The notice, or null when this connection's read-only is not a degrade.
  */
 export function SpaceReadOnlyNotice({
   readOnly = false,
+  spaceType,
 }: SpaceReadOnlyNoticeProps): React.JSX.Element | null {
   const t = useTranslation();
   const { writeAccess, status } = useSpaceConnection();
@@ -116,7 +124,7 @@ export function SpaceReadOnlyNotice({
         </Button>
       )}
     >
-      {t('spaces.readOnlyNotice')}
+      {t(spaceType === 'web_animation' ? 'spaces.webAnimation.readOnlyNotice' : 'spaces.readOnlyNotice')}
     </SpaceNoticePill>
   );
 }

@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export type {
   UserEntity,
@@ -19,7 +18,6 @@ export type {
   ConversationAttachmentEntity,
   ProjectAgentInstructionsEntity,
   AssetKind,
-  PaymentEntity,
   CreditLotEntity,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,
@@ -72,6 +70,8 @@ export {
   canGenerate,
   CANVAS_NODES_KEY,
 } from "@shared/types/canvas-node.js";
+export { SPACE_TASKS_KEY, SPACE_TASKS_TYPES, SPACE_TASKS_VERSION } from "@shared/types/space-tasks.js";
+export type { SpaceTasksVersionEvent } from "@shared/types/space-tasks.js";
 export type {
   NodeType,
   AttachRef,
@@ -82,6 +82,7 @@ export type {
   NodeTaskResult,
   NodeMediaNumbers,
   NodeTaskCountsEvent,
+  SceneLookPictureEvent,
   NodeEvent,
 } from "@shared/types/canvas-node.js";
 
@@ -236,8 +237,6 @@ export type {
 } from "@shared/types/project-invite.js";
 
 export type { SpaceType, Space } from "@shared/types/space.js";
-export { SPACE_TASKS_KEY, SPACE_TASKS_TYPES, SPACE_TASKS_VERSION } from "@shared/types/space-tasks.js";
-export type { SpaceTasksVersionEvent } from "@shared/types/space-tasks.js";
 export { SpaceTypeSchema } from "@shared/types/space.js";
 
 export {
@@ -245,6 +244,7 @@ export {
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
   SPACE_TASKS_CHANGED_SIGNAL,
+  SCENE_LOOK_SETTLED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -261,6 +261,7 @@ export type {
   ActivityNewSignal,
   CreditsChangedSignal,
   SpaceTasksChangedSignal,
+  SceneLookSettledSignal,
 } from "@shared/types/project-activity.js";
 
 export {
@@ -290,6 +291,7 @@ export {
   activityNewChannel,
   creditsChangedChannel,
   spaceTasksChangedChannel,
+  sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -298,6 +300,7 @@ export type {
   ActivityNewControlEvent,
   CreditsChangedControlEvent,
   SpaceTasksChangedControlEvent,
+  SceneLookSettledControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,

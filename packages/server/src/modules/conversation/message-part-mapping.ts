@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The boundary between the shape we store and the shape the wire carries.
@@ -18,8 +18,8 @@
  */
 import { getToolName, isToolUIPart } from "ai";
 import type { UIMessage } from "ai";
-import { NOTHING_SAID_WHY, attachmentPart, wireLineOf } from "@breatic/shared";
-import type { ChatAttachedChip, MessageData, MessagePart, StoredMessageMetadata, ToolFailure } from "@breatic/shared";
+import { ACCOUNT_KEY_FAILURE_KINDS, ACCOUNT_KEY_FAILURE_REASONS, NOTHING_SAID_WHY, attachmentPart, wireLineOf } from "@breatic/shared";
+import type { ChatAttachedChip, ChatKeyRefusal, MessageData, MessagePart, StoredMessageMetadata, ToolFailure } from "@breatic/shared";
 import { NOTHING_OF_IT_RAN } from "@server/agent/tool-ending.js";
 
 /** What one message's parts look like on the wire. */
@@ -139,6 +139,32 @@ function storedUserMessage(data: unknown): MessagePart | undefined {
   };
 }
 
+/** The failure reasons a stored reply keeps; any other failure is stored as an ordinary one. */
+const STORED_FAILURE_REASONS: ReadonlySet<string> = new Set(["too_long", "shutdown", ...ACCOUNT_KEY_FAILURE_KINDS]);
+
+/** Why an upstream refused the payer's own key, as a stored failure keeps it (inner#1953). */
+const KEY_REFUSALS: ReadonlySet<string> = new Set(ACCOUNT_KEY_FAILURE_REASONS);
+
+/**
+ * A failed mark, as the store keeps it: its reason when it is one the reply keeps, and for a failure of the payer's
+ * own key (inner#1953) the upstream, the key's own reason and whose key it was, so a reload still tells the user what to
+ * do.
+ * @param data - The mark's data as it was streamed.
+ * @returns The stored part.
+ */
+function storedFailure(data: unknown): Extract<MessagePart, { type: "failed" }> {
+  const { reason, upstream, keyReason, keyOwner } = (data ?? {}) as { reason?: unknown; upstream?: unknown; keyReason?: unknown; keyOwner?: unknown };
+  if (typeof reason !== "string" || !STORED_FAILURE_REASONS.has(reason)) return { type: "failed" };
+  const kept = { type: "failed", reason } as Extract<MessagePart, { type: "failed" }>;
+  if (reason === "too_long" || reason === "shutdown") return kept;
+  return {
+    ...kept,
+    ...(typeof upstream === "string" && upstream !== "" ? { upstream } : {}),
+    ...(typeof keyReason === "string" && KEY_REFUSALS.has(keyReason) ? { keyReason: keyReason as ChatKeyRefusal } : {}),
+    ...(typeof keyOwner === "string" && keyOwner !== "" ? { keyOwner } : {}),
+  };
+}
+
 /**
  * Turn what a finished turn streamed into what gets written down.
  * @param parts - The parts the SDK assembled for this message.
@@ -154,10 +180,7 @@ export function toStoredParts(parts: UiParts): MessagePart[] {
     if (part.type === "text") stored.push({ type: "text", text: part.text });
     else if (part.type === "reasoning") stored.push({ type: "reasoning", text: part.text });
     else if (part.type === INTERRUPTED) stored.push({ type: "interrupted" });
-    else if (part.type === FAILED) {
-      const reason = (part as { data?: { reason?: unknown } }).data?.reason;
-      stored.push(reason === "too_long" || reason === "shutdown" ? { type: "failed", reason } : { type: "failed" });
-    }
+    else if (part.type === FAILED) stored.push(storedFailure((part as { data?: unknown }).data));
     else if (part.type === USER_MESSAGE) {
       const said = storedUserMessage((part as { data?: unknown }).data);
       if (said !== undefined) stored.push(said);
@@ -199,7 +222,7 @@ export function toUiParts(parts: MessagePart[]): UiParts {
 /**
  * A stored failure with its line under the name this release reads.
  *
- * Carries the pre-#1378 name until #1387 removes it, in the release that also
+ * Carries the pre-#1378 name until inner#2130 removes it, in the release that also
  * runs the rename migration again: a row written before migration 0116, or by
  * a server of the previous release while a deploy rolls out, keeps the line
  * under `readerKey`.
@@ -221,7 +244,10 @@ function toUiPart(part: MessagePart): UiPart {
   if (part.type === "text") return { type: "text", text: part.text };
   if (part.type === "reasoning") return { type: "reasoning", text: part.text };
   if (part.type === "interrupted") return { type: INTERRUPTED, data: {} };
-  if (part.type === "failed") return { type: FAILED, data: part.reason === undefined ? {} : { reason: part.reason } };
+  if (part.type === "failed") {
+    const { type: _failed, ...data } = part;
+    return { type: FAILED, data };
+  }
   if (part.type === "truncated") return { type: TRUNCATED, data: {} };
   if (part.type === "blocked") return { type: BLOCKED, data: {} };
   if (part.type === "thinking-time") return { type: THINKING_TIME, data: { ms: part.ms } };

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What one upload's outcome means for the ledger (#173, design §5).
@@ -38,6 +38,7 @@ import * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
 import { uploadDeadline } from "@domain/asset/upload-deadline.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
+import { emitSceneLookPicture } from "@domain/asset/scene-look-picture.js";
 import {
   getStorageAdapter,
   getStorageConfig,
@@ -679,6 +680,14 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
   const history = await recordRegisteredUploadHistory(grant, asset, coverUrl);
   const countsPublishFailed = await announceSuccess(grant, resultOf(asset, coverUrl), history.entryId);
   const scene = await settleSceneUpload(grant, { outcome: "done", asset });
+  // A part picture reaches its part only through this, so a lost publish
+  // fails the finish and its retry announces it again (inner#1693 design 6.3).
+  if (grant.sceneLook !== null && grant.projectId !== null && grant.spaceId !== null) {
+    await emitSceneLookPicture({
+      projectId: grant.projectId, spaceId: grant.spaceId, target: grant.sceneLook,
+      picture: asset.id, userId: grant.userId, uploadKey: grant.storageKey,
+    });
+  }
   return withPeaksQueued({
     status: terminal.newlyConsumed ? "registered" : "already_registered",
     assetId: asset.id,

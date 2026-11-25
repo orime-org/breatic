@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { SceneImportLimits } from '@breatic/shared';
 import type { TextureFormatSupport } from '@web/spaces/three-d/model-texture-format';
@@ -14,6 +14,7 @@ export const IMPORT_LIMITS: SceneImportLimits = {
   decoderWorkerLimit: 1,
   maxTextureEdge: 8192,
   maxTextureBytes: 268435456,
+  maxPictureHeaderBytes: 12_345_678,
 };
 
 /** A browser that decodes WebP and AVIF, as current desktop browsers do. */

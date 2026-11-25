@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The panels' estimate: the run as set up, prepared by shared and priced by provider's rules for the model on the
@@ -131,6 +131,6 @@ describe('useRunAnswer — one answer for both (#1521)', () => {
     } as unknown as ModelEntry;
     const { result } = renderHook(() => useRunAnswer(capped, { params: {}, prompt: 'abc' }, 1));
 
-    await waitFor(() => expect(result.current).toEqual({ estimate: { credits: 10, bound: 'exact' }, refusal: undefined }));
+    await waitFor(() => expect(result.current).toEqual({ estimate: { credits: 10, bound: 'exact' }, refusal: undefined, describes: false }));
   });
 });

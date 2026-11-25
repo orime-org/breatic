@@ -1,7 +1,8 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import { ArrowUp, Star, X } from 'lucide-react';
+import { CreditLine } from '@web/spaces/canvas/_shared/CreditLine';
+import { ArrowUp, X } from 'lucide-react';
 import * as React from 'react';
 
 import type { GenerationTemplate, ModelEntry, ReferenceKind } from '@breatic/shared';
@@ -57,8 +58,12 @@ interface GeneratePanelProps {
   subjectImageUrl?: string;
   /** The kinds the active model's pool takes in this mode (#2156). */
   referenceKinds: readonly ReferenceKind[];
-  /** The run's estimate as printed beside the star; undefined until it resolves. */
+  /** The run's estimate as printed beside the star, or the short name of the payer's key beside the key mark; undefined until it resolves. */
   creditText: string | undefined;
+  /** On the payer's key, the full sentence its short name stands for (inner#1953). */
+  creditDetail?: string;
+  /** On the payer's key, the word for credits the run takes as well. */
+  creditAlso?: string;
   /**
    * Which execute precondition fails, or null when Generate may proceed.
    *
@@ -137,6 +142,8 @@ export const GeneratePanel = React.memo(function GeneratePanel({
   subjectImageUrl,
   referenceKinds,
   creditText,
+  creditDetail,
+  creditAlso,
   executeRefusal,
   promptSlot,
   onExit,
@@ -239,15 +246,7 @@ export const GeneratePanel = React.memo(function GeneratePanel({
         ) : null}
 
         <div className='ml-auto flex items-center gap-1.5'>
-          {creditText !== undefined && (
-            <span
-              data-testid='generate-credit'
-              className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-            >
-              <Star className='h-3.5 w-3.5' aria-hidden='true' />
-              {creditText}
-            </span>
-          )}
+          {creditText !== undefined && <CreditLine text={creditText} detail={creditDetail} also={creditAlso} testId='generate-credit' />}
           <Button
             type='button'
             variant={null}

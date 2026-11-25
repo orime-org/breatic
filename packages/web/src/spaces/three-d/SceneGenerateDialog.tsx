@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
@@ -25,7 +25,7 @@ import { useTranslation } from '@web/i18n/use-translation';
 import { toast } from '@web/lib/toast';
 import { PanelRunFooter } from '@web/spaces/canvas/_shared/PanelRunFooter';
 import { executeFailureMessage } from '@web/spaces/canvas/generate/execute-error-message';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import type { ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { ModelParamControls } from '@web/spaces/canvas/generate/ModelParamControls';
 import { ModePill, type ModeOption } from '@web/spaces/canvas/generate/ModeToggle';
@@ -33,6 +33,7 @@ import { useRunCheck } from '@web/spaces/canvas/generate/use-credit-estimate';
 import { SCENE_VIEW_ACCEPT, SceneImagePickerDialog } from '@web/spaces/three-d/SceneImagePickerDialog';
 import { SCENE_MODE_LABELS, commonSceneParams, sceneEntryFor, sceneGenerateIntent } from '@web/spaces/three-d/scene-generation';
 import type { SceneGenerateFill, SceneViewImage } from '@web/stores/scene-proposals';
+import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { runOnce, useRunning } from '@web/stores/task-actions-in-flight';
 
 interface SceneGenerateDialogProps {
@@ -214,7 +215,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
   // The run as the server plans it: the prompt cleaned and trimmed (`planSceneGeneration`). Priced, and asked why
   // no upstream here takes it (#1521), said by the press.
   const estimateInput = React.useMemo(() => ({ params: settings, ...(mode === 't23d' ? { prompt: extractPromptText(prompt).trim() } : {}) }), [settings, mode, prompt]);
-  const { creditText: shownCredits, refusalText } = useRunCheck(entry, estimateInput, catalog.data?.credit_multiplier ?? 1);
+  const { creditText: shownCredits, creditDetail, refusalText } = useRunCheck(entry, estimateInput, catalog.data?.credit_multiplier ?? 1, projectId);
   const creditText = shownCredits ?? '';
 
   // Uploads into the view slots; any still running is cancelled when the form goes.
@@ -227,6 +228,13 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
     const id = crypto.randomUUID();
     const controller = new AbortController();
     uploads.current.add(controller);
+    // The picture is only this form's input: the Space stays busy while it uploads, so closing the tab or leaving the page asks first.
+    const operations = useSpaceOperationsStore.getState();
+    let released = false;
+    /** Let the Space go once, whichever end the upload reaches first. */
+    const release = (): void => { if (!released) { released = true; operations.unregister(spaceId, id); } };
+    operations.register(spaceId, id);
+    controller.signal.addEventListener('abort', release, { once: true });
     setViews((previous) => put(previous, index, { kind: 'uploading', id, percent: 0 }));
     /**
      * Land the upload in its slot, or mark the slot failed where it stands, so
@@ -234,6 +242,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
      * @param image - The stored picture, or null when the upload did not give one.
      */
     const settle = (image: SceneViewImage | null): void => {
+      release();
       if (controller.signal.aborted || !uploads.current.delete(controller)) return;
       setViews((previous) => previous.map((slot) => (slot.kind === 'uploading' && slot.id === id ? (image === null ? { kind: 'failed' } : { kind: 'image', ...image }) : slot)));
       if (image !== null) void queryClient.invalidateQueries({ queryKey: projectImagesQueryKey(projectId) });
@@ -344,6 +353,7 @@ function SceneGenerateForm({ projectId, spaceId, fill, intent, submitting, onClo
         {entry === undefined ? null : <span data-testid='scene-generate-model' className='truncate text-xs text-muted-foreground'>{entry.display_name}</span>}
       </div>}
       creditText={creditText}
+      creditDetail={creditDetail}
       runLabel={t('spaces.threeD.submit')}
       disabled={!ready}
       loading={submitting}

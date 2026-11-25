@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -105,7 +105,7 @@ describe('the promoter program dialog (inner#1868 table 12.11)', () => {
     expect(await screen.findByText('Promoter applications are not open yet.')).toBeInTheDocument();
   });
 
-  it('draws nothing while payments are off', async () => {
+  it('draws nothing where nothing is sold', async () => {
     api.get.mockRejectedValue(new ApiException({ status: 404, message: 'off', fromServer: true }));
     mount();
     await waitFor(() => expect(screen.queryByTestId('promoter-loading')).toBeNull());

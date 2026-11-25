@@ -38,7 +38,6 @@
     "pino": "catalog:",
     "pino-pretty": "catalog:",
     "postgres": "catalog:",
-    "stripe": "catalog:",
     "undici": "7.29.0",
     "yaml": "catalog:",
     "yjs": "catalog:",

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Authentication service - email/password and Google OAuth.
@@ -23,6 +23,7 @@ import { isUniqueViolation } from "@server/utils/pg-error.js";
 import { getRedis } from "@breatic/core";
 import { sendMail, type SendMailResult } from "@breatic/core";
 import {
+  commerceOutboxRepo,
   currentConsent,
   enqueueAdsConversion,
   env,
@@ -44,7 +45,8 @@ import {
   ValidationError,
   db,
 } from "@breatic/core";
-import { bindReferral } from "@server/modules/referral/referral-binding.service.js";
+import { wakeCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
+import { checkReferralCode, type ReferralCodeCheck } from "@server/modules/commerce/referral-check.service.js";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { Attribution, ReportedConsent, SignupReferralSource, UserEntity } from "@breatic/shared";
 
@@ -56,8 +58,15 @@ export interface SignupReferral {
   source: SignupReferralSource;
 }
 
-/** What became of a sign-up's referral code: none given, bound, or not used. */
-export type SignupReferralOutcome = "applied" | "not_applied" | null;
+/**
+ * What became of a sign-up's referral code: none given, bound, not used, or
+ * kept for the billing service to decide because it could not be asked
+ * (inner#1993 §8.4 S3).
+ */
+export type SignupReferralOutcome = "applied" | "pending" | "not_applied" | null;
+
+/** What a sign-up hears for each answer of the code check. */
+const OUTCOME_OF = { active: "applied", unknown: "pending", inactive: "not_applied" } as const satisfies Record<ReferralCodeCheck["status"], SignupReferralOutcome>;
 
 /** A sign-up refused because the referral code it carried is not valid; nothing was created. */
 export class SignupReferralRefused extends ValidationError {
@@ -85,8 +94,10 @@ export function hashPassword(password: string): Promise<string> {
  * Every way of signing up ends here, so this is where `signup_completed` is
  * sent. The campaign source is kept only when the signing-up browser accepted
  * a consent category (inner#1442 design §4.5).
- * A referral code is bound in the same transaction as the account is created.
- * While payments are off the code is ignored: the program does not exist.
+ * A referral code goes to the billing service as a `commerce_outbox` row
+ * written in the account's transaction; the billing service binds it or
+ * refuses it when the row arrives. Where nothing is sold (`SELLING`) the code
+ * is ignored: the program does not exist.
  * @param data - The account to create, as `userRepo.createUser` takes it.
  * @param referral - The code the sign-up carried, and what to do when it is
  *   refused: `reject` creates nothing, `skip` creates the account unbound.
@@ -100,23 +111,26 @@ export async function createAccount(
 ): Promise<{ user: UserEntity; referral: SignupReferralOutcome }> {
   const consent = currentConsent();
   const attribution = consent.analytics || consent.ads ? (data.attribution ?? null) : null;
-  const wanted = referral !== undefined && env.PAYMENT_ENABLED ? referral : undefined;
-  let outcome: SignupReferralOutcome = null;
+  const wanted = referral !== undefined && env.SELLING ? referral : undefined;
+  // Asked before the account's transaction opens: the transaction never waits on the network.
+  const checked = wanted === undefined ? null : await checkReferralCode(wanted.code);
+  if (checked?.status === "inactive" && wanted?.onRefused === "reject") throw new SignupReferralRefused();
+  const outcome: SignupReferralOutcome = checked === null ? null : OUTCOME_OF[checked.status];
+  const binding = wanted === undefined || checked === null || checked.status === "inactive" ? null : { code: checked.code, source: wanted.source };
   let user: UserEntity;
   try {
-    user = wanted === undefined
+    user = binding === null
       ? await userRepo.createUser({ ...data, attribution })
       : await db.transaction(async (tx) => {
         const created = await userRepo.createUser({ ...data, attribution }, tx);
-        const bound = await bindReferral({ userId: created.id, code: wanted.code, source: wanted.source }, tx);
-        if (!bound.ok && wanted.onRefused === "reject") throw new SignupReferralRefused();
-        outcome = bound.ok ? "applied" : "not_applied";
+        await commerceOutboxRepo.appendReferralBinding({ userId: created.id, ...binding }, tx);
         return created;
       });
   } catch (err) {
     if (isUniqueViolation(err)) throw new ConflictError(t("server.auth.email_taken"));
     throw err;
   }
+  if (binding !== null) wakeCommerceRelay();
   trackServerEvent("signup_completed", {
     userId: user.id,
     insertId: `signup:${user.id}`,
@@ -280,7 +294,7 @@ export async function loginOrCreateGoogle(
 ): Promise<{ user: UserEntity; token: string; created: boolean; referral: SignupReferralOutcome }> {
   let user = await userRepo.getUserByGoogleId(googleId);
   let created = false;
-  let referralOutcome: SignupReferralOutcome = referral && env.PAYMENT_ENABLED ? "not_applied" : null;
+  let referralOutcome: SignupReferralOutcome = referral && env.SELLING ? "not_applied" : null;
 
   if (!user) {
     user = await userRepo.getUserByEmail(email);

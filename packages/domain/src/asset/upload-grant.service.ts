@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Minting the key an upload lands on, and the ledger row it is checked against
@@ -25,7 +25,7 @@
 
 import { currentConsent, storageKey, type DbTx } from "@breatic/core";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
-import { issueGrant, type GrantAssetSource } from "@domain/asset/upload-grant.repo.js";
+import { issueGrant, type GrantAssetSource, type SceneLookTarget } from "@domain/asset/upload-grant.repo.js";
 
 /** Where an upload lands: a project, or a studio that has no project in it. */
 export type UploadTarget =
@@ -62,6 +62,7 @@ export type UploadTarget =
  *   frame lifted out of a video).
  * @param params.context.generationTaskId - The generation these bytes came out
  *   of, when one did.
+ * @param params.context.sceneLook - The 3D object part a picture upload is for.
  * @param tx - Optional enclosing upload admission transaction.
  * @returns The minted storage key K and the owner studio it was attributed to.
  * @throws {NotFoundError} When the project does not exist or is soft-deleted.
@@ -82,6 +83,7 @@ export async function issueUploadGrant(params: UploadTarget & {
     filename?: string | null;
     assetSource?: GrantAssetSource | null;
     generationTaskId?: string | null;
+    sceneLook?: SceneLookTarget | null;
   };
 }, tx?: DbTx): Promise<{ key: string; studioId: string }> {
   const studioId =

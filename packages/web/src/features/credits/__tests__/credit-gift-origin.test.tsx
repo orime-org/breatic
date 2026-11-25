@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { cleanup, render, screen } from '@testing-library/react';
@@ -76,7 +76,7 @@ describe('gift receipt origin in the real acquisition list', () => {
     history.mockResolvedValue({ items: [giftRow('registration'), giftRow('operator')] as unknown as PurchaseRow[], nextCursor: null });
     const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
     try {
-      render(<QueryClientProvider client={client}><PurchasesSection userId='account-1' billing /></QueryClientProvider>);
+      render(<QueryClientProvider client={client}><PurchasesSection userId='account-1' charging /></QueryClientProvider>);
       const rows = await screen.findAllByTestId('purchase-row');
       expect(rows).toHaveLength(2);
       expect(rows[0]).toHaveTextContent(registration);

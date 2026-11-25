@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Template styles (inner#1817, CAP-10): one template workflow, several named
@@ -130,11 +130,19 @@ const FILM_STYLES: TemplateStyleSet = {
   thumbnails: true,
 };
 
+/** The accent a deciding hit lands with (inner#1818): one effect at the instant of contact, then the colour comes back. */
+const IMPACT_ACCENTS: TemplateStyleSet = {
+  id: 'impact-accents',
+  styles: [{ id: 'manga-impact' }, { id: 'white-flash' }, { id: 'negative-flash' }, { id: 'black-flash' }],
+  parts: ['accent'],
+  thumbnails: false,
+};
+
 /** Every style set, by id. */
-export const TEMPLATE_STYLE_SETS = [FILM_STYLES] as const;
+export const TEMPLATE_STYLE_SETS = [FILM_STYLES, IMPACT_ACCENTS] as const;
 
 /** A style set's id. */
-export type TemplateStyleSetId = 'film-styles';
+export type TemplateStyleSetId = 'film-styles' | 'impact-accents';
 
 /**
  * A style set by id.

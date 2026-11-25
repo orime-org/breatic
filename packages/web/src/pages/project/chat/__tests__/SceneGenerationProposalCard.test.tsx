@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The card for a 3D generation proposal (inner#1691, design §6.2 · §8.5). It
@@ -12,8 +12,10 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render, screen } from '@testing-library/react';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import type { SceneGenerationProposal } from '@breatic/shared';
 
 import { SceneGenerationProposalCard } from '@web/pages/project/chat/SceneGenerationProposalCard';
@@ -70,7 +72,9 @@ function draw(proposal: SceneGenerationProposal, listening: boolean): ReturnType
   useSceneProposals.getState().setListening(listening);
   return render(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
-      <SceneGenerationProposalCard proposal={proposal} />
+      <TooltipProvider>
+        <SceneGenerationProposalCard proposal={proposal} />
+      </TooltipProvider>
     </QueryClientProvider>,
   );
 }
@@ -90,6 +94,49 @@ beforeEach(() => {
 
 afterEach(() => {
   cleanup();
+});
+
+describe('a model the Studio\'s payer runs on their own key (inner#1953)', () => {
+  const PROJECT = '11111111-1111-4111-8111-111111111111';
+
+  /**
+   * Draws the card inside a project route whose key plan runs the proposal's model on the payer's key.
+   * @param payer - Whose key it is to the viewer.
+   */
+  function drawOnKey(payer: 'self' | 'admin'): void {
+    api.get.mockImplementation(async (url: string) => {
+      if (url === '/models') return RAW_CATALOG;
+      if (url === `/projects/${PROJECT}/key-plan`) {
+        return { payer, llm: { usesAccountKey: false }, models: { [TEXT_TO_3D.model]: { upstream: 'wavespeed', availability: {} } }, upstreamNames: {} };
+      }
+      throw new Error(`unexpected GET ${url}`);
+    });
+    render(
+      <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
+        <MemoryRouter initialEntries={[`/project/demo-${PROJECT}`]}>
+          <Routes>
+            <Route path='/project/:projectId' element={<TooltipProvider><SceneGenerationProposalCard proposal={TEXT_TO_3D} /></TooltipProvider>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+  }
+
+  it.each([
+    ['self', 'Your key'],
+    ['admin', 'Studio key'],
+  ] as const)('says whose key runs it for a %s payer, with no credit figure', async (payer, words) => {
+    drawOnKey(payer);
+
+    expect(await screen.findByText(words)).toBeInTheDocument();
+    expect(screen.queryByText(/\b36\b/)).toBeNull();
+    // The key mark stands in for the credits star, and the full sentence is on hover.
+    const line = screen.getByTestId('scene-proposal-cost');
+    expect(line.querySelector('[data-icon="key"]')).not.toBeNull();
+    expect(line.querySelector('[data-icon="credits"]')).toBeNull();
+    await userEvent.setup().hover(line);
+    expect((await screen.findAllByText(/no credits/)).length).toBeGreaterThan(0);
+  });
 });
 
 describe('what the card shows', () => {

@@ -1,13 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
-import { Mesh, SkinnedMesh } from 'three';
+import { InstancedMesh, Mesh, SkinnedMesh, type Material } from 'three';
 import { httpRequest } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
 import { IMPORT_LIMITS } from '@web/spaces/three-d/__tests__/scene-import-fixtures';
-import { disposeModelTemplate, loadSceneModel } from '@web/spaces/three-d/viewport/model-resources';
+import { disposeModelTemplate, loadSceneModel, lookModelOf } from '@web/spaces/three-d/viewport/model-resources';
 import { createPoseRig } from '@web/spaces/three-d/viewport/pose-rig';
 
 // Tests run from packages/web; the bytes are the committed asset the browser fetches.
@@ -33,6 +33,32 @@ function glb(): ArrayBuffer {
   const payload = new Uint8Array(result, 20);
   payload.fill(0x20);
   payload.set(json);
+  return result;
+}
+
+/**
+ * A binary glTF with one mesh of two primitives (material 1, and none) and an instanced node of a mesh in material 0.
+ * @returns The container.
+ */
+function partsGlb(): ArrayBuffer {
+  const json = new TextEncoder().encode(JSON.stringify({
+    asset: { version: '2.0' }, scene: 0, scenes: [{ nodes: [0, 1] }], extensionsUsed: ['EXT_mesh_gpu_instancing'],
+    nodes: [{ mesh: 0 }, { mesh: 1, extensions: { EXT_mesh_gpu_instancing: { attributes: { TRANSLATION: 1 } } } }],
+    meshes: [{ primitives: [{ attributes: { POSITION: 0 }, material: 1 }, { attributes: { POSITION: 0 } }] }, { primitives: [{ attributes: { POSITION: 0 }, material: 0 }] }],
+    materials: [{ name: 'a' }, { name: 'b' }],
+    accessors: [{ bufferView: 0, componentType: 5126, count: 3, type: 'VEC3', min: [0, 0, 0], max: [1, 1, 0] }, { bufferView: 1, componentType: 5126, count: 2, type: 'VEC3' }],
+    bufferViews: [{ buffer: 0, byteOffset: 0, byteLength: 36 }, { buffer: 0, byteOffset: 36, byteLength: 24 }],
+    buffers: [{ byteLength: 60 }],
+  }));
+  const jsonLength = Math.ceil(json.byteLength / 4) * 4;
+  const bin = new Float32Array([0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 0, 0, 2, 0, 0]);
+  const result = new ArrayBuffer(12 + 8 + jsonLength + 8 + bin.byteLength);
+  const view = new DataView(result);
+  view.setUint32(0, 0x46546c67, true); view.setUint32(4, 2, true); view.setUint32(8, result.byteLength, true);
+  view.setUint32(12, jsonLength, true); view.setUint32(16, 0x4e4f534a, true);
+  const jsonChunk = new Uint8Array(result, 20, jsonLength); jsonChunk.fill(0x20); jsonChunk.set(json);
+  view.setUint32(20 + jsonLength, bin.byteLength, true); view.setUint32(24 + jsonLength, 0x004e4942, true);
+  new Uint8Array(result, 28 + jsonLength).set(new Uint8Array(bin.buffer));
   return result;
 }
 
@@ -96,6 +122,26 @@ describe('registered GLB placement transport (inner#1689)', () => {
     expect(skinned.length).toBeGreaterThan(0);
     expect(skinned.every((mesh) => mesh.skeleton.bones.length > 0)).toBe(true);
     expect(createPoseRig(root)?.kind).toBe('humanoid');
+    // inner#1693 design 5.1: one part per glTF material of the figure.
+    expect([...lookModelOf(root)!.table.keys()].sort()).toEqual(['0', '1', '2']);
+    disposeModelTemplate(root);
+  });
+
+  it('puts each primitive in its glTF material\'s part, one without a material in the default part, and gives it UVs (inner#1693 design 5.1)', async () => {
+    vi.mocked(httpRequest).mockImplementation(async () => new Response(partsGlb()));
+    const resolve = vi.fn().mockResolvedValue({ url: 'https://assets.example/parts.glb', mimeType: 'model/gltf-binary', sizeBytes: partsGlb().byteLength });
+    const root = await loadSceneModel({ kind: 'asset', assetId: 'parts' }, new AbortController().signal, resolve, '#888888', IMPORT_LIMITS);
+    const parts: string[] = [];
+    let instanced: InstancedMesh | null = null;
+    root.traverse((child) => {
+      if (!(child instanceof Mesh)) return;
+      if (child instanceof InstancedMesh) instanced = child;
+      parts.push((child.material as Material).userData.lookPart as string);
+      expect(child.geometry.getAttribute('uv')).toBeDefined();
+    });
+    expect(parts.sort()).toEqual(['0', '1', 'd']);
+    expect(((instanced as InstancedMesh | null)?.material as Material | undefined)?.userData.lookPart).toBe('0');
+    expect([...lookModelOf(root)!.table.keys()].sort()).toEqual(['0', '1', 'd']);
     disposeModelTemplate(root);
   });
 });

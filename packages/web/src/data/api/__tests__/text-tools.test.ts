@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The text mini-tool client (inner#1860, design §5.1): the request body the
@@ -143,6 +143,28 @@ describe('the frames', () => {
 
     expect(events.at(-1)).toMatchObject({ type: 'error', message: 'The model is unavailable.' });
     expect(errors).toEqual([]);
+  });
+
+  it('reads a failure of the payer\'s own key off an error event: the kind, the upstream and why (inner#1953)', async () => {
+    serverSends([
+      { event: 'error', data: JSON.stringify({ type: 'error', message: 'The text tool failed.', reason: 'account_key_failed', upstream: 'openrouter', keyReason: 'no_balance' }) },
+    ]);
+
+    const { events } = await runPolish();
+
+    expect(events.at(-1)).toEqual({
+      type: 'error',
+      message: 'The text tool failed.',
+      keyFailure: { reason: 'account_key_failed', upstream: 'openrouter', keyReason: 'no_balance' },
+    });
+  });
+
+  it('reads no key failure off an error event whose reason is not one', async () => {
+    serverSends([{ event: 'error', data: JSON.stringify({ type: 'error', message: 'x', reason: 'too_long', keyReason: 'nope' }) }]);
+
+    const { events } = await runPolish();
+
+    expect(events.at(-1)).toEqual({ type: 'error', message: 'x' });
   });
 
   it('reports a stream that closes with neither done nor error as a failure (E14)', async () => {

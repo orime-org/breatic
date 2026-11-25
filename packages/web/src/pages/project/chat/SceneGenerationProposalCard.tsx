@@ -1,16 +1,20 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { useParams } from 'react-router-dom';
 import { Box } from 'lucide-react';
 import type { SceneGenerationProposal } from '@breatic/shared';
 
+import { ownKeyCredit, useKeyPlan } from '@web/features/byok/byok-query';
+import { CreditLine } from '@web/spaces/canvas/_shared/CreditLine';
 import { useTranslation } from '@web/i18n/use-translation';
 import { formatCreditAmount } from '@web/lib/format-credit-amount';
+import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { toast } from '@web/lib/toast';
 import { ProposalAction, ProposalActions } from '@web/pages/project/chat/ProposalActions';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { ownControlSummary, type ModelControl } from '@web/spaces/canvas/generate/model-controls';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import { SCENE_MODE_LABELS, fillFromProposal } from '@web/spaces/three-d/scene-generation';
@@ -41,6 +45,18 @@ export const SceneGenerationProposalCard = React.memo(function SceneGenerationPr
   const request = useSceneProposals((s) => s.request);
   const { data: catalog } = useQuery(modelCatalogQuery());
   const entry = React.useMemo(() => catalog?.three_d.find((candidate) => candidate.name === proposal.model), [catalog, proposal.model]);
+  // A model the Studio's payer runs on their own key costs no credits (inner#1953): the card says whose key runs it, as
+  // the generation panel does, and shows no figure until the plan says which.
+  const { projectId: routeParam = '' } = useParams<{ projectId: string }>();
+  const projectId = routeParam === '' ? undefined : projectUuidFromRouteParam(routeParam);
+  const plan = useKeyPlan(projectId);
+  let costText: string | undefined;
+  let costDetail: string | undefined;
+  if (plan.data?.models[proposal.model] !== undefined) {
+    ({ text: costText, detail: costDetail } = ownKeyCredit(plan.data.payer, t));
+  } else if (projectId === undefined || !plan.isPending) {
+    costText = t('chat.sceneProposal.credits', { credits: formatCreditAmount(proposal.credits) });
+  }
   const settings = React.useMemo(() => {
     if (entry === undefined) return [];
     /**
@@ -76,7 +92,9 @@ export const SceneGenerationProposalCard = React.memo(function SceneGenerationPr
         <span className='text-muted-foreground'>·</span>
         <span className='text-muted-foreground'>{entry?.display_name ?? proposal.model}</span>
         {entry?.variant ? <span className='text-muted-foreground'>{`· ${entry.variant}`}</span> : null}
-        <span className='ml-auto tabular-nums text-muted-foreground'>{t('chat.sceneProposal.credits', { credits: formatCreditAmount(proposal.credits) })}</span>
+        {costDetail !== undefined && costText !== undefined
+          ? <CreditLine text={costText} detail={costDetail} testId='scene-proposal-cost' className='ml-auto' />
+          : <span className='ml-auto tabular-nums text-muted-foreground'>{costText}</span>}
       </div>
       {proposal.mode === 't23d' ? <p className='whitespace-pre-wrap break-words text-foreground'>{proposal.prompt ?? ''}</p>
         : <div className='flex items-center gap-1.5'>{proposal.images.map((image) => <HoverPreview key={image.assetId} kind='image' src={image.url}>

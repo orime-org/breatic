@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -68,5 +68,15 @@ describe("worker Timeline configuration check (#1502 design §2)", () => {
     expect(sweep).toBeGreaterThan(failed);
     expect(code.slice(check, failed)).toMatch(/catch \(err\)[\s\S]*logger\.(error|fatal)\(\{ err\b[^}]*\}, $/);
     expect(code.slice(failed, failed + 80)).toMatch(/await exitProcess\(1\)/);
+  });
+});
+
+describe("worker startup log", () => {
+  it("names the lot-mirror queue as started only where the deployment sells, while config is checked against every queue", () => {
+    expect(code).toMatch(/assertKnownQueues\(WORKER_QUEUES\);/);
+    expect(code).toMatch(/const runningQueues = env\.SELLING \? WORKER_QUEUES : WORKER_QUEUES\.filter\(\(q\) => q !== COMMERCE_LOT_MIRROR_QUEUE\);/);
+    const at = code.indexOf('"BullMQ workers started"');
+    const block = code.slice(code.lastIndexOf("logger.info(", at), at);
+    expect(block).toMatch(/queues: runningQueues/);
   });
 });

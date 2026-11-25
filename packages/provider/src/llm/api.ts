@@ -1,9 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { FinishReason, JSONValue, LanguageModelUsage, ProviderMetadata, SystemModelMessage } from "ai";
 import type { Cost, PendingCost } from "@provider/cost.js";
 import type { ModelV4 } from "@provider/llm/upstreams/common.js";
+import type { KeySet } from "@provider/keys.js";
 import type { MessagesPlan } from "@provider/messages/relay.js";
 import type { Availability } from "@provider/pricing/estimate.js";
 import type { Route } from "@provider/routing/route.js";
@@ -114,21 +115,27 @@ export interface CapabilityPolicy {
   retryMs: number;
 }
 
-/** The LLM part of a provider instance. */
+/**
+ * The LLM part of a provider instance. Each call takes the key set it runs on, the deployment's when absent; on an
+ * account's set it tries only the first upstream the set holds a key for, never the deployment's keys, and a failure of
+ * the key or its upstream ends it as AccountKeyFailure.
+ */
 export interface LlmApi {
-  prepare(modelId: string, wants: CallWants, route?: Route): PreparedCall;
+  prepare(modelId: string, wants: CallWants, route?: Route, keys?: KeySet): PreparedCall;
   costOf(finished: FinishedCall): Cost;
   /** The upstream a finished call names as the one that served it, when the configuration declares it. */
   servedBy(finished: Pick<FinishedCall, "providerMetadata">): string | undefined;
-  understand(request: UnderstandRequest, route?: Route): Promise<UnderstandAnswer>;
-  judge(request: JudgeRequest, route?: Route): Promise<JudgeAnswer>;
+  understand(request: UnderstandRequest, route?: Route, keys?: KeySet): Promise<UnderstandAnswer>;
+  judge(request: JudgeRequest, route?: Route, keys?: KeySet): Promise<JudgeAnswer>;
   /**
    * Where a web-animation Messages call of a model may go, in order, for the Worker that relays it: every upstream of
-   * the model's route that takes a Messages request, with no key read here.
+   * the model's route that takes a Messages request, with no key read here. On an account's key set, only those the
+   * set holds a key for, and the plan records `keysOwner: "account"`.
    * @throws {UpstreamRequestRejected} When the route pins an upstream that takes none for this model.
    * @throws {NoUpstreamAvailable} When no upstream of the route takes one.
+   * @throws {AccountKeyFailure} `account_key_missing` when an account's set holds a key for no upstream that takes one.
    */
-  messagesPlan(modelId: string, route?: Route): MessagesPlan;
+  messagesPlan(modelId: string, route?: Route, keys?: KeySet): MessagesPlan;
   capabilities(modelId: string, policy: CapabilityPolicy, signal?: AbortSignal): Promise<{ pictures: boolean; contextWindow?: number }>;
   /**
    * Check that every model this deployment reaches directly (not through a
@@ -141,10 +148,10 @@ export interface LlmApi {
    * saying whether its key is configured: `call` by the routes `prepare` uses,
    * `understand` by the understanding routes.
    */
-  availability(modelId: string, use: "call" | "understand"): Availability;
+  availability(modelId: string, use: "call" | "understand", keys?: KeySet): Availability;
   /**
    * The upstreams that serve the decisions endpoint, each saying whether its key is configured, the one `judge` sends
    * to first (it tries no other; the weights are list positions).
    */
-  judgeAvailability(): Availability;
+  judgeAvailability(keys?: KeySet): Availability;
 }

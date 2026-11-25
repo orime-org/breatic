@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
@@ -75,8 +75,8 @@ import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas
 import { mentionedReferenceUrls, poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
+import { useContentStable } from '@web/lib/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import {
   isGenerating,
@@ -264,8 +264,14 @@ function GeneratePanelBody({
   );
   // The run as the click sends it: a model taking no prompt sends none, whatever the box last held. Priced, and
   // asked why no upstream here takes it (#1521), for the button and the click.
-  const estimateInput = imageEstimateInput(vm, vm.promptRequired ? extractPromptText(promptText) : '');
-  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
+  // The images the prompt `@`-mentions, as the submit sends them: the estimate prices them, and the camera-angle sphere
+  // puts the first on its card.
+  const mentionedUrls = React.useMemo(
+    () => mentionedReferenceUrls({ references: vm.references, focusImages: vm.focusImages, atMentioned: new Set(atMentioned), nodes }),
+    [vm.references, vm.focusImages, atMentioned, nodes],
+  );
+  const estimateInput = imageEstimateInput({ ...vm, referenceUrls: mentionedUrls }, vm.promptRequired ? extractPromptText(promptText) : '');
+  const { creditText, creditDetail, creditAlso, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   // Stable model-list identity for the memo'd pickers: the vm rebuilds on
   // EVERY canvas graph mutation (nodes/edges deps), and its freshly-filtered
   // models array would defeat ModelPicker's React.memo each frame of any node
@@ -733,19 +739,8 @@ function GeneratePanelBody({
     ],
   );
 
-  // The first image the model is sent, which the camera-angle sphere puts on
-  // its card: the picks in rail order, crops after node rows, as the submit
-  // sends them.
-  const subjectImageUrl = React.useMemo(
-    () =>
-      mentionedReferenceUrls({
-        references: vm.references,
-        focusImages: vm.focusImages,
-        atMentioned: new Set(atMentioned),
-        nodes,
-      }).image[0],
-    [vm.references, vm.focusImages, atMentioned, nodes],
-  );
+  // The first image the model is sent: the picks in rail order, crops after node rows.
+  const subjectImageUrl = mentionedUrls.image[0];
 
   return (
     <GeneratePanel
@@ -761,6 +756,8 @@ function GeneratePanelBody({
       subjectImageUrl={subjectImageUrl}
       referenceKinds={referenceKinds}
       creditText={creditText}
+      creditDetail={creditDetail}
+      creditAlso={creditAlso}
       executeRefusal={executeRefusal}
       promptSlot={promptSlot}
       onExit={closeActivePanel}

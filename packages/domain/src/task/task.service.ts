@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Task service — business logic for task lifecycle management.
@@ -29,6 +29,9 @@ import type { GenerationSource, TaskEntity } from "@breatic/shared";
  * @param source - Which lane opened this task; defaults to `"task"`
  * @param id - The row's id, when the caller held credits under it first
  * @param tx - Optional business admission transaction.
+ * @param keys - The account key rows the task runs on (inner#1953); our keys when absent.
+ * @param keys.keyId - The media's key row, or null.
+ * @param keys.llmKeyId - A language-model step's key row, or null.
  * @returns The newly created task entity
  */
 export async function create(
@@ -42,6 +45,7 @@ export async function create(
   source?: GenerationSource,
   id?: string,
   tx?: DbTx,
+  keys?: { keyId: string | null; llmKeyId: string | null },
 ): Promise<TaskEntity> {
   return taskRepo.createTask({
     userId,
@@ -53,6 +57,7 @@ export async function create(
     model,
     source,
     id,
+    ...keys,
   }, tx);
 }
 

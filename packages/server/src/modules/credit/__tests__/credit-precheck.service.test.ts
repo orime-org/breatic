@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Which sentence a refused run is given, and what a run's admission holds
@@ -14,7 +14,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import type * as CoreModule from "@breatic/core";
 import type * as SharedModule from "@breatic/shared";
 
-const { env } = vi.hoisted(() => ({ env: { PAYMENT_ENABLED: true } }));
+const { env } = vi.hoisted(() => ({ env: { CHARGING_ENABLED: true } }));
 vi.mock("@breatic/core", async (importOriginal) => {
   const real = await importOriginal<typeof CoreModule>();
   return {
@@ -80,7 +80,7 @@ function refuseWith(spendable: number, held: number): void {
 
 beforeEach(() => {
   vi.clearAllMocks();
-  env.PAYMENT_ENABLED = true;
+  env.CHARGING_ENABLED = true;
   reserveCredits.mockResolvedValue({ ok: true });
   getStudioDebt.mockResolvedValue("0.000000");
   getUnassignedCredits.mockResolvedValue("0.000000");
@@ -88,12 +88,6 @@ beforeEach(() => {
 });
 
 describe("reserveForRun", () => {
-  it("holds nothing while payments are off", async () => {
-    env.PAYMENT_ENABLED = false;
-    await reserveForRun(PROJECT, USER, "t", 1);
-    expect(reserveCredits).not.toHaveBeenCalled();
-  });
-
   it("holds the estimate under the run's key for the task budget", async () => {
     await reserveForRun(PROJECT, USER, "task-1", 40);
     expect(reserveCredits).toHaveBeenCalledWith({
@@ -208,5 +202,11 @@ describe("precheckCredits", () => {
     judgeBalanceAdmission.mockResolvedValue({ reason: "spend_cap", cap: { scope: "member", limit: "10.000000", resetsAt: "2026-12-01T00:00:00.000Z" } });
     const err = await precheckCredits(PROJECT, USER, 0.000001).catch((e: unknown) => e);
     expect(err).toMatchObject({ statusCode: 402, reason: "spend_cap_reached" });
+  });
+
+  it("reserves nothing while charging is off, whatever the old switch says", async () => {
+    env.CHARGING_ENABLED = false;
+    await reserveForRun(PROJECT, USER, "t", 1);
+    expect(reserveCredits).not.toHaveBeenCalled();
   });
 });

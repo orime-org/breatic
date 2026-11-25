@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * One message, from what the protocol carries to what the panel draws.
@@ -44,6 +44,7 @@ import type {
   ChatSpaceRequest,
   ToolCall,
 } from '@web/pages/project/chat/types';
+import { readKeyFailure } from '@web/data/api/key-failure';
 import { failurePlaceholder, PLACEHOLDER_MARK } from '@web/pages/project/chat/tool-failure-plugin';
 
 /** The part type carrying a turn that was stopped. */
@@ -508,6 +509,7 @@ export function toChatMessage(
   let truncated = false;
   let failed = false;
   let tooLong = false;
+  let keyFailure: ChatMessage['keyFailure'];
   let blocked = false;
   let thinkingMs: number | undefined;
   let thinkingNow = false;
@@ -639,6 +641,7 @@ export function toChatMessage(
       failed = true;
       // A turn whose request could not be made to fit (inner#1567).
       if ((part as { data?: { reason?: unknown } | null }).data?.reason === 'too_long') tooLong = true;
+      keyFailure = readKeyFailure((part as { data?: unknown }).data);
     }
     else if (part.type === TRUNCATED) truncated = true;
     else if (part.type === BLOCKED) blocked = true;
@@ -693,6 +696,7 @@ export function toChatMessage(
     ...(interrupted ? { interrupted: true as const } : {}),
     ...(failed ? { failed: true } : {}),
     ...(tooLong ? { failedReason: 'too_long' as const } : {}),
+    ...(keyFailure === undefined ? {} : { keyFailure }),
     ...(truncated ? { truncated: true as const } : {}),
     ...(blocked ? { blocked: true as const } : {}),
     ...(sources.length > 0 ? { sources, citations } : {}),

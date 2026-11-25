@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { act, cleanup, fireEvent, render, screen, waitFor, within, type RenderResult } from '@testing-library/react';
@@ -358,7 +358,7 @@ beforeEach(() => {
   vi.mocked(timelineApi.resolveAsset).mockReset().mockImplementation(async (_projectId, assetId) => assetId === LOCAL_ASSET.assetId ? LOCAL_ASSET : ASSET);
   vi.mocked(timelineApi.limits).mockReset().mockResolvedValue({
     defaults: SETTINGS, assets: { pageSize: 50, pageMax: 100 },
-    webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000, sourceRefreshIntervalMs: 10000 },
+    webAnimation: { promptMaxLength: 4000, durationSeconds: { min: 1, max: 60, default: 4 }, aspects: ['16:9', '9:16', '1:1'], playerLoadTimeoutMs: 15000 },
     preview: TIMELINE_PREVIEW_DEFAULTS,
   });
   vi.mocked(uploadMedia).mockReset().mockResolvedValue(stored());
@@ -480,7 +480,16 @@ describe('TimelineSpace registered-video placement', () => {
     const dialog = await openMaterial();
     expect(within(dialog).getByTestId('timeline-material-project')).toBeInTheDocument();
     expect(within(dialog).getByTestId('timeline-material-local')).toBeInTheDocument();
-    expect(within(dialog).getByTestId('timeline-start-frame')).toHaveValue(0);
+    expect(within(dialog).getByTestId('timeline-start-frame')).toHaveValue('0');
+  });
+  it('takes the start frame as digits in a plain text field with the numeric keypad', async () => {
+    seedContent();
+    showTimeline();
+    const field = within(await openMaterial()).getByTestId('timeline-start-frame');
+    expect(field).toHaveAttribute('type', 'text');
+    expect(field).toHaveAttribute('inputmode', 'numeric');
+    fireEvent.change(field, { target: { value: '-1e2' } });
+    expect(field).toHaveValue('12');
   });
   it('keeps selecting a listed video separate from confirming its addition', async () => {
     const doc = seedContent();
@@ -536,7 +545,7 @@ describe('TimelineSpace registered-video placement', () => {
     await addProjectVideo();
     const first = Object.values(layout().clips)[0];
     await openMaterial();
-    expect(screen.getByTestId('timeline-start-frame')).toHaveValue(48);
+    expect(screen.getByTestId('timeline-start-frame')).toHaveValue('48');
     fireEvent.click(await screen.findByTestId('timeline-project-video-' + ASSET.assetId));
     fireEvent.click(screen.getByTestId('timeline-confirm-material'));
     await waitFor(() => expect(Object.values(layout().clips)).toHaveLength(2));
@@ -587,7 +596,7 @@ describe('TimelineSpace registered-video placement', () => {
     fireEvent.click(screen.getByTestId('timeline-confirm-material'));
     expect(await within(dialog).findByText(t('timeline.errors.track_missing'))).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-start-frame')).toHaveValue(60);
+    expect(screen.getByTestId('timeline-start-frame')).toHaveValue('60');
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
   });
   it('shows a Project-list error and retries that same Project on request', async () => {
@@ -648,7 +657,7 @@ describe('TimelineSpace browser metadata boundary', () => {
     fireEvent(first, new Event('error'));
     expect(await screen.findByTestId('timeline-material-error')).toBeInTheDocument();
     expect(screen.getByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByTestId('timeline-start-frame')).toHaveValue(72);
+    expect(screen.getByTestId('timeline-start-frame')).toHaveValue('72');
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(first.getAttribute('src')).toBe(null);
     fireEvent.click(screen.getByTestId('timeline-confirm-material'));
@@ -1186,7 +1195,7 @@ describe('TimelineSpace properties', () => {
     await waitFor(() => expect(layout().clips[X]).toMatchObject({ startFrame: 30, sourceInFrame: 4, durationFrames: 20 }));
   });
 
-  it.each([['duration', 'timeline-clip-duration', '0'], ['duration past the source', 'timeline-clip-duration', '49'], ['in-point past the source', 'timeline-clip-in', '40'], ['negative start', 'timeline-clip-start', '-1']])(
+  it.each([['duration', 'timeline-clip-duration', '0'], ['duration past the source', 'timeline-clip-duration', '49'], ['in-point past the source', 'timeline-clip-in', '40']])(
     'shows the range error next to the field and keeps the draft for %s',
     async (_name, testId, value) => {
       const doc = seedLayout([clipAt(X, 'v2', 10, 14)]);
@@ -1275,7 +1284,7 @@ describe('TimelineSpace add dialog targets', () => {
     await screen.findByTestId('timeline-clip-' + CLIP.id);
     const dialog = await openMaterial();
     expect(within(dialog).getByTestId('timeline-material-track')).toHaveTextContent(t('timeline.mainTrack'));
-    expect(within(dialog).getByTestId('timeline-start-frame')).toHaveValue(130);
+    expect(within(dialog).getByTestId('timeline-start-frame')).toHaveValue('130');
   });
 
   it('defaults to the selected clip\'s track', async () => {
@@ -1479,7 +1488,7 @@ describe('TimelineSpace round-three review fixes (inner#1708 E1, E2, E4)', () =>
     const field = await screen.findByTestId('timeline-clip-start');
     await user.clear(field);
     await user.type(field, '30');
-    expect(field).toHaveValue(30);
+    expect(field).toHaveValue('30');
     expect(layout().clips[X]?.startFrame).toBe(10);
     await user.pointer({ keys: '[MouseLeft]', target: screen.getByTestId('timeline-lane-v2') });
     await waitFor(() => expect(layout().clips[X]?.startFrame).toBe(30));
@@ -2017,7 +2026,7 @@ describe('TimelineSpace round-nine review fixes (inner#1708 R1, R2, R3, R4)', ()
     expect(Object.keys(layout().clips)).toEqual([X]);
   });
 
-  it.each(['', '1e3', '5.0'])('hides the main-track insert hint for the start %j (R4)', async (text) => {
+  it.each([''])('hides the main-track insert hint for the start %j (R4)', async (text) => {
     seedLayout([clipAt(CLIP.id, MAIN, 0, 48)]);
     showTimeline();
     await screen.findByTestId('timeline-clip-' + CLIP.id);
@@ -2027,7 +2036,7 @@ describe('TimelineSpace round-nine review fixes (inner#1708 R1, R2, R3, R4)', ()
     expect(within(dialog).queryByTestId('timeline-material-insert-hint')).toBe(null);
   });
 
-  it.each(['', '1e3', '5.0'])('refuses the start %j on confirm, as the hint does (R4)', async (text) => {
+  it.each([''])('refuses the start %j on confirm, as the hint does (R4)', async (text) => {
     seedLayout([clipAt(CLIP.id, MAIN, 0, 48)]);
     showTimeline();
     await screen.findByTestId('timeline-clip-' + CLIP.id);

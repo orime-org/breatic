@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * How each way into a run opens it, on a real Redis and database (inner#1717).
@@ -137,6 +137,12 @@ vi.mock("@server/modules", async (importOriginal) => {
       const n = gate.creditCalls++;
       await gate.credits?.(n);
       return actual.precheckCredits(...args);
+    },
+    // A send's own balance check, counted with the others.
+    precheckAgentTurn: async (...args: Parameters<typeof actual.precheckAgentTurn>) => {
+      const n = gate.creditCalls++;
+      await gate.credits?.(n);
+      return actual.precheckAgentTurn(...args);
     },
   };
 });

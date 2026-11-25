@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect } from 'vitest';
 import {
@@ -179,6 +179,18 @@ describe('toNodeView — wire CanvasNodeFields → narrowed view', () => {
         duration: 30,
       },
     });
+  });
+
+  it('maps the source animation a video was exported from, as content (#1490)', () => {
+    const sourceAnimation = { spaceId: 's1', executionId: 'e1', videoUrl: 'v.mp4' };
+    expect(toNodeView(fields('video', { content: 'v.mp4', sourceAnimation }))).toMatchObject({
+      type: 'video', data: { content: 'v.mp4', sourceAnimation },
+    });
+  });
+
+  it('maps no source animation onto a video without one', () => {
+    const v = toNodeView(fields('video', { content: 'v.mp4' }));
+    expect((v?.data as Record<string, unknown>).sourceAnimation).toBeUndefined();
   });
 
   it('maps the 3d model URL', () => {

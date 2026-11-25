@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** Durable queue-delivery states for the current operation wake. */
 export type UnderstandDispatchStatus = "pending" | "sent" | "claimed" | "retired";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
@@ -11,13 +11,13 @@ import { strToU8, zipSync } from 'three/addons/libs/fflate.module.js';
 import { httpRequest } from '@breatic/shared';
 import type { SceneImportLimits } from '@breatic/shared';
 import type * as SharedModule from '@breatic/shared';
-import { disposeModelTemplate, loadSceneModel, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
+import { disposeModelTemplate, loadSceneModel, lookModelOf, parseSceneModel } from '@web/spaces/three-d/viewport/model-resources';
 import { inspectModelFiles, readRegisteredModelPackage } from '@web/spaces/three-d/model-package';
 import { ModelImportError } from '@web/spaces/three-d/model-import-errors';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
 import { validateModelTextures } from '@web/spaces/three-d/viewport/model-decoder-173';
 import { validateModelTextureBytes, validateModelTextureMetadata } from '@web/spaces/three-d/model-texture-metadata';
-import type { ImageSize } from '@web/spaces/three-d/model-texture-metadata';
+import type { ImageSize } from '@web/spaces/three-d/texture-upload-bytes';
 import type { GltfDocument } from '@web/spaces/three-d/model-package';
 
 // jsdom has no Worker; the mocked client runs the same package reader the worker runs.
@@ -163,6 +163,9 @@ describe('registered model import containers (inner#1690)', () => {
     expect(mesh.material).toMatchObject({ map: { image: { width: 1, height: 1 } } });
     expect(bitmap).toHaveBeenCalledTimes(1);
     expect(request).toHaveBeenCalledTimes(1);
+    // The object budget for part pictures starts from the model's own textures (inner#1693 design 7).
+    // A 1x1 RGBA texture has one level: 4 bytes.
+    expect(lookModelOf(root)?.ownBytes).toBe(4);
   });
 
   it.each(['blob:foreign-model-image', 'https://external.example/texture.png'])('rejects a declared image URI outside the closed collection: %s', async (uri) => {
@@ -285,7 +288,7 @@ describe('texture byte budgets (inner#1690)', () => {
   const sizes = (count: number): Map<number, ImageSize> => new Map(Array.from({ length: count }, (_, index) => [index, { width: 64, height: 64 }]));
 
   it('refuses textures over the cumulative budget as an import limit', () => {
-    expect(() => validateModelTextureBytes(declared(2), sizes(2), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 })).not.toThrow();
+    expect(validateModelTextureBytes(declared(2), sizes(2), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 })).toBe(64 * 64 * 4 * 2);
     expect(() => validateModelTextureBytes(declared(2), sizes(2), { ...IMPORT_LIMITS, maxTextureBytes: 64 * 64 * 4 * 2 - 1 }))
       .toThrow(expect.objectContaining({ code: 'budget' }));
   });

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Memory consolidator — folds the oldest part of a conversation into memory
@@ -35,13 +35,13 @@ import {
   createUsageRecorder,
   handOffLookups,
   provider,
+  resolveKeys,
 } from "@breatic/domain";
-import type { UsageRecorder } from "@breatic/domain";
+import { watchModelCalls, type UsageRecorder } from "@breatic/domain";
 import { getAgentConfig, logger, MEMORY_CONTENT_MAX_CHARS, MEMORY_TITLE_MAX_CHARS } from "@breatic/core";
 import { memoryService } from "@server/modules";
 import type { ConsolidationInput } from "@server/modules/memory/memory.service.js";
 import { readConsolidationAnswer } from "@server/agent/consolidation-answer.js";
-import { watchModelCalls } from "@server/agent/model-call-watch.js";
 
 const CONSOLIDATION_PROMPT = `\
 You are the memory consolidator for an AI creative assistant. The turns below are leaving the assistant's context. You are given them, the memory entries the assistant keeps about this user, and where the conversation has got to. Record what the turns add as changes to single entries.
@@ -214,6 +214,8 @@ interface ConsolidationBill {
   model: string;
   /** The upstream that served the call; what the charge names. */
   upstream: string;
+  /** The account key row the call ran on (inner#1953); null for our keys. */
+  keyId: string | null;
 }
 
 /**
@@ -243,7 +245,7 @@ function consolidationKey(conversationId: string, watermarkBefore: number, foldI
  * @param input - Who ran it, over which window, and what it cost.
  */
 async function bill(input: ConsolidationBill): Promise<void> {
-  const { userId, conversationId, projectId, watermarkBefore, usage, model, upstream } = input;
+  const { userId, conversationId, projectId, watermarkBefore, usage, model, upstream, keyId } = input;
 
   let chargedAmount = 0;
   try {
@@ -254,10 +256,7 @@ async function bill(input: ConsolidationBill): Promise<void> {
     }
     // A call whose cost is not in hand is looked up and charged later, under
     // a key of its own.
-    await handOffLookups(usage.awaitingLookup(), usage.operation, {
-      description: "Memory consolidation",
-      charge: true,
-    }).catch((err: unknown) =>
+    await handOffLookups(usage.awaitingLookup(), usage.operation, { description: "Memory consolidation", charge: true, keyId }).catch((err: unknown) =>
       logger.error({ err, userId, conversationId, watermarkBefore }, "usage_lookup_enqueue_failed"),
     );
     if (amount === 0) return;
@@ -340,6 +339,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
   // spent. A read that fails here costs this turn its fold and nothing else.
   let input: ConsolidationInput;
   let prepared: PreparedCall;
+  let keyId: string | null;
   try {
     input = await memoryService.consolidationInput(
       { userId, projectId, conversationId },
@@ -347,7 +347,11 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
     );
     // Folding a transcript has no reasoning step in it, and asks for a fixed
     // temperature of 0; provider sends each the way the upstream takes it.
-    prepared = provider().llm.prepare(config.consolidation_model, { thinking: false, cache: false, temperature: 0 });
+    // The fold runs on the keys of whoever pays for the Studio (inner#1953); never moved to ours when theirs fails.
+    const resolved = await resolveKeys({ projectId }, { kind: "llm" });
+    keyId = resolved.keyId;
+    const wants = { thinking: false, cache: false, temperature: 0 } as const;
+    prepared = provider().llm.prepare(config.consolidation_model, wants, undefined, resolved.keys);
   } catch (err) {
     if (userLeft(err)) return "aborted";
     logger.error({ err, ...where }, "memory_consolidation_untouched");
@@ -383,10 +387,11 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
       actorUserId: userId,
       projectId,
       onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
+      ...(keyId === null ? {} : { keyId }),
     });
-    const watch = watchModelCalls(usage, { model: config.consolidation_model, description: "Memory consolidation" }, prepared.pendingCosts);
+    const watch = watchModelCalls(usage, { model: config.consolidation_model, description: "Memory consolidation", keyId }, prepared.pendingCosts, provider().llm);
     await watch.handOff().catch((err: unknown) => logger.error({ err, ...where }, "usage_lookup_enqueue_failed"));
-    await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model, upstream: watch.served() ?? "" });
+    await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model, upstream: watch.served() ?? "", keyId });
   }
 
   /**
@@ -414,6 +419,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
           actorUserId: userId,
           projectId,
           onMissingCost: (row) => logger.error({ row, ...where }, "agent_usage_cost_missing"),
+          ...(keyId === null ? {} : { keyId }),
         });
         const upstream = provider().llm.servedBy(result) ?? "";
         usage.recordModelCall({
@@ -422,7 +428,7 @@ export async function consolidateWindow(window: ConsolidationWindow): Promise<Co
           upstream,
           cost: provider().llm.costOf({ model: config.consolidation_model, usage: result.usage, providerMetadata: result.providerMetadata }),
         });
-        await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model, upstream });
+        await bill({ userId, conversationId, projectId, watermarkBefore, usage, model: config.consolidation_model, upstream, keyId });
 
         if (userLeft()) return "aborted";
         // An answer cut off by the output limit is cut off again when asked

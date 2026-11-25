@@ -1,13 +1,16 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { useQuery } from '@tanstack/react-query';
 import { Lock } from 'lucide-react';
 
-import { getLocale, isSceneCamera, isSceneLight, isSceneModelFile, nextDirectorNumber, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, type SceneLightType, type SceneObject, type ViewfinderRatio } from '@breatic/shared';
+import {
+  getLocale, isSceneCamera, isSceneLight, isSceneModelFile, nextDirectorNumber, SCENE_LIGHT_COLOR_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LOOK_MAX_PARTS,
+  SCENE_POSE_MAX_KEYS, type SceneLightType, type SceneObject, type ViewfinderRatio,
+} from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
-import { getSceneControls, resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
+import { resolveSceneAsset, type SpaceTask } from '@web/data/api/scene';
+import { useSceneControls } from '@web/data/api/use-scene-controls';
 import { docName } from '@web/data/yjs/manager';
 import { isOlderSceneFormat, isSceneSizeRefusal, type SceneEnvironmentValues } from '@web/data/yjs/scene-document';
 import type { ScenePeer, SceneSession, SceneSessionSnapshot } from '@web/data/yjs/scene-session';
@@ -38,6 +41,9 @@ import { SceneRightPanel } from '@web/spaces/three-d/SceneRightPanel';
 import { SceneViewportToolbar, type ScenePanel } from '@web/spaces/three-d/SceneViewportToolbar';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
 import type { SceneCameraView, SceneFrameCapture, SceneModelAcquire, SceneModelState, ScenePilotControl, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
+import type { SceneLookPictures, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import { pageLookPictureAccess } from '@web/spaces/three-d/look-picture-size';
+import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
 import type { ModelSource } from '@web/spaces/three-d/model-source';
@@ -99,8 +105,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const placeFailedText = t('spaces.threeD.taskList.placeFailed');
   const lockText = t('spaces.threeD.lock');
   const unlockText = t('spaces.threeD.unlock');
-  const controls = useQuery({ queryKey: ['scene-controls', projectId, userId],
-    queryFn: ({ signal }) => getSceneControls(projectId, signal) });
+  const pictureAccess = React.useMemo(() => pageLookPictureAccess(projectId), [projectId]);
+  const controls = useSceneControls(projectId, userId);
   const [mode, setMode] = React.useState<SceneTransformMode>('translate');
   const [focusRevision, setFocusRevision] = React.useState(0);
   const [modelRetryRevision, setModelRetryRevision] = React.useState(0);
@@ -112,6 +118,24 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const [modelErrors, setModelErrors] = React.useState<ReadonlyMap<string, Error>>(new Map());
   const [fieldDrafts, setFieldDrafts] = React.useState<ReadonlyMap<string, SceneFieldDraft>>(new Map());
   const [skeletonStates, setSkeletonStates] = React.useState<ReadonlyMap<string, SceneSkeletonState>>(new Map());
+  // Each loaded model's parts, how each object's part pictures stand, and the selected object's selected part (inner#1693).
+  const [lookReports, setLookReports] = React.useState<ReadonlyMap<string, SceneLookReport | 'loading' | 'failed'>>(new Map());
+  const [lookPictures, setLookPictures] = React.useState<ReadonlyMap<string, SceneLookPictures>>(new Map());
+  const [selectedPart, setSelectedPart] = React.useState<string | null>(null);
+  const onLookReport = React.useCallback((id: string, report: SceneLookReport | 'loading' | 'failed'): void => {
+    setLookReports((previous) => previous.get(id) === report ? previous : new Map(previous).set(id, report));
+  }, []);
+  const onLookPictures = React.useCallback((id: string, pictures: SceneLookPictures | null): void => {
+    setLookPictures((previous) => {
+      const current = previous.get(id);
+      if (pictures === null ? current === undefined : current !== undefined && current.retry === pictures.retry && current.over === pictures.over
+        && current.shown.join() === pictures.shown.join()) return previous;
+      const next = new Map(previous);
+      if (pictures === null) next.delete(id);
+      else next.set(id, pictures);
+      return next;
+    });
+  }, []);
   const [jointMode, setJointMode] = React.useState(false);
   const [selectedJoint, setSelectedJoint] = React.useState<string | null>(null);
   const [viewfinder, dispatchViewfinder] = React.useReducer(viewfinderReducer, INITIAL_VIEWFINDER);
@@ -249,6 +273,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   // A model whose content was refused fails again on retry; only transport failures can succeed.
   const cause = failures.find((error): error is ModelImportError => error instanceof ModelImportError);
   const modelRetryable = !failures.length || failures.some((error) => !(error instanceof ModelImportError));
+  const shownFailures = snapshot.objects.flatMap((object) => lookPictures.get(object.id) ?? []);
+  const lookRetry = shownFailures.some((failure) => failure.retry);
+  const lookOver = shownFailures.some((failure) => failure.over);
 
   React.useEffect(() => {
     session.setVisible(true);
@@ -289,6 +316,8 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     // A size refusal is reported by its own warning.
     if (error && !isSceneSizeRefusal(error.reason) && error !== reportedCommandError.current) {
       if (error.reason === 'lightLimit') toast.warning(t('spaces.threeD.director.lightLimit', { max: director?.maxLights ?? 0 }));
+      else if (error.reason === 'lookPartLimit') toast.warning(t('spaces.threeD.look.partLimit', { max: SCENE_LOOK_MAX_PARTS }));
+      else if (error.reason === 'poseBoneLimit') toast.warning(t('spaces.threeD.pose.boneLimit', { max: SCENE_POSE_MAX_KEYS }));
       else toast.error(t('spaces.threeD.commandFailed'));
     }
     reportedCommandError.current = error;
@@ -567,6 +596,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     if (selection === lastSelection.current) return;
     lastSelection.current = selection;
     setFieldDrafts(new Map());
+    setSelectedPart(null);
     leaveJointMode();
     if (keepTasksPanel.current) {
       // A model placed from the task list is selected there; the list stays open for the next one.
@@ -649,6 +679,21 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
    * @throws {never} Never.
    */
   const onSelect = React.useCallback<SceneViewportProps['onSelect']>((id, additive) => session.select(id, additive), [session]);
+  /**
+   * A part picked in the scene: highlight it and show it in the properties panel, which opens unless the viewfinder
+   * or the director console holds the panel (inner#1693 design 3.2).
+   * @param part - The picked part.
+   */
+  const onSelectPart = React.useCallback((part: string): void => {
+    setSelectedPart(part);
+    if (viewfinderPhase.current !== 'off' || (panel === 'director' && rightOpen)) return;
+    // Opened from the scene like a selection: focus stays on the scene and returns there.
+    automaticPanel.current = true;
+    returnTarget.current = stage.current?.querySelector('canvas') ?? null;
+    setPanel('properties'); setRightOpen(true);
+  }, [panel, rightOpen, setRightOpen]);
+  const lookInputs = React.useMemo(() => (controls.data ? { reports: lookReports, pictures: lookPictures, selectedPart, onSelectPart: setSelectedPart, projectId, limits: controls.data.import } : undefined),
+    [controls.data, lookReports, lookPictures, selectedPart, projectId]);
   /**
    * Begin the personal native transform draft.
    * @throws {never} Never.
@@ -800,9 +845,9 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const viewportFallback = React.useMemo(() => <div className='grid h-full place-items-center text-sm'>{loadingText}</div>, [loadingText]);
   const panelContent = React.useMemo(() => panel === 'properties'
     ? <React.Suspense fallback={inspectorFallback}>
-      <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField} DirectorFields={SceneDirectorFields}
+      <SceneInspector session={session} snapshot={snapshot} readObjects={readObjects} namedPeers={namedPeers} spaceId={spaceId} Field={SceneField} DirectorFields={SceneDirectorFields} LookPanel={SceneLookPanel}
         fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
-        skeletonStates={skeletonStates} jointMode={jointMode} onJointModeChange={changeJointMode} />
+        skeletonStates={skeletonStates} jointMode={jointMode} onJointModeChange={changeJointMode} look={lookInputs} />
     </React.Suspense>
     : panel === 'director' ? <SceneDirectorPanel session={session} snapshot={snapshot} spaceId={spaceId} Field={SceneField} fieldDrafts={fieldDrafts}
       onFieldDraftChange={onFieldDraftChange} lightPlan={lightPlan} maxLights={director?.maxLights} lookingAt={lookCamera?.id ?? null}
@@ -812,7 +857,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
         : <SceneTaskList projectId={projectId} spaceId={spaceId} userId={userId} canEdit={snapshot.canEdit} canGenerate={myRole !== 'viewer'} uploads={uploads}
           remoteUploads={snapshot.remoteUploads} onPlace={placeTask} focusTaskId={focusTaskId} onFocused={taskFocused}
           onRetryGeneration={retryGeneration} placedAssetIds={placedAssetIds} onLocate={locateAsset} filterHost={filterHost} />,
-  [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, modelStates, showSelectedProperties,
+  [panel, inspectorFallback, session, snapshot, readObjects, namedPeers, spaceId, fieldDrafts, onFieldDraftChange, skeletonStates, jointMode, changeJointMode, lookInputs, modelStates, showSelectedProperties,
     projectId, userId, myRole, uploads, placeTask, focusTaskId, taskFocused, retryGeneration, placedAssetIds, locateAsset, filterHost,
     lightPlan, director, lookCamera, environment, onSaveView, onAddLight, onLook, onMonitor, onAmbientPreview, onAmbientCommit, cancelAmbient, beginAmbient, onAmbientWrite, viewFailed]);
   // An older-format scene is never opened, so no editing chrome is shown around its message.
@@ -835,6 +880,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   overviewHost={overviewHost} mode={mode} readOnly={!mutable} view={view.current} focusRevision={focusRevision} cancelRevision={snapshot.cancelRevision}
                   remotePeers={snapshot.remotePeers} scaleSensitivity={controls.data.scaleSensitivity} importLimits={controls.data.import} modelRetryRevision={modelRetryRevision}
                   jointMode={jointMode} selectedJoint={selectedJoint} onJointSelect={setSelectedJoint} onSkeletonState={onSkeletonState}
+                  selectedPart={selectedPart} onSelectPart={onSelectPart} lookPictures={pictureAccess} onLookReport={onLookReport} onLookPictures={onLookPictures}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
                   onViewChange={onViewChange} onUserCameraMove={stopFollowing} onError={onError} onModelStateChange={onModelStateChange} resolveAsset={resolveAsset} onResources={onResources}
@@ -844,10 +890,12 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
               </React.Suspense>}
       {/* The notice spans to the stage margin and an open right panel starts below it; the frame may reach the stage's
         top, so the notice is put away while the viewfinder is open, as the minimap is. */}
-      {failedModels && !framing ? <div ref={setModelNotice} data-testid='scene-model-notice'
+      {(failedModels || lookRetry || lookOver) && !framing ? <div ref={setModelNotice} data-testid='scene-model-notice'
         className='absolute left-20 top-3 flex max-w-[calc(100%_-_5rem_-_var(--space-5))] items-center justify-between gap-2 rounded-chrome border border-border bg-background p-2 text-xs'>
-        <span className='min-w-0'>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</span>
-        {modelRetryable && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
+        <span className='min-w-0'>{failedModels ? <>{t('spaces.threeD.modelFailed')}{cause && <> {t(importErrorKey(cause.code))}{cause.budget && <> {budgetText(t, cause.budget, getLocale())}</>}{cause.detail && <span className='block break-all text-muted-foreground'>{cause.detail}</span>}</>}</> : null}
+          {lookRetry ? <span className='block' data-testid='scene-look-image-failed'>{t('spaces.threeD.look.imageFailed')}</span> : null}
+          {lookOver ? <span className='block' data-testid='scene-look-image-over-limit'>{t('spaces.threeD.look.imageOverLimit')}</span> : null}</span>
+        {((failedModels && modelRetryable) || lookRetry) && <Button size='sm' variant='ghost' onClick={() => setModelRetryRevision((value) => value + 1)}>{t('spaces.threeD.retry')}</Button>}
       </div> : null}
     </div>
     {framing ? null : <SceneCreationMenu projectId={projectId} spaceId={spaceId} myRole={myRole} canEdit={snapshot.canEdit && importController !== null} onAdd={addBuiltin} onImport={showImport}

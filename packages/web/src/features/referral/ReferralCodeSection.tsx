@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
@@ -37,7 +37,7 @@ const ACCOUNT_REFUSALS = new Set(['already_bound', 'already_paid', 'not_eligible
  *
  * The section follows the cached view: while there is data it draws the data,
  * even when a background read fails; the skeleton and the error line are for
- * the first read only. A 404 (payments off) draws nothing.
+ * the first read only. A 404 (nothing is sold here, `selling` false) draws nothing.
  * @returns The section, or null when there is nothing to show.
  */
 export function ReferralCodeSection(): React.JSX.Element | null {

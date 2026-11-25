@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Model mini-tools' credit precheck (expand: inner#1303 A11, design §8; the
@@ -10,39 +10,15 @@
  */
 
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
-import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
-
-// Fulfilment asks Stripe what the session is; every fixture payment is 1000 / usd.
-const stripe = {
-  checkout: {
-    sessions: {
-      retrieve: vi.fn(async (id: string) => ({
-        id,
-        mode: "payment",
-        status: "complete",
-        payment_status: "paid",
-        amount_subtotal: 1000,
-        amount_total: 1000,
-        currency: "usd",
-        total_details: { amount_tax: 0 },
-        payment_intent: `pi_${id}`,
-        metadata: {},
-      })),
-    },
-  },
-};
-
-vi.mock("@server/infra/stripe.js", () => ({
-  getStripeClient: () => stripe,
-}));
+import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 
 import crypto from "node:crypto";
 import type { Hono } from "hono";
 import postgres from "postgres";
 import { initCore, loadLocales, getRedis, setSession, sessionCookieName } from "@breatic/core";
-import { estimateTaskCredits } from "@breatic/domain";
+import { creditLotService, estimateTaskCredits } from "@breatic/domain";
 import { miniToolById, miniToolEstimateInput } from "@breatic/shared/mini-tools";
-import * as paymentService from "@server/modules/payment/payment.service.js";
+import { openPaymentSource, recordPaymentReceipt } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "mini-tool-expand-credits-test-driver";
 
@@ -53,9 +29,7 @@ let seq = 0;
 beforeAll(async () => {
   initCore({
     ...process.env,
-    PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
+    CHARGING_ENABLED: "true",
     // The catalog serves a model only when its provider has a key; nothing here
     // reaches the provider, the run stops at the queue.
     WAVESPEED_API_KEY: "unused_by_this_suite",
@@ -102,15 +76,9 @@ async function seed(credits: number): Promise<{ projectId: string; cookie: strin
   `;
   await sql`INSERT INTO project_members (project_id, user_id, role) VALUES (${project!.id}, ${userId}, 'owner')`;
   if (credits > 0) {
-    const sessionId = `cs_test_expand_${n}_${stamp}`;
-    const [source] = await sql<{ id: string }[]>`
-      INSERT INTO credit_sources (id, kind) VALUES (gen_random_uuid(), 'payment') RETURNING id
-    `;
-    await sql`
-      INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, status, credits_granted)
-      VALUES (${source!.id}, ${userId}, ${sessionId}, 1000, 'pending', ${credits})
-    `;
-    await paymentService.fulfillPayment(sessionId, { id: `evt_expand_${n}_${stamp}`, type: "checkout.session.completed" });
+    const paymentId = await openPaymentSource(sql);
+    await recordPaymentReceipt(sql, { id: paymentId, userId, amountCents: 1000, credits });
+    await creditLotService.grantFromPayment({ paymentId, userId, purchasedCredits: credits });
     await sql`UPDATE credit_lots SET designated_studio_id = ${studio!.id} WHERE user_id = ${userId}`;
   }
   const token = crypto.randomBytes(24).toString("hex");

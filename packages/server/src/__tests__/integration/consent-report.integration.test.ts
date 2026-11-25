@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The account's latest reported consent (inner#1442 design §4.4.6) — real
@@ -39,7 +39,6 @@ import {
 } from "@breatic/core";
 import { CONSENT_REVISION } from "@breatic/shared";
 import type { Hono } from "hono";
-import { openPaymentSource } from "./payment-source.js";
 
 try {
   initCore(process.env);
@@ -213,19 +212,13 @@ describe("adsAllowedFor with a browser", () => {
 
 describe("eraseAccountAnalytics", () => {
   /**
-   * An account with a report, and consent kept on an order, an upload
-   * ticket and an ad upload.
+   * An account with a report, and consent kept on an upload ticket and an
+   * ad upload.
    * @returns Its id.
    */
   async function accountWithConsent(): Promise<string> {
     const id = await insertUser();
     await recordReportedConsent(id, { analytics: true, ads: true });
-    const sourceId = await openPaymentSource(sql);
-    await sql`
-      INSERT INTO payments (id, user_id, amount_cents, status, credits_granted, metadata)
-      VALUES (${sourceId}, ${id}, 1000, 'completed', 1000,
-              ${sql.json({ locale: "en", analyticsConsent: { analytics: true, ads: true } })})
-    `;
     const [studio] = await sql<{ id: string }[]>`
       INSERT INTO studios (created_by_user_id, slug, type, name)
       VALUES (${id}, ${`erase-${crypto.randomUUID().slice(0, 8)}`}, 'team', 'Team') RETURNING id
@@ -256,8 +249,6 @@ describe("eraseAccountAnalytics", () => {
     await sql`UPDATE users SET deleted_at = now() WHERE id = ${id}`;
     expect(await eraseAccountAnalytics([id])).toEqual({ notDeleted: [] });
     expect(await stored(id)).toBeNull();
-    const [payment] = await sql<{ metadata: Record<string, unknown> }[]>`SELECT metadata FROM payments WHERE user_id = ${id}`;
-    expect(payment!.metadata).toEqual({ locale: "en" });
     const [grant] = await sql<{ c: unknown }[]>`SELECT analytics_consent AS c FROM upload_grants WHERE user_id = ${id}`;
     expect(grant!.c).toBeNull();
     const [upload] = await sql<{ job: Record<string, unknown> }[]>`

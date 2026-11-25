@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Core configuration schema + pure validator.
@@ -45,6 +45,24 @@ function blankToUndefined(v: unknown): unknown {
   if (typeof v !== "string") return v;
   const trimmed = v.trim();
   return trimmed === "" ? undefined : trimmed;
+}
+
+/**
+ * A variable holding a JSON object of strings; blank means an empty object.
+ * @param key - The variable, named in the refusal.
+ * @returns The schema yielding the parsed object.
+ */
+function jsonRecord(key: string): z.ZodType<Record<string, string>, unknown> {
+  return z.preprocess((value) => {
+    const blank = blankToUndefined(value);
+    if (blank === undefined) return {};
+    if (typeof blank !== "string") return blank;
+    try {
+      return JSON.parse(blank) as unknown;
+    } catch {
+      return blank;
+    }
+  }, z.record(z.string(), z.string(), { error: `${key} must be a JSON object of strings` }));
 }
 
 /**
@@ -269,14 +287,27 @@ export const coreConfigSchema = z.object({
   DESKTOP_APP_NAME: z.preprocess(blankToUndefined, z.string().trim().min(1).max(64).default("Breatic")),
 
   // ── Payment ──────────────────────────────────────
+  // The old name of CHARGING_ENABLED, still read when CHARGING_ENABLED is unset
+  // (self-hosted .env files written before the rename use it).
   PAYMENT_ENABLED: z
     .string()
     .default("false")
     .transform((v) => v === "true"),
-  STRIPE_SECRET_KEY: z.string().default(""),
-  STRIPE_WEBHOOK_SECRET: z.string().default(""),
-  STRIPE_WEBHOOK_ACCOUNT_ID: z.preprocess(blankToUndefined, z.string().max(255).regex(/^acct_[A-Za-z0-9]+$/).optional()),
-  STRIPE_WEBHOOK_ENDPOINT_ID: z.preprocess(blankToUndefined, z.string().max(255).regex(/^we_[A-Za-z0-9]+$/).optional()),
+  // Whether credits are recorded and deducted (inner#1993 §6.1). Unset or blank
+  // falls back to PAYMENT_ENABLED in the object transform below.
+  CHARGING_ENABLED: z.preprocess(blankToUndefined, z.string().optional()),
+  // The billing service's internal listener. Set means this deployment sells
+  // credits and memberships through it (SELLING, derived below); unset means
+  // nothing is sold here. Trailing slashes are dropped because paths are
+  // appended to it.
+  COMMERCE_API_URL: z
+    .string()
+    .default("")
+    .transform((value) => value.trim().replace(/\/+$/, "")),
+  // Signs calls both ways between this server and the billing service; the
+  // previous key is still accepted until it is blanked.
+  COMMERCE_API_SECRET: z.string().default(""),
+  COMMERCE_API_SECRET_PREVIOUS: z.string().default(""),
   CREDIT_MULTIPLIER: numeric(z.coerce.number().positive().default(1.0)),
 
   // ── Internal API (back office) ───────────────────
@@ -294,6 +325,19 @@ export const coreConfigSchema = z.object({
   // The key being rotated out; requests signed with it are still accepted
   // until it is blanked.
   INTERNAL_API_SECRET_PREVIOUS: z.string().default(""),
+
+  // ── Accounts' own provider keys (inner#1953) ─────────
+  // BYOK_ENABLED is the deployment's switch (#1618): only "true" turns
+  // bring-your-own-key on, and then the master keys below are required. The
+  // master keys seal the upstream keys accounts save: the id new seals use,
+  // and a JSON object of every key by id (32 bytes as 64 hex characters), so
+  // a key rotated out keeps opening older seals while it is listed.
+  BYOK_ENABLED: z
+    .string()
+    .default("false")
+    .transform((v) => v === "true"),
+  PROVIDER_KEY_SECRET_ID: z.string().default("").transform((value) => value.trim()),
+  PROVIDER_KEY_SECRETS: jsonRecord("PROVIDER_KEY_SECRETS"),
 
   // ── Storage ──────────────────────────────────────
   // UPLOAD_BASE_URL is the public read base. On R2 it is the r2.dev
@@ -344,6 +388,12 @@ export const coreConfigSchema = z.object({
     .string()
     .default("")
     .transform((value) => value.replace(/\/+$/, "")),
+  // The ingest Worker's public key (SPKI PEM; line breaks may be written as
+  // `\n`, inner#1953): every web-animation run's model keys, ours or the
+  // paying account's own, are sealed to it at submit, and only the Worker's
+  // `KEY_UNSEAL_PRIVATE_KEY` opens them. Empty fails every web-animation run
+  // before it is submitted.
+  INGEST_KEY_SEAL_PUBLIC_KEY: z.string().default(""),
   // ── Upload Size Limits (MB, per asset kind) ─────
   UPLOAD_MAX_IMAGE_MB: numeric(z.coerce.number().positive().default(50)),
   UPLOAD_MAX_VIDEO_MB: numeric(z.coerce.number().positive().default(1024)),
@@ -384,10 +434,47 @@ export const coreConfigSchema = z.object({
   .transform((c) => ({
     ...c,
     REDIS_KEY_PREFIX: c.REDIS_KEY_PREFIX ?? c.ENV,
+    CHARGING_ENABLED: c.CHARGING_ENABLED === undefined ? c.PAYMENT_ENABLED : c.CHARGING_ENABLED === "true",
+    SELLING: c.COMMERCE_API_URL !== "",
   }));
 
 /** Validated, typed core configuration. */
 export type CoreConfig = z.infer<typeof coreConfigSchema>;
+
+/**
+ * Refuse a half or malformed bring-your-own-key master key configuration, never repeating a secret.
+ * @param config - The parsed configuration.
+ * @throws {Error} When BYOK is switched on without the master keys, only one of the two variables is set, the
+ *   current id names no secret, an id is not a plain token, or a secret is not 32 bytes of hex.
+ */
+function assertProviderKeySecrets(config: CoreConfig): void {
+  const id = config.PROVIDER_KEY_SECRET_ID;
+  const secrets = config.PROVIDER_KEY_SECRETS;
+  const ids = Object.keys(secrets);
+  if (config.BYOK_ENABLED && id === "" && ids.length === 0) {
+    throw new Error("FATAL: BYOK_ENABLED=true requires PROVIDER_KEY_SECRET_ID and PROVIDER_KEY_SECRETS, the master keys that seal accounts' keys. Refusing to start.");
+  }
+  if (id === "" && ids.length === 0) return;
+  if (ids.length === 0) {
+    throw new Error("FATAL: PROVIDER_KEY_SECRET_ID is set without PROVIDER_KEY_SECRETS, the master keys it names. Refusing to start.");
+  }
+  if (id === "") {
+    throw new Error("FATAL: PROVIDER_KEY_SECRETS is set without PROVIDER_KEY_SECRET_ID, the id new seals use. Refusing to start.");
+  }
+  if (!Object.hasOwn(secrets, id)) {
+    throw new Error("FATAL: PROVIDER_KEY_SECRET_ID names no key in PROVIDER_KEY_SECRETS. Refusing to start.");
+  }
+  for (const [kid, hex] of Object.entries(secrets)) {
+    if (!/^[A-Za-z0-9_-]+$/.test(kid)) {
+      throw new Error("FATAL: every id in PROVIDER_KEY_SECRETS may contain only letters, digits, '_' and '-'. Refusing to start.");
+    }
+    if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+      throw new Error(
+        `FATAL: PROVIDER_KEY_SECRETS["${kid}"] must be 32 bytes as 64 hex characters (openssl rand -hex 32). Refusing to start.`,
+      );
+    }
+  }
+}
 
 /**
  * Validate a raw environment map into a typed {@link CoreConfig}.
@@ -396,28 +483,39 @@ export type CoreConfig = z.infer<typeof coreConfigSchema>;
  *   function only processes the map it is handed).
  * @returns The validated, typed, default-applied configuration.
  * @throws {z.ZodError} if a required variable is missing / malformed.
- * @throws {Error} if payments are enabled without Stripe secrets, or the
- *   internal API is enabled without its secret.
+ * @throws {Error} if the internal API is enabled without its secret, the billing service is
+ *   configured without charging, its secret or the internal listener, or the provider key
+ *   master keys are set half or malformed.
  */
 export function parseConfig(rawEnv: Record<string, string | undefined>): CoreConfig {
   const config = coreConfigSchema.parse(rawEnv);
 
-  // Startup safety check - Stripe secrets must be present (and
-  // non-whitespace) when payments are on. Both default to "" so the
-  // app boots with PAYMENT_ENABLED=false; if enabled and empty,
-  // webhook signature verification fails confusingly at runtime.
-  // Fail fast at init with a clear message instead.
-  if (config.PAYMENT_ENABLED) {
-    if (!config.STRIPE_SECRET_KEY.trim()) {
+  // Selling without charging would take money for credits nothing deducts; a
+  // billing service with no key or no listener to call back cannot deliver
+  // what it sold (inner#1993 §6.4).
+  if (config.SELLING) {
+    if (!config.CHARGING_ENABLED) {
       throw new Error(
-        "FATAL: PAYMENT_ENABLED=true requires STRIPE_SECRET_KEY to be set " +
+        "FATAL: COMMERCE_API_URL is set but CHARGING_ENABLED is off; a deployment " +
+        "that sells credits must charge them. Refusing to start.",
+      );
+    }
+    if (!config.COMMERCE_API_SECRET.trim()) {
+      throw new Error(
+        "FATAL: COMMERCE_API_URL is set and requires COMMERCE_API_SECRET to be set " +
         "(non-empty, non-whitespace). Refusing to start.",
       );
     }
-    if (!config.STRIPE_WEBHOOK_SECRET.trim()) {
+    if (!config.INTERNAL_API_ENABLED) {
       throw new Error(
-        "FATAL: PAYMENT_ENABLED=true requires STRIPE_WEBHOOK_SECRET to be set " +
-        "(non-empty, non-whitespace). Refusing to start.",
+        "FATAL: COMMERCE_API_URL is set but INTERNAL_API_ENABLED is off; the billing " +
+        "service calls back on the internal listener. Refusing to start.",
+      );
+    }
+    if (config.COMMERCE_API_SECRET_PREVIOUS !== "" && !config.COMMERCE_API_SECRET_PREVIOUS.trim()) {
+      throw new Error(
+        "FATAL: COMMERCE_API_SECRET_PREVIOUS is only whitespace; leave it empty " +
+        "when there is no previous key. Refusing to start.",
       );
     }
   }
@@ -441,6 +539,8 @@ export function parseConfig(rawEnv: Record<string, string | undefined>): CoreCon
       "when there is no previous key. Refusing to start.",
     );
   }
+
+  assertProviderKeySecrets(config);
 
   // The yjs binary store must be a DIFFERENT database than the business
   // DB — they are separate transaction / failure domains by design (the

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Lay out what electron-builder packs (inner#2041). The build bundles every
@@ -36,7 +36,7 @@ writeFileSync(
       // Linux launchers show it as the app's comment.
       description: `${brand.productName} desktop client`,
       author: "Orime, Inc.",
-      license: "AGPL-3.0-only",
+      license: "LicenseRef-Breatic-Source-Available-2.0",
       // The Debian package requires a homepage.
       homepage: "https://github.com/orime-org/breatic",
       // Electron takes the Linux window class from it, so the taskbar matches the window to the brand's launcher entry.

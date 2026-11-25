@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 
@@ -97,6 +97,20 @@ describe('assetsApi.requestUploadTicket', () => {
       client_hash: 'c'.repeat(64),
       purpose: 'studio_avatar',
     }, expect.objectContaining({ timeout: 0 }));
+  });
+
+  it('sends the 3D part a picture is for and the picture it held at the start (inner#1693)', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ alreadyExists: true, assetId: 'a1', fileUrl: 'u', kind: 'image' });
+
+    await assetsApi.requestUploadTicket({
+      filename: 'wood.png', contentType: 'image/png', projectId: 'p1', size: 10, hash: 'h',
+      spaceId: 's1', purpose: 'scene_look', objectId: 'o1', part: '3', startMap: null,
+    });
+
+    expect(vi.mocked(apiPost).mock.calls[0]?.[1]).toEqual({
+      filename: 'wood.png', content_type: 'image/png', project_id: 'p1', size: 10, client_hash: 'h',
+      space_id: 's1', purpose: 'scene_look', object_id: 'o1', part: '3', start_map: null,
+    });
   });
 
   it('hands back a dedup hit as it came', async () => {

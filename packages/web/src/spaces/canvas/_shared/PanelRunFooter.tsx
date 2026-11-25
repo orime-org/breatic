@@ -1,10 +1,11 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import { ArrowUp, Star } from 'lucide-react';
+import { ArrowUp } from 'lucide-react';
 import type * as React from 'react';
 
 import { Button } from '@web/components/ui/button';
+import { CreditLine } from '@web/spaces/canvas/_shared/CreditLine';
 import { cn } from '@web/lib/utils';
 
 /**
@@ -17,6 +18,8 @@ import { cn } from '@web/lib/utils';
 export interface PanelRunFooterProps {
   /** What the run costs, as the user reads it. */
   creditText: string;
+  /** On the payer's key, the full sentence its short name stands for (inner#1953). */
+  creditDetail?: string;
   /** Run's accessible name. */
   runLabel: string;
   /** Whether Run takes no press. */
@@ -46,6 +49,7 @@ export interface PanelRunFooterProps {
  * Renders the row.
  * @param props - What the row shows and what Run does.
  * @param props.creditText - What the run costs.
+ * @param props.creditDetail - On the payer's key, the full sentence its short name stands for.
  * @param props.runLabel - Run's accessible name.
  * @param props.disabled - Whether Run takes no press.
  * @param props.loading - Whether a press is still waiting.
@@ -60,6 +64,7 @@ export interface PanelRunFooterProps {
  */
 export function PanelRunFooter({
   creditText,
+  creditDetail,
   runLabel,
   disabled,
   loading,
@@ -74,13 +79,7 @@ export function PanelRunFooter({
   const cost = (
     <div className='flex items-center gap-3'>
       {beforeCost}
-      <span
-        data-testid={creditTestId}
-        className='flex items-center gap-0.5 text-xs font-medium tabular-nums text-muted-foreground'
-      >
-        <Star className='h-3.5 w-3.5' aria-hidden='true' />
-        {creditText}
-      </span>
+      <CreditLine text={creditText} detail={creditDetail} testId={creditTestId} />
       {children}
     </div>
   );

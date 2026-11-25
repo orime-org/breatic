@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -20,6 +20,7 @@ export const sceneConfigSchema = z.object({
     decoder_worker_limit: z.number().int().positive().default(1),
     max_texture_edge: z.number().int().positive().default(8192),
     max_texture_bytes: z.number().int().positive().default(268435456),
+    max_picture_header_bytes: z.number().int().positive().default(67108864),
     progress_publish_ms: z.number().int().positive().default(1000),
   }).prefault({}),
   capture: z.object({

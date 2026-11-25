@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Auth routes - registration, login, and logout.
@@ -138,17 +138,17 @@ function getGoogleClient(): OAuth2Client {
  * `GET /auth/options` - what the sign-up and recovery pages need to know
  * about this deployment: whether an email sign-up proves the address with a
  * code (and so whether recovery goes by email or by recovery code).
- * Also whether the referral code field exists: only while payments are on
- * (inner#1868 §2). And the desktop build this deployment hands browser
- * sign-ins back to: the confirmation page names it and returns the code on
- * its scheme, never on one the address asks for (inner#2041).
+ * Also whether the referral code field exists: only where the deployment
+ * sells (`SELLING`, inner#1868 §2). And the desktop build this deployment
+ * hands browser sign-ins back to: the confirmation page names it and returns
+ * the code on its scheme, never on one the address asks for (inner#2041).
  * @returns `200` with `{ emailVerification, referralEnabled, desktopAppScheme, desktopAppName }`
  */
 auth.get("/options", (c) => {
   return c.json({
     data: {
       emailVerification: signupCodeService.emailVerificationEnabled(),
-      referralEnabled: env.PAYMENT_ENABLED,
+      referralEnabled: env.SELLING,
       desktopAppScheme: env.DESKTOP_APP_SCHEME,
       desktopAppName: env.DESKTOP_APP_NAME,
     },
@@ -283,7 +283,8 @@ auth.post("/register/resend", rateLimitFor("register-resend"), async (c) => {
  * writes the account (address verified) and signs it in.
  * @param c - Hono context with validated `signupVerifySchema` body and the ticket cookie
  * @returns `201` `{ user, referral? }` + session cookie; the ticket cookie is
- *   cleared. `referral` says whether the code the sign-up carried was bound.
+ *   cleared. `referral` says what became of the code the sign-up carried:
+ *   `applied`, `pending` (kept for the billing service to decide) or `not_applied`.
  * @throws {NotFoundError} `404` when no email backend is enabled
  * @throws {AppError} `400` wrong code · `410` sign-up gone · `422` code used up · `409` address taken
  */

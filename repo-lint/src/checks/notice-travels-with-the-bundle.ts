@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
 import { buildLicenceNotice, SHIPPED_NOTICES } from "#repo-lint/licence-notice";
 import { readLicenceReport } from "#repo-lint/licence-report";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The open mini-tool panel against the canvas session (inner#888 §7.2): what a
@@ -24,7 +24,7 @@ import { TooltipProvider } from '@web/components/ui/tooltip';
 import { modelsApi } from '@web/data/api';
 import type { CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { toast } from '@web/lib/toast';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { MiniToolPanelContainer } from '@web/spaces/canvas/mini-tool/MiniToolPanelContainer';
 import { hasInk } from '@web/spaces/canvas/mini-tool/paint-drawing';
 import { runOnce } from '@web/stores/task-actions-in-flight';

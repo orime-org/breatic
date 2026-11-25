@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { useQuery, type UseQueryResult } from '@tanstack/react-query';
 import { referralApi, type AccountReferral } from '@web/data/api/referral';
@@ -21,7 +21,7 @@ export function referralQueryKey(userId: string | null): readonly [...typeof MEM
 
 /**
  * Reads the account's referral view.
- * @returns The view, or `null` while payments are off (404).
+ * @returns The view, or `null` where nothing is sold (`selling` false, 404).
  * @throws {ApiException} Any other refusal or a failed request.
  */
 async function readAccountReferral(): Promise<AccountReferral | null> {
@@ -46,7 +46,7 @@ export function referralQueryOptions(userId: string | null): {
 }
 
 /**
- * The account's referral view; `null` while payments are off (404).
+ * The account's referral view; `null` where nothing is sold (`selling` false, 404).
  * @param enabled - Whether to read now; the account menu reads only while it is open.
  * @returns The query; its data is `undefined` until the first answer.
  */

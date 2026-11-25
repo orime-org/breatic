@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { trackEvent } from '@web/data/analytics';
@@ -14,7 +14,7 @@ import {
   Card,
   Figure,
   Footnote,
-  Notice,
+  SellingOffNotice,
   RuleLines,
   Section,
   SectionError,
@@ -50,7 +50,7 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
   const total = accountTotal(overview);
   const [chosen, setChosen] = React.useState<CreditPack | null>(null);
 
-  const packs = usePaymentTiers(overview.billing);
+  const packs = usePaymentTiers(overview.selling);
   React.useEffect(() => {
     trackEvent('pricing_viewed', { surface: 'credits' });
   }, []);
@@ -59,14 +59,10 @@ export function BuySection({ overview }: BuySectionProps): React.JSX.Element {
     if (!open) setChosen(null);
   }, []);
 
-  if (!overview.billing) {
+  if (!overview.selling) {
     return (
       <Section title={t('credits.section.buy')}>
-        <Notice
-          title={t('credits.billingOff.title')}
-          body={t('credits.billingOff.body')}
-          tone='info'
-        />
+        <SellingOffNotice charging={overview.charging} body={t('credits.notSoldHere.body')} />
       </Section>
     );
   }

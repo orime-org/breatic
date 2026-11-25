@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { db, env, creditGrantProfileSchema, creditGrantResultSchema } from "@breatic/core";
 import type { CreditGrantProfile, CreditGrantResult, CreditGrantWrite, DbTx } from "@breatic/core";
@@ -48,8 +48,8 @@ export async function profile(userId: string): Promise<GrantAnswer<CreditGrantPr
       account: { id: identity.account.id, email: identity.account.email },
       personalStudio: studio === null ? null : { id: studio.id, name: studio.name, slug: studio.slug },
       debtCredits: studio === null ? null : serializeCreditMicro(parseCreditDecimal(await creditLotRepo.readDebt(studio.id, tx))),
-      canGrant: studio !== null && env.PAYMENT_ENABLED,
-      reason: studio === null ? "personal_studio_unavailable" : env.PAYMENT_ENABLED ? null : "payments_disabled",
+      canGrant: studio !== null && env.CHARGING_ENABLED,
+      reason: studio === null ? "personal_studio_unavailable" : env.CHARGING_ENABLED ? null : "payments_disabled",
     }) };
   });
 }
@@ -79,7 +79,7 @@ export async function grant(request: GrantRequest): Promise<GrantAnswer<CreditGr
       ? { status: 200, body: previous.result } : { status: 409, body: { code: "idempotency_conflict" } };
     const operation = { key: request.key, accountId: request.userId, adminId: request.adminId, requestHash: request.hash, recordedAt: new Date().toISOString() };
     let result: CreditGrantResult;
-    if (!env.PAYMENT_ENABLED) result = { status: "refused", operation, code: "payments_disabled" };
+    if (!env.CHARGING_ENABLED) result = { status: "refused", operation, code: "payments_disabled" };
     else {
       const identity = await lockIdentity(request.userId, tx);
       if (identity.code !== null) result = { status: "refused", operation, code: identity.code };

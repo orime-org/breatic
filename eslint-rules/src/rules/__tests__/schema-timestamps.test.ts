@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import { RuleTester } from "@typescript-eslint/rule-tester";
 import { schemaTimestamps } from "../schema-timestamps";
 
@@ -16,7 +16,7 @@ ruleTester.run("schema-timestamps", schemaTimestamps, {
     },
     // Allowlisted: nothing ever soft-deletes a payment.
     {
-      code: `export const payments = pgTable("payments", { ...timestamps });`,
+      code: `export const paymentReceipts = pgTable("payment_receipts", { ...timestamps });`,
     },
     {
       code: `export const uploadGrants = pgTable("upload_grants", { createdAt: timestamp("created_at") });`,
@@ -47,7 +47,7 @@ ruleTester.run("schema-timestamps", schemaTimestamps, {
     },
     // The allowlist covers deleted_at only — created_at has no exemption.
     {
-      code: `export const payments = pgTable("payments", { id: uuid("id") });`,
+      code: `export const paymentReceipts = pgTable("payment_receipts", { id: uuid("id") });`,
       errors: [{ messageId: "missingCreatedAt" }],
     },
     // updatedAt is not created_at.
@@ -98,6 +98,23 @@ ruleTester.run("schema-timestamps spend-limit tables", schemaTimestamps, {
     {
       code: `export const studioMemberSpendLimits = pgTable("studio_member_spend_limits", { ...timestamps });`,
       errors: [{ messageId: "missingDeletedAt", data: { table: "studioMemberSpendLimits" } }],
+    },
+  ],
+});
+
+ruleTester.run("schema-timestamps with a repository's own exemptions", schemaTimestamps, {
+  valid: [
+    {
+      code: 'export const payments = pgTable("payments", { id: uuid("id"), createdAt: timestamp("created_at") });',
+      options: [{ noSoftDelete: { payments: "append-only financial record" } }],
+    },
+  ],
+  invalid: [
+    {
+      // An exemption covers only the table it names.
+      code: 'export const refunds = pgTable("refunds", { id: uuid("id"), createdAt: timestamp("created_at") });',
+      options: [{ noSoftDelete: { payments: "append-only financial record" } }],
+      errors: [{ messageId: "missingDeletedAt" }],
     },
   ],
 });

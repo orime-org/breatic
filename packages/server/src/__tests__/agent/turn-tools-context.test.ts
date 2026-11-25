@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What each tool of a turn is handed (inner#1315): every tool keeps the
@@ -18,6 +18,8 @@ const tools = {
   save_image: {},
   propose_canvas_action: {},
   propose_document_edit: {},
+  list_generation_models: {},
+  get_generation_template: {},
   search_conversations: {},
   read_conversation: {},
   read_node_history: {},
@@ -49,6 +51,11 @@ describe("turnToolsContext", () => {
 
   it("hands the proposal check the studio", () => {
     expect(context.propose_canvas_action).toMatchObject({ usage, studioId: "s1" });
+  });
+
+  it("hands the catalog tools the studio whose payer's keys a run goes out on (inner#1953)", () => {
+    expect(context.list_generation_models).toMatchObject({ usage, studioId: "s1" });
+    expect(context.get_generation_template).toMatchObject({ usage, studioId: "s1" });
   });
 
   it("hands the document proposal the open document", () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What an order remembers about the browser that placed it (inner#1442
@@ -8,7 +8,7 @@
  * cookie of that browser, so the order carries both from checkout.
  */
 
-import { adClickFrom, NO_CONSENT, type AdClick, type ConsentSnapshot } from "@breatic/shared";
+import { adClickFrom, type AdClick, type ConsentSnapshot } from "@breatic/shared";
 import { currentConsent, getAccountAttribution } from "@breatic/core";
 
 /** The consent and click an order was placed under. */
@@ -29,57 +29,3 @@ export async function takeCheckoutSnapshot(userId: string): Promise<CheckoutSnap
   return { consent: currentConsent(), click };
 }
 
-/**
- * The snapshot as Stripe metadata, whose values are strings of at most 500 characters.
- * @param snapshot - The snapshot.
- * @returns Metadata entries to merge into a Checkout Session or subscription.
- */
-export function toStripeMetadata(snapshot: CheckoutSnapshot): Record<string, string> {
-  return {
-    analyticsConsent: JSON.stringify(snapshot.consent),
-    ...(snapshot.click ? { adClick: JSON.stringify(snapshot.click) } : {}),
-  };
-}
-
-/**
- * Read a snapshot back from order metadata or Stripe metadata.
- * @param metadata - `payments.metadata` (objects) or Stripe metadata (JSON strings).
- * @returns The snapshot; no consent and no click when absent or unreadable.
- */
-export function readCheckoutSnapshot(metadata: Record<string, unknown> | null | undefined): CheckoutSnapshot {
-  const consent = parseField(metadata?.analyticsConsent);
-  const click = parseField(metadata?.adClick);
-  return {
-    consent:
-      typeof consent?.analytics === "boolean" && typeof consent.ads === "boolean"
-        ? { analytics: consent.analytics, ads: consent.ads }
-        : NO_CONSENT,
-    click: typeof click?.at === "string" && hasClickId(click) ? (click as unknown as AdClick) : null,
-  };
-}
-
-/**
- * Accept a stored object or its JSON text.
- * @param value - Either form, or anything else.
- * @returns The object, or null.
- */
-function parseField(value: unknown): Record<string, unknown> | null {
-  let parsed = value;
-  if (typeof value === "string") {
-    try {
-      parsed = JSON.parse(value);
-    } catch {
-      return null;
-    }
-  }
-  return typeof parsed === "object" && parsed !== null ? (parsed as Record<string, unknown>) : null;
-}
-
-/**
- * Whether a stored click carries one of Google's click identifiers.
- * @param click - The parsed click.
- * @returns True when gclid, gbraid or wbraid is a string.
- */
-function hasClickId(click: Record<string, unknown>): boolean {
-  return ["gclid", "gbraid", "wbraid"].some((key) => typeof click[key] === "string");
-}

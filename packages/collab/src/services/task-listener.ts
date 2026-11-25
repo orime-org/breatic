@@ -1,20 +1,27 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Task lifecycle events, from the cross-service stream into the Space
- * documents they belong to (#186, inner#1497 §6.1, #1568).
+ * documents they belong to (#186, inner#1497 §6.1, #1568, inner#1693).
  *
  * Data path:
  *   server / worker → Redis stream → consumer group (one round per document) →
  *   per-document lease → one direct connection per round → applyNodeTaskCounts
- *   (canvas), applyDocumentUpload (a Document body's media upload, breatic#1574)
- *   or applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES)
+ *   (canvas), applyDocumentUpload (a Document body's media upload, breatic#1574),
+ *   applySpaceTasksVersion (the Space types in SPACE_TASKS_TYPES) or
+ *   applySceneLookPicture (a 3D object's part picture)
  *
- * A change version and a Document upload are written only into a live Space document.
+ * A change version, a Document upload and a part picture are written only into
+ * a live Space document.
  *
- * Collab executes; it does not judge. Which task moved, what the counts now
- * are, whether a result rides along — the server decided all of it.
+ * For node counts and change versions collab executes and does not judge:
+ * which task moved, what the counts now are, whether a result rides along —
+ * the server decided all of it. For a stored part picture collab judges with
+ * `judgeSceneLookPicture`, the rule the editor shares, whether the picture
+ * still goes on its part; once per upload it tells the uploader how it
+ * settled, through `settleSceneLook`, and marks the upload applied so a
+ * redelivered event neither writes nor tells again.
  *
  * Several collab instances read the stream as one consumer group, so each
  * event is held by one of them at a time; an event not acknowledged goes to
@@ -28,20 +35,25 @@
  * never changes and `processing` never replaces an ending (`applyDocumentUpload`).
  *
  * Doc layout: `project-{pid}/canvas-{spaceId}` for node counts,
- * `project-{pid}/document-{spaceId}` for Document uploads and the content
- * document of a Space type in `SPACE_TASKS_TYPES` for change versions, one doc
- * per Space. Any other doc name is skipped.
+ * `project-{pid}/document-{spaceId}` for Document uploads, the content
+ * document of a Space type in `SPACE_TASKS_TYPES` for change versions and
+ * `project-{pid}/3d-{spaceId}` for part pictures, one doc per Space. Any other
+ * doc name is skipped.
  */
 
 import { setTimeout as delay } from "node:timers/promises";
 import type { Hocuspocus } from "@hocuspocus/server";
 import * as Y from "yjs";
 import { ExecutionError, Redlock, ResourceLockedError } from "@sesamecare-oss/redlock";
-import type { DocumentUploadEvent, NodeTaskCountsEvent, SpaceTasksVersionEvent } from "@breatic/shared";
+import type {
+  DocumentUploadEvent, NodeTaskCountsEvent, SceneLookPictureEvent, SceneLookPictureSettlement, SceneLookSettledControlEvent,
+  SpaceTasksVersionEvent,
+} from "@breatic/shared";
 import { applyDocumentUpload, documentBodyFragment, parseDocName, SPACE_TASKS_TYPES } from "@breatic/shared";
 import { createLogger, type Redis } from "@breatic/core";
 import { applyNodeTaskCounts } from "@collab/services/node-task-counts.js";
 import { applySpaceTasksVersion } from "@collab/services/space-tasks-version.js";
+import { applySceneLookPicture } from "@collab/services/scene-look-picture.js";
 import { isLiveDoc } from "@collab/services/yjs-documents.repo.js";
 import {
   startGroupConsumer,
@@ -64,8 +76,11 @@ const RELEASE_WAITER_SCRIPT =
 const MARK_WAITER_SCRIPT =
   'local v = redis.call("get", KEYS[1]) if v == false or v == ARGV[1] then return redis.call("set", KEYS[1], ARGV[1], "PX", ARGV[2]) end return 0';
 
-/** How long a node's counts version is kept after its last write. */
+/** How long a node's counts version, and the mark of an applied part picture upload, are kept after their last write. */
 const COUNTS_VERSION_TTL_SECONDS = 30 * 24 * 60 * 60;
+
+/** How collab settled a part picture, said to its uploader. */
+export type SceneLookSettlement = Omit<SceneLookSettledControlEvent, "type" | "ts">;
 
 /** Settings of the task listener: the consumer group's, plus the per-document ones. */
 export interface TaskListenerSettings extends GroupConsumerSettings {
@@ -95,10 +110,12 @@ export interface TaskListenerDeps {
   coordination: Redis;
   /** Timing and limits. */
   settings: TaskListenerSettings;
+  /** Tell a part picture's uploader how it was settled: written, or why not (inner#1693 design 6.3). */
+  settleSceneLook: (settlement: SceneLookSettlement) => Promise<void>;
 }
 
 /** An event the listener writes. */
-type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | DocumentUploadEvent;
+type TaskEvent = NodeTaskCountsEvent | SpaceTasksVersionEvent | DocumentUploadEvent | SceneLookPictureEvent;
 
 /** One parsed event and the stream entry it came from. */
 interface Item {
@@ -125,14 +142,15 @@ function outcomeForAll(batch: DocBatch, outcome: EntryOutcome): Map<string, Entr
 /**
  * Coordination keys of one document.
  * @param keyPrefix - `REDIS_KEY_PREFIX`.
- * @param docName - The canvas document.
- * @returns Lease, waiter, hand-over and counts-version keys.
+ * @param docName - The Space document.
+ * @returns Lease, waiter, hand-over, counts-version and applied part picture keys.
  */
 function docKeys(
   keyPrefix: string,
   docName: string,
-): { lease: string; waiter: string; handoff: string; versions: string } {
+): { lease: string; waiter: string; handoff: string; versions: string; applied: string } {
   return {
+    applied: `${keyPrefix}:collab:scene-look-applied:${docName}`,
     lease: `${keyPrefix}:collab:task-doc-lease:${docName}`,
     waiter: `${keyPrefix}:collab:task-doc-lease-waiter:${docName}`,
     handoff: `${keyPrefix}:collab:task-doc-handoff:${docName}`,
@@ -171,8 +189,8 @@ async function leaseHeldElsewhere(err: unknown): Promise<boolean> {
 }
 
 /**
- * Read one entry as a task event: a node's counts for a canvas document, a media upload for a Document, or a change
- * version for a document of a Space type listed in `SPACE_TASKS_TYPES`.
+ * Read one entry as a task event: a node's counts for a canvas document, a media upload for a Document, a change
+ * version for a document of a Space type listed in `SPACE_TASKS_TYPES`, or a stored part picture for a 3D document.
  * @param entry - The stream entry.
  * @returns The event, or why it is skipped.
  */
@@ -184,13 +202,16 @@ function readItem(entry: StreamEntry): TaskEvent | { skip: string } {
     return { skip: "task_event_unparseable_skipped" };
   }
   const type = typeof event === "object" && event !== null ? (event as { type?: unknown }).type : undefined;
-  if (type !== "node-task-counts" && type !== "space-tasks-version" && type !== "document-upload") return { skip: "task_event_unknown_type_skipped" };
+  if (type !== "node-task-counts" && type !== "space-tasks-version" && type !== "document-upload" && type !== "scene-look-picture") {
+    return { skip: "task_event_unknown_type_skipped" };
+  }
   const docName = (event as { docName?: unknown }).docName;
   const parsed = typeof docName === "string" ? parseDocName(docName) : null;
   const fits = parsed !== null && (
     type === "node-task-counts" ? parsed.kind === "canvas"
       : type === "document-upload" ? parsed.kind === "document"
-        : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
+        : type === "scene-look-picture" ? parsed.kind === "3d"
+          : parsed.kind !== "meta" && SPACE_TASKS_TYPES.has(parsed.kind));
   if (!fits) return { skip: "task_event_unknown_doc_skipped" };
   return event as TaskEvent;
 }
@@ -255,12 +276,18 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
     const outcomes = new Map<string, EntryOutcome>();
     // A deleted Space's document loads empty, and what is written into it would be stored over the deleted content.
     const liveOnly = batch.items[0]!.event.type !== "node-task-counts";
+    /**
+     * Skip a batch whose Space has no live document; a part picture for it is settled as gone.
+     * @returns Every event done.
+     */
+    const skipNotLive = async (): Promise<Map<string, EntryOutcome>> => {
+      logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
+      await settle(batch.items.flatMap(({ event }) => (event.type === "scene-look-picture" ? [{ event, outcome: "objectGone" as const }] : [])));
+      return outcomeForAll(batch, "done");
+    };
     // A Space with no live row is skipped before its document is loaded into this instance.
     try {
-      if (liveOnly && !(await isLiveDoc(batch.docName))) {
-        logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
-        return outcomeForAll(batch, "done");
-      }
+      if (liveOnly && !(await isLiveDoc(batch.docName))) return await skipNotLive();
     } catch (err) {
       logger.error({ err, docName: batch.docName }, "task_doc_live_check_failed");
       return outcomeForAll(batch, { failed: err });
@@ -291,21 +318,33 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       const doc = connection.document!;
       // Checked again after the load: a Space deleted while it loaded reads as empty, and a version written into that
       // empty document would be stored over the deleted row's content.
-      if (liveOnly && !(await isLiveDoc(batch.docName))) {
-        logger.info({ docName: batch.docName }, "task_doc_not_live_skipped");
-        return outcomeForAll(batch, "done");
-      }
+      if (liveOnly && !(await isLiveDoc(batch.docName))) return await skipNotLive();
       if (!(await awaitHandOver(doc, keys.handoff, stopping))) {
         if (!stopping()) logger.warn({ docName: batch.docName }, "task_doc_handoff_not_reached");
         return outcomeForAll(batch, "wait");
       }
       const versions = await coordination.hgetall(keys.versions);
+      // A part picture upload is applied once: its event comes again when a finish is retried, and by then the part
+      // may hold its starting picture again.
+      const uploads = batch.items.flatMap(({ event }) => (event.type === "scene-look-picture" ? [event.uploadKey] : []));
+      const applied = new Set(uploads.length === 0 ? [] : (await coordination.hmget(keys.applied, ...uploads))
+        .flatMap((mark, at) => (mark === null ? [] : [uploads[at]!])));
       // Nothing awaits between here and the transaction, which runs synchronously.
       if (stopping() || signal.aborted) return outcomeForAll(batch, "wait");
       const moved = new Map<string, string>();
+      const pictures: { event: SceneLookPictureEvent; outcome: SceneLookPictureSettlement }[] = [];
       await connection.transact((d) => {
         for (const { entry, event } of batch.items) {
           try {
+            if (event.type === "scene-look-picture") {
+              if (!applied.has(event.uploadKey)) {
+                const outcome = applySceneLookPicture(d, event);
+                applied.add(event.uploadKey);
+                pictures.push({ event, outcome: outcome === "write" || outcome === "done" ? "written" : outcome });
+              }
+              outcomes.set(entry.id, "done");
+              continue;
+            }
             if (event.type === "space-tasks-version") {
               applySpaceTasksVersion(d, entry.originId ?? entry.id);
               outcomes.set(entry.id, "done");
@@ -340,6 +379,11 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
         await coordination.hset(keys.versions, Object.fromEntries(moved));
         await coordination.expire(keys.versions, COUNTS_VERSION_TTL_SECONDS);
       }
+      if (pictures.length > 0) {
+        await coordination.hset(keys.applied, Object.fromEntries(pictures.map(({ event }) => [event.uploadKey, "1"])));
+        await coordination.expire(keys.applied, COUNTS_VERSION_TTL_SECONDS);
+        await settle(pictures);
+      }
       await coordination.set(keys.handoff, Buffer.from(vector).toString("base64"), "PX", settings.docLeaseMs * 2);
       logger.info(
         { docName: batch.docName, events: batch.items.length, applied: [...outcomes.values()].filter((o) => o === "done").length },
@@ -354,6 +398,28 @@ export function startTaskListener(deps: TaskListenerDeps): GroupConsumer {
       await disconnect();
     }
     return outcomes;
+  }
+
+  /**
+   * Tell each uploader how their part picture was settled, so their page ends the upload. The picture is in the
+   * Project's pictures either way, so a notice that cannot be sent is logged and the event still counts as handled.
+   * @param settled - The events and their outcomes.
+   */
+  async function settle(settled: { event: SceneLookPictureEvent; outcome: SceneLookPictureSettlement }[]): Promise<void> {
+    for (const { event, outcome } of settled) {
+      const parsed = parseDocName(event.docName);
+      if (parsed === null || parsed.kind !== "3d") continue;
+      logger.info({ docName: event.docName, objectId: event.objectId, part: event.part, uploadKey: event.uploadKey, outcome },
+        "scene_look_picture_settled");
+      try {
+        await deps.settleSceneLook({
+          projectId: parsed.projectId, spaceId: parsed.spaceId, objectId: event.objectId, part: event.part,
+          picture: event.picture, userId: event.userId, outcome,
+        });
+      } catch (err) {
+        logger.error({ err, docName: event.docName, uploadKey: event.uploadKey, outcome }, "scene_look_settlement_publish_failed");
+      }
+    }
   }
 
   /**

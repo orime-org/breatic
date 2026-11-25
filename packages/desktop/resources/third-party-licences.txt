@@ -9,7 +9,7 @@ copyright holder is the one named at the package's home page. Packages
 that install on one platform alone are left out: their bytes are native
 binaries, and the installer bundles their JavaScript alone.
 
-Packages 115, distinct licence texts 81
+Packages 116, distinct licence texts 82
 
 Regenerate with: pnpm --filter @breatic/repo-lint licences
 
@@ -83,6 +83,7 @@ has-flag 4.0.0  MIT  https://github.com/sindresorhus/has-flag#readme
 ieee754 1.2.1  BSD-3-Clause  https://github.com/feross/ieee754#readme
 intl-messageformat 11.2.13  BSD-3-Clause  https://github.com/formatjs/formatjs
 isomorphic.js 0.2.5  MIT  https://github.com/dmonad/isomorphic.js#readme
+jose 6.2.14  MIT  https://github.com/panva/jose
 js-tokens 4.0.0  MIT  https://github.com/lydell/js-tokens#readme
 js-yaml 4.3.1  MIT  https://github.com/nodeca/js-yaml#readme
 jsesc 3.1.0  MIT  https://mths.be/jsesc
@@ -136,7 +137,7 @@ zod 4.4.3  MIT  https://zod.dev
 LICENCE TEXTS
 
 ------------------------------------------------------------------------
-Licence 1 of 81 — applies to: @babel/code-frame, @babel/compat-data, @babel/core, @babel/generator, @babel/helper-compilation-targets, @babel/helper-globals, @babel/helper-module-imports, @babel/helper-module-transforms, @babel/helper-string-parser, @babel/helper-validator-identifier, @babel/helper-validator-option, @babel/template, @babel/traverse, @babel/types
+Licence 1 of 82 — applies to: @babel/code-frame, @babel/compat-data, @babel/core, @babel/generator, @babel/helper-compilation-targets, @babel/helper-globals, @babel/helper-module-imports, @babel/helper-module-transforms, @babel/helper-string-parser, @babel/helper-validator-identifier, @babel/helper-validator-option, @babel/template, @babel/traverse, @babel/types
 ------------------------------------------------------------------------
 
 MIT License
@@ -163,7 +164,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 2 of 81 — applies to: @babel/helpers
+Licence 2 of 82 — applies to: @babel/helpers
 ------------------------------------------------------------------------
 
 MIT License
@@ -191,7 +192,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 3 of 81 — applies to: @babel/parser
+Licence 3 of 82 — applies to: @babel/parser
 ------------------------------------------------------------------------
 
 Copyright (C) 2012-2014 by various contributors (see AUTHORS)
@@ -215,7 +216,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 4 of 81 — applies to: @borewit/text-codec
+Licence 4 of 82 — applies to: @borewit/text-codec
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -229,7 +230,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 5 of 81 — applies to: @formatjs/fast-memoize, @formatjs/icu-messageformat-parser, @formatjs/icu-skeleton-parser
+Licence 5 of 82 — applies to: @formatjs/fast-memoize, @formatjs/icu-messageformat-parser, @formatjs/icu-skeleton-parser
 ------------------------------------------------------------------------
 
 MIT License
@@ -243,7 +244,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 6 of 81 — applies to: @jridgewell/gen-mapping, @jridgewell/remapping, @jridgewell/sourcemap-codec, @jridgewell/trace-mapping
+Licence 6 of 82 — applies to: @jridgewell/gen-mapping, @jridgewell/remapping, @jridgewell/sourcemap-codec, @jridgewell/trace-mapping
 ------------------------------------------------------------------------
 
 Copyright 2024 Justin Ridgewell <justin@ridgewell.name>
@@ -267,7 +268,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 7 of 81 — applies to: @jridgewell/resolve-uri
+Licence 7 of 82 — applies to: @jridgewell/resolve-uri
 ------------------------------------------------------------------------
 
 Copyright 2019 Justin Ridgewell <jridgewell@google.com>
@@ -291,7 +292,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 8 of 81 — applies to: @opentelemetry/api, baseline-browser-mapping
+Licence 8 of 82 — applies to: @opentelemetry/api, baseline-browser-mapping
 ------------------------------------------------------------------------
 
 Apache License
@@ -497,7 +498,7 @@ Apache License
    limitations under the License.
 
 ------------------------------------------------------------------------
-Licence 9 of 81 — applies to: @oxc-project/types, oxc-parser
+Licence 9 of 82 — applies to: @oxc-project/types, oxc-parser
 ------------------------------------------------------------------------
 
 MIT License
@@ -524,7 +525,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 10 of 81 — applies to: @pinojs/redact
+Licence 10 of 82 — applies to: @pinojs/redact
 ------------------------------------------------------------------------
 
 MIT License
@@ -550,7 +551,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 11 of 81 — applies to: @sentry/browser, @sentry/core
+Licence 11 of 82 — applies to: @sentry/browser, @sentry/core
 ------------------------------------------------------------------------
 
 MIT License
@@ -576,7 +577,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 12 of 81 — applies to: @sentry/browser-utils
+Licence 12 of 82 — applies to: @sentry/browser-utils
 ------------------------------------------------------------------------
 
 MIT License
@@ -602,7 +603,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 13 of 81 — applies to: @sentry/bundler-plugins
+Licence 13 of 82 — applies to: @sentry/bundler-plugins
 ------------------------------------------------------------------------
 
 MIT License
@@ -637,7 +638,7 @@ Functional Source License, Version 1.1, Apache 2.0 Future License
 (FSL-1.1-Apache-2.0): https://github.com/getsentry/cli/blob/main/LICENSE.md
 
 ------------------------------------------------------------------------
-Licence 14 of 81 — applies to: @sentry/conventions
+Licence 14 of 82 — applies to: @sentry/conventions
 ------------------------------------------------------------------------
 
 MIT License
@@ -663,7 +664,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 15 of 81 — applies to: @sentry/electron
+Licence 15 of 82 — applies to: @sentry/electron
 ------------------------------------------------------------------------
 
 MIT License
@@ -690,7 +691,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 16 of 81 — applies to: @sentry/feedback, @sentry/opentelemetry
+Licence 16 of 82 — applies to: @sentry/feedback, @sentry/opentelemetry
 ------------------------------------------------------------------------
 
 MIT License
@@ -716,7 +717,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 17 of 81 — applies to: @sentry/node
+Licence 17 of 82 — applies to: @sentry/node
 ------------------------------------------------------------------------
 
 MIT License
@@ -751,7 +752,7 @@ Functional Source License, Version 1.1, Apache 2.0 Future License
 (FSL-1.1-Apache-2.0): https://github.com/getsentry/cli/blob/main/LICENSE.md
 
 ------------------------------------------------------------------------
-Licence 18 of 81 — applies to: @sentry/replay
+Licence 18 of 82 — applies to: @sentry/replay
 ------------------------------------------------------------------------
 
 MIT License
@@ -777,7 +778,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 19 of 81 — applies to: @sentry/replay-canvas
+Licence 19 of 82 — applies to: @sentry/replay-canvas
 ------------------------------------------------------------------------
 
 MIT License
@@ -803,7 +804,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 20 of 81 — applies to: @sentry/server-runtime-injection, @sentry/server-utils, @tokenizer/token, lazy-val
+Licence 20 of 82 — applies to: @sentry/server-runtime-injection, @sentry/server-utils, @tokenizer/token, lazy-val
 ------------------------------------------------------------------------
 
 MIT License
@@ -817,7 +818,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 21 of 81 — applies to: @tokenizer/inflate
+Licence 21 of 82 — applies to: @tokenizer/inflate
 ------------------------------------------------------------------------
 
 Copyright (c) 2024, Borewit
@@ -837,7 +838,7 @@ COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER I
 OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 22 of 81 — applies to: @types/estree
+Licence 22 of 82 — applies to: @types/estree
 ------------------------------------------------------------------------
 
 MIT License
@@ -863,7 +864,7 @@ MIT License
     SOFTWARE
 
 ------------------------------------------------------------------------
-Licence 23 of 81 — applies to: argparse
+Licence 23 of 82 — applies to: argparse
 ------------------------------------------------------------------------
 
 A. HISTORY OF THE SOFTWARE
@@ -1122,7 +1123,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT
 OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 24 of 81 — applies to: atomic-sleep
+Licence 24 of 82 — applies to: atomic-sleep
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -1148,7 +1149,7 @@ OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE
 OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 25 of 81 — applies to: balanced-match
+Licence 25 of 82 — applies to: balanced-match
 ------------------------------------------------------------------------
 
 (MIT)
@@ -1176,7 +1177,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 26 of 81 — applies to: brace-expansion
+Licence 26 of 82 — applies to: brace-expansion
 ------------------------------------------------------------------------
 
 MIT License
@@ -1204,7 +1205,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 27 of 81 — applies to: browserslist
+Licence 27 of 82 — applies to: browserslist
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -1229,7 +1230,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 28 of 81 — applies to: builder-util-runtime, electron-updater
+Licence 28 of 82 — applies to: builder-util-runtime, electron-updater
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -1255,7 +1256,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 29 of 81 — applies to: caniuse-lite
+Licence 29 of 82 — applies to: caniuse-lite
 ------------------------------------------------------------------------
 
 Attribution 4.0 International
@@ -1655,7 +1656,7 @@ public licenses.
 Creative Commons may be contacted at creativecommons.org.
 
 ------------------------------------------------------------------------
-Licence 30 of 81 — applies to: convert-source-map
+Licence 30 of 82 — applies to: convert-source-map
 ------------------------------------------------------------------------
 
 Copyright 2013 Thorsten Lorenz. 
@@ -1683,7 +1684,7 @@ FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 31 of 81 — applies to: debug
+Licence 31 of 82 — applies to: debug
 ------------------------------------------------------------------------
 
 (The MIT License)
@@ -1707,7 +1708,7 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 32 of 81 — applies to: dotenv
+Licence 32 of 82 — applies to: dotenv
 ------------------------------------------------------------------------
 
 Copyright (c) 2015, Scott Motte
@@ -1735,7 +1736,7 @@ OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------
-Licence 33 of 81 — applies to: electron-to-chromium
+Licence 33 of 82 — applies to: electron-to-chromium
 ------------------------------------------------------------------------
 
 Copyright 2018 Kilian Valkhof
@@ -1745,7 +1746,7 @@ Permission to use, copy, modify, and/or distribute this software for any purpose
 THE SOFTWARE IS PROVIDED "AS IS" AND THE AUTHOR DISCLAIMS ALL WARRANTIES WITH REGARD TO THIS SOFTWARE INCLUDING ALL IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS. IN NO EVENT SHALL THE AUTHOR BE LIABLE FOR ANY SPECIAL, DIRECT, INDIRECT, OR CONSEQUENTIAL DAMAGES OR ANY DAMAGES WHATSOEVER RESULTING FROM LOSS OF USE, DATA OR PROFITS, WHETHER IN AN ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 34 of 81 — applies to: escalade
+Licence 34 of 82 — applies to: escalade
 ------------------------------------------------------------------------
 
 MIT License
@@ -1759,7 +1760,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 35 of 81 — applies to: file-type, supports-color, uint8array-extras
+Licence 35 of 82 — applies to: file-type, supports-color, uint8array-extras
 ------------------------------------------------------------------------
 
 MIT License
@@ -1773,7 +1774,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 36 of 81 — applies to: fs-extra
+Licence 36 of 82 — applies to: fs-extra
 ------------------------------------------------------------------------
 
 (The MIT License)
@@ -1793,7 +1794,7 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 37 of 81 — applies to: gensync
+Licence 37 of 82 — applies to: gensync
 ------------------------------------------------------------------------
 
 Copyright 2018 Logan Smyth <loganfsmyth@gmail.com>
@@ -1805,7 +1806,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 38 of 81 — applies to: glob
+Licence 38 of 82 — applies to: glob
 ------------------------------------------------------------------------
 
 All packages under `src/` are licensed according to the terms in
@@ -1873,7 +1874,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 
 ------------------------------------------------------------------------
-Licence 39 of 81 — applies to: graceful-fs
+Licence 39 of 82 — applies to: graceful-fs
 ------------------------------------------------------------------------
 
 The ISC License
@@ -1893,7 +1894,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 40 of 81 — applies to: has-flag
+Licence 40 of 82 — applies to: has-flag
 ------------------------------------------------------------------------
 
 MIT License
@@ -1907,7 +1908,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 41 of 81 — applies to: ieee754
+Licence 41 of 82 — applies to: ieee754
 ------------------------------------------------------------------------
 
 Copyright 2008 Fair Oaks Labs, Inc.
@@ -1923,7 +1924,7 @@ Redistribution and use in source and binary forms, with or without modification,
 THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------
-Licence 42 of 81 — applies to: intl-messageformat
+Licence 42 of 82 — applies to: intl-messageformat
 ------------------------------------------------------------------------
 
 Copyright (c) 2023, Oath Inc.
@@ -1961,7 +1962,7 @@ THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
 OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 ------------------------------------------------------------------------
-Licence 43 of 81 — applies to: isomorphic.js
+Licence 43 of 82 — applies to: isomorphic.js
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -1987,7 +1988,33 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 44 of 81 — applies to: js-tokens
+Licence 44 of 82 — applies to: jose
+------------------------------------------------------------------------
+
+The MIT License (MIT)
+
+Copyright (c) 2018 Filip Skokan
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+
+------------------------------------------------------------------------
+Licence 45 of 82 — applies to: js-tokens
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -2013,7 +2040,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 45 of 81 — applies to: js-yaml
+Licence 46 of 82 — applies to: js-yaml
 ------------------------------------------------------------------------
 
 (The MIT License)
@@ -2039,7 +2066,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 46 of 81 — applies to: jsesc
+Licence 47 of 82 — applies to: jsesc
 ------------------------------------------------------------------------
 
 Copyright Mathias Bynens <https://mathiasbynens.be/>
@@ -2064,7 +2091,7 @@ OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION
 WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 47 of 81 — applies to: json5
+Licence 48 of 82 — applies to: json5
 ------------------------------------------------------------------------
 
 MIT License
@@ -2092,7 +2119,7 @@ SOFTWARE.
 [others]: https://github.com/json5/json5/contributors
 
 ------------------------------------------------------------------------
-Licence 48 of 81 — applies to: jsonata
+Licence 49 of 82 — applies to: jsonata
 ------------------------------------------------------------------------
 
 MIT license
@@ -2116,7 +2143,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 49 of 81 — applies to: jsonfile
+Licence 50 of 82 — applies to: jsonfile
 ------------------------------------------------------------------------
 
 (The MIT License)
@@ -2136,7 +2163,7 @@ OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHE
  ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 50 of 81 — applies to: lib0
+Licence 51 of 82 — applies to: lib0
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -2162,7 +2189,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 51 of 81 — applies to: lodash.escaperegexp
+Licence 52 of 82 — applies to: lodash.escaperegexp
 ------------------------------------------------------------------------
 
 Copyright jQuery Foundation and other contributors <https://jquery.org/>
@@ -2214,7 +2241,7 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 
 ------------------------------------------------------------------------
-Licence 52 of 81 — applies to: lodash.isequal
+Licence 53 of 82 — applies to: lodash.isequal
 ------------------------------------------------------------------------
 
 Copyright JS Foundation and other contributors <https://js.foundation/>
@@ -2266,7 +2293,7 @@ licenses; we recommend you read them, as their terms may differ from the
 terms above.
 
 ------------------------------------------------------------------------
-Licence 53 of 81 — applies to: lru-cache, semver, yallist
+Licence 54 of 82 — applies to: lru-cache, semver, yallist
 ------------------------------------------------------------------------
 
 The ISC License
@@ -2286,7 +2313,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 54 of 81 — applies to: lru-cache, minipass, path-scurry, sax
+Licence 55 of 82 — applies to: lru-cache, minipass, path-scurry, sax
 ------------------------------------------------------------------------
 
 # Blue Oak Model License
@@ -2346,7 +2373,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim.***
 
 ------------------------------------------------------------------------
-Licence 55 of 81 — applies to: magic-string
+Licence 56 of 82 — applies to: magic-string
 ------------------------------------------------------------------------
 
 Copyright 2018 Rich Harris
@@ -2358,7 +2385,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 56 of 81 — applies to: minimatch
+Licence 57 of 82 — applies to: minimatch
 ------------------------------------------------------------------------
 
 # Blue Oak Model License
@@ -2418,7 +2445,7 @@ will be liable to anyone for any damages related to this
 software or this license, under any kind of legal claim._**
 
 ------------------------------------------------------------------------
-Licence 57 of 81 — applies to: ms
+Licence 58 of 82 — applies to: ms
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -2444,7 +2471,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 58 of 81 — applies to: node-releases
+Licence 59 of 82 — applies to: node-releases
 ------------------------------------------------------------------------
 
 The MIT License
@@ -2470,7 +2497,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 59 of 81 — applies to: on-exit-leak-free, thread-stream
+Licence 60 of 82 — applies to: on-exit-leak-free, thread-stream
 ------------------------------------------------------------------------
 
 MIT License
@@ -2496,7 +2523,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 60 of 81 — applies to: picocolors
+Licence 61 of 82 — applies to: picocolors
 ------------------------------------------------------------------------
 
 ISC License
@@ -2516,7 +2543,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF
 OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 61 of 81 — applies to: pino
+Licence 62 of 82 — applies to: pino
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -2542,7 +2569,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 62 of 81 — applies to: pino-abstract-transport
+Licence 63 of 82 — applies to: pino-abstract-transport
 ------------------------------------------------------------------------
 
 MIT License
@@ -2568,7 +2595,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 63 of 81 — applies to: pino-std-serializers
+Licence 64 of 82 — applies to: pino-std-serializers
 ------------------------------------------------------------------------
 
 Copyright Mateo Collina, David Mark Clements, James Sumners
@@ -2580,7 +2607,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 64 of 81 — applies to: process-warning
+Licence 65 of 82 — applies to: process-warning
 ------------------------------------------------------------------------
 
 MIT License
@@ -2606,7 +2633,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 65 of 81 — applies to: quick-format-unescaped
+Licence 66 of 82 — applies to: quick-format-unescaped
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -2632,7 +2659,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 66 of 81 — applies to: real-require
+Licence 67 of 82 — applies to: real-require
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -2658,7 +2685,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 67 of 81 — applies to: rollup
+Licence 68 of 82 — applies to: rollup
 ------------------------------------------------------------------------
 
 # Rollup core license
@@ -3342,7 +3369,7 @@ Repository: https://github.com/yargs/yargs-parser.git
 > ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 68 of 81 — applies to: safe-stable-stringify
+Licence 69 of 82 — applies to: safe-stable-stringify
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -3368,7 +3395,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 69 of 81 — applies to: sentry
+Licence 70 of 82 — applies to: sentry
 ------------------------------------------------------------------------
 
 # Functional Source License, Version 1.1, Apache 2.0 Future License
@@ -3480,7 +3507,7 @@ specific language governing permissions and limitations under the License.
 <!-- packages/cli/LICENSE.md is a copy of ../LICENSE.md (the canonical source in this repo). Both files must remain byte-identical. -->
 
 ------------------------------------------------------------------------
-Licence 70 of 81 — applies to: sonic-boom
+Licence 71 of 82 — applies to: sonic-boom
 ------------------------------------------------------------------------
 
 MIT License
@@ -3506,7 +3533,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 71 of 81 — applies to: split2
+Licence 72 of 82 — applies to: split2
 ------------------------------------------------------------------------
 
 Copyright (c) 2014-2018, Matteo Collina <hello@matteocollina.com>
@@ -3524,7 +3551,7 @@ ACTION OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR
 IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 72 of 81 — applies to: strtok3
+Licence 73 of 82 — applies to: strtok3
 ------------------------------------------------------------------------
 
 MIT License
@@ -3550,7 +3577,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 73 of 81 — applies to: tiny-typed-emitter
+Licence 74 of 82 — applies to: tiny-typed-emitter
 ------------------------------------------------------------------------
 
 MIT License
@@ -3576,7 +3603,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 74 of 81 — applies to: token-types
+Licence 75 of 82 — applies to: token-types
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -3590,7 +3617,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 75 of 81 — applies to: universalify
+Licence 76 of 82 — applies to: universalify
 ------------------------------------------------------------------------
 
 (The MIT License)
@@ -3615,7 +3642,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 76 of 81 — applies to: update-browserslist-db
+Licence 77 of 82 — applies to: update-browserslist-db
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -3640,7 +3667,7 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 77 of 81 — applies to: uuid
+Licence 78 of 82 — applies to: uuid
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -3654,7 +3681,7 @@ The above copyright notice and this permission notice shall be included in all c
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 78 of 81 — applies to: web-vitals
+Licence 79 of 82 — applies to: web-vitals
 ------------------------------------------------------------------------
 
 Apache License
@@ -3860,7 +3887,7 @@ Apache License
    limitations under the License.
 
 ------------------------------------------------------------------------
-Licence 79 of 81 — applies to: yaml
+Licence 80 of 82 — applies to: yaml
 ------------------------------------------------------------------------
 
 Copyright Eemeli Aro <eemeli@gmail.com>
@@ -3878,7 +3905,7 @@ TORTIOUS ACTION, ARISING OUT OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF
 THIS SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 80 of 81 — applies to: yjs
+Licence 81 of 82 — applies to: yjs
 ------------------------------------------------------------------------
 
 The MIT License (MIT)
@@ -3906,7 +3933,7 @@ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 
 ------------------------------------------------------------------------
-Licence 81 of 81 — applies to: zod
+Licence 82 of 82 — applies to: zod
 ------------------------------------------------------------------------
 
 MIT License

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
@@ -173,6 +173,18 @@ describe('live gesture publishing (inner#1692 section 5.4)', () => {
 });
 
 describe('joint drag release (inner#1692 section 5.2, acceptance 7)', () => {
+  it('starts a joint drag from the committed pose when the press before it never ended', () => {
+    const state = fixture();
+    begin(state);
+    state.session.previewGesture([{ id: ID, pose: { ...START_POSE, 'h:leftUpperArm': Q_HALF } }]);
+    // The release of that press is lost; the next press starts while its preview still shows.
+    begin(state);
+    state.session.previewGesture([{ id: ID, pose: { ...START_POSE, 'h:leftUpperArm': Q_HALF } }]);
+    state.session.endGesture(true);
+    expect(readSceneDocument(state.doc).objects[0]?.pose?.['h:leftUpperArm']).toEqual(Q_HALF);
+    expect(state.session.history.undoStack).toHaveLength(1);
+  });
+
   it('writes only the bones this drag changed, keeping bones another member committed during the drag', () => {
     const state = fixture();
     const peer = new Y.Doc(); cleanups.push(() => peer.destroy());

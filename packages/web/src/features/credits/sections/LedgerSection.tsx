@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import type { CreditLedgerView, CreditOverview } from '@breatic/shared';
@@ -33,7 +33,7 @@ import { creditLedgerKey } from '@web/features/credits/account-reads';
 interface LedgerSectionProps {
   /** The signed-in account, for the query key. */
   userId: string | null;
-  /** What the account holds, for the studio filter and the billing flag. */
+  /** What the account holds, for the studio filter and the charging flag. */
   overview: CreditOverview;
 }
 
@@ -48,7 +48,7 @@ const ALL_STUDIOS = 'all';
  * would show the same run several times, each with a fragment of its cost.
  *
  * Spending is listed even where nothing was charged. A deployment with
- * billing off still records what was used, and that record is the answer to
+ * charging off still records what was used, and that record is the answer to
  * "what have we been running".
  * @param props - The account and the overview.
  * @param props.userId - The signed-in account, for the query key.
@@ -104,7 +104,7 @@ export function LedgerSection({
       scrolls={false}
       title={t('credits.section.ledger')}
     >
-      {overview.billing ? null : (
+      {overview.charging ? null : (
         <Footnote>{t('credits.ledgerBillingOff')}</Footnote>
       )}
       {/* The card stays put while a narrowed read is in flight: the control

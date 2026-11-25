@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Cookie, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
+import { Cookie, ExternalLink, FileText, KeyRound, LogOut, Megaphone, MonitorSmartphone, Settings, Sparkles, Star } from 'lucide-react';
 import { COOKIE_SETTINGS_AVAILABLE, openCookieSettings } from '@web/data/analytics';
 
 import { Button } from '@web/components/ui/button';
@@ -14,6 +14,9 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrailing,
   DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
@@ -22,6 +25,8 @@ import type { CreditOverview } from '@breatic/shared';
 import type { UseQueryResult } from '@tanstack/react-query';
 
 import { authApi } from '@web/data/api/auth';
+import { ByokDialog } from '@web/features/byok/ByokDialog';
+import { useByokView } from '@web/features/byok/byok-query';
 import { CheckoutWaitOverlay } from '@web/features/credits/CheckoutWaitOverlay';
 import { CreditsOverlay } from '@web/features/credits/CreditsOverlay';
 import { useCheckoutReturn } from '@web/features/credits/use-checkout-return';
@@ -71,14 +76,25 @@ function creditsFigure(
 ): React.ReactNode {
   if (overview.isError) return t('studio.topBar.creditsUnavailable');
   if (overview.isPending) return <Skeleton className='h-3 w-10' />;
-  if (!overview.data.billing) return null;
+  if (!overview.data.charging) return null;
   return formatCreditAmount(accountTotal(overview.data));
 }
 
 /**
+ * The licence and attribution notices LICENSE section 12 keeps reachable.
+ * Site paths, so each instance opens the copies its own image carries.
+ */
+const NOTICE_LINKS = [
+  { href: '/LICENSE.txt', labelKey: 'studio.topBar.noticesLicense' },
+  { href: '/TRADEMARKS.md', labelKey: 'studio.topBar.noticesTrademarks' },
+  { href: '/THIRD-PARTY.md', labelKey: 'studio.topBar.noticesThirdParty' },
+] as const;
+
+/**
  * Studio account menu — the current-user avatar in the studio top bar, opening
- * the account's own entries: who is signed in, account settings, the promoter
- * program, membership, credits, and sign out.
+ * the account's own entries: who is signed in, account settings, BYOK
+ * settings where the deployment has BYOK on, the promoter program, membership,
+ * credits, and sign out.
  *
  * A menu rather than a popover. Every entry here either navigates or acts, and
  * Radix's menu closes itself on select; a popover does not, and this one is
@@ -105,6 +121,9 @@ export function StudioAccountMenu(): React.JSX.Element {
   const [menuOpen, setMenuOpen] = React.useState(false);
   const [membershipOpen, setMembershipOpen] = React.useState(false);
   const [logoutOthersOpen, setLogoutOthersOpen] = React.useState(false);
+  // BYOK settings open over the page, the way the promoter program does (inner#1953).
+  const [byokOpen, setByokOpen] = React.useState(false);
+  const openByok = React.useCallback((): void => setByokOpen(true), []);
   const openLogoutOthers = React.useCallback((): void => setLogoutOthersOpen(true), []);
   const accountButtonRef = React.useRef<HTMLButtonElement>(null);
   const [creditsOpen, setCreditsOpen] = React.useState(false);
@@ -114,6 +133,9 @@ export function StudioAccountMenu(): React.JSX.Element {
   // open here reads the new figure rather than the one from before.
   const overview = useCreditOverview(menuOpen);
   const promoter = usePromoterEntry(menuOpen);
+  // The BYOK view is read while the menu is open, as the promoter entry's is, and the entry leaves the menu only once
+  // the view says this deployment has BYOK off (#1618); the dialog opens on the same cached read.
+  const byokOff = useByokView(menuOpen).data?.enabled === false;
 
   // Reports what a membership checkout came to, on the way back from it. It
   // lives beside the credits return for the same reason that one does: the
@@ -289,6 +311,12 @@ export function StudioAccountMenu(): React.JSX.Element {
             <Settings className='h-4 w-4' />
             {t('studio.topBar.accountSettings')}
           </DropdownMenuItem>
+          {byokOff ? null : (
+            <DropdownMenuItem onSelect={openByok} data-testid='account-menu-byok'>
+              <KeyRound className='h-4 w-4' />
+              {t('byok.heading')}
+            </DropdownMenuItem>
+          )}
           {promoter.shown ? (
             <DropdownMenuItem onSelect={promoter.select} data-testid='account-menu-promoter'>
               <Megaphone className='h-4 w-4' />
@@ -327,8 +355,26 @@ export function StudioAccountMenu(): React.JSX.Element {
               {creditsFigure(overview, t)}
             </DropdownMenuTrailing>
           </DropdownMenuItem>
-          {/* This browser's cookie consent, and the account's other sign-ins. */}
+          {/* The notices this instance serves, this browser's cookie consent,
+            and the account's other sign-ins. */}
           <DropdownMenuSeparator />
+          <DropdownMenuSub>
+            <DropdownMenuSubTrigger>
+              <FileText className='h-4 w-4' />
+              {t('studio.topBar.notices')}
+            </DropdownMenuSubTrigger>
+            {/* Rows spaced and new-tab links marked as in the parent menu and the Help menu. */}
+            <DropdownMenuSubContent rowsClassName='flex flex-col gap-0.5'>
+              {NOTICE_LINKS.map(({ href, labelKey }) => (
+                <DropdownMenuItem key={href} asChild>
+                  <a href={href} target='_blank' rel='noopener noreferrer'>
+                    {t(labelKey)}
+                    <ExternalLink className='ml-auto !size-3.5 text-muted-foreground' aria-hidden='true' />
+                  </a>
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuSub>
           {COOKIE_SETTINGS_AVAILABLE ? (
             <DropdownMenuItem onSelect={openCookieSettings}>
               <Cookie className='h-4 w-4' />
@@ -355,6 +401,7 @@ export function StudioAccountMenu(): React.JSX.Element {
         returnFocusTo={accountButtonRef}
       />
       <MembershipPanel open={membershipOpen} onOpenChange={setMembershipOpen} />
+      <ByokDialog open={byokOpen} onOpenChange={setByokOpen} />
       <PromoterDialog open={promoter.dialogOpen} onOpenChange={promoter.setDialogOpen} />
       <CheckoutWaitOverlay open={back.waiting} onSkip={back.land} />
       <CreditsOverlay

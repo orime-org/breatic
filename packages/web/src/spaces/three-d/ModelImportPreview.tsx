@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { Box3, DirectionalLight, GridHelper, HemisphereLight, PerspectiveCamera, Scene, SkinnedMesh, Vector3, WebGLRenderer } from 'three';
@@ -83,6 +83,8 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
       applySceneGridTheme(grid, getComputedStyle(element).getPropertyValue('--color-muted-foreground').trim());
       draw();
     };
+    // A restored GPU context keeps image textures but empties what was drawn, so the preview is drawn again.
+    renderer.domElement.addEventListener('webglcontextrestored', draw);
     const observer = new ResizeObserver(resize);
     observer.observe(element);
     const themeObserver = new MutationObserver(theme);
@@ -94,6 +96,7 @@ export const ModelImportPreview = React.memo(function ModelImportPreview({ root 
       observer.disconnect();
       themeObserver.disconnect();
       orbit.removeEventListener('change', draw);
+      renderer.domElement.removeEventListener('webglcontextrestored', draw);
       orbit.dispose();
       instance.traverse((object) => { if (object instanceof SkinnedMesh) object.skeleton.dispose(); });
       instance.removeFromParent();

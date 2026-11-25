@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Why a task failed, for the causes we author (#186 §7.1).
@@ -116,7 +116,28 @@ export const TASK_FAILURE_REASONS = [
   "input_refused",
   /** No upstream of the model has its key on this deployment; the sentence names the variables. */
   "model_not_configured",
+  /**
+   * The account's own key for an upstream failed there (inner#1953): turned down, out of balance, without the model
+   * or rate limited. The sentence names the upstream and why, so the user knows which key to top up or change.
+   */
+  "account_key_failed",
+  /** The account's key the run held was replaced or deleted (inner#1953); our key is never used instead. */
+  "account_key_missing",
+  /** The upstream an account's key runs on could not be reached, or kept failing (inner#1953). */
+  "upstream_unavailable",
 ] as const;
+
+/** How a run on an account's own key failed (inner#1953): its key, its key row, or the upstream it runs on. */
+export const ACCOUNT_KEY_FAILURE_KINDS = ["account_key_failed", "account_key_missing", "upstream_unavailable"] as const satisfies readonly TaskFailureReason[];
+
+/** One of the kinds above. */
+export type AccountKeyFailureKind = (typeof ACCOUNT_KEY_FAILURE_KINDS)[number];
+
+/** Why an upstream turned an account's own key down (inner#1953). */
+export const ACCOUNT_KEY_FAILURE_REASONS = ["invalid", "no_balance", "model_not_found", "rate_limited"] as const;
+
+/** One of the reasons above. */
+export type AccountKeyFailureReason = (typeof ACCOUNT_KEY_FAILURE_REASONS)[number];
 
 /** One of the causes above. */
 export type TaskFailureReason = (typeof TASK_FAILURE_REASONS)[number];
@@ -169,7 +190,7 @@ const CAUSE_OF: ReadonlyMap<string, TaskFailureReason> = new Map([
  * travel with the cause rather than being looked up again by a surface that
  * cannot reach them (user 2026-09-20).
  */
-export interface TaskFailureDetail {
+export type TaskFailureDetail = {
   /** What the file is called: its storage key's last segment. */
   file?: string;
   /** The type it was judged as, as the word a user uses for that format. */
@@ -187,13 +208,22 @@ export interface TaskFailureDetail {
   limit?: InputLimitShape;
   /** The environment variables a deployment is missing. */
   envVars?: string[];
-}
+  /** The upstream an account's key failed on or could not reach (inner#1953). */
+  upstream?: string;
+  /** Why that upstream turned the account's key down. */
+  keyReason?: AccountKeyFailureReason;
+  /**
+   * The account whose key it was, so a viewer is told it was their own key, the current Studio Admin's or neither,
+   * after the Studio changes hands too.
+   */
+  keyOwner?: string;
+};
 
-/** A stored failure, read back. */
-export interface StoredTaskFailure extends TaskFailureDetail {
+/** A stored failure, read back; a type rather than an interface, so it reads as a plain record of its fields. */
+export type StoredTaskFailure = TaskFailureDetail & {
   /** The cause, or null when the stored text is not one of ours. */
   reason: TaskFailureReason | null;
-}
+};
 
 /**
  * Write a cause and what it was about as one stored value.
@@ -217,6 +247,9 @@ export function encodeTaskFailure(
     ...(about.model !== undefined && about.model !== "" && { model: about.model }),
     ...(about.limit !== undefined && { limit: about.limit }),
     ...(about.envVars !== undefined && about.envVars.length > 0 && { envVars: about.envVars }),
+    ...(about.upstream !== undefined && about.upstream !== "" && { upstream: about.upstream }),
+    ...(isKeyReason(about.keyReason) && { keyReason: about.keyReason }),
+    ...(about.keyOwner !== undefined && about.keyOwner !== "" && { keyOwner: about.keyOwner }),
   };
   return Object.keys(detail).length === 0
     ? reason
@@ -260,7 +293,19 @@ export function readTaskFailure(message: string | null): StoredTaskFailure {
     ...(typeof held.model === "string" && held.model !== "" && { model: held.model }),
     ...(isLimit(held.limit) && { limit: held.limit }),
     ...(Array.isArray(held.envVars) && held.envVars.length > 0 && held.envVars.every((v) => typeof v === "string") && { envVars: held.envVars }),
+    ...(typeof held.upstream === "string" && held.upstream !== "" && { upstream: held.upstream }),
+    ...(isKeyReason(held.keyReason) && { keyReason: held.keyReason }),
+    ...(typeof held.keyOwner === "string" && held.keyOwner !== "" && { keyOwner: held.keyOwner }),
   };
+}
+
+/**
+ * Whether a stored value is one of the reasons an upstream turns an account's key down.
+ * @param value - What the row held; anything.
+ * @returns True for one of ours.
+ */
+function isKeyReason(value: unknown): value is AccountKeyFailureReason {
+  return (ACCOUNT_KEY_FAILURE_REASONS as readonly unknown[]).includes(value);
 }
 
 /**

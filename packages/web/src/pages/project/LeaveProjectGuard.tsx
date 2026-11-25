@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { NavigationType, useBlocker, useParams, type Location } from 'react-router-dom';
@@ -16,6 +16,7 @@ import {
 } from '@web/components/ui/alert-dialog';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
+import { useTaskActionsInFlight } from '@web/stores/task-actions-in-flight';
 import { hasProjectUnsyncedEdits, useProjectUnsyncedEdits } from '@web/data/yjs/collab-socket';
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useReturnFocus } from '@web/lib/overlay-focus';
@@ -78,7 +79,10 @@ export function LeaveProjectGuard({ ref }: { ref?: React.Ref<LeaveProjectGuardHa
   const t = useTranslation();
   const projectId = projectUuidFromRouteParam(useParams().projectId ?? '');
   const unsynced = useProjectUnsyncedEdits(projectId);
-  const operations = useSpaceOperationsStore((state) => state.hasAnyOperations());
+  // A press the server has not answered yet (Execute, Generate, Run) lives only in this page until it is accepted.
+  const spaceOperations = useSpaceOperationsStore((state) => state.hasAnyOperations());
+  const pressing = useTaskActionsInFlight((state) => state.waiting > 0);
+  const operations = spaceOperations || pressing;
   const [refreshRequested, setRefreshRequested] = React.useState(false);
   const reloadApproved = React.useRef(false);
   const reloadFailed = t('project.refreshGuard.failed');
@@ -89,7 +93,7 @@ export function LeaveProjectGuard({ ref }: { ref?: React.Ref<LeaveProjectGuardHa
    * @throws {never} Never.
    */
   const hasRisk = React.useCallback((): boolean =>
-    hasProjectUnsyncedEdits(projectId) || useSpaceOperationsStore.getState().hasAnyOperations(), [projectId]);
+    hasProjectUnsyncedEdits(projectId) || useSpaceOperationsStore.getState().hasAnyOperations() || useTaskActionsInFlight.getState().waiting > 0, [projectId]);
 
   const blocker = useBlocker(
     React.useCallback(

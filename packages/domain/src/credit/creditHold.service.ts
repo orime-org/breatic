@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Credit holds (inner#1611): what a studio has promised to work that is
@@ -12,8 +12,8 @@
  * start. Admissions and charges on one studio both take the studio's debt
  * lock first, so they queue and each sees what the one before it held.
  *
- * Holds exist only while payments are on; with payments off every admission
- * passes and nothing is written, as before.
+ * Holds exist only where credits are charged (`CHARGING_ENABLED`); elsewhere
+ * every admission passes and nothing is written, as before.
  */
 
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
@@ -160,11 +160,11 @@ export type BalanceRefusal =
  * @param projectId - The project the work belongs to; its studio pays.
  * @param actorUserId - Who starts it.
  * @param required - Credits the studio's balance must at least reach.
- * @returns Why it may not start, or null when it may; null with payments off.
+ * @returns Why it may not start, or null when it may; null where credits are not charged.
  * @throws {NotFoundError} When the project has no live studio.
  */
 export async function judgeBalanceAdmission(projectId: string, actorUserId: string, required: number): Promise<BalanceRefusal | null> {
-  if (!env.PAYMENT_ENABLED) return null;
+  if (!env.CHARGING_ENABLED) return null;
   const studioId = await resolveOwnerStudioId(projectId);
   const cap = await spendCapHit(studioId, actorUserId, null);
   if (cap !== null) return { reason: "spend_cap", cap };
@@ -202,7 +202,7 @@ function expiryFor(ttlMs: number): Date {
  * @throws {NotFoundError} When the project has no live studio.
  */
 export async function reserveCredits(request: HoldRequest): Promise<ReserveOutcome> {
-  if (!env.PAYMENT_ENABLED) return { ok: true };
+  if (!env.CHARGING_ENABLED) return { ok: true };
   const studioId = await resolveOwnerStudioId(request.projectId);
   const amount = toChargeMicro(request.amount);
   return db.transaction(async (tx) => {

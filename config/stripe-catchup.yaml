@@ -1,5 +1,0 @@
-# Stripe catch-up after a stop (scripts/stripe-catchup.ts): how far before
-# the moment processing stopped the catch-up lists events from. Stripe retries
-# a failed delivery for three days, so an event first sent before the stop
-# can still be pending; four days covers that window with one to spare.
-lookback_hours: 96

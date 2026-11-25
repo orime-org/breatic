@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type * as MockModule0 from '@web/data/api/auth';
 
@@ -72,7 +72,7 @@ beforeEach(() => {
     bootstrapped: true,
   });
   // The page holds Create account until it knows whether it takes a referral code.
-  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'breatic' });
+  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: true, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
 });
 
 afterEach(() => {

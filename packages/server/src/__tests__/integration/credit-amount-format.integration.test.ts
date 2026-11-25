@@ -1,15 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { randomBytes, randomUUID } from "node:crypto";
 import type { Hono } from "hono";
-import { beforeAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, describe, expect, it } from "vitest";
 import { db, getRedis, sessionCookieName, setSession } from "@breatic/core";
 import { creditHoldService, creditLotService } from "@breatic/domain";
 import * as shared from "@breatic/shared";
-import * as paymentService from "@server/modules/payment/payment.service.js";
-import { getConfirmationView } from "@server/modules/payment/payment.repo.js";
-import { renderPurchaseConfirmation } from "@server/modules/payment/purchase-mail-template.js";
 import { useInternalApp } from "./internal-api-harness.js";
 import { chargeNow, seedDesignatedLot } from "./studio-credit-fixtures.js";
 import { applied, grantBody, grantKey, postGrant, seedPersonal } from "./operator-credit-grant-fixtures.js";
@@ -92,17 +89,6 @@ describe("decimal-v1 amount format on the public readers", () => {
     }
   });
 
-  it("P21 refuses format mismatch before overview reconciliation", async () => {
-    const fx = await seedPersonal(suite.sql);
-    const cookie = await cookieFor(fx.userId);
-    const reconcile = vi.spyOn(paymentService, "reconcilePayments");
-    try {
-      const response = await app.request("/api/v1/credits/overview?amountFormat=unknown", { headers: { cookie } });
-      expect(response.status).toBe(422);
-      expect(reconcile).toHaveBeenCalledTimes(0);
-    } finally { reconcile.mockRestore(); }
-  });
-
   it("P22 keeps the eleven-Studio aggregate and each Studio amount exact", async () => {
     const fx = await seedPersonal(suite.sql);
     await seedDesignatedLot(suite.sql, fx, 900000000);
@@ -155,7 +141,7 @@ describe("decimal-v1 amount format on the public readers", () => {
     expect(parseView("studioLedgerViewSchema", continuation.items[0])).toEqual(continuation.items[0]);
   });
 
-  it("P22 preserves empty monetary views and pending-payment null balances", async () => {
+  it("P22 preserves empty monetary views", async () => {
     const fx = await seedPersonal(suite.sql);
     const cookie = await cookieFor(fx.userId);
     for (const index of [0, 3, 4]) {
@@ -165,21 +151,13 @@ describe("decimal-v1 amount format on the public readers", () => {
       if (index === 0) expect(data).toMatchObject({ assignedCredits: "0.000000", unassignedCredits: "0.000000", underRefundCredits: "0.000000" });
       else expect(data).toMatchObject({ spendable: "0.000000", held: "0.000000", available: "0.000000" });
     }
-    const id = randomUUID();
-    await suite.sql`insert into credit_sources(id,kind) values(${id},'payment')`;
-    await suite.sql`insert into payments(id,user_id,amount_cents,credits_granted,status) values(${id},${fx.userId},1000,100,'pending')`;
-    const history = await read("/api/v1/payment/history?amountFormat=decimal-v1", cookie);
-    expect(history.items).toHaveLength(1);
-    const row = (history.items as Record<string, unknown>[])[0]!;
-    expect(row).toMatchObject({ rowId: id, paymentId: id, creditsGranted: "100.000000", remainingCredits: null, lifecycle: null, amountCents: 1000 });
-    expect(parseView("purchaseRowSchema", row)).toEqual(row);
   });
 
-  it("P23 keeps history and confirmation-mail balances exact across purchased and granted sources", async () => {
+  it("P23 keeps history balances exact across purchased and granted sources", async () => {
     const fx = await seedPersonal(suite.sql);
     const paidLot = await seedDesignatedLot(suite.sql, fx, 1);
     const [lot] = await suite.sql<{ source_id: string }[]>`select source_id from credit_lots where id=${paidLot}`;
-    await suite.sql`update payments set total_cents=1300,tax_cents=300 where id=${lot!.source_id}`;
+    await suite.sql`update payment_receipts set total_cents=1300,tax_cents=300 where id=${lot!.source_id}`;
     const first = applied(await postGrant(suite, fx, grantKey(), grantBody(fx, { credits: "9007199253.74" })));
     const second = applied(await postGrant(suite, fx, grantKey(), grantBody(fx, { kind: "gift", credits: "9007199254.73" })));
     const history = await read("/api/v1/payment/history?amountFormat=decimal-v1", await cookieFor(fx.userId));
@@ -190,12 +168,6 @@ describe("decimal-v1 amount format on the public readers", () => {
     const paid = rows.find((row) => row.paymentId === lot!.source_id)!;
     expect(paid).toMatchObject({ rowId: lot!.source_id, sourceKind: "payment", amountCents: 1000, totalCents: 1300, taxCents: 300, creditsGranted: "1.000000", remainingCredits: "1.000000" });
     for (const row of rows) expect(parseView("purchaseRowSchema", row)).toEqual(row);
-    const view = await getConfirmationView(lot!.source_id);
-    expect(view?.balanceCredits).toBe("18014398509.470000");
-    expect(view).toMatchObject({ amountCents: 1000, currency: "usd" });
-    const mail = await renderPurchaseConfirmation(view!);
-    expect(mail.text).toMatch(/18,014,398,509\.47|18014398509\.47(?:0000)?/);
-    expect(mail.html).toMatch(/18,014,398,509\.47|18014398509\.47(?:0000)?/);
   });
 
   it("P24 admits exactly one remaining cent under concurrent reservations", async () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The 3D catalog as `GET /models` answers it (inner#1691 design 2.1 to 2.4),
@@ -106,7 +106,7 @@ export const RAW_CATALOG = {
       pricing: { base_price: 240_000, formula: formula(120_000, 240_000, 360_000, 480_000), discount_rate: 100 },
     }),
     entry({
-      name: I23D, variant: 'Single image', mode: 'i23d', takes_prompt: false,
+      name: I23D, variant: 'Image-to-3D', mode: 'i23d', takes_prompt: false,
       params: { ...COMMON, ...IMAGE_ONLY, image: { description: 'Front view', fill: 'canvas', accepts: 'image', default: null } },
       pricing: { base_price: 360_000, formula: formula(240_000, 360_000, 480_000, 600_000), discount_rate: 100 },
     }),

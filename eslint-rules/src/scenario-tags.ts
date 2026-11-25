@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The external services a case can declare it needs.
@@ -37,7 +37,7 @@ export const SCENARIO_TAGS = [
   "@needs-ingest",
   /** An ElevenLabs or Fish key, for the voice catalogue. */
   "@needs-tts",
-  /** Stripe, and at least one credit pack on the screen. */
+  /** The billing service (in Stripe test mode), and at least one credit pack on the screen. */
   "@needs-payments",
   /** A Brave Search credential. */
   "@needs-search",

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Both suites in one run, so the critical paths' coverage counts every test that reaches them: the
@@ -47,6 +47,10 @@ export default defineConfig({
         "src/llm/understand/google.ts",
         "src/llm/understand/openrouter.ts",
         "src/provider.ts",
+        "src/keys.ts",
+        "src/check-key.ts",
+        "src/errors.ts",
+        "src/cost.ts",
       ],
       thresholds: { 100: true, perFile: true },
     },

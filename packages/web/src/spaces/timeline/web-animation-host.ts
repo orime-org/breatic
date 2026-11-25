@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The host side of the web-animation frame-ready bridge (inner#1711 design §7.2, §9 preview-instance table); the
@@ -52,7 +52,10 @@ export interface WebAnimationHostOptions {
 
 /** The instances of one preview. */
 export interface WebAnimationHost {
-  /** Bring the instances to the layers: attach new ones, detach gone ones, send a changed mapping or role. */
+  /**
+   * Bring the instances to the layers: attach new ones, detach gone ones, send a changed mapping or role, and start
+   * the load timeout of a loading instance that attached before the timeout was known.
+   */
   sync: (layers: readonly TimelineWebLayer[]) => void;
   /** A seek, a pause, a start of play: every visible instance gets the current frame under a new sequence. */
   reposition: () => void;
@@ -179,6 +182,15 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
     options.onChange();
   };
   /**
+   * Wait for a loading instance's bridge within the load timeout, once that timeout is known and no wait runs yet.
+   * @param instance - The instance.
+   * @throws {never} Never.
+   */
+  const arm = (instance: Instance): void => {
+    const ms = options.loadTimeoutMs();
+    if (instance.state === 'loading' && instance.timer === null && ms !== undefined) instance.timer = setTimeout(() => fail(instance), ms);
+  };
+  /**
    * Start loading: say hello and wait for the bridge within the load timeout.
    * @param instance - The instance.
    * @throws {never} Never.
@@ -188,8 +200,7 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
     instance.session = null;
     instance.sentTime = null;
     stopTimer(instance);
-    const ms = options.loadTimeoutMs();
-    if (ms !== undefined) instance.timer = setTimeout(() => fail(instance), ms);
+    arm(instance);
     post(instance, { type: 'breatic-hello' });
   };
   /**
@@ -252,6 +263,8 @@ export function createWebAnimationHost(options: WebAnimationHostOptions): WebAni
       for (const layer of layers) {
         const instance = instances.get(layer.key);
         if (instance === undefined) { attach(layer); continue; }
+        // A timeout that was unknown when the instance attached starts its wait now.
+        arm(instance);
         const before = instance.layer;
         instance.layer = layer;
         const role = layer.role;

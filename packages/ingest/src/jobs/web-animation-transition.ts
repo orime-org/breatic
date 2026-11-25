@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The web-animation job and its model-call registry (inner#1711 design §3.7, §6). `WebAnimationContainer` holds one
@@ -14,6 +14,15 @@
 
 import type { MessagesCallEnd } from "@breatic/provider/messages";
 import type { WebAnimationJobCall, WebAnimationJobReport, WebAnimationJobRequest } from "@breatic/shared/space-content";
+
+/** Why an upstream refused the payer's own key, as the report carries it. */
+type KeyReason = NonNullable<WebAnimationJobReport["failureKeyReason"]>;
+
+/** What a failed job names beyond its reason: the upstream and why it refused the payer's key (inner#1953). */
+interface FailureNames {
+  failureUpstream?: string | null;
+  failureKeyReason?: KeyReason | null;
+}
 
 /** Where a job is. */
 export type WebAnimationJobState = WebAnimationJobReport["state"];
@@ -37,7 +46,7 @@ export interface WebAnimationJobRecord {
   /** Epoch ms the pre-submit cancel marker stands until; null for a job. */
   markerUntil: number | null;
   /** How a stopping job ends once its open call has ended. */
-  endAs: { state: Terminal; failureReason: string | null } | null;
+  endAs: ({ state: Terminal; failureReason: string | null } & FailureNames) | null;
   phase: WebAnimationJobReport["phase"];
   steps: unknown[];
   calls: StoredCall[];
@@ -47,6 +56,14 @@ export interface WebAnimationJobRecord {
   endedAt: number | null;
   cpuUsec: number | null;
   failureReason: string | null;
+  /** The upstream a refused key read named and why it refused the key (inner#1953); absent from a record stored before them. */
+  failureUpstream?: string | null;
+  failureKeyReason?: KeyReason | null;
+  /**
+   * A passing failure of the payer's own key (a 429, a 5xx, the upstream unreachable) on the last call begun
+   * (inner#1953); a runner that gives up after it fails with it. Absent from a record stored before it.
+   */
+  keyPassing?: ({ reason: string } & FailureNames) | null;
 }
 
 /** Something that happened to a job; the object's RPC methods map onto these one to one. */
@@ -61,6 +78,13 @@ export type WebAnimationJobEvent =
   | { type: "written"; key: string; sha256: string; bytes: number }
   | { type: "progress"; phase: NonNullable<WebAnimationJobReport["phase"]>; steps: unknown[] }
   | { type: "finished"; ok: boolean; failureReason: string | null; cpuUsec: number | null }
+  /**
+   * A call could not run on the job's keys (inner#1953): the job object lost them in a restart, or the upstream refused
+   * the payer's own key for good. The job fails with that reason.
+   */
+  | { type: "keyFailed"; reason: string; upstream?: string; keyReason?: KeyReason }
+  /** A call on the payer's own key failed in a way the runner may ask again after; the job keeps running. */
+  | { type: "keyPassing"; reason: string; upstream: string; keyReason?: KeyReason }
   | { type: "containerGone" };
 
 /** What the object does after a transition: start the container, stop it, or bound the drain of an open call. */
@@ -98,7 +122,7 @@ function stay(record: WebAnimationJobRecord | null): WebAnimationTransition {
 function blank(state: WebAnimationJobState, request: WebAnimationJobRequest | null): WebAnimationJobRecord {
   return {
     state, request, markerUntil: null, endAs: null, phase: null, steps: [], calls: [], outputs: [],
-    startedAt: null, endedAt: null, cpuUsec: null, failureReason: null,
+    startedAt: null, endedAt: null, cpuUsec: null, failureReason: null, failureUpstream: null, failureKeyReason: null, keyPassing: null,
   };
 }
 
@@ -118,16 +142,19 @@ function openCall(record: WebAnimationJobRecord): StoredCall | undefined {
  * @param state - Where it ends.
  * @param failureReason - Why a failed job failed.
  * @param now - Epoch ms.
+ * @param names - The upstream a failed job's refused key read named and why it refused the key.
  * @returns The ended job and its effects.
  * @throws {never} Never.
  */
-function end(record: WebAnimationJobRecord, state: Terminal, failureReason: string | null, now: number): WebAnimationTransition {
+function end(record: WebAnimationJobRecord, state: Terminal, failureReason: string | null, now: number, names: FailureNames = {}): WebAnimationTransition {
   return {
     record: {
       ...record,
       state,
       endAs: null,
       failureReason: state === "failed" ? failureReason : null,
+      failureUpstream: state === "failed" ? (names.failureUpstream ?? null) : null,
+      failureKeyReason: state === "failed" ? (names.failureKeyReason ?? null) : null,
       endedAt: now,
       calls: record.calls.map((call) => (call.outcome === null ? { ...call, outcome: "cut_off" } : call)),
     },
@@ -143,12 +170,13 @@ function end(record: WebAnimationJobRecord, state: Terminal, failureReason: stri
  * @param state - Where it ends.
  * @param failureReason - Why, when it ends failed.
  * @param now - Epoch ms.
+ * @param names - The upstream a refused key read named and why it refused the key, when it ends failed for that.
  * @returns The transition.
  * @throws {never} Never.
  */
-function stop(record: WebAnimationJobRecord, state: Terminal, failureReason: string | null, now: number): WebAnimationTransition {
-  if (openCall(record) === undefined) return end(record, state, failureReason, now);
-  return { record: { ...record, state: "stopping", endAs: { state, failureReason } }, effects: ["scheduleDrain"], seq: null, refused: false };
+function stop(record: WebAnimationJobRecord, state: Terminal, failureReason: string | null, now: number, names: FailureNames = {}): WebAnimationTransition {
+  if (openCall(record) === undefined) return end(record, state, failureReason, now, names);
+  return { record: { ...record, state: "stopping", endAs: { state, failureReason, ...names } }, effects: ["scheduleDrain"], seq: null, refused: false };
 }
 
 /**
@@ -196,21 +224,30 @@ export function transitionWebAnimationJob(
       return running ? stop(record, "cancelled", null, now) : stay(record);
     case "deadline":
       return running ? stop(record, "expired", null, now) : stay(record);
+    case "keyFailed":
+      return running ? stop(record, "failed", event.reason, now, { failureUpstream: event.upstream ?? null, failureKeyReason: event.keyReason ?? null }) : stay(record);
+    case "keyPassing":
+      return running ? stay({ ...record, keyPassing: { reason: event.reason, failureUpstream: event.upstream, failureKeyReason: event.keyReason ?? null } }) : stay(record);
     case "finished": {
       const withCpu = { ...record, cpuUsec: event.cpuUsec };
       if (!running) return stay(withCpu);
       const keys = [record.request?.packageKey, record.request?.manifestKey];
       const complete = keys.every((key) => record.outputs.some((output) => output.key === key));
       if (event.ok && complete) return stop(withCpu, "done", null, now);
+      const keyPassing = record.keyPassing;
+      if (!event.ok && keyPassing != null) return stop(withCpu, "failed", keyPassing.reason, now, keyPassing);
       return stop(withCpu, "failed", event.ok ? "output_missing" : (event.failureReason ?? "container_failed"), now);
     }
     case "containerGone":
-      return running ? end(record, "failed", "container_gone", now) : end(record, record.endAs?.state ?? "failed", record.endAs?.failureReason ?? null, now);
+      return running
+        ? end(record, "failed", "container_gone", now)
+        : end(record, record.endAs?.state ?? "failed", record.endAs?.failureReason ?? null, now, record.endAs ?? {});
     case "beginModelCall": {
       if (!running || openCall(record) !== undefined) return stay(record);
       const seq = record.calls.length + 1;
       const call: StoredCall = { seq, upstream: null, messageId: null, tokens: null, cost: null, outcome: null };
-      return { record: { ...record, calls: [...record.calls, call] }, effects: [], seq, refused: false };
+      // A noted key failure tells only of the call before this one; this call notes its own if it fails on the key.
+      return { record: { ...record, calls: [...record.calls, call], keyPassing: null }, effects: [], seq, refused: false };
     }
     case "recordModelCallStart": {
       if (openCall(record)?.seq !== event.seq) return stay(record);
@@ -225,7 +262,7 @@ export function transitionWebAnimationJob(
         ...record,
         calls: record.calls.map((call) => (call.seq === event.seq ? { ...call, outcome, upstream: event.upstream ?? call.upstream, tokens, cost } : call)),
       };
-      return record.endAs === null ? stay(ended) : end(ended, record.endAs.state, record.endAs.failureReason, now);
+      return record.endAs === null ? stay(ended) : end(ended, record.endAs.state, record.endAs.failureReason, now, record.endAs);
     }
     case "written": {
       if (event.key !== record.request?.packageKey && event.key !== record.request?.manifestKey) return stay(record);
@@ -260,5 +297,7 @@ export function reportOfWebAnimationJob(record: WebAnimationJobRecord | null): W
       : null,
     outputs: record.outputs,
     failureReason: record.failureReason,
+    failureUpstream: record.failureUpstream ?? null,
+    failureKeyReason: record.failureKeyReason ?? null,
   };
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as fc from "fast-check";
@@ -19,6 +19,8 @@ const PROJECT = "11111111-1111-4111-8111-111111111111";
 const ASSET = "22222222-2222-4222-8222-222222222222";
 const STUDIO = "33333333-3333-4333-8333-333333333333";
 const USER = "viewer-1";
+/** Every MIME the scene may load: models, and part pictures (inner#1693 design 5.3). */
+const SCENE_TYPES = ["model/gltf-binary", "application/zip", "image/png", "image/jpeg", "image/webp"];
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -58,6 +60,19 @@ describe("resolveSceneAsset", () => {
     await expect(resolveSceneAsset(PROJECT, USER, ASSET)).rejects.toBeInstanceOf(NotFoundError);
   });
 
+  it.each(["image/png", "image/jpeg", "image/webp"])("returns a registered %s picture for a part look", async (mimeType) => {
+    const url = "https://assets.example.test/part-picture";
+    const sizeBytes = 2048;
+    findLiveInStudio.mockResolvedValue({ fileUrl: url, mimeType, sizeBytes });
+    expect(await resolveSceneAsset(PROJECT, USER, ASSET)).toEqual({ url, mimeType, sizeBytes });
+    expect(findLiveInStudio).toHaveBeenCalledWith(STUDIO, ASSET);
+  });
+
+  it.each(["image/gif", "image/avif", "video/mp4"])("answers not found for a %s asset", async (mimeType) => {
+    findLiveInStudio.mockResolvedValue({ fileUrl: "https://assets.example.test/other", mimeType, sizeBytes: 10 });
+    await expect(resolveSceneAsset(PROJECT, USER, ASSET)).rejects.toBeInstanceOf(NotFoundError);
+  });
+
   it("does not look up any asset if Project reading is denied", async () => {
     const denied = new NotFoundError("not found");
     getProject.mockRejectedValue(denied);
@@ -78,7 +93,7 @@ describe("resolveSceneAsset", () => {
 
   it("INVARIANT: every unsupported MIME remains unavailable to the scene", async () => {
     await fc.assert(fc.asyncProperty(
-      fc.string().filter((mime) => mime !== "model/gltf-binary" && mime !== "application/zip"),
+      fc.string().filter((mime) => !SCENE_TYPES.includes(mime)),
       async (mimeType) => {
         findLiveInStudio.mockResolvedValue({ fileUrl: "https://assets.example.test/non-model", mimeType });
         await expect(resolveSceneAsset(PROJECT, USER, ASSET)).rejects.toBeInstanceOf(NotFoundError);

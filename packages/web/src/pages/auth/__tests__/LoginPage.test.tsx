@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Signing in has to put the user's REAL display name in the store.
@@ -34,13 +34,13 @@ vi.mock('@web/data/api/auth', async () => {
   const actual = await vi.importActual<typeof import('@web/data/api/auth')>(
     '@web/data/api/auth',
   );
-  return { ...actual, authApi: { login: vi.fn(), options: vi.fn(async () => ({ emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'breatic' })) } };
+  return { ...actual, authApi: { login: vi.fn(), options: vi.fn(async () => ({ emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' })) } };
 });
 
 /** Render the login route with the destinations it can navigate to. */
 function setup() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(['auth', 'options'], { emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'breatic' });
+  client.setQueryData(['auth', 'options'], { emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
   return render(
     <QueryClientProvider client={client}>
       <MemoryRouter initialEntries={['/login']}>

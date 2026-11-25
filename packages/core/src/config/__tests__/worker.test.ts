@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -77,7 +77,7 @@ describe("credit charge sweep", () => {
 // A misspelt queue name would leave that queue at the default without a word.
 describe("assertKnownQueues", () => {
   it("accepts per-queue figures that name the queues the worker runs", () => {
-    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", "long-media-dispatch", "credit-charge-sweep"])).not.toThrow();
+    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", "long-media-dispatch", "credit-charge-sweep", "commerce-lot-mirror"])).not.toThrow();
   });
 
   it("refuses a per-queue figure for a queue the worker does not run", () => {
