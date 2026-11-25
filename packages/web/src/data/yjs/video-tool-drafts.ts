@@ -22,7 +22,7 @@ import { writeSpaceDoc } from '@web/data/yjs/space-write';
 import { SCENE_ANALYSIS_APPLIED_PREFIX } from '@web/data/yjs/canvas-field-keys';
 
 const ANALYSIS_METADATA_WRITE = Symbol('mini-tool-analysis-metadata');
-/** Origin of a draft write the user did not make (the draft a tool opens with, an anchor an automatic analysis freezes), which canvas undo does not track. */
+/** Origin of a draft write the user did not make (the draft a tool opens with, the Current frame a Run press freezes), which canvas undo does not track. */
 const DRAFT_SEED_WRITE = Symbol('mini-tool-draft-seed');
 
 /** What became of one scene result: applied, superseded by an edit made while it ran, or not for this draft at all. */
@@ -115,7 +115,7 @@ export function rebindVideoToolDraft(doc: Y.Doc, nodeId: string, toolId: VideoTo
  * @param nodeId - The host node.
  * @param toolId - The tool being edited.
  * @param draft - A complete snapshot with its caller-generated revision.
- * @param undoable - Whether the write is the user's own edit, an undo step; false for a seeded draft or an automatic freeze.
+ * @param undoable - Whether the write is the user's own edit, an undo step; false for the opening draft or the frame frozen at a press.
  * @returns Whether the host exists and the size gate let it receive the snapshot.
  * @throws {Error} When the snapshot does not match the tool's schema.
  */

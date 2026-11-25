@@ -82,9 +82,8 @@ beforeEach(() => {
 });
 afterEach(() => { destroyDoc(docName.canvasSpace(projectId, spaceId)); canvasSessions.of(spaceId).getState().closeActivePanel(); canvasApi.resetLimitsCache(); vi.restoreAllMocks(); });
 
-// Frames-split design §10.8 计费 row: extract-frames and split are charged for their container work like the other planned
-// tools, so their footer shows the server's quote of the planned request, never "Free". A split names one output node per
-// planned segment, so its quote names as many.
+// Frames-split design §10.8 计费 row: split is charged for its container work, so its footer shows the server's quote of
+// the planned request, never "Free"; a split names one output node per planned segment, so its quote names as many.
 // Extract-frames is free and shows Free (frames-split §10, test plan §69 U04, extract-frames-free.test.tsx); split is quoted.
 describe('split shows the server quote, not "Free" (frames-split §10.8)', () => {
   const FRAMES_QUOTES = { 'video.split': 6.5 } as const;

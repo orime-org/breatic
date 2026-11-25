@@ -52,8 +52,8 @@ function prepareMedia(): string {
 }
 
 test.use({ viewport: { width: 1680, height: 950 }, actionTimeout: 20_000 });
-// Each case uploads, prepares presentations and waits for a container or model
-// run to finish; the slowest, a model run, takes several minutes.
+// Each case uploads, prepares presentations and waits for a container run to
+// finish.
 test.setTimeout(30 * 60_000);
 
 test.beforeAll(() => {

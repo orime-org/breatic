@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * Demo main.tsx tool panel header: the tool's icon before its title and, beside it, how many outputs the run plans; the
- * expand panel keeps the image Expand panel's header (demo outpaint-controls.tsx OutpaintPanel).
+ * Demo main.tsx tool panel header: the tool's icon before its title and, beside it, how many outputs the run plans.
  */
 
 import * as React from 'react';

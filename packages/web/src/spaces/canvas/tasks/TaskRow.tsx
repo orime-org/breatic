@@ -55,7 +55,7 @@ export interface TaskRowProps {
   entry: NodeTaskEntry;
   /** The user's clock, ticking in the panel above. */
   now: number;
-  /** Whether a failed task can run again: a failed upload whose File this session still holds, or a planned output a retry can run again. */
+  /** Whether a failed task can run again: a failed upload whose File this session still holds. */
   canRetry: boolean;
   /** Whether this user may write; a read-only row carries no buttons. */
   readOnly: boolean;

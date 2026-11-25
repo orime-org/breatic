@@ -132,12 +132,12 @@ export function VideoToolControls(props: VideoToolControlsProps): React.JSX.Elem
         props.onChange({ ...draft, params: { ...draft.params, mode, ...(mode === 'current' && props.presentedTime !== null && props.grid !== null ? { frameIndex: frameIndexOfMediaTime(props.presentedTime, props.grid) } : {}) } });
       };
       // Canvas design §4 frames row: three equal buttons in one row; while the grid is not usable the panel shows only
-      // its ledger line (frames-split §10.6), and the modes stay usable (only Run waits).
+      // its preparation status line (frames-split §10.6), and the modes stay usable (only Run waits).
       return <><div className='grid grid-cols-3 gap-1.5' data-testid='video-frame-modes'>{(['first', 'last', 'current'] as const).map((mode) => <Button key={mode} variant={null} size={null} data-testid={`video-frame-mode-${mode}`} aria-current={draft.params.mode === mode} disabled={props.disabled || mode === 'current' && props.presentedTime === null} className={PARAM_OPTION_CLASS} onClick={() => choose(mode)}>{t(`canvas.miniTool.videoUI.${mode}`)}</Button>)}</div>{props.grid === null ? null : <>{draft.params.mode === 'current' && props.presentedTime === null ? <p className='text-center text-xs text-muted-foreground'>{t('canvas.miniTool.videoUI.currentFrameUnavailable')}</p> : null}<VideoFramePreview source={props.previewSource ?? null} grid={props.grid} frames={planned} aspect={draft.source.mediaInfo.width / draft.source.mediaInfo.height} onSeek={props.onSeek} /></>}</>;
     }
     case 'video.split': {
       // Demo main.tsx split branch: Detect, then the cut editor once the grid is usable (frames-split §10.6: until then
-      // only the ledger line the container draws), then a failed detection's row with Retry.
+      // only the preparation status line the container draws), then a failed detection's row with Retry.
       const failed = latestMiniToolAnalysis(props.analyses.filter((record) => record.kind === 'scene_cuts'))?.status === 'failed';
       return <><Button variant='outline' size='sm' data-testid='video-detect-scenes' loading={props.analysing} disabled={props.disabled || props.analysing || props.analysisDisabled === true} onClick={() => props.onAnalyse('scene_cuts')}>{t(props.analyses.some((record) => record.kind === 'scene_cuts') ? 'canvas.miniTool.videoUI.detectAgain' : 'canvas.miniTool.videoUI.detectScenes')}{props.analysisCreditText === undefined ? null : <span className='text-xs text-muted-foreground'>{props.analysisCreditText}</span>}</Button>
         {props.grid === null ? null : <VideoCutEditor {...props} grid={props.grid} />}

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 /**
- * A transparent presentation (an alpha-packed version, such as a remove-background result) shows the canvas checkerboard
+ * A transparent presentation (an alpha-packed version, such as an uploaded video with alpha) shows the canvas checkerboard
  * behind its picture, the one an expansion's painted area shows; an opaque one shows none.
  */
 

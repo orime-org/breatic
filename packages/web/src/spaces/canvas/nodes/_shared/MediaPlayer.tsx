@@ -535,7 +535,7 @@ export function MediaPlayer({
           onLoad={() => setCoverSettledFor(shownPoster)} onError={() => setCoverSettledFor(shownPoster)} /> : null}
         {skeleton ? <Skeleton data-testid='media-skeleton' className='pointer-events-none absolute inset-0 rounded-none' /> : null}
         {placedControls}
-        {/* Overlays read data-controls to keep clear of the control bar while it covers the bottom of the video. */}
+        {/* data-controls says whether the control bar covers the bottom of the video, for an overlay that must keep clear of it. */}
         <div data-testid='video-tool-overlay-host' data-controls={controlsOverVideo ? 'shown' : 'hidden'} className='group/media-overlay pointer-events-none absolute inset-0'>{children}</div>
         {snapshot?.status === 'failed' ? <p className='pointer-events-none absolute inset-0 grid place-content-center bg-card p-3 text-center text-xs text-status-error-foreground'>{t('canvas.miniTool.videoUI.mediaError')}</p> : null}
       </VideoPresentationSurface>

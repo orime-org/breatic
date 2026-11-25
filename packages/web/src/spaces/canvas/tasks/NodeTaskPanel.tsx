@@ -64,7 +64,7 @@ export interface NodeTaskPanelProps {
   isLoading: boolean;
   /** Whether the fetch failed. */
   isError: boolean;
-  /** Whether one failed task can run again: a failed upload whose File this session still holds, or a planned output a retry can run again. */
+  /** Whether one failed task can run again: a failed upload whose File this session still holds. */
   canRetry: (taskId: string) => boolean;
   /** Whether one request on one task's row is still waiting for the server. */
   isWaiting: (taskId: string, request: TaskActionRequest) => boolean;

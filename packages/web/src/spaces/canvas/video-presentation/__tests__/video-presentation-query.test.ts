@@ -11,8 +11,8 @@ const { apiGet, apiPost, toastError } = vi.hoisted(() => ({ apiGet: vi.fn(), api
 vi.mock('@web/data/api/request', async (original) => ({ ...await original<Record<string, unknown>>(), apiGet, apiPost }));
 vi.mock('@web/lib/toast', async (original) => ({ ...await original<Record<string, unknown>>(), toast: { error: toastError } }));
 const input = { projectId: 'project-a', canonicalURL: 'https://assets.example.test/canonical.webm', active: true };
-// §95 (design §3.5 web→server row): the read answers the selected bundle, the target policy's preparation and the selected
-// version's ledger; a repair answers the same response (fixtures migrated from the earlier state/status shapes, 4.4.5).
+// §95 (design §3.5 web→server row): the read answers the selected bundle and the target policy's preparation; a repair
+// answers the same response.
 const binding = presentedBinding(input.canonicalURL);
 const unknown = presentedResponse(binding);
 let client: QueryClient;

@@ -4,7 +4,7 @@
 /**
  * inner#1306 test plan §69 U02 (frames-split design §4.3 "浏览器取帧号与跳帧"): the browser's current frame number is the
  * last requestVideoFrameCallback mediaTime times fps, rounded and held to [0, frameCount − 1], never derived from
- * `currentTime`; every jump to a frame (player, split cuts, range handles, transition In/Out, preview cards) seeks the
+ * `currentTime`; every jump to a frame (split segment play, frame preview cards, thumbnails) seeks the
  * frame's midpoint (i + 0.5) / fps. Chrome 157 measured: jumping to i / fps shows the previous frame about a third of the
  * time, and `currentTime` is truncated to microseconds.
  */

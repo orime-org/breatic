@@ -355,7 +355,7 @@ export function VideoToolPanelContainer(props: VideoToolPanelContainerProps): Re
   const needsCurrent = toolId === 'video.extract-frames' && (current as VideoToolDraftById['video.extract-frames']).params.mode === 'current';
   // Cuts at or past the grid's end belong to another version's grid; they are shown to adjust and never planned.
   const outsideCuts = toolId === 'video.split' && grid !== null ? cutsOutsideGrid(grid.frameCount, (current as VideoToolDraftById['video.split']).params.cuts) : [];
-  // The planned split outputs while the frame table is usable, which the panel also states when over the cap (frames-split §10.7).
+  // The planned split outputs while the selected version's grid is usable, which the panel also states when over the cap (frames-split §10.7).
   const splitCount = toolId === 'video.split' && validSource && grid !== null && !stale && outsideCuts.length === 0 ? planVideoSplit(grid, (current as VideoToolDraftById['video.split']).params.cuts).length : null;
   const canRun = !readOnly && !stale && (!needsCurrent || selectedTime !== null) && validSource && invalidFields.size === 0 && onRunVideo !== undefined && (toolId !== 'video.split' || splitCount !== null);
   const splitOverCap = splitCount !== null && maxOutputs !== undefined && splitCount > maxOutputs;

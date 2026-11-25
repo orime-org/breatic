@@ -27,7 +27,7 @@ export interface TaskRowSituation {
   status: TaskStatus;
   /** Whether it left a result in the node's history. */
   hasResult: boolean;
-  /** Whether a failed task can run again: a failed upload whose File this session still holds, or a planned output a retry can run again. */
+  /** Whether a failed task can run again: a failed upload whose File this session still holds. */
   canRetry: boolean;
   /**
    * Whether this user may write. B4 admits a read-only member to the list,
