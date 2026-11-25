@@ -487,7 +487,9 @@ studio.get("/:slug/transfer", requireStudioRole("admin"), async (c) => {
     c.req.param("slug"),
   );
   return c.json({
-    data: live ? { ...live, expiresAt: live.expiresAt.toISOString() } : null,
+    data: live
+      ? { id: live.id, fromUserId: live.fromUserId, toUserId: live.toUserId, expiresAt: live.expiresAt.toISOString() }
+      : null,
   });
 });
 

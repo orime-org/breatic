@@ -24,7 +24,7 @@ import {
   getStreamRedis,
   getWorkerConfig,
   projectsRepo,
-  publishSpaceTasksChanged,
+  announceSpaceTasksVersion,
   reportGraceMs,
   timelineReportGraceMs,
   runningTaskLimitForStudio,
@@ -32,7 +32,7 @@ import {
   type DbTx,
 } from "@breatic/core";
 import * as timelineExecutionRepo from "@domain/timeline/timeline-execution.repo.js";
-import { canvasSpaceDocName, type TaskFailureReason, type TimelineExecution } from "@breatic/shared";
+import { canvasSpaceDocName, threeDSpaceDocName, type TaskFailureReason, type TimelineExecution } from "@breatic/shared";
 import * as taskRepo from "@domain/task/task.repo.js";
 import * as nodeTaskRepo from "@domain/node-task/node-task.repo.js";
 import * as nodeTaskService from "@domain/node-task/node-task.service.js";
@@ -160,7 +160,7 @@ async function renewHoldings(creditHold: string, always: boolean, tx: DbTx): Pro
  */
 async function publish(places: readonly TaskRowPlace[]): Promise<unknown[]> {
   const sends: Promise<void>[] = places.map(async (place) => {
-    if (place.nodeId === null) return publishSpaceTasksChanged(place.projectId, place.spaceId);
+    if (place.nodeId === null) return announceSpaceTasksVersion(threeDSpaceDocName(place.projectId, place.spaceId));
     const counts = await nodeTaskRepo.countsFor(place.projectId, place.nodeId);
     return emitNodeTaskCounts(getStreamRedis(), canvasSpaceDocName(place.projectId, place.spaceId), place.nodeId, counts, undefined);
   });

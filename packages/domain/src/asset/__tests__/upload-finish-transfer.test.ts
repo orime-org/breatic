@@ -33,6 +33,8 @@ const findGrantByKey = vi.hoisted(() => vi.fn());
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
+  // The finish tells the uploader its upload ended (#1580); this file looks at the Worker call only.
+  publishUploadEnded: vi.fn(async () => {}),
 }));
 vi.mock("@breatic/shared", async (importOriginal) => ({
   ...(await importOriginal<typeof sharedModule>()),
@@ -40,6 +42,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 }));
 vi.mock("@domain/asset/upload-deadline.js", () => ({
   uploadDeadlineByKey: vi.fn(async () => DEADLINE_AT),
+  uploadDeadline: vi.fn(async () => DEADLINE_AT),
 }));
 vi.mock("@domain/asset/upload-grant.repo.js", async (importOriginal) => ({
   ...(await importOriginal<typeof grantRepoModule>()),

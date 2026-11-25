@@ -76,6 +76,7 @@ import { mentionedReferenceUrls, poolCounts, poolKindOf, poolParams } from '@web
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { modelCatalogQuery } from '@web/data/model-catalog-query';
+import { useUploadingFocus } from '@web/spaces/canvas/focus/focus-uploading';
 import { useContentStable } from '@web/lib/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import {
@@ -466,16 +467,9 @@ function GeneratePanelBody({
   const focusPicking = useCanvasSession(
     (s) => s.pickSession?.nodeId === nodeId && s.pickSession?.purpose === 'focus',
   );
-  // In-flight focus uploads for THIS node → rail placeholders (#1782). The
-  // memo keys on the store array identity (immer replaces it on change).
+  // Focus crops uploading on THIS node → rail placeholders (#1782, #1580): this page's own until sent, then the node's.
   const pendingFocusAll = useCanvasSession((s) => s.pendingFocusUploads);
-  const pendingFocus = React.useMemo(
-    () =>
-      pendingFocusAll
-        .filter((p) => p.nodeId === nodeId)
-        .map((p) => ({ id: p.id, name: p.name })),
-    [pendingFocusAll, nodeId],
-  );
+  const pendingFocus = useUploadingFocus(pendingFocusAll, nodeId, nodes.find((n) => n.id === nodeId)?.data);
   const sessionStore = useCanvasSessionStore();
   const onAddReference = React.useCallback(() => {
     const session = sessionStore.getState().pickSession;

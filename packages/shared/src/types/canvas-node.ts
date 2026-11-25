@@ -169,9 +169,10 @@ export interface AttachRef {
  * the node it was cropped from — deleting, renaming, or regenerating the
  * source never changes an existing focus image. `name` is a snapshot of
  * the source node's display name at crop time and never follows renames.
- * Frontend-owned; the backend never reads or writes this field — focus
- * images only reach a generate request when the user `@`-mentions them
- * (same explicit-selection rule as node references).
+ * Collab adds an entry once the crop's upload is registered (#1580,
+ * `appendFocusImageCore`); the page only removes entries, and no other backend
+ * code reads the field — focus images only reach a generate request when the
+ * user `@`-mentions them (same explicit-selection rule as node references).
  */
 export interface FocusImage {
   /** Stable id (frontend-generated UUID v4); `@` mentions reference it. */
@@ -187,6 +188,17 @@ export interface FocusImage {
 }
 
 /**
+ * A focus crop still uploading, held in a node's `focusUploads` (#1580): the image it will become, without the address
+ * its registration gives, and the upload's deadline. It is the node's state, the way `taskCounts` is: collab writes it
+ * when the upload opens and takes it away when the upload ends, and copying a node leaves it behind. Like a task row it
+ * carries its own budget: once `deadlineAt` has passed, readers no longer count it as uploading.
+ */
+export type FocusUpload = Omit<FocusImage, "url"> & {
+  /** When the upload's two hours run out, in epoch milliseconds. */
+  deadlineAt: number;
+};
+
+/**
  * One reply under an annotation, stored in the sticky's `replies` Y.Array
  * (#1881) and serialized to this plain shape by `toJSON()`.
  *
@@ -194,8 +206,7 @@ export interface FocusImage {
  * would be a second copy of what the project roster already answers, and it
  * would keep saying whatever was true the day the reply was written.
  *
- * Frontend-owned, like {@link FocusImage}: the backend never reads or writes
- * it. It lives here because it is part of the wire shape of a node's data, and
+ * Frontend-owned: the backend never reads or writes it. It lives here because it is part of the wire shape of a node's data, and
  * that shape is described in one place.
  */
 export interface AnnotationReply {
@@ -583,11 +594,15 @@ export interface CanvasNodeFields {
      * empty at node birth (lazy creation is itself a whole-container LWW
      * race); a plain-array value (a pre-encoding doc / forged wire) is
      * converted on its first write. This WIRE type is unchanged either way:
-     * `toJSON()` serializes both encodings to the same plain array, and the
-     * backend never reads or writes the field. See {@link FocusImage} for
-     * the copy semantics. Empty / absent = none created.
+     * `toJSON()` serializes both encodings to the same plain array. Who writes
+     * it, and the copy semantics: {@link FocusImage}. Empty / absent = none created.
      */
     focusImages?: FocusImage[];
+    /**
+     * Focus crops on this node still uploading (#1580), shown in its reference list as running, the way `taskCounts`
+     * shows a task. A `Y.Array` that only collab writes; {@link FocusUpload}.
+     */
+    focusUploads?: FocusUpload[];
 
     // ─── Annotation (sticky) fields ─────────────────────────
     /**

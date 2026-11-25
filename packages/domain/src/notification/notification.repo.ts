@@ -17,11 +17,11 @@
  * See spec: access-permission design (2026-05-28) § 7.
  */
 
-import { and, desc, eq, gt, inArray, isNull, notInArray, or, sql } from "drizzle-orm";
+import { and, desc, eq, gt, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
 import { db } from "@breatic/core";
 import { notifications } from "@breatic/core";
 import { REQUEST_NOTIFICATION_TYPES, type NotificationEntity } from "@breatic/shared";
-import type { DbTx } from "@server/modules/conversation/conversation.repo.js";
+import type { DbTx } from "@breatic/core";
 
 /**
  * Allowed notification types. Mirrors the SQL CHECK constraint on
@@ -51,7 +51,7 @@ export type NotificationType =
 
 REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
 
-export type { DbTx } from "@server/modules/conversation/conversation.repo.js";
+export type { DbTx } from "@breatic/core";
 
 /**
  * Input for {@link create} — the fields a caller supplies. The repo
@@ -286,6 +286,21 @@ export async function markAllRead(userId: string): Promise<number> {
 }
 
 /**
+ * When a user's newest notification still there was made (#1580): with the unread count, what the Studio page's poll
+ * compares to tell the bell changed.
+ * @param userId - Inbox owner.
+ * @returns Its `created_at` as an ISO instant, or null when the user has none.
+ */
+export async function latestCreatedAt(userId: string): Promise<string | null> {
+  const rows = await db
+    .select({ at: sql<Date | null>`max(${notifications.createdAt})` })
+    .from(notifications)
+    .where(and(eq(notifications.userId, userId), isNull(notifications.deletedAt)));
+  const at = rows[0]?.at ?? null;
+  return at === null ? null : new Date(at).toISOString();
+}
+
+/**
  * Count unread notifications for a user — drives the red-dot badge.
  * @param userId - Inbox owner whose unread notifications to count
  * @returns Number of unread, non-deleted notifications
@@ -329,4 +344,19 @@ export async function findById(
     .where(and(eq(notifications.id, id), isNull(notifications.deletedAt)))
     .limit(1);
   return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * The people with a notification still there that comes due in `(from, to]` (#1580): read or not, it leaves their
+ * bell, so their pages are told.
+ * @param from - The window's open lower end.
+ * @param to - The window's closed upper end.
+ * @returns Their ids, each once.
+ */
+export async function listRecipientsDueBetween(from: Date, to: Date): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ userId: notifications.userId })
+    .from(notifications)
+    .where(and(isNull(notifications.deletedAt), gt(notifications.expiresAt, from), lte(notifications.expiresAt, to)));
+  return rows.map((row) => row.userId);
 }

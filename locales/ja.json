@@ -751,7 +751,6 @@
       "pickEnded": "選択を終了しました。",
       "pickEndedByPeer": "コラボレーターが選択を終了しました。",
       "focusSourceBusyByPeer": "コラボレーターが素材を処理しています。",
-      "focusCropDiscarded": "ノードが削除されたため、フォーカス画像は破棄されました。",
       "duration": "長さ",
       "durationSeconds": "{n}秒",
       "generateAudio": "音声を生成",

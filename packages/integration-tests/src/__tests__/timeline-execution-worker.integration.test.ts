@@ -62,7 +62,7 @@ import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, in
 import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE, timelineExecutionRepo } from "@breatic/domain";
 import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
 import { t } from "@breatic/shared";
-import { spaceTasksChangedChannel, webAnimationSpaceDocName } from "@breatic/shared";
+import { webAnimationSpaceDocName } from "@breatic/shared";
 import { WEB_ANIMATION_CONTAINER_CLASS, openModelKeys, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import {
@@ -291,7 +291,8 @@ interface Spies {
 function signalsFor(spies: Spies, fx: ExecutionFixture): { doc: number; meta: number } {
   const docName = webAnimationSpaceDocName(fx.projectId, fx.spaceId);
   const doc = spies.xadd.mock.calls.filter((call) => call.some((arg) => typeof arg === "string" && arg.includes(`"docName":"${docName}"`) && arg.includes("space-tasks-version"))).length;
-  const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, fx.projectId);
+  // The old Project channel, written out because its builder is gone; nothing may send on it.
+  const channel = `${env.REDIS_KEY_PREFIX}:project:${fx.projectId}:space-tasks:changed`;
   return { doc, meta: spies.publish.mock.calls.filter(([published]) => published === channel).length };
 }
 

@@ -42,9 +42,10 @@ import {
   MAIN, ON, SOURCE, V2, cid, clip, seededDoc, timeline, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import {
-  addEdge, addNode, addNodeFocusImage, getLyricsFragment, getPromptFragment, readCanvasGraph,
+  addEdge, addNode, getLyricsFragment, getPromptFragment, readCanvasGraph,
   removeEdge, removeElements, setNodeName, useCanvasSpace, _resetCanvasUndoCacheForTests,
 } from '@web/data/yjs/canvas-space';
+import { landFocusImage } from '@web/data/yjs/__tests__/helpers/focus-pool';
 import { _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
@@ -414,7 +415,7 @@ async function promptBoard(editors: 'prompt' | 'three', withCrop = false): Promi
     if (shot === undefined) throw new Error('no shot');
     holders.push({ nodeId: 'v', fragment: shot });
   }
-  if (withCrop) addNodeFocusImage(PID, SID, 'v', CROP);
+  if (withCrop) landFocusImage(PID, SID, 'v', CROP);
   const refs = holders.map(() => React.createRef<PromptEditorHandle>());
   render(
     <>

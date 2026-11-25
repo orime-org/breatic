@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The upload status query (inner#1367 §4.2a): finishing an upload answers 202
- * and the browser asks how each of its uploads ended, several in one request.
+ * How an upload ended (inner#1367 §4.2a, #1580): finishing answers 202, and the
+ * ending reaches the page through the `upload:ended` message or, on the Studio
+ * page, through its one poll, which asks about several uploads in one request.
  */
 
 /**
@@ -11,6 +12,12 @@
  * `DescribeJobs` takes, enough for every tile of one grid export in one round.
  */
 export const UPLOAD_STATUS_MAX_KEYS = 100;
+
+/**
+ * How long the Studio page waits between polls before any answer has named the interval, in ms (#1580): the default
+ * of `poll_interval_ms` in `config/studio-page.yaml`, which every answer then names as `nextPollMs`.
+ */
+export const STUDIO_PAGE_POLL_DEFAULT_MS = 2000;
 
 /** What a finished upload registered as. */
 export interface UploadStatusResult {

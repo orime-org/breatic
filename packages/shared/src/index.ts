@@ -63,6 +63,7 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
+  FocusUpload,
   AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,
@@ -129,8 +130,8 @@ export type {
   SpaceType,
   Space,
   ActivityNewControlEvent,
-  CreditsChangedControlEvent,
-  SpaceTasksChangedControlEvent,
+  UploadEndedEvent,
+  AssetPeaksReadyControlEvent,
   SceneLookSettledControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
@@ -169,8 +170,8 @@ export {
   SPACE_TASKS_TYPES,
   SPACE_TASKS_VERSION,
   activityNewChannel,
-  creditsChangedChannel,
-  spaceTasksChangedChannel,
+  uploadEndedChannel,
+  assetPeaksReadyChannel,
   sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
@@ -203,7 +204,10 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
-  SPACE_TASKS_CHANGED_SIGNAL,
+  ASSET_PEAKS_READY_SIGNAL,
+  NOTIFICATIONS_CHANGED_SIGNAL,
+  PROJECT_TRANSFER_CHANGED_SIGNAL,
+  UPLOAD_ENDED_SIGNAL,
   SCENE_LOOK_SETTLED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
@@ -240,7 +244,10 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
-  SpaceTasksChangedSignal,
+  AssetPeaksReadySignal,
+  NotificationsChangedSignal,
+  ProjectTransferChangedSignal,
+  UploadEndedSignal,
   SceneLookSettledSignal,
 } from "@shared/types/index.js";
 
@@ -878,6 +885,7 @@ export {
 } from "@shared/upload/session-token.js";
 export {
   UPLOAD_STATUS_MAX_KEYS,
+  STUDIO_PAGE_POLL_DEFAULT_MS,
   type UploadStatus,
   type UploadStatusResult,
 } from "@shared/upload/upload-status.js";
@@ -991,6 +999,21 @@ export {
   type TemplateStyleSetId,
 } from "@shared/canvas/template-styles.js";
 export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
+export {
+  FOCUS_IMAGE_UPLOAD_EVENT_TYPE,
+  MAX_FOCUS_DIMENSION,
+  MAX_FOCUS_ENTRIES,
+  MAX_FOCUS_ID,
+  MAX_FOCUS_NAME,
+  MAX_FOCUS_URL,
+  focusImageTicketSchema,
+  isValidFocusImage,
+  isValidFocusUpload,
+  validFocusImages,
+  validFocusUploads,
+  type FocusImageTicket,
+  type FocusImageUploadEvent,
+} from "@shared/canvas/focus-images.js";
 export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
 export {
   STAND_IN_ON,

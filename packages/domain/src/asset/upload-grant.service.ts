@@ -25,7 +25,7 @@
 
 import { currentConsent, storageKey, type DbTx } from "@breatic/core";
 import { resolveOwnerStudioId } from "@domain/asset/asset.service.js";
-import { issueGrant, type GrantAssetSource, type SceneLookTarget } from "@domain/asset/upload-grant.repo.js";
+import { issueGrant, type GrantAssetSource, type GrantFocusImage, type SceneLookTarget } from "@domain/asset/upload-grant.repo.js";
 
 /** Where an upload lands: a project, or a studio that has no project in it. */
 export type UploadTarget =
@@ -53,6 +53,7 @@ export type UploadTarget =
  * @param params.context - Node, space, and provenance for the report to use.
  * @param params.context.nodeId - Node the bytes land on, when there is one.
  * @param params.context.spaceId - The Space holding that node, or the Document holding the block `documentUploadId` names.
+ * @param params.context.focusImage - The focus image the bytes become, when they are a focus crop.
  * @param params.context.source - What started this upload.
  * @param params.context.toolName - Mini-tool that produced the bytes, if any.
  * @param params.context.derived - True when the bytes came out of another asset.
@@ -76,6 +77,7 @@ export async function issueUploadGrant(params: UploadTarget & {
   context: {
     nodeId?: string | null;
     documentUploadId?: string | null;
+    focusImage?: GrantFocusImage | null;
     spaceId?: string | null;
     source?: string | null;
     toolName?: string | null;

@@ -190,6 +190,8 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * pool; only @-mentioned crops reach the execute payload.
    */
   focusImages?: FocusImage[];
+  /** Focus crops still uploading (#1580, wire `data.focusUploads`), written by collab; shown as running in the rail. */
+  focusUploads?: unknown;
 }
 
 // No body here, on purpose (#1774). The text is a shared fragment on the
@@ -390,6 +392,7 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
     soundVideo: data.soundVideo,
     moodImageUrl: data.moodImageUrl,
     focusImages: data.focusImages,
+    focusUploads: data.focusUploads,
     templateNode: data.templateNode,
   };
   switch (type) {

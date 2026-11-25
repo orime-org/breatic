@@ -21,7 +21,8 @@
 
 import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants, type DbTx } from "@breatic/core";
-import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
+import { focusImageTicketSchema, type ConsentSnapshot, type FocusImageTicket, type StudioAssetEntity } from "@breatic/shared";
+import { z } from "zod";
 
 /**
  * What a grant says its upload is: an asset source, or `"transfer"` for a
@@ -71,6 +72,8 @@ export interface UploadGrant {
   nodeId: string | null;
   /** The Document body block these bytes land in, by its `uploadId`. */
   documentUploadId: string | null;
+  /** The focus image these bytes become, in the pool of the node it names (#1580). */
+  focusImage: GrantFocusImage | null;
   projectId: string | null;
   spaceId: string | null;
   source: string | null;
@@ -106,6 +109,22 @@ export async function scanConsumedMediaGrants(cursor: string | null, limit: numb
   return rows.map(toEntity);
 }
 
+/** A focus crop's target as its grant records it: the canvas Space, and what the ticket named. */
+export type GrantFocusImage = FocusImageTicket & { spaceId: string };
+
+const grantFocusImageSchema = focusImageTicketSchema.extend({ spaceId: z.string().uuid() });
+
+/**
+ * Read the stored focus image; only our ticket writes it, so anything else reads as none.
+ * @param raw - The column value.
+ * @returns The target, or null.
+ */
+function readFocusImage(raw: unknown): GrantFocusImage | null {
+  if (raw === null) return null;
+  const parsed = grantFocusImageSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
+}
+
 /**
  * Map a Drizzle row to an {@link UploadGrant}.
  * @param row - Raw row selected from `upload_grants`.
@@ -125,6 +144,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     expiresAt: row.expiresAt,
     nodeId: row.nodeId,
     documentUploadId: row.documentUploadId,
+    focusImage: readFocusImage(row.focusImage),
     projectId: row.projectId,
     spaceId: row.spaceId,
     source: row.source,
@@ -156,6 +176,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  * @param input.context - Where these bytes are going and what started them.
  * @param input.context.nodeId - Node the bytes land on, when there is one.
  * @param input.context.documentUploadId - The Document body block the bytes land in, when there is one.
+ * @param input.context.focusImage - The focus image the bytes become, when they are a focus crop.
  * @param input.context.projectId - Project that node belongs to.
  * @param input.context.spaceId - The Space holding that node, or the Document holding the block `documentUploadId` names.
  * @param input.context.source - What started this upload.
@@ -182,6 +203,7 @@ export async function issueGrant(input: {
   context: {
     nodeId?: string | null;
     documentUploadId?: string | null;
+    focusImage?: GrantFocusImage | null;
     projectId?: string | null;
     spaceId?: string | null;
     source?: string | null;
@@ -204,6 +226,7 @@ export async function issueGrant(input: {
       expiresAt: input.expiresAt,
       nodeId: input.context.nodeId ?? null,
       documentUploadId: input.context.documentUploadId ?? null,
+      focusImage: input.context.focusImage ?? null,
       projectId: input.context.projectId ?? null,
       spaceId: input.context.spaceId ?? null,
       source: input.context.source ?? null,

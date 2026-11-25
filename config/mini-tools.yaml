@@ -110,7 +110,3 @@ join_max_clips: 20
 # downloads.
 waveform_max_seconds: 600
 waveform_max_bytes: 200000000
-# A band over those, open before its peaks are written, reads them again this
-# often for this long.
-waveform_peaks_retry_ms: 5000
-waveform_peaks_retry_max_ms: 600000

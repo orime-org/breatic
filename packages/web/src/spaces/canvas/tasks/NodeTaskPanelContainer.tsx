@@ -231,7 +231,7 @@ function OpenNodeTaskPanel({
   const cancel = React.useCallback(
     (taskId: string): void => {
       const request = canvasApi
-        .cancelTask(taskId, projectId)
+        .cancelTask(taskId)
         .then(({ counts }) => {
           // A 3D Space's own row answers no node counts; this list is a node's.
           if (counts !== null) rowLeft(taskId, counts);

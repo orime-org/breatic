@@ -33,7 +33,7 @@ import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/re
 import {
   deriveReferences, focusToRailItem, type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared';
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { useDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';

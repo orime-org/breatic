@@ -12,7 +12,6 @@ const CFG = {
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 1000,
   uploadIdleTimeoutMs: 60000,
-  uploadStatusPollSeconds: 2,
   assetUrlPrefix: 'https://cdn/',
 };
 

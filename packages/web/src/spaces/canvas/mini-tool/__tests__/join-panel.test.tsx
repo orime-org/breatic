@@ -47,8 +47,6 @@ const LIMITS = {
   understandLongMediaMaxBytes: 1,
   waveformMaxSeconds: 1,
   waveformMaxBytes: 1,
-  waveformPeaksRetryMs: 1,
-  waveformPeaksRetryMaxMs: 1,
   joinMaxClips: 3,
 } as CanvasLimits;
 
