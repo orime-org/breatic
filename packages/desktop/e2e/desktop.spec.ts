@@ -15,7 +15,7 @@
  */
 
 import { execFileSync, spawn } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import { existsSync, mkdtempSync } from "node:fs";
 import { createServer, type IncomingMessage, type RequestListener, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
@@ -313,6 +313,29 @@ test("a link to another site goes to the system browser and the window stays", a
   await expect.poll(() => app.evaluate(() => (globalThis as { opened?: string[] }).opened ?? [])).toEqual(["https://example.com/"]);
   expect(page.url()).toBe(before);
   expect(appWindows(app)).toHaveLength(1);
+  await app.close();
+});
+
+test("Back to home on a missing project's page stays in the window and opens the Studio", async () => {
+  const { email, password } = await account();
+  const app = await launch(freshData());
+  const page = await windowWhere(app, (url) => url.startsWith(SERVER));
+  await page.getByLabel("Email").fill(email);
+  await page.getByRole("textbox", { name: "Password" }).fill(password);
+  await page.getByRole("button", { name: "Sign in" }).click();
+  await expect(page).toHaveURL(/\/studio/, { timeout: 30_000 });
+  await app.evaluate(({ shell }) => {
+    const opened: string[] = [];
+    (globalThis as { opened?: string[] }).opened = opened;
+    shell.openExternal = async (url: string) => {
+      opened.push(url);
+    };
+  });
+  await page.goto(`${SERVER}/project/${randomUUID()}`);
+  await expect(page.getByTestId("not-found-page")).toBeVisible({ timeout: 30_000 });
+  await page.getByRole("link", { name: "Back to home" }).click();
+  await expect(page).toHaveURL(`${SERVER}/studio`, { timeout: 30_000 });
+  expect(await app.evaluate(() => (globalThis as { opened?: string[] }).opened ?? [])).toEqual([]);
   await app.close();
 });
 
