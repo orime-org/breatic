@@ -4,8 +4,9 @@
 /**
  * The one read of a 3D Space's task list that the task panel, the tab spinner and the Tasks button share (inner#2061
  * design 5.5, 7.3). It counts the rows the server holds as running, a row waiting for a free running slot included;
- * it is read again only when something invalidates it (the document's change version, a row action), never on a
- * timer; and a read that fails keeps the last rows it had.
+ * it is read again when something invalidates it (the document's change version, a row action), or when a reader
+ * mounts or the network reconnects after the cached list has gone stale, never on a timer; and a read that fails keeps
+ * the last rows it had.
  */
 
 import * as React from 'react';

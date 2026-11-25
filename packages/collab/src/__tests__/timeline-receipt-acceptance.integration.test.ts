@@ -181,7 +181,7 @@ async function storeAndAccept(documentName: string, state: Uint8Array): Promise<
  * for its document.
  * @param projectId - The Project.
  * @param spaceId - The Space.
- * @returns Both.
+ * @returns The stream changes for its document, as `doc`.
  */
 async function signalsFor(projectId: string, spaceId: string): Promise<{ doc: Record<string, unknown>[] }> {
   await new Promise((resolve) => setTimeout(resolve, 300));
