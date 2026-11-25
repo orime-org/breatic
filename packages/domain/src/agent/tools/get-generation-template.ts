@@ -37,6 +37,8 @@ const HOW_TO_SEND =
   "A node sent in any other mode sends a prompt, a template's shots written as one. " +
   "A template node with lines is a dialogue: send it lines, one per turn, each { speaker, prompt } with the speaker the template gives and only the words said, " +
   "no name or colon in front, and no prompt. " +
+  "A template's written text node (a script, lyrics) is sent as a written text node with { id, key }, its words as its prompt: " +
+  "the template's words rewritten in the user's language with their story in it, every tweak segment filled the same way. " +
   "A template with steps gets a text node listing them when it is placed, so write no node for them. " +
   "For several takes of one template, each take is an anchor carrying { id } with its own words; an input they share is one node wired or filled into every take.";
 
@@ -62,7 +64,12 @@ export function describeTemplate(template: GenerationTemplate, style?: string): 
   const nodes = template.nodes.map((node) => {
     const shots = node.role === "generate" && node.shots !== undefined ? `, ${String(node.shots.length)} shots` : "";
     const params = node.role === "generate" && node.params !== undefined && Object.keys(node.params).length > 0 ? `, params ${JSON.stringify(node.params)}` : "";
-    const what = node.role === "generate" ? `generate ${node.type}, ${node.mode}, ${node.model}${shots}${params}` : `source ${node.type} holding ${node.resource}`;
+    const what =
+      node.role === "generate"
+        ? `generate ${node.type}, ${node.mode}, ${node.model}${shots}${params}`
+        : node.role === "written"
+          ? "written text, holding the words given under Prompts"
+          : `source ${node.type} holding ${node.resource}`;
     // A downstream node is said so, and one no edge touches is told how its tag ties it to the anchor (inner#1825).
     const standing = node.key === anchor.key ? "" : keyStanding(template, node.key);
     const where =
@@ -83,7 +90,7 @@ export function describeTemplate(template: GenerationTemplate, style?: string): 
       : fed;
   });
   const steps = skeleton.steps.map((step) => t(`canvas.template.${template.id}.step.${step}`));
-  const prompts = template.nodes.flatMap((node) => (node.role === "generate" ? [`"${node.key}": ${templateSegmentsText(template, node.key, style)}`] : []));
+  const prompts = template.nodes.flatMap((node) => (node.role === "source" ? [] : [`"${node.key}": ${templateSegmentsText(template, node.key, style)}`]));
   return (
     styleLead(template, style) +
     `${template.id}: ${template.agentNote}. Nodes: ${nodes.join("; ")}. ` +

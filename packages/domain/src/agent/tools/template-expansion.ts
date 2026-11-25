@@ -78,12 +78,12 @@ export function quoted(names: readonly string[]): string {
 }
 
 /**
- * A template generate node's prompt, or its shots or lines when it has them, as the
- * segments a proposal sends: words as they are, each reference mark as a ref
+ * A template generate node's prompt, or its shots or lines when it has them,
+ * or a text node's words (inner#1824, CAP-3), as the segments a proposal sends: words as they are, each reference mark as a ref
  * naming what is wired in there by its key, the number left for the agent to
  * fill since it knows which node it wired in for each.
  * @param template - The template.
- * @param key - The generate node's key; the anchor when left out.
+ * @param key - The node's key; the anchor when left out.
  * @param style - The picked style, whose paragraph follows a node that takes one (inner#1817).
  * @returns The segments, written out as the agent would send them.
  * @throws {never} Never.
@@ -163,6 +163,17 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
   if (rest.role === "source") {
     if (rest.material !== undefined) {
       return refuse("template-resource-material", `"${rest.name}" is template "${template.id}"'s "${key}", which lands holding the template's own file, so it takes no material.`);
+    }
+    return { ok: true, node: templateNodeDefaults(template, key, rest) };
+  }
+  if (rest.role === "written") {
+    // A text node is sent holding its words (inner#1824, CAP-3).
+    if (rest.prompt === undefined || rest.prompt.length === 0) {
+      return refuse(
+        "template-no-text",
+        `"${rest.name}" names template "${template.id}" and sends no words. The template's text, to rewrite in the user's language with their story in it: ${templateSegmentsText(template, key)}.`,
+        fixOn(at, "write its words."),
+      );
     }
     return { ok: true, node: templateNodeDefaults(template, key, rest) };
   }

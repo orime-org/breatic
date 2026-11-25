@@ -18,10 +18,12 @@ import {
   templatesFor,
   type GenerationTemplate,
   type TemplateGenerateNode,
+  type TemplateTextNode,
 } from '@shared/canvas/generation-templates.js';
 import { templateMarkTargets, templateSkeleton } from '@shared/canvas/template-expansion.js';
 import { storyboardSpec, MULTI_SHOT_MODE } from '@shared/storyboard.js';
 import type { ParamDescriptor } from '@shared/types/model-catalog.js';
+import { PANEL_EDITOR_PARAM } from '@shared/types/generate-panel.js';
 import { TEMPLATE_GUIDE_KEY } from '@shared/types/canvas-proposal.js';
 import { setLocale, setLocaleMessages } from '@shared/i18n/index.js';
 import { MAX_NODE_NAME_LEN } from '@shared/types/canvas-node.js';
@@ -78,6 +80,21 @@ const anchorOf = (template: GenerationTemplate): TemplateGenerateNode | undefine
 
 const textKey = (template: GenerationTemplate, rest: string): string => `canvas.template.${template.id}.${rest}`;
 
+/** A template's text nodes (inner#1824, CAP-3). */
+const textNodesOf = (template: GenerationTemplate): TemplateTextNode[] =>
+  template.nodes.filter((node): node is TemplateTextNode => node.role === 'written');
+
+/**
+ * Every key under a template's locale entry that holds words the user edits:
+ * each generate node's prompt, shots or lines, and each text node's text.
+ * @param template - The template.
+ * @returns The absolute keys.
+ */
+const editedKeysOf = (template: GenerationTemplate): string[] => [
+  ...generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest))),
+  ...textNodesOf(template).map((node) => textKey(template, `node.${node.key}.text`)),
+];
+
 /**
  * Where a generate node's words live under the template's locale entry: one
  * key per shot (`shot.<n>`, from 1) for a node with shots, one per line
@@ -126,7 +143,7 @@ const poolNamesOf = (locale: string, template: GenerationTemplate, key: string):
     .map((input) => raw(locale, textKey(template, `input.${input.key}.name`))),
   ...template.edges
     .filter((edge) => edge.to === key && (edge.into ?? 'pool') === 'pool')
-    .map((edge) => raw(locale, textKey(template, `node.${edge.from}.name`))),
+    .map((edge) => raw(locale, textKey(template, edge.from === template.anchor ? 'name' : `node.${edge.from}.name`))),
 ];
 
 /**
@@ -207,6 +224,15 @@ const COMICS_IMAGES = ['storyboard-grid-25', 'storyboard-sheet-9', 'comic-page',
 const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
 
 /** The fight and action templates (inner#1818), in registry order. */
+/** The short drama templates (inner#1824), in registry order. */
+const DRAMA = ['scene-plate', 'drama-single-scene', 'short-drama-reversal', 'emotional-dialogue-timeline', 'horror-suspense', 'short-drama-episode'];
+
+/** The short drama templates anchored on a video node. */
+const DRAMA_VIDEOS = DRAMA.filter((id) => id !== 'scene-plate');
+
+/** The short drama templates' text nodes (inner#1824, CAP-3), by template. */
+const DRAMA_TEXT_NODES: Record<string, string[]> = { 'short-drama-episode': ['script'] };
+
 const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked', 'hero-orbit-reveal', 'bullet-time-moment', 'impact-frame-hit'];
 
 /** The templates that remix videos the user already has (inner#1819), in registry order. */
@@ -285,7 +311,7 @@ const SOUND = [
 const SOUND_AUDIO = SOUND.filter((id) => id !== 'clip-ambience-foley');
 
 /** The templates the plan's G13, G15, G17, G18 and G19 give no case for offering unasked. */
-const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short', 'epic-fantasy-scifi'];
+const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short', 'epic-fantasy-scifi', 'horror-suspense'];
 
 /**
  * The template nodes a generate node's words carry a note for, counted the
@@ -298,7 +324,7 @@ const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fi
  */
 const notedArrivals = (template: GenerationTemplate, key: string): string[] =>
   template.edges
-    .filter((edge) => edge.to === key)
+    .filter((edge) => edge.to === key && !textNodesOf(template).some((node) => node.key === edge.from))
     .filter((edge) => (edge.into ?? 'pool') !== 'pool' || generateNodes(template).some((node) => node.key === edge.from))
     .map((edge) => edge.from);
 
@@ -341,6 +367,7 @@ function expectEveryString(template: GenerationTemplate): void {
     ...names,
     'description',
     ...generateNodes(template).flatMap((node) => wordKeysOf(template, node)),
+    ...textNodesOf(template).map((node) => `node.${node.key}.text`),
     ...template.inputs.map((input) => `input.${input.key}.note`),
     ...template.steps.map((step) => `step.${step}`),
   ];
@@ -369,6 +396,7 @@ describe('generation templates', () => {
       'expression-sheet',
       'character-design-from-text',
       ...COMICS_IMAGES,
+      'scene-plate',
       'product-hero-still',
       'dish-hero-still',
       'room-staging-still',
@@ -383,6 +411,7 @@ describe('generation templates', () => {
       'identity-locked-sequence',
       'character-showcase-orbit',
       ...COMICS_VIDEOS,
+      ...DRAMA_VIDEOS,
       ...FIGHT,
       ...ANIMATION,
       ...ECOMMERCE,
@@ -660,6 +689,23 @@ describe('generation templates', () => {
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
         },
       },
+      'scene-plate': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } } },
+      'drama-single-scene': {
+        ...t2v(15, '16:9'),
+        scene: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } },
+      },
+      'short-drama-reversal': t2v(15),
+      'emotional-dialogue-timeline': {
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 10 } },
+        line: { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: {} },
+      },
+      'horror-suspense': t2v(15, '16:9'),
+      'short-drama-episode': {
+        ...t2v(15),
+        'scene-2': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        'scene-3': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        cast: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
     };
     // The sound templates' settings are checked key by key under their own describe below.
     expect(GENERATION_TEMPLATES.map((template) => template.id).sort()).toEqual([...Object.keys(expected), ...SOUND].sort());
@@ -753,11 +799,12 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'fight', 'animation', 'ecommerce', 'product-showcase', 'promo', 'food', 'spaces', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'drama', 'fight', 'animation', 'ecommerce', 'product-showcase', 'promo', 'food', 'spaces', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
+      ...Object.fromEntries(DRAMA.map((id) => [id, 'drama'])),
       ...Object.fromEntries(FIGHT.map((id) => [id, 'fight'])),
       ...Object.fromEntries(ANIMATION.map((id) => [id, 'animation'])),
       ...Object.fromEntries(ECOMMERCE.map((id) => [id, 'ecommerce'])),
@@ -819,6 +866,7 @@ describe('creative goals and triggers', () => {
     expect(templateGoalsFor('image').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['costume-sheet', 'character-bible', 'expression-sheet', 'character-design-from-text']],
       ['comics-storyboards', COMICS_IMAGES],
+      ['drama', ['scene-plate']],
       ['product-showcase', ['product-hero-still']],
       ['food', ['dish-hero-still']],
       ['spaces', ['room-staging-still']],
@@ -830,6 +878,7 @@ describe('creative goals and triggers', () => {
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
       ['comics-storyboards', COMICS_VIDEOS],
+      ['drama', DRAMA_VIDEOS],
       ['fight', FIGHT],
       ['animation', ANIMATION],
       ['ecommerce', ECOMMERCE],
@@ -856,7 +905,7 @@ describe('creative goals and triggers', () => {
 describe('generation template registry checks', () => {
   it('carries the same marks in the same order in every language, for every template prompt', () => {
     for (const template of GENERATION_TEMPLATES) {
-      for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
+      for (const key of editedKeysOf(template)) {
         const reference = marksOf(raw('en', key) ?? '');
         for (const locale of LOCALES) expect(marksOf(raw(locale, key) ?? ''), `${key} ${locale}`).toEqual(reference);
       }
@@ -868,7 +917,7 @@ describe('generation template registry checks', () => {
     const cjk = '[\\u3040-\\u30ff\\u3400-\\u9fff\\u3000-\\u303f\\uff00-\\uffef]';
     const spaced = new RegExp(`${cjk} \\{✏️|\\} ${cjk}`, 'u');
     for (const template of GENERATION_TEMPLATES) {
-      for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
+      for (const key of editedKeysOf(template)) {
         for (const locale of ['zh-CN', 'zh-TW', 'ja']) expect(raw(locale, key) ?? '', `${key} ${locale}`).not.toMatch(spaced);
       }
     }
@@ -1608,5 +1657,110 @@ describe('template inputs that go into a slot (inner#1825, CAP-1)', () => {
 describe('poster templates (inner#1809)', () => {
   it('tells the agent that the name and its annotations stay in the picture, not the name alone', () => {
     expect(byId('name-as-world-typography')?.agentNote).toContain('the name and the annotations must stay in the picture, the name spelled and shaped exactly right, and no other text appears');
+  });
+});
+
+describe('template text nodes (inner#1824, CAP-3)', () => {
+  it('has the text nodes the short drama templates give, so the checks below run on something', () => {
+    const found = Object.fromEntries(GENERATION_TEMPLATES.flatMap((template) => {
+      const keys = textNodesOf(template).map((node) => node.key);
+      return keys.length === 0 ? [] : [[template.id, keys]];
+    }));
+    expect(found).toEqual(DRAMA_TEXT_NODES);
+  });
+
+  it('wires a text node only out, into the pool or the lyrics box of a generate node whose model has one, and never anchors on one', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      const generate = new Map(generateNodes(template).map((node) => [node.key, node]));
+      for (const text of textNodesOf(template)) {
+        const where = `${template.id} ${text.key}`;
+        expect(template.anchor, where).not.toBe(text.key);
+        expect(template.edges.some((edge) => edge.to === text.key), `${where} is fed`).toBe(false);
+        expect(template.inputs.some((input) => feedsOf(template, input).includes(text.key)), `${where} is fed an input`).toBe(false);
+        const out = template.edges.filter((edge) => edge.from === text.key);
+        expect(out.length, `${where} feeds nothing`).toBeGreaterThan(0);
+        for (const edge of out) {
+          const target = generate.get(edge.to);
+          expect(target, `${where} into ${edge.to}`).toBeDefined();
+          if (edge.into === 'pool') continue;
+          expect(edge.into, `${where} into ${edge.to}`).toBe(PANEL_EDITOR_PARAM);
+          expect(MODELS.get(target?.model ?? '')?.params[PANEL_EDITOR_PARAM]?.fill, `${where}: ${String(target?.model)} has a lyrics box`).toBe('editor');
+        }
+      }
+    }
+  });
+
+  it('writes a text node\'s words with no reference mark and no note, in every language', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const text of textNodesOf(template)) {
+        for (const locale of LOCALES) {
+          const kinds = marksOf(raw(locale, textKey(template, `node.${text.key}.text`)) ?? '');
+          expect(kinds.filter((kind) => kind !== 'tweak'), `${template.id} ${text.key} ${locale}`).toEqual([]);
+        }
+      }
+    }
+  });
+});
+
+describe('short drama templates (inner#1824)', () => {
+  /**
+   * A short drama template by id, failing the test when it is not registered.
+   * @param id - The id.
+   * @returns The template.
+   */
+  const drama = (id: string): GenerationTemplate => {
+    const template = byId(id);
+    if (!template) throw new Error(`template ${id} is not registered`);
+    return template;
+  };
+
+  it('sets the episode script out as a setup block and one block per scene, a blank line before each, in every language', () => {
+    const scenes = drama('short-drama-episode').nodes.filter((node) => node.role === 'generate' && node.type === 'video').length;
+    for (const locale of LOCALES) {
+      const blocks = (raw(locale, 'canvas.template.short-drama-episode.node.script.text') ?? '').split('\n\n');
+      expect(blocks.length, locale).toBe(1 + scenes);
+      expect(blocks.every((block) => block.trim().length > 0), locale).toBe(true);
+    }
+  });
+
+  /** Edges in one order, to compare as a set. */
+  const sorted = (edges: readonly GenerationTemplate['edges'][number][]): GenerationTemplate['edges'][number][] =>
+    [...edges].sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`));
+
+  it('names the drama goal in all five languages', () => {
+    const NAMES: Record<string, string> = {
+      en: 'Short dramas & story scenes',
+      'zh-CN': '短剧与剧情',
+      'zh-TW': '短劇與劇情',
+      ja: 'ショートドラマとドラマシーン',
+      ko: '숏드라마와 극 장면',
+    };
+    for (const locale of LOCALES) expect(raw(locale, 'canvas.template.goal.drama'), locale).toBe(NAMES[locale]);
+  });
+
+  it('wires the episode\'s script and cast sheet into every scene\'s pool and each scene into the next, the cast sheet fed the character', () => {
+    const episode = drama('short-drama-episode');
+    expect(episode.nodes.find((node) => node.key === 'script')).toEqual({ key: 'script', role: 'written', type: 'text' });
+    const scenes = ['result', 'scene-2', 'scene-3'];
+    expect(sorted(episode.edges)).toEqual(
+      sorted([
+        ...scenes.map((to) => ({ from: 'script', to, into: 'pool' })),
+        ...scenes.map((to) => ({ from: 'cast', to, into: 'pool' })),
+        { from: 'result', to: 'scene-2', into: 'pool' },
+        { from: 'scene-2', to: 'scene-3', into: 'pool' },
+      ]),
+    );
+    expect(episode.inputs).toEqual([{ key: 'character', type: 'image', feeds: ['cast'] }]);
+    expect(episode.steps).toEqual(['more', 'join']);
+  });
+
+  it('feeds the single scene and the reversal two characters, the dialogue scene and the horror scene one', () => {
+    expect(drama('scene-plate').inputs).toEqual([]);
+    expect(drama('drama-single-scene').inputs).toEqual([{ key: 'character-a', type: 'image' }, { key: 'character-b', type: 'image' }]);
+    expect(drama('drama-single-scene').edges).toEqual([{ from: 'scene', to: 'result', into: 'pool' }]);
+    expect(drama('short-drama-reversal').inputs).toEqual([{ key: 'character-a', type: 'image' }, { key: 'character-b', type: 'image' }]);
+    expect(drama('emotional-dialogue-timeline').inputs).toEqual([{ key: 'character', type: 'image' }]);
+    expect(drama('emotional-dialogue-timeline').edges).toEqual([{ from: 'line', to: 'result', into: 'pool' }]);
+    expect(drama('horror-suspense').inputs).toEqual([{ key: 'character', type: 'image' }]);
   });
 });

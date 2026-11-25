@@ -1478,6 +1478,7 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "drama": "Short dramas & story scenes",
         "fight": "Fights & action",
         "animation": "Animated shorts",
         "ecommerce": "E-commerce ads",
@@ -1585,6 +1586,108 @@
             "name": "Comic page",
             "note": "Add your comic page first, then generate."
           }
+        }
+      },
+      "scene-plate": {
+        "name": "Scene plate",
+        "description": "An empty set to stage your scenes in",
+        "prompt": "A 16:9 widescreen establishing picture of an empty set for a drama, no people in it: {✏️ the place, e.g. a cramped hospital break room at night}. It shows clearly where people would stand and move: the floor, the walls and the key furniture and props, {✏️ the key props, e.g. a vending machine, a worn sofa and a window onto the corridor}. One light source: {✏️ the light, e.g. a single flickering fluorescent tube above the sofa}, with where its light falls and where the shadows lie. Shot at eye level with a wide lens, everything in focus from front to back. Lived-in, realistic detail, like a still from a film. No people, no text."
+      },
+      "drama-single-scene": {
+        "name": "Two-person drama scene",
+        "description": "Two characters play one scene with lines",
+        "prompt": "(💡 Generate Set first)A 15-second widescreen drama scene with sound in one continuous shot, with exactly two people: the first is the person in [📎 Character A], the second is the person in [📎 Character B]. Take from each picture only that person: face, hair, build and clothes. They are in the place shown in [📎 Set]: take from it only the room, its furniture and its light, and do not open on it as a first frame. Situation: {✏️ who they are to each other and what is at stake, e.g. two sisters; the elder has hidden their mother's illness}. The first frame already shows both in place: {✏️ where each one stands, e.g. the elder sister at the window, the younger in the doorway}. 0–4 s: {✏️ the first beat, e.g. the younger sister holds up a hospital letter}. 4–9 s: {✏️ the second beat, e.g. the elder sister turns, sees it and freezes}. 9–15 s: {✏️ the last beat, e.g. the elder sister answers, then looks away}. They speak {✏️ the language, e.g. English}, every line eight words or fewer: {✏️ the lines, e.g. the younger: \"How long have you known?\" The elder: \"Since spring.\"}. Each reaction follows from what the other just did: a look, a pause, then the move. The camera: medium shots, slowly pushing in on whoever speaks. One light source: {✏️ the light, e.g. grey daylight from the window}. Sound: the quiet of the room, their voices, cloth and breath. No music, no text on screen.",
+        "node": {
+          "scene": {
+            "name": "Set",
+            "prompt": "A 16:9 widescreen picture of the empty set this scene is played in, no people in it: {✏️ the place, e.g. a small kitchen at dusk}. It shows clearly where the two would stand and move: the floor, the walls and the key furniture and props, {✏️ the key props, e.g. a table with two chairs and a window over the sink}. One light source: {✏️ the light, e.g. grey daylight from the window}, with where its light falls and where the shadows lie. Shot at eye level with a wide lens, everything in focus from front to back. Lived-in, realistic detail, like a still from a film. No people, no text."
+          }
+        },
+        "input": {
+          "character-a": {
+            "name": "Character A",
+            "note": "Add a picture of the first character first."
+          },
+          "character-b": {
+            "name": "Character B",
+            "note": "Add a picture of the second character first."
+          }
+        }
+      },
+      "short-drama-reversal": {
+        "name": "Short drama twist",
+        "description": "A hook, rising tension, one reversal",
+        "prompt": "A 15-second vertical short-drama opening with sound in one continuous shot, between two people: the first is the person in [📎 Character A], the second is the person in [📎 Character B]; take from each picture only that person's face, hair, build and clothes. Place: {✏️ the place, e.g. a luxury car showroom}. 0–2 s: the premise is clear at once: {✏️ the setup, e.g. a salesman sneers at a plainly dressed woman}. 2–6 s: it gets worse, in at most three steps: {✏️ the escalation, e.g. he blocks her way, mocks her shoes, then calls security}. 6–10 s: the tension shows on both faces just before the turn: {✏️ the sign before the turn, e.g. she calmly takes out her phone and makes one call}. 10–13 s: one reversal: {✏️ the reversal, e.g. the manager rushes in and bows to her: she owns the company}. 13–15 s: the camera holds on the face of the one who lost, {✏️ the reaction, e.g. the salesman's smile freezes and drains away}, and the clip ends one beat later. Faces large in frame, the camera pushing in at each turn. One light source: {✏️ the light, e.g. bright showroom spotlights}. Sound: their voices, a sharp musical sting on the reversal. No text on screen.",
+        "input": {
+          "character-a": {
+            "name": "Character A",
+            "note": "Add a picture of the first character first."
+          },
+          "character-b": {
+            "name": "Character B",
+            "note": "Add a picture of the second character first."
+          }
+        }
+      },
+      "emotional-dialogue-timeline": {
+        "name": "Emotional close-up",
+        "description": "One spoken line played as a close-up",
+        "prompt": "(💡 Generate Line first)A 10-second vertical close-up performance in one shot. The person is the one in [📎 Character]: face, hair and clothes exactly as in the picture. They say the words of [📎 Line], lips matching every word; that recording is the only voice. Situation: {✏️ what has just happened, e.g. she has just learned he is leaving for good}. The performance is a chain of reactions: the news lands and the eyes hold still; a pause while they understand; a reaction they cannot stop, {✏️ the reaction they cannot stop, e.g. the chin trembles and the breath catches}; then the reaction they choose, {✏️ the reaction they choose, e.g. a forced small smile as they speak}; and in the last seconds, after the words, what is left on the face. Tears, if any, come late and unevenly, one eye first. Medium close-up, the camera locked, no cuts. Place and light: {✏️ the place and light, e.g. a dim kitchen lit by one warm lamp}. No music, no text on screen.",
+        "node": {
+          "line": {
+            "name": "Line",
+            "prompt": "{✏️ the line, exactly the words to say, short enough for about eight seconds, e.g. I waited for you. Every single night, I waited.}"
+          }
+        },
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a clear picture of the character first, face in view."
+          }
+        }
+      },
+      "horror-suspense": {
+        "name": "Horror suspense",
+        "description": "Ordinary, wrong, silent, then the reveal",
+        "prompt": "A 15-second widescreen horror scene with sound in one continuous shot. The person is the one in [📎 Character]: take only their face, hair, build and clothes. Place: {✏️ the place, e.g. an old apartment hallway at night}. 0–4 s: everything is ordinary: {✏️ what they are doing, e.g. she walks home down the hallway, keys in hand}. 4–8 s: one detail is wrong: {✏️ the wrong detail, e.g. a door at the end of the hall that was shut now stands open a crack}; they stop. 8–12 s: silence: every sound drops away but their breathing, and the camera creeps slowly towards their face. 12–15 s: the reveal, made by light and sound: {✏️ the reveal, e.g. the hallway light flickers out, and when it comes back a still, pale figure stands in the doorway}. The fear comes from darkness, light and sound: deep shadows and one light source, {✏️ the light, e.g. a single buzzing ceiling bulb}. No blood, no wounds, no violence. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of the character first."
+          }
+        }
+      },
+      "short-drama-episode": {
+        "name": "Short drama episode",
+        "description": "Three scenes from one script, joined",
+        "prompt": "(💡 Generate Cast sheet first)Scene 1 of 3 of the short drama written in [📎 Script]: play only scene 1 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. The characters, the place and the light are the ones the script gives. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen.",
+        "node": {
+          "script": {
+            "name": "Script",
+            "text": "Title: {✏️ the title, e.g. The Letter}\nCharacters: {✏️ who is in it, e.g. Mia, a tired night nurse; Lena, her younger sister}\nPlace and light: {✏️ where and when, e.g. a small hospital break room at night, lit by one flickering fluorescent tube}\n\nScene 1: {✏️ what happens first, with the lines, e.g. Lena bursts in holding a hospital letter. Lena: \"What is this?\"}\n\nScene 2: {✏️ what happens next, with the lines, e.g. Mia admits she has known for months. Mia: \"I wanted to protect you.\"}\n\nScene 3: {✏️ how it ends, with the lines, e.g. Lena tears the letter up, then sits down beside her sister. Lena: \"We tell her together.\"}"
+          },
+          "cast": {
+            "name": "Cast sheet",
+            "prompt": "A 16:9 landscape cast sheet of [📎 Main character] only, on a plain white background: on the left, the same person full body from the front, from the side and from the back in one row, standing straight, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin, build and every piece of clothing, shoes and accessories exactly as in the picture; nothing added, no second person, nothing of the picture's background. Even soft light. No text, no labels."
+          },
+          "scene-2": {
+            "name": "Scene 2",
+            "prompt": "(💡 Generate Cast sheet first)(💡 Generate the first scene first)Scene 2 of 3 of the short drama written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Short drama episode], which is scene 1: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen."
+          },
+          "scene-3": {
+            "name": "Scene 3",
+            "prompt": "(💡 Generate Cast sheet first)(💡 Generate Scene 2 first)Scene 3 of 3 of the short drama written in [📎 Script]: play only scene 3 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Scene 2]: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends the episode: the camera holds on a face for a beat after the last line. No music, no text on screen."
+          }
+        },
+        "input": {
+          "character": {
+            "name": "Main character",
+            "note": "Add a picture of the main character first, then generate Cast sheet."
+          }
+        },
+        "step": {
+          "more": "Need more scenes? Add the next scene to Script, copy Scene 3, change its scene number, wire the scene before into it and generate it.",
+          "join": "Select the scenes in order, right-click and choose Join."
         }
       },
       "cartoon-gag": {

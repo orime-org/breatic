@@ -60,6 +60,7 @@ export const REFUSALS = {
   "template-optional-input-untagged": "node",
   "template-optional-input-paragraph": false,
   "template-no-prompt": "node",
+  "template-no-text": "node",
   "template-tweak-unfilled": "node",
   "sources-no-taker": false,
   "sources-over-room": false,

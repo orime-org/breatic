@@ -1,6 +1,6 @@
 # @breatic/provider
 
-The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint, the web-animation Messages relay) goes through it (inner#1743), and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the `scripts/provider-*` generators.
+The model provider layer: every model call (media generation, understanding, LLM chat, the decisions endpoint, the web-animation Messages relay) goes through it, and it answers which upstream serves it, how our params become that upstream's fields, what a run is estimated to cost and what it actually cost. These rules apply when you change anything under `packages/provider/`, `config/provider/` or the `scripts/provider-*` generators.
 
 ### It stands alone
 
