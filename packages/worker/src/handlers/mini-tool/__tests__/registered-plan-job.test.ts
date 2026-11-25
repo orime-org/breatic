@@ -351,3 +351,11 @@ describe("a staged advance with opening withheld (frames-split §7.19)", () => {
     expect(h.record).not.toHaveBeenCalled();
   });
 });
+
+describe("a container analysis output refused for its size (frames-split §7.19)", () => {
+  it("ends the job with the refusal, a final verdict, without registering the refused output", async () => {
+    h.advance.mockResolvedValue({ ...done, outputs: [outputs[0]!, { ...outputs[1]!, sizeBytes: 0 }] });
+    await expect(advanceRegisteredMiniToolPlanJob(input)).rejects.toMatchObject({ name: "ContainerJobFailed", reason: "empty" });
+    expect(h.register).not.toHaveBeenCalled();
+  });
+});

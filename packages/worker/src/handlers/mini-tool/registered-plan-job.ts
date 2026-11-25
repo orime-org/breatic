@@ -7,6 +7,7 @@ import { miniToolPlanJobRequestSchema, readMiniToolPlanJobReport, type StudioAss
 import { z } from "zod";
 import { advanceMiniToolPlanJob } from "@worker/handlers/mini-tool/advance-plan-job.js";
 import type { EndedMiniToolPlanJob, Unopened } from "@worker/handlers/mini-tool/advance-plan-job.js";
+import { ContainerJobFailed } from "@worker/handlers/container/run-container-job.js";
 import { noteSideEffects } from "@worker/handlers/side-effects.js";
 
 /** Why every report of a staged output is refused whatever it is (frames-split §7.19). */
@@ -155,9 +156,11 @@ export async function registerMiniToolPlanJobOutputs(staged: { taskId: string; s
  * @param options - What the job consumed.
  * @param options.retire - Intermediate keys retired with a done result, never before.
  * @returns The persisted report and canonical assets, including a failed job's subset.
+ * @throws {ContainerJobFailed} When a written output is refused for its size: the job's final failure.
  * @throws {Error} When original-plan validation, progress, persistence or registration fails.
  */
 export async function advanceRegisteredMiniToolPlanJob(input: OpenMiniToolPlanJobInput, options: { retire?: readonly string[] } = {}): Promise<RegisteredMiniToolPlanJob> {
-  const { request, report } = await advanceStagedMiniToolPlanJob(input, options);
+  const { request, report, refused } = await advanceStagedMiniToolPlanJob(input, options);
+  if (refused !== null) throw new ContainerJobFailed(refused);
   return { request, report, assets: await registerMiniToolPlanJobOutputs({ taskId: input.taskId, stepId: input.stepId }) };
 }
