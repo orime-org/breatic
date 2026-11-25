@@ -157,7 +157,7 @@ describe("startProjectControlSync — scene-look:settled", () => {
     await Promise.resolve();
 
     expect(metaDoc.relayStateless).toHaveBeenCalledWith(JSON.stringify({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement }), expect.any(Function));
-    const pick = (metaDoc.relayStateless as ReturnType<typeof vi.fn>).mock.calls[0]![1] as (connection: { context: unknown }) => boolean;
+    const pick = metaDoc.relayStateless.mock.calls[0]![1] as (connection: { context: unknown }) => boolean;
     expect(pick({ context: { user: { id: "u" } } })).toBe(true);
     expect(pick({ context: { user: { id: "someone-else" } } })).toBe(false);
   });

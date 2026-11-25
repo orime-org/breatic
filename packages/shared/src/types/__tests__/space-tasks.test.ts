@@ -6,8 +6,8 @@ import { SPACE_TASKS_TYPES } from "@shared/types/space-tasks.js";
 import * as shared from "@shared/index.js";
 
 describe("SPACE_TASKS_TYPES", () => {
-  it("F-01 lists the 3D and Timeline Spaces, whose background work reaches the page through their documents", () => {
-    expect([...SPACE_TASKS_TYPES].sort()).toEqual(["3d", "timeline"]);
+  it("F-01 lists the 3D, Motion and Timeline Spaces, whose background work reaches the page through their documents", () => {
+    expect([...SPACE_TASKS_TYPES].sort()).toEqual(["3d", "timeline", "web_animation"]);
   });
 
   it("F-09 leaves no channel builder or signal name for the old Project-channel signal", () => {
