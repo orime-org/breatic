@@ -14,12 +14,15 @@ import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type { TimelineEditOptions } from '@web/data/yjs/timeline-edit-session';
 import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
 import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
+import type { TimelineUploadKind } from '@web/spaces/timeline/timeline-uploads';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { timelineAssetKey } from '@web/spaces/timeline/use-timeline-asset';
 
 /** The current material form held by an open document. */
 export interface TimelineMediaDraftSnapshot {
   open: boolean;
+  /** The kind of material being chosen: a video, a picture or a sound. */
+  kind: TimelineUploadKind;
   mode: 'project' | 'local';
   selected: ProjectRegisteredAsset | null;
   file: File | null;
@@ -36,7 +39,7 @@ interface TimelineMediaDraftInputs {
   spaceId: string;
   queryClient: QueryClient;
   edit: (command: TimelineEditCommand, options?: TimelineEditOptions) => TimelineEditPlan;
-  /** Hands a placed local video to the document's background uploads. */
+  /** Hands a placed local file to the document's background uploads. */
   startUpload: (uploadId: string, file: File) => void;
 }
 
@@ -47,6 +50,7 @@ export interface TimelineMediaDraft {
   open: (startFrame: number, trackId: string) => void;
   close: () => void;
   setCanWrite: (canWrite: boolean) => void;
+  setKind: (kind: TimelineUploadKind) => void;
   setMode: (mode: 'project' | 'local') => void;
   select: (asset: ProjectRegisteredAsset) => void;
   setFile: (file: File | null) => void;
@@ -62,46 +66,47 @@ export interface TimelineMediaDraft {
  * @throws {never} Never.
  */
 function initialSnapshot(): TimelineMediaDraftSnapshot {
-  return { open: false, mode: 'project', selected: null, file: null, startFrame: '0', trackId: TIMELINE_MAIN_TRACK_ID, busy: false, errorKey: null };
+  return { open: false, kind: 'video', mode: 'project', selected: null, file: null, startFrame: '0', trackId: TIMELINE_MAIN_TRACK_ID, busy: false, errorKey: null };
 }
 
 /**
- * Read a video's duration from its metadata: a registered video's missing duration, or a local file's.
+ * Read a video's or sound's duration from its metadata: a registered one's missing duration, or a local file's.
  * @param fileUrl - The registered media URL, or a local file's object URL, to decode.
+ * @param kind - Whether it is a video or a sound.
  * @param signal - The material attempt's cancellation.
  * @returns The finite positive duration reported by loadedmetadata.
  * @throws {Error} When the media cannot report a usable duration.
  * @throws {DOMException} When the material attempt is canceled.
  */
-function decodeDuration(fileUrl: string, signal: AbortSignal): Promise<number> {
+function decodeDuration(fileUrl: string, kind: 'video' | 'audio', signal: AbortSignal): Promise<number> {
   return new Promise((resolve, reject) => {
-    const video = document.createElement('video');
+    const media = document.createElement(kind);
     /** Release this metadata request and its listeners together. */
     const clear = (): void => {
-      video.removeEventListener('loadedmetadata', loaded);
-      video.removeEventListener('error', failed);
+      media.removeEventListener('loadedmetadata', loaded);
+      media.removeEventListener('error', failed);
       signal.removeEventListener('abort', canceled);
-      video.removeAttribute('src');
-      video.load();
+      media.removeAttribute('src');
+      media.load();
     };
-    /** Accept only the measured finite positive video duration. */
+    /** Accept only the measured finite positive media duration. */
     const loaded = (): void => {
-      const duration = video.duration;
+      const duration = media.duration;
       clear();
       if (Number.isFinite(duration) && duration > 0) resolve(duration);
-      else reject(new Error('Video metadata has no usable duration'));
+      else reject(new Error('Media metadata has no usable duration'));
     };
     /** Settle the observer when this media request fails. */
-    const failed = (): void => { clear(); reject(new Error('Video metadata is unavailable')); };
+    const failed = (): void => { clear(); reject(new Error('Media metadata is unavailable')); };
     /** End the metadata observer for a canceled material attempt. */
     const canceled = (): void => { clear(); reject(new DOMException('Material selection canceled', 'AbortError')); };
-    video.addEventListener('loadedmetadata', loaded);
-    video.addEventListener('error', failed);
+    media.addEventListener('loadedmetadata', loaded);
+    media.addEventListener('error', failed);
     signal.addEventListener('abort', canceled, { once: true });
     if (signal.aborted) { canceled(); return; }
-    video.preload = 'metadata';
-    video.src = fileUrl;
-    video.load();
+    media.preload = 'metadata';
+    media.src = fileUrl;
+    media.load();
   });
 }
 
@@ -175,20 +180,26 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
       if (!value && active !== null) active.canApply = false;
     },
     /**
+     * Change the kind of material being chosen while no operation is running; what was chosen for another kind is dropped.
+     * @param kind - A video, a picture or a sound.
+     * @throws {never} Never.
+     */
+    setKind(kind: TimelineUploadKind): void { if (!snapshot.busy && kind !== snapshot.kind) publish({ kind, selected: null, file: null, errorKey: null }); },
+    /**
      * Change the form's explicit material entry while no operation is running.
-     * @param mode - The selected Project-video or local-upload entry.
+     * @param mode - The selected Project-material or local-upload entry.
      * @throws {never} Never.
      */
     setMode(mode: 'project' | 'local'): void { if (!snapshot.busy) publish({ mode, errorKey: null }); },
     /**
-     * Retain the Project video selected for explicit confirmation.
+     * Retain the Project material selected for explicit confirmation.
      * @param selected - Its currently displayed registered metadata.
      * @throws {never} Never.
      */
     select(selected: ProjectRegisteredAsset): void { if (!snapshot.busy) publish({ selected, errorKey: null }); },
     /**
      * Retain the chosen File until it is confirmed.
-     * @param file - The selected local video, or null to clear it.
+     * @param file - The selected local file, or null to clear it.
      * @throws {never} Never.
      */
     setFile(file: File | null): void { if (!snapshot.busy) publish({ file, errorKey: null }); },
@@ -205,8 +216,8 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
      */
     setTrack(trackId: string): void { if (!snapshot.busy) publish({ trackId, errorKey: null }); },
     /**
-     * Confirm the current fixed target: place a Project video atomically, or place a local video as an upload
-     * placeholder and hand it to the background uploads.
+     * Confirm the current fixed target: place Project material atomically, or place a local file as an upload
+     * placeholder of its kind and hand it to the background uploads (inner#1709).
      * @param placement - The editing user's magnet and linkage switches at confirmation.
      * @returns Once the attempt settles.
      */
@@ -217,7 +228,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
       const startFrame = parseTimelineFrame(captured.startFrame);
       if (!Number.isSafeInteger(startFrame)) { publish({ errorKey: 'invalid_range' }); return; }
       if ((captured.mode === 'project' && captured.selected === null) || (captured.mode === 'local' && captured.file === null)) { publish({ errorKey: 'source_unavailable' }); return; }
-      // The video is written into the Space only after the server answers, so a full Space asks nothing and the
+      // The material is written into the Space only after the server answers, so a full Space asks nothing and the
       // dialog says why (inner#1790); a Space being rebuilt says nothing, its own toast did.
       const room = checkAdd(docName.timelineSpace(inputs.projectId, inputs.spaceId), { notify: false });
       if (!room.ok) { publish({ errorKey: room.reason === 'resyncing' ? null : room.reason }); return; }
@@ -235,16 +246,27 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
       const target = captured.trackId === 'new' ? { trackId: TIMELINE_MAIN_TRACK_ID, newTrackId: newId() } : { trackId: captured.trackId };
       let failure = 'source_unavailable';
       try {
-        // What the confirmed material is: a local file with the duration its metadata reports, or a Project video.
-        let material: { kind: 'local'; file: File; durationSeconds: number } | { kind: 'project'; asset: ProjectRegisteredAsset; decodedDurationSeconds: number | undefined };
+        // A new picture's length is configured (inner#1709), read through the page's limits query.
+        const imageDurationSeconds = captured.kind === 'image'
+          ? (await inputs.queryClient.fetchQuery({ queryKey: ['timeline-limits', inputs.projectId], queryFn: ({ signal }) => timelineApi.limits(inputs.projectId, signal), staleTime: Infinity })).media.imageDurationSeconds
+          : undefined;
+        if (active !== attempt) return;
+        // What the confirmed material is: a local file with the duration its metadata reports (none for a picture),
+        // or Project material.
+        let material: { kind: 'local'; file: File; durationSeconds: number | null } | { kind: 'project'; asset: ProjectRegisteredAsset; decodedDurationSeconds: number | undefined };
         if (captured.mode === 'local' && captured.file !== null) {
           const file = captured.file;
           failure = 'metadata_unavailable';
-          const url = URL.createObjectURL(file);
-          try {
-            material = { kind: 'local', file, durationSeconds: await decodeDuration(url, controller.signal) };
-          } finally {
-            URL.revokeObjectURL(url);
+          const kind = captured.kind;
+          if (kind === 'image') {
+            material = { kind: 'local', file, durationSeconds: null };
+          } else {
+            const url = URL.createObjectURL(file);
+            try {
+              material = { kind: 'local', file, durationSeconds: await decodeDuration(url, kind, controller.signal) };
+            } finally {
+              URL.revokeObjectURL(url);
+            }
           }
         } else {
           const assetId = captured.selected?.assetId;
@@ -252,7 +274,8 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
           const asset = await inputs.queryClient.fetchQuery({ queryKey: timelineAssetKey(inputs.projectId, assetId), queryFn: ({ signal }) => timelineApi.resolveAsset(inputs.projectId, assetId, signal), staleTime: 0 });
           if (active !== attempt) return;
           failure = 'metadata_unavailable';
-          material = { kind: 'project', asset, decodedDurationSeconds: asset.durationSeconds === null ? await decodeDuration(asset.fileUrl, controller.signal) : undefined };
+          const timed = asset.kind === 'video' || asset.kind === 'audio' ? asset.kind : null;
+          material = { kind: 'project', asset, decodedDurationSeconds: asset.durationSeconds === null && timed !== null ? await decodeDuration(asset.fileUrl, timed, controller.signal) : undefined };
         }
         if (active !== attempt || controller.signal.aborted) return;
         if (!attempt.canApply) { publish({ errorKey: 'permission_changed' }); return; }
@@ -261,19 +284,25 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
         let command: TimelineEditCommand;
         let upload: { uploadId: string; file: File } | null = null;
         if (material.kind === 'local') {
-          // A local video is placed at once and uploads in the background (#1434 design §3.2).
+          // A local file is placed at once and uploads in the background (#1434 design §3.2); a picture placeholder
+          // has no duration and lasts the configured picture length.
           failure = 'invalid_range';
           const { file, durationSeconds } = material;
           upload = { uploadId: newId(), file };
+          const kind = captured.kind;
           const clip: TimelineUploadClip = {
-            id: clipId, kind: 'upload', trackId: target.trackId, upload: { uploadId: upload.uploadId, name: file.name.slice(0, 255) || 'video', durationSeconds },
-            startFrame, sourceInFrame: 0, durationFrames: durationToFrames(durationSeconds, readTimelineDocument(doc).settings.fps),
+            id: clipId, kind: 'upload', trackId: target.trackId, upload: { uploadId: upload.uploadId, name: file.name.slice(0, 255) || kind, kind, durationSeconds },
+            startFrame, sourceInFrame: 0, durationFrames: durationToFrames(durationSeconds ?? imageDurationSeconds ?? 0, readTimelineDocument(doc).settings.fps),
             ...TIMELINE_DEFAULT_PLACEMENT,
           };
           command = { operation: 'add_upload', parameters: { clip, ...(target.newTrackId === undefined ? {} : { newTrackId: target.newTrackId }) }, placement };
         } else {
           const { asset, decodedDurationSeconds } = material;
-          const prepared = prepareTimelineMediaPlacement(doc, { asset, startFrame, clipId, sourceId: newId(), canWrite, placement, ...target, ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }) });
+          const prepared = prepareTimelineMediaPlacement(doc, {
+            asset, startFrame, clipId, sourceId: newId(), canWrite, placement, ...target,
+            ...(decodedDurationSeconds === undefined ? {} : { decodedDurationSeconds }),
+            ...(imageDurationSeconds === undefined ? {} : { imageDurationSeconds }),
+          });
           if (!prepared.ok) { publish({ errorKey: prepared.reason }); return; }
           command = prepared.command;
         }

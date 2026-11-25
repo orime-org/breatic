@@ -29,7 +29,7 @@ vi.mock('@web/lib/toast', () => ({
 const upload = vi.hoisted(() => ({ media: vi.fn() }));
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
-  handOffDocumentMedia: upload.media,
+  handOffSpaceMedia: upload.media,
 }));
 vi.mock('@web/data/api/assets', () => ({
   assetsApi: {

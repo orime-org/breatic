@@ -13,7 +13,7 @@ import type * as Y from 'yjs';
 
 import { assetsApi } from '@web/data/api/assets';
 import { canvasApi } from '@web/data/api/canvas';
-import { handOffDocumentMedia } from '@web/data/upload/media-upload';
+import { handOffSpaceMedia } from '@web/data/upload/media-upload';
 import { renewOnWorker } from '@web/lib/upload-claims';
 import { readDocFacts, readWriteAccess } from '@web/data/yjs/collab-socket';
 import { docName } from '@web/data/yjs/manager';
@@ -85,7 +85,7 @@ function runnerFor(target: UploadTarget): UploadControllerDeps['run'] {
   if (run === undefined) {
     const name = docName.documentSpace(target.projectId, target.spaceId);
     const sources = createUploadSources({
-      uploadFile: (file, uploadId, onProgress) => handOffDocumentMedia(file, { ...target, uploadId }, onProgress),
+      uploadFile: (file, uploadId, onProgress) => handOffSpaceMedia(file, { ...target, uploadId, uploadTarget: 'document' }, onProgress),
       ingest: async (url, uploadId) => {
         await assetsApi.ingestUrl({ url, project_id: target.projectId, space_id: target.spaceId, upload_id: uploadId });
       },

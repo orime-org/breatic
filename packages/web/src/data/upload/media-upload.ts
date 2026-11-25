@@ -7,6 +7,7 @@ import {
   isRefused,
   type BatchTicketAnswer,
   type BatchTicketRequest,
+  type SpaceUploadTarget,
   type UploadContext,
   type UploadTicket,
   type UploadTicketRequest,
@@ -560,18 +561,19 @@ export function uploadMedia(
 }
 
 /**
- * Run the pipeline against the real network for a Document body block, whose
- * result the server writes into the block (breatic#1574): it ends once the
- * server has the bytes, or holds them already.
+ * Run the pipeline against the real network for a placeholder in a Space
+ * document (a Document body block or a Timeline upload clip), whose result
+ * collab writes into the placeholder (breatic#1574, inner#1709):
+ * it ends once the server has the bytes, or holds them already.
  * @param file - The file to upload.
- * @param context - Where it lands, naming the block's `uploadId`.
+ * @param context - Where it lands, naming the placeholder's `uploadId` and the Space type whose document holds it.
  * @param onProgress - Told the share of the file that has landed, after each part.
  * @returns Once the server has it.
  * @throws {UploadFailedError} When the server could not be handed the upload.
  */
-export function handOffDocumentMedia(
+export function handOffSpaceMedia(
   file: File,
-  context: UploadContext & { uploadId: string },
+  context: UploadContext & { uploadId: string; uploadTarget: SpaceUploadTarget },
   onProgress?: (fraction: number) => void,
 ): Promise<void> {
   return new Promise((resolve, reject) => {

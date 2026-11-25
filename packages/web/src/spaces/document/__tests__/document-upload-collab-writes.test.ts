@@ -26,7 +26,7 @@ import { settled } from './paste-harness';
 const upload = vi.hoisted(() => ({ media: vi.fn() }));
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof MediaUpload>()),
-  handOffDocumentMedia: upload.media,
+  handOffSpaceMedia: upload.media,
 }));
 vi.mock('@web/data/api/assets', () => ({
   assetsApi: {
