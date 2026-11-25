@@ -6,6 +6,9 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// These cases cover the program's entry points as they behave once shown again (inner#2155).
+vi.mock('@web/features/referral/referral-ui', () => ({ REFERRAL_UI_SHOWN: true }));
+
 const { options, carry } = vi.hoisted(() => ({
   options: vi.fn(),
   carry: { code: null as string | null, forget: vi.fn(), refused: vi.fn() },

@@ -47,7 +47,10 @@ function seed<T>(script: string, input: unknown): T {
   }
 }
 
-test('a referred sign-up sees its first-period discount in the panel and at checkout @needs-payments', async ({
+// The referral program's entry points are hidden (`REFERRAL_UI_SHOWN` in
+// `src/features/referral/referral-ui.ts`, inner#2155); this case goes back to
+// `test` when that flag does.
+test.skip('a referred sign-up sees its first-period discount in the panel and at checkout @needs-payments', async ({
   page,
   baseURL,
 }) => {
