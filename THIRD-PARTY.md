@@ -425,11 +425,12 @@ it.
 ## The desktop client installers
 
 The desktop client (`packages/desktop`) is packaged with Electron for macOS,
-Windows and Linux. Each installer carries, in the app's resources folder,
-Electron's licence (`LICENSE.electron.txt`), the licences of everything
-Chromium bundles (`LICENSES.chromium.html`) and the machine-generated list of
-the npm packages in the client's main process with their licence texts
-(`third-party-licences.txt`, generated into
+Windows and Linux. Each installer carries Electron's licence
+(`LICENSE.electron.txt`) and the licences of everything Chromium bundles
+(`LICENSES.chromium.html`), in the app's resources folder on macOS and next to
+the executable on Windows and Linux. In the resources folder on every platform
+it carries the machine-generated list of the npm packages in the client's main
+process with their licence texts (`third-party-licences.txt`, generated into
 `packages/desktop/resources/third-party-licences.txt`).
 
 | Component | Version | Licence | Source |

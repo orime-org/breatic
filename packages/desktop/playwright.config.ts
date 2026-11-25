@@ -5,7 +5,7 @@ import { defineConfig } from "playwright/test";
 
 /**
  * End-to-end runs of the built client against a running breatic server.
- * Locally that is the worktree's own `pnpm dev` (8100 by default). In CI,
+ * Locally that is a running `pnpm dev` at BREATIC_E2E_SERVER (http://localhost:8100 when unset). In CI,
  * as the web consent suite does, the server starts from its build and the web
  * app from a build served by `vite preview`, whose proxy sends `/api` to it.
  */

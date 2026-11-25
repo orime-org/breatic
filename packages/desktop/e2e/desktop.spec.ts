@@ -11,7 +11,7 @@
  * builds the client with SERVER written in (BREATIC_DEFAULT_SERVER_URL) and a
  * DSN for a local receiver; the "can't reach" cases point a development build
  * at a stand-in server of their own through BREATIC_SERVER_URL. SERVER
- * defaults to the worktree's own web port; set BREATIC_E2E_SERVER for another.
+ * defaults to http://localhost:8100; set BREATIC_E2E_SERVER for another.
  */
 
 import { execFileSync, spawn } from "node:child_process";

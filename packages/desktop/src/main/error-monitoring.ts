@@ -134,8 +134,8 @@ function scrubValue(value: unknown, home: string): unknown {
 
 /**
  * An event before it is sent: the request through the shared rule, then every
- * address-like string in the exception values, contexts and extra without
- * its query, and the home directory as `~`.
+ * address-like string anywhere in the event without its query, and the home
+ * directory as `~`.
  * @param event - The event.
  * @param home - `app.getPath("home")`.
  * @returns A scrubbed copy.

@@ -8,9 +8,10 @@
  * which BREATIC_UPDATE_BASE_URL serves; the bucket, the domain and the
  * credentials belong to the deployment.
  *
- * Environment: GITHUB_REF_NAME (the tag), R2_UPDATES_BUCKET,
- * R2_UPDATES_PREFIX, R2_UPDATES_ENDPOINT, AWS_ACCESS_KEY_ID,
- * AWS_SECRET_ACCESS_KEY; BREATIC_BRAND_DIR as for the build.
+ * Environment: GITHUB_REF_NAME (the tag), BREATIC_UPDATE_BASE_URL,
+ * R2_UPDATES_BUCKET, R2_UPDATES_ENDPOINT, AWS_ACCESS_KEY_ID,
+ * AWS_SECRET_ACCESS_KEY, and optionally R2_UPDATES_PREFIX; BREATIC_BRAND_DIR
+ * as for the build.
  */
 
 import { execFileSync } from "node:child_process";

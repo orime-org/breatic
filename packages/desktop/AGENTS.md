@@ -6,7 +6,7 @@ The Electron client for macOS, Windows and Linux. Its windows show the web app o
 
 **Client code never writes the official product name, its scheme or its server; it reads `BRAND` (`src/main/brand.ts`), and every string that names the app takes a `{product}` parameter.** A partner build must show the partner's name everywhere. `src/main/__tests__/no-fixed-brand.test.ts` scans the sources and lists what is allowed.
 
-- **A new per-brand name (a path, a file name, a package or executable name) is derived from the brand `id` in `brand.mjs`.** Two brands installed on one machine must not share a data directory, a launcher entry, a deb package or a scheme.
+- **A new per-brand name (a path, a file name, a package or executable name) is derived from the brand (`id` or `productName`) in `brand.mjs`, never written as a constant.** Two brands installed on one machine must not share a data directory, a launcher entry, a deb package or a scheme.
 
 ## Process boundaries
 

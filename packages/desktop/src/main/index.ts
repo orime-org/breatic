@@ -128,7 +128,8 @@ app.on("second-instance", (_event, argv) => {
 
 app.on("activate", () => showSomeWindow());
 
-// The only way the app ends on Windows and Linux; Restart now quits through the updater instead.
+// On Windows and Linux closing the last window ends the app (File > Quit ends it through app.quit()
+// without this event); during Restart now the updater quits instead.
 app.on("window-all-closed", () => {
   if (updates.isRestarting()) return;
   if (process.platform !== "darwin") app.quit();

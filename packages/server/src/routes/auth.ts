@@ -479,7 +479,7 @@ auth.post(
  * sign-in answer.
  * @param c - Hono context with code and verifier in the body
  * @returns `200` with `{ data: { user: { ...user, personalStudio } } }`
- * @throws {AppError} `401` for an unknown, spent or expired code, a wrong verifier or a deleted account
+ * @throws {AppError} `401` for an unknown, spent or expired code, a wrong verifier, a browser session that has since ended, or a deleted account
  */
 auth.post("/desktop-exchange", rateLimitFor("desktop-exchange"), validate("json", desktopExchangeSchema), async (c) => {
   const { code, verifier } = c.req.valid("json");

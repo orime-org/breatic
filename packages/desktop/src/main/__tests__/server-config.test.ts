@@ -3,8 +3,8 @@
 
 /**
  * Which server the desktop client opens (inner#2041, design 6). Every build is
- * dedicated to one server written in at build time: an empty or non-HTTPS
- * address fails the build, and the client opens that server. In development
+ * dedicated to one server written in at build time: an empty address, or one
+ * that is neither HTTPS nor plain HTTP to this computer, fails the build, and the client opens that server. In development
  * `BREATIC_SERVER_URL` overrides it under the same rules.
  */
 

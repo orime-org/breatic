@@ -599,7 +599,7 @@ describe("parseConfig — desktop sign-in return", () => {
     expect(config.DESKTOP_APP_NAME).toBe("Acme Studio");
   });
 
-  it.each(["breatic", "web+acme", "ipfs", "https"])("refuses to start with a scheme a website could register: %s", (scheme) => {
+  it.each(["breatic", "web+acme", "ipfs", "https"])("refuses to start with a scheme that is not a reverse domain name, such as one a website could register: %s", (scheme) => {
     expect(() => parseConfig(baseEnv({ DESKTOP_APP_SCHEME: scheme }))).toThrow(/DESKTOP_APP_SCHEME/);
   });
 
