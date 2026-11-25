@@ -1215,33 +1215,14 @@ describe("G a 3D Space's waiting row and a waiting Motion execution tell their S
     }
   });
 
-  it("first waiting and starting each tell the Motion Space's document, and the old channel nothing", async () => {
+  it.each([
+    ["Motion", "web_animation_space", webAnimationSpaceDocName],
+    ["Timeline", "timeline", timelineSpaceDocName],
+  ] as const)("first waiting and starting each tell the %s Space's document, and the old channel nothing", async (_name, origin, docNameOf) => {
     const p = await person();
     await running(p, 2);
-    const id = await execution(p, "queued");
-    const docName = webAnimationSpaceDocName(p.projectId, p.spaceId);
-    const version = spaceTasksVersion(docName);
-    const spaceSignals = await listenSpaceTaskSignals();
-    try {
-      await spaceSignals.mark();
-      const told = () => spaceSignals.read({ projectId: p.projectId, spaceId: p.spaceId, docName });
-      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
-      expect(await told()).toEqual({ doc: [version], meta: [] });
-      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
-      expect(await told()).toEqual({ doc: [version], meta: [] });
-      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
-      expect(await pick(id, "timeline_executions")).toEqual({ started: true });
-      expect(await told()).toEqual({ doc: [version, version], meta: [] });
-    } finally {
-      await spaceSignals.stop();
-    }
-  });
-
-  it("first waiting and starting each tell the Timeline Space's document, and the old channel nothing", async () => {
-    const p = await person();
-    await running(p, 2);
-    const id = await execution(p, "queued", undefined, "timeline");
-    const docName = timelineSpaceDocName(p.projectId, p.spaceId);
+    const id = await execution(p, "queued", undefined, origin);
+    const docName = docNameOf(p.projectId, p.spaceId);
     const version = spaceTasksVersion(docName);
     const spaceSignals = await listenSpaceTaskSignals();
     try {
