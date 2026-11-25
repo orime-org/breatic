@@ -645,6 +645,7 @@ export function startWorker(): void {
         () => creditChargeSweep.close(),
         () => lotMirror?.close() ?? Promise.resolve(),
         () => slotWaitSweep.close(),
+        () => longMediaDispatch.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),

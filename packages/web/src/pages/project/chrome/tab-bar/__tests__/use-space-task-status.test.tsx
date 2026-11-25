@@ -35,6 +35,7 @@ vi.mock('@hocuspocus/provider', async () => {
 // Canvas and Document tabs never read a Motion execution list; its own file covers the Motion branch.
 vi.mock('@web/spaces/web-animation/use-motion-running', () => ({ useMotionRunning: () => false }));
 vi.mock('@web/spaces/timeline/use-timeline-limits', () => ({ useTimelineLimits: () => undefined }));
+vi.mock('@web/spaces/three-d/use-space-tasks', () => ({ useSpaceTasks: () => ({ query: { data: undefined }, running: 0 }) }));
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 
 const PROJECT = 'project-one';

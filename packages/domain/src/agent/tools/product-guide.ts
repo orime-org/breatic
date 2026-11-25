@@ -1745,7 +1745,8 @@ export function renderProductGuide(): string {
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))}, ` +
       `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon), ${quoted(t("spaces.threeD.viewfinder.open"))} (four frame corners) and ` +
-      `${quoted(t("spaces.threeD.minimap"))}. The four panel buttons keep their ordinary appearance while open. ` +
+      `${quoted(t("spaces.threeD.minimap"))}. The open panel's button shows selected. ` +
+      `${quoted(t("spaces.threeD.tasks"))} carries how many imports and generations run, waiting ones included (99+ past 99; none at 0). ` +
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
