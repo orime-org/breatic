@@ -15,6 +15,11 @@ export default defineConfig({
   test: {
     name: "web-reader",
     include: ["src/**/__tests__/**/*.test.ts"],
+    // On CI this runs beside the other packages' suites, where a case that
+    // takes 200ms here (the first full-Unicode string generator fast-check
+    // builds) has taken over five seconds; the package's other projects allow
+    // the same.
+    testTimeout: 30_000,
   },
   resolve: {
     alias: { "@shared": resolve(__dirname, "../../shared/src") },
