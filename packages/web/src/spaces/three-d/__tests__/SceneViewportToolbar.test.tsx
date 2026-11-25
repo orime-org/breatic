@@ -23,6 +23,7 @@ afterEach(() => {
  * Render the toolbar with a running count.
  * @param runningTasks - The count.
  * @param onPanel - What opening a panel calls.
+ * @param openPanel - The panel shown as open.
  * @returns Nothing.
  * @throws {never} Never.
  */
@@ -54,7 +55,7 @@ describe('SceneViewportToolbar running count', () => {
     [100, '99+'],
   ])('shows %i running as %s', (runningTasks, shown) => {
     renderToolbar(runningTasks);
-    expect(screen.getByTestId('scene-tasks-count')).toHaveTextContent(new RegExp(`^${shown.replace('+', '\\+')}$`));
+    expect(screen.getByTestId('scene-tasks-count').textContent).toBe(shown);
   });
 
   it('draws the count beside the button, out of the way of the pointer', () => {
@@ -80,7 +81,7 @@ describe('SceneViewportToolbar open panel', () => {
     for (const [panel, testId] of TRIGGERS) {
       expect(screen.getByTestId(testId).className.includes('bg-foreground'), panel).toBe(panel === open);
     }
-    expect(screen.getByTestId('scene-tasks-count')).toHaveTextContent(/^3$/);
+    expect(screen.getByTestId('scene-tasks-count').textContent).toBe('3');
   });
 
   it('shows no panel button selected while the right panel is closed', () => {
