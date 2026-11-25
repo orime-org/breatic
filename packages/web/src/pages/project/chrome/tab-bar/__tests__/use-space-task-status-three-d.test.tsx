@@ -18,8 +18,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { listSpaceTasks, spaceTasksQueryKey, type SpaceTask, type SpaceTaskList } from '@web/data/api/scene';
 import type * as SceneApiModule from '@web/data/api/scene';
-import { timelineApi } from '@web/data/api/timeline';
-import type * as TimelineApiModule from '@web/data/api/timeline';
 import { useSpaceTaskStatus } from '@web/pages/project/chrome/tab-bar/use-space-task-status';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
@@ -28,10 +26,9 @@ vi.mock('@web/data/api/scene', async (importOriginal) => {
   return { ...actual, listSpaceTasks: vi.fn() };
 });
 
-vi.mock('@web/data/api/timeline', async (importOriginal) => {
-  const actual = await importOriginal<typeof TimelineApiModule>();
-  return { ...actual, timelineApi: { ...actual.timelineApi, listExecutions: vi.fn(), limits: vi.fn() } };
-});
+// A 3D tab never reads a Motion execution list; its own file covers the Motion branch.
+vi.mock('@web/spaces/web-animation/use-motion-running', () => ({ useMotionRunning: () => false }));
+vi.mock('@web/spaces/timeline/use-timeline-limits', () => ({ useTimelineLimits: () => undefined }));
 
 const PROJECT = '60000000-0000-4000-8000-000000000001';
 const SPACE = '70000000-0000-4000-8000-000000000001';
@@ -86,8 +83,6 @@ function provider(): { client: QueryClient; wrapper: (props: { children: React.R
 beforeEach(() => {
   useSpaceOperationsStore.setState({ operations: {} });
   vi.mocked(listSpaceTasks).mockReset().mockResolvedValue(list([]));
-  vi.mocked(timelineApi.listExecutions).mockReset().mockResolvedValue([]);
-  vi.mocked(timelineApi.limits).mockReset();
 });
 
 afterEach(() => {
