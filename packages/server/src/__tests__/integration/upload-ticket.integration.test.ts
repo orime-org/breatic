@@ -76,6 +76,9 @@ import {
   verifyUploadTicket,
   verifySessionToken,
   canvasSpaceDocName,
+  FOCUS_IMAGE_UPLOAD_EVENT_TYPE,
+  MAX_FOCUS_DIMENSION,
+  MAX_FOCUS_NAME,
   UploadHttpError,
   INGEST_NO_ANSWER,
   INGEST_REFUSED_UNNAMED,
@@ -1406,5 +1409,210 @@ describe("POST /assets/upload-ticket — the server opens the upload (inner#1595
     const issued = logged.info.mock.calls.filter((call) => call[1] === "upload_ticket_issued");
     expect(issued).toHaveLength(1);
     expect(issued[0]![0]).toMatchObject({ uploadId: data.uploadId });
+  });
+});
+
+
+// #1580 test spec area D: a focus crop names the node pool it lands in, so the
+// server can have collab add it there, including when the bytes are already
+// in the studio and nothing is uploaded at all.
+describe("POST /assets/upload-ticket — a focus crop (#1580)", () => {
+  /** A ticket body for a focus crop on `spaceId`, with what a case varies. */
+  function cropBody(spaceId: string, focus: Record<string, unknown> = {}, over: Record<string, unknown> = {}): Record<string, unknown> {
+    return {
+      filename: "crop.png",
+      content_type: "image/png",
+      size: 4096,
+      client_hash: crypto.randomBytes(32).toString("hex"),
+      derived: true,
+      space_id: spaceId,
+      focusImage: { nodeId: crypto.randomUUID(), id: crypto.randomUUID(), name: "Source", width: 640, height: 480, ...focus },
+      ...over,
+    };
+  }
+
+  /** The focus image recorded on the grant `storageKey` names. */
+  async function focusOf(storageKey: string): Promise<unknown> {
+    const rows = await sql<{ focus_image: unknown }[]>`SELECT focus_image FROM upload_grants WHERE storage_key = ${storageKey}`;
+    return rows[0]?.focus_image ?? null;
+  }
+
+  /** Every focus-image event on the stream for `docName`, oldest first. */
+  async function focusEvents(docName: string): Promise<Record<string, unknown>[]> {
+    const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+    return raw
+      .map(([, fields]) => {
+        const idx = fields.indexOf("payload");
+        return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+      })
+      .filter((e): e is Record<string, unknown> => e !== null && e.type === FOCUS_IMAGE_UPLOAD_EVENT_TYPE && e.docName === docName);
+  }
+
+  it("D-01 records the crop's node pool on the grant", async () => {
+    const seed = await seedEditor();
+    const spaceId = crypto.randomUUID();
+    const payload = cropBody(spaceId);
+    const res = await requestTicket(seed.cookie, { ...payload, project_id: seed.projectId });
+    expect(res.status).toBe(201);
+    const { data } = (await res.json()) as { data: { storageKey: string } };
+    const focus = payload.focusImage as Record<string, unknown>;
+    expect(await focusOf(data.storageKey)).toEqual({ spaceId, nodeId: focus.nodeId, id: focus.id, name: "Source", width: 640, height: 480 });
+    // The crop shows as uploading in its node once the grant is open, carrying its deadline as a node's task row does.
+    const [grant] = await sql<{ created_at: Date }[]>`SELECT created_at FROM upload_grants WHERE storage_key = ${data.storageKey}`;
+    expect(await focusEvents(canvasSpaceDocName(seed.projectId, spaceId))).toEqual([expect.objectContaining({
+      state: "uploading",
+      nodeId: focus.nodeId,
+      openedAt: grant!.created_at.getTime(),
+      image: { id: focus.id, name: "Source", width: 640, height: 480, deadlineAt: await uploadDeadlineByKey(data.storageKey) },
+    })]);
+  });
+
+  /** Report that a crop's bytes never left, as the page does when its transfer fails. */
+  async function reportFailure(cookie: string, storageKey: string): Promise<Response> {
+    return app.request("/api/v1/assets/focus-uploads/failure", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie },
+      body: JSON.stringify({ storageKey, reason: "aborted" }),
+    });
+  }
+
+  it("ends a crop whose bytes never left as failed when its uploader reports it, as a node's upload row is", async () => {
+    const seed = await seedEditor();
+    const spaceId = crypto.randomUUID();
+    const payload = cropBody(spaceId);
+    const res = await requestTicket(seed.cookie, { ...payload, project_id: seed.projectId });
+    const { data } = (await res.json()) as { data: { storageKey: string } };
+    const reported = await reportFailure(seed.cookie, data.storageKey);
+    expect(reported.status).toBe(200);
+    const [grant] = await sql<{ voided_at: Date | null }[]>`SELECT voided_at FROM upload_grants WHERE storage_key = ${data.storageKey}`;
+    expect(grant!.voided_at).not.toBeNull();
+    const focus = payload.focusImage as Record<string, unknown>;
+    expect((await focusEvents(canvasSpaceDocName(seed.projectId, spaceId))).map((e) => e.state)).toEqual(["uploading", "failed"]);
+    expect((await focusEvents(canvasSpaceDocName(seed.projectId, spaceId)))[1]).toMatchObject({ nodeId: focus.nodeId, id: focus.id });
+  });
+
+  it("answers a failure report for anything but the caller's own open crop with 404", async () => {
+    const seed = await seedEditor();
+    const other = await seedEditor();
+    const crop = (await (await requestTicket(seed.cookie, { ...cropBody(crypto.randomUUID()), project_id: seed.projectId })).json()) as { data: { storageKey: string } };
+    const plain = (await (await requestTicket(seed.cookie, { ...body(), project_id: seed.projectId })).json()) as { data: { storageKey: string } };
+    expect((await reportFailure(other.cookie, crop.data.storageKey)).status).toBe(404);
+    expect((await reportFailure(seed.cookie, plain.data.storageKey)).status).toBe(404);
+    expect((await reportFailure(seed.cookie, `image/${crypto.randomUUID()}.png`)).status).toBe(404);
+    expect((await reportFailure(seed.cookie, crop.data.storageKey)).status).toBe(200);
+    expect((await reportFailure(seed.cookie, crop.data.storageKey)).status).toBe(404);
+    const voided = await sql<{ voided_at: Date | null }[]>`SELECT voided_at FROM upload_grants WHERE storage_key = ${plain.data.storageKey}`;
+    expect(voided[0]!.voided_at).toBeNull();
+  });
+
+  it("takes a source name cut through an emoji, storing it as well-formed text", async () => {
+    // A node name clipped by UTF-16 units can end in half a surrogate pair, which jsonb refuses.
+    const seed = await seedEditor();
+    const spaceId = crypto.randomUUID();
+    const payload = cropBody(spaceId, { name: "Kyoto \ud83c" });
+    const res = await requestTicket(seed.cookie, { ...payload, project_id: seed.projectId });
+    expect(res.status).toBe(201);
+    const { data } = (await res.json()) as { data: { storageKey: string } };
+    expect((await focusOf(data.storageKey)) as { name: string }).toMatchObject({ name: "Kyoto \ufffd" });
+  });
+
+  it("D-02 accepts fractional sizes", async () => {
+    const seed = await seedEditor();
+    const res = await requestTicket(seed.cookie, { ...cropBody(crypto.randomUUID(), { width: 123.5, height: 0.25 }), project_id: seed.projectId });
+    expect(res.status).toBe(201);
+  });
+
+  it.each([
+    ["the largest size", { width: MAX_FOCUS_DIMENSION }, 201],
+    ["a size past the largest", { width: MAX_FOCUS_DIMENSION + 1 }, 422],
+    ["a zero size", { width: 0 }, 422],
+    ["a negative size", { height: -1 }, 422],
+    ["a size given as text", { width: "10" }, 422],
+    ["a missing size", { height: null }, 422],
+    ["an id that is not a UUID", { id: "abc" }, 422],
+    ["an empty id", { id: "" }, 422],
+    ["the longest name", { name: "n".repeat(MAX_FOCUS_NAME) }, 201],
+    ["a name past the longest", { name: "n".repeat(MAX_FOCUS_NAME + 1) }, 422],
+    ["an empty name", { name: "" }, 201],
+  ])("D-03 to D-05 answers %s with %i", async (_label, focus, status) => {
+    const seed = await seedEditor();
+    const res = await requestTicket(seed.cookie, { ...cropBody(crypto.randomUUID(), focus), project_id: seed.projectId });
+    expect(res.status).toBe(status);
+  });
+
+  it.each([
+    ["no Space", { space_id: undefined }],
+    ["a node", { node_id: crypto.randomUUID() }],
+    ["a mini-tool source", { source: "mini_tool", tool_name: "draw" }],
+  ])("D-06 to D-09 refuses a crop that names %s as a request-shape error", async (_label, over) => {
+    const seed = await seedEditor();
+    const res = await requestTicket(seed.cookie, { ...cropBody(crypto.randomUUID(), {}, over), project_id: seed.projectId });
+    expect(res.status).toBe(422);
+    const json = (await res.json()) as { error: { reason?: string } };
+    expect(json.error.reason).toBe("request_shape");
+  });
+
+  it("D-09 refuses a crop on a studio avatar", async () => {
+    const seed = await seedEditor();
+    const payload = cropBody(crypto.randomUUID(), {}, { studio_id: seed.studioId, purpose: "studio_avatar", space_id: undefined, derived: undefined });
+    const res = await requestTicket(seed.cookie, payload);
+    expect(res.status).toBe(422);
+  });
+
+  it("D-10 leaves an ordinary upload's grant without a focus image", async () => {
+    const seed = await seedEditor();
+    const res = await requestTicket(seed.cookie, { ...body(), project_id: seed.projectId });
+    const { data } = (await res.json()) as { data: { storageKey: string } };
+    expect(await focusOf(data.storageKey)).toBeNull();
+  });
+
+  it("D-16 hands a dedup hit's address to collab for the node pool", async () => {
+    const seed = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    await sql`
+      INSERT INTO studio_assets (studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind, source, produced_by_user_id, width, height)
+      VALUES (${seed.studioId}, ${hash}, ${`image/${hash}.png`}, ${`https://cdn.test.invalid/${hash}.png`}, 4096, 'image/png', 'image', 'upload', ${seed.userId}, 640, 480)
+    `;
+    const spaceId = crypto.randomUUID();
+    const payload = cropBody(spaceId, {}, { client_hash: hash });
+    const res = await requestTicket(seed.cookie, { ...payload, project_id: seed.projectId });
+    const json = (await res.json()) as { data: { kind?: string; fileUrl?: string } };
+    expect(json.data.fileUrl).toBe(`https://cdn.test.invalid/${hash}.png`);
+    const grants = await sql<{ n: string }[]>`SELECT count(*) AS n FROM upload_grants WHERE storage_key LIKE ${`%${hash}%`}`;
+    expect(grants[0]!.n).toBe("0");
+    const focus = payload.focusImage as Record<string, unknown>;
+    const events = await focusEvents(canvasSpaceDocName(seed.projectId, spaceId));
+    expect(events).toHaveLength(1);
+    expect(events[0]).toMatchObject({
+      state: "completed",
+      nodeId: focus.nodeId,
+      image: { id: focus.id, name: "Source", width: 640, height: 480, url: `https://cdn.test.invalid/${hash}.png` },
+    });
+  });
+
+  it("D-17 fails the request when the crop cannot be handed to collab, rather than answer a hit", async () => {
+    const seed = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    await sql`
+      INSERT INTO studio_assets (studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind, source, produced_by_user_id, width, height)
+      VALUES (${seed.studioId}, ${hash}, ${`image/${hash}.png`}, ${`https://cdn.test.invalid/${hash}.png`}, 4096, 'image/png', 'image', 'upload', ${seed.userId}, 640, 480)
+    `;
+    const spy = vi.spyOn(getStreamRedis(), "xadd").mockRejectedValueOnce(new Error("stream down"));
+    try {
+      const res = await requestTicket(seed.cookie, { ...cropBody(crypto.randomUUID(), {}, { client_hash: hash }), project_id: seed.projectId });
+      expect(res.status).toBeGreaterThanOrEqual(500);
+      expect(JSON.stringify(await res.json())).not.toContain("alreadyExists");
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("D-18 hands nothing to collab for a dedup hit that is not a focus crop", async () => {
+    const seed = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    await registerAsset(seed.studioId, seed.userId, hash, 40 * 1024 * 1024);
+    const spaceId = crypto.randomUUID();
+    await requestTicket(seed.cookie, { ...body({ client_hash: hash }), project_id: seed.projectId, space_id: spaceId });
+    expect(await focusEvents(canvasSpaceDocName(seed.projectId, spaceId))).toEqual([]);
   });
 });

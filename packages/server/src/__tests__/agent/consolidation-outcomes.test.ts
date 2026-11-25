@@ -376,15 +376,6 @@ describe("a consolidation that works", () => {
     });
   });
 
-  it("logs a charge whose users could not be told", async () => {
-    chargeOnce.mockResolvedValueOnce({
-      billed: true, charged: "400.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
-    });
-    await consolidate();
-
-    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ projectId: PROJECT }), "credits_signal_failed");
-  });
-
   it("records the call at what provider says it cost, and hands what it could not price to the lookup", async () => {
     llm.costOf.mockReturnValueOnce({ state: "pending", lookup: LOOKUP });
     const { mocks } = await import("../helpers/mock-core.js");

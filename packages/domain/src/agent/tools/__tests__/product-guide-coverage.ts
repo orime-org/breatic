@@ -313,7 +313,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.generatePanel.exit": { excluded: REASONS.SCREEN_READER, look: /an X at the far right that closes the panel/ },
   "canvas.generatePanel.firstFrameTip": { excluded: REASONS.SAYS_WHAT_TO_PICK },
   "canvas.generatePanel.styleTip": { excluded: REASONS.SAYS_WHAT_TO_PICK },
-  "canvas.generatePanel.focusCropDiscarded": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "canvas.generatePanel.focusCropTag": { excluded: REASONS.SCREEN_READER, look: /a crop icon before the source node's name/ },
   "canvas.generatePanel.focusSourceBusy": { described: /is replaced, starts processing or is deleted while you crop it, the bar under it closes and a message says what happened/ },
   "canvas.generatePanel.focusSourceBusyByPeer": { described: /is replaced, starts processing or is deleted while you crop it, the bar under it closes and a message says what happened/ },

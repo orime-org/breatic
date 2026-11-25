@@ -1,0 +1,5 @@
+# The Studio page's one poll (#1580). The page asks GET /studio-page/poll for
+# the bell, the Studio's transfer and the uploads it waits for, and asks again
+# this long after each answer; every answer names it as `nextPollMs`, so a
+# change here reaches open pages on their next answer.
+poll_interval_ms: 2000

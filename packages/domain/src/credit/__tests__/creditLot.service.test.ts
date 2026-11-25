@@ -40,7 +40,6 @@ vi.mock("@breatic/core", async (importOriginal) => {
         return result;
       },
     },
-    publishCreditsChanged: async () => undefined,
   };
 });
 

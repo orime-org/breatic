@@ -5,6 +5,7 @@
  * Uploading through the real path from a smoke spec, and reading back what was
  * stored.
  */
+import { Buffer } from 'node:buffer';
 import { randomBytes } from 'node:crypto';
 import { crc32 } from 'node:zlib';
 
@@ -145,17 +146,35 @@ export async function storedPicture(target: Page, url: string): Promise<StoredPi
   return { orientation: header.orientation, ...shown };
 }
 
-/** What a finished upload registered as, as the status query delivers it. */
+/** What a finished upload registered as, as the `upload:ended` message delivers it. */
 export interface DeliveredUpload {
+  assetId: string;
   fileUrl: string;
   width: number | null;
   height: number | null;
 }
 
 /**
- * Watch the next upload's finish: it is queued with 202, and the status query
- * later delivers what it registered as (inner#1367 §4.2a). Start watching
- * before the upload begins.
+ * The `upload:ended` message a meta-document frame carries, if it carries one (#1580). A stateless frame ends with its
+ * JSON text, so the message is read from where that text starts to the frame's end.
+ * @param frame - A frame the server sent on the collab socket.
+ * @returns The message, or null for any other frame.
+ */
+export function uploadEndedIn(frame: string | Buffer): { key: string; status: { key: string; state: string; result?: DeliveredUpload } } | null {
+  const text = typeof frame === 'string' ? frame : frame.toString('utf8');
+  const at = text.indexOf('{"t":"upload:ended"');
+  if (at < 0) return null;
+  try {
+    return JSON.parse(text.slice(at)) as { key: string; status: { key: string; state: string; result?: DeliveredUpload } };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Watch the next upload's finish: it is queued with 202, and the uploader's meta connection is later told what it
+ * registered as (`upload:ended`, #1580). Start watching before the upload begins; the page records those messages
+ * from its first load (`recordUploadEndings` in the slot fixture).
  * @param target - The page.
  * @returns The finish's status code and the delivered result.
  */
@@ -165,18 +184,15 @@ export async function watchQueuedFinish(target: Page): Promise<{ queued: number;
     { timeout: 60_000 },
   );
   const { storageKey } = ((await finished.json()) as { data: { storageKey: string } }).data;
-  let delivered: DeliveredUpload | null = null;
-  await target.waitForResponse(
-    async (r) => {
-      if (!r.url().includes('/assets/upload-status')) return false;
-      const items = ((await r.json()) as { data: { items: { key: string; state: string; result?: DeliveredUpload }[] } }).data.items;
-      const mine = items.find((item) => item.key === storageKey && item.state === 'completed');
-      if (mine?.result !== undefined) delivered = mine.result;
-      return delivered !== null;
+  const handle = await target.waitForFunction(
+    (key) => {
+      const told = (window as unknown as { __breaticUploadEndings?: { status: { key: string; state: string; result?: unknown } }[] }).__breaticUploadEndings ?? [];
+      return told.find((m) => m.status.key === key && m.status.state === 'completed')?.status.result ?? null;
     },
+    storageKey,
     { timeout: 120_000 },
   );
-  return { queued: finished.status(), delivered: delivered! };
+  return { queued: finished.status(), delivered: (await handle.jsonValue()) as DeliveredUpload };
 }
 
 /**

@@ -13,6 +13,7 @@
  * signal on the project meta doc.
  */
 
+import type { UploadStatus } from "@shared/upload/upload-status.js";
 import { z } from "zod";
 
 import type { SceneLookPictureSettlement } from "@shared/scene.js";
@@ -185,9 +186,9 @@ export interface ActivityNewSignal {
 }
 
 /**
- * Stateless WS signal broadcast on the project meta doc when a charge made in
- * that project commits (inner#1611) - clients read the credits again. Other
- * projects of the same studio are not signalled.
+ * Stateless WS signal on the project meta doc when the credits of the
+ * project's Studio changed (#1580): collab sends it to every live project of
+ * the Studio, and clients read the credits again.
  */
 export const CREDITS_CHANGED_SIGNAL = "credits:changed" as const;
 
@@ -197,21 +198,52 @@ export interface CreditsChangedSignal {
 }
 
 /**
- * Stateless WS signal broadcast on the project meta doc when a Space's tasks
- * changed (3D tasks, inner#1690) - members with that Space open read them again.
+ * Stateless WS signal on the project meta doc when an audio asset's peaks were written (#1580); a cut band waiting
+ * for that audio's waveform reads its peaks again. The page knows its audio by address, so the signal carries it.
  */
-export const SPACE_TASKS_CHANGED_SIGNAL = "space-tasks:changed" as const;
+export const ASSET_PEAKS_READY_SIGNAL = "asset-peaks:ready" as const;
 
-export interface SpaceTasksChangedSignal {
-  t: typeof SPACE_TASKS_CHANGED_SIGNAL;
+/**
+ * Stateless WS signal to one person's meta connections when their bell changed (#1580); it carries no
+ * `projectId`, as the bell is the person's, not the project's.
+ */
+export const NOTIFICATIONS_CHANGED_SIGNAL = "notifications:changed" as const;
+
+export interface NotificationsChangedSignal {
+  t: typeof NOTIFICATIONS_CHANGED_SIGNAL;
+}
+
+/** Stateless WS signal on the project meta doc when the project's transfer changed (#1580). */
+export const PROJECT_TRANSFER_CHANGED_SIGNAL = "project-transfer:changed" as const;
+
+export interface ProjectTransferChangedSignal {
+  t: typeof PROJECT_TRANSFER_CHANGED_SIGNAL;
   projectId: string;
-  spaceId: string;
 }
 
 /**
- * Stateless WS signal broadcast on the project meta doc when collab settled an
- * uploaded 3D part picture (inner#1693 design 6.3); the uploader's page ends
- * that part's upload and, when it was not written, tells them why.
+ * Stateless WS signal to the uploader's meta connections when one of their uploads ended (#1580), carrying the status
+ * the status read answers, so the page that waits for it reads nothing more.
+ */
+export const UPLOAD_ENDED_SIGNAL = "upload:ended" as const;
+
+export interface UploadEndedSignal {
+  t: typeof UPLOAD_ENDED_SIGNAL;
+  key: string;
+  status: UploadStatus;
+}
+
+export interface AssetPeaksReadySignal {
+  t: typeof ASSET_PEAKS_READY_SIGNAL;
+  projectId: string;
+  assetId: string;
+  url: string;
+}
+
+/**
+ * Stateless WS signal to the uploader's meta connections when collab settled an
+ * uploaded 3D part picture (inner#1693 design 6.3); their page ends that part's
+ * upload and, when it was not written, tells them why.
  */
 export const SCENE_LOOK_SETTLED_SIGNAL = "scene-look:settled" as const;
 

@@ -751,7 +751,6 @@
       "pickEnded": "선택이 종료되었습니다.",
       "pickEndedByPeer": "공동 작업자가 선택을 종료했습니다.",
       "focusSourceBusyByPeer": "공동 작업자가 소재를 처리하고 있습니다.",
-      "focusCropDiscarded": "노드가 삭제되어 포커스 이미지가 삭제되었습니다.",
       "duration": "길이",
       "durationSeconds": "{n}초",
       "generateAudio": "오디오 생성",

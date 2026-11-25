@@ -21,6 +21,19 @@ export async function findLiveOwnerStudioId(projectId: string, tx?: DbTx): Promi
 }
 
 /**
+ * The live Projects of a Studio (#1580): the ones whose pages show the Studio's credits, told when they change. Live
+ * is what server's `countLiveProjectsInStudio` counts: neither archived nor deleted.
+ * @param studioId - The Studio.
+ * @returns The Projects' ids, in no particular order.
+ * @throws {Error} When the database query fails.
+ */
+export async function listLiveProjectIdsInStudio(studioId: string): Promise<string[]> {
+  const rows = await db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.studioId, studioId), isNull(projects.deletedAt), isNull(projects.archivedAt)));
+  return rows.map((row) => row.id);
+}
+
+/**
  * Reads the studio a project belongs to.
  *
  * Lives here rather than in whichever service happens to need it, because

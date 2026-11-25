@@ -36,8 +36,10 @@ import {
   initServerAnalytics,
   taskEventsStreamKey,
   lifecycleStreamKey,
+  listenLiveUpdates,
   listenProjectMemberChanges,
   projectAuthService,
+  projectsRepo,
   type MemberChangeListener,
 } from "@breatic/core";
 import { getTimelineConfig, onDatabaseWaitTimeout, publishSceneLookSettled } from "@breatic/core";
@@ -49,6 +51,7 @@ import { startLifecycleListener } from "@collab/services/lifecycle-listener.js";
 import { startProjectControlSync } from "@collab/services/project-control-sync.js";
 import { startSessionRevocation, type SessionRevocation } from "@collab/services/session-revocation.js";
 import { startMemberChangeSync } from "@collab/services/member-change-sync.js";
+import { startLiveUpdateRelay, type LiveUpdateRelay } from "@collab/services/live-update-relay.js";
 
 // Initialize the root logger with the collab service name before any child
 // (`createLogger("main")` below) is created — otherwise children would bind
@@ -265,9 +268,10 @@ async function main(): Promise<void> {
   }
 
   // The control-plane client (DB2, the same Redis instance as the streams).
-  // Two consumers each .duplicate() it for a dedicated subscriber: ended
-  // sessions, below, before the port opens; project control sync (activity,
-  // credits, project connection closes), after it. The client uses the core
+  // Three consumers each .duplicate() it for a dedicated subscriber: ended
+  // sessions and the live-update relay's ended uploads, below, before the
+  // port opens; project control sync (activity, audio peaks ready, project
+  // connection closes), after it. The client uses the core
   // factory so it inherits the production-safety knobs (keepAlive,
   // commandTimeout: undefined for the subscribe path's blocking semantics,
   // READONLY-aware reconnect, error log tagging).
@@ -297,6 +301,23 @@ async function main(): Promise<void> {
     });
   } catch (err) {
     logger.error({ err }, "session_revocation_listen_failed");
+    await flushLogger();
+    await exitProcess(1);
+    return;
+  }
+
+  // What changed behind a Project page (#1580): the live-update triggers and
+  // the uploads ended at the finish. Started before the port opens, like the
+  // two listeners above.
+  let liveUpdates: LiveUpdateRelay;
+  try {
+    liveUpdates = await startLiveUpdateRelay(hocuspocus, {
+      listen: listenLiveUpdates,
+      listLiveProjectIdsInStudio: projectsRepo.listLiveProjectIdsInStudio,
+      source: controlRedis,
+    });
+  } catch (err) {
+    logger.error({ err }, "live_update_relay_start_failed");
     await flushLogger();
     await exitProcess(1);
     return;
@@ -494,6 +515,7 @@ async function main(): Promise<void> {
         () => stopProjectControlSync(),
         () => memberChanges.stop(),
         () => sessionRevocation.stop(),
+        () => liveUpdates.stop(),
         // Stop answering demote requests. This unsubscribes and nothing more
         // — the SUBSCRIBE client it rides on is made inside
         // createCollabServer, is not exposed here, and goes when the process

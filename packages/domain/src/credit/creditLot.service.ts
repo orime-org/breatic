@@ -41,7 +41,6 @@ import {
   commerceOutboxRepo,
   db,
   env,
-  publishCreditsChanged,
   AppError,
   NotFoundError,
   ForbiddenError,
@@ -139,12 +138,6 @@ export interface ChargeOutcome {
   studioId: string | null;
   /** The lots drawn down, oldest first. */
   lotIds: readonly string[];
-  /**
-   * Why the project's users could not be told the charge committed
-   * (inner#1611). The charge stands; the caller logs this, and the top bar
-   * shows the old figure until its next read.
-   */
-  signalFailure?: unknown;
 }
 
 /**
@@ -498,7 +491,8 @@ export async function settleCharge(requestId: string): Promise<ChargeOutcome | n
  * @throws {Error} When the charge cannot be applied.
  */
 async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
-  const settled = await db.transaction(async (tx): Promise<{ outcome: ChargeOutcome; projectId: string | null } | null> => {
+  // The Studio's members read their credits again from the trigger on the credit tables (#1580).
+  return db.transaction(async (tx): Promise<ChargeOutcome | null> => {
     const request = await creditChargeRepo.lockById(requestId, tx);
     if (request === null || request.status === "settled") return null;
     const outcome = await applyCharge(
@@ -516,18 +510,8 @@ async function settleOnce(requestId: string): Promise<ChargeOutcome | null> {
       tx,
     );
     await creditChargeRepo.markSettled(request.id, tx);
-    return { outcome, projectId: request.projectId };
-  });
-  if (settled === null) return null;
-  const { outcome, projectId } = settled;
-  // Only a charge against a studio's pool changes what its users see.
-  if (projectId === null || outcome.studioId === null || !env.CHARGING_ENABLED) return outcome;
-  try {
-    await publishCreditsChanged(projectId);
     return outcome;
-  } catch (err) {
-    return { ...outcome, signalFailure: err };
-  }
+  });
 }
 
 /**

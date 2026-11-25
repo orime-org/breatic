@@ -2,201 +2,218 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The page's list of uploads still finishing (inner#1367 §4.2a): one timer,
- * one round asking about every upload still waiting, at most
- * `UPLOAD_STATUS_MAX_KEYS` per request.
+ * The page's table of uploads waiting for their ending (#1580, test spec area J, design §3 and §5.3). The table
+ * asks the server nothing and keeps no timer; whatever wakes the page hands it an ending: the Project page from the
+ * `upload:ended` message, the Studio page from its one poll. One `describe` per state of §5.3, one case per cell.
  */
 
-import { describe, it, expect, vi } from 'vitest';
-
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { UploadStatus } from '@breatic/shared';
-import { UPLOAD_STATUS_MAX_KEYS } from '@breatic/shared';
-import { createUploadStatusList } from '@web/data/upload/upload-status';
+import type * as AssetsModule from '@web/data/api/assets';
 
-/** A list whose timer fires only when the test says so. */
-function harness(answers: (keys: readonly string[]) => UploadStatus[] | Error) {
-  const asked: string[][] = [];
-  const delays: number[] = [];
-  let pending: (() => void) | null = null;
-  const list = createUploadStatusList({
-    fetchStatus: vi.fn(async (keys: readonly string[]) => {
-      asked.push([...keys]);
-      const answer = answers(keys);
-      if (answer instanceof Error) throw answer;
-      return { items: answer, retryAfterSeconds: 3 };
-    }),
-    pollSeconds: async () => 2,
-    setTimer: (fire, ms) => {
-      delays.push(ms);
-      pending = fire;
-    },
-  });
-  /** Fire the scheduled round and let it finish. */
-  async function tick(): Promise<void> {
-    const fire = pending;
-    pending = null;
-    fire?.();
-    for (let i = 0; i < 10; i += 1) await Promise.resolve();
-  }
-  return { list, asked, delays, tick, scheduled: () => pending !== null };
+vi.mock('@web/data/api/assets', async (importOriginal) => {
+  const actual = await importOriginal<typeof AssetsModule>();
+  return { ...actual, assetsApi: { ...actual.assetsApi, fetchUploadConfig: vi.fn() } };
+});
+
+import { assetsApi } from '@web/data/api/assets';
+import { settleUploadEnding, waitForUploadEnding, waitingUploadKeys } from '@web/data/upload/upload-status';
+
+let n = 0;
+/**
+ * A key no earlier case used; the table lives for the whole page, as it does in the browser.
+ * @returns The key.
+ */
+function freshKey(): string {
+  n += 1;
+  return `uploads/j-${n}.png`;
 }
 
-/** Let the waits started so far reach the timer. */
-async function settle(): Promise<void> {
+/**
+ * A completed ending for `key`.
+ * @param key - The key.
+ * @returns The ending.
+ */
+function completed(key: string): UploadStatus {
+  return {
+    key,
+    state: 'completed',
+    result: { assetId: `a-${key}`, fileUrl: `https://assets.example.test/${key}`, kind: 'image', width: 64, height: 48 },
+  };
+}
+
+/**
+ * Watch a wait: what it resolved or rejected with, and how many times.
+ * @param wait - The wait.
+ * @returns Its record, filled in as it settles.
+ */
+function watch(wait: Promise<unknown>): { value: unknown; error: unknown; settledTimes: number } {
+  const record = { value: undefined as unknown, error: undefined as unknown, settledTimes: 0 };
+  wait.then(
+    (value) => {
+      record.value = value;
+      record.settledTimes += 1;
+    },
+    (error: unknown) => {
+      record.error = error;
+      record.settledTimes += 1;
+    },
+  );
+  return record;
+}
+
+/** Let promise continuations run. */
+async function flush(): Promise<void> {
   for (let i = 0; i < 10; i += 1) await Promise.resolve();
 }
 
-const done = (key: string): UploadStatus => ({
-  key,
-  state: 'completed',
-  result: { assetId: `a-${key}`, fileUrl: `https://cdn/${key}`, kind: 'image', width: 4, height: 3 },
+beforeEach(() => {
+  vi.useFakeTimers();
+  vi.clearAllMocks();
 });
 
-describe('the list of uploads still finishing', () => {
-  it('asks once per round and hands each upload its ending', async () => {
-    let round = 0;
-    const h = harness((keys) => {
-      round += 1;
-      return keys.map((key) => (round === 1 ? { key, state: 'finishing' } : done(key)));
-    });
+afterEach(() => {
+  vi.useRealTimers();
+});
 
-    const ending = h.list.waitFor('k1');
-    await settle();
-    await h.tick();
-    await h.tick();
-
-    await expect(ending).resolves.toEqual({
-      key: 'k1',
-      state: 'completed',
-      result: { assetId: 'a-k1', fileUrl: 'https://cdn/k1', kind: 'image', width: 4, height: 3 },
-    });
-    expect(h.asked).toEqual([['k1'], ['k1']]);
+describe('a key waiting', () => {
+  it.each([
+    ['completed', (key: string): UploadStatus => completed(key)],
+    ['failed', (key: string): UploadStatus => ({ key, state: 'failed', reason: 'over_cap' })],
+    ['transferred', (key: string): UploadStatus => ({ key, state: 'transferred' })],
+  ] as const)('J-10 ends with the %s ending handed to it', async (_state, ending) => {
+    const key = freshKey();
+    const wait = watch(waitForUploadEnding(key));
+    settleUploadEnding(ending(key));
+    await flush();
+    expect(wait.value).toEqual(ending(key));
+    expect(waitingUploadKeys()).not.toContain(key);
   });
 
-  it('carries every waiting upload in one request, and drops the ones that ended', async () => {
-    const h = harness((keys) =>
-      keys.map((key) => (key === 'k1' ? done(key) : { key, state: 'finishing' })),
-    );
-
-    void h.list.waitFor('k1');
-    void h.list.waitFor('k2');
-    await settle();
-    await h.tick();
-    await h.tick();
-
-    expect(h.asked).toEqual([['k1', 'k2'], ['k2']]);
+  it('J-11 ends with the ending the Studio poll hands it', async () => {
+    const key = freshKey();
+    const wait = watch(waitForUploadEnding(key));
+    expect(waitingUploadKeys()).toContain(key);
+    settleUploadEnding(completed(key));
+    await flush();
+    expect(wait.value).toEqual(completed(key));
   });
 
-  it('takes an upload that joins between rounds into the next one', async () => {
-    const h = harness((keys) => keys.map((key) => ({ key, state: 'finishing' as const })));
-
-    void h.list.waitFor('k1');
-    await settle();
-    await h.tick();
-    void h.list.waitFor('k2');
-    await settle();
-    await h.tick();
-
-    expect(h.asked).toEqual([['k1'], ['k1', 'k2']]);
+  it('J-18 keeps waiting when the poll says it is still finishing', async () => {
+    const key = freshKey();
+    const wait = watch(waitForUploadEnding(key));
+    settleUploadEnding({ key, state: 'finishing' });
+    await flush();
+    expect(wait.settledTimes).toBe(0);
+    expect(waitingUploadKeys()).toContain(key);
+    settleUploadEnding(completed(key));
+    await flush();
+    expect(wait.value).toEqual(completed(key));
   });
 
-  it('splits more uploads than one request may carry across requests', async () => {
-    const h = harness((keys) => keys.map((key) => ({ key, state: 'finishing' as const })));
-
-    for (let i = 0; i <= UPLOAD_STATUS_MAX_KEYS; i += 1) void h.list.waitFor(`k${i}`);
-    await settle();
-    await h.tick();
-
-    expect(h.asked.map((keys) => keys.length)).toEqual([UPLOAD_STATUS_MAX_KEYS, 1]);
+  it('J-12 is dropped when its page goes away, and nothing is handed to it afterwards', async () => {
+    const key = freshKey();
+    const page = new AbortController();
+    const wait = watch(waitForUploadEnding(key, page.signal));
+    page.abort();
+    await flush();
+    expect((wait.error as DOMException).name).toBe('AbortError');
+    expect(waitingUploadKeys()).not.toContain(key);
+    settleUploadEnding(completed(key));
+    await flush();
+    expect(wait.settledTimes).toBe(1);
   });
 
-  it('keeps every upload waiting when a round fails, and asks again', async () => {
-    let round = 0;
-    const h = harness((keys) => {
-      round += 1;
-      return round === 1 ? new Error('offline') : keys.map(done);
-    });
-
-    const ending = h.list.waitFor('k1');
-    await settle();
-    await h.tick();
-    expect(h.scheduled()).toBe(true);
-    await h.tick();
-
-    await expect(ending).resolves.toMatchObject({ state: 'completed' });
+  it('J-13 stays waiting while no message comes, with no request and no timer of its own', async () => {
+    const key = freshKey();
+    const wait = watch(waitForUploadEnding(key));
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(wait.settledTimes).toBe(0);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(assetsApi.fetchUploadConfig).not.toHaveBeenCalled();
+    settleUploadEnding(completed(key));
   });
 
-  it('waits the configured interval first, then what the last answer said', async () => {
-    const h = harness((keys) => keys.map((key) => ({ key, state: 'finishing' as const })));
-
-    void h.list.waitFor('k1');
-    await settle();
-    await h.tick();
-
-    expect(h.delays).toEqual([2000, 3000]);
+  it('J-19 ends every waiter on the same key', async () => {
+    const key = freshKey();
+    const first = watch(waitForUploadEnding(key));
+    const second = watch(waitForUploadEnding(key));
+    settleUploadEnding(completed(key));
+    await flush();
+    expect(first.value).toEqual(completed(key));
+    expect(second.value).toEqual(completed(key));
   });
 
-  it('stops asking once nothing is waiting', async () => {
-    const h = harness((keys) => keys.map(done));
-
-    void h.list.waitFor('k1');
-    await settle();
-    await h.tick();
-
-    expect(h.scheduled()).toBe(false);
+  it('J-19 keeps the other waiter when one on the same key goes away', async () => {
+    const key = freshKey();
+    const page = new AbortController();
+    const gone = watch(waitForUploadEnding(key, page.signal));
+    const kept = watch(waitForUploadEnding(key));
+    page.abort();
+    await flush();
+    expect(waitingUploadKeys()).toContain(key);
+    settleUploadEnding(completed(key));
+    await flush();
+    expect((gone.error as DOMException).name).toBe('AbortError');
+    expect(kept.value).toEqual(completed(key));
   });
 
-  it('hands an upload the server does not know its ending', async () => {
-    const h = harness((keys) => keys.map((key) => ({ key, state: 'unknown' as const })));
-
-    const ending = h.list.waitFor('k1');
-    await settle();
-    await h.tick();
-
-    await expect(ending).resolves.toEqual({ key: 'k1', state: 'unknown' });
-    // Ended, so it leaves the list and nothing is left to ask about.
-    expect(h.scheduled()).toBe(false);
-  });
-
-  it('hands a failed upload its reason', async () => {
-    const h = harness((keys) =>
-      keys.map((key) => ({ key, state: 'failed' as const, reason: 'unsupported_type' })),
-    );
-
-    const ending = h.list.waitFor('k1');
-    await settle();
-    await h.tick();
-
-    await expect(ending).resolves.toEqual({ key: 'k1', state: 'failed', reason: 'unsupported_type' });
-    expect(h.scheduled()).toBe(false);
+  it('is never registered when its page has already gone', async () => {
+    const key = freshKey();
+    const page = new AbortController();
+    page.abort();
+    const wait = watch(waitForUploadEnding(key, page.signal));
+    await flush();
+    expect((wait.error as DOMException).name).toBe('AbortError');
+    expect(waitingUploadKeys()).not.toContain(key);
   });
 });
 
-// inner#1006 W10: a transfer upload ends `transferred`, which carries no
-// result. The list hands it over like any other ending and stops asking.
-describe('a transfer upload in the list', () => {
-  it('ends the wait with transferred and asks no more about that key', async () => {
-    let round = 0;
-    const h = harness((keys) => {
-      round += 1;
-      return keys.map((key): UploadStatus =>
-        round === 1 ? { key, state: 'finishing' } : { key, state: 'transferred' },
-      );
-    });
+describe('a key that ended', () => {
+  it('J-14 ignores the message telling it again', async () => {
+    const key = freshKey();
+    const wait = watch(waitForUploadEnding(key));
+    settleUploadEnding(completed(key));
+    settleUploadEnding({ key, state: 'failed', reason: 'empty' });
+    await flush();
+    expect(wait.settledTimes).toBe(1);
+    expect(wait.value).toEqual(completed(key));
+  });
 
-    const ending = h.list.waitFor('transfer/2026-10-24/1_t.transfer');
-    await settle();
-    await h.tick();
-    await h.tick();
+  it('J-15 ignores the poll telling it again', async () => {
+    const key = freshKey();
+    const wait = watch(waitForUploadEnding(key));
+    settleUploadEnding(completed(key));
+    await flush();
+    settleUploadEnding(completed(key));
+    await flush();
+    expect(wait.settledTimes).toBe(1);
+  });
 
-    await expect(ending).resolves.toEqual({
-      key: 'transfer/2026-10-24/1_t.transfer',
-      state: 'transferred',
-    });
-    expect(h.asked).toEqual([
-      ['transfer/2026-10-24/1_t.transfer'],
-      ['transfer/2026-10-24/1_t.transfer'],
-    ]);
-    expect(h.scheduled()).toBe(false);
+  it('J-16 and J-17 does nothing when its page goes away or the connection drops', async () => {
+    const key = freshKey();
+    const page = new AbortController();
+    const wait = watch(waitForUploadEnding(key, page.signal));
+    settleUploadEnding(completed(key));
+    await flush();
+    page.abort();
+    await vi.advanceTimersByTimeAsync(60 * 60_000);
+    expect(wait.settledTimes).toBe(1);
+    expect(wait.value).toEqual(completed(key));
+  });
+});
+
+describe('the table', () => {
+  it('ignores an ending nobody waits for', () => {
+    expect(() => settleUploadEnding(completed(freshKey()))).not.toThrow();
+  });
+
+  it('J-22 sets no timer and asks the server nothing while keys wait', async () => {
+    const keys = [freshKey(), freshKey(), freshKey()];
+    for (const key of keys) void waitForUploadEnding(key);
+    await vi.advanceTimersByTimeAsync(10 * 60_000);
+    expect(vi.getTimerCount()).toBe(0);
+    expect(assetsApi.fetchUploadConfig).not.toHaveBeenCalled();
+    for (const key of keys) settleUploadEnding(completed(key));
   });
 });

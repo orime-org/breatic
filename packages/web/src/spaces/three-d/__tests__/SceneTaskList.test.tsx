@@ -269,17 +269,14 @@ describe('the 3D Space task list (inner#1690)', () => {
     await waitFor(() => expect(uploads.reconcile).toHaveBeenCalledWith(S, answer.tasks));
   });
 
-  it('reads the list again once the earliest running row reaches its deadline, timed from the server\'s clock', async () => {
-    // The browser runs ten minutes ahead of the server; the deadline is the server's.
-    vi.setSystemTime(NOW + 600_000);
-    api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'soon', deadlineAt: new Date(NOW + 5_000).toISOString() })));
+  it('F-11 sets no re-read for a running row\'s deadline, whose expiry the server announces, and keeps counting its minutes', async () => {
+    api.listSpaceTasks.mockResolvedValue(listed(row({ id: 'soon', deadlineAt: new Date(NOW + 1_000).toISOString() })));
     renderList();
-    await rowOf('soon');
+    const found = await rowOf('soon');
+    expect(found).toHaveTextContent(t('spaces.threeD.taskList.runningFor', { minutes: 1 }));
+    await act(async () => { await vi.advanceTimersByTimeAsync(600_000); });
     expect(api.listSpaceTasks).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(4_000); });
-    expect(api.listSpaceTasks).toHaveBeenCalledTimes(1);
-    await act(async () => { await vi.advanceTimersByTimeAsync(2_000); });
-    expect(api.listSpaceTasks).toHaveBeenCalledTimes(2);
+    expect(await rowOf('soon')).toHaveTextContent(t('spaces.threeD.taskList.runningFor', { minutes: 11 }));
   });
 
   // inner#1968 visual round 1: a waiting row wears the canvas's hourglass, not the running blue dot.

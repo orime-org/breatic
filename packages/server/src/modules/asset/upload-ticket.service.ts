@@ -18,7 +18,10 @@ import { accountActivityRepo } from "@breatic/core";
 import { AppError, env, getNodeTaskConfig, getStorageConfig, logger } from "@breatic/core";
 import {
   announceDocumentUploadAsset,
+  announceFocusImage,
+  announceFocusImageUploading,
   assetService,
+  type GrantFocusImage,
   emitSceneLookPicture,
   safeExt,
   sceneTaskService,
@@ -27,7 +30,7 @@ import {
   uploadTicketService,
   type SceneLookTarget,
 } from "@breatic/domain";
-import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type NodeTaskAction } from "@breatic/shared";
+import { TRANSFER_KEY_DIR, TRANSFER_MEDIA_TYPE, type FocusImageTicket, type NodeTaskAction } from "@breatic/shared";
 
 import * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 import { noteIngestSideEffects } from "@server/modules/asset/ingest-side-effects.js";
@@ -51,10 +54,23 @@ export interface TicketItem {
   purpose?: "project_cover" | "studio_avatar" | "scene_model" | "scene_look" | undefined;
   /** The model's name, on a scene model upload. */
   label?: string | undefined;
+  /** The focus image a crop becomes, in the pool of the node it names on `space_id` (#1580). */
+  focusImage?: FocusImageTicket | undefined;
   /** The 3D object, part and the part's starting picture, on a part picture upload (inner#1693). */
   object_id?: string | undefined;
   part?: string | undefined;
   start_map?: string | null | undefined;
+}
+
+/**
+ * The pool a focus crop lands in and what it becomes there.
+ * @param scope - Where the upload goes.
+ * @param item - The file.
+ * @returns The target, or null for an upload that is not a focus crop.
+ */
+function focusTargetOf(scope: TicketScope, item: TicketItem): { projectId: string; focusImage: GrantFocusImage } | null {
+  if (item.focusImage === undefined || item.space_id === undefined || scope.projectId === undefined) return null;
+  return { projectId: scope.projectId, focusImage: { ...item.focusImage, spaceId: item.space_id } };
 }
 
 /**
@@ -317,6 +333,9 @@ async function prepareUpload(
         { kind: dedupHit.kind, fileUrl: dedupHit.fileUrl, width: dedupHit.width, height: dedupHit.height },
       );
     }
+    // A focus crop already in the studio goes straight to its pool; a lost announcement fails the request.
+    const focusTarget = focusTargetOf(scope, item);
+    if (focusTarget !== null) await announceFocusImage(focusTarget, { kind: dedupHit.kind, fileUrl: dedupHit.fileUrl });
     // A 3D model is reused from the Space's task list, so the hit opens that
     // row already holding the model (inner#1690).
     let sceneTaskId: string | undefined;
@@ -369,6 +388,7 @@ async function prepareUpload(
       context: {
         nodeId: item.node_id ?? null,
         ...(item.upload_id !== undefined && { documentUploadId: item.upload_id }),
+        ...(item.focusImage !== undefined && { focusImage: focusTargetOf(scope, item)?.focusImage ?? null }),
         spaceId: item.space_id ?? null,
         source: item.source ?? null,
         toolName: item.tool_name ?? null,
@@ -382,6 +402,15 @@ async function prepareUpload(
     { budgetMs: getNodeTaskConfig().default_budget_ms, ...uploadRowOf(item) },
     recordUserAction,
   );
+  // A focus crop shows as uploading in its node once its grant is open, as a node's upload shows its task row, until
+  // its ending takes it out or its deadline passes; a lost notice only hides the wait, from the uploader too once the
+  // bytes are sent.
+  const focusOpened = focusTargetOf(scope, item);
+  if (focusOpened !== null) {
+    await announceFocusImageUploading(focusOpened, key).catch((err: unknown) => {
+      logger.error({ err, key, userId, projectId }, "focus_image_uploading_publish_failed");
+    });
+  }
   // The upload's two hours, read off the row or the grant just opened
   // (inner#1367). The ticket carries it; every session token the Worker
   // issues for this upload, and every call it makes for it, end there.

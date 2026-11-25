@@ -115,6 +115,7 @@ export type {
 } from "@domain/asset/backend-upload.service.js";
 export type {
   UploadGrant,
+  GrantFocusImage,
   SceneLookTarget,
   FinalizeClaim,
   FinalizeRefusal,
@@ -263,6 +264,7 @@ export {
 export * as ingestReportService from "@domain/asset/ingest-report.service.js";
 export { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
 export { announceDocumentUploadAsset, announceDocumentUploadProcessing, documentTargetOf } from "@domain/asset/document-upload-events.js";
+export { announceFocusImage, announceFocusImageUploading } from "@domain/asset/focus-image-events.js";
 export type {
   IngestReport,
   IngestReportOutcome,
@@ -327,6 +329,12 @@ export { MAIL_QUEUE, enqueueMail, type MailJob } from "@domain/mail/mail-queue.j
 export { escapeHtml, renderMail, type MailMessage, type MailSpec, type RenderedMail } from "@domain/mail/mail-shell.js";
 
 export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
+export * as notificationRepo from "@domain/notification/notification.repo.js";
+export * as projectTransfersRepo from "@domain/project/projectTransfers.repo.js";
+export * as transferExpiryService from "@domain/project/transfer-expiry.service.js";
+export * as deadlineSweepService from "@domain/sweep/deadline-sweep.service.js";
+export { readDatabaseClock } from "@domain/sweep/database-clock.repo.js";
+export { mintShareToken } from "@domain/request/share-token.js";
 
 // ── Provider (every model call goes through it, inner#1743) ──
 export { initProvider, provider } from "@domain/provider/instance.js";

@@ -288,11 +288,11 @@ function TransferOwnershipSection({
   const liveQuery = useQuery({
     queryKey: liveKey,
     queryFn: () => projectsApi.liveTransfer(projectId),
-    // Polls like the bell does. The offer can end without this tab doing
-    // anything — the recipient accepts or declines from their own — and a
-    // surface that never refetches keeps a Withdraw button over an offer that
-    // is already over, which answers 404 and reads as a failure.
-    refetchInterval: 30_000,
+    // The offer can end without this tab doing anything — the recipient
+    // accepts or declines from their own — so the page reads it again when
+    // collab says the project's transfer changed (#1580). That holds only while the dialog is open, so each opening
+    // reads it once.
+    staleTime: 0,
     refetchOnWindowFocus: true,
   });
   const live = liveQuery.data ?? null;

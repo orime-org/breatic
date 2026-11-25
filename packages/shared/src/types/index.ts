@@ -76,6 +76,7 @@ export type {
   NodeType,
   AttachRef,
   FocusImage,
+  FocusUpload,
   AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,
@@ -243,7 +244,10 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
-  SPACE_TASKS_CHANGED_SIGNAL,
+  ASSET_PEAKS_READY_SIGNAL,
+  NOTIFICATIONS_CHANGED_SIGNAL,
+  PROJECT_TRANSFER_CHANGED_SIGNAL,
+  UPLOAD_ENDED_SIGNAL,
   SCENE_LOOK_SETTLED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
@@ -260,7 +264,10 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
-  SpaceTasksChangedSignal,
+  AssetPeaksReadySignal,
+  NotificationsChangedSignal,
+  ProjectTransferChangedSignal,
+  UploadEndedSignal,
   SceneLookSettledSignal,
 } from "@shared/types/project-activity.js";
 
@@ -289,8 +296,8 @@ export type {
 
 export {
   activityNewChannel,
-  creditsChangedChannel,
-  spaceTasksChangedChannel,
+  uploadEndedChannel,
+  assetPeaksReadyChannel,
   sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
@@ -298,8 +305,8 @@ export {
 } from "@shared/types/redis-events.js";
 export type {
   ActivityNewControlEvent,
-  CreditsChangedControlEvent,
-  SpaceTasksChangedControlEvent,
+  UploadEndedEvent,
+  AssetPeaksReadyControlEvent,
   SceneLookSettledControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,

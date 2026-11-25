@@ -81,7 +81,7 @@ beforeEach(() => {
     understandMaxBytes: 20_971_520,
     understandLongMediaMaxBytes: 2_147_483_648,
     waveformMaxSeconds: 3600,
-    waveformMaxBytes: 200_000_000, waveformPeaksRetryMs: 5000, waveformPeaksRetryMaxMs: 600_000,
+    waveformMaxBytes: 200_000_000,
   });
 });
 
