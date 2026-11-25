@@ -17,7 +17,7 @@ beside the bundle at `/third-party-licences.txt`.
 
 We publish four images, and a deployment that enables web animation builds a
 fifth, the web-animation container, from source. The media container carries
-FFmpeg and vips; the page reader carries a Chromium headless shell and the
+FFmpeg, vips, SoX and an isolated Python analysis runtime; the page reader carries a Chromium headless shell and the
 FFmpeg build Playwright installs beside it; the web-animation container carries
 Chromium and the DeepSeek Harness:
 
@@ -114,7 +114,8 @@ while the image is built, as the FFmpeg one above is.
 ### Isolated analysis in the media container
 
 The media container also carries Python 3.12.16, NumPy 2.3.5, OpenCV
-4.12.0 and PySceneDetect 0.7.2. The Node
+4.12.0 and PySceneDetect 0.7.2, with PySceneDetect's Python dependencies
+click 8.1.8, platformdirs 4.5.0 and tqdm 4.67.1 from Alpine. The Node
 service invokes our Python analysis program as a separate process and hands
 it raw BGR frames. Python does not decode media: OpenCV is built from source
 with FFmpeg, GStreamer, GUI and dynamic backend plugins disabled. The
@@ -128,6 +129,9 @@ existing FFmpeg program supplies decoded frames through a separate process.
 | GCC runtime libraries | GPL-3.0-or-later WITH GCC-exception-3.1 | https://gcc.gnu.org/pub/gcc/releases/gcc-15.2.0/gcc-15.2.0.tar.xz |
 | Limited OpenCV 4.12.0 | Apache-2.0 and its bundled notices, including Protobuf, SoftFloat and MSCR | https://github.com/opencv/opencv/tree/4.12.0 |
 | PySceneDetect 0.7.2 | BSD-3-Clause | https://github.com/Breakthrough/PySceneDetect/tree/v0.7.2 |
+| click 8.1.8 | BSD-3-Clause | https://github.com/pallets/click/tree/8.1.8 |
+| platformdirs 4.5.0 | MIT | https://github.com/tox-dev/platformdirs/tree/4.5.0 |
+| tqdm 4.67.1 | MIT | https://github.com/tqdm/tqdm/tree/v4.67.1 |
 
 The image retains upstream licence texts and a `SOURCE` declaration under
 `/usr/share/analysis-source/`. That declaration includes the fixed upstream

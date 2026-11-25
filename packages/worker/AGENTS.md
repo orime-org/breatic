@@ -12,15 +12,15 @@ Check: does this failure fall before or after the vendor-returned fact is writte
 
 ### Waiting on upstream throws StillRunning
 
-**A handler that must wait for an upstream result throws `StillRunning` (`handlers/still-running.ts`); it never polls or sleeps.** The running-task gate throws the same class; `dispatch.ts`, and `runTimelineExecution` (`handlers/timeline/web-animation-execution.ts`) for a Timeline execution, answer either by moving the job back to the delayed queue with `moveToDelayed`, which frees the slot and consumes no retry.
+**A handler that must wait for an upstream result throws `StillRunning` (`handlers/still-running.ts`); it never polls or sleeps.** The running-task gate throws the same class; `dispatch.ts`, `runTimelineExecution` (`handlers/timeline/web-animation-execution.ts`) for a Timeline execution, the planned video tool run and analysis handlers (`handlers/mini-tool/run-execution-task.ts`, `run-analysis-task.ts`) and `handlers/video-presentation.ts` answer either by moving the job back to the delayed queue with `moveToDelayed`, which frees the slot and consumes no retry; a planned run or analysis stops waiting once its reporting window (`planReportingEnd`) has closed and ends expired.
 
 ### No local media processing
 
-**Worker does not process media locally: container mini-tools hand the job to the ingest Worker, which runs ffmpeg in a container (`handlers/container/run-container-job.ts`).** `runtime/` (spawn and temp dirs) exists only for the `voice-samples.ts` maintenance entry, which no deployment runs; `breatic/no-ffmpeg-bindings` blocks bindings but not `spawn`, so this rule is what keeps ffmpeg out of task code.
+**Worker does not process media locally: container mini-tools hand the job to the ingest Worker, which runs ffmpeg in a container (`handlers/container/run-container-job.ts`; planned video tools, analyses and presentation preparation through `handlers/mini-tool/advance-plan-job.ts` and `handlers/video-presentation.ts`).** `runtime/` (spawn and temp dirs) exists only for the `voice-samples.ts` maintenance entry, which no deployment runs; `breatic/no-ffmpeg-bindings` blocks bindings but not `spawn`, so this rule is what keeps ffmpeg out of task code.
 
 ### Failed-job cleanup runs across processes
 
-**Settling a task row nobody finished is driven by `QueueEvents.on('failed')` from core `createQueueEvents('tasks')` (`handlers/failed-job-cleanup.ts`), never by the in-process `worker.on('failed')`, and a job counts as terminally failed by `job.finishedOn`, never by `attemptsMade`.** A crashed worker cannot run its own callback, while every live instance receives the queue event; a stalled job's death sets `finishedOn` without incrementing `attemptsMade`.
+**Settling a task row nobody finished is driven by `QueueEvents.on('failed')` from core `createQueueEvents('tasks')` (`handlers/failed-job-cleanup.ts`), never by the in-process `worker.on('failed')`, and a job counts as terminally failed by `job.finishedOn`, never by `attemptsMade`.** A crashed worker cannot run its own callback, while every live instance receives the queue event; a stalled job's death sets `finishedOn` without incrementing `attemptsMade`. A planned video tool run ends itself: failed-job cleanup hands it to `recoverPlannedRun` (`handlers/mini-tool/recover-planned-run.ts`), and `handlers/planned-run-sweep.ts` ends a running run, or a pending run past `planned_run_sweep_grace_ms`, whose job has ended or is gone, because a crashed process may never emit the queue event.
 
 ### Model runs go through provider
 
