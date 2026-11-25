@@ -47,7 +47,6 @@ test('local video and its Project copy play, pause, seek and survive closing the
     expect(duplicateId).not.toBe(uploaded.clipId);
     await expectTimelineStart(page, uploaded.clipId, 0, uploaded.durationFrames);
     await expectTimelineStart(page, duplicateId, uploaded.durationFrames, uploaded.durationFrames);
-    await expect(visibleSpace(page).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
 
     const outlet = visibleSpace(page);
     const slider = outlet.getByRole('slider', { name: 'Preview frame', exact: true });
@@ -149,7 +148,24 @@ test('a real Viewer sees the registered Timeline clips without material or start
   }
 });
 
-test('two connected Editors merge concurrent moves into a visible overlap and repair it through conflict rows @needs-storage @needs-ingest', async ({ page, browser }) => {
+/**
+ * Step the preview to the first multiple of ten at or after a frame with the slider's own PageUp key.
+ * @returns The frame reached.
+ * @throws {Error} When the slider does not reach it.
+ */
+async function seekPast(page: Page, frame: number): Promise<number> {
+  const slider = visibleSpace(page).getByRole('slider', { name: 'Preview frame', exact: true });
+  await slider.focus();
+  await slider.press('Home');
+  const pages = Math.ceil(frame / 10);
+  for (let step = 0; step < pages; step += 1) await slider.press('PageUp');
+  await expect(slider).toHaveAttribute('aria-valuenow', String(pages * 10));
+  return pages * 10;
+}
+
+// inner#1709 design §3.5: an overlap two Editors merge on one track has no conflict list; one clip covers the
+// other, only one of them is drawn, and either is still reached on its track and moved apart.
+test('two connected Editors merge concurrent moves into an overlap that draws one clip, and move them apart @needs-storage @needs-ingest', async ({ page, browser }) => {
   const ownerErrors = watchTimelineErrors(page);
   const ownerDelivery = await installTimelineDeliveryGate(page);
   await openSmokeProject(page);
@@ -163,8 +179,8 @@ test('two connected Editors merge concurrent moves into a visible overlap and re
     const duration = uploaded.durationFrames;
     const farStart = duration * 3;
     // Overlaps are built on a sub track: the magnetic main track keeps its clips end to end.
-    await moveTimelineClip(page, secondId, duration, duration, 'New visual track');
-    await moveTimelineClip(page, uploaded.clipId, 0, duration, 'Visual 2');
+    await moveTimelineClip(page, secondId, duration, duration, 'New track');
+    await moveTimelineClip(page, uploaded.clipId, 0, duration, 'Track 2');
     await withTimelinePeer(page, browser, projectId, 'editor', async (peer) => {
       const peerErrors = watchTimelineErrors(peer);
       peerErrors.mediaUrls.add(uploaded.asset.fileUrl);
@@ -177,7 +193,6 @@ test('two connected Editors merge concurrent moves into a visible overlap and re
         await expectTimelineStart(member, uploaded.clipId, 0, duration);
         await expectTimelineStart(member, secondId, duration, duration);
         await expectTimelineConnected(member);
-        await expect(visibleSpace(member).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
       }
       ownerDelivery.holding = true;
       peerDelivery.holding = true;
@@ -189,26 +204,24 @@ test('two connected Editors merge concurrent moves into a visible overlap and re
         // Each edit used the same initial layout; both sockets still send real updates to the server.
         await expect.poll(() => ownerDelivery.pending.length).toBeGreaterThan(0);
         await expect.poll(() => peerDelivery.pending.length).toBeGreaterThan(0);
-        for (const member of [page, peer]) {
-          await expectTimelineConnected(member);
-          await expect(visibleSpace(member).locator('[data-testid^="timeline-clip-"][data-track-id]')).toHaveCount(2);
-          await expect(visibleSpace(member).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
-        }
-        await expectTimelineStart(page, uploaded.clipId, farStart, duration);
-        await expectTimelineStart(peer, secondId, farStart, duration);
         flushTimelineDelivery(ownerDelivery);
         flushTimelineDelivery(peerDelivery);
         for (const member of [page, peer]) {
           const outlet = visibleSpace(member);
           await expectTimelineConnected(member);
-          await expect(outlet.getByTestId(`timeline-conflict-${uploaded.clipId}`)).toContainText(`Start ${farStart} · Duration ${duration} frames`);
-          await expect(outlet.getByTestId(`timeline-conflict-${secondId}`)).toContainText(`Start ${farStart} · Duration ${duration} frames`);
+          // Both clips stay on the shared track, at the same start.
+          const track = await outlet.getByTestId(`timeline-clip-${uploaded.clipId}`).getAttribute('data-track-id');
+          await expect(outlet.getByTestId(`timeline-clip-${secondId}`)).toHaveAttribute('data-track-id', track ?? '');
+          await expectTimelineStart(member, uploaded.clipId, farStart, duration);
+          await expectTimelineStart(member, secondId, farStart, duration);
           expect((await timelineClipIds(member)).sort()).toEqual([uploaded.clipId, secondId].sort());
+          // Inside the overlap the preview draws exactly one of the two.
+          await seekPast(member, farStart + 1);
+          await expect.poll(async () => (await Promise.all([uploaded.clipId, secondId].map((id) => timelineVideoOf(member, id).isVisible())))
+            .filter(Boolean).length).toBe(1);
         }
-        // The conflict row reaches the selected placement without forcing clicks through an overlapping track button.
         await moveTimelineClip(page, secondId, farStart + duration, duration);
         for (const member of [page, peer]) {
-          await expect(visibleSpace(member).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
           await expectTimelineStart(member, uploaded.clipId, farStart, duration);
           await expectTimelineStart(member, secondId, farStart + duration, duration);
           expect(await timelineClipIds(member)).toEqual([uploaded.clipId, secondId]);
@@ -226,7 +239,9 @@ test('two connected Editors merge concurrent moves into a visible overlap and re
   }
 });
 
-test('a clip moved onto a track another Editor deletes at the same time is kept as a conflict and repaired by moving it @needs-storage @needs-ingest', async ({ page, browser }) => {
+// inner#1709 design §3.5: a clip moved onto a track deleted at the same time is not shown and blocks nothing; the
+// Editor who moved it gets it back by undoing the move.
+test('a clip moved onto a track another Editor deletes at the same time is not shown, and its mover\'s undo brings it back @needs-storage @needs-ingest', async ({ page, browser }) => {
   const ownerErrors = watchTimelineErrors(page);
   const ownerDelivery = await installTimelineDeliveryGate(page);
   await openSmokeProject(page);
@@ -241,7 +256,7 @@ test('a clip moved onto a track another Editor deletes at the same time is kept 
     const outlet = visibleSpace(page);
     // Leave an empty sub track behind: move the second clip onto a new track and back to the main track,
     // keeping its start so the magnetic main track puts it back after the first clip.
-    await moveTimelineClip(page, secondId, duration, duration, 'New visual track');
+    await moveTimelineClip(page, secondId, duration, duration, 'New track');
     const emptied = await outlet.getByTestId(`timeline-clip-${secondId}`).getAttribute('data-track-id') ?? '';
     expect(emptied).not.toBe('visual-1');
     await moveTimelineClip(page, secondId, duration, duration, 'Main track');
@@ -260,7 +275,7 @@ test('a clip moved onto a track another Editor deletes at the same time is kept 
       try {
         await outlet.getByTestId(`timeline-delete-track-${emptied}`).click();
         await expect(outlet.getByTestId(`timeline-track-${emptied}`)).toHaveCount(0);
-        await moveTimelineClip(peer, secondId, duration * 2, duration, 'Visual 2');
+        await moveTimelineClip(peer, secondId, duration * 2, duration, 'Track 2');
         await expect(visibleSpace(peer).getByTestId(`timeline-clip-${secondId}`)).toHaveAttribute('data-track-id', emptied);
         await expect.poll(() => ownerDelivery.pending.length).toBeGreaterThan(0);
         await expect.poll(() => peerDelivery.pending.length).toBeGreaterThan(0);
@@ -270,16 +285,16 @@ test('a clip moved onto a track another Editor deletes at the same time is kept 
           const view = visibleSpace(member);
           await expectTimelineConnected(member);
           await expect(view.getByTestId(`timeline-track-${emptied}`)).toHaveCount(0);
-          // The clip is kept and listed as conflicting instead of disappearing with its track.
-          await expect(view.getByTestId(`timeline-conflict-${secondId}`)).toBeVisible();
+          await expect.poll(() => timelineClipIds(member)).toEqual([uploaded.clipId]);
         }
-        await moveTimelineClip(page, secondId, 0, duration, 'New visual track');
+        // The move was two edits, the track and then the start frame: two undos take both back.
+        await visibleSpace(peer).getByTestId('timeline-undo').click();
+        await expect(visibleSpace(peer).getByTestId('timeline-redo')).toBeEnabled();
+        await visibleSpace(peer).getByTestId('timeline-undo').click();
         for (const member of [page, peer]) {
-          const view = visibleSpace(member);
-          await expect(view.locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
-          await expect(view.getByTestId(`timeline-clip-${secondId}`)).not.toHaveAttribute('data-track-id', emptied);
-          await expect(view.getByTestId(`timeline-clip-${secondId}`)).not.toHaveAttribute('data-track-id', 'visual-1');
-          await expectTimelineStart(member, secondId, 0, duration);
+          await expect.poll(() => timelineClipIds(member)).toEqual([uploaded.clipId, secondId]);
+          await expect(visibleSpace(member).getByTestId(`timeline-clip-${secondId}`)).toHaveAttribute('data-track-id', 'visual-1');
+          await expectTimelineStart(member, secondId, duration, duration);
         }
         expect(peerErrors.unexpected).toEqual([]);
       } finally {
@@ -338,13 +353,12 @@ test('a disconnected Editor keeps the Timeline behind the existing workspace cur
           await expectTimelineStart(member, secondId, duration, duration);
         }
         // Editing resumes only after the real connection and its normal Project policy are restored.
-        await moveTimelineClip(page, uploaded.clipId, duration * 3, duration, 'New visual track');
+        await moveTimelineClip(page, uploaded.clipId, duration * 3, duration, 'New track');
         await expectTimelineStart(peer, uploaded.clipId, duration * 3, duration);
-        await moveTimelineClip(peer, secondId, duration * 4, duration, 'Visual 2');
+        await moveTimelineClip(peer, secondId, duration * 4, duration, 'Track 2');
         await expectTimelineStart(page, secondId, duration * 4, duration);
         for (const member of [page, peer]) {
           await expectTimelineConnected(member);
-          await expect(visibleSpace(member).locator('[data-testid^="timeline-conflict-"]')).toHaveCount(0);
           expect(await timelineClipIds(member)).toEqual([uploaded.clipId, secondId]);
         }
 

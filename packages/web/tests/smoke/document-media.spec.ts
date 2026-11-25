@@ -467,6 +467,8 @@ for (const kind of ['image', 'video', 'audio'] as const) {
     const block = page.locator(`${EDITOR} [data-content-type="${kind}"]`);
     const frame = block.locator('[data-media-frame]');
     await expect(frame).toBeVisible({ timeout: UPLOAD_TIMEOUT });
+    // A pending block shows the same frame before collab writes the stored address into it.
+    await expect.poll(async () => (await mediaAttr(page, 'url', [kind]))[0] ?? '', { timeout: UPLOAD_TIMEOUT }).toMatch(/^https?:\/\//);
     const [stored] = await mediaAttr(page, 'url', [kind]);
 
     // The first block's bar sits on the media's top, so the pointer rests low.

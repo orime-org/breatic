@@ -459,7 +459,7 @@ test('two video tracks, the upper one scaled down, play together within two fram
     const uploaded = await uploadTimelineVideo(page, smokeProjectId());
     errors.mediaUrls.add(uploaded.asset.fileUrl);
     const upper = await addProjectTimelineVideo(page, uploaded.asset.assetId);
-    await moveTimelineClip(page, upper, 0, uploaded.durationFrames, 'New visual track');
+    await moveTimelineClip(page, upper, 0, uploaded.durationFrames, 'New track');
     const outlet = visibleSpace(page);
     const lower = timelineVideoOf(page, uploaded.clipId);
     const above = timelineVideoOf(page, upper);

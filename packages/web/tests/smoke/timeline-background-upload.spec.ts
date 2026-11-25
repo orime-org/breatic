@@ -95,7 +95,7 @@ test('a local video uploads behind the closed dialog, spins the tab, holds the c
     await expect(outlet.getByTestId(`timeline-clip-${clipId}`)).toHaveAttribute('data-state', 'uploading');
     await expect(page.getByTestId(`space-tab-busy-${spaceId}`)).toBeVisible();
     // Editing goes on while the upload runs: the first clip moves to a new track and the main track closes up.
-    await moveTimelineClip(page, first.clipId, 0, first.durationFrames, 'New visual track');
+    await moveTimelineClip(page, first.clipId, 0, first.durationFrames, 'New track');
     await selectTimelineClip(page, clipId);
     await expect(outlet.getByTestId('timeline-clip-upload')).toBeVisible();
 

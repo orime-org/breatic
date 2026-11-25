@@ -47,7 +47,7 @@ export function watchTimelineErrors(page: Page): TimelineErrors {
     const explicitDisconnect = observed.offline
       && url.includes('/data/yjs/collab-failure-report.ts')
       && /^\[collab\] collab disconnect(?: \(close (?:1000|1005|1006)\))?(?: |$)/.test(text);
-    const knownNetworkTarget = observed.mediaUrls.has(url) || sockets.has(url)
+    const knownNetworkTarget = observed.mediaUrls.has(url) || observed.mediaUrls.has(url.replace(/[?&]cors=1$/, '')) || sockets.has(url)
       || (url.startsWith(new URL(page.url()).origin) && new URL(url).pathname.startsWith('/api/'));
     const offlineNetwork = observed.offline && knownNetworkTarget && text.includes('net::ERR_INTERNET_DISCONNECTED');
     if (!explicitDisconnect && !offlineNetwork) observed.unexpected.push(`console: ${text} (${url})`);
@@ -75,14 +75,19 @@ export async function timelineClipIds(page: Page): Promise<string[]> {
 }
 
 /**
- * Select a placement through its track or, for overlapping placements, its conflict row.
+ * Select a placement through its track: a click, or, when another clip on the same track covers it, the keyboard focus
+ * that reaches it the same way (there is no conflict list since inner#1709 design §3.5).
  * @throws {Error} When the placement is missing or its properties never appear.
  */
 export async function selectTimelineClip(page: Page, clipId: string): Promise<void> {
-  const outlet = visibleSpace(page);
-  const conflict = outlet.getByTestId(`timeline-conflict-${clipId}`);
-  const button = await conflict.count() > 0 ? conflict : outlet.getByTestId(`timeline-clip-${clipId}`);
-  await button.click();
+  const button = visibleSpace(page).getByTestId(`timeline-clip-${clipId}`);
+  await button.scrollIntoViewIfNeeded();
+  const covered = await button.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    return document.elementFromPoint(box.left + box.width / 2, box.top + box.height / 2)?.closest('[data-testid^="timeline-clip-"]') !== element;
+  });
+  if (covered) await button.focus();
+  else await button.click();
   await expect(button).toHaveAttribute('aria-pressed', 'true');
 }
 
@@ -106,7 +111,7 @@ export async function expectTimelineStart(page: Page, clipId: string, start: num
 
 /**
  * Move a placement through its properties: optionally to another track by its visible name
- * ('New visual track' creates one), then to a start frame typed into the start field.
+ * ('New track' creates one), then to a start frame typed into the start field.
  * @throws {Error} When the real edit is refused or does not reach the properties view.
  */
 export async function moveTimelineClip(page: Page, clipId: string, start: number, duration: number, track?: string): Promise<void> {
@@ -116,7 +121,7 @@ export async function moveTimelineClip(page: Page, clipId: string, start: number
     await outlet.getByTestId('timeline-clip-track').click();
     await page.getByRole('option', { name: track, exact: true }).click();
     await expect(page.getByRole('listbox')).toHaveCount(0);
-    if (track === 'New visual track') await expect(outlet.getByTestId('timeline-clip-track')).not.toHaveText(/Main track/);
+    if (track === 'New track') await expect(outlet.getByTestId('timeline-clip-track')).not.toHaveText(/Main track/);
     else await expect(outlet.getByTestId('timeline-clip-track')).toHaveText(track);
   }
   const field = outlet.getByTestId('timeline-clip-start');
@@ -141,8 +146,11 @@ export function timelineVideoOf(page: Page, clipId: string): Locator {
  */
 export async function expectTimelineVideoReady(page: Page, clipId: string, fileUrl: string): Promise<void> {
   const video = timelineVideoOf(page, clipId);
-  await expect(video).toHaveAttribute('src', fileUrl);
-  expect(new URL(fileUrl).protocol).toMatch(/^https?:$/);
+  // The element reads its file in CORS mode so Web Audio can mix it (inner#1709 design §5.2).
+  const cors = new URL(fileUrl);
+  cors.searchParams.set('cors', '1');
+  await expect(video).toHaveAttribute('src', cors.href);
+  expect(cors.protocol).toMatch(/^https?:$/);
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => ({
     decoded: element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && element.videoWidth > 0,
     error: element.error?.code ?? null,

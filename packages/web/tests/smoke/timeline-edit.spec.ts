@@ -131,7 +131,7 @@ test('the preview stacks the sub-track clip over the main clip where both play a
     const duration = uploaded.durationFrames;
     const half = Math.floor(duration / 2);
     // The main clip covers [0, duration); the upper clip covers [half, half + duration) on a new track above it.
-    await moveTimelineClip(page, upper, half, duration, 'New visual track');
+    await moveTimelineClip(page, upper, half, duration, 'New track');
     const outlet = visibleSpace(page);
     const main = timelineVideoOf(page, uploaded.clipId);
     const above = timelineVideoOf(page, upper);
@@ -196,7 +196,7 @@ async function addProjectVideoTo(page: Page, assetId: string, track: string, sta
   return added[0] ?? '';
 }
 
-test('Add media places a clip on a new visual track and on an existing sub track @needs-storage @needs-ingest', async ({ page }) => {
+test('Add media places a clip on a new track and on an existing sub track @needs-storage @needs-ingest', async ({ page }) => {
   const errors = watchTimelineErrors(page);
   await openSmokeProject(page);
   const spaceId = await createSpace(page, 'timeline', `Timeline add to track ${crypto.randomUUID()}`);
@@ -208,13 +208,13 @@ test('Add media places a clip on a new visual track and on an existing sub track
     const tracks = outlet.locator('[data-testid^="timeline-track-"]');
     await expect(tracks).toHaveCount(1);
 
-    const onNew = await addProjectVideoTo(page, uploaded.asset.assetId, 'New visual track', 0);
+    const onNew = await addProjectVideoTo(page, uploaded.asset.assetId, 'New track', 0);
     await expect(tracks).toHaveCount(2);
     const created = await outlet.getByTestId(`timeline-clip-${onNew}`).getAttribute('data-track-id');
     expect(created).not.toBe(null);
     expect(created).not.toBe('visual-1');
 
-    const onExisting = await addProjectVideoTo(page, uploaded.asset.assetId, 'Visual 2', duration);
+    const onExisting = await addProjectVideoTo(page, uploaded.asset.assetId, 'Track 2', duration);
     await expect(tracks).toHaveCount(2);
     await expect(outlet.getByTestId(`timeline-clip-${onExisting}`)).toHaveAttribute('data-track-id', created ?? '');
     await expect(outlet.getByTestId(`timeline-clip-${uploaded.clipId}`)).toHaveAttribute('data-track-id', 'visual-1');

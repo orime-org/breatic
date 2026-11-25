@@ -368,7 +368,7 @@ test('one real web animation made in Motion is reused as three copies over a vid
     await test.step('stack: a video on a higher track is drawn above the web copy beneath it at the frames it covers', async () => {
       await selectTimelineClip(page, uploaded.clipId);
       const cover = await addProjectTimelineVideo(page, uploaded.asset.assetId);
-      await moveTimelineClip(page, cover, 6 * nominal, uploaded.durationFrames, 'New visual track');
+      await moveTimelineClip(page, cover, 6 * nominal, uploaded.durationFrames, 'New track');
       await seekPreview(page, 5 * nominal);
       await expect(timelineVideoOf(page, uploaded.clipId)).toBeVisible();
       await expect(timelineVideoOf(page, cover)).not.toBeVisible();
@@ -730,7 +730,7 @@ test('play enters a web copy, replays into it and reveals it from under a video 
       const reveal = lower + 2 * nominal;
       await selectTimelineClip(page, uploaded.clipId);
       const cover = await addProjectTimelineVideo(page, uploaded.asset.assetId);
-      await moveTimelineClip(page, cover, reveal - uploaded.durationFrames, uploaded.durationFrames, 'New visual track');
+      await moveTimelineClip(page, cover, reveal - uploaded.durationFrames, uploaded.durationFrames, 'New track');
       // Under the video the copy is drawn like any layer (#1410 design §6.1), below the video on the higher track.
       await seekPreview(page, lower + nominal);
       await expect(timelineVideoOf(page, cover)).toBeVisible();
