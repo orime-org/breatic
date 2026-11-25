@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: AGPL-3.0-only
 
 import type { ConsentSnapshot, TaskEntity } from "@breatic/shared";
-import { TaskStatus, miniToolPlanJobRequestSchema, t, videoPresentationWorkKeyFor, writesWorkObject } from "@breatic/shared";
+import { TaskStatus, miniToolPlanJobRequestSchema, t, videoPresentationWorkKeyFor, type MiniToolPlanJobRequest } from "@breatic/shared";
 import { z } from "zod";
 import { ConflictError, NotFoundError, db, type DbTx } from "@breatic/core";
 import { canonicalMiniToolValue, miniToolExecutionOutputSchema, miniToolExecutionRecordSchema, type MiniToolExecutionRecord, type MiniToolExecutionOutput } from "@breatic/shared/mini-tools";
@@ -257,6 +257,18 @@ async function endRun(plan: MiniToolExecutionPlan, tx: DbTx): Promise<void> {
 }
 
 /**
+ * The work object a planned job writes, when it writes one (a chunk, §93 D5-10): never an output of the run.
+ * @param request - The job's stored request.
+ * @param sourceKey - The run's registered source key.
+ * @returns Its work key, or null when the job writes the run's outputs.
+ * @throws {never} Never.
+ */
+export function workObjectKeyOf(request: MiniToolPlanJobRequest, sourceKey: string): string | null {
+  const key = videoPresentationWorkKeyFor(sourceKey, request.jobId);
+  return request.outputs.some((output) => output.storageKey === key) ? key : null;
+}
+
+/**
  * The work keys of the run's chunks that have no terminal report: a chunk's single output is its work object (§93 D5-10).
  * @param plan - The locked run.
  * @param tx - The terminal write's transaction.
@@ -268,8 +280,8 @@ async function runningChunkKeys(plan: MiniToolExecutionPlan, tx: DbTx): Promise<
     if (step.output.miniToolPlanJob === undefined) return [];
     const request = miniToolPlanJobRequestSchema.parse(step.output.miniToolPlanJob);
     const state = step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
-    return (state?.result ?? null) === null && writesWorkObject(request, plan.execution.sourceKey)
-      ? [videoPresentationWorkKeyFor(plan.execution.sourceKey, request.jobId)] : [];
+    const key = workObjectKeyOf(request, plan.execution.sourceKey);
+    return (state?.result ?? null) === null && key !== null ? [key] : [];
   });
 }
 

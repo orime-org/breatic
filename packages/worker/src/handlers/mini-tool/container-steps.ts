@@ -84,7 +84,7 @@ export async function jobStep(taskId: string, jobId: string, endpoint: string, d
  * @returns The state.
  * @throws {z.ZodError} When the stored state is malformed.
  */
-function stateOf(step: Step): z.infer<typeof miniToolStepStateSchema> | null {
+export function stateOf(step: Step): z.infer<typeof miniToolStepStateSchema> | null {
   return step.output.miniToolStep === undefined ? null : miniToolStepStateSchema.parse(step.output.miniToolStep);
 }
 

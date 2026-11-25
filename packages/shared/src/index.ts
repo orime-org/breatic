@@ -1313,7 +1313,6 @@ export {
   readVideoPresentationIngestSnapshot,
   stepVideoPresentationAtIngest,
   videoPresentationWorkKeyFor,
-  writesWorkObject,
   videoPresentationObjectURL,
   videoPresentationPrepareAnswerSchema,
   videoPresentationEncodingSchema,

@@ -11,7 +11,7 @@ import {
 import { EDIT_FILE_TIERS, videoCarrierRouteStages, type VideoCarrierStage } from '@shared/mini-tools/video-encode-plan.js';
 import { miniToolPlanColorInputsSchema } from '@shared/upload/mini-tool-plan-job.js';
 import { askWorker } from '@shared/upload/ingest-client.js';
-export { videoPresentationWorkKeyFor, writesWorkObject } from '@shared/upload/video-presentation-keys.js';
+export { videoPresentationWorkKeyFor } from '@shared/upload/video-presentation-keys.js';
 import {
   videoPresentationDoneReceiptsSchema, videoPresentationEncodingSchema, videoPresentationOutputReceiptsSchema, videoPresentationProbeSchema, videoPresentationProcessLimitsSchema, x264PresetSchema,
 } from '@shared/upload/video-presentation-policy.js';
