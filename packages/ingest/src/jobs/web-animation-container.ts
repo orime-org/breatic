@@ -23,7 +23,7 @@ import {
 import { noteFailure } from "@ingest/error-monitoring.js";
 import { askedKey } from "@ingest/object-url.js";
 import { MEDIA_OBJECT_HOST, mediaObjectUrl } from "@ingest/media-object-route.js";
-import { JOB_REPORT_HOST, JobStartFailed } from "@ingest/jobs/mini-tool-container.js";
+import { JOB_REPORT_HOST } from "@ingest/jobs/mini-tool-container.js";
 import { harnessKeyOf } from "@ingest/jobs/harness-keys.js";
 import { MODEL_HOST, relayModelCall } from "@ingest/jobs/web-animation-model-relay.js";
 import {
@@ -56,7 +56,9 @@ export interface WebAnimationEnv {
 /** What a submit answers. */
 export type WebAnimationSubmitAnswer =
   | { kind: "report"; report: WebAnimationJobReport }
-  | { kind: "cancelled_before_submit" };
+  | { kind: "cancelled_before_submit" }
+  // A value, as for mini-tool jobs: a thrown error loses its class and name across the Durable Object RPC boundary.
+  | { kind: "start_failed"; reason: string };
 
 /** One output as the edge measured it. */
 export interface WebAnimationOutput {
@@ -140,13 +142,16 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
   /**
    * Start a job, or answer the one this object already holds.
    * @param request - The job.
-   * @returns Its report, or that a cancel came first.
-   * @throws {JobStartFailed} When the container could not be started or would not take the run.
+   * @returns Its report, that a cancel came first, or `start_failed` when the container could not be started or would
+   *   not take the run.
    */
   async submit(request: WebAnimationJobRequest): Promise<WebAnimationSubmitAnswer> {
     const next = await this.apply({ type: "submit", request });
     if (next.refused) return { kind: "cancelled_before_submit" };
-    if (next.effects.includes("start")) await this.startRun(request);
+    if (next.effects.includes("start")) {
+      const failed = await this.startRun(request);
+      if (failed !== null) return { kind: "start_failed", reason: failed };
+    }
     return { kind: "report", report: reportOfWebAnimationJob((await this.load()) ?? next.record)! };
   }
 
@@ -297,10 +302,9 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
   /**
    * Start the container and hand it the run.
    * @param request - The job.
-   * @returns Nothing.
-   * @throws {JobStartFailed} When the container could not be started or would not take the run.
+   * @returns Null once the run is taken; why not when the container could not be started or would not take the run.
    */
-  private async startRun(request: WebAnimationJobRequest): Promise<void> {
+  private async startRun(request: WebAnimationJobRequest): Promise<string | null> {
     await this.schedule(new Date(request.deadlineAt), "expireJob");
     const objects: JobObjects = {
       packageKey: request.packageKey, manifestKey: request.manifestKey, maxPackageBytes: request.maxPackageBytes,
@@ -333,13 +337,14 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
           body: JSON.stringify(run),
         }),
       );
-      if (answered.status !== 202) throw new JobStartFailed(`the run was answered ${answered.status}`);
+      if (answered.status !== 202) throw new Error(`the run was answered ${answered.status}`);
     } catch (err) {
       this.deleteSchedules("expireJob");
       await this.apply({ type: "startFailed" });
-      throw err instanceof JobStartFailed ? err : new JobStartFailed(String(err));
+      return err instanceof Error ? err.message : String(err);
     }
     await this.ctx.storage.put(ACCEPTED, true);
+    return null;
   }
 
   /**

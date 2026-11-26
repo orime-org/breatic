@@ -23,8 +23,6 @@ import { fromOurBackend } from "@ingest/backend-secret.js";
 import { noteFailure } from "@ingest/error-monitoring.js";
 import {
   CLASS_BINDINGS,
-  JobStartFailed,
-  JobIdentityConflict,
   type MiniToolClass,
   type MiniToolEnv,
 } from "@ingest/jobs/mini-tool-container.js";
@@ -70,22 +68,13 @@ function featureDisabled(): Response {
 }
 
 /**
- * Whether an error is a container that could not start, as it arrives across RPC.
- * @param err - What was thrown.
- * @returns True for {@link JobStartFailed}.
- */
-function isStartFailure(err: unknown): boolean {
-  return err instanceof JobStartFailed || (err instanceof Error && err.name === "JobStartFailed");
-}
-
-/**
  * Start a web-animation job, or answer the one already holding its id.
  * @param body - The parsed request body.
  * @param env - The bindings.
  * @returns 200 with its report; 400 for a body that is not a job; 410 after a cancel that came before any submit;
  *   501 when the feature is off or the job has no plan, or naming the model and its key variables when none of them
  *   is set here; 503 when the container could not start.
- * @throws {unknown} What the object throws other than a start failure.
+ * @throws {unknown} What the object throws.
  */
 async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Response> {
   const namespace = webAnimationNamespace(env);
@@ -102,15 +91,13 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
       { status: 501 },
     );
   }
-  try {
-    const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
-    if (!("report" in answer)) return new Response("Cancelled before it was submitted", { status: 410 });
-    return Response.json(answer.report);
-  } catch (err) {
-    if (!isStartFailure(err)) throw err;
-    noteFailure("ingest_web_animation_start_failed", { jobId: job.jobId }, err);
+  const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
+  if ("report" in answer) return Response.json(answer.report);
+  if (answer.kind === "start_failed") {
+    noteFailure("ingest_web_animation_start_failed", { jobId: job.jobId, reason: answer.reason });
     return new Response("The container could not start", { status: 503 });
   }
+  return new Response("Cancelled before it was submitted", { status: 410 });
 }
 
 /**
@@ -119,7 +106,7 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
  * @param env - The bindings.
  * @returns 200 with the job's report; 400 for a body that is not a job or a class this Worker does not bind; 401
  *   without the secret; 503 when the container could not start; web-animation answers as above.
- * @throws {unknown} What a job object throws other than a start failure.
+ * @throws {unknown} What a job object throws.
  */
 export async function submitJob(request: Request, env: JobsEnv): Promise<Response> {
   if (!fromOurBackend(request, env)) return new Response("Unauthorized", { status: 401 });
@@ -133,15 +120,13 @@ export async function submitJob(request: Request, env: JobsEnv): Promise<Respons
   const job = parsed.data;
   const namespace = namespaceOf(env, job.containerClass);
   if (namespace === null) return new Response("Unknown container class", { status: 400 });
-  try {
-    const report = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
-    return Response.json(report);
-  } catch (err) {
-    if (err instanceof JobIdentityConflict || (err instanceof Error && err.name === "JobIdentityConflict")) return new Response("Job identity conflict", { status: 409 });
-    if (!isStartFailure(err)) throw err;
-    noteFailure("ingest_mini_tool_start_failed", { jobId: job.jobId, containerClass: job.containerClass }, err);
+  const answer = await namespace.get(namespace.idFromName(job.jobId)).submit(job);
+  if (answer.kind === "conflict") return new Response("Job identity conflict", { status: 409 });
+  if (answer.kind === "start_failed") {
+    noteFailure("ingest_mini_tool_start_failed", { jobId: job.jobId, containerClass: job.containerClass, reason: answer.reason });
     return new Response("The container could not start", { status: 503 });
   }
+  return Response.json(answer.report);
 }
 
 /**

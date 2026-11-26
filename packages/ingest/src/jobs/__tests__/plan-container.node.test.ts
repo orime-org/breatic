@@ -88,7 +88,7 @@ afterEach(() => { vi.restoreAllMocks(); });
 describe("planned DO state with a mocked container base, not an image", () => {
   it("dispatches both exact sources, indexed recipes and the original complete deadline", async () => {
     const { object } = owner();
-    expect(await object.submit(PLAN)).toEqual({ schemaVersion: 2, state: "running" });
+    expect(await object.submit(PLAN)).toEqual({ kind: "report", report: { schemaVersion: 2, state: "running" } });
     const sent = await runtime.sent[0]!.json<Record<string, unknown>>();
     expect(sent).toMatchObject({ schemaVersion: 2, deadlineAt: PLAN.deadlineAt });
     expect(sent.inputs).toEqual([
@@ -103,7 +103,7 @@ describe("planned DO state with a mocked container base, not an image", () => {
     const { object, storage } = owner();
     await object.submit(PLAN);
     const held = structuredClone(storage.get("job"));
-    expect(await object.submit({ outputs: PLAN.outputs, inputs: PLAN.inputs, deadlineAt: PLAN.deadlineAt, containerClass: PLAN.containerClass, jobId: PLAN.jobId, schemaVersion: 2, limits: PLAN.limits })).toEqual({ schemaVersion: 2, state: "running" });
+    expect(await object.submit({ outputs: PLAN.outputs, inputs: PLAN.inputs, deadlineAt: PLAN.deadlineAt, containerClass: PLAN.containerClass, jobId: PLAN.jobId, schemaVersion: 2, limits: PLAN.limits })).toEqual({ kind: "report", report: { schemaVersion: 2, state: "running" } });
     expect(storage.get("job")).toEqual(held);
     expect(runtime.starts).toBe(1);
     expect(runtime.schedules).toHaveLength(1);
@@ -122,7 +122,7 @@ describe("planned DO state with a mocked container base, not an image", () => {
       { ...PLAN, outputs: [{ ...PLAN.outputs[0]!, recipe: { kind: "frame", inputId: PLAN.inputs[0]!.inputId, grid: { fps: { numerator: 25, denominator: 1 }, gridStart: { numerator: 0, denominator: 1 }, frameCount: 50, realFrameCount: 50 }, source: { kind: "original", keyframes: { earliestKeyframeTime: 0, maxKeyframeInterval: 1, allKeyframes: false } }, frameIndex: 31, target: { width: 32, height: 18, colorMatrix: "bt709", toneMap: "none", pngBitDepth: 8, alpha: "none" } } }, PLAN.outputs[1]!] },
     ];
     for (const changed of changes) {
-      await expect(object.submit(changed)).rejects.toThrow();
+      expect(await object.submit(changed)).toEqual({ kind: "conflict" });
       expect(storage.get("job")).toEqual(held);
     }
     expect(runtime.starts).toBe(1);
@@ -138,7 +138,7 @@ describe("planned DO state with a mocked container base, not an image", () => {
     await object.noteReported({ schemaVersion: 2, attemptId, ok: false, cpuUsec: 123, outputs: [{ outputIndex: 8, storageKey: PLAN.outputs[0]!.storageKey, ...MEDIA }], reason: "tool_failed" });
     const result = await object.report();
     expect(result).toEqual({ schemaVersion: 2, state: "failed", reason: "tool_failed", usage: { wallMs: 0, cpuUsec: 123 }, outputs: [{ outputIndex: 8, storageKey: PLAN.outputs[0]!.storageKey, ...WRITTEN, ...MEDIA, upright: null }] });
-    expect(await object.submit(PLAN)).toEqual(result);
+    expect(await object.submit(PLAN)).toEqual({ kind: "report", report: result });
     expect(runtime.starts).toBe(1);
   });
 
@@ -180,7 +180,7 @@ describe("planned DO state with a mocked container base, not an image", () => {
   it("answers a plan submitted at or after its deadline as failed with reason expired, starting nothing", async () => {
     const { object } = owner();
     vi.spyOn(Date, "now").mockReturnValue(PLAN.deadlineAt);
-    expect(await object.submit(PLAN)).toMatchObject({ schemaVersion: 2, state: "failed", reason: "expired" });
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "report", report: { schemaVersion: 2, state: "failed", reason: "expired" } });
     expect(runtime.starts).toBe(0);
   });
 
@@ -206,12 +206,12 @@ describe("planned startup facts preserve unknown consumption, with only the cont
     const { object, storage } = owner(false);
     runtime.runningAfterStart = false;
     runtime.startError = new Error("start command outcome is unknown");
-    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "start_failed" });
     const held = structuredClone(storage.get("job"));
     expect(await object.report()).toMatchObject({ schemaVersion: 2, state: "failed", usage: null, outputs: [] });
     expect(held).toMatchObject({ request: PLAN, startFacts: { ...NO_START_FACTS, startRequested: true } });
     const attemptId = (held as { state: { attemptId: string } }).state.attemptId;
-    expect(await object.submit(PLAN)).toMatchObject({ state: "failed", usage: null });
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "report", report: { state: "failed", usage: null } });
     expect((storage.get("job") as { state: { attemptId: string } }).state.attemptId).toBe(attemptId);
     expect(storage.get("job")).toEqual(held);
     expect(runtime.starts).toBe(1);
@@ -221,11 +221,11 @@ describe("planned startup facts preserve unknown consumption, with only the cont
   it("preserves observed running after a throwing start without turning that flag into measured usage", async () => {
     const { object, storage } = owner(false);
     runtime.startError = new Error("start reply was lost after the runtime became running");
-    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "start_failed" });
     expect(await object.report()).toMatchObject({ state: "failed", usage: null });
     expect(storage.get("job")).toMatchObject({ request: PLAN, startFacts: { ...NO_START_FACTS, startRequested: true, runningObserved: true } });
     const held = structuredClone(storage.get("job"));
-    expect(await object.submit(PLAN)).toMatchObject({ state: "failed", usage: null });
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "report", report: { state: "failed", usage: null } });
     expect(storage.get("job")).toEqual(held);
     expect(runtime.starts).toBe(1);
   });
@@ -233,11 +233,11 @@ describe("planned startup facts preserve unknown consumption, with only the cont
   it("keeps the original attempt and unknown usage when the run request reply is lost", async () => {
     const { object, storage } = owner(false);
     runtime.fetchError = new Error("container run acknowledgement was lost");
-    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "start_failed" });
     expect(await object.report()).toMatchObject({ state: "failed", usage: null });
     expect(storage.get("job")).toMatchObject({ request: PLAN, startFacts: { ...NO_START_FACTS, startRequested: true, startResolved: true, runningObserved: true, runDispatchAttempted: true } });
     const held = structuredClone(storage.get("job"));
-    expect(await object.submit(PLAN)).toMatchObject({ state: "failed", usage: null });
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "report", report: { state: "failed", usage: null } });
     expect(storage.get("job")).toEqual(held);
     expect(runtime.starts).toBe(1);
     expect(runtime.sent).toHaveLength(1);
@@ -246,22 +246,22 @@ describe("planned startup facts preserve unknown consumption, with only the cont
   it("does not infer a meter from a non-202 run response after start resolved", async () => {
     const { object, storage } = owner(false);
     runtime.fetchStatus = 503;
-    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "start_failed" });
     expect(await object.report()).toMatchObject({ state: "failed", usage: null });
     expect(storage.get("job")).toMatchObject({ request: PLAN, startFacts: { ...NO_START_FACTS, startRequested: true, startResolved: true, runningObserved: true, runDispatchAttempted: true } });
   });
 
-  // Across the Durable Object RPC boundary only the error's name and message survive, and the route answers 503 by name.
-  it("names a run the container would not take JobStartFailed, so the route still answers 503 after RPC", async () => {
+  // An error thrown across the Durable Object RPC boundary loses its class and name, so the outcome is a plain value.
+  it("answers a run the container would not take as a plain start_failed value, which the route turns into 503", async () => {
     const { object } = owner(false);
     runtime.fetchStatus = 503;
-    await expect(object.submit(PLAN)).rejects.toMatchObject({ name: "JobStartFailed" });
+    expect(structuredClone(await object.submit(PLAN))).toEqual({ kind: "start_failed", reason: "the run was answered 503" });
   });
 
   it("retains the accepted request when outbound setup fails before any start call", async () => {
     const { object, storage } = owner(false);
     runtime.outboundError = new Error("outbound capability setup failed");
-    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "start_failed" });
     expect(await object.report()).toMatchObject({ state: "failed", usage: null });
     expect(storage.get("job")).toMatchObject({ request: PLAN, startFacts: NO_START_FACTS });
     expect(runtime.starts).toBe(0);
@@ -271,12 +271,12 @@ describe("planned startup facts preserve unknown consumption, with only the cont
   it("does not fabricate known usage from a later stop callback without any run meter", async () => {
     const { object, storage } = owner(false);
     runtime.fetchError = new Error("run response was lost");
-    await expect(object.submit(PLAN)).rejects.toThrow();
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "start_failed" });
     const held = structuredClone(storage.get("job"));
     await object.onStop({ exitCode: 0, reason: "exit" });
     expect(await object.report()).toMatchObject({ state: "failed", usage: null });
     expect((storage.get("job") as { state: unknown }).state).toEqual((held as { state: unknown }).state);
-    expect(await object.submit(PLAN)).toMatchObject({ state: "failed", usage: null });
+    expect(await object.submit(PLAN)).toMatchObject({ kind: "report", report: { state: "failed", usage: null } });
     expect(runtime.starts).toBe(1);
   });
 
@@ -288,7 +288,7 @@ describe("planned startup facts preserve unknown consumption, with only the cont
 
   it("GC06 a grid count job sends its count recipe and no output, and its done report carries the container's count", async () => {
     const { object, storage } = owner();
-    expect(await object.submit(COUNT_JOB)).toEqual({ schemaVersion: 2, state: "running" });
+    expect(await object.submit(COUNT_JOB)).toEqual({ kind: "report", report: { schemaVersion: 2, state: "running" } });
     const sent = await runtime.sent[0]!.json<Record<string, unknown>>();
     expect(sent).toMatchObject({ outputs: [], count: COUNT_JOB.count });
     const attemptId = (storage.get("job") as { state: { attemptId: string } }).state.attemptId;
@@ -326,12 +326,12 @@ describe("planned startup facts preserve unknown consumption, with only the cont
 
 describe("an old-protocol job whose container cannot be reached", () => {
   // The start failure's own cleanup re-registers the outbound handlers, and the platform refuses that the same way.
-  it("still names the failure JobStartFailed when clearing its outbound handlers fails too", async () => {
+  it("still answers start_failed when clearing its outbound handlers fails too", async () => {
     const { object } = owner(false);
     runtime.outboundError = new Error("Updating sidecar egress config failed with: 404");
     const job = { jobId: "task:t1", containerClass: "MiniToolContainerStd1", deadlineAt: NOW + 7200000, op: "trim", params: {},
       input: { storageKey: "fixtures/source-a.mp4" }, outputs: [{ storageKey: "results/T/out.mp4", contentType: "video/mp4" }] } as never;
-    await expect(object.submit(job)).rejects.toMatchObject({ name: "JobStartFailed" });
+    expect(await object.submit(job)).toMatchObject({ kind: "start_failed" });
     expect(await object.report()).toBeNull();
   });
 });

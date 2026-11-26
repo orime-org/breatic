@@ -21,13 +21,25 @@ const PLAN = {
 
 describe("planned job route dispatch without a container image", () => {
   it("passes both frozen sources and the original global output index to the DO", async () => {
-    const submit = vi.fn(async () => ({ schemaVersion: 2, state: "running" }));
+    const submit = vi.fn(async () => ({ kind: "report", report: { schemaVersion: 2, state: "running" } }));
     const namespace = { idFromName: vi.fn(() => "object-id"), get: vi.fn(() => ({ submit })) };
     const response = await submitJob(new Request("https://ingest.example/jobs", { method: "POST", headers: { "x-ingest-secret": env.INGEST_SHARED_SECRET }, body: JSON.stringify(PLAN) }), { ...env, MINI_TOOL_STD1: namespace } as unknown as JobsEnv);
     expect(response.status).toBe(200);
     expect(submit).toHaveBeenCalledExactlyOnceWith(PLAN);
     expect(namespace.idFromName).toHaveBeenCalledExactlyOnceWith("plan-chunk-1");
     expect(await response.json()).toEqual({ schemaVersion: 2, state: "running" });
+  });
+
+  it("answers 503 for a start the object reports as failed, so the worker submits again on its next pickup", async () => {
+    const namespace = { idFromName: vi.fn(() => "object-id"), get: vi.fn(() => ({ submit: async () => ({ kind: "start_failed", reason: "the run was answered 503" }) })) };
+    const response = await submitJob(new Request("https://ingest.example/jobs", { method: "POST", headers: { "x-ingest-secret": env.INGEST_SHARED_SECRET }, body: JSON.stringify(PLAN) }), { ...env, MINI_TOOL_STD1: namespace } as unknown as JobsEnv);
+    expect(response.status).toBe(503);
+  });
+
+  it("answers 409 for a resubmit the object reports as a different job under the same id", async () => {
+    const namespace = { idFromName: vi.fn(() => "object-id"), get: vi.fn(() => ({ submit: async () => ({ kind: "conflict" }) })) };
+    const response = await submitJob(new Request("https://ingest.example/jobs", { method: "POST", headers: { "x-ingest-secret": env.INGEST_SHARED_SECRET }, body: JSON.stringify(PLAN) }), { ...env, MINI_TOOL_STD1: namespace } as unknown as JobsEnv);
+    expect(response.status).toBe(409);
   });
 
   it("refuses unsupported explicit versions before constructing a DO", async () => {

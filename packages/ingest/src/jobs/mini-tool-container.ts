@@ -56,10 +56,14 @@ const NO_START_FACTS: PlannedStartFacts = { startRequested: false, startResolved
 const JOB_OBJECTS = "jobObjects";
 const JOB_REPORT = "jobReport";
 
-/** A run that could not be started; the route answers 503. */
-export class JobStartFailed extends Error { override name = "JobStartFailed"; }
-/** A repeated identifier whose immutable request differs from its first submission. */
-export class JobIdentityConflict extends Error { override name = "JobIdentityConflict"; }
+/**
+ * What a submit answers. Thrown errors lose their class and name across the Durable Object RPC boundary, so a start that
+ * failed (the route answers 503) and a repeated identifier whose immutable request differs (409) are values here.
+ */
+export type MiniToolSubmitAnswer =
+  | { kind: "report"; report: MiniToolJobReport | MiniToolPlanJobReport }
+  | { kind: "start_failed"; reason: string }
+  | { kind: "conflict" };
 
 /**
  * Identify a validated versioned request without promoting a legacy payload.
@@ -152,16 +156,16 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
   /**
    * Start a job, or answer the one this object already holds.
    * @param request - The job.
-   * @returns Its report.
-   * @throws {JobStartFailed} When the container could not be started or would not take the run.
+   * @returns Its report; `start_failed` when the container could not be started or would not take the run; `conflict`
+   *   when a planned request differs from the one this object holds.
    */
-  async submit(request: MiniToolJobRequest | MiniToolPlanJobRequest): Promise<MiniToolJobReport | MiniToolPlanJobReport> {
+  async submit(request: MiniToolJobRequest | MiniToolPlanJobRequest): Promise<MiniToolSubmitAnswer> {
     const held = await this.load();
     if (held) {
       if ((isPlan(held.request) || isPlan(request)) && (!isPlan(held.request) || !isPlan(request) || !sameMiniToolPlanJob(held.request, request))) {
-        throw new JobIdentityConflict("The submitted plan differs from the original job identity");
+        return { kind: "conflict" };
       }
-      return reportOf(held);
+      return { kind: "report", report: reportOf(held) };
     }
     const now = Date.now();
     const state: JobState = {
@@ -176,7 +180,7 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
     if (now >= request.deadlineAt) {
       const ended: JobRecord = { state: { ...state, phase: "failed", endedAt: now, reason: "expired" }, request, written: {}, media: {}, cpuUsec: null, ...(isPlan(request) ? { startFacts: { ...NO_START_FACTS } } : {}) };
       await this.save(ended);
-      return reportOf(ended);
+      return { kind: "report", report: reportOf(ended) };
     }
     await this.save({ state, request, written: {}, media: {}, cpuUsec: null, ...(isPlan(request) ? { startFacts: { ...NO_START_FACTS } } : {}) });
     await this.schedule(new Date(request.deadlineAt), "expireJob", { attemptId: state.attemptId });
@@ -227,15 +231,15 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
           }),
         }),
       );
-      if (answered.status !== 202) throw new JobStartFailed(`the run was answered ${answered.status}`);
+      if (answered.status !== 202) throw new Error(`the run was answered ${answered.status}`);
       if (planned) await this.observeStart({ runAcknowledged: true });
     } catch (err) {
       if (planned) await this.observeStart({ runningObserved: this.ctx.container?.running === true });
       await this.apply(planned ? { type: "reported", ok: false, reason: "internal" } : { type: "startFailed" });
-      throw err instanceof JobStartFailed ? err : new JobStartFailed(String(err));
+      return { kind: "start_failed", reason: err instanceof Error ? err.message : String(err) };
     }
     const accepted = await this.apply({ type: "accepted" });
-    return accepted ? reportOf(accepted) : planned ? { schemaVersion: 2, state: "running" } : { state: "running" };
+    return { kind: "report", report: accepted ? reportOf(accepted) : planned ? { schemaVersion: 2, state: "running" } : { state: "running" } };
   }
 
   /**
