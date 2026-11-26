@@ -385,9 +385,8 @@ async function resultAssetsOf(projectId: string, assetIds: readonly string[]): P
   const studioId = await assetService.resolveOwnerStudioId(projectId);
   const assets = await assetRepo.findLiveManyInStudio(studioId, [...new Set(assetIds)]);
   return new Map(await Promise.all(assets.map(async (asset) => {
-    const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
     return [asset.id, {
-      url: asset.fileUrl, coverUrl: cover?.fileUrl ?? null, width: asset.width, height: asset.height,
+      url: asset.fileUrl, coverUrl: await assetRepo.findCoverUrlOf(asset), width: asset.width, height: asset.height,
       durationSeconds: asset.durationSeconds, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes,
     }] as const;
   })));

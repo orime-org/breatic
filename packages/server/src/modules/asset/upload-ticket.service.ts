@@ -355,7 +355,7 @@ async function prepareUpload(
       });
       await publishSpaceTasksQuietly(projectId, item.space_id);
     }
-    const cover = dedupHit.kind === "video" ? await assetRepo.findCoverOf(dedupHit.assetId) : null;
+    const coverUrl = await assetRepo.findCoverUrlOf({ id: dedupHit.assetId, kind: dedupHit.kind });
     return {
       kind: "alreadyExists",
       assetId: dedupHit.assetId,
@@ -364,7 +364,7 @@ async function prepareUpload(
       assetKind: dedupHit.kind,
       width: dedupHit.width,
       height: dedupHit.height,
-      coverUrl: cover?.fileUrl ?? null,
+      coverUrl,
       durationSeconds: dedupHit.durationSeconds,
       mimeType: dedupHit.mimeType,
       sizeBytes: dedupHit.sizeBytes,

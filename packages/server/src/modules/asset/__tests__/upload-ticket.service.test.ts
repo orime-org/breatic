@@ -106,6 +106,7 @@ vi.mock("@breatic/domain", () => ({
   emitSceneLookPicture,
   uploadTicketService: { openSignedUpload },
   UploadOpenFailed: h.UploadOpenFailed,
+  assetRepo: { findCoverUrlOf: vi.fn().mockResolvedValue(null) },
 }));
 
 vi.mock("@server/modules/asset/assetUpload.service.js", () => ({ checkUploadDedup, settleDedupHit }));

@@ -681,8 +681,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
     return { ...refusal, ...sideEffects, ...scene, ...(countsPublishFailed && { countsPublishFailed }) };
   }
   const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
-  const cover = asset?.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
-  const coverUrl = cover?.fileUrl ?? null;
+  const coverUrl = asset === null ? null : await assetRepo.findCoverUrlOf(asset);
   await publishUploadEnded(grant.userId, settledUploadStatus(grant, asset, coverUrl));
   if (asset === null) {
     if (focusTarget !== null) await announceFocusImageFailed(focusTarget);

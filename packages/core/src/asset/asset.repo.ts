@@ -376,6 +376,27 @@ export async function findCoverOf(
 }
 
 /**
+ * The address of a video's live cover in its own Studio, as every entry hands a video's media facts out; null for
+ * anything that is not a video or has no such cover.
+ * @param asset - The asset's id and kind.
+ * @param asset.id - Its id.
+ * @param asset.kind - Its kind; only a video has a cover.
+ * @returns The cover's address, or null.
+ * @throws {Error} When the database query fails.
+ */
+export async function findCoverUrlOf(asset: { id: string; kind: string }): Promise<string | null> {
+  if (asset.kind !== "video") return null;
+  const cover = alias(studioAssets, "cover");
+  const rows = await db
+    .select({ fileUrl: cover.fileUrl })
+    .from(studioAssets)
+    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
+    .where(and(eq(studioAssets.id, asset.id), isNull(cover.deletedAt), eq(cover.studioId, studioAssets.studioId)))
+    .limit(1);
+  return rows[0]?.fileUrl ?? null;
+}
+
+/**
  * One live row for each storage key, and the cover row under each key that
  * names a video, in two queries.
  * @param keys - The storage keys.

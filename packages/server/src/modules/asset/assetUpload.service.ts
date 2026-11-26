@@ -147,15 +147,12 @@ export async function settleDedupHit(params: {
   //
   // A row with no cover reads none — a video no frame could be lifted out of
   // shows the modality icon, on this node as on the first one.
-  const cover =
-    params.hit.kind === "video"
-      ? await assetRepo.findCoverOf(params.hit.assetId)
-      : null;
+  const coverUrl = await assetRepo.findCoverUrlOf({ id: params.hit.assetId, kind: params.hit.kind });
   // What the node is handed, and what the history row keeps so a restore can
   // hand it back (#2184).
   const result: NodeTaskResult = {
     content: params.hit.fileUrl,
-    coverUrl: cover?.fileUrl ?? null,
+    coverUrl,
     width: params.hit.width,
     height: params.hit.height,
     duration: params.hit.durationSeconds,
@@ -175,7 +172,7 @@ export async function settleDedupHit(params: {
         nodeId: params.nodeId,
         userId: params.userId,
         content: params.hit.fileUrl,
-        ...(cover !== null && { thumbnailUrl: cover.fileUrl }),
+        ...(coverUrl !== null && { thumbnailUrl: coverUrl }),
         metadata: params.metadata,
         media: result,
       });

@@ -161,3 +161,33 @@ describe("linking a video to its cover (#173)", () => {
     expect(await assetRepo.findCoverOf(crypto.randomUUID())).toBeNull();
   });
 });
+
+describe("a video's cover address, as every entry hands it out (inner#2171 implementation round 1)", () => {
+  it("reads the linked cover's address for a video", async () => {
+    const { userId, studioId } = await insertStudio();
+    const videoId = await registerAsset(studioId, userId, "video");
+    const coverId = await registerAsset(studioId, userId, "image");
+    await assetRepo.setCoverAsset(videoId, coverId);
+    const rows = await sql<{ file_url: string }[]>`SELECT file_url FROM studio_assets WHERE id = ${coverId}`;
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBe(rows[0]!.file_url);
+  });
+
+  it("reads none for a picture, without asking", async () => {
+    const { userId, studioId } = await insertStudio();
+    const imageId = await registerAsset(studioId, userId, "image");
+    expect(await assetRepo.findCoverUrlOf({ id: imageId, kind: "image" })).toBeNull();
+  });
+
+  it("reads none for a video whose cover was deleted or sits in another Studio", async () => {
+    const { userId, studioId } = await insertStudio();
+    const other = await insertStudio();
+    const videoId = await registerAsset(studioId, userId, "video");
+    const elsewhere = await registerAsset(other.studioId, other.userId, "image");
+    await assetRepo.setCoverAsset(videoId, elsewhere);
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBeNull();
+    const coverId = await registerAsset(studioId, userId, "image");
+    await assetRepo.setCoverAsset(videoId, coverId);
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${coverId}`;
+    expect(await assetRepo.findCoverUrlOf({ id: videoId, kind: "video" })).toBeNull();
+  });
+});

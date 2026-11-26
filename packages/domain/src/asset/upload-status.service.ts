@@ -23,7 +23,7 @@ import { referenceUploadAsset } from "@domain/asset/upload-terminal.service.js";
  * the grant tells its uploader with it.
  * @param grant - A grant already consumed or voided.
  * @param asset - The live row a consumed grant registered as, or null.
- * @param coverUrl - The video's cover the caller read with `findCoverOf`, or null.
+ * @param coverUrl - The video's cover address the caller read with `findCoverUrlOf`, or null.
  * @returns Its status.
  */
 export function settledUploadStatus(
@@ -66,8 +66,7 @@ export async function statusOfGrant(grant: UploadGrant): Promise<UploadStatus> {
     const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
     if (asset === null || asset.deletedAt !== null) return settledUploadStatus(grant, asset);
     await referenceUploadAsset(grant, asset.id);
-    const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
-    return settledUploadStatus(grant, asset, cover?.fileUrl ?? null);
+    return settledUploadStatus(grant, asset, await assetRepo.findCoverUrlOf(asset));
   }
   return failureOutcome(await uploadDeadline(grant)) === "expired"
     ? { key, state: "failed", reason: "expired" }

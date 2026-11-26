@@ -1622,8 +1622,7 @@ export function renderProductGuide(): string {
       "Switching to another Space keeps uploading. Closing the Space while an upload runs uses the existing warning. " +
       "The shared clips are loaded again when the Space reopens. Viewers can inspect and preview the sequence.",
     "Several videos play together on one clock. " +
-      "A video still loading is noted at the top right of the preview with its track as loading, " +
-      `and a video that cannot be loaded is noted there with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
+      `A video that cannot be loaded is noted at the top right of the preview with its track as unavailable, with ${quoted(t("timeline.retry"))}; ` +
       "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
       `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
       `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,
