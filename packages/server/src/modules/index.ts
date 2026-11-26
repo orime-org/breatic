@@ -19,7 +19,6 @@ export * as enterpriseMembershipService from "@server/modules/enterprise-members
 export * as assetUploadService from "@server/modules/asset/assetUpload.service.js";
 export * as assetUsageService from "@server/modules/asset/assetUsage.service.js";
 export * as pasteAssetsService from "@server/modules/asset/pasteAssets.service.js";
-export * as sceneAssetService from "@server/modules/asset/scene-asset.service.js";
 export * as sceneTasksService from "@server/modules/asset/scene-tasks.service.js";
 export * as sceneGenerationService from "@server/modules/asset/scene-generation.service.js";
 export { holdRun } from "@server/modules/task/generation-task.js";

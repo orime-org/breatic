@@ -18,6 +18,7 @@ vi.mock("@breatic/core", () => ({
     publicUrl: (key: string) => `https://cdn.test/${key}`,
   }),
   logger: { error: vi.fn() },
+  projectAssetReferenceService: { recordProjectAssetReferences: vi.fn(async () => []) },
 }));
 vi.mock("@breatic/domain", () => ({
   assetRepo: repo,

@@ -13,10 +13,13 @@
  * (a document block holds only the video's address) brings the cover the
  * ledger knows for its key. Each copy then gets one history row from its own
  * data, its addresses taken from this answer rather than the request, and
- * what the copy lacks taken from the target Studio's ledger.
+ * what the copy lacks taken from the target Studio's ledger. Every main asset
+ * the paste maps (an address in `urls`, a pair's video) is related to the
+ * Project in the same request, the way an upload relates what it registers;
+ * a pair's cover is not (inner#2171 design §5.1).
  */
 
-import { accountActivityRepo, getStorageAdapter, logger } from "@breatic/core";
+import { accountActivityRepo, getStorageAdapter, logger, projectAssetReferenceService } from "@breatic/core";
 import type { CanvasPasteAnswer, NodeMediaFields, PasteHistoryItem, PastePair, StudioAssetEntity } from "@breatic/shared";
 import { assetRepo, assetService, ingestReportService, materialFacts, nodeHistoryService } from "@breatic/domain";
 
@@ -52,6 +55,8 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   const studioId = await assetService.resolveOwnerStudioId(input.projectId);
   const storage = await getStorageAdapter();
   const map: Record<string, string | null> = {};
+  // The target Studio's row behind each mapped address.
+  const rowIds: Record<string, string> = {};
 
   // Every key the paste names is read from the ledger in one answer.
   const addresses = new Set([...input.urls, ...input.pairs.flatMap((pair) => [pair.url, pair.cover])]);
@@ -96,7 +101,10 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
     const hit = await assetRepo.findByStudioAndHash(studioId, video.contentHash);
     videos.push({ pair, video, hit });
     if (hit === null) misses.push({ address: pair.url, source: video, as: "upload" });
-    else map[pair.url] = hit.fileUrl;
+    else {
+      map[pair.url] = hit.fileUrl;
+      rowIds[pair.url] = hit.id;
+    }
     if (cover === null) continue;
     const standing = hit === null ? null : await assetRepo.findCoverOf(hit.id);
     if (standing !== null) {
@@ -117,7 +125,10 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
     if (source === null) continue;
     const hit = await assetRepo.findByStudioAndHash(studioId, source.contentHash);
     if (hit === null) misses.push({ address, source, as: "upload" });
-    else map[address] = hit.fileUrl;
+    else {
+      map[address] = hit.fileUrl;
+      rowIds[address] = hit.id;
+    }
   }
 
   if (misses.length > 0) await assertStudioStorageAllowance(studioId, "upload");
@@ -146,6 +157,7 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
       ...(coverAssetId !== undefined && { coverAssetId }),
     });
     map[miss.address] = asset.fileUrl;
+    rowIds[miss.address] = asset.id;
     return asset;
   };
 
@@ -178,6 +190,17 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   for (const miss of misses.filter((m) => m.as === "upload" && !(m.address in map))) {
     await file(miss);
   }
+
+  // The main assets join this Project now; covers show with their videos.
+  const main = [...new Set([...input.urls, ...pairs.map((pair) => pair.url)])].filter((address) => rowIds[address] !== undefined);
+  await projectAssetReferenceService.recordProjectAssetReferences({
+    projectId: input.projectId,
+    assetIds: main.map((address) => rowIds[address]!),
+    displayNames: Object.fromEntries(main.flatMap((address) => {
+      const name = fileNameOf(address);
+      return name === null ? [] : [[rowIds[address]!, name]];
+    })),
+  });
 
   // What the target Studio's ledger holds for every address the copy now names.
   const media: Record<string, NodeMediaFields> = {};
@@ -219,3 +242,18 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   return { map, media };
 }
 
+
+/**
+ * The last segment of an address, as a relation names the media it pastes.
+ * @param address - A storage address.
+ * @returns The decoded file name, or null when it has none.
+ */
+function fileNameOf(address: string): string | null {
+  try {
+    const name = decodeURIComponent(new URL(address).pathname.split("/").pop() ?? "");
+    return name.length > 0 ? name : null;
+  } catch {
+    // An address that is not a URL, or a malformed escape, names nothing.
+    return null;
+  }
+}

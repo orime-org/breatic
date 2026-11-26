@@ -26,10 +26,11 @@ import {
   getStorageConfig,
   getTimelineConfig,
   logger,
-  projectAssetReferenceService,
 } from "@breatic/core";
 import {
   SMALLEST_CREDIT,
+  assetRepo,
+  assetService,
   keyOwnerOf,
   resolveKeys,
   sumCreditsByOperationKeys,
@@ -372,15 +373,36 @@ function baseRef(input: Extract<WebAnimationExecutionInput, { kind: "web_animati
 }
 
 /**
+ * Read the videos succeeded exports filed, by address with their media facts, in one ledger read (inner#2171 design
+ * §4). The videos sit in the asking Project's Studio, as a Project and its duplicates share one.
+ * @param projectId - The Project asking.
+ * @param assetIds - The exports' video assets.
+ * @returns Each live video's view, by asset id; a deleted one has none.
+ * @throws {Error} When the ledger cannot be read.
+ */
+async function resultAssetsOf(projectId: string, assetIds: readonly string[]): Promise<Map<string, NonNullable<WebAnimationRowView["resultAsset"]>>> {
+  if (assetIds.length === 0) return new Map();
+  const studioId = await assetService.resolveOwnerStudioId(projectId);
+  const assets = await assetRepo.findLiveManyInStudio(studioId, [...new Set(assetIds)]);
+  return new Map(await Promise.all(assets.map(async (asset) => {
+    const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
+    return [asset.id, {
+      url: asset.fileUrl, coverUrl: cover?.fileUrl ?? null, width: asset.width, height: asset.height,
+      durationSeconds: asset.durationSeconds, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes,
+    }] as const;
+  })));
+}
+
+/**
  * Turn rows into the row view every route answers (#1490 design §4.4). A row whose base or source cannot be read is
- * logged and left out. Every row passed in is one the asking Project holds a grant for; the video of a succeeded export
- * another Project made is filed in the asking Project, so the video the view names opens there.
+ * logged and left out. Every row passed in is one the asking Project holds a grant for; an export's video is answered
+ * by its address, and the export finish related it to every Project holding the grant.
  * @param rows - The rows.
  * @param scope - Who asks.
  * @param scope.projectId - The Project asking, which decides `ownProject`.
  * @param scope.spaceId - The Motion Space asking, which decides `export`; null on routes the Timeline asks.
  * @returns The views, in the rows' order.
- * @throws {Error} When a read or the video's filing fails.
+ * @throws {Error} When a read fails.
  */
 async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId: string; spaceId: string | null }): Promise<WebAnimationRowView[]> {
   const inputs = new Map<string, WebAnimationExecutionInput>();
@@ -401,12 +423,9 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
       if (!exports.has(source.sourceVersionId)) exports.set(source.sourceVersionId, { executionId: live.id, status: live.status });
     }
   }
-  // A Project duplicated while an export rendered holds its grant but not its video, whose reference the finish wrote
-  // for the exporting Project only; the read files it, as the copy would have had it copied.
-  const inherited = rows.flatMap((row) => (
-    row.kind === "web_animation_export" && row.status === "succeeded" && row.resultAssetId !== null && row.projectId !== scope.projectId ? [row.resultAssetId] : []
-  ));
-  if (inherited.length > 0) await projectAssetReferenceService.referenceRegisteredProjectMedia({ projectId: scope.projectId, assetIds: inherited });
+  const results = await resultAssetsOf(scope.projectId, rows.flatMap((row) => (
+    row.kind === "web_animation_export" && row.resultAssetId !== null ? [row.resultAssetId] : []
+  )));
   const sums = await sumCreditsByOperationKeys(rows.map((row) => timelineOperationKey(row.id)));
   const views: WebAnimationRowView[] = [];
   for (const row of rows) {
@@ -420,7 +439,7 @@ async function toRowViews(rows: readonly TimelineExecution[], scope: { projectId
       failureReason: row.failureReason,
       createdAt: row.createdAt,
       resultSourceVersionId: row.resultSourceVersionId,
-      resultAssetId: row.resultAssetId,
+      resultAsset: row.kind === "web_animation_export" && row.resultAssetId !== null ? results.get(row.resultAssetId) ?? null : null,
       ownProject: row.projectId === scope.projectId,
       actorUserId: row.actorUserId,
       slotWaitSince: row.slotWaitSince,

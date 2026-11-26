@@ -389,6 +389,9 @@ describe("inner#1595: issueUploadTicket opens the upload itself", () => {
       kind: "image",
       width: 10,
       height: 20,
+      durationSeconds: null,
+      mimeType: "image/png",
+      sizeBytes: 4096,
     });
 
     const outcome = await issueUploadTicket(SCOPE, ITEM, async () => true);
@@ -400,6 +403,10 @@ describe("inner#1595: issueUploadTicket opens the upload itself", () => {
       assetKind: "image",
       width: 10,
       height: 20,
+      coverUrl: null,
+      durationSeconds: null,
+      mimeType: "image/png",
+      sizeBytes: 4096,
     });
     expect(openSignedUpload).toHaveBeenCalledTimes(0);
   });
@@ -456,7 +463,7 @@ describe("scene model upload provenance", () => {
   it("answers the registered model dedup hit with its done Space row, without opening or consuming storage", async () => {
     const assetId = "55555555-5555-4555-8555-555555555555";
     const fileUrl = "https://assets.example.test/registered-model.glb";
-    checkUploadDedup.mockResolvedValue({ assetId, fileUrl, kind: "file", width: null, height: null });
+    checkUploadDedup.mockResolvedValue({ assetId, fileUrl, kind: "file", width: null, height: null, durationSeconds: null, mimeType: "model/gltf-binary", sizeBytes: 4096 });
     openDone.mockResolvedValue("scene-task-1");
     const admitStorage = vi.fn(async () => true);
     const model = {
@@ -466,6 +473,7 @@ describe("scene model upload provenance", () => {
 
     expect(await issueUploadTicket(SCOPE, model, admitStorage)).toEqual({
       kind: "alreadyExists", assetId, fileUrl, assetKind: "file", width: null, height: null, taskId: "scene-task-1",
+      coverUrl: null, durationSeconds: null, mimeType: "model/gltf-binary", sizeBytes: 4096,
     });
     expect(openDone).toHaveBeenCalledWith({
       projectId: SCOPE.projectId, spaceId: SCENE_SPACE, startedByUserId: SCOPE.userId, label: "Lamp", assetId,
@@ -476,7 +484,7 @@ describe("scene model upload provenance", () => {
     expect(openSignedUpload).not.toHaveBeenCalled();
     expect(settleDedupHit).toHaveBeenCalledWith({
       projectId: SCOPE.projectId,
-      hit: { assetId, fileUrl, kind: "file", width: null, height: null },
+      hit: { assetId, fileUrl, kind: "file", width: null, height: null, durationSeconds: null, mimeType: "model/gltf-binary", sizeBytes: 4096 },
       userId: SCOPE.userId,
       metadata: { filename: model.filename, size: model.size, mimeType: model.content_type },
       row: { action: "scene_import", label: "Lamp" }, nodeId: undefined, spaceId: SCENE_SPACE,
@@ -527,7 +535,7 @@ describe("a picture uploaded for a 3D part (inner#1693 design 6.3)", () => {
     expect(openUpload).not.toHaveBeenCalled();
     expect(emitSceneLookPicture).toHaveBeenCalledWith({
       projectId: SCOPE.projectId, spaceId: SCENE_SPACE, target: { objectId: OBJECT, part: "3", startMap: null },
-      picture: assetId, userId: SCOPE.userId, uploadKey: expect.stringMatching(/^[0-9a-f-]{36}$/u),
+      picture: "https://assets.example.test/wood.png", userId: SCOPE.userId, uploadKey: expect.stringMatching(/^[0-9a-f-]{36}$/u),
     });
   });
 

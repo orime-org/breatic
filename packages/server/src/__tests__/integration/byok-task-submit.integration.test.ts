@@ -46,7 +46,7 @@ import {
 import { estimateTaskCredits, initProvider, readProviderConfig, timelineExecutionRepo, webAnimationSourceRepo } from "@breatic/domain";
 import { ceilToCreditCent } from "@breatic/shared";
 import { seedDesignatedLot } from "@server/__tests__/integration/studio-credit-fixtures.js";
-import * as grantRepo from "@server/modules/web-animation/web-animation-grants.repo.js";
+import { webAnimationGrantRepo as grantRepo } from "@breatic/domain";
 
 const SECRET = crypto.randomBytes(32);
 const RING = { current: "t1", keys: { t1: SECRET } };
