@@ -119,6 +119,7 @@ Canvas shortcuts apply when the canvas Space owns keyboard focus, not while typi
 | Ungroup a selected group | `Cmd+Shift+G` | `Ctrl+Shift+G` |
 | Delete eligible selected nodes / edges | `Backspace` or `Delete` | `Backspace` or `Delete` |
 | Cancel active reference picking or annotation placement | `Esc` | `Esc` |
+| Leave a text node or prompt opened full screen (an open `@` list closes first) | `Esc` | `Esc` |
 
 Copy/paste can depend on browser clipboard permissions and a secure context; use the trusted HTTPS setup in the LAN guide. `Cmd/Ctrl+A` is **not** a select-all-nodes shortcut: outside editable content, the project suppresses page-wide selection. Use canvas selection gestures instead.
 
