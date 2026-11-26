@@ -16,7 +16,17 @@ import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferen
  * column. Both post what they want built and let the canvas decide where it
  * goes, so both travel this way -- one node type, or a whole wired group.
  */
-export type CreateIntent = CanvasNodeFields['type'] | { proposal: CanvasProposal };
+export type CreateIntent = CanvasNodeFields['type'] | ProposalIntent;
+
+/**
+ * A press of a proposal card: the group, and the press's own reply. The canvas answers on `settle` once the group
+ * is placed or could not be, which can come after its paste request answers (inner#2171), so the answer reaches the
+ * press that asked whatever happened to the card or the chat meanwhile.
+ */
+export interface ProposalIntent {
+  proposal: CanvasProposal;
+  settle: (outcome: ProposalOutcome) => void;
+}
 
 /**
  * Whether this intent is a group rather than a single node.
@@ -29,7 +39,7 @@ export type CreateIntent = CanvasNodeFields['type'] | { proposal: CanvasProposal
  */
 export function isProposalIntent(
   intent: CreateIntent,
-): intent is { proposal: CanvasProposal } {
+): intent is ProposalIntent {
   return typeof intent !== 'string';
 }
 
@@ -101,14 +111,6 @@ interface CanvasState {
    */
   canvasListening: boolean;
   /**
-   * What became of each posted proposal, for the card that posted it.
-   *
-   * Each entry names its proposal and is taken only by that card: a proposal
-   * carrying the user's material lands once its paste request answers
-   * (inner#2171), so outcomes can arrive in any order while other cards wait.
-   */
-  proposalOutcomes: Array<{ proposal: CanvasProposal; outcome: ProposalOutcome }>;
-  /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
    * for the canvas to turn into nodes at the viewport centre. The picker lives
    * in chrome (it must open synchronously inside the button's click to keep the
@@ -145,10 +147,6 @@ interface CanvasState {
   requestNodeCreate: (intent: CreateIntent) => void;
   /** Say whether a canvas is holding the mailbox (the canvas, on mount / unmount). */
   setCanvasListening: (listening: boolean) => void;
-  /** Report what became of a placed proposal (the canvas). */
-  reportProposalOutcome: (proposal: CanvasProposal, outcome: ProposalOutcome) => void;
-  /** Drop a proposal's outcome once its card has read it, or once that card is gone. */
-  clearProposalOutcome: (proposal: CanvasProposal) => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
   /** Post picked upload files from chrome (left "upload assets" button). */
@@ -194,7 +192,6 @@ export const useCanvasStore = create<CanvasState>()(
     showLockedOverlay: false,
     pendingNodeCreate: null,
     canvasListening: false,
-    proposalOutcomes: [],
     pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
@@ -255,16 +252,6 @@ export const useCanvasStore = create<CanvasState>()(
       set((s) => {
         s.canvasListening = listening;
       }),
-    // Entries are read through `get()`: a draft's entries are proxies, and the card finds its own by the proposal
-    // object it posted.
-    reportProposalOutcome: (proposal, outcome) => {
-      const others = get().proposalOutcomes.filter((entry) => entry.proposal !== proposal);
-      set({ proposalOutcomes: [...others, { proposal, outcome }] });
-    },
-    clearProposalOutcome: (proposal) => {
-      const kept = get().proposalOutcomes.filter((entry) => entry.proposal !== proposal);
-      if (kept.length !== get().proposalOutcomes.length) set({ proposalOutcomes: kept });
-    },
     consumePendingNodeCreate: () =>
       set((s) => {
         s.pendingNodeCreate = null;

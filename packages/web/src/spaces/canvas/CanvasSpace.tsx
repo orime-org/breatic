@@ -2295,7 +2295,6 @@ function CanvasSpaceInner({
     (s) => s.consumePendingNodeCreate,
   );
   const setCanvasListening = useCanvasStore((s) => s.setCanvasListening);
-  const reportProposalOutcome = useCanvasStore((s) => s.reportProposalOutcome);
   const [selectAfterCreate, setSelectAfterCreate] = React.useState<
     string[] | null
   >(null);
@@ -2726,14 +2725,13 @@ function CanvasSpaceInner({
       // A card that posted a proposal is waiting on an answer, and its button
       // stays disabled until one comes. Dropping the intent silently leaves it
       // disabled for the life of the conversation.
-      if (isProposalIntent(intent)) reportProposalOutcome(intent.proposal, 'failed');
+      if (isProposalIntent(intent)) intent.settle('failed');
       consumePendingNodeCreate();
       return;
     }
     const middle = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     if (isProposalIntent(intent)) {
-      // The card waits for the outcome under the proposal it posted.
-      const posted = intent.proposal;
+      const { proposal: posted, settle } = intent;
       /**
        * Place a proposal whose material already has this Project's addresses.
        * @param proposal - The proposal.
@@ -2752,7 +2750,7 @@ function CanvasSpaceInner({
           // The card reports a refusal by the size cap itself, so no toast here.
           const placed = placeProposalAt(proposal, center, occupied, undefined, undefined, false);
           if ('ok' in placed) {
-            reportProposalOutcome(posted, placed);
+            settle(placed);
             return;
           }
           const focus = whatToFocus(proposal, placed);
@@ -2776,13 +2774,13 @@ function CanvasSpaceInner({
             });
           }
           if (focus.select.length > 0) setSelectAfterCreate(focus.select);
-          reportProposalOutcome(posted, 'placed');
+          settle('placed');
         } catch {
           // `placeProposalAt` takes back whatever it wrote before it threw, so
           // nothing half-placed is left behind -- but the card is still waiting,
           // and a button that stays disabled forever is worse than one that says
           // it did not work.
-          reportProposalOutcome(posted, 'failed');
+          settle('failed');
         }
       };
       // The user's material joins this Project the way a paste does before the nodes are written (inner#2171 design
@@ -2793,14 +2791,14 @@ function CanvasSpaceInner({
         const name = docName.canvasSpace(projectId, spaceId);
         void canvasApi.paste({ project_id: projectId, urls: materials, pairs: [], history: [] }).then(({ map }) => {
           // A Space closed meanwhile is not written, as a paste is not (`pastePayload`).
-          if (!hasDoc(name)) { reportProposalOutcome(posted, 'failed'); return; }
+          if (!hasDoc(name)) { settle('failed'); return; }
           place({ ...posted, nodes: posted.nodes.map((node) => {
             const copy = node.material === undefined ? undefined : map[node.material];
             return typeof copy === 'string' ? { ...node, material: copy } : node;
           }) });
         }, () => {
           // The card says the proposal failed, once.
-          reportProposalOutcome(posted, 'failed');
+          settle('failed');
         });
       }
     } else {
@@ -2816,9 +2814,7 @@ function CanvasSpaceInner({
     screenToFlowPosition,
     createNode,
     placeProposalAt,
-    reportProposalOutcome,
     openGeneratePanel,
-    t,
     projectId,
     spaceId,
     getInternalNode,

@@ -71,6 +71,7 @@ import { CanvasSpace } from '@web/spaces/canvas/CanvasSpace';
 import { useNodeCreation } from '@web/spaces/canvas/use-node-creation';
 import { mockSpace } from '@web/spaces/canvas/__tests__/focus-harness';
 import { useCanvasStore } from '@web/stores';
+import type { ProposalOutcome } from '@web/stores/canvas';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import {
   SIZE_COPY_EN,
@@ -160,10 +161,14 @@ async function pressUse(): Promise<void> {
   await waitFor(() => expect(useCanvasStore.getState().pendingNodeCreate).toBeNull());
 }
 
+/** The reply a proposal posted straight to the mailbox is answered on. */
+const settle = vi.fn<(outcome: ProposalOutcome) => void>();
+
 beforeEach(() => {
   panels.placeTemplate = null;
   useCurrentUserStore.getState().setUser({ id: 'u-9', name: 'Ada', email: 'ada@example.com', personalStudio: null, membershipTier: 'base' });
-  useCanvasStore.setState({ pendingNodeCreate: null, proposalOutcomes: [] });
+  useCanvasStore.setState({ pendingNodeCreate: null });
+  settle.mockReset();
   vi.spyOn(modelsApi, 'list').mockResolvedValue({ image: [], video: [], audio: [], tts: [], three_d: [], total: 0, credit_multiplier: 1 });
   vi.spyOn(canvasApi, 'ingestUrl').mockResolvedValue(undefined as never);
 });
@@ -241,7 +246,6 @@ describe('RQ-04 an Agent canvas proposal in a Space that cannot take an add', ()
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
     expect(canvasApi.ingestUrl).not.toHaveBeenCalled();
     expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false);
-    expect(useCanvasStore.getState().proposalOutcomes.map((entry) => entry.outcome)).toEqual([]);
   });
 });
 
@@ -250,9 +254,9 @@ describe('RQ-04 prompts, lyrics and shots land with the batch when there is room
     openAt('W');
     mount();
     vi.mocked(toast.warning).mockClear();
-    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: proposalOf() }));
+    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: proposalOf(), settle }));
     await waitFor(() => expect(useCanvasStore.getState().pendingNodeCreate).toBeNull());
-    expect(useCanvasStore.getState().proposalOutcomes.map((entry) => entry.outcome)).toEqual(['placed']);
+    expect(settle.mock.calls.map(([outcome]) => outcome)).toEqual(['placed']);
     const verse = idNamed('Verse');
     const song = idNamed('Song');
     const clip = idNamed('Clip');
@@ -281,10 +285,10 @@ describe('a write that throws part way still rolls back', () => {
       if (calls === 2) throw new Error('write failed');
       original(...args);
     });
-    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: proposalOf() }));
+    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: proposalOf(), settle }));
     await waitFor(() => expect(useCanvasStore.getState().pendingNodeCreate).toBeNull());
     expect(calls).toBe(2);
-    expect(useCanvasStore.getState().proposalOutcomes.map((entry) => entry.outcome)).toEqual(['failed']);
+    expect(settle.mock.calls.map(([outcome]) => outcome)).toEqual(['failed']);
     // A rollback is an undo, which leaves tombstones, so the encoded state
     // cannot be byte-equal; what was there is compared instead.
     expect(doc.getMap(CANVAS_NODES_KEY).size).toBe(0);
@@ -328,8 +332,8 @@ describe('an Agent proposal carrying the user\'s material enters this Project th
     openAt('W');
     const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: { [OURS]: COPY }, media: {} } as never);
     mount();
-    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial(OURS) }));
-    await waitFor(() => expect(useCanvasStore.getState().proposalOutcomes.map((entry) => entry.outcome)).toEqual(['placed']));
+    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial(OURS), settle }));
+    await waitFor(() => expect(settle.mock.calls.map(([outcome]) => outcome)).toEqual(['placed']));
     expect(paste).toHaveBeenCalledTimes(1);
     expect(paste.mock.calls[0]![0]).toMatchObject({ project_id: PID, urls: [OURS], pairs: [], history: [] });
     expect(contentOf('Hero')).toBe(COPY);
@@ -339,8 +343,8 @@ describe('an Agent proposal carrying the user\'s material enters this Project th
     const doc = openAt('W');
     vi.spyOn(canvasApi, 'paste').mockRejectedValue(new Error('offline'));
     mount();
-    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial(OURS) }));
-    await waitFor(() => expect(useCanvasStore.getState().proposalOutcomes.map((entry) => entry.outcome)).toEqual(['failed']));
+    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial(OURS), settle }));
+    await waitFor(() => expect(settle.mock.calls.map(([outcome]) => outcome)).toEqual(['failed']));
     expect(doc.getMap(CANVAS_NODES_KEY).size).toBe(0);
     // The card says it failed; the canvas adds no second notice (inner#2171 implementation round 1).
     expect(toast.error).not.toHaveBeenCalled();
@@ -350,8 +354,8 @@ describe('an Agent proposal carrying the user\'s material enters this Project th
     openAt('W');
     const paste = vi.spyOn(canvasApi, 'paste');
     mount();
-    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial() }));
-    await waitFor(() => expect(useCanvasStore.getState().proposalOutcomes.map((entry) => entry.outcome)).toEqual(['placed']));
+    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial(), settle }));
+    await waitFor(() => expect(settle.mock.calls.map(([outcome]) => outcome)).toEqual(['placed']));
     expect(paste).not.toHaveBeenCalled();
   });
 
