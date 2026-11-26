@@ -37,7 +37,7 @@ export interface SceneLookUploadDeps {
   invalidateImages: (projectId: string) => void;
   /** The local file's header size and type within `maxBytes`, or null when it cannot be read. */
   readLocalSize: (file: File, maxBytes: number) => Promise<LookPictureSize | null>;
-  /** A used picture's header size in a Project within `maxBytes`, or null when it cannot be read. */
+  /** A used picture's header size within `maxBytes`, or null when it cannot be read. */
   size: (url: string, maxBytes: number) => Promise<LookPictureSize | null>;
   /** The open editing session of a Space document, if any; never creates one. */
   session: (name: string) => SceneSession | undefined;

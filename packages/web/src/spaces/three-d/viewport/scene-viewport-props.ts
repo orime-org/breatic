@@ -62,7 +62,7 @@ export interface SceneViewportProps {
   selectedPart?: string | null;
   /** A plain click on the only selected object picked this part (design 5.6). */
   onSelectPart?: (part: string) => void;
-  /** The page's way to this Project's part pictures; the lazy viewport keeps their textures. */
+  /** The page's way to part pictures by address; the lazy viewport keeps their textures. */
   lookPictures?: LookPictureAccess | null;
   /** Told each model's parts when it loads, or that it is loading or failed. */
   onLookReport?: (id: string, report: SceneLookReport | 'loading' | 'failed') => void;
@@ -112,7 +112,7 @@ export interface SceneViewportProps {
 
 /** What the runtime gets: the component's props plus the part pictures the component makes from `lookPictures`. */
 export interface SceneViewportRuntimeProps extends SceneViewportProps {
-  /** Part pictures for this Project. */
+  /** The page's part picture textures. */
   lookTextures?: LookTextureCache | null;
 }
 

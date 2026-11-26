@@ -788,6 +788,6 @@ function ExportVideo({ url, time, playing }: ExportVideoProps): React.JSX.Elemen
     const element = video.current;
     if (element !== null && !playing && Math.abs(element.currentTime - time) > 0.05) element.currentTime = time;
   }, [time, playing, attempt, url]);
-  if (url === null || broken) return <div className='relative size-full overflow-hidden rounded-chrome'><PreviewUnavailable onRetry={retry} retrying={false} /></div>;
+  if (url === null || broken) return <div className='relative size-full overflow-hidden rounded-chrome'><PreviewUnavailable onRetry={retry} /></div>;
   return <video key={attempt} ref={video} src={url} muted playsInline preload='auto' onError={markBroken} className='size-full rounded-chrome bg-black object-contain' />;
 }

@@ -15,7 +15,7 @@ interface Decoded {
 
 /** How the cache reaches a picture by its address: the page's header sizes, its bytes as a blob, and the decoder. */
 export interface LookTextureCacheDeps {
-  /** The page's picture sizes for this Project. */
+  /** The page's picture sizes, by address. */
   sizes: Pick<LookPictureSizes, 'size'>;
   /** The whole file. */
   download: (url: string) => Promise<Blob>;
@@ -144,19 +144,15 @@ export class LookTextureCache {
   }
 }
 
-const pageCaches = new WeakMap<LookPictureAccess, LookTextureCache>();
+let pageCache: LookTextureCache | null = null;
 
 /**
- * The page's picture cache for one Project, shared by every 3D Space of it. It lives in the lazy viewport, which loads
- * three.js, so the eager editor hands it the page's way to the pictures.
- * @param access - The page's picture sizes and download for the Project, one per Project.
+ * The page's picture cache, shared by every 3D Space on the page. It lives in the lazy viewport, which loads three.js,
+ * so the eager editor hands it the page's way to the pictures.
+ * @param access - The page's picture sizes and download.
  * @returns The cache.
  */
 export function pageLookTextureCache(access: LookPictureAccess): LookTextureCache {
-  let cache = pageCaches.get(access);
-  if (!cache) {
-    cache = new LookTextureCache({ ...access, decode: (source, options) => createImageBitmap(source as ImageBitmapSource, options) });
-    pageCaches.set(access, cache);
-  }
-  return cache;
+  pageCache ??= new LookTextureCache({ ...access, decode: (source, options) => createImageBitmap(source as ImageBitmapSource, options) });
+  return pageCache;
 }
