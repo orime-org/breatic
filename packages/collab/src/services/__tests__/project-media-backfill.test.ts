@@ -17,7 +17,6 @@ const PROJECT = "10000000-0000-4000-8000-000000000001";
 const SPACE = "20000000-0000-4000-8000-000000000001";
 const OTHER_SPACE = "20000000-0000-4000-8000-000000000002";
 const ASSET = "30000000-0000-4000-8000-000000000001";
-const OTHER_ASSET = "30000000-0000-4000-8000-000000000002";
 const SETTINGS = { width: 1920, height: 1080, fps: { num: 24, den: 1 } };
 const URL = "https://cdn.example/a-video.mp4";
 const COVER = "https://cdn.example/b-cover.jpg";
