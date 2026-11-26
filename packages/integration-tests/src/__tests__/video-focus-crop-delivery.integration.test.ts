@@ -144,6 +144,16 @@ async function deliveryState(f: Crop): Promise<unknown> {
 }
 
 /**
+ * The panel node's focus images as plain entries; collab stores them in a Y.Array once it appends one.
+ * @param data - The panel node's data.
+ * @returns The entries.
+ */
+function focusImagesOf(data: Y.Map<unknown>): unknown {
+  const raw = data.get("focusImages");
+  return raw instanceof Y.Array ? raw.toArray() : raw;
+}
+
+/**
  * A canvas document holding the panel node with its own content and the given focus images.
  * @param f - The crop.
  * @param focusImages - What the panel already holds.
@@ -213,7 +223,7 @@ describe("video focus crop delivery appends to the panel node (design §5.5 交�
     expect(await historyOf(f)).toEqual([]);
     const { doc, data } = canvas(f);
     apply(doc, published);
-    expect(data.get("focusImages")).toEqual([appended(f)]);
+    expect(focusImagesOf(data)).toEqual([appended(f)]);
     expect(data.get("focusCropOutcomes")).toEqual({ [f.taskId]: "added" });
     expect(data.get("content")).toBe("https://assets.example.test/image/panel.png");
   });
@@ -231,7 +241,7 @@ describe("video focus crop delivery appends to the panel node (design §5.5 交�
     // The stream redelivers the first entry under a newer id.
     const [ms] = published.at(-1)!.id.split("-");
     apply(doc, [{ id: `${Number(ms) + 1}-0`, payload: published[0]!.payload }], held);
-    expect(data.get("focusImages")).toEqual([appended(f)]);
+    expect(focusImagesOf(data)).toEqual([appended(f)]);
     expect(data.get("focusCropOutcomes")).toEqual({ [f.taskId]: "added" });
   });
 
@@ -241,10 +251,10 @@ describe("video focus crop delivery appends to the panel node (design §5.5 交�
     const published = await events(f);
     const { doc, data } = canvas(f);
     const held = apply(doc, published);
-    expect(data.get("focusImages")).toEqual([appended(f)]);
+    expect(focusImagesOf(data)).toEqual([appended(f)]);
     const [ms] = published.at(-1)!.id.split("-");
     apply(doc, [{ id: `${Number(ms) + 5}-0`, payload: { nodeId: f.panelNodeId, counts: { running: 0, done: 1, failed: 0, expired: 0 } } }], held);
-    expect(data.get("focusImages")).toEqual([appended(f)]);
+    expect(focusImagesOf(data)).toEqual([appended(f)]);
   });
 
   it("FI04 an image the user deleted inside the marker window is not added back by a replay", async () => {
@@ -253,11 +263,11 @@ describe("video focus crop delivery appends to the panel node (design §5.5 交�
     const published = await events(f);
     const { doc, data } = canvas(f);
     const held = apply(doc, published);
-    expect(data.get("focusImages")).toEqual([appended(f)]);
+    expect(focusImagesOf(data)).toEqual([appended(f)]);
     doc.transact(() => { data.set("focusImages", []); });
     const [ms] = published.at(-1)!.id.split("-");
     apply(doc, [{ id: `${Number(ms) + 9}-0`, payload: published[0]!.payload }], held);
-    expect(data.get("focusImages")).toEqual([]);
+    expect(focusImagesOf(data)).toEqual([]);
     expect(data.get("focusCropOutcomes")).toEqual({ [f.taskId]: "added" });
   });
 
@@ -267,7 +277,7 @@ describe("video focus crop delivery appends to the panel node (design §5.5 交�
     const full = filler(MAX_FOCUS_ENTRIES);
     const { doc, data } = canvas(f, full);
     apply(doc, await events(f));
-    expect(data.get("focusImages")).toEqual(full);
+    expect(focusImagesOf(data)).toEqual(full);
     expect(data.get("focusCropOutcomes")).toEqual({ [f.taskId]: "refused" });
   });
 
@@ -280,7 +290,7 @@ describe("video focus crop delivery appends to the panel node (design §5.5 交�
     expect(published.some((entry) => "focusImageAppend" in entry.payload)).toBe(false);
     const { doc, data } = canvas(f);
     apply(doc, published);
-    expect(data.get("focusImages")).toEqual([]);
+    expect(focusImagesOf(data)).toEqual([]);
     expect(data.get("focusCropOutcomes")).toBeUndefined();
   });
 
@@ -308,7 +318,7 @@ describe("video focus crop delivery appends to the panel node (design §5.5 交�
     expect(await historyOf(f)).toEqual([]);
     const { doc, data } = canvas(f);
     apply(doc, published);
-    expect(data.get("focusImages")).toEqual([appended(f)]);
+    expect(focusImagesOf(data)).toEqual([appended(f)]);
   });
 
   it.each<[NodeStatus, boolean]>([["running", true], ["failed", false], ["expired", false]])(
