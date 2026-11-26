@@ -309,12 +309,11 @@ export async function findLiveExports(key: { projectId: string; spaceId: string;
 /**
  * The Projects that hold a live grant on one execution: its own and every copy made from it (inner#2171 design §5.3).
  * @param executionId - The execution.
- * @param tx - The caller's transaction, when it has one.
- * @returns Their ids.
+ * @returns Their ids, one per Project (`timeline_execution_grants_live_idx`).
  * @throws {Error} When the database query fails.
  */
-export async function projectsHolding(executionId: string, tx?: DbTx): Promise<string[]> {
-  const rows = await (tx ?? db).select({ projectId: g.projectId }).from(g)
+export async function projectsHolding(executionId: string): Promise<string[]> {
+  const rows = await db.select({ projectId: g.projectId }).from(g)
     .where(and(eq(g.executionId, executionId), isNull(g.deletedAt)));
-  return [...new Set(rows.map((row) => row.projectId))];
+  return rows.map((row) => row.projectId);
 }
