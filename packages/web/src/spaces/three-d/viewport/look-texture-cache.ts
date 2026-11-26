@@ -4,7 +4,7 @@
 import { RepeatWrapping, SRGBColorSpace, Texture } from 'three';
 
 import { fittedLookSize } from '@web/spaces/three-d/look-texture-budget';
-import type { LookPictureAccess, LookPictureSize, LookPictureSizes } from '@web/spaces/three-d/look-picture-size';
+import { pageLookPictureAccess, type LookPictureSize, type LookPictureSizes } from '@web/spaces/three-d/look-picture-size';
 
 /** A decoded picture that can be released. */
 interface Decoded {
@@ -147,12 +147,11 @@ export class LookTextureCache {
 let pageCache: LookTextureCache | null = null;
 
 /**
- * The page's picture cache, shared by every 3D Space on the page. It lives in the lazy viewport, which loads three.js,
- * so the eager editor hands it the page's way to the pictures.
- * @param access - The page's picture sizes and download.
+ * The page's picture cache, shared by every 3D Space on the page and built on the page's picture sizes and download.
+ * It lives in the lazy viewport, which loads three.js.
  * @returns The cache.
  */
-export function pageLookTextureCache(access: LookPictureAccess): LookTextureCache {
-  pageCache ??= new LookTextureCache({ ...access, decode: (source, options) => createImageBitmap(source as ImageBitmapSource, options) });
+export function pageLookTextureCache(): LookTextureCache {
+  pageCache ??= new LookTextureCache({ ...pageLookPictureAccess(), decode: (source, options) => createImageBitmap(source as ImageBitmapSource, options) });
   return pageCache;
 }

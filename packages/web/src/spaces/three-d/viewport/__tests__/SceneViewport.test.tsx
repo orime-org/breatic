@@ -58,21 +58,20 @@ describe('viewport effect ownership under React Activity (inner#1689)', () => {
       const next = { ...initial, ...change };
       page.rerender(<SceneViewport {...next} />);
       expect(runtime.update).toHaveBeenCalledOnce();
-      // The viewport adds the page's picture cache, none without a picture access.
-      expect(runtime.update).toHaveBeenCalledWith({ ...next, lookTextures: null });
+      // The viewport adds the page's picture cache.
+      expect(runtime.update).toHaveBeenCalledWith({ ...next, lookTextures: expect.anything() });
     }
   });
 
-  it('hands the runtime the one picture cache of the access the editor gave, kept across renders', async () => {
-    const { LookPictureSizes } = await import('@web/spaces/three-d/look-picture-size');
-    const { LookTextureCache } = await import('@web/spaces/three-d/viewport/look-texture-cache');
-    const access = { sizes: new LookPictureSizes({ open: async () => new ReadableStream() }), download: async () => new Blob() };
-    const initial = { ...props(), lookPictures: access };
+  it('hands the runtime the page\'s one picture cache, kept across renders', async () => {
+    const { LookTextureCache, pageLookTextureCache } = await import('@web/spaces/three-d/viewport/look-texture-cache');
+    const initial = props();
     const page = render(<SceneViewport {...initial} />);
     const runtime = mocks.instances[0];
     page.rerender(<SceneViewport {...initial} selectedIds={['selected']} />);
     const first = (mocks.construct.mock.calls[0]?.[1] as SceneViewportRuntimeProps).lookTextures;
     expect(first).toBeInstanceOf(LookTextureCache);
+    expect(first).toBe(pageLookTextureCache());
     expect((runtime.update.mock.calls.at(-1)?.[0] as SceneViewportRuntimeProps).lookTextures).toBe(first);
   });
 
