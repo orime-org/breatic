@@ -158,20 +158,15 @@ export function DownloadPanel(): React.JSX.Element | null {
   React.useEffect(() => {
     setDragged(readUserPreferences(userId).downloadPanelPosition);
   }, [userId]);
-  const panelRef = React.useRef<HTMLElement | null>(null);
   // The panel's height as drawn: measured when it appears and on every change of its size (rows, expanding, a
   // language switch that wraps a line), before paint, as Floating UI's autoUpdate watches a floating element.
   const [height, setHeight] = React.useState(0);
   const measure = React.useCallback((element: HTMLElement | null) => {
-    panelRef.current = element;
     if (!element) return;
     setHeight(element.offsetHeight);
     const observer = new ResizeObserver(() => flushSync(() => setHeight(element.offsetHeight)));
     observer.observe(element);
-    return () => {
-      observer.disconnect();
-      panelRef.current = null;
-    };
+    return () => observer.disconnect();
   }, []);
   const [, setWindowSize] = React.useState(0);
   React.useEffect(() => {
@@ -214,11 +209,11 @@ export function DownloadPanel(): React.JSX.Element | null {
       }
       current.moved = insideWindow(
         { left: current.from.left + event.clientX - current.x, bottom: current.from.bottom - (event.clientY - current.y) },
-        panelRef.current?.offsetHeight ?? 0,
+        height,
       );
       setDragged(current.moved);
     },
-    [endDrag],
+    [endDrag, height],
   );
 
   if (!bridge || !list || !open || list.items.length === 0) return null;
