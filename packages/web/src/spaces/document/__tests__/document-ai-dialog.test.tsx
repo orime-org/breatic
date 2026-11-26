@@ -1347,15 +1347,19 @@ describe('our media in an answer enter this Project before insert and replace (i
   const SOURCE = `${OURS}image/2026-11-26/cat.png`;
   const COPY = `${OURS}image/2026-11-26/cat-copy.png`;
   let prefix: MockInstance;
+  let cached: MockInstance;
   let paste: MockInstance;
 
   beforeEach(() => {
     connection.granted = true;
     prefix = vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({ assetUrlPrefix: OURS } as never);
+    // The write reads the prefix the opening fetch cached.
+    cached = vi.spyOn(assetsApi, 'cachedUploadConfig').mockReturnValue({ assetUrlPrefix: OURS } as never);
   });
   afterEach(() => {
     connection.granted = false;
     prefix.mockRestore();
+    cached.mockRestore();
     paste?.mockRestore();
   });
 
