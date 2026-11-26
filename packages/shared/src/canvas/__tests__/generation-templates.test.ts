@@ -356,6 +356,7 @@ const CATALOG = new Map(
 interface CatalogModel {
   mode: string | string[];
   params: Record<string, ParamDescriptor>;
+  takes_prompt?: boolean;
 }
 
 /** Every model of the catalog, by name, as `config/models` declares them. */
@@ -386,9 +387,19 @@ function expectEveryString(template: GenerationTemplate): void {
     ...template.inputs.map((input) => `input.${input.key}.note`),
     ...template.steps.map((step) => `step.${step}`),
   ];
+  // A model that reads no prompt draws no prompt box (inner#2090): its prompt holds only the notes on what to pick, or nothing.
+  const unread = new Set(
+    generateNodes(template)
+      .filter((node) => MODELS.get(node.model)?.takes_prompt === false)
+      .map((node) => (node.key === template.anchor ? 'prompt' : `node.${node.key}.prompt`)),
+  );
   for (const locale of LOCALES) {
     for (const key of keys) {
       const text = raw(locale, textKey(template, key));
+      if (unread.has(key)) {
+        expect(typeof text === 'string' && /^(\(💡[^)]*\))*$/u.test(text), `${template.id} ${locale} ${key}`).toBe(true);
+        continue;
+      }
       expect(typeof text === 'string' && text.length > 0, `${template.id} ${locale} ${key}`).toBe(true);
     }
     for (const key of names) {
@@ -634,7 +645,7 @@ describe('generation templates', () => {
         'left-voice': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
         'right-voice': { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
       },
-      'talking-own-voice': { result: { type: 'video', mode: 'talking_head', model: 'seedance-2.5-talking-avatar', params: {} } },
+      'talking-own-voice': { result: { type: 'video', mode: 'talking_head', model: 'omnihuman-1.5', params: {} } },
       'product-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '1:1', resolution: '4k' } } },
       'product-hero-motion': {
         result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 5, generate_audio: false } },
@@ -678,7 +689,7 @@ describe('generation templates', () => {
         narration: { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: { emotion: 'neutral' } },
       },
       'comic-drama-voice-line': {
-        result: { type: 'video', mode: 'talking_head', model: 'seedance-2.5-talking-avatar', params: {} },
+        result: { type: 'video', mode: 'talking_head', model: 'omnihuman-1.5', params: {} },
         line: { type: 'audio', mode: 'voice_clone', model: 'minimax-voice-clone', params: {} },
         sample: { type: 'audio', mode: 'tts', model: 'qwen3-tts-voice-design', params: { voice_description: COMIC_VOICE } },
       },

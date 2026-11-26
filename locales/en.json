@@ -1662,7 +1662,7 @@
       "short-drama-episode": {
         "name": "Short drama episode",
         "description": "Three scenes from one script, joined",
-        "prompt": "(💡 Generate Cast sheet first)Scene 1 of 3 of the short drama written in [📎 Script]: play only scene 1 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. The characters, the place and the light are the ones the script gives. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen.",
+        "prompt": "(💡 Generate Cast sheet first)Scene 1 of 3 of the short drama written in [📎 Script]: play only scene 1 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. The characters, the place and the light are the ones the script gives. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. Only the lines the script writes under Scene 1 are spoken, each once, as the script writes them and in its language; no line of scene 2 or 3 is said. It ends on a held look that leads into the next scene. No music, no text on screen.",
         "node": {
           "script": {
             "name": "Script",
@@ -1674,11 +1674,11 @@
           },
           "scene-2": {
             "name": "Scene 2",
-            "prompt": "(💡 Generate Cast sheet first)(💡 Generate the first scene first)Scene 2 of 3 of the short drama written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Short drama episode], which is scene 1: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen."
+            "prompt": "(💡 Generate Cast sheet first)(💡 Generate the first scene first)Scene 2 of 3 of the short drama written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Short drama episode], which is scene 1: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. Only the lines the script writes under Scene 2 are spoken, each once, as the script writes them and in its language; no line of scene 1 or 3 is said. It ends on a held look that leads into the next scene. No music, no text on screen."
           },
           "scene-3": {
             "name": "Scene 3",
-            "prompt": "(💡 Generate Cast sheet first)(💡 Generate Scene 2 first)Scene 3 of 3 of the short drama written in [📎 Script]: play only scene 3 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Scene 2]: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends the episode: the camera holds on a face for a beat after the last line. No music, no text on screen."
+            "prompt": "(💡 Generate Cast sheet first)(💡 Generate Scene 2 first)Scene 3 of 3 of the short drama written in [📎 Script]: play only scene 3 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Scene 2]: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. Only the lines the script writes under Scene 3 are spoken, each once, as the script writes them and in its language; no line of scene 1 or 2 is said. It ends the episode: the camera holds on a face for a beat after the last line. No music, no text on screen."
           }
         },
         "input": {
@@ -2442,7 +2442,7 @@
       "talking-own-voice": {
         "name": "Talking in my own voice",
         "description": "Your photo speaks your own recording",
-        "prompt": "The person looks into the lens and says the recording, lips matching every word; {✏️ the manner, e.g. relaxed, with small natural nods}. The camera does not move.",
+        "prompt": "",
         "input": {
           "portrait": {
             "name": "Portrait",
@@ -2831,7 +2831,7 @@
       "comic-drama-episode": {
         "name": "Comic drama episode",
         "description": "Three voiced scenes in your series' style, joined",
-        "prompt": "Scene 1 of 3 of the comic-drama episode written in [📎 Script]: play only scene 1 as the script gives it, 15 seconds, vertical, with sound. It is drawn and animated in the exact art style of [📎 Cast sheet] and its characters are the ones on that sheet: take their faces, hair, builds, clothes, line weight and colouring, never the grey background or the layout. The first three seconds already show the hook the script gives, close on the faces. Two or three cuts at most, faces large in frame, one light source. Each character speaks their lines from the script in a voice of their own, in the script's language, lips moving with the words. It ends on a held look that leads into the next scene. No music, no text on screen, no speech bubbles.",
+        "prompt": "Scene 1 of 3 of the comic-drama episode written in [📎 Script]: play only scene 1 as the script gives it, 15 seconds, vertical, with sound. It is drawn and animated in the exact art style of [📎 Cast sheet] and its characters are the ones on that sheet: take their faces, hair, builds, clothes, line weight and colouring, never the grey background or the layout. The first three seconds already show the hook the script gives, close on the faces. Two or three cuts at most, faces large in frame, one light source. Only the lines the script writes under Scene 1 are spoken, each once, by the character it names, in a voice of their own and in the script's language, lips moving with the words; no line of scene 2 or 3 is said. It ends on a held look that leads into the next scene. No music, no text on screen, no speech bubbles.",
         "node": {
           "script": {
             "name": "Script",
@@ -2839,11 +2839,11 @@
           },
           "scene-2": {
             "name": "Scene 2",
-            "prompt": "(💡 Generate the first scene first)Scene 2 of 3 of the comic-drama episode written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound. It carries straight on from the last frame of [📎 Comic drama episode], which is scene 1: the same characters, clothes, place, light and voices. Art style and characters exactly as on [📎 Cast sheet], nothing of its background or layout. The scene turns once, where the script turns it. Two or three cuts at most, faces large in frame. Each character speaks their lines from the script in the same voice as in scene 1, lips moving with the words. No music, no text on screen, no speech bubbles."
+            "prompt": "(💡 Generate the first scene first)Scene 2 of 3 of the comic-drama episode written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound. It carries straight on from the last frame of [📎 Comic drama episode], which is scene 1: the same characters, clothes, place, light and voices. Art style and characters exactly as on [📎 Cast sheet], nothing of its background or layout. The scene turns once, where the script turns it. Two or three cuts at most, faces large in frame. Only the lines the script writes under Scene 2 are spoken, each once, by the character it names, in the same voice as in scene 1, lips moving with the words; no line of scene 1 or 3 is said. No music, no text on screen, no speech bubbles."
           },
           "scene-3": {
             "name": "Scene 3",
-            "prompt": "(💡 Generate Scene 2 first)Scene 3 of 3 of the comic-drama episode written in [📎 Script]: play only scene 3 as the script gives it, 15 seconds, vertical, with sound. It carries straight on from the last frame of [📎 Scene 2]: the same characters, clothes, place, light and voices. Art style and characters exactly as on [📎 Cast sheet], nothing of its background or layout. Each character speaks their lines from the script in the same voices, lips moving with the words. It builds to the cliffhanger the script gives and cuts to black on its most tense frame, mid-reaction, the question left open. No music, no text on screen, no speech bubbles."
+            "prompt": "(💡 Generate Scene 2 first)Scene 3 of 3 of the comic-drama episode written in [📎 Script]: play only scene 3 as the script gives it, 15 seconds, vertical, with sound. It carries straight on from the last frame of [📎 Scene 2]: the same characters, clothes, place, light and voices. Art style and characters exactly as on [📎 Cast sheet], nothing of its background or layout. Only the lines the script writes under Scene 3 are spoken, each once, by the character it names, in the same voices, lips moving with the words; no line of scene 1 or 2 is said. It builds to the cliffhanger the script gives and cuts to black on its most tense frame, mid-reaction, the question left open. No music, no text on screen, no speech bubbles."
           }
         },
         "input": {
@@ -2885,15 +2885,15 @@
       "comic-drama-voice-line": {
         "name": "Character voice line",
         "description": "A character speaks in the same voice every episode",
-        "prompt": "(💡 Generate Line first, then pick it into the Driving audio slot)The character speaks the line, lips matching every word, {✏️ the manner, e.g. jaw set, eyes narrowing on the last word}. Drawn and animated in the picture's own art style, never turned into live action. The camera holds still.",
+        "prompt": "(💡 Generate Line first, then pick it into the Driving audio slot)",
         "node": {
           "line": {
             "name": "Line",
-            "prompt": "(💡 Generate Voice sample first, then pick it into the Voice sample slot){✏️ the line, exactly the words to say, e.g. You should not have come back here.}"
+            "prompt": "(💡 Generate Voice sample first, then pick it into the Voice sample slot. Once this line has generated, pick it into the video's Driving audio slot){✏️ the line, exactly the words to say, e.g. You should not have come back here.}"
           },
           "sample": {
             "name": "Voice sample",
-            "prompt": "{✏️ three or four sentences in the character's own way of speaking, long enough to last over 10 seconds, e.g. I told you once already. This mountain does not forgive the curious. Turn around, walk down, and forget what you saw tonight.}"
+            "prompt": "{✏️ five or six sentences in the character's own way of speaking, about 40 words, so the sample runs well over 10 seconds, e.g. I told you once already. This mountain does not forgive the curious. Every lantern you passed tonight was lit for someone who never came back. Turn around and walk down slowly. Forget the library, forget the scroll, and forget my name.}"
           }
         },
         "input": {

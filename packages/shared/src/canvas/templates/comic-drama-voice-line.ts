@@ -8,7 +8,7 @@ export const COMIC_DRAMA_VOICE_LINE: GenerationTemplate = {
   id: "comic-drama-voice-line",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "talking_head", model: "seedance-2.5-talking-avatar", params: {} },
+    { key: "result", role: "generate", type: "video", mode: "talking_head", model: "omnihuman-1.5", params: {} },
     { key: "line", role: "generate", type: "audio", mode: "voice_clone", model: "minimax-voice-clone", params: {} },
     {
       key: "sample",
@@ -26,7 +26,7 @@ export const COMIC_DRAMA_VOICE_LINE: GenerationTemplate = {
   inputs: [{ key: "character", type: "image", into: "image" }],
   steps: [],
   agentNote:
-    "one line of a comic-drama character in a voice that stays the same across the series: a voice sample of at least 10 seconds is designed from a description of the character's voice, the line is read by cloning that sample, and the character's picture lip-syncs it; the sample is made once per character and reused for every later line, so for a new line copy only the line and video nodes; the user fills in the voice description, the line and the manner",
+    "one line of a comic-drama character in a voice that stays the same across the series: a voice sample of five or six sentences, well over the 10 seconds a clone needs, is designed from a description of the character's voice, the line is read by cloning that sample, and the character's picture lip-syncs it with the line itself as its sound, however short; the sample is made once per character and reused for every later line, so for a new line copy only the line and video nodes; the lip-sync model takes no prompt, so the user fills in the voice description and the line",
   goal: "comic-drama",
   triggers: {
     asks: ["give my character a voice", "the same voice for my character in every episode"],
