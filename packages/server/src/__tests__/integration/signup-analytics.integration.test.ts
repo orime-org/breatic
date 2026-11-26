@@ -283,4 +283,35 @@ describe("the full-page Google sign-in", () => {
     expect(again.location.searchParams.get("google")).toBe("signed_in");
     expect(sent.map((e) => [e.event_type, e.event_properties])).toEqual([["login_completed", { method: "google" }]]);
   });
+
+  it("reports the login by the consent the begin request carried, though the callback carries none", async () => {
+    const sub = crypto.randomUUID();
+    const email = `signup-analytics-route-${crypto.randomUUID()}@gmail.com`;
+    const consent = consentCookie(["necessary", "analytics"]);
+    await signInWithGoogle(app, { origin: SITE, cookie: consent }, { sub, email });
+    const [row] = await sql<{ id: string }[]>`SELECT id FROM users WHERE email = ${email} AND deleted_at IS NULL`;
+    created.push(row!.id);
+    sent.splice(0);
+
+    const again = await signInWithGoogle(app, { origin: SITE, cookie: consent }, { sub, email }, { page: "login" });
+
+    expect(again.location.searchParams.get("google")).toBe("signed_in");
+    expect(sent.map((e) => e.event_type)).toEqual(["login_completed"]);
+  });
+
+  it("reports no login when the begin request carried no consent, even if the callback carries one", async () => {
+    const sub = crypto.randomUUID();
+    const email = `signup-analytics-route-${crypto.randomUUID()}@gmail.com`;
+    await signInWithGoogle(app, { origin: SITE }, { sub, email });
+    const [row] = await sql<{ id: string }[]>`SELECT id FROM users WHERE email = ${email} AND deleted_at IS NULL`;
+    created.push(row!.id);
+    sent.splice(0);
+
+    const again = await signInWithGoogle(
+      app, { origin: SITE }, { sub, email }, { page: "login" }, { cookie: consentCookie(["necessary", "analytics"]) },
+    );
+
+    expect(again.location.searchParams.get("google")).toBe("signed_in");
+    expect(sent).toEqual([]);
+  });
 });

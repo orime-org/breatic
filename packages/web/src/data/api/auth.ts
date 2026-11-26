@@ -126,7 +126,6 @@ interface SignupVerifiedResponse extends LoginResponse {
   referral?: SignupReferralOutcome;
 }
 
-/** A Google sign-in's answer: `created` when it made the account (inner#1442 §4.9). */
 /**
  * `POST /auth/setup-studio` response — the personal studio created by
  * the onboarding slug step. Returned so the caller can populate the

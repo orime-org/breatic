@@ -492,12 +492,13 @@ auth.get("/google/callback", async (c) => {
   setSessionCookie(c, await authService.createSession(user.id));
   logger.info({ userId: user.id, method: "google" }, "user_logged_in");
   // A first Google sign-in is a sign-up, already counted as `signup_completed`.
+  // The consent is the starting site's: this host never sees its cookie.
   if (!created) {
     trackServerEvent("login_completed", {
       userId: user.id,
       insertId: `login:${randomUUID()}`,
       properties: { method: "google" },
-    });
+    }, stored.consent);
   }
   return back({
     google: created ? "created" : "signed_in",
