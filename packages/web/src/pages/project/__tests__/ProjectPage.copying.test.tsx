@@ -5,7 +5,7 @@
  * Opening a Project by link while it is still being copied (inner#1706 design 5.5, acceptance 2). The page shows only
  * that the Project is being copied and a way back to Studio: it opens no collaboration connection, so no default
  * Space is seeded over the copy, and it records no open, so the copy does not join the Recent page. A copied Project
- * opens as usual.
+ * opens as usual, also when this browser last read it while it was still being copied.
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
@@ -63,16 +63,25 @@ vi.mock('@web/data/api', async () => {
 import ProjectPage from '@web/pages/project/ProjectPage';
 
 /**
- * Open the Project page at the Project's link.
- * @param copying - Whether the server reads the Project as still being copied.
+ * The Project as the server reads it.
+ * @param copying - Whether it is still being copied.
+ * @returns The detail.
  */
-function openByLink(copying: boolean): void {
-  getMock.mockResolvedValue({
+function detail(copying: boolean): Record<string, unknown> {
+  return {
     id: PID, name: 'Storyboard copy', description: null, thumbnailUrl: null, createdAt: '', updatedAt: '',
     studioId: 's1', createdByUserId: 'u-me', myRole: 'owner', deletedAt: null, archivedAt: null,
     canManageMeta: true, canRestore: false, canLeave: false, copying,
-  });
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } });
+  };
+}
+
+/**
+ * Open the Project page at the Project's link.
+ * @param copying - Whether the server reads the Project as still being copied.
+ * @param client - The page's query cache; a fresh one with default freshness when omitted.
+ */
+function openByLink(copying: boolean, client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 0 } } })): void {
+  getMock.mockResolvedValue(detail(copying));
   render(
     <QueryClientProvider client={client}>
       <TooltipProvider>
@@ -130,5 +139,15 @@ describe('opening a Project that is still being copied', () => {
     expect(screen.queryByText(COPYING_NOTICE)).toBeNull();
     await waitFor(() => expect(recordedAnOpen()).toBe(true));
     expect(metaMock).toHaveBeenCalled();
+  });
+
+  it('opens the Project when it was last read as being copied and the copy has since finished', async () => {
+    // The app's own cache keeps a read for 30 s; the earlier visit left the copying answer in it.
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    client.setQueryData(['project', PID], detail(true));
+    openByLink(false, client);
+    expect(await screen.findByTestId('top-bar')).toBeInTheDocument();
+    expect(screen.queryByText(COPYING_NOTICE)).toBeNull();
+    expect(getMock).toHaveBeenCalledTimes(1);
   });
 });

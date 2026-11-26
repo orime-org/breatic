@@ -175,6 +175,8 @@ export default function ProjectPage(): React.JSX.Element {
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
+    // A copy last read while it was still being copied may be done by now; nothing else refreshes it (inner#1706).
+    refetchOnMount: (query) => (query.state.data?.copying === true ? 'always' : true),
     // 403 = a studio member who is not on this project: offer to join
     // instead of looping a useless retry. The 404 path also
     // short-circuits (project may have been deleted).
@@ -207,7 +209,9 @@ export default function ProjectPage(): React.JSX.Element {
   }
   if (projectQuery.isError && !projectQuery.data) return <main><ResourceLoadError onRetry={retry} /></main>;
   // No collaboration connection until the copy is done, so nothing seeds a default Space over it (inner#1706).
-  if (projectQuery.data?.copying === true) return <main><ProjectCopyingScreen /></main>;
+  if (projectQuery.data?.copying === true) {
+    return projectQuery.isFetching ? <LoadingScreen /> : <main><ProjectCopyingScreen /></main>;
+  }
   if (!projectQuery.data || !preferencesRestored) return <LoadingScreen />;
   return (
     <CollabSocketProvider userId={userId}>
