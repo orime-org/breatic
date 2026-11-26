@@ -670,7 +670,7 @@ const PromptEditorBody = React.forwardRef<
       const stop = sessionStore.subscribe((st) => {
         if (st.panelSession === session) return;
         stop();
-        if (!built.isDestroyed) endKeptEditor(spaceId, fragment);
+        if (!built.isDestroyed) endKeptEditor(spaceId, fullscreen ? fullscreenKeyOf(fragment) : fragment);
       });
       return built;
     };
@@ -1001,9 +1001,8 @@ interface PromptEditorOuterProps extends PromptEditorProps {
  * has an editor of its own on the same prompt: the panel's ends as it opens,
  * so one editor at a time holds this person's caret, and the box shows that
  * it is open full screen. The handle reaches whichever editor is on screen, so
- * the reference rail inserts into full screen too. The layer goes with the
- * box: a box the panel stops showing (a shot removed, a model that takes no
- * prompt) closes it.
+ * the reference rail inserts into full screen too. The panel closes it when
+ * it stops showing the box (a shot removed, a model that takes no prompt).
  */
 export const PromptEditor = React.forwardRef<PromptEditorHandle, PromptEditorOuterProps>(function PromptEditor(
   { fullscreenLayer, ...props },
@@ -1031,15 +1030,13 @@ export const PromptEditor = React.forwardRef<PromptEditorHandle, PromptEditorOut
   React.useLayoutEffect(() => {
     if (open) endKeptEditor(spaceId, fragment);
   }, [open, spaceId, fragment]);
-  // Closing, or the box leaving the panel, ends full screen's editor; the
-  // panel's builds anew.
-  React.useEffect(() => {
-    if (!open) return undefined;
-    return () => {
-      endKeptEditor(spaceId, fullscreenKeyOf(fragment));
-      onClose.current?.();
-    };
-  }, [open, spaceId, fragment]);
+  // Closing ends full screen's editor; the panel's builds anew. Not an effect
+  // cleanup: a hidden Space runs those too, and full screen outlives hiding
+  // (inner#1235 A13). A box the panel stops showing is closed by its panel.
+  const close = React.useCallback((): void => {
+    endKeptEditor(spaceId, fullscreenKeyOf(fragment));
+    onClose.current?.();
+  }, [spaceId, fragment]);
 
   if (!open || fullscreenLayer === undefined) return <PromptEditorBody ref={inner} {...props} />;
   return (
@@ -1052,7 +1049,7 @@ export const PromptEditor = React.forwardRef<PromptEditorHandle, PromptEditorOut
       </div>
       <TextFullscreen
         title={fullscreenLayer.title}
-        onClose={fullscreenLayer.onClose}
+        onClose={close}
         onEscapeWithin={() => inner.current?.closeMentionList() ?? false}
         onOpenFocus={() => inner.current?.focus()}
         onCloseAutoFocus={(event) => {

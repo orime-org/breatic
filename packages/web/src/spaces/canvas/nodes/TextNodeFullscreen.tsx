@@ -5,7 +5,8 @@ import * as React from 'react';
 
 import { useEditedTextBody, useTextBody } from '@web/data/yjs/use-text-body';
 import { useTranslation } from '@web/i18n/use-translation';
-import { canvasRootOf, useCanvasContext, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { spaceFocusRoot } from '@web/lib/space-focus-root';
+import { useCanvasContext, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
 import { flowNodeWrapper } from '@web/spaces/canvas/flow-node-wrapper';
 import { endKeptEditor } from '@web/spaces/canvas/kept-editors';
 import { MODALITY_LABEL } from '@web/spaces/canvas/nodes/_shared/modality';
@@ -99,8 +100,7 @@ export function TextNodeFullscreen({ nodeId, name, exists, locked }: TextNodeFul
       }}
       onCloseAutoFocus={(event) => {
         event.preventDefault();
-        const target =
-          flowNodeWrapper(spaceId, nodeId) ?? canvasRootOf(spaceId).querySelector<HTMLElement>('.react-flow');
+        const target = flowNodeWrapper(spaceId, nodeId) ?? spaceFocusRoot(spaceId);
         target?.focus({ preventScroll: true });
       }}
     >

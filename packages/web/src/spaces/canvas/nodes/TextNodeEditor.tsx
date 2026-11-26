@@ -31,6 +31,7 @@ import { SelectionDragImage } from '@web/features/drag-image/selection-drag-imag
 import { useCollabCaretPresence } from '@web/features/collab-editor/use-collab-caret-presence';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
 import { whenBlurLeaves } from '@web/lib/blur-left';
+import { cn } from '@web/lib/utils';
 import { keptEditor } from '@web/spaces/canvas/kept-editors';
 import type { CollaboratorNames } from '@web/features/collab-editor/use-collaborator-names';
 import { type FocusReturn, useFocusReturn } from '@web/lib/use-focus-return';
@@ -251,7 +252,7 @@ export function TextNodeEditor({
         // implicit role to fall back on.
         editorProps: {
           attributes: {
-            class: className ? `${EDITOR_CLASS} ${className}` : EDITOR_CLASS,
+            class: cn(EDITOR_CLASS, className),
             'data-testid': 'text-node-body',
             role: 'textbox',
             'aria-multiline': 'true',

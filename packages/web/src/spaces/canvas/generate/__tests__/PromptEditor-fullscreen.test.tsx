@@ -117,11 +117,18 @@ describe('a prompt box open full screen', () => {
     await waitFor(() => expect(document.querySelectorAll('.ProseMirror')).toHaveLength(1));
   });
 
-  it('tells the panel it closed when the box leaves the panel', () => {
+  it('stays open across a hidden Space, closing only when asked', () => {
     const onClose = vi.fn();
-    const { unmount } = render(<Box fragment={promptWith('rain')} layer={{ open: true, title: 'Dock', onClose }} />, { wrapper: TooltipProvider });
-    unmount();
-    expect(onClose).toHaveBeenCalled();
+    const fragment = promptWith('rain');
+    const layer = { open: true, title: 'Dock', onClose };
+    const { rerender } = render(
+      <React.Activity mode='visible'><Box fragment={fragment} layer={layer} /></React.Activity>,
+      { wrapper: TooltipProvider },
+    );
+    rerender(<React.Activity mode='hidden'><Box fragment={fragment} layer={layer} /></React.Activity>);
+    rerender(<React.Activity mode='visible'><Box fragment={fragment} layer={layer} /></React.Activity>);
+    expect(onClose).not.toHaveBeenCalled();
+    expect(screen.getByTestId('prompt-fullscreen')).toBeInTheDocument();
   });
 });
 

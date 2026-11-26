@@ -704,10 +704,12 @@ function GeneratePanelBody({
   // The prompt box open full screen (inner#2115).
   const [promptFullscreen, setPromptFullscreen] = React.useState(false);
   const openPromptFullscreen = React.useCallback(() => setPromptFullscreen(true), []);
-  const nodeName = (nodes.find((n) => n.id === nodeId)?.data as { name?: string } | undefined)?.name;
+  const nodeData = nodes.find((n) => n.id === nodeId)?.data;
+  // A box the panel stops showing closes its full screen.
+  if (promptFullscreen && !(vm.promptRequired && fragment)) setPromptFullscreen(false);
   const promptLayer = React.useMemo(
-    () => ({ open: promptFullscreen, title: promptFullscreenTitle(nodeName, 'image'), onClose: () => setPromptFullscreen(false) }),
-    [promptFullscreen, nodeName],
+    () => ({ open: promptFullscreen, title: promptFullscreenTitle(nodeData, 'image'), onClose: () => setPromptFullscreen(false) }),
+    [promptFullscreen, nodeData],
   );
   const promptSlot = React.useMemo(
     () =>
