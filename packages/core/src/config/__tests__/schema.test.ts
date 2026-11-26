@@ -586,6 +586,30 @@ describe("parseConfig — variables left from the multi-region release", () => {
   });
 });
 
+describe("parseConfig — desktop sign-in return", () => {
+  it("defaults to the official desktop app", () => {
+    const config = parseConfig(baseEnv());
+    expect(config.DESKTOP_APP_SCHEME).toBe("ai.breatic.desktop");
+    expect(config.DESKTOP_APP_NAME).toBe("Breatic");
+  });
+
+  it("takes a partner's scheme and app name", () => {
+    const config = parseConfig(baseEnv({ DESKTOP_APP_SCHEME: "com.acme.studio", DESKTOP_APP_NAME: "Acme Studio" }));
+    expect(config.DESKTOP_APP_SCHEME).toBe("com.acme.studio");
+    expect(config.DESKTOP_APP_NAME).toBe("Acme Studio");
+  });
+
+  it.each(["breatic", "web+acme", "ipfs", "https"])("refuses to start with a scheme that is not a reverse domain name, such as one a website could register: %s", (scheme) => {
+    expect(() => parseConfig(baseEnv({ DESKTOP_APP_SCHEME: scheme }))).toThrow(/DESKTOP_APP_SCHEME/);
+  });
+
+  it.each(["", "   "])("treats a blank setting as unset (%j)", (value) => {
+    const config = parseConfig(baseEnv({ DESKTOP_APP_SCHEME: value, DESKTOP_APP_NAME: value }));
+    expect(config.DESKTOP_APP_SCHEME).toBe("ai.breatic.desktop");
+    expect(config.DESKTOP_APP_NAME).toBe("Breatic");
+  });
+});
+
 describe("parseConfig — charging and selling switches", () => {
   const SELLING = {
     CHARGING_ENABLED: "true",

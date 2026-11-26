@@ -160,8 +160,10 @@ async function openPanel(nodeId: string): Promise<void> {
   if (!box) throw new Error(`node ${nodeId} has no box`);
   await node.dispatchEvent('contextmenu', { bubbles: true, cancelable: true, button: 2, clientX: box.x + box.width / 2, clientY: box.y + 8 });
   await page.getByTestId('node-menu-generate').click();
-  // A node in multi-shot mode shows its shots in place of the prompt.
-  await expect(page.getByTestId('generate-prompt-editor').or(page.getByTestId('generate-storyboard-shot-1-editor'))).toBeVisible({ timeout: 15_000 });
+  // A node in multi-shot mode shows its shots in place of the prompt, and a model that reads no prompt a notice.
+  await expect(
+    page.getByTestId('generate-prompt-editor').or(page.getByTestId('generate-storyboard-shot-1-editor')).or(page.getByTestId('generate-prompt-not-used')),
+  ).toBeVisible({ timeout: 15_000 });
 }
 
 /**
@@ -680,11 +682,11 @@ async function generateSong(): Promise<string> {
 }
 
 /**
- * Pick the anchor's result into one slot of the open audio panel, the way a user does: the slot, then the part
- * of the anchor still showing.
+ * Pick a node's result into one slot of the open audio panel, the way a user does: the slot, then the part
+ * of the node still showing.
  * @param slot - The slot's test-id stem, e.g. `sound-video`.
- * @param nodeId - The anchor.
- * @throws {Error} When no part of the anchor is showing.
+ * @param nodeId - The node, the anchor or another template node already generated.
+ * @throws {Error} When no part of the node is showing.
  */
 async function pickIntoAudioSlot(slot: string, nodeId: string): Promise<void> {
   await page.getByTestId(`generate-audio-tool-${slot}`).click();
@@ -721,6 +723,8 @@ interface Run {
   song?: boolean;
   /** The template nodes generated before the anchor. */
   first: string[];
+  /** For a node in `first`, another template node generated before it, picked into one of its audio slots first (inner#2090). */
+  picks?: Record<string, { slot: string; from: string }>;
   /** The template nodes generated after the anchor, each with the anchor's result picked into one of its slots first. */
   after?: { key: string; slot: string }[];
   /** What each node's braces are filled with, in order; `anchor` for the anchor. */
@@ -1348,7 +1352,7 @@ const RUNS: Record<string, Run> = {
     photo: false,
     inputs: { portrait: 'mini-tools/portrait.jpg', recording: 'voice.mp3' },
     first: [],
-    fills: { anchor: ['relaxed, with small natural nods'] },
+    fills: { anchor: [] },
   },
   'livestream-pitch': {
     type: 'video',
@@ -1621,6 +1625,66 @@ const RUNS: Record<string, Run> = {
     },
     cuts: { from: 'song', file: 'music/song-30s.mp3', pieces: [{ into: 'section-1', start: 0, end: 15 }, { into: 'section-2', start: 15, end: 30 }] },
   },
+  'comic-drama-cast-sheet': {
+    type: 'image',
+    photo: false,
+    inputs: { lead: 'mini-tools/portrait.jpg', partner: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'Chinese 2D donghua, clean ink lines, soft cel shading, muted pastel colours',
+        'Lin Xia, 19, a stubborn apprentice swordswoman in a white and teal robe',
+        'Shen Mo, 22, a cold young sect master in black',
+      ],
+    },
+  },
+  'comic-drama-episode': {
+    type: 'video',
+    photo: false,
+    inputs: { cast: 'comic-drama/cast-sheet.jpg' },
+    texts: {
+      script: [
+        'Episode: Episode 1: The Sealed Scroll',
+        'Cast: Lin Xia, a stubborn apprentice; Shen Mo, the cold sect master',
+        'Place and light: a mountain library at night, lit by paper lanterns',
+        'Scene 1, the hook: Lin Xia pulls a glowing scroll from a sealed shelf. Shen Mo: "Put it down."',
+        'Scene 2, the turn: The scroll shows Lin Xia\'s own face. Lin Xia: "Why am I in here?"',
+        'Scene 3, the cliffhanger: Shen Mo draws his sword on her. Shen Mo: "Because you died here a hundred years ago."',
+      ].join('\n'),
+    },
+    first: [],
+    then: ['scene-2', 'scene-3'],
+    fills: { anchor: [] },
+  },
+  'narrated-motion-comic': {
+    type: 'video',
+    photo: false,
+    inputs: { cast: 'comic-drama/cast-sheet.jpg' },
+    first: ['panels', 'narration'],
+    fills: {
+      panels: [
+        'a wide shot of an empty night market in the rain, Lin Xia alone under a paper umbrella',
+        'a close-up of her hand closing on a stolen jade token',
+        'Shen Mo watching her from a rooftop, his face half in shadow',
+        'her eyes widening as the token begins to glow',
+      ],
+      narration: ['That night the market was empty. She had stolen the one thing she was told never to touch. Someone had seen her. And the token had begun to wake.'],
+      anchor: [],
+    },
+  },
+  'comic-drama-voice-line': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'comic-drama/character.jpg' },
+    first: ['sample', 'line'],
+    picks: { line: { slot: 'ref-audio', from: 'sample' } },
+    fills: {
+      sample: ['I told you once already. This mountain does not forgive the curious. Every lantern you passed tonight was lit for someone who never came back. Turn around and walk down slowly. Forget the library, forget the scroll, and forget my name.'],
+      line: ['You should not have come back here.'],
+      anchor: [],
+    },
+    frames: { 'driving-audio': 'line' },
+  },
   'underscore-bgm': {
     type: 'audio',
     photo: false,
@@ -1729,6 +1793,8 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     for (const key of run.first) {
       const node = await keyed(key);
       await openPanel(node);
+      const pick = run.picks?.[key];
+      if (pick !== undefined) await pickIntoAudioSlot(pick.slot, await keyed(pick.from));
       await fillBraces(fills[key] ?? []);
       const prompt = await promptText();
       assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, prompt);
@@ -1764,6 +1830,9 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       expect(shown.map((line) => line.speaker)).toEqual(anchorNode.lines.map((line) => names[line.speaker - 1]));
       for (const [i, line] of shown.entries()) assertDraftSent(`canvas.template.${id}.line.${String(i + 1)}`, line.text);
       prompt = shown.map((line) => `${line.speaker}: ${line.text}`).join('\n');
+    } else if ((await page.getByTestId('generate-prompt-not-used').count()) > 0) {
+      // The anchor's model takes no prompt (inner#2090): there are no braces to fill and nothing is sent.
+      prompt = '';
     } else if (run.shots === undefined) {
       await fillBraces(fills.anchor ?? []);
       prompt = await promptText();

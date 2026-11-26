@@ -327,12 +327,27 @@ export type {
   ApiError,
 } from "@shared/types/api.js";
 
+// ── Desktop client links (inner#2041) ───────────────────────────────────
+export { ASSET_DOWNLOAD_PARAM, APP_ROUTE_PREFIXES, isAppPath } from "@shared/desktop-links.js";
+export {
+  BASE64URL_32_BYTES,
+  desktopSignInReturn,
+  isDesktopAppScheme,
+  parseDesktopSignInReturn,
+  type BrowserSignInResult,
+  type DesktopBridge,
+  type DesktopDownload,
+  type DesktopDownloadList,
+} from "@shared/desktop-bridge.js";
+
 // ── API Schemas ─────────────────────────────────────────────────────
 export {
   normalizeEmail,
   emailSchema,
   registerSchema,
   googleAuthSchema,
+  desktopHandoffSchema,
+  desktopExchangeSchema,
   REFERRAL_CODE_INPUT_MAX,
   PROMOTER_CHANNELS_MAX,
   PROMOTER_CHANNEL_INPUT_MAX,

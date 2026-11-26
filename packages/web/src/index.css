@@ -307,6 +307,19 @@ body {
   background-repeat: no-repeat;
   animation: skeleton-shimmer 1.6s ease-in-out infinite;
 }
+/* Indeterminate fill of `components/ui/progress.tsx`: a band sliding across the track. */
+.progress-indeterminate {
+  width: 30%;
+  animation: progress-indeterminate 1.1s ease-in-out infinite;
+}
+@keyframes progress-indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
 @keyframes skeleton-shimmer {
   from {
     background-position: 100% 0;

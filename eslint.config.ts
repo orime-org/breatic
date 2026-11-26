@@ -150,7 +150,7 @@ export default tseslint.config(
     // eslint-rules/ is first-party source like any package: the guard rules
     // themselves are held to the same documentation standard they enforce.
     files: [
-      "packages/{collab,core,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}",
+      "packages/{collab,core,desktop,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}",
       "eslint-rules/src/**/*.ts",
       "repo-lint/src/**/*.ts",
     ],
@@ -392,7 +392,7 @@ export default tseslint.config(
     // is now the only thing that reads them — the documentation generator
     // was retired once this rule covered what it covered and more.
     files: [
-      "packages/{collab,core,domain,integration-tests,provider,shared,worker}/**/*.{ts,tsx}",
+      "packages/{collab,core,desktop,domain,integration-tests,provider,shared,worker}/**/*.{ts,tsx}",
       "eslint-rules/**/*.ts",
       "repo-lint/**/*.ts",
     ],
@@ -433,7 +433,7 @@ export default tseslint.config(
     // rule whose subject IS the test file. It reads the path rather than the
     // contents, so the block only has to put it in front of the right files.
     files: [
-      "packages/{collab,core,domain,integration-tests,provider,shared,worker}/src/**/*.{test,spec}.{ts,tsx}",
+      "packages/{collab,core,desktop,domain,integration-tests,provider,shared,worker}/src/**/*.{test,spec}.{ts,tsx}",
       "eslint-rules/src/**/*.{test,spec}.ts",
       "repo-lint/src/**/*.{test,spec}.ts",
     ],
@@ -449,7 +449,7 @@ export default tseslint.config(
     // Orime copyright, which is why it is excluded rather than merely
     // unenforced.
     files: [
-      "packages/{collab,core,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}",
+      "packages/{collab,core,desktop,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}",
       "eslint-rules/src/**/*.ts",
       "repo-lint/src/**/*.ts",
     ],
@@ -462,7 +462,7 @@ export default tseslint.config(
     // Tests are exempt: they are not shipped, so the resolution concern that
     // motivates the alias style does not reach them.
     files: [
-      "packages/{collab,core,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}",
+      "packages/{collab,core,desktop,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}",
       "eslint-rules/src/**/*.ts",
       "repo-lint/src/**/*.ts",
     ],
@@ -501,7 +501,7 @@ export default tseslint.config(
     // is the same mistake as one in the dev proxy, and neither reads its
     // target from source. Tests included — a test that talks to production
     // is the version of this that nobody notices until it does damage.
-    files: ["packages/{collab,core,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}"],
+    files: ["packages/{collab,core,desktop,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}"],
     rules: {
       "breatic/no-deployed-host": "error",
     },
@@ -520,7 +520,7 @@ export default tseslint.config(
     // for a concrete reason too — the transport's own real-fetch.test.ts opens
     // a real port and calls the platform fetch, which is the only way to prove
     // the thing it proves.
-    files: ["packages/{collab,core,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}"],
+    files: ["packages/{collab,core,desktop,domain,integration-tests,provider,shared,worker}/src/**/*.{ts,tsx}"],
     ignores: [
       "packages/shared/src/http/**",
       // provider is a routing layer meant to leave this repository, so it

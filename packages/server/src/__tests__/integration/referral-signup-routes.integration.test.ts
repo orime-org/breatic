@@ -117,7 +117,7 @@ async function register(body: Record<string, unknown>): Promise<{ email: string;
 describe("sign-up with a referral code while selling", () => {
   it("tells the sign-up page the code field exists", async () => {
     const res = await app.request("/api/v1/auth/options");
-    expect(await res.json()).toEqual({ data: { emailVerification: false, referralEnabled: true } });
+    expect(await res.json()).toEqual({ data: { emailVerification: false, referralEnabled: true, desktopAppScheme: "ai.breatic.desktop", desktopAppName: "Breatic" } });
   });
 
   it("creates the account and appends the code carried in from a link", async () => {
@@ -267,7 +267,7 @@ describe("Google sign-in with a referral code", () => {
 describe("sign-up with a referral code where nothing is sold", () => {
   it("hides the code field and ignores any code sent", async () => {
     start(false);
-    expect(await (await app.request("/api/v1/auth/options")).json()).toEqual({ data: { emailVerification: false, referralEnabled: false } });
+    expect(await (await app.request("/api/v1/auth/options")).json()).toEqual({ data: { emailVerification: false, referralEnabled: false, desktopAppScheme: "ai.breatic.desktop", desktopAppName: "Breatic" } });
     const { email, res } = await register({ referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
     expect(res.status).toBe(201);
     expect(await bindingOfEmail(email)).toBeNull();

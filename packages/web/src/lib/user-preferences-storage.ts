@@ -10,7 +10,8 @@ import { STORAGE_KEYS } from '@web/lib/storage-keys';
  * Interface preferences that belong to an account rather than to a project:
  * the Agent column width, the Studio rail sections, the canvas minimap and
  * snap, the Timeline magnet, snap and linkage switches, and whether the
- * document heading outline is shown, and the language voice samples play in. Two people share a browser often enough to matter, so the record is
+ * document heading outline is shown, the language voice samples play in, and
+ * where the desktop Downloads panel was dragged to. Two people share a browser often enough to matter, so the record is
  * keyed by account id and each account reads only its own entry.
  *
  * This module is the only place the key is read or written, through
@@ -45,6 +46,8 @@ export interface UserPreferences {
   documentOutlineVisible: boolean;
   /** The language the voice list plays samples in, or null when never picked (#1521). */
   voiceSampleLanguage: string | null;
+  /** Where the user dragged the desktop Downloads panel, from the window's bottom-left corner; null when never dragged (inner#2041). */
+  downloadPanelPosition: { left: number; bottom: number } | null;
 }
 
 /** What an account that has stored nothing sees. */
@@ -58,6 +61,7 @@ export const DEFAULT_USER_PREFERENCES: UserPreferences = {
   timelineLinkage: true,
   documentOutlineVisible: true,
   voiceSampleLanguage: null,
+  downloadPanelPosition: null,
 };
 
 // `.catch` also answers for a missing field, since `undefined` fails each
@@ -78,6 +82,7 @@ const preferencesSchema = z.object({
   timelineLinkage: z.boolean().catch(true),
   documentOutlineVisible: z.boolean().catch(true),
   voiceSampleLanguage: z.string().nullable().catch(null),
+  downloadPanelPosition: z.object({ left: z.number().finite(), bottom: z.number().finite() }).nullable().catch(null),
 });
 
 /**

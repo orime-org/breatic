@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router-dom';
 import { getLocale, REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
+import { DesktopGoogleSignIn } from '@web/pages/auth/DesktopGoogleSignIn';
+import { getDesktopBridge } from '@web/lib/desktop-bridge';
 
 import { authApi } from '@web/data/api/auth';
-import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
 import { attributionBody, reportConversion, trackEvent } from '@web/data/analytics';
 import { Button } from '@web/components/ui/button';
@@ -15,7 +16,7 @@ import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
 import { Label } from '@web/components/ui/label';
 import { useTranslation } from '@web/i18n/use-translation';
-import { changeLocale } from '@web/i18n/locale-bootstrap';
+import { useCompleteSignIn } from '@web/pages/auth/use-complete-sign-in';
 import { AuthCardShell, AuthLink } from '@web/pages/auth/_shared/AuthCardShell';
 import { TermsNotice } from '@web/pages/auth/_shared/TermsNotice';
 import { FieldError } from '@web/components/FieldError';
@@ -56,13 +57,12 @@ declare const __GOOGLE_CLIENT_ID__: string;
  */
 export default function LoginPage(): React.JSX.Element {
   const t = useTranslation();
-  const navigate = useNavigate();
   const [params] = useSearchParams();
   const next = safeNextPath(params.get('next'));
   const registerPath = params.has('next')
     ? `/register?next=${encodeURIComponent(next)}`
     : '/register';
-  const setUser = useCurrentUserStore((s) => s.setUser);
+  const completeSignIn = useCompleteSignIn();
 
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
@@ -93,7 +93,6 @@ export default function LoginPage(): React.JSX.Element {
     try {
       const { user, created, referral: outcome } = await authApi.google({ credential, ...attributionBody(), ...referral.body() });
       if (!mounted.current) return;
-      setUser(toCurrentUser(user));
       // An existing account keeps the carried code: the warning below points to the panel, which fills from it.
       if (created) {
         reportConversion('signup', `signup:${user.id}`);
@@ -101,8 +100,7 @@ export default function LoginPage(): React.JSX.Element {
       }
       // Before navigating: the Toaster sits outside the router and keeps it (inner#1868 §10).
       if (outcome === 'not_applied') toast.warning(t('auth.referral.existingAccount'));
-      void changeLocale(user.locale);
-      navigate(next, { replace: true });
+      completeSignIn(user, next);
     } catch (err) {
       if (!mounted.current) return;
       if (err instanceof ApiException && err.status === 422 && err.reason === 'invalid_code') {
@@ -215,9 +213,7 @@ export default function LoginPage(): React.JSX.Element {
     try {
       const { user } = await authApi.login({ email: trimmedEmail, password });
       if (!mounted.current) return;
-      setUser(toCurrentUser(user));
-      void changeLocale(user.locale);
-      navigate(next, { replace: true });
+      completeSignIn(user, next);
     } catch (err) {
       const message =
         err instanceof ApiException ? err.message : t('auth.login.failed');
@@ -308,7 +304,11 @@ export default function LoginPage(): React.JSX.Element {
             <div className='h-px flex-1 bg-border' />
           </div>
           {referralRow()}
-          <GoogleSignIn key={getLocale()} clientId={__GOOGLE_CLIENT_ID__} busy={submitting || referral.field === 'loading'} onCredential={handleGoogleCredential} />
+          {getDesktopBridge() ? (
+            <DesktopGoogleSignIn referralCode={referral.value || null} next={next} busy={submitting} />
+          ) : (
+            <GoogleSignIn key={getLocale()} clientId={__GOOGLE_CLIENT_ID__} busy={submitting || referral.field === 'loading'} onCredential={handleGoogleCredential} />
+          )}
         </div>
       ) : null}
     </AuthCardShell>

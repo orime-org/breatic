@@ -123,8 +123,8 @@ function swallowPress(event: React.MouseEvent<HTMLButtonElement>): void {
 const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
   ({ className, variant, size, asChild = false, loading = false, icon, ...props }, ref) => {
     const spaced = icon !== undefined && React.Children.toArray(props.children).length > 0;
-    const classes = buttonVariants({ variant, size, className: cn(spaced && 'gap-1.5', className) });
-    if (asChild) return <Slot {...props} className={cn(classes)} ref={ref} />;
+    const classes = buttonVariants({ variant, size, className: spaced ? 'gap-1.5' : undefined });
+    if (asChild) return <Slot {...props} className={cn(classes, className)} ref={ref} />;
     const { disabled, onClick, children } = props;
     const lead = loading ? (
       <Loader2
@@ -141,7 +141,8 @@ const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
     return (
       <button
         {...props}
-        className={cn(classes, loading && 'cursor-not-allowed opacity-50')}
+        // The faded wait comes before the caller's classes, so a caller whose label must stay readable can replace it.
+        className={cn(classes, loading && 'cursor-not-allowed opacity-50', className)}
         ref={ref}
         disabled={loading ? undefined : disabled}
         aria-disabled={loading ? true : props['aria-disabled']}

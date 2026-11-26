@@ -1,0 +1,32 @@
+{
+  "name": "@breatic/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "breatic desktop client for macOS, Windows and Linux",
+  "type": "module",
+  "main": "dist/main/index.cjs",
+  "scripts": {
+    "build": "tsup",
+    "start": "tsup && BREATIC_SERVER_URL=${BREATIC_SERVER_URL:-http://localhost:8100} electron .",
+    "dist": "tsup && sentry-cli sourcemaps inject dist && node scripts/stage-app.mjs && node scripts/dist.mjs",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "test:e2e": "BREATIC_DEFAULT_SERVER_URL=${BREATIC_E2E_SERVER:-http://localhost:8100} BREATIC_DESKTOP_SENTRY_DSN=http://e2e@127.0.0.1:47999/1 GITHUB_SHA=${GITHUB_SHA:-$(git rev-parse HEAD)} tsup && playwright test"
+  },
+  "dependencies": {
+    "@breatic/shared": "workspace:*",
+    "@sentry/electron": "8.3.0",
+    "electron-updater": "6.8.12",
+    "pino": "catalog:"
+  },
+  "devDependencies": {
+    "@types/node": "catalog:",
+    "electron": "45.3.2",
+    "electron-builder": "26.18.0",
+    "playwright": "catalog:",
+    "tsup": "catalog:",
+    "vitest": "catalog:",
+    "yaml": "catalog:"
+  }
+}

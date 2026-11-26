@@ -26,7 +26,9 @@ import { toast } from '@web/lib/toast';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useSignupReferral } from '@web/features/referral/use-signup-referral';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
-import { changeLocale } from '@web/i18n/locale-bootstrap';
+import { DesktopGoogleSignIn } from '@web/pages/auth/DesktopGoogleSignIn';
+import { getDesktopBridge } from '@web/lib/desktop-bridge';
+import { useCompleteSignIn } from '@web/pages/auth/use-complete-sign-in';
 
 declare const __GOOGLE_CLIENT_ID__: string;
 
@@ -68,6 +70,7 @@ export default function RegisterPage(): React.JSX.Element {
   const slugPath = carriesNext ? `/choose-slug?next=${encodeURIComponent(next)}` : '/choose-slug';
   const loginPath = carriesNext ? `/login?next=${encodeURIComponent(next)}` : '/login';
   const setUser = useCurrentUserStore((s) => s.setUser);
+  const completeSignIn = useCompleteSignIn();
   const referral = useSignupReferral();
 
   const invitation = useQuery({
@@ -198,15 +201,13 @@ export default function RegisterPage(): React.JSX.Element {
       trackEvent('signup_started', { method: 'google' });
       try {
         const answer = await authApi.google({ credential, ...attributionBody(), ...referral.body() });
-        setUser(toCurrentUser(answer.user));
         // An existing account keeps the carried code: the warning below points to the panel, which fills from it.
         if (answer.created) {
           reportConversion('signup', `signup:${answer.user.id}`);
           referral.used();
         }
         if (answer.referral === 'not_applied') toast.warning(t('auth.referral.existingAccount'));
-        void changeLocale(answer.user.locale);
-        navigate(answer.created ? slugPath : next, { replace: true });
+        completeSignIn(answer.user, answer.created ? slugPath : next);
       } catch (err) {
         if (referralRefused(err)) referral.refused(t('auth.referral.invalid'));
         else setFormError(err instanceof ApiException ? err.message : t('auth.register.failed'));
@@ -214,7 +215,7 @@ export default function RegisterPage(): React.JSX.Element {
         setSubmitting(false);
       }
     },
-    [submitting, referral, setUser, t, navigate, slugPath, next],
+    [submitting, referral, completeSignIn, t, slugPath, next],
   );
 
   const handleChangeEmail = React.useCallback((): void => {
@@ -374,12 +375,16 @@ export default function RegisterPage(): React.JSX.Element {
               <span>{t('auth.or')}</span>
               <div className='h-px flex-1 bg-border' />
             </div>
-            <GoogleSignIn
-              key={getLocale()}
-              clientId={__GOOGLE_CLIENT_ID__}
-              busy={submitting || referral.field === 'loading'}
-              onCredential={handleGoogleCredential}
-            />
+            {getDesktopBridge() ? (
+              <DesktopGoogleSignIn referralCode={referral.value || null} next={next} busy={submitting} />
+            ) : (
+              <GoogleSignIn
+                key={getLocale()}
+                clientId={__GOOGLE_CLIENT_ID__}
+                busy={submitting || referral.field === 'loading'}
+                onCredential={handleGoogleCredential}
+              />
+            )}
           </div>
         ) : null}
       </AuthCardShell>

@@ -319,7 +319,9 @@ function stored(): StoredUpload {
 function captureVideoElements(): HTMLVideoElement[] {
   const createElement = document.createElement.bind(document);
   const videos: HTMLVideoElement[] = [];
-  vi.spyOn(document, 'createElement').mockImplementation((tagName, options) => {
+  // One signature: the overloads also list Electron's <webview> once Playwright loads its types.
+  const doc = document as unknown as { createElement: (tagName: string, options?: ElementCreationOptions) => HTMLElement };
+  vi.spyOn(doc, 'createElement').mockImplementation((tagName, options) => {
     const element = createElement(tagName, options);
     if (element instanceof HTMLVideoElement) videos.push(element);
     return element;

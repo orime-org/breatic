@@ -1,11 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import type { Check, CheckContext, Finding } from "#repo-lint/check";
-import {
-  buildLicenceNotice,
-  NOTICE_COVERS,
-  SHIPPED_NOTICE,
-} from "#repo-lint/licence-notice";
+import { buildLicenceNotice, SHIPPED_NOTICES } from "#repo-lint/licence-notice";
 import { readLicenceReport } from "#repo-lint/licence-report";
 
 /**
@@ -37,18 +33,20 @@ function listedPackages(notice: string): number {
 }
 
 /**
- * What is wrong with the committed notice, when something is.
+ * What is wrong with a committed notice, when something is.
+ * @param path - Where the notice lives.
  * @param committed - The file in the repository, or undefined when absent.
  * @param current - What the installed packages produce right now.
  * @returns The message, or undefined when the two agree.
  */
 export function compareShippedNotice(
+  path: string,
   committed: string | undefined,
   current: string,
 ): string | undefined {
   if (committed === undefined) {
     return (
-      `${SHIPPED_NOTICE} is missing, so the bundle ships no licence text at all. ` +
+      `${path} is missing, so the artefact ships no licence text at all. ` +
       `Generate it with: ${REGENERATE}`
     );
   }
@@ -63,23 +61,20 @@ export function compareShippedNotice(
       : `it accounts for ${held} packages and the installed ones produce ${produced}`;
 
   return (
-    `${SHIPPED_NOTICE} is out of date: ${how}. Whoever changed the dependencies ` +
+    `${path} is out of date: ${how}. Whoever changed the dependencies ` +
     `owes this file the same change. Regenerate it with: ${REGENERATE}`
   );
 }
 
 export const noticeTravelsWithTheBundle = {
   name: "notice-travels-with-the-bundle",
-  description: `${SHIPPED_NOTICE} matches the installed ${NOTICE_COVERS} packages`,
+  description: "Each shipped licence notice matches the installed packages it covers",
   run(context: CheckContext): Finding[] {
-    const current = buildLicenceNotice(
-      readLicenceReport(context.repoRoot, NOTICE_COVERS),
-    );
-    const committed = context.exists(SHIPPED_NOTICE)
-      ? context.read(SHIPPED_NOTICE)
-      : undefined;
-
-    const said = compareShippedNotice(committed, current);
-    return said === undefined ? [] : [{ file: SHIPPED_NOTICE, message: said }];
+    return SHIPPED_NOTICES.flatMap(({ covers, path, artefact }) => {
+      const current = buildLicenceNotice(readLicenceReport(context.repoRoot, covers), artefact);
+      const committed = context.exists(path) ? context.read(path) : undefined;
+      const said = compareShippedNotice(path, committed, current);
+      return said === undefined ? [] : [{ file: path, message: said }];
+    });
   },
 } satisfies Check;
