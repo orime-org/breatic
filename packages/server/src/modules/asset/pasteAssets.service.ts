@@ -20,7 +20,7 @@
  */
 
 import { accountActivityRepo, getStorageAdapter, logger, projectAssetReferenceService } from "@breatic/core";
-import type { CanvasPasteAnswer, NodeMediaFields, PasteHistoryItem, PastePair, StudioAssetEntity } from "@breatic/shared";
+import { assetNameFromUrl, type CanvasPasteAnswer, type NodeMediaFields, type PasteHistoryItem, type PastePair, type StudioAssetEntity } from "@breatic/shared";
 import { assetRepo, assetService, ingestReportService, materialFacts, nodeHistoryService } from "@breatic/domain";
 
 import { assertStudioStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
@@ -197,7 +197,7 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
     projectId: input.projectId,
     assetIds: main.map((address) => rowIds[address]!),
     displayNames: Object.fromEntries(main.flatMap((address) => {
-      const name = fileNameOf(address);
+      const name = assetNameFromUrl(address);
       return name === null ? [] : [[rowIds[address]!, name]];
     })),
   });
@@ -243,17 +243,3 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
 }
 
 
-/**
- * The last segment of an address, as a relation names the media it pastes.
- * @param address - A storage address.
- * @returns The decoded file name, or null when it has none.
- */
-function fileNameOf(address: string): string | null {
-  try {
-    const name = decodeURIComponent(new URL(address).pathname.split("/").pop() ?? "");
-    return name.length > 0 ? name : null;
-  } catch {
-    // An address that is not a URL, or a malformed escape, names nothing.
-    return null;
-  }
-}

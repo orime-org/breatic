@@ -3,7 +3,7 @@
 
 import type * as Y from 'yjs';
 import type { ProjectRegisteredAsset } from '@breatic/shared';
-import { durationToFrames } from '@breatic/shared';
+import { assetNameFromUrl, durationToFrames } from '@breatic/shared';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import { TIMELINE_DEFAULT_PLACEMENT, type TimelineEditCommand, type TimelineEditPlacement } from '@web/data/yjs/timeline-edit';
 
@@ -50,7 +50,7 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
       // The picked list item's address and media facts, as a canvas node stores them (inner#2171 design §4).
       source: {
         id: input.sourceId, kind: 'video', url: asset.fileUrl, coverUrl: asset.coverUrl,
-        name: asset.displayName ?? fileNameOf(asset.fileUrl), mimeType: asset.mimeType, width: asset.width, height: asset.height,
+        name: timelineSourceName(asset.displayName ?? assetNameFromUrl(asset.fileUrl)), mimeType: asset.mimeType, width: asset.width, height: asset.height,
         timebase: current.settings.fps, extentFrames, durationSeconds: String(duration),
         durationOrigin: asset.durationSeconds === null ? 'decoded' : 'registered',
       },
@@ -67,17 +67,11 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
 }
 
 /**
- * The last segment of a media address, which names an unnamed item the way its file is named.
- * @param url - The registered address.
- * @returns The file name, or `video` when the address has none.
+ * The name a Timeline video source or upload carries: within the schema's 255 characters, `video` when there is none.
+ * @param name - The display name, file name or name read off the address.
+ * @returns The name to store.
  * @throws {never} Never.
  */
-export function fileNameOf(url: string): string {
-  try {
-    const name = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '');
-    return name.length > 0 ? name.slice(0, 255) : 'video';
-  } catch {
-    // A malformed escape still names the clip by something.
-    return 'video';
-  }
+export function timelineSourceName(name: string | null): string {
+  return (name ?? '').slice(0, 255) || 'video';
 }

@@ -11,7 +11,7 @@ import { checkAdd } from '@web/data/yjs/space-write';
 import { readTimelineDocument } from '@web/data/yjs/timeline-document';
 import type { TimelineEditOptions } from '@web/data/yjs/timeline-edit-session';
 import { parseTimelineFrame } from '@web/data/yjs/timeline-time';
-import { prepareTimelineMediaPlacement } from '@web/spaces/timeline/prepare-media-placement';
+import { prepareTimelineMediaPlacement, timelineSourceName } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /** The current material form held by an open document. */
@@ -261,7 +261,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
           const { file, durationSeconds } = material;
           upload = { uploadId: newId(), file };
           const clip: TimelineUploadClip = {
-            id: clipId, kind: 'upload', trackId: target.trackId, upload: { uploadId: upload.uploadId, name: file.name.slice(0, 255) || 'video', durationSeconds },
+            id: clipId, kind: 'upload', trackId: target.trackId, upload: { uploadId: upload.uploadId, name: timelineSourceName(file.name), durationSeconds },
             startFrame, sourceInFrame: 0, durationFrames: durationToFrames(durationSeconds, readTimelineDocument(doc).settings.fps),
             ...TIMELINE_DEFAULT_PLACEMENT,
           };

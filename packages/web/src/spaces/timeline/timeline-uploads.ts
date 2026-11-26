@@ -19,6 +19,7 @@ import { subscribeDocSize } from '@web/data/yjs/doc-size';
 import { convertTimelineUpload, readTimelineDocument, type TimelineRegisteredVideo } from '@web/data/yjs/timeline-document';
 import { CLAIMS_FIELD, renewOnWorker, type UploadClaim } from '@web/lib/upload-claims';
 import { uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
+import { timelineSourceName } from '@web/spaces/timeline/prepare-media-placement';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 
 /** Where an upload stands on this page; `progress` is the share sent, 0 to 1, or null before any is known. */
@@ -238,7 +239,7 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
 
   return {
     start(uploadId, file) {
-      const record: UploadRecord = { file, name: file.name.slice(0, 255) || 'video', state: { phase: 'uploading', progress: null } };
+      const record: UploadRecord = { file, name: timelineSourceName(file.name), state: { phase: 'uploading', progress: null } };
       records.set(uploadId, record);
       run(record, file);
       queue();
