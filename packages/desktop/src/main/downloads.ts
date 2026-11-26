@@ -46,8 +46,10 @@ export interface DownloadsDeps {
   openDockWindow: () => DockWindow;
   /** `app.dock.downloadFinished`: bounces the Downloads stack when the file is in it. */
   downloadFinished: (path: string) => void;
-  /** `shell.showItemInFolder`. */
+  /** `shell.showItemInFolder`, which does nothing for a file that is gone. */
   showItemInFolder: (path: string) => void;
+  /** Whether a file is still where it was saved. */
+  fileExists: (path: string) => boolean;
 }
 
 /** The feedback's operations. */
@@ -58,7 +60,7 @@ export interface Downloads {
   list(): DesktopDownloadList;
   /** Close the panel: finished rows go, running ones stay. */
   dismiss(): void;
-  /** Show a finished download's file in its folder; an unknown id does nothing. */
+  /** Show a finished download's file in its folder, or mark its row when the file has gone; an unknown id does nothing. */
   reveal(id: string): void;
   /** How many downloads are still running. */
   running(): number;
@@ -193,7 +195,13 @@ export function createDownloads(deps: DownloadsDeps): Downloads {
     },
     reveal(id) {
       const entry = entries.find(({ row }) => row.id === id && row.state === "completed");
-      if (entry) deps.showItemInFolder(entry.savePath);
+      if (!entry) return;
+      if (deps.fileExists(entry.savePath)) {
+        deps.showItemInFolder(entry.savePath);
+        return;
+      }
+      entry.row = { id, name: entry.row.name, state: "missing" };
+      notify();
     },
     running() {
       return entries.filter(({ row }) => row.state === "progressing").length;

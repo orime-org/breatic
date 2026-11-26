@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { ArrowDown, Check, CircleAlert, X } from 'lucide-react';
+import { ArrowDown, Check, CircleAlert, Minus, X } from 'lucide-react';
 import { formatBytes, type DesktopDownload, type DesktopDownloadList } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -14,6 +14,7 @@ import { useDownloadPanelAnchorLeft } from '@web/features/desktop-downloads/Down
 import { getDesktopBridge } from '@web/lib/desktop-bridge';
 import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferences-storage';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { cn } from '@web/lib/utils';
 
 /** The panel's width (`w-[320px]`), which keeps it inside the window. */
 const PANEL_WIDTH = 320;
@@ -62,6 +63,8 @@ const DownloadRow = React.memo(function DownloadRow({
       <Check className='size-3.5 text-status-success' />
     ) : item.state === 'failed' ? (
       <CircleAlert className='size-3.5 text-status-error' />
+    ) : item.state === 'missing' ? (
+      <Minus className='size-3.5 text-muted-foreground' />
     ) : (
       <ArrowDown className='size-3.5 text-muted-foreground' />
     );
@@ -69,7 +72,7 @@ const DownloadRow = React.memo(function DownloadRow({
     <li className='border-t border-border px-3 py-2.5'>
       <div className='flex min-w-0 items-center gap-2'>
         <span className='flex w-4 shrink-0 justify-center'>{icon}</span>
-        <span className='min-w-0 flex-1 truncate'>{item.name}</span>
+        <span className={cn('min-w-0 flex-1 truncate', item.state === 'missing' && 'text-muted-foreground')}>{item.name}</span>
       </div>
       <div className='pl-6 text-xs'>
         {item.state === 'progressing' && (
@@ -91,6 +94,7 @@ const DownloadRow = React.memo(function DownloadRow({
           </div>
         )}
         {item.state === 'failed' && <p className='mt-1 text-status-error'>{t('desktopDownloads.failedRow')}</p>}
+        {item.state === 'missing' && <p className='mt-1 text-muted-foreground'>{t('desktopDownloads.missing')}</p>}
       </div>
     </li>
   );

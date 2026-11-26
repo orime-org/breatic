@@ -5303,6 +5303,7 @@
     "revealMac": "Finder で表示",
     "revealOther": "フォルダに表示",
     "failedRow": "ダウンロードに失敗しました。もう一度ダウンロードしてください。",
+    "missing": "ファイルは移動または削除されました",
     "progress": "{received} / {total}",
     "receivedOnly": "{received} ダウンロード済み",
     "close": "閉じる"

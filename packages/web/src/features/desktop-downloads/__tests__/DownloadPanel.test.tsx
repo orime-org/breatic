@@ -147,6 +147,14 @@ describe('DownloadPanel', () => {
     expect(await screen.findByText('Download failed. Please download it again.')).toBeInTheDocument();
   });
 
+  it('says a finished file was moved or deleted, with no button to show it', async () => {
+    inClient({ open: true, items: [{ id: '4', name: 'gone.png', state: 'missing' }] });
+    renderWithTooltips(<DownloadPanel />);
+    expect(await screen.findByText('File moved or deleted')).toBeInTheDocument();
+    expect(screen.getByText('Complete')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Show in Finder' })).toBeNull();
+  });
+
   it('closes through the client', async () => {
     const { bridge } = inClient({ open: true, items: [done] });
     renderWithTooltips(<DownloadPanel />);

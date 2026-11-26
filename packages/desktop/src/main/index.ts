@@ -170,6 +170,7 @@ function start(): void {
     openDockWindow,
     downloadFinished: (path) => app.dock?.downloadFinished(path),
     showItemInFolder: (path) => shell.showItemInFolder(path),
+    fileExists: existsSync,
   });
   const tracked = downloads;
   session.defaultSession.on("will-download", (_event, item) => tracked.track(item));

@@ -17,7 +17,9 @@ export interface BrowserSignInResult {
 export type DesktopDownload =
   | { id: string; name: string; state: "progressing"; received: number; total: number }
   | { id: string; name: string; state: "completed"; folder: string }
-  | { id: string; name: string; state: "failed" };
+  | { id: string; name: string; state: "failed" }
+  /** Finished, but its file was moved or deleted since (found when the user asked to show it). */
+  | { id: string; name: string; state: "missing" };
 
 /** This run's downloads, newest first, and whether the Downloads panel is open. */
 export interface DesktopDownloadList {

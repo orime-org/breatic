@@ -62,6 +62,7 @@ function setup(over: Partial<DownloadsDeps> = {}) {
     openDockWindow: vi.fn(() => dock),
     downloadFinished: vi.fn(),
     showItemInFolder: vi.fn(),
+    fileExists: vi.fn(() => true),
     ...over,
   };
   return { downloads: createDownloads(deps), deps, windows, dock };
@@ -161,6 +162,22 @@ describe("createDownloads", () => {
     expect(deps.showItemInFolder).not.toHaveBeenCalled();
     downloads.reveal(downloads.list().items[0]!.id);
     expect(deps.showItemInFolder).toHaveBeenCalledWith("/Users/a/Downloads/a.png");
+  });
+
+  it("marks a finished download whose file was moved or deleted when asked to reveal it, and opens nothing", () => {
+    const { downloads, deps, windows } = setup({ fileExists: vi.fn(() => false) });
+    const item = saved(downloads, "/Users/a/Downloads/a.png");
+    item.emit("done", {}, "completed");
+    const id = downloads.list().items[0]!.id;
+    windows[0]!.webContents.send.mockClear();
+    downloads.reveal(id);
+    expect(deps.fileExists).toHaveBeenCalledWith("/Users/a/Downloads/a.png");
+    expect(deps.showItemInFolder).not.toHaveBeenCalled();
+    expect(downloads.list().items).toEqual([{ id, name: "a.png", state: "missing" }]);
+    expect(windows[0]!.webContents.send).toHaveBeenCalledWith("download:changed");
+    downloads.reveal(id);
+    expect(deps.fileExists).toHaveBeenCalledTimes(1);
+    expect(downloads.running()).toBe(0);
   });
 
   it("closes the panel on dismiss, keeping running rows, and reopens it on the next event", () => {

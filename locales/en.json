@@ -5303,6 +5303,7 @@
     "revealMac": "Show in Finder",
     "revealOther": "Show in folder",
     "failedRow": "Download failed. Please download it again.",
+    "missing": "File moved or deleted",
     "progress": "{received} / {total}",
     "receivedOnly": "{received} downloaded",
     "close": "Close"

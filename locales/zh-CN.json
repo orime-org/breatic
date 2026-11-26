@@ -5303,6 +5303,7 @@
     "revealMac": "在访达中显示",
     "revealOther": "在文件夹中显示",
     "failedRow": "下载失败，请重新下载",
+    "missing": "文件已移走或删除",
     "progress": "{received} / {total}",
     "receivedOnly": "已下载 {received}",
     "close": "关闭"

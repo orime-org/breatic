@@ -16,7 +16,7 @@
 
 import { execFileSync, spawn } from "node:child_process";
 import { randomBytes, randomUUID } from "node:crypto";
-import { existsSync, mkdtempSync } from "node:fs";
+import { existsSync, mkdtempSync, rmSync } from "node:fs";
 import { createServer, type IncomingMessage, type RequestListener, type Server, type ServerResponse } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -717,7 +717,7 @@ test.describe("download feedback", () => {
     }, url);
   }
 
-  test("a download shows in the Downloads panel, stays across a reload and in a new window, and reveals its file", async () => {
+  test("a download shows in the Downloads panel, stays across a reload and in a new window, reveals its file, and says when the file has gone", async () => {
     const app = await launch(freshData());
     const page = await windowWhere(app, (url) => url.startsWith(SERVER));
     await afterSplash(app);
@@ -753,6 +753,11 @@ test.describe("download feedback", () => {
     await expect.poll(() => appWindows(app).filter((window) => window.url().startsWith(SERVER)).length).toBe(2);
     const second = appWindows(app).filter((window) => window.url().startsWith(SERVER)).find((window) => window !== page)!;
     await expect(second.getByTestId("desktop-download-panel").getByText("clip.bin")).toBeVisible({ timeout: 30_000 });
+
+    // The file moved away since: showing it says so, in every window.
+    rmSync(join(dir, "clip.bin"));
+    await second.getByTestId("desktop-download-panel").getByRole("button", { name: process.platform === "darwin" ? "Show in Finder" : "Show in folder" }).click();
+    await expect(page.getByTestId("desktop-download-panel").getByText("File moved or deleted")).toBeVisible();
     await app.close();
   });
 

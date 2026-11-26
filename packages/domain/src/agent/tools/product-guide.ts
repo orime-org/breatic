@@ -753,7 +753,8 @@ export function renderProductGuide(): string {
       "its title bar says how many are downloading or failed, each row shows the file's name and progress, " +
       "a finished row names the folder it was saved in, with " +
       `${quoted(t("desktopDownloads.revealMac"))} on macOS or ${quoted(t("desktopDownloads.revealOther"))} on Windows and Linux, ` +
-      "which opens that folder with the file selected, and a failed row says the download failed and to download it again; " +
+      "which opens that folder with the file selected (when the file was moved or deleted since, the row turns into " +
+      `${quoted(t("desktopDownloads.missing"))} instead), and a failed row says the download failed and to download it again; ` +
       `with more than one download ${quoted(t("desktopDownloads.showAll", { count: 2 }))} lists them all and ` +
       `${quoted(t("desktopDownloads.showLatest"))} goes back to the newest, and the panel stays until its ` +
       `${quoted(t("desktopDownloads.close"))} button, an X, closes it), then ` +

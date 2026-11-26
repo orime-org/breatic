@@ -5303,6 +5303,7 @@
     "revealMac": "Finder에서 보기",
     "revealOther": "폴더에서 보기",
     "failedRow": "다운로드에 실패했습니다. 다시 다운로드하세요.",
+    "missing": "파일이 이동되었거나 삭제되었습니다",
     "progress": "{received} / {total}",
     "receivedOnly": "{received} 다운로드됨",
     "close": "닫기"
