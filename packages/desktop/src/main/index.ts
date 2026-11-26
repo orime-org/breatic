@@ -43,9 +43,15 @@ const FLUSH_TIMEOUT_MS = 2_000;
 
 const isDev = !app.isPackaged;
 
-// First, before anything can fail: the shell's error monitoring (design 9.4).
+/** False in a second launch: it hands its arguments to the first instance (second-instance) and ends. */
+const primary = app.requestSingleInstanceLock();
+if (!primary) app.quit();
+
+// Then, before anything can fail: the shell's error monitoring (design 9.4). Only the first instance
+// starts it: a second launch shares the data directory, would read the running session Sentry keeps
+// there as one that never ended and report it as abnormal, and would add a session of its own.
 const sentryOptions = desktopSentryOptions({ dsn: BUILD.sentryDsn, brandId: BRAND.id, packaged: app.isPackaged, commit: BUILD.commit });
-if (sentryOptions) {
+if (primary && sentryOptions) {
   const home = app.getPath("home");
   Sentry.init({
     ...sentryOptions,
@@ -64,10 +70,6 @@ const here = __dirname;
  * @returns The path of `window-state.json` in the app's data directory.
  */
 const windowStateFile = (): string => join(app.getPath("userData"), "window-state.json");
-
-/** False in a second launch: it hands its arguments to the first instance (second-instance) and ends. */
-const primary = app.requestSingleInstanceLock();
-if (!primary) app.quit();
 
 const logger = createLogger(app.getPath("logs"), BRAND.id);
 const signIn = createBrowserSignIn({ openExternal: (url) => shell.openExternal(url), now: () => Date.now(), ttlMs: SIGN_IN_TTL_MS, scheme: BRAND.scheme });

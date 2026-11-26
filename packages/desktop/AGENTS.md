@@ -20,6 +20,7 @@ The Electron client for macOS, Windows and Linux. Its windows show the web app o
 - **`did-fail-provisional-load` fires only when Chromium commits its error entry (not for `ERR_ABORTED`); `did-fail-load` also fires when a page that already committed loses its body.** Enter the can't-reach page on the first one only, or a server page whose stream breaks off is replaced by it.
 - **The mouse side buttons need a listener only on Windows (`app-command`).** Chromium already steps history on the button press, and on Linux Electron also emits `app-command` for it, so a listener there steps twice.
 - **Keep `@sentry/electron` on `IPCMode.Classic` without the `PreloadInjection` integration.** The default mode registers a privileged `sentry-ipc://` scheme the server's pages could write to.
+- **Sentry starts after `app.requestSingleInstanceLock()` and only in the instance that holds it.** A second launch shares the data directory, so a Sentry started there reads the running instance's saved session and reports it as abnormal.
 - **A session takes one `webRequest.onHeadersReceived` listener, and ours guards the main frame against redirects off the server.** Sentry options that install their own (`rendererProfiling`, `captureNativeStacktrace`) stay off.
 - **The can't-reach page cannot load the app's stylesheet (`default-src 'none'`), so `src/unreachable/render.ts` writes out the web app's token values.** Change them together with `packages/web/src/theme/tokens.css`; `src/unreachable/__tests__/render.test.ts` compares the two.
 
