@@ -241,5 +241,3 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
   }
   return { map, media };
 }
-
-

@@ -65,8 +65,6 @@ export interface SceneLookSectionProps {
   uploadPercentOf?: (part: string) => number | null;
   /** Whether a picked Project picture is being checked against the limits. */
   checking?: boolean;
-  /** A user picture's URL for its thumbnail, when known. */
-  pictureUrl?: (url: string) => string | undefined;
   /** The user pictures the scene shows now; one still loading, failed or over the budget shows the model's own colour. */
   showingPictures?: ReadonlySet<string>;
   /** The properties panel's number-field drafts, which keep a value the part does not take in its box. */
@@ -226,7 +224,7 @@ const NO_PICTURES: ReadonlySet<string> = new Set();
  * @returns The section.
  */
 export const SceneLookSection = React.memo(function SceneLookSection(props: SceneLookSectionProps): React.JSX.Element {
-  const { objectId, parts, look, selectedPart, mutable, onSelectPart, onCommand, onChoosePicture, gesture, spaceId = '', uploadPercentOf, checking, pictureUrl,
+  const { objectId, parts, look, selectedPart, mutable, onSelectPart, onCommand, onChoosePicture, gesture, spaceId = '', uploadPercentOf, checking,
     showingPictures = NO_PICTURES, fieldDrafts, onFieldDraftChange } = props;
   const t = useTranslation();
   const ids = React.useId();
@@ -269,7 +267,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
   const ownTransform = storedUserPicture ? undefined : row;
   // Tiling is stored per part, so its drafts are kept per part, as the position boxes keep theirs per field.
   const draftPrefix = `${objectId}:look:${row?.key ?? ''}`;
-  const fieldPicture = storedUserPicture ? pictureUrl?.(stored.map!) : stored.map === undefined ? row?.thumbnail : undefined;
+  const fieldPicture = storedUserPicture ? stored.map : stored.map === undefined ? row?.thumbnail : undefined;
   // A material number past the stored key format cannot carry a look.
   const storable = !row || isSceneLookPartKey(row.key);
   const disabled = !mutable || !storable;
@@ -288,7 +286,7 @@ export const SceneLookSection = React.memo(function SceneLookSection(props: Scen
         const fields = look[part.key] ?? {};
         // The row shows what the scene shows: a user picture that is not shown leaves the part's own picture (design 5.2).
         const shown = isPicture(fields.map) && showingPictures.has(fields.map);
-        const picture = shown ? pictureUrl?.(fields.map!) : fields.map === undefined || isPicture(fields.map) ? part.thumbnail : undefined;
+        const picture = shown ? fields.map : fields.map === undefined || isPicture(fields.map) ? part.thumbnail : undefined;
         const color = fields.color ?? (shown ? SCENE_LOOK_PICTURE_COLOR : part.color);
         const active = part.key === selectedPart;
         const uploading = uploadPercentOf?.(part.key);

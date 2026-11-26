@@ -59,11 +59,10 @@ describe('LookPictureSizes', () => {
 });
 
 describe('page picture access', () => {
-  it('hands the panel and the lazy viewport the same sizes for a Project, and other sizes for another', () => {
-    const access = sizeModule.pageLookPictureAccess('project-a');
-    expect(sizeModule.pageLookPictureAccess('project-a')).toBe(access);
-    expect(sizeModule.pageLookPictureSizes('project-a')).toBe(access.sizes);
-    expect(sizeModule.pageLookPictureSizes('project-b')).not.toBe(access.sizes);
+  it('hands the panel and the lazy viewport the same sizes, so each address is read once on the page', () => {
+    const access = sizeModule.pageLookPictureAccess();
+    expect(sizeModule.pageLookPictureAccess()).toBe(access);
+    expect(sizeModule.pageLookPictureSizes()).toBe(access.sizes);
   });
 });
 

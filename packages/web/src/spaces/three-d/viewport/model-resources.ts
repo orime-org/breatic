@@ -325,17 +325,16 @@ async function loadTemplate(
     return source.id === 'box' ? createBuiltinBox(builtinColor) : loadBuiltinFigure(signal, builtinColor, limits, renderer);
   }
   // The scene stores the model's address, type and size, so an oversized one is refused before any byte is fetched (inner#2171 design §6.2).
-  const asset = source;
-  if (!isSceneModelMediaType(asset.mimeType)) throw new ModelImportError('unsupported', 'Scene asset has an unsupported model type', { detail: asset.mimeType });
+  if (!isSceneModelMediaType(source.mimeType)) throw new ModelImportError('unsupported', 'Scene asset has an unsupported model type', { detail: source.mimeType });
   if (signal.aborted) throw new DOMException('Scene model load cancelled', 'AbortError');
-  if (asset.sizeBytes > limits.maxArtifactBytes) {
+  if (source.sizeBytes > limits.maxArtifactBytes) {
     throw new ModelImportError('budget', 'Registered model exceeds its configured asset budget', { detail: '',
-      budget: { limit: 'artifact', allowed: limits.maxArtifactBytes, actual: asset.sizeBytes } });
+      budget: { limit: 'artifact', allowed: limits.maxArtifactBytes, actual: source.sizeBytes } });
   }
-  const response = await httpRequest(asset.url, { method: 'GET' }, { replaySafe: true, signal });
+  const response = await httpRequest(source.url, { method: 'GET' }, { replaySafe: true, signal });
   if (!response.ok) throw new Error(`Scene model request failed (${response.status})`);
   const bytes = await readModelBytes(response, limits.maxArtifactBytes, signal);
-  const model = asset.mimeType === 'application/zip'
+  const model = source.mimeType === 'application/zip'
     ? await readRegisteredModelPackageInWorker(bytes, signal, limits)
     : inspectModelFiles(new Map([['model.glb', bytes]]), 'model.glb', limits, await detectTextureFormatSupport());
   return parseSceneModel(model, signal, limits, renderer);

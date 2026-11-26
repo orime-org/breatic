@@ -124,43 +124,37 @@ async function fetchLookPicture(url: string): Promise<Response> {
 
 /** What the lazy viewport needs from the page to load part pictures. */
 export interface LookPictureAccess {
-  /** The page's picture sizes for the Project. */
+  /** The page's picture sizes. */
   sizes: LookPictureSizes;
   /** A picture's whole file. */
   download: (url: string) => Promise<Blob>;
 }
 
-const pageAccess = new Map<string, LookPictureAccess>();
+let pageAccess: LookPictureAccess | null = null;
 
 /**
- * The page's way to part pictures for one Project, shared by every 3D Space of it and handed to the lazy viewport by the
- * editor.
- * @param projectId - The Project whose scene assets are read.
+ * The page's way to part pictures, shared by every 3D Space and handed to the lazy viewport by the editor: a picture is
+ * read by its address alone, so one page reads each address once.
  * @returns The sizes and the download.
  */
-export function pageLookPictureAccess(projectId: string): LookPictureAccess {
-  let access = pageAccess.get(projectId);
-  if (!access) {
-    access = {
-      sizes: new LookPictureSizes({
-        open: async (url) => {
-          const body = (await fetchLookPicture(url)).body;
-          if (!body) throw new Error('Look picture response has no body');
-          return body;
-        },
-      }),
-      download: async (url) => (await fetchLookPicture(url)).blob(),
-    };
-    pageAccess.set(projectId, access);
-  }
-  return access;
+export function pageLookPictureAccess(): LookPictureAccess {
+  pageAccess ??= {
+    sizes: new LookPictureSizes({
+      open: async (url) => {
+        const body = (await fetchLookPicture(url)).body;
+        if (!body) throw new Error('Look picture response has no body');
+        return body;
+      },
+    }),
+    download: async (url) => (await fetchLookPicture(url)).blob(),
+  };
+  return pageAccess;
 }
 
 /**
- * The page's picture sizes for one Project, the same instance the lazy viewport gets from `pageLookPictureAccess`.
- * @param projectId - The Project whose scene assets are read.
+ * The page's picture sizes, the same instance the lazy viewport gets from `pageLookPictureAccess`.
  * @returns The sizes.
  */
-export function pageLookPictureSizes(projectId: string): LookPictureSizes {
-  return pageLookPictureAccess(projectId).sizes;
+export function pageLookPictureSizes(): LookPictureSizes {
+  return pageLookPictureAccess().sizes;
 }

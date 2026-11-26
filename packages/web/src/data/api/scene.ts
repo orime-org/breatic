@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
-import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin, SceneTaskNotice } from '@breatic/shared';
+import type { ProjectAssetPage, SceneControlsConfig, SceneModel, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin, SceneTaskNotice } from '@breatic/shared';
 
 /**
  * Scene controls and model import budgets from the owning Project's readable API.
@@ -34,7 +34,7 @@ export interface SpaceTask {
   slotWaitLimit?: number | null;
   assetId: string | null;
   /** The model file "Place in scene" stores, by address, type and size; null while there is none to place (inner#2171). */
-  modelFile: { url: string; mimeType: 'model/gltf-binary' | 'application/zip'; sizeBytes: number } | null;
+  modelFile: Omit<Extract<SceneModel, { kind: 'asset' }>, 'kind'> | null;
   /** Absent on rows from a server that knew only imports. */
   kind?: 'import' | 'generation';
   /** The `task-failure` code, or the upstream's own words for a failure it gave. */

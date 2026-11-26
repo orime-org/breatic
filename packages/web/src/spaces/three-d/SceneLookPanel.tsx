@@ -38,15 +38,6 @@ export interface SceneLookPanelProps {
 }
 
 /**
- * The address a part's picture is shown from: a part stores its picture's address (inner#2171 design §3.2).
- * @param url - The stored picture.
- * @returns The same address.
- */
-function pictureUrlOf(url: string): string {
-  return url;
-}
-
-/**
  * Show a picture notice as a toast.
  * @param notice - The notice.
  */
@@ -120,7 +111,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   const showingPictures = React.useMemo(() => new Set(showing), [showing]);
   const queryClient = useQueryClient();
   const uploads = React.useMemo(() => pageSceneLookUploads(queryClient), [queryClient]);
-  const sizes = React.useMemo(() => pageLookPictureSizes(projectId), [projectId]);
+  const sizes = pageLookPictureSizes();
   const uploadVersion = React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const [pickerPart, setPickerPart] = React.useState<string | null>(null);
   const isChecking = React.useCallback(
@@ -154,7 +145,6 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
     };
   }, [session, objectId]);
   const onCommand = React.useCallback((command: Parameters<SceneSession['execute']>[0]): boolean => session.execute(command).ok, [session]);
-
 
   const pick = React.useCallback((image: SceneViewImage): void => {
     const part = pickerPart;
@@ -219,7 +209,7 @@ export const SceneLookPanel = React.memo(function SceneLookPanel(props: SceneLoo
   return <>
     <SceneLookSection objectId={objectId} parts={ready ? ready.parts : report === 'failed' ? 'failed' : 'loading'} look={look}
       selectedPart={selectedPart} mutable={mutable} onSelectPart={onSelectPart} onCommand={onCommand} onChoosePicture={setPickerPart}
-      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={checking} pictureUrl={pictureUrlOf}
+      gesture={gesture} spaceId={spaceId} uploadPercentOf={uploadPercentOf} checking={checking}
       showingPictures={showingPictures} fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange} />
     <SceneImagePickerDialog projectId={projectId} open={pickerPart !== null} onOpenChange={openChange} onPick={pick} onPickFile={pickFile} />
   </>;

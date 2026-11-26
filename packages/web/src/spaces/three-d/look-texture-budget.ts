@@ -53,7 +53,7 @@ export function fittedLookSize(size: LookPictureDimensions, maxEdge: number): Lo
 /**
  * The addresses a look shows as pictures: a part's map other than 'none'.
  * @param look - The look.
- * @returns Distinct picture ids.
+ * @returns Distinct picture addresses.
  */
 export function picturesOf(look: SceneLook): string[] {
   return [...new Set(Object.values(look).flatMap((fields) => (fields.map && fields.map !== 'none' ? [fields.map] : [])))];

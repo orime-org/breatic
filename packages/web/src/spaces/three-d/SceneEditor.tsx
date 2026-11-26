@@ -106,7 +106,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const placeFailedText = t('spaces.threeD.taskList.placeFailed');
   const lockText = t('spaces.threeD.lock');
   const unlockText = t('spaces.threeD.unlock');
-  const pictureAccess = React.useMemo(() => pageLookPictureAccess(projectId), [projectId]);
+  const pictureAccess = pageLookPictureAccess();
   const controls = useSceneControls(projectId, userId);
   const [mode, setMode] = React.useState<SceneTransformMode>('translate');
   const [focusRevision, setFocusRevision] = React.useState(0);
@@ -385,8 +385,6 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
     window.addEventListener('keydown', onKeyDown);
     return (): void => window.removeEventListener('keydown', onKeyDown);
   }, [session, duplicate, ownsKeyboard, onHistory]);
-
-  /** Resolve one registered model through the same Project's access boundary. */
 
   /** Persist the personal camera and publish it for followers; it never enters shared content. */
   const onViewChange = React.useCallback((next: SceneView, nextFov: number): void => {

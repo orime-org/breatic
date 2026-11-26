@@ -38,7 +38,7 @@ export interface SceneLookUploadDeps {
   /** The local file's header size and type within `maxBytes`, or null when it cannot be read. */
   readLocalSize: (file: File, maxBytes: number) => Promise<LookPictureSize | null>;
   /** A used picture's header size in a Project within `maxBytes`, or null when it cannot be read. */
-  size: (projectId: string, url: string, maxBytes: number) => Promise<LookPictureSize | null>;
+  size: (url: string, maxBytes: number) => Promise<LookPictureSize | null>;
   /** The open editing session of a Space document, if any; never creates one. */
   session: (name: string) => SceneSession | undefined;
 }
@@ -285,7 +285,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
    */
   const overLimit = (input: SceneLookUploadStart, look: SceneLook, mapSize: LookPictureSize): ReturnType<typeof checkLookWrite> =>
     checkLookWrite({ ownBytes: input.ownBytes, clampBytes: input.clampBytes, limits: input.limits, look, part: input.part, map: 'local', mapSize,
-      size: (url) => deps.size(input.projectId, url, input.limits.maxPictureHeaderBytes) });
+      size: (url) => deps.size(url, input.limits.maxPictureHeaderBytes) });
 
   /**
    * Whether putting a picture on the part would give the object one part more than it can hold, judged by the same plan
@@ -440,7 +440,7 @@ export function pageSceneLookUploads(queryClient: QueryClient): SceneLookUploads
     unregister: (spaceId, operationId) => useSpaceOperationsStore.getState().unregister(spaceId, operationId),
     invalidateImages: (projectId) => { void queryClient.invalidateQueries({ queryKey: projectImagesQueryKey(projectId) }); },
     readLocalSize: (file, maxBytes) => readPictureSize(file.stream(), maxBytes),
-    size: (projectId, url, maxBytes) => pageLookPictureSizes(projectId).size(url, maxBytes),
+    size: (url, maxBytes) => pageLookPictureSizes().size(url, maxBytes),
     session: peekSceneSession,
   });
   return pageUploads;

@@ -99,7 +99,7 @@ function harness(session: () => SceneSession | undefined, localSize: { width: nu
   const uploads = factory!({
     upload, notify, register, unregister, invalidateImages,
     readLocalSize: async (_file: File, maxBytes: number) => { caps.push(maxBytes); if (localSize instanceof Error) throw localSize; return localSize; },
-    size: (_projectId: string, url: string, maxBytes: number) => { caps.push(maxBytes); return size(url); }, session,
+    size: (url: string, maxBytes: number) => { caps.push(maxBytes); return size(url); }, session,
   });
   return { uploads, upload, notify, register, unregister, invalidateImages, caps, finish: (id) => finish(id), fail: (error) => fail(error) };
 }

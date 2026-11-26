@@ -20,8 +20,6 @@ export interface RecordProjectAssetReferencesInput {
   displayNames?: Readonly<Record<string, string>>;
 }
 
-/** A current member reading one Project's registered media. */
-
 /** A keyset read of one Project's registered videos, or of its images when `kind` says so. */
 export interface ListProjectMediaInput { projectId: string; userId: string; kind?: "image" | "video"; cursor?: string; limit?: number }
 
