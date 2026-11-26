@@ -680,7 +680,8 @@ export function renderProductGuide(): string {
       `${quoted(t("canvas.textNode.editorPlaceholder"))}); Esc or clicking elsewhere ends typing. Pointing at a text ` +
       `node shows ${quoted(t("canvas.textFullscreen.edit"))} (two arrows pointing out to opposite corners) above its ` +
       `top-right corner, ${quoted(t("canvas.textFullscreen.view"))} on a locked node or for someone who may only view: ` +
-      "it opens the text in a large window over the page, to read and to type in; " +
+      "it opens the text in a large window over the page, to read and to type in, with " +
+      `${quoted(t("canvas.textFullscreen.readOnly"))} after the title when the text cannot be changed; ` +
       `${quoted(t("canvas.textFullscreen.exit"))} at the window's top right, Esc or clicking outside it closes it. From the ` +
       "keyboard, Tab moves onto a node, and Enter there only selects it, except on a text node, where it starts " +
       "typing. On an empty picture, video or sound node, press Tab once more to reach its " +

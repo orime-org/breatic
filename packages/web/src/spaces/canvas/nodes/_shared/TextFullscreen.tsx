@@ -4,6 +4,7 @@
 import * as React from 'react';
 import { Minimize2 } from 'lucide-react';
 
+import { Button } from '@web/components/ui/button';
 import { Dialog, DialogClose, DialogContent, DialogTitle } from '@web/components/ui/dialog';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
@@ -17,6 +18,8 @@ import { cn } from '@web/lib/utils';
 interface TextFullscreenProps {
   /** The title: the node's name, and the box's when there are several. */
   title: string;
+  /** Marks the text as one the user can read but not change. */
+  readOnly?: boolean;
   /** Closes it: the exit button, a press on the backdrop or Escape. */
   onClose: () => void;
   /** The text, editable or read-only. */
@@ -76,6 +79,7 @@ function withinKeptPopup(event: Event): boolean {
  * Hosts mount it only while open, with an editor of their own inside.
  * @param root0 - Component props.
  * @param root0.title - The title.
+ * @param root0.readOnly - Marks the text read-only.
  * @param root0.onClose - Closes it.
  * @param root0.children - The text.
  * @param root0.onEscapeWithin - Answers an Escape the text claims.
@@ -87,6 +91,7 @@ function withinKeptPopup(event: Event): boolean {
  */
 export function TextFullscreen({
   title,
+  readOnly = false,
   onClose,
   children,
   onEscapeWithin,
@@ -145,16 +150,30 @@ export function TextFullscreen({
           // children to the content's box until the animation ends.
           className='flex h-[85vh] w-[min(92vw,960px)] max-w-none flex-col gap-0 overflow-hidden p-0 data-[state=closed]:animate-none data-[state=open]:animate-none'
         >
-          <div className='flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border pl-4 pr-2'>
-            <DialogTitle className='truncate text-sm font-medium'>{title}</DialogTitle>
+          <div className='flex h-12 shrink-0 items-center justify-between gap-2 border-b border-border px-4'>
+            <div className='flex min-w-0 items-center gap-2'>
+              <DialogTitle className='truncate text-sm font-medium'>{title}</DialogTitle>
+              {readOnly ? (
+                <span
+                  data-testid={`${testId}-read-only`}
+                  className='shrink-0 rounded-chrome bg-muted px-1.5 py-0.5 text-xs text-muted-foreground'
+                >
+                  {t('canvas.textFullscreen.readOnly')}
+                </span>
+              ) : null}
+            </div>
             <Tooltip>
               <TooltipTrigger asChild>
-                <DialogClose
-                  data-testid={`${testId}-exit`}
-                  aria-label={exitLabel}
-                  className='inline-flex h-[var(--btn-chrome)] w-[var(--btn-chrome)] shrink-0 items-center justify-center rounded-chrome text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring'
-                >
-                  <Minimize2 className='h-4 w-4' />
+                <DialogClose asChild>
+                  <Button
+                    variant='chrome-ghost'
+                    size='chrome'
+                    data-testid={`${testId}-exit`}
+                    aria-label={exitLabel}
+                    className='shrink-0'
+                  >
+                    <Minimize2 className='h-4 w-4' />
+                  </Button>
                 </DialogClose>
               </TooltipTrigger>
               <TooltipContent portal>{exitLabel}</TooltipContent>

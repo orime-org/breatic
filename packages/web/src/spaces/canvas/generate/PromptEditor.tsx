@@ -1054,7 +1054,8 @@ export const PromptEditor = React.forwardRef<PromptEditorHandle, PromptEditorOut
     <>
       <div
         data-testid='prompt-fullscreen-placeholder'
-        className='flex min-h-[3.25rem] items-center justify-center rounded-overlay border border-border bg-background px-2.5 py-2 text-xs text-muted-foreground'
+        // The box's own floor, so the panel keeps its height while full screen is open.
+        className={`flex ${props.startingHeight === 'half' ? 'min-h-[3.25rem]' : 'min-h-[6.5rem]'} items-center justify-center rounded-overlay border border-border bg-background px-2.5 py-2 text-xs text-muted-foreground`}
       >
         {t('canvas.textFullscreen.inProgress')}
       </div>

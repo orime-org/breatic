@@ -89,6 +89,27 @@ describe('a prompt box open full screen', () => {
     expect(document.querySelectorAll('.ProseMirror')).toHaveLength(1);
   });
 
+  it('keeps the box height while it says the prompt is open full screen', () => {
+    const fragment = promptWith('rain');
+    const layer = { open: true, title: 'Dock', onClose: vi.fn() };
+    const { rerender } = render(<Box fragment={fragment} layer={layer} />, { wrapper: TooltipProvider });
+    expect(screen.getByTestId('prompt-fullscreen-placeholder')).toHaveClass('min-h-[6.5rem]');
+    rerender(
+      <PromptEditor
+        fragment={fragment}
+        placeholder='Write'
+        onTextChange={vi.fn()}
+        onAtMentionsChange={vi.fn()}
+        references={[]}
+        referenceKinds={[]}
+        mentionEmptyLabel='No references'
+        startingHeight='half'
+        fullscreenLayer={layer}
+      />,
+    );
+    expect(screen.getByTestId('prompt-fullscreen-placeholder')).toHaveClass('min-h-[3.25rem]');
+  });
+
   it('draws full screen at the reading size, keeping the box rules for chips', async () => {
     render(<Box fragment={promptWith('x')} layer={{ open: true, title: 'Dock', onClose: vi.fn() }} />, { wrapper: TooltipProvider });
     const editor = await screen.findByTestId('generate-prompt-editor');

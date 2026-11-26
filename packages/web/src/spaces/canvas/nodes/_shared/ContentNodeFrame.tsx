@@ -137,7 +137,8 @@ export function ContentNodeFrame({
       {!badgeShown && cornerAction ? (
         <ZoomCounterScaled
           testId='node-corner-anchor'
-          className='absolute bottom-full right-0 origin-bottom-right pb-1'
+          // A 24px control centred on the 16px name row that sits 4px above.
+          className='absolute bottom-full right-0 flex origin-bottom-right'
         >
           {cornerAction}
         </ZoomCounterScaled>

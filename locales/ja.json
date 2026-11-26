@@ -3259,7 +3259,8 @@
       "view": "全画面で表示",
       "editPrompt": "プロンプトを全画面で編集",
       "exit": "全画面を終了",
-      "inProgress": "全画面で編集中"
+      "inProgress": "全画面で編集中",
+      "readOnly": "読み取り専用"
     }
   },
   "auth": {

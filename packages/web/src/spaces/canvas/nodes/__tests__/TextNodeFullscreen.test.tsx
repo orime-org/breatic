@@ -149,6 +149,7 @@ describe('the full-screen layer of a text node', () => {
   it('shows the node name and an editor on the node body, writes going into the node', async () => {
     renderLayer();
     expect(screen.getByRole('dialog', { name: 'Script' })).toBeInTheDocument();
+    expect(screen.queryByTestId('text-fullscreen-read-only')).toBeNull();
     const editor = await screen.findByTestId('text-fullscreen-editor');
     expect(editor.querySelector('[contenteditable="true"]')).not.toBeNull();
     expect(editor.textContent).toContain('Scene one. The dock at night.');
@@ -164,11 +165,13 @@ describe('the full-screen layer of a text node', () => {
     renderLayer({ locked: true });
     expect(screen.getByTestId('text-fullscreen-readonly')).toHaveTextContent('Scene one. The dock at night.');
     expect(screen.queryByTestId('text-fullscreen-editor')).toBeNull();
+    expect(screen.getByTestId('text-fullscreen-read-only')).toHaveTextContent('Read-only');
   });
 
   it('is read-only for a viewer', () => {
     renderLayer({}, { readOnly: true });
     expect(screen.getByTestId('text-fullscreen-readonly')).toBeInTheDocument();
+    expect(screen.getByTestId('text-fullscreen-read-only')).toHaveTextContent('Read-only');
     expect(screen.queryByTestId('text-fullscreen-editor')).toBeNull();
   });
 
@@ -184,6 +187,7 @@ describe('the full-screen layer of a text node', () => {
     );
     expect(screen.queryByTestId('text-fullscreen-editor')).toBeNull();
     expect(screen.getByTestId('text-fullscreen-readonly')).toBeInTheDocument();
+    expect(screen.getByTestId('text-fullscreen-read-only')).toBeInTheDocument();
   });
 
   it('closes when the node is deleted', () => {

@@ -3259,7 +3259,8 @@
       "view": "전체 화면으로 보기",
       "editPrompt": "프롬프트를 전체 화면으로 편집",
       "exit": "전체 화면 종료",
-      "inProgress": "전체 화면에서 편집 중"
+      "inProgress": "전체 화면에서 편집 중",
+      "readOnly": "읽기 전용"
     }
   },
   "auth": {

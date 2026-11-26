@@ -3259,7 +3259,8 @@
       "view": "View full screen",
       "editPrompt": "Edit prompt full screen",
       "exit": "Exit full screen",
-      "inProgress": "Editing in full screen"
+      "inProgress": "Editing in full screen",
+      "readOnly": "Read-only"
     }
   },
   "auth": {

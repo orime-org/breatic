@@ -93,6 +93,7 @@ export function TextNodeFullscreen({ nodeId, name, exists, locked }: TextNodeFul
   return (
     <TextFullscreen
       title={name && name.length > 0 ? name : MODALITY_LABEL.text}
+      readOnly={!canWrite}
       onClose={close}
       onOpenFocus={(body) => {
         const editable = body.querySelector<HTMLElement>('[contenteditable="true"]');
