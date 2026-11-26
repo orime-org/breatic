@@ -810,13 +810,13 @@ function LocalParamControl({ param, spec, params, onParams, source, slots }: Loc
       return (
         <div className='flex flex-col gap-1.5'>
           <span className='text-xs font-medium text-muted-foreground'>{label}</span>
-          <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+          <div className='flex items-center gap-2 text-xs'>
             <label className='flex min-w-0 flex-1 items-center gap-1.5'>
-              {t('canvas.miniTool.param.rect.width')}
+              <span className='text-muted-foreground'>{t('canvas.miniTool.param.rect.width')}</span>
               <RectSideInput side='w' value={Math.round(rect.w)} onCommit={set} />
             </label>
             <label className='flex min-w-0 flex-1 items-center gap-1.5'>
-              {t('canvas.miniTool.param.rect.height')}
+              <span className='text-muted-foreground'>{t('canvas.miniTool.param.rect.height')}</span>
               <RectSideInput side='h' value={Math.round(rect.h)} onCommit={set} />
             </label>
           </div>
