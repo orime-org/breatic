@@ -75,7 +75,7 @@ describe("Space media provenance backfill source", () => {
     const rows = await createSpaceProjectMediaBackfillSource().readPage(null, 19);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: name, cursor: name, projectId: PROJECT, urls: [URL, COVER] });
-    expect(rows[0]?.assetIds ?? []).toEqual([]);
+    expect(rows[0]).not.toHaveProperty("assetIds");
     expect(rows[0]?.reason).toBeUndefined();
     expect(data).toEqual(before);
   });
@@ -98,28 +98,22 @@ describe("Space media provenance backfill source", () => {
     vi.mocked(documents.scanMediaBackfillDocuments).mockResolvedValue([{ name, data }]);
     const rows = await createSpaceProjectMediaBackfillSource().readPage(null, 19);
     expect(rows[0]).toMatchObject({ id: name, cursor: name, projectId: PROJECT, urls: [URL, COVER] });
-    expect(rows[0]?.assetIds ?? []).toEqual([]);
+    expect(rows[0]).not.toHaveProperty("assetIds");
     expect(rows[0]?.reason).toBeUndefined();
     expect(data).toEqual(before);
   });
-  it("reads real Timeline source identities with stable deduplication and no URL inference", async () => {
+  // Timeline media are related at their entry points; backfill reads only canvas and Document (inner#2171 design §5.5).
+  it("reads no media from a Timeline", async () => {
     const name = timelineSpaceDocName(PROJECT, SPACE);
     const data = bytes((doc) => {
       initializeTimelineDocument(doc, SETTINGS);
       const base = { kind: "video", timebase: SETTINGS.fps, extentFrames: 48, durationSeconds: "2", durationOrigin: "registered" };
-      doc.getMap("sources").set("source-b", { ...base, id: "40000000-0000-4000-8000-000000000001", assetId: OTHER_ASSET });
       doc.getMap("sources").set("source-a", { ...base, id: "40000000-0000-4000-8000-000000000002", assetId: ASSET });
-      doc.getMap("sources").set("source-copy", { ...base, id: "40000000-0000-4000-8000-000000000003", assetId: ASSET });
-      doc.getMap("sources").set("words", "https://cdn.example/arbitrary-source.mp4");
-      doc.getMap("comments").set("text", URL);
     });
-    const before = data.slice();
     vi.mocked(documents.scanMediaBackfillDocuments).mockResolvedValue([{ name, data }]);
     const rows = await createSpaceProjectMediaBackfillSource().readPage(null, 19);
-    expect(rows[0]).toMatchObject({ id: name, cursor: name, projectId: PROJECT, assetIds: [ASSET, OTHER_ASSET] });
     expect(rows[0]?.urls ?? []).toEqual([]);
-    expect(rows[0]?.reason).toBeUndefined();
-    expect(data).toEqual(before);
+    expect(rows[0]).not.toHaveProperty("assetIds");
   });
   it("retains a readable content row with no media so it can be recorded in the report", async () => {
     const name = canvasSpaceDocName(PROJECT, SPACE);
@@ -128,7 +122,7 @@ describe("Space media provenance backfill source", () => {
     const rows = await createSpaceProjectMediaBackfillSource().readPage(null, 19);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: name, cursor: name, projectId: PROJECT });
-    expect(rows[0]?.assetIds ?? []).toEqual([]);
+    expect(rows[0]).not.toHaveProperty("assetIds");
     expect(rows[0]?.urls ?? []).toEqual([]);
     expect(rows[0]?.reason).toBeUndefined();
   });
@@ -144,7 +138,7 @@ describe("Space media provenance backfill source", () => {
       vi.mocked(documents.scanMediaBackfillDocuments).mockResolvedValue([{ name, data }]);
       const rows = await createSpaceProjectMediaBackfillSource().readPage(null, 19);
       expect(rows).toHaveLength(1);
-      expect(rows[0]?.assetIds ?? []).toEqual([]);
+      expect(rows[0]).not.toHaveProperty("assetIds");
       expect(rows[0]?.urls ?? []).toEqual([]);
       expect(rows[0]?.reason).toBeUndefined();
     }));
@@ -168,7 +162,7 @@ describe("Space media provenance backfill source", () => {
     const rows = await createSpaceProjectMediaBackfillSource().readPage(null, 19);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: name, cursor: name, projectId: PROJECT, reason: "invalid_document" });
-    expect(rows[0]?.assetIds ?? []).toEqual([]);
+    expect(rows[0]).not.toHaveProperty("assetIds");
     expect(rows[0]?.urls ?? []).toEqual([]);
     expect(destroy).toHaveBeenCalledTimes(1);
     expect(destroy.mock.contexts.map((doc) => doc instanceof Y.Doc && doc.isDestroyed)).toEqual([true]);
@@ -187,7 +181,7 @@ describe("Space media provenance backfill source", () => {
     const rows = await createSpaceProjectMediaBackfillSource().readPage(null, 19);
     expect(rows).toHaveLength(1);
     expect(rows[0]).toMatchObject({ id: name, cursor: name, reason: "invalid_document" });
-    expect(rows[0]?.assetIds ?? []).toEqual([]);
+    expect(rows[0]).not.toHaveProperty("assetIds");
     expect(rows[0]?.urls ?? []).toEqual([]);
     expect(data).toEqual(before);
   });

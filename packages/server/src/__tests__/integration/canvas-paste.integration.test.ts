@@ -26,6 +26,7 @@ vi.mock("ai", () => ({
 }));
 
 import crypto from "node:crypto";
+import fc from "fast-check";
 import postgres from "postgres";
 import {
   initCore,
@@ -468,5 +469,206 @@ describe("POST /canvas/paste", () => {
     const res = await paste(b.cookie, a.projectId, { history: [{ node_id: node, kind: "text", content: "x" }] });
     expect(res.status).toBe(403);
     expect(await history(a.projectId, node)).toEqual([]);
+  });
+});
+
+/** The live Project media relations of a Project, by asset id. */
+async function relations(projectId: string): Promise<Array<{ asset_id: string; display_name: string | null }>> {
+  return sql`
+    SELECT asset_id, display_name FROM project_asset_refs
+    WHERE project_id = ${projectId} AND deleted_at IS NULL ORDER BY asset_id
+  `;
+}
+
+/** Run with every insert or update of one table refused while `when` holds. */
+async function refusing(table: "project_asset_refs" | "studio_assets", when: string, run: () => Promise<void>): Promise<void> {
+  const name = `paste_fault_${crypto.randomUUID().replaceAll("-", "").slice(0, 16)}`;
+  await sql.unsafe(`CREATE FUNCTION ${name}() RETURNS trigger AS $$
+    BEGIN IF ${when} THEN RAISE EXCEPTION 'injected paste failure'; END IF; RETURN NEW; END $$ LANGUAGE plpgsql`);
+  try {
+    await sql.unsafe(`CREATE TRIGGER ${name} BEFORE INSERT OR UPDATE ON ${table} FOR EACH ROW EXECUTE FUNCTION ${name}()`);
+    try {
+      await run();
+    } finally {
+      await sql.unsafe(`DROP TRIGGER IF EXISTS ${name} ON ${table}`);
+    }
+  } finally {
+    await sql.unsafe(`DROP FUNCTION IF EXISTS ${name}()`);
+  }
+}
+
+/** The last segment of an address, as a relation names it. */
+function fileName(url: string): string {
+  return new URL(url).pathname.split("/").pop()!;
+}
+
+describe("POST /canvas/paste writes Project media relations (inner#2171 design §5.1)", () => {
+  it("relates an address the same Studio holds to the Project, named after its file", async () => {
+    const a = await seedEditor();
+    const img = await asset(a.studioId, a.userId, { key: key("image") });
+    const before = (await ledger(a.studioId)).length;
+    const res = await paste(a.cookie, a.projectId, { urls: [img.url] });
+    expect(res.status).toBe(200);
+    expect(await relations(a.projectId)).toEqual([{ asset_id: img.id, display_name: fileName(img.url) }]);
+    expect(await ledger(a.studioId)).toHaveLength(before);
+  });
+
+  it("relates the row a cross-Studio paste registers, leaving the source Project alone", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const img = await asset(a.studioId, a.userId, { key: key("image") });
+    const sourceBefore = await relations(a.projectId);
+    const res = await paste(b.cookie, b.projectId, { urls: [img.url] });
+    expect(res.status).toBe(200);
+    const [row] = await ledger(b.studioId);
+    expect(await relations(b.projectId)).toEqual([{ asset_id: row!.id, display_name: fileName(img.url) }]);
+    expect(await relations(a.projectId)).toEqual(sourceBefore);
+  });
+
+  it("relates the row the target Studio already holds by hash", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const img = await asset(a.studioId, a.userId, { key: key("image") });
+    const theirs = await asset(b.studioId, b.userId, { key: key("image"), hash: img.hash });
+    const before = (await ledger(b.studioId)).length;
+    expect((await paste(b.cookie, b.projectId, { urls: [img.url] })).status).toBe(200);
+    expect((await relations(b.projectId)).map((r) => r.asset_id)).toEqual([theirs.id]);
+    expect(await ledger(b.studioId)).toHaveLength(before);
+  });
+
+  it.each(["pair", "video alone"] as const)("relates a pasted video and not its cover (%s)", async (shape) => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const cover = await asset(a.studioId, a.userId, { key: key("video", true), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: key("video"), kind: "video", coverAssetId: cover.id });
+    const body = shape === "pair" ? { pairs: [{ url: vid.url, cover: cover.url }] } : { urls: [vid.url] };
+    expect((await paste(b.cookie, b.projectId, body)).status).toBe(200);
+    const rows = await ledger(b.studioId);
+    const videoRow = rows.find((r) => r.content_hash === vid.hash);
+    expect(rows.some((r) => r.source === "cover")).toBe(true);
+    expect((await relations(b.projectId)).map((r) => r.asset_id)).toEqual([videoRow!.id]);
+  });
+
+  it("still relates the video when its cover cannot be filed", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const cover = await asset(a.studioId, a.userId, { key: key("video", true), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: key("video"), kind: "video", coverAssetId: cover.id });
+    await refusing("studio_assets", `NEW.source = 'cover' AND NEW.studio_id = '${b.studioId}'::uuid`, async () => {
+      const res = await paste(b.cookie, b.projectId, { pairs: [{ url: vid.url, cover: cover.url }] });
+      expect(res.status).toBe(200);
+      expect((await res.json()).data.map[cover.url]).toBeNull();
+    });
+    const videoRow = (await ledger(b.studioId)).find((r) => r.content_hash === vid.hash);
+    expect((await relations(b.projectId)).map((r) => r.asset_id)).toEqual([videoRow!.id]);
+  });
+
+  it("relates nothing for an address no ledger knows", async () => {
+    const a = await seedEditor();
+    const img = await asset(a.studioId, a.userId, { key: key("image") });
+    const unknown = publicUrl(key("image"));
+    const res = await paste(a.cookie, a.projectId, { urls: [unknown, img.url, "https://example.com/x.png"] });
+    expect(res.status).toBe(200);
+    expect((await relations(a.projectId)).map((r) => r.asset_id)).toEqual([img.id]);
+  });
+
+  it("keeps the first name and fills only a missing one", async () => {
+    const a = await seedEditor();
+    const named = await asset(a.studioId, a.userId, { key: key("image") });
+    const unnamed = await asset(a.studioId, a.userId, { key: key("image") });
+    await sql`INSERT INTO project_asset_refs (project_id, asset_id, display_name) VALUES (${a.projectId}, ${named.id}, 'cat.png'), (${a.projectId}, ${unnamed.id}, null)`;
+    expect((await paste(a.cookie, a.projectId, { urls: [named.url, unnamed.url] })).status).toBe(200);
+    const byId = new Map((await relations(a.projectId)).map((r) => [r.asset_id, r.display_name]));
+    expect(byId.get(named.id)).toBe("cat.png");
+    expect(byId.get(unnamed.id)).toBe(fileName(unnamed.url));
+    expect(byId.size).toBe(2);
+  });
+
+  it("fails the paste when the relation cannot be written, and a retry writes it once", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const img = await asset(a.studioId, a.userId, { key: key("image") });
+    await refusing("project_asset_refs", `NEW.project_id = '${b.projectId}'::uuid`, async () => {
+      const res = await paste(b.cookie, b.projectId, { urls: [img.url] });
+      expect(res.status).toBeGreaterThanOrEqual(500);
+    });
+    const res = await paste(b.cookie, b.projectId, { urls: [img.url] });
+    expect(res.status).toBe(200);
+    expect(await relations(b.projectId)).toHaveLength(1);
+    expect((await ledger(b.studioId)).filter((r) => r.content_hash === img.hash)).toHaveLength(1);
+  });
+
+  it("writes node history and relations together, and nothing for text alone", async () => {
+    const a = await seedEditor();
+    const img = await asset(a.studioId, a.userId, { key: key("image") });
+    const node = crypto.randomUUID();
+    const text = crypto.randomUUID();
+    const res = await paste(a.cookie, a.projectId, {
+      urls: [img.url],
+      history: [{ node_id: node, kind: "media", content: img.url }, { node_id: text, kind: "text", content: "hi" }],
+    });
+    expect(res.status).toBe(200);
+    expect(await history(a.projectId, node)).toHaveLength(1);
+    expect((await relations(a.projectId)).map((r) => r.asset_id)).toEqual([img.id]);
+
+    const b = await seedEditor();
+    expect((await paste(b.cookie, b.projectId, { history: [{ node_id: crypto.randomUUID(), kind: "text", content: "hi" }] })).status).toBe(200);
+    expect(await relations(b.projectId)).toEqual([]);
+  });
+
+  it("writes no relation when a full Studio refuses the paste", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const img = await asset(a.studioId, a.userId, { key: key("image") });
+    await fill(b.studioId, b.userId);
+    expect((await paste(b.cookie, b.projectId, { urls: [img.url] })).status).toBe(507);
+    expect(await relations(b.projectId)).toEqual([]);
+  });
+
+  it("shows a cross-Project pasted video, without its cover, in the Project's video list", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const cover = await asset(a.studioId, a.userId, { key: key("video", true), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: key("video"), kind: "video", coverAssetId: cover.id });
+    expect((await paste(b.cookie, b.projectId, { pairs: [{ url: vid.url, cover: cover.url }] })).status).toBe(200);
+    for (const kind of ["video", "image"] as const) {
+      const res = await app.request(`/api/v1/projects/${b.projectId}/assets?kind=${kind}`, { headers: { Cookie: b.cookie } });
+      expect(res.status).toBe(200);
+      const items = (await res.json()).data.items as Array<{ fileUrl: string }>;
+      const videoRow = (await ledger(b.studioId)).find((r) => r.content_hash === vid.hash)!;
+      expect(items.map((item) => item.fileUrl)).toEqual(kind === "video" ? [videoRow.file_url] : []);
+    }
+  });
+
+  it("relates exactly the mapped main assets, never a cover, and repeats change nothing", async () => {
+    const a = await seedEditor();
+    const b = await seedEditor();
+    const pool = [];
+    for (let i = 0; i < 3; i++) pool.push(await asset(a.studioId, a.userId, { key: key("image") }));
+    const cover = await asset(a.studioId, a.userId, { key: key("video", true), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: key("video"), kind: "video", coverAssetId: cover.id });
+    const unknown = publicUrl(key("image"));
+    await fc.assert(fc.asyncProperty(
+      fc.subarray([...pool.map((p) => p.url), unknown]), fc.boolean(),
+      async (urls, withVideo) => {
+        const body = { urls, pairs: withVideo ? [{ url: vid.url, cover: cover.url }] : [] };
+        const before = await relations(b.projectId);
+        const first = await paste(b.cookie, b.projectId, body);
+        expect(first.status).toBe(200);
+        const map = (await first.json()).data.map as Record<string, string | null>;
+        const main = [...urls, ...(withVideo ? [vid.url] : [])].map((u) => map[u]).filter((u): u is string => typeof u === "string");
+        const rows = await ledger(b.studioId);
+        const mainIds = new Set(rows.filter((r) => main.includes(r.file_url)).map((r) => r.id));
+        const after = await relations(b.projectId);
+        const added = after.filter((r) => !before.some((x) => x.asset_id === r.asset_id)).map((r) => r.asset_id);
+        for (const id of added) expect(mainIds.has(id)).toBe(true);
+        for (const id of mainIds) expect(after.some((r) => r.asset_id === id)).toBe(true);
+        expect(after.some((r) => rows.find((x) => x.id === r.asset_id)?.source === "cover")).toBe(false);
+        const ledgerSize = rows.length;
+        expect((await paste(b.cookie, b.projectId, body)).status).toBe(200);
+        expect(await relations(b.projectId)).toEqual(after);
+        expect(await ledger(b.studioId)).toHaveLength(ledgerSize);
+      },
+    ), { numRuns: 100 });
   });
 });

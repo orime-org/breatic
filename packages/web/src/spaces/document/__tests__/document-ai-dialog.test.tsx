@@ -27,6 +27,8 @@ vi.mock('@web/data/api/text-tools', async (importOriginal) => ({
   textToolsApi: { stream, config },
 }));
 
+import { assetsApi } from '@web/data/api/assets';
+import { canvasApi } from '@web/data/api/canvas';
 import { StreamRefusedError } from '@web/data/stream/sse';
 import { spendCapMessage } from '@web/lib/spend-cap-message';
 import { toast } from '@web/lib/toast';
@@ -1337,5 +1339,74 @@ describe('pressing replace and insert (A6)', () => {
     await waitFor(() => {
       expect((editor.document as Array<{ content: Array<{ text?: string }> }>).map((b) => b.content.map((c) => c.text ?? '').join(''))).toEqual(['hello world', 'Hi']);
     });
+  });
+});
+
+describe('our media in an answer enter this Project before insert and replace (inner#2171 design §5.2, §10)', () => {
+  const OURS = 'https://cdn.example/';
+  const SOURCE = `${OURS}image/2026-11-26/cat.png`;
+  const COPY = `${OURS}image/2026-11-26/cat-copy.png`;
+  let prefix: MockInstance;
+  let paste: MockInstance;
+
+  beforeEach(() => {
+    connection.granted = true;
+    prefix = vi.spyOn(assetsApi, 'fetchUploadConfig').mockResolvedValue({ assetUrlPrefix: OURS } as never);
+  });
+  afterEach(() => {
+    connection.granted = false;
+    prefix.mockRestore();
+    paste?.mockRestore();
+  });
+
+  it('asks paste once when the answer is done, keeps insert off until it answers, and inserts the answered address', async () => {
+    let answer: (value: unknown) => void = () => undefined;
+    paste = vi.spyOn(canvasApi, 'paste').mockImplementation(() => new Promise((resolve) => { answer = resolve; }) as never);
+    const { editor, call } = await polishing();
+
+    await streams(call, [`![a cat](${SOURCE})\n\nA cat.`], true);
+
+    await waitFor(() => expect(paste).toHaveBeenCalledTimes(1));
+    expect(paste.mock.calls[0]![0]).toMatchObject({ urls: [SOURCE], pairs: [], history: [] });
+    expect(isDisabled('doc-ai-insert')).toBe(true);
+    await act(async () => { answer({ map: { [SOURCE]: COPY }, media: {} }); });
+    await waitFor(() => expect(isDisabled('doc-ai-insert')).toBe(false));
+    await act(async () => { fireEvent.click(screen.getByTestId('doc-ai-insert')); });
+    await waitFor(() => {
+      const images = (editor.document as unknown as Array<{ type: string; props: { url?: string } }>).filter((block) => block.type === 'image');
+      expect(images.map((block) => block.props.url)).toEqual([COPY]);
+    });
+    expect(paste).toHaveBeenCalledTimes(1);
+  });
+
+  it('asks paste for what was shown when the user stops the answer', async () => {
+    paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: { [SOURCE]: COPY }, media: {} } as never);
+    const { call } = await polishing();
+
+    await streams(call, [`![a cat](${SOURCE})\n\nA cat`]);
+    await act(async () => { fireEvent.click(screen.getByTestId('doc-ai-stop')); });
+
+    await waitFor(() => expect(paste).toHaveBeenCalledTimes(1));
+  });
+
+  it('says it failed and keeps insert and replace off when paste is refused', async () => {
+    paste = vi.spyOn(canvasApi, 'paste').mockRejectedValue(new Error('offline'));
+    const { call } = await polishing();
+
+    await streams(call, [`![a cat](${SOURCE})`], true);
+
+    await waitFor(() => expect(toastError).toHaveBeenCalled());
+    expect(isDisabled('doc-ai-insert')).toBe(true);
+    expect(isDisabled('doc-ai-replace')).toBe(true);
+  });
+
+  it('asks nothing for an answer without media of ours', async () => {
+    paste = vi.spyOn(canvasApi, 'paste');
+    const { call } = await polishing();
+
+    await streams(call, ['Hello there.'], true);
+
+    await waitFor(() => expect(isDisabled('doc-ai-insert')).toBe(false));
+    expect(paste).not.toHaveBeenCalled();
   });
 });

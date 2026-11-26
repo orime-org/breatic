@@ -437,3 +437,30 @@ describe("Project registered media HTTP reads", () => {
     for (const item of maximumPage.items) expect(assetIds).toContain(item.assetId);
   });
 });
+
+describe("the id-to-address routes are gone (inner#2171 design §5.6)", () => {
+  it.each(["assets", "three-d/assets"] as const)("answers 404 with no asset facts to a member asking %s/:assetId", async (path) => {
+    const fixture = await seedFixture();
+    const video = await seedAsset(fixture);
+    await sql`INSERT INTO project_asset_refs (id, project_id, asset_id) VALUES (${randomUUID()}, ${fixture.projectId}, ${video.id})`;
+    const response = await app.request(`/api/v1/projects/${fixture.projectId}/${path}/${video.id}`, { headers: { Cookie: fixture.cookie } });
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain(video.fileUrl);
+  });
+
+  it("answers 404 to a Studio member outside the Project asking for a 3D asset", async () => {
+    const fixture = await seedFixture();
+    const video = await seedAsset(fixture);
+    const outsiderId = await seedUser();
+    await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${fixture.studioId}, ${outsiderId}, 'member')`;
+    const response = await app.request(`/api/v1/projects/${fixture.projectId}/three-d/assets/${video.id}`, { headers: { Cookie: await loginCookie(outsiderId) } });
+    expect(response.status).toBe(404);
+    expect(await response.text()).not.toContain(video.fileUrl);
+  });
+
+  it("keeps the media list", async () => {
+    const fixture = await seedFixture();
+    const response = await app.request(`/api/v1/projects/${fixture.projectId}/assets`, { headers: { Cookie: fixture.cookie } });
+    expect(response.status).toBe(200);
+  });
+});

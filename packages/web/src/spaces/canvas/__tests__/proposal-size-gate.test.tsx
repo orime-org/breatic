@@ -293,3 +293,72 @@ describe('a write that throws part way still rolls back', () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 });
+
+describe('an Agent proposal carrying the user\'s material enters this Project through paste (inner#2171 design §5.2, §10)', () => {
+  const OURS = 'https://cdn.example/image/2026-11-26/hero.png';
+  const COPY = 'https://cdn.example/image/2026-11-26/hero-copy.png';
+
+  /**
+   * A proposal of one source picture holding `material`.
+   * @param material - The address, or none.
+   * @returns The proposal.
+   */
+  function withMaterial(material?: string): CanvasProposal {
+    return {
+      nodes: [{
+        role: 'source', type: 'image', name: 'Hero',
+        ...(material === undefined ? {} : { material, materialMedia: { coverUrl: null, width: 640, height: 480, duration: null, mimeType: 'image/png', size: 4096 } }),
+      }],
+      edges: [],
+      rationale: 'Use the picture',
+      groupName: 'G',
+    };
+  }
+
+  /**
+   * The content the named node holds.
+   * @param name - The node's name.
+   * @returns Its content.
+   */
+  function contentOf(name: string): unknown {
+    return (canvasSpace.readCanvasGraph(PID, SID).nodes.find((n) => (n.data as { name?: string }).name === name)?.data as { content?: unknown } | undefined)?.content;
+  }
+
+  it('asks paste once for the material and lands the node on the answered address', async () => {
+    openAt('W');
+    const paste = vi.spyOn(canvasApi, 'paste').mockResolvedValue({ map: { [OURS]: COPY }, media: {} } as never);
+    mount();
+    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial(OURS) }));
+    await waitFor(() => expect(useCanvasStore.getState().proposalOutcome).toBe('placed'));
+    expect(paste).toHaveBeenCalledTimes(1);
+    expect(paste.mock.calls[0]![0]).toMatchObject({ project_id: PID, urls: [OURS], pairs: [], history: [] });
+    expect(contentOf('Hero')).toBe(COPY);
+  });
+
+  it('lands nothing and reports failed when paste is refused', async () => {
+    const doc = openAt('W');
+    vi.spyOn(canvasApi, 'paste').mockRejectedValue(new Error('offline'));
+    mount();
+    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial(OURS) }));
+    await waitFor(() => expect(useCanvasStore.getState().proposalOutcome).toBe('failed'));
+    expect(doc.getMap(CANVAS_NODES_KEY).size).toBe(0);
+    expect(toast.error).toHaveBeenCalled();
+  });
+
+  it('asks nothing for a proposal with no material', async () => {
+    openAt('W');
+    const paste = vi.spyOn(canvasApi, 'paste');
+    mount();
+    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial() }));
+    await waitFor(() => expect(useCanvasStore.getState().proposalOutcome).toBe('placed'));
+    expect(paste).not.toHaveBeenCalled();
+  });
+
+  it('asks nothing for a template, whose source carries a resource and no material', () => {
+    openAt('W');
+    const paste = vi.spyOn(canvasApi, 'paste');
+    mount();
+    panels.placeTemplate!(proposalOf(), new Map(), [0, 1, 2, 3]);
+    expect(paste).not.toHaveBeenCalled();
+  });
+});

@@ -1034,6 +1034,16 @@ describe('a preview that cannot load', () => {
     return userEvent.setup();
   }
 
+  // The row carries the video by its address (inner#2171 design §4); nothing reads it by id.
+  it('shows an export\'s video straight from the address its row carries', async () => {
+    const source = done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z');
+    const resultAsset = { url: 'https://cdn.example/row.mp4', coverUrl: null, width: 1920, height: 1080, durationSeconds: 4, mimeType: 'video/mp4', sizeBytes: 1 };
+    listing([{ ...exported(source), resultAsset } as never]);
+    show();
+    await waitFor(() => expect(screen.getByTestId('motion-preview').querySelector('video')?.getAttribute('src')).toBe(resultAsset.url));
+    expect(vi.mocked(timelineApi.resolveAsset)).not.toHaveBeenCalled();
+  });
+
   it('says an export whose video cannot be read is unavailable, and reads it again on Retry', async () => {
     vi.mocked(timelineApi.resolveAsset).mockReset().mockRejectedValue(new Error('network'));
     const user = await onExport();
