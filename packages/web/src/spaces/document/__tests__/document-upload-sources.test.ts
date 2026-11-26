@@ -134,10 +134,11 @@ describe('an https address', () => {
     expect(ingest).toHaveBeenNthCalledWith(2, 'https://imgs.example/2.jpg', 'u2');
   });
 
-  it('under our own prefix keeps its address and sends nothing', async () => {
+  it('under our own prefix is registered with the paste request and sends nothing to the ingest Worker', async () => {
     const { run, deps } = sources();
     const outcome = await run('u1', { kind: 'address', url: `${PREFIX}mine.png` }, noProgress);
-    expect(outcome).toEqual({ ok: true, result: { url: `${PREFIX}mine.png` } });
+    expect(deps.register).toHaveBeenCalledExactlyOnceWith({ urls: [`${PREFIX}mine.png`], pairs: [] });
+    expect(outcome).toEqual({ ok: true, result: { url: `${PREFIX}mine.png?copy` } });
     expect(deps.ingest).not.toHaveBeenCalled();
   });
 });
@@ -203,9 +204,9 @@ describe('addresses of ours', () => {
     expect(failure(outcome)).toEqual({ reason: 'rateLimited', retryable: true });
   });
 
-  it('missing from the answer fails', async () => {
+  it('missing from the answer keeps its own address', async () => {
     const { run } = sources({ register: vi.fn(async () => ({})) });
     const outcome = await run('u1', { kind: 'ours', url: `${PREFIX}a.png` }, noProgress);
-    expect(failure(outcome)).toEqual({ reason: 'failed', retryable: true });
+    expect(outcome).toEqual({ ok: true, result: { url: `${PREFIX}a.png` } });
   });
 });
