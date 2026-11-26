@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import type { ProjectAssetPage, ProjectRegisteredAsset, TimelineClientLimits, TimelineWebResolution } from '@breatic/shared';
+import type { ProjectAssetPage, TimelineClientLimits, TimelineWebResolution } from '@breatic/shared';
 import type { z } from 'zod';
 import type {
   WebAnimationExecutionRequestSchema, WebAnimationListGroup, WebAnimationListPage, WebAnimationListScope, WebAnimationRowView,

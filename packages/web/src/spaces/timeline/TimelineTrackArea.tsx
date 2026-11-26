@@ -55,7 +55,6 @@ export interface TimelineWebClipView {
 
 /** What the track area needs from the editor. */
 interface TimelineTrackAreaProps {
-  projectId: string;
   document: TimelineDocumentV1;
   labels: TimelineTrackLabels;
   readyIds: ReadonlySet<string>;
@@ -223,7 +222,7 @@ function previewOf(view: DragView, data: { mode: TimelineGestureMode; clipId: st
  * @throws {never} Never.
  */
 export function TimelineTrackArea(props: TimelineTrackAreaProps): React.JSX.Element {
-  const { projectId, document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, web, webClips, uploads, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
+  const { document, labels, readyIds, selectedId, frame, extent, pixelsPerFrame, readOnly, snap, placement, web, webClips, uploads, onSelect, onSeek, onCommit, onVanished, onDraggingChange, viewportRef } = props;
   const t = useTranslation();
   const [gesture, setGesture] = React.useState<Gesture | null>(null);
   const cancelled = React.useRef(false);

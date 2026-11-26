@@ -855,7 +855,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
           </span>
         </div>
       </div>
-      <TimelineTrackArea projectId={projectId} document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={setTrackScroller}
+      <TimelineTrackArea document={document} labels={labels} readyIds={readyIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={setTrackScroller}
         pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} web={web} webClips={webClips} uploads={uploadViews} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     </div>
     <aside data-testid='timeline-side-panel' className='flex w-72 shrink-0 flex-col border-l border-border'>
