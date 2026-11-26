@@ -24,14 +24,12 @@ vi.mock('@web/lib/toast', () => ({ toast: { warning: vi.fn(), error: vi.fn(), in
 
 type PlaybackInput = Parameters<typeof useTimelinePlayback>[0];
 type PlaybackResult = ReturnType<typeof useTimelinePlayback> & { frame: number };
-type AssetState = 'ready' | 'failed';
 
 /** One visible or premounted video clip as the Space hands it to the playback (#1410 design §6.2). */
 interface VideoLayerInput {
   clipId: string;
-  fileUrl: string | null;
+  fileUrl: string;
   coverUrl: string | null;
-  state: AssetState;
 }
 
 interface MediaFacts {
@@ -65,8 +63,6 @@ interface HarnessProps {
   enabled: boolean;
   /** The element the controller gets for each video clip, by clip id; an unlisted clip gets a fresh ready one. */
   media: ReadonlyMap<string, MediaFixture>;
-  /** Each video clip's asset state, by clip id; an unlisted clip is ready. */
-  assets: Readonly<Record<string, AssetState>>;
   /** Each video clip's file address, by clip id; an unlisted clip has its default address. */
   urls: Readonly<Record<string, string>>;
   initialFrame: number;
@@ -278,10 +274,7 @@ function videoLayersAt(props: HarnessProps, ready: ReadonlySet<string>, frame: n
     .filter((clip): clip is TimelineVideoClip => clip.kind === 'video' && ready.has(clip.id) && order.has(clip.trackId)
       && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - PREMOUNT_FRAMES)
     .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0) || (a.id < b.id ? -1 : 1))
-    .map((clip) => {
-      const state = props.assets[clip.id] ?? 'ready';
-      return { clipId: clip.id, fileUrl: state === 'ready' ? props.urls[clip.id] ?? urlOf(clip.id) : null, coverUrl: null, state };
-    });
+    .map((clip) => ({ clipId: clip.id, fileUrl: props.urls[clip.id] ?? urlOf(clip.id), coverUrl: null }));
 }
 
 /**
@@ -300,7 +293,7 @@ function renderPlayback(
   const props: HarnessProps = {
     document: timelineDocument(), enabled: true,
     media: new Map(media === null ? [] : [[CLIP.id, media]]),
-    assets: {}, urls: {}, initialFrame: 0, ...overrides,
+    urls: {}, initialFrame: 0, ...overrides,
   };
   const observedFrames: number[] = [];
   const created = new Map<string, MediaFixture>();
@@ -842,13 +835,13 @@ describe('useTimelinePlayback', () => {
     expect(a.pause).toHaveBeenCalledTimes(pauses);
   });
 
-  it('keeps the other lanes and the clock going when one lane\'s asset fails', async () => {
-    const { hook, a } = twoLanes();
+  it('keeps the other lanes and the clock going when one lane\'s element fails', async () => {
+    const { hook, a, b } = twoLanes();
     act(() => hook.result.current.toggle());
     await settle();
     tick(1000);
     const pauses = a.pause.mock.calls.length;
-    hook.rerender({ ...hook.props, assets: { [LANE_B.id]: 'failed' } });
+    mediaEvent(b, 'error', { error: { code: 3, message: 'Decode failed' } as MediaError });
     expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('failed');
     expect(hook.result.current.intent).toBe('play');
     expect(hook.result.current.state).toBe('playing');
@@ -864,7 +857,7 @@ describe('useTimelinePlayback', () => {
     await settle();
     tick(1000);
     const playsB = b.play.mock.calls.length;
-    hook.rerender({ ...hook.props, assets: { [LANE_B.id]: 'failed' } });
+    mediaEvent(b, 'error', { error: { code: 3, message: 'Decode failed' } as MediaError });
     expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('failed');
     expect(b.facts.paused).toBe(true);
     expect(a.facts.paused).toBe(false);
@@ -2342,9 +2335,8 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.frame).toBe(30);
   });
 
-  it.each(['asset', 'element'] as const)('reloads only the failed lane on its retry after its %s failed', async (failure) => {
-    const { hook, a, b } = twoLanes(failure === 'element' ? { readyState: 0, error: { code: 4, message: 'Media unavailable' } as MediaError } : {},
-      failure === 'asset' ? { assets: { [LANE_B.id]: 'failed' } } : {});
+  it('reloads only the failed lane on its retry after its element failed', async () => {
+    const { hook, a, b } = twoLanes({ readyState: 0, error: { code: 4, message: 'Media unavailable' } as MediaError });
     expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('failed');
     expect(hook.result.current.videoStates.get(CLIP.id)).toBe('ready');
     act(() => hook.result.current.toggle());
@@ -2355,7 +2347,7 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     act(() => hook.result.current.retryVideo(LANE_B.id));
     expect(a.load).toHaveBeenCalledTimes(0);
     expect(a.seeks).toEqual([]);
-    if (failure === 'element') expect(b.load).toHaveBeenCalledTimes(1);
+    expect(b.load).toHaveBeenCalledTimes(1);
   });
 
   it('does not count networkState 3 with no error right after src as a failure, and starts the lane once it has data', async () => {

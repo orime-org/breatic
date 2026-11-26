@@ -377,7 +377,7 @@ function renderPlayback(document: TimelineDocumentV1, lanes: readonly LaneSpec[]
     const layersNow = Object.values(document.clips)
       .filter((clip) => ready.has(clip.id) && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - PREMOUNT_FRAMES)
       .sort((a, b) => (a.trackId === 'visual-1' ? 0 : 1) - (b.trackId === 'visual-1' ? 0 : 1))
-      .map((clip) => ({ clipId: clip.id, fileUrl: `https://cdn.test/${clip.id}.mp4`, coverUrl: null, state: 'ready' as const }));
+      .map((clip) => ({ clipId: clip.id, fileUrl: `https://cdn.test/${clip.id}.mp4`, coverUrl: null }));
     const signature = JSON.stringify(layersNow);
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the layer set changes only when its content does.
     const videoLayers = React.useMemo(() => layersNow, [signature]);

@@ -386,10 +386,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const videoClips = React.useMemo(() => clips.flatMap((clip) => clip.kind === 'video' && readyIds.has(clip.id) && rank.has(clip.trackId)
     && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - premountFrames ? [clip] : [])
     .sort(timelineStackOrder(rank)), [clips, readyIds, rank, frame, premountFrames]);
-  const videoSpecs = videoClips.map((clip) => {
-    // The source carries the video's address (inner#2171 design §6.1); a clip whose source is gone has no layer to load.
+  // The source carries the video's address (inner#2171 design §6.1).
+  const videoSpecs = videoClips.flatMap((clip) => {
     const source = clip.kind === 'video' ? document.sources[clip.sourceId] : undefined;
-    return { clipId: clip.id, fileUrl: source?.url ?? null, coverUrl: source?.coverUrl ?? null, state: source === undefined ? 'failed' as const : 'ready' as const };
+    return source === undefined ? [] : [{ clipId: clip.id, fileUrl: source.url, coverUrl: source.coverUrl }];
   });
   const videoSignature = JSON.stringify(videoSpecs);
   // The layer set keeps its identity while its content is unchanged, so playing on does not resync the elements.
@@ -421,15 +421,11 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }, [document.sources, canvas, sourceOf, web.sources]);
   // The layers a click can pick and a selection can handle: visible ready videos and web copies with a source (#1410
   // design §4.2).
-  // A video's source state is known in this render; its element's error arrives through `videoStates`.
-  const pickable = React.useMemo(() => {
-    const assetStates = new Map(videoLayers.map((layer) => [layer.clipId, layer.state]));
-    return visible.flatMap((clip) => {
-      const unready = clip.kind === 'video' && (assetStates.get(clip.id) !== 'ready' || videoStates.get(clip.id) === 'failed');
-      const base = unready ? null : baseOf(clip);
-      return base === null ? [] : [{ clip, base }];
-    });
-  }, [visible, baseOf, videoLayers, videoStates]);
+  // A video's element error arrives through `videoStates`.
+  const pickable = React.useMemo(() => visible.flatMap((clip) => {
+    const base = clip.kind === 'video' && videoStates.get(clip.id) === 'failed' ? null : baseOf(clip);
+    return base === null ? [] : [{ clip, base }];
+  }), [visible, baseOf, videoStates]);
   // Each video element sits in the frame on its base box with its transform, stacked by track; a premounted one waits
   // there hidden.
   const videoHost = React.useRef<HTMLDivElement>(null);
@@ -768,14 +764,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }, [handledId, t]);
   const [notesLayer, setNotesLayer] = React.useState<HTMLDivElement | null>(null);
   const videoNotes = visible.flatMap((clip, index) => {
-    const state = clip.kind === 'video' ? videoStates.get(clip.id) : undefined;
-    if (state !== 'failed') return [];
+    if (clip.kind !== 'video' || videoStates.get(clip.id) !== 'failed') return [];
     const track = labels.nameOf(clip.trackId) ?? clip.trackId;
-    return [{ clipId: clip.id, z: index + 1, state, track }];
+    return [{ clipId: clip.id, z: index + 1, track }];
   });
-  const retryVideoLayer = React.useCallback((clipId: string): void => {
-    retryVideo(clipId);
-  }, [retryVideo]);
 
   const openMaterial = React.useCallback((): void => {
     if (readOnly) return;
@@ -817,7 +809,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
               <div ref={setNotesLayer} className='absolute right-3 top-3 flex flex-col items-end gap-1.5 *:pointer-events-auto'>
                 {videoNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z}
                   text={t('timeline.preview.videoUnavailable', { track: note.track })}>
-                  <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryVideoLayer(note.clipId)}>{t('timeline.retry')}</Button>
+                  <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryVideo(note.clipId)}>{t('timeline.retry')}</Button>
                 </PreviewNote>)}
               </div>
             </div>

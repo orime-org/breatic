@@ -13,7 +13,6 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 import { createVideoLayerController } from '@web/spaces/timeline/video-layer-controller';
 
-type AssetState = 'ready' | 'failed';
 
 interface ElementFixture {
   element: HTMLVideoElement;
@@ -74,14 +73,11 @@ function elementFixture(facts: Partial<ElementFixture['facts']> = {}): ElementFi
 /**
  * A layer as the Space hands it to the controller.
  * @param clipId - The clip.
- * @param state - Its asset state.
  * @returns The layer.
  * @throws {never} Never.
  */
-function layer(clipId: string, state: AssetState = 'ready'): { clipId: string; fileUrl: string | null; coverUrl: string | null; state: AssetState } {
-  return state === 'ready'
-    ? { clipId, fileUrl: `https://cdn.test/${clipId}.mp4`, coverUrl: `https://cdn.test/${clipId}.jpg`, state }
-    : { clipId, fileUrl: null, coverUrl: null, state };
+function layer(clipId: string): { clipId: string; fileUrl: string; coverUrl: string | null } {
+  return { clipId, fileUrl: `https://cdn.test/${clipId}.mp4`, coverUrl: `https://cdn.test/${clipId}.jpg` };
 }
 
 /**
@@ -166,13 +162,11 @@ describe('createVideoLayerController elements', () => {
     expect(controller.states().get(A.id)).toBe('ready');
   });
 
-  it('reports a ready source as ready, and a missing source or an element error as failed', () => {
+  it('reports a lane as ready, and as failed once its element errors', () => {
     const a = elementFixture();
     const b = elementFixture();
     const { controller, onChange } = controllerFor({ [A.id]: a, [B.id]: b });
-    controller.sync([layer(A.id), layer(B.id, 'failed')]);
-    expect(controller.states().get(B.id)).toBe('failed');
-    controller.sync([layer(A.id), layer(B.id, 'failed')]);
+    controller.sync([layer(A.id), layer(B.id)]);
     expect(controller.states().get(A.id)).toBe('ready');
     const changes = onChange.mock.calls.length;
     a.facts.error = { code: 3, message: 'Decode failed' } as MediaError;
