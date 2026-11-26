@@ -345,7 +345,7 @@ function track(window: BrowserWindow): LoadTracker {
   loads.set(id, tracker);
   window.on("close", (event) => {
     saveWindowState(window);
-    quitGuard.windowClosing(event, { isLastAppWindow: appWindows.length === 1 && appWindows[0] === window, owner: window, close: () => window.close() });
+    quitGuard.windowClosing(event, { owner: window, appWindows, close: () => window.close() });
   });
   window.on("focus", () => {
     appWindows = [...appWindows.filter((other) => other !== window), window];
@@ -631,7 +631,7 @@ function attachPolicies(contents: WebContents): void {
     // preventDefault lets the page go, ignoring its beforeunload.
     if (choice === 0) event.preventDefault();
     else {
-      quitGuard.stayed();
+      quitGuard.stayed(owner);
       stayListeners.get(contents)?.();
     }
   });

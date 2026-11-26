@@ -9,6 +9,11 @@
  * window), so a single "confirmed" state answers for all of them, as Chrome's
  * `browser_shutdown::IsTryingToQuit()` does. A leave confirmation that keeps
  * the app running clears it.
+ *
+ * A window is gone from the app's list only at its `closed`, after the page
+ * unloads, so several windows closed at once (the taskbar's "Close all
+ * windows") all still see each other at `close`. The guard keeps the windows
+ * whose close went ahead and counts the last window without them.
  */
 
 import type { DesktopText } from "@desktop/main/strings.js";
@@ -22,7 +27,7 @@ export interface QuitGuardDeps {
    * Ask whether to quit and cancel the downloads.
    * @returns True for Quit.
    */
-  ask: (count: number, owner?: unknown) => Promise<boolean>;
+  ask: (count: number, owner?: object) => Promise<boolean>;
 }
 
 /** An event whose default can be prevented. */
@@ -33,13 +38,13 @@ interface Preventable {
 /** The guard's hooks. */
 export interface QuitGuard {
   /** A window's `close`: the user closing the last app window on Windows or Linux is asked. */
-  windowClosing(event: Preventable, window: { isLastAppWindow: boolean; owner: unknown; close: () => void }): void;
+  windowClosing(event: Preventable, window: { owner: object; appWindows: readonly object[]; close: () => void }): void;
   /** `app`'s `before-quit`. */
   beforeQuit(event: Preventable, quit: () => void): void;
   /** Before Restart now closes the windows; false keeps the app running. */
   confirmRestart(): Promise<boolean>;
-  /** A leave confirmation kept the app running: the next quit asks again. */
-  stayed(): void;
+  /** A leave confirmation kept the app running, and `window` open: the next quit asks again. */
+  stayed(window: object | null): void;
 }
 
 /**
@@ -50,6 +55,7 @@ export interface QuitGuard {
 export function createQuitGuard(deps: QuitGuardDeps): QuitGuard {
   let confirmed = false;
   let asking = false;
+  const closing = new WeakSet<object>();
 
   /**
    * Whether this quit goes ahead without asking.
@@ -62,7 +68,7 @@ export function createQuitGuard(deps: QuitGuardDeps): QuitGuard {
    * @param owner - The window the dialog belongs to.
    * @returns True for Quit.
    */
-  async function confirm(owner?: unknown): Promise<boolean> {
+  async function confirm(owner?: object): Promise<boolean> {
     asking = true;
     try {
       confirmed = await deps.ask(deps.running(), owner);
@@ -74,8 +80,12 @@ export function createQuitGuard(deps: QuitGuardDeps): QuitGuard {
 
   return {
     windowClosing(event, window) {
+      const last = window.appWindows.every((other) => other === window.owner || closing.has(other));
       // macOS keeps running with no window, and the downloads with it.
-      if (deps.platform === "darwin" || !window.isLastAppWindow || mayGo()) return;
+      if (deps.platform === "darwin" || !last || mayGo()) {
+        closing.add(window.owner);
+        return;
+      }
       event.preventDefault();
       if (asking) return;
       void confirm(window.owner).then((quit) => {
@@ -95,8 +105,9 @@ export function createQuitGuard(deps: QuitGuardDeps): QuitGuard {
       if (asking) return false;
       return confirm();
     },
-    stayed() {
+    stayed(window) {
       confirmed = false;
+      if (window) closing.delete(window);
     },
   };
 }
