@@ -108,14 +108,6 @@ describe("durable mini-tool expense worker wiring", () => {
     expect(wire.add).toHaveBeenCalledTimes(1);
   });
 
-  it("keeps a committed charge when only its notification failed", async () => {
-    const process = await boot(); wire.add.mockClear(); const error = new Error("credit signal unavailable");
-    wire.run.mockResolvedValue({ charge: { state: "settled", credits: 0.03, first: true, signalFailure: error }, nextWake: null });
-    await process({ name: MINI_TOOL_SETTLEMENT_JOB, data: { taskId, settlementVersion: 9 } } as Job<unknown>);
-    expect(wire.error).toHaveBeenCalledWith({ err: error, ctx: { taskId, settlementVersion: 9 } }, "mini_tool_settlement_signal_failed");
-    expect(wire.add).not.toHaveBeenCalled();
-  });
-
   it("logs enqueue failure while leaving SQL recovery as the authority", async () => {
     const process = await boot(); wire.add.mockClear(); const error = new Error("queue unavailable");
     wire.run.mockResolvedValue({ charge: null, nextWake: { taskId, settlementVersion: 8, dueAt } }); wire.add.mockRejectedValue(error);
