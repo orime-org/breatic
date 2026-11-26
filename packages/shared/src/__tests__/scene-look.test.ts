@@ -24,7 +24,8 @@ const CAMERA = {
 const LIGHT = {
   ...VALUES, name: "Light 1", model: { kind: "light", type: "point" }, number: 1, color: "#ffffff", intensity: 10, castShadow: true,
 };
-const ASSET_ID = "4b7f3c1e-2d0a-4c6b-9f1e-8a5b2c3d4e5f";
+// A part picture is stored as its address (inner#2171 design §3.2).
+const PICTURE_URL = "https://cdn.example.com/assets/wood.png";
 const ID = "0b8c7f1a-3e2d-4a5b-8c9d-0e1f2a3b4c5d";
 
 /**
@@ -86,7 +87,7 @@ describe("scene look keys", () => {
     const look = {
       0: {
         color: "#ff0000", roughness: 0, metalness: 1, opacity: 0, transmission: 1,
-        emissive: "#000000", emissiveIntensity: 10, map: ASSET_ID,
+        emissive: "#000000", emissiveIntensity: 10, map: PICTURE_URL,
         mapRepeat: [0.0001, 10000], mapOffset: [-100, 100], mapRotation: -180,
       },
       9999: { roughness: 1, opacity: 1, transmission: 0, emissiveIntensity: 0, mapRotation: 180, mapRepeat: [-10000, -0.0001] },
@@ -110,7 +111,7 @@ describe("scene look keys", () => {
     ["transmission below 0", { 0: { transmission: -1 } }],
     ["a glow intensity above 10", { 0: { emissiveIntensity: 10.01 } }],
     ["a non-finite value", { 0: { roughness: Number.NaN } }],
-    ["a map that is neither a uuid nor none", { 0: { map: "img.png" } }],
+    ["a map that is neither an address nor none", { 0: { map: "img.png" } }],
     ["a tiling of 0", { 0: { mapRepeat: [0, 1] } }],
     ["a tiling above 10000", { 0: { mapRepeat: [1, 10000.5] } }],
     ["a mirrored tiling below -10000", { 0: { mapRepeat: [-10000.5, 1] } }],
@@ -168,7 +169,7 @@ describe("gatherSceneLook and expandSceneLook", () => {
     const fields = fc.record({
       color: fc.constantFrom("#000000", "#ffffff", "#3b6fd8"),
       roughness: fc.double({ min: 0, max: 1, noNaN: true }),
-      map: fc.constantFrom(ASSET_ID, "none"),
+      map: fc.constantFrom(PICTURE_URL, "none"),
       mapRepeat: fc.tuple(fc.double({ min: 0.01, max: 100, noNaN: true }), fc.double({ min: 0.01, max: 100, noNaN: true })),
     }, { requiredKeys: ["color"] });
     fc.assert(fc.property(fc.dictionary(part, fields, { maxKeys: 8 }), (look) => {
@@ -182,7 +183,7 @@ describe("gatherSceneLook and expandSceneLook", () => {
 describe("which kinds carry a look", () => {
   it("accepts a look on a built-in model and on an asset model", () => {
     expect(objectAccepts({ ...VALUES, id: ID, "look.0.color": "#112233" })).toBe(true);
-    expect(objectAccepts({ ...VALUES, id: ID, model: { kind: "asset", assetId: ASSET_ID }, "look.2.map": ASSET_ID })).toBe(true);
+    expect(objectAccepts({ ...VALUES, id: ID, model: { kind: "asset", url: "https://cdn.example.com/assets/figure.glb", mimeType: "model/gltf-binary", sizeBytes: 2048 }, "look.2.map": PICTURE_URL })).toBe(true);
   });
 
   it("refuses a look on a camera and on a light", () => {

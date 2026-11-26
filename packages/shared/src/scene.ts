@@ -23,13 +23,16 @@ export const SceneScaleSchema = z.tuple([
 export const SCENE_LIGHT_TYPES = ['directional', 'point', 'spot'] as const;
 export type SceneLightType = (typeof SCENE_LIGHT_TYPES)[number];
 
+/** The registered containers that carry a complete scene model: a GLB or a versioned model ZIP. */
+export const SCENE_MODEL_MEDIA_TYPES = ['model/gltf-binary', 'application/zip'] as const;
+
 /**
- * Stable model identity; storage addresses are resolved from registered assets.
- * Cameras and lights are records of their own kinds that carry no model file.
+ * What an object shows. An imported model is stored by its registered address with the type and size the loader
+ * needs before it fetches (inner#2171); cameras and lights are records of their own kinds that carry no model file.
  */
 export const SceneModelSchema = z.discriminatedUnion('kind', [
   z.object({ kind: z.literal('builtin'), id: z.enum(['figure', 'box']) }).strict(),
-  z.object({ kind: z.literal('asset'), assetId: z.string().uuid() }).strict(),
+  z.object({ kind: z.literal('asset'), url: z.string().url(), mimeType: z.enum(SCENE_MODEL_MEDIA_TYPES), sizeBytes: z.number().int().positive() }).strict(),
   z.object({ kind: z.literal('camera') }).strict(),
   z.object({ kind: z.literal('light'), type: z.enum(SCENE_LIGHT_TYPES) }).strict(),
 ]);
@@ -192,8 +195,8 @@ export const SCENE_LOOK_ROTATION_MAX = 180;
 /** One offset, in picture widths. */
 const LOOK_OFFSET = z.number().finite().min(-SCENE_LOOK_OFFSET_MAX).max(SCENE_LOOK_OFFSET_MAX);
 
-/** A part's picture: an asset id, or `'none'` to turn the model's own picture off. */
-export const SceneLookMapSchema = z.union([z.string().uuid(), z.literal('none')]);
+/** A part's picture: its registered address, or `'none'` to turn the model's own picture off. */
+export const SceneLookMapSchema = z.union([z.string().url(), z.literal('none')]);
 
 /** The fields one part may change; each is optional and absent means the model's own value, except that an absent colour on a part showing a user picture reads as {@link SCENE_LOOK_PICTURE_COLOR}. */
 const SceneLookPartSchema = z.object({
@@ -452,7 +455,7 @@ export interface SceneCaptureConfig {
  * @throws {never} Never.
  */
 export function isSceneModelMediaType(value: string): boolean {
-  return value === 'model/gltf-binary' || value === 'application/zip';
+  return (SCENE_MODEL_MEDIA_TYPES as readonly string[]).includes(value);
 }
 
 /** Picture types a part look may use (inner#1693). */

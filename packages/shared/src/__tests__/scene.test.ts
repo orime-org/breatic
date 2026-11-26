@@ -57,7 +57,7 @@ describe("scene value schemas", () => {
     },
   );
 
-  it.each([{ kind: "builtin", id: "figure" }, { kind: "builtin", id: "box" }, { kind: "asset", assetId: ASSET }])(
+  it.each([{ kind: "builtin", id: "figure" }, { kind: "builtin", id: "box" }, { kind: "asset", url: "https://cdn.example.com/assets/figure.glb", mimeType: "model/gltf-binary", sizeBytes: 2048 }])(
     "accepts a stable model reference %j", (model) => {
       expect(schema("SceneModelSchema").parse(model)).toEqual(model);
     },
