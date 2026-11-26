@@ -2425,6 +2425,19 @@ describe('the multi-shot mode', () => {
     expect(data.mode).toBe('t2v');
   });
 
+  it('leaves a shot closed when the shots come back after a mode without them (inner#2115)', async () => {
+    const view = await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+    await screen.findByTestId('generate-storyboard-shot-1-editor');
+    fireEvent.click(screen.getByTestId('prompt-fullscreen-button'));
+    await screen.findByTestId('prompt-fullscreen');
+    const stored = (mode: string): Record<string, unknown> => ({ mode, model: 'kling-v3', modelByMode: { [mode]: 'kling-v3' } });
+    view.rerender(panelTree('video', stored('t2v')));
+    await waitFor(() => expect(screen.queryByTestId('prompt-fullscreen')).toBeNull());
+    view.rerender(panelTree('video', stored('multi_shot')));
+    await screen.findByTestId('generate-storyboard-shot-1-editor');
+    expect(screen.queryByTestId('prompt-fullscreen')).toBeNull();
+  });
+
   it('draws the shots in place of the prompt box, with the add-shot row under them', async () => {
     await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
     await screen.findByTestId('generate-storyboard-shot-2-editor');

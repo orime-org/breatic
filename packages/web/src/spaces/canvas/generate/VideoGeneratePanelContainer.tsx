@@ -901,7 +901,7 @@ function VideoGeneratePanelBody({
   // else the main prompt.
   const [promptFullscreen, setPromptFullscreen] = React.useState<string | null>(null);
   const closePromptFullscreen = React.useCallback(() => setPromptFullscreen(null), []);
-  const nodeData = nodes.find((n) => n.id === nodeId)?.data;
+  const nodeName = asContentView(nodes.find((n) => n.id === nodeId)?.data)?.name;
   const openPromptFullscreen = React.useCallback(() => {
     const shotId = expandedShotRef.current;
     setPromptFullscreen(shotEditors.current.has(shotId) ? shotId : 'main');
@@ -910,11 +910,11 @@ function VideoGeneratePanelBody({
   // while the shots take its place, a shot once it is removed.
   const multiShot = Boolean(spec && shots);
   const fullscreenBoxShown =
-    promptFullscreen === 'main' ? !multiShot && Boolean(fragment) : shots?.some((shot) => shot.id === promptFullscreen) === true;
+    promptFullscreen === 'main' ? !multiShot && Boolean(fragment) : multiShot && shots?.some((shot) => shot.id === promptFullscreen) === true;
   if (promptFullscreen !== null && (!vm.promptRequired || !fullscreenBoxShown)) setPromptFullscreen(null);
   const mainLayer = React.useMemo(
-    () => ({ open: promptFullscreen === 'main', title: promptFullscreenTitle(nodeData, 'video'), onClose: closePromptFullscreen }),
-    [promptFullscreen, nodeData, closePromptFullscreen],
+    () => ({ open: promptFullscreen === 'main', title: promptFullscreenTitle(nodeName, 'video'), onClose: closePromptFullscreen }),
+    [promptFullscreen, nodeName, closePromptFullscreen],
   );
   const mainEditor = React.useMemo(
     () =>
@@ -978,14 +978,14 @@ function VideoGeneratePanelBody({
         mentionTokens={stableMentionTokens}
         fullscreenLayer={{
           open: promptFullscreen === shot.id,
-          title: promptFullscreenTitle(nodeData, 'video', t('canvas.generatePanel.storyboard.shot', { n: index + 1 })),
+          title: promptFullscreenTitle(nodeName, 'video', t('canvas.generatePanel.storyboard.shot', { n: index + 1 })),
           onClose: closePromptFullscreen,
         }}
       />
     ),
     [
       promptFullscreen,
-      nodeData,
+      nodeName,
       t,
       closePromptFullscreen,
       shotPlaceholder,

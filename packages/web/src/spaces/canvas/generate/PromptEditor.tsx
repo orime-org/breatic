@@ -1030,13 +1030,16 @@ export const PromptEditor = React.forwardRef<PromptEditorHandle, PromptEditorOut
   React.useLayoutEffect(() => {
     if (open) endKeptEditor(spaceId, fragment);
   }, [open, spaceId, fragment]);
-  // Closing ends full screen's editor; the panel's builds anew. Not an effect
-  // cleanup: a hidden Space runs those too, and full screen outlives hiding
-  // (inner#1235 A13). A box the panel stops showing is closed by its panel.
-  const close = React.useCallback((): void => {
-    endKeptEditor(spaceId, fullscreenKeyOf(fragment));
-    onClose.current?.();
-  }, [spaceId, fragment]);
+  // Full screen's editor ends when it stops showing this prompt: closed by the
+  // user or by the panel, or the box moved to another prompt. Hiding the Space
+  // keeps it (inner#1235 A13): the ref holds across a hidden Activity.
+  const shown = React.useRef<Y.XmlFragment | null>(null);
+  React.useLayoutEffect(() => {
+    const now = open ? fragment : null;
+    if (shown.current !== null && shown.current !== now) endKeptEditor(spaceId, fullscreenKeyOf(shown.current));
+    shown.current = now;
+  }, [open, spaceId, fragment]);
+  const close = React.useCallback((): void => onClose.current?.(), []);
 
   if (!open || fullscreenLayer === undefined) return <PromptEditorBody ref={inner} {...props} />;
   return (

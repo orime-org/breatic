@@ -614,7 +614,7 @@ function AudioGeneratePanelBody({
   const [promptFullscreen, setPromptFullscreen] = React.useState<'prompt' | 'lyrics' | null>(null);
   const closePromptFullscreen = React.useCallback(() => setPromptFullscreen(null), []);
   const openPromptFullscreen = React.useCallback(() => setPromptFullscreen(shownBox), [shownBox]);
-  const nodeData = nodes.find((n) => n.id === nodeId)?.data;
+  const nodeName = asContentView(nodes.find((n) => n.id === nodeId)?.data)?.name;
   const twoBoxes = shownLyricsFragment !== null;
   // A box the panel stops showing closes its full screen.
   if (
@@ -626,18 +626,18 @@ function AudioGeneratePanelBody({
   const promptLayer = React.useMemo(
     () => ({
       open: promptFullscreen === 'prompt',
-      title: promptFullscreenTitle(nodeData, 'audio', twoBoxes ? promptLabel : undefined),
+      title: promptFullscreenTitle(nodeName, 'audio', twoBoxes ? promptLabel : undefined),
       onClose: closePromptFullscreen,
     }),
-    [promptFullscreen, nodeData, twoBoxes, promptLabel, closePromptFullscreen],
+    [promptFullscreen, nodeName, twoBoxes, promptLabel, closePromptFullscreen],
   );
   const lyricsLayer = React.useMemo(
     () => ({
       open: promptFullscreen === 'lyrics',
-      title: promptFullscreenTitle(nodeData, 'audio', t('canvas.generatePanel.musicLyricsLabel')),
+      title: promptFullscreenTitle(nodeName, 'audio', t('canvas.generatePanel.musicLyricsLabel')),
       onClose: closePromptFullscreen,
     }),
-    [promptFullscreen, nodeData, t, closePromptFullscreen],
+    [promptFullscreen, nodeName, t, closePromptFullscreen],
   );
   const mentionEmptyLabel = t('canvas.generatePanel.mentionEmpty');
   // The speakers by name and voice, kept the same object while both are the same.
