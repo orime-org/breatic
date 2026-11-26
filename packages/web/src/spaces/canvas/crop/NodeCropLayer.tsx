@@ -64,6 +64,17 @@ interface NodeCropLayerProps {
 }
 
 /**
+ * One side of a video node's registered size.
+ * @param node - The node.
+ * @param side - Which side.
+ * @returns The side, or null for a node that is no video or carries no positive size.
+ */
+function registeredSide(node: { type?: string; data: unknown } | undefined, side: 'width' | 'height'): number | null {
+  const value = node?.type === 'video' ? (node.data as Record<string, unknown>)[side] : undefined;
+  return typeof value === 'number' && value > 0 ? value : null;
+}
+
+/**
  * The crop box of one node (inner#888 §7.4.1): the focus crop when this node
  * is the focus target, the crop tool's box when a crop tool's panel is open
  * on it. It reads the media's place in the node and reports what it sees —
@@ -90,7 +101,15 @@ export function NodeCropLayer({ nodeId, wrapper }: NodeCropLayerProps): React.JS
     return cropping && node?.type === 'video' && typeof content === 'string' ? content : '';
   });
   const presented = useQuery(videoPresentationQuery({ projectId, canonicalURL: videoURL, active: videoURL !== '' }));
-  const geometry = useMediaGeometry(wrapper, cropping, presented.data?.presentation?.display ?? null);
+  // With no selected version the node plays the original, whose element size skips a container crop FFmpeg applies, so the
+  // source is framed in the size the upload was registered at, the decoded display the tools cut (frames-split §7.8, D07).
+  const registeredWidth = useStore((s) => (cropping ? registeredSide(s.nodeLookup.get(nodeId), 'width') : null));
+  const registeredHeight = useStore((s) => (cropping ? registeredSide(s.nodeLookup.get(nodeId), 'height') : null));
+  const registeredSize = React.useMemo(
+    () => (registeredWidth === null || registeredHeight === null ? null : { width: registeredWidth, height: registeredHeight }),
+    [registeredWidth, registeredHeight],
+  );
+  const geometry = useMediaGeometry(wrapper, cropping, presented.data?.presentation?.display ?? registeredSize);
   const focusWrites = useWrittenElsewhere(focus?.rect ?? null);
   const toolWrites = useWrittenElsewhere<unknown>(
     rectParam === undefined || draft === null ? null : (draft.params[rectParam.key] ?? null),

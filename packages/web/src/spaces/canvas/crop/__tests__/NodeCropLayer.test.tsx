@@ -163,3 +163,15 @@ describe('NodeCropLayer for the video crop tool on a transparent video (frames-s
     expect(store().miniTool?.params.rect).toEqual({ x: 100, y: 100, w: 200, h: 160 });
   });
 });
+
+describe('NodeCropLayer for the video crop tool with no selected version (frames-split §7.8 geometry reads)', () => {
+  it('frames the source in its registered size, not the played original\'s, so a container crop the browser ignores is not counted', () => {
+    const VIDEO = { id: 'n1', kind: 'video' as const, src: 'https://cdn/crop.mkv', width: 156, height: 94 };
+    render(cropCanvas([VIDEO], null));
+    const video = screen.getByTestId('media-element') as HTMLVideoElement;
+    Object.defineProperty(video, 'videoWidth', { configurable: true, value: 160 });
+    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 96 });
+    act(() => store().openMiniTool('n1', 'video.crop', { sourceContent: VIDEO.src, params: { aspect: 'free', rect: null } }));
+    expect(store().miniTool?.sourceSize).toEqual({ width: 156, height: 94 });
+  });
+});

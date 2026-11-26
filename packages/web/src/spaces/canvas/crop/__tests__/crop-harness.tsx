@@ -34,6 +34,9 @@ export interface MediaNodeData extends Record<string, unknown> {
   /** `alpha-video` is a transparent video: the packed renderer's canvas on screen, its native video out of the document. */
   kind: 'img' | 'video' | 'alpha-video';
   src: string;
+  /** A video node's registered size (frames-split D07), which its crop tool frames in while no version is selected. */
+  width?: number;
+  height?: number;
 }
 
 /** Each `alpha-video` node's native video, by source URL, as the packed renderer keeps it outside the document. */
@@ -81,7 +84,7 @@ function MediaNode({ id, data }: NodeProps<Node<MediaNodeData>>): React.JSX.Elem
   );
 }
 
-const NODE_TYPES = { media: MediaNode };
+const NODE_TYPES = { media: MediaNode, video: MediaNode };
 
 /** The query cache a harness canvas uses when its test mounts none: the crop layer reads a video's presentation. */
 const HARNESS_CLIENT = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -116,7 +119,7 @@ export function cropCanvas(
   return (
     <WithQueryClient><div data-region='space'>
       <ReactFlow
-        nodes={nodes.map(({ id, ...data }) => ({ id, type: 'media', position: { x: 0, y: 0 }, data }))}
+        nodes={nodes.map(({ id, ...data }) => ({ id, type: data.kind === 'video' ? 'video' : 'media', position: { x: 0, y: 0 }, data }))}
         edges={[]}
         nodeTypes={NODE_TYPES}
         defaultViewport={{ ...pan, zoom }}
