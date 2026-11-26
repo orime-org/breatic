@@ -323,3 +323,15 @@ describe("planned startup facts preserve unknown consumption, with only the cont
     expect(await object.report()).toMatchObject({ outputs: [{ outputIndex: 0, storageKey: "results/T/stitch.mp4", packing: GEOMETRY }] });
   });
 });
+
+describe("an old-protocol job whose container cannot be reached", () => {
+  // The start failure's own cleanup re-registers the outbound handlers, and the platform refuses that the same way.
+  it("still names the failure JobStartFailed when clearing its outbound handlers fails too", async () => {
+    const { object } = owner(false);
+    runtime.outboundError = new Error("Updating sidecar egress config failed with: 404");
+    const job = { jobId: "task:t1", containerClass: "MiniToolContainerStd1", deadlineAt: NOW + 7200000, op: "trim", params: {},
+      input: { storageKey: "fixtures/source-a.mp4" }, outputs: [{ storageKey: "results/T/out.mp4", contentType: "video/mp4" }] } as never;
+    await expect(object.submit(job)).rejects.toMatchObject({ name: "JobStartFailed" });
+    expect(await object.report()).toBeNull();
+  });
+});

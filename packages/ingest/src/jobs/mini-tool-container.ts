@@ -381,7 +381,12 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
     for (const effect of next.effects) {
       if (effect === "destroy") await this.destroy().catch(() => undefined);
       if (effect === "cancelSchedule") this.deleteSchedules("expireJob");
-      if (effect === "clearOverrides") await this.setOutboundByHosts({});
+      // A refused clear must not replace the start failure that asked for it.
+      if (effect === "clearOverrides") {
+        await this.setOutboundByHosts({}).catch((err: unknown) => {
+          noteFailure("ingest_mini_tool_clear_outbound_failed", { containerId: this.ctx.id.toString() }, err);
+        });
+      }
     }
     return next.state === null || !record ? null : { ...record, state: next.state };
   }
