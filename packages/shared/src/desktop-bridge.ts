@@ -47,7 +47,7 @@ export interface DesktopBridge {
   onDownloadsChanged(listener: () => void): () => void;
   /** Close the Downloads panel: finished rows go, running ones stay. */
   dismissDownloads(): Promise<void>;
-  /** Show a finished download's file in its folder. */
+  /** Show a finished download's file in its folder, or mark its row as moved or deleted when the file is gone. */
   revealDownload(id: string): Promise<void>;
 }
 
