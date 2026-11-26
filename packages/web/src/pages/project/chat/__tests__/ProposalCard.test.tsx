@@ -114,7 +114,7 @@ function renderCard(listening = true, proposal: CanvasProposal = PAIR): QueryCli
   useCanvasStore.setState({
     pendingNodeCreate: null,
     canvasListening: listening,
-    proposalOutcome: null,
+    proposalOutcomes: [],
   });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   render(
@@ -415,11 +415,50 @@ describe('pressing it', () => {
     await userEvent.click(screen.getByTestId('proposal-use'));
     expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(true);
 
-    act(() => useCanvasStore.getState().reportProposalOutcome('placed'));
+    act(() => useCanvasStore.getState().reportProposalOutcome(PAIR, 'placed'));
 
     await waitFor(() =>
       expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(false),
     );
+    expect(fail).not.toHaveBeenCalled();
+  });
+
+  it('waits for its own outcome while another card\'s arrives first (inner#2171 implementation round 1)', async () => {
+    listModels.mockResolvedValue(CATALOG);
+    const other: CanvasProposal = { ...PAIR, title: 'Other' } as CanvasProposal;
+    useCanvasStore.setState({ pendingNodeCreate: null, canvasListening: true, proposalOutcomes: [] });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <div data-testid='card-a'><ProposalCard proposal={PAIR} /></div>
+        <div data-testid='card-b'><ProposalCard proposal={other} /></div>
+      </QueryClientProvider>,
+    );
+    const [a, b] = screen.getAllByTestId<HTMLButtonElement>('proposal-use');
+    await userEvent.click(a!);
+    await userEvent.click(b!);
+
+    act(() => useCanvasStore.getState().reportProposalOutcome(other, 'placed'));
+    await waitFor(() => expect(b!.disabled).toBe(false));
+    expect(a!.disabled).toBe(true);
+
+    act(() => useCanvasStore.getState().reportProposalOutcome(PAIR, 'failed'));
+    await waitFor(() => expect(a!.disabled).toBe(false));
+    expect(fail).toHaveBeenCalledTimes(1);
+    expect(useCanvasStore.getState().proposalOutcomes).toEqual([]);
+  });
+
+  it('leaves no outcome behind for a card that is gone, so the next press waits for its own', async () => {
+    listModels.mockResolvedValue(CATALOG);
+    renderCard();
+    await userEvent.click(screen.getByTestId('proposal-use'));
+    cleanup();
+    act(() => useCanvasStore.getState().reportProposalOutcome(PAIR, 'failed'));
+
+    const next: CanvasProposal = { ...PAIR, title: 'Next' } as CanvasProposal;
+    renderCard(true, next);
+    await userEvent.click(screen.getByTestId('proposal-use'));
+    expect(screen.getByTestId<HTMLButtonElement>('proposal-use').disabled).toBe(true);
     expect(fail).not.toHaveBeenCalled();
   });
 
@@ -428,7 +467,7 @@ describe('pressing it', () => {
     renderCard();
 
     await userEvent.click(screen.getByTestId('proposal-use'));
-    act(() => useCanvasStore.getState().reportProposalOutcome('failed'));
+    act(() => useCanvasStore.getState().reportProposalOutcome(PAIR, 'failed'));
 
     await waitFor(() => expect(fail).toHaveBeenCalledWith(t('chat.proposal.failed')));
     expect(screen.queryByTestId('proposal-failed')).toBeNull();

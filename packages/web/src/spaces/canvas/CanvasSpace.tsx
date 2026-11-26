@@ -2726,12 +2726,14 @@ function CanvasSpaceInner({
       // A card that posted a proposal is waiting on an answer, and its button
       // stays disabled until one comes. Dropping the intent silently leaves it
       // disabled for the life of the conversation.
-      if (isProposalIntent(intent)) reportProposalOutcome('failed');
+      if (isProposalIntent(intent)) reportProposalOutcome(intent.proposal, 'failed');
       consumePendingNodeCreate();
       return;
     }
     const middle = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     if (isProposalIntent(intent)) {
+      // The card waits for the outcome under the proposal it posted.
+      const posted = intent.proposal;
       /**
        * Place a proposal whose material already has this Project's addresses.
        * @param proposal - The proposal.
@@ -2750,7 +2752,7 @@ function CanvasSpaceInner({
           // The card reports a refusal by the size cap itself, so no toast here.
           const placed = placeProposalAt(proposal, center, occupied, undefined, undefined, false);
           if ('ok' in placed) {
-            reportProposalOutcome(placed);
+            reportProposalOutcome(posted, placed);
             return;
           }
           const focus = whatToFocus(proposal, placed);
@@ -2774,32 +2776,31 @@ function CanvasSpaceInner({
             });
           }
           if (focus.select.length > 0) setSelectAfterCreate(focus.select);
-          reportProposalOutcome('placed');
+          reportProposalOutcome(posted, 'placed');
         } catch {
           // `placeProposalAt` takes back whatever it wrote before it threw, so
           // nothing half-placed is left behind -- but the card is still waiting,
           // and a button that stays disabled forever is worse than one that says
           // it did not work.
-          reportProposalOutcome('failed');
+          reportProposalOutcome(posted, 'failed');
         }
       };
       // The user's material joins this Project the way a paste does before the nodes are written (inner#2171 design
       // §5.2); the write itself stays one synchronous batch, so it runs once the answer is in.
-      const materials = [...new Set(intent.proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material])))];
-      if (materials.length === 0) place(intent.proposal);
+      const materials = [...new Set(posted.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material])))];
+      if (materials.length === 0) place(posted);
       else {
-        const asked = intent.proposal;
         const name = docName.canvasSpace(projectId, spaceId);
         void canvasApi.paste({ project_id: projectId, urls: materials, pairs: [], history: [] }).then(({ map }) => {
           // A Space closed meanwhile is not written, as a paste is not (`pastePayload`).
-          if (!hasDoc(name)) { reportProposalOutcome('failed'); return; }
-          place({ ...asked, nodes: asked.nodes.map((node) => {
+          if (!hasDoc(name)) { reportProposalOutcome(posted, 'failed'); return; }
+          place({ ...posted, nodes: posted.nodes.map((node) => {
             const copy = node.material === undefined ? undefined : map[node.material];
             return typeof copy === 'string' ? { ...node, material: copy } : node;
           }) });
         }, () => {
-          toast.error(t('canvas.paste.failed'));
-          reportProposalOutcome('failed');
+          // The card says the proposal failed, once.
+          reportProposalOutcome(posted, 'failed');
         });
       }
     } else {

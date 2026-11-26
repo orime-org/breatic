@@ -101,13 +101,13 @@ interface CanvasState {
    */
   canvasListening: boolean;
   /**
-   * What became of the proposal just posted, for the card that posted it.
+   * What became of each posted proposal, for the card that posted it.
    *
-   * Cleared as the card reads it. Untagged because it cannot be ambiguous:
-   * placing runs to completion inside one synchronous effect, so a second card
-   * cannot have posted in between.
+   * Each entry names its proposal and is taken only by that card: a proposal
+   * carrying the user's material lands once its paste request answers
+   * (inner#2171), so outcomes can arrive in any order while other cards wait.
    */
-  proposalOutcome: ProposalOutcome | null;
+  proposalOutcomes: Array<{ proposal: CanvasProposal; outcome: ProposalOutcome }>;
   /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
    * for the canvas to turn into nodes at the viewport centre. The picker lives
@@ -146,9 +146,9 @@ interface CanvasState {
   /** Say whether a canvas is holding the mailbox (the canvas, on mount / unmount). */
   setCanvasListening: (listening: boolean) => void;
   /** Report what became of a placed proposal (the canvas). */
-  reportProposalOutcome: (outcome: ProposalOutcome) => void;
-  /** Drop the outcome once the card that posted has read it. */
-  clearProposalOutcome: () => void;
+  reportProposalOutcome: (proposal: CanvasProposal, outcome: ProposalOutcome) => void;
+  /** Drop a proposal's outcome once its card has read it, or once that card is gone. */
+  clearProposalOutcome: (proposal: CanvasProposal) => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
   /** Post picked upload files from chrome (left "upload assets" button). */
@@ -194,7 +194,7 @@ export const useCanvasStore = create<CanvasState>()(
     showLockedOverlay: false,
     pendingNodeCreate: null,
     canvasListening: false,
-    proposalOutcome: null,
+    proposalOutcomes: [],
     pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
@@ -255,14 +255,16 @@ export const useCanvasStore = create<CanvasState>()(
       set((s) => {
         s.canvasListening = listening;
       }),
-    reportProposalOutcome: (outcome) =>
-      set((s) => {
-        s.proposalOutcome = outcome;
-      }),
-    clearProposalOutcome: () =>
-      set((s) => {
-        s.proposalOutcome = null;
-      }),
+    // Entries are read through `get()`: a draft's entries are proxies, and the card finds its own by the proposal
+    // object it posted.
+    reportProposalOutcome: (proposal, outcome) => {
+      const others = get().proposalOutcomes.filter((entry) => entry.proposal !== proposal);
+      set({ proposalOutcomes: [...others, { proposal, outcome }] });
+    },
+    clearProposalOutcome: (proposal) => {
+      const kept = get().proposalOutcomes.filter((entry) => entry.proposal !== proposal);
+      if (kept.length !== get().proposalOutcomes.length) set({ proposalOutcomes: kept });
+    },
     consumePendingNodeCreate: () =>
       set((s) => {
         s.pendingNodeCreate = null;

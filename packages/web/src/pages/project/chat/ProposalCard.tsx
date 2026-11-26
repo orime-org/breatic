@@ -49,7 +49,7 @@ export const ProposalCard = React.memo(function ProposalCard({
   const t = useTranslation();
   const requestNodeCreate = useCanvasStore((s) => s.requestNodeCreate);
   const canvasListening = useCanvasStore((s) => s.canvasListening);
-  const outcome = useCanvasStore((s) => s.proposalOutcome);
+  const outcome = useCanvasStore((s) => s.proposalOutcomes.find((entry) => entry.proposal === proposal)?.outcome ?? null);
   const clearOutcome = useCanvasStore((s) => s.clearProposalOutcome);
   const [building, setBuilding] = React.useState(false);
   const { data: catalog } = useQuery(modelCatalogQuery());
@@ -74,11 +74,10 @@ export const ProposalCard = React.memo(function ProposalCard({
     [catalog, model, proposal],
   );
 
-  // The canvas answers once the group is placed or once placing threw. Only
-  // the card that is waiting reads it: placing runs to completion inside one
-  // synchronous effect, so no second card can have posted in between. A
-  // failure is told in a toast as it is answered (inner#1530); the button is
-  // free to press again. A Space without room for it is told the same way,
+  // The canvas answers once the group is placed or once placing threw, under
+  // this card's proposal, so an answer that arrives while other cards wait is
+  // read only here. A failure is told in a toast as it is answered (inner#1530);
+  // the button is free to press again. A Space without room for it is told the same way,
   // as a warning (inner#1790), except while a refused document is rebuilt,
   // which said its own sentence once.
   const failedLine = t('chat.proposal.failed');
@@ -88,8 +87,10 @@ export const ProposalCard = React.memo(function ProposalCard({
     setBuilding(false);
     if (outcome === 'failed') toast.error(failedLine);
     else if (typeof outcome === 'object' && outcome.reason !== 'resyncing') toast.warning(fullLine);
-    clearOutcome();
-  }, [building, outcome, clearOutcome, failedLine, fullLine]);
+    clearOutcome(proposal);
+  }, [building, outcome, clearOutcome, failedLine, fullLine, proposal]);
+  // An answer that arrives after the card is gone is dropped with it.
+  React.useEffect(() => () => clearOutcome(proposal), [clearOutcome, proposal]);
 
   const onUse = React.useCallback((): void => {
     // Nobody is holding the mailbox when no canvas is open. Said out loud
@@ -100,9 +101,10 @@ export const ProposalCard = React.memo(function ProposalCard({
       toast.warning(t('chat.proposal.needCanvas'));
       return;
     }
+    clearOutcome(proposal);
     setBuilding(true);
     requestNodeCreate({ proposal });
-  }, [canvasListening, proposal, requestNodeCreate, t]);
+  }, [canvasListening, clearOutcome, proposal, requestNodeCreate, t]);
 
   // Words on their own are a flow too, so the card is drawn for anything
   // carrying nodes rather than only for something that generates.

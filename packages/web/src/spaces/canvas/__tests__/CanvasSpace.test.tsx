@@ -2513,7 +2513,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     await waitFor(() =>
       expect(useCanvasStore.getState().pendingNodeCreate).toBeNull(),
     );
-    expect(useCanvasStore.getState().proposalOutcome).toBe('failed');
+    expect(useCanvasStore.getState().proposalOutcomes.map((entry) => entry.outcome)).toEqual(['failed']);
   });
 
   it('editor canvas fulfils a library create intent (writes via addNode)', async () => {
@@ -4831,7 +4831,7 @@ describe('how the camera follows a landed proposal', () => {
   const src = readFileSync(resolve(__dirname, '../CanvasSpace.tsx'), 'utf8');
   const follow = src.slice(
     src.indexOf('const placed = placeProposalAt'),
-    src.indexOf('reportProposalOutcome(\'placed\')'),
+    src.indexOf('reportProposalOutcome(posted, \'placed\')'),
   );
 
   it('slides in a straight line over the proposal framing time', () => {
