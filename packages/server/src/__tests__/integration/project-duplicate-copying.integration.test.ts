@@ -8,7 +8,8 @@
  * The duplicate request writes which Project the copy came from and leaves its completion empty, so the copy reads as
  * being copied; collab fills the completion in. A Project that is still being copied cannot itself be copied: the
  * request is refused with a sentence the user reads in a toast. The Studio's project list and the Project page say
- * whether each Project is being copied. A Project that never was a copy, which is every Project made before this
+ * whether each Project is being copied. A copy takes the source's content and none of its running work: its 3D Space,
+ * which keeps the source Space's id, lists no task. A Project that never was a copy, which is every Project made before this
  * change, reads as not being copied.
  */
 
@@ -29,6 +30,7 @@ import postgres from "postgres";
 import { randomUUID } from "node:crypto";
 import { initCore, loadLocales } from "@breatic/core";
 import { projectService } from "@server/modules";
+import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
 import { getProjectById } from "@server/modules/project/project.repo.js";
 
 try {
@@ -153,5 +155,18 @@ describe("a copy while it is being copied", () => {
     expect((await projectService.loadForViewer(projectId, admin)).copying).toBe(false);
     await complete(copy.id);
     expect((await projectService.loadForViewer(copy.id, admin)).copying).toBe(false);
+  });
+
+  it("lists none of the source's running 3D tasks in the copy's 3D Space, which keeps the source Space's id", async () => {
+    const { admin, projectId } = await adminWithProject();
+    const spaceId = randomUUID();
+    await sql`
+      INSERT INTO node_tasks (project_id, space_id, node_id, kind, action, status, started_by_user_id, budget_ms, label, started_at)
+      VALUES (${projectId}, ${spaceId}, NULL, 'upload', 'scene_import', 'running', ${admin}, 7200000, 'lamp.glb', now())`;
+
+    const copy = await projectService.duplicate(projectId, admin);
+
+    expect((await listSpaceTasks(admin, projectId, spaceId)).tasks.map((task) => task.label)).toEqual(["lamp.glb"]);
+    expect((await listSpaceTasks(admin, copy.id, spaceId)).tasks).toEqual([]);
   });
 });
