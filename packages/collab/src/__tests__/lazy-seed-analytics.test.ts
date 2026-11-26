@@ -27,8 +27,7 @@ vi.mock("@collab/services/space-analytics.js", () => ({
 
 vi.mock("@breatic/core", async (importActual: () => Promise<Record<string, unknown>>) => ({
   ...(await importActual()),
-  loadInitialSpaceType: vi.fn(async () => "canvas"),
-  projectsRepo: { isDuplicateInProgress: vi.fn(async () => false) },
+  loadSeedFacts: vi.fn(async () => ({ kind: "canvas", copying: false })),
   projectActivitiesRepo: { insert: vi.fn() },
   serverAnalyticsOn: () => true,
   getRedis: () => ({}),

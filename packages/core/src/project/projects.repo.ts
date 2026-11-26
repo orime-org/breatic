@@ -102,16 +102,3 @@ export async function markDuplicateCompleted(projectId: string): Promise<void> {
   await db.update(projects).set({ duplicateCompletedAt: sql`now()` })
     .where(and(eq(projects.id, projectId), isNull(projects.duplicateCompletedAt)));
 }
-
-/**
- * Whether a Project is a copy whose documents collab has not copied yet (inner#1706): it names a source and has no
- * completion. Until then collab loads none of its documents.
- * @param projectId - The Project.
- * @returns True while it is being copied; false otherwise, including when no such row exists.
- * @throws {Error} When the database query fails.
- */
-export async function isDuplicateInProgress(projectId: string): Promise<boolean> {
-  const [row] = await db.select({ from: projects.duplicatedFromId, at: projects.duplicateCompletedAt }).from(projects)
-    .where(eq(projects.id, projectId)).limit(1);
-  return row !== undefined && row.from !== null && row.at === null;
-}

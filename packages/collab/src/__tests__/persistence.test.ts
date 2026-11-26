@@ -13,7 +13,7 @@
  * a real Postgres.
  *
  * `@breatic/core` is partially mocked: the real encoders stay (they need
- * no DB), only the `loadInitialSpaceType` and copy-state reads lazy-seed uses are stubbed.
+ * no DB), only the `loadSeedFacts` read lazy-seed uses is stubbed.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -23,12 +23,12 @@ const {
   fetchDocDataMock,
   upsertDocDataMock,
   seedInitialStateMock,
-  loadInitialSpaceTypeMock,
+  loadSeedFactsMock,
 } = vi.hoisted(() => ({
   fetchDocDataMock: vi.fn(),
   upsertDocDataMock: vi.fn(),
   seedInitialStateMock: vi.fn(),
-  loadInitialSpaceTypeMock: vi.fn(),
+  loadSeedFactsMock: vi.fn(),
 }));
 
 // The yjs-store repo moved to collab; persistence imports it locally.
@@ -45,10 +45,9 @@ vi.mock(
   "@breatic/core",
   async (importActual: () => Promise<Record<string, unknown>>) => ({
     ...(await importActual()),
-    loadInitialSpaceType: loadInitialSpaceTypeMock,
+    loadSeedFacts: loadSeedFactsMock,
     // lazy-seed writes the initial space:created activity row (PG) and
     // logs on failure - both need stubs (no DB / config under test).
-    projectsRepo: { isDuplicateInProgress: vi.fn(async () => false) },
     projectActivitiesRepo: { insert: vi.fn() },
     createLogger: () => ({
       info: vi.fn(),
@@ -66,8 +65,8 @@ describe("collab persistence delegation", () => {
     fetchDocDataMock.mockReset();
     upsertDocDataMock.mockReset();
     seedInitialStateMock.mockReset();
-    loadInitialSpaceTypeMock.mockReset();
-    loadInitialSpaceTypeMock.mockResolvedValue("canvas");
+    loadSeedFactsMock.mockReset();
+    loadSeedFactsMock.mockResolvedValue({ kind: "canvas", copying: false });
   });
 
   it("fetchDoc returns the repo's stored bytes for the document name", async () => {

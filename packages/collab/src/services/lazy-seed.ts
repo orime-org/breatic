@@ -38,9 +38,8 @@ import {
   getRedis,
   getSession,
   getTimelineConfig,
-  loadInitialSpaceType,
+  loadSeedFacts,
   projectActivitiesRepo,
-  projectsRepo,
   runWithConsent,
   serverAnalyticsOn,
   sessionCookieName,
@@ -62,6 +61,7 @@ const logger = createLogger("lazy-seed");
 /** A load refused because the Project is a copy collab has not finished copying (inner#1706). */
 export class DuplicateInProgressError extends Error {
   /**
+   * Name the copy whose load was refused.
    * @param projectId - The copy.
    */
   constructor(projectId: string) {
@@ -95,13 +95,13 @@ export async function lazySeedMeta(
   if (!parsed || parsed.kind !== "meta") return null;
 
   const { projectId } = parsed;
-  if (await projectsRepo.isDuplicateInProgress(projectId)) {
+  // The Space type chosen at create time (stored on the project row; canvas for a missing or legacy row), and whether
+  // the Project is a copy still being copied.
+  const { kind, copying } = await loadSeedFacts(projectId);
+  if (copying) {
     logger.info({ projectId, documentName }, "meta_load_refused_copy_in_progress");
     throw new DuplicateInProgressError(projectId);
   }
-  // The Space type chosen at create time (stored on the project row);
-  // defaults to canvas for a missing/legacy row.
-  const kind = await loadInitialSpaceType(projectId);
   // Deterministic Space id (shared `deriveId`) so concurrent first-loads
   // across collab instances converge to one Space (see header).
   const spaceId = deriveId(projectId);

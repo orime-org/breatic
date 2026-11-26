@@ -117,8 +117,9 @@ function unloadAfterReading(
  * peer holding the document means no wait at all.
  *
  * That load runs the whole chain, and one link on it writes: `lazySeedMeta`
- * creates a project's first Space when no row is stored yet. Nothing defends
- * against that. It is the same seed the project's own first meta-doc load
+ * creates a project's first Space when no row is stored yet. Only a copy still
+ * being copied is refused (`DuplicateInProgressError`: the load fails and
+ * nothing is seeded); otherwise nothing defends against that. It is the same seed the project's own first meta-doc load
  * performs, it is idempotent (deterministic id, `ON CONFLICT DO NOTHING`),
  * and reaching this path at all means being a member who could have
  * triggered it by opening the project — the browser never can, because it

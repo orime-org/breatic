@@ -11,22 +11,20 @@
  *     seeded and in WHAT order without a real PG.
  *   - @breatic/core — partial mock: real encoders (encodeInitialMetaState
  *     / encodeInitialSpaceContent / defaultSpaceName) stay, only the
- *     DB read `loadInitialSpaceType` is stubbed to drive the chosen type, and
- *     `projectsRepo.isDuplicateInProgress` to say whether the Project is a
- *     copy still being copied (inner#1706), whose load is refused.
+ *     DB read `loadSeedFacts` is stubbed to drive the chosen type and to say
+ *     whether the Project is a copy still being copied (inner#1706), whose
+ *     load is refused.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 
 const {
-  loadInitialSpaceTypeMock,
-  isDuplicateInProgressMock,
+  loadSeedFactsMock,
   seedInitialStateMock,
   fetchDocDataMock,
   activityInsertMock,
 } = vi.hoisted(() => ({
-  loadInitialSpaceTypeMock: vi.fn(),
-  isDuplicateInProgressMock: vi.fn(),
+  loadSeedFactsMock: vi.fn(),
   seedInitialStateMock: vi.fn(),
   fetchDocDataMock: vi.fn(),
   activityInsertMock: vi.fn(),
@@ -41,8 +39,7 @@ vi.mock(
   "@breatic/core",
   async (importActual: () => Promise<Record<string, unknown>>) => ({
     ...(await importActual()),
-    loadInitialSpaceType: loadInitialSpaceTypeMock,
-    projectsRepo: { isDuplicateInProgress: isDuplicateInProgressMock },
+    loadSeedFacts: loadSeedFactsMock,
     // The seed writes the initial space:created activity row (PG) and
     // logs on failure - both need stubs (no DB / config under test).
     projectActivitiesRepo: { insert: activityInsertMock },
@@ -69,18 +66,17 @@ const SID = "22222222-2222-4222-9222-222222222222";
 
 beforeEach(() => {
   vi.clearAllMocks();
-  loadInitialSpaceTypeMock.mockResolvedValue("canvas");
-  isDuplicateInProgressMock.mockResolvedValue(false);
+  loadSeedFactsMock.mockResolvedValue({ kind: "canvas", copying: false });
   seedInitialStateMock.mockResolvedValue(true);
 });
 
 describe("lazySeedMeta", () => {
   it("refuses the load of a copy still being copied and seeds nothing", async () => {
-    isDuplicateInProgressMock.mockResolvedValue(true);
+    loadSeedFactsMock.mockResolvedValue({ kind: "canvas", copying: true });
 
     await expect(lazySeedMeta(projectMetaDocName(PID))).rejects.toBeInstanceOf(DuplicateInProgressError);
 
-    expect(isDuplicateInProgressMock).toHaveBeenCalledWith(PID);
+    expect(loadSeedFactsMock).toHaveBeenCalledWith(PID);
     expect(seedInitialStateMock).not.toHaveBeenCalled();
     expect(activityInsertMock).not.toHaveBeenCalled();
   });
@@ -95,7 +91,7 @@ describe("lazySeedMeta", () => {
     const bytes = await lazySeedMeta(metaName);
     expect(bytes).toBeInstanceOf(Uint8Array);
 
-    expect(loadInitialSpaceTypeMock).toHaveBeenCalledWith(PID);
+    expect(loadSeedFactsMock).toHaveBeenCalledWith(PID);
 
     const spaceId = deriveId(PID);
     const contentName = spaceContentDocName(PID, spaceId, "canvas");
@@ -110,7 +106,7 @@ describe("lazySeedMeta", () => {
   });
 
   it("uses the chosen type for BOTH the meta entry and the content doc name", async () => {
-    loadInitialSpaceTypeMock.mockResolvedValue("document");
+    loadSeedFactsMock.mockResolvedValue({ kind: "document", copying: false });
     const metaName = projectMetaDocName(PID);
     const bytes = (await lazySeedMeta(metaName)) as Uint8Array;
 
@@ -132,7 +128,7 @@ describe("lazySeedMeta", () => {
   // every new document Space shipped with an empty body — the state that costs
   // the first person to undo back to nothing their text and their redo stack.
   it("seeds a document's content doc with a body, not an empty doc", async () => {
-    loadInitialSpaceTypeMock.mockResolvedValue("document");
+    loadSeedFactsMock.mockResolvedValue({ kind: "document", copying: false });
     const metaName = projectMetaDocName(PID);
     await lazySeedMeta(metaName);
 
@@ -150,7 +146,7 @@ describe("lazySeedMeta", () => {
   });
 
   it("leaves a canvas's content doc empty — its editor builds its own structure", async () => {
-    loadInitialSpaceTypeMock.mockResolvedValue("canvas");
+    loadSeedFactsMock.mockResolvedValue({ kind: "canvas", copying: false });
     const metaName = projectMetaDocName(PID);
     await lazySeedMeta(metaName);
 
@@ -165,7 +161,7 @@ describe("lazySeedMeta", () => {
   });
 
   it("seeds a 3D scene before publishing its typed meta entry", async () => {
-    loadInitialSpaceTypeMock.mockResolvedValue("3d");
+    loadSeedFactsMock.mockResolvedValue({ kind: "3d", copying: false });
     const metaName = projectMetaDocName(PID);
     const bytes = (await lazySeedMeta(metaName)) as Uint8Array;
     const spaceId = deriveId(PID);
