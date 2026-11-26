@@ -14,7 +14,7 @@ import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { COPYING_POLL_MAX_IDS, UPLOAD_STATUS_MAX_KEYS, type UploadStatus } from '@breatic/shared';
+import { COPYING_POLL_MAX_IDS, UPLOAD_STATUS_MAX_KEYS, type StudioProjectSort, type UploadStatus } from '@breatic/shared';
 import type * as StudioPageModule from '@web/data/api/studio-page';
 
 vi.mock('@web/data/api/studio-page', async (importOriginal) => {
@@ -55,14 +55,15 @@ const watchers: (() => void)[] = [];
  * @param pages - Each page's Projects: their ids and whether each is being copied.
  * @param options - Which list, and whether it is on screen.
  * @param options.archived - Whether it is the archived list.
- * @param options.shown - Whether a component on the page reads it; a list left behind by a tab or sort switch is not.
+ * @param options.sort - The list's sort.
+ * @param options.shown - Whether a component on the page reads it; a list left behind by a sort or language switch is not.
  */
 function cacheList(
   slug: string,
   pages: { id: string; copying: boolean }[][],
-  { archived = false, shown = true }: { archived?: boolean; shown?: boolean } = {},
+  { archived = false, sort = 'opened', shown = true }: { archived?: boolean; sort?: StudioProjectSort; shown?: boolean } = {},
 ): void {
-  const queryKey = studioProjectsListKey(slug, { archived, sort: 'opened', locale: 'en' });
+  const queryKey = studioProjectsListKey(slug, { archived, sort, locale: 'en' });
   const data = { pages: pages.map((items) => ({ items, nextCursor: null, total: null })), pageParams: pages.map(() => undefined) };
   client.setQueryData(queryKey, data);
   if (shown) watchers.push(new QueryObserver(client, { queryKey, queryFn: () => data, staleTime: Infinity }).subscribe(() => {}));
@@ -434,6 +435,22 @@ describe('the copies the page waits for', () => {
     view.unmount();
   });
 
+  it('joins the list reread already running when a later answer names the same copy again', async () => {
+    const queryKey = studioProjectsListKey(SLUG, { archived: false, sort: 'opened', locale: 'en' });
+    client.setQueryData(queryKey, { pages: [{ items: [{ id: 'c1', copying: true }], nextCursor: null, total: null }], pageParams: [undefined] });
+    // A long list rereads every loaded page in turn, which can take longer than one poll interval.
+    const reread = vi.fn(() => new Promise<never>(() => {}));
+    watchers.push(new QueryObserver(client, { queryKey, queryFn: reread, staleTime: Infinity }).subscribe(() => {}));
+    poll.mockResolvedValue(answerWith({ copied: ['c1'] }));
+    const view = mount();
+    await pass(0);
+    await pass(2000);
+    await pass(2000);
+    expect(poll).toHaveBeenCalledTimes(3);
+    expect(reread).toHaveBeenCalledTimes(1);
+    view.unmount();
+  });
+
   it('asks about at most the request limit at once', async () => {
     const ids = Array.from({ length: COPYING_POLL_MAX_IDS + 10 }, (_, i) => `c-${i}`);
     cacheList(SLUG, [ids.map((id) => ({ id, copying: true }))]);
@@ -443,9 +460,9 @@ describe('the copies the page waits for', () => {
     view.unmount();
   });
 
-  it('asks only about the lists on screen, so a list left behind by a tab or sort switch adds nothing', async () => {
+  it('asks only about the lists on screen, so a list left behind by a sort or language switch adds nothing', async () => {
     cacheList(SLUG, [[{ id: 'c1', copying: true }]]);
-    cacheList(SLUG, [[{ id: 'c2', copying: true }]], { archived: true, shown: false });
+    cacheList(SLUG, [[{ id: 'c2', copying: true }]], { sort: 'edited', shown: false });
     const view = mount();
     await pass(0);
     expect(poll.mock.calls[0]![2]).toEqual(['c1']);

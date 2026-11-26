@@ -10,8 +10,9 @@ import { studioPageApi, type StudioPagePoll } from '@web/data/api/studio-page';
 import { settleUploadEnding, waitingUploadKeys } from '@web/data/upload/upload-status';
 
 /**
- * The Projects a Studio's project lists on screen show as being copied. A list left behind by a tab or sort switch is
- * not asked about: it was marked stale by the answer that found its copies done, and reads again when shown.
+ * The Projects a Studio's project lists on screen show as being copied. A list left behind by a sort or language
+ * switch (its key changed) is not asked about: it was marked stale by the answer that found its copies done, and reads
+ * again when shown.
  * @param queryClient - The app's query client.
  * @param slug - The Studio.
  * @returns Their ids, each once.
@@ -107,7 +108,12 @@ export function useStudioPagePoll(slug: string | null): void {
       }
       for (const status of answer.uploads) settleUploadEnding(status);
       if (answer.copied.length > 0) {
-        void queryClient.invalidateQueries({ predicate: (query) => isStudioProjectsListKey(query.queryKey) });
+        // Until the reread lands the lists still say copying, so the next answer names the same copies again; joining
+        // the reread already running lets a long list finish instead of restarting every round.
+        void queryClient.invalidateQueries(
+          { predicate: (query) => isStudioProjectsListKey(query.queryKey) },
+          { cancelRefetch: false },
+        );
       }
     };
 
