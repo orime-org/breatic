@@ -146,7 +146,7 @@ describe('the full-screen button on a text node', () => {
 });
 
 describe('the full-screen layer of a text node', () => {
-  it('shows the node name and an editor on the node body, writes going into the node', async () => {
+  it('shows the node name and an editor bound to the node body, following changes to it', async () => {
     renderLayer();
     expect(screen.getByRole('dialog', { name: 'Script' })).toBeInTheDocument();
     expect(screen.queryByTestId('text-fullscreen-read-only')).toBeNull();

@@ -82,8 +82,9 @@ export function TextNodeFullscreen({ nodeId, name, exists, locked }: TextNodeFul
   const onLeave = React.useCallback(
     (focus: 'return-focus' | 'keep-focus'): void => {
       // A blur inside full screen is not leaving it: the title bar and the
-      // scrollbar take focus too. Escape is decided by the layer, which has
-      // closed already; this only makes the editor's own Escape agree.
+      // scrollbar take focus too. The layer takes every Escape before the
+      // editor sees it; an Escape that reaches the editor some other way
+      // closes the layer as well.
       if (focus === 'return-focus') close();
     },
     [close],
