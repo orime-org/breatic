@@ -7,7 +7,6 @@ import type { ZodType } from "zod";
 import * as shared from "../index.js";
 
 const ID = "11111111-1111-4111-8111-111111111111";
-const ASSET = "22222222-2222-4222-8222-222222222222";
 const VALUES = {
   name: "Figure", model: { kind: "builtin", id: "figure" },
   position: [0, 0, 0], rotation: [0, 0, 0, 1], scale: [1, 1, 1],
