@@ -15,6 +15,7 @@ import type { DesktopBridge, DesktopDownloadList } from '@breatic/shared';
 
 import { DownloadPanel } from '@web/features/desktop-downloads/DownloadPanel';
 import { DownloadPanelAnchor } from '@web/features/desktop-downloads/DownloadPanelAnchor';
+import { changeLocale } from '@web/i18n/locale-bootstrap';
 import * as preferences from '@web/lib/user-preferences-storage';
 import { useCurrentUserStore, type CurrentUser } from '@web/stores/current-user';
 import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
@@ -184,9 +185,10 @@ describe('DownloadPanel position', () => {
     vi.spyOn(window, 'innerHeight', 'get').mockReturnValue(800);
   });
 
-  afterEach(() => {
+  afterEach(async () => {
     useCurrentUserStore.setState({ user: null });
     vi.restoreAllMocks();
+    await changeLocale('en');
   });
 
   it('sits 12px from the bottom-left corner of the window on a page without an anchor', async () => {
@@ -237,15 +239,34 @@ describe('DownloadPanel position', () => {
     expect(panel().style.left).toBe('80px');
   });
 
-  /** Give the panel the height a browser would: a 36px title bar and 60px per row. */
+  /** Give the panel the height a browser would: a 36px title bar and 60px per row, 76px when its words wrap. */
   const rowHeights = (): void => {
     vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
-      return this.dataset.testid === 'desktop-download-panel' ? 36 + 60 * this.querySelectorAll('li').length : 0;
+      if (this.dataset.testid !== 'desktop-download-panel') return 0;
+      return 36 + [...this.querySelectorAll('li')].reduce((sum, row) => sum + (/[\u3040-\u30ff]/.test(row.textContent ?? '') ? 76 : 60), 0);
     });
+  };
+
+  /**
+   * Watch sizes the way a browser does, and report a change of the panel's size.
+   * @returns Report every observed element's size change now.
+   */
+  const sizeObserver = (): (() => void) => {
+    const observed: Array<() => void> = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private readonly callback: () => void) {}
+      observe(): void {
+        observed.push(this.callback);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    });
+    return () => act(() => observed.forEach((callback) => callback()));
   };
 
   it('keeps its title bar inside the window when it expands near the top', async () => {
     rowHeights();
+    const resized = sizeObserver();
     inClient({ open: true, items: [done, failed, { ...done, id: '9', name: 'more.png' }] });
     renderWithTooltips(<DownloadPanel />);
     await screen.findByText('still.png');
@@ -254,7 +275,25 @@ describe('DownloadPanel position', () => {
     fireEvent.pointerUp(titleBar(), { clientX: 100, clientY: -5000 });
     expect(panel().style.bottom).toBe(`${800 - 96}px`);
     fireEvent.click(screen.getByRole('button', { name: 'All 3' }));
+    resized();
     expect(panel().style.bottom).toBe(`${800 - 216}px`);
+  });
+
+  it('holds its title bar inside the window when a language switch wraps a row', async () => {
+    rowHeights();
+    const resized = sizeObserver();
+    inClient({ open: true, items: [failed] });
+    renderWithTooltips(<DownloadPanel />);
+    await screen.findByText('voice.mp3');
+    fireEvent.pointerDown(titleBar(), { clientX: 100, clientY: 700, button: 0 });
+    fireEvent.pointerMove(titleBar(), { clientX: 100, clientY: -5000, buttons: 1 });
+    fireEvent.pointerUp(titleBar(), { clientX: 100, clientY: -5000 });
+    expect(panel().style.bottom).toBe(`${800 - 96}px`);
+    await act(async () => {
+      await changeLocale('ja');
+    });
+    resized();
+    expect(panel().style.bottom).toBe(`${800 - 112}px`);
   });
 
   it('holds a kept place inside the window by the height it shows with', async () => {

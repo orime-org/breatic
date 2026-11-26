@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
+import { flushSync } from 'react-dom';
 import { ArrowDown, Check, CircleAlert, Minus, X } from 'lucide-react';
 import { formatBytes, type DesktopDownload, type DesktopDownloadList } from '@breatic/shared';
 
@@ -157,13 +158,21 @@ export function DownloadPanel(): React.JSX.Element | null {
   React.useEffect(() => {
     setDragged(readUserPreferences(userId).downloadPanelPosition);
   }, [userId]);
-  const panelRef = React.useRef<HTMLElement>(null);
-  // The panel's height as drawn, measured before paint, so showing it or a change of rows re-clamps at once.
+  const panelRef = React.useRef<HTMLElement | null>(null);
+  // The panel's height as drawn: measured when it appears and on every change of its size (rows, expanding, a
+  // language switch that wraps a line), before paint, as Floating UI's autoUpdate watches a floating element.
   const [height, setHeight] = React.useState(0);
-  React.useLayoutEffect(() => {
-    const measured = panelRef.current?.offsetHeight ?? 0;
-    if (measured !== height) setHeight(measured);
-  }, [list, expanded, height]);
+  const measure = React.useCallback((element: HTMLElement | null) => {
+    panelRef.current = element;
+    if (!element) return;
+    setHeight(element.offsetHeight);
+    const observer = new ResizeObserver(() => flushSync(() => setHeight(element.offsetHeight)));
+    observer.observe(element);
+    return () => {
+      observer.disconnect();
+      panelRef.current = null;
+    };
+  }, []);
   const [, setWindowSize] = React.useState(0);
   React.useEffect(() => {
     /**
@@ -227,7 +236,7 @@ export function DownloadPanel(): React.JSX.Element | null {
 
   return (
     <section
-      ref={panelRef}
+      ref={measure}
       data-testid='desktop-download-panel'
       className='fixed z-40 w-[320px] overflow-hidden rounded-overlay border border-border bg-popover text-sm text-popover-foreground shadow-lg'
       style={{ left: position.left, bottom: position.bottom }}
