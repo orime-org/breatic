@@ -112,7 +112,7 @@ export function GoogleSignIn({ page, next, referral, disabled, error, onLeave }:
           loading={leaving}
           disabled={disabled}
           icon={<GoogleMark />}
-          className='relative inline-flex h-10 w-full items-center justify-center gap-2.5 overflow-hidden rounded-full border border-[var(--google-button-border)] bg-[var(--google-button-bg)] px-3 font-[Google_Sans,var(--font-sans)] text-sm font-medium leading-5 text-[var(--google-button-fg)] after:pointer-events-none after:absolute after:inset-0 after:bg-current after:opacity-0 after:transition-opacity hover-enabled:after:opacity-[0.08] disabled:cursor-not-allowed disabled:opacity-50'
+          className='relative inline-flex h-10 w-full items-center justify-center gap-2.5 overflow-hidden rounded-full border border-[var(--google-button-border)] bg-[var(--google-button-bg)] px-3 [font-family:Google_Sans,var(--font-sans)] text-sm font-medium leading-5 text-[var(--google-button-fg)] after:pointer-events-none after:absolute after:inset-0 after:bg-current after:opacity-0 after:transition-opacity hover-enabled:after:opacity-[0.08] disabled:cursor-not-allowed disabled:opacity-50'
         >
           {t('auth.google.continue')}
         </Button>

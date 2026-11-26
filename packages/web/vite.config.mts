@@ -22,6 +22,8 @@ export default defineConfig(({ command, mode }) => {
   // client; only `define` and import.meta.env do.
   const env = loadEnv(mode, path.resolve(__dirname, '../..'), '');
   const sentryAuthToken = env.VITE_SENTRY_AUTH_TOKEN;
+  // COOKIE_DOMAIN normalised as cookieDomainHost() does on the server.
+  const siteDomain = (env.COOKIE_DOMAIN ?? '').trim().replace(/^\.+/, '').toLowerCase();
 
   // Dev-server port + proxy targets, derived from .env so several worktrees can
   // run `pnpm dev` at once without fighting over the same ports (#1831).
@@ -296,6 +298,11 @@ export default defineConfig(({ command, mode }) => {
       // another worktree's frontend (#1831). Every other collision in this
       // setup fails loudly; this was the last one that degraded quietly.
       strictPort: true,
+      // Influencer sites are `<label>.partner.<COOKIE_DOMAIN>` (inner#2157).
+      // Browsers refuse a session cookie scoped to `localhost`, so local
+      // site-wide sign-in runs on a `.test` domain mapped to this machine,
+      // whose hosts the dev server must answer.
+      ...(siteDomain ? { allowedHosts: [siteDomain, `.${siteDomain}`] } : {}),
       open: '/',
       // Dev server, API and Collab run on three different ports — different
       // origins from the browser's perspective. Proxy /api and /ws
