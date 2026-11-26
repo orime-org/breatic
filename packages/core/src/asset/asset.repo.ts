@@ -571,18 +571,20 @@ export async function readLiveProjectReferences(projectId: string, studioId: str
 }
 
 /**
- * The live Projects holding a live reference to an asset, whatever their Studio (#1580): the ones a page may have the
- * asset open in, told when its peaks are ready. A Project counts as live as `countLiveProjectsInStudio` counts it:
- * neither archived nor deleted.
- * @param assetId - The asset.
+ * The live Projects holding a live reference to any live asset row stored under a key, whatever their Studio (frames-split
+ * §7.20): work derived from the stored bytes (a video's presentation, an audio's peaks) is shared by every row under the
+ * key, and a paste into another Studio files a row of its own under the same key. A Project counts as live when it is
+ * neither archived nor deleted, as `countLiveProjectsInStudio` counts it.
+ * @param storageKey - The stored bytes' key.
  * @returns The Projects' ids, in no particular order.
  * @throws {Error} When the database read fails.
  */
-export async function listProjectsReferencingAsset(assetId: string): Promise<string[]> {
+export async function listProjectsReferencingStorageKey(storageKey: string): Promise<string[]> {
   const rows = await db.selectDistinct({ id: projectAssetRefs.projectId }).from(projectAssetRefs)
+    .innerJoin(studioAssets, eq(studioAssets.id, projectAssetRefs.assetId))
     .innerJoin(projects, eq(projects.id, projectAssetRefs.projectId))
     .where(and(
-      eq(projectAssetRefs.assetId, assetId), isNull(projectAssetRefs.deletedAt),
+      eq(studioAssets.storageKey, storageKey), isNull(studioAssets.deletedAt), isNull(projectAssetRefs.deletedAt),
       isNull(projects.deletedAt), isNull(projects.archivedAt),
     ));
   return rows.map((row) => row.id);

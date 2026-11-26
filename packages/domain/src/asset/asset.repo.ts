@@ -14,8 +14,8 @@ export const findLiveInStudio: typeof assetRepo.findLiveInStudio = assetRepo.fin
 export const findLiveByKeyInStudio: typeof assetRepo.findLiveByKeyInStudio = assetRepo.findLiveByKeyInStudio;
 /** The shared repository implementation of findById. */
 export const findById: typeof assetRepo.findById = assetRepo.findById;
-/** The shared repository implementation of listProjectsReferencingAsset. */
-export const listProjectsReferencingAsset: typeof assetRepo.listProjectsReferencingAsset = assetRepo.listProjectsReferencingAsset;
+/** The shared repository implementation of listProjectsReferencingStorageKey. */
+export const listProjectsReferencingStorageKey: typeof assetRepo.listProjectsReferencingStorageKey = assetRepo.listProjectsReferencingStorageKey;
 /** The shared repository implementation of fillMediaNumbers. */
 export const fillMediaNumbers: typeof assetRepo.fillMediaNumbers = assetRepo.fillMediaNumbers;
 /** The shared repository implementation of findLiveByStorageKey. */

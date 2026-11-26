@@ -28,9 +28,9 @@ import { StillRunning } from '@worker/handlers/still-running.js';
 import { chunkInputId, SOURCE_INPUT_ID } from '@worker/handlers/video-presentation-recipes.js';
 import { planDigest } from '@worker/handlers/mini-tool/__tests__/frozen-presentation.js';
 
-const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger, listProjectsReferencingAsset, publishVideoPresentationChanged } = vi.hoisted(() => ({
+const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger, listProjectsReferencingStorageKey, publishVideoPresentationChanged } = vi.hoisted(() => ({
   findById: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), syncPresentationPins: vi.fn(),
-  listProjectsReferencingAsset: vi.fn(), publishVideoPresentationChanged: vi.fn(),
+  listProjectsReferencingStorageKey: vi.fn(), publishVideoPresentationChanged: vi.fn(),
   // Every application-layer catch logs (root AGENTS.md "Application-layer error logging"); the spy lets the handler do so.
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
@@ -47,7 +47,7 @@ vi.mock('@breatic/core', async (original) => {
 });
 vi.mock('@breatic/domain', async (original) => ({
   ...await original<Record<string, unknown>>(),
-  assetRepo: { findById, listProjectsReferencingAsset },
+  assetRepo: { findById, listProjectsReferencingStorageKey },
   createUsageRecorder,
   // S6e E4-3: the domain function that writes candidate and selected pins from the prepare answer.
   syncPresentationPins,
@@ -218,6 +218,7 @@ beforeEach(() => {
   D = Date.now() + 3_600_000;
   answer = prepareAnswer();
   findById.mockResolvedValue(asset);
+  listProjectsReferencingStorageKey.mockResolvedValue([]);
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
   settle.mockResolvedValue(0);
   syncPresentationPins.mockImplementation(async () => { sent.push({ path: 'sync-pins', method: 'CALL', body: null }); });
@@ -768,9 +769,10 @@ describe('a job BullMQ gave up on is settled from the queue failed event (frames
   });
 });
 
-describe('the end of a job is told to the Projects showing the video (frames-split §7.20)', () => {
+describe('a change readers see is told to the Projects showing the video (frames-split §7.20)', () => {
   const P1 = '7a1f2c0e-0000-4000-8000-000000000001';
   const P2 = '7a1f2c0e-0000-4000-8000-000000000002';
+  const URL = `https://assets.example.test/${KEY}`;
   /**
    * Run one pickup the way the queue does.
    * @returns The rejection, if the pickup threw.
@@ -779,37 +781,78 @@ describe('the end of a job is told to the Projects showing the video (frames-spl
     const job = { data, moveToDelayed: vi.fn(async () => undefined) };
     return handler.runVideoPresentation(job as never, 'lock').then(() => undefined, (error: unknown) => error);
   };
+  /**
+   * Two chunks in flight at the encode stage.
+   * @returns The answer.
+   */
+  const encoding = (): Record<string, unknown> => prepareAnswer({
+    units: { [`video-presentation:${JOB}:chunk:0`]: unit(subJob('chunk', 1, 0), 'open', 'pending'), [`video-presentation:${JOB}:chunk:1`]: unit(subJob('chunk', 1, 1), 'open', 'pending') },
+    preparation: { targetPolicyVersion: 1, jobId: JOB, stage: 'encode', failure: null },
+  });
 
   beforeEach(() => {
-    listProjectsReferencingAsset.mockReset().mockResolvedValue([P1, P2]);
+    listProjectsReferencingStorageKey.mockReset().mockResolvedValue([P1, P2]);
     publishVideoPresentationChanged.mockReset().mockResolvedValue(undefined);
   });
 
-  it('VP01 a pickup that ends the job tells each Project referencing the video, with its registered address', async () => {
+  it('VP01 a pickup that ends the job tells each Project referencing the video\'s storage key, with its registered address', async () => {
     answer = prepareAnswer({ capability: null, plan: null, work: { kind: 'none' } });
     expect(await pickup()).toBeUndefined();
-    expect(listProjectsReferencingAsset).toHaveBeenCalledWith(asset.id);
-    const url = `https://assets.example.test/${KEY}`;
-    expect(publishVideoPresentationChanged.mock.calls).toEqual([[P1, asset.id, url], [P2, asset.id, url]]);
+    expect(listProjectsReferencingStorageKey).toHaveBeenCalledWith(KEY);
+    expect(publishVideoPresentationChanged.mock.calls).toEqual([[P1, asset.id, URL], [P2, asset.id, URL]]);
+    expect(findById).toHaveBeenCalledTimes(1);
   });
 
-  it('VP02 a pickup that goes back to wait tells nobody', async () => {
+  it('VP02 a pickup that goes back to wait with nothing failed tells nobody', async () => {
     answer = prepareAnswer();
     expect(await pickup()).toBeInstanceOf(DelayedError);
     expect(publishVideoPresentationChanged).not.toHaveBeenCalled();
   });
 
-  it('VP03 a source row that is gone tells nobody', async () => {
+  it('VP03 a source row that is gone asks for no recipients and tells nobody', async () => {
     findById.mockResolvedValue(null);
     expect(await pickup()).toBeUndefined();
+    expect(listProjectsReferencingStorageKey).not.toHaveBeenCalled();
     expect(publishVideoPresentationChanged).not.toHaveBeenCalled();
   });
 
-  it('VP04 a message that cannot be sent is logged and does not fail the ended job', async () => {
+  it('VP04 a message that cannot be sent is logged, the other Projects are still told and the job still ends', async () => {
     answer = prepareAnswer({ capability: null, plan: null, work: { kind: 'none' } });
     publishVideoPresentationChanged.mockRejectedValueOnce(new Error('redis down'));
     expect(await pickup()).toBeUndefined();
     expect(publishVideoPresentationChanged).toHaveBeenCalledTimes(2);
     expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ ctx: expect.objectContaining({ projectId: P1 }) }), 'video_presentation_changed_publish_failed');
+  });
+
+  it('VP05 recipients that cannot be read are logged under their own name and the job still ends', async () => {
+    answer = prepareAnswer({ capability: null, plan: null, work: { kind: 'none' } });
+    listProjectsReferencingStorageKey.mockRejectedValueOnce(new Error('db down'));
+    expect(await pickup()).toBeUndefined();
+    expect(publishVideoPresentationChanged).not.toHaveBeenCalled();
+    expect(logger.error).toHaveBeenCalledWith(expect.anything(), 'video_presentation_changed_recipients_failed');
+  });
+
+  it('VP06 a pickup that reported a failed attempt tells the Projects at once, while the job still waits for its other chunk', async () => {
+    answer = encoding();
+    reports.set(subJob('chunk', 1, 0), finished(subJob('chunk', 1, 0), 'failed', { wallMs: 1000, cpuUsec: 2000 }));
+    reports.set(subJob('chunk', 1, 1), { schemaVersion: 2, state: 'running' });
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    expect(publishVideoPresentationChanged.mock.calls).toEqual([[P1, asset.id, URL], [P2, asset.id, URL]]);
+  });
+
+  it('VP07 a pickup that fails the job expired tells the Projects at once, while an attempt is still running', async () => {
+    D = Date.now() - 1;
+    answer = encoding();
+    reports.set(subJob('chunk', 1, 0), { schemaVersion: 2, state: 'running' });
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    expect(actions('fail')).toHaveLength(1);
+    expect(publishVideoPresentationChanged.mock.calls).toEqual([[P1, asset.id, URL], [P2, asset.id, URL]]);
+  });
+
+  it('VP08 a job the queue gave up on is told to the Projects once it is abandoned', async () => {
+    const queue = { getJob: vi.fn(async () => ({ id: JOB, data, finishedOn: Date.now() })), add: vi.fn(async () => undefined) };
+    await handler.settleExhaustedVideoPresentation(queue as never, JOB);
+    expect(actions('abandon')).toHaveLength(1);
+    expect(publishVideoPresentationChanged.mock.calls).toEqual([[P1, asset.id, URL], [P2, asset.id, URL]]);
   });
 });
