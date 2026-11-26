@@ -15,7 +15,7 @@
  */
 
 import { DelayedError, type Job, type Queue } from 'bullmq';
-import { defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, logger, publishVideoPresentationChanged } from '@breatic/core';
+import { defaultJobOpts, env, getMiniToolsConfig, getNodeTaskConfig, getRedis, getStorageAdapter, logger, publishVideoPresentationChanged } from '@breatic/core';
 import { assetRepo, containerCostUsd, createUsageRecorder, syncPresentationPins, type VideoPresentationJob } from '@breatic/domain';
 import {
   prepareVideoPresentationAtIngest, readMiniToolPlanJob, readMiniToolPlanJobById, stepVideoPresentationAtIngest, untilDeadline, videoPresentationAtIngest,
@@ -226,12 +226,11 @@ function doneFacts(unit: VideoPresentationChunkUnit, request: MiniToolPlanJobReq
  * @param pickup - The pickup.
  * @param unit - The unit.
  * @param state - The DO's unit state.
- * @returns Whether this pickup must come back for it, and whether it reported a failed attempt.
+ * @returns Whether this pickup must come back for it.
  * @throws {Error} When ingest, the job report or usage persistence fails.
  */
-async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, state: Unit): Promise<{ again: boolean; failed: boolean }> {
+async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, state: Unit): Promise<boolean> {
   let again = false;
-  let failed = false;
   for (const attempt of state.attempts) {
     const latestPending = attempt.state === 'pending' && attempt.attempt === state.attempt && state.state === 'open';
     if (!latestPending && attempt.usageRecorded) continue;
@@ -248,7 +247,6 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
         await reportUnit(pickup, unit, { kind: 'Done', attempt: attempt.attempt, usage: report.usage.wallMs, ...doneFacts(unit, request, report) });
       } else {
         await reportUnit(pickup, unit, { kind: 'Fail', attempt: attempt.attempt, code: report.reason, usage: report.usage?.wallMs ?? null });
-        failed = true;
       }
       again = true;
     } else {
@@ -262,7 +260,7 @@ async function settleUnit(pickup: Pickup, unit: VideoPresentationChunkUnit, stat
     await recordUsage(pickup.frozen, attempt.jobId, usage, pickup.frozen.pricing.standard4);
     await reportUnit(pickup, unit, { kind: 'Rec', attempt: attempt.attempt });
   }
-  return { again, failed };
+  return again;
 }
 
 /**
@@ -365,10 +363,10 @@ async function liveSource(data: VideoPresentationJob): Promise<StudioAssetEntity
  * cannot be sent is logged and the job goes on: a retry would settle it a second time.
  * @param row - The live source row.
  * @param data - The job identity, for the log.
- * @returns Nothing.
+ * @returns Whether every Project was told.
  * @throws {never} Every failure is logged.
  */
-async function announceChanged(row: StudioAssetEntity, data: VideoPresentationJob): Promise<void> {
+async function announceChanged(row: StudioAssetEntity, data: VideoPresentationJob): Promise<boolean> {
   let projectIds: string[];
   let url: string;
   try {
@@ -376,21 +374,60 @@ async function announceChanged(row: StudioAssetEntity, data: VideoPresentationJo
     url = (await getStorageAdapter()).publicUrl(row.storageKey);
   } catch (err) {
     logger.error({ err, ctx: data }, 'video_presentation_changed_recipients_failed');
-    return;
+    return false;
   }
+  let told = true;
   for (const projectId of projectIds) {
     try {
       await publishVideoPresentationChanged(projectId, row.id, url);
     } catch (err) {
       logger.error({ err, ctx: { ...data, projectId } }, 'video_presentation_changed_publish_failed');
+      told = false;
     }
+  }
+  return told;
+}
+
+/**
+ * The Redis key holding what readers of a stored video's presentation were last told it shows.
+ * @param storageKey - The video's storage key.
+ * @returns The key, with this deployment's prefix.
+ * @throws {never} Never.
+ */
+function announcedKey(storageKey: string): string {
+  return `${env.REDIS_KEY_PREFIX}:video-presentation:announced:${storageKey}`;
+}
+
+/**
+ * Tell the Projects showing the video when what a reader sees differs from what they were last told (frames-split §7.20).
+ * The selected version, the current job and its failure can be written by this worker, by ingest itself (the expiry on
+ * read) or by the server (a Retry or a read that admits a new job); comparing what the answer shows catches every writer.
+ * The view is recorded only once every Project was told, so a failed message is sent again by the next pickup.
+ * @param row - The live source row.
+ * @param data - The job identity, for the log.
+ * @param answer - This pickup's prepare answer.
+ * @returns Nothing.
+ * @throws {never} Every failure is logged.
+ */
+async function announceIfChanged(row: StudioAssetEntity, data: VideoPresentationJob, answer: VideoPresentationPrepareAnswer): Promise<void> {
+  const view = JSON.stringify([answer.presentation?.versionId ?? null, answer.preparation?.jobId ?? null, answer.preparation?.failure ?? null]);
+  const key = announcedKey(row.storageKey);
+  try {
+    if (await getRedis().get(key) === view) return;
+  } catch (err) {
+    logger.error({ err, ctx: data }, 'video_presentation_changed_state_failed');
+  }
+  if (!await announceChanged(row, data)) return;
+  try {
+    await getRedis().set(key, view, 'PX', getNodeTaskConfig().default_budget_ms);
+  } catch (err) {
+    logger.error({ err, ctx: data }, 'video_presentation_changed_state_failed');
   }
 }
 
 /**
- * One pickup of a staged presentation job. A pickup that wrote a change readers see (a reported failed attempt, the
- * expiry) and goes back to wait tells the Projects showing the video itself; a pickup that ends the job leaves that to
- * its caller.
+ * One pickup of a staged presentation job. A pickup that goes back to wait tells the Projects showing the video when
+ * what readers see changed since they were last told; a pickup that ends the job leaves the telling to its caller.
  * @param data - The queued job identity; the deadline comes from the DO.
  * @returns The live source row once the job is over, or null when its source is gone.
  * @throws {StillRunning} While work is in flight or usage is unmeasured.
@@ -410,9 +447,12 @@ export async function advanceVideoPresentation(data: VideoPresentationJob): Prom
    * @returns It.
    * @throws {never} Never.
    */
-  const resume = (): StillRunning => new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
+  const resume = async (): Promise<StillRunning> => {
+    await announceIfChanged(row, data, answer);
+    return new StillRunning(Date.now() + getMiniToolsConfig().poll_interval_ms);
+  };
   if (answer.capability === null) {
-    if (await settleEnded(identity, frozen, answer.units)) throw resume();
+    if (await settleEnded(identity, frozen, answer.units)) throw await resume();
     return row;
   }
   const capability = { ...identity, deadlineAt: answer.capability.deadlineAt, token: answer.capability.token };
@@ -424,29 +464,22 @@ export async function advanceVideoPresentation(data: VideoPresentationJob): Prom
   }
   const current = answer.preparation?.jobId === data.jobId;
   let ended = !current || answer.preparation?.failure !== null;
-  let changed = false;
   if (!ended && Date.now() >= capability.deadlineAt) {
     await videoPresentationAtIngest(env.INGEST_BASE_URL, env.INGEST_SHARED_SECRET, { action: 'fail', ...identity, deadlineAt: capability.deadlineAt, code: 'expired' });
     ended = true;
-    changed = true;
+  }
+  if (ended) {
+    if (await settleEnded(identity, frozen, answer.units)) throw await resume();
+    return row;
   }
   let again = false;
-  if (ended) {
-    again = await settleEnded(identity, frozen, answer.units);
-  } else {
-    for (const [key, state] of Object.entries(answer.units)) {
-      const unit = unitOf(data.jobId, key);
-      if (unit === null) continue;
-      const settled = await settleUnit(pickup, unit, state);
-      again ||= settled.again;
-      changed ||= settled.failed;
-    }
-    if (!again) again = await nextStep(pickup);
+  for (const [key, state] of Object.entries(answer.units)) {
+    const unit = unitOf(data.jobId, key);
+    if (unit !== null && await settleUnit(pickup, unit, state)) again = true;
   }
-  if (!again) return row;
-  // A failure is committed at ingest at once, while the job waits for its other attempts to end.
-  if (changed) await announceChanged(row, data);
-  throw resume();
+  if (!again) again = await nextStep(pickup);
+  if (again) throw await resume();
+  return row;
 }
 
 /**
