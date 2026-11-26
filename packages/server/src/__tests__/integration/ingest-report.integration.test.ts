@@ -3152,6 +3152,7 @@ describe("Project association and upload terminal arbitration", () => {
       expect(await uploadStatusService.statusOf(seed.userId, [key])).toEqual([{
         key, state: "completed", result: {
           assetId: canonical, fileUrl: expect.any(String), kind: "image", width: null, height: null,
+          coverUrl: null, durationSeconds: null, mimeType: "image/png", sizeBytes: 4096,
         },
       }]);
       expect(await eventsFor(canvasSpaceDocName(seed.projectId, seed.spaceId))).toEqual(before);

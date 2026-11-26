@@ -539,8 +539,10 @@ describe("POST /canvas/paste writes Project media relations (inner#2171 design Â
   it.each(["pair", "video alone"] as const)("relates a pasted video and not its cover (%s)", async (shape) => {
     const a = await seedEditor();
     const b = await seedEditor();
-    const cover = await asset(a.studioId, a.userId, { key: key("video", true), source: "cover" });
-    const vid = await asset(a.studioId, a.userId, { key: key("video"), kind: "video", coverAssetId: cover.id });
+    // A cover lives beside its video's key, as an upload files it, so a video named alone brings it too.
+    const videoKey = key("video");
+    const cover = await asset(a.studioId, a.userId, { key: videoKey.replace(/\.mp4$/, "_cover.png"), source: "cover" });
+    const vid = await asset(a.studioId, a.userId, { key: videoKey, kind: "video", coverAssetId: cover.id });
     const body = shape === "pair" ? { pairs: [{ url: vid.url, cover: cover.url }] } : { urls: [vid.url] };
     expect((await paste(b.cookie, b.projectId, body)).status).toBe(200);
     const rows = await ledger(b.studioId);
@@ -669,6 +671,7 @@ describe("POST /canvas/paste writes Project media relations (inner#2171 design Â
         expect(await relations(b.projectId)).toEqual(after);
         expect(await ledger(b.studioId)).toHaveLength(ledgerSize);
       },
-    ), { numRuns: 100 });
+    // Two pastes a run stay under the paste limit of config/rate-limits.yaml for one user; the inputs have 32 shapes.
+    ), { numRuns: 25 });
   });
 });

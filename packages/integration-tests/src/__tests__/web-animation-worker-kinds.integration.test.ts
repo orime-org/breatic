@@ -317,8 +317,23 @@ describe("an export's video joins every Project that holds the export (inner#217
 
   /** Grant the export to a Project, live or already withdrawn. */
   async function grantTo(fx: ExecutionFixture, projectId: string, withdrawn = false): Promise<void> {
+    // The execution's own creation time and origin, read in SQL so the microseconds stay.
     await sql`INSERT INTO timeline_execution_grants (execution_id, project_id, execution_created_at, execution_origin, deleted_at)
-      VALUES (${fx.execution.id}, ${projectId}, ${fx.execution.createdAt}::timestamptz, 'web_animation_space', ${withdrawn ? sql`now()` : null})`;
+      SELECT id, ${projectId}, created_at, origin, ${withdrawn ? sql`now()` : null} FROM timeline_executions WHERE id = ${fx.execution.id}`;
+  }
+
+  /**
+   * An export whose video is granted in its own Project, as acceptance issues it.
+   * @returns The export and the video's key.
+   */
+  async function ownExport(): Promise<{ fx: ExecutionFixture; videoKey: string }> {
+    const { fx } = await seedExport("running");
+    const grant = await uploadGrantService.issueUploadGrant({
+      projectId: fx.projectId, actingUserId: fx.userId, declaredSize: 1, taskType: "web_animation_export", ext: ".mp4",
+      expiresAt: new Date(Date.now() + 7_200_000), context: { assetSource: "ai", derived: true, generationTaskId: null },
+    });
+    await sql`UPDATE timeline_executions SET input = jsonb_set(input, '{videoKey}', ${sql.json(grant.key)}) WHERE id = ${fx.execution.id}`;
+    return { fx, videoKey: grant.key };
   }
 
   /** The Projects related to an asset. */
@@ -331,12 +346,15 @@ describe("an export's video joins every Project that holds the export (inner#217
   function doneRender(fx: ExecutionFixture, videoKey: string): void {
     const ingest = installFakeIngest(fx);
     ingest.read = () => json(renderReport("done", {
-      video: { storageKey: videoKey, sha256: randomUUID().replaceAll("-", "").padEnd(64, "0"), sizeBytes: 4_000_000, contentType: "video/mp4", width: 1080, height: 1920, durationSeconds: 6, cover: null },
+      video: {
+        storageKey: videoKey, sha256: SHA, sizeBytes: 4_000_000, contentType: "video/mp4", width: 1080, height: 1920, durationSeconds: 6,
+        cover: { storageKey: coverKeyFor(videoKey), sha256: COVER_SHA, sizeBytes: 90_000, contentType: "image/png", width: 1080, height: 1920 },
+      },
     }));
   }
 
   it("relates the video to the exporting Project and to a copy that holds a live grant, and not to others", async () => {
-    const { fx, videoKey } = await seedExport("running");
+    const { fx, videoKey } = await ownExport();
     const copy = await siblingProject(fx);
     const withdrawn = await siblingProject(fx);
     const unrelated = await siblingProject(fx);
