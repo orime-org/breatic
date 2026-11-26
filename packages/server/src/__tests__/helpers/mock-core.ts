@@ -636,7 +636,6 @@ export const domainMock = async () => ({
   uploadGrantRepo: mocks.uploadGrantRepo,
   assetRepo: {
     findByStudioAndHash: vi.fn().mockResolvedValue(null),
-    findCoverOf: vi.fn().mockResolvedValue(null),
     findCoverUrlOf: vi.fn().mockResolvedValue(null),
     setCoverAsset: vi.fn(),
     findLiveByStorageKey: vi.fn().mockResolvedValue(null),

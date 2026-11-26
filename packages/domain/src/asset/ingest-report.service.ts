@@ -608,8 +608,8 @@ export async function settleDedupedCover(
   filed: { id: string | null; url: string | null },
 ): Promise<{ url: string | null; failed: boolean }> {
   try {
-    const standing = await assetRepo.findCoverOf(video.id);
-    if (standing !== null) return { url: standing.fileUrl, failed: false };
+    const standing = await assetRepo.findCoverUrlOf(video);
+    if (standing !== null) return { url: standing, failed: false };
     if (filed.id === null) return { url: null, failed: false };
     await assetRepo.setCoverAsset(video.id, filed.id);
     return { url: filed.url, failed: false };

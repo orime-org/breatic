@@ -106,9 +106,9 @@ export async function pasteAssets(input: PasteInput): Promise<CanvasPasteAnswer>
       rowIds[pair.url] = hit.id;
     }
     if (cover === null) continue;
-    const standing = hit === null ? null : await assetRepo.findCoverOf(hit.id);
+    const standing = hit === null ? null : await assetRepo.findCoverUrlOf(hit);
     if (standing !== null) {
-      map[pair.cover] = standing.fileUrl;
+      map[pair.cover] = standing;
       continue;
     }
     const coverHit = await assetRepo.findByStudioAndHash(studioId, cover.contentHash);

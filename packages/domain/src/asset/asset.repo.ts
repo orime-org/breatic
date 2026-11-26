@@ -22,8 +22,6 @@ export const findLiveByStorageKey: typeof assetRepo.findLiveByStorageKey = asset
 export const registerWithDedup: typeof assetRepo.registerWithDedup = assetRepo.registerWithDedup;
 /** The shared repository implementation of setCoverAsset. */
 export const setCoverAsset: typeof assetRepo.setCoverAsset = assetRepo.setCoverAsset;
-/** The shared repository implementation of findCoverOf. */
-export const findCoverOf: typeof assetRepo.findCoverOf = assetRepo.findCoverOf;
 /** The shared repository implementation of findCoverUrlOf. */
 export const findCoverUrlOf: typeof assetRepo.findCoverUrlOf = assetRepo.findCoverUrlOf;
 /** The shared repository implementation of findByStorageKeys. */

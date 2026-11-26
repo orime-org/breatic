@@ -353,29 +353,6 @@ export async function setCoverAsset(
 }
 
 /**
- * The live cover a video points at, or null when it has none (#173).
- *
- * The dedup paths read a cover through this: they resolve to an existing video
- * row and hold nothing else that names its cover. A cover that has been
- * soft-deleted reads as absent rather than as a row nobody may serve.
- * @param videoAssetId - The video row to read the cover of.
- * @returns The cover's `StudioAssetEntity`, or null when there is none.
- * @throws {Error} When the database query fails.
- */
-export async function findCoverOf(
-  videoAssetId: string,
-): Promise<StudioAssetEntity | null> {
-  const cover = alias(studioAssets, "cover");
-  const rows = await db
-    .select({ cover })
-    .from(studioAssets)
-    .innerJoin(cover, eq(cover.id, studioAssets.coverAssetId))
-    .where(and(eq(studioAssets.id, videoAssetId), isNull(cover.deletedAt)))
-    .limit(1);
-  return rows[0] ? toEntity(rows[0].cover) : null;
-}
-
-/**
  * The address of a video's live cover in its own Studio, as every entry hands a video's media facts out; null for
  * anything that is not a video or has no such cover.
  * @param asset - The asset's id and kind.

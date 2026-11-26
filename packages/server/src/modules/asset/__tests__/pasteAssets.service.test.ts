@@ -7,7 +7,7 @@ const repo = vi.hoisted(() => ({
   findByStorageKeys: vi.fn(),
   findLiveByStorageKey: vi.fn(),
   findByStudioAndHash: vi.fn(),
-  findCoverOf: vi.fn(),
+  findCoverUrlOf: vi.fn(),
   registerWithDedup: vi.fn(),
 }));
 
@@ -57,7 +57,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   repo.findLiveByStorageKey.mockResolvedValue(null);
   repo.findByStudioAndHash.mockResolvedValue(null);
-  repo.findCoverOf.mockResolvedValue(null);
+  repo.findCoverUrlOf.mockResolvedValue(null);
   repo.registerWithDedup.mockImplementation(async (input: { storageKey: string; fileUrl: string }) => ({
     asset: { ...row(input.storageKey, "image"), id: `new-${input.storageKey}`, fileUrl: input.fileUrl },
   }));
@@ -91,5 +91,22 @@ describe("pasteAssets", () => {
       "https://cdn.test/v.mp4": "https://cdn.test/v.mp4",
       "https://cdn.test/v.mp4.cover.jpg": "https://cdn.test/v.mp4.cover.jpg",
     });
+  });
+
+  it("answers a video's cover with the live cover its copy in the target Studio already has", async () => {
+    const hit = { ...row("v.mp4", "video"), id: "hit-video", studioId: "studio-target" };
+    repo.findByStudioAndHash.mockImplementation(async (_studio: string, hash: string) => (hash === "hash-v.mp4" ? hit : null));
+    repo.findCoverUrlOf.mockResolvedValue("https://cdn.test/standing-cover.jpg");
+
+    const answer = await pasteAssets({
+      projectId: "project-1",
+      userId: "user-1",
+      urls: ["https://cdn.test/v.mp4"],
+      pairs: [],
+      history: [],
+    });
+
+    expect(repo.findCoverUrlOf).toHaveBeenCalledWith(hit);
+    expect(answer.map["https://cdn.test/v.mp4.cover.jpg"]).toBe("https://cdn.test/standing-cover.jpg");
   });
 });
