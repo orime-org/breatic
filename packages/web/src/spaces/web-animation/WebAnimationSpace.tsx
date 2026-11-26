@@ -34,7 +34,6 @@ import { placeVideoOnCanvas } from '@web/spaces/canvas/place-video-on-canvas';
 import { DocumentCommentWriteBox } from '@web/spaces/document/DocumentCommentWriteBox';
 import { asCommentBody } from '@web/spaces/document/document-comment-extension';
 import { SpaceFullError } from '@web/spaces/document/document-comment-thread-store';
-import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 import { useTimelineLimitsQuery } from '@web/spaces/timeline/use-timeline-limits';
 import { ANNOTATION_DRAFT_IDLE, transitionAnnotationDraft, type AnnotationDraftEvent, type FramePoint } from '@web/spaces/web-animation/annotation-draft';
 import { anchorOf, threadSummary } from '@web/spaces/web-animation/annotation-groups';
@@ -147,7 +146,7 @@ interface PlaceOnCanvasProps {
 function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.JSX.Element {
   const t = useTranslation();
   const userId = useCurrentUserStore((state) => state.user?.id ?? '');
-  const asset = useTimelineAsset(projectId, row.resultAssetId ?? '').data;
+  const asset = row.resultAsset ?? undefined;
   const controls = useSceneControls(projectId, userId);
   const [placing, setPlacing] = React.useState(false);
   // Read by a second choice while one placement waits and by the warning on leaving.
@@ -178,9 +177,9 @@ function PlaceOnCanvas({ projectId, row, canvases }: PlaceOnCanvasProps): React.
     void placeVideoOnCanvas({
       projectId, spaceId: canvas.id, userId, origin: canvasOrigin(userId, projectId, canvas.id), syncTimeoutMs: config.canvasSyncTimeoutMs,
       video: {
-        content: asset.fileUrl, coverUrl: asset.coverUrl ?? undefined, duration: asset.durationSeconds ?? rowSeconds(row),
+        content: asset.url, coverUrl: asset.coverUrl ?? undefined, duration: asset.durationSeconds ?? rowSeconds(row),
         mediaWidth: asset.width ?? row.input.width, mediaHeight: asset.height ?? row.input.height, mimeType: asset.mimeType, size: asset.sizeBytes,
-        sourceAnimation: { spaceId: row.spaceId, executionId: row.source.executionId, videoUrl: asset.fileUrl },
+        sourceAnimation: { spaceId: row.spaceId, executionId: row.source.executionId, videoUrl: asset.url },
       },
       // The button waits from the choice until collab confirms the node.
       onReceipt: () => settle(false),
@@ -567,11 +566,9 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
   const exportRow = row !== undefined && row.kind !== 'web_animation_export' ? row.export ?? null : null;
   const viewVideo = React.useCallback((): void => { if (exportRow !== null) locateShown(exportRow.executionId); }, [exportRow, locateShown]);
   const viewSource = React.useCallback((): void => { if (row?.kind === 'web_animation_export') locateShown(row.source.executionId); }, [row, locateShown]);
-  const exportAssetRead = useTimelineAsset(projectId, row?.kind === 'web_animation_export' ? row.resultAssetId ?? '' : '');
-  const exportAsset = exportAssetRead.data;
-  const { refetch: refetchExportAsset } = exportAssetRead;
-  const retryExportAsset = React.useCallback((): void => { void refetchExportAsset(); }, [refetchExportAsset]);
-  const download = React.useCallback((): void => { if (exportAsset !== undefined) downloadAsset(exportAsset.fileUrl); }, [exportAsset]);
+  // The row carries its video by address (inner#2171 design §4).
+  const exportAsset = row?.kind === 'web_animation_export' ? row.resultAsset : null;
+  const download = React.useCallback((): void => { if (exportAsset !== null) downloadAsset(exportAsset.url); }, [exportAsset]);
 
   // Annotations (design §10): one owner opens a thread from every entry and keeps the unsent replies.
   const openAnnotationPanel = React.useCallback((): void => dispatchPanels({ type: 'open_thread' }), []);
@@ -661,8 +658,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
         // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions -- a point on the frame is marked with the mouse only
         : <div data-testid='motion-preview' data-execution-id={row.id} className={cn('relative', annotation.status === 'picking' && 'cursor-crosshair')} style={frameStyle} onClick={clickFrame}>
           {playable(row) && <MotionResultPlayer projectId={projectId} executionId={row.id} sourceVersionId={row.resultSourceVersionId} input={row.input} frame={frame} />}
-          {row.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.fileUrl ?? null} assetFailed={exportAssetRead.isError}
-            assetRetrying={exportAssetRead.isFetching} onAssetRetry={retryExportAsset} time={clock.time} playing={clock.playing} />}
+          {row.kind === 'web_animation_export' && <ExportVideo key={row.id} url={exportAsset?.url ?? null} time={clock.time} playing={clock.playing} />}
           {row.kind === 'web_animation_export' && <span data-testid='motion-video-tag' className='pointer-events-none absolute left-2 top-2 rounded-chrome-sm bg-black/50 px-1.5 text-2xs text-white'>{t('spaces.webAnimation.videoTag')}</span>}
           {playable(row) && resultThreads.filter(({ anchor }) => anchor.point !== null && Math.abs(anchor.timeSeconds - clock.time) < PIN_WINDOW_SECONDS).map(({ thread, anchor }) =>
             <Button key={thread.id} type='button' variant={null} size={null} data-testid={`motion-pin-${thread.id}`} aria-label={t('spaces.webAnimation.annotations')}
@@ -722,7 +718,7 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
             : !readOnly && <BarButton testId='motion-action-export' label={t('spaces.webAnimation.export')} icon={EXPORT_ICON} onClick={exportVideo} loading={exporting} />}
         </>}
         {row.kind === 'web_animation_export' && <>
-          <BarButton testId='motion-action-download' label={t('spaces.webAnimation.download')} icon={DOWNLOAD_ICON} onClick={download} disabled={exportAsset === undefined} />
+          <BarButton testId='motion-action-download' label={t('spaces.webAnimation.download')} icon={DOWNLOAD_ICON} onClick={download} disabled={exportAsset === null} />
           {!readOnly && <PlaceOnCanvas projectId={projectId} row={row} canvases={canvases} />}
           <BarButton testId='motion-action-view-source' label={t('spaces.webAnimation.viewSource')} icon={SOURCE_ICON} onClick={viewSource}
             loading={readingId !== null && readingId === row.source.executionId} />
@@ -753,41 +749,34 @@ export function WebAnimationSpace({ projectId, spaceId, readOnly = true, myRole 
 
 /** An exported video, driven by the play bar. */
 interface ExportVideoProps {
+  /** The video's address from its row; null when its video is gone. */
   url: string | null;
-  /** Whether reading the video's asset failed, whether that read is being retried, and the retry. */
-  assetFailed: boolean;
-  assetRetrying: boolean;
-  onAssetRetry: () => void;
   time: number;
   playing: boolean;
 }
 
 /**
- * An exported video in the preview, kept on the play bar's time; its own controls are not drawn. A video whose asset
- * could not be read, or that failed to load, shows unavailable with a retry (design §7.3).
+ * An exported video in the preview, kept on the play bar's time; its own controls are not drawn. A row whose video is
+ * gone, or a video that failed to load, shows unavailable with a retry (design §7.3).
  * @param props - The video and the clock.
- * @param props.url - The video's address, once resolved.
- * @param props.assetFailed - Whether reading its asset failed.
- * @param props.assetRetrying - Whether that read is being retried.
- * @param props.onAssetRetry - Reads its asset again.
+ * @param props.url - The video's address, or null when its video is gone.
  * @param props.time - The play bar's time.
  * @param props.playing - Whether the play bar plays.
  * @returns The video.
  * @throws {never} Never.
  */
-function ExportVideo({ url, assetFailed, assetRetrying, onAssetRetry, time, playing }: ExportVideoProps): React.JSX.Element {
+function ExportVideo({ url, time, playing }: ExportVideoProps): React.JSX.Element {
   const video = React.useRef<HTMLVideoElement>(null);
   const [broken, setBroken] = React.useState(false);
   // A new element loads the video again.
   const [attempt, setAttempt] = React.useState(0);
   const markBroken = React.useCallback((): void => setBroken(true), []);
   const retry = React.useCallback((): void => {
-    if (assetFailed) onAssetRetry();
     setBroken(false);
     setAttempt((current) => current + 1);
-  }, [assetFailed, onAssetRetry]);
-  // Both run again when the element mounts: a press or a seek made while the address was read reaches it then. A hidden
-  // Space runs this cleanup and stops the play bar's clock, so the video stops with it.
+  }, []);
+  // Both run again when the element mounts. A hidden Space runs this cleanup and stops the play bar's clock, so the
+  // video stops with it.
   React.useEffect(() => {
     const element = video.current;
     if (element === null) return undefined;
@@ -799,7 +788,6 @@ function ExportVideo({ url, assetFailed, assetRetrying, onAssetRetry, time, play
     const element = video.current;
     if (element !== null && !playing && Math.abs(element.currentTime - time) > 0.05) element.currentTime = time;
   }, [time, playing, attempt, url]);
-  if (assetFailed || broken) return <div className='relative size-full overflow-hidden rounded-chrome'><PreviewUnavailable onRetry={retry} retrying={assetRetrying} /></div>;
-  return url === null ? <div className='size-full rounded-chrome bg-card' />
-    : <video key={attempt} ref={video} src={url} muted playsInline preload='auto' onError={markBroken} className='size-full rounded-chrome bg-black object-contain' />;
+  if (url === null || broken) return <div className='relative size-full overflow-hidden rounded-chrome'><PreviewUnavailable onRetry={retry} retrying={false} /></div>;
+  return <video key={attempt} ref={video} src={url} muted playsInline preload='auto' onError={markBroken} className='size-full rounded-chrome bg-black object-contain' />;
 }

@@ -52,7 +52,6 @@ import { useTimelineEditPrefs } from '@web/spaces/timeline/use-timeline-edit-pre
 import { useTimelinePlayback } from '@web/spaces/timeline/use-timeline-playback';
 import { usePublishTimelineView } from '@web/spaces/timeline/use-publish-timeline-view';
 import { userMovedScroll, type TrackScroll } from '@web/spaces/timeline/timeline-follow-scroll';
-import { useTimelineAsset, useTimelineAssets } from '@web/spaces/timeline/use-timeline-asset';
 import type { TimelineWebClipView } from '@web/spaces/timeline/TimelineTrackArea';
 import { TimelineWebAnimationPicker } from '@web/spaces/timeline/TimelineWebAnimationPicker';
 import type { PlayableRow } from '@web/spaces/web-animation/motion-parts';
@@ -71,10 +70,8 @@ interface TimelineEditorProps extends SpaceBodyProps { doc: Y.Doc; document: Tim
 
 /** One conflicting placement listed with its frames. */
 interface TimelineConflictRowProps {
-  projectId: string;
   clip: TimelineClip;
-  assetId: string;
-  /** A web copy's or upload placeholder's name; null names a video by its asset. */
+  /** The placement's name: a video's source name, a web copy's or an upload placeholder's; null when its source is gone. */
   name: string | null;
   track: string;
   reason: TimelineArrangementReason['code'] | null;
@@ -112,10 +109,8 @@ const ZOOM_STEP = 0.1;
 /**
  * List one conflicting placement; pressing it selects it and brings it into view.
  * @param props - The placement and its selection.
- * @param props.projectId - The Project authorizing its source.
  * @param props.clip - The placement.
- * @param props.assetId - Its registered asset.
- * @param props.name - A web copy's or upload placeholder's name, or null to use its video's name.
+ * @param props.name - Its name, or null when its video source is gone.
  * @param props.track - Its track's name.
  * @param props.reason - The first reason it conflicts.
  * @param props.selected - Whether it is selected.
@@ -123,10 +118,9 @@ const ZOOM_STEP = 0.1;
  * @returns The conflict row.
  * @throws {never} Never.
  */
-function TimelineConflictRow({ projectId, clip, assetId, name: label, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
+function TimelineConflictRow({ clip, name: label, track, reason, selected, onLocate }: TimelineConflictRowProps): React.JSX.Element {
   const t = useTranslation();
-  const asset = useTimelineAsset(projectId, assetId);
-  const name = label ?? (asset.data?.displayName || t('timeline.video'));
+  const name = label ?? t('timeline.mediaUnavailable');
   const locate = React.useCallback((): void => onLocate(clip.id), [onLocate, clip.id]);
   return <Button data-testid={`timeline-conflict-${clip.id}`} type='button' variant={null} size={null} aria-pressed={selected} onClick={locate}
     className={cn('flex w-full min-w-0 flex-col items-start gap-0.5 overflow-hidden rounded-chrome border border-status-error-border bg-status-error-bg px-2 py-1.5 text-left text-xs hover-enabled:border-status-error', selected && 'border-active-border')}>
@@ -248,7 +242,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const uploads = React.useMemo(() => getTimelineUploads(doc, name, {
     projectId, spaceId, onRegistered: () => { void queryClient.invalidateQueries({ queryKey: ['timeline-videos', projectId] }); },
   }), [doc, name, projectId, spaceId, queryClient]);
-  const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: editWithNotice, startUpload: uploads.start }), [doc, name, projectId, spaceId, queryClient, editWithNotice, uploads]);
+  const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, edit: editWithNotice, startUpload: uploads.start }), [doc, name, projectId, spaceId, editWithNotice, uploads]);
   const materialState = React.useSyncExternalStore(material.subscribe, material.getSnapshot);
   const [materialOpen, setMaterialOpen] = useExclusiveOverlay(`timeline-material:${projectId}:${spaceId}`);
   // Activity suspends effects while hidden; the material draft and the edit session read the current rendered role.
@@ -268,8 +262,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const reasons = React.useMemo(() => new Map(arrangement.conflicts.map((placement) => [placement.clipId, placement.reasons[0]?.code ?? null])), [arrangement.conflicts]);
   const selectedId = history.selectedClipId;
   const selected = selectedId === null ? undefined : document.clips[selectedId];
-  const selectedAssetId = selected === undefined ? '' : timelineClipSource(document.sources, selected)?.assetId ?? '';
-  const selectedResource = useTimelineAsset(projectId, selectedAssetId);
+  const selectedSource = selected === undefined ? undefined : timelineClipSource(document.sources, selected);
   const visible = React.useMemo(() => visibleTimelineClipsAt(document, readyIds, frame), [document, readyIds, frame]);
   // The preview frame is contained in the area measured around it, and its factor (display pixels per canvas pixel)
   // places every layer and handle (#1502 design §6.2).
@@ -393,15 +386,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const videoClips = React.useMemo(() => clips.flatMap((clip) => clip.kind === 'video' && readyIds.has(clip.id) && rank.has(clip.trackId)
     && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - premountFrames ? [clip] : [])
     .sort(timelineStackOrder(rank)), [clips, readyIds, rank, frame, premountFrames]);
-  const assetSignature = [...new Set(videoClips.flatMap((clip) => document.sources[clip.sourceId]?.assetId ?? []))].sort().join(' ');
-  const videoAssetIds = React.useMemo(() => (assetSignature === '' ? [] : assetSignature.split(' ')), [assetSignature]);
-  const assets = useTimelineAssets(projectId, videoAssetIds);
-  const assetOf = React.useCallback((clip: TimelineClip) => clip.kind === 'video' ? assets.get(document.sources[clip.sourceId]?.assetId ?? '') : undefined, [assets, document.sources]);
   const videoSpecs = videoClips.map((clip) => {
-    const asset = assetOf(clip);
-    // Cached data stays usable when a refetch fails; only a read that never returned data fails the layer (#1410 design §6.2).
-    const state = asset?.data !== undefined ? 'ready' as const : asset?.isError === true ? 'failed' as const : 'loading' as const;
-    return { clipId: clip.id, fileUrl: state === 'ready' ? asset?.data?.fileUrl ?? null : null, coverUrl: asset?.data?.coverUrl ?? null, state };
+    // The source carries the video's address (inner#2171 design §6.1); a clip whose source is gone has no layer to load.
+    const source = clip.kind === 'video' ? document.sources[clip.sourceId] : undefined;
+    return { clipId: clip.id, fileUrl: source?.url ?? null, coverUrl: source?.coverUrl ?? null, state: source === undefined ? 'failed' as const : 'ready' as const };
   });
   const videoSignature = JSON.stringify(videoSpecs);
   // The layer set keeps its identity while its content is unchanged, so playing on does not resync the elements.
@@ -421,8 +409,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
    */
   const baseOf = React.useCallback((clip: TimelineClip): TimelineLayerBox | null => {
     if (clip.kind === 'video') {
-      const data = assetOf(clip)?.data;
-      return timelineLayerBase(canvas, { width: data?.width ?? null, height: data?.height ?? null });
+      const source = document.sources[clip.sourceId];
+      return timelineLayerBase(canvas, { width: source?.width ?? null, height: source?.height ?? null });
     }
     if (clip.kind === 'web-animation') {
       const sourceId = sourceOf(clip);
@@ -430,7 +418,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
       return viewport === undefined ? null : timelineLayerBase(canvas, viewport);
     }
     return null;
-  }, [assetOf, canvas, sourceOf, web.sources]);
+  }, [document.sources, canvas, sourceOf, web.sources]);
   // The layers a click can pick and a selection can handle: visible ready videos and web copies with a source (#1410
   // design §4.2).
   // A video's asset state is read in this render; its element's error arrives through `videoStates`.
@@ -786,11 +774,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
     return [{ clipId: clip.id, z: index + 1, state, track }];
   });
   const retryVideoLayer = React.useCallback((clipId: string): void => {
-    // The asset is read again first: a file address that stopped loading may have expired (#1410 design §6.2).
-    const clip = document.clips[clipId];
-    if (clip !== undefined) void assetOf(clip)?.refetch();
     retryVideo(clipId);
-  }, [document.clips, assetOf, retryVideo]);
+  }, [retryVideo]);
 
   const openMaterial = React.useCallback((): void => {
     if (readOnly) return;
@@ -880,15 +865,15 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             {selected === undefined ? <p className='text-muted-foreground'>{t('timeline.selectClip')}</p>
               : <TimelineClipProperties key={selected.id} spaceId={spaceId} document={document} web={web} clip={selected} atFrame={selectedAtFrame} conflict={!readyIds.has(selected.id)} reason={reasons.get(selected.id) ?? null}
                 labels={labels} readOnly={readOnly} placement={placement} onCommit={commitCommand}
-                name={selected.kind === 'web-animation' ? t('timeline.webAnimation.copy') : selected.kind === 'upload' ? selected.upload.name : selectedResource.data?.displayName || t(selectedResource.isError ? 'timeline.mediaUnavailable' : 'timeline.video')}
+                name={selected.kind === 'web-animation' ? t('timeline.webAnimation.copy') : selected.kind === 'upload' ? selected.upload.name : selectedSource?.name ?? t('timeline.mediaUnavailable')}
                 webCopy={selectedWebCopy} upload={selectedUpload} />}
           </section>
           <section data-testid='timeline-conflicts' className={PANEL}>
             <h3 className='text-sm font-semibold'>{t('timeline.conflictList')}</h3>
             {hasConflicts ? <>
               <p className='text-muted-foreground'>{t('timeline.conflictHelp')}</p>
-              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} projectId={projectId} clip={clip} assetId={timelineClipSource(document.sources, clip)?.assetId ?? ''}
-                name={clip.kind === 'web-animation' ? webClips.get(clip.id)?.title || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : null} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
+              {clips.filter((clip) => !readyIds.has(clip.id)).map((clip) => <TimelineConflictRow key={clip.id} clip={clip}
+                name={clip.kind === 'web-animation' ? webClips.get(clip.id)?.title || t('timeline.webAnimation.copy') : clip.kind === 'upload' ? clip.upload.name : timelineClipSource(document.sources, clip)?.name ?? null} track={labels.nameOf(clip.trackId) ?? t('timeline.edit.trackRemoved')} reason={reasons.get(clip.id) ?? null} selected={selectedId === clip.id} onLocate={locateClip} />)}
               {damagedClipIds.map((clipId) => <TimelineDamagedRow key={clipId} clipId={clipId} readOnly={readOnly} onDelete={removeDamaged} />)}
             </> : <p className='text-muted-foreground'>{t('timeline.noConflicts')}</p>}
           </section>

@@ -35,11 +35,6 @@ export interface SceneRemotePeer {
 export type SceneModelState = 'loading' | 'ready' | 'failed';
 /** What a loaded model's skeleton allows: nothing, presets and joints, or joints only. */
 export type SceneSkeletonState = 'none' | 'humanoid' | 'other';
-export interface ResolvedSceneAsset {
-  url: string;
-  mimeType: string;
-  sizeBytes: number;
-}
 export interface SceneViewportProps {
   /** Optional DOM allocation; its native renderer belongs to this visible view. */
   overviewHost?: HTMLDivElement | null;
@@ -84,7 +79,6 @@ export interface SceneViewportProps {
   onUserCameraMove?: () => void;
   onError: (error: Error) => void;
   onModelStateChange?: (id: string, state: SceneModelState, error?: Error) => void;
-  resolveAsset: (assetId: string, signal: AbortSignal) => Promise<ResolvedSceneAsset>;
   /**
    * Told this view's model holder while it lives, and null before it releases
    * every hold, so a placement reuses the template the view will draw.

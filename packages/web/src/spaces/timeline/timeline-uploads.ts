@@ -11,14 +11,12 @@
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import type * as Y from 'yjs';
-import type { ProjectRegisteredAsset } from '@breatic/shared';
 
-import { timelineApi } from '@web/data/api/timeline';
-import { UploadFailedError, uploadMedia, type UploadFailureReason } from '@web/data/upload/media-upload';
+import { UploadFailedError, uploadMedia, type StoredUpload, type UploadFailureReason } from '@web/data/upload/media-upload';
 import { readDocFacts, readDocProvider, readWriteAccess, subscribeDocProvider, type WriteAccess } from '@web/data/yjs/collab-socket';
 import { createDocScopedCache } from '@web/data/yjs/doc-scoped-cache';
 import { subscribeDocSize } from '@web/data/yjs/doc-size';
-import { convertTimelineUpload, readTimelineDocument } from '@web/data/yjs/timeline-document';
+import { convertTimelineUpload, readTimelineDocument, type TimelineRegisteredVideo } from '@web/data/yjs/timeline-document';
 import { CLAIMS_FIELD, renewOnWorker, type UploadClaim } from '@web/lib/upload-claims';
 import { uploadRetryCanChange } from '@web/spaces/canvas/upload-failure';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
@@ -26,7 +24,7 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 /** Where an upload stands on this page; `progress` is the share sent, 0 to 1, or null before any is known. */
 export type TimelineUploadEntry =
   | { readonly phase: 'uploading'; readonly progress: number | null }
-  | { readonly phase: 'done'; readonly asset: ProjectRegisteredAsset }
+  | { readonly phase: 'done'; readonly video: TimelineRegisteredVideo }
   | { readonly phase: 'failed'; readonly reason: UploadFailureReason; readonly retryable: boolean };
 
 /** One open Timeline document's uploads. */
@@ -50,8 +48,8 @@ interface TimelineUploadsInputs {
   onRegistered?: () => void;
 }
 
-/** One upload's record; the file is let go once the upload has finished, and the asset id is kept once it registered. */
-interface UploadRecord { file: File | null; assetId: string | null; state: TimelineUploadEntry }
+/** One upload's record: the file is let go once the upload has finished; its name labels the clip. */
+interface UploadRecord { file: File | null; name: string; state: TimelineUploadEntry }
 
 /**
  * This page's write access to an open Timeline document; with no provider the document is taken as writable, as the
@@ -117,11 +115,11 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
     /**
      * The registered video of an upload this page finished.
      * @param uploadId - The upload.
-     * @returns The asset, or null while it is not finished.
+     * @returns The video, or null while it is not finished.
      */
-    const finished = (uploadId: string): ProjectRegisteredAsset | null => {
+    const finished = (uploadId: string): TimelineRegisteredVideo | null => {
       const state = records.get(uploadId)?.state;
-      return state?.phase === 'done' ? state.asset : null;
+      return state?.phase === 'done' ? state.video : null;
     };
     /**
      * The uploads whose placeholders are in the document now.
@@ -131,8 +129,8 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
       .flatMap((clip) => (clip.kind === 'upload' ? [clip.upload.uploadId] : [])));
     if (timelineUploadWriteAccess(name) === 'granted') {
       for (const uploadId of presentIds()) {
-        const asset = finished(uploadId);
-        if (asset !== null) convertTimelineUpload(doc, uploadId, asset);
+        const video = finished(uploadId);
+        if (video !== null) convertTimelineUpload(doc, uploadId, video);
       }
     }
     const present = presentIds();
@@ -177,7 +175,7 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
   };
 
   /**
-   * Upload a file, unless it already registered, and read back the registered video.
+   * Upload a file and take the registered video's address and media facts from the upload's own result (inner#2171).
    * @param record - The upload's record.
    * @param file - The file.
    */
@@ -185,27 +183,27 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
     record.state = { phase: 'uploading', progress: null };
     const { signal } = aborts;
     void (async (): Promise<void> => {
-      if (record.assetId === null) {
-        try {
-          record.assetId = (await uploadMedia(file, { projectId, spaceId }, (share) => {
-            if (disposed) return;
-            record.state = { phase: 'uploading', progress: share };
-            notify();
-          }, signal)).assetId;
-        } catch (err) {
-          const reason = err instanceof UploadFailedError ? err.reason : 'upload';
-          settle(record, { phase: 'failed', reason, retryable: uploadRetryCanChange(reason) });
-          return;
-        }
-      }
+      let stored: StoredUpload;
       try {
-        const asset = await timelineApi.resolveAsset(projectId, record.assetId, signal);
-        if (!disposed && asset.kind === 'video') onRegistered?.();
-        settle(record, asset.kind === 'video' ? { phase: 'done', asset } : { phase: 'failed', reason: 'unsupportedType', retryable: false });
-      } catch {
-        // The bytes are stored and registered, so a retry reads the registration again.
-        settle(record, { phase: 'failed', reason: 'upload', retryable: true });
+        stored = await uploadMedia(file, { projectId, spaceId }, (share) => {
+          if (disposed) return;
+          record.state = { phase: 'uploading', progress: share };
+          notify();
+        }, signal);
+      } catch (err) {
+        const reason = err instanceof UploadFailedError ? err.reason : 'upload';
+        settle(record, { phase: 'failed', reason, retryable: uploadRetryCanChange(reason) });
+        return;
       }
+      if (stored.kind !== 'video') {
+        settle(record, { phase: 'failed', reason: 'unsupportedType', retryable: false });
+        return;
+      }
+      if (!disposed) onRegistered?.();
+      settle(record, { phase: 'done', video: {
+        url: stored.fileUrl, coverUrl: stored.coverUrl, name: record.name, mimeType: stored.mimeType,
+        width: stored.width, height: stored.height, durationSeconds: stored.durationSeconds,
+      } });
     })();
   };
 
@@ -240,7 +238,7 @@ function createTimelineUploads(doc: Y.Doc, inputs: TimelineUploadsInputs & { nam
 
   return {
     start(uploadId, file) {
-      const record: UploadRecord = { file, assetId: null, state: { phase: 'uploading', progress: null } };
+      const record: UploadRecord = { file, name: file.name.slice(0, 255) || 'video', state: { phase: 'uploading', progress: null } };
       records.set(uploadId, record);
       run(record, file);
       queue();

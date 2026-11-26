@@ -22,7 +22,6 @@ import { useReturnFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
 import type { TimelineMediaDraft } from '@web/spaces/timeline/timeline-media-draft';
 import { useTimelineTrackLabels } from '@web/spaces/timeline/timeline-track-labels';
-import { useTimelineAsset } from '@web/spaces/timeline/use-timeline-asset';
 
 /** A visible view of the document-owned material workflow. */
 interface TimelineMaterialDialogProps {
@@ -97,8 +96,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const mainClips = React.useMemo(() => orderedTimelineClips(document.clips, TIMELINE_MAIN_TRACK_ID), [document.clips]);
   const showsHint = placement.magnet && state.trackId === TIMELINE_MAIN_TRACK_ID && Number.isSafeInteger(startFrame) && startFrame >= 0;
   const before = showsHint ? mainClips[timelineInsertionIndex(mainClips, startFrame) - 1] : undefined;
-  const beforeAssetId = before === undefined ? '' : timelineClipSource(document.sources, before)?.assetId ?? '';
-  const beforeAsset = useTimelineAsset(projectId, beforeAssetId);
+  const beforeName = before === undefined ? null : timelineClipSource(document.sources, before)?.name ?? null;
   const trackKnown = state.trackId === 'new' || document.tracks[state.trackId] !== undefined;
   return <Dialog open onOpenChange={changeOpen}>
     <DialogContent onCloseAutoFocus={returnFocus} className='flex h-[min(36rem,85vh)] flex-col gap-0 p-0'>
@@ -128,7 +126,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
               <SelectContent>{labels.visual.map((track) => <SelectItem key={track.id} value={track.id}>{track.label}</SelectItem>)}<SelectItem value='new'>{t('timeline.edit.newTrack')}</SelectItem></SelectContent>
             </Select></div>
           <div className='flex items-center gap-3'><Label htmlFor={`timeline-start-${spaceId}`} className='shrink-0'>{t('timeline.startFrame')}</Label><Input id={`timeline-start-${spaceId}`} data-testid='timeline-start-frame' type='text' inputMode='numeric' autoComplete='off' value={state.startFrame} onChange={changeFrame} disabled={state.busy} /></div>
-          {showsHint && <p data-testid='timeline-material-insert-hint' className='text-xs text-muted-foreground'>{before === undefined ? t('timeline.material.insertFirst') : t('timeline.material.insertAfter', { name: before.kind === 'upload' ? before.upload.name : beforeAsset.data?.displayName || t('timeline.video') })}</p>}
+          {showsHint && <p data-testid='timeline-material-insert-hint' className='text-xs text-muted-foreground'>{before === undefined ? t('timeline.material.insertFirst') : t('timeline.material.insertAfter', { name: before.kind === 'upload' ? before.upload.name : beforeName ?? t('timeline.video') })}</p>}
           {state.errorKey !== null && <p data-testid='timeline-material-error' className='text-sm text-status-error-foreground'>{t(`timeline.errors.${state.errorKey}`)}</p>}
           {!canWrite && <p className='text-sm text-muted-foreground'>{t('timeline.errors.readonly')}</p>}
         </div>

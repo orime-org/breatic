@@ -28,7 +28,7 @@ export interface LookUploadNotice {
 
 export interface SceneLookUploadDeps {
   /** Send the file through the common upload pipeline; the server and collab put it on the part (design 6.3). */
-  upload: (file: File, context: UploadContext, onProgress: (fraction: number) => void, signal: AbortSignal) => Promise<{ assetId: string }>;
+  upload: (file: File, context: UploadContext, onProgress: (fraction: number) => void, signal: AbortSignal) => Promise<{ fileUrl: string }>;
   notify: (notice: LookUploadNotice) => void;
   /** Hold a Space busy (closing its tab is held back). */
   register: (spaceId: string, operationId: string) => void;
@@ -38,7 +38,7 @@ export interface SceneLookUploadDeps {
   /** The local file's header size and type within `maxBytes`, or null when it cannot be read. */
   readLocalSize: (file: File, maxBytes: number) => Promise<LookPictureSize | null>;
   /** A used picture's header size in a Project within `maxBytes`, or null when it cannot be read. */
-  size: (projectId: string, assetId: string, maxBytes: number) => Promise<LookPictureSize | null>;
+  size: (projectId: string, url: string, maxBytes: number) => Promise<LookPictureSize | null>;
   /** The open editing session of a Space document, if any; never creates one. */
   session: (name: string) => SceneSession | undefined;
 }
@@ -285,7 +285,7 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
    */
   const overLimit = (input: SceneLookUploadStart, look: SceneLook, mapSize: LookPictureSize): ReturnType<typeof checkLookWrite> =>
     checkLookWrite({ ownBytes: input.ownBytes, clampBytes: input.clampBytes, limits: input.limits, look, part: input.part, map: 'local', mapSize,
-      size: (assetId) => deps.size(input.projectId, assetId, input.limits.maxPictureHeaderBytes) });
+      size: (url) => deps.size(input.projectId, url, input.limits.maxPictureHeaderBytes) });
 
   /**
    * Whether putting a picture on the part would give the object one part more than it can hold, judged by the same plan
@@ -340,7 +340,8 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
         changed();
       }, new AbortController().signal);
       deps.invalidateImages(input.projectId);
-      return stored.assetId;
+      // A part stores its picture's address, and collab settles by it (inner#2171 design §4).
+      return stored.fileUrl;
     } catch (error) {
       deps.notify(pictureUploadFailedNotice(error, input.file.name));
       return null;
@@ -438,7 +439,7 @@ export function pageSceneLookUploads(queryClient: QueryClient): SceneLookUploads
     unregister: (spaceId, operationId) => useSpaceOperationsStore.getState().unregister(spaceId, operationId),
     invalidateImages: (projectId) => { void queryClient.invalidateQueries({ queryKey: projectImagesQueryKey(projectId) }); },
     readLocalSize: (file, maxBytes) => readPictureSize(file.stream(), maxBytes),
-    size: (projectId, assetId, maxBytes) => pageLookPictureSizes(projectId).size(assetId, maxBytes),
+    size: (projectId, url, maxBytes) => pageLookPictureSizes(projectId).size(url, maxBytes),
     session: peekSceneSession,
   });
   return pageUploads;

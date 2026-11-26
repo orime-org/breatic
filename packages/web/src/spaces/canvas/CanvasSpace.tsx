@@ -128,7 +128,7 @@ import {
   nodeDataMap,
 } from '@web/data/yjs/canvas-space';
 import { frameProposal, occupiedRects } from '@web/spaces/canvas/lib/place-flow';
-import { docName, getDoc } from '@web/data/yjs/manager';
+import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import { handToAgent } from '@web/spaces/canvas/pick-for-agent';
 import { useConversationRuntime } from '@web/stores/conversation-runtime';
 import { useTranslation } from '@web/i18n/use-translation';
@@ -2732,51 +2732,75 @@ function CanvasSpaceInner({
     }
     const middle = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 };
     if (isProposalIntent(intent)) {
-      const center = screenToFlowPosition(middle);
-      try {
-        // Sized as `occupiedRects` describes, from the document and the
-        // canvas's measurements together.
-        const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
-          const measured = getInternalNode(id)?.measured;
-          return measured?.width && measured.height
-            ? { width: measured.width, height: measured.height }
-            : undefined;
-        });
-        // The card reports a refusal by the size cap itself, so no toast here.
-        const placed = placeProposalAt(intent.proposal, center, occupied, undefined, undefined, false);
-        if ('ok' in placed) {
-          reportProposalOutcome(placed);
-          consumePendingNodeCreate();
-          return;
-        }
-        const focus = whatToFocus(intent.proposal, placed);
-        // A Space opened empty and never framed still has its opening fit
-        // queued for the first nodes to arrive; the framing below is that one.
-        if (placed.bounds) clearOpeningFit();
-        if (focus.panel) {
-          // The panel that opens under one of them is framed with them once
-          // it has landed, in one move.
-          openGeneratePanel(focus.panel.nodeId, focus.panel.type);
-          showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS);
-        } else if (placed.bounds) {
-          // The camera follows what landed: centred on it, zoomed out only as
-          // far as it takes to show all of it (inner#1443 A4).
-          const zoom = rfStoreApi.getState().transform[2];
-          void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
-            duration: PROPOSAL_FRAME_MS,
-            // A straight slide, like the other framings: the default arc zooms
-            // out on the way and back in.
-            interpolate: 'linear',
+      /**
+       * Place a proposal whose material already has this Project's addresses.
+       * @param proposal - The proposal.
+       */
+      const place = (proposal: CanvasProposal): void => {
+        const center = screenToFlowPosition(middle);
+        try {
+          // Sized as `occupiedRects` describes, from the document and the
+          // canvas's measurements together.
+          const occupied = occupiedRects(readNodePlacements(projectId, spaceId), (id) => {
+            const measured = getInternalNode(id)?.measured;
+            return measured?.width && measured.height
+              ? { width: measured.width, height: measured.height }
+              : undefined;
           });
+          // The card reports a refusal by the size cap itself, so no toast here.
+          const placed = placeProposalAt(proposal, center, occupied, undefined, undefined, false);
+          if ('ok' in placed) {
+            reportProposalOutcome(placed);
+            return;
+          }
+          const focus = whatToFocus(proposal, placed);
+          // A Space opened empty and never framed still has its opening fit
+          // queued for the first nodes to arrive; the framing below is that one.
+          if (placed.bounds) clearOpeningFit();
+          if (focus.panel) {
+            // The panel that opens under one of them is framed with them once
+            // it has landed, in one move.
+            openGeneratePanel(focus.panel.nodeId, focus.panel.type);
+            showPlaced(placed, focus.panel.nodeId, PROPOSAL_FRAME_MS);
+          } else if (placed.bounds) {
+            // The camera follows what landed: centred on it, zoomed out only as
+            // far as it takes to show all of it (inner#1443 A4).
+            const zoom = rfStoreApi.getState().transform[2];
+            void setViewport(frameProposal(placed.bounds, { width: rect.width, height: rect.height }, zoom), {
+              duration: PROPOSAL_FRAME_MS,
+              // A straight slide, like the other framings: the default arc zooms
+              // out on the way and back in.
+              interpolate: 'linear',
+            });
+          }
+          if (focus.select.length > 0) setSelectAfterCreate(focus.select);
+          reportProposalOutcome('placed');
+        } catch {
+          // `placeProposalAt` takes back whatever it wrote before it threw, so
+          // nothing half-placed is left behind -- but the card is still waiting,
+          // and a button that stays disabled forever is worse than one that says
+          // it did not work.
+          reportProposalOutcome('failed');
         }
-        if (focus.select.length > 0) setSelectAfterCreate(focus.select);
-        reportProposalOutcome('placed');
-      } catch {
-        // `placeProposalAt` takes back whatever it wrote before it threw, so
-        // nothing half-placed is left behind -- but the card is still waiting,
-        // and a button that stays disabled forever is worse than one that says
-        // it did not work.
-        reportProposalOutcome('failed');
+      };
+      // The user's material joins this Project the way a paste does before the nodes are written (inner#2171 design
+      // §5.2); the write itself stays one synchronous batch, so it runs once the answer is in.
+      const materials = [...new Set(intent.proposal.nodes.flatMap((node) => (node.material === undefined ? [] : [node.material])))];
+      if (materials.length === 0) place(intent.proposal);
+      else {
+        const asked = intent.proposal;
+        const name = docName.canvasSpace(projectId, spaceId);
+        void canvasApi.paste({ project_id: projectId, urls: materials, pairs: [], history: [] }).then(({ map }) => {
+          // A Space closed meanwhile is not written, as a paste is not (`pastePayload`).
+          if (!hasDoc(name)) { reportProposalOutcome('failed'); return; }
+          place({ ...asked, nodes: asked.nodes.map((node) => {
+            const copy = node.material === undefined ? undefined : map[node.material];
+            return typeof copy === 'string' ? { ...node, material: copy } : node;
+          }) });
+        }, () => {
+          toast.error(t('canvas.paste.failed'));
+          reportProposalOutcome('failed');
+        });
       }
     } else {
       const offset = (staggerRef.current % STAGGER_WRAP) * STAGGER_STEP_PX;
@@ -2793,6 +2817,7 @@ function CanvasSpaceInner({
     placeProposalAt,
     reportProposalOutcome,
     openGeneratePanel,
+    t,
     projectId,
     spaceId,
     getInternalNode,

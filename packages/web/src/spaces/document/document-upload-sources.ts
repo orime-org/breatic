@@ -196,22 +196,29 @@ export function createUploadSources(deps: UploadSourceDeps): UploadControllerDep
       });
       return;
     }
+    // An address the answer leaves out keeps its own address, as a canvas paste keeps it (inner#2171 design §10).
     taken.forEach(({ source, resolve }) => {
       const copy = map[source.url];
-      resolve(typeof copy === 'string' ? done(copy) : fail('failed', true));
+      resolve(done(typeof copy === 'string' ? copy : source.url));
     });
   };
 
+  /**
+   * Registers one address of ours with the others of the same task in one paste request.
+   * @param source - The address.
+   * @returns How its block ends.
+   */
+  const registerOurs = (source: Extract<UploadSource, { kind: 'ours' }>): Promise<UploadOutcome> =>
+    new Promise<UploadOutcome>((resolve) => {
+      if (batch.length === 0) queueMicrotask(() => void flush());
+      batch.push({ source, resolve });
+    });
+
   return async (uploadId, source, onProgress) => {
     if (source.kind === 'file') return uploadFile(source.file, uploadId, onProgress);
-    if (source.kind === 'ours') {
-      return new Promise<UploadOutcome>((resolve) => {
-        if (batch.length === 0) queueMicrotask(() => void flush());
-        batch.push({ source, resolve });
-      });
-    }
+    if (source.kind === 'ours') return registerOurs(source);
     const prefix = await deps.assetUrlPrefix();
-    if (prefix !== null && source.url.startsWith(prefix)) return done(source.url);
+    if (prefix !== null && source.url.startsWith(prefix)) return registerOurs({ kind: 'ours', url: source.url });
     const route = routeAddress(source.url);
     if (route === 'fetch') return fetchAddress(source.url, uploadId);
     if (route === 'file') {

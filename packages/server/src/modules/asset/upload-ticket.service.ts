@@ -131,8 +131,8 @@ export type TicketOutcome =
       /** The media facts a Space stores beside the address, as a finished upload's result carries them (inner#2171). */
       coverUrl: string | null;
       durationSeconds: number | null;
-      mimeType: string | null;
-      sizeBytes: number | null;
+      mimeType: string;
+      sizeBytes: number;
     }
   | { kind: "refused"; reason: "too_large" | "storage" }
   | {

@@ -24,7 +24,7 @@ export interface LookTextureInput {
   /** Extra bytes per part when it keeps the model picture with its own tiling, which three uploads as a separate texture. */
   clampBytes: Readonly<Record<string, number>>;
   look: SceneLook;
-  /** Header sizes of the look pictures by asset id; null when the size could not be read. */
+  /** Header sizes of the look pictures by address; null when the size could not be read. */
   sizes: ReadonlyMap<string, { width: number; height: number } | null>;
   /** The configured limits, the edge already capped by this device's largest texture. */
   limits: LookTextureLimits;
@@ -51,7 +51,7 @@ export function fittedLookSize(size: LookPictureDimensions, maxEdge: number): Lo
 }
 
 /**
- * The asset ids a look shows as pictures: a part's map other than 'none'.
+ * The addresses a look shows as pictures: a part's map other than 'none'.
  * @param look - The look.
  * @returns Distinct picture ids.
  */
@@ -167,7 +167,7 @@ export interface LookWriteCheck extends Omit<LookTextureInput, 'sizes'> {
   /** Its size when already known (a local file), otherwise read through `size`. */
   mapSize?: { width: number; height: number } | null;
   /** A used picture's header size, or null when it cannot be read. */
-  size: (assetId: string) => Promise<{ width: number; height: number } | null>;
+  size: (url: string) => Promise<{ width: number; height: number } | null>;
 }
 
 /**

@@ -15,17 +15,6 @@ export function getSceneControls(projectId: string, signal?: AbortSignal): Promi
 }
 
 /**
- * Resolve an already registered GLB, model package or part picture using Project access and its Studio's asset ledger.
- * @param projectId - Project whose scene asset is being read.
- * @param assetId - Registered asset identity stored in the scene.
- * @param signal - Cancellation signal for this request.
- * @returns Registered asset URL, MIME type and registered size.
- */
-export function resolveSceneAsset(projectId: string, assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> {
-  return apiGet(`/projects/${projectId}/three-d/assets/${assetId}`, { signal });
-}
-
-/**
  * One row of a 3D Space's task list, as the server answers it: a model
  * import, or a 3D generation (`kind: 'generation'`), which carries what a
  * retry fills the dialog with. Only a generation row has the fields after
@@ -44,6 +33,8 @@ export interface SpaceTask {
   /** The running-task limit it waits under (inner#1968); null or absent when it does not wait. */
   slotWaitLimit?: number | null;
   assetId: string | null;
+  /** The model file "Place in scene" stores, by address, type and size; null while there is none to place (inner#2171). */
+  modelFile: { url: string; mimeType: 'model/gltf-binary' | 'application/zip'; sizeBytes: number } | null;
   /** Absent on rows from a server that knew only imports. */
   kind?: 'import' | 'generation';
   /** The `task-failure` code, or the upstream's own words for a failure it gave. */

@@ -52,8 +52,8 @@ export interface DedupHit {
    * gates Understand on both, so a node this hit puts content on needs them
    * for the same reason it needs the numbers above.
    */
-  mimeType: string | null;
-  sizeBytes: number | null;
+  mimeType: string;
+  sizeBytes: number;
 }
 
 /**
