@@ -295,7 +295,8 @@ export function createSceneLookUploads(deps: SceneLookUploadDeps): SceneLookUplo
    * @returns True when the write would be refused for the part limit.
    */
   const pastPartLimit = (session: SceneSession, input: SceneLookUploadStart): boolean => {
-    const plan = planSceneCommand(session.doc, session.name, { type: 'look', id: input.objectId, part: input.part, set: { map: crypto.randomUUID() } },
+    // Any valid picture address judges the part count; the part stores addresses (inner#2171 design §3.2).
+    const plan = planSceneCommand(session.doc, session.name, { type: 'look', id: input.objectId, part: input.part, set: { map: `https://part-limit.invalid/${crypto.randomUUID()}.png` } },
       session.getSnapshot().canEdit);
     return !plan.ok && plan.reason === 'lookPartLimit';
   };
