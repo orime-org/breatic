@@ -1374,7 +1374,8 @@ export function renderProductGuide(): string {
       "the selected object, and only then closes the panel. While a tool that draws on the picture itself is open " +
       "(a crop box, an expand frame, the grid's lines and tiles, markup or a drawing), and during a focus crop, the " +
       "arrow keys pressed on the node and Cmd or Ctrl with C, V or D do nothing, so the node stays put and the panel " +
-      "stays open; text being typed and the controls on the node, such as a player's seek bar, keep their own keys. " +
+      "stays open; text being typed keeps its own keys. A video's player bar is hidden while a crop box is on it, " +
+      "and on every video during a focus crop. " +
       "Pressing the arrow puts the result in new nodes to " +
       "the right of the source, joined to it by a line and named after it (such as CROP- followed by its name); " +
       `${quoted(t("canvas.miniTool.image.grid.label"))} cuts only the picked tiles and lays each out at the row and ` +
