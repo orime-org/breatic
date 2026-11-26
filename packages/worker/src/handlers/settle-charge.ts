@@ -34,9 +34,6 @@ export async function settleChargeLogged(requestId: string, context: SettleLogCo
         "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
       );
     }
-    if (outcome.signalFailure) {
-      logger.error({ ...context, err: outcome.signalFailure, requestId }, "credits_signal_failed");
-    }
   } catch (err) {
     logger.error({ ...context, err, requestId }, "credit_charge_settle_failed");
   }

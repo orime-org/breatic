@@ -46,9 +46,6 @@ export const miniToolsConfigSchema = z
     // these: the length bounds what the tab holds, the size what it downloads.
     waveform_max_seconds: z.number().positive().default(600),
     waveform_max_bytes: z.number().int().positive().default(200_000_000),
-    // How often, and for how long, a band past those reads peaks not yet written.
-    waveform_peaks_retry_ms: z.number().int().positive().default(5000),
-    waveform_peaks_retry_max_ms: z.number().int().positive().default(600_000),
     // The most clips one join takes, source included (inner#1825 §6.3); the
     // job contract carries the source plus MINI_TOOL_JOB_MAX_EXTRA_INPUTS.
     join_max_clips: z

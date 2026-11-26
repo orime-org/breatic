@@ -166,7 +166,6 @@ beforeEach(() => {
     clientMaxAttempts: 1,
     clientRetryBaseDelayMs: 1,
     uploadIdleTimeoutMs: 60000,
-    uploadStatusPollSeconds: 2,
     assetUrlPrefix: 'https://cdn/',
   });
   // What the board shows; a case refreshes it from the real document with

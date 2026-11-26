@@ -21,8 +21,8 @@ import { ExecutionError, Redlock, type ExecutionStats } from "@sesamecare-oss/re
 import { createRedisClient, db, initCore, schema, type Redis } from "@breatic/core";
 import { eq } from "drizzle-orm";
 import {
-  CANVAS_NODES_KEY, documentBodyFragment, documentSpaceDocName, SCENE_FORMAT_VERSION, SPACE_TASKS_KEY, SPACE_TASKS_VERSION,
-  threeDSpaceDocName, timelineSpaceDocName, webAnimationSpaceDocName,
+  CANVAS_NODES_KEY, documentBodyFragment, documentSpaceDocName, FOCUS_IMAGE_UPLOAD_EVENT_TYPE, MAX_FOCUS_ENTRIES, SCENE_FORMAT_VERSION,
+  SPACE_TASKS_KEY, SPACE_TASKS_VERSION, threeDSpaceDocName, timelineSpaceDocName, webAnimationSpaceDocName,
   type DocumentUploadEvent, type NodeTaskCountsEvent, type SceneLookPictureEvent, type SceneLookSettledControlEvent,
 } from "@breatic/shared";
 import { bodyToPlainText } from "@breatic/shared/canvas/text-body";
@@ -1119,3 +1119,294 @@ function encodeVector(vector: Map<number, number>): Uint8Array {
   }
   return encoding.toUint8Array(encoder);
 }
+
+
+// #1580 test spec D-20 to D-30: collab adds an uploaded focus crop to its
+// node's pool; a node the document no longer holds is left alone, as a canvas
+// upload's node is (node-task-counts.ts).
+describe("focus crop events", () => {
+  /** One focus image as the event carries it. */
+  function image(over: Record<string, unknown> = {}): Record<string, unknown> {
+    return { id: randomUUID(), url: `https://cdn.test.invalid/${randomUUID()}.png`, name: "Source", width: 640, height: 480, ...over };
+  }
+
+  /** Append focus-image events for `c`'s document. */
+  async function publishFocus(
+    c: Case,
+    events: Array<{ nodeId: string; image?: Record<string, unknown>; docName?: string; state?: "uploading" | "completed" | "failed"; id?: string }>,
+    extra: string[] = [],
+  ): Promise<string[]> {
+    const ids: string[] = [];
+    for (const e of events) {
+      const state = e.state ?? "completed";
+      const step = state === "failed" ? { state, id: e.id } : state === "uploading" ? { state, openedAt: Date.now(), image: e.image } : { state, image: e.image };
+      const payload = JSON.stringify({ type: FOCUS_IMAGE_UPLOAD_EVENT_TYPE, docName: e.docName ?? c.docName, nodeId: e.nodeId, ...step });
+      ids.push((await stream.xadd(c.streamKey, "*", ...extra, "payload", payload))!);
+    }
+    return ids;
+  }
+
+  /** The crop `img` as its uploading step carries it, two hours from now. */
+  function uploadOf(img: Record<string, unknown>): Record<string, unknown> {
+    const { url: _url, ...crop } = img;
+    return { ...crop, deadlineAt: Date.now() + 7_200_000 };
+  }
+
+  /** The node's focus pool as stored, or undefined when the node or pool is absent. */
+  async function poolOf(c: Case, nodeId: string): Promise<{ isArray: boolean; items: unknown[] } | undefined> {
+    const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+    try {
+      const node = conn.document!.getMap(CANVAS_NODES_KEY).get(nodeId);
+      if (!(node instanceof Y.Map)) return undefined;
+      const data = node.get("data");
+      if (!(data instanceof Y.Map)) return undefined;
+      const raw = data.get("focusImages");
+      if (raw instanceof Y.Array) return { isArray: true, items: raw.toArray() };
+      if (Array.isArray(raw)) return { isArray: false, items: raw };
+      return undefined;
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
+  /** The node's uploading crops as stored, or undefined when the node or list is absent. */
+  async function uploadsOf(c: Case, nodeId: string): Promise<unknown[] | undefined> {
+    const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+    try {
+      const node = conn.document!.getMap(CANVAS_NODES_KEY).get(nodeId);
+      const data = node instanceof Y.Map ? node.get("data") : undefined;
+      const raw = data instanceof Y.Map ? data.get("focusUploads") : undefined;
+      return raw instanceof Y.Array ? raw.toArray() : undefined;
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
+  it("shows a crop as uploading in its node until it ends well, then moves it into the pool", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const img = image();
+    const upload = uploadOf(img);
+    const first = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, first));
+    expect(await uploadsOf(c, nodeId)).toEqual([upload]);
+    expect(await poolOf(c, nodeId)).toBeUndefined();
+    const second = await publishFocus(c, [{ nodeId, image: img }]);
+    await until(() => handled(c.streamKey, second));
+    expect(await uploadsOf(c, nodeId)).toEqual([]);
+    expect(await poolOf(c, nodeId)).toEqual({ isArray: true, items: [img] });
+  });
+
+  it("takes away a crop whose upload failed and leaves the pool as it was", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const kept = image();
+    await seedPool(c, nodeId, [kept]);
+    const img = image();
+    const upload = uploadOf(img);
+    const ids = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }, { nodeId, state: "failed", id: img.id as string }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await uploadsOf(c, nodeId)).toEqual([]);
+    expect(await poolOf(c, nodeId)).toEqual({ isArray: true, items: [kept] });
+  });
+
+  it("never shows again a crop whose uploading step is replayed after its upload ended", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const img = image();
+    const upload = uploadOf(img);
+    const [openedId, endedId] = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }, { nodeId, state: "failed", id: img.id as string }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, [openedId!, endedId!]));
+    const replayed = await publishFocus(c, [{ nodeId, image: upload, state: "uploading" }], ["originId", openedId!]);
+    await until(() => handled(c.streamKey, replayed));
+    expect(await uploadsOf(c, nodeId)).toEqual([]);
+  });
+
+  /** Set the node's pool before the listener starts. */
+  async function seedPool(c: Case, nodeId: string, items: unknown[], plain = false): Promise<void> {
+    const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+    try {
+      await conn.transact((doc) => {
+        const data = (doc.getMap(CANVAS_NODES_KEY).get(nodeId) as Y.Map<unknown>).get("data") as Y.Map<unknown>;
+        if (plain) data.set("focusImages", items);
+        else {
+          const arr = new Y.Array<unknown>();
+          arr.push(items);
+          data.set("focusImages", arr);
+        }
+      });
+    } finally {
+      await conn.disconnect();
+    }
+  }
+
+  it("D-20 and D-27 add the crop to a node with no pool yet", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const img = image();
+    const ids = await publishFocus(c, [{ nodeId, image: img }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await poolOf(c, nodeId)).toEqual({ isArray: true, items: [img] });
+  });
+
+  it("D-21 leaves a document whose node is gone alone, and acknowledges the event", async () => {
+    const c = await newCase({ [randomUUID()]: "image" });
+    const ids = await publishFocus(c, [{ nodeId: randomUUID(), image: image() }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await pending(c)).toBe(0);
+  });
+
+  it("D-19 adds a replayed crop once", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const img = image();
+    const ids = await publishFocus(c, [{ nodeId, image: img }, { nodeId, image: img }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect((await poolOf(c, nodeId))?.items).toEqual([img]);
+  });
+
+  it("D-22 leaves a node whose data is not a map alone", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const conn = await instanceA.openDirectConnection(c.docName, { context: { user: { id: "test" } } });
+    try {
+      await conn.transact((doc) => (doc.getMap(CANVAS_NODES_KEY).get(nodeId) as Y.Map<unknown>).set("data", "not a map"));
+    } finally {
+      await conn.disconnect();
+    }
+    const ids = await publishFocus(c, [{ nodeId, image: image() }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await poolOf(c, nodeId)).toBeUndefined();
+    expect(await pending(c)).toBe(0);
+  });
+
+  it("D-23 adds nothing for an id already in the pool", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const img = image();
+    await seedPool(c, nodeId, [img]);
+    const ids = await publishFocus(c, [{ nodeId, image: img }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect((await poolOf(c, nodeId))?.items).toEqual([img]);
+  });
+
+  it("D-24 adds nothing to a full pool", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const full = Array.from({ length: MAX_FOCUS_ENTRIES }, () => image());
+    await seedPool(c, nodeId, full);
+    const ids = await publishFocus(c, [{ nodeId, image: image() }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect((await poolOf(c, nodeId))?.items).toHaveLength(MAX_FOCUS_ENTRIES);
+  });
+
+  it.each([
+    ["a zero width", { width: 0 }],
+    ["an over-long address", { url: `https://cdn.test.invalid/${"x".repeat(2100)}` }],
+  ])("D-25 adds nothing for an image with %s", async (_label, over) => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const ids = await publishFocus(c, [{ nodeId, image: image(over) }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await poolOf(c, nodeId)).toBeUndefined();
+  });
+
+  it("D-26 turns an old plain-array pool into a Y.Array holding the old entries and the new one", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const old = image();
+    await seedPool(c, nodeId, [old], true);
+    const img = image();
+    const ids = await publishFocus(c, [{ nodeId, image: img }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await poolOf(c, nodeId)).toEqual({ isArray: true, items: [old, img] });
+  });
+
+  it("D-28 adds nothing to a canvas whose document was deleted, and acknowledges the event", async () => {
+    // The ticket does not check the Space exists; a live document is what the crop may land in.
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    await untilUnloaded(c.docName);
+    expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
+    const ids = await publishFocus(c, [{ nodeId, image: image() }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await yjsRepo.restoreByName(c.docName)).toBe(true);
+    expect(await poolOf(c, nodeId)).toBeUndefined();
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("D-29 skips a focus event addressed to a document that is not a canvas", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const ids = await publishFocus(c, [{ nodeId, image: image(), docName: `project-${PID}/document-${randomUUID()}` }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await poolOf(c, nodeId)).toBeUndefined();
+  });
+
+  it("D-30 adds two crops for one node in stream order", async () => {
+    const nodeId = randomUUID();
+    const c = await newCase({ [nodeId]: "image" });
+    const [first, second] = [image(), image()];
+    const ids = await publishFocus(c, [{ nodeId, image: first }, { nodeId, image: second }]);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect((await poolOf(c, nodeId))?.items).toEqual([first, second]);
+  });
+});
+
+describe("3D Space task versions (#1580)", () => {
+  /**
+   * A fresh stream, key prefix and empty 3D document.
+   * @returns The case's names.
+   */
+  async function newThreeDCase(): Promise<Case> {
+    const c = bareCase(threeDSpaceDocName(PID, randomUUID()));
+    await yjsRepo.seedInitialState(c.docName, Y.encodeStateAsUpdate(new Y.Doc()));
+    return c;
+  }
+
+  it("F-02 writes the stream id of a 3D Space's latest change into its document", async () => {
+    const c = await newThreeDCase();
+    const ids = await publishSpaceTasksVersion(c, 3);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    expect(await readSpaceTasksVersion(c.docName)).toBe(ids[2]);
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+
+  it("F-03 keeps a 3D Space's newer version when an older change is replayed from the dead-letter stream", async () => {
+    const c = await newThreeDCase();
+    const [olderId, newerId] = await publishSpaceTasksVersion(c, 2);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, [olderId!, newerId!]));
+    const replayed = await publishSpaceTasksVersion(c, 1, ["originId", olderId!]);
+    await until(() => handled(c.streamKey, replayed));
+    expect(await readSpaceTasksVersion(c.docName)).toBe(newerId);
+  });
+
+  it("F-04 leaves a deleted 3D Space's stored content as it was", async () => {
+    const c = bareCase(threeDSpaceDocName(PID, randomUUID()));
+    await seedNote(c.docName, "lamp");
+    expect(await yjsRepo.softDeleteByName(c.docName)).toBe(true);
+    const ids = await publishSpaceTasksVersion(c);
+    listen(c, instanceA, "a");
+    await until(() => handled(c.streamKey, ids));
+    await untilUnloaded(c.docName);
+    expect(await readRestored(c.docName)).toEqual({ note: "lamp", version: undefined });
+    expect(await stream.xlen(`${c.streamKey}:dead`)).toBe(0);
+  });
+});

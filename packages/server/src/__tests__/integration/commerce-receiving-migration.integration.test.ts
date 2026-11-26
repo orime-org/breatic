@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * 0131 adds what the product needs to receive from the billing service
+ * 0134 adds what the product needs to receive from the billing service
  * (inner#1993 §4.2, §4.6): `payment_receipts`, `commerce_requests` and the
  * `commerce_outbox` pair. It only adds; the backfill gives every completed
  * payment its receipt, copied from the payment row, and nothing else.
@@ -30,7 +30,7 @@ class Rollback extends Error {}
 type Tx = postgres.TransactionSql;
 
 /**
- * Replay 0131 against payments seeded inside a transaction that always rolls back.
+ * Replay 0134 against payments seeded inside a transaction that always rolls back.
  * @param body - Seeds, applies and asserts.
  */
 async function replay(body: (tx: Tx) => Promise<void>): Promise<void> {
@@ -49,7 +49,7 @@ async function replay(body: (tx: Tx) => Promise<void>): Promise<void> {
 }
 
 /**
- * Run every statement of 0131.
+ * Run every statement of 0134.
  * @param tx - The replay transaction.
  */
 async function apply(tx: Tx): Promise<void> {

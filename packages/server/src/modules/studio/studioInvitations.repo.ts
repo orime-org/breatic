@@ -29,7 +29,7 @@ import { db, studioInvitations, studios, users } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 import type { PendingInvitationSummary, StudioRole } from "@breatic/shared";
 import type { RecipientInvitation, EmailInvitationCandidate } from "@server/modules/invitation/invitation.types.js";
-import { mintShareToken } from "@server/utils/share-token.js";
+import { mintShareToken } from "@breatic/domain";
 
 /** Roles an invite may grant — admin is granted via transfer, never invite. */
 type InvitableRole = "maintainer" | "guest";

@@ -13,6 +13,8 @@
  * with, which only the browser asks for.
  */
 
+import type { FocusImageTicket } from '@breatic/shared';
+
 
 /**
  * What the ticket endpoint hands back when bytes have to move: an upload our
@@ -72,6 +74,8 @@ export type UploadContext = UploadTargetParams & {
   toolName?: string;
   /** True for a byproduct, registered without an activity-feed row of its own. */
   derived?: true;
+  /** For a focus crop, the image it becomes in the pool of the node it names on `spaceId`; collab adds it once registered (#1580). */
+  focusImage?: FocusImageTicket;
   /** The name a 3D model is imported under; required with `scene_model`. */
   label?: string;
   /** The 3D object, part and the part's starting picture (null for none); required with `scene_look` (inner#1693). */

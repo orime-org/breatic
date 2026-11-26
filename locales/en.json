@@ -766,7 +766,6 @@
       "pickEnded": "Selection ended.",
       "pickEndedByPeer": "Ended by a collaborator.",
       "focusSourceBusyByPeer": "A collaborator is processing the source.",
-      "focusCropDiscarded": "The node was deleted — the focus crop was discarded.",
       "duration": "Duration",
       "durationSeconds": "{n}s",
       "generateAudio": "Generate audio",
@@ -1480,8 +1479,10 @@
       "goal": {
         "character": "Character design & consistency",
         "comics-storyboards": "Comics & storyboards",
+        "drama": "Short dramas & story scenes",
         "fight": "Fights & action",
         "animation": "Animated shorts",
+        "music-video": "Music videos",
         "ecommerce": "E-commerce ads",
         "product-showcase": "Product showcase",
         "promo": "Promo films & brand stories",
@@ -1589,6 +1590,108 @@
           }
         }
       },
+      "scene-plate": {
+        "name": "Scene plate",
+        "description": "An empty set to stage your scenes in",
+        "prompt": "A 16:9 widescreen establishing picture of an empty set for a drama, no people in it: {✏️ the place, e.g. a cramped hospital break room at night}. It shows clearly where people would stand and move: the floor, the walls and the key furniture and props, {✏️ the key props, e.g. a vending machine, a worn sofa and a window onto the corridor}. One light source: {✏️ the light, e.g. a single flickering fluorescent tube above the sofa}, with where its light falls and where the shadows lie. Shot at eye level with a wide lens, everything in focus from front to back. Lived-in, realistic detail, like a still from a film. No people, no text."
+      },
+      "drama-single-scene": {
+        "name": "Two-person drama scene",
+        "description": "Two characters play one scene with lines",
+        "prompt": "(💡 Generate Set first)A 15-second widescreen drama scene with sound in one continuous shot, with exactly two people: the first is the person in [📎 Character A], the second is the person in [📎 Character B]. Take from each picture only that person: face, hair, build and clothes. They are in the place shown in [📎 Set]: take from it only the room, its furniture and its light, and do not open on it as a first frame. Situation: {✏️ who they are to each other and what is at stake, e.g. two sisters; the elder has hidden their mother's illness}. The first frame already shows both in place: {✏️ where each one stands, e.g. the elder sister at the window, the younger in the doorway}. 0–4 s: {✏️ the first beat, e.g. the younger sister holds up a hospital letter}. 4–9 s: {✏️ the second beat, e.g. the elder sister turns, sees it and freezes}. 9–15 s: {✏️ the last beat, e.g. the elder sister answers, then looks away}. They speak {✏️ the language, e.g. English}, every line eight words or fewer: {✏️ the lines, e.g. the younger: \"How long have you known?\" The elder: \"Since spring.\"}. Each reaction follows from what the other just did: a look, a pause, then the move. The camera: medium shots, slowly pushing in on whoever speaks. One light source: {✏️ the light, e.g. grey daylight from the window}. Sound: the quiet of the room, their voices, cloth and breath. No music, no text on screen.",
+        "node": {
+          "scene": {
+            "name": "Set",
+            "prompt": "A 16:9 widescreen picture of the empty set this scene is played in, no people in it: {✏️ the place, e.g. a small kitchen at dusk}. It shows clearly where the two would stand and move: the floor, the walls and the key furniture and props, {✏️ the key props, e.g. a table with two chairs and a window over the sink}. One light source: {✏️ the light, e.g. grey daylight from the window}, with where its light falls and where the shadows lie. Shot at eye level with a wide lens, everything in focus from front to back. Lived-in, realistic detail, like a still from a film. No people, no text."
+          }
+        },
+        "input": {
+          "character-a": {
+            "name": "Character A",
+            "note": "Add a picture of the first character first."
+          },
+          "character-b": {
+            "name": "Character B",
+            "note": "Add a picture of the second character first."
+          }
+        }
+      },
+      "short-drama-reversal": {
+        "name": "Short drama twist",
+        "description": "A hook, rising tension, one reversal",
+        "prompt": "A 15-second vertical short-drama opening with sound in one continuous shot, between two people: the first is the person in [📎 Character A], the second is the person in [📎 Character B]; take from each picture only that person's face, hair, build and clothes. Place: {✏️ the place, e.g. a luxury car showroom}. 0–2 s: the premise is clear at once: {✏️ the setup, e.g. a salesman sneers at a plainly dressed woman}. 2–6 s: it gets worse, in at most three steps: {✏️ the escalation, e.g. he blocks her way, mocks her shoes, then calls security}. 6–10 s: the tension shows on both faces just before the turn: {✏️ the sign before the turn, e.g. she calmly takes out her phone and makes one call}. 10–13 s: one reversal: {✏️ the reversal, e.g. the manager rushes in and bows to her: she owns the company}. 13–15 s: the camera holds on the face of the one who lost, {✏️ the reaction, e.g. the salesman's smile freezes and drains away}, and the clip ends one beat later. Faces large in frame, the camera pushing in at each turn. One light source: {✏️ the light, e.g. bright showroom spotlights}. Sound: their voices, a sharp musical sting on the reversal. No text on screen.",
+        "input": {
+          "character-a": {
+            "name": "Character A",
+            "note": "Add a picture of the first character first."
+          },
+          "character-b": {
+            "name": "Character B",
+            "note": "Add a picture of the second character first."
+          }
+        }
+      },
+      "emotional-dialogue-timeline": {
+        "name": "Emotional close-up",
+        "description": "One spoken line played as a close-up",
+        "prompt": "(💡 Generate Line first)A 10-second vertical close-up performance in one shot. The person is the one in [📎 Character]: face, hair and clothes exactly as in the picture. They say the words of [📎 Line], lips matching every word; that recording is the only voice. Situation: {✏️ what has just happened, e.g. she has just learned he is leaving for good}. The performance is a chain of reactions: the news lands and the eyes hold still; a pause while they understand; a reaction they cannot stop, {✏️ the reaction they cannot stop, e.g. the chin trembles and the breath catches}; then the reaction they choose, {✏️ the reaction they choose, e.g. a forced small smile as they speak}; and in the last seconds, after the words, what is left on the face. Tears, if any, come late and unevenly, one eye first. Medium close-up, the camera locked, no cuts. Place and light: {✏️ the place and light, e.g. a dim kitchen lit by one warm lamp}. No music, no text on screen.",
+        "node": {
+          "line": {
+            "name": "Line",
+            "prompt": "{✏️ the line, exactly the words to say, short enough for about eight seconds, e.g. I waited for you. Every single night, I waited.}"
+          }
+        },
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a clear picture of the character first, face in view."
+          }
+        }
+      },
+      "horror-suspense": {
+        "name": "Horror suspense",
+        "description": "Ordinary, wrong, silent, then the reveal",
+        "prompt": "A 15-second widescreen horror scene with sound in one continuous shot. The person is the one in [📎 Character]: take only their face, hair, build and clothes. Place: {✏️ the place, e.g. an old apartment hallway at night}. 0–4 s: everything is ordinary: {✏️ what they are doing, e.g. she walks home down the hallway, keys in hand}. 4–8 s: one detail is wrong: {✏️ the wrong detail, e.g. a door at the end of the hall that was shut now stands open a crack}; they stop. 8–12 s: silence: every sound drops away but their breathing, and the camera creeps slowly towards their face. 12–15 s: the reveal, made by light and sound: {✏️ the reveal, e.g. the hallway light flickers out, and when it comes back a still, pale figure stands in the doorway}. The fear comes from darkness, light and sound: deep shadows and one light source, {✏️ the light, e.g. a single buzzing ceiling bulb}. No blood, no wounds, no violence. No text on screen.",
+        "input": {
+          "character": {
+            "name": "Character",
+            "note": "Add a picture of the character first."
+          }
+        }
+      },
+      "short-drama-episode": {
+        "name": "Short drama episode",
+        "description": "Three scenes from one script, joined",
+        "prompt": "(💡 Generate Cast sheet first)Scene 1 of 3 of the short drama written in [📎 Script]: play only scene 1 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. The characters, the place and the light are the ones the script gives. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen.",
+        "node": {
+          "script": {
+            "name": "Script",
+            "text": "Title: {✏️ the title, e.g. The Letter}\nCharacters: {✏️ who is in it, e.g. Mia, a tired night nurse; Lena, her younger sister}\nPlace and light: {✏️ where and when, e.g. a small hospital break room at night, lit by one flickering fluorescent tube}\n\nScene 1: {✏️ what happens first, with the lines, e.g. Lena bursts in holding a hospital letter. Lena: \"What is this?\"}\n\nScene 2: {✏️ what happens next, with the lines, e.g. Mia admits she has known for months. Mia: \"I wanted to protect you.\"}\n\nScene 3: {✏️ how it ends, with the lines, e.g. Lena tears the letter up, then sits down beside her sister. Lena: \"We tell her together.\"}"
+          },
+          "cast": {
+            "name": "Cast sheet",
+            "prompt": "A 16:9 landscape cast sheet of [📎 Main character] only, on a plain white background: on the left, the same person full body from the front, from the side and from the back in one row, standing straight, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin, build and every piece of clothing, shoes and accessories exactly as in the picture; nothing added, no second person, nothing of the picture's background. Even soft light. No text, no labels."
+          },
+          "scene-2": {
+            "name": "Scene 2",
+            "prompt": "(💡 Generate Cast sheet first)(💡 Generate the first scene first)Scene 2 of 3 of the short drama written in [📎 Script]: play only scene 2 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Short drama episode], which is scene 1: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends on a held look that leads into the next scene. No music, no text on screen."
+          },
+          "scene-3": {
+            "name": "Scene 3",
+            "prompt": "(💡 Generate Cast sheet first)(💡 Generate Scene 2 first)Scene 3 of 3 of the short drama written in [📎 Script]: play only scene 3 as the script gives it, 15 seconds, vertical, with sound, in one continuous shot. It carries straight on from the last frame of [📎 Scene 2]: the same people, clothes, place, light and camera position. The main character is the person on [📎 Cast sheet]: take from it only that person's face, hair, build and clothes, never the white background or the layout. Medium shots, faces large in frame, the camera slowly pushing in on whoever speaks. The lines are spoken as the script writes them, in its language. It ends the episode: the camera holds on a face for a beat after the last line. No music, no text on screen."
+          }
+        },
+        "input": {
+          "character": {
+            "name": "Main character",
+            "note": "Add a picture of the main character first, then generate Cast sheet."
+          }
+        },
+        "step": {
+          "more": "Need more scenes? Add the next scene to Script, copy Scene 3, change its scene number, wire the scene before into it and generate it.",
+          "join": "Select the scenes in order, right-click and choose Join."
+        }
+      },
       "cartoon-gag": {
         "name": "Cartoon gag",
         "description": "A five-second gag starring your character",
@@ -1667,6 +1770,133 @@
             "name": "Third",
             "note": "Add a picture of the third character first, then generate."
           }
+        }
+      },
+      "mv-style-sheet": {
+        "name": "MV style board",
+        "description": "One look every section of the video shares",
+        "prompt": "A 16:9 style board for a music video, one look across the whole board, for a song that feels {✏️ the song's mood, e.g. bittersweet and restless, late-night city pop}. The visual direction: {✏️ the direction, e.g. neon light in the rain, wet asphalt, 1980s Tokyo}. Laid out as a clean moodboard on a neutral grey background: a strip of five colour swatches along the top; below it, six photographic frames showing the light, the materials and textures, the wardrobe and the locations, all in the same palette and light. Cinematic, with film grain. No text, no labels, no logos."
+      },
+      "mv-performer-sheet": {
+        "name": "MV performer sheet",
+        "description": "Your singer drawn in the video's look",
+        "prompt": "(💡 Generate Style board first)A 16:9 landscape sheet of the person in [📎 Performer], in the look of [📎 Style board]: on the left, the same person full body from the front, from the side and from the back in one row, standing straight, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin and build exactly as in [📎 Performer]. They wear {✏️ the outfit, e.g. a long black vinyl coat over a white shirt, silver rings}, in the palette, light and textures of [📎 Style board]; take nothing else from the board, none of its layout or swatches. Plain light grey background, even soft light. No text, no labels.",
+        "node": {
+          "style": {
+            "name": "Style board",
+            "prompt": "A 16:9 style board for a music video, one look across the whole board, for a song that feels {✏️ the song's mood, e.g. bittersweet and restless, late-night city pop}. The visual direction: {✏️ the direction, e.g. neon light in the rain, wet asphalt, 1980s Tokyo}. Laid out as a clean moodboard on a neutral grey background: a strip of five colour swatches along the top; below it, six photographic frames showing the light, the materials and textures, the wardrobe and the locations, all in the same palette and light. Cinematic, with film grain. No text, no labels, no logos."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or character first, face in view, then generate the sheet."
+          }
+        }
+      },
+      "beat-synced-music-clip": {
+        "name": "Beat-synced clip",
+        "description": "A 15-second clip cut to your own song",
+        "prompt": "A 15-second widescreen music-video clip of the person in [📎 Performer], cut to [📎 Song clip]. [📎 Song clip] is the soundtrack and the clock: keep it exactly as it is, never change its timing, add no other music or sound. The scene: {✏️ the scene, e.g. a rooftop at dusk as the city lights come on}. The performer: {✏️ what they do, e.g. dances alone, then turns to the camera when the chorus hits}. Face, hair and build exactly as in [📎 Performer]. The energy follows the song, calmer where it is quiet and bigger where it builds. Cuts land on strong beats, not on every beat; the biggest change of shot is kept for the drop. The picture stops hard on the last note. No text on screen.",
+        "input": {
+          "song": {
+            "name": "Song clip",
+            "note": "Add a piece of your song of up to 15 seconds first; cut a longer song with Tools → Cut and use the cut clip. For a shorter piece, set the duration to its length."
+          },
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or dancer first, face in view."
+          }
+        }
+      },
+      "music-first-mv": {
+        "name": "Music first, then video",
+        "description": "Music made first, then a clip cut to it",
+        "prompt": "A 15-second widescreen music-video clip of the person in [📎 Performer]. The soundtrack is {✏️ @ here the 15-second piece you cut from Music}: keep it exactly as it is and cut to it, on its strong beats, not on every beat, with the biggest change of shot on its biggest hit. The scene: {✏️ the scene, e.g. an empty bowling alley lit in pink and blue}. The performer: {✏️ what they do, e.g. dances down the lane, then freezes on the hit}. Face, hair and build exactly as in [📎 Performer]. No text on screen.",
+        "node": {
+          "music": {
+            "name": "Music",
+            "prompt": "Instrumental music for a 15-second music-video clip: {✏️ the genre and tempo, e.g. bright synth-pop at 120 BPM}, in one key, with a clear, steady beat, a short build and one big hit around the middle. No vocals."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or dancer first, face in view."
+          }
+        },
+        "step": {
+          "trim": "The music comes out a few minutes long. Once it has generated, use Tools → Cut on it to cut a 15-second piece; connect the cut clip (named CUT-…) to the video and @ it where the prompt asks."
+        }
+      },
+      "song-with-lyrics": {
+        "name": "Song from my lyrics",
+        "description": "Your lyrics sung as a whole song",
+        "prompt": "A {✏️ the genre, e.g. dreamy indie pop} song at {✏️ the tempo, e.g. 96 BPM} in {✏️ the key, e.g. A minor}, with {✏️ the instruments, e.g. clean electric guitar, soft synth pads and live drums} and {✏️ the voice, e.g. a breathy female lead}. The verses stay low and close; the chorus opens up, louder and fuller, with harmonies.",
+        "node": {
+          "lyrics": {
+            "name": "Lyrics",
+            "text": "[Verse]\n{✏️ the first verse, e.g. Streetlights hum your name tonight / I walk the long way home}\n\n[Chorus]\n{✏️ the chorus, e.g. Stay, stay, just one more song / Stay till the morning comes}\n\n[Verse]\n{✏️ the second verse, e.g. Your jacket's still on my chair / Your voice is still in the room}\n\n[Chorus]\n{✏️ the chorus again, e.g. Stay, stay, just one more song / Stay till the morning comes}"
+          }
+        }
+      },
+      "mv-chorus-performance": {
+        "name": "Chorus lip-sync",
+        "description": "Your singer sings the chorus on camera",
+        "prompt": "(💡 Generate Performance still first, then pick it into the Character slot)The person sings the chorus to the camera, lips matching every word of the vocal, {✏️ the manner, e.g. eyes closed on the long notes, swaying gently, one hand on the microphone}. The camera holds still.",
+        "node": {
+          "look": {
+            "name": "Performance still",
+            "prompt": "A 16:9 widescreen still of the person in [📎 Performer] at a microphone, chest up, facing the camera, lips gently closed, about to sing, in {✏️ the place and look, e.g. a smoky jazz club lit by one warm spotlight, deep red and gold}. Face, hair, skin and build exactly as in the picture; they wear {✏️ the outfit, e.g. a black velvet suit}. Sharp focus on the face. No text."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer first, face in view, then generate Performance still."
+          },
+          "chorus": {
+            "name": "Chorus",
+            "note": "Add your song first, cut the chorus out of it with Tools → Cut, then pick the cut clip into the Driving audio slot."
+          }
+        }
+      },
+      "mv-full": {
+        "name": "Full music video",
+        "description": "Your performer sheet first, then four sections cut to your song",
+        "prompt": "(💡 Generate Style board first)A 16:9 landscape sheet of the person in [📎 Performer], in the look of [📎 Style board]: on the left, the same person full body from the front, from the side and from the back in one row, standing straight, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin and build exactly as in [📎 Performer]. They wear {✏️ the outfit, e.g. a long black vinyl coat over a white shirt, silver rings}, in the palette, light and textures of [📎 Style board]; take nothing else from the board, none of its layout or swatches. Plain light grey background, even soft light. No text, no labels.",
+        "node": {
+          "style": {
+            "name": "Style board",
+            "prompt": "A 16:9 style board for a music video, one look across the whole board, for a song that feels {✏️ the song's mood, e.g. bittersweet and restless, late-night city pop}. The visual direction: {✏️ the direction, e.g. neon light in the rain, wet asphalt, 1980s Tokyo}. Laid out as a clean moodboard on a neutral grey background: a strip of five colour swatches along the top; below it, six photographic frames showing the light, the materials and textures, the wardrobe and the locations, all in the same palette and light. Cinematic, with film grain. No text, no labels, no logos."
+          },
+          "section-1": {
+            "name": "Section 1",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 1 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the first piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. No text on screen."
+          },
+          "section-2": {
+            "name": "Section 2",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 2 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the second piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. No text on screen."
+          },
+          "section-3": {
+            "name": "Section 3",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 3 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the third piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. No text on screen."
+          },
+          "section-4": {
+            "name": "Section 4",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 4 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the fourth piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. It ends the video: the picture stops hard on the last note. No text on screen."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or character first, face in view, then generate this sheet."
+          }
+        },
+        "step": {
+          "trim": "Add your song to the canvas. Once this sheet has generated, use Tools → Cut on the song to cut it where the music really changes (verse, chorus, bridge, drop, outro) into pieces of up to 15 seconds, one per section; set each section's duration to its piece's length, connect each cut clip (named CUT-…) to its section in order and @ it where that section's prompt asks.",
+          "more": "Need more sections? Copy Section 4, change its number and what it shows, connect Style board, this sheet and the next piece of the song to it, @ each where its prompt asks and generate it.",
+          "join": "Select the sections in order, right-click and choose Join, then play it through and check the beats at each seam."
         }
       },
       "product-ad-15s": {

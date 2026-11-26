@@ -38,7 +38,7 @@
  */
 
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
-import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import crypto from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,8 +46,8 @@ import { join } from "node:path";
 import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
-import { canvasSpaceDocName, spaceTasksChangedChannel, webAnimationSpaceDocName } from "@breatic/shared";
-import { createQueue, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
+import { canvasSpaceDocName, threeDSpaceDocName, timelineSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
+import { createQueue, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
 import { nodeTaskService, runningSlotService, sceneTaskService, taskService, type TimelineExecutionJobData, timelineExecutionRepo } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
@@ -56,6 +56,7 @@ import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
+import { listenSpaceTaskSignals, spaceTasksVersion } from "@server/__tests__/integration/helpers/space-task-signals.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -316,9 +317,10 @@ async function holdings(taskId: string): Promise<{ credit: { status: string; exp
  * @param p - Whose.
  * @param state - Where it starts.
  * @param deadlineAt - Its deadline; two hours on by default.
+ * @param origin - Which Space type it belongs to, whose document its changes are told to; Motion by default.
  * @returns Its id.
  */
-async function execution(p: Person, state: "awaiting_landing" | "queued" | "running" | "cancelling", deadlineAt = new Date(Date.now() + 2 * 3_600_000)): Promise<string> {
+async function execution(p: Person, state: "awaiting_landing" | "queued" | "running" | "cancelling", deadlineAt = new Date(Date.now() + 2 * 3_600_000), origin: "web_animation_space" | "timeline" = "web_animation_space"): Promise<string> {
   const row = await timelineExecutionRepo.insert({
     projectId: p.projectId,
     spaceId: p.spaceId,
@@ -329,7 +331,7 @@ async function execution(p: Person, state: "awaiting_landing" | "queued" | "runn
     input: { prompt: "A red square slides in", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: `sha256:${crypto.randomUUID()}`,
     deadlineAt,
-    origin: "web_animation_space",
+    origin,
   });
   if (row === null) throw new Error("fixture execution conflicted");
   const step = async (event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<void> => {
@@ -1190,58 +1192,51 @@ describe("G the node's counts event says how many wait", () => {
   });
 });
 
-describe("G a Motion execution's wait and start reach its own Space document", () => {
-  it("the first wait and the claim each put one change on the Motion document, and no stateless signal", async () => {
-    const p = await person();
-    await running(p, 2);
-    const id = await execution(p, "queued");
-    const docName = webAnimationSpaceDocName(p.projectId, p.spaceId);
-    /**
-     * The space-tasks-version events the stream carries for this Motion Space.
-     * @returns How many.
-     */
-    const changes = async (): Promise<number> => {
-      const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
-      return raw
-        .map(([, fields]) => JSON.parse(fields[fields.indexOf("payload") + 1]!) as Record<string, unknown>)
-        .filter((e) => e.type === "space-tasks-version" && e.docName === docName).length;
-    };
-    const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, p.projectId);
-    const publish = vi.spyOn(getStreamRedis(), "publish");
-    try {
-      const before = await changes();
-      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
-      expect(await changes()).toBe(before + 1);
-      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
-      expect(await changes()).toBe(before + 1);
-      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
-      expect(await pick(id, "timeline_executions")).toEqual({ started: true });
-      expect(await changes()).toBe(before + 2);
-      expect(publish.mock.calls.filter(([published]) => published === channel)).toHaveLength(0);
-    } finally {
-      publish.mockRestore();
-    }
-  });
-});
-
-describe("G a 3D Space's waiting row tells the Space's list", () => {
-  it("first waiting and starting each signal the Space's tasks changed", async () => {
+describe("G a 3D Space's waiting row and a waiting Motion or Timeline execution tell their Space's document (#1580)", () => {
+  it("first waiting and starting each tell the 3D Space's document, and the old channel nothing", async () => {
     const p = await person();
     await running(p, 2);
     const t = await seedTask(p, { scene: true });
-    const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, p.projectId);
-    const publish = vi.spyOn(getStreamRedis(), "publish");
+    const docName = threeDSpaceDocName(p.projectId, p.spaceId);
+    const version = spaceTasksVersion(docName);
+    const spaceSignals = await listenSpaceTaskSignals();
     try {
-      const signals = (): number => publish.mock.calls.filter(([published]) => published === channel).length;
+      await spaceSignals.mark();
+      const told = () => spaceSignals.read({ projectId: p.projectId, spaceId: p.spaceId, docName });
       expect(await pick(t.taskId)).toMatchObject({ waiting: true });
-      expect(signals()).toBe(1);
+      expect(await told()).toEqual({ doc: [version], meta: [] });
       expect(await pick(t.taskId)).toMatchObject({ waiting: true });
-      expect(signals()).toBe(1);
+      expect(await told()).toEqual({ doc: [version], meta: [] });
       await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
       expect(await pick(t.taskId)).toEqual({ started: true });
-      expect(signals()).toBe(2);
+      expect(await told()).toEqual({ doc: [version, version], meta: [] });
     } finally {
-      publish.mockRestore();
+      await spaceSignals.stop();
+    }
+  });
+
+  it.each([
+    ["Motion", "web_animation_space", webAnimationSpaceDocName],
+    ["Timeline", "timeline", timelineSpaceDocName],
+  ] as const)("first waiting and starting each tell the %s Space's document, and the old channel nothing", async (_name, origin, docNameOf) => {
+    const p = await person();
+    await running(p, 2);
+    const id = await execution(p, "queued", undefined, origin);
+    const docName = docNameOf(p.projectId, p.spaceId);
+    const version = spaceTasksVersion(docName);
+    const spaceSignals = await listenSpaceTaskSignals();
+    try {
+      await spaceSignals.mark();
+      const told = () => spaceSignals.read({ projectId: p.projectId, spaceId: p.spaceId, docName });
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+      expect(await pick(id, "timeline_executions")).toEqual({ started: true });
+      expect(await told()).toEqual({ doc: [version, version], meta: [] });
+    } finally {
+      await spaceSignals.stop();
     }
   });
 });

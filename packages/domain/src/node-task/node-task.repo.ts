@@ -582,6 +582,31 @@ export async function harvestExpiredInSpace(projectId: string, spaceId: string):
 }
 
 /**
+ * The 3D Spaces with a running row whose budget runs out in `(from, to]` (#1580). The deadline sweep tells each one,
+ * and the list read that follows expires the row ({@link harvestExpiredInSpace}); a round that could not tell them
+ * finds the same Spaces again, since nothing here writes.
+ * @param from - The window's open lower end.
+ * @param to - The window's closed upper end.
+ * @returns The Spaces, each once.
+ */
+export async function listScenesDueBetween(from: Date, to: Date): Promise<{ projectId: string; spaceId: string }[]> {
+  const deadline = sql`${nodeTasks.startedAt} + (${nodeTasks.budgetMs} * interval '1 millisecond')`;
+  return db
+    .selectDistinct({ projectId: nodeTasks.projectId, spaceId: nodeTasks.spaceId })
+    .from(nodeTasks)
+    .where(
+      and(
+        isNull(nodeTasks.nodeId),
+        isNull(nodeTasks.deletedAt),
+        eq(nodeTasks.status, "running"),
+        notWaitingForSlot(),
+        sql`${deadline} > ${from.toISOString()}::timestamptz`,
+        sql`${deadline} <= ${to.toISOString()}::timestamptz`,
+      ),
+    );
+}
+
+/**
  * List a 3D Space's live rows, newest first.
  * @param projectId - Owning project.
  * @param spaceId - The Space.

@@ -45,7 +45,7 @@ const COVER = "https://cdn.example/registered-cover.jpg";
 /** Construct the consumed ledger's explicit identity and Project provenance. */
 function grant(overrides: Partial<UploadGrant> = {}): UploadGrant {
   return { id: ROW, userId: "producer", studioId: "studio", storageKey: "unrelated-storage-key", declaredSize: 12,
-    consumedAt: WHEN, voidedAt: null, assetId: ASSET, failureReason: null, expiresAt: WHEN, nodeId: null, documentUploadId: null,
+    consumedAt: WHEN, voidedAt: null, assetId: ASSET, failureReason: null, expiresAt: WHEN, nodeId: null, documentUploadId: null, focusImage: null,
     projectId: PROJECT, spaceId: null, source: null, toolName: null, derived: null, filename: "Launch.mp4",
     assetSource: "upload", generationTaskId: null, sceneLook: null, analyticsConsent: null, createdAt: WHEN, ...overrides };
 }

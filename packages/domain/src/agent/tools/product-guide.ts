@@ -915,7 +915,12 @@ export function renderProductGuide(): string {
       "then left out of what generation gets, and hovering it says it is sent once that node holds a picture; " +
       "once a picture is put in the node, the paragraph is sent again. A template may also place " +
       "picture, video or sound nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
-      "says to generate them first. A picture or sound such a template generates for one of the model's slots, such as " +
+      "says to generate them first. A template may also place a text node to the left holding words already " +
+      "written, such as a script, with ✏️ marks where the user fills something in; the user edits those words in " +
+      "the node itself. It is connected and @'d in each prompt that uses it, and its words go to the model with " +
+      "that prompt; one connected to a song model's lyrics box is @'d there instead, its words being the lyrics. " +
+      "Applying the template again where that text node is already connected leaves its words as they are. " +
+      "A picture or sound such a template generates for one of the model's slots, such as " +
       "the first or end frame, the character or the audio the face speaks, is connected but not @'d, and its note says " +
       "to pick it into that slot once it has generated. A template that needs a " +
       "video, picture or sound in one of the model's slots places an empty node for it, connected but not @'d, " +
@@ -1476,8 +1481,11 @@ export function renderProductGuide(): string {
       "those mentions in it, the same as ones typed with @. A node @'d that lands empty -- an empty node, or a " +
       "generation still to run -- comes with a note saying what to do first; generating before then sends " +
       "nothing for it, and the run stops only where nothing else in that source holds a node and the model runs " +
-      "only when one does. A template applied from the panel and a proposal both arrive this way: their prompt " +
-      "or shot carries ✏️ marks and notes, and every node they wire into the reference list is @'d. A 📎 mark in " +
+      "only when one does. A template applied from the panel and a proposal both arrive this way: notes where " +
+      "something comes first, and every node they wire into the reference list @'d. A template applied from the " +
+      "panel also carries ✏️ marks, in its prompts and in its text node's words; a proposal arrives with its " +
+      "prompts, and the words of every text node it @s in a prompt or a lyrics box, already written, so only a " +
+      "text node @'d nowhere may carry ✏️ marks left for the user. A 📎 mark in " +
       "square brackets, where a prompt carries one, asks the user to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the user can write; they replace it with their own. An orange " +
@@ -1486,7 +1494,7 @@ export function renderProductGuide(): string {
       "where the panel shows no prompt box, the card is the only place it appears. Read back as text, as in an " +
       "attached node's prompt, a note is (💡 …) on a line of its own and is not sent, a 📎 mark is [📎 …] and a " +
       "✏️ mark {✏️ …}. Square-bracket and brace marks " +
-      `left in a prompt are sent as they are. When a placed proposal carries a ✏️ mark (in a prompt box or a text node's words), the message ${quoted(t("canvas.generatePanel.editProposalMarks"))} ` +
+      `left in a prompt are sent as they are. When a template applied from the panel or a placed proposal carries a ✏️ mark (in a prompt box or a text node's words), the message ${quoted(t("canvas.generatePanel.editProposalMarks"))} ` +
       "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: it is @'d in the prompt or a shot, by the proposal for every node it wires in, " +
@@ -1747,7 +1755,8 @@ export function renderProductGuide(): string {
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))}, ` +
       `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon), ${quoted(t("spaces.threeD.viewfinder.open"))} (four frame corners) and ` +
-      `${quoted(t("spaces.threeD.minimap"))}. The four panel buttons keep their ordinary appearance while open. ` +
+      `${quoted(t("spaces.threeD.minimap"))}. The open panel's button shows selected. ` +
+      `${quoted(t("spaces.threeD.tasks"))} carries how many imports and generations run, waiting ones included (99+ past 99; none at 0). ` +
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +

@@ -432,6 +432,29 @@ function record(entry: Record<string, unknown>): void {
 }
 
 /**
+ * Write a template text node's words over the ones it is placed with, the way a user does: double-click it, select
+ * everything and type (inner#1824). It must first hold the template's own words, braces and all.
+ * @param id - The template.
+ * @param key - The text node's key.
+ * @param words - The words to write, a line break starting a new paragraph.
+ */
+async function writeText(id: string, key: string, words: string): Promise<void> {
+  const nodeId = await keyed(key);
+  await fit();
+  const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
+  for (const piece of draftPieces(`canvas.template.${id}.node.${key}.text`)) await expect(node).toContainText(piece);
+  await node.getByTestId('text-node-body').dblclick();
+  await expect(node.locator('[data-testid="text-node-body"][contenteditable="true"]')).toBeVisible();
+  await page.keyboard.press('ControlOrMeta+a');
+  for (const [i, line] of words.split('\n').entries()) {
+    if (i > 0) await page.keyboard.press('Enter');
+    await page.keyboard.type(line);
+  }
+  await page.keyboard.press('Escape');
+  await expect(node).not.toContainText('{');
+}
+
+/**
  * The id of the node a template placed under a key.
  * @param key - The template node's key.
  * @returns Its id.
@@ -468,6 +491,9 @@ function optionalLeads(id: string, key: string): Map<string, string> {
 
 /** The prompt of each generation request the page has sent, in order. */
 const requests: string[] = [];
+
+/** Each generation request's whole body, in the same order: a text node wired into the lyrics box is sent there, not in the prompt. */
+const bodies: string[] = [];
 
 /**
  * Check one node's last request against its optional inputs: each one's paragraph is sent exactly when the input
@@ -524,10 +550,12 @@ test.beforeEach(async ({ browser }) => {
   cutClips.clear();
   page = await browser.newPage();
   requests.length = 0;
+  bodies.length = 0;
   page.on('request', (request) => {
     if (request.method() !== 'POST' || !/\/canvas\/tasks(\?|$)/.test(request.url())) return;
     const body = request.postDataJSON() as { params?: { prompt?: unknown } } | null;
     requests.push(typeof body?.params?.prompt === 'string' ? body.params.prompt : JSON.stringify(body));
+    bodies.push(JSON.stringify(body));
   });
   await openSmokeProject(page);
   if (LOCALE) await switchLanguage(page, LOCALE);
@@ -706,8 +734,13 @@ interface Run {
   /**
    * Pieces cut from a generated node's sound, in seconds, each wired into a node (`anchor` for the anchor), as the
    * template's trim step tells the user to do with Cut; a fill of `@cut:<key>` then @s that piece (inner#1822).
+   * `file` cuts them from a fixture instead, the user's own song, right after the template is placed (inner#1826).
    */
-  cuts?: { from: string; pieces: { into: string; start: number; end: number }[] };
+  cuts?: { from: string; file?: string; pieces: { into: string; start: number; end: number }[] };
+  /** Each template text node's words in full, written over the braces it is placed with (inner#1824). */
+  texts?: Record<string, string>;
+  /** The template nodes generated after the anchor that take it through their pool, in order (inner#1824). */
+  then?: string[];
 }
 
 /** How each template is run. */
@@ -1400,6 +1433,91 @@ const RUNS: Record<string, Run> = {
       ],
     },
   },
+  'scene-plate': {
+    type: 'image',
+    photo: false,
+    first: [],
+    fills: { anchor: ['a cramped hospital break room at night', 'a vending machine, a worn sofa and a window onto the corridor', 'a single flickering fluorescent tube above the sofa'] },
+  },
+  'drama-single-scene': {
+    type: 'video',
+    photo: false,
+    inputs: { 'character-a': 'character.jpg', 'character-b': 'mini-tools/portrait.jpg' },
+    first: ['scene'],
+    fills: {
+      scene: ['a small kitchen at dusk', 'a table with two chairs and a window over the sink', 'grey daylight from the window'],
+      anchor: [
+        'a delivery courier and her older brother; he has hidden that the family shop is closing',
+        'the brother at the window, the courier in the doorway',
+        'she holds up a closing notice she found on the shop door',
+        'he turns, sees it and freezes',
+        'he answers, then looks away',
+        'English',
+        'she: "When were you going to tell me?" He: "After the holidays."',
+        'grey daylight from the window',
+      ],
+    },
+  },
+  'short-drama-reversal': {
+    type: 'video',
+    photo: false,
+    inputs: { 'character-a': 'character.jpg', 'character-b': 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'a luxury car showroom',
+        'a salesman sneers at a young delivery courier in a red jacket',
+        'he blocks her way, mocks her backpack, then calls security',
+        'she calmly takes out her phone and makes one call',
+        'the manager rushes in and bows to her: she owns the company',
+        'the salesman\'s smile freezes and drains away',
+        'bright showroom spotlights',
+      ],
+    },
+  },
+  'emotional-dialogue-timeline': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: ['line'],
+    fills: {
+      line: ['I waited for you. Every single night, I waited.'],
+      anchor: ['she has just learned her brother is leaving for good', 'her chin trembles and her breath catches', 'a forced small smile as she speaks', 'a dim kitchen lit by one warm lamp'],
+    },
+  },
+  'horror-suspense': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'an old apartment hallway at night',
+        'she walks home down the hallway, keys in hand',
+        'a door at the end of the hall that was shut now stands open a crack',
+        'the hallway light flickers out, and when it comes back a still, pale figure stands in the doorway',
+        'a single buzzing ceiling bulb',
+      ],
+    },
+  },
+  'short-drama-episode': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    texts: {
+      script: [
+        'Title: The Closing Sign',
+        'Characters: Mia, a delivery courier in a red jacket; Leo, her older brother',
+        'Place and light: their family noodle shop after closing, lit by one warm lamp over the counter',
+        'Scene 1: Mia comes in with her delivery bag and finds a closing notice on the counter. Mia: "What is this?"',
+        'Scene 2: Leo admits the shop closes next month. Leo: "I didn\'t want you to worry."',
+        'Scene 3: Mia puts down her bag and sits beside him. Mia: "Then we fight for it together."',
+      ].join('\n'),
+    },
+    first: ['cast'],
+    then: ['scene-2', 'scene-3'],
+    fills: { cast: [], anchor: [] },
+  },
   'twist-comedy-skit': {
     type: 'video',
     photo: true,
@@ -1418,6 +1536,90 @@ const RUNS: Record<string, Run> = {
     first: [],
     fills: {},
     shots: [['the mug spotless and shining inside, the coffee stain gone'], ['a spoon of baking soda into the wet mug'], ['scrubbing the stain and the rim with a damp sponge'], ['rinsing it under the tap'], []],
+  },
+  'song-with-lyrics': {
+    type: 'audio',
+    photo: false,
+    first: [],
+    texts: {
+      lyrics: [
+        '[Verse]',
+        'Streetlights hum your name tonight',
+        'I walk the long way home',
+        '',
+        '[Chorus]',
+        'Stay, stay, just one more song',
+        'Stay till the morning comes',
+        '',
+        '[Verse]',
+        'Your jacket\'s still on my chair',
+        'Your voice is still in the room',
+        '',
+        '[Chorus]',
+        'Stay, stay, just one more song',
+        'Stay till the morning comes',
+      ].join('\n'),
+    },
+    fills: { anchor: ['dreamy indie pop', '96 BPM', 'A minor', 'clean electric guitar, soft synth pads and live drums', 'a breathy female lead'] },
+  },
+  'mv-style-sheet': {
+    type: 'image',
+    photo: false,
+    first: [],
+    fills: { anchor: ['bittersweet and restless, late-night city pop', 'neon light in the rain, wet asphalt, 1980s Tokyo'] },
+  },
+  'mv-performer-sheet': {
+    type: 'image',
+    photo: false,
+    inputs: { performer: 'mini-tools/portrait.jpg' },
+    first: ['style'],
+    fills: {
+      style: ['bittersweet and restless, late-night city pop', 'neon light in the rain, wet asphalt, 1980s Tokyo'],
+      anchor: ['a long black vinyl coat over a white shirt, silver rings'],
+    },
+  },
+  'beat-synced-music-clip': {
+    type: 'video',
+    photo: false,
+    inputs: { song: 'music/song-15s.mp3', performer: 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['a rooftop at dusk as the city lights come on', 'dances alone, then turns to the camera when the chorus hits'] },
+  },
+  'music-first-mv': {
+    type: 'video',
+    photo: false,
+    inputs: { performer: 'mini-tools/portrait.jpg' },
+    first: ['music'],
+    fills: {
+      music: ['bright synth-pop at 120 BPM'],
+      anchor: [`${CUT_MENTION}anchor`, 'an empty bowling alley lit in pink and blue', 'dances down the lane, then freezes on the hit'],
+    },
+    cuts: { from: 'music', pieces: [{ into: 'anchor', start: 10, end: 25 }] },
+  },
+  'mv-chorus-performance': {
+    type: 'video',
+    photo: false,
+    inputs: { performer: 'mini-tools/portrait.jpg', chorus: 'music/song-15s.mp3' },
+    first: ['look'],
+    fills: {
+      look: ['a smoky jazz club lit by one warm spotlight, deep red and gold', 'a black velvet suit'],
+      anchor: ['eyes closed on the long notes, swaying gently, one hand on the microphone'],
+    },
+    frames: { 'character-image': 'look' },
+  },
+  'mv-full': {
+    type: 'image',
+    photo: false,
+    inputs: { performer: 'mini-tools/portrait.jpg' },
+    first: ['style'],
+    then: ['section-1', 'section-2'],
+    fills: {
+      style: ['bittersweet and restless, late-night city pop', 'neon light in the rain, wet asphalt, 1980s Tokyo'],
+      anchor: ['a long black vinyl coat over a white shirt, silver rings'],
+      'section-1': [`${CUT_MENTION}section-1`, 'the first verse', 'the singer walks alone through a night market, glancing at the camera', 'a slow tracking shot alongside them'],
+      'section-2': [`${CUT_MENTION}section-2`, 'the chorus', 'the singer stands in the rain on a crossing as the lights blur around them', 'a slow orbit around them'],
+    },
+    cuts: { from: 'song', file: 'music/song-30s.mp3', pieces: [{ into: 'section-1', start: 0, end: 15 }, { into: 'section-2', start: 15, end: 30 }] },
   },
   'underscore-bgm': {
     type: 'audio',
@@ -1507,6 +1709,23 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     for (const wired of [photo, ...pictures, material, song]) if (wired !== undefined) await wire(page, { projectId, spaceId }, wired, anchor);
     await openPanel(anchor);
     await applyTemplate(id, style);
+    for (const [key, words] of Object.entries(run.texts ?? {})) await writeText(id, key, words);
+    if (run.cuts?.file !== undefined) {
+      for (const piece of run.cuts.pieces) {
+        const cut = `${OUT}/${tag}-song-${String(piece.start)}-${String(piece.end)}-${LABEL}-${n}.mp3`;
+        execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(piece.start), '-to', String(piece.end), '-i', join(FIXTURES, run.cuts.file), cut]);
+        const clip = await dropMedia(cut);
+        await wire(page, { projectId, spaceId }, clip, piece.into === 'anchor' ? anchor : await keyed(piece.into));
+        cutClips.set(piece.into, clip);
+      }
+    }
+    /**
+     * Each text node's first line must reach the last request, in its prompt or its lyrics box (inner#1824, inner#1826).
+     */
+    const textsSent = (): void => {
+      const sent = bodies[bodies.length - 1] ?? '';
+      for (const words of Object.values(run.texts ?? {})) expect(sent).toContain(JSON.stringify(words.split('\n')[0] ?? '').slice(1, -1));
+    };
     for (const key of run.first) {
       const node = await keyed(key);
       await openPanel(node);
@@ -1568,7 +1787,22 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     const sentPrompt = requests[requests.length - 1] ?? '';
     record({ template: id, style, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
     expectOptionalParagraphs(id, registered.anchor, sentPrompt);
+    textsSent();
     await save(url, `${tag}-${LABEL}-${n}.${EXTENSION[run.type]}`);
+    for (const key of run.then ?? []) {
+      const node = await keyed(key);
+      await openPanel(node);
+      await fillBraces(fills[key] ?? []);
+      const shown = await promptText();
+      assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, shown);
+      const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'video') as Kind;
+      const result = await generate(node, kind);
+      expect(result).toMatch(/^https?:/);
+      const sent = requests[requests.length - 1] ?? '';
+      record({ template: id, node: key, label: LABEL, n, result: { prompt: shown, sent, url: result } });
+      textsSent();
+      await save(result, `${tag}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
+    }
     for (const { key, slot } of run.after ?? []) {
       const node = await keyed(key);
       await openPanel(node);

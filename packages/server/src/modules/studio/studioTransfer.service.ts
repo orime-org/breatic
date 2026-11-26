@@ -34,7 +34,7 @@
 
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as transfersRepo from "@server/modules/studio/studioTransfers.repo.js";
 import { buildStudioTransferMail } from "@server/utils/notification-mail.js";
@@ -369,6 +369,7 @@ export async function findLiveTransfer(slug: string): Promise<{
   fromUserId: string;
   toUserId: string;
   expiresAt: Date;
+  updatedAt: Date;
 } | null> {
   const studio = await studioRepo.getBySlug(slug);
   if (!studio) throw new NotFoundError(t("server.error.not_found"));

@@ -8,12 +8,10 @@
  *
  *   - `{prefix}:project:{pid}:activity:new` (server, worker) — relay the
  *     activity signal on the `meta` doc.
- *   - `{prefix}:project:{pid}:credits:changed` (server, worker) — relay the
- *     credits signal on the `meta` doc.
- *   - `{prefix}:project:{pid}:space-tasks:changed` (server, worker) — relay
- *     a 3D Space's task list signal on the `meta` doc.
+ *   - `{prefix}:project:{pid}:asset-peaks:ready` (worker) — relay a written
+ *     audio waveform on the `meta` doc, with the audio's address.
  *   - `{prefix}:project:{pid}:scene-look:settled` (collab's task listener) —
- *     relay how an uploaded 3D part picture was settled.
+ *     relay how an uploaded 3D part picture was settled, to its uploader.
  *   - `{prefix}:project:{pid}:connections:close` (collab's lifecycle
  *     consumer) — close every connection to the project.
  *
@@ -33,7 +31,7 @@
  * now happen inside `space-rpc.ts` as collab stateless RPC, so no
  * Redis round-trip is needed.
  *
- * One `psubscribe` on `{prefix}:project:*` covers all five channels.
+ * One `psubscribe` on `{prefix}:project:*` covers every one of these channels.
  *
  * Membership changes do not come through here: `member-change-sync.ts` hears
  * them from the trigger on `project_members`.
@@ -52,61 +50,31 @@ import { createLogger, projectControlChannelPattern } from "@breatic/core";
 import {
   projectMetaDocName,
   type ActivityNewControlEvent,
-  type CreditsChangedControlEvent,
-  type SpaceTasksChangedControlEvent,
+  type AssetPeaksReadyControlEvent,
   type SceneLookSettledControlEvent,
   type ProjectConnectionsCloseEvent,
   ACTIVITY_NEW_SIGNAL,
-  CREDITS_CHANGED_SIGNAL,
-  SPACE_TASKS_CHANGED_SIGNAL,
+  ASSET_PEAKS_READY_SIGNAL,
   SCENE_LOOK_SETTLED_SIGNAL,
-  type ActivityNewSignal,
-  type CreditsChangedSignal,
-  type SpaceTasksChangedSignal,
-  type SceneLookSettledSignal,
 } from "@breatic/shared";
 import { closeProjectConnections } from "@collab/services/project-connections.js";
+import { relayOnMetaDoc } from "@collab/services/meta-signal.js";
 
 const logger = createLogger("project-control-sync");
 
 type ProjectControlEvent =
   | ActivityNewControlEvent
-  | CreditsChangedControlEvent
-  | SpaceTasksChangedControlEvent
+  | AssetPeaksReadyControlEvent
   | SceneLookSettledControlEvent
   | ProjectConnectionsCloseEvent;
 
 /**
- * Relay a stateless signal to this instance's connections on a project's meta
- * doc. An instance that holds no connection to the project has no doc loaded
- * and relays nothing.
- * @param hocuspocus - Running Hocuspocus server.
- * @param projectId - The project whose meta doc carries the signal.
- * @param signal - The signal, as its connections parse it.
- */
-function relayOnMetaDoc(
-  hocuspocus: Hocuspocus,
-  projectId: string,
-  signal: ActivityNewSignal | CreditsChangedSignal | SpaceTasksChangedSignal | SceneLookSettledSignal,
-): void {
-  const docName = projectMetaDocName(projectId);
-  const doc = hocuspocus.documents?.get(docName);
-  if (!doc) return;
-  try {
-    doc.relayStateless(JSON.stringify(signal));
-  } catch (err) {
-    logger.warn({ err, docName, signal: signal.t }, "meta_signal_relay_failed");
-  }
-}
-
-/**
  * Decode one raw control-plane pub/sub message and dispatch it:
  * `project-activity:new` relays the activity signal on the meta doc;
- * `project-credits:changed` relays the credits signal on the meta doc;
- * `project-space-tasks:changed` relays a Space's task list signal on it;
- * `project-scene-look:settled` relays how an uploaded 3D part picture was settled as the `scene-look:settled` signal on it;
  * `project-connections:close` closes this instance's connections to the
- * project. Unknown / unparseable messages are logged and ignored.
+ * project; `project-asset-peaks:ready` relays a written waveform on the meta
+ * doc; `project-scene-look:settled` relays how an uploaded 3D part picture was
+ * settled as the `scene-look:settled` signal on it. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the relay and close handlers.
  * @param raw - Raw JSON message body received on the project control channel.
  * @throws {TypeError} When the message decodes to `null`; the subscriber logs it.
@@ -127,33 +95,32 @@ async function handleEvent(
     // Relay a server/worker-written activity row to connected members
     // as the same stateless signal collab-originated rows broadcast
     // directly (ADR 2026-07-04 project-activity-feed).
-    relayOnMetaDoc(hocuspocus, event.projectId, { t: ACTIVITY_NEW_SIGNAL, projectId: event.projectId });
+    relayOnMetaDoc(hocuspocus, projectMetaDocName(event.projectId), { t: ACTIVITY_NEW_SIGNAL, projectId: event.projectId });
     return;
   }
 
-  if (event.type === "project-credits:changed") {
-    // A charge made in this project committed; members' top bars read
-    // their credits again.
-    relayOnMetaDoc(hocuspocus, event.projectId, { t: CREDITS_CHANGED_SIGNAL, projectId: event.projectId });
-    return;
-  }
-
-  if (event.type === "project-space-tasks:changed") {
-    // A 3D Space's task list changed; members with that Space open read it
-    // again.
-    relayOnMetaDoc(hocuspocus, event.projectId, {
-      t: SPACE_TASKS_CHANGED_SIGNAL,
+  if (event.type === "project-asset-peaks:ready") {
+    // An audio this project references has its waveform; a cut band waiting
+    // for it reads the peaks again.
+    relayOnMetaDoc(hocuspocus, projectMetaDocName(event.projectId), {
+      t: ASSET_PEAKS_READY_SIGNAL,
       projectId: event.projectId,
-      spaceId: event.spaceId,
+      assetId: event.assetId,
+      url: event.url,
     });
     return;
   }
 
   if (event.type === "project-scene-look:settled") {
-    // Every member's page hears it; the uploader's page ends that part's
+    // Only the uploader's connections get it; their page ends that part's
     // upload and tells them when the picture was not put on.
     const { type: _type, ts: _ts, ...settlement } = event;
-    relayOnMetaDoc(hocuspocus, event.projectId, { t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement });
+    relayOnMetaDoc(
+      hocuspocus,
+      projectMetaDocName(event.projectId),
+      { t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement },
+      (context) => context?.user?.id === event.userId,
+    );
     return;
   }
 

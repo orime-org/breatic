@@ -953,6 +953,20 @@
       "when": 1795488189305,
       "tag": "0135_commerce_dead_letter_requeued",
       "breakpoints": true
+    },
+    {
+      "idx": 136,
+      "version": "7",
+      "when": 1795572682200,
+      "tag": "0136_live_update_notify",
+      "breakpoints": true
+    },
+    {
+      "idx": 137,
+      "version": "7",
+      "when": 1795572682456,
+      "tag": "0137_notifications_expires_at_idx",
+      "breakpoints": true
     }
   ]
 }

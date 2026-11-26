@@ -110,7 +110,9 @@ const node = defineConfig({
   test: {
     name: "node",
     include: [NODE_TESTS],
-    // Node's own clock decides these, so the default 5s is head-room enough.
+    // CI runs these beside the other packages' suites, as it does the workers
+    // project above.
+    testTimeout: 30_000,
   },
   resolve: { alias },
 });

@@ -4,6 +4,7 @@
 import * as React from 'react';
 
 import { fetchAudioPeaks } from '@web/spaces/canvas/mini-tool/audio-peaks';
+import { onAudioPeaksReady } from '@web/spaces/canvas/mini-tool/audio-peaks-ready';
 
 /** Where an audio source's peaks stand for an open cut band. */
 export type AudioPeaksState =
@@ -12,54 +13,44 @@ export type AudioPeaksState =
   | { kind: 'missing' }
   | { kind: 'invalid' };
 
-/** How often, and for how long, to read peaks that are not there yet. */
-export interface PeaksRetry {
-  everyMs: number;
-  forMs: number;
-}
-
 /**
- * An audio source's peaks while its cut band is open (inner#1305 §4.4).
+ * An audio source's peaks while its cut band is open (inner#1305 §4.4, #1580).
  *
- * Peaks are written after the audio registers, so a band opened on audio just
- * made may find none; with `retry`, it reads them again on that interval until
- * they land or `forMs` has passed since it opened.
+ * Peaks are written after the audio registers, so a band opened on audio just made may find none; until it has them it
+ * reads them again whenever the server announces them for this audio (`announceAudioPeaksReady`).
  * @param audioUrl - The audio's address.
- * @param retry - When to read missing peaks again, or null to read once.
  * @returns Where the peaks stand.
  */
-export function useAudioPeaks(audioUrl: string, retry: PeaksRetry | null): AudioPeaksState {
+export function useAudioPeaks(audioUrl: string): AudioPeaksState {
   const [state, setState] = React.useState<AudioPeaksState>({ kind: 'loading' });
-  const everyMs = retry?.everyMs;
-  const forMs = retry?.forMs;
 
   React.useEffect(() => {
     const controller = new AbortController();
-    const openedAt = Date.now();
-    let timer: ReturnType<typeof setTimeout> | undefined;
+    let have = false;
+    let latest = 0;
     setState({ kind: 'loading' });
 
-    /** Read the peaks, and schedule the next read while they are missing. */
+    /** Read the peaks; only the answer to the latest read counts, so an earlier "not there" never covers them. */
     const read = async (): Promise<void> => {
+      latest += 1;
+      const mine = latest;
       const got = await fetchAudioPeaks(audioUrl, controller.signal);
-      if (controller.signal.aborted) return;
-      if (got === 'missing' || got === 'invalid') {
-        setState({ kind: got });
-        const due = Date.now() + (everyMs ?? 0) - openedAt;
-        if (got === 'missing' && everyMs !== undefined && forMs !== undefined && due <= forMs) {
-          timer = setTimeout(() => void read(), everyMs);
-        }
-        return;
-      }
-      setState({ kind: 'ready', peaks: got });
+      if (controller.signal.aborted || mine !== latest) return;
+      have = got !== 'missing' && got !== 'invalid';
+      setState(got === 'missing' || got === 'invalid' ? { kind: got } : { kind: 'ready', peaks: got });
     };
     void read();
+    // A read still on the way may have been answered before storage held the file, so every announcement reads
+    // again until the peaks are in.
+    const stop = onAudioPeaksReady((ready) => {
+      if (ready === audioUrl && !have && !controller.signal.aborted) void read();
+    });
 
     return () => {
       controller.abort();
-      if (timer !== undefined) clearTimeout(timer);
+      stop();
     };
-  }, [audioUrl, everyMs, forMs]);
+  }, [audioUrl]);
 
   return state;
 }

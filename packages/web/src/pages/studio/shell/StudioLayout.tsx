@@ -17,6 +17,7 @@ import { DownloadPanelAnchor } from '@web/features/desktop-downloads/DownloadPan
 import { StudioRail } from '@web/pages/studio/rail/StudioRail';
 import { StudioRailDrawer } from '@web/pages/studio/rail/StudioRailDrawer';
 import { StudioTopBar } from '@web/pages/studio/shell/StudioTopBar';
+import { useStudioPagePoll } from '@web/pages/studio/shell/use-studio-page-poll';
 
 /** Context the studio layout passes through `<Outlet>` to its child routes. */
 export interface StudioLayoutContext {
@@ -43,6 +44,8 @@ export interface StudioLayoutContext {
  */
 export default function StudioLayout(): React.JSX.Element {
   const { slug } = useParams();
+  // The bell, the Studio's transfer and the uploads this page waits for are read again on one poll (#1580).
+  useStudioPagePoll(slug ?? null);
   const studiosQuery = useQuery({
     queryKey: ['studios', 'user'],
     queryFn: () => studiosApi.listUserStudios(),

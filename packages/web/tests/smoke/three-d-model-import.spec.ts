@@ -3,10 +3,10 @@
 
 import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
-import { expect, type Locator, type Page, type Route } from 'playwright/test';
+import { expect, type Locator, type Page } from 'playwright/test';
 import { unzipSync, strFromU8 } from 'three/addons/libs/fflate.module.js';
 import { httpRequest } from '@breatic/shared';
-import type { SceneObject, UploadStatus } from '@breatic/shared';
+import type { SceneObject } from '@breatic/shared';
 import { test, stateFile } from '../helpers/slot';
 import { openSmokeProject, smokeProjectId, smokeProjectUrl } from '../helpers/project';
 import { credentialsFor } from '../helpers/credentials';
@@ -14,6 +14,7 @@ import { cleanMembership, inviteMember } from '../helpers/project-members';
 import { createSpace, deleteSpace, visibleSpace } from '../helpers/space';
 import { liveModuleUrl } from '../helpers/live-module';
 import { roomForUploads, watchUploadTickets } from '../helpers/upload-budget';
+import { uploadEndedIn } from '../helpers/upload';
 import { dataOf } from '../helpers/api';
 import { incompleteScene, incompleteSceneZip, sceneFiles, sceneGlb, sceneZip } from '../helpers/scene-model';
 import type { SceneModelInput } from '../helpers/scene-model';
@@ -162,48 +163,38 @@ async function importModel(page: Page, file: SceneModelInput, name: string, entr
 }
 
 /**
- * Pause one authoritative completion while preserving the actual backend request.
+ * Hold back the message that tells this page its model registered (`upload:ended` on the collab socket, #1580) until
+ * the case lets it through; every other frame flows. Install it before the page opens its sockets.
  * @param page - The account waiting for its model registration.
  * @param key - The storage key returned by its real upload ticket.
  * @param onCompleted - Receives the actual registered asset identity.
- * @param released - Resolves when the case allows the original response through.
- * @returns Removal of this case's interception handler.
- * @throws {Error} When the actual status request or response cannot be handled.
+ * @param released - Resolves when the case allows the held message through.
+ * @returns Waits for a held message to be delivered.
+ * @throws {Error} When the socket route cannot be installed.
  */
 async function holdRegistration(page: Page, key: Promise<string>, onCompleted: (assetId: string) => void, released: Promise<void>): Promise<() => Promise<void>> {
-  const pattern = '**/api/v1/assets/upload-status**';
+  let storageKey: string | null = null;
+  void key.then((value) => {
+    storageKey = value;
+  });
   let held = false;
   const handling = new Set<Promise<void>>();
-  /**
-   * Hold only this operation's first real completed status.
-   * @param route - Original browser status request.
-   * @throws {Error} When the backend request cannot be proxied.
-   */
-  const capture = async (route: Route): Promise<void> => {
-    const finished = Promise.withResolvers<void>();
-    handling.add(finished.promise);
-    try {
-      const response = await route.fetch();
-      if (response.status() === 200) {
-        const body = await response.json() as { data: { items: UploadStatus[] } };
-        const storageKey = await key;
-        const result = body.data.items.find((item) => item.key === storageKey && item.state === 'completed');
-        if (!held && result?.state === 'completed') {
-          held = true;
-          onCompleted(result.result.assetId);
-          await released;
-        }
+  await page.routeWebSocket((url) => url.pathname === '/ws', (route) => {
+    const server = route.connectToServer();
+    server.onMessage((message) => {
+      const ended = held || typeof message === 'string' ? null : uploadEndedIn(message);
+      if (ended === null || ended.status.key !== storageKey || ended.status.state !== 'completed' || ended.status.result === undefined) {
+        route.send(message);
+        return;
       }
-      await route.fulfill({ response });
-    } finally {
-      handling.delete(finished.promise);
-      finished.resolve();
-    }
-  };
-  await page.route(pattern, capture);
+      held = true;
+      onCompleted(ended.status.result.assetId);
+      const delivered = released.then(() => route.send(message));
+      handling.add(delivered);
+    });
+  });
   return async (): Promise<void> => {
     await Promise.all([...handling]);
-    await page.unroute(pattern, capture);
   };
 }
 
@@ -368,7 +359,8 @@ test('an imported rigged model takes presets and one without bones says it has n
     const pick = async (name: string): Promise<void> => {
       await visibleSpace(page).getByTestId('scene-objects-trigger').click();
       await page.getByTestId(`scene-object-${objects.find((object) => object.name === name)!.id}`).click();
-      await showProperties(page);
+      // Selecting an object opens its properties by itself; pressing Properties as well could close them again.
+      await expect(page.getByTestId('scene-properties-panel')).toBeVisible();
     };
     await pick('Rigged character');
     const section = page.getByTestId('scene-pose-section');
@@ -548,12 +540,12 @@ test('a registered model whose decoder download fails offers Retry and loads onc
 });
 
 test('a model registered while its tab is closed is listed done on reopen and placed from the list @needs-storage @needs-ingest', async ({ page }) => {
-  await openSmokeProject(page);
-  const id = await createSpace(page, '3d', `Closed import ${crypto.randomUUID()}`);
   const completed = Promise.withResolvers<void>();
   const release = Promise.withResolvers<void>();
   const keyReady = Promise.withResolvers<string>();
   const stopHolding = await holdRegistration(page, keyReady.promise, () => completed.resolve(), release.promise);
+  await openSmokeProject(page);
+  const id = await createSpace(page, '3d', `Closed import ${crypto.randomUUID()}`);
   try {
     const file = sceneGlb(crypto.randomUUID());
     const dialog = await openImport(page);
