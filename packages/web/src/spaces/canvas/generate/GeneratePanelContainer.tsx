@@ -71,6 +71,7 @@ import {
 import {
   PromptEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
+import { promptFullscreenTitle } from '@web/spaces/canvas/generate/prompt-fullscreen-title';
 import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas/generate/task-payload';
 import { mentionedReferenceUrls, poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
@@ -700,6 +701,14 @@ function GeneratePanelBody({
   // would rebuild the prompt slot each time the canvas moves.
   const stableMentionTokens = useContentStable(vm.mentionTokens);
   const stableStyleImages = useContentStable(vm.styleImages);
+  // The prompt box open full screen (inner#2115).
+  const [promptFullscreen, setPromptFullscreen] = React.useState(false);
+  const openPromptFullscreen = React.useCallback(() => setPromptFullscreen(true), []);
+  const nodeName = (nodes.find((n) => n.id === nodeId)?.data as { name?: string } | undefined)?.name;
+  const promptLayer = React.useMemo(
+    () => ({ open: promptFullscreen, title: promptFullscreenTitle(nodeName, 'image'), onClose: () => setPromptFullscreen(false) }),
+    [promptFullscreen, nodeName],
+  );
   const promptSlot = React.useMemo(
     () =>
       !vm.promptRequired ? (
@@ -716,6 +725,7 @@ function GeneratePanelBody({
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
           mentionTokens={stableMentionTokens}
+          fullscreenLayer={promptLayer}
         />
       ) : null,
     [
@@ -730,6 +740,7 @@ function GeneratePanelBody({
       caretProvider,
       promptEditorRef,
       stableMentionTokens,
+      promptLayer,
     ],
   );
 
@@ -755,6 +766,7 @@ function GeneratePanelBody({
       executeRefusal={executeRefusal}
       promptSlot={promptSlot}
       onExit={closeActivePanel}
+      onOpenPromptFullscreen={vm.promptRequired && fragment ? openPromptFullscreen : undefined}
       onSelectModel={onSelectModel}
       onToggleMode={onToggleMode}
       onChangeParams={onChangeParams}

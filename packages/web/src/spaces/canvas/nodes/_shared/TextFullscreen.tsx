@@ -9,11 +9,9 @@ import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useTranslation } from '@web/i18n/use-translation';
 import { compositionEnd, keyBelongsToInputMethod } from '@web/lib/composition-end';
+import { KEEPS_DIALOG_OPEN } from '@web/lib/keeps-dialog-open';
 import { takeStray } from '@web/lib/stray-file-drop';
 import { cn } from '@web/lib/utils';
-
-/** The attribute a popup carries when a press in it belongs to the full-screen text. */
-export const KEEPS_TEXT_FULLSCREEN = 'data-keeps-text-fullscreen';
 
 /** Props for {@link TextFullscreen}. */
 interface TextFullscreenProps {
@@ -65,7 +63,7 @@ function stopDrop(event: React.DragEvent): void {
  */
 function withinKeptPopup(event: Event): boolean {
   const target = event.target;
-  return target instanceof Element && target.closest(`[${KEEPS_TEXT_FULLSCREEN}]`) !== null;
+  return target instanceof Element && target.closest(`[${KEEPS_DIALOG_OPEN}]`) !== null;
 }
 
 /**

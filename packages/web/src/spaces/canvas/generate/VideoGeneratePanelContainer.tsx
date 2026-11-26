@@ -69,6 +69,7 @@ import {
   PromptEditor,
   type PromptEditorHandle,
 } from '@web/spaces/canvas/generate/PromptEditor';
+import { promptFullscreenTitle } from '@web/spaces/canvas/generate/prompt-fullscreen-title';
 import { AddShotRow, ShotList, addBlockedKey, nextOpenShot } from '@web/spaces/canvas/generate/storyboard-controls';
 import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
@@ -895,6 +896,20 @@ function VideoGeneratePanelBody({
   // costs a TipTap instance plus its bindings. The cost is the prompt's undo
   // history, which lives on the editor instance and dies with it (#1961).
   const shotPlaceholder = t('canvas.generatePanel.storyboard.shotPlaceholder');
+  // The prompt box open full screen (inner#2115): `main`, or a shot's id. It
+  // opens the box the rail inserts into (`insertTarget`): the open shot's,
+  // else the main prompt.
+  const [promptFullscreen, setPromptFullscreen] = React.useState<string | null>(null);
+  const closePromptFullscreen = React.useCallback(() => setPromptFullscreen(null), []);
+  const nodeName = (nodes.find((n) => n.id === nodeId)?.data as { name?: string } | undefined)?.name;
+  const openPromptFullscreen = React.useCallback(() => {
+    const shotId = expandedShotRef.current;
+    setPromptFullscreen(shotEditors.current.has(shotId) ? shotId : 'main');
+  }, []);
+  const mainLayer = React.useMemo(
+    () => ({ open: promptFullscreen === 'main', title: promptFullscreenTitle(nodeName, 'video'), onClose: closePromptFullscreen }),
+    [promptFullscreen, nodeName, closePromptFullscreen],
+  );
   const mainEditor = React.useMemo(
     () =>
       fragment ? (
@@ -913,9 +928,11 @@ function VideoGeneratePanelBody({
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
           mentionTokens={stableMentionTokens}
+          fullscreenLayer={mainLayer}
         />
       ) : null,
     [
+      mainLayer,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
@@ -953,9 +970,18 @@ function VideoGeneratePanelBody({
         mentionEmptyLabel={mentionEmptyLabel}
         caretProvider={caretProvider}
         mentionTokens={stableMentionTokens}
+        fullscreenLayer={{
+          open: promptFullscreen === shot.id,
+          title: promptFullscreenTitle(nodeName, 'video', t('canvas.generatePanel.storyboard.shot', { n: index + 1 })),
+          onClose: closePromptFullscreen,
+        }}
       />
     ),
     [
+      promptFullscreen,
+      nodeName,
+      t,
+      closePromptFullscreen,
       shotPlaceholder,
       stableReferences,
       referenceKinds,
@@ -1060,6 +1086,7 @@ function VideoGeneratePanelBody({
       promptSlot={promptSlot}
       durationFloor={spec ? shots?.length : undefined}
       onExit={closeActivePanel}
+      onOpenPromptFullscreen={vm.promptRequired && (fragment || (spec && shots)) ? openPromptFullscreen : undefined}
       onSelectModel={onSelectModel}
       onChangeParams={onChangeParams}
       onExecute={onExecute}

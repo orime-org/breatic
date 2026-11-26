@@ -20,6 +20,7 @@ import { ModeToggle } from '@web/spaces/canvas/generate/ModeToggle';
 import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import { VideoGenerateToolbar } from '@web/spaces/canvas/generate/VideoGenerateToolbar';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
+import { TextFullscreenButton } from '@web/spaces/canvas/nodes/_shared/TextFullscreenButton';
 import { GENERATE_PANEL_WIDTH_STYLE } from '@web/spaces/canvas/generate/panel-width';
 import type {
   VideoSlot,
@@ -141,6 +142,8 @@ interface VideoGeneratePanelProps {
   durationFloor?: number;
   /** Close the panel without generating. */
   onExit: () => void;
+  /** Opens the shown prompt box full screen (inner#2115); none while the panel shows no box. */
+  onOpenPromptFullscreen?: () => void;
   /** Every model served for the node type: the template menu greys out templates it cannot run (inner#977). */
   catalogModels: readonly ModelEntry[];
   /** Applies a template picked from the corner menu. */
@@ -207,6 +210,7 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
   promptSlot,
   durationFloor,
   onExit,
+  onOpenPromptFullscreen,
   catalogModels,
   onPickTemplate,
   onSelectModel,
@@ -237,6 +241,13 @@ export const VideoGeneratePanel = React.memo(function VideoGeneratePanel({
         />
         <div className='flex items-center gap-1.5'>
           <TemplateMenu nodeType='video' models={catalogModels} onPick={onPickTemplate} />
+          {onOpenPromptFullscreen ? (
+            <TextFullscreenButton
+              label={t('canvas.textFullscreen.editPrompt')}
+              onOpen={onOpenPromptFullscreen}
+              testId='prompt-fullscreen-button'
+            />
+          ) : null}
           <Button
             type='button'
             variant={null}
