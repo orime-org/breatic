@@ -754,7 +754,7 @@ export function renderProductGuide(): string {
       "a finished row names the folder it was saved in, with " +
       `${quoted(t("desktopDownloads.revealMac"))} on macOS or ${quoted(t("desktopDownloads.revealOther"))} on Windows and Linux, ` +
       "which opens that folder with the file selected (when the file was moved or deleted since, the row says " +
-      `${quoted(t("desktopDownloads.missing"))} in place of the button), and a failed row says the download failed and to download it again; ` +
+      `${quoted(t("desktopDownloads.missing"))} in place of the folder and the button), and a failed row says the download failed and to download it again; ` +
       `with more than one download ${quoted(t("desktopDownloads.showAll", { count: 2 }))} lists them all and ` +
       `${quoted(t("desktopDownloads.showLatest"))} goes back to the newest, and the panel stays until its ` +
       `${quoted(t("desktopDownloads.close"))} button, an X, closes it), then ` +
