@@ -400,8 +400,9 @@ function announcedKey(storageKey: string): string {
 
 /**
  * Tell the Projects showing the video when what a reader sees differs from what they were last told (frames-split §7.20).
- * The selected version, the current job and its failure can be written by this worker, by ingest itself (the expiry on
- * read) or by the server (a Retry or a read that admits a new job); comparing what the answer shows catches every writer.
+ * The selected version, the current job and its failure are written by this worker, by ingest itself (the expiry on read,
+ * while the job is still current) and by the server (a Retry or a read that admits a new job); each is seen by a later pickup
+ * of a current job, so comparing what the answer shows catches all three.
  * The view is recorded only once every Project was told, so a failed message is sent again by the next pickup.
  * @param row - The live source row.
  * @param data - The job identity, for the log.
