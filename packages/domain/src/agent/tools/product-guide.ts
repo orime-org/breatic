@@ -748,7 +748,8 @@ export function renderProductGuide(): string {
       `its words) and shows ${quoted(t("canvas.history.snapshotKept"))}`,
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file (on a deployment whose ` +
       "files are served from an r2.dev address it opens the file in a new tab instead; in the desktop client the system asks where " +
-      `to save it, and the download then shows in a ${quoted(t("desktopDownloads.title"))} panel at the bottom left of the window: ` +
+      `to save it, and the download then shows in a ${quoted(t("desktopDownloads.title"))} panel at the bottom left of the page's ` +
+      "working area, which the user can drag anywhere in the window by its title bar and which stays where it was dragged: " +
       "its title bar says how many are downloading or failed, each row shows the file's name and progress, " +
       "a finished row names the folder it was saved in, with " +
       `${quoted(t("desktopDownloads.revealMac"))} on macOS or ${quoted(t("desktopDownloads.revealOther"))} on Windows and Linux, ` +
