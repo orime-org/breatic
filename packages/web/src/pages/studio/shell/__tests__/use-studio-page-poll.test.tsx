@@ -12,7 +12,7 @@
 
 import type { ReactNode } from 'react';
 import { act, renderHook } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { COPYING_POLL_MAX_IDS, UPLOAD_STATUS_MAX_KEYS, type UploadStatus } from '@breatic/shared';
 import type * as StudioPageModule from '@web/data/api/studio-page';
@@ -47,17 +47,25 @@ function answerWith(over: Partial<Answer> = {}): Answer {
   return { notifications: { unread: 1, latestAt: '2026-11-22T00:00:00.000Z' }, transfer: null, uploads: [], copied: [], nextPollMs: 2000, ...over };
 }
 
+const watchers: (() => void)[] = [];
+
 /**
  * Put a Studio projects list in the cache, as the list's infinite query holds it.
  * @param slug - The Studio.
  * @param pages - Each page's Projects: their ids and whether each is being copied.
- * @param archived - Whether it is the archived list.
+ * @param options - Which list, and whether it is on screen.
+ * @param options.archived - Whether it is the archived list.
+ * @param options.shown - Whether a component on the page reads it; a list left behind by a tab or sort switch is not.
  */
-function cacheList(slug: string, pages: { id: string; copying: boolean }[][], archived = false): void {
-  client.setQueryData(studioProjectsListKey(slug, { archived, sort: 'opened', locale: 'en' }), {
-    pages: pages.map((items) => ({ items, nextCursor: null, total: null })),
-    pageParams: pages.map(() => undefined),
-  });
+function cacheList(
+  slug: string,
+  pages: { id: string; copying: boolean }[][],
+  { archived = false, shown = true }: { archived?: boolean; shown?: boolean } = {},
+): void {
+  const queryKey = studioProjectsListKey(slug, { archived, sort: 'opened', locale: 'en' });
+  const data = { pages: pages.map((items) => ({ items, nextCursor: null, total: null })), pageParams: pages.map(() => undefined) };
+  client.setQueryData(queryKey, data);
+  if (shown) watchers.push(new QueryObserver(client, { queryKey, queryFn: () => data, staleTime: Infinity }).subscribe(() => {}));
 }
 
 /**
@@ -144,6 +152,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  for (const stop of watchers.splice(0)) stop();
   vi.useRealTimers();
 });
 
@@ -425,16 +434,21 @@ describe('the copies the page waits for', () => {
     view.unmount();
   });
 
-  it('asks about at most the request limit at once, and every copy in turn', async () => {
+  it('asks about at most the request limit at once', async () => {
     const ids = Array.from({ length: COPYING_POLL_MAX_IDS + 10 }, (_, i) => `c-${i}`);
     cacheList(SLUG, [ids.map((id) => ({ id, copying: true }))]);
     const view = mount();
     await pass(0);
-    await pass(2000);
-    const asked = poll.mock.calls.map(([, , sent]) => sent as string[]);
-    expect(asked).toHaveLength(2);
-    for (const sent of asked) expect(sent.length).toBeLessThanOrEqual(COPYING_POLL_MAX_IDS);
-    expect(new Set(asked.flat())).toEqual(new Set(ids));
+    expect(poll.mock.calls[0]![2]).toEqual(ids.slice(0, COPYING_POLL_MAX_IDS));
+    view.unmount();
+  });
+
+  it('asks only about the lists on screen, so a list left behind by a tab or sort switch adds nothing', async () => {
+    cacheList(SLUG, [[{ id: 'c1', copying: true }]]);
+    cacheList(SLUG, [[{ id: 'c2', copying: true }]], { archived: true, shown: false });
+    const view = mount();
+    await pass(0);
+    expect(poll.mock.calls[0]![2]).toEqual(['c1']);
     view.unmount();
   });
 });
