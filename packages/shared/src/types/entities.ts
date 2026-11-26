@@ -43,6 +43,8 @@ export interface UserEntity {
    * the interface switches to it at sign-in and on a cold load.
    */
   locale: string;
+  /** The influencer whose site the account signed up on, `official` for the official site (inner#2157). */
+  influencerCode: string;
   createdAt: Date;
   updatedAt: Date;
   deletedAt: Date | null;

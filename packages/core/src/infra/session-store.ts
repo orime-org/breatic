@@ -36,7 +36,22 @@ import { redactSessionError } from "@core/infra/session-error.js";
  * @returns The cookie name for this deployment, e.g. `breatic_session_dev`.
  */
 export function sessionCookieName(): string {
-  return `breatic_session_${env.REDIS_KEY_PREFIX}`;
+  // A site-wide credential takes its own name, so a host-only cookie issued
+  // before COOKIE_DOMAIN was set can never shadow it on the same host.
+  const kind = cookieDomainHost() === "" ? "session" : "site_session";
+  return `breatic_${kind}_${env.REDIS_KEY_PREFIX}`;
+}
+
+/**
+ * `COOKIE_DOMAIN` as a bare lowercase host: trimmed, leading dot dropped.
+ *
+ * Every consumer reads the domain through this (the session cookie `Domain`,
+ * its name, the influencer host suffix), so an operator writing `.Example.com`
+ * and one writing `example.com` get the same behaviour (inner#2157).
+ * @returns The host, or an empty string when no site-wide domain is set.
+ */
+export function cookieDomainHost(): string {
+  return (env.COOKIE_DOMAIN ?? "").trim().replace(/^\.+/, "").toLowerCase();
 }
 
 const SESSION_TTL_SECONDS = 30 * 24 * 60 * 60; // 30 days

@@ -327,7 +327,7 @@ export {
   normalizeEmail,
   emailSchema,
   registerSchema,
-  googleAuthSchema,
+  googleBeginSchema,
   REFERRAL_CODE_INPUT_MAX,
   PROMOTER_CHANNELS_MAX,
   PROMOTER_CHANNEL_INPUT_MAX,
@@ -837,6 +837,7 @@ export { reasonOf } from "@shared/http/reason.js";
 // This is not one more thing the transport does — it is the bound the second
 // parameter already had, said out loud.
 export { MAX_TIMER_MS } from "@shared/http/constants.js";
+export { originMatches } from "@shared/http/origin-matches.js";
 
 // The one backoff function with a consumer outside this package.
 // `packages/core/src/infra/retry.ts` held a byte-identical copy of the backoff

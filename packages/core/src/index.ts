@@ -185,6 +185,7 @@ export {
   revokeSession,
   revokeAllSessions,
   sessionCookieName,
+  cookieDomainHost,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";
 export { redactSessionError, type RedactedSessionError } from "@core/infra/session-error.js";
@@ -369,7 +370,7 @@ export * from "@core/http/internal-signature.js";
 export { closeAfterRefusal } from "@core/http/close-after-refusal.js";
 export { refuseUnstorableText } from "@core/http/refuse-unstorable-text.js";
 export { toPage } from "@core/http/keyset-page.js";
-export { frontendOrigin } from "@core/http/frontend-origin.js";
+export { frontendOrigin, frontendOriginFor, isTrustedFrontendOrigin } from "@core/http/frontend-origin.js";
 export { fingerprint } from "@core/http/request-fingerprint.js";
 export { isKnownTimeZone } from "@core/util/time-zone.js";
 export { asStorable, holdsOnlyStorableText, isStorableText, storableText } from "@core/util/storable-text.js";
@@ -410,6 +411,8 @@ export {
 export { nextAttemptDelaySeconds } from "@core/outbox/backoff.js";
 export { commerceConfigSchema, getCommerceConfig, type CommerceConfig } from "@core/config/commerce.js";
 export * as commerceOutboxRepo from "@core/commerce/commerce-outbox.repo.js";
+export * as influencerRepo from "@core/influencer/influencer.repo.js";
+export { getInfluencersConfig } from "@core/config/influencers.js";
 export {
   adClickSchema,
   conversionContextSchema,
@@ -467,10 +470,12 @@ export {
   type RefundLotFactsRequest,
   COMMERCE_OUTBOX_TYPES,
   accountErasureEventSchema,
+  influencerStatusEventSchema,
   inboxAnswerSchema,
   inboxDeliverySchema,
   lotRefundLifecycleEventSchema,
   type AccountErasureEvent,
+  type InfluencerStatusEvent,
   type CommerceOutboxType,
   type InboxAnswer,
   type InboxDelivery,
