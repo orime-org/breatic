@@ -63,7 +63,7 @@ import { canvasApi } from '@web/data/api/canvas';
 import * as canvasSpace from '@web/data/yjs/canvas-space';
 import { readShots } from '@web/data/yjs/node-storyboard';
 import { clearAllDocSizes } from '@web/data/yjs/doc-size';
-import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
+import { destroyDoc, docName, getDoc, hasDoc, _resetForTests } from '@web/data/yjs/manager';
 import { bodyToPlainText } from '@breatic/shared/canvas/text-body';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { ProposalCard } from '@web/pages/project/chat/ProposalCard';
@@ -348,6 +348,20 @@ describe('an Agent proposal carrying the user\'s material enters this Project th
     expect(doc.getMap(CANVAS_NODES_KEY).size).toBe(0);
     // The card says it failed; the canvas adds no second notice (inner#2171 implementation round 1).
     expect(toast.error).not.toHaveBeenCalled();
+  });
+
+  it('lands nothing and reports failed when its Space was closed before paste answered (inner#2171 implementation round 3)', async () => {
+    openAt('W');
+    let answer: (value: unknown) => void = () => undefined;
+    const paste = vi.spyOn(canvasApi, 'paste').mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
+    mount();
+    act(() => useCanvasStore.getState().requestNodeCreate({ proposal: withMaterial(OURS), settle }));
+    await waitFor(() => expect(paste).toHaveBeenCalledTimes(1));
+    destroyDoc(NAME);
+    await act(async () => { answer({ map: { [OURS]: COPY }, media: {} }); });
+    await waitFor(() => expect(settle).toHaveBeenCalled());
+    expect(settle.mock.calls).toEqual([['failed']]);
+    expect(hasDoc(NAME)).toBe(false);
   });
 
   it('asks nothing for a proposal with no material', async () => {

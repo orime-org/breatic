@@ -649,7 +649,7 @@ describe('Add web animation', () => {
       deadlineAt: '2026-11-15T10:00:00.000000Z', createdAt: '2026-11-15T08:00:00.000000Z', updatedAt: '2026-11-15T08:00:00.000000Z',
       kind: 'web_animation_create', engine: 'deepseek', request,
       input: { prompt: request, engine: 'deepseek', aspect: '16:9', durationSeconds: 2, fps: SETTINGS.fps },
-      resultSourceVersionId, resultAssetId: null,
+      resultSourceVersionId, resultAsset: null,
     };
   }
 
