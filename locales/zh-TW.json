@@ -40,6 +40,7 @@
       "not_authenticated": "未登入",
       "google_oauth_unconfigured": "本伺服器未開啟 Google 登入",
       "invalid_google_credential": "無法驗證你的 Google 帳號",
+      "desktop_exchange_invalid": "這個登入連結已失效，請重新登入。",
       "google_email_unverified": "你的 Google 帳號電子郵件未驗證",
       "google_link_requires_email_login": "請使用電子郵件登入此帳號，Google 無法安全關聯此信箱。",
       "reset_link_sent": "若該電子郵件已註冊,重設連結已寄送。",
@@ -3362,6 +3363,22 @@
       "haveCode": "有推廣碼？",
       "invalid": "推廣碼無效。改一下，或清空後繼續。",
       "googleOnly": "用 Google 新註冊時使用"
+    },
+    "desktop": {
+      "continueWithGoogle": "透過 Google 帳戶繼續操作",
+      "waitingBrowser": "請在瀏覽器中完成登入",
+      "cancel": "取消",
+      "exchangeFailed": "登入沒有完成，請重試。",
+      "title": "登入 {app} 桌面版",
+      "signingInAs": "以 {email} 的身分登入",
+      "continue": "繼續",
+      "switchAccount": "換個帳號",
+      "handedTitle": "已回到 {app} 桌面版",
+      "handedBody": "可以關掉這個頁面了。桌面版沒有開啟的話，點下面的按鈕。",
+      "openApp": "開啟 {app} 桌面版",
+      "errorTitle": "無法登入桌面版",
+      "errorBody": "這個登入連結無效或已過期。回到桌面版，再點一次「透過 Google 帳戶繼續操作」。",
+      "retry": "重試"
     }
   },
   "roleTag": {
@@ -5466,5 +5483,60 @@
       "videoLoading": "{track}：影片載入中…",
       "videoUnavailable": "{track}：影片不可用"
     }
+  },
+  "desktop": {
+    "unreachable": {
+      "title": "連不上 {product}",
+      "retry": "重試",
+      "retrying": "正在自動重試",
+      "unreachable": "連不上這個位址",
+      "certificate": "這台伺服器的憑證不受信任，請依自架指南在這台電腦上信任憑證",
+      "redirected": "這個位址轉到了 {target}"
+    },
+    "menu": {
+      "file": "檔案",
+      "back": "上一頁",
+      "forward": "下一頁",
+      "newWindow": "新增視窗",
+      "checkForUpdates": "檢查更新…",
+      "help": "說明"
+    },
+    "leave": {
+      "message": "有尚未儲存的變更，確定要離開嗎？",
+      "leave": "離開",
+      "stay": "留下"
+    },
+    "updates": {
+      "ready": "新版本 {version} 已就緒",
+      "readyDetail": "現在重新啟動 {product} 即可安裝，或在下次結束時自動安裝。",
+      "restart": "立即重新啟動",
+      "later": "稍後",
+      "upToDate": "{product} 已是最新版本",
+      "failed": "無法檢查更新"
+    },
+    "downloads": {
+      "quitTitleOne": "有 {count} 個下載正在進行",
+      "quitTitleOther": "有 {count} 個下載正在進行",
+      "quitDetail": "結束會取消下載。",
+      "quit": "結束",
+      "stay": "留下"
+    }
+  },
+  "desktopDownloads": {
+    "title": "下載",
+    "running": "{count} 個正在下載",
+    "failed": "{count} 個失敗",
+    "runningFailed": "{running} 個正在下載 · {failed} 個失敗",
+    "done": "下載完成",
+    "showAll": "全部 {count} 個",
+    "showLatest": "只看最新",
+    "savedIn": "儲存在 {folder}",
+    "revealMac": "在 Finder 中顯示",
+    "revealOther": "在資料夾中顯示",
+    "failedRow": "下載失敗，請重新下載",
+    "missing": "檔案已移走或刪除",
+    "progress": "{received} / {total}",
+    "receivedOnly": "已下載 {received}",
+    "close": "關閉"
   }
 }

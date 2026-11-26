@@ -14,6 +14,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@web/components/ui/dropdown-menu';
 import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
+import { Progress } from '@web/components/ui/progress';
 import { Textarea } from '@web/components/ui/textarea';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { assetsApi } from '@web/data/api/assets';
@@ -412,10 +413,7 @@ const ViewSlotCell = React.memo(function ViewSlotCell({ view, index, slot, next,
           <Button type='button' variant='secondary' size='chrome' data-testid={`scene-generate-view-${index}-change`} aria-label={t('spaces.threeD.generateDialog.changeView', { view: name })}
             className='absolute right-1 top-1 size-6'><RefreshCw className='size-3.5' /></Button>
         </DropdownMenuTrigger>{menu(true)}</DropdownMenu>
-      </> : slot?.kind === 'uploading' ? <span role='progressbar' aria-valuenow={slot.percent} aria-valuemin={0} aria-valuemax={100}
-        className='absolute inset-x-2 bottom-2 h-1 overflow-hidden rounded-full bg-muted'>
-        <span className='block h-full bg-foreground' style={{ width: `${slot.percent}%` }} />
-      </span> : slot?.kind === 'failed' || next ? <>
+      </> : slot?.kind === 'uploading' ? <Progress value={slot.percent} className='absolute inset-x-2 bottom-2 w-auto' /> : slot?.kind === 'failed' || next ? <>
         <DropdownMenu modal={false}><DropdownMenuTrigger asChild>
           <Button type='button' variant='ghost' size='icon' data-testid={`scene-generate-view-${index}-add`} aria-label={t('spaces.threeD.generateDialog.addView', { view: name })}><Plus className='size-4' /></Button>
         </DropdownMenuTrigger>{menu(slot?.kind === 'failed')}</DropdownMenu>

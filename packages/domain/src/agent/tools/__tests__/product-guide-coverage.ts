@@ -78,6 +78,15 @@ const STYLE_SET_WORDS: Readonly<Record<string, Described>> = Object.fromEntries(
 /** Every message the guide does not quote, and what the guide does with it. */
 export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.credit.agent_tools_need_credits": { described: /web search, image search and page reading, and a web animation's rendering, are paid in credits/ },
+  // inner#2041: the desktop client's Downloads panel.
+  "desktopDownloads.running": { described: /its title bar says how many are downloading or failed/ },
+  "desktopDownloads.failed": { described: /its title bar says how many are downloading or failed/ },
+  "desktopDownloads.runningFailed": { described: /its title bar says how many are downloading or failed/ },
+  "desktopDownloads.done": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "desktopDownloads.progress": { described: /each row shows the file's name and progress/ },
+  "desktopDownloads.receivedOnly": { described: /each row shows the file's name and progress/ },
+  "desktopDownloads.savedIn": { described: /a finished row names the folder it was saved in/ },
+  "desktopDownloads.failedRow": { described: /a failed row says the download failed and to download it again/ },
   ...STYLE_SET_WORDS,
   // inner#1968: waiting for a running-task slot, and the spend-limit refusals.
   "canvas.task.waitReason": { described: /starts by itself when an earlier one ends|waits its turn/ },
@@ -1452,6 +1461,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.auth.google_oauth_unconfigured": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.invalid_credentials": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.invalid_google_credential": { excluded: REASONS.NOT_ON_THESE_SCREENS },
+  "server.auth.desktop_exchange_invalid": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.invalid_recovery_code": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.invalid_reset_token": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.logout_success": { excluded: REASONS.NOT_ON_THESE_SCREENS },

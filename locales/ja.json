@@ -40,6 +40,7 @@
       "not_authenticated": "認証されていません",
       "google_oauth_unconfigured": "このサーバーでは Google サインインは利用できません",
       "invalid_google_credential": "Google アカウントを確認できませんでした",
+      "desktop_exchange_invalid": "このサインインリンクは無効になりました。もう一度サインインしてください。",
       "google_email_unverified": "Google アカウントのメールアドレスが確認されていません",
       "google_link_requires_email_login": "このアカウントにはメールでログインしてください。Google アカウントを安全に連携できません。",
       "reset_link_sent": "そのメールアドレスに登録されたアカウントがあれば、リセットリンクをお送りしました。",
@@ -3362,6 +3363,22 @@
       "haveCode": "紹介コードをお持ちですか？",
       "invalid": "紹介コードが無効です。修正するか、空にして続行してください。",
       "googleOnly": "Google で新規登録するときに使われます"
+    },
+    "desktop": {
+      "continueWithGoogle": "Google で続ける",
+      "waitingBrowser": "ブラウザでサインインを完了してください",
+      "cancel": "キャンセル",
+      "exchangeFailed": "サインインが完了しませんでした。もう一度お試しください。",
+      "title": "{app} デスクトップにサインイン",
+      "signingInAs": "{email} としてサインイン",
+      "continue": "続行",
+      "switchAccount": "別のアカウントを使う",
+      "handedTitle": "{app} デスクトップに戻りました",
+      "handedBody": "このページは閉じてかまいません。デスクトップアプリが開かない場合は、下のボタンを押してください。",
+      "openApp": "{app} デスクトップを開く",
+      "errorTitle": "デスクトップアプリにサインインできませんでした",
+      "errorBody": "このサインインリンクは無効か期限切れです。デスクトップアプリに戻り、もう一度「Google で続ける」を押してください。",
+      "retry": "再試行"
     }
   },
   "roleTag": {
@@ -5466,5 +5483,60 @@
       "videoLoading": "{track}：動画を読み込み中…",
       "videoUnavailable": "{track}：動画を利用できません"
     }
+  },
+  "desktop": {
+    "unreachable": {
+      "title": "{product} に接続できません",
+      "retry": "再試行",
+      "retrying": "自動で再試行しています",
+      "unreachable": "このアドレスに接続できません",
+      "certificate": "このサーバーの証明書は信頼されていません。セルフホストガイドに従ってこのコンピューターで信頼してください。",
+      "redirected": "このアドレスは {target} に転送されます"
+    },
+    "menu": {
+      "file": "ファイル",
+      "back": "戻る",
+      "forward": "進む",
+      "newWindow": "新しいウィンドウ",
+      "checkForUpdates": "アップデートを確認…",
+      "help": "ヘルプ"
+    },
+    "leave": {
+      "message": "保存されていない変更があります。移動しますか？",
+      "leave": "移動する",
+      "stay": "とどまる"
+    },
+    "updates": {
+      "ready": "新しいバージョン {version} の準備ができました",
+      "readyDetail": "今すぐ {product} を再起動してインストールするか、次回の終了時にインストールされます。",
+      "restart": "今すぐ再起動",
+      "later": "後で",
+      "upToDate": "{product} は最新です",
+      "failed": "アップデートを確認できませんでした"
+    },
+    "downloads": {
+      "quitTitleOne": "{count} 件のダウンロードが進行中です",
+      "quitTitleOther": "{count} 件のダウンロードが進行中です",
+      "quitDetail": "終了するとダウンロードはキャンセルされます。",
+      "quit": "終了",
+      "stay": "とどまる"
+    }
+  },
+  "desktopDownloads": {
+    "title": "ダウンロード",
+    "running": "{count} 件ダウンロード中",
+    "failed": "{count} 件失敗",
+    "runningFailed": "{running} 件ダウンロード中 · {failed} 件失敗",
+    "done": "ダウンロード完了",
+    "showAll": "すべて（{count} 件）",
+    "showLatest": "最新のみ",
+    "savedIn": "保存先：{folder}",
+    "revealMac": "Finder で表示",
+    "revealOther": "フォルダに表示",
+    "failedRow": "ダウンロードに失敗しました。もう一度ダウンロードしてください。",
+    "missing": "ファイルは移動または削除されました",
+    "progress": "{received} / {total}",
+    "receivedOnly": "{received} ダウンロード済み",
+    "close": "閉じる"
   }
 }

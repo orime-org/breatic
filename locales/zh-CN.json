@@ -45,6 +45,7 @@
       "not_authenticated": "未登录",
       "google_oauth_unconfigured": "本服务器未开启 Google 登录",
       "invalid_google_credential": "无法验证你的 Google 账号",
+      "desktop_exchange_invalid": "这个登录链接已失效，请重新登录。",
       "google_email_unverified": "你的 Google 账号邮箱未验证",
       "google_link_requires_email_login": "请使用邮箱登录此账号，Google 无法安全关联此邮箱。",
       "reset_link_sent": "如果该邮箱已注册,重置链接已发送。",
@@ -3362,6 +3363,22 @@
       "haveCode": "有推广码？",
       "invalid": "推广码无效。改一下，或清空后继续。",
       "googleOnly": "用 Google 新注册时使用"
+    },
+    "desktop": {
+      "continueWithGoogle": "通过 Google 继续操作",
+      "waitingBrowser": "请在浏览器中完成登录",
+      "cancel": "取消",
+      "exchangeFailed": "登录没有完成，请重试。",
+      "title": "登录 {app} 桌面版",
+      "signingInAs": "以 {email} 的身份登录",
+      "continue": "继续",
+      "switchAccount": "换个账号",
+      "handedTitle": "已回到 {app} 桌面版",
+      "handedBody": "可以关掉这个页面了。桌面版没有打开的话，点下面的按钮。",
+      "openApp": "打开 {app} 桌面版",
+      "errorTitle": "没能登录桌面版",
+      "errorBody": "这个登录链接无效或已过期。回到桌面版，再点一次「通过 Google 继续操作」。",
+      "retry": "重试"
     }
   },
   "roleTag": {
@@ -5466,5 +5483,60 @@
       "videoLoading": "{track}：视频加载中…",
       "videoUnavailable": "{track}：视频不可用"
     }
+  },
+  "desktop": {
+    "unreachable": {
+      "title": "连不上 {product}",
+      "retry": "重试",
+      "retrying": "正在自动重试",
+      "unreachable": "连不上这个地址",
+      "certificate": "这台服务器的证书不受信任，请按自部署指南在这台电脑上信任证书",
+      "redirected": "这个地址转到了 {target}"
+    },
+    "menu": {
+      "file": "文件",
+      "back": "后退",
+      "forward": "前进",
+      "newWindow": "新建窗口",
+      "checkForUpdates": "检查更新…",
+      "help": "帮助"
+    },
+    "leave": {
+      "message": "有未保存的改动，确定离开吗？",
+      "leave": "离开",
+      "stay": "留下"
+    },
+    "updates": {
+      "ready": "新版本 {version} 已就绪",
+      "readyDetail": "现在重启 {product} 即可安装，或在下次退出时自动安装。",
+      "restart": "立即重启",
+      "later": "稍后",
+      "upToDate": "{product} 已是最新版本",
+      "failed": "无法检查更新"
+    },
+    "downloads": {
+      "quitTitleOne": "有 {count} 个下载正在进行",
+      "quitTitleOther": "有 {count} 个下载正在进行",
+      "quitDetail": "退出会取消下载。",
+      "quit": "退出",
+      "stay": "留下"
+    }
+  },
+  "desktopDownloads": {
+    "title": "下载",
+    "running": "{count} 个正在下载",
+    "failed": "{count} 个失败",
+    "runningFailed": "{running} 个正在下载 · {failed} 个失败",
+    "done": "下载完成",
+    "showAll": "全部 {count} 个",
+    "showLatest": "只看最新",
+    "savedIn": "保存在 {folder}",
+    "revealMac": "在访达中显示",
+    "revealOther": "在文件夹中显示",
+    "failedRow": "下载失败，请重新下载",
+    "missing": "文件已移走或删除",
+    "progress": "{received} / {total}",
+    "receivedOnly": "已下载 {received}",
+    "close": "关闭"
   }
 }

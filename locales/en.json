@@ -40,6 +40,7 @@
       "not_authenticated": "Not authenticated",
       "google_oauth_unconfigured": "Google sign-in is not available on this server",
       "invalid_google_credential": "Could not verify your Google account",
+      "desktop_exchange_invalid": "This sign-in link is no longer valid. Sign in again.",
       "google_email_unverified": "Your Google account email is not verified",
       "google_link_requires_email_login": "Sign in with email to access this account. Google could not safely link it.",
       "reset_link_sent": "If this email is registered, a reset link has been sent.",
@@ -3362,6 +3363,22 @@
       "haveCode": "Have a referral code?",
       "invalid": "This referral code is not valid. Change it, or clear it to continue.",
       "googleOnly": "Used when signing up with Google"
+    },
+    "desktop": {
+      "continueWithGoogle": "Continue with Google",
+      "waitingBrowser": "Continue in your browser",
+      "cancel": "Cancel",
+      "exchangeFailed": "Sign-in did not finish. Try again.",
+      "title": "Sign in to {app} desktop",
+      "signingInAs": "Signing in as {email}",
+      "continue": "Continue",
+      "switchAccount": "Use another account",
+      "handedTitle": "Back in {app} desktop",
+      "handedBody": "You can close this page. If the desktop app did not open, use the button below.",
+      "openApp": "Open {app} desktop",
+      "errorTitle": "Couldn't sign in to the desktop app",
+      "errorBody": "This sign-in link is invalid or has expired. Go back to the desktop app and press Continue with Google again.",
+      "retry": "Try again"
     }
   },
   "roleTag": {
@@ -5466,5 +5483,60 @@
       "videoLoading": "{track}: video loading…",
       "videoUnavailable": "{track}: video unavailable"
     }
+  },
+  "desktop": {
+    "unreachable": {
+      "title": "Can't reach {product}",
+      "retry": "Retry",
+      "retrying": "Retrying automatically",
+      "unreachable": "Can't reach this address",
+      "certificate": "This server's certificate is not trusted. Trust it on this computer as the self-hosting guide describes.",
+      "redirected": "This address goes to {target}"
+    },
+    "menu": {
+      "file": "File",
+      "back": "Back",
+      "forward": "Forward",
+      "newWindow": "New Window",
+      "checkForUpdates": "Check for Updates…",
+      "help": "Help"
+    },
+    "leave": {
+      "message": "You have unsaved changes. Leave anyway?",
+      "leave": "Leave",
+      "stay": "Stay"
+    },
+    "updates": {
+      "ready": "New version {version} is ready",
+      "readyDetail": "Restart {product} to install it now, or it installs the next time you quit.",
+      "restart": "Restart now",
+      "later": "Later",
+      "upToDate": "{product} is up to date",
+      "failed": "Couldn't check for updates"
+    },
+    "downloads": {
+      "quitTitleOne": "{count} download is in progress",
+      "quitTitleOther": "{count} downloads are in progress",
+      "quitDetail": "Quitting cancels downloads in progress.",
+      "quit": "Quit",
+      "stay": "Stay"
+    }
+  },
+  "desktopDownloads": {
+    "title": "Downloads",
+    "running": "{count} downloading",
+    "failed": "{count} failed",
+    "runningFailed": "{running} downloading · {failed} failed",
+    "done": "Complete",
+    "showAll": "All {count}",
+    "showLatest": "Latest only",
+    "savedIn": "Saved in {folder}",
+    "revealMac": "Show in Finder",
+    "revealOther": "Show in folder",
+    "failedRow": "Download failed. Please download it again.",
+    "missing": "File moved or deleted",
+    "progress": "{received} / {total}",
+    "receivedOnly": "{received} downloaded",
+    "close": "Close"
   }
 }
