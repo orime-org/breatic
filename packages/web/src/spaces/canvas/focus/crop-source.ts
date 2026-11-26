@@ -86,14 +86,13 @@ export function cropMediaOf(el: Element | null): CropMedia | null {
  * original, whose natural size is its own. Zero means "not decodable yet": a
  * bitmap still loading, a broken URL, or a video whose metadata has not
  * arrived.
- * A video with a selected version is framed in that version's display geometry (P.display), never the played file's
- * size, whose short side is at most 1080 (frames-split §5.5, §7.8).
+ * A video's own size is the played file's; the crop tools frame it in the selected version's display through
+ * `useMediaGeometry` (frames-split §5.5, §7.8).
  * @param el - The crop source.
- * @param display - The selected version's display size, for a video that has one.
  * @returns The original's size, possibly `0 × 0`.
  */
-export function intrinsicSize(el: CropSourceEl, display?: { width: number; height: number } | null): { width: number; height: number } {
-  if (el instanceof HTMLVideoElement) return display == null ? { width: el.videoWidth, height: el.videoHeight } : { width: display.width, height: display.height };
+export function intrinsicSize(el: CropSourceEl): { width: number; height: number } {
+  if (el instanceof HTMLVideoElement) return { width: el.videoWidth, height: el.videoHeight };
   const width = Number(el.getAttribute('width'));
   const height = Number(el.getAttribute('height'));
   if (width > 0 && height > 0 && el.naturalWidth > 0) return { width, height };

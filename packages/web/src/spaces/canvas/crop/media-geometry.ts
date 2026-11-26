@@ -70,8 +70,8 @@ function sameGeometry(a: MediaGeometry | null, b: MediaGeometry | null): boolean
  * the media resizes, or when it finishes loading.
  * @param root - The node's outer wrapper.
  * @param active - Whether anything on this node needs it.
- * @param display - The selected version's display geometry (P.display): with one, the source size is it, never the
- *   playing file's `videoWidth`/`videoHeight` (frames-split §7.8 geometry reads).
+ * @param display - The size the source is cut in: the selected version's display (P.display), or for a video with none
+ *   its registered size; with one, never the playing element's `videoWidth`/`videoHeight` (frames-split §7.8 geometry reads).
  * @returns The current reading, or null.
  */
 export function useMediaGeometry(root: HTMLElement | null, active: boolean, display?: { width: number; height: number } | null): MediaGeometry | null {

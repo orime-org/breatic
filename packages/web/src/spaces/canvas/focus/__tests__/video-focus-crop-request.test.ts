@@ -7,10 +7,11 @@
  * only output is the panel node, framed in the selected version's display geometry (`P.display`).
  */
 
-import { describe, expect, it } from 'vitest';
+import { renderHook } from '@testing-library/react';
+import { afterEach, describe, expect, it } from 'vitest';
 import { MAX_FOCUS_NAME } from '@web/data/focus-images';
 import { toNaturalCrop, type CropRect } from '@web/lib/crop-math';
-import { intrinsicSize } from '@web/spaces/canvas/focus/crop-source';
+import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { videoFocusCropRequest, type VideoFocusCropPress } from '@web/spaces/canvas/focus/run-focus-crop';
 import { taskRowKind } from '@web/spaces/canvas/tasks/task-row-kind';
 import {
@@ -56,24 +57,34 @@ function requestOf(over: Partial<VideoFocusCropPress> = {}): MiniToolPlannedRequ
 }
 
 /**
- * A jsdom video whose played file is smaller than the source.
+ * A node wrapper holding a playing video laid out 400x225 and decoded at the given size.
  * @param width - The played file's width.
  * @param height - The played file's height.
- * @returns The element.
+ * @returns The wrapper.
  */
-function playedVideo(width: number, height: number): HTMLVideoElement {
-  const el = document.createElement('video');
-  Object.defineProperty(el, 'videoWidth', { configurable: true, value: width });
-  Object.defineProperty(el, 'videoHeight', { configurable: true, value: height });
-  return el;
+function nodeWith(width: number, height: number): HTMLElement {
+  const root = document.createElement('div');
+  const video = document.createElement('video');
+  video.setAttribute('data-testid', 'media-element');
+  video.setAttribute('src', 'https://assets.example.test/playback.mp4');
+  Object.defineProperties(video, {
+    videoWidth: { value: width }, videoHeight: { value: height },
+    offsetWidth: { value: 400 }, offsetHeight: { value: 225 }, offsetLeft: { value: 0 }, offsetTop: { value: 0 }, offsetParent: { value: root },
+  });
+  root.append(video);
+  document.body.append(root);
+  return root;
 }
+
+afterEach(() => { document.body.replaceChildren(); });
 
 describe('video focus crop press (design §5.5)', () => {
   it('F01: a marquee drawn over a smaller played file maps into P.display pixels, not the played file\'s', () => {
     // The played file is 640x360; the selected version displays the tool source at 1920x1080 (design §5.5 "用户操作").
-    const el = playedVideo(640, 360);
     const display = { width: 1920, height: 1080 };
-    const space = intrinsicSize(el, display);
+    const root = nodeWith(640, 360);
+    const { result } = renderHook(() => useMediaGeometry(root, true, display));
+    const space = result.current!.natural!;
     expect(space).toEqual(display);
     // The same on-screen marquee (a quarter in from each edge of a 400x225 box) lands on the same source pixels.
     expect(toNaturalCrop({ x: 100, y: 56.25, width: 200, height: 112.5 }, { width: 400, height: 225 }, space)).toEqual(CROP);
