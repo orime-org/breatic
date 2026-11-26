@@ -124,7 +124,7 @@ export async function runJob(job: RunBody): Promise<void> {
       await download(url, file).catch(ours);
       // An input is read at its first decoded frame's display (frames-split D07), the size it was filed at.
       const probed = await withDecodedDisplay(readProbeOutput((await runCommand("ffprobe", probeArgs(file, "own-file"))).stdout.toString("utf8")), file,
-        "own-file", (program, args) => runCommand(program, [...args]).then((out) => out.stdout, () => null));
+        "own-file", (program, args) => runCommand(program, [...args]).then((out) => out.stdout));
       const refused = (first ? inputRefusal(job.op, probed) : null) ?? clipRefusal(job.op, probed);
       if (refused !== null) {
         reason = refused;

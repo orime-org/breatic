@@ -11,8 +11,6 @@
 import { execFile, spawn } from "node:child_process";
 import { Readable, pipeline } from "node:stream";
 
-import type { CommandRun } from "@ingest/container/decoded-display.js";
-
 /** What one tool run is given. */
 export interface ToolRun {
   /** The most stdout may hold. */
@@ -104,15 +102,6 @@ export async function runTool(
     // already says how it went.
     pipeline(source, child.stdin, () => {});
   });
-}
-
-/**
- * A `CommandRun` over `runTool`, for reads that hand FFmpeg a file to write.
- * @param run - The output ceiling and the run's signal.
- * @returns The runner.
- */
-export function toolCommandRun(run: Pick<ToolRun, "maxBytes" | "signal">): CommandRun {
-  return (program, args) => runTool(program, [...args], { ...run, writesFile: true });
 }
 
 /**

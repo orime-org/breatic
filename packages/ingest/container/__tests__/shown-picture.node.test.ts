@@ -9,19 +9,21 @@
  */
 
 import { execFile } from "node:child_process";
+import { createReadStream } from "node:fs";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
-import { withDecodedDisplay } from "@ingest/container/decoded-display.js";
+import { uploadProbeReport, withDecodedDisplay } from "@ingest/container/decoded-display.js";
 import { opSteps } from "@ingest/jobs/op-args.js";
 import { pickMediaMetadata, type ProbeReport } from "@ingest/media-metadata.js";
-import { coverArgs, PROBE_MAX_BYTES, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
+import { coverArgs, probeArgs, readProbeOutput } from "@ingest/probe-command.js";
 import { runSteps } from "../run-steps.js";
-import { toolCommandRun } from "../run-tool.js";
 import { writePixelCropped } from "./helpers/matroska-pixel-crop.js";
 
 const run = promisify(execFile);
@@ -110,13 +112,31 @@ describe("the size an uploaded source is filed at", () => {
     expect(pickMediaMetadata(await probed(name))).toMatchObject({ width, height });
   });
 
-  // The upload's probe decodes through the container's own tool runner, where FFmpeg writes the sample to a file.
-  it("files crop.mkv at 156x94 through the container's tool runner", async () => {
-    const path = join(dir, "crop.mkv");
-    const report = readProbeOutput((await run("ffprobe", probeArgs(path, "own-file"))).stdout);
-    const read = await withDecodedDisplay(report, path, "own-file",
-      toolCommandRun({ maxBytes: PROBE_MAX_BYTES, signal: new AbortController().signal }));
-    expect(pickMediaMetadata(read)).toMatchObject({ width: 156, height: 94 });
+  // The upload's probe reads the served object over HTTP and decodes through the container's own tool runner.
+  it("files a served crop.mkv at 156x94 through the upload probe", async () => {
+    const server = createServer((_req, res) => { createReadStream(join(dir, "crop.mkv")).pipe(res); });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    try {
+      const url = `http://127.0.0.1:${String((server.address() as AddressInfo).port)}/crop.mkv`;
+      const report = readProbeOutput((await run("ffprobe", probeArgs(url, "object"))).stdout);
+      const filed = await uploadProbeReport(report, url, true, new AbortController().signal);
+      expect(pickMediaMetadata(filed)).toMatchObject({ width: 156, height: 94 });
+    } finally {
+      server.close();
+    }
+  });
+
+  it("logs a failed first-frame decode and files the source at its probed size", async () => {
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    try {
+      const path = join(dir, "crop.mkv");
+      const report = readProbeOutput((await run("ffprobe", probeArgs(path, "own-file"))).stdout);
+      const filed = await withDecodedDisplay(report, path, "own-file", async () => { throw new Error("ffmpeg exited 1"); });
+      expect(filed).toBe(report);
+      expect(logged).toHaveBeenCalledWith("decoded_display_failed", expect.objectContaining({ from: "own-file" }));
+    } finally {
+      logged.mockRestore();
+    }
   });
 });
 

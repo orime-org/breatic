@@ -45,7 +45,6 @@ import {
   PREVIEW_MAX_BYTES,
   peaksArgs,
   coverArgs,
-  PROBE_MAX_BYTES,
   previewArgs,
   agentPictureArgs,
   readProbeOutput,
@@ -54,7 +53,7 @@ import { peaksSampleCount } from "@ingest/peaks-step.js";
 import { previewSource } from "@ingest/preview-step.js";
 import type { UprightOrder } from "@ingest/upright-run.js";
 import { runUpright, type UprightDeps } from "./upright-probe.js";
-import { openObject, runTool, toolCommandRun } from "./run-tool.js";
+import { openObject, runTool } from "./run-tool.js";
 import { streamPeaks } from "./stream-peaks.js";
 import { NOTHING_FOUND, pickMediaMetadata } from "@ingest/media-metadata.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
@@ -63,7 +62,7 @@ import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { runJob, type RunBody } from "./mini-tool-run.js";
 import { runPlanJob, type PlanRunBody } from "@ingest/container/plan-run.js";
 import { probeServedObject } from "@ingest/container/served-object-read.js";
-import { withDecodedDisplay } from "@ingest/container/decoded-display.js";
+import { uploadProbeReport } from "@ingest/container/decoded-display.js";
 import { handlePresentationRun, PRESENTATION_RUN_PATH } from "@ingest/container/presentation-run.js";
 import { runLongMediaProbe, type LongMediaProbeRunRequest } from "./long-media-probe.js";
 import { readLongMediaSegmentRunRequest, runLongMediaSegment } from "./long-media-segment.js";
@@ -98,10 +97,7 @@ async function probe(
     probed === null
       ? NOTHING_FOUND
       : readProbeOutput(probed.toString("utf8"));
-  // A video is filed at its first decoded frame's display (frames-split D07), which its cover also takes.
-  const report = wantCover
-    ? await withDecodedDisplay(read, objectUrl, "object", toolCommandRun({ maxBytes: PROBE_MAX_BYTES, signal }))
-    : read;
+  const report = await uploadProbeReport(read, objectUrl, wantCover, signal);
 
   // Nothing to lift a frame from: an audio file with no art, or one whose only
   // video stream is attached album art. `pickMediaMetadata` is the one place

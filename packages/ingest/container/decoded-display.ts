@@ -11,8 +11,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { runTool } from "@ingest/container/run-tool.js";
 import { realVideoStream, squareDisplay, type ProbeReport } from "@ingest/media-metadata.js";
-import { protocolsFor, type ReadFrom } from "@ingest/probe-command.js";
+import { PROBE_MAX_BYTES, protocolsFor, type ReadFrom } from "@ingest/probe-command.js";
 
 /** Runs one program and answers its stdout; null, or a throw, when it failed. */
 export type CommandRun = (program: string, args: readonly string[]) => Promise<Buffer | null>;
@@ -69,10 +70,38 @@ export async function withDecodedDisplay(report: ProbeReport, input: string, fro
   if (video === undefined) return report;
   const directory = await mkdtemp(join(tmpdir(), "decoded-display-"));
   try {
-    const decoded = await decodedSample(run, input, protocolsFor(from), video.index, 1, join(directory, "sample.nut")).catch(() => null);
-    if (decoded === null || !(Number(decoded.width) > 0) || !(Number(decoded.height) > 0)) return report;
-    return { ...report, display: decodedDisplay(decoded) };
+    const decoded = await decodedSample(run, input, protocolsFor(from), video.index, 1, join(directory, "sample.nut"));
+    return decoded === null ? report : { ...report, display: decodedDisplay(decoded) };
+  } catch (err) {
+    console.error("decoded_display_failed", { from, err: err instanceof Error ? err.message : String(err) });
+    return report;
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
+}
+
+/**
+ * A `CommandRun` over the container's tool runner. FFmpeg's answer is the sample file it writes, so its empty stdout is
+ * the answer; ffprobe's answer is its stdout.
+ * @param run - The output ceiling and the run's signal.
+ * @param run.maxBytes - The most stdout may hold.
+ * @param run.signal - When it fires, the tool is killed.
+ * @returns The runner.
+ */
+export function toolCommandRun(run: { maxBytes: number; signal: AbortSignal }): CommandRun {
+  return (program, args) => runTool(program, [...args], { ...run, writesFile: program === "ffmpeg" });
+}
+
+/**
+ * The report an uploaded object is filed by: a video, whose cover is wanted, takes its first decoded frame's display
+ * (frames-split D07), which its cover is then scaled to.
+ * @param read - ffprobe's report on the served object.
+ * @param objectUrl - Where the object is served.
+ * @param wantCover - Whether the stored bytes are a video, whose frame the caller wants.
+ * @param signal - The run's deadline.
+ * @returns The report to file the object by.
+ * @throws {Error} When the sample's directory cannot be made or removed.
+ */
+export async function uploadProbeReport(read: ProbeReport, objectUrl: string, wantCover: boolean, signal: AbortSignal): Promise<ProbeReport> {
+  return wantCover ? withDecodedDisplay(read, objectUrl, "object", toolCommandRun({ maxBytes: PROBE_MAX_BYTES, signal })) : read;
 }
