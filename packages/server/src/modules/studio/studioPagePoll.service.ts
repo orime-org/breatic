@@ -45,7 +45,7 @@ export async function pollStudioPage(
   userId: string,
   slug: string | undefined,
   uploads: readonly string[],
-  copying: readonly string[] = [],
+  copying: readonly string[],
 ): Promise<StudioPagePoll> {
   const studio = slug === undefined ? null : await studioService.getStudioBySlug(slug);
   const role: StudioRole | null = studio === null ? null : await studioAuthService.loadStudioRole(userId, studio.id);

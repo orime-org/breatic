@@ -16,6 +16,12 @@ import { pollStudioPage } from "@server/modules/studio/studioPagePoll.service.js
 
 const studioPage = new Hono<{ Variables: AuthVariables }>();
 
+/** A comma-separated list in a query parameter; absent or empty reads as none. */
+const commaList = z
+  .string()
+  .optional()
+  .transform((v) => (v === undefined || v === "" ? [] : v.split(",")));
+
 studioPage.get(
   "/poll",
   requireAuth,
@@ -25,18 +31,10 @@ studioPage.get(
     z.object({
       // The Studio the page shows; absent on the Recent page, which shows none.
       studio: z.string().min(1).max(128).optional(),
-      // The keys the page waits for, comma-separated; absent when it waits for none.
-      uploads: z
-        .string()
-        .optional()
-        .transform((v) => (v === undefined || v === "" ? [] : v.split(",")))
-        .pipe(z.array(z.string().min(1).max(512)).max(UPLOAD_STATUS_MAX_KEYS)),
-      // The Projects the page shows as being copied, comma-separated; absent when it shows none.
-      copying: z
-        .string()
-        .optional()
-        .transform((v) => (v === undefined || v === "" ? [] : v.split(",")))
-        .pipe(z.array(z.string().uuid()).max(COPYING_POLL_MAX_IDS)),
+      // The keys the page waits for; absent when it waits for none.
+      uploads: commaList.pipe(z.array(z.string().min(1).max(512)).max(UPLOAD_STATUS_MAX_KEYS)),
+      // The Projects the page shows as being copied; absent when it shows none.
+      copying: commaList.pipe(z.array(z.string().uuid()).max(COPYING_POLL_MAX_IDS)),
     }),
   ),
   async (c) => {

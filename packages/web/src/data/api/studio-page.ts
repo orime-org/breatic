@@ -29,7 +29,7 @@ export const studioPageApi = {
    * @returns The answer.
    * @throws {import('@web/data/api/types').ApiException} When the request fails.
    */
-  poll(studio: string | null, uploads: readonly string[], copying: readonly string[] = [], signal?: AbortSignal): Promise<StudioPagePoll> {
+  poll(studio: string | null, uploads: readonly string[], copying: readonly string[], signal?: AbortSignal): Promise<StudioPagePoll> {
     return apiGet<StudioPagePoll>('/studio-page/poll', {
       params: {
         ...(studio !== null && { studio }),
