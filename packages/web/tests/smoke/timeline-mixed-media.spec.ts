@@ -346,3 +346,63 @@ test('a picture whose uploader closed the page once it was sent lands as a pictu
     await deleteSpace(page, spaceId);
   }
 });
+
+test.describe('a Timeline beside the widest Agent column', () => {
+  test.use({ viewport: { width: 1280, height: 800 } });
+
+  test('keeps the editor left of the property panel and moves the toolbar\'s rightmost controls behind More', async ({ page }) => {
+    const errors = watchTimelineErrors(page);
+    await openSmokeProject(page);
+    const spaceId = await createSpace(page, 'timeline', `Timeline narrow ${crypto.randomUUID()}`);
+    try {
+      await openTimeline(page, spaceId);
+      const outlet = visibleSpace(page);
+      const agent = page.locator('[data-testid="agent-column-panel"]');
+      await expect(agent).toBeVisible({ timeout: 20_000 });
+      /**
+       * Drag the Agent column's edge by `dx` pixels in small steps.
+       * @param dx - How far to drag; positive widens the Agent column.
+       * @throws {Error} When the edge has no box.
+       */
+      const dragAgentEdge = async (dx: number): Promise<void> => {
+        const handle = await page.locator('[data-separator]').first().boundingBox();
+        if (!handle) throw new Error('the Agent column edge has no box');
+        const y = handle.y + handle.height / 2;
+        await page.mouse.move(handle.x + handle.width / 2, y);
+        await page.mouse.down();
+        for (let step = 1; step <= 10; step += 1) await page.mouse.move(handle.x + handle.width / 2 + dx * step / 10, y);
+        await page.mouse.up();
+      };
+      await dragAgentEdge(600);
+      await expect.poll(async () => agent.evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBeGreaterThanOrEqual(600);
+
+      const panelLeft = await outlet.getByTestId('timeline-side-panel').evaluate((el) => el.getBoundingClientRect().left);
+      expect(await outlet.getByTestId('timeline-preview-area').evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(panelLeft + 0.5);
+      // The ruler is as long as the Timeline; what shows is the track scroller around it.
+      const tracksRight = await outlet.getByTestId('timeline-ruler').evaluate((el) => el.closest('[data-radix-scroll-area-viewport]')!.getBoundingClientRect().right);
+      expect(tracksRight).toBeLessThanOrEqual(panelLeft + 0.5);
+      const toolbar = outlet.getByRole('toolbar').first();
+      expect(await toolbar.evaluate((el) => el.getBoundingClientRect().right)).toBeLessThanOrEqual(panelLeft + 0.5);
+      await expect(outlet.getByTestId('timeline-toggle-snap')).toHaveCount(0);
+
+      await outlet.getByTestId('timeline-more').click();
+      const snapRow = page.getByTestId('timeline-toggle-snap-item');
+      await expect(snapRow).toHaveAttribute('aria-checked', 'true');
+      await snapRow.click();
+      // A press on the trigger while the menu is still fading out does not reopen it, so wait until it is gone.
+      await expect(page.getByRole('menu')).toHaveCount(0);
+      await outlet.getByTestId('timeline-more').click();
+      await expect(page.getByTestId('timeline-toggle-snap-item')).toHaveAttribute('aria-checked', 'false');
+      await page.keyboard.press('Escape');
+
+      await dragAgentEdge(-600);
+      const snap = outlet.getByTestId('timeline-toggle-snap');
+      await expect(snap).toHaveAttribute('aria-pressed', 'false');
+      await snap.click();
+      await expect(snap).toHaveAttribute('aria-pressed', 'true');
+      expect(errors.unexpected).toEqual([]);
+    } finally {
+      await deleteSpace(page, spaceId);
+    }
+  });
+});
