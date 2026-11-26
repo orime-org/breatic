@@ -145,7 +145,8 @@ test('a copy opened by link while it is being copied shows only the notice, with
     await page.goto(`/project/${copy.slug}-${copy.id}`);
     await expect(page.getByText(COPYING_NOTICE)).toBeVisible({ timeout: 15_000 });
     await expect(page.getByTestId('top-bar')).toHaveCount(0);
-    expect(sockets).toEqual([]);
+    // Vite's development HMR socket is allowed; the page must not dial collab.
+    expect(sockets.filter((url) => new URL(url).pathname.startsWith('/ws'))).toEqual([]);
     expect(visits).toEqual([]);
 
     await page.getByRole('link', { name: 'Back to Studio' }).click();
