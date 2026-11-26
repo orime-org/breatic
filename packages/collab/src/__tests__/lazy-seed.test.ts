@@ -11,18 +11,22 @@
  *     seeded and in WHAT order without a real PG.
  *   - @breatic/core — partial mock: real encoders (encodeInitialMetaState
  *     / encodeInitialSpaceContent / defaultSpaceName) stay, only the
- *     DB read `loadInitialSpaceType` is stubbed to drive the chosen type.
+ *     DB read `loadInitialSpaceType` is stubbed to drive the chosen type, and
+ *     `projectsRepo.isDuplicateInProgress` to say whether the Project is a
+ *     copy still being copied (inner#1706), whose load is refused.
  */
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import * as Y from "yjs";
 
 const {
   loadInitialSpaceTypeMock,
+  isDuplicateInProgressMock,
   seedInitialStateMock,
   fetchDocDataMock,
   activityInsertMock,
 } = vi.hoisted(() => ({
   loadInitialSpaceTypeMock: vi.fn(),
+  isDuplicateInProgressMock: vi.fn(),
   seedInitialStateMock: vi.fn(),
   fetchDocDataMock: vi.fn(),
   activityInsertMock: vi.fn(),
@@ -38,6 +42,7 @@ vi.mock(
   async (importActual: () => Promise<Record<string, unknown>>) => ({
     ...(await importActual()),
     loadInitialSpaceType: loadInitialSpaceTypeMock,
+    projectsRepo: { isDuplicateInProgress: isDuplicateInProgressMock },
     // The seed writes the initial space:created activity row (PG) and
     // logs on failure - both need stubs (no DB / config under test).
     projectActivitiesRepo: { insert: activityInsertMock },
@@ -50,7 +55,7 @@ vi.mock(
   }),
 );
 
-import { lazySeedMeta } from "../services/lazy-seed.js";
+import { DuplicateInProgressError, lazySeedMeta } from "../services/lazy-seed.js";
 import {
   canvasSpaceDocName,
   deriveId,
@@ -65,10 +70,21 @@ const SID = "22222222-2222-4222-9222-222222222222";
 beforeEach(() => {
   vi.clearAllMocks();
   loadInitialSpaceTypeMock.mockResolvedValue("canvas");
+  isDuplicateInProgressMock.mockResolvedValue(false);
   seedInitialStateMock.mockResolvedValue(true);
 });
 
 describe("lazySeedMeta", () => {
+  it("refuses the load of a copy still being copied and seeds nothing", async () => {
+    isDuplicateInProgressMock.mockResolvedValue(true);
+
+    await expect(lazySeedMeta(projectMetaDocName(PID))).rejects.toBeInstanceOf(DuplicateInProgressError);
+
+    expect(isDuplicateInProgressMock).toHaveBeenCalledWith(PID);
+    expect(seedInitialStateMock).not.toHaveBeenCalled();
+    expect(activityInsertMock).not.toHaveBeenCalled();
+  });
+
   it("returns null for a non-meta doc (only meta docs lazy-seed here)", async () => {
     expect(await lazySeedMeta(canvasSpaceDocName(PID, SID))).toBeNull();
     expect(seedInitialStateMock).not.toHaveBeenCalled();

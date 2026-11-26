@@ -13,7 +13,7 @@
  * a real Postgres.
  *
  * `@breatic/core` is partially mocked: the real encoders stay (they need
- * no DB), only the `loadInitialSpaceType` read lazy-seed uses is stubbed.
+ * no DB), only the `loadInitialSpaceType` and copy-state reads lazy-seed uses are stubbed.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
@@ -48,6 +48,7 @@ vi.mock(
     loadInitialSpaceType: loadInitialSpaceTypeMock,
     // lazy-seed writes the initial space:created activity row (PG) and
     // logs on failure - both need stubs (no DB / config under test).
+    projectsRepo: { isDuplicateInProgress: vi.fn(async () => false) },
     projectActivitiesRepo: { insert: vi.fn() },
     createLogger: () => ({
       info: vi.fn(),

@@ -7,7 +7,9 @@
  * Until collab has copied the source's documents, the copy's Project row says it is still being copied and no page
  * opens it. After the copy collab records the completion on the row; a command delivered again after that copies
  * nothing, so it can never overwrite what the user has since done in the copy. A command that copied but did not get
- * to record the completion copies again with the same result and then records it. Real business and Yjs databases.
+ * to record the completion copies again with the same result and then records it. Until the completion is recorded,
+ * collab refuses to load the copy's meta document, so nothing seeds a default Space over the copy whatever client
+ * connects (inner#1557). Real business and Yjs databases.
  */
 
 import { beforeAll, describe, expect, it } from "vitest";
@@ -19,6 +21,7 @@ import { initCore, rawPg as sql, writeSpaceEntry } from "@breatic/core";
 import { projectMetaDocName, spaceContentDocName } from "@breatic/shared";
 import * as yjsRepo from "@collab/services/yjs-documents.repo.js";
 import { handleLifecycleEvent } from "@collab/services/lifecycle-listener.js";
+import { fetchDoc } from "@collab/services/persistence.js";
 
 beforeAll(() => {
   initCore(process.env);
@@ -179,5 +182,41 @@ describe("completing a copied Project", () => {
 
     expect(await completedAt(fixture.copyId)).not.toBeNull();
     expect(await yjsRepo.fetchDocData(projectMetaDocName(fixture.copyId))).toBeNull();
+  });
+
+  it("refuses to load the meta document of a copy still being copied, and seeds nothing for it", async () => {
+    const fixture = await seedCopy();
+
+    await expect(fetchDoc({ documentName: projectMetaDocName(fixture.copyId) })).rejects.toThrow();
+
+    expect(await yjsRepo.fetchDocData(projectMetaDocName(fixture.copyId))).toBeNull();
+    const [rows] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM projects WHERE id = ${fixture.copyId} AND duplicate_completed_at IS NOT NULL`;
+    expect(rows!.n).toBe(0);
+  });
+
+  it("loads the copy's meta document with the source's Spaces once the copy is completed", async () => {
+    const fixture = await seedCopy();
+    await expect(fetchDoc({ documentName: projectMetaDocName(fixture.copyId) })).rejects.toThrow();
+
+    await deliver(fixture);
+
+    const loaded = await fetchDoc({ documentName: projectMetaDocName(fixture.copyId) });
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, loaded!);
+    expect([...doc.getMap("spaces").keys()]).toEqual([fixture.spaceId]);
+    doc.destroy();
+  });
+
+  it("seeds a default Space for a copy of a never-opened source once the copy is completed", async () => {
+    const fixture = await seedCopy(false);
+    await deliver(fixture);
+
+    const loaded = await fetchDoc({ documentName: projectMetaDocName(fixture.copyId) });
+
+    const doc = new Y.Doc();
+    Y.applyUpdate(doc, loaded!);
+    expect(doc.getMap("spaces").size).toBe(1);
+    doc.destroy();
   });
 });
