@@ -13,6 +13,7 @@ import { app, BrowserWindow, dialog, ipcMain, Menu, nativeTheme, session, shell,
 import electronUpdater from "electron-updater";
 import { execFile } from "node:child_process";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { access } from "node:fs/promises";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createBrowserSignIn } from "@desktop/main/browser-sign-in.js";
@@ -170,7 +171,10 @@ function start(): void {
     openDockWindow,
     downloadFinished: (path) => app.dock?.downloadFinished(path),
     showItemInFolder: (path) => shell.showItemInFolder(path),
-    fileExists: existsSync,
+    fileExists: (path) => access(path).then(
+      () => true,
+      () => false,
+    ),
   });
   const tracked = downloads;
   session.defaultSession.on("will-download", (_event, item) => tracked.track(item));

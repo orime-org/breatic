@@ -62,7 +62,7 @@ function setup(over: Partial<DownloadsDeps> = {}) {
     openDockWindow: vi.fn(() => dock),
     downloadFinished: vi.fn(),
     showItemInFolder: vi.fn(),
-    fileExists: vi.fn(() => true),
+    fileExists: vi.fn(async () => true),
     ...over,
   };
   return { downloads: createDownloads(deps), deps, windows, dock };
@@ -154,28 +154,40 @@ describe("createDownloads", () => {
     expect(deps.downloadFinished).toHaveBeenCalledWith("/Users/a/Downloads/a.png");
   });
 
-  it("reveals a finished download by id, and nothing for an unknown id", () => {
+  it("reveals a finished download by id, and nothing for an unknown id", async () => {
     const { downloads, deps } = setup();
     const item = saved(downloads, "/Users/a/Downloads/a.png");
     item.emit("done", {}, "completed");
-    downloads.reveal("nope");
+    await downloads.reveal("nope");
     expect(deps.showItemInFolder).not.toHaveBeenCalled();
-    downloads.reveal(downloads.list().items[0]!.id);
+    await downloads.reveal(downloads.list().items[0]!.id);
     expect(deps.showItemInFolder).toHaveBeenCalledWith("/Users/a/Downloads/a.png");
   });
 
-  it("marks a finished download whose file was moved or deleted when asked to reveal it, and opens nothing", () => {
-    const { downloads, deps, windows } = setup({ fileExists: vi.fn(() => false) });
+  it("looks for the file off the main thread and acts once the answer comes", async () => {
+    let found!: (exists: boolean) => void;
+    const { downloads, deps } = setup({ fileExists: vi.fn(() => new Promise<boolean>((resolve) => (found = resolve))) });
+    const item = saved(downloads, "/Users/a/Downloads/a.png");
+    item.emit("done", {}, "completed");
+    const revealing = downloads.reveal(downloads.list().items[0]!.id);
+    expect(deps.showItemInFolder).not.toHaveBeenCalled();
+    found(true);
+    await revealing;
+    expect(deps.showItemInFolder).toHaveBeenCalledWith("/Users/a/Downloads/a.png");
+  });
+
+  it("marks a finished download whose file was moved or deleted when asked to reveal it, and opens nothing", async () => {
+    const { downloads, deps, windows } = setup({ fileExists: vi.fn(async () => false) });
     const item = saved(downloads, "/Users/a/Downloads/a.png");
     item.emit("done", {}, "completed");
     const id = downloads.list().items[0]!.id;
     windows[0]!.webContents.send.mockClear();
-    downloads.reveal(id);
+    await downloads.reveal(id);
     expect(deps.fileExists).toHaveBeenCalledWith("/Users/a/Downloads/a.png");
     expect(deps.showItemInFolder).not.toHaveBeenCalled();
     expect(downloads.list().items).toEqual([{ id, name: "a.png", state: "missing" }]);
     expect(windows[0]!.webContents.send).toHaveBeenCalledWith("download:changed");
-    downloads.reveal(id);
+    await downloads.reveal(id);
     expect(deps.fileExists).toHaveBeenCalledTimes(1);
     expect(downloads.running()).toBe(0);
   });
@@ -281,10 +293,10 @@ describe("downloadIpcHandlers", () => {
     return { ...ctx, id, calls: downloadIpcHandlers(ctx.downloads, () => fromServer) };
   }
 
-  it("answers the server's pages", () => {
+  it("answers the server's pages", async () => {
     const { calls, id, downloads, deps } = handlers(true);
     expect(calls["download:list"]({})).toEqual(downloads.list());
-    calls["download:reveal"]({}, id);
+    await calls["download:reveal"]({}, id);
     expect(deps.showItemInFolder).toHaveBeenCalledWith("/tmp/a.zip");
     calls["download:dismiss"]({});
     expect(downloads.list()).toEqual({ open: false, items: [] });

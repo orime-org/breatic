@@ -48,8 +48,8 @@ export interface DownloadsDeps {
   downloadFinished: (path: string) => void;
   /** `shell.showItemInFolder`, which does nothing for a file that is gone. */
   showItemInFolder: (path: string) => void;
-  /** Whether a file is still where it was saved. */
-  fileExists: (path: string) => boolean;
+  /** Whether a file is still where it was saved, checked off the main thread. */
+  fileExists: (path: string) => Promise<boolean>;
 }
 
 /** The feedback's operations. */
@@ -61,7 +61,7 @@ export interface Downloads {
   /** Close the panel: finished rows go, running ones stay. */
   dismiss(): void;
   /** Show a finished download's file in its folder, or mark its row when the file has gone; an unknown id does nothing. */
-  reveal(id: string): void;
+  reveal(id: string): Promise<void>;
   /** How many downloads are still running. */
   running(): number;
 }
@@ -193,10 +193,11 @@ export function createDownloads(deps: DownloadsDeps): Downloads {
       open = false;
       notify();
     },
-    reveal(id) {
+    async reveal(id) {
       const entry = entries.find(({ row }) => row.id === id && row.state === "completed");
       if (!entry) return;
-      if (deps.fileExists(entry.savePath)) {
+      // Chrome also checks off the UI thread: a stat on an unreachable network drive blocks until it times out.
+      if (await deps.fileExists(entry.savePath)) {
         deps.showItemInFolder(entry.savePath);
         return;
       }
@@ -213,7 +214,7 @@ export function createDownloads(deps: DownloadsDeps): Downloads {
 export interface DownloadIpcHandlers {
   "download:list": (event: unknown) => DesktopDownloadList | undefined;
   "download:dismiss": (event: unknown) => void;
-  "download:reveal": (event: unknown, id: unknown) => void;
+  "download:reveal": (event: unknown, id: unknown) => Promise<void> | undefined;
 }
 
 /**
@@ -228,8 +229,6 @@ export function downloadIpcHandlers(downloads: Downloads, fromServer: (event: un
     "download:dismiss": (event) => {
       if (fromServer(event)) downloads.dismiss();
     },
-    "download:reveal": (event, id) => {
-      if (fromServer(event) && typeof id === "string") downloads.reveal(id);
-    },
+    "download:reveal": (event, id) => (fromServer(event) && typeof id === "string" ? downloads.reveal(id) : undefined),
   };
 }

@@ -108,6 +108,33 @@ describe("createQuitGuard", () => {
     expect(deps.ask).not.toHaveBeenCalled();
   });
 
+  it("keeps no confirmation from a window that stopped being the last one while its dialog was open", async () => {
+    let answer!: (quit: boolean) => void;
+    const { guard, deps } = setup({ ask: vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve))) });
+    guard.windowClosing(event(), { owner: w, appWindows: [w, other], close: vi.fn() });
+    const close = vi.fn();
+    guard.windowClosing(event(), { owner: other, appWindows: [w, other], close });
+    // The first window's page kept it open while the dialog was up.
+    guard.stayed(w);
+    answer(true);
+    await answered();
+    expect(close).toHaveBeenCalled();
+    const later = event();
+    guard.windowClosing(later, { owner: w, appWindows: [w], close: vi.fn() });
+    expect(later.preventDefault).toHaveBeenCalled();
+    expect(deps.ask).toHaveBeenCalledTimes(2);
+  });
+
+  it("counts a window again after the quit dialog's Stay kept it open", async () => {
+    const { guard, deps } = setup({ ask: vi.fn(async () => false) });
+    guard.windowClosing(event(), { owner: w, appWindows: [w], close: vi.fn() });
+    await answered();
+    const next = event();
+    guard.windowClosing(next, { owner: other, appWindows: [w, other], close: vi.fn() });
+    expect(next.preventDefault).not.toHaveBeenCalled();
+    expect(deps.ask).toHaveBeenCalledTimes(1);
+  });
+
   it("asks once while its dialog is open", async () => {
     let answer!: (quit: boolean) => void;
     const { guard, deps } = setup({ ask: vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve))) });
