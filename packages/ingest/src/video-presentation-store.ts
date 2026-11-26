@@ -572,7 +572,7 @@ export class VideoPresentationStore {
       await this.candidateEvent(state, job, { kind: 'Er', jobId: admission.jobId, code: 'packed_over_cap' });
       return false;
     }
-    const carrier ={ storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), ...measured, contentType: receipt.contentType };
+    const carrier = { storageKey: receipt.storageKey, url: this.objectURL(admission, receipt.storageKey), ...measured, contentType: receipt.contentType };
     const toolSource = { edit, keyframes: facts.source.keyframes, sourceDecodeKey: facts.source.sourceDecodeKey };
     let playback: VideoPresentationVersion['playback'];
     const maxShortSide = admission.encoding?.carrier.maxShortSide ?? Number.MAX_SAFE_INTEGER;

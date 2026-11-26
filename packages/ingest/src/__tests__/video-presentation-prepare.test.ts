@@ -917,6 +917,17 @@ describe('done receipts stored and answered per unit (§5.1 step 4; §3.5 alpha 
     });
   });
 
+  it('RD08 an opaque carrier over max_packed_bytes still publishes: the cap bounds the packed carrier alone', async () => {
+    const key = await source();
+    await withStore(key, async (store) => {
+      const limits = { ...admission(key, 'job-a').limits, maxPackedBytes: 3 };
+      const { capability, carrier } = await packedStitch(store, key, {}, { limits });
+      expect(await reportUnit(store, capability, { kind: 'presentation-stitch' }, { kind: 'Done', attempt: 1, usage: 3000, receipts: native(carrier.receipt) })).toBe(true);
+      expect(await store.advanceStage(capability, 'publish')).toBe(true);
+      expect((await store.read(key, H)).selected.kind).toBe('ready');
+    });
+  });
+
   it.each([
     ['display-size planes', { packedWidth: 7684, packedHeight: 2160, colorRect: { x: 0, y: 0, width: 3840, height: 2160 }, alphaRect: { x: 3844, y: 0, width: 3840, height: 2160 } }],
     ['planes without the plane gap', { ...UHD_GEOMETRY, packedWidth: 3840, alphaRect: { x: 1920, y: 0, width: 1920, height: 1080 } }],

@@ -85,9 +85,9 @@ beforeAll(async () => {
   // The same picture as H.264, which the tools would copy into MP4.
   await ff("whole264.mkv", ["-i", join(dir, "whole.mkv"), "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p", "-c:a", "aac"]);
   await writePixelCropped(join(dir, "whole264.mkv"), join(dir, "crop264.mkv"), { left: 3, top: 1 });
-  // An anamorphic picture: 360x240 stored with SAR 4:3, which Chromium shows at 480x240.
+  // An anamorphic picture: 360x240 stored with SAR 4:3, whose square-pixel picture is 480x240.
   await ff("sar.mp4", ["-f", "lavfi", "-i", "testsrc2=s=360x240:r=25:d=0.4", "-vf", "setsar=4/3", "-c:v", "libx264", "-qp", "0", "-pix_fmt", "yuv420p"]);
-  // NTSC 4:3 at SAR 8:9, which Chromium shows taller, at 720x540.
+  // NTSC 4:3 at SAR 8:9, whose square-pixel picture is taller, 720x540.
   await ff("sar89.mp4", ["-f", "lavfi", "-i", "testsrc2=s=720x480:r=25:d=0.4", "-vf", "setsar=8/9", "-c:v", "libx264", "-pix_fmt", "yuv420p"]);
   // FFmpeg writes the PixelCrop into MP4 as a clean aperture, which it reads back and applies on decode.
   await ff("clap.mp4", ["-i", join(dir, "crop.mkv"), "-map", "0:v", "-c", "copy"]);
