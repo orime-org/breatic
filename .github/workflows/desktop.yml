@@ -1,0 +1,158 @@
+name: Desktop
+
+# Builds the official desktop client's installers (inner#2041): .dmg and .zip on
+# macOS, the NSIS .exe on Windows, AppImage and .deb on Linux. Each runner
+# builds for its own platform. Signing is on only where the secrets exist;
+# without them the installers are unsigned builds of the same app. A
+# desktop-v{version} tag also publishes them to the update feed; a manual run
+# only keeps them as workflow artifacts. The client's end-to-end cases run
+# first, against a real server, and on every pull request that touches it.
+on:
+  workflow_dispatch:
+  push:
+    tags: ['desktop-v*']
+  pull_request:
+    paths: ['packages/desktop/**', '.github/workflows/desktop.yml']
+
+jobs:
+  e2e:
+    name: Desktop end-to-end
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # The same stack as the consent network audit in ci.yml: service
+    # containers, then the server from its build and the web app from vite preview.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: breatic
+          POSTGRES_PASSWORD: breatic
+          POSTGRES_DB: breatic
+        ports: ["5432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U breatic"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgres://breatic:breatic@localhost:5432/breatic
+      YJS_DATABASE_URL: postgres://breatic:breatic@localhost:5432/breatic_yjs
+      REDIS_URL: redis://localhost:6379/0
+      REDIS_QUEUE_URL: redis://localhost:6379/1
+      REDIS_STREAM_URL: redis://localhost:6379/2
+      REDIS_COLLAB_URL: redis://localhost:6379/3
+      # The login page shows the Google button only when built with a client id; the client's
+      # Google path signs in through the system browser, so this id never reaches Google.
+      GOOGLE_CLIENT_ID: desktop-e2e.apps.googleusercontent.com
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-workspace
+
+      - name: Create the Yjs database
+        run: docker exec ${{ job.services.postgres.id }} psql -U breatic -c "CREATE DATABASE breatic_yjs"
+
+      - name: Build the server and the client's libraries
+        run: pnpm turbo run build --filter=@breatic/server... --filter=@breatic/desktop^...
+
+      - name: Migrate
+        run: pnpm db:migrate
+
+      # Ubuntu 24.04 blocks the unprivileged user namespaces Chromium's sandbox, Electron's included, starts in.
+      - name: Allow the Chromium sandbox
+        run: sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
+
+      - name: Install Chromium
+        run: pnpm --filter @breatic/desktop exec playwright install --with-deps chromium
+
+      - name: End-to-end cases
+        run: xvfb-run --auto-servernum pnpm --filter @breatic/desktop test:e2e
+
+      - name: Keep the failure artifacts
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-e2e
+          path: packages/desktop/test-results/
+          retention-days: 7
+
+  build:
+    name: Desktop ${{ matrix.os }}
+    needs: e2e
+    # A pull request runs the end-to-end cases only; installers come from a tag or a manual run.
+    if: github.event_name != 'pull_request'
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-workspace
+
+      - name: Build the workspace libraries
+        run: pnpm turbo run build --filter=@breatic/desktop^...
+
+      - name: Build and package
+        shell: bash
+        run: pnpm --filter @breatic/desktop run dist
+        env:
+          # A tag is a release build: it must carry the shell's Sentry DSN and the commit (design 9.4).
+          BREATIC_RELEASE_BUILD: ${{ startsWith(github.ref, 'refs/tags/desktop-v') && '1' || '' }}
+          BREATIC_DESKTOP_SENTRY_DSN: ${{ vars.DESKTOP_SENTRY_DSN }}
+          # The update feed; builds that cannot be signed on their platform leave it out (electron-builder.config.mjs).
+          BREATIC_UPDATE_BASE_URL: ${{ vars.DESKTOP_UPDATE_BASE_URL }}
+          # macOS only: on Windows electron-builder falls back to CSC_LINK for signtool.
+          CSC_LINK: ${{ runner.os == 'macOS' && secrets.MAC_CSC_LINK || '' }}
+          CSC_KEY_PASSWORD: ${{ runner.os == 'macOS' && secrets.MAC_CSC_KEY_PASSWORD || '' }}
+          APPLE_API_KEY: ${{ secrets.APPLE_API_KEY }}
+          APPLE_API_KEY_ID: ${{ secrets.APPLE_API_KEY_ID }}
+          APPLE_API_ISSUER: ${{ secrets.APPLE_API_ISSUER }}
+          AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+          AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+          AZURE_CLIENT_SECRET: ${{ secrets.AZURE_CLIENT_SECRET }}
+          AZURE_SIGNING_ENDPOINT: ${{ vars.AZURE_SIGNING_ENDPOINT }}
+          AZURE_SIGNING_ACCOUNT: ${{ vars.AZURE_SIGNING_ACCOUNT }}
+          AZURE_SIGNING_PROFILE: ${{ vars.AZURE_SIGNING_PROFILE }}
+          AZURE_PUBLISHER_NAME: ${{ vars.AZURE_PUBLISHER_NAME }}
+
+      # The installers carry no source maps; Sentry matches them to the code by the injected debug ids.
+      - name: Upload the source maps
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: pnpm exec sentry-cli sourcemaps upload --release "$GITHUB_SHA" packages/desktop/dist
+        env:
+          SENTRY_AUTH_TOKEN: ${{ secrets.SENTRY_AUTH_TOKEN }}
+          SENTRY_ORG: orime
+          SENTRY_PROJECT: ${{ vars.DESKTOP_SENTRY_PROJECT }}
+
+      - name: Publish to the update feed
+        if: startsWith(github.ref, 'refs/tags/desktop-v')
+        shell: bash
+        run: node packages/desktop/scripts/publish.mjs
+        env:
+          BREATIC_UPDATE_BASE_URL: ${{ vars.DESKTOP_UPDATE_BASE_URL }}
+          R2_UPDATES_BUCKET: ${{ vars.DESKTOP_UPDATES_BUCKET }}
+          R2_UPDATES_PREFIX: ${{ vars.DESKTOP_UPDATES_PREFIX }}
+          R2_UPDATES_ENDPOINT: ${{ secrets.DESKTOP_UPDATES_ENDPOINT }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.DESKTOP_UPDATES_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.DESKTOP_UPDATES_SECRET_ACCESS_KEY }}
+          AWS_DEFAULT_REGION: auto
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: breatic-desktop-${{ matrix.os }}
+          path: |
+            packages/desktop/release/*.dmg
+            packages/desktop/release/*.zip
+            packages/desktop/release/*.exe
+            packages/desktop/release/*.AppImage
+            packages/desktop/release/*.deb
+            packages/desktop/release/*.blockmap
+            packages/desktop/release/latest*.yml
+          if-no-files-found: error

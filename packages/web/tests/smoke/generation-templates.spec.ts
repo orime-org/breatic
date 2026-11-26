@@ -689,6 +689,19 @@ for (const [kind, ids] of [
   });
 }
 
+for (const [kind, ids] of [
+  ['image', ['comic-drama-cast-sheet']],
+  ['video', ['comic-drama-episode', 'narrated-motion-comic', 'comic-drama-voice-line']],
+] as const) {
+  test(`a ${kind} panel lists its comic drama templates under the comic drama goal`, async () => {
+    await openPanelOnNewNode(kind);
+    await openGoal('comic-drama');
+    await expect(page.getByTestId('generate-template-goal-comic-drama')).toHaveText(new RegExp(`^Comic dramas\\s*${String(ids.length)}$`));
+    expect(await listedTemplates()).toEqual([...ids]);
+    await closeTemplateMenu();
+  });
+}
+
 test('a video panel lists the one sound template, the silent shot with foley', async () => {
   await openPanelOnNewNode('video');
   await openGoal('sound');

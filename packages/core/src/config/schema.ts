@@ -23,7 +23,7 @@
  */
 
 import { z } from "zod";
-import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT } from "@breatic/shared";
+import { DEFAULT_API_PORT, DEFAULT_COLLAB_PORT, isDesktopAppScheme } from "@breatic/shared";
 
 /**
  * Normalise a blank env value to undefined so `.default()` / `.optional()` fire.
@@ -271,6 +271,20 @@ export const coreConfigSchema = z.object({
 
   // ── Google OAuth ────────────────────────────────
   GOOGLE_CLIENT_ID: z.string().default(""),
+
+  // ── Desktop client ──────────────────────────────
+  // The desktop build this deployment hands browser sign-ins back to (inner#2041):
+  // its return scheme, a reverse domain name no website can register, and the
+  // app name the confirmation page shows. A partner deployment sets its own.
+  DESKTOP_APP_SCHEME: z.preprocess(
+    blankToUndefined,
+    z
+      .string()
+      .trim()
+      .default("ai.breatic.desktop")
+      .refine(isDesktopAppScheme, "DESKTOP_APP_SCHEME must be a reverse domain name such as ai.breatic.desktop"),
+  ),
+  DESKTOP_APP_NAME: z.preprocess(blankToUndefined, z.string().trim().min(1).max(64).default("Breatic")),
 
   // ── Payment ──────────────────────────────────────
   // The old name of CHARGING_ENABLED, still read when CHARGING_ENABLED is unset

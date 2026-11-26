@@ -10,6 +10,7 @@ import { Button } from '@web/components/ui/button';
 import { InputOTP, InputOTPGroup, InputOTPSlot } from '@web/components/ui/input-otp';
 import { useTranslation } from '@web/i18n/use-translation';
 import { AuthCardShell } from '@web/pages/auth/_shared/AuthCardShell';
+import { EmailInSentence } from '@web/pages/auth/_shared/EmailInSentence';
 import { FieldError } from '@web/components/FieldError';
 
 const CODE_LENGTH = 6;
@@ -32,27 +33,6 @@ interface SignupCodeStepProps {
   onVerified: (user: AuthUser, referral?: SignupReferralOutcome) => void;
   /** Back to the form, keeping what was typed. */
   onChangeEmail: () => void;
-}
-
-/**
- * The line that says where the code went, with the address in bold. The
- * sentence comes whole from the catalog so each language keeps its own word
- * order; the address is found in it and set apart.
- * @param root0 - component props
- * @param root0.text - the localized sentence, address already filled in
- * @param root0.email - the address to set in bold
- * @returns the sentence with the address emphasised.
- */
-function SentTo({ text, email }: { text: string; email: string }): React.JSX.Element {
-  const at = text.indexOf(email);
-  if (at < 0) return <>{text}</>;
-  return (
-    <>
-      {text.slice(0, at)}
-      <span className='font-medium text-foreground'>{email}</span>
-      {text.slice(at + email.length)}
-    </>
-  );
 }
 
 /**
@@ -195,7 +175,7 @@ export function SignupCodeStep({
     <AuthCardShell
       showVersion
       title={t('auth.register.code.title')}
-      subtitle={<SentTo text={t('auth.register.code.sentTo', { email })} email={email} />}
+      subtitle={<EmailInSentence text={t('auth.register.code.sentTo', { email })} email={email} />}
     >
       <div className='flex flex-col items-center gap-2'>
         <InputOTP

@@ -22,6 +22,7 @@ import * as React from 'react';
 import type { PendingFailureReason } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
+import { Progress } from '@web/components/ui/progress';
 import { useTranslation } from '@web/i18n/use-translation';
 import { cn } from '@web/lib/utils';
 import { MediaCaption } from '@web/spaces/document/DocumentMediaBlock';
@@ -147,16 +148,12 @@ export const DocumentPendingMedia = React.memo(function DocumentPendingMedia({
           </>
         )}
         {percent !== null && (
-          <span
+          <Progress
             data-testid='doc-pending-progress'
-            role='progressbar'
-            aria-valuenow={percent}
-            aria-valuemin={0}
-            aria-valuemax={100}
-            className='h-1 w-24 max-w-full shrink-0 overflow-hidden rounded-full bg-muted'
-          >
-            <span className='block h-full bg-foreground/60' style={{ width: `${percent}%` }} />
-          </span>
+            value={percent}
+            className='w-24 max-w-full shrink-0'
+            indicatorClassName='bg-foreground/60'
+          />
         )}
         {(retry || remove) && (
         // The body hides `[data-media-chrome]` while it is not editable

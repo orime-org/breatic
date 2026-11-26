@@ -75,7 +75,7 @@ export function AuthCardShell({
       <main className='flex flex-1 items-center justify-center p-6'>
         <div className='w-full max-w-sm rounded-overlay border border-border bg-card p-6 text-card-foreground shadow-sm'>
           {intro}
-          <header className='mb-4 flex flex-col gap-1'>
+          <header className='mb-4 flex flex-col gap-1 last:mb-0'>
             <div className='flex items-baseline justify-between gap-3'>
               <h1 className='text-xl font-semibold tracking-tight'>{title}</h1>
               {showVersion ? <span className='shrink-0 text-xs text-muted-foreground'>{versionLabel}</span> : null}

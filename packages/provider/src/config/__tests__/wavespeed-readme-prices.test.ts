@@ -109,10 +109,6 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
   ],
   "elevenlabs/eleven-v3": [{ input: { text: text(1000) }, usd: 0.2 }],
   "elevenlabs/voice-changer": [{ input: { audio: "a" }, durations: { audio: [30] }, usd: 0.12 }],
-  "google/gemini-3.1-flash/text-to-speech": [
-    { input: { text: text(50) }, usd: 0.01 },
-    { input: { text: text(1000) }, usd: 0.2 },
-  ],
   // $0.05 per 1,000 characters, $0.05 at least (wavespeed.ai/models/google/gemini-3.8-flash/text-to-speech).
   "google/gemini-3.8-flash/text-to-speech": [
     { input: { text: text(50) }, usd: 0.05 },
@@ -213,10 +209,6 @@ const CASES: Readonly<Record<string, readonly PriceCase[]>> = {
     { input: { resolution: "720p", audio: "a" }, durations: { audio: [10] }, usd: 0.6 },
   ],
   "wavespeed-ai/ltx-2.3/lipsync": [{ input: { resolution: "720p", audio: "a" }, durations: { audio: [5] }, usd: 0.15 }],
-  "wavespeed-ai/omnivoice/voice-clone": [
-    { input: { text: text(50) }, usd: 0.005 },
-    { input: { text: text(500) }, usd: 0.025 },
-  ],
   "wavespeed-ai/qwen-image/edit-multiple-angles": [{ input: {}, usd: 0.025 }],
   // inner#1825: $0.005 up to 100 characters, then by the character.
   "wavespeed-ai/qwen3-tts/voice-design": [

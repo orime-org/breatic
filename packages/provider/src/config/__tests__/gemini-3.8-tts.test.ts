@@ -3,7 +3,7 @@
 
 /**
  * Gemini 3.8 Flash TTS replaces 3.1 (#1521): bound to WaveSpeed (fal and SandBase follow once they are enabled), a
- * dialogue sent as turns; 3.1 stays bound only so runs opened before the change finish.
+ * dialogue sent as turns.
  */
 
 import { describe, expect, it } from "vitest";

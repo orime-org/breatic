@@ -48,6 +48,9 @@ import { CHARACTER_SHOWCASE_ORBIT } from "@shared/canvas/templates/character-sho
 import { CINEMATIC_15S_ARC } from "@shared/canvas/templates/cinematic-15s-arc.js";
 import { CLIP_AMBIENCE_FOLEY } from "@shared/canvas/templates/clip-ambience-foley.js";
 import { COMIC_4KOMA } from "@shared/canvas/templates/comic-4koma.js";
+import { COMIC_DRAMA_CAST_SHEET } from "@shared/canvas/templates/comic-drama-cast-sheet.js";
+import { COMIC_DRAMA_EPISODE } from "@shared/canvas/templates/comic-drama-episode.js";
+import { COMIC_DRAMA_VOICE_LINE } from "@shared/canvas/templates/comic-drama-voice-line.js";
 import { COMIC_PAGE_TO_MOTION } from "@shared/canvas/templates/comic-page-to-motion.js";
 import { COMIC_PAGE } from "@shared/canvas/templates/comic-page.js";
 import { COMIC_PANELS_TO_SHOTS } from "@shared/canvas/templates/comic-panels-to-shots.js";
@@ -89,6 +92,7 @@ import { MV_FULL } from "@shared/canvas/templates/mv-full.js";
 import { MV_PERFORMER_SHEET } from "@shared/canvas/templates/mv-performer-sheet.js";
 import { MV_STYLE_SHEET } from "@shared/canvas/templates/mv-style-sheet.js";
 import { NAME_AS_WORLD_TYPOGRAPHY } from "@shared/canvas/templates/name-as-world-typography.js";
+import { NARRATED_MOTION_COMIC } from "@shared/canvas/templates/narrated-motion-comic.js";
 import { PET_SELFIE_VLOG } from "@shared/canvas/templates/pet-selfie-vlog.js";
 import { PHONE_VLOG_REALISM } from "@shared/canvas/templates/phone-vlog-realism.js";
 import { PHOTO_PAPER_DIORAMA } from "@shared/canvas/templates/photo-paper-diorama.js";
@@ -147,7 +151,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "drama", "fight", "animation", "music-video", "ecommerce", "product-showcase", "promo", "food", "spaces", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "drama", "fight", "animation", "music-video", "ecommerce", "product-showcase", "promo", "food", "spaces", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix", "comic-drama"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -396,6 +400,10 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   SECTION_MAPPED_SCORE,
   REFERENCE_VIDEO_REMIX,
   SEAMLESS_BRIDGE,
+  COMIC_DRAMA_CAST_SHEET,
+  COMIC_DRAMA_EPISODE,
+  NARRATED_MOTION_COMIC,
+  COMIC_DRAMA_VOICE_LINE,
 ];
 
 /**
