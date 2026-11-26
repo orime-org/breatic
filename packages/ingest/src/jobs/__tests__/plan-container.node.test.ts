@@ -330,17 +330,7 @@ describe("planned startup facts preserve unknown consumption, with only the cont
 
 describe("an old-protocol job whose container cannot be reached", () => {
   // The start failure's own cleanup re-registers the outbound handlers, and the platform refuses that the same way.
-  it("still answers start_failed when clearing its outbound handlers fails too", async () => {
-    const { object } = owner(false);
-    runtime.outboundError = new Error("Updating sidecar egress config failed with: 404");
-    const job = { jobId: "task:t1", containerClass: "MiniToolContainerStd1", deadlineAt: NOW + 7200000, op: "trim", params: {},
-      input: { storageKey: "fixtures/source-a.mp4" }, outputs: [{ storageKey: "results/T/out.mp4", contentType: "video/mp4" }] } as never;
-    expect(await object.submit(job)).toMatchObject({ kind: "start_failed" });
-    expect(await object.report()).toBeNull();
-    expect(runtime.deletedSchedules).toEqual(["expireJob"]);
-  });
-
-  it("logs each cleanup effect the platform refuses and still runs the others", async () => {
+  it("still answers start_failed when its cleanup effects are refused, logging each and running the others", async () => {
     const { object } = owner(false);
     const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
     runtime.outboundError = new Error("Updating sidecar egress config failed with: 404");
@@ -351,5 +341,6 @@ describe("an old-protocol job whose container cannot be reached", () => {
     const effects = logged.mock.calls.filter(([label]) => label === "ingest_mini_tool_effect_failed").map(([, ctx]) => (ctx as { effect: string }).effect);
     expect(effects).toEqual(["destroy", "clearOverrides"]);
     expect(runtime.deletedSchedules).toEqual(["expireJob"]);
+    expect(await object.report()).toBeNull();
   });
 });

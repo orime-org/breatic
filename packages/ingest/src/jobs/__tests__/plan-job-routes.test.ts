@@ -30,7 +30,7 @@ describe("planned job route dispatch without a container image", () => {
     expect(await response.json()).toEqual({ schemaVersion: 2, state: "running" });
   });
 
-  it("answers 503 for a start the object reports as failed, so the worker submits again on its next pickup", async () => {
+  it("answers 503 for a start the object reports as failed; the planned job is already ended failed internal, which the worker reads on its next pickup", async () => {
     const namespace = { idFromName: vi.fn(() => "object-id"), get: vi.fn(() => ({ submit: async () => ({ kind: "start_failed", reason: "the run was answered 503" }) })) };
     const response = await submitJob(new Request("https://ingest.example/jobs", { method: "POST", headers: { "x-ingest-secret": env.INGEST_SHARED_SECRET }, body: JSON.stringify(PLAN) }), { ...env, MINI_TOOL_STD1: namespace } as unknown as JobsEnv);
     expect(response.status).toBe(503);

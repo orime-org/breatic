@@ -105,7 +105,8 @@ async function submitWebAnimationJob(body: unknown, env: JobsEnv): Promise<Respo
  * @param request - The request.
  * @param env - The bindings.
  * @returns 200 with the job's report; 400 for a body that is not a job or a class this Worker does not bind; 401
- *   without the secret; 503 when the container could not start; web-animation answers as above.
+ *   without the secret; 409 when a planned job's id is resubmitted with a different request; 503 when the container could
+ *   not start; web-animation answers as above.
  * @throws {unknown} What a job object throws.
  */
 export async function submitJob(request: Request, env: JobsEnv): Promise<Response> {

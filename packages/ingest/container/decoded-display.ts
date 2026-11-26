@@ -81,18 +81,6 @@ export async function withDecodedDisplay(report: ProbeReport, input: string, fro
 }
 
 /**
- * A `CommandRun` over the container's tool runner. FFmpeg's answer is the sample file it writes, so its empty stdout is
- * the answer; ffprobe's answer is its stdout.
- * @param run - The output ceiling and the run's signal.
- * @param run.maxBytes - The most stdout may hold.
- * @param run.signal - When it fires, the tool is killed.
- * @returns The runner.
- */
-export function toolCommandRun(run: { maxBytes: number; signal: AbortSignal }): CommandRun {
-  return (program, args) => runTool(program, [...args], { ...run, writesFile: program === "ffmpeg" });
-}
-
-/**
  * The report an uploaded object is filed by: a video, whose cover is wanted, takes its first decoded frame's display
  * (frames-split D07), which its cover is then scaled to.
  * @param read - ffprobe's report on the served object.
@@ -103,5 +91,8 @@ export function toolCommandRun(run: { maxBytes: number; signal: AbortSignal }): 
  * @throws {Error} When the sample's directory cannot be made or removed.
  */
 export async function uploadProbeReport(read: ProbeReport, objectUrl: string, wantCover: boolean, signal: AbortSignal): Promise<ProbeReport> {
-  return wantCover ? withDecodedDisplay(read, objectUrl, "object", toolCommandRun({ maxBytes: PROBE_MAX_BYTES, signal })) : read;
+  if (!wantCover) return read;
+  // FFmpeg's answer is the sample file it writes, so its empty stdout is the answer; ffprobe's answer is its stdout.
+  return withDecodedDisplay(read, objectUrl, "object",
+    (program, args) => runTool(program, [...args], { maxBytes: PROBE_MAX_BYTES, signal, writesFile: program === "ffmpeg" }));
 }
