@@ -4,7 +4,6 @@
 import { queryOptions } from '@tanstack/react-query';
 import { miniToolAnalysisRecordSchema, miniToolAnalysisRequestSchema, type MiniToolAnalysisRecord, type MiniToolAnalysisRequest } from '@breatic/shared/mini-tools';
 import { apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
-import { noteCreditsChanged } from '@web/data/api/credits';
 
 /** Server-owned accepted analyses and their registered artifacts. */
 export const miniToolAnalysesApi = {
@@ -17,11 +16,7 @@ export const miniToolAnalysesApi = {
    */
   async start(body: MiniToolAnalysisRequest, key: string): Promise<MiniToolAnalysisRecord> {
     const frozen = miniToolAnalysisRequestSchema.parse(body);
-    try {
-      return miniToolAnalysisRecordSchema.parse(await apiPost<unknown>('/mini-tools/analyses', frozen, runOnceRequest(key)));
-    } finally {
-      noteCreditsChanged(body.projectId);
-    }
+    return miniToolAnalysisRecordSchema.parse(await apiPost<unknown>('/mini-tools/analyses', frozen, runOnceRequest(key)));
   },
   /**
    * Reads one authorized analysis without changing its accepted identity.

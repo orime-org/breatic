@@ -3,14 +3,11 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type * as RequestModule from '../request';
-import type * as CreditsModule from '../credits';
 import type { MiniToolPlannedRequest } from '@breatic/shared/mini-tools';
 import { miniToolsApi } from '../mini-tools';
 import { apiPost, runOnceRequest } from '../request';
-import { noteCreditsChanged } from '../credits';
 
 vi.mock('../request', async (original) => ({ ...(await original<typeof RequestModule>()), apiPost: vi.fn() }));
-vi.mock('../credits', async (original) => ({ ...(await original<typeof CreditsModule>()), noteCreditsChanged: vi.fn() }));
 
 const PROJECT = '20000000-0000-4000-8000-000000000001';
 const RUN = '20000000-0000-4000-8000-000000000002';
@@ -32,7 +29,6 @@ describe('planned mini-tool API public wire, independent of HTTP envelope transp
     vi.mocked(apiPost).mockResolvedValueOnce(answer);
     expect(await miniToolsApi.runPlanned(structuredClone(BODY), 'same-press-key')).toEqual(answer);
     expect(apiPost).toHaveBeenCalledWith('/mini-tools', BODY, runOnceRequest('same-press-key'));
-    expect(noteCreditsChanged).toHaveBeenCalledWith(PROJECT);
   });
 
   it('F04 keeps the same body and Idempotency-Key on explicit API resend', async () => {
@@ -42,11 +38,10 @@ describe('planned mini-tool API public wire, independent of HTTP envelope transp
     expect(vi.mocked(apiPost).mock.calls).toEqual([['/mini-tools', BODY, runOnceRequest('same-press-key')], ['/mini-tools', BODY, runOnceRequest('same-press-key')]]);
   });
 
-  it('F12 refreshes the project credit view after a refused planned request and preserves the original error', async () => {
+  it('F12 preserves the original error of a refused planned request', async () => {
     const error = new Error('admission refused');
     vi.mocked(apiPost).mockRejectedValueOnce(error);
     await expect(miniToolsApi.runPlanned(BODY, 'same-press-key')).rejects.toBe(error);
-    expect(noteCreditsChanged).toHaveBeenCalledExactlyOnceWith(PROJECT);
   });
 
 });

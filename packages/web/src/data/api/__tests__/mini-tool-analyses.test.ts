@@ -6,7 +6,6 @@ import { miniToolAnalysesApi, miniToolAnalysisQuery } from '../mini-tool-analyse
 import { apiGet, apiPost } from '../request';
 
 vi.mock('../request', async (importOriginal) => ({ ...(await importOriginal<typeof import('../request')>()), apiGet: vi.fn(), apiPost: vi.fn() }));
-vi.mock('../credits', async (importOriginal) => ({ ...(await importOriginal<typeof import('../credits')>()), noteCreditsChanged: vi.fn() }));
 
 describe('analysis API wire contract', () => {
   it('reads the exact authorized run endpoint and rejects malformed metadata', async () => {

@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import { db, publishCreditsChanged } from "@breatic/core";
+import { db } from "@breatic/core";
 import { toChargeCredits } from "@domain/credit/credit-math.js";
 import * as creditHoldRepo from "@domain/credit/creditHold.repo.js";
 import { requestCharge, settleCharge, type ChargeOutcome } from "@domain/credit/creditLot.service.js";
@@ -12,10 +12,10 @@ import { miniToolConsumptionRecordSchema, miniToolSettlementSchema } from "@doma
 /** Whether a parent's complete expense has committed to its credit ledger. */
 export type MiniToolChargeResult =
   | { state: "pending" }
-  | { state: "settled"; credits: number; first: boolean; chargeOutcome?: ChargeOutcome; chargeFailure?: unknown; signalFailure?: unknown };
+  | { state: "settled"; credits: number; first: boolean; chargeOutcome?: ChargeOutcome; chargeFailure?: unknown };
 
-/** A committed outcome and the Project whose readers may now refresh it. */
-interface ChargeDecision { result: MiniToolChargeResult; projectId: string | null; requestId: string | null }
+/** A committed outcome and the charge request it recorded, if any. */
+interface ChargeDecision { result: MiniToolChargeResult; requestId: string | null }
 
 /**
  * Settles only a terminal parent whose actual consumption set is complete.
@@ -33,17 +33,17 @@ export async function settleMiniToolCharge(taskId: string): Promise<MiniToolChar
       if (task.billedCredits === null || !Number.isFinite(task.billedCredits) || task.billedCredits < 0) {
         throw new Error("Claimed mini-tool charge has no fixed valid amount");
       }
-      return { result: { state: "settled", credits: task.billedCredits, first: false }, projectId: task.projectId, requestId: null };
+      return { result: { state: "settled", credits: task.billedCredits, first: false }, requestId: null };
     }
     const settlement = miniToolSettlementSchema.parse(task.result.settlement);
     if ((task.status !== "completed" && task.status !== "failed") || settlement.consumptionSetComplete !== true) {
-      return { result: { state: "pending" }, projectId: task.projectId, requestId: null };
+      return { result: { state: "pending" }, requestId: null };
     }
     const steps = await upstreamStepRepo.listSteps(taskId, tx);
     const consumptions = steps.flatMap((step) => step.output.miniToolConsumption === undefined
       ? [] : [miniToolConsumptionRecordSchema.parse(step.output.miniToolConsumption)]);
     if (consumptions.some((consumption) => consumption.state !== "recorded")) {
-      return { result: { state: "pending" }, projectId: task.projectId, requestId: null };
+      return { result: { state: "pending" }, requestId: null };
     }
     // Usage rows have a fixed SQL scale; the frozen step amounts retain the
     // original expense precision until this one parent-level cent rounding.
@@ -66,23 +66,15 @@ export async function settleMiniToolCharge(taskId: string): Promise<MiniToolChar
       ...settlement, version: settlement.version + 1, state: "settled",
       pendingConsumptionKeys: [], nextAttemptAt: null, leaseToken: null, leaseUntil: null, lastError: null,
     }, tx);
-    return { result: { state: "settled", credits, first: true }, projectId: task.projectId, requestId };
+    return { result: { state: "settled", credits, first: true }, requestId };
   });
   if (decision.result.state !== "settled" || !decision.result.first) return decision.result;
-  if (decision.requestId !== null) {
-    // settleCharge tells the Project's users itself once the charge commits.
-    try {
-      const chargeOutcome = await settleCharge(decision.requestId);
-      return chargeOutcome === null ? decision.result : { ...decision.result, chargeOutcome };
-    } catch (chargeFailure) {
-      return { ...decision.result, chargeFailure };
-    }
-  }
-  if (decision.projectId === null) return decision.result;
+  // The credit tables' triggers tell the Project's users once the charge or the hold's release commits.
+  if (decision.requestId === null) return decision.result;
   try {
-    await publishCreditsChanged(decision.projectId);
-    return decision.result;
-  } catch (signalFailure) {
-    return { ...decision.result, signalFailure };
+    const chargeOutcome = await settleCharge(decision.requestId);
+    return chargeOutcome === null ? decision.result : { ...decision.result, chargeOutcome };
+  } catch (chargeFailure) {
+    return { ...decision.result, chargeFailure };
   }
 }

@@ -81,7 +81,7 @@ describe("a web-animation job whose container would not take the run", () => {
   it("answers a plain start_failed value and keeps no job behind it", async () => {
     const { object, storage } = owner();
     runtime.fetchStatus = 503;
-    expect(structuredClone(await object.submit(JOB))).toEqual({ kind: "start_failed", reason: "the run was answered 503" });
+    expect(structuredClone(await object.submit(JOB, {}))).toEqual({ kind: "start_failed", reason: "the run was answered 503" });
     expect(storage.size).toBe(0);
     expect(runtime.destroyed).toBe(1);
   });

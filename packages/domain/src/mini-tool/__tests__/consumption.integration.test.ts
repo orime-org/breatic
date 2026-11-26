@@ -892,7 +892,7 @@ describe("mini-tool consumption recording transaction", () => {
       operationKey, feature: "chat_turn", source: "model", actorUserId: fixture.userId,
       projectId: fixture.projectId, model: "deepseek/deepseek-v4-pro", provider: "deepseek",
       inputTokens: null, cachedInputTokens: null, outputTokens: null, reasoningTokens: null,
-      requestCount: 1, costUsd: 0.000055, costSource: "provider", costIdentity: null, credits: 0.011,
+      requestCount: 1, costUsd: 0.000055, costSource: "provider", costIdentity: null, credits: 0.011, keyId: null,
     };
     await insertUsageRecord(row);
     await insertUsageRecord(row);

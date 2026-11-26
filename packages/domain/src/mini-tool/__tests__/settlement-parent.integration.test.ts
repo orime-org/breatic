@@ -10,13 +10,6 @@ import * as domain from "@domain/index.js";
 import { settleCharge } from "@domain/credit/creditLot.service.js";
 import { waitUntilBlockedOn } from "../../../../server/src/__tests__/integration/lock-probe.js";
 
-// Only notification delivery is replaced; DB, transaction and credit engine stay real.
-const { notify } = vi.hoisted(() => ({ notify: vi.fn<(projectId: string) => Promise<void>>() }));
-vi.mock("@breatic/core", async (importOriginal) => ({
-  ...await importOriginal<typeof core>(),
-  publishCreditsChanged: notify,
-}));
-
 interface Consumption {
   schemaVersion: 1;
   consumptionKey: string;
@@ -114,12 +107,10 @@ beforeAll(() => {
   core.loadLocales();
   // Keep postgres.js JSON codecs independent from Drizzle's configured pool.
   rawPg = core.createPgClient(inject("DATABASE_URL"), { name: "mini-tool-parent-fixtures", max: 6 });
-  notify.mockResolvedValue(undefined);
 });
 
 beforeEach(() => {
   payments(true);
-  vi.mocked(core.publishCreditsChanged).mockReset().mockResolvedValue(undefined);
 });
 
 afterAll(async () => {
@@ -391,7 +382,6 @@ describe("mini-tool parent charge transaction", () => {
     const before = await snapshot(fixture);
     await settle(fixture.taskId);
     unclaimed(before, await snapshot(fixture));
-    expect(core.publishCreditsChanged).not.toHaveBeenCalled();
   });
 
   it.each([false, undefined])("does not infer completeness from an empty todo when the complete flag is %s", async (complete) => {
@@ -496,7 +486,6 @@ describe("mini-tool parent charge transaction", () => {
     try {
       expect(await settle(fixture.taskId)).toMatchObject({ state: "settled", first: true, chargeFailure: expect.anything() });
       pendingCharge(before, await snapshot(fixture), 0.03);
-      expect(core.publishCreditsChanged).not.toHaveBeenCalled();
     } finally {
       await cleanup();
     }
@@ -574,28 +563,10 @@ describe("mini-tool parent charge transaction", () => {
     expect(Number(after.ledger[0]!.amount)).toBe(-0.03);
   });
 
-  it("notifies readers only after the entire parent transaction is externally visible", async () => {
+  it("does not charge again on replay", async () => {
     const settle = entry();
     const fixture = await seed();
     const before = await snapshot(fixture);
-    const observed: Snapshot[] = [];
-    vi.mocked(core.publishCreditsChanged).mockImplementation(async (projectId) => {
-      expect(projectId).toBe(fixture.projectId);
-      observed.push(await snapshot(fixture));
-    });
-    await settle(fixture.taskId);
-    expect(core.publishCreditsChanged).toHaveBeenCalledTimes(1);
-    expect(observed).toHaveLength(1);
-    claimed(before, observed[0]!, 0.03);
-    expect(Number(observed[0]!.lot.remaining)).toBe(0.97);
-    expect(observed[0]!.ledger).toHaveLength(1);
-  });
-
-  it("keeps a committed charge when notification fails and does not charge on replay", async () => {
-    const settle = entry();
-    const fixture = await seed();
-    const before = await snapshot(fixture);
-    vi.mocked(core.publishCreditsChanged).mockRejectedValueOnce(new Error("notification unavailable"));
     await settle(fixture.taskId);
     const once = await snapshot(fixture);
     claimed(before, once, 0.03);

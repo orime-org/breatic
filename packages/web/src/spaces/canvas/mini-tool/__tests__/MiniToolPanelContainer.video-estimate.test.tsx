@@ -30,7 +30,7 @@ import { MiniToolPanelContainer } from '../MiniToolPanelContainer';
 import type { VideoToolPresentation } from '../video/VideoToolPanelContainer';
 import { createVideoToolDraft } from '../video/video-tool-edit';
 import { CanvasContext } from '../../canvas-context';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { canvasApi } from '@web/data/api/canvas';
 import { addNode, type CanvasNodeView } from '@web/data/yjs/canvas-space';
 import { commitVideoToolDraft } from '@web/data/yjs/video-tool-drafts';

@@ -105,8 +105,9 @@ function featureDisabled(): Response {
 function submittedAnswer(answer: object, failure: string, jobId: string): Response {
   // The RPC stub's type drops the report member (its report has `unknown` fields), so it is told apart by the key.
   if ("report" in answer) return Response.json(answer.report);
-  if ("kind" in answer && answer.kind === "start_failed") {
-    noteFailure(failure, { jobId, reason: (answer as { reason: string }).reason });
+  // `start_failed` is the one answer that carries a reason.
+  if ("reason" in answer && typeof answer.reason === "string") {
+    noteFailure(failure, { jobId, reason: answer.reason });
     return new Response("The container could not start", { status: 503 });
   }
   return new Response("Cancelled before it was submitted", { status: 410 });

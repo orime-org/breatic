@@ -31,7 +31,7 @@ import { announceSpaceTasksVersion, getStreamRedis, getWorkerConfig, projectActi
 import { reportCollaboratorFirstAction, runWithConsent } from "@breatic/core";
 import { getStorageAdapter, getUnderstandConfig, getAgentConfig } from "@breatic/core";
 import { accountKeyFailureIn, costsOf, type Cost, type KeySet } from "@breatic/provider";
-import { failureOutcome, keyOwnerOf, runningSlotService, taskRepo, taskService, upstreamStepRepo, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
+import { failureOutcome, keyOwnerOf, taskRepo, taskService, upstreamStepRepo, type MiniToolAnalysisJob, type MiniToolExecutionJob } from "@breatic/domain";
 import { creditHoldService, creditLotService, toChargeCredits } from "@breatic/domain";
 import { modelCatalog, nodeHistoryService, sceneTaskService } from "@breatic/domain";
 import {

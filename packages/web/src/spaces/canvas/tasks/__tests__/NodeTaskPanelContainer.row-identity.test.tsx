@@ -11,7 +11,6 @@ import type { NodeTaskEntry } from '@breatic/shared';
 
 vi.mock('@web/data/api/canvas', () => ({ canvasApi: { listNodeTasks: vi.fn(), dismissNodeTask: vi.fn() }, getCachedUnderstandMaxBytes: vi.fn(() => null) }));
 vi.mock('@web/data/api/request', () => ({ apiGet: vi.fn(), apiPost: vi.fn(), runOnceRequest: vi.fn() }));
-vi.mock('@web/data/api/credits', () => ({ noteCreditsChanged: vi.fn() }));
 vi.mock('@web/spaces/canvas/generate/model-catalog-query', () => ({ modelCatalogQuery: () => ({ queryKey: ['fixture-catalog'], queryFn: async () => ({ image: [], video: [], audio: [], tts: [], three_d: [] }) }) }));
 vi.mock('@web/lib/toast', () => ({ toast: { error: vi.fn(), warning: vi.fn(), success: vi.fn(), info: vi.fn() } }));
 vi.mock('@web/i18n/use-translation', () => ({ useTranslation: () => (key: string) => key }));
