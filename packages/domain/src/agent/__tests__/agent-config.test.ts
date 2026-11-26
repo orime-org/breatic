@@ -61,7 +61,6 @@ describe("buildAgentConfig", () => {
       "get_canvas_capabilities",
       "get_generation_template",
       "get_product_guide",
-      "judge_likelihood",
       "list_generation_models",
       "list_project_activity",
       "propose_canvas_action",
