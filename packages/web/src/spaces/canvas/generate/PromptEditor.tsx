@@ -980,6 +980,23 @@ const PromptEditorBody = React.forwardRef<
   );
 });
 
+/**
+ * Ends a prompt's full-screen editor once full screen stops showing that
+ * prompt: the user closed it, the panel closed it because the box left, or the
+ * box moved to another prompt (inner#2115). It runs in the panel, which holds
+ * full screen and outlives the box: the box unmounts in the same render that
+ * closes it. A hidden Space keeps the panel's value, so revealing ends nothing.
+ * @param spaceId - The Space the editor is kept in.
+ * @param fragment - The prompt open full screen, null when none is.
+ */
+export function useEndFullscreenEditor(spaceId: string, fragment: Y.XmlFragment | null): void {
+  const shown = React.useRef<Y.XmlFragment | null>(null);
+  React.useLayoutEffect(() => {
+    if (shown.current !== null && shown.current !== fragment) endKeptEditor(spaceId, fullscreenKeyOf(shown.current));
+    shown.current = fragment;
+  }, [spaceId, fragment]);
+}
+
 /** A prompt box's full screen, as its panel holds it (inner#2115). */
 export interface PromptFullscreenLayer {
   /** Whether this box is open full screen. */
@@ -1029,15 +1046,6 @@ export const PromptEditor = React.forwardRef<PromptEditorHandle, PromptEditorOut
   // The panel's editor is kept past an unmount, so opening ends it here.
   React.useLayoutEffect(() => {
     if (open) endKeptEditor(spaceId, fragment);
-  }, [open, spaceId, fragment]);
-  // Full screen's editor ends when it stops showing this prompt: closed by the
-  // user or by the panel, or the box moved to another prompt. Hiding the Space
-  // keeps it (inner#1235 A13): the ref holds across a hidden Activity.
-  const shown = React.useRef<Y.XmlFragment | null>(null);
-  React.useLayoutEffect(() => {
-    const now = open ? fragment : null;
-    if (shown.current !== null && shown.current !== now) endKeptEditor(spaceId, fullscreenKeyOf(shown.current));
-    shown.current = now;
   }, [open, spaceId, fragment]);
   const close = React.useCallback((): void => onClose.current?.(), []);
 

@@ -511,6 +511,53 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     listSpy.mockRestore();
   });
 
+  // The panel closes full screen when its box goes away and unmounts the box
+  // in the same render, so the editor's end belongs to the panel (inner#2115).
+  it('opens a new full-screen editor after the panel closed full screen for a model that takes no prompt', async () => {
+    const silent: ModelEntry = { ...T2I_MODEL, name: 'silent', takes_prompt: false };
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(imageCatalog([T2I_MODEL, silent]));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const tree = (model: string): React.JSX.Element => (
+      <QueryClientProvider client={client}>
+        <CanvasContext.Provider value={MODE_TREE_CANVAS}>
+          <ReactFlow nodes={[{ id: 'target', position: { x: 0, y: 0 }, data: {} }]} edges={[]}>
+            <GeneratePanelContainer
+              projectId='p'
+              spaceId='s'
+              nodes={[{ id: 'target', type: 'image', data: { handling: false, mode: 't2i', model } }]}
+              edges={[]}
+              getLastWriteWasLocal={LAST_WRITE_LOCAL}
+              placeTemplate={() => ({ nodeIds: [], rects: [] })}
+            />
+          </ReactFlow>
+        </CanvasContext.Provider>
+      </QueryClientProvider>
+    );
+    /**
+     * Opens full screen and returns its editor's element.
+     * @returns The editor's element.
+     */
+    const openFullscreen = async (): Promise<Element> => {
+      fireEvent.click(await screen.findByTestId('prompt-fullscreen-button'));
+      return waitFor(() => {
+        const view = screen.getByTestId('prompt-fullscreen').querySelector('.ProseMirror');
+        expect(view).not.toBeNull();
+        return view as Element;
+      });
+    };
+    seedImageNode({ mode: 't2i', model: 'nano-banana' });
+    const { rerender } = render(tree('nano-banana'));
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    const first = await openFullscreen();
+    rerender(tree('silent'));
+    await waitFor(() => expect(screen.queryByTestId('prompt-fullscreen')).toBeNull());
+    rerender(tree('nano-banana'));
+    expect(await openFullscreen()).not.toBe(first);
+    listSpy.mockRestore();
+  });
+
   // A full style slot has no room for another picture, so its thumbnails do
   // not open a pick whose every click would add nothing (inner#826).
   it('starts no style pick from a full style slot', async () => {

@@ -70,6 +70,7 @@ import {
 } from '@web/spaces/canvas/generate/derive-references';
 import {
   PromptEditor,
+  useEndFullscreenEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { promptFullscreenTitle } from '@web/spaces/canvas/generate/prompt-fullscreen-title';
 import { buildGenerateTaskPayload, imageEstimateInput } from '@web/spaces/canvas/generate/task-payload';
@@ -707,6 +708,7 @@ function GeneratePanelBody({
   const nodeName = asContentView(nodes.find((n) => n.id === nodeId)?.data)?.name;
   // A box the panel stops showing closes its full screen.
   if (promptFullscreen && !(vm.promptRequired && fragment)) setPromptFullscreen(false);
+  useEndFullscreenEditor(spaceId, promptFullscreen ? fragment : null);
   const promptLayer = React.useMemo(
     () => ({ open: promptFullscreen, title: promptFullscreenTitle(nodeName, 'image'), onClose: () => setPromptFullscreen(false) }),
     [promptFullscreen, nodeName],

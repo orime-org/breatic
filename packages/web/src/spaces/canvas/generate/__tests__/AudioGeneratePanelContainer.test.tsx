@@ -1348,6 +1348,28 @@ describe('AudioGeneratePanelContainer — the music modes', () => {
     expect(screen.getByTestId('generate-lyrics-editor')).not.toBeVisible();
   });
 
+  it('closes the lyrics full screen when the lyrics box goes, and opens it again on a new editor (inner#2115)', async () => {
+    const view = await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
+    /**
+     * Opens the lyrics full screen and returns its editor's element.
+     * @returns The editor's element.
+     */
+    const openLyricsFullscreen = async (): Promise<Element> => {
+      fireEvent.click(await screen.findByTestId('generate-prompt-group-lyrics-toggle'));
+      fireEvent.click(screen.getByTestId('prompt-fullscreen-button'));
+      return waitFor(() => {
+        const editor = screen.getByTestId('prompt-fullscreen').querySelector('.ProseMirror');
+        expect(editor).not.toBeNull();
+        return editor as Element;
+      });
+    };
+    const first = await openLyricsFullscreen();
+    view.rerender(panelTree({ mode: 't2m', model: 'mureka-v9.5-generate-bgm' }));
+    await waitFor(() => expect(screen.queryByTestId('prompt-fullscreen')).toBeNull());
+    view.rerender(panelTree({ mode: 't2m', model: 'minimax-music-3.0' }));
+    expect(await openLyricsFullscreen()).not.toBe(first);
+  });
+
   it('keeps the lyrics open when the model switches within the mode (#1201)', async () => {
     const view = await openPanel({ mode: 't2m', model: 'minimax-music-3.0' });
     fireEvent.click(screen.getByTestId('generate-prompt-group-lyrics-toggle'));

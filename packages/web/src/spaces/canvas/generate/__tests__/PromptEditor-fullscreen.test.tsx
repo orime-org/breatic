@@ -117,27 +117,6 @@ describe('a prompt box open full screen', () => {
     await waitFor(() => expect(document.querySelectorAll('.ProseMirror')).toHaveLength(1));
   });
 
-  it('starts a new editor each time it opens, also after the panel closed it', async () => {
-    const fragment = promptWith('rain');
-    const onClose = vi.fn();
-    const at = (open: boolean): React.JSX.Element => <Box fragment={fragment} layer={{ open, title: 'Dock', onClose }} />;
-    const { rerender } = render(at(true), { wrapper: TooltipProvider });
-    const first = await waitFor(() => {
-      const view = screen.getByTestId('prompt-fullscreen').querySelector('.ProseMirror');
-      expect(view).not.toBeNull();
-      return view;
-    });
-    rerender(at(false));
-    rerender(at(true));
-    const second = await waitFor(() => {
-      const view = screen.getByTestId('prompt-fullscreen').querySelector('.ProseMirror');
-      expect(view).not.toBeNull();
-      return view;
-    });
-    expect(second).not.toBe(first);
-    expect(onClose).not.toHaveBeenCalled();
-  });
-
   it('stays open across a hidden Space, closing only when asked', () => {
     const onClose = vi.fn();
     const fragment = promptWith('rain');

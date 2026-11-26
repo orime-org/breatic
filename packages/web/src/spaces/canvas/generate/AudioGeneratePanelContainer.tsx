@@ -79,7 +79,7 @@ import {
   resolveModeSwitch,
 } from '@web/spaces/canvas/generate/mode-selection';
 import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
-import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
+import { PromptEditor, useEndFullscreenEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import { promptFullscreenTitle } from '@web/spaces/canvas/generate/prompt-fullscreen-title';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
@@ -623,6 +623,10 @@ function AudioGeneratePanelBody({
   ) {
     setPromptFullscreen(null);
   }
+  useEndFullscreenEditor(
+    spaceId,
+    promptFullscreen === 'prompt' ? fragment : promptFullscreen === 'lyrics' ? shownLyricsFragment : null,
+  );
   const promptLayer = React.useMemo(
     () => ({
       open: promptFullscreen === 'prompt',

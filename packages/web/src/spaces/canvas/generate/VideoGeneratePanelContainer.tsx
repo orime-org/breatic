@@ -68,6 +68,7 @@ import {
 import {
   PromptEditor,
   type PromptEditorHandle,
+  useEndFullscreenEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
 import { promptFullscreenTitle } from '@web/spaces/canvas/generate/prompt-fullscreen-title';
 import { AddShotRow, ShotList, addBlockedKey, nextOpenShot } from '@web/spaces/canvas/generate/storyboard-controls';
@@ -912,6 +913,10 @@ function VideoGeneratePanelBody({
   const fullscreenBoxShown =
     promptFullscreen === 'main' ? !multiShot && Boolean(fragment) : multiShot && shots?.some((shot) => shot.id === promptFullscreen) === true;
   if (promptFullscreen !== null && (!vm.promptRequired || !fullscreenBoxShown)) setPromptFullscreen(null);
+  useEndFullscreenEditor(
+    spaceId,
+    promptFullscreen === 'main' ? fragment : (shots?.find((shot) => shot.id === promptFullscreen)?.prompt ?? null),
+  );
   const mainLayer = React.useMemo(
     () => ({ open: promptFullscreen === 'main', title: promptFullscreenTitle(nodeName, 'video'), onClose: closePromptFullscreen }),
     [promptFullscreen, nodeName, closePromptFullscreen],
