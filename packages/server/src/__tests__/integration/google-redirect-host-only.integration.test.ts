@@ -38,7 +38,7 @@ import { env, getRedis, initCore, loadLocales } from "@breatic/core";
 import type { Hono } from "hono";
 import { withPeer } from "../helpers/peer.js";
 import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } from "./google-redirect-harness.js";
-import { answerGoogleFrom, begin, callback, cookieLine, redirectOf } from "./google-redirect-steps.js";
+import { answerGoogleFrom, begin, bindCookie, callback, cookieLine, redirectOf } from "./google-redirect-steps.js";
 
 const FIRST = "http://localhost:8000";
 const SECOND = "http://studio.test:8100";
@@ -94,7 +94,7 @@ describe("Google sign-in with COOKIE_DOMAIN empty and two exact origins", () => 
   it("signs in from the second origin on its own host with host-only cookies and returns there", async () => {
     const who = account();
     const b = await begin(app, { origin: SECOND }, { page: "login", next: "/studio/home" });
-    const bindLine = cookieLine(b.res, "breatic_google_bind")!;
+    const bindLine = cookieLine(b.res, bindCookie())!;
     expect(bindLine).not.toMatch(/;\s*Domain=/i);
 
     const res = await callback(app, b, who);

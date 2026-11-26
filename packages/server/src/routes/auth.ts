@@ -44,6 +44,7 @@ import {
   setSignupTicketCookie,
   readSignupTicketCookie,
   clearSignupTicketCookie,
+  googleBindCookieName,
 } from "@server/middleware/session-cookie.js";
 import { logMailResult } from "@server/utils/log-mail.js";
 import { runAfterReply } from "@server/utils/after-reply.js";
@@ -356,9 +357,6 @@ function refuseBegin(c: Context, reason: googleLoginService.GoogleFailure): Resp
   return c.redirect(backToPage(c.req.header("origin")!, form.page, { googleError: reason, next: form.next }), 303);
 }
 
-/** The bind cookie's name: one per browser sign-in in flight. */
-const GOOGLE_BIND_COOKIE = "breatic_google_bind";
-
 /**
  * The bind cookie's scope: the site-wide domain when set, so both the starting
  * site and the official callback receive it; otherwise the starting host.
@@ -419,7 +417,7 @@ auth.post(
       attribution,
       referral: signupReferral(form),
     });
-    setCookie(c, GOOGLE_BIND_COOKIE, begun.bind, {
+    setCookie(c, googleBindCookieName(), begun.bind, {
       ...bindCookieScope(),
       httpOnly: true,
       secure: env.ENV !== "dev",
@@ -458,11 +456,11 @@ auth.get("/google/callback", async (c) => {
    */
   const back = (params: Record<string, string | undefined>): Response =>
     c.redirect(backToPage(stored.origin, stored.page, params), 303);
-  if (!googleLoginService.bindMatches(stored, getCookie(c, GOOGLE_BIND_COOKIE))) {
+  if (!googleLoginService.bindMatches(stored, getCookie(c, googleBindCookieName()))) {
     logger.warn({ origin: stored.origin }, "google_callback_bind_mismatch");
     return back({ googleError: "expired" });
   }
-  deleteCookie(c, GOOGLE_BIND_COOKIE, bindCookieScope());
+  deleteCookie(c, googleBindCookieName(), bindCookieScope());
   if (query["error"] !== undefined) return back({ googleError: "cancelled", next: stored.next });
   const code = query["code"];
   if (!code) return back({ googleError: "invalid_credential", next: stored.next });

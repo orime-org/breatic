@@ -126,6 +126,16 @@ export function signupTicketCookieName(): string {
 }
 
 /**
+ * Name of the cookie that ties a Google sign-in in flight to the browser that
+ * began it (inner#2157). Prefixed like the session cookie so stacks on one
+ * host do not overwrite each other's sign-in.
+ * @returns The cookie name.
+ */
+export function googleBindCookieName(): string {
+  return `breatic_google_bind_${env.REDIS_KEY_PREFIX}`;
+}
+
+/**
  * Write the sign-up ticket cookie for as long as the pending sign-up lives.
  * @param c - The Hono request context whose response receives the cookie.
  * @param ticket - The pending sign-up's ticket.

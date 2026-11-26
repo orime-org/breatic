@@ -14,6 +14,7 @@
  */
 
 import { expect, type Mock } from "vitest";
+import { env } from "@breatic/core";
 
 /** The test client id every suite configures as `GOOGLE_CLIENT_ID`. */
 export const GOOGLE_CLIENT_ID = "test-client.apps.googleusercontent.com";
@@ -121,8 +122,9 @@ export async function googleRedirectLogin(
   expect(toGoogle.hostname).toBe("accounts.google.com");
   const state = toGoogle.searchParams.get("state")!;
   const nonce = toGoogle.searchParams.get("nonce")!;
-  const bind = cookiePair(begin, "breatic_google_bind");
-  expect(bind).toMatch(/^breatic_google_bind[^=]*=.+/);
+  const bindName = `breatic_google_bind_${env.REDIS_KEY_PREFIX}`;
+  const bind = cookiePair(begin, `${bindName}=`);
+  expect(bind).toMatch(new RegExp(`^${bindName}=.+`));
 
   double.getToken.mockResolvedValueOnce({ tokens: { id_token: "header.payload.signature" }, res: null });
   double.verifyIdToken.mockResolvedValueOnce({

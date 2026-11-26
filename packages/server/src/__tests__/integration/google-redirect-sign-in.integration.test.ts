@@ -81,6 +81,7 @@ import {
   answerGoogleFrom,
   begin,
   begun,
+  bindCookie,
   callback,
   cookieLine,
   postBegin,
@@ -196,14 +197,14 @@ describe("POST /api/v1/auth/google/begin", () => {
     const res = await postBegin(app, { origin: STRANGER });
 
     expect(res.status).toBe(403);
-    expect(cookieLine(res, "breatic_google_bind")).toBeUndefined();
+    expect(cookieLine(res, bindCookie())).toBeUndefined();
   });
 
   it("answers a begin without an Origin with 403", async () => {
     const res = await postBegin(app, {});
 
     expect(res.status).toBe(403);
-    expect(cookieLine(res, "breatic_google_bind")).toBeUndefined();
+    expect(cookieLine(res, bindCookie())).toBeUndefined();
   });
 
   it("sends an influencer site's browser to Google with the official callback, S256 PKCE, a nonce and select_account", async () => {
@@ -223,7 +224,7 @@ describe("POST /api/v1/auth/google/begin", () => {
 
   it("sets the bind cookie HttpOnly, Lax, for the state's lifetime, on COOKIE_DOMAIN", async () => {
     const b = await begin(app, { origin: ALICE });
-    const line = cookieLine(b.res, "breatic_google_bind")!;
+    const line = cookieLine(b.res, bindCookie())!;
 
     expect(line).toMatch(/;\s*HttpOnly/i);
     expect(line).toMatch(/;\s*SameSite=Lax/i);
@@ -251,7 +252,7 @@ describe("POST /api/v1/auth/google/begin", () => {
     const third = await postBegin(proxied, { origin: ALICE, realIp: ip }, fields);
 
     expectBackTo(third, `${ALICE}/login`, { googleError: "rate_limited", next: "/studio/limit" });
-    expect(cookieLine(third, "breatic_google_bind")).toBeUndefined();
+    expect(cookieLine(third, bindCookie())).toBeUndefined();
   });
 
   it("answers a begin whose limiter cannot reach Redis with a 303 back to the page carrying unavailable and next", async () => {
@@ -260,7 +261,7 @@ describe("POST /api/v1/auth/google/begin", () => {
     const res = await postBegin(proxied, { origin: ALICE, realIp: freshIp() }, { page: "register", next: "/studio/down" });
 
     expectBackTo(res, `${ALICE}/register`, { googleError: "unavailable", next: "/studio/down" });
-    expect(cookieLine(res, "breatic_google_bind")).toBeUndefined();
+    expect(cookieLine(res, bindCookie())).toBeUndefined();
   });
 
   describe("with API_PUBLIC_URL set (front end and API on separate hosts)", () => {
@@ -293,7 +294,7 @@ describe("POST /api/v1/auth/google/begin", () => {
       const res = await postBegin(app, { origin: ALICE }, { page: "login" });
 
       expectBackTo(res, `${ALICE}/login`, { googleError: "unavailable" });
-      expect(cookieLine(res, "breatic_google_bind")).toBeUndefined();
+      expect(cookieLine(res, bindCookie())).toBeUndefined();
     });
   });
 });
@@ -330,7 +331,7 @@ describe("GET /api/v1/auth/google/callback", () => {
     expect(session).toMatch(new RegExp(`^${siteSession()}=[^;]+;`));
     expect(session).toMatch(/;\s*Domain=localhost(;|$)/i);
     expect(session).toMatch(/;\s*HttpOnly/i);
-    expect(cookieLine(res, "breatic_google_bind")).toMatch(/^breatic_google_bind=;.*Max-Age=0/i);
+    expect(cookieLine(res, bindCookie())).toMatch(new RegExp(`^${bindCookie()}=;.*Max-Age=0`, "i"));
 
     const row = (await userOf(who.email))!;
     expect(row.influencer_code).toBe(ALICE_CODE);
@@ -580,8 +581,8 @@ describe("begin and callback in any order (fast-check)", () => {
           if (attempts.length === 0) continue;
           const attempt = attempts[s.attempt % attempts.length]!;
           const jar = jars[s.browser]!;
-          const held = jar.get("breatic_google_bind");
-          const bind = held === undefined ? "" : `breatic_google_bind=${held}`;
+          const held = jar.get(bindCookie());
+          const bind = held === undefined ? "" : `${bindCookie()}=${held}`;
           const expected = !attempt.used && bind === attempt.b.bind;
 
           const res = await callback(app, attempt.b, who, { bind });

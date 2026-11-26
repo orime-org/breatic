@@ -14,6 +14,7 @@
 
 import { createHash, randomUUID } from "node:crypto";
 import { expect } from "vitest";
+import { env } from "@breatic/core";
 import { GOOGLE_CLIENT_ID, type GoogleDouble } from "./google-redirect-harness.js";
 
 /** Anything with Hono's `request`. */
@@ -139,8 +140,8 @@ export function begun(res: Response): Begun {
   expect(res.status).toBe(303);
   const toGoogle = new URL(res.headers.get("location") ?? "");
   expect(toGoogle.hostname).toBe("accounts.google.com");
-  const bind = res.headers.getSetCookie().find((c) => c.startsWith("breatic_google_bind="))?.split(";")[0] ?? "";
-  expect(bind).toMatch(/^breatic_google_bind=.+/);
+  const bind = cookieLine(res, bindCookie())?.split(";")[0] ?? "";
+  expect(bind).toMatch(new RegExp(`^${bindCookie()}=.+`));
   return {
     res,
     toGoogle,
@@ -232,6 +233,14 @@ export async function signInWithGoogle(
 export function redirectOf(res: Response): URL {
   expect(res.status).toBe(303);
   return new URL(res.headers.get("location") ?? "");
+}
+
+/**
+ * The bind cookie's name: prefixed per deployment like the other auth cookies.
+ * @returns The cookie name.
+ */
+export function bindCookie(): string {
+  return `breatic_google_bind_${env.REDIS_KEY_PREFIX}`;
 }
 
 /**
