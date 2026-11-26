@@ -12,7 +12,7 @@
  * (asset.service.resolveOwnerStudioId); this repo is attribution-agnostic.
  */
 
-import { and, desc, eq, gt, isNotNull, isNull, inArray, or, sql, type SQL } from "drizzle-orm";
+import { and, desc, eq, gt, isNotNull, isNull, inArray, ne, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, type DbTx } from "@core/db/client.js";
 import { projectAssetRefs, projects, studioAssets } from "@core/db/schema.js";
@@ -678,6 +678,8 @@ export async function readProjectMedia(input: ProjectMediaQuery, tx?: DbTx): Pro
     eq(studioAssets.studioId, input.studioId),
     isNull(projectAssetRefs.deletedAt),
     isNull(studioAssets.deletedAt),
+    // A video's cover is shown with its video, never as media of its own (inner#2171 design §5.7).
+    ne(studioAssets.source, "cover"),
   ];
   if (input.assetId !== undefined) conditions.push(eq(studioAssets.id, input.assetId));
   else conditions.push(eq(studioAssets.kind, input.kind ?? "video"));
