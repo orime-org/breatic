@@ -132,7 +132,8 @@ export async function publishAssetPeaksReady(projectId: string, assetId: string,
 }
 
 /**
- * Announce to one Project referencing a video that its presentation job ended (frames-split §7.20); collab relays it
+ * Announce to one Project referencing a video's storage key that what a reader of its presentation sees changed (a
+ * failure, the expiry, abandon, a new job or the job's end; frames-split §7.20); collab relays it
  * to that Project's connected members as the `video-presentation:changed` stateless signal.
  * @param projectId - A live Project referencing the video.
  * @param assetId - The video asset.

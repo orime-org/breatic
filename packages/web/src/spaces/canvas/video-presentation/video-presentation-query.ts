@@ -28,7 +28,7 @@ export function videoPresentationQueryKey(projectId: string, canonicalURL: strin
 
 /**
  * Describe one authorized canonical source query without creating another cache. It is read again when collab says
- * the video's presentation job ended (`useProjectLiveUpdates`, frames-split §7.20), never on a timer.
+ * what readers of the video's presentation see changed (`useProjectLiveUpdates`, frames-split §7.20), never on a timer.
  * @param input - Project, source and current Space activation.
  * @returns Options for the existing QueryClient or a normal query observer.
  * @throws {never} Merely constructing options does not start a request.
