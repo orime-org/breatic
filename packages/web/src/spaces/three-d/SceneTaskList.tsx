@@ -1,12 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { createPortal } from 'react-dom';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQueryClient } from '@tanstack/react-query';
 import { Bot, Crosshair, Hourglass, ListFilter, Sparkles, Upload } from 'lucide-react';
 import type { SceneGenerationOrigin } from '@breatic/shared';
-import { checkSpaceTask, isGenerationTask, listSpaceTasks, removeSpaceTask, spaceTasksQueryKey, type SpaceTask } from '@web/data/api/scene';
+import { checkSpaceTask, isGenerationTask, removeSpaceTask, type SpaceTask } from '@web/data/api/scene';
 import { canvasApi } from '@web/data/api/canvas';
 import { ApiException } from '@web/data/api/types';
 import { Button } from '@web/components/ui/button';
@@ -23,9 +23,11 @@ import { waitReason } from '@web/spaces/canvas/tasks/wait-reason';
 import { toast } from '@web/lib/toast';
 import { cn } from '@web/lib/utils';
 import { KindBadge } from '@web/spaces/canvas/_shared/KindBadge';
+import { useKeyFailureWords } from '@web/features/byok/key-failure-words';
 import { failureSentence } from '@web/spaces/canvas/failure-sentence';
 import { HoverPreview } from '@web/spaces/canvas/nodes/_shared/HoverPreview';
 import type { SceneUploads } from '@web/spaces/three-d/scene-uploads';
+import { useSpaceTasks } from '@web/spaces/three-d/use-space-tasks';
 
 interface SceneTaskListProps {
   projectId: string;
@@ -93,19 +95,19 @@ function passes(task: SpaceTask, filters: TaskFilters, userId: string): boolean 
  * from here.
  *
  * The rows are the server's; this page adds what only it knows about the
- * uploads it sends, and its own filters. The list is read again when the
- * server signals a change (the page invalidates its query) and when the
- * earliest running row reaches its deadline, timed from the server's clock so
- * a browser clock that runs ahead cannot reread in a loop.
+ * uploads it sends, and its own filters. The list is the Space's shared read
+ * ({@link useSpaceTasks}), read again when the server writes a new change
+ * version into the 3D Space's document (`SpaceTasksWatcher`), which it also
+ * does when a running row reaches its deadline (#1580).
  * @param props - Space identity, edit right, the page's uploads and the row actions.
  * @returns The list.
  */
 export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spaceId, userId, canEdit, canGenerate, uploads, remoteUploads, onPlace, focusTaskId, onFocused,
   onRetryGeneration, placedAssetIds, onLocate, filterHost }: SceneTaskListProps): React.JSX.Element {
   const t = useTranslation();
+  const keys = useKeyFailureWords();
   const queryClient = useQueryClient();
-  const queryKey = React.useMemo(() => spaceTasksQueryKey(projectId, spaceId), [projectId, spaceId]);
-  const query = useQuery({ queryKey, queryFn: ({ signal }) => listSpaceTasks(projectId, spaceId, signal) });
+  const { query, queryKey, running } = useSpaceTasks(projectId, spaceId);
   React.useSyncExternalStore(uploads.subscribe, uploads.getVersion);
   const names = useCollaboratorNames();
   const [placing, setPlacing] = React.useState<ReadonlySet<string>>(new Set());
@@ -142,17 +144,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
     onFocused?.();
   }, [focusTaskId, data, filters, userId, onFocused]);
 
-  React.useEffect(() => {
-    if (!data) return;
-    const serverNow = Date.parse(data.serverNow);
-    // A row waiting for a free slot has no deadline yet; its budget starts when it runs.
-    const waits = data.tasks.flatMap((task) => (task.status === 'running' && task.deadlineAt !== null ? [Date.parse(task.deadlineAt) - serverNow] : []));
-    if (waits.length === 0) return;
-    const timer = setTimeout(() => { void queryClient.invalidateQueries({ queryKey }); }, Math.max(0, Math.min(...waits)));
-    return (): void => clearTimeout(timer);
-  }, [data, queryClient, queryKey]);
-
-  const anyRunning = data?.tasks.some((task) => task.status === 'running') ?? false;
+  const anyRunning = running > 0;
   React.useEffect(() => {
     if (!anyRunning) return;
     const timer = setInterval(() => setMinute((value) => value + 1), MINUTE_MS);
@@ -205,13 +197,13 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
   const cancel = React.useCallback((task: SpaceTask): void => {
     void busyWhile(task.id, setCancelling, async () => {
       try {
-        await canvasApi.cancelTask(task.id, projectId);
+        await canvasApi.cancelTask(task.id);
       } catch (error) {
         toastCancelFailure(error, cancelFailed);
       }
       await queryClient.invalidateQueries({ queryKey });
     });
-  }, [busyWhile, projectId, queryClient, queryKey, cancelFailed]);
+  }, [busyWhile, queryClient, queryKey, cancelFailed]);
 
   /**
    * Place one finished model.
@@ -329,7 +321,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
                 : minutes >= 1 ? t('spaces.threeD.taskList.runningFor', { minutes }) : t('spaces.threeD.taskList.running')
             : t(`spaces.threeD.taskList.${task.status}`);
         const failure = task.status !== 'failed' ? null
-          : task.errorMessage ? failureSentence(task.errorMessage, t)
+          : task.errorMessage ? failureSentence(task.errorMessage, t, undefined, keys)
             : generation ? failureSentence('internal', t) : t('spaces.threeD.taskList.failedReason');
         // A run asked to rig says so while it runs, and says how the rig went once it holds a model.
         const rigNote = !generation || task.status === 'failed' ? null

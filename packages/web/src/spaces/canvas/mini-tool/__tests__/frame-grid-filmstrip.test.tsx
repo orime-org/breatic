@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * frames-split design §7.8 surface list rows 2 and 5: the split tool's filmstrip and the older tools' range bar decode the

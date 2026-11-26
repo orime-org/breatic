@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Each run-once entry does its work once for a press sent twice (inner#1490)
@@ -13,7 +13,7 @@
  */
 
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
-import { describe, it, expect, beforeAll, beforeEach, afterAll, inject, vi } from "vitest";
+import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -24,16 +24,6 @@ vi.mock("ai", () => ({
   }),
   stepCountIs: (_n: number) => () => false,
   tool: (config: Record<string, unknown>) => config,
-}));
-
-const stripe = {
-  customers: { create: vi.fn() },
-  checkout: { sessions: { create: vi.fn(), retrieve: vi.fn() } },
-  subscriptions: { update: vi.fn(), retrieve: vi.fn() },
-};
-
-vi.mock("@server/infra/stripe.js", () => ({
-  getStripeClient: () => stripe,
 }));
 
 vi.mock("@server/utils/send-best-effort-mail.js", () => ({
@@ -48,11 +38,9 @@ import {
   setSession,
   sessionCookieName,
   loadLocales,
-  getSubscriptionPlan,
 } from "@breatic/core";
 import type { Hono } from "hono";
-import { getPricingTiers } from "@server/config/pricing.js";
-import { confirmCheckout } from "@server/modules/subscription/subscription.service.js";
+import { useCommerceApp } from "./commerce-harness.js";
 
 /**
  * The suite's environment. The upscaler's provider needs a key to be served,
@@ -78,10 +66,6 @@ beforeAll(async () => {
   app = createApp();
 });
 
-beforeEach(() => {
-  vi.clearAllMocks();
-});
-
 afterAll(async () => {
   await sql?.end({ timeout: 1 });
   initCore(process.env);
@@ -97,15 +81,14 @@ interface Account {
 
 /**
  * An account with a personal studio and a project it owns, signed in.
- * @param customerId - The Stripe customer to record on the account, if any.
  * @returns The ids and a login cookie.
  */
-async function seedAccount(customerId: string | null = null): Promise<Account> {
+async function seedAccount(): Promise<Account> {
   seq += 1;
   const stamp = `${Date.now()}-${seq}`;
   const [u] = await sql<{ id: string }[]>`
-    INSERT INTO users (email, email_verified, stripe_customer_id)
-    VALUES (${`roe-${stamp}@example.test`}, true, ${customerId})
+    INSERT INTO users (email, email_verified)
+    VALUES (${`roe-${stamp}@example.test`}, true)
     RETURNING id
   `;
   const userId = u!.id;
@@ -140,20 +123,22 @@ async function seedAccount(customerId: string | null = null): Promise<Account> {
  * @param path - The entry.
  * @param cookie - The caller's session cookie.
  * @param body - The request body.
+ * @param target - The app to send it to.
  * @returns Both answers, in order.
  */
 async function pressTwice(
   path: string,
   cookie: string,
   body: Record<string, unknown>,
+  target: Hono = app,
 ): Promise<{ first: Response; again: Response }> {
   const press = {
     method: "POST",
     headers: { Cookie: cookie, "Content-Type": "application/json", "Idempotency-Key": crypto.randomUUID() },
     body: JSON.stringify(body),
   };
-  const first = await app.request(path, press);
-  const again = await app.request(path, press);
+  const first = await target.request(path, press);
+  const again = await target.request(path, press);
   return { first, again };
 }
 
@@ -261,123 +246,50 @@ describe("canvas and project entries", () => {
   });
 });
 
-describe("payment entries", () => {
-  beforeAll(() => {
-    initCore({
-      ...SUITE_ENV,
-      PAYMENT_ENABLED: "true",
-      STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-      STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-    });
-  });
+describe("purchase and membership entries", () => {
+  // These forward to the billing service; runOnce answers the re-sent press
+  // before it is forwarded again (inner#1993 §3.2).
+  const commerce = useCommerceApp("run-once-entries-commerce");
 
-  afterAll(() => {
-    initCore(SUITE_ENV);
-  });
+  it("forwards one membership checkout for a press sent twice", async () => {
+    const { cookie } = await seedAccount();
 
-  const PERIOD_END = Math.floor(Date.now() / 1000) + 30 * 24 * 3600;
-
-  /**
-   * A subscription as Stripe describes it, on one tier's monthly price.
-   * @param id - The subscription id.
-   * @param userId - Whose it is.
-   * @param customerId - The Stripe customer.
-   * @param tier - Which tier its price sells.
-   * @returns A subscription object.
-   */
-  function subscriptionOn(
-    id: string,
-    userId: string,
-    customerId: string,
-    tier: "pro" | "team",
-  ): Record<string, unknown> {
-    const plan = getSubscriptionPlan(tier, "month");
-    return {
-      id,
-      customer: customerId,
-      status: "active",
-      cancel_at_period_end: false,
-      pending_update: null,
-      latest_invoice: null,
-      items: {
-        data: [
-          {
-            id: "si_1",
-            current_period_end: PERIOD_END,
-            price: {
-              id: plan.stripePriceId,
-              unit_amount: plan.priceCents,
-              currency: plan.currency,
-              recurring: { interval: "month" },
-            },
-          },
-        ],
-      },
-      metadata: { userId },
-    };
-  }
-
-  it("opens one membership checkout for a press sent twice", async () => {
-    const { cookie } = await seedAccount(`cus_roe_${Date.now()}_${seq}`);
-    stripe.checkout.sessions.create.mockResolvedValue({
-      id: "cs_roe_membership",
-      url: "https://checkout.stripe.com/c/pay/cs_roe_membership",
-    });
-
-    const { first, again } = await pressTwice("/api/v1/account/subscription/checkout", cookie, {
-      tier: "pro",
-      period: "month",
-      return_url: "https://app.example.test/back",
-    });
-
-    await expectReplayed(first, again, 200);
-    expect(stripe.checkout.sessions.create).toHaveBeenCalledTimes(1);
-  });
-
-  it("changes the membership once for a press sent twice", async () => {
-    const customerId = `cus_roe_${Date.now()}_${seq}`;
-    const { userId, cookie } = await seedAccount(customerId);
-    const subscriptionId = `sub_roe_${Date.now()}_${seq}`;
-    // A live PRO subscription, stored through the same path a checkout return takes.
-    stripe.checkout.sessions.retrieve.mockResolvedValueOnce({
-      id: `cs_roe_${seq}`,
-      mode: "subscription",
-      client_reference_id: userId,
-      subscription: subscriptionOn(subscriptionId, userId, customerId, "pro"),
-    });
-    await confirmCheckout(userId, `cs_roe_${seq}`);
-    stripe.subscriptions.update.mockResolvedValue(
-      subscriptionOn(subscriptionId, userId, customerId, "team"),
+    const { first, again } = await pressTwice(
+      "/api/v1/account/subscription/checkout",
+      cookie,
+      { tier: "pro", period: "month", return_url: "https://app.example.test/back" },
+      commerce.app,
     );
 
-    const { first, again } = await pressTwice("/api/v1/account/subscription/change", cookie, {
-      tier: "team",
-      period: "month",
-    });
-
     await expectReplayed(first, again, 200);
-    expect(stripe.subscriptions.update).toHaveBeenCalledTimes(1);
+    expect(commerce.received).toHaveLength(1);
   });
 
-  it("opens one credits checkout for a press sent twice", async () => {
-    const { userId, cookie } = await seedAccount();
-    stripe.checkout.sessions.create.mockResolvedValue({
-      id: `cs_roe_credits_${Date.now()}_${seq}`,
-      url: "https://checkout.stripe.com/c/pay/cs_roe_credits",
-    });
+  it("forwards one membership change for a press sent twice", async () => {
+    const { cookie } = await seedAccount();
 
-    const { first, again } = await pressTwice("/api/v1/payment/checkout", cookie, {
-      price_cents: getPricingTiers()[0]!.priceCents,
-      return_url: "https://app.example.test/s/mine",
-      time_zone: "Asia/Shanghai",
-      consented: true,
-    });
+    const { first, again } = await pressTwice(
+      "/api/v1/account/subscription/change",
+      cookie,
+      { tier: "team", period: "month" },
+      commerce.app,
+    );
 
-    await expectReplayed(first, again, 201);
-    expect(stripe.checkout.sessions.create).toHaveBeenCalledTimes(1);
-    const [row] = await sql<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM payments WHERE user_id = ${userId}
-    `;
-    expect(row!.n).toBe(1);
+    await expectReplayed(first, again, 200);
+    expect(commerce.received).toHaveLength(1);
+  });
+
+  it("forwards one credits checkout for a press sent twice", async () => {
+    const { cookie } = await seedAccount();
+
+    const { first, again } = await pressTwice(
+      "/api/v1/payment/checkout",
+      cookie,
+      { price_cents: 1000, return_url: "https://app.example.test/s/mine", time_zone: "Asia/Shanghai", consented: true },
+      commerce.app,
+    );
+
+    await expectReplayed(first, again, 200);
+    expect(commerce.received).toHaveLength(1);
   });
 });

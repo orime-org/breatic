@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The playback command builder (frames-split design §4.3, §3.2, §7.1 reuse-carrier row): how a grid frame becomes a target

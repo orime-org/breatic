@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { VideoToolAnalysisRef, VideoToolDraftFields } from '@shared/mini-tools/video-draft.js';
 
@@ -174,10 +174,12 @@ export type FocusCropOutcome = 'added' | 'refused';
  * the node it was cropped from — deleting, renaming, or regenerating the
  * source never changes an existing focus image. `name` is a snapshot of
  * the source node's display name at crop time and never follows renames.
- * The front end writes image crops; a video focus crop is appended by
- * collab from `focusImageAppend` (frames-split §5.5 delivery row). Focus images
- * only reach a generate request when the user `@`-mentions them (same
- * explicit-selection rule as node references).
+ * Collab adds an entry once the crop's upload is registered (#1580,
+ * `appendFocusImageCore`); a video focus crop is appended by collab from
+ * `focusImageAppend` through the same function (frames-split §5.5 delivery
+ * row). The page only removes entries, and no other backend code reads the
+ * field — focus images only reach a generate request when the user
+ * `@`-mentions them (same explicit-selection rule as node references).
  */
 export interface FocusImage {
   /** Stable id: a frontend-generated UUID v4 for an image crop, the run's taskId for a video focus crop; `@` mentions reference it. */
@@ -193,6 +195,17 @@ export interface FocusImage {
 }
 
 /**
+ * A focus crop still uploading, held in a node's `focusUploads` (#1580): the image it will become, without the address
+ * its registration gives, and the upload's deadline. It is the node's state, the way `taskCounts` is: collab writes it
+ * when the upload opens and takes it away when the upload ends, and copying a node leaves it behind. Like a task row it
+ * carries its own budget: once `deadlineAt` has passed, readers no longer count it as uploading.
+ */
+export type FocusUpload = Omit<FocusImage, "url"> & {
+  /** When the upload's two hours run out, in epoch milliseconds. */
+  deadlineAt: number;
+};
+
+/**
  * One reply under an annotation, stored in the sticky's `replies` Y.Array
  * (#1881) and serialized to this plain shape by `toJSON()`.
  *
@@ -200,8 +213,7 @@ export interface FocusImage {
  * would be a second copy of what the project roster already answers, and it
  * would keep saying whatever was true the day the reply was written.
  *
- * Frontend-owned, like {@link FocusImage}: the backend never reads or writes
- * it. It lives here because it is part of the wire shape of a node's data, and
+ * Frontend-owned: the backend never reads or writes it. It lives here because it is part of the wire shape of a node's data, and
  * that shape is described in one place.
  */
 export interface AnnotationReply {
@@ -380,6 +392,12 @@ export interface CanvasNodeFields {
     mimeType?: string;
     /** Byte count of `content`, as the ledger counted it. See `data.mimeType`. */
     size?: number;
+    /**
+     * The Motion result a video was exported from (#1490 design §9.2): the Motion Space that exported it, the create or
+     * modify execution it renders and the address written into `content` when it was placed. Content, so it travels
+     * with copies; it stands for the video only while `content` is still `videoUrl`. Video only.
+     */
+    sourceAnimation?: { spaceId: string; executionId: string; videoUrl: string };
     /** Source node id when this data node was produced by a mini-tool from a parent node. */
     sourceNodeId?: string;
     /** Tool name when produced by mini-tool (e.g., 'image.crop'). */
@@ -585,9 +603,8 @@ export interface CanvasNodeFields {
      * empty at node birth (lazy creation is itself a whole-container LWW
      * race); a plain-array value (a pre-encoding doc / forged wire) is
      * converted on its first write. This WIRE type is unchanged either way:
-     * `toJSON()` serializes both encodings to the same plain array, and the
-     * backend never reads or writes the field. See {@link FocusImage} for
-     * the copy semantics. Empty / absent = none created.
+     * `toJSON()` serializes both encodings to the same plain array. Who writes
+     * it, and the copy semantics: {@link FocusImage}. Empty / absent = none created.
      */
     focusImages?: FocusImage[];
     /**
@@ -595,6 +612,11 @@ export interface CanvasNodeFields {
      * images were full; at most `MAX_FOCUS_ENTRIES`, the oldest dropped. Task state, not content: never copied.
      */
     focusCropOutcomes?: Record<string, FocusCropOutcome>;
+    /**
+     * Focus crops on this node still uploading (#1580), shown in its reference list as running, the way `taskCounts`
+     * shows a task. A `Y.Array` that only collab writes; {@link FocusUpload}.
+     */
+    focusUploads?: FocusUpload[];
 
     // ─── Annotation (sticky) fields ─────────────────────────
     /**
@@ -721,8 +743,31 @@ export interface NodeTaskCountsEvent {
   focusImageAppend?: FocusImage;
 }
 
+/**
+ * A picture uploaded for a 3D object's part is stored (inner#1693 design 6.3).
+ *
+ * The browser only sends the bytes; collab writes the picture onto the part
+ * the upload started from, when `judgeSceneLookPicture` allows it, and
+ * tells the uploader how it settled through `scene-look:settled`.
+ */
+export interface SceneLookPictureEvent {
+  type: 'scene-look-picture';
+  /** Yjs doc name, `project-{projectId}/3d-{spaceId}`. */
+  docName: string;
+  objectId: string;
+  part: string;
+  /** The part's `map` when the upload started, or null for none. */
+  startMap: string | null;
+  /** The stored picture's asset id. */
+  picture: string;
+  /** Who uploaded it. */
+  userId: string;
+  /** Names this upload once: the storage key, or a fresh id for content the studio already held. */
+  uploadKey: string;
+}
+
 /** Single union for forward-compat. */
-export type NodeEvent = NodeTaskCountsEvent;
+export type NodeEvent = NodeTaskCountsEvent | SceneLookPictureEvent;
 
 // ── Edges ──────────────────────────────────────────────────────────
 // Edges carry no shared wire data fields. `isPrimary` (the generative

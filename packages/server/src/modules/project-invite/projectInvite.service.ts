@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project invite-confirmation handshake service.
@@ -36,7 +36,7 @@ import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
 import * as invitesRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import { createInvitation } from "@server/modules/invitation/invitation.service.js";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import { accountActivityRepo, db, getLimitsForStudio, trackServerEvent } from "@breatic/core";

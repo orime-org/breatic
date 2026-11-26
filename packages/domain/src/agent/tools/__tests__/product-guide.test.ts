@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The product guide answers how the user operates our product.
@@ -190,6 +190,13 @@ describe("what the guide says", () => {
     );
   });
 
+  it("says the Space type row scrolls with the wheel and its arrow buttons, and names no arrow-key route", () => {
+    expect(webSource("spaces/SpaceKindPicker.tsx")).not.toMatch(/ArrowLeft|ArrowRight/);
+    const row = renderProductGuide().split("scrolls sideways")[1]?.split("Hovering them")[0] ?? "";
+    expect(row).toMatch(/faded edge with an arrow button.*mouse wheel scrolls the row/s);
+    expect(row).not.toMatch(/arrow keys/);
+  });
+
   it("says a reference is wired, then chosen from the prompt's list", () => {
     // Three halves, each of which has been the whole sentence at some point and
     // read as complete: the edge that offers the node, the @ that opens the
@@ -254,7 +261,7 @@ describe("what the guide says", () => {
   });
 
   it("says the reminder shows only where a placed proposal carries a mark to fill", () => {
-    expect(section("Proposal cards")).toMatch(/When a placed proposal carries a ✏️ mark \(in a prompt box or a text node's words\), the message/);
+    expect(section("Proposal cards")).toMatch(/When a template applied from the panel or a placed proposal carries a ✏️ mark \(in a prompt box or a text node's words\), the message/);
   });
 
   it("says material wired into the pool arrives @'d in the prompt, or in the shot on a multi-shot node", () => {
@@ -680,8 +687,17 @@ describe("what the guide says", () => {
 
   it("says a template from the panel and a proposal @ the nodes they wire into the reference list, and nothing in a slot", () => {
     const cards = section("Proposal cards");
-    expect(cards).toMatch(/A template applied from the panel and a proposal both arrive this way: their prompt or shot carries ✏️ marks and notes, and every node they wire into the reference list is @'d\./);
+    expect(cards).toMatch(/A template applied from the panel and a proposal both arrive this way: notes where something comes first, and every node they wire into the reference list @'d\./);
+    // A proposal's blanks are written wherever a generation sends them; a text node @'d nowhere keeps its own (inner#1824).
+    expect(cards).toMatch(/a proposal arrives with its prompts, and the words of every text node it @s in a prompt or a lyrics box, already written, so only a text node @'d nowhere may carry ✏️ marks left for the user\./);
     expect(cards).not.toMatch(/a 📎 mark is left only where/);
+  });
+
+  it("says a template may place a text node of written words, @'d where it is used and left as it is when applied again (inner#1824)", () => {
+    const guide = section("Generating");
+    expect(guide).toMatch(/A template may also place a text node to the left holding words already written, such as a script, with ✏️ marks where the user fills something in/);
+    expect(guide).toMatch(/one connected to a song model's lyrics box is @'d there instead, its words being the lyrics\./);
+    expect(guide).toMatch(/Applying the template again where that text node is already connected leaves its words as they are\./);
   });
 
   it("says how to indent and outdent in a document", () => {
@@ -1014,7 +1030,7 @@ describe("what the guide says about each surface", () => {
   it("says what the read-only notice counts and what the leave prompt covers", () => {
     const wrong = section("When something is wrong");
     expect(wrong).toMatch(/every browser tab that has the space open counts, the user's own included/);
-    expect(wrong).toMatch(/local Canvas or Document edits have not synced/);
+    expect(wrong).toMatch(/local Canvas, Document or Motion edits \(such as an annotation\) have not synced/);
     expect(wrong).toMatch(/background Space tabs of the current Project/);
     expect(wrong).toMatch(/connection banner's refresh button asks/);
     expect(wrong).toMatch(/browser's own refresh or tab close uses its native confirmation/);
@@ -1188,5 +1204,58 @@ describe("a video tool's ended task row (frames-split §7.19)", () => {
   });
   it("still offers Retry for an upload still at hand", () => {
     expect(renderProductGuide()).toContain(`offers "${t("canvas.task.action.retry")}" for an upload still at hand`);
+  });
+});
+
+describe("Motion Spaces and the Timeline's web animations (#1490)", () => {
+  /**
+   * A message as the guide quotes it.
+   * @param key - The catalog key.
+   * @returns It between double quotes.
+   */
+  const q = (key: string): string => `"${t(key)}"`;
+
+  it("describes the Motion Space with its three entry buttons and what each opens", () => {
+    const motion = section("Motion spaces");
+    for (const key of ["spaces.webAnimation.executions", "spaces.webAnimation.annotations", "spaces.webAnimation.new"]) {
+      expect(t(key), key).not.toBe(key);
+      expect(motion, key).toContain(q(key));
+    }
+  });
+
+  it("says how a result is modified, exported to video and put on a canvas", () => {
+    const motion = section("Motion spaces");
+    for (const key of ["spaces.webAnimation.modify", "spaces.webAnimation.export", "spaces.webAnimation.viewVideo", "spaces.webAnimation.placeOnCanvas"]) {
+      expect(t(key), key).not.toBe(key);
+      expect(motion, key).toContain(q(key));
+    }
+  });
+
+  it("says how an annotation is added at the playhead and found again", () => {
+    const motion = section("Motion spaces");
+    expect(t("spaces.webAnimation.addAnnotation")).not.toBe("spaces.webAnimation.addAnnotation");
+    expect(motion).toContain(q("spaces.webAnimation.addAnnotation"));
+  });
+
+  it("has the Timeline add web animations from the Project's results and send making them to Motion", () => {
+    const timeline = section("Timeline spaces");
+    expect(timeline).toContain(q("timeline.webAnimation.add"));
+    expect(timeline).toContain(q("timeline.webAnimation.goMake"));
+    expect(timeline).not.toContain(q("timeline.webAnimation.dialog.execute"));
+    expect(timeline).not.toContain(q("spaces.webAnimation.executions"));
+  });
+
+  it("names every Space type whose content the chat chip cannot read, as the chip decides it", () => {
+    expect(webSource("pages/project/space-type.ts")).toContain("return type === 'canvas' || type === 'document';");
+    expect(renderProductGuide()).toContain("A Timeline's, a Motion Space's or a 3D Space's content cannot be read");
+  });
+
+  it("offers a Viewer Open in Motion only where the Timeline shows it: when the Project has a Motion Space", () => {
+    expect(webSource("spaces/timeline/TimelineSpace.tsx")).toContain("const canOpenInMotion = !readOnly || hasMotionSpace;");
+    expect(section("Timeline spaces")).toContain(`and see ${q("timeline.webAnimation.openInMotion")} only when the Project already has a Motion Space`);
+  });
+
+  it("names the canvas menu item that opens a video's source animation", () => {
+    expect(renderProductGuide()).toContain(q("canvas.nodeMenu.openSourceAnimation"));
   });
 });

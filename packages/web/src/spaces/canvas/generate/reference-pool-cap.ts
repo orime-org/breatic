@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Reference-pool cap math (#1782).
@@ -14,7 +14,7 @@
  * per-model `images.max_items` payload cap enforced at execute (#1735).
  */
 
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared';
 import { FOCUS_REF_PREFIX } from '@web/spaces/canvas/generate/derive-references';
 
 /** The minimal edge shape the count reads (ReactFlow edge compatible). */

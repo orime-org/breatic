@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A mini-tool run refused with 413 (inner#1006 design §5, test spec §7.4
@@ -56,7 +56,6 @@ async function cacheLimit(maxRequestBodyBytes: number | undefined): Promise<void
     clientRetryBaseDelayMs: 1,
     uploadIdleTimeoutMs: 30_000,
     assetUrlPrefix: 'https://assets.test.invalid/',
-    uploadStatusPollSeconds: 1,
     ...(maxRequestBodyBytes !== undefined && { maxRequestBodyBytes }),
   });
   await assetsApi.fetchUploadConfig();

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Conversation message repository — one row per message.
@@ -447,13 +447,14 @@ export async function messageIdRefused(conversationId: string, messageId: string
 }
 
 /**
- * The model the turn that made this call started on (#1363) and the upstream
- * that served it (inner#1743), as its reply records them.
+ * The model the turn that made this call started on (#1363), the upstream
+ * that served it (inner#1743) and the account key row it ran on (inner#1953),
+ * as its reply records them.
  * @param id - Conversation UUID.
  * @param toolCallId - A call the reply made.
  * @returns Each that the reply records; neither when no reply holds the call.
  */
-export async function getReplyRun(id: string, toolCallId: string): Promise<{ modelId?: string; servedUpstream?: string }> {
+export async function getReplyRun(id: string, toolCallId: string): Promise<{ modelId?: string; servedUpstream?: string; keyId?: string }> {
   const [row] = await db
     .select({ forModel: conversationMessages.forModel })
     .from(conversationMessages)
@@ -466,10 +467,11 @@ export async function getReplyRun(id: string, toolCallId: string): Promise<{ mod
       ),
     )
     .limit(1);
-  const kept = row?.forModel as { modelId?: unknown; servedUpstream?: unknown } | null | undefined;
+  const kept = row?.forModel as { modelId?: unknown; servedUpstream?: unknown; keyId?: unknown } | null | undefined;
   return {
     ...(typeof kept?.modelId === "string" ? { modelId: kept.modelId } : {}),
     ...(typeof kept?.servedUpstream === "string" ? { servedUpstream: kept.servedUpstream } : {}),
+    ...(typeof kept?.keyId === "string" ? { keyId: kept.keyId } : {}),
   };
 }
 

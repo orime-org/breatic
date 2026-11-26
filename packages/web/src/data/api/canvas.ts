@@ -1,10 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { CanvasPasteAnswer, CanvasPasteInput, NodeTaskCounts, NodeTaskEntry, TaskCreateInput } from '@breatic/shared';
 
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
-import { noteCreditsChanged } from '@web/data/api/credits';
 import { bodyOrTransfer } from '@web/data/upload/transfer-body';
 
 export interface CanvasTask {
@@ -47,10 +46,6 @@ export interface CanvasLimits {
   waveformMaxSeconds: number;
   /** The largest audio file the cut band downloads to decode, in bytes. */
   waveformMaxBytes: number;
-  /** How often an open cut band reads peaks not yet written, in ms. */
-  waveformPeaksRetryMs: number;
-  /** How long an open cut band keeps reading peaks not yet written, in ms. */
-  waveformPeaksRetryMaxMs: number;
   /** How long a video tool panel's priced inputs hold still before it asks for a quote (config `quote_debounce_ms`). */
   quoteDebounceMs?: number;
   /** The most outputs one run creates, per configured planned tool (config `executions[tool].max_outputs`). */
@@ -155,8 +150,6 @@ export function getCachedWaveformLimits(): WaveformLimits | null {
     ? {
       maxSeconds: limitsCache.waveformMaxSeconds,
       maxBytes: limitsCache.waveformMaxBytes,
-      peaksRetryMs: limitsCache.waveformPeaksRetryMs,
-      peaksRetryMaxMs: limitsCache.waveformPeaksRetryMaxMs,
     }
     : null;
 }
@@ -170,12 +163,10 @@ export function getCachedJoinMaxClips(): number | null {
   return limitsCache?.joinMaxClips ?? null;
 }
 
-/** The cut band's waveform ceilings and how it reads peaks not yet written. */
+/** The cut band's waveform ceilings. */
 export interface WaveformLimits {
   maxSeconds: number;
   maxBytes: number;
-  peaksRetryMs: number;
-  peaksRetryMaxMs: number;
 }
 
 export const canvasApi = {
@@ -210,11 +201,7 @@ export const canvasApi = {
    * @throws {import('@web/data/api/types').ApiException} On 402 / 409 / 503 etc.
    */
   createTask(body: TaskCreateInput, key: string): Promise<CanvasTask> {
-    // Admitted or refused, the run held or failed to hold the project's
-    // credits, so the top bar reads them again (inner#1611).
-    return apiPost<CanvasTask>('/canvas/tasks', body, runOnceRequest(key)).finally(() =>
-      noteCreditsChanged(body.project_id),
-    );
+    return apiPost<CanvasTask>('/canvas/tasks', body, runOnceRequest(key));
   },
   /**
    * Start a run that reads one node's media into a text node the browser has
@@ -226,7 +213,7 @@ export const canvasApi = {
    * @param body.source_url - The address of what it is showing.
    * @param body.node_ids - The node this run writes to, which already exists.
    * @param body.user_locale - The language the answer is read in.
-   * @param body.reader_locale - The same locale under its pre-#1378 name, until #1387.
+   * @param body.reader_locale - The same locale under its pre-#1378 name, until inner#2130.
    * @param body.source_mime_type - What the ledger judged the file to be.
    * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
    * @returns The queued task.
@@ -242,9 +229,7 @@ export const canvasApi = {
     reader_locale: string;
     source_mime_type?: string;
   }, key: string): Promise<CanvasTask> {
-    return apiPost<CanvasTask>('/canvas/understand', body, runOnceRequest(key)).finally(() =>
-      noteCreditsChanged(body.project_id),
-    );
+    return apiPost<CanvasTask>('/canvas/understand', body, runOnceRequest(key));
   },
   /**
    * Start a run that transcribes one node's audio or video into a text node
@@ -256,7 +241,7 @@ export const canvasApi = {
    * @param body.source_url - The address of what it is showing.
    * @param body.node_ids - The node this run writes to, which already exists.
    * @param body.user_locale - The user's language, which picks the Chinese script.
-   * @param body.reader_locale - The same locale under its pre-#1378 name, until #1387.
+   * @param body.reader_locale - The same locale under its pre-#1378 name, until inner#2130.
    * @param body.keep_fillers - Whether filler words stay as spoken.
    * @param body.source_mime_type - What the ledger judged the file to be.
    * @param key - The press's `Idempotency-Key`; a re-send with it runs nothing new.
@@ -274,9 +259,7 @@ export const canvasApi = {
     keep_fillers: boolean;
     source_mime_type?: string;
   }, key: string): Promise<CanvasTask> {
-    return apiPost<CanvasTask>('/canvas/transcribe', body, runOnceRequest(key)).finally(() =>
-      noteCreditsChanged(body.project_id),
-    );
+    return apiPost<CanvasTask>('/canvas/transcribe', body, runOnceRequest(key));
   },
   /**
    * Have the server fetch an address into storage for a node (#207).
@@ -412,16 +395,11 @@ export const canvasApi = {
    * Cancel a task that waits for a free running slot (inner#1968, design
    * 3.9). A task that has started answers 409 and goes on.
    * @param taskId - The task, or one of its rows in a task list.
-   * @param projectId - The project it runs in, whose credits it held.
    * @returns The node's counts after it, null for a 3D Space's own row.
    * @throws {ApiException} When the request fails, 409 once the task has started.
    */
-  cancelTask(taskId: string, projectId: string): Promise<{ cancelled: true; counts: NodeTaskCounts | null }> {
-    // A cancelled wait releases the hold its run took, so the top bar reads
-    // the credits again, as it does when the run request returns (inner#1611).
-    return apiPost<{ cancelled: true; counts: NodeTaskCounts | null }>(`/canvas/tasks/${taskId}/cancel`, {}).finally(() =>
-      noteCreditsChanged(projectId),
-    );
+  cancelTask(taskId: string): Promise<{ cancelled: true; counts: NodeTaskCounts | null }> {
+    return apiPost<{ cancelled: true; counts: NodeTaskCounts | null }>(`/canvas/tasks/${taskId}/cancel`, {});
   },
 
   /**

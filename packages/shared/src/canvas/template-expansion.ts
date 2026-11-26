@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * How a generation template becomes nodes, shared by the generate panel and
@@ -24,7 +24,7 @@ import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 export interface TemplateSkeleton {
   id: string;
   anchor: TemplateNodeKey;
-  nodes: ReadonlyMap<TemplateNodeKey, { role: "generate" | "source"; type: GenerationNodeType; resource?: string }>;
+  nodes: ReadonlyMap<TemplateNodeKey, { role: "generate" | "source" | "written"; type: GenerationNodeType | "text"; resource?: string }>;
   edges: readonly { from: TemplateNodeKey; to: TemplateNodeKey; into?: string }[];
   /** `into`: the slot of its one fed node it goes into in place of the pool. */
   inputs: readonly { key: string; type: GenerationNodeType; feeds: readonly TemplateNodeKey[]; into?: string }[];
@@ -151,6 +151,8 @@ export function templateNodeDefaults(template: GenerationTemplate, key: Template
   const node = template.nodes.find((candidate) => candidate.key === (key ?? template.anchor));
   if (!node) return sent;
   if (node.role === "source") return { ...sent, resource: node.resource };
+  // A text node holds words only (inner#1824, CAP-3).
+  if (node.role === "written") return sent;
   const mode = sent.mode ?? node.mode;
   const model = sent.model ?? node.model;
   const keeps = mode === node.mode && model === node.model;
@@ -515,7 +517,7 @@ export type TemplateMarkTarget = { input: string } | { node: TemplateNodeKey };
  * user's language: each input feeding the node's pool (one with `into`
  * goes into a slot instead), and each template node wired into its pool (an
  * edge naming no into goes into the pool, as a proposal edge without one
- * does).
+ * does), the anchor by the template's own name, which it is placed under.
  * @param template - The template.
  * @param key - The generate node's key.
  * @returns Name to the target it stands for.
@@ -533,7 +535,7 @@ export function templateMarkTargets(template: GenerationTemplate, key: TemplateN
     if (input.into === undefined && (input.feeds ?? [template.anchor]).includes(key)) targets.set(text(`input.${input.key}.name`), { input: input.key });
   }
   for (const edge of template.edges) {
-    if (edge.to === key && (edge.into ?? "pool") === "pool") targets.set(text(`node.${edge.from}.name`), { node: edge.from });
+    if (edge.to === key && (edge.into ?? "pool") === "pool") targets.set(text(edge.from === template.anchor ? "name" : `node.${edge.from}.name`), { node: edge.from });
   }
   return targets;
 }
@@ -598,7 +600,8 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
       indexOf.set(node.key, reused);
       if (node.role === "generate") pending.push({ index: reused, key: node.key });
       // Carries its path, so a reused one still empty is fetched again.
-      else reusedSources.set(reused, templateNodeDefaults(template, node.key, { role: "source", type: node.type, name: text(`node.${node.key}.name`) }));
+      else if (node.role === "source") reusedSources.set(reused, templateNodeDefaults(template, node.key, { role: "source", type: node.type, name: text(`node.${node.key}.name`) }));
+      // A reused text node keeps what the user wrote in it (inner#1824, CAP-3).
       continue;
     }
     const base: ProposalNode = { role: node.role, type: node.type, name: text(`node.${node.key}.name`) };
@@ -607,7 +610,8 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
     const templateNode = { template: template.id, key: node.key, ...(standalone ? { anchor: input.anchorAt } : {}) };
     const index = append({ ...templateNodeDefaults(template, node.key, base), templateNode });
     indexOf.set(node.key, index);
-    if (node.role === "generate") pending.push({ index, key: node.key });
+    // A new text node is given its words with the generate nodes' (inner#1824, CAP-3).
+    if (node.role !== "source") pending.push({ index, key: node.key });
   }
 
   // Each input's node on each fed node: the caller's, else the one the caller
@@ -676,7 +680,8 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
   /**
    * A generate node's words: its prompt, or its shots or dialogue lines when
    * it has them, each reference mark bound by name and the notes of its new
-   * inputs on top of the prompt or of the first shot or line.
+   * inputs on top of the prompt or of the first shot or line; a text node's
+   * words as its prompt, with no note and no style.
    * @param key - The node's key.
    * @returns The prompt, the shots or the lines.
    */
@@ -717,7 +722,8 @@ export function expandTemplate(template: GenerationTemplate, input: TemplateExpa
       const at = index - input.base;
       appended[at] = { ...(appended[at] as ProposalNode), ...words };
     } else {
-      const type = skeleton.nodes.get(key)?.type ?? anchorNode.type;
+      const own = template.nodes.find((one) => one.key === key);
+      const type = own?.role === "generate" ? own.type : anchorNode.type;
       const base: ProposalNode = { role: "generate", type, name: text(`node.${key}.name`) };
       rewritten.set(index, { ...templateNodeDefaults(template, key, base), ...words });
     }

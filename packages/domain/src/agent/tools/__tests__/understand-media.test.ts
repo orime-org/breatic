@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What `understand_media` hands back to the model, in each of the ways one
@@ -199,6 +199,15 @@ describe("understand_media — recording what the service billed", () => {
     const spy = usageSpy();
     await turnCopy(spy.recorder)(ASKED).catch(() => undefined);
     expect(modelCalls(spy.recorder)).toEqual([expect.objectContaining({ cost: BILLED })]);
+  });
+
+  it("says the payer's own key failed, which upstream and why, instead of a service that did not answer", async () => {
+    const { AccountKeyFailure } = await import("@breatic/provider");
+    understandMediaAtMock.mockRejectedValue(new AccountKeyFailure("gemini", "account_key_failed", { upstream: "openrouter", reason: "model_not_found" }));
+    const { forModel, userKey } = await failureOf(turnCopy(usageSpy().recorder)(ASKED));
+    expect(userKey).toBe(FAILURE_LINES.accountKey);
+    expect(forModel).toContain("openrouter");
+    expect(forModel.toLowerCase()).not.toContain("did not answer");
   });
 
   it("records nothing when the service never billed the call", async () => {

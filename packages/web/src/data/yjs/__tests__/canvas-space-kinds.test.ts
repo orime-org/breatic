@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Space document size cap v2 (inner#1790 v2 web test spec, sections 3 and 4
@@ -29,7 +29,6 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   addEdge,
   addNode,
-  addNodeFocusImage,
   addReply,
   appendNodeSlotItem,
   createGroup,
@@ -343,21 +342,6 @@ describe('section 3: add writes', () => {
       refused: (result, doc) => {
         expect(result).toBe('refused');
         expect(dataOf(doc, 'img1').get('styleImages')).toEqual(['u1', 'u2']);
-      },
-    });
-  });
-
-  describe('E-06', () => {
-    kindRows({
-      ...ROW,
-      id: 'E-06',
-      title: 'addNodeFocusImage f3',
-      kind: 'add',
-      run: () => addNodeFocusImage(PID, SID, 'img1', focus('f3')),
-      written: (result) => expect(result).toBe('added'),
-      refused: (result, doc) => {
-        expect(result).toBe('refused');
-        expect((dataOf(doc, 'img1').get('focusImages') as Y.Array<{ id: string }>).toArray().map((f) => f.id)).toEqual(['f1', 'f2']);
       },
     });
   });

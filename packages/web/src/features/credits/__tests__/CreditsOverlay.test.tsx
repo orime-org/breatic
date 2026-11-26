@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { CreditDecimal } from '@breatic/shared';
 
@@ -68,7 +68,8 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
     assignedCredits: '0.000000' as CreditDecimal,
     unassignedCredits: '0.000000' as CreditDecimal,
     underRefundCredits: '0.000000' as CreditDecimal,
-    billing: true,
+    charging: true,
+    selling: true,
     studios: [],
     ...over,
   };

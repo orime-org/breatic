@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A team Studio's monthly spend limits, which only its admin reads and writes
- * (inner#1968, design 3.10). A personal Studio, or a deployment with payments
- * off, answers 404; anyone but its admin 403.
+ * (inner#1968, design 3.10). A personal Studio, or a deployment that does
+ * not charge credits (`charging` false), answers 404; anyone but its admin 403.
  */
 
 import type { CreditDecimal } from '@breatic/shared';
@@ -47,7 +47,7 @@ export function spendLimitsQueryKey(slug: string): readonly [string, string] {
  * Read a Studio's spend limits.
  * @param slug - The Studio.
  * @returns The limits.
- * @throws {ApiException} 403 for anyone but its admin, 404 for a personal Studio or with payments off.
+ * @throws {ApiException} 403 for anyone but its admin, 404 for a personal Studio or where credits are not charged (`charging` false).
  */
 export function fetchSpendLimits(slug: string): Promise<SpendLimitsView> {
   return apiGet<SpendLimitsView>(`/studio/${slug}/spend-limits`);

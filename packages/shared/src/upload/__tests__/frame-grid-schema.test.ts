@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * inner#1306 test plan §64.4 SC01 and SC07 (frames-split design §3.2, §3.5, §4.1, §7.4): one strict shape per object.

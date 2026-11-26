@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What a message tells the Agent about the user's Spaces (inner#1413).
@@ -22,7 +22,7 @@ import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { readDocFacts } from '@web/data/yjs/collab-socket';
 import { docName, getDoc, hasDoc } from '@web/data/yjs/manager';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { snapshotOfPick } from '@web/spaces/canvas/attach-nodes';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
 import { pickReaders } from '@web/spaces/canvas/pick-for-agent';

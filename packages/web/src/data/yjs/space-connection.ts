@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * An open Space tab's connection to its document (inner#1235 §5.1).
@@ -64,4 +64,5 @@ export const DOC_NAME_BUILDERS: Partial<
   document: docName.documentSpace,
   timeline: docName.timelineSpace,
   '3d': docName.threeDSpace,
+  web_animation: docName.webAnimationSpace,
 };

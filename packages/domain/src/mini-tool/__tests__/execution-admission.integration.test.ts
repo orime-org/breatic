@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Planned execution durable admission (inner#1306 test plan §90; frames-split §5.4, §5.5, §7.11), on frame extraction.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The worker's Timeline execution job (inner#1711 design §3.5, §5.2, §5.3, §6; acceptance V2, V4).
@@ -57,13 +57,13 @@ vi.mock("ai", () => ({
 
 import type * as DomainModule from "@breatic/domain";
 import fc from "fast-check";
-import { createHash } from "node:crypto";
-import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales, timelineExecutionRepo } from "@breatic/core";
-import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE } from "@breatic/domain";
+import { createHash, generateKeyPairSync } from "node:crypto";
+import { createPgClient, createQueue, env, getStreamRedis, getTimelineConfig, initCore, loadLocales } from "@breatic/core";
+import { initProvider, provider, toChargeCredits, USAGE_LOOKUP_QUEUE, timelineExecutionRepo } from "@breatic/domain";
 import { NoUpstreamAvailable, type CostLookup } from "@breatic/provider";
 import { t } from "@breatic/shared";
-import { spaceTasksChangedChannel, timelineSpaceDocName } from "@breatic/shared";
-import { WEB_ANIMATION_CONTAINER_CLASS, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
+import { webAnimationSpaceDocName } from "@breatic/shared";
+import { WEB_ANIMATION_CONTAINER_CLASS, openModelKeys, webAnimationJobRequestSchema } from "@breatic/shared/space-content";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import {
   CALLS,
@@ -78,7 +78,6 @@ import {
   jobFor,
   json,
   manifest,
-  notConfigured,
   read,
   report,
   seedExecution,
@@ -94,8 +93,19 @@ let sql: ReturnType<typeof createPgClient>;
 let errorLogs: () => Record<string, unknown>[];
 const owned: string[] = [];
 
+/** The ingest Worker's key pair: every submit seals the run's keys to the public half (inner#1953). */
+const PAIR = generateKeyPairSync("rsa", {
+  modulusLength: 2048,
+  publicKeyEncoding: { type: "spki", format: "pem" },
+  privateKeyEncoding: { type: "pkcs8", format: "pem" },
+});
+/** Our OpenRouter key on this deployment, the only key of ours the suite sets. */
+const DEPLOYMENT_KEY = "sk-or-deployment-timeline-suite";
+/** This suite's environment: our key and the Worker's public key. */
+const ENV = { ...process.env, OPENROUTER_API_KEY: DEPLOYMENT_KEY, INGEST_KEY_SEAL_PUBLIC_KEY: PAIR.publicKey };
+
 beforeAll(() => {
-  initCore(process.env);
+  initCore(ENV);
   loadLocales();
   initProvider();
   errorLogs = captureErrorLogs("timeline-worker");
@@ -270,8 +280,8 @@ interface Spies {
 }
 
 /**
- * How many changes a spied stream append sent for the execution's Timeline Space, and how many Space task-list
- * signals a spied publish sent for its Project.
+ * How many execution changes a spied stream append sent for the execution's Motion Space, and how many Space
+ * task-list signals a spied publish sent for its Project.
  * @param spies - The spies on the stream Redis client's append and publish.
  * @param spies.xadd - The append spy.
  * @param spies.publish - The publish spy.
@@ -279,9 +289,10 @@ interface Spies {
  * @returns Both counts.
  */
 function signalsFor(spies: Spies, fx: ExecutionFixture): { doc: number; meta: number } {
-  const docName = timelineSpaceDocName(fx.projectId, fx.spaceId);
+  const docName = webAnimationSpaceDocName(fx.projectId, fx.spaceId);
   const doc = spies.xadd.mock.calls.filter((call) => call.some((arg) => typeof arg === "string" && arg.includes(`"docName":"${docName}"`) && arg.includes("space-tasks-version"))).length;
-  const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, fx.projectId);
+  // The old Project channel, written out because its builder is gone; nothing may send on it.
+  const channel = `${env.REDIS_KEY_PREFIX}:project:${fx.projectId}:space-tasks:changed`;
   return { doc, meta: spies.publish.mock.calls.filter(([published]) => published === channel).length };
 }
 
@@ -354,7 +365,12 @@ describe("picking up a queued execution", () => {
       callTimeoutMs: config.call_timeout_ms,
       model: config.model,
       messagesPlan: provider().llm.messagesPlan(config.model),
+      sealedKeys: expect.any(String),
     });
+    // Our key for the plan's upstreams travels sealed with the submit, never in the stored step (inner#1953).
+    expect(await openModelKeys(submitted.sealedKeys!, PAIR.privateKey)).toEqual({ openrouter: DEPLOYMENT_KEY });
+    expect(JSON.stringify(row.steps)).not.toContain(DEPLOYMENT_KEY);
+    expect(JSON.stringify(row.steps)).not.toContain("sealedKeys");
     expect(submitted.messagesPlan!.candidates.length).toBeGreaterThan(0);
     expect(submitted.viewport.width * 9).toBe(submitted.viewport.height * 16);
     expect(await chargesFor(fx.execution.id)).toEqual([]);
@@ -404,12 +420,12 @@ describe("a pickup that finds the execution claimed by another meanwhile", () =>
 // slot starts when its turn comes, and a spend limit reached or a balance gone
 // meanwhile only lets it run past them (inner#1968 design 3.10).
 describe("a queued execution that waited for a running slot", () => {
-  const PAID = { ...process.env, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite" };
+  const PAID = { ...ENV, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite" };
   beforeAll(() => {
     initCore(PAID);
   });
   afterAll(() => {
-    initCore(process.env);
+    initCore(ENV);
   });
 
   it.each(["a spend limit of 0", "no credits left"])("starts when its turn comes with %s", async (situation) => {
@@ -496,7 +512,9 @@ describe("picking up a running execution again", () => {
       ["read", `timeline:${fx.execution.id}`],
       ["submit", `timeline:${fx.execution.id}`],
     ]);
-    expect(submits[1]!.body).toEqual(submits[0]!.body);
+    // The job is the same; its keys are sealed afresh at each submit (inner#1953).
+    const unsealed = (body: unknown): unknown => ({ ...(body as Record<string, unknown>), sealedKeys: undefined });
+    expect(unsealed(submits[1]!.body)).toEqual(unsealed(submits[0]!.body));
   });
 
   it("submits again on the next pickup after the Worker answered 503", async () => {
@@ -510,7 +528,8 @@ describe("picking up a running execution again", () => {
     await pickUp(fx);
     const submits = ingest.calls.filter((call) => call.route === "submit");
     expect(submits.length).toBeGreaterThanOrEqual(2);
-    expect(new Set(submits.map((call) => JSON.stringify(call.body))).size).toBe(1);
+    // The same job each time; its keys are sealed afresh at each submit (inner#1953).
+    expect(new Set(submits.map((call) => JSON.stringify({ ...(call.body as Record<string, unknown>), sealedKeys: undefined }))).size).toBe(1);
     expect((await read(fx.execution.id)).status).toBe("running");
   });
 });
@@ -817,18 +836,39 @@ describe("an ingest Worker without web-animation execution", () => {
     await expectFeatureDisabled(fx, "failed");
   });
 
-  it("fails the execution as feature_disabled when the submit says no upstream has a key there, logging the model and variables", async () => {
-    const fx = await seed("queued");
-    const ingest = installFakeIngest(fx);
-    const model = getTimelineConfig().web_animation.model;
-    ingest.submit = () => notConfigured(model, ["HARNESS_OPENROUTER_API_KEY"]);
-    await pickUp(fx);
-    await expectFeatureDisabled(fx, "failed");
-    expect(errorLogs()).toContainEqual(expect.objectContaining({
-      executionId: fx.execution.id,
-      reason: t("server.model.not_configured", { model, envVars: "HARNESS_OPENROUTER_API_KEY" }),
-      msg: "timeline_model_not_configured",
-    }));
+  it("fails the execution as feature_disabled without submitting when this deployment holds no key for its plan, logging the model and variables", async () => {
+    initCore(process.env);
+    try {
+      const fx = await seed("queued");
+      const ingest = installFakeIngest(fx);
+      const model = getTimelineConfig().web_animation.model;
+      await pickUp(fx);
+      await expectFeatureDisabled(fx, "failed");
+      expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
+      const envVars = provider().llm.messagesPlan(model).candidates.map(({ keyEnv }) => keyEnv);
+      expect(errorLogs()).toContainEqual(expect.objectContaining({
+        executionId: fx.execution.id,
+        envVars,
+        reason: t("server.model.not_configured", { model, envVars: envVars.join(", ") }),
+        msg: "timeline_model_not_configured",
+      }));
+    } finally {
+      initCore(ENV);
+    }
+  });
+
+  it("fails the execution as feature_disabled without submitting when this deployment has no public key to seal with", async () => {
+    initCore({ ...ENV, INGEST_KEY_SEAL_PUBLIC_KEY: "" });
+    try {
+      const fx = await seed("queued");
+      const ingest = installFakeIngest(fx);
+      await pickUp(fx);
+      await expectFeatureDisabled(fx, "failed");
+      expect(ingest.calls.filter((call) => call.route === "submit")).toEqual([]);
+      expect(errorLogs()).toContainEqual(expect.objectContaining({ executionId: fx.execution.id, msg: "timeline_key_seal_public_key_unset" }));
+    } finally {
+      initCore(ENV);
+    }
   });
 
   it("fails the execution as feature_disabled without submitting when no upstream of its model takes a Messages call", async () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Step order and failure policy for the meta-doc write RPCs
@@ -118,6 +118,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 
 import { handleSpaceRpc, settlePublish } from "../services/space-rpc.js";
 import {
+  SpaceTypeSchema,
   spaceContentDocName,
   projectMetaDocName,
   type DocKind,
@@ -132,11 +133,7 @@ const ACTOR = "u-actor-1";
 const TOKEN = "3f2504e0-4f89-41d3-9a0c-0305e82c3301";
 
 /** The content-doc kinds delete / restore act on, mirroring the handler. */
-const CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = [
-  "canvas",
-  "document",
-  "timeline",
-];
+const CONTENT_KINDS: readonly Exclude<DocKind, "meta">[] = SpaceTypeSchema.options;
 
 /**
  * Wording only a database driver ever emits. The reply that reaches the
@@ -1242,11 +1239,7 @@ describe("a partial content-row failure undoes exactly what succeeded", () => {
     // Every variant that DID get soft-deleted comes back — and only those.
     const undone = restoreByNameMock.mock.calls.map((c) => c[0] as string);
     expect(undone.sort()).toEqual(
-      [
-        spaceContentDocName(PID, SID, "canvas"),
-        spaceContentDocName(PID, SID, "timeline"),
-        spaceContentDocName(PID, SID, "3d"),
-      ].sort(),
+      CONTENT_KINDS.filter((kind) => kind !== "document").map((kind) => spaceContentDocName(PID, SID, kind)).sort(),
     );
   });
 });

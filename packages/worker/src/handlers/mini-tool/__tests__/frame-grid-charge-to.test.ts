@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Who pays a container job is read from what admission froze (inner#1306 test plan §67.2 A03, §67.3 W02, W03; frames-split

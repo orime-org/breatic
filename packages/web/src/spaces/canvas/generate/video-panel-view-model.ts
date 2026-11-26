@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Pure derivation of the video Generate panel's render inputs from a node's
@@ -16,7 +16,7 @@
 import { referenceKinds, referencePool, VIDEO_GENERATION_MODES, type ReferencePool } from '@breatic/shared';
 import type { FocusImage, ModelEntry } from '@breatic/shared';
 
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared';
 import type { CanvasEdge } from '@web/data/yjs/canvas-space';
 import {
   deriveReferences,

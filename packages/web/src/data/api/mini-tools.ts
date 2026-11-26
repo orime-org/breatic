@@ -1,10 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { MiniToolExecutionRecord, MiniToolPlannedRequest, MiniToolRequest } from '@breatic/shared/mini-tools';
 
 import { apiPost, runOnceRequest } from '@web/data/api/request';
-import { noteCreditsChanged } from '@web/data/api/credits';
 
 /** What the server answers a run with: the task it opened. */
 export interface MiniToolRunAnswer {
@@ -51,10 +50,6 @@ export const miniToolsApi = {
    * @throws {import('@web/data/api/types').ApiException} When no task was opened.
    */
   run(body: MiniToolRequest, key: string): Promise<MiniToolRunAnswer> {
-    // Admitted or refused, the run held or failed to hold the project's
-    // credits, so the top bar reads them again (inner#1611).
-    return apiPost<MiniToolRunAnswer>('/mini-tools', body, runOnceRequest(key)).finally(() =>
-      noteCreditsChanged(body.project_id),
-    );
+    return apiPost<MiniToolRunAnswer>('/mini-tools', body, runOnceRequest(key));
   },
 };

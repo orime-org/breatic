@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The audio Generate panel's canvas integration: everything the presentational
@@ -70,7 +70,7 @@ import {
   CatalogGatedFrame,
   useOpenPanelNode,
 } from '@web/spaces/canvas/generate/generate-panel-frame';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { resolveModelSwitch, resolveParamsEdit } from '@web/spaces/canvas/generate/model-params';
 import {
   filterAvailableModes,
@@ -82,7 +82,7 @@ import { allGenerationModels, modelsForModality } from '@web/spaces/canvas/gener
 import { PromptEditor } from '@web/spaces/canvas/generate/PromptEditor';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
 import { clearSlot } from '@web/spaces/canvas/generate/slot-write';
-import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { useContentStable } from '@web/lib/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import {
   isGenerating,
@@ -488,7 +488,7 @@ function AudioGeneratePanelBody({
   // The run as the click sends it: a model taking no prompt with these settings sends none, whatever the box
   // last held, and the lyrics go while the lyrics box is on the panel. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
   const estimateInput = audioEstimateInput({ ...vm, params }, slots, vm.promptRequired ? extractPromptText(promptText) : '', lyrics ? lyricsText : undefined);
-  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
+  const { creditText, creditDetail, creditAlso, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   const onExecute = React.useCallback((): void => {
     // Every execute-critical value is read synchronously here, never from a
     // render closure that batching and live collaboration make stale.
@@ -704,6 +704,8 @@ function AudioGeneratePanelBody({
       model={vm.model}
       currentModel={vm.modelEntry}
       creditText={creditText}
+      creditDetail={creditDetail}
+      creditAlso={creditAlso}
       modelTakesPrompt={vm.takesPrompt}
       promptShown={vm.promptRequired}
       mode={mode}

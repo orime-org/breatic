@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Generation templates (inner#977, inner#1345): nodes, wiring, inputs and
@@ -33,34 +33,61 @@ import { AMBIENCE_SFX_BED } from "@shared/canvas/templates/ambience-sfx-bed.js";
 import { ANIME_ACTION_CLIMAX } from "@shared/canvas/templates/anime-action-climax.js";
 import { ANIME_OPENING_15S } from "@shared/canvas/templates/anime-opening-15s.js";
 import { ANIME_SCENE } from "@shared/canvas/templates/anime-scene.js";
+import { APP_LAUNCH_PROMO } from "@shared/canvas/templates/app-launch-promo.js";
 import { BEAT_SYNC_OUTFIT_CHANGE } from "@shared/canvas/templates/beat-sync-outfit-change.js";
+import { BEAT_SYNCED_MUSIC_CLIP } from "@shared/canvas/templates/beat-synced-music-clip.js";
+import { BEFORE_AFTER_REVEAL } from "@shared/canvas/templates/before-after-reveal.js";
+import { BRAND_ORIGIN_FILM } from "@shared/canvas/templates/brand-origin-film.js";
 import { BULLET_TIME_MISHAP } from "@shared/canvas/templates/bullet-time-mishap.js";
+import { BULLET_TIME_MOMENT } from "@shared/canvas/templates/bullet-time-moment.js";
 import { CARRIED_OBJECT_TRANSITION } from "@shared/canvas/templates/carried-object-transition.js";
 import { CARTOON_GAG } from "@shared/canvas/templates/cartoon-gag.js";
 import { CHARACTER_BIBLE } from "@shared/canvas/templates/character-bible.js";
 import { CHARACTER_DESIGN_FROM_TEXT } from "@shared/canvas/templates/character-design-from-text.js";
 import { CHARACTER_SHOWCASE_ORBIT } from "@shared/canvas/templates/character-showcase-orbit.js";
+import { CINEMATIC_15S_ARC } from "@shared/canvas/templates/cinematic-15s-arc.js";
 import { CLIP_AMBIENCE_FOLEY } from "@shared/canvas/templates/clip-ambience-foley.js";
 import { COMIC_4KOMA } from "@shared/canvas/templates/comic-4koma.js";
 import { COMIC_PAGE_TO_MOTION } from "@shared/canvas/templates/comic-page-to-motion.js";
 import { COMIC_PAGE } from "@shared/canvas/templates/comic-page.js";
 import { COMIC_PANELS_TO_SHOTS } from "@shared/canvas/templates/comic-panels-to-shots.js";
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
+import { DAY_TO_NIGHT_EXTERIOR } from "@shared/canvas/templates/day-to-night-exterior.js";
 import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
 import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
+import { DRAMA_SINGLE_SCENE } from "@shared/canvas/templates/drama-single-scene.js";
+import { EMOTIONAL_DIALOGUE_TIMELINE } from "@shared/canvas/templates/emotional-dialogue-timeline.js";
+import { EPIC_FANTASY_SCIFI } from "@shared/canvas/templates/epic-fantasy-scifi.js";
 import { ERA_WALKTHROUGH_MONTAGE } from "@shared/canvas/templates/era-walkthrough-montage.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
 import { EXTREME_SPORTS_RUN } from "@shared/canvas/templates/extreme-sports-run.js";
+import { FASHION_LOOKBOOK } from "@shared/canvas/templates/fashion-lookbook.js";
+import { FIGHT_DUEL_LOCKED } from "@shared/canvas/templates/fight-duel-locked.js";
+import { FIGHT_DUEL_ONE_TAKE } from "@shared/canvas/templates/fight-duel-one-take.js";
+import { FIGHT_EXCHANGE_SHORT } from "@shared/canvas/templates/fight-exchange-short.js";
 import { FILM_STYLE_SHOT } from "@shared/canvas/templates/film-style-shot.js";
 import { FILM_STYLE_STILL } from "@shared/canvas/templates/film-style-still.js";
 import { FISHEYE_CLONE_POV } from "@shared/canvas/templates/fisheye-clone-pov.js";
 import { FLASH_PHOTO_DUMP_GRID } from "@shared/canvas/templates/flash-photo-dump-grid.js";
 import { FOOD_MONEY_SHOT } from "@shared/canvas/templates/food-money-shot.js";
 import { GAME_UI_LIVESTREAM } from "@shared/canvas/templates/game-ui-livestream.js";
+import { HERO_ORBIT_REVEAL } from "@shared/canvas/templates/hero-orbit-reveal.js";
+import { HORROR_SUSPENSE } from "@shared/canvas/templates/horror-suspense.js";
 import { HYPE_THEN_TWIST_AD } from "@shared/canvas/templates/hype-then-twist-ad.js";
 import { IDENTITY_LOCKED_SEQUENCE } from "@shared/canvas/templates/identity-locked-sequence.js";
+import { IMPACT_FRAME_HIT } from "@shared/canvas/templates/impact-frame-hit.js";
+import { LANDSCAPE_3_SHOT } from "@shared/canvas/templates/landscape-3-shot.js";
+import { LAUNCH_STORY_3_BEAT } from "@shared/canvas/templates/launch-story-3-beat.js";
+import { LISTING_WALKTHROUGH_15S } from "@shared/canvas/templates/listing-walkthrough-15s.js";
 import { LIVESTREAM_PITCH } from "@shared/canvas/templates/livestream-pitch.js";
+import { LONG_FORM_ACTS } from "@shared/canvas/templates/long-form-acts.js";
+import { LOOKBOOK_MULTI_LOOK } from "@shared/canvas/templates/lookbook-multi-look.js";
+import { MUSIC_FIRST_MV } from "@shared/canvas/templates/music-first-mv.js";
 import { MUSIC_MOOD_FROM_IMAGE } from "@shared/canvas/templates/music-mood-from-image.js";
+import { MV_CHORUS_PERFORMANCE } from "@shared/canvas/templates/mv-chorus-performance.js";
+import { MV_FULL } from "@shared/canvas/templates/mv-full.js";
+import { MV_PERFORMER_SHEET } from "@shared/canvas/templates/mv-performer-sheet.js";
+import { MV_STYLE_SHEET } from "@shared/canvas/templates/mv-style-sheet.js";
 import { NAME_AS_WORLD_TYPOGRAPHY } from "@shared/canvas/templates/name-as-world-typography.js";
 import { PET_SELFIE_VLOG } from "@shared/canvas/templates/pet-selfie-vlog.js";
 import { PHONE_VLOG_REALISM } from "@shared/canvas/templates/phone-vlog-realism.js";
@@ -74,12 +101,23 @@ import { PRODUCT_HERO_STILL } from "@shared/canvas/templates/product-hero-still.
 import { PRODUCT_PARTICLE_REVEAL } from "@shared/canvas/templates/product-particle-reveal.js";
 import { PRODUCT_STATE_CHANGE } from "@shared/canvas/templates/product-state-change.js";
 import { PRODUCT_TURNTABLE_360 } from "@shared/canvas/templates/product-turntable-360.js";
+import { PROMO_FILM_ASSEMBLED } from "@shared/canvas/templates/promo-film-assembled.js";
+import { PROPERTY_FULL_TOUR } from "@shared/canvas/templates/property-full-tour.js";
 import { RECIPE_PROCESS_MONTAGE } from "@shared/canvas/templates/recipe-process-montage.js";
+import { REFERENCE_VIDEO_REMIX } from "@shared/canvas/templates/reference-video-remix.js";
+import { RENOVATION_BEFORE_AFTER } from "@shared/canvas/templates/renovation-before-after.js";
 import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
+import { ROOM_STAGING_STILL } from "@shared/canvas/templates/room-staging-still.js";
+import { SCENE_PLATE } from "@shared/canvas/templates/scene-plate.js";
 import { SCORE_FOR_MY_VIDEO } from "@shared/canvas/templates/score-for-my-video.js";
+import { SEAMLESS_BRIDGE } from "@shared/canvas/templates/seamless-bridge.js";
 import { SECTION_MAPPED_SCORE } from "@shared/canvas/templates/section-mapped-score.js";
+import { SHORT_DRAMA_EPISODE } from "@shared/canvas/templates/short-drama-episode.js";
+import { SHORT_DRAMA_REVERSAL } from "@shared/canvas/templates/short-drama-reversal.js";
 import { SINGLE_VIEW_REFS_SCENE } from "@shared/canvas/templates/single-view-refs-scene.js";
 import { SONG_COVER } from "@shared/canvas/templates/song-cover.js";
+import { SONG_WITH_LYRICS } from "@shared/canvas/templates/song-with-lyrics.js";
+import { SPACE_TOUR_SINGLE_TAKE } from "@shared/canvas/templates/space-tour-single-take.js";
 import { SPORTS_LIVE_COVERAGE } from "@shared/canvas/templates/sports-live-coverage.js";
 import { STOP_MOTION_SHORT } from "@shared/canvas/templates/stop-motion-short.js";
 import { STORYBOARD_GRID_25 } from "@shared/canvas/templates/storyboard-grid-25.js";
@@ -90,7 +128,10 @@ import { TALKING_HEAD_PITCH } from "@shared/canvas/templates/talking-head-pitch.
 import { TALKING_OWN_VOICE } from "@shared/canvas/templates/talking-own-voice.js";
 import { TALKING_PRESENTER } from "@shared/canvas/templates/talking-presenter.js";
 import { TIME_FREEZE_REWIND } from "@shared/canvas/templates/time-freeze-rewind.js";
+import { TRAILER_BEAT_3_SHOT } from "@shared/canvas/templates/trailer-beat-3-shot.js";
+import { TRANSFORMATION_6_SHOT } from "@shared/canvas/templates/transformation-6-shot.js";
 import { TRAVEL_CITY_WALK } from "@shared/canvas/templates/travel-city-walk.js";
+import { TRY_ON_STILL } from "@shared/canvas/templates/try-on-still.js";
 import { TWIST_COMEDY_SKIT } from "@shared/canvas/templates/twist-comedy-skit.js";
 import { TWO_SPEAKER_TALK } from "@shared/canvas/templates/two-speaker-talk.js";
 import { TWO_VOICE_DIALOGUE } from "@shared/canvas/templates/two-voice-dialogue.js";
@@ -106,7 +147,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "animation", "ecommerce", "product-showcase", "food", "social-hooks", "talking", "posters", "film-styles", "speed", "sound"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "drama", "fight", "animation", "music-video", "ecommerce", "product-showcase", "promo", "food", "spaces", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -169,6 +210,18 @@ export interface TemplateResourceNode {
   resource: string;
 }
 
+/**
+ * A node of the template that holds words the user keeps and edits: a script,
+ * lyrics (inner#1824, CAP-3). Its words are `node.<key>.text` in the locale and
+ * may carry fill-in marks, no reference mark and no note. It only starts
+ * template edges, into the pool or the lyrics box of a generate node.
+ */
+export interface TemplateTextNode {
+  key: TemplateNodeKey;
+  role: "written";
+  type: "text";
+}
+
 /** Material the user supplies. */
 export interface TemplateInput {
   key: string;
@@ -210,7 +263,7 @@ export interface GenerationTemplate {
    * tag names.
    */
   anchor: TemplateNodeKey;
-  nodes: readonly (TemplateGenerateNode | TemplateResourceNode)[];
+  nodes: readonly (TemplateGenerateNode | TemplateResourceNode | TemplateTextNode)[];
   edges: readonly TemplateEdge[];
   inputs: readonly TemplateInput[];
   /** Keys of the follow-up steps the user does by hand once the anchor has generated; listed in the guide text node. */
@@ -241,12 +294,31 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   STORYBOARD_TO_VIDEO,
   COMIC_PAGE_TO_MOTION,
   COMIC_PANELS_TO_SHOTS,
+  SCENE_PLATE,
+  DRAMA_SINGLE_SCENE,
+  SHORT_DRAMA_REVERSAL,
+  EMOTIONAL_DIALOGUE_TIMELINE,
+  HORROR_SUSPENSE,
+  SHORT_DRAMA_EPISODE,
+  FIGHT_DUEL_ONE_TAKE,
+  FIGHT_EXCHANGE_SHORT,
+  FIGHT_DUEL_LOCKED,
+  HERO_ORBIT_REVEAL,
+  BULLET_TIME_MOMENT,
+  IMPACT_FRAME_HIT,
   CARTOON_GAG,
   THREE_D_CARTOON_SHORT,
   STOP_MOTION_SHORT,
   ANIME_SCENE,
   ANIME_ACTION_CLIMAX,
   ANIME_OPENING_15S,
+  MV_STYLE_SHEET,
+  MV_PERFORMER_SHEET,
+  BEAT_SYNCED_MUSIC_CLIP,
+  MUSIC_FIRST_MV,
+  SONG_WITH_LYRICS,
+  MV_CHORUS_PERFORMANCE,
+  MV_FULL,
   PRODUCT_AD_15S,
   UGC_CREATOR_REVIEW,
   LIVESTREAM_PITCH,
@@ -260,9 +332,23 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   PRODUCT_PARTICLE_REVEAL,
   PRODUCT_HERO_DIRECT_I2V,
   PRODUCT_STATE_CHANGE,
+  APP_LAUNCH_PROMO,
+  BRAND_ORIGIN_FILM,
+  LAUNCH_STORY_3_BEAT,
+  PROMO_FILM_ASSEMBLED,
   FOOD_MONEY_SHOT,
   RECIPE_PROCESS_MONTAGE,
   DISH_HERO_STILL,
+  SPACE_TOUR_SINGLE_TAKE,
+  ROOM_STAGING_STILL,
+  RENOVATION_BEFORE_AFTER,
+  DAY_TO_NIGHT_EXTERIOR,
+  BEFORE_AFTER_REVEAL,
+  LISTING_WALKTHROUGH_15S,
+  PROPERTY_FULL_TOUR,
+  FASHION_LOOKBOOK,
+  TRY_ON_STILL,
+  LOOKBOOK_MULTI_LOOK,
   PET_SELFIE_VLOG,
   PHONE_VLOG_REALISM,
   RETRO_FOUND_FOOTAGE,
@@ -288,6 +374,12 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   FILM_STYLE_SHOT,
   ERA_WALKTHROUGH_MONTAGE,
   STYLE_SOUND_BED,
+  CINEMATIC_15S_ARC,
+  LANDSCAPE_3_SHOT,
+  EPIC_FANTASY_SCIFI,
+  TRAILER_BEAT_3_SHOT,
+  TRANSFORMATION_6_SHOT,
+  LONG_FORM_ACTS,
   VEHICLE_SPEED_CUTLIST,
   SPORTS_LIVE_COVERAGE,
   EXTREME_SPORTS_RUN,
@@ -302,6 +394,8 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   MUSIC_MOOD_FROM_IMAGE,
   CLIP_AMBIENCE_FOLEY,
   SECTION_MAPPED_SCORE,
+  REFERENCE_VIDEO_REMIX,
+  SEAMLESS_BRIDGE,
 ];
 
 /**
@@ -316,7 +410,7 @@ export function templateAnchor(template: GenerationTemplate): TemplateGenerateNo
   return anchor;
 }
 
-/** Where a template's generate node keeps its words: keys under the template's `canvas.template.<id>.` entry. */
+/** Where a template's generate or text node keeps its words: keys under the template's `canvas.template.<id>.` entry. */
 export type TemplateNodeWords =
   | { prompt: string; styleKey?: string }
   | { shots: ReadonlyArray<{ seconds: number; key: string }> }
@@ -325,7 +419,7 @@ export type TemplateNodeWords =
 /**
  * Where one of a template's generate nodes keeps its words: its prompt, or,
  * for a node with a shot list or dialogue lines, one key per shot or line in
- * place of a prompt.
+ * place of a prompt; a text node keeps them in its text, read as a prompt.
  * A prompt node that takes a part of the template's style also gets the
  * absolute key of the picked style's words for it, written after its own.
  * @param template - The template.
@@ -337,6 +431,7 @@ export type TemplateNodeWords =
 export function templateNodeWords(template: GenerationTemplate, key: TemplateNodeKey, style?: string): TemplateNodeWords {
   const node = template.nodes.find((one) => one.key === key);
   const own = key === template.anchor ? "" : `node.${key}.`;
+  if (node?.role === "written") return { prompt: `${own}text` };
   const lines = node?.role === "generate" ? node.lines : undefined;
   if (lines !== undefined) return { lines: lines.map((line, i) => ({ speaker: line.speaker, key: `${own}line.${String(i + 1)}` })) };
   const shots = node?.role === "generate" ? node.shots : undefined;

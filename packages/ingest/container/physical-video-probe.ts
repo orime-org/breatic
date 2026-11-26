@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The probe's physical video facts on the frame grid (frames-split design §5.1 step 2, §4.1, §3.2 item 7, §4.3): every video

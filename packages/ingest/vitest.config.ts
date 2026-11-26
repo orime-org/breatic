@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Three projects: two split by which runtime a test needs, and the page
@@ -113,8 +113,8 @@ const node = defineConfig({
   test: {
     name: "node",
     include: [NODE_TESTS],
-    // The media container's tests run real ffmpeg jobs of several seconds; on a machine busy with the other packages' suites
-    // the default 5s cuts them off, as the workers project above and every other package allow for.
+    // The media container's tests run real ffmpeg jobs of several seconds, and CI runs these beside the other
+    // packages' suites, as it does the workers project above.
     testTimeout: 30_000,
   },
   resolve: { alias },

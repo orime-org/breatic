@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The edit-file command builder (frames-split design §4.2, §4.3 colour/HDR row, §3.5 edit-file receipt row): the tier's

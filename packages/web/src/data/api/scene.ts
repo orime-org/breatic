@@ -1,7 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import { noteCreditsChanged } from '@web/data/api/credits';
 import { apiDelete, apiGet, apiPost, runOnceRequest } from '@web/data/api/request';
 import type { ProjectAssetPage, SceneControlsConfig, SceneGenerationAnswer, SceneGenerationBody, SceneGenerationOrigin, SceneTaskNotice } from '@breatic/shared';
 
@@ -16,11 +15,11 @@ export function getSceneControls(projectId: string, signal?: AbortSignal): Promi
 }
 
 /**
- * Resolve an already registered GLB or model package using Project access and its Studio's asset ledger.
- * @param projectId - Project whose scene or registered model is being read.
- * @param assetId - Registered model identity stored in the scene.
+ * Resolve an already registered GLB, model package or part picture using Project access and its Studio's asset ledger.
+ * @param projectId - Project whose scene asset is being read.
+ * @param assetId - Registered asset identity stored in the scene.
  * @param signal - Cancellation signal for this request.
- * @returns Registered model URL, MIME type and registered size.
+ * @returns Registered asset URL, MIME type and registered size.
  */
 export function resolveSceneAsset(projectId: string, assetId: string, signal: AbortSignal): Promise<{ url: string; mimeType: string; sizeBytes: number }> {
   return apiGet(`/projects/${projectId}/three-d/assets/${assetId}`, { signal });
@@ -80,9 +79,10 @@ export interface SpaceTaskList {
 }
 
 /**
- * The query key one 3D Space's task list is cached under; the page's signal listener invalidates it.
+ * The key every background-work list of one Space is cached under (3D tasks, Motion and Timeline executions);
+ * `SpaceTasksWatcher` invalidates it when collab writes a new change version into the Space's document.
  * @param projectId - The project.
- * @param spaceId - The 3D Space.
+ * @param spaceId - The Space.
  * @returns The key.
  */
 export function spaceTasksQueryKey(projectId: string, spaceId: string): readonly [string, string, string] {
@@ -131,11 +131,7 @@ export async function reportSpaceTaskFailure(projectId: string, spaceId: string,
  * @returns The run and its row.
  */
 export function submitSceneGeneration(projectId: string, spaceId: string, body: SceneGenerationBody, key: string): Promise<SceneGenerationAnswer> {
-  // Admitted or refused, the submission held or failed to hold the project's
-  // credits, so the top bar reads them again (inner#1611, inner#1968).
-  return apiPost<SceneGenerationAnswer>(`/projects/${projectId}/three-d/${spaceId}/generations`, body, runOnceRequest(key)).finally(() => {
-    noteCreditsChanged(projectId);
-  });
+  return apiPost<SceneGenerationAnswer>(`/projects/${projectId}/three-d/${spaceId}/generations`, body, runOnceRequest(key));
 }
 
 /**

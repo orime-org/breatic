@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Frame numbers and seconds on a selected version's grid in the browser (inner#1306 frames-split design §4.3 "browser frame numbers and frame seeks",

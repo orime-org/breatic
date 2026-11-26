@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { useQuery } from '@tanstack/react-query';
 import * as React from 'react';
@@ -81,7 +81,7 @@ import { slotForPurpose, slotRefusalKey } from '@web/spaces/canvas/generate/slot
 import { useEndPickWhenSlotGone } from '@web/spaces/canvas/generate/use-end-pick-when-slot-gone';
 import { useStyleSlot } from '@web/spaces/canvas/generate/use-style-slot';
 import { styleSlotsFor } from '@web/spaces/canvas/generate/style-slot';
-import { poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
+import { mentionedReferenceUrls, poolCounts, poolKindOf, poolParams } from '@web/spaces/canvas/generate/reference-urls';
 import { useReferenceKinds } from '@web/spaces/canvas/generate/use-reference-kinds';
 import {
   videoMissing,
@@ -98,8 +98,9 @@ import {
 } from '@web/spaces/canvas/generate/video-panel-view-model';
 import { evaluateNodeGate } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
-import { useContentStable } from '@web/spaces/canvas/generate/use-content-stable';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
+import { useUploadingFocus } from '@web/spaces/canvas/focus/focus-uploading';
+import { useContentStable } from '@web/lib/use-content-stable';
 import { useGenerateSubmitState } from '@web/spaces/canvas/generate/use-generate-submit-state';
 import {
   isGenerating,
@@ -224,8 +225,11 @@ function VideoGeneratePanelBody({
   // inside the serialized prompt and needs none of this; an image chip becomes
   // a model input, and that is what these ids are for.
   const atMentionedRef = React.useRef<string[]>([]);
+  // The state copy is for the estimate, which prices the images the run sends; it changes only when the picks do.
+  const [atMentioned, setAtMentioned] = React.useState<readonly string[]>([]);
   const handleAtMentionsChange = React.useCallback((sourceIds: string[]) => {
     atMentionedRef.current = sourceIds;
+    setAtMentioned((was) => (was.join('\n') === sourceIds.join('\n') ? was : sourceIds));
   }, []);
 
   // The mode lives on the NODE, not in panel state: the switch is
@@ -395,13 +399,7 @@ function VideoGeneratePanelBody({
   // lands — and on a node whose rail is otherwise empty the rail does not
   // render at all, so the row appears out of nowhere on success.
   const pendingFocusAll = useCanvasSession((s) => s.pendingFocusUploads);
-  const pendingFocus = React.useMemo(
-    () =>
-      pendingFocusAll
-        .filter((p) => p.nodeId === nodeId)
-        .map((p) => ({ id: p.id, name: p.name })),
-    [pendingFocusAll, nodeId],
-  );
+  const pendingFocus = useUploadingFocus(pendingFocusAll, nodeId, nodes.find((n) => n.id === nodeId)?.data);
   // References change identity on every derive; key the memo on their CONTENT
   // (a small array — a stringify key is cheap and exact), or the rail's memo
   // would be defeated on every frame of any node drag.
@@ -431,8 +429,12 @@ function VideoGeneratePanelBody({
   // The run as the click sends it: no prompt for a model taking none, the shots in the multi-shot mode, else the main
   // prompt. Priced, and asked why no upstream here takes it (#1521), for the button and the click.
   const sentPrompt = !vm.promptRequired ? '' : shotRun ? (shotRun.writtenPrompt ?? '') : promptText;
-  const estimateInput = videoEstimateInput(vm, extractPromptText(sentPrompt), shotRun?.params);
-  const { creditText, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1);
+  // Priced with the images the run sends, read as the submit reads them: the main prompt's `@` outside the multi-shot
+  // mode, every shot's in it.
+  const estimateMentioned = spec ? (shots ?? []).flatMap((shot) => mentionedSourceIds(shot.prompt, vm.references)) : atMentioned;
+  const estimateUrls = mentionedReferenceUrls({ references: vm.references, focusImages: vm.focusImages, atMentioned: new Set(estimateMentioned), nodes });
+  const estimateInput = videoEstimateInput({ ...vm, referenceUrls: estimateUrls }, extractPromptText(sentPrompt), shotRun?.params);
+  const { creditText, creditDetail, creditAlso, refusalText, latestRefusal } = useRunCheck(vm.modelEntry, estimateInput, catalog?.credit_multiplier ?? 1, projectId);
   // The picked slot URLs are a fresh object per view-model build, on the same
   // terms as the references above — at most one short string per slot, so a
   // stringify key is cheap and exact. Before the slots were collected into one
@@ -1007,6 +1009,8 @@ function VideoGeneratePanelBody({
       model={vm.model}
       params={stableParams}
       creditText={creditText}
+      creditDetail={creditDetail}
+      creditAlso={creditAlso}
       mode={mode}
       referenceKinds={referenceKinds}
       onToggleMode={onToggleMode}

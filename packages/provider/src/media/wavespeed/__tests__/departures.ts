@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { isPresent } from "../../../pricing/estimate.js";
 
@@ -8,12 +8,8 @@ import { isPresent } from "../../../pricing/estimate.js";
 /** Models WaveSpeed no longer serves (absent from `/api/v3/models`, rechecked on 2026-11-02): they carry no WaveSpeed binding. */
 export const OFF_WAVESPEED: ReadonlySet<string> = new Set(["veed-clean-audio", "recraft-v4-style-text-to-image"]);
 
-/**
- * Models the catalog has retired whose bindings stay so runs opened before the change finish on them (#1521);
- * every bound model outside the catalog is one of these. Gemini 3.1 Flash TTS goes with #1516, once no run opened
- * on it can be inside its two-hour task budget.
- */
-export const RETIRED: ReadonlySet<string> = new Set(["gemini-3.1-flash-text-to-speech"]);
+/** Models removed from the catalog together with their bindings: the frozen cases recorded for them no longer run. */
+export const REMOVED: ReadonlySet<string> = new Set(["gemini-3.1-flash-text-to-speech", "omnivoice-voice-clone"]);
 
 /**
  * Where a binding departs from the body before provider on purpose, by model: a field renamed to the

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** Real registered video, permissions and concurrent Timeline arrangement (inner#1707). */
 import { expect, type Page } from 'playwright/test';
@@ -15,7 +15,7 @@ import {
   moveTimelineClip,
   openTimeline,
   selectTimelineClip,
-  setTimelineConnection,
+  setCollabConnection,
   timelineClipIds,
   timelineVideoOf,
   uploadTimelineVideo,
@@ -320,7 +320,7 @@ test('a disconnected Editor keeps the Timeline behind the existing workspace cur
       ownerErrors.offline = true;
       try {
         await page.context().setOffline(true);
-        await setTimelineConnection(page, projectId, spaceId, false);
+        await setCollabConnection(page, projectId, spaceId, false);
         await expect(page.getByTestId('connection-banner')).toHaveAttribute('data-status', 'disconnected');
         await expect(page.getByTestId('workspace-disabled-overlay')).toBeVisible();
         // Inspect retained content without interacting through the existing disconnection curtain.
@@ -329,7 +329,7 @@ test('a disconnected Editor keeps the Timeline behind the existing workspace cur
         await expectTimelineConnected(peer);
         expect(await timelineClipIds(peer)).toEqual([uploaded.clipId, secondId]);
         await page.context().setOffline(false);
-        await setTimelineConnection(page, projectId, spaceId, true);
+        await setCollabConnection(page, projectId, spaceId, true);
         ownerErrors.offline = false;
         await expectTimelineConnected(page);
         for (const member of [page, peer]) {
@@ -353,13 +353,13 @@ test('a disconnected Editor keeps the Timeline behind the existing workspace cur
         await visibleSpace(page).getByTestId(`timeline-clip-${secondId}`).focus();
         ownerErrors.offline = true;
         await page.context().setOffline(true);
-        await setTimelineConnection(page, projectId, spaceId, false);
+        await setCollabConnection(page, projectId, spaceId, false);
         await expect(page.getByTestId('connection-banner')).toHaveAttribute('data-status', 'disconnected');
         await page.keyboard.press('Delete');
         await expect.poll(() => timelineClipIds(page)).toEqual([uploaded.clipId]);
         expect(await timelineClipIds(peer)).toEqual([uploaded.clipId, secondId]);
         await page.context().setOffline(false);
-        await setTimelineConnection(page, projectId, spaceId, true);
+        await setCollabConnection(page, projectId, spaceId, true);
         ownerErrors.offline = false;
         await expectTimelineConnected(page);
         await expect.poll(() => timelineClipIds(peer)).toEqual([uploaded.clipId]);
@@ -372,7 +372,7 @@ test('a disconnected Editor keeps the Timeline behind the existing workspace cur
         expect(peerErrors.unexpected).toEqual([]);
       } finally {
         await page.context().setOffline(false);
-        await setTimelineConnection(page, projectId, spaceId, true);
+        await setCollabConnection(page, projectId, spaceId, true);
       }
     });
     expect(ownerErrors.unexpected).toEqual([]);

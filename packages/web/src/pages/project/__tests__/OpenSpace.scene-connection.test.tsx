@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, cleanup, render } from '@testing-library/react';
@@ -46,6 +46,8 @@ vi.mock('@web/data/yjs/scene-lifetime', () => ({
 import { CollabSocketProvider, _resetCollabSocketForTests } from '@web/data/yjs/collab-socket';
 import { getDoc, hasDoc, _resetForTests } from '@web/data/yjs/manager';
 import { OpenSpace, SpaceConnection } from '@web/pages/project/OpenSpace';
+import { SPACE_TASKS_KEY, SPACE_TASKS_VERSION } from '@breatic/shared';
+import { spaceTasksQueryKey } from '@web/data/api/scene';
 
 const NAME = 'project-p1/3d-s1';
 
@@ -170,5 +172,19 @@ describe('3D Space shared connection lifecycle', () => {
     expect(lifetimeMount).toHaveBeenCalledTimes(1);
     unmount();
     expect(lifetimeRelease).toHaveBeenCalledOnce();
+  });
+});
+
+describe('3D Space task list (#1580)', () => {
+  it('F-10 reads the 3D Space\'s task list again when its document\'s change version moves', () => {
+    const client = new QueryClient();
+    const invalidate = vi.spyOn(client, 'invalidateQueries');
+    render(
+      <QueryClientProvider client={client}><CollabSocketProvider userId='account-a'>
+        <OpenSpace projectId='p1' spaceId='s1' type='3d' active visited />
+      </CollabSocketProvider></QueryClientProvider>,
+    );
+    act(() => { getDoc(NAME).getMap(SPACE_TASKS_KEY).set(SPACE_TASKS_VERSION, '1-0'); });
+    expect(invalidate).toHaveBeenCalledWith({ queryKey: spaceTasksQueryKey('p1', 's1') });
   });
 });

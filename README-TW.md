@@ -1,7 +1,7 @@
 <h1 align="center">Breatic</h1>
 
 <p align="center"><strong>為創意團隊打造的即時協作 AI 創作空間。</strong></p>
-<p align="center">線上服務已開放 · 開源 · 桌面瀏覽器</p>
+<p align="center">線上服務已開放 · 原始碼可用 · 桌面瀏覽器</p>
 
 <p align="center">
   <a href="https://breatic.ai/?utm_source=github&amp;utm_medium=referral&amp;utm_campaign=repository_listing_202610&amp;utm_content=readme_website_zh_tw">官網</a> ·
@@ -13,7 +13,7 @@
 
 <p align="center">
   <a href="https://github.com/orime-org/breatic/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/orime-org/breatic?style=flat&amp;color=blueviolet&amp;label=release&amp;display_name=tag"></a>
-  <a href="LICENSE"><img alt="License: AGPL-3.0" src="https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat"></a>
+  <a href="LICENSE"><img alt="License: Breatic Source-Available License 2.0" src="https://img.shields.io/badge/license-BSAL%202.0-blue?style=flat"></a>
   <a href="https://discord.gg/Yeu6A4aejN"><img alt="Discord community" src="https://img.shields.io/badge/discord-join%20community-5865F2?style=flat&amp;logo=discord&amp;logoColor=white"></a>
   <a href="#get-started"><img alt="Quickstart guide" src="https://img.shields.io/badge/quickstart-guide-green?style=flat"></a>
 </p>
@@ -57,11 +57,12 @@
 | **Document Spaces** | 使用標題、清單與格式化文字撰寫劇本、鏡頭描述及製作清單。 |
 | **Canvas Spaces** | 在無限畫布排列參考資料與媒體，透過提示詞、模型與參考輸入生成及調整素材。 |
 | **3D（DEV）** | 在共享場景中配置內建物件，調整位置、旋轉與縮放。 |
-| **Timeline（DEV）** | 將 Project 影片或本機上傳影片編排在共享軌道上：移動、修剪、分割、複製和刪除片段，復原自己的編輯並預覽編排。描述一段網頁動畫，交給 DeepSeek 製作，在執行清單查看進度，再把結果作為片段加入軌道，按 Timeline 時鐘播放。各軌的影片和網頁動畫依圖層疊放、一起播放；在預覽中選取圖層即可移動、縮放、拉伸或旋轉，也可以輸入位置和大小。在播放列右端從 16:9、9:16、1:1、4:3、4:5、2:3、21:9 七種比例中選擇畫面比例，圖層在畫面中的相對位置保持不變。 |
+| **Timeline（DEV）** | 將 Project 影片或本機上傳影片編排在共享軌道上：移動、修剪、分割、複製和刪除片段，復原自己的編輯並預覽編排。把 Motion Space 中已完成的網頁動畫作為片段加入軌道，按 Timeline 時鐘播放；每次新增都是一份獨立副本。各軌的影片和網頁動畫依圖層疊放、一起播放；在預覽中選取圖層即可移動、縮放、拉伸或旋轉，也可以輸入位置和大小。在播放列右端從 16:9、9:16、1:1、4:3、4:5、2:3、21:9 七種比例中選擇畫面比例，圖層在畫面中的相對位置保持不變。 |
+| **Motion（DEV）** | 描述一段網頁動畫，交給 DeepSeek 製作；在已完成、進行中和失敗三欄查看執行，播放並拖曳定位已完成的結果，把一個結果修改成新結果，與協作者在時間點上加註解，把結果匯出為影片並放到 Canvas 上。 |
 | **專案中的 AI Agent** | 討論想法、提供文件或畫布脈絡，結合現有素材檢視提案。 |
-| **即時協作** | 邀請協作者、設定存取權限，共同編輯同步的畫布、文件、3D 場景與 Timeline。 |
+| **即時協作** | 邀請協作者、設定存取權限，共同編輯同步的畫布、文件、3D 場景、Timeline 與 Motion。 |
 
-支援圖片、影片、音訊及 3D 素材；生成能力取決於已設定的供應商及模型存取權限。Canvas 與 Document 已可使用；3D 與 Timeline 標示為 **DEV**。Timeline 目前支援多條視訊軌上的影片和網頁動畫編輯與預覽，網頁動畫只在開啟該功能的部署中可用；更多媒體類型與影片匯出列為後續計畫。3D 場景中的模型生成與註解仍在開發中。
+支援圖片、影片、音訊及 3D 素材；生成能力取決於已設定的供應商及模型存取權限。Canvas 與 Document 已可使用；3D、Timeline 與 Motion 標示為 **DEV**。Timeline 目前支援多條視訊軌上的影片和網頁動畫編輯與預覽；Motion 負責製作、修改和匯出網頁動畫，網頁動畫只在開啟該功能的部署中可用；Timeline 的更多媒體類型與 Timeline 影片匯出列為後續計畫。3D 場景中的模型生成與註解仍在開發中。
 
 ## 一起檢視與修改
 
@@ -92,13 +93,13 @@
 - **自行架設：** 依照[個人與區域網路部署指南（英文）](self-host/LOCAL.md)操作。
 - **開發與貢獻：** 參閱[開發環境設定（英文）](self-host/DEVELOPMENT.md)。
 
-完成個人 Studio 設定，建立 Project，再用 **+** 新增 Document、Canvas、3D 或 Timeline Spaces。可先寫簡報、上傳參考資料或配置內建 3D 物件。[使用指南（英文）](docs/USAGE.md)包含[鍵盤快捷鍵](docs/USAGE.md#keyboard-shortcuts)。
+完成個人 Studio 設定，建立 Project，再用 **+** 新增 Document、Canvas、3D、Timeline 或 Motion Spaces。可先寫簡報、上傳參考資料或配置內建 3D 物件。[使用指南（英文）](docs/USAGE.md)包含[鍵盤快捷鍵](docs/USAGE.md#keyboard-shortcuts)。
 
 ### 自行架設之前
 
 Web、API、背景工作及協作服務使用已發布的 Docker 映像，搭配 PostgreSQL 與 Redis。上傳與媒體處理由**你自己的 Cloudflare 帳戶**中的 Ingest Worker 與媒體容器執行，檔案存放在你的 R2 儲存桶；AI 呼叫使用你的供應商帳戶與額度。
 
-這不是離線或完全地端部署。區域網路存取需要可信任的 HTTPS。雲端服務及模型呼叫可能產生費用；SMTP、Google 登入、Stripe 付款及搜尋是選用整合。請依指南設定並驗證雲端服務；初次使用 Node/pnpm/Wrangler 的步驟屬於部署，不代表日常使用需要啟動開發伺服器。
+這不是離線或完全地端部署。區域網路存取需要可信任的 HTTPS。雲端服務及模型呼叫可能產生費用；SMTP、Google 登入及搜尋是選用整合；出售點數或會員須取得 Orime, Inc. 的書面授權方可啟用（LICENSE 第 10 條及第 11 條）。請依指南設定並驗證雲端服務；初次使用 Node/pnpm/Wrangler 的步驟屬於部署，不代表日常使用需要啟動開發伺服器。
 
 ## 狀態、協助與貢獻
 
@@ -114,9 +115,16 @@ Web、API、背景工作及協作服務使用已發布的 Docker 映像，搭配
 
 ## 授權條款與允許用途
 
-Breatic 是開源專案，採用 [GNU Affero General Public License v3.0](LICENSE)（AGPL-3.0-only）。你可以出於任何目的使用、研究、修改並自行部署 Breatic，包括商業用途；如果你修改了 Breatic，並讓其他人透過網路使用修改後的版本，就必須依同一授權條款向他們提供完整原始碼。完整條件以授權條款為準。
+Breatic 是依據 [Breatic Source-Available License 2.0](LICENSE) 授權的**原始碼可用**軟體。此授權條款衍生自 Apache License 2.0，並附加其他條件。它不是 OSI 核可的開源授權條款。
 
-Breatic 名稱與標誌是 Orime, Inc. 的商標，不包含在軟體授權中；使用規則見 [TRADEMARKS.md](TRADEMARKS.md)。授權條款不限制你使用 Breatic 創作的內容。
+- 你可以取得、修改並自行部署 Breatic，用於個人用途、非商業性的私人團體或你所屬組織的內部使用（包括在你的業務中使用），無須支付軟體授權費（LICENSE 第 10 條）。
+- 你可以使用 Breatic 製作並販售創作作品，例如影片、廣告、圖像、音訊及 3D 資產；相關條件見 LICENSE 第 10 條及第 13 條。
+- 未取得 Orime, Inc. 另行書面授權時，你營運的實例必須以自行部署模式（Self-Deployment Mode）執行：應用程式內點數購買、付費會員、訂閱及其他付費營運功能維持停用（LICENSE 第 10 條）。
+- 基於商業目的，向上述用途範圍以外的人提供 Breatic 或其平台功能的實質部分，須另行取得書面授權（LICENSE 第 11 條）。
+- 在應用程式的識別區域保持 Breatic 名稱及隨附標誌可見，並保持授權條款與姓名標示聲明可供查閱（LICENSE 第 12 條）。Orime, Inc. 是 Breatic 商標的經授權授權人；品牌使用規則見 [TRADEMARKS.md](TRADEMARKS.md)。
+- 以較早授權條款（包括 AGPL-3.0-only）發布的版本，繼續適用其發布時的授權條款（LICENSE 第 15 條）。
+
+完整條款見 [LICENSE](LICENSE)。
 
 ### 生成內容
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { ArrowUp, X } from 'lucide-react';
 import * as React from 'react';
@@ -186,7 +186,7 @@ export const EmptyImagePanel = React.memo(function EmptyImagePanel({
                 'h-5 w-5 rounded-full border transition-transform ' +
               (color.toLowerCase() === c.hex.toLowerCase()
                 ? 'border-ring ring-1 ring-ring'
-                : 'border-border hover:scale-110')
+                : 'border-swatch-border hover:scale-110')
               }
             />
           ))}

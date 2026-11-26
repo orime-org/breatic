@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Recipes on the frozen version's frame grid (inner#1306 test plan §67.3 W01; frames-split design §5.5, §7.16, §7.17).

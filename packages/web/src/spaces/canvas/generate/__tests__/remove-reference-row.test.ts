@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * 轨道行的 ✕ —— 两个生成面板共用的那一个动作。
@@ -19,9 +19,9 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import {
   addEdge,
   addNode,
-  addNodeFocusImage,
   readCanvasGraph,
 } from '@web/data/yjs/canvas-space';
+import { landFocusImage } from '@web/data/yjs/__tests__/helpers/focus-pool';
 import { focusRefId } from '@web/spaces/canvas/generate/derive-references';
 import type { ReferenceRailItem } from '@web/spaces/canvas/generate/derive-references';
 import { removeReferenceRow } from '@web/spaces/canvas/generate/remove-reference-row';
@@ -111,7 +111,7 @@ describe('removeReferenceRow', () => {
 
   it('裁剪行的 ✕ 把那条裁剪从节点上删掉', () => {
     const c = crop('c1');
-    addNodeFocusImage(PID, SID, NODE, c);
+    landFocusImage(PID, SID, NODE, c);
     expect(storedCrops()).toHaveLength(1);
 
     removeReferenceRow({
@@ -126,7 +126,7 @@ describe('removeReferenceRow', () => {
 
   it('删成功之后补一条资产删除登记，写明是哪张图', async () => {
     const c = crop('c1');
-    addNodeFocusImage(PID, SID, NODE, c);
+    landFocusImage(PID, SID, NODE, c);
 
     removeReferenceRow({
       item: cropRow(c),
@@ -159,8 +159,8 @@ describe('removeReferenceRow', () => {
     const shared = 'https://cdn/shared.png';
     const a = crop('c1', shared);
     const b = crop('c2', shared);
-    addNodeFocusImage(PID, SID, NODE, a);
-    addNodeFocusImage(PID, SID, NODE, b);
+    landFocusImage(PID, SID, NODE, a);
+    landFocusImage(PID, SID, NODE, b);
 
     removeReferenceRow({
       item: cropRow(a),
@@ -182,7 +182,7 @@ describe('removeReferenceRow', () => {
     expect(storedEdges()).toEqual([EDGE]);
 
     const c = crop('c1');
-    addNodeFocusImage(PID, SID, NODE, c);
+    landFocusImage(PID, SID, NODE, c);
     const edgeRow: ReferenceRailItem = {
       refId: EDGE,
       sourceNodeId: SRC,
@@ -209,7 +209,7 @@ describe('removeReferenceRow', () => {
     // 路由只认行自己的 focus 标记，不认 id 长什么样：一条 refId 写成
     // `focus:c1` 的边如果被当成裁剪，点它的 ✕ 就会删掉别人的那张图。
     const c = crop('c1');
-    addNodeFocusImage(PID, SID, NODE, c);
+    landFocusImage(PID, SID, NODE, c);
     const spoofed: ReferenceRailItem = {
       refId: focusRefId('c1'),
       sourceNodeId: 'src',

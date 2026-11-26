@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect } from 'vitest';
 
@@ -243,20 +243,24 @@ describe('cloneForPaste', () => {
     expect(nodes[0]?.data).toMatchObject({ content: 'clip.mp4', ...media });
   });
 
-  it('copies content only: no lock, task counts, result version or failure message (R2-F)', () => {
+  it('copies content only: no lock, task counts, result version, failure message or uploading crops (R2-F)', () => {
     const p = payload([
       node('g', 'group', { x: 0, y: 0 }, { locked: true, width: 100, height: 100 }),
       node(
         'm',
         'image',
         { x: 10, y: 10 },
-        { locked: true, taskCounts: { done: 1 }, taskResultEventId: '1700-3', errorMessage: 'boom' },
+        {
+          locked: true, taskCounts: { done: 1 }, taskResultEventId: '1700-3', errorMessage: 'boom',
+          focusUploads: [{ id: 'crop', name: 'Crop', width: 4, height: 3 }],
+        },
         { parentId: 'g' },
       ),
     ]);
     for (const clone of cloneForPaste(p, 'u-1', { dx: 0, dy: 0 }).nodes) {
       expect(clone.data.locked).toBe(false);
       expect(clone.data).not.toHaveProperty('taskCounts');
+      expect(clone.data).not.toHaveProperty('focusUploads');
       expect(clone.data).not.toHaveProperty('taskResultEventId');
       expect(clone.data).not.toHaveProperty('errorMessage');
     }

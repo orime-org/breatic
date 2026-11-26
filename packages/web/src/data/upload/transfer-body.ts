@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A request body too large for the API, moved through storage (inner#1006).
@@ -23,7 +23,7 @@ import {
 import { apiPost } from '@web/data/api/request';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import type { UploadTicket } from '@web/data/upload/ingest-upload';
-import { waitForUploadEnding } from '@web/data/upload/upload-status';
+import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-status';
 
 /** What a route is sent in place of a body that went through storage. */
 export interface TransferReference {
@@ -88,13 +88,23 @@ async function transfer(
     config,
   );
   signal?.throwIfAborted();
-  const queued = await sendFileAndFinish(file, ticket, cfg, undefined, signal);
-  const ending = await untilStopped(waitForUploadEnding(queued.storageKey), signal);
+  // Waited for under the ticket's key before the bytes go: the finish may end before its request returns (#1580). A
+  // failed send or finish, or a stop, takes the wait back.
+  const waitStop = new AbortController();
+  const waiting = waitForUploadEnding(ticket.storageKey, waitStop.signal);
+  void waiting.catch(() => undefined);
+  let ending: UploadEnding;
+  try {
+    await sendFileAndFinish(file, ticket, cfg, undefined, signal);
+    ending = await untilStopped(waiting, signal);
+  } finally {
+    waitStop.abort();
+  }
   signal?.throwIfAborted();
   if (ending.state !== 'transferred') {
     throw new Error(`the transfer upload ended ${ending.state}`);
   }
-  return { transfer: queued.storageKey };
+  return { transfer: ticket.storageKey };
 }
 
 /**

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { cleanup as cleanupAll, fireEvent, render, screen, within } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -17,19 +17,15 @@ vi.mock('@web/spaces/canvas/generate/CameraAngleSphere', () => ({
   },
 }));
 const waveform = vi.hoisted(() => ({
-  limits: { maxSeconds: 600, maxBytes: 200_000_000, peaksRetryMs: 5000, peaksRetryMaxMs: 600_000 } as Record<string, number> | null,
+  limits: { maxSeconds: 600, maxBytes: 200_000_000 } as Record<string, number> | null,
   peaks: { kind: 'missing' } as { kind: string; peaks?: number[] },
-  retry: undefined as unknown,
 }));
 vi.mock('@web/data/api/canvas', async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   getCachedWaveformLimits: () => waveform.limits,
 }));
 vi.mock('@web/spaces/canvas/mini-tool/use-audio-peaks', () => ({
-  useAudioPeaks: (_url: string, retry: unknown) => {
-    waveform.retry = retry;
-    return waveform.peaks;
-  },
+  useAudioPeaks: (_url: string) => waveform.peaks,
 }));
 vi.mock('@web/spaces/canvas/mini-tool/AudioWaveform', () => ({
   AudioWaveform: ({ peaks }: { peaks?: number[] }) => (
@@ -754,7 +750,7 @@ describe('the batch-five panels', () => {
       within(screen.getByTestId('mini-tool-range-band')).queryByTestId('mini-tool-waveform');
 
     beforeEach(() => {
-      waveform.limits = { maxSeconds: 600, maxBytes: 200_000_000, peaksRetryMs: 5000, peaksRetryMaxMs: 600_000 };
+      waveform.limits = { maxSeconds: 600, maxBytes: 200_000_000 };
       waveform.peaks = { kind: 'missing' };
     });
 
@@ -768,14 +764,11 @@ describe('the batch-five panels', () => {
     it('decodes in the browser while peaks are missing and the source is within the ceilings', () => {
       cut(AUDIO);
       expect(drawn()).toHaveAttribute('data-from', 'decode');
-      // Within the ceilings the decode draws it, so there is nothing to read again for.
-      expect(waveform.retry).toBeNull();
     });
 
-    it('stays plain past the ceilings while peaks are missing, and reads them again on the served interval', () => {
+    it('stays plain past the ceilings while peaks are missing', () => {
       cut(LONG);
       expect(drawn()).toBeNull();
-      expect(waveform.retry).toEqual({ everyMs: 5000, forMs: 600_000 });
       expect(screen.getByTestId('mini-tool-range')).toBeInTheDocument();
     });
 

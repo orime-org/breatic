@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { useTranslation } from '@web/i18n/use-translation';
 import type { ModelImportBudget, ModelImportErrorCode, ModelImportLimit } from '@web/spaces/three-d/model-import-errors';

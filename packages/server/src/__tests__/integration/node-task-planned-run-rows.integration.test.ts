@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** Real PG node-task/parent/history identities and the real node-task list route; no provider or media IO. */
 import { randomBytes, randomUUID } from "node:crypto";

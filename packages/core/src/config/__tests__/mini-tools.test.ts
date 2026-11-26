@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS } from "@breatic/shared";
 
@@ -119,15 +120,18 @@ describe("getMiniToolsConfig", () => {
     const bare = structuredClone(config) as Record<string, unknown>;
     delete bare.waveform_max_seconds;
     delete bare.waveform_max_bytes;
-    delete bare.waveform_peaks_retry_ms;
-    delete bare.waveform_peaks_retry_max_ms;
     const parsed = miniToolsConfigSchema.parse(bare);
     // Decoding 600 s of 48 kHz stereo audio takes Chromium to about 650 MB (inner#1305 §4.4).
     expect(parsed.waveform_max_seconds).toBe(600);
     expect(parsed.waveform_max_bytes).toBe(200_000_000);
-    // How often, and for how long, a band past those reads peaks not yet written.
-    expect(parsed.waveform_peaks_retry_ms).toBe(5000);
-    expect(parsed.waveform_peaks_retry_max_ms).toBe(600_000);
+  });
+
+  // #1580: a band past those ceilings reads peaks once more when the server announces them, never on a timer.
+  it("G-10 holds no setting for reading peaks again on a timer", () => {
+    const yaml = readFileSync(new URL("../../../../../config/mini-tools.yaml", import.meta.url), "utf8");
+    expect(yaml).not.toMatch(/waveform_peaks_retry/);
+    expect(Object.keys(miniToolsConfigSchema.shape)).not.toContain("waveform_peaks_retry_ms");
+    expect(Object.keys(miniToolsConfigSchema.shape)).not.toContain("waveform_peaks_retry_max_ms");
   });
 
   // How long a run may take is the node task budget; an operation carries no

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Canvas clipboard pure functions (slice 2b).
@@ -276,7 +276,7 @@ export function canvasTakesPaste(target: EventTarget | null, text: string): bool
 }
 
 /** Fields that are a node's state or its running work, not its content (2026-10-09). */
-const NOT_COPIED = ['locked', 'taskCounts', 'taskResultEventId', 'miniToolResultOrigin', 'errorMessage', 'focusCropOutcomes'] as const;
+const NOT_COPIED = ['locked', 'taskCounts', 'taskResultEventId', 'miniToolResultOrigin', 'errorMessage', 'focusCropOutcomes', 'focusUploads'] as const;
 
 /** What {@link cloneForPaste} produces. */
 export interface PastedClones {

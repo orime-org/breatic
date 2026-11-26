@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * inner#1306 test plan §69 U02 (frames-split design §4.3, §10.6 "帧预览卡片"): a frame preview card names a grid frame

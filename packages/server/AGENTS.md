@@ -6,19 +6,19 @@ The HTTP service (Hono). These rules apply when you change anything under `packa
 
 ### Server modules
 
-**Server-only business logic lives in `src/modules/<domain>/`, each with its own service, repo and tests; routes and middleware reach services through the `@server/modules` barrel, except `credit-refund/`, which is not in the barrel and whose files are imported directly.** The barrel re-exports services only, so one place shows what the routes depend on.
+**Server-only business logic lives in `src/modules/<domain>/`, each with its own service, repo and tests; routes and middleware reach services through the `@server/modules` barrel.** The barrel re-exports services only, so one place shows what the routes depend on.
 
 ## Internal API and back office
 
 ### Internal API is a second listener
 
-**Routes under `routes/internal/` and the `middleware/internal-*` files mount only on the app built by `createInternalApp()` in `internal-app.ts`, never on the public app.** That app is a second listener, started only when `INTERNAL_API_ENABLED=true` and bound to `INTERNAL_API_HOST:INTERNAL_API_PORT` (default `127.0.0.1:3002`), and every request must carry a signature made with `INTERNAL_API_SECRET` (or `INTERNAL_API_SECRET_PREVIOUS` during rotation); a route mounted on the public app is reachable from the internet. With it enabled the process also runs the credit-refund and explicit maintenance loops, and startup exits when `config/credit-refund.yaml` or `config/maintenance.yaml` cannot be read. Physical maintenance defaults off in its tracked configuration; do not enable it by changing upload behaviour.
+**Routes under `routes/internal/` and the `middleware/internal-*` files mount only on the app built by `createInternalApp()` in `internal-app.ts`, never on the public app.** That app is a second listener, started only when `INTERNAL_API_ENABLED=true` and bound to `INTERNAL_API_HOST:INTERNAL_API_PORT` (default `127.0.0.1:3002`), and every request must carry a signature made with `INTERNAL_API_SECRET` by the back office, or with `COMMERCE_API_SECRET` by the billing service under `/internal/v1/commerce/` (each with a `_PREVIOUS` key during rotation); a route mounted on the public app is reachable from the internet. With it enabled the process also runs the explicit maintenance loop and, when `COMMERCE_API_URL` is set, the commerce outbox relay, and startup exits when `config/maintenance.yaml` (or, when selling, `config/commerce.yaml`) cannot be read. Physical maintenance defaults off in its tracked configuration; do not enable it by changing upload behaviour.
 
 Who can reach the port is decided by where it is published. Before changing the listener, its ports or the deployment, read [self-host/DEPLOYMENT-CONNECTIONS.md](../../self-host/DEPLOYMENT-CONNECTIONS.md#back-office-internal-api).
 
 ### The back office writes only through internal endpoints
 
-**The back office never writes the product database; every write it needs is an internal endpoint in this package that performs the write itself, including any Stripe call.** The back office records the request and its audit trail, calls the endpoint and shows the result, so every change passes through the product's own rules and transactions.
+**The back office never writes the product database; every write it needs is an internal endpoint in this package that performs the write itself.** The back office records the request and its audit trail, calls the endpoint and shows the result, so every change passes through the product's own rules and transactions.
 
 ## Auth
 
@@ -88,14 +88,10 @@ Check: am I writing to a conversation id the client gave me? Were all three chec
 
 **A change to the system prompt, a tool's description or a template's words to the model runs `packages/web/tests/smoke/agent-cocreation.spec.ts` (`@needs-model @needs-internet`) on the dev stack before the PR, and the PR carries its per-row pass counts and overall rates.** Unit tests pin the words; only real turns show what a model does with them, and a wording that fixes one row often moves another. A behaviour newly expected of the agent gets a row in `agent-cocreation.scenarios.json`, and the judge is checked against hand labels (the suite's last case) whenever the criteria change. A series of PRs that each add generation templates and change no other words to the model runs the suite once, before the series' last PR, which carries the counts for the whole series; each earlier PR names the series it belongs to.
 
-## Payments
+## Billing
 
-### Stripe behaviour is verified against Stripe
+### Billing runs in the billing service
 
-**Unit tests with a stubbed Stripe client (`src/infra/stripe.ts`) verify only the request we send; every path Stripe may reject or answer unexpectedly is run once against Stripe itself, and the response observed is recorded.** The stub answers with what we expect, so an illegal parameter combination or an unexpected status passes every unit test and fails every real call.
+**Credit-pack purchases, memberships, refunds and referral codes are run by a separate billing service: the product forwards those user requests to it (`modules/commerce/commerce-client.ts`), answers its signed calls on the internal listener, and tells it about payment lots, account erasures and referral bindings through `commerce_outbox` rows written in the same transaction as the change.** repo-lint `no-billing-in-product` keeps the Stripe SDK, a Stripe webhook and the moved modules out of this repository.
 
-Check: is this assertion about what we send, or a prediction of how Stripe answers? A prediction needs a real run.
-
-### Payment webhooks are idempotent
-
-**Payment webhook handling is idempotent through a CAS on `payments.status` (`modules/payment/payment.service.ts`).** Stripe redelivers events, and two deliveries of one event must not both fulfil it.
+Check: does this change need Stripe or a purchase record? Then it belongs in the billing service, and the product sends an outbox event or answers an internal endpoint.

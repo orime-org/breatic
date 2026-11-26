@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project control-plane subscriber tests.
@@ -24,11 +24,9 @@ import type { Redis } from "@breatic/core";
 import type { Hocuspocus } from "@hocuspocus/server";
 import {
   activityNewChannel,
-  CREDITS_CHANGED_SIGNAL,
-  creditsChangedChannel,
   projectConnectionsCloseChannel,
-  SPACE_TASKS_CHANGED_SIGNAL,
-  spaceTasksChangedChannel,
+  SCENE_LOOK_SETTLED_SIGNAL,
+  sceneLookSettledChannel,
 } from "@breatic/shared";
 
 // The deployment prefix under test. `vi.hoisted` because the `vi.mock` factory
@@ -135,8 +133,8 @@ describe("startProjectControlSync — activity:new", () => {
   });
 });
 
-describe("startProjectControlSync — credits:changed", () => {
-  it("relays the credits signal on the project's meta doc", async () => {
+describe("startProjectControlSync — scene-look:settled", () => {
+  it("relays how a part picture was settled to its uploader's connections on the project's meta doc", async () => {
     const metaDoc: DocSpy = {
       doc: new Y.Doc(),
       broadcastStateless: vi.fn(),
@@ -147,47 +145,21 @@ describe("startProjectControlSync — credits:changed", () => {
     const { subscriber } = buildRedis();
     startProjectControlSync(hocuspocus, subscriber as unknown as Redis);
     await Promise.resolve();
+    const settlement = { projectId: PID, spaceId: "space-1", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged" };
 
     subscriber.emit(
       "pmessage",
       `${TEST_PREFIX}:project:*`,
-      creditsChangedChannel(TEST_PREFIX, PID),
-      JSON.stringify({ type: "project-credits:changed", projectId: PID, ts: Date.now() }),
+      sceneLookSettledChannel(TEST_PREFIX, PID),
+      JSON.stringify({ type: "project-scene-look:settled", ...settlement, ts: Date.now() }),
     );
     await Promise.resolve();
     await Promise.resolve();
 
-    expect(metaDoc.relayStateless).toHaveBeenCalledWith(
-      JSON.stringify({ t: CREDITS_CHANGED_SIGNAL, projectId: PID }),
-    );
-  });
-});
-
-describe("startProjectControlSync — space-tasks:changed", () => {
-  it("relays the Space's task list signal on the project's meta doc", async () => {
-    const metaDoc: DocSpy = {
-      doc: new Y.Doc(),
-      broadcastStateless: vi.fn(),
-      relayStateless: vi.fn(),
-      connections: new Map(),
-    };
-    const { hocuspocus } = buildHocuspocus(metaDoc);
-    const { subscriber } = buildRedis();
-    startProjectControlSync(hocuspocus, subscriber as unknown as Redis);
-    await Promise.resolve();
-
-    subscriber.emit(
-      "pmessage",
-      `${TEST_PREFIX}:project:*`,
-      spaceTasksChangedChannel(TEST_PREFIX, PID),
-      JSON.stringify({ type: "project-space-tasks:changed", projectId: PID, spaceId: "space-1", ts: Date.now() }),
-    );
-    await Promise.resolve();
-    await Promise.resolve();
-
-    expect(metaDoc.relayStateless).toHaveBeenCalledWith(
-      JSON.stringify({ t: SPACE_TASKS_CHANGED_SIGNAL, projectId: PID, spaceId: "space-1" }),
-    );
+    expect(metaDoc.relayStateless).toHaveBeenCalledWith(JSON.stringify({ t: SCENE_LOOK_SETTLED_SIGNAL, ...settlement }), expect.any(Function));
+    const pick = metaDoc.relayStateless.mock.calls[0]![1] as (connection: { context: unknown }) => boolean;
+    expect(pick({ context: { user: { id: "u" } } })).toBe(true);
+    expect(pick({ context: { user: { id: "someone-else" } } })).toBe(false);
   });
 });
 

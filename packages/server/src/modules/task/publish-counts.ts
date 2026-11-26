@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Telling the other viewers of a canvas that a node's counts moved (#186,
@@ -24,9 +24,9 @@
  * fixes.
  */
 
-import { getStreamRedis, logger, publishSpaceTasksChanged } from "@breatic/core";
+import { announceSpaceTasksVersion, getStreamRedis, logger } from "@breatic/core";
 import { emitNodeTaskCounts } from "@breatic/domain";
-import type { NodeTaskCounts } from "@breatic/shared";
+import { threeDSpaceDocName, type NodeTaskCounts } from "@breatic/shared";
 
 /**
  * Publish a node's task counts, and carry on if that fails.
@@ -56,15 +56,15 @@ export async function publishCountsQuietly(
 }
 
 /**
- * Tell the members with a 3D Space open that its task list changed
- * (inner#1690), and carry on if that fails: whoever missed it reads the list
- * when they next open the panel.
+ * Tell a 3D Space's document that its task list changed (#1580), and carry on
+ * if that fails: the row is already written, and a tab reads the list again on
+ * the Space's next change or when it opens the Space.
  * @param projectId - Project the Space belongs to.
  * @param spaceId - The Space whose list changed.
  */
 export async function publishSpaceTasksQuietly(projectId: string, spaceId: string): Promise<void> {
   try {
-    await publishSpaceTasksChanged(projectId, spaceId);
+    await announceSpaceTasksVersion(threeDSpaceDocName(projectId, spaceId));
   } catch (err) {
     logger.error({ err, projectId, spaceId }, "space_tasks_publish_failed");
   }

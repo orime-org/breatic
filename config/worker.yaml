@@ -33,6 +33,8 @@ concurrency:
     long-media-dispatch: 1
     # One charge sweep round runs at a time; settlements lock their own rows.
     credit-charge-sweep: 1
+    # One lot-mirror resend runs at a time; each lot is locked in turn.
+    commerce-lot-mirror: 1
 
 # ── BullMQ Job Retry ──────────────────────────────
 # Max attempts per job. BullMQ schedules retries with exponential
@@ -103,3 +105,11 @@ credit_charge_sweep:
   min_age_ms: 30000
   # Requests one round settles at most.
   batch_size: 100
+
+# ── Deadline sweep (#1580) ───────────────────────
+# Notifications and credit holds that expire, Project transfers that time out
+# and 3D rows past their budget change nothing in the database on their own;
+# the sweep finds what came due since its last round and tells the pages, so a
+# due item stays on an open page for at most this long.
+deadline_sweep:
+  interval_ms: 30000

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { createPortal } from 'react-dom';
@@ -7,15 +7,14 @@ import { Scan } from 'lucide-react';
 
 import { VIEWFINDER_RATIOS, type SceneCameraObject, type SceneCaptureConfig, type ViewfinderRatio } from '@breatic/shared';
 import { Button } from '@web/components/ui/button';
-import { Anchor as PopoverAnchor } from '@radix-ui/react-popover';
-import { Popover, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from '@web/components/ui/popover';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { useTranslation } from '@web/i18n/use-translation';
-import { readSpaceViewport } from '@web/lib/project-tabs-storage';
 import { cn } from '@web/lib/utils';
 import { toast } from '@web/lib/toast';
 import { placeImageOnCanvas } from '@web/spaces/canvas/place-image-on-canvas';
+import { canvasOrigin, canvasesOldestFirst } from '@web/spaces/canvas/place-on-canvas';
 import { SceneIconButton } from '@web/spaces/three-d/SceneIconButton';
 import { encodeCapturePng } from '@web/spaces/three-d/viewfinder/encode-capture';
 import { cameraFrameRatio, viewfinderRatioValue } from '@web/spaces/three-d/viewfinder/viewfinder-ratio';
@@ -114,21 +113,6 @@ function captureFileName(spaceName: string): string {
 }
 
 /**
- * Where on a canvas a capture starts looking for room: the middle of that
- * canvas's last view, or the origin when it was never opened here.
- * @param userId - The signed-in account.
- * @param projectId - The project.
- * @param canvasId - The canvas.
- * @returns A point in canvas coordinates.
- */
-function canvasOrigin(userId: string, projectId: string, canvasId: string): { x: number; y: number } {
-  const view = readSpaceViewport(userId, projectId, canvasId);
-  if (view === null || view.zoom <= 0) return { x: 0, y: 0 };
-  // ponytail: the window stands in for the canvas pane, whose size is unknown while its tab is closed.
-  return { x: (window.innerWidth / 2 - view.x) / view.zoom, y: (window.innerHeight / 2 - view.y) / view.zoom };
-}
-
-/**
  * The viewfinder of a 3D Space (#1411): its button in the bottom-right toolbar, the
  * frame with its corners and the menu under it, the capture and its three
  * destinations. Its state is held by the editor, which also hides the minimap
@@ -150,10 +134,7 @@ export const SceneViewfinder = React.memo(function SceneViewfinder(props: SceneV
   const ratioValue = throughCamera ? (camera?.frame === 'Free' ? null : cameraRatio) : viewfinderRatioValue(ratio);
   // A refit keeps what the picture holds: a still's own ratio, else the camera's, else the free frame's.
   const fitRatio = shot !== null ? shot.width / shot.height : throughCamera ? cameraRatio : ratioValue;
-  const canvases = React.useMemo(() => spaces.filter((space) => space.type === 'canvas')
-    .map((space, index) => ({ space, index }))
-    .sort((a, b) => (a.space.createdAt ?? 0) - (b.space.createdAt ?? 0) || a.index - b.index)
-    .map(({ space }) => space), [spaces]);
+  const canvases = React.useMemo(() => canvasesOldestFirst(spaces), [spaces]);
 
   // Put the frame back whenever the safe area changes: a window resize, the chat column, the right panel.
   const placedIn = React.useRef(safe);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The `credit_holds` table (inner#1611): credits reserved for work that has
@@ -9,7 +9,7 @@
  * first; releasing only shrinks what is held and takes none.
  */
 
-import { and, eq, gt, gte, lt, sql } from "drizzle-orm";
+import { and, eq, gt, gte, lt, lte, sql } from "drizzle-orm";
 import { db, creditChargeRequests, creditHolds } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
 
@@ -113,4 +113,19 @@ export async function sumSpentByActor(studioId: string, from: Date, to: Date, tx
     )
     .groupBy(creditHolds.actorUserId);
   return charged.unionAll(held);
+}
+
+/**
+ * The Studios with a hold still held that comes due in `(from, to]` (#1580): its credits stop being held then, so
+ * the Studio's pages are told.
+ * @param from - The window's open lower end.
+ * @param to - The window's closed upper end.
+ * @returns Their ids, each once.
+ */
+export async function listStudiosWithHoldsDueBetween(from: Date, to: Date): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ studioId: creditHolds.studioId })
+    .from(creditHolds)
+    .where(and(eq(creditHolds.status, "held"), gt(creditHolds.expiresAt, from), lte(creditHolds.expiresAt, to)));
+  return rows.map((row) => row.studioId);
 }

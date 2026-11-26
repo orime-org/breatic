@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { MiniToolsConfig } from "@breatic/core";
 import { EDIT_FILE_TIERS, type EditFileTier, type VideoEncoderRates } from "@breatic/shared/mini-tools";

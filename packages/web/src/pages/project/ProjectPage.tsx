@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { useQuery } from '@tanstack/react-query';
 
 import { fetchProjectCredits } from '@web/data/api/credits';
 import { useProjectCreditsRefresh } from '@web/pages/project/use-project-credits-refresh';
-import { useSpaceTasksRefresh } from '@web/pages/project/use-space-tasks-refresh';
+import { useProjectLiveUpdates } from '@web/pages/project/use-project-live-updates';
+import { useSceneLookSettlements } from '@web/pages/project/use-scene-look-settlements';
 import * as React from 'react';
 import { useStore } from 'zustand';
 import { useLocation, useParams } from 'react-router-dom';
@@ -26,6 +27,7 @@ import { useCollaboratorNamesFrom } from '@web/features/collab-editor/use-collab
 import { projectUuidFromRouteParam } from '@web/lib/project-route';
 import { useBlockSelectAll } from '@web/lib/use-block-select-all';
 import { useTrackActiveRegion } from '@web/features/active-region/use-track-active-region';
+import { KeyFailureWordsProvider } from '@web/features/byok/key-failure-words';
 import { sendSpaceRpc } from '@web/data/yjs/space-rpc-client';
 import { spaceRpcFailureNotice } from '@web/pages/project/space-rpc-failure';
 import { CollabSocketProvider } from '@web/data/yjs/collab-socket';
@@ -63,6 +65,7 @@ import {
 import { TopBar, toCreditsReadout } from '@web/pages/project/chrome/top-bar/TopBar';
 import { useDocumentProposalRouting } from '@web/pages/project/use-document-proposal-routing';
 import { useCanvasRevealRouting } from '@web/pages/project/use-canvas-reveal-routing';
+import { useSpaceOpenRequestRouting } from '@web/pages/project/use-space-open-request-routing';
 import { useFollowRouting } from '@web/pages/project/use-follow-routing';
 import { usePublishView } from '@web/pages/project/use-publish-view';
 import { FollowBar } from '@web/features/follow/FollowBar';
@@ -212,7 +215,10 @@ export default function ProjectPage(): React.JSX.Element {
         the key the workspace would carry one project's state into another's
         address. The socket is shared while the authorized workspace is mounted.
       */}
-      <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} onAuthenticated={recheckVisit} />
+      {/* Whose key a failed run on the payer's own key used, for every failure sentence on the page (inner#1953). */}
+      <KeyFailureWordsProvider projectId={projectId}>
+        <ProjectWorkspace key={projectId} projectId={projectId} project={projectQuery.data} onAuthenticated={recheckVisit} />
+      </KeyFailureWordsProvider>
     </CollabSocketProvider>
   );
 }
@@ -358,10 +364,10 @@ function ProjectWorkspace({
   // connection re-authenticates by itself, but the banner and the role gates
   // read the project query, so that is refetched too.
   useRefreshOnReauth(provider, projectId, onAuthenticated);
-  // The top bar's credits are read again whenever they may have moved: this
-  // user's own spend returning, or anyone's generation here ending.
+  // The top bar's credits are read again whenever the Studio's credits move.
   useProjectCreditsRefresh(projectId, provider);
-  useSpaceTasksRefresh(projectId, provider);
+  useProjectLiveUpdates(projectId, provider);
+  useSceneLookSettlements(projectId, provider, userId);
   // The whole tab bar, held here and nowhere else. Every cell of the
   // transition table is one action on this reducer, so the strip and the
   // active tab have a single writer.
@@ -394,6 +400,13 @@ function ProjectWorkspace({
   useDocumentProposalRouting(spaces, tabs.openIds, tabs.activeId, openSpace, metaSynced);
   // A 3D capture's "View" press opens its canvas here, where the strip is held (#1411).
   useCanvasRevealRouting(spaces, tabs.activeId, openSpace, metaSynced);
+  // "Make in Motion", "Open in Motion" and a canvas video's "Open source animation" open or make a Motion Space
+  // here (#1490 design §8.5); a Space this page makes is reported to the request when its token comes back.
+  const createSpaceRef = React.useRef<(type: SpaceType, name: string) => Promise<void>>(() => Promise.resolve());
+  const createForRequest = React.useCallback((type: SpaceType, name: string): Promise<void> => createSpaceRef.current(type, name), []);
+  const openRequestRouting = useSpaceOpenRequestRouting(spaces, tabs.activeId, metaSynced, openSpace, createForRequest);
+  const openRequests = React.useRef(openRequestRouting);
+  openRequests.current = openRequestRouting;
 
   // ---- Following a member (#920) ----
   // This tab's Space in front and whom this user follows go out on the meta
@@ -638,6 +651,7 @@ function ProjectWorkspace({
     // The token says WHICH Space the create produced; showing it is this
     // page's own business and cannot fail.
     dispatchTabs({ type: 'open', spaceId: mine.id });
+    openRequests.current.created(mine.id);
   }, [spaces, spaceOpInProgress, setSpaceOpInProgress]);
 
   // Safety timeout - if the collab broadcast never lands, free the UI
@@ -648,6 +662,7 @@ function ProjectWorkspace({
     const handle = setTimeout(() => {
       setSpaceOpInProgress(null);
       pendingCreateTokenRef.current = null;
+      openRequests.current.createFailed();
       toast.error(t('project.space.timeout.create'), {
         description: t('project.space.timeout.retry'),
       });
@@ -780,6 +795,8 @@ function ProjectWorkspace({
       throw err;
     }
   };
+
+  createSpaceRef.current = onCreateSpace;
 
   /** Soft-delete a Space - `space:delete` RPC. */
   /**

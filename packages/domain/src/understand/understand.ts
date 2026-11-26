@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Asking a model one question about an ordered collection of media, through provider.
@@ -17,6 +17,7 @@ import {
   type UnderstandMedia,
 } from "@breatic/provider";
 import { provider } from "@domain/provider/instance.js";
+import { accountKeyFailureIn } from "@domain/provider/key-failure.js";
 import { MediaUnavailable, UnderstandRefused } from "@domain/understand/types.js";
 import type {
   Media,
@@ -83,6 +84,7 @@ function itemOf(media: Media): UnderstandMedia {
  * @throws {UnderstandRefused} when the service would not answer.
  * @throws {MediaUnavailable} when an image's bytes could not be read for an upstream that needs them.
  * @throws {UnderstandInterrupted} when the call ended without an answer for another reason.
+ * @throws {AccountKeyFailure} when the account's key the call ran on failed or is gone, passed on as itself.
  */
 export async function understandMedia(request: UnderstandRequest): Promise<UnderstandAnswer> {
   request.signal?.throwIfAborted();
@@ -98,13 +100,15 @@ export async function understandMedia(request: UnderstandRequest): Promise<Under
       maxOutputTokens: request.maxOutputTokens,
       deadlineAt: Date.now() + request.timeoutMs,
       ...(request.signal ? { signal: request.signal } : {}),
-    });
+    }, undefined, request.keys);
     for (const cost of answer.costs) request.onBilled(cost, answer.upstream);
     return { text: answer.text, finishReason: answer.finishReason };
   } catch (err) {
-    const upstream = err instanceof UpstreamRequestRejected ? err.upstream : "";
+    const upstream = err instanceof UpstreamRequestRejected ? err.upstream : accountKeyFailureIn(err)?.upstream ?? "";
     for (const cost of costsOf(err)) request.onBilled(cost, upstream);
     request.signal?.throwIfAborted();
+    // The account's own key failed: the user is told about that key, never that the deployment refused.
+    if (accountKeyFailureIn(err) !== undefined) throw err;
     if (err instanceof UpstreamRequestRejected && err.status !== undefined) {
       throw new UnderstandRefused(err.status, err.message, refusalKind({ code: err.status, transport }), err.reason === "content_blocked");
     }

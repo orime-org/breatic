@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The font set `scripts/web-animation-fonts.mjs` lays out is the one the runner embeds and the check accepts, so
@@ -24,6 +24,16 @@ interface Face {
 const SCRIPT = resolve(__dirname, "../../scripts/web-animation-fonts.mjs");
 let out = "";
 let faces: Face[] = [];
+let versions: string[] = [];
+
+/**
+ * The faces of one laid-out version.
+ * @param version - Its directory name.
+ * @returns Its faces.
+ */
+function facesOf(version: string): Face[] {
+  return JSON.parse(readFileSync(join(out, version, "faces.json"), "utf8")) as Face[];
+}
 
 /**
  * Whether one CSS unicode-range value covers a code point.
@@ -44,8 +54,8 @@ function rangeCovers(range: string, codePoint: number): boolean {
 beforeAll(() => {
   out = mkdtempSync(join(tmpdir(), "web-animation-fonts-"));
   execFileSync(process.execPath, [SCRIPT, out]);
-  const [version] = readdirSync(out);
-  faces = JSON.parse(readFileSync(join(out, version!, "faces.json"), "utf8")) as Face[];
+  versions = readdirSync(out).sort((a, b) => Number(a.slice(1)) - Number(b.slice(1)));
+  faces = facesOf(versions.at(-1)!);
 });
 
 afterAll(() => {
@@ -76,5 +86,15 @@ describe("the laid-out font set", () => {
       (char) => !faces.some((face) => rangeCovers(face.unicodeRange, char.codePointAt(0)!)),
     );
     expect(missing).toEqual([]);
+  });
+});
+
+describe("the earlier font sets", () => {
+  it.each([
+    ["v1", ["Noto Sans SC", "Noto Serif SC", "Inter"]],
+    ["v2", ["Noto Sans SC", "Noto Serif SC", "Inter", "Noto Sans KR"]],
+  ])("lays out %s as it was released, so a result packed with it can still be modified and exported", (version, families) => {
+    expect(versions).toContain(version);
+    expect(facesOf(version)).toEqual(faces.filter((face) => families.includes(face.family)));
   });
 });

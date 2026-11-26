@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { FlipHorizontal2, FlipVertical2, Film, ImageIcon, Music, RotateCcw, RotateCw } from 'lucide-react';
 import * as React from 'react';
@@ -107,6 +107,8 @@ export interface MiniToolPanelProps {
   onPrompt: (prompt: string) => void;
   /** The cost line beside Run. */
   creditText: string;
+  /** On the payer's key, the full sentence its short name stands for (inner#1953). */
+  creditDetail?: string;
   refusal: MiniToolRefusal;
   /** Why Run cannot run now although its inputs are there; a press shows it (packages/web/AGENTS.md#disabled-controls). */
   runBlockedReason?: string;
@@ -351,6 +353,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
     prompt,
     onPrompt,
     creditText,
+    creditDetail,
     refusal,
     runBlockedReason,
     onRun,
@@ -595,6 +598,7 @@ export const MiniToolPanel = React.memo(function MiniToolPanel(props: MiniToolPa
       </div>
       <PanelRunFooter
         creditText={creditText}
+        creditDetail={creditDetail}
         runLabel={t('canvas.miniTool.panel.run')}
         disabled={blocked}
         blockedReason={blocked ? undefined : runBlockedReason}

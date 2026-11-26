@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { useQuery } from '@tanstack/react-query';
 import { useInternalNode, useReactFlow, useStore, type Node } from '@xyflow/react';
@@ -9,7 +9,7 @@ import { catalogEntryOf, isModelTool, miniToolById } from '@breatic/shared/mini-
 
 import type { CropHandle } from '@web/lib/crop-math';
 import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { expandCapOf } from '@web/spaces/canvas/mini-tool/mini-tool-view';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { handleScale } from '@web/spaces/canvas/crop/crop-geometry';

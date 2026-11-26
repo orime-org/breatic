@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * BullMQ Worker entry point.
@@ -10,7 +10,7 @@
 
 // MUST be first: reads process.env + initCore before any env.* read.
 import "@worker/bootstrap-config.js";
-import type { Queue } from "bullmq";
+import type { Queue, Worker } from "bullmq";
 import { exitProcess, initSentry } from "@worker/sentry.js";
 import {
   env,
@@ -34,8 +34,6 @@ import {
   getAgentConfig,
   getWorkerConfig,
   getTimelineConfig,
-  TIMELINE_QUEUE,
-  type TimelineExecutionJobData,
   assertKnownQueues,
   installDeadlineBoundDispatcher,
   flushServerAnalytics,
@@ -47,6 +45,7 @@ import {
   adsConversionConfig,
   type AdsConversionJob,
   MINI_TOOL_SETTLEMENT_QUEUE,
+  getCommerceConfig,
 } from "@breatic/core";
 import { onDatabaseWaitTimeout } from "@breatic/core";
 import { googleDataManagerSink, runAdsConversion, type AdsConversionSink } from "@worker/handlers/ads-conversion.js";
@@ -65,6 +64,8 @@ import {
   type MediaReadJob,
   type UploadFinishJob,
   type UsageLookupJob,
+  TIMELINE_QUEUE,
+  type TimelineExecutionJobData,
 } from "@breatic/domain";
 
 // Error monitoring starts before the first log line, so error logs from the
@@ -165,8 +166,10 @@ import {
 } from "@worker/handlers/long-media-dispatch.js";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
+import { DEADLINE_SWEEP_QUEUE, sweepDeadlines } from "@worker/handlers/deadline-sweep.js";
 import { reportTimelineJobFailed } from "@worker/handlers/timeline/timeline-failed-job.js";
 import { sweepCreditCharges } from "@worker/handlers/credit-charge-sweep.js";
+import { reconcileLotMirror } from "@worker/handlers/commerce-lot-mirror.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
 import { sweepPlannedRuns } from "@worker/handlers/planned-run-sweep.js";
 
@@ -176,13 +179,16 @@ const TIMELINE_SWEEP_QUEUE = "timeline-sweep";
 /** Queue holding the recurring sweep of charge requests still pending (inner#1617). */
 const CREDIT_CHARGE_SWEEP_QUEUE = "credit-charge-sweep";
 
+/** Queue holding the daily resend of bought lots to the billing service's mirror (inner#1993 §5.4). */
+const COMMERCE_LOT_MIRROR_QUEUE = "commerce-lot-mirror";
+
 /** Queue holding the recurring sweep of tasks waiting for a running slot whose job may be lost (inner#1968). */
 const SLOT_WAIT_SWEEP_QUEUE = "slot-wait-sweep";
 
 /** Queue holding the recurring sweep of planned video tool runs whose job may be lost (frames-split §7.19). */
 const PLANNED_RUN_SWEEP_QUEUE = "planned-run-sweep";
 
-/** Every BullMQ queue this process runs a worker for. */
+/** Every BullMQ queue this process can run a worker for; `config/worker.yaml` may name only these. */
 const WORKER_QUEUES: readonly string[] = [
   "tasks",
   "url-ingest",
@@ -198,6 +204,7 @@ const WORKER_QUEUES: readonly string[] = [
   TIMELINE_QUEUE,
   TIMELINE_SWEEP_QUEUE,
   CREDIT_CHARGE_SWEEP_QUEUE,
+  COMMERCE_LOT_MIRROR_QUEUE,
   SLOT_WAIT_SWEEP_QUEUE,
   PLANNED_RUN_SWEEP_QUEUE,
 ];
@@ -286,6 +293,26 @@ export async function startWorker(): Promise<void> {
     logger.error({ err }, "credit_charge_sweep_schedule_failed");
   });
 
+  // The daily lot-mirror reconcile exists only where something is sold; a
+  // deployment that sells nothing has no billing service to mirror into and
+  // never reads config/commerce.yaml.
+  let lotMirror: Worker<Record<string, never>> | null = null;
+  if (env.SELLING) {
+    const lotMirrorQueue = createQueue(COMMERCE_LOT_MIRROR_QUEUE);
+    lotMirror = createWorker<Record<string, never>>(COMMERCE_LOT_MIRROR_QUEUE, () => reconcileLotMirror());
+    lotMirror.on("failed", (job, err) => {
+      logger.error({ err, jobId: job?.id }, "commerce_lot_mirror_failed");
+    });
+    const lotMirrorJob = "commerce-lot-mirror";
+    void lotMirrorQueue.upsertJobScheduler(
+      lotMirrorJob,
+      { pattern: getCommerceConfig().lot_mirror_reconcile_cron, tz: "UTC" },
+      { name: lotMirrorJob, data: {}, opts: defaultJobOpts() },
+    ).catch((err: unknown) => {
+      logger.error({ err }, "commerce_lot_mirror_schedule_failed");
+    });
+  }
+
   const miniToolSettlement = await startMiniToolSettlementWorker();
   const worker = createWorker<TasksQueueJobData>("tasks", runTask);
   try {
@@ -356,6 +383,22 @@ export async function startWorker(): Promise<void> {
     { name: timelineSweepJob, data: {}, opts: defaultJobOpts() },
   ).catch((err: unknown) => {
     logger.error({ err }, "timeline_sweep_schedule_failed");
+  });
+
+  // What came due behind open pages (#1580): notifications, credit holds,
+  // Project transfers and 3D rows, told on the same channels as the writes.
+  const deadlineSweepQueue = createQueue(DEADLINE_SWEEP_QUEUE);
+  const deadlineSweep = createWorker<Record<string, never>>(DEADLINE_SWEEP_QUEUE, () => sweepDeadlines());
+  deadlineSweep.on("failed", (job, err) => {
+    logger.error({ err, jobId: job?.id }, "deadline_sweep_failed");
+  });
+  const deadlineSweepJob = "deadline-sweep";
+  void deadlineSweepQueue.upsertJobScheduler(
+    deadlineSweepJob,
+    { every: getWorkerConfig().deadline_sweep.interval_ms },
+    { name: deadlineSweepJob, data: {}, opts: defaultJobOpts() },
+  ).catch((err: unknown) => {
+    logger.error({ err }, "deadline_sweep_schedule_failed");
   });
 
   // Its own queue, because `runTask` is a generation: past the dispatch it
@@ -560,9 +603,11 @@ export async function startWorker(): Promise<void> {
   });
 
 
+  // The lot-mirror worker runs only where the deployment sells (above).
+  const runningQueues = env.SELLING ? WORKER_QUEUES : WORKER_QUEUES.filter((q) => q !== COMMERCE_LOT_MIRROR_QUEUE);
   logger.info(
     {
-      queues: WORKER_QUEUES,
+      queues: runningQueues,
     },
     "BullMQ workers started",
   );
@@ -647,9 +692,12 @@ export async function startWorker(): Promise<void> {
         () => miniToolSettlement.close(),
         () => timelineWorker.close(),
         () => timelineSweep.close(),
+        () => deadlineSweep.close(),
         () => creditChargeSweep.close(),
+        () => lotMirror?.close() ?? Promise.resolve(),
         () => slotWaitSweep.close(),
         () => plannedRunSweep.close(),
+        () => longMediaDispatch.close(),
         () => timelineEvents.close(),
         () => urlIngest.close(),
         () => uploadFinish.close(),

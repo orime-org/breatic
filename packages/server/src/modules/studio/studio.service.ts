@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Studio service — personal studio lifecycle.
@@ -81,7 +81,7 @@ export async function createPersonalStudio(
         {
           userId,
           studioId: studio.id,
-          credits: env.PAYMENT_ENABLED ? getTrialGrantCredits() : 0,
+          credits: env.CHARGING_ENABLED ? getTrialGrantCredits() : 0,
         },
         tx,
       );

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The two tables the lot-based credits model is built on (task #11,
@@ -14,13 +14,10 @@
  * Structural promises no unit test can see, each with the failure it pins:
  *
  *   1. `credit_lots.source_id` is NOT NULL and UNIQUE. This — and nothing
- *      else — is what makes a payment land exactly once. `payments` cannot
- *      hold that line: `stripe_payment_intent_id` has no unique index at all,
- *      and the one on `stripe_session_id` sits on a nullable column, where
- *      Postgres admits any number of NULLs. Without the constraint here, a
- *      redelivered webhook grants the credits a second time. What the column
- *      points at is the receipt a lot came from (0079, #259), which for a
- *      payment shares that payment's own id.
+ *      else in the product — is what makes a payment land exactly once.
+ *      Without the constraint here, a repeated grant hands the credits out a
+ *      second time. What the column points at is the receipt a lot came from
+ *      (0079, #259), which for a payment shares that payment's own id.
  *
  *   2. `credit_ledger.lot_id` is NULLABLE, and `payer_user_id` is NULL on
  *      `debt_incurred` alone, held there by a CHECK.
@@ -123,7 +120,7 @@ async function indexesOf(table: string): Promise<string[]> {
 
 let seq = 0;
 
-/** A user and one completed payment of theirs; returns both ids. */
+/** A user and the receipt of one completed payment of theirs; returns both ids. */
 async function seedUserWithPayment(): Promise<{
   userId: string;
   paymentId: string;
@@ -135,8 +132,8 @@ async function seedUserWithPayment(): Promise<{
   const userId = users[0]!.id;
   const paymentId = await openPaymentSource(sql);
   await sql`
-    INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-    VALUES (${paymentId}, ${userId}, 1000, 'completed', 880)
+    INSERT INTO payment_receipts (id, user_id, amount_cents, currency, credits_granted, ordered_at)
+    VALUES (${paymentId}, ${userId}, 1000, 'usd', 880, now())
   `;
   return { userId, paymentId };
 }
@@ -175,7 +172,7 @@ describe("credit_lots", () => {
   });
 
   it("refuses a second lot for the same payment", async () => {
-    // The one guarantee that a redelivered webhook cannot grant twice.
+    // The one guarantee that a repeated grant cannot grant twice.
     const { userId, paymentId } = await seedUserWithPayment();
     await sql`
       INSERT INTO credit_lots

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The transfer-reference entrance (inner#1006 design §4.6, test spec §4,
@@ -63,6 +63,7 @@ import crypto from "node:crypto";
 import postgres from "postgres";
 import type { Hono } from "hono";
 import { initCore, loadLocales, getRedis, ObjectMissing, ObjectTooLarge } from "@breatic/core";
+import { uploadStatusService } from "@breatic/domain";
 import { formatBytes, t, REQUEST_SHAPE_REASON } from "@breatic/shared";
 import {
   PNG,
@@ -670,11 +671,7 @@ describe("§4.2 refusals and claims", () => {
     // S33 (stale × deadline / browser leaves): the status still reads
     // transferred and the row does not move.
     const rowBefore = await grantRow(sql, stale);
-    const status = await app.request(`/api/v1/assets/upload-status?key=${encodeURIComponent(stale)}`, {
-      headers: { Cookie: w.a.cookie },
-    });
-    expect(status.status).toBe(200);
-    expect(await status.json()).toEqual({ data: { items: [{ key: stale, state: "transferred" }] } });
+    expect(await uploadStatusService.statusOf(w.a.id, [stale])).toEqual([{ key: stale, state: "transferred" }]);
     expect(await grantRow(sql, stale)).toEqual(rowBefore);
 
     const res = await post(app, SNAPSHOT, w.a.cookie, ref(stale));
@@ -1022,12 +1019,7 @@ describe("§6 S25: a completed transfer nobody references", () => {
     const w = await world();
     const before = await grantRow(sql, w.key);
 
-    const status = await app.request(`/api/v1/assets/upload-status?key=${encodeURIComponent(w.key)}`, {
-      headers: { Cookie: w.a.cookie },
-    });
-
-    expect(status.status).toBe(200);
-    expect(await status.json()).toEqual({ data: { items: [{ key: w.key, state: "transferred" }] } });
+    expect(await uploadStatusService.statusOf(w.a.id, [w.key])).toEqual([{ key: w.key, state: "transferred" }]);
     expect(await getRedis().get(refKey(w.key))).toBeNull();
     expect(await grantRow(sql, w.key)).toEqual(before);
     expect(before.consumed_at).not.toBeNull();

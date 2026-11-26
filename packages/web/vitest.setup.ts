@@ -30,7 +30,7 @@ declare module 'vitest' {
   }
 }
 import { cleanup } from '@testing-library/react';
-import { onlineManager } from '@tanstack/react-query';
+import { focusManager, onlineManager } from '@tanstack/react-query';
 import { setLocale, setLocaleMessages } from '@breatic/shared';
 
 import { canvasGraphs } from '@web/stores/canvas-graph';
@@ -132,6 +132,10 @@ afterEach(() => {
   // that flips it means a test can end any way it likes, including failing
   // between the two calls.
   onlineManager.setOnline(true);
+  // Its focus state is the same kind of singleton: once a test sets it, React
+  // Query stops reading the page's visibility, and a later file that hides
+  // and shows the tab sees no change. Undefined hands it back to visibility.
+  focusManager.setFocused(undefined);
   // A canvas's render buffer, session and text editors are kept by Space id
   // for as long as the tab is open, so they outlive an unmount the way the
   // online state does: every test renders a fresh canvas, and a later one

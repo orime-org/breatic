@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * How web content with media is read (inner#1351 + inner#1390 design §5.4.2,
@@ -86,7 +86,7 @@ describe('a medium inside a line of words splits that line where it stands', () 
     ['a heading, both halves staying headings', `<h2>ab <img src="${A}"> cd</h2>`, ['heading#2:ab', `image(${A}||)`, 'heading#2:cd']],
     ['a link', `<p><a href="https://x.example/">ab <img src="${A}"> cd</a></p>`, ['paragraph:ab', `image(${A}||)`, 'paragraph:cd']],
     // BlockNote reads a web quote's lines unquoted, and the medium follows its line.
-    ['a quote, the medium following its line', `<blockquote><p>ab <img src="${A}"> cd</p></blockquote>`, ['paragraph:ab', `image(${A}||)`, 'paragraph:cd']],
+    ['a quote, the medium following its line', `<blockquote><p>ab <img src="${A}"> cd</p></blockquote>`, ['paragraph[q]:ab', `image(${A}||)[q]`, 'paragraph[q]:cd']],
     ['line breaks on both sides of it', `<p>ab<br><img src="${A}"><br>cd</p>`, ['paragraph:ab', `image(${A}||)`, 'paragraph:cd']],
     ['a line it opens, keeping no empty half', `<p><img src="${A}"> cd</p>`, [`image(${A}||)`, 'paragraph:cd']],
   ])('in %s', async (_name, html, blocks) => {

@@ -1,9 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The internal app's error exit (inner#1410 §4.6). Its callers are programs,
- * so every answer is `{ code, detail? }` (a `stripe_blocks` refusal adds
+ * so every answer is `{ code, detail? }` (a service's own refusal may add
  * `reason`) with a stable code to branch on; `detail` is the English sentence
  * of `server.internal.<key>`, or a domain `AppError`'s own message.
  */

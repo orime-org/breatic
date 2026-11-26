@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Tasks route tests — list, get, canvas task creation.
@@ -297,7 +297,7 @@ describe("Tasks routes", () => {
 
       expect(res.status).toBe(422);
       expect(((await res.json()) as { error: { message: string } }).error.message).toBe("server.model.input_limit.characters_max");
-      expect(mocks.inputRefusalFor).toHaveBeenCalledWith("gemini-3.8-flash-text-to-speech", expect.objectContaining({ prompt: "x".repeat(8001) }), undefined);
+      expect(mocks.inputRefusalFor).toHaveBeenCalledWith("gemini-3.8-flash-text-to-speech", expect.objectContaining({ prompt: "x".repeat(8001) }), undefined, undefined);
       expect(mocks.creditHoldService.reserveCredits).not.toHaveBeenCalled();
       expect(mocks.taskService.create).not.toHaveBeenCalled();
       expect(mockQueueAdd).not.toHaveBeenCalled();
@@ -803,6 +803,7 @@ describe("Tasks routes", () => {
       // The id the run's credits were held under (inner#1968 design 3.10 U9).
       expect.any(String),
       mocks.activityTransaction,
+      { keyId: null, llmKeyId: null },
     );
   });
 
@@ -869,6 +870,7 @@ describe("Tasks routes", () => {
         // The id the run's credits were held under (inner#1968 design 3.10 U9).
         expect.any(String),
         mocks.activityTransaction,
+        { keyId: null, llmKeyId: null },
       );
     });
 

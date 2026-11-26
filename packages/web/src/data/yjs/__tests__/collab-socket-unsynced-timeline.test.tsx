@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { act, cleanup, render, renderHook } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -41,6 +41,7 @@ import { useSpaceOperationsStore } from '@web/stores/space-operations';
 const PID = '11111111-1111-4111-8111-111111111111';
 const TIMELINE_SID = '22222222-2222-4222-8222-222222222222';
 const CANVAS_SID = '33333333-3333-4333-8333-333333333333';
+const MOTION_SID = '44444444-4444-4444-8444-444444444444';
 
 /**
  * Invokes the production leave predicate.
@@ -59,7 +60,7 @@ function blocked(): boolean {
  * @returns Its name, document and provider spy.
  * @throws {Error} When acquiring fails.
  */
-function content(kind: 'canvas' | 'timeline', spaceId: string): { name: string; provider: ProviderSpy } {
+function content(kind: 'canvas' | 'timeline' | 'web_animation', spaceId: string): { name: string; provider: ProviderSpy } {
   const name = spaceContentDocName(PID, spaceId, kind);
   const provider = acquireDocProvider(name, getDoc(name)) as unknown as ProviderSpy;
   return { name, provider };
@@ -96,6 +97,21 @@ describe('timeline takes no receipts (design 6, inner#1790)', () => {
     act(() => { getDoc(canvas.name).getMap('nodesMap').set('n1', 1); });
     await runTimers();
     expect(confirmRequests(canvas.provider)).toHaveLength(1);
+    expect(hasProjectUnsyncedEdits(PID)).toBe(true);
+    expect(result.current).toBe(true);
+    expect(blocked()).toBe(true);
+  });
+});
+
+describe('a Motion Space\'s annotations are edits the page waits for (#1490 design §3.3)', () => {
+  it('asks collab to confirm an annotation write and blocks leaving until it does', async () => {
+    const motion = content('web_animation', MOTION_SID);
+    await handshake(motion.name, motion.provider);
+    const { result } = renderHook(() => useProjectUnsyncedEdits(PID));
+
+    act(() => { getDoc(motion.name).getMap('webAnimationAnnotationThreads').set('t1', 1); });
+    await runTimers();
+    expect(confirmRequests(motion.provider)).toHaveLength(1);
     expect(hasProjectUnsyncedEdits(PID)).toBe(true);
     expect(result.current).toBe(true);
     expect(blocked()).toBe(true);

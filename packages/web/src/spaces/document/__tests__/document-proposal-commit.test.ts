@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Commit-time proposal facts and actual output traces (inner#1619).
@@ -40,7 +40,6 @@ const UPLOAD_CONFIG: UploadConfig = {
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 500,
   uploadIdleTimeoutMs: 60000,
-  uploadStatusPollSeconds: 5,
 };
 
 /** Builds and mounts the real document editor and its production undo. */

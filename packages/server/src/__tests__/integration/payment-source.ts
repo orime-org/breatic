@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Opening the receipt a test payment is written under.
@@ -32,4 +32,30 @@ export async function openPaymentSource(sql: Sql, createdAt?: string): Promise<s
           VALUES (gen_random_uuid(), 'payment', ${createdAt}) RETURNING id
         `;
   return source!.id;
+}
+
+/** What a test receipt records. */
+export interface TestReceipt {
+  /** The payment's id, which is its credit source's id. */
+  id: string;
+  userId: string;
+  amountCents: number;
+  taxCents?: number | null;
+  totalCents?: number | null;
+  currency?: string;
+  credits: number;
+}
+
+/**
+ * Writes the product's receipt for a completed payment, the way the billing
+ * service's grant leaves it (inner#1993 §4.2).
+ * @param sql - The connection to write through.
+ * @param receipt - The payment's figures.
+ */
+export async function recordPaymentReceipt(sql: Sql, receipt: TestReceipt): Promise<void> {
+  await sql`
+    INSERT INTO payment_receipts (id, user_id, amount_cents, tax_cents, total_cents, currency, credits_granted, ordered_at)
+    VALUES (${receipt.id}, ${receipt.userId}, ${receipt.amountCents}, ${receipt.taxCents ?? null}, ${receipt.totalCents ?? null},
+      ${receipt.currency ?? "usd"}, ${receipt.credits}, now())
+  `;
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project cover upload E2E (#21) — the owner's card menu, the 16:9 crop, the
@@ -22,7 +22,7 @@ import { expect, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
-import { hueOf, storedPicture, uniquePicture } from '../helpers/upload';
+import { hueOf, recordRequests, storedPicture, uniquePicture } from '../helpers/upload';
 
 /**
  * A solid-colour PNG, built here so each run can use bytes of its own.
@@ -155,6 +155,7 @@ test('the owner uploads and replaces a project cover @needs-storage', async ({ p
   await page.goto(`/studio/${slug}`);
   const card = page.getByTestId(`project-card-${projectId}`);
   await expect(card).toBeVisible({ timeout: 15_000 });
+  const sent = recordRequests(page);
 
   // Colours differ per run so the second upload is never a dedup of the first.
   const seed = Date.now() % 200;
@@ -165,6 +166,10 @@ test('the owner uploads and replaces a project cover @needs-storage', async ({ p
   const second = await uploadCover(page, projectId, solidPng(480, 640, [30, seed, 60]));
   expect(second).not.toBe(first);
   await expect(card.locator('img')).toHaveAttribute('src', second);
+  // #1580 N-06: the Studio page's one poll carried the uploads it waited for; nothing asked for an upload's status.
+  const paths = sent.map((r) => new URL(r.url));
+  expect(paths.some((u) => u.pathname === '/api/v1/studio-page/poll' && (u.searchParams.get('uploads') ?? '') !== '')).toBe(true);
+  expect(paths.filter((u) => u.pathname.includes('upload-status'))).toEqual([]);
 
   await page.goto('/studio');
   const recent = page.locator(`a[href$="-${projectId}"]`).first();

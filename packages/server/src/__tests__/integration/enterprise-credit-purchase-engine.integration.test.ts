@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { randomUUID } from "node:crypto";
 import postgres from "postgres";
@@ -10,7 +10,7 @@ import { GRANT_ADMIN, seedDebt, seedPersonal } from "./operator-credit-grant-fix
 import { enterpriseFixture, expectPurchase, postPurchase, purchaseKey, purchaseOperationPath } from "./enterprise-credit-purchase.fixture.js";
 import { waitUntilBlockedOn } from "./lock-probe.js";
 import * as creditView from "@server/modules/credit/credit-view.service.js";
-import { getPurchaseHistory } from "@server/modules/payment/payment.service.js";
+import { readPurchaseHistory } from "@server/modules/commerce/purchase-history.service.js";
 
 const suite = useInternalApp("enterprise-credit-engine");
 
@@ -19,7 +19,7 @@ describe("enterprise credit purchase engine and projections", () => {
     const fx = await enterpriseFixture(suite);const key = purchaseKey();
     const response = await postPurchase(suite, fx.userId, key);await expectPurchase(suite, fx.userId, key, response);
     await suite.sql`update enterprise_memberships set contract_number='A LATER CONTRACT',revision=2 where user_id=${fx.userId}`;
-    expect((await getPurchaseHistory(fx.userId, undefined, undefined)).items).toEqual([expect.objectContaining({ sourceKind: "enterprise", contractNumber: "ENTERPRISE-174", paymentId: null, amountCents: null, totalCents: null, canResend: false })]);
+    expect((await readPurchaseHistory(fx.userId, undefined, undefined)).items).toEqual([expect.objectContaining({ sourceKind: "enterprise", contractNumber: "ENTERPRISE-174", paymentId: null, amountCents: null, totalCents: null, canResend: false })]);
     expect(await creditView.getLot(fx.userId, response.json.lotId)).toMatchObject({ sourceKind: "enterprise", contractNumber: "ENTERPRISE-174" });
     expect((await creditView.listLots(fx.userId)).items).toEqual([expect.objectContaining({ sourceKind: "enterprise", contractNumber: "ENTERPRISE-174" })]);
     await creditLotService.designateLot({ lotId: response.json.lotId, requestingUserId: fx.userId, studioId: fx.studioId });

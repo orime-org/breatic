@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Entries the rate-limits loader reads from the shipped
@@ -44,5 +44,12 @@ describe("rate limits — config/rate-limits.yaml", () => {
     writeFileSync(join(dir, "rate-limits.yaml"), "own-action:\n  max: 2\n  window_seconds: 5\n");
     expect(getRateLimit("own-action", dir)).toEqual({ max: 2, windowSeconds: 5 });
     expect(() => getRateLimit("invite", dir)).toThrow(/"invite" is not configured/);
+  });
+});
+
+// #1580 L-04: the status query is gone, so its limit is too.
+describe("the upload status limit (removed)", () => {
+  it("L-04 is not configured", () => {
+    expect(() => getRateLimit("upload-status")).toThrow(/"upload-status" is not configured/);
   });
 });

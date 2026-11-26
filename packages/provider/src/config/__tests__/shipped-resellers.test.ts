@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -62,7 +62,6 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
   "elevenlabs-v3": { fal: "fal-ai/elevenlabs/tts/eleven-v3", sandbase: "elevenlabs/v3" },
   "qwen3-tts-voice-design": {},
   "minimax-voice-clone": { fal: "fal-ai/minimax/voice-clone", sandbase: "minimax/voice-clone" },
-  "omnivoice-voice-clone": {},
   "elevenlabs-voice-changer": { fal: "fal-ai/elevenlabs/voice-changer" },
   "gemini-omni-1.1-flash-text-to-video": { fal: "google/gemini-omni-flash/v1.1/text-to-video", sandbase: "google/gemini-omni-flash/1.1/text-to-video" },
   // SandBase has no prompt-expansion field and Alibaba rewrites by default (prompt_extend true); WaveSpeed does not (inner#1859).
@@ -103,8 +102,7 @@ const RESELLERS: Readonly<Record<string, { fal?: string; sandbase?: string }>> =
 
 const config = shipped();
 const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
-// A retired model's bindings are checked only for staying bound (gemini-3.8-tts.test.ts).
-const models = Object.fromEntries(Object.entries(config.media.models).filter(([model]) => catalogModels.has(model)));
+const models = config.media.models;
 
 /** What a condition names besides params: JSONata's operators and literals, `get_duration` and its keyword args. */
 const CONDITION_WORDS = new Set(["and", "or", "not", "in", "true", "false", "null", "get_duration", "min", "max", "total"]);
@@ -161,8 +159,8 @@ describe("a run as the application resolves it", () => {
 
 describe("the reseller upstreams", () => {
   it("declares fal and SandBase", () => {
-    expect(config.upstreams.fal).toEqual({ kind: "fal", base_url: "https://queue.fal.run", billing_url: "https://api.fal.ai/v1", key_env: "FAL_KEY", concurrency: 10 });
-    expect(config.upstreams.sandbase).toEqual({ kind: "sandbase", base_url: "https://api.sandbase.ai/v1", key_env: "SANDBASE_API_KEY", concurrency: 10, empty_output_wait_ms: 600_000 });
+    expect(config.upstreams.fal).toEqual({ kind: "fal", display_name: "fal", group: "reseller", key_url: "https://fal.ai/dashboard/keys", base_url: "https://queue.fal.run", billing_url: "https://api.fal.ai/v1", key_env: "FAL_KEY", concurrency: 10 });
+    expect(config.upstreams.sandbase).toEqual({ kind: "sandbase", display_name: "SandBase", group: "reseller", key_url: "https://www.sandbase.ai/console/keys", base_url: "https://api.sandbase.ai/v1", key_env: "SANDBASE_API_KEY", concurrency: 10, empty_output_wait_ms: 600_000 });
   });
 
   it("lists every catalog model", () => {

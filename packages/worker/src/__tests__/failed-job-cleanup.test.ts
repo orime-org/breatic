@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Unit tests for handlers/failed-job-cleanup.ts (#1569 hole ②).
@@ -22,7 +22,7 @@ const mockPublishNodeEvent = vi.hoisted(() => vi.fn());
 const mockSettleTaskForNode = vi.hoisted(() => vi.fn());
 const mockReleaseHold = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 const mockSettleSceneRowById = vi.hoisted(() => vi.fn());
-const mockPublishSpaceTasksChanged = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
+const mockAnnounceSpaceTasksVersion = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 const mockMarkBilledAndCharge = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => true));
 const mockUpdateGenerationCredits = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => undefined));
 const mockPendingChargeRequestId = vi.hoisted(() => vi.fn(async (..._args: unknown[]) => "req-1"));
@@ -37,7 +37,7 @@ vi.mock("@breatic/core", async (importOriginal) => ({
   ...await importOriginal<typeof coreModule>(),
   publishNodeEvent: mockPublishNodeEvent,
   publishActivityNew: vi.fn(),
-  publishSpaceTasksChanged: mockPublishSpaceTasksChanged,
+  announceSpaceTasksVersion: mockAnnounceSpaceTasksVersion,
   projectActivitiesRepo: {
     insertGenerationFailedIfAbsent: vi.fn(),
     upsertGenerationSucceeded: vi.fn(),
@@ -111,6 +111,7 @@ import {
   reclaimFailedJobById,
 } from "@worker/handlers/failed-job-cleanup.js";
 import type { TaskJobData } from "@worker/handlers/dispatch.js";
+import { threeDSpaceDocName } from "@breatic/shared";
 import { taskService, nodeHistoryService } from "@breatic/domain";
 import { logger, projectActivitiesRepo } from "@breatic/core";
 
@@ -485,7 +486,7 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
     mockFailTask.mockClear();
     mockSettleTaskForNode.mockReset();
     mockSettleSceneRowById.mockReset();
-    mockPublishSpaceTasksChanged.mockClear();
+    mockAnnounceSpaceTasksVersion.mockClear();
     vi.mocked(taskService.getByIdInternal).mockReset();
     vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mockReset();
     vi.mocked(projectActivitiesRepo.insertGenerationFailedIfAbsent).mockReset();
@@ -511,7 +512,7 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
     await cleanupFailedJobNodes(streamRedis, sceneJob(), "job stalled more than allowable limit");
 
     expect(mockSettleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: null });
-    expect(mockPublishSpaceTasksChanged).toHaveBeenCalledWith("p1", "s1");
+    expect(mockAnnounceSpaceTasksVersion).toHaveBeenCalledWith(threeDSpaceDocName("p1", "s1"));
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).toHaveBeenCalledTimes(1);
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded).mock.calls[0]![0]).toMatchObject({
       projectId: "p1",
@@ -561,7 +562,7 @@ describe("cleanupFailedJobNodes for a 3D Space generation (inner#1691)", () => {
     await cleanupFailedJobNodes(streamRedis, sceneJob(), "job stalled more than allowable limit");
 
     expect(mockSettleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "failed", errorMessage: "internal" });
-    expect(mockPublishSpaceTasksChanged).toHaveBeenCalledWith("p1", "s1");
+    expect(mockAnnounceSpaceTasksVersion).toHaveBeenCalledWith(threeDSpaceDocName("p1", "s1"));
     expect(vi.mocked(projectActivitiesRepo.upsertGenerationSucceeded)).not.toHaveBeenCalled();
     expect(mockSettleTaskForNode).not.toHaveBeenCalled();
   });

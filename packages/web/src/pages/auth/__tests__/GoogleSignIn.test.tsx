@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { ReactElement } from 'react';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
@@ -23,7 +23,7 @@ vi.mock('@web/data/api/auth', async (original) => ({
 
 /**
  * Provides the query client with the deployment options already read, so the
- * page renders in its final state: payments off, no referral row.
+ * page renders in its final state: nothing sold, no referral row.
  * @param props - The children.
  * @param props.children - The page under test.
  * @returns The wrapped page.

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Space document size cap, second design (inner#1790), web test spec P-03:
@@ -23,7 +23,7 @@ import { type CanvasNodeFields, type DocSizeStatus, type NodeMediaFields } from 
 import { updateShape } from '@breatic/shared/update-shape';
 import { P_FULL, P_OVER } from '@web/data/yjs/__tests__/helpers/size-v2-fixtures';
 import {
-  addEdge, addNode, addNodeFocusImage, addReply, appendNodeSlotItem, createGroup, editAnnotationBody, editReply,
+  addEdge, addNode, addReply, appendNodeSlotItem, createGroup, editAnnotationBody, editReply,
   expandGroup, removeEdge, removeElements, removeNode, removeNodeFocusImage, removeNodeSlotItem, removeReply,
   resizeGroup, restoreNodeMedia, runCanvasUndoBatch, setGroupBackground, setNodeExtractedText, setNodeLocked,
   setNodeMode, setNodeModel, setNodeName, setNodeParams, setNodeParent, setNodePosition, setNodeSlotValue,
@@ -116,7 +116,6 @@ const CALLS: ReadonlyArray<readonly [string, () => void]> = [
   ['addEdge', () => { fresh += 1; addEdge(P, S, { id: `edge${fresh}`, source: 'txt1', target: 'img1' }); }],
   ['addReply', () => { fresh += 1; addReply(P, S, 'ann1', { id: `reply${fresh}`, content: 'new', createdBy: 'u', createdAt: 3 }); }],
   ['appendNodeSlotItem', () => { appendNodeSlotItem(P, S, 'img1', 'styleImages', 'u3', 4); }],
-  ['addNodeFocusImage', () => { addNodeFocusImage(P, S, 'img1', { id: 'f3', url: 'https://example.com/f3.png', name: 'A', width: 1, height: 1 }); }],
   ['setNodeExtractedText', () => { setNodeExtractedText(P, S, 'txt1', 'line1\nline2'); }],
   ['restoreNodeMedia', () => { restoreNodeMedia(P, S, 'img1', { content: 'https://example.com/b.png', media: {} as NodeMediaFields }); }],
   ['editAnnotationBody', () => { editAnnotationBody(P, S, 'ann1', 'new body', 5); }],

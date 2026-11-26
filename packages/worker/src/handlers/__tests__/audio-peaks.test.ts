@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The peaks read of an audio row (inner#1305 §4.4). The handler hands the row
@@ -25,6 +25,9 @@ vi.mock("@breatic/core", async (importOriginal) => {
   return {
     ...actual,
     logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
+    // The announcement to the referencing Projects is covered with a real
+    // database in integration-tests (asset-peaks-ready); here the row is gone.
+    assetRepo: { ...actual.assetRepo, findById: vi.fn(async () => null), listProjectsReferencingAsset: vi.fn(async () => []) },
   };
 });
 

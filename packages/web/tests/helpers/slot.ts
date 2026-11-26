@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Which pair of accounts a worker uses, and the `test` every spec imports.
@@ -45,6 +45,38 @@ export function stateFile(account: Account, at: number = slot()): string {
  * Playwright's `test`, opening every page signed in as this slot's first
  * account. A spec that wants another state still says so with `test.use`.
  */
+/**
+ * Record every `upload:ended` message the page's collab sockets receive in `window.__breaticUploadEndings`. Runs in
+ * the page before its scripts.
+ */
+function recordUploadEndings(): void {
+  const told: unknown[] = [];
+  (window as unknown as { __breaticUploadEndings: unknown[] }).__breaticUploadEndings = told;
+  const Native = window.WebSocket;
+  const decoder = new TextDecoder();
+  window.WebSocket = class extends Native {
+    /**
+     * Open the socket and listen for upload endings beside the page.
+     * @param url - Where to connect.
+     * @param protocols - The sub-protocols.
+     */
+    constructor(url: string | URL, protocols?: string | string[]) {
+      super(url, protocols);
+      this.addEventListener('message', (event: MessageEvent) => {
+        const data: unknown = event.data;
+        const text = typeof data === 'string' ? data : data instanceof ArrayBuffer ? decoder.decode(data) : '';
+        const at = text.indexOf('{"t":"upload:ended"');
+        if (at < 0) return;
+        try {
+          told.push(JSON.parse(text.slice(at)));
+        } catch {
+          // Not a whole message; nothing to record.
+        }
+      });
+    }
+  };
+}
+
 export const test = base.extend({
   // Overriding a fixture keeps its registration's `option` flag, so
   // `test.use({ storageState })` still replaces this one.
@@ -57,6 +89,8 @@ export const test = base.extend({
   // module fetched after the 250th is missing from it although it loaded.
   context: async ({ context }, provide): Promise<void> => {
     await context.addInitScript(() => performance.setResourceTimingBufferSize(10_000));
+    // An upload's ending reaches its uploader on the collab socket (#1580); `watchQueuedFinish` reads it from here.
+    await context.addInitScript(recordUploadEndings);
     await provide(context);
   },
 });

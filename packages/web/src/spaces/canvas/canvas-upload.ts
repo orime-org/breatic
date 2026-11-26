@@ -1,7 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared';
 import { videoToolNodeAssetUrls } from '@web/data/video-tool-node-data';
 import {
   isUploadableMediaType,

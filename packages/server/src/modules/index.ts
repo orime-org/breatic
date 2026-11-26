@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `@server` module barrel - server-private domain SERVICES only.
@@ -33,8 +33,7 @@ export * as attachmentService from "@server/modules/conversation/conversation-at
 export * as agentInstructionsService from "@server/modules/conversation/agent-instructions.service.js";
 export * as runningTurnsService from "@server/modules/conversation/running-turns.service.js";
 export * as memoryService from "@server/modules/memory/memory.service.js";
-export * as paymentService from "@server/modules/payment/payment.service.js";
-export { explainHoldRefusal, precheckCredits, reserveForRun, reserveForRunIn } from "@server/modules/credit/credit-precheck.service.js";
+export { explainHoldRefusal, precheckAgentTurn, precheckCredits, reserveForRun, reserveForRunIn } from "@server/modules/credit/credit-precheck.service.js";
 export * as creditViewService from "@server/modules/credit/credit-view.service.js";
 export {
   assertStorageAllowance,
@@ -49,12 +48,12 @@ export * as notificationService from "@server/modules/notification/notification.
 export * as studioService from "@server/modules/studio/studio.service.js";
 export * as textToolService from "@server/modules/text-tool/text-tool.service.js";
 export * as miniToolPlannedRunService from "@server/modules/mini-tool/planned-run.js";
-export * as timelineExecutionService from "@server/modules/timeline/timeline-execution.service.js";
+export * as webAnimationExecutionService from "@server/modules/web-animation/web-animation-execution.service.js";
 export * as documentVersionService from "@server/modules/document-version/document-version.service.js";
-export * as stripeWebhookRecordingService from "@server/modules/stripe-webhook/recording.service.js";
-export * as stripeWebhookDispatchService from "@server/modules/stripe-webhook/dispatch.service.js";
 
 export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
 
 export * as creditGrantService from "@server/modules/credit-grant/credit-grant.service.js";
+
+export * as byokService from "@server/modules/byok/byok.service.js";
 export * as enterpriseCreditPurchaseService from "@server/modules/enterprise-credit-purchase/enterprise-credit-purchase.service.js";

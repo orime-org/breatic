@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Video focus crop delivery (frames-split design §5.5 "交付", §7.18; test plan §68.2 FI01–FI07, FI10, FI13).

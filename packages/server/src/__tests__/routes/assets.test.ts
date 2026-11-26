@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Assets route tests — the two endpoints that answer a browser directly.
@@ -84,7 +84,6 @@ describe("Assets routes", () => {
           clientMaxAttempts: number;
           clientRetryBaseDelayMs: number;
           uploadIdleTimeoutMs: number;
-          uploadStatusPollSeconds: number;
           assetUrlPrefix: string;
           maxRequestBodyBytes: number;
         };
@@ -94,7 +93,6 @@ describe("Assets routes", () => {
         clientMaxAttempts: 2,
         clientRetryBaseDelayMs: 250,
         uploadIdleTimeoutMs: 45000,
-        uploadStatusPollSeconds: 7,
         // What every stored object's public URL starts with: the document
         // body tells its own media from outside links by it (inner#1127 A18).
         assetUrlPrefix: "https://cdn.example/",
@@ -102,6 +100,17 @@ describe("Assets routes", () => {
         // sends paste, snapshot and chat bodies as a transfer (inner#1006).
         maxRequestBodyBytes: REQUEST_BODY_MAX_BYTES,
       });
+    });
+  });
+
+  // #1580 L-01: a page learns how its upload ended from the `upload:ended` message
+  // (Project) or the Studio page poll, so the status route is gone; the stub
+  // config above still carries its interval, so a route still sending it shows.
+  describe("GET /assets/upload-status (removed)", () => {
+    it("L-01 is no longer a route", async () => {
+      const app = createApp();
+      const res = await app.request("/api/v1/assets/upload-status?key=a", { headers: AUTH });
+      expect(res.status).toBe(404);
     });
   });
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Container mini-tool loader (inner#888 §8, §9).
@@ -206,9 +206,6 @@ export const miniToolsConfigSchema = z
     // these: the length bounds what the tab holds, the size what it downloads.
     waveform_max_seconds: z.number().positive().default(600),
     waveform_max_bytes: z.number().int().positive().default(200_000_000),
-    // How often, and for how long, a band past those reads peaks not yet written.
-    waveform_peaks_retry_ms: z.number().int().positive().default(5000),
-    waveform_peaks_retry_max_ms: z.number().int().positive().default(600_000),
     // How long a video tool panel's priced inputs hold still before it asks for a quote.
     quote_debounce_ms: z.number().int().nonnegative().default(300),
     // The most clips one join takes, source included (inner#1825 §6.3); the

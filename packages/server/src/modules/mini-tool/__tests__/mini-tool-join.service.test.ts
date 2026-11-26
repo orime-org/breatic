@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Preparing a join run (inner#1825 §6.4): every clip goes through the same two
@@ -33,8 +33,6 @@ const CONFIG = {
   join_max_clips: 20,
   waveform_max_seconds: 600,
   waveform_max_bytes: 200_000_000,
-  waveform_peaks_retry_ms: 5000,
-  waveform_peaks_retry_max_ms: 600_000,
 };
 
 const BUCKET = "https://assets.example.com/";

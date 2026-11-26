@@ -1,7 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { z } from "zod";
+
+import { MAX_FOCUS_NAME } from "@shared/canvas/focus-images.js";
 
 /** The panel tools: each has a collaborative `miniToolDraft:<id>` field (frames-split §5.5 plan shape row). */
 export const VIDEO_TOOL_IDS = ["video.extract-frames", "video.split"] as const;
@@ -9,8 +11,6 @@ export type VideoToolId = typeof VIDEO_TOOL_IDS[number];
 /** Every tool a planned request may name: the panel tools and the video focus crop, which has no draft field. */
 export const PLANNED_VIDEO_TOOL_IDS = [...VIDEO_TOOL_IDS, "video.focus-crop"] as const;
 export type PlannedVideoToolId = typeof PLANNED_VIDEO_TOOL_IDS[number];
-/** The longest frozen source node name a focus crop keeps (frames-split §5.5 admission row). */
-export const MAX_FOCUS_NAME = 300;
 
 const mediaInfoShape = {
   width: z.number().int().positive(),

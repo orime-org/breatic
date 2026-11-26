@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Video focus crop admission (frames-split design §5.5 "受理", "计划形状", "配置", §7.11; test plan §68.1 F02 and §68.2

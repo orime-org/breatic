@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import { and, eq, isNull } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { projects, studios } from "@core/db/schema.js";
@@ -18,6 +18,19 @@ export async function findLiveOwnerStudioId(projectId: string, tx?: DbTx): Promi
     .where(and(eq(projects.id, projectId), isNull(projects.deletedAt), isNull(studios.deletedAt)))
     .limit(1);
   return row?.studioId;
+}
+
+/**
+ * The live Projects of a Studio (#1580): the ones whose pages show the Studio's credits, told when they change. Live
+ * is what server's `countLiveProjectsInStudio` counts: neither archived nor deleted.
+ * @param studioId - The Studio.
+ * @returns The Projects' ids, in no particular order.
+ * @throws {Error} When the database query fails.
+ */
+export async function listLiveProjectIdsInStudio(studioId: string): Promise<string[]> {
+  const rows = await db.select({ id: projects.id }).from(projects)
+    .where(and(eq(projects.studioId, studioId), isNull(projects.deletedAt), isNull(projects.archivedAt)));
+  return rows.map((row) => row.id);
 }
 
 /**

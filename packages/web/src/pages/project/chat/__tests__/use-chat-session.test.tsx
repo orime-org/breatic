@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The one place the panel reads what it draws from.
@@ -68,7 +68,6 @@ vi.mock('@web/data/api/assets', async (importOriginal) => {
         clientRetryBaseDelayMs: 1000,
         uploadIdleTimeoutMs: 30_000,
         assetUrlPrefix: 'https://assets.test.invalid/',
-        uploadStatusPollSeconds: 5,
         maxRequestBodyBytes: 1048576,
       }),
     },

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * S6d D4-3: the `frame` recipe on the frame grid (inner#1306 test plan §92 D4-3; frames-split design §4.1, §7.16, §7.17 frame

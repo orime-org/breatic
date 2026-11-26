@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -26,6 +26,12 @@ vi.mock("@server/modules", () => ({
   textToolService: service,
   projectService: { assertAccess: async () => undefined },
   precheckCredits: async () => undefined,
+}));
+
+// Which keys the run goes out on is not this file's subject either: the deployment's (inner#1953).
+vi.mock("@breatic/domain", async (importOriginal) => ({
+  ...(await importOriginal<Record<string, unknown>>()),
+  resolveKeys: async () => ({ keys: { owner: "deployment", keyOf: () => undefined }, route: { mode: "default" }, keyId: null }),
 }));
 
 // Whether this deployment can serve the tool's model is not this file's subject either.

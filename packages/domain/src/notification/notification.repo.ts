@@ -1,0 +1,362 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
+
+/**
+ * Notifications repository — `notifications` table CRUD.
+ *
+ * Per-user inbox for role-upgrade requests / approvals + studio / project
+ * invite-confirm events. PG is the source of truth; collab broadcasts a stateless
+ * invalidate signal so attached clients refetch via REST (~150ms total
+ * delay, per `2026-05-09-permissions.md` § 7.2.5 pattern).
+ *
+ * Why PG (not Yjs meta doc):
+ *   - per-user private (Yjs doc is shared across all project members)
+ *   - cross-project (Yjs is per-project; Bell aggregates everywhere)
+ *   - offline catchup (Yjs only syncs while ws is connected)
+ *
+ * See spec: access-permission design (2026-05-28) § 7.
+ */
+
+import { and, desc, eq, gt, inArray, isNull, lte, notInArray, or, sql } from "drizzle-orm";
+import { db } from "@breatic/core";
+import { notifications } from "@breatic/core";
+import { REQUEST_NOTIFICATION_TYPES, type NotificationEntity } from "@breatic/shared";
+import type { DbTx } from "@breatic/core";
+
+/**
+ * Allowed notification types. Mirrors the SQL CHECK constraint on
+ * `notifications.type`.
+ */
+export type NotificationType =
+  | "access.role_upgrade_request"
+  | "access.role_upgrade_approved"
+  | "access.role_upgrade_rejected"
+  | "studio.transfer_request"
+  | "studio.transfer_approved"
+  | "studio.invite_request"
+  | "studio.invite_accepted"
+  | "project.invite_request"
+  | "project.invite_accepted"
+  | "project.transfer_request"
+  | "project.transfer_approved"
+  | "project.join_request"
+  | "project.join_approved"
+  | "project.join_rejected"
+  | "membership.ended"
+  | "membership.upgrade_incomplete"
+  | "storage.quota_exceeded"
+  | "credit.refund_completed"
+  | "credit.refund_rejected"
+  | "credit.refund_restored";
+
+REQUEST_NOTIFICATION_TYPES satisfies readonly NotificationType[];
+
+export type { DbTx } from "@breatic/core";
+
+/**
+ * Input for {@link create} — the fields a caller supplies. The repo
+ * fills in DB defaults (id / created_at / read_at / …). Hand-written so
+ * the Drizzle insert type never leaks to the service layer.
+ */
+export interface NewNotificationInput {
+  userId: string;
+  type: NotificationType;
+  payload: Record<string, unknown>;
+  projectId?: string | null;
+  /** Actionable-notification TTL (slice 3); omit/null for no expiry. */
+  expiresAt?: Date | null;
+}
+
+/**
+ * Map a Drizzle `notifications` row to the domain {@link NotificationEntity}.
+ * Keeps the Drizzle `$inferSelect` type contained inside the repo
+ * (prohibition #3 / breatic/no-drizzle-type-leak) — callers see the
+ * hand-written entity only.
+ * @param row - Raw `notifications` table row from a Drizzle select
+ * @returns The mapped domain entity (keeps `$inferSelect` out of callers)
+ */
+function toEntity(row: typeof notifications.$inferSelect): NotificationEntity {
+  return {
+    id: row.id,
+    userId: row.userId,
+    type: row.type,
+    payload: row.payload,
+    projectId: row.projectId,
+    readAt: row.readAt,
+    expiresAt: row.expiresAt,
+    deletedAt: row.deletedAt,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+/**
+ * Create a notification row.
+ *
+ * Caller is the per-type service constructor (e.g.
+ * `createRoleUpgradeRequest`) — see `notification.service`.
+ * @param input - User, type, payload, and optional project scope to insert
+ * @param tx - optional drizzle transaction; threaded so caller can
+ *   bundle the INSERT with related writes (e.g. project_members
+ *   role bump + 2 notifications in one TX).
+ * @returns The inserted notification entity
+ */
+export async function create(
+  input: NewNotificationInput,
+  tx?: DbTx,
+): Promise<NotificationEntity> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .insert(notifications)
+    .values({
+      userId: input.userId,
+      type: input.type,
+      payload: input.payload,
+      projectId: input.projectId,
+      expiresAt: input.expiresAt,
+    })
+    .returning();
+  const row = rows[0];
+  if (!row) {
+    throw new Error("notificationRepo.create: insert returned no row");
+  }
+  return toEntity(row);
+}
+
+/**
+ * List unread notifications for a user, newest first.
+ *
+ * Hot path for BellMenu — the `notifications_user_unread_idx` index
+ * covers this WHERE clause.
+ * @param userId - Inbox owner whose unread notifications to fetch
+ * @param limit - Maximum rows to return (defaults to 50)
+ * @returns Unread notifications, newest first
+ */
+export async function listUnreadByUser(
+  userId: string,
+  limit = 50,
+): Promise<NotificationEntity[]> {
+  const rows = await db
+    .select()
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        isNull(notifications.readAt),
+        isNull(notifications.deletedAt),
+        // Hide actionable notifications that have timed out (e.g. an
+        // unconfirmed transfer-admin past its decision window).
+        or(
+          isNull(notifications.expiresAt),
+          gt(notifications.expiresAt, sql`now()`),
+        ),
+      ),
+    )
+    .orderBy(desc(notifications.createdAt))
+    .limit(limit);
+  return rows.map(toEntity);
+}
+
+/**
+ * List all (read + unread) notifications for a user, newest first.
+ * Used by the "see all" view when the user wants to scroll history.
+ * @param userId - Inbox owner whose full history to fetch
+ * @param limit - Maximum rows to return (defaults to 100)
+ * @returns Read and unread notifications, newest first
+ */
+export async function listAllByUser(
+  userId: string,
+  limit = 100,
+): Promise<NotificationEntity[]> {
+  const rows = await db
+    .select()
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        isNull(notifications.deletedAt),
+      ),
+    )
+    .orderBy(desc(notifications.createdAt))
+    .limit(limit);
+  return rows.map(toEntity);
+}
+
+/**
+ * Mark a single notification as read. The `userId` guard prevents
+ * one user from marking another's notification (defense in depth on
+ * top of the route-layer auth).
+ * @param id - Notification UUID to mark read
+ * @param userId - Owner guard; only this user's row is updated
+ * @param tx - Optional drizzle transaction handle so this CAS mark-read can
+ *   serve as the serialization point inside the caller's transaction
+ * @returns true if a row was updated (i.e. the notification was
+ *   unread and owned by `userId`); false otherwise.
+ */
+export async function markRead(
+  id: string,
+  userId: string,
+  tx?: DbTx,
+): Promise<boolean> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .update(notifications)
+    .set({ readAt: sql`now()` })
+    .where(
+      and(
+        eq(notifications.id, id),
+        eq(notifications.userId, userId),
+        isNull(notifications.readAt),
+        isNull(notifications.deletedAt),
+      ),
+    )
+    .returning({ id: notifications.id });
+  return rows.length > 0;
+}
+
+/**
+ * Retire the bell entry that announced something now over, by id alone.
+ *
+ * Distinct from {@link markRead}, and the difference is who is acting.
+ * `markRead` is the recipient saying "I have seen this", so it is guarded by
+ * their user id. This is the SYSTEM withdrawing an announcement whose subject
+ * no longer exists — the request was cancelled by the person who filed it, or
+ * timed out with nobody acting — and in those paths the recipient is not the
+ * actor and may not even be the same person any more, since a project can
+ * change hands while a request sits unanswered.
+ *
+ * The authority is the id itself: it is read out of the request row's
+ * `notification_id`, so only the request this entry belongs to can name it.
+ * Leaving the entry behind is the visible failure it prevents — a bell row
+ * whose buttons act on a request that is already over, counted in the unread
+ * badge forever.
+ * @param id - Notification UUID, taken from the owning request row
+ * @param tx - Optional drizzle transaction handle, so retiring the entry
+ *   commits with the decision that ended the request
+ */
+export async function retire(id: string, tx?: DbTx): Promise<void> {
+  const handle = tx ?? db;
+  await handle
+    .update(notifications)
+    .set({ readAt: sql`now()` })
+    .where(
+      and(
+        eq(notifications.id, id),
+        isNull(notifications.readAt),
+        isNull(notifications.deletedAt),
+      ),
+    );
+}
+
+/**
+ * Mark all of a user's unread notifications as read, except the requests they
+ * still have to answer: the bell lists unread rows only, so marking a request
+ * read would take it out of the bell unanswered.
+ *
+ * Rows another transaction holds are skipped, not waited on. The rows it
+ * touches are news only, and the transactions that retire several entries
+ * across statements (archiving, re-addressing requests on an owner change)
+ * touch requests only, so the two never lock the same rows; skipping keeps it
+ * from waiting on, and deadlocking with, any holder should that ever change.
+ * Every writer to this table only sets `read_at`, so a held row is being
+ * marked read by its holder; if that holder rolls back, the row stays unread
+ * until the next "mark all read".
+ * @param userId - Inbox owner whose unread notifications to clear
+ * @returns count of rows this call marked read.
+ */
+export async function markAllRead(userId: string): Promise<number> {
+  const unlocked = db
+    .select({ id: notifications.id })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        isNull(notifications.readAt),
+        isNull(notifications.deletedAt),
+        notInArray(notifications.type, [...REQUEST_NOTIFICATION_TYPES]),
+      ),
+    )
+    .for("update", { skipLocked: true });
+  const rows = await db
+    .update(notifications)
+    .set({ readAt: sql`now()` })
+    .where(inArray(notifications.id, unlocked))
+    .returning({ id: notifications.id });
+  return rows.length;
+}
+
+/**
+ * When a user's newest notification still there was made (#1580): with the unread count, what the Studio page's poll
+ * compares to tell the bell changed.
+ * @param userId - Inbox owner.
+ * @returns Its `created_at` as an ISO instant, or null when the user has none.
+ */
+export async function latestCreatedAt(userId: string): Promise<string | null> {
+  const rows = await db
+    .select({ at: sql<Date | null>`max(${notifications.createdAt})` })
+    .from(notifications)
+    .where(and(eq(notifications.userId, userId), isNull(notifications.deletedAt)));
+  const at = rows[0]?.at ?? null;
+  return at === null ? null : new Date(at).toISOString();
+}
+
+/**
+ * Count unread notifications for a user — drives the red-dot badge.
+ * @param userId - Inbox owner whose unread notifications to count
+ * @returns Number of unread, non-deleted notifications
+ */
+export async function countUnread(userId: string): Promise<number> {
+  const rows = await db
+    .select({ count: sql<number>`count(*)::int` })
+    .from(notifications)
+    .where(
+      and(
+        eq(notifications.userId, userId),
+        isNull(notifications.readAt),
+        isNull(notifications.deletedAt),
+        // Red-dot count excludes timed-out actionable notifications too.
+        or(
+          isNull(notifications.expiresAt),
+          gt(notifications.expiresAt, sql`now()`),
+        ),
+      ),
+    );
+  return rows[0]?.count ?? 0;
+}
+
+/**
+ * Find a notification by id (no user gate — caller is the service
+ * layer which already authenticated the user). Returns null on
+ * miss or soft-deleted.
+ * @param id - Notification UUID to look up
+ * @param tx - Optional drizzle transaction handle so the read joins the
+ *   caller's transaction (consistent snapshot for a gated decision)
+ * @returns The notification entity, or null if missing / soft-deleted
+ */
+export async function findById(
+  id: string,
+  tx?: DbTx,
+): Promise<NotificationEntity | null> {
+  const handle = tx ?? db;
+  const rows = await handle
+    .select()
+    .from(notifications)
+    .where(and(eq(notifications.id, id), isNull(notifications.deletedAt)))
+    .limit(1);
+  return rows[0] ? toEntity(rows[0]) : null;
+}
+
+/**
+ * The people with a notification still there that comes due in `(from, to]` (#1580): read or not, it leaves their
+ * bell, so their pages are told.
+ * @param from - The window's open lower end.
+ * @param to - The window's closed upper end.
+ * @returns Their ids, each once.
+ */
+export async function listRecipientsDueBetween(from: Date, to: Date): Promise<string[]> {
+  const rows = await db
+    .selectDistinct({ userId: notifications.userId })
+    .from(notifications)
+    .where(and(isNull(notifications.deletedAt), gt(notifications.expiresAt, from), lte(notifications.expiresAt, to)));
+  return rows.map((row) => row.userId);
+}

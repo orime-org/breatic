@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -78,7 +78,7 @@ describe("credit charge sweep", () => {
 // A misspelt queue name would leave that queue at the default without a word.
 describe("assertKnownQueues", () => {
   it("accepts per-queue figures that name the queues the worker runs", () => {
-    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", MINI_TOOL_SETTLEMENT_QUEUE, "long-media-dispatch", "credit-charge-sweep"])).not.toThrow();
+    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", MINI_TOOL_SETTLEMENT_QUEUE, "long-media-dispatch", "credit-charge-sweep", "commerce-lot-mirror"])).not.toThrow();
   });
 
   it("refuses a per-queue figure for a queue the worker does not run", () => {
@@ -99,5 +99,23 @@ describe("running-task gate settings", () => {
     const result = workerConfigSchema.safeParse({ slot_wait_stale_ms: 120_000, slot_wait_max_delay_ms: 90_000 });
     expect(result.success).toBe(false);
     expect(JSON.stringify(result.error?.issues)).toMatch(/slot_wait_max_delay_ms/);
+  });
+});
+
+// #1580 test spec C-01: the deadline sweep's interval lives in config/worker.yaml.
+describe("deadline sweep", () => {
+  it("reads the sweep's interval from config/worker.yaml", () => {
+    const shipped = parse(readFileSync(resolve(MONOREPO_ROOT, "config/worker.yaml"), "utf-8")) as { deadline_sweep: { interval_ms: number } };
+    expect(getWorkerConfig().deadline_sweep.interval_ms).toBe(shipped.deadline_sweep.interval_ms);
+  });
+
+  it("defaults the interval to 30 seconds when the file leaves it out", () => {
+    expect(workerConfigSchema.parse({}).deadline_sweep.interval_ms).toBe(30_000);
+  });
+
+  it("refuses an interval that is not a positive integer", () => {
+    for (const interval_ms of [0, -1, 1.5]) {
+      expect(workerConfigSchema.safeParse({ deadline_sweep: { interval_ms } }).success).toBe(false);
+    }
   });
 });

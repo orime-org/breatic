@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project invitations repository — `project_invitations` table CRUD + the
@@ -34,7 +34,7 @@ import type {
   PendingProjectInvitationSummary,
 } from "@breatic/shared";
 import type { RecipientInvitation, EmailInvitationCandidate } from "@server/modules/invitation/invitation.types.js";
-import { mintShareToken } from "@server/utils/share-token.js";
+import { mintShareToken } from "@breatic/domain";
 
 /**
  * The membership-relevant fields of a just-accepted invite, returned by

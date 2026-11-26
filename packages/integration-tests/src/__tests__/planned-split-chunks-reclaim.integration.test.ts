@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A split segment encoded in chunks whose later chunk fails for good (frames-split design §5.4 用户运行的两层编码, §7.15

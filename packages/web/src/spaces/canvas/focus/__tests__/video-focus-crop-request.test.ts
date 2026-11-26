@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Video focus crop, the press side (frames-split design §5.5 "受理", "计划形状", "登记", "测试"; test plan §68.1).
@@ -9,7 +9,7 @@
 
 import { renderHook } from '@testing-library/react';
 import { afterEach, describe, expect, it } from 'vitest';
-import { MAX_FOCUS_NAME } from '@web/data/focus-images';
+import { MAX_FOCUS_NAME } from '@breatic/shared';
 import { toNaturalCrop, type CropRect } from '@web/lib/crop-math';
 import { useMediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
 import { videoFocusCropRequest, type VideoFocusCropPress } from '@web/spaces/canvas/focus/run-focus-crop';

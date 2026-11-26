@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -118,7 +118,7 @@ describe('enterprise and gift provenance in the actual product surfaces', () => 
 
   it.each(languages)('shows compensation detail and the original enterprise contract in $locale', async ({ locale, gift, compensation, enterprise }) => {
     setLocale(locale);
-    mount(<PurchasesSection userId='account-174' billing />);
+    mount(<PurchasesSection userId='account-174' charging />);
     const rows = await screen.findAllByTestId('purchase-row');
     expect(rows).toHaveLength(2);
     expect(rows[0]).toHaveTextContent(gift);
@@ -132,13 +132,13 @@ describe('enterprise and gift provenance in the actual product surfaces', () => 
 
   it('keeps the actual charged amount on an online payment', async () => {
     history.mockResolvedValue({ items: [{ ...acquisition('enterprise'), sourceKind: 'payment', contractNumber: null, paymentId: 'payment-174', amountCents: 2000, totalCents: 2240, taxCents: 240, status: 'completed' }], nextCursor: null });
-    mount(<PurchasesSection userId='account-174' billing />);
+    mount(<PurchasesSection userId='account-174' charging />);
     expect(await screen.findByTestId('purchase-row')).toHaveTextContent('$22.40');
   });
 
   it.each(languages)('shows the enterprise offline refund action in $locale', async ({ locale, enterprise, offline }) => {
     setLocale(locale);
-    mount(<RefundsSection userId='account-174' billing />);
+    mount(<RefundsSection userId='account-174' charging selling />);
     expect(await screen.findByTestId('lot-remaining')).toHaveTextContent('100');
     expect(screen.getByText(offline)).toBeInTheDocument();
     expect(document.body).toHaveTextContent(enterprise);
@@ -148,7 +148,7 @@ describe('enterprise and gift provenance in the actual product surfaces', () => 
 
   it.each(refundHeadings)('scopes refund rules to online credit purchases in $locale', async ({ locale, online, general }) => {
     setLocale(locale);
-    mount(<RefundsSection userId='account-174' billing />);
+    mount(<RefundsSection userId='account-174' charging selling />);
     expect(await screen.findByRole('heading', { level: 3, name: online })).toBeInTheDocument();
     expect(t('credits.refundTitle')).toBe(general);
   });
@@ -159,7 +159,7 @@ describe('enterprise and gift provenance in the actual product surfaces', () => 
     listUserStudios.mockResolvedValue([{ id: 'personal-174', name: 'Personal Studio 174', type: 'personal', myStudioRole: 'admin' }, { id: 'team-174', name: 'Team Studio 174', type: 'team', myStudioRole: 'admin' }]);
     fetchCreditLots.mockImplementation(async () => ({ items: [enterpriseLot({ designatedStudioId: destination, designated: destination !== null, designatedStudioName: destination === 'personal-174' ? 'Personal Studio 174' : destination === 'team-174' ? 'Team Studio 174' : null })], nextCursor: null }));
     designateCreditLot.mockImplementation(async (_lot: string, studio: string | null) => { destination = studio; });
-    mount(<AssignSection userId='account-174' billing />);
+    mount(<AssignSection userId='account-174' charging />);
     const picker = await screen.findByRole('combobox');
     expect(document.body).toHaveTextContent('CONTRACT-174');
     for (const [name, value] of [['Personal Studio 174', 'personal-174'], ['Team Studio 174', 'team-174'], ['Unassigned', null]] as const) {

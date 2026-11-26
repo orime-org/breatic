@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 
@@ -19,7 +19,7 @@ const {
 
 describe('the four account-level reads and writes', () => {
   beforeEach(() => {
-    apiGet.mockReset().mockImplementation(async (url: string) => url.endsWith('/overview') ? { assignedCredits: '0.000000', unassignedCredits: '0.000000', underRefundCredits: '0.000000', billing: true, studios: [] } : { items: [], nextCursor: null });
+    apiGet.mockReset().mockImplementation(async (url: string) => url.endsWith('/overview') ? { assignedCredits: '0.000000', unassignedCredits: '0.000000', underRefundCredits: '0.000000', charging: true, selling: true, studios: [] } : { items: [], nextCursor: null });
     apiPatch.mockReset().mockResolvedValue({
       id: 'lot-1', sourceKind: 'payment', purchasedCredits: '100.000000', remainingCredits: '100.000000',
       designatedStudioId: null, designatedStudioName: null, designated: false, paidCents: 1000, currency: 'usd',

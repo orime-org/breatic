@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -346,4 +346,29 @@ describe('MembersModal waiting buttons', () => {
       }
     });
   }
+});
+
+// #1580: the offer is kept current by the Project page's live updates only while the dialog is open, so each time it
+// opens it reads once, however fresh the cached answer is.
+describe('MembersModal opening again', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    useUIStore.setState({ activeOverlayId: null });
+  });
+
+  it('reads the live transfer again when it opens again while the cached answer is fresh', async () => {
+    vi.mocked(projectsApi.liveTransfer).mockResolvedValue(null);
+    vi.mocked(membersApi.transferCandidates).mockResolvedValue([]);
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    render(
+      <QueryClientProvider client={client}>
+        <MembersModal projectId='p1' members={REAL_MEMBERS} currentUserId='u-a' currentUserRole='owner' />
+      </QueryClientProvider>,
+    );
+    act(() => useUIStore.getState().setActiveOverlayId('members-modal'));
+    await waitFor(() => expect(projectsApi.liveTransfer).toHaveBeenCalledTimes(1));
+    act(() => useUIStore.getState().setActiveOverlayId(null));
+    act(() => useUIStore.getState().setActiveOverlayId('members-modal'));
+    await waitFor(() => expect(projectsApi.liveTransfer).toHaveBeenCalledTimes(2));
+  });
 });

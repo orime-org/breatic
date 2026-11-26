@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 
@@ -12,7 +12,6 @@ const CFG = {
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 1000,
   uploadIdleTimeoutMs: 60000,
-  uploadStatusPollSeconds: 2,
   assetUrlPrefix: 'https://cdn/',
 };
 

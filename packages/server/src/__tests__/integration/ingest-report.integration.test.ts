@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `POST /assets/uploads/{uploadId}/complete` — this server finishing an upload
@@ -62,6 +62,7 @@ import {
   getStorageConfig,
   createQueue,
   createPgClient,
+  uploadEndedChannelName,
 } from "@breatic/core";
 import {
   backendUploadService,
@@ -77,11 +78,11 @@ import { Queue } from "bullmq";
 import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
 import {
   canvasSpaceDocName,
+  FOCUS_IMAGE_UPLOAD_EVENT_TYPE,
   INGEST_FAILURE_HEADER,
   readTaskFailure,
   signSessionToken,
   uprightKeyFor,
-  UPLOAD_STATUS_MAX_KEYS,
 } from "@breatic/shared";
 import type { Hono } from "hono";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
@@ -1176,10 +1177,63 @@ describe("a finish this server drove — a completed upload", () => {
   });
 });
 
-// The event that settles a successful upload is the only way its content
-// reaches the node. Answering 2xx while that event was lost would end the
-// delivery with nothing left to carry the result, so the report is refused
-// and the Worker's own retry is what tries again.
+/** Every 3D part picture event on the stream for `docName`, oldest first. */
+async function sceneLookEventsFor(docName: string): Promise<Record<string, unknown>[]> {
+  const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+  return raw
+    .map(([, fields]) => {
+      const idx = fields.indexOf("payload");
+      return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+    })
+    .filter((e): e is Record<string, unknown> => e !== null && e.type === "scene-look-picture" && e.docName === docName);
+}
+
+describe("a finish this server drove — a picture uploaded for a 3D part (inner#1693)", () => {
+  it("tells collab which part to put the stored picture on, and the picture it held at the start", async () => {
+    const seed = await seedEditor();
+    const objectId = crypto.randomUUID();
+    const startMap = crypto.randomUUID();
+    const key = await mintTicket(seed, { purpose: "scene_look", object_id: objectId, part: "3", start_map: startMap });
+
+    await report(completed(key));
+
+    const [grant] = await sql<{ asset_id: string }[]>`SELECT asset_id FROM upload_grants WHERE storage_key = ${key}`;
+    const docName = `project-${seed.projectId}/3d-${seed.spaceId}`;
+    expect(await sceneLookEventsFor(docName)).toEqual([{
+      type: "scene-look-picture", docName, objectId, part: "3", startMap,
+      picture: grant!.asset_id, userId: seed.userId, uploadKey: key,
+    }]);
+    // A part picture lands on no canvas node, so nothing is counted on one.
+    expect(await eventsFor(`project-${seed.projectId}/canvas-${seed.spaceId}`)).toEqual([]);
+  });
+
+  it("announces the picture again on a repeated report, keyed by the same upload", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { purpose: "scene_look", object_id: crypto.randomUUID(), part: "d", start_map: null });
+
+    const sha = crypto.randomBytes(32).toString("hex");
+    await report(completed(key, { sha256: sha }));
+    await report(completed(key, { sha256: sha }));
+
+    const events = await sceneLookEventsFor(`project-${seed.projectId}/3d-${seed.spaceId}`);
+    expect(events).toHaveLength(2);
+    expect(new Set(events.map((e) => e.uploadKey))).toEqual(new Set([key]));
+  });
+
+  it("refuses a success whose part picture event was lost", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed, { purpose: "scene_look", object_id: crypto.randomUUID(), part: "3", start_map: null });
+
+    const xadd = vi
+      .spyOn(getStreamRedis(), "xadd")
+      .mockRejectedValueOnce(new Error("the stream's Redis is unreachable"));
+    // The job throws, so the queue delivers it again and the picture is announced then.
+    await expect(report(completed(key))).rejects.toThrow();
+    xadd.mockRestore();
+    expect(await sceneLookEventsFor(`project-${seed.projectId}/3d-${seed.spaceId}`)).toEqual([]);
+  });
+});
+
 describe("a finish this server drove — an upload the backend opened", () => {
   // The worker uploads its own output through the same ingest Worker (#181),
   // so what an upload is can no longer be assumed from the fact that it came
@@ -1331,6 +1385,10 @@ describe("a finish this server drove — a backend upload that landed empty", ()
   });
 });
 
+// The event that settles a successful upload is the only way its content
+// reaches the node. Answering 2xx while that event was lost would end the
+// delivery with nothing left to carry the result, so the report is refused
+// and the Worker's own retry is what tries again.
 describe("a finish this server drove — an event that could not be published", () => {
   it("refuses a success whose content event was lost", async () => {
     const seed = await seedEditor();
@@ -2868,28 +2926,19 @@ describe("an upload our own worker drove", () => {
   });
 });
 
-describe("the upload status query (inner#1367)", () => {
-  /** Ask how these uploads ended, as `cookie`'s user. */
-  async function statusOf(
-    cookie: string,
-    keys: string[],
-  ): Promise<{ res: Response; items: Record<string, unknown>[] }> {
-    const query = keys.map((k) => `key=${encodeURIComponent(k)}`).join("&");
-    const res = await app.request(`/api/v1/assets/upload-status?${query}`, {
-      headers: { cookie },
-    });
-    const items =
-      res.status === 200
-        ? ((await res.json()) as { data: { items: Record<string, unknown>[] } }).data.items
-        : [];
-    return { res, items };
+// What the `upload:ended` message and the Studio page poll carry for a key
+// (inner#1367, #1580).
+describe("the upload status read", () => {
+  /** How these uploads stand, as `userId` asks. */
+  async function statusOf(userId: string, keys: string[]): Promise<{ items: Record<string, unknown>[] }> {
+    return { items: (await uploadStatusService.statusOf(userId, keys)) as unknown as Record<string, unknown>[] };
   }
 
   it("answers an upload still being finished as finishing", async () => {
     const seed = await seedEditor();
     const key = await mintTicket(seed);
 
-    const { items } = await statusOf(seed.cookie, [key]);
+    const { items } = await statusOf(seed.userId, [key]);
 
     expect(items).toEqual([{ key, state: "finishing" }]);
   });
@@ -2899,7 +2948,7 @@ describe("the upload status query (inner#1367)", () => {
     const key = await mintTicket(seed);
     await report(completed(key, { width: 800, height: 600 }));
 
-    const { items } = await statusOf(seed.cookie, [key]);
+    const { items } = await statusOf(seed.userId, [key]);
 
     const asset = await sql<{ id: string; file_url: string }[]>`
       SELECT id, file_url FROM studio_assets WHERE storage_key = ${key}
@@ -2928,7 +2977,7 @@ describe("the upload status query (inner#1367)", () => {
       reason: "unsupported_type",
     });
 
-    const { items } = await statusOf(seed.cookie, [key]);
+    const { items } = await statusOf(seed.userId, [key]);
 
     expect(items).toEqual([{ key, state: "failed", reason: "unsupported_type" }]);
   });
@@ -2942,7 +2991,7 @@ describe("the upload status query (inner#1367)", () => {
       WHERE storage_key = ${key}
     `;
 
-    const { items } = await statusOf(seed.cookie, [key]);
+    const { items } = await statusOf(seed.userId, [key]);
 
     expect(items).toEqual([{ key, state: "failed", reason: "expired" }]);
     const grants = await sql<{ voided_at: Date | null }[]>`
@@ -2957,7 +3006,7 @@ describe("the upload status query (inner#1367)", () => {
     const key = await mintTicket(owner);
     const mine = await mintTicket(other);
 
-    const { items } = await statusOf(other.cookie, [key, "image/never/issued.png", mine]);
+    const { items } = await statusOf(other.userId, [key, "image/never/issued.png", mine]);
 
     expect(items).toEqual([
       { key, state: "unknown" },
@@ -2966,30 +3015,6 @@ describe("the upload status query (inner#1367)", () => {
     ]);
   });
 
-  it("tells the caller how long to wait before asking again", async () => {
-    const seed = await seedEditor();
-    const key = await mintTicket(seed);
-
-    const { res } = await statusOf(seed.cookie, [key]);
-
-    expect(res.headers.get("retry-after")).toBe(
-      String(getStorageConfig().upload.upload_status_poll_seconds),
-    );
-  });
-
-  it("refuses a request naming no upload, or more than one request may carry", async () => {
-    const seed = await seedEditor();
-
-    // 422 is what every route's request validation answers.
-    expect((await statusOf(seed.cookie, [])).res.status).toBe(422);
-    const many = Array.from({ length: UPLOAD_STATUS_MAX_KEYS + 1 }, (_, i) => `k/${i}`);
-    expect((await statusOf(seed.cookie, many)).res.status).toBe(422);
-  });
-
-  it("requires a signed-in caller", async () => {
-    const res = await app.request("/api/v1/assets/upload-status?key=a");
-    expect(res.status).toBe(401);
-  });
 });
 
 describe("Project association and upload terminal arbitration", () => {
@@ -3281,5 +3306,229 @@ describe("Project association and upload terminal arbitration", () => {
         expect(tasks).toEqual([{ status: consumed ? "done" : "failed" }]);
       },
     ), { numRuns: 12 });
+  });
+});
+
+// #1580 test spec area B: the page learns an upload ended from a message
+// published at the terminal exit, sent to the uploader alone and carrying the
+// same status the status read answers.
+describe("the upload's ending, told to its uploader (#1580)", () => {
+  type Ended = { type: string; userId: string; status: Record<string, unknown> };
+  let subscriber: ReturnType<ReturnType<typeof getStreamRedis>["duplicate"]>;
+  const heard: Ended[] = [];
+
+  beforeAll(async () => {
+    subscriber = getStreamRedis().duplicate();
+    subscriber.on("message", (_channel: string, message: string) => {
+      heard.push(JSON.parse(message) as Ended);
+    });
+    await subscriber.subscribe(uploadEndedChannelName());
+  });
+
+  afterAll(async () => {
+    await subscriber?.quit();
+  });
+
+  /** What was heard for this key, oldest first. */
+  function endingsOf(key: string): Ended[] {
+    return heard.filter((e) => e.status.key === key);
+  }
+
+  /** Wait until `count` endings for `key` were heard. */
+  async function heardFor(key: string, count = 1): Promise<Ended[]> {
+    await vi.waitFor(() => expect(endingsOf(key).length).toBeGreaterThanOrEqual(count));
+    return endingsOf(key);
+  }
+
+  it("B-01 tells the uploader a completed upload with its result, equal to the status read", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key));
+    const [ended] = await heardFor(key);
+    expect(ended!.type).toBe("upload:ended");
+    expect(ended!.userId).toBe(seed.userId);
+    expect(ended!.status).toMatchObject({ key, state: "completed" });
+    expect(Object.keys(ended!.status.result as object).sort()).toEqual(["assetId", "fileUrl", "height", "kind", "width"]);
+    const [read] = await uploadStatusService.statusOf(seed.userId, [key]);
+    expect(ended!.status).toEqual(read);
+  });
+
+  it("B-02 tells a failed assembly as failed with the grant's reason", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report({ storage_key: key, outcome: "aborted" });
+    const [ended] = await heardFor(key);
+    expect(ended!.status).toMatchObject({ key, state: "failed" });
+    expect(typeof ended!.status.reason).toBe("string");
+  });
+
+  it.each([
+    ["over_cap", { size_bytes: 3 * 1024 * 1024 * 1024 }],
+    ["empty", { size_bytes: 0 }],
+  ])("B-04 tells a refusal as failed with %s", async (reason, over) => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key, over));
+    const [ended] = await heardFor(key);
+    expect(ended!.status).toEqual({ key, state: "failed", reason });
+  });
+
+  it("B-06 tells it again when a registered upload is reported again", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    const body = completed(key);
+    await report(body);
+    await heardFor(key);
+    await report(body);
+    const endings = await heardFor(key, 2);
+    expect(endings[1]!.status).toEqual(endings[0]!.status);
+  });
+
+  it("B-11 tells no one but the uploader", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key));
+    const endings = await heardFor(key);
+    expect(endings.every((e) => e.userId === seed.userId)).toBe(true);
+  });
+
+  it("B-12 tells it only after the grant's ending is committed", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    let committedWhenHeard: boolean | null = null;
+    const onMessage = (_channel: string, message: string): void => {
+      const e = JSON.parse(message) as Ended;
+      if (e.status.key !== key || committedWhenHeard !== null) return;
+      void sql<{ consumed_at: Date | null }[]>`SELECT consumed_at FROM upload_grants WHERE storage_key = ${key}`.then(
+        (rows) => {
+          committedWhenHeard = rows[0]!.consumed_at !== null;
+        },
+      );
+    };
+    subscriber.on("message", onMessage);
+    try {
+      await report(completed(key));
+      await vi.waitFor(() => expect(committedWhenHeard).not.toBeNull());
+      expect(committedWhenHeard).toBe(true);
+    } finally {
+      subscriber.off("message", onMessage);
+    }
+  });
+
+  it("B-13 tells nothing for a dedup hit at the ticket, which answers the result itself", async () => {
+    const seed = await seedEditor();
+    const hash = crypto.randomBytes(32).toString("hex");
+    const first = await mintTicket(seed, { client_hash: hash });
+    await report(completed(first, { sha256: hash }));
+    await heardFor(first);
+    const before = heard.length;
+    const res = await app.request("/api/v1/assets/upload-ticket", {
+      method: "POST",
+      headers: { "content-type": "application/json", cookie: seed.cookie },
+      body: JSON.stringify({
+        filename: "shot.png", content_type: "image/png", project_id: seed.projectId,
+        space_id: seed.spaceId, size: 4096, client_hash: hash,
+      }),
+    });
+    const payload = (await res.json()) as { data: { kind?: string; fileUrl?: string } };
+    expect(payload.data.fileUrl).toEqual(expect.any(String));
+    const another = await seedEditor();
+    const sentinel = await mintTicket(another);
+    await report(completed(sentinel));
+    await heardFor(sentinel);
+    expect(heard.slice(before).filter((e) => e.userId === seed.userId)).toEqual([]);
+  });
+
+  it("B-14 tells the uploader of a canvas node upload too, alongside the node's counts event", async () => {
+    const seed = await seedEditor();
+    const nodeId = crypto.randomUUID();
+    const key = await mintTicket(seed, { node_id: nodeId });
+    await report(completed(key));
+    const [ended] = await heardFor(key);
+    expect(ended!.status).toMatchObject({ key, state: "completed" });
+    const events = (await eventsFor(`project-${seed.projectId}/canvas-${seed.spaceId}`)).filter((e) => e.nodeId === nodeId);
+    expect(events.length).toBeGreaterThan(0);
+  });
+});
+
+
+// #1580 test spec D-12 to D-15: a registered focus crop is handed to collab
+// with the address off the registered record; nothing else is.
+describe("a focus crop's registration, handed to collab (#1580)", () => {
+  /** Every focus-image event on the stream for `docName`, oldest first. */
+  async function focusEvents(docName: string): Promise<Record<string, unknown>[]> {
+    const raw = (await getStreamRedis().xrange(taskEventsStreamKey(), "-", "+")) as [string, string[]][];
+    return raw
+      .map(([, fields]) => {
+        const idx = fields.indexOf("payload");
+        return idx === -1 ? null : (JSON.parse(fields[idx + 1]!) as Record<string, unknown>);
+      })
+      .filter((e): e is Record<string, unknown> => e !== null && e.type === FOCUS_IMAGE_UPLOAD_EVENT_TYPE && e.docName === docName);
+  }
+
+  /** A focus-crop ticket on the seed's Space. */
+  async function cropTicket(seed: Awaited<ReturnType<typeof seedEditor>>, over: Record<string, unknown> = {}): Promise<{
+    key: string; focus: Record<string, unknown>;
+  }> {
+    const focus = { nodeId: crypto.randomUUID(), id: crypto.randomUUID(), name: "Source", width: 640, height: 480 };
+    const key = await mintTicket(seed, { derived: true, focusImage: focus, ...over });
+    return { key, focus };
+  }
+
+  it("D-12 hands a registered crop to collab with the registered address", async () => {
+    const seed = await seedEditor();
+    const { key, focus } = await cropTicket(seed);
+    await report(completed(key));
+    const events = await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    expect(events.map((e) => e.state)).toEqual(["uploading", "completed"]);
+    const [asset] = await sql<{ file_url: string }[]>`
+      SELECT a.file_url FROM upload_grants g JOIN studio_assets a ON a.id = g.asset_id WHERE g.storage_key = ${key}
+    `;
+    expect(events[0]).toMatchObject({
+      nodeId: focus.nodeId,
+      image: { id: focus.id, name: focus.name, width: focus.width, height: focus.height },
+    });
+    expect(events[1]).toMatchObject({
+      nodeId: focus.nodeId,
+      image: { id: focus.id, name: focus.name, width: focus.width, height: focus.height, url: asset!.file_url },
+    });
+  });
+
+  it("D-13 uses the address of the row a duplicate landed on", async () => {
+    const seed = await seedEditor();
+    const sha = crypto.randomBytes(32).toString("hex");
+    const first = await mintTicket(seed);
+    await report(completed(first, { sha256: sha }));
+    const { key } = await cropTicket(seed);
+    await report(completed(key, { sha256: sha }));
+    const [winner] = await sql<{ file_url: string }[]>`
+      SELECT a.file_url FROM upload_grants g JOIN studio_assets a ON a.id = g.asset_id WHERE g.storage_key = ${first}
+    `;
+    const events = await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    expect(events.at(-1)).toMatchObject({ image: { url: winner!.file_url } });
+  });
+
+  it("D-14 ends a voided crop's upload in its node as failed", async () => {
+    const seed = await seedEditor();
+    const { key, focus } = await cropTicket(seed);
+    await report({ storage_key: key, outcome: "aborted" });
+    const events = await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    expect(events.map((e) => e.state)).toEqual(["uploading", "failed"]);
+    expect(events[1]).toMatchObject({ nodeId: focus.nodeId, id: focus.id });
+  });
+
+  it("ends as failed a crop whose bytes registered as something other than a picture", async () => {
+    const seed = await seedEditor();
+    const { key, focus } = await cropTicket(seed);
+    await report(completed(key, { content_type: "video/mp4" }));
+    const events = await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId));
+    expect(events.at(-1)).toMatchObject({ state: "failed", nodeId: focus.nodeId, id: focus.id });
+  });
+
+  it("D-15 hands nothing to collab for an upload that is not a focus crop", async () => {
+    const seed = await seedEditor();
+    const key = await mintTicket(seed);
+    await report(completed(key));
+    expect(await focusEvents(canvasSpaceDocName(seed.projectId, seed.spaceId))).toEqual([]);
   });
 });

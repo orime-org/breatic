@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { generateText, streamText } from "ai";
 import fc from "fast-check";
@@ -8,6 +8,7 @@ import type { Cost } from "../../cost.js";
 import { costsOf } from "../../errors.js";
 import type { Reply } from "../../media/__tests__/fake-upstream.js";
 import { CHAT_REPLY, llmProvider, startFakes, stopFakes, type LlmFakes } from "./llm-harness.js";
+import { accountKeys } from "../../__tests__/keys-harness.js";
 
 // Property (critical path): whatever each upstream answers on each attempt of a
 // prepared call, and however the call ends, every answer an upstream billed reaches the caller
@@ -85,6 +86,10 @@ const streamAnswers = (n: number, tracks: boolean): Record<string, Scripted> => 
     silentThenCut: { reply: { status: 200, raw: KEEPALIVE, contentType: SSE, cut: true }, billed: "unnamed" },
     silentHeld: { reply: { status: 200, raw: KEEPALIVE, contentType: SSE, hold: true }, billed: "unnamed", holds: true },
     namedHeld: { reply: { status: 200, raw: chunk(id, ""), contentType: SSE, hold: true }, billed: named({ id }), holds: true },
+    // The key's own refusals, which end a call on the payer's key as that key's failure (inner#1953).
+    balanceFirst: { reply: { status: 200, raw: event({ id, object: "chat.completion.chunk", error: { code: 402, message: "Insufficient credits" } }), contentType: SSE }, billed: named({ id }) },
+    noBalance: { reply: { status: 402, body: { error: { code: 402, message: "Insufficient credits" } } }, billed: null },
+    badKey: { reply: { status: 401, body: { error: { code: 401, message: "User not found." } } }, billed: null },
     busy: { reply: { status: 503, body: { error: { code: 503, message: "busy" } } }, billed: null },
     limited: { reply: { status: 429, body: { error: { code: 429, message: "slow down" } } }, billed: null },
     refused: { reply: { status: 400, body: { error: { code: 400, message: "bad" } } }, billed: null },
@@ -107,6 +112,10 @@ const wholeAnswers = (n: number, tracks: boolean): Record<string, Scripted> => {
     errorInBody: { reply: { status: 200, body: { id, error: { code: 502, message: "Provider returned error" } } }, billed: named({ id }) },
     cutBody: { reply: { status: 200, raw: `{"id":"${id}","choices":[{"message":{"content":"o`, contentType: "application/json", cut: true }, billed: "unnamed" },
     heldBody: { reply: { status: 200, raw: `{"id":"${id}",   `, contentType: "application/json", hold: true }, billed: "unnamed", holds: true },
+    // The key's own refusals, which end a call on the payer's key as that key's failure (inner#1953).
+    balanceInBody: { reply: { status: 200, body: { id, error: { code: 402, message: "Insufficient credits" } } }, billed: named({ id }) },
+    noBalance: { reply: { status: 402, body: { error: { code: 402, message: "Insufficient credits" } } }, billed: null },
+    badKey: { reply: { status: 401, body: { error: { code: 401, message: "User not found." } } }, billed: null },
     busy: { reply: { status: 503, body: { error: { code: 503, message: "busy" } } }, billed: null },
     limited: { reply: { status: 429, body: { error: { code: 429, message: "slow down" } } }, billed: null },
     refused: { reply: { status: 400, body: { error: { code: 400, message: "bad" } } }, billed: null },
@@ -187,12 +196,14 @@ describe("prepare: every billed answer reaches the caller once (critical path)",
         fc.array(fc.constantFrom(...STREAM_NAMES), { minLength: 1, maxLength: 5 }),
         fc.boolean(),
         fc.nat(2),
-        async (routeName, script, stopAtText, maxRetries) => {
+        fc.boolean(),
+        async (routeName, script, stopAtText, maxRetries, onAccount) => {
           const route = ROUTES[routeName];
           const stop = new AbortController();
           const billed = scriptFakes(script, streamAnswers, stop);
           const provider = llmProvider(fakes, route.keys, { llmMaxRetries: maxRetries });
-          const prepared = provider.llm.prepare(route.model, { thinking: true, cache: false });
+          // On the payer's own OpenRouter key (inner#1953) the call is held to that upstream and its failures are the key's.
+          const prepared = provider.llm.prepare(route.model, { thinking: true, cache: false }, undefined, onAccount ? accountKeys({ openrouter: "acct-or" }) : undefined);
           const ends: Cost[] = [];
           const stream = streamText({
             model: prepared.model,
@@ -213,7 +224,9 @@ describe("prepare: every billed answer reaches the caller once (critical path)",
           }
           fakes.openrouter.release();
           fakes.deepseek.release();
-          expect(tally([...ends, ...prepared.pendingCosts(), ...costsOf(thrown)])).toEqual(expected(billed));
+          const reached = [...ends, ...prepared.pendingCosts(), ...costsOf(thrown)];
+          expect(tally(reached)).toEqual(expected(billed));
+          if (onAccount) expect(reached.map((cost) => cost.payer)).toEqual(reached.map(() => "account"));
         },
       ),
       { numRuns: 80 },
@@ -226,12 +239,13 @@ describe("prepare: every billed answer reaches the caller once (critical path)",
         fc.constantFrom<keyof typeof ROUTES>("openrouter", "direct"),
         fc.array(fc.constantFrom(...WHOLE_NAMES), { minLength: 1, maxLength: 5 }),
         fc.nat(2),
-        async (routeName, script, maxRetries) => {
+        fc.boolean(),
+        async (routeName, script, maxRetries, onAccount) => {
           const route = ROUTES[routeName];
           const stop = new AbortController();
           const billed = scriptFakes(script, wholeAnswers, stop);
           const provider = llmProvider(fakes, route.keys, { llmMaxRetries: maxRetries });
-          const prepared = provider.llm.prepare(route.model, { thinking: true, cache: false });
+          const prepared = provider.llm.prepare(route.model, { thinking: true, cache: false }, undefined, onAccount ? accountKeys({ openrouter: "acct-or" }) : undefined);
           const ends: Cost[] = [];
           let thrown: unknown;
           try {
@@ -242,7 +256,9 @@ describe("prepare: every billed answer reaches the caller once (critical path)",
           }
           fakes.openrouter.release();
           fakes.deepseek.release();
-          expect(tally([...ends, ...prepared.pendingCosts(), ...costsOf(thrown)])).toEqual(expected(billed));
+          const reached = [...ends, ...prepared.pendingCosts(), ...costsOf(thrown)];
+          expect(tally(reached)).toEqual(expected(billed));
+          if (onAccount) expect(reached.map((cost) => cost.payer)).toEqual(reached.map(() => "account"));
         },
       ),
       { numRuns: 80 },

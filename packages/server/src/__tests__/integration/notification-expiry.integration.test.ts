@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Notification studio types + expiry filter (slice 3) — the `notifications`
@@ -29,7 +29,7 @@ vi.mock("ai", () => ({
 
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 
 try {
   initCore(process.env);

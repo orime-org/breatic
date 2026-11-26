@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * How many tasks one person may run at once (inner#1968, test spec area G:
@@ -38,7 +38,7 @@
  */
 
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
-import { afterAll, beforeAll, describe, expect, inject, it, vi } from "vitest";
+import { afterAll, beforeAll, describe, expect, inject, it } from "vitest";
 import crypto from "node:crypto";
 import { mkdtempSync, readFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -46,9 +46,9 @@ import { join } from "node:path";
 import fc from "fast-check";
 import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
-import { canvasSpaceDocName, spaceTasksChangedChannel } from "@breatic/shared";
-import { createQueue, type TimelineExecutionJobData, env, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey, timelineExecutionRepo } from "@breatic/core";
-import { miniToolExecutionService, nodeTaskService, runningSlotService, sceneTaskService, taskService } from "@breatic/domain";
+import { canvasSpaceDocName, threeDSpaceDocName, timelineSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
+import { createQueue, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
+import { miniToolExecutionService, nodeTaskService, runningSlotService, sceneTaskService, taskService, type TimelineExecutionJobData, timelineExecutionRepo } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
 import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
@@ -56,6 +56,7 @@ import { taskDeadline } from "@worker/handlers/task-deadline.js";
 import { sweepSlotWaiters } from "@worker/handlers/slot-wait-sweep.js";
 import { sweepTimelineExecutions } from "@worker/handlers/timeline/timeline-sweep.js";
 import { runTimelineExecution } from "@worker/handlers/timeline/web-animation-execution.js";
+import { listenSpaceTaskSignals, spaceTasksVersion } from "@server/__tests__/integration/helpers/space-task-signals.js";
 
 let sql: ReturnType<typeof postgres>;
 
@@ -316,9 +317,10 @@ async function holdings(taskId: string): Promise<{ credit: { status: string; exp
  * @param p - Whose.
  * @param state - Where it starts.
  * @param deadlineAt - Its deadline; two hours on by default.
+ * @param origin - Which Space type it belongs to, whose document its changes are told to; Motion by default.
  * @returns Its id.
  */
-async function execution(p: Person, state: "awaiting_landing" | "queued" | "running" | "cancelling", deadlineAt = new Date(Date.now() + 2 * 3_600_000)): Promise<string> {
+async function execution(p: Person, state: "awaiting_landing" | "queued" | "running" | "cancelling", deadlineAt = new Date(Date.now() + 2 * 3_600_000), origin: "web_animation_space" | "timeline" = "web_animation_space"): Promise<string> {
   const row = await timelineExecutionRepo.insert({
     projectId: p.projectId,
     spaceId: p.spaceId,
@@ -329,13 +331,15 @@ async function execution(p: Person, state: "awaiting_landing" | "queued" | "runn
     input: { prompt: "A red square slides in", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: { num: 24, den: 1 } },
     inputHash: `sha256:${crypto.randomUUID()}`,
     deadlineAt,
+    origin,
   });
   if (row === null) throw new Error("fixture execution conflicted");
   const step = async (event: Parameters<typeof timelineExecutionRepo.transition>[0]["event"]): Promise<void> => {
     const result = await timelineExecutionRepo.transition({ id: row.id, event });
     if (!result.applied) throw new Error(`fixture step ${event.type} refused`);
   };
-  if (state !== "awaiting_landing") await step({ type: "land", inputHash: row.inputHash });
+  // Only rows written before #1490 are awaiting landing; nothing writes that state now.
+  if (state === "awaiting_landing") await sql`update timeline_executions set status = 'awaiting_landing' where id = ${row.id}`;
   if (state === "running" || state === "cancelling") await step({ type: "claim" });
   if (state === "cancelling") await step({ type: "cancel" });
   return row.id;
@@ -869,6 +873,21 @@ describe("G F8 a waiting Timeline execution has no deadline until it starts", ()
     for (const id of [recent, stale]) expect((await executionRow(id)).status).toBe("queued");
   });
 
+  it("G-43b an export waits behind the gate like a create: its pickup holds the row back as queued (#1490)", async () => {
+    const p = await person();
+    await running(p, 2);
+    const id = await execution(p, "queued");
+    await sql`update timeline_executions set kind = 'web_animation_export', engine = null,
+      input = ${sql.json({ kind: "web_animation_export", sourceVersionId: crypto.randomUUID(), width: 1080, height: 1920, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: "x.mp4" })}
+      where id = ${id}`;
+    const job = { data: { executionId: id } } as unknown as Job<TimelineExecutionJobData>;
+    const thrown = await runTimelineExecution(job).then(() => null, (err: unknown) => err);
+    expect((thrown as Error | null)?.name).toBe("StillRunning");
+    const row = await executionRow(id);
+    expect(row.status).toBe("queued");
+    expect(row.slot_wait_since).not.toBeNull();
+  });
+
   it("G-44 a waiter that starts gets a fresh deadline of start + budget, and later deadline checks use it", async () => {
     const p = await person();
     await running(p, 2);
@@ -1173,24 +1192,51 @@ describe("G the node's counts event says how many wait", () => {
   });
 });
 
-describe("G a 3D Space's waiting row tells the Space's list", () => {
-  it("first waiting and starting each signal the Space's tasks changed", async () => {
+describe("G a 3D Space's waiting row and a waiting Motion or Timeline execution tell their Space's document (#1580)", () => {
+  it("first waiting and starting each tell the 3D Space's document, and the old channel nothing", async () => {
     const p = await person();
     await running(p, 2);
     const t = await seedTask(p, { scene: true });
-    const channel = spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, p.projectId);
-    const publish = vi.spyOn(getStreamRedis(), "publish");
+    const docName = threeDSpaceDocName(p.projectId, p.spaceId);
+    const version = spaceTasksVersion(docName);
+    const spaceSignals = await listenSpaceTaskSignals();
     try {
-      const signals = (): number => publish.mock.calls.filter(([published]) => published === channel).length;
+      await spaceSignals.mark();
+      const told = () => spaceSignals.read({ projectId: p.projectId, spaceId: p.spaceId, docName });
       expect(await pick(t.taskId)).toMatchObject({ waiting: true });
-      expect(signals()).toBe(1);
+      expect(await told()).toEqual({ doc: [version], meta: [] });
       expect(await pick(t.taskId)).toMatchObject({ waiting: true });
-      expect(signals()).toBe(1);
+      expect(await told()).toEqual({ doc: [version], meta: [] });
       await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
       expect(await pick(t.taskId)).toEqual({ started: true });
-      expect(signals()).toBe(2);
+      expect(await told()).toEqual({ doc: [version, version], meta: [] });
     } finally {
-      publish.mockRestore();
+      await spaceSignals.stop();
+    }
+  });
+
+  it.each([
+    ["Motion", "web_animation_space", webAnimationSpaceDocName],
+    ["Timeline", "timeline", timelineSpaceDocName],
+  ] as const)("first waiting and starting each tell the %s Space's document, and the old channel nothing", async (_name, origin, docNameOf) => {
+    const p = await person();
+    await running(p, 2);
+    const id = await execution(p, "queued", undefined, origin);
+    const docName = docNameOf(p.projectId, p.spaceId);
+    const version = spaceTasksVersion(docName);
+    const spaceSignals = await listenSpaceTaskSignals();
+    try {
+      await spaceSignals.mark();
+      const told = () => spaceSignals.read({ projectId: p.projectId, spaceId: p.spaceId, docName });
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      expect(await pick(id, "timeline_executions")).toMatchObject({ waiting: true });
+      expect(await told()).toEqual({ doc: [version], meta: [] });
+      await sql`update tasks set status = 'completed', completed_at = now() where user_id = ${p.userId} and status = 'running'`;
+      expect(await pick(id, "timeline_executions")).toEqual({ started: true });
+      expect(await told()).toEqual({ doc: [version, version], meta: [] });
+    } finally {
+      await spaceSignals.stop();
     }
   });
 });

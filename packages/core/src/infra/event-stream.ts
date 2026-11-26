@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Redis Streams publisher for the task event bus.
@@ -20,7 +20,7 @@
  */
 
 import type Redis from "ioredis";
-import type { DocumentUploadEvent, NodeEvent } from "@breatic/shared";
+import type { DocumentUploadEvent, FocusImageUploadEvent, NodeEvent } from "@breatic/shared";
 import { env } from "@core/config/env.js";
 
 /** Approximate length cap of every stream we write, dead-letter streams included. */
@@ -82,6 +82,24 @@ export async function publishToStream(
 export async function publishDocumentUploadEvent(
   redis: Redis,
   event: DocumentUploadEvent,
+): Promise<void> {
+  await publishToStream(
+    redis,
+    taskEventsStreamKey(),
+    event as unknown as Record<string, unknown>,
+  );
+}
+
+/**
+ * Publish a step of a focus crop's upload for collab to write into its node (#1580).
+ * @param redis - Redis client for the stream DB.
+ * @param event - The step.
+ * @returns Nothing.
+ * @throws {Error} When the stream rejects the entry.
+ */
+export async function publishFocusImageUploadEvent(
+  redis: Redis,
+  event: FocusImageUploadEvent,
 ): Promise<void> {
   await publishToStream(
     redis,

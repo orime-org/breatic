@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Upload-grant repository (#1826, design §2.2 / §3.2) — the anti-spoof
@@ -21,7 +21,8 @@
 
 import { and, eq, gt, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 import { db, uploadGrants, type DbTx } from "@breatic/core";
-import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
+import { focusImageTicketSchema, type ConsentSnapshot, type FocusImageTicket, type StudioAssetEntity } from "@breatic/shared";
+import { z } from "zod";
 
 /**
  * What a grant says its upload is: an asset source, or `"transfer"` for a
@@ -29,6 +30,14 @@ import type { ConsentSnapshot, StudioAssetEntity } from "@breatic/shared";
  * asset row.
  */
 export type GrantAssetSource = StudioAssetEntity["source"] | "transfer";
+
+/** The 3D object part a picture upload is for (inner#1693 design 6.3). */
+export interface SceneLookTarget {
+  objectId: string;
+  part: string;
+  /** The part's `map` when the upload started, or null for none. */
+  startMap: string | null;
+}
 
 /**
  * A row of the upload-grant ledger.
@@ -63,6 +72,8 @@ export interface UploadGrant {
   nodeId: string | null;
   /** The Document body block these bytes land in, by its `uploadId`. */
   documentUploadId: string | null;
+  /** The focus image these bytes become, in the pool of the node it names (#1580). */
+  focusImage: GrantFocusImage | null;
   projectId: string | null;
   spaceId: string | null;
   source: string | null;
@@ -77,6 +88,8 @@ export interface UploadGrant {
   assetSource: GrantAssetSource | null;
   /** The generation whose output these bytes are, when they are one. */
   generationTaskId: string | null;
+  /** The 3D object part a picture upload is for, and the picture it held at the start (inner#1693). */
+  sceneLook: SceneLookTarget | null;
   /** The uploading browser's analytics consent when the ticket was issued (inner#1442 §4.4.5). */
   analyticsConsent: ConsentSnapshot | null;
   createdAt: Date;
@@ -94,6 +107,22 @@ export async function scanConsumedMediaGrants(cursor: string | null, limit: numb
     isNotNull(uploadGrants.consumedAt), cursor === null ? undefined : gt(uploadGrants.id, cursor),
   )).orderBy(uploadGrants.id).limit(limit);
   return rows.map(toEntity);
+}
+
+/** A focus crop's target as its grant records it: the canvas Space, and what the ticket named. */
+export type GrantFocusImage = FocusImageTicket & { spaceId: string };
+
+const grantFocusImageSchema = focusImageTicketSchema.extend({ spaceId: z.string().uuid() });
+
+/**
+ * Read the stored focus image; only our ticket writes it, so anything else reads as none.
+ * @param raw - The column value.
+ * @returns The target, or null.
+ */
+function readFocusImage(raw: unknown): GrantFocusImage | null {
+  if (raw === null) return null;
+  const parsed = grantFocusImageSchema.safeParse(raw);
+  return parsed.success ? parsed.data : null;
 }
 
 /**
@@ -115,6 +144,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     expiresAt: row.expiresAt,
     nodeId: row.nodeId,
     documentUploadId: row.documentUploadId,
+    focusImage: readFocusImage(row.focusImage),
     projectId: row.projectId,
     spaceId: row.spaceId,
     source: row.source,
@@ -125,6 +155,9 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
     // this column, and it writes what `register` accepts.
     assetSource: row.assetSource as GrantAssetSource | null,
     generationTaskId: row.generationTaskId,
+    sceneLook: row.sceneObjectId !== null && row.scenePart !== null
+      ? { objectId: row.sceneObjectId, part: row.scenePart, startMap: row.sceneStartMap }
+      : null,
     analyticsConsent: row.analyticsConsent,
     createdAt: row.createdAt,
   };
@@ -143,6 +176,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  * @param input.context - Where these bytes are going and what started them.
  * @param input.context.nodeId - Node the bytes land on, when there is one.
  * @param input.context.documentUploadId - The Document body block the bytes land in, when there is one.
+ * @param input.context.focusImage - The focus image the bytes become, when they are a focus crop.
  * @param input.context.projectId - Project that node belongs to.
  * @param input.context.spaceId - The Space holding that node, or the Document holding the block `documentUploadId` names.
  * @param input.context.source - What started this upload.
@@ -153,6 +187,7 @@ function toEntity(row: typeof uploadGrants.$inferSelect): UploadGrant {
  *   not an ordinary upload.
  * @param input.context.generationTaskId - The generation that produced these
  *   bytes, when one did.
+ * @param input.context.sceneLook - The 3D object part a picture upload is for.
  * @param input.analyticsConsent - The uploading browser's analytics consent;
  *   absent reads as no consent.
  * @param tx - Optional enclosing upload admission transaction.
@@ -168,6 +203,7 @@ export async function issueGrant(input: {
   context: {
     nodeId?: string | null;
     documentUploadId?: string | null;
+    focusImage?: GrantFocusImage | null;
     projectId?: string | null;
     spaceId?: string | null;
     source?: string | null;
@@ -176,6 +212,7 @@ export async function issueGrant(input: {
     filename?: string | null;
     assetSource?: GrantAssetSource | null;
     generationTaskId?: string | null;
+    sceneLook?: SceneLookTarget | null;
   };
   analyticsConsent?: ConsentSnapshot;
 }, tx?: DbTx): Promise<UploadGrant> {
@@ -189,6 +226,7 @@ export async function issueGrant(input: {
       expiresAt: input.expiresAt,
       nodeId: input.context.nodeId ?? null,
       documentUploadId: input.context.documentUploadId ?? null,
+      focusImage: input.context.focusImage ?? null,
       projectId: input.context.projectId ?? null,
       spaceId: input.context.spaceId ?? null,
       source: input.context.source ?? null,
@@ -197,6 +235,9 @@ export async function issueGrant(input: {
       filename: input.context.filename ?? null,
       assetSource: input.context.assetSource ?? null,
       generationTaskId: input.context.generationTaskId ?? null,
+      sceneObjectId: input.context.sceneLook?.objectId ?? null,
+      scenePart: input.context.sceneLook?.part ?? null,
+      sceneStartMap: input.context.sceneLook?.startMap ?? null,
       analyticsConsent: input.analyticsConsent ?? null,
     })
     .returning();

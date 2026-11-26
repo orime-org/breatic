@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Credit admission shared by every route that starts paid work (#1580 #7,
@@ -21,7 +21,7 @@
  */
 
 import { AppError, env, getNodeTaskConfig, type DbTx } from "@breatic/core";
-import { creditHoldService, creditLotService } from "@breatic/domain";
+import { creditHoldService, creditLotService, SMALLEST_CREDIT } from "@breatic/domain";
 import { SpendCapReachedError } from "@breatic/core";
 import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
 
@@ -123,6 +123,27 @@ export class HoldRefused extends Error {
 }
 
 /**
+ * Admit an Agent turn on a balance above zero (#296), on the payer's own OpenRouter key too (inner#1953): the key pays
+ * for the model, while web search, image search and page reading run on our services and are charged in credits, so a
+ * turn that could not pay for them is refused before it starts. The refusal then says why the own key is not enough.
+ * @param projectId - The turn's project.
+ * @param userId - The authenticated caller.
+ * @param keyOwner - The account whose own key runs the turn's model; undefined on our keys.
+ * @throws {SpendCapReachedError} 402 when the caller or the studio has spent its monthly limit.
+ * @throws {AppError} 402 when the balance is not above zero.
+ */
+export async function precheckAgentTurn(projectId: string, userId: string, keyOwner: string | undefined): Promise<void> {
+  try {
+    await precheckCredits(projectId, userId, SMALLEST_CREDIT);
+  } catch (err) {
+    // A spend limit says its own sentence; only a balance refusal is about the paid tools.
+    if (keyOwner === undefined || err instanceof SpendCapReachedError || !(err instanceof AppError) || err.statusCode !== 402) throw err;
+    const whose = keyOwner === userId ? "self" : "admin";
+    throw new AppError(402, t("server.credit.agent_tools_need_credits", { refusal: err.message, whose }), err.reason);
+  }
+}
+
+/**
  * Hold a run's estimate, inside `tx` when given. The hold lasts the task budget, the longest a run may go on (two hours,
  * `default_budget_ms`), so a run still working is still counted. The estimate is settled to whole hundredths once, here,
  * so the hold and the refusal's choice of cause read the same figure (inner#1666).
@@ -136,7 +157,7 @@ export class HoldRefused extends Error {
  * @throws {RangeError} When the estimate is negative or not a number.
  */
 async function holdForRun(projectId: string, userId: string, referenceId: string, required: number, tx?: DbTx): Promise<void> {
-  if (!env.PAYMENT_ENABLED) return;
+  if (!env.CHARGING_ENABLED) return;
   const charge = ceilToCreditCent(required);
   const outcome = await creditHoldService.reserveCredits({
     projectId,

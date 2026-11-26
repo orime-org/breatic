@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Product guide tool — how the user operates our product (#260).
@@ -24,6 +24,8 @@ import {
   AGENT_INSTRUCTIONS_MAX_CHARS,
   CHAT_MESSAGE_MAX_CHARS,
   MAX_SPACES_PER_PROJECT,
+  SCENE_LOOK_MAX_PARTS,
+  SCENE_POSE_MAX_KEYS,
   canConnect,
   canGenerate,
   t,
@@ -80,8 +82,10 @@ const INDEX: readonly { group: string; sections: readonly (readonly [name: strin
       ["Document snapshots", "saving, previewing, comparing, restoring, renaming and deleting snapshots of a document"],
     ],
   },
-  { group: "Timeline", sections: [["Timeline spaces", "adding videos and web animations to a timeline and arranging them"]] },
-  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard, and the director console's cameras, lights and ambient light in a 3D space"]] },
+  { group: "Timeline", sections: [["Timeline spaces", "adding videos and copies of web animations made in Motion to a timeline and arranging them"]] },
+  { group: "Motion", sections: [["Motion spaces", "making, modifying and exporting web animations, annotating them and putting their videos on a canvas"]] },
+  { group: "3D", sections: [["3D spaces", "importing and generating models and their proposal card, objects, transforms, locks, the view and the viewfinder that sends a still to the Agent, a Canvas or the clipboard, and the director console's cameras, lights and ambient light in a 3D space"],
+    ["3D appearance", "changing each part of a 3D object: colour, finish presets, gloss, metallic, opacity, transmission, glow, images and their tiling, and resetting"]] },
 ];
 
 /** Every section name the index lists. */
@@ -396,10 +400,12 @@ export function renderProductGuide(): string {
       "already in view.",
     "To the right of the tabs, past a thin divider, are three icon buttons. The first, a plus sign, opens " +
       `${quoted(t("spaces.create.title"))}: pick the ${quoted(t("spaces.kind.canvas"))}, ${quoted(t("spaces.kind.document"))}, ` +
-      `${quoted(t("spaces.kind.threeD"))} or ${quoted(t("spaces.kind.timeline"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
-      `The four cards show an icon and name in one row. Hovering them shows ${quoted(t("spaces.kind.canvasSub"))}, ` +
-      `${quoted(t("spaces.kind.documentSub"))}, ${quoted(t("spaces.kind.threeDSub"))} and ${quoted(t("spaces.kind.timelineSub"))}, respectively. ` +
-      `The ${quoted(t("spaces.kind.threeD"))} and ${quoted(t("spaces.kind.timeline"))} cards have a ${quoted(t("spaces.kind.developmentBadge"))} badge at their top right to mark them as in development. ` +
+      `${quoted(t("spaces.kind.threeD"))}, ${quoted(t("spaces.kind.timeline"))} or ${quoted(t("spaces.kind.webAnimation"))} card (${quoted(t("spaces.kind.canvas"))} is selected when it opens). ` +
+      "The five cards show an icon and name in one row that starts at the left and scrolls sideways: a faded edge with an arrow button shows on a side that has more cards, " +
+      "and the mouse wheel scrolls the row. " +
+      `Hovering them shows ${quoted(t("spaces.kind.canvasSub"))}, ` +
+      `${quoted(t("spaces.kind.documentSub"))}, ${quoted(t("spaces.kind.threeDSub"))}, ${quoted(t("spaces.kind.timelineSub"))} and ${quoted(t("spaces.kind.webAnimationSub"))}, respectively. ` +
+      `The ${quoted(t("spaces.kind.threeD"))}, ${quoted(t("spaces.kind.timeline"))} and ${quoted(t("spaces.kind.webAnimation"))} cards have a ${quoted(t("spaces.kind.developmentBadge"))} badge at their top right to mark them as in development. ` +
       `Type a name under ${quoted(t("spaces.create.nameLabel"))} ` +
       "(a counter shows how many characters are left) and press " +
       `${quoted(t("spaces.create.submit"))}, which stays greyed until there is a name, or ` +
@@ -522,7 +528,7 @@ export function renderProductGuide(): string {
       "document's text, or a canvas's nodes and the links between them -- and hovering it shows " +
       `${quoted(t("chat.composer.spaceContextOn"))}. Off, the Agent is not told which Space is open or what is ` +
       "in it; the chip has a dashed border and grey words, and hovering it shows " +
-      `${quoted(t("chat.composer.spaceContextOff"))}. A timeline's content cannot be read: with a timeline ` +
+      `${quoted(t("chat.composer.spaceContextOff"))}. A Timeline's, a Motion Space's or a 3D Space's content cannot be read: with one ` +
       "open and the chip on, the Agent is told it is open but not what is in it, and hovering shows " +
       `${quoted(t("chat.composer.spaceContextOnUnreadable"))}; off, hovering shows ` +
       `${quoted(t("chat.composer.spaceContextOffUnreadable"))}. On or off, every message tells the Agent the ` +
@@ -603,7 +609,7 @@ export function renderProductGuide(): string {
       "right. Allowing reads those Spaces, including ones not open in a tab, and the assistant goes on with what " +
       "they hold; nothing is read until it is pressed, every time. While it reads and sends, neither button can be " +
       `pressed. The card then reads ${quoted(t("chat.spaceRequest.shared"))} and lists the Spaces, marking each ` +
-      `one that could not be read: ${quoted(t("chat.spaceRequest.state.unreadable"))} (a Timeline or 3D Space), ` +
+      `one that could not be read: ${quoted(t("chat.spaceRequest.state.unreadable"))} (a Timeline, Motion or 3D Space), ` +
       `${quoted(t("chat.spaceRequest.state.gone"))}, ${quoted(t("chat.spaceRequest.state.timedOut"))} or ` +
       `${quoted(t("chat.spaceRequest.state.failed"))}. Declining reads ` +
       `${quoted(t("chat.spaceRequest.declined"))}. Typing a message in the box instead also closes the card, ` +
@@ -781,6 +787,9 @@ export function renderProductGuide(): string {
       "greyed while the source holds nothing. If it cannot begin it says " +
       `${quoted(t("canvas.transcribe.couldNotStart"))} If the source is deleted as it starts, ` +
       `${quoted(t("canvas.transcribe.sourceGone"))}`,
+    `- On a video put on the canvas from a Motion Space, ${quoted(t("canvas.nodeMenu.openSourceAnimation"))}, after those: it opens that Motion Space with the web animation ` +
+      "the video was exported from selected. It is not offered once the node shows another video (regenerated, uploaded over or replaced). " +
+      `When that Space is gone it says ${quoted(t("spaces.webAnimation.sourceSpaceGone"))} When the animation cannot be found there it says ${quoted(t("spaces.webAnimation.notFound"))}`,
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.tools"))}, described under Mini-tools, ` +
       "greyed while the node holds nothing.",
     `- ${quoted(t("canvas.contextMenu.copy"))} (Cmd/Ctrl+C) and ${quoted(t("canvas.contextMenu.duplicate"))} ` +
@@ -909,7 +918,12 @@ export function renderProductGuide(): string {
       "then left out of what generation gets, and hovering it says it is sent once that node holds a picture; " +
       "once a picture is put in the node, the paragraph is sent again. A template may also place " +
       "picture, video or sound nodes to the left that generate first, connected and @'d; a note at the top of the prompt " +
-      "says to generate them first. A picture or sound such a template generates for one of the model's slots, such as " +
+      "says to generate them first. A template may also place a text node to the left holding words already " +
+      "written, such as a script, with ✏️ marks where the user fills something in; the user edits those words in " +
+      "the node itself. It is connected and @'d in each prompt that uses it, and its words go to the model with " +
+      "that prompt; one connected to a song model's lyrics box is @'d there instead, its words being the lyrics. " +
+      "Applying the template again where that text node is already connected leaves its words as they are. " +
+      "A picture or sound such a template generates for one of the model's slots, such as " +
       "the first or end frame, the character or the audio the face speaks, is connected but not @'d, and its note says " +
       "to pick it into that slot once it has generated. A template that needs a " +
       "video, picture or sound in one of the model's slots places an empty node for it, connected but not @'d, " +
@@ -1020,7 +1034,26 @@ export function renderProductGuide(): string {
       "estimate, a star with a number that may read ≥ or ≤ a number, or so much per 1K characters, and is missing " +
       "when no estimate is available; and the round button with an upward arrow. On the picture panel a model " +
       `with no settings shows the pill as ${quoted(t("canvas.generatePanel.imageParams"))}; on the video and ` +
-      "sound panels such a model shows no pill.",
+      "sound panels such a model shows no pill. When the studio runs the model on a key its payer brought, the " +
+      `estimate shows a key mark with ${quoted(t("canvas.generatePanel.ownKeyLabel"))} for the payer and ` +
+      `${quoted(t("canvas.generatePanel.studioKeyLabel"))} for everyone else, and the run takes no credits; hovering it ` +
+      `reads ${quoted(t("canvas.generatePanel.usesOwnKey"))} or ${quoted(t("canvas.generatePanel.usesStudioKey"))}. A run that ` +
+      "first describes its elements on a language model (Kling O3 with elements) pays for that description in credits " +
+      `unless the payer also brought an OpenRouter key; the line then follows the key's name with a plus and the credits ` +
+      `star before ${quoted(t("canvas.generatePanel.alsoCredits"))}, and hovering it reads ` +
+      `${quoted(t("canvas.generatePanel.usesOwnKeyDescribing"))} or ${quoted(t("canvas.generatePanel.usesStudioKeyDescribing"))}.`,
+    `Bringing your own keys: where the deployment has it on, ${quoted(t("byok.heading"))} in the account menu on the studio pages opens a ` +
+      "dialog where an account adds its own keys for upstreams (one OpenRouter key runs every language model; " +
+      "keys for other upstreams run picture, video, sound and 3D models) and picks, model by model, which upstream " +
+      "with a key runs it. A studio's runs use the keys of whoever pays for it: the owner's own on a personal " +
+      "studio, the Studio Admin's on a team studio. A run on such a key takes no credits for its model calls, but an " +
+      "Agent message or a web animation run still needs credits above zero, since web search, image search and page " +
+      "reading, and a web animation's rendering, are paid in credits; with none the message or run is turned away " +
+      "and says so. When the key fails, the run fails and its task or the Agent's reply says which upstream and " +
+      "whose key it was, and what to do: change the key or top up at that upstream, pick another upstream for the " +
+      "model in that dialog, run it again when its key was replaced, or try again later when the upstream is " +
+      "limiting requests or cannot be reached; on the Studio Admin's key, ask the Studio Admin. " +
+      "Such a run never moves to the platform's keys.",
     "Clicking the mode lists the modes this node's type offers; picking one changes which models are offered. " +
       "Clicking the model's name lists the current mode's models, each with its maker's icon, its name and a line " +
       "saying what it is good at; picking one switches to it. Mode and model together decide which slot buttons " +
@@ -1513,8 +1546,11 @@ export function renderProductGuide(): string {
       "those mentions in it, the same as ones typed with @. A node @'d that lands empty -- an empty node, or a " +
       "generation still to run -- comes with a note saying what to do first; generating before then sends " +
       "nothing for it, and the run stops only where nothing else in that source holds a node and the model runs " +
-      "only when one does. A template applied from the panel and a proposal both arrive this way: their prompt " +
-      "or shot carries ✏️ marks and notes, and every node they wire into the reference list is @'d. A 📎 mark in " +
+      "only when one does. A template applied from the panel and a proposal both arrive this way: notes where " +
+      "something comes first, and every node they wire into the reference list @'d. A template applied from the " +
+      "panel also carries ✏️ marks, in its prompts and in its text node's words; a proposal arrives with its " +
+      "prompts, and the words of every text node it @s in a prompt or a lyrics box, already written, so only a " +
+      "text node @'d nowhere may carry ✏️ marks left for the user. A 📎 mark in " +
       "square brackets, where a prompt carries one, asks the user to @ a node: at that place they type @ and pick the node -- an empty node they first put " +
       "their own file in (double-click it to pick one), a generated result, or a text node -- then delete the " +
       "bracket. A ✏️ mark in braces is words only the user can write; they replace it with their own. An orange " +
@@ -1523,7 +1559,7 @@ export function renderProductGuide(): string {
       "where the panel shows no prompt box, the card is the only place it appears. Read back as text, as in an " +
       "attached node's prompt, a note is (💡 …) on a line of its own and is not sent, a 📎 mark is [📎 …] and a " +
       "✏️ mark {✏️ …}. Square-bracket and brace marks " +
-      `left in a prompt are sent as they are. When a placed proposal carries a ✏️ mark (in a prompt box or a text node's words), the message ${quoted(t("canvas.generatePanel.editProposalMarks"))} ` +
+      `left in a prompt are sent as they are. When a template applied from the panel or a placed proposal carries a ✏️ mark (in a prompt box or a text node's words), the message ${quoted(t("canvas.generatePanel.editProposalMarks"))} ` +
       "appears; nothing checks whether they were done.",
     "How work reaches a node depends on where it goes:",
     "- Into the reference list: it is @'d in the prompt or a shot, by the proposal for every node it wires in, " +
@@ -1668,25 +1704,66 @@ export function renderProductGuide(): string {
       "the other layers keep playing, and a retry reloads only that video, with the preview waiting for it before going on together. " +
       `While a video it needs is getting ready, small text above the position beside the play button reads ${quoted(t("timeline.transport.waiting"))}, and the slider, the menu and the buttons stay where they are. ` +
       `When the browser blocks playback with sound, playback pauses and says ${quoted(t("timeline.preview.playBlocked"))}`,
-    `${quoted(t("timeline.webAnimation.create"))}, beside ${quoted(t("timeline.addMedia"))}, opens a dialog to have an animated web page made: ` +
-      `${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
-      `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1, starting at the one closest to the Timeline's frame), ${quoted(t("timeline.webAnimation.dialog.duration"))} and the switch ` +
-      `${quoted(t("timeline.webAnimation.dialog.addAtPlayhead"))}, which starts on. ${quoted(t("timeline.webAnimation.dialog.execute"))} starts the run; ` +
-      "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
-      "With the switch on, a dashed placeholder clip goes in at the playhead, above the highest video there or on a new top track, and shows the result once it is ready. " +
-      `${quoted(t("timeline.webAnimation.executions"))}, next to it, opens the list in the right panel (an X at its top right closes it), with ${quoted(t("timeline.webAnimation.list.completed"))} and ` +
-      `${quoted(t("timeline.webAnimation.list.inProgress"))}. Pressing a row shows its steps, its usage, the step a run stopped at and why a failed run failed, a preview of a finished result with its own slider ` +
-      `(${quoted(t("timeline.webAnimation.unavailable"))} with ${quoted(t("timeline.retry"))} when it cannot be loaded) and what you can do with it: ` +
-      `${quoted(t("timeline.webAnimation.cancel"))} while it runs, ${quoted(t("timeline.webAnimation.addPlaceholder"))} to place its placeholder at the playhead, ` +
-      `${quoted(t("timeline.webAnimation.addToTimeline"))} for a finished result, which adds a separate copy at the playhead each time it is pressed, and ` +
-      `${quoted(t("timeline.webAnimation.retry"))} after a failure, a cancel or an expiry, which opens the dialog filled in as before (${quoted(t("timeline.webAnimation.dialog.retryTitle"))}). ` +
-      `A run past the number of tasks one person runs at once waits its turn, says ${quoted(t("canvas.task.status.waiting"))} on its row and why, and can be cancelled. ` +
+    `Web animations are made in Motion Spaces. ${quoted(t("timeline.webAnimation.add"))}, beside ${quoted(t("timeline.addMedia"))}, opens a list of the Project's finished web animations, ` +
+      "read again each time it opens and grouped by the Space that made them (Motion Spaces first, then ones made in a Timeline before Motion existed, then " +
+      `${quoted(t("timeline.webAnimation.picker.deletedSpace"))}); each row shows its name, aspect ratio and length. A web animation still being made is not listed until it finishes. ` +
+      "Pressing a row places a separate copy at the playhead, above the highest video there or on a new top track, and closes the list; open it again and press the same row to place another copy. " +
+      `${quoted(t("timeline.webAnimation.picker.loadMore"))} reads more, and with none it says ${quoted(t("timeline.webAnimation.picker.empty"))}. ` +
+      `${quoted(t("timeline.webAnimation.goMake"))} at its bottom opens the newest Motion Space, or makes one named Motion when the Project has none. ` +
       "Web animation copies are violet with a code icon and are edited like video clips (move, trim, split, duplicate, delete); changing or removing one copy leaves the " +
-      "other copies and the execution in the list as they are. The selected copy's panel names the request it came from. " +
-      "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy whose run has not finished, or ended without a result, is noted at the top right of the " +
-      "preview with its track and its run's status, a copy whose page is still loading shows nothing and is noted there as loading, " +
+      "other copies and the web animation itself as they are. A copy is named by its request; a modification's copy is named after the request it was modified from " +
+      "followed by its own change. The selected copy's panel shows the whole request and, for a modification, a line naming the request it was modified from. " +
+      "A copy placed in a Timeline before Motion existed can be bound to a web animation that never finished; while it runs the copy is dashed, " +
+      "and once it failed, was cancelled or expired the copy is red, and its panel says why and offers " +
+      `${quoted(t("timeline.webAnimation.openInMotion"))}, which opens the newest Motion Space (one named Motion is made when the Project has none) with that run ` +
+      `highlighted under ${quoted(t("spaces.webAnimation.failed"))} in ${quoted(t("spaces.webAnimation.madeInTimeline"))}, where ` +
+      `${quoted(t("timeline.webAnimation.retry"))} opens the dialog filled in as before. ` +
+      "In the preview copies and videos stack by track, so a copy wholly covered by a higher layer is not seen. A copy bound to a web animation that has not finished, or ended without a result, is noted at the top right of the " +
+      "preview with its track and its status, a copy whose page is still loading shows nothing and is noted there as loading, " +
       "and a copy whose page cannot be loaded is noted there as unavailable with " +
-      `${quoted(t("timeline.retry"))}. Viewers can open the list and read every row, without ${quoted(t("timeline.webAnimation.create"))} or any of its actions.`,
+      `${quoted(t("timeline.retry"))}. Viewers see the copies and their panels, without ${quoted(t("timeline.webAnimation.add"))}, and see ` +
+      `${quoted(t("timeline.webAnimation.openInMotion"))} only when the Project already has a Motion Space.`,
+    "## Motion spaces",
+    `A Space of the ${quoted(t("spaces.kind.webAnimation"))} type makes web animations: animated web pages written by a model, played on a clock and exported as video. ` +
+      "The selected web animation fills the Space. Every control is on one floating bar at the bottom, as icon buttons named on hover: play and the time first, then a " +
+      "slider with a small mark for each annotation (hovering a mark shows what it says, pressing it opens it), then what the shown result offers, then a details button (three dots), and at the right end " +
+      `${quoted(t("spaces.webAnimation.executions"))}, ${quoted(t("spaces.webAnimation.annotations"))} and ${quoted(t("spaces.webAnimation.new"))}. ` +
+      `With no finished web animation yet the middle says ${quoted(t("spaces.webAnimation.empty"))} with ${quoted(t("spaces.webAnimation.new"))}; otherwise the newest finished one is shown. ` +
+      `A result whose page cannot be loaded shows ${quoted(t("timeline.webAnimation.unavailable"))} with ${quoted(t("timeline.retry"))}.`,
+    `${quoted(t("spaces.webAnimation.new"))} opens a dialog: ${quoted(t("timeline.webAnimation.dialog.prompt"))}, ${quoted(t("timeline.webAnimation.dialog.engine"))} (DeepSeek), ` +
+      `${quoted(t("timeline.webAnimation.dialog.aspect"))} (16:9, 9:16 or 1:1) and ${quoted(t("timeline.webAnimation.dialog.duration"))}. ${quoted(t("timeline.webAnimation.dialog.execute"))} starts it; ` +
+      "if it is refused, for example because the Studio has no credits left, the dialog keeps what you typed and shows why. Usage is charged when the run ends. " +
+      `The middle keeps showing what it showed; the list opens on the ${quoted(t("spaces.webAnimation.inProgress"))} tab with the new run highlighted.`,
+    `${quoted(t("spaces.webAnimation.executions"))} and ${quoted(t("spaces.webAnimation.annotations"))} each open a panel on the right of the Space, one at a time; pressing the button again, ` +
+      `the panel's X or Esc closes it. The ${quoted(t("spaces.webAnimation.executions"))} button shows how many are in progress. Its panel has ${quoted(t("spaces.webAnimation.completed"))}, ` +
+      `${quoted(t("spaces.webAnimation.inProgress"))} and ${quoted(t("spaces.webAnimation.failed"))} with their counts; each row shows the name, frame, length and time. ` +
+      "Only a finished web animation or video shows in the middle: pressing a row in the first tab shows it. " +
+      `A row in progress also shows its stage, with ${quoted(t("timeline.webAnimation.cancel"))} for runs of this Project; ` +
+      `a run past the number of tasks one person runs at once waits its turn, says ${quoted(t("timeline.webAnimation.status.queued"))} with an hourglass and why, and can be cancelled. ` +
+      `A row under ${quoted(t("spaces.webAnimation.failed"))} ` +
+      `(failed, cancelled or expired) shows why, with ${quoted(t("timeline.webAnimation.retry"))}, which opens the dialog filled in as before, or ${quoted(t("spaces.webAnimation.reexport"))} for a video. ` +
+      `An empty ${quoted(t("spaces.webAnimation.inProgress"))} tab says ${quoted(t("spaces.webAnimation.emptyInProgress"))}, and an empty ${quoted(t("spaces.webAnimation.failed"))} tab says ${quoted(t("spaces.webAnimation.emptyFailed"))}. ` +
+      `Ones made in a Timeline before Motion existed are listed at the end under ${quoted(t("spaces.webAnimation.madeInTimeline"))}, and can be modified and exported like the others. ` +
+      "A modification is named after the request it was modified from followed by its own change, and an exported video after the web animation it renders.",
+    `On a finished web animation the bar offers ${quoted(t("spaces.webAnimation.addAnnotation"))}, ${quoted(t("spaces.webAnimation.modify"))} and ${quoted(t("spaces.webAnimation.export"))}. ` +
+      `${quoted(t("spaces.webAnimation.modify"))} opens the dialog titled ${quoted(t("spaces.webAnimation.dialog.modifyTitle"))}, with a small preview of the shown web animation at the top, ` +
+      `to describe the change under ${quoted(t("spaces.webAnimation.dialog.instruction"))}; the aspect ratio and length start as the shown one's, and once either differs the dialog says ` +
+      `${quoted(t("spaces.webAnimation.dialog.relayout"))} It makes a new web animation from the shown one, which stays as it was with its annotations. ` +
+      `${quoted(t("spaces.webAnimation.export"))} renders it to a video in this Space: the middle keeps what it showed and the list opens on ${quoted(t("spaces.webAnimation.inProgress"))} with the export highlighted. ` +
+      `While its export is being made or finished, the button reads ${quoted(t("spaces.webAnimation.viewVideo"))}: it shows the video once it is finished, and before that opens ${quoted(t("spaces.webAnimation.inProgress"))} with the export highlighted. ` +
+      `On a finished video the bar offers ${quoted(t("spaces.webAnimation.download"))}, ${quoted(t("spaces.webAnimation.placeOnCanvas"))} and ${quoted(t("spaces.webAnimation.viewSource"))}. ` +
+      `${quoted(t("spaces.webAnimation.placeOnCanvas"))} lists the Project's canvases (it is unavailable with ${quoted(t("spaces.webAnimation.noCanvas"))} when there are none) and puts the video on the chosen one ` +
+      `near the middle of its last view, then says it was put there with a button to view it, ${quoted(t("spaces.webAnimation.viewPlaced"))}, which opens that Canvas with the video selected. ` +
+      `The details button shows the name, the request, the steps, the usage and ${quoted(t("spaces.webAnimation.modifiedFromLabel"))} for a modification ` +
+      "(pressing the web animation it names shows that one, at its earliest open annotation when it has any).",
+    `${quoted(t("spaces.webAnimation.addAnnotation"))} pauses playback at the current time; click the picture to mark a spot, or just write, then send. ` +
+      `The ${quoted(t("spaces.webAnimation.annotations"))} button shows how many are open; its panel lists this Space's annotations grouped by web animation and ordered by time, ` +
+      "with a switch between open and all. Pressing one, its mark on the slider or its pin on the picture shows that web animation at that time with the annotation's card " +
+      "beside its spot, and opens this panel with the annotation in view (switched to all when it is resolved). In the card you can reply, resolve or reopen it; " +
+      "the card stays open while you work elsewhere, and its X or Esc closes it. A reply you have not sent stays in its card until you send it. " +
+      "Closing an annotation you have started writing asks before throwing it away. Everyone in the Space sees annotations as they are written. " +
+      `When too many people are connected, the top of the Space says ${quoted(t("spaces.webAnimation.readOnlyNotice"))}`,
+    `Viewers can open both panels, play, read annotations and download videos, without ${quoted(t("spaces.webAnimation.new"))} or any action that changes something.`,
     "## 3D spaces",
     `${quoted(t("spaces.kind.threeD"))} is a collaborative scene alongside Canvas and Document, opened as a Space tab. ` +
       "The new Project and new Space dialogs offer the same type picker. The scene is shared; the viewing camera and selection are personal. " +
@@ -1745,7 +1822,8 @@ export function renderProductGuide(): string {
     `The floating bar at the bottom right orders ${quoted(t("spaces.threeD.undo"))}, ${quoted(t("spaces.threeD.redo"))}, ` +
       `${quoted(t("spaces.threeD.properties"))}, ${quoted(t("spaces.threeD.objects"))}, ${quoted(t("spaces.threeD.tasks"))}, ` +
       `${quoted(t("spaces.threeD.director.open"))} (a clapperboard icon), ${quoted(t("spaces.threeD.viewfinder.open"))} (four frame corners) and ` +
-      `${quoted(t("spaces.threeD.minimap"))}. The four panel buttons keep their ordinary appearance while open. ` +
+      `${quoted(t("spaces.threeD.minimap"))}. The open panel's button shows selected. ` +
+      `${quoted(t("spaces.threeD.tasks"))} carries how many imports and generations run, waiting ones included (99+ past 99; none at 0). ` +
       "Click one to open its panel on the right; click the same button again to close it, or another to switch content. " +
       `An X with the ${quoted(t("spaces.threeD.closePanel"))} tooltip also closes the panel. Its content scrolls above the minimap. ` +
       "Opening a header menu while the panel is open keeps keyboard focus in that new menu. " +
@@ -1757,7 +1835,7 @@ export function renderProductGuide(): string {
       "The view still turns and zooms, and objects can still be selected and moved. " +
       `Under the frame, a menu offers the aspect ratio (Free, 16:9, 9:16, 1:1, 4:3, 3:4, 3:2 and 2:3, starting at 16:9), the still's size in pixels (its long edge is ${String(getSceneConfig().capture.long_edge_px)}), ` +
       `${quoted(t("spaces.threeD.viewfinder.cancel"))} and ${quoted(t("spaces.threeD.viewfinder.confirm"))}. ` +
-      `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still without the grid, handles, selection outlines or joint dots; while a model is loading it says ${quoted(t("spaces.threeD.viewfinder.modelsLoading"))}. ` +
+      `${quoted(t("spaces.threeD.viewfinder.confirm"))} takes the still without the grid, handles, selection outlines, joint dots or a selected part's tint; while a model is loading it says ${quoted(t("spaces.threeD.viewfinder.modelsLoading"))}. ` +
       `Then the menu shows ${quoted(t("spaces.threeD.viewfinder.toAgent"))}, ${quoted(t("spaces.threeD.viewfinder.toCanvas"))}, ${quoted(t("spaces.threeD.viewfinder.copy"))} and ` +
       `${quoted(t("spaces.threeD.viewfinder.reframe"))}, and the view stays still; the frame shows the still, and the toolbar of the selected objects is put away until the viewfinder goes back to framing or closes. ` +
       `${quoted(t("spaces.threeD.viewfinder.toAgent"))} opens the chat column and attaches the still to the conversation on screen, where it uploads like a picture attached by hand, saying ${quoted(t("spaces.threeD.viewfinder.addedToAgent"))}. ` +
@@ -1847,6 +1925,7 @@ export function renderProductGuide(): string {
       "Clearing the selection closes its properties panel. The properties button is available with a selection. " +
       `For one object it shows ${quoted(t("spaces.threeD.name"))}, ${quoted(t("spaces.threeD.position"))}, ` +
       `${quoted(t("spaces.threeD.rotation"))} and ${quoted(t("spaces.threeD.scale"))}, with X, Y and Z boxes. ` +
+      `For one ${quoted(t("spaces.threeD.figure"))}, ${quoted(t("spaces.threeD.box"))}, imported model or generated model it also has an ${quoted(t("spaces.threeD.look.title"))} section; the 3D appearance section of this guide covers it. ` +
       "Position is in metres, rotation in degrees, and scale values must be positive. Enter or leaving a box applies it; " +
       "switching to another Space keeps unfinished input and validation errors. Return and reopen Properties to continue. " +
       "Closing the panel, opening another panel or overlay, or changing the selection ends that temporary input. " +
@@ -1860,6 +1939,7 @@ export function renderProductGuide(): string {
       `${quoted(t("spaces.threeD.pose.walk"))} and ${quoted(t("spaces.threeD.pose.wave"))}; each replaces the whole pose and keeps the object where it is. ` +
       `Another skeleton says ${quoted(t("spaces.threeD.pose.humanoidOnly"))} Both offer the ${quoted(t("spaces.threeD.pose.jointMode"))} switch and ` +
       `${quoted(t("spaces.threeD.pose.reset"))}, which returns the model to its own resting pose. ` +
+      `A pose can set up to ${String(SCENE_POSE_MAX_KEYS)} bones of one object; posing one more bone is refused with a notice naming that limit. ` +
       `With ${quoted(t("spaces.threeD.pose.jointMode"))} on, dots mark the character's joints, drawn over the model, and the move, rotate and scale handles are hidden; ` +
       "click a dot, or a part of the body, to pick its joint, then drag the rotation rings that appear on it. Releasing saves only that joint; " +
       `each preset, reset or joint drag is one undo step. Choosing ${quoted(t("spaces.threeD.move"))}, ${quoted(t("spaces.threeD.rotate"))} or ${quoted(t("spaces.threeD.scale"))}, ` +
@@ -1891,6 +1971,34 @@ export function renderProductGuide(): string {
       "while valid objects remain usable. A scene saved by a newer version offers a reload button and says " +
       `${quoted(t("spaces.threeD.unsupported"))} A scene saved in an older format stays unopened and unchanged, ` +
       `with no reload button, and says ${quoted(t("spaces.threeD.unsupportedOld"))}`,
+    "",
+    "## 3D appearance",
+    `For one ${quoted(t("spaces.threeD.figure"))}, ${quoted(t("spaces.threeD.box"))}, imported model or generated model, the properties panel has a ${quoted(t("spaces.threeD.look.title"))} section below the position, rotation and scale boxes and above ${quoted(t("spaces.threeD.pose.title"))}; cameras, lights and several selected objects have none. ` +
+      `Its title row has ${quoted(t("spaces.threeD.look.resetAll"))} at the right, greyed while the object has no changes. Below it is one row per part of the model: a small swatch of the part's colour, or of its image, ` +
+      `the part's name from the model (a part without a name, or with the name of an earlier part, is called Part followed by its place in the list), and a dot on parts that were changed. ` +
+      `Parts are listed in the model's order; ${quoted(t("spaces.threeD.look.defaultPart"))} holds whatever has no material of its own and comes last. Built-in models name every part by number. ` +
+      `While the model loads the section says it is reading the parts; when the model did not load it says ${quoted(t("spaces.threeD.look.partsUnavailable"))}. ` +
+      `Changes can sit on up to ${String(SCENE_LOOK_MAX_PARTS)} parts of one object; changing one more part is refused with a notice naming that limit. ` +
+      `A part whose material number is above 9999 cannot be changed: its settings are unavailable and a line above them says it cannot be changed. ` +
+      `Clicking a row selects that part and opens its settings below the list; clicking it again closes them. ` +
+      `When only one object is selected, clicking it again in the scene, without Shift, selects the part under the pointer the same way and opens the properties panel unless the viewfinder or the director console is open. ` +
+      `The selected part is tinted in the scene for you alone; Shift-click, a click on another object or on empty space, joint adjustment and the viewfinder's still keep working as before, and the tint never shows in a still or a camera's picture.`,
+    `A part's settings start with six buttons that set its finish at once: ${quoted(t("spaces.threeD.look.presets.matte"))}, ${quoted(t("spaces.threeD.look.presets.glossy"))}, ${quoted(t("spaces.threeD.look.presets.metal"))}, ${quoted(t("spaces.threeD.look.presets.brushedMetal"))}, ${quoted(t("spaces.threeD.look.presets.glass"))} and ${quoted(t("spaces.threeD.look.presets.rubber"))}; ` +
+      `each writes its values in one step and leaves the colour and image as they are. Then come ${quoted(t("spaces.threeD.look.color"))} (its value and a swatch that opens a colour picker), ${quoted(t("spaces.threeD.look.image"))}, ` +
+      `${quoted(t("spaces.threeD.look.gloss"))}, ${quoted(t("spaces.threeD.look.metalness"))}, ${quoted(t("spaces.threeD.look.opacity"))} and ${quoted(t("spaces.threeD.look.transmission"))} sliders (transmission lets light through, for glass or water), ${quoted(t("spaces.threeD.look.emission"))} (its value and a swatch) and a ${quoted(t("spaces.threeD.look.emissionIntensity"))} slider. ` +
+      `A slider or the colour picker shows the change while you drag and saves it once when you let go. ` +
+      `With no image the image row has ${quoted(t("spaces.threeD.look.chooseImage"))}; with one it shows ${quoted(t("spaces.threeD.look.replaceImage"))} and ${quoted(t("spaces.threeD.look.removeImage"))}, followed by ${quoted(t("spaces.threeD.look.repeat"))} and ${quoted(t("spaces.threeD.look.offset"))} (two boxes each, X across and Y down, saved with Enter or on leaving the box; a value outside the range stays in its box, which shows ${quoted(t("spaces.threeD.valueFailed"))}) and a ${quoted(t("spaces.threeD.look.rotation"))} slider. ` +
+      `Choosing an image opens the same picker as Image to 3D: a picture of this Project, or a PNG, JPEG or WebP file from the computer, which uploads while you go on working; the Space cannot be closed while the file is still being sent, and once it is sent the image lands on the part it was chosen for even if the Space is closed; its row in the part list shows the percentage, and the image row shows it in place of the picture with ${quoted(t("spaces.threeD.taskList.running"))}, until the image is on the part. An uploaded image is put on by the server, so undo does not take it off; ${quoted(t("spaces.threeD.look.removeImage"))} does. ` +
+      `${quoted(t("spaces.threeD.look.removeImage"))} takes off an image you put on, with its tiling, and brings back the model's own; on the model's own image it turns the image off, leaving the colour. ` +
+      `${quoted(t("spaces.threeD.look.resetPart"))} puts the part back as the model made it, and ${quoted(t("spaces.threeD.look.resetAll"))} does that for every part; each is one undo step. ` +
+      `A part that is not lit says ${quoted(t("spaces.threeD.look.unlitNote"))} and a line or point part says ${quoted(t("spaces.threeD.look.lineNote"))} with the other settings greyed. ` +
+      `On a locked object, and for a Viewer, the parts can be selected and read but every setting is greyed.`,
+    `An image larger than the largest size a part shows is scaled down to it. Images have a size limit per object, counting the model's own textures and every image put on its parts; an image over it is not used and a message says how large the images would be and what the limit is. ` +
+      `When an image cannot be read, because the file changed or the connection failed, nothing is put on and a message names the image and asks to try again. ` +
+      `When an image is uploaded but cannot be put on the part, because the object was deleted or locked, another image was put on that part or the model's own image on it was turned off meanwhile, or the object already has changes on its ${String(SCENE_LOOK_MAX_PARTS)} parts, a message says so and the image stays in the Project's pictures. ` +
+      `When some part images do not load, the notice at the top left says ${quoted(t("spaces.threeD.look.imageFailed"))} with ${quoted(t("spaces.threeD.retry"))}; ` +
+      `when some are over the object's limit it says ${quoted(t("spaces.threeD.look.imageOverLimit"))} Those parts show the model's own image meanwhile, with their other changes. ` +
+      `Copies keep the look and are changed on their own afterwards. Everyone in the Space sees the same look, two people can change different settings of one part at once, and undo only takes back your own changes.`,
     "",
     "## Document spaces",
     "- Markdown at the start of a line: `# `, `## `, `### ` for headings; a number, a full stop and a space " +
@@ -2333,7 +2441,9 @@ export function renderProductGuide(): string {
       `${quoted(t("connection.banner.authFailed.action"))} and ${quoted(t("connection.banner.reload"))}, and ` +
       "covers the work area the same way. It shows when the session ran out or was signed out from another " +
       "device -- the account menu on the studio pages has " +
-      `${quoted(t("studio.topBar.logoutOthers"))}, which signs out every device except the one it is pressed on -- ` +
+      `${quoted(t("studio.topBar.logoutOthers"))}, which signs out every device except the one it is pressed on, and ` +
+      `${quoted(t("studio.topBar.notices"))}, which opens ${quoted(t("studio.topBar.noticesLicense"))}, ` +
+      `${quoted(t("studio.topBar.noticesTrademarks"))} and ${quoted(t("studio.topBar.noticesThirdParty"))} in a new tab -- ` +
       "and also when the user was " +
       "removed from the project: if signing in again does not let them back in, they were removed, and the " +
       "project's owner can say why. With a document open, " +
@@ -2345,7 +2455,7 @@ export function renderProductGuide(): string {
       "plan of the studio's admin allows (only their upgrade raises it), and every browser tab that has the " +
       "space open counts, the user's own included. Closing other tabs on it and reconnecting, which reloads " +
       "the page, can free one.",
-    "- Going elsewhere in the site while local Canvas or Document edits have not synced, or an upload or file read is unfinished, asks " +
+    "- Going elsewhere in the site while local Canvas, Document or Motion edits (such as an annotation) have not synced, an upload or file read is unfinished, or a generation, tool run or Motion execution the server has not yet accepted is waiting, asks " +
       `${quoted(t("project.leaveGuard.title"))} with ${quoted(t("project.leaveGuard.stay"))} and ${quoted(t("project.leaveGuard.leave"))}. ` +
       "This covers content in background Space tabs of the current Project too. " +
       `The notice says ${quoted(t("project.leaveGuard.unsyncedDescription"))} for unsynced edits, ` +

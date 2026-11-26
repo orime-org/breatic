@@ -1,6 +1,6 @@
 # @breatic/collab
 
-The Hocuspocus process: Yjs document sync, persistence to the yjs Postgres database, cross-instance coordination over Redis, and the consumer that writes task events from Redis Streams onto canvas nodes and Document body media blocks. It is the only backend package that knows Hocuspocus.
+The Hocuspocus process: Yjs document sync, persistence to the yjs Postgres database, cross-instance coordination over Redis, and the consumer that writes task events from Redis Streams into Space documents (canvas node task counts, Space task versions, Document body media blocks, 3D part pictures). It is the only backend package that knows Hocuspocus.
 
 Read [Canvas collaboration in docs/ARCHITECTURE.md](../../docs/ARCHITECTURE.md#canvas-collaboration) before changing presence, seats, persistence, Space lifecycle or the hook order. Mechanism details live there and in each module's TSDoc; this file holds the rules you would get wrong without being told.
 
@@ -99,6 +99,12 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 ### Socket versus client id
 
 **One browser tab shares one WebSocket across all its documents, so a socket id covers several Yjs client ids.** Judge whether a connection is alive from the seat registry (`services/connection-registry.ts`), not from awareness (transient states cause false kills) and not from this instance's own connection list (it cannot see other instances).
+
+## Messages to pages
+
+### Relay, never broadcast
+
+**A message collab sends to pages (the project control channels, the `live_updates` triggers, `uploads:ended`) goes out with `relayStateless` through `relayOnMetaDoc` (`services/meta-signal.ts`), to this instance's connections only; never with `broadcastStateless`.** Every instance hears the same channel or trigger, and `broadcastStateless` also forwards through the Redis extension, so each extra instance would deliver one more copy. A message for one person is a filter on the connection's `user.id` on the meta documents this instance has loaded.
 
 ## Document formats
 

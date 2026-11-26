@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Real runs of the generation templates, for judging a prompt by the pictures it gets (inner#1846, inner#1816).
@@ -21,6 +21,7 @@
  * leaves empty (inner#1811): every generation request is recorded, and the paragraph of an optional input must be in each
  * request of a node it feeds exactly when that input holds a picture.
  */
+import { execFileSync } from 'node:child_process';
 import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { extname, join } from 'node:path';
 import { expect, type Locator, type Page } from 'playwright/test';
@@ -116,6 +117,10 @@ test.use({ viewport: { width: 1600, height: 1000 } });
 type Kind = 'image' | 'video' | 'audio';
 
 let page: Page;
+/** The clip cut from a run's score for each node key, as the user does with Cut (inner#1822). */
+const cutClips = new Map<string, string>();
+/** A fill that @s the clip cut for the node key that follows it. */
+const CUT_MENTION = '@cut:';
 let projectId = '';
 let spaceId = '';
 
@@ -168,15 +173,19 @@ async function applyTemplate(id: string, style?: string): Promise<void> {
   const goal = GENERATION_TEMPLATES.find((template) => template.id === id)?.goal;
   if (goal === undefined) throw new Error(`no template ${id}`);
   await page.getByTestId('generate-template-trigger').click();
+  // The goal list scrolls when the panel opens low on the screen; a row out of view cannot be pointed at.
+  await page.getByTestId(`generate-template-goal-${goal}`).scrollIntoViewIfNeeded();
   const box = await page.getByTestId(`generate-template-goal-${goal}`).boundingBox();
   if (!box) throw new Error(`no ${goal} goal row`);
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2, { steps: 8 });
+  const row = await page.getByTestId(`generate-template-${id}`).boundingBox();
+  if (!row) throw new Error(`no ${id} row`);
+  // Across into the submenu on the goal row's line first: a slant down to a lower row crosses the goal rows below and closes it.
+  await page.mouse.move(row.x + row.width / 2, box.y + box.height / 2, { steps: 8 });
+  await page.mouse.move(row.x + row.width / 2, row.y + row.height / 2, { steps: 8 });
   if (style === undefined) {
-    await page.getByTestId(`generate-template-${id}`).click();
+    await page.mouse.click(row.x + row.width / 2, row.y + row.height / 2);
   } else {
-    const row = await page.getByTestId(`generate-template-${id}`).boundingBox();
-    if (!row) throw new Error(`no ${id} row`);
-    await page.mouse.move(row.x + row.width / 2, row.y + row.height / 2, { steps: 8 });
     const cell = page.getByTestId(`generate-template-style-${style}`);
     await expect(cell).toBeVisible({ timeout: 30_000 });
     await cell.click();
@@ -214,6 +223,17 @@ async function fillBraces(values: string[], editorId = 'generate-prompt-editor')
     });
     if (!found) throw new Error(`no braces left for "${value}"`);
     await page.waitForTimeout(150);
+    if (value.startsWith(CUT_MENTION)) {
+      // The brace asks the user to @ the clip they cut from the score: the @ replaces it with the clip's chip.
+      const clip = cutClips.get(value.slice(CUT_MENTION.length));
+      if (clip === undefined) throw new Error(`no cut clip for "${value}"`);
+      await page.keyboard.type('@');
+      await page.getByTestId(`reference-mention-option-${clip}`).click();
+      // The list closing puts the caret back after the chip, so the next brace is picked only once it has gone.
+      await expect(page.getByTestId(`reference-mention-option-${clip}`)).toHaveCount(0);
+      await page.waitForTimeout(300);
+      continue;
+    }
     await page.keyboard.type(value);
   }
   await expect(editor).not.toContainText('{');
@@ -287,10 +307,18 @@ async function cheapestTier(): Promise<void> {
       .map((value) => value.slice(prefix.length));
     const size = (value: string): number => Number.parseFloat(value) * (/k$/i.test(value) ? 1000 : 1);
     const lowest = [...values].sort((a, b) => size(a) - size(b))[0];
-    if (lowest !== undefined) await page.getByTestId(`${prefix}${lowest}`).click();
+    // A node low on the canvas opens its popover past the bottom edge; the canvas is scrolled up, the popover with it.
+    if (lowest !== undefined) {
+      const option = page.getByTestId(`${prefix}${lowest}`);
+      await bringIntoView(option);
+      await option.click();
+    }
     // Quality sits in the same popover as resolution, so it is picked before the popover closes.
     const quality = page.locator('[data-testid^="generate-param-quality-option-"]');
-    if ((await quality.count()) > 0) await quality.first().click();
+    if ((await quality.count()) > 0) {
+      await bringIntoView(quality.first());
+      await quality.first().click();
+    }
     // The open popover can sit over its own trigger, so it is closed the way a user dismisses it.
     await page.keyboard.press('Escape');
     await expect(trigger).toHaveAttribute('data-state', 'closed');
@@ -404,6 +432,29 @@ function record(entry: Record<string, unknown>): void {
 }
 
 /**
+ * Write a template text node's words over the ones it is placed with, the way a user does: double-click it, select
+ * everything and type (inner#1824). It must first hold the template's own words, braces and all.
+ * @param id - The template.
+ * @param key - The text node's key.
+ * @param words - The words to write, a line break starting a new paragraph.
+ */
+async function writeText(id: string, key: string, words: string): Promise<void> {
+  const nodeId = await keyed(key);
+  await fit();
+  const node = visibleSpace(page).locator(`.react-flow__node[data-id="${nodeId}"]`);
+  for (const piece of draftPieces(`canvas.template.${id}.node.${key}.text`)) await expect(node).toContainText(piece);
+  await node.getByTestId('text-node-body').dblclick();
+  await expect(node.locator('[data-testid="text-node-body"][contenteditable="true"]')).toBeVisible();
+  await page.keyboard.press('ControlOrMeta+a');
+  for (const [i, line] of words.split('\n').entries()) {
+    if (i > 0) await page.keyboard.press('Enter');
+    await page.keyboard.type(line);
+  }
+  await page.keyboard.press('Escape');
+  await expect(node).not.toContainText('{');
+}
+
+/**
  * The id of the node a template placed under a key.
  * @param key - The template node's key.
  * @returns Its id.
@@ -440,6 +491,9 @@ function optionalLeads(id: string, key: string): Map<string, string> {
 
 /** The prompt of each generation request the page has sent, in order. */
 const requests: string[] = [];
+
+/** Each generation request's whole body, in the same order: a text node wired into the lyrics box is sent there, not in the prompt. */
+const bodies: string[] = [];
 
 /**
  * Check one node's last request against its optional inputs: each one's paragraph is sent exactly when the input
@@ -493,12 +547,15 @@ async function dropMedia(file: string, bytes: Buffer = readFileSync(file)): Prom
 const STYLE = '3D cartoon';
 
 test.beforeEach(async ({ browser }) => {
+  cutClips.clear();
   page = await browser.newPage();
   requests.length = 0;
+  bodies.length = 0;
   page.on('request', (request) => {
     if (request.method() !== 'POST' || !/\/canvas\/tasks(\?|$)/.test(request.url())) return;
     const body = request.postDataJSON() as { params?: { prompt?: unknown } } | null;
     requests.push(typeof body?.params?.prompt === 'string' ? body.params.prompt : JSON.stringify(body));
+    bodies.push(JSON.stringify(body));
   });
   await openSmokeProject(page);
   if (LOCALE) await switchLanguage(page, LOCALE);
@@ -674,6 +731,16 @@ interface Run {
   shots?: string[][];
   /** The template nodes picked into the anchor's slots once generated. */
   frames?: Partial<Record<VideoSlotId, string>>;
+  /**
+   * Pieces cut from a generated node's sound, in seconds, each wired into a node (`anchor` for the anchor), as the
+   * template's trim step tells the user to do with Cut; a fill of `@cut:<key>` then @s that piece (inner#1822).
+   * `file` cuts them from a fixture instead, the user's own song, right after the template is placed (inner#1826).
+   */
+  cuts?: { from: string; file?: string; pieces: { into: string; start: number; end: number }[] };
+  /** Each template text node's words in full, written over the braces it is placed with (inner#1824). */
+  texts?: Record<string, string>;
+  /** The template nodes generated after the anchor that take it through their pool, in order (inner#1824). */
+  then?: string[];
 }
 
 /** How each template is run. */
@@ -739,6 +806,158 @@ const RUNS: Record<string, Run> = {
     },
   },
   'dish-hero-still': { type: 'image', photo: true, image: 'dish.jpg', first: [], fills: { anchor: ['a dark slate table with a linen napkin'] } },
+  'app-launch-promo': {
+    type: 'video',
+    photo: false,
+    inputs: { 'screen-1': 'promo/app-screen-1.jpg', 'screen-2': 'promo/app-screen-2.jpg', logo: 'promo/app-logo.jpg' },
+    first: [],
+    fills: { anchor: ['a habit-tracking app called Streak', 'the streak counter ticks up to 30 days with a small burst of confetti', 'an upbeat electronic pulse'] },
+  },
+  'brand-origin-film': {
+    type: 'video',
+    photo: false,
+    inputs: { maker: 'promo/maker.jpg', product: 'promo/craft-mug.jpg' },
+    first: [],
+    fills: {},
+    shots: [
+      ['shaping wet clay on a wheel'],
+      ['a small sunlit workshop by the sea'],
+      ['the colour of the sea at dawn through the window'],
+      [],
+      ['a woman wraps her cold hands around the mug on a rainy morning', '"Made slowly, for slow mornings."'],
+    ],
+  },
+  'launch-story-3-beat': {
+    type: 'video',
+    photo: false,
+    inputs: { product: 'product.jpg' },
+    first: ['score'],
+    fills: { score: ['modern acoustic-electronic at 110 BPM'] },
+    shots: [['a hiker shakes an empty, dented plastic bottle on a hot trail', 'a water bottle', `${CUT_MENTION}anchor`], [], ['the hiker drinks deep from the new bottle by a cool mountain stream']],
+    cuts: { from: 'score', pieces: [{ into: 'anchor', start: 20, end: 32 }] },
+  },
+  'promo-film-assembled': {
+    type: 'video',
+    photo: false,
+    inputs: { brand: 'product.jpg' },
+    first: ['score', 'part-2', 'part-3', 'part-4'],
+    fills: {
+      score: ['cinematic folk-electronic at 100 BPM'],
+      anchor: ['Hydra, a refillable outdoor water bottle brand', 'cold northern light, muted greens and greys, a handheld documentary camera', `${CUT_MENTION}anchor`, 'a hiker\'s hand grips a frozen ledge as the wind roars'],
+      'part-2': ['Hydra, a refillable outdoor water bottle brand', 'cold northern light, muted greens and greys, a handheld documentary camera', `${CUT_MENTION}part-2`, 'a team packs their gear in a mountain hut at dawn'],
+      'part-3': ['Hydra, a refillable outdoor water bottle brand', 'cold northern light, muted greens and greys, a handheld documentary camera', `${CUT_MENTION}part-3`, 'the storm breaks and the team reaches the summit'],
+      'part-4': ['Hydra, a refillable outdoor water bottle brand', 'cold northern light, muted greens and greys, a handheld documentary camera', `${CUT_MENTION}part-4`, 'the hikers rest in golden light and drink from their bottles'],
+    },
+    cuts: {
+      from: 'score',
+      pieces: [
+        { into: 'anchor', start: 0, end: 15 },
+        { into: 'part-2', start: 15, end: 30 },
+        { into: 'part-3', start: 30, end: 45 },
+        { into: 'part-4', start: 45, end: 60 },
+      ],
+    },
+  },
+  'space-tour-single-take': {
+    type: 'video',
+    photo: false,
+    inputs: { space: 'space/living.jpg' },
+    first: [],
+    fills: { anchor: ['at the hallway door, looking into the living room', 'the sofa and rug open up ahead, then the tall windows on the right', 'it stops at the windows with the street outside'] },
+  },
+  'room-staging-still': {
+    type: 'image',
+    photo: false,
+    inputs: { room: 'space/empty-room.jpg' },
+    first: [],
+    fills: { anchor: ['warm Scandinavian, light oak and linen', 'a living room for a young family'] },
+  },
+  'renovation-before-after': {
+    type: 'video',
+    photo: false,
+    inputs: { room: 'space/old-room.jpg' },
+    first: ['before', 'after'],
+    fills: { after: ['a pale oak floor, white walls, linen curtains and warm pendant lights'], anchor: ['the old wallpaper, carpet and cabinet peel away and the new room sweeps in from left to right'] },
+    frames: { 'first-frame': 'before', 'end-frame': 'after' },
+  },
+  'day-to-night-exterior': {
+    type: 'video',
+    photo: false,
+    inputs: { exterior: 'space/exterior.jpg' },
+    first: ['day', 'night'],
+    fills: { night: ['warm light in every window and soft garden lights along the path'] },
+    frames: { 'first-frame': 'day', 'end-frame': 'night' },
+  },
+  'before-after-reveal': {
+    type: 'video',
+    photo: false,
+    inputs: { before: 'space/reveal-before.jpg', after: 'space/reveal-after.jpg' },
+    first: [],
+    fills: { anchor: ['the old wallpaper is stripped, the walls painted and the room refurnished'] },
+  },
+  'listing-walkthrough-15s': {
+    type: 'video',
+    photo: false,
+    inputs: { exterior: 'space/exterior.jpg', living: 'space/living.jpg', kitchen: 'space/kitchen.jpg', bedroom: 'space/bedroom.jpg' },
+    first: [],
+    fills: {},
+    shots: [['golden hour'], [], [], [], ['treetops and a quiet street']],
+  },
+  'property-full-tour': {
+    type: 'video',
+    photo: false,
+    inputs: { 'photo-1': 'space/exterior.jpg', 'photo-2': 'space/living.jpg', 'photo-3': 'space/kitchen.jpg', 'photo-4': 'space/bedroom.jpg' },
+    first: ['score', 'room-2', 'room-3', 'room-4'],
+    fills: {
+      score: ['a bright family house', 'light acoustic piano at 90 BPM'],
+      anchor: ['a bright family house, soft afternoon light, smooth gimbal moves', `${CUT_MENTION}anchor`, 'a slow drone approach to the front door'],
+      'room-2': ['a bright family house, soft afternoon light, smooth gimbal moves', `${CUT_MENTION}room-2`, 'a threshold reveal into the living room'],
+      'room-3': ['a bright family house, soft afternoon light, smooth gimbal moves', `${CUT_MENTION}room-3`, 'a slide along the kitchen island'],
+      'room-4': ['a bright family house, soft afternoon light, smooth gimbal moves', `${CUT_MENTION}room-4`, 'a push to the bedroom window and the trees outside'],
+    },
+    cuts: {
+      from: 'score',
+      pieces: [
+        { into: 'anchor', start: 0, end: 10 },
+        { into: 'room-2', start: 10, end: 20 },
+        { into: 'room-3', start: 20, end: 30 },
+        { into: 'room-4', start: 30, end: 40 },
+      ],
+    },
+  },
+  'fashion-lookbook': {
+    type: 'video',
+    photo: false,
+    inputs: { model: 'fashion/model.jpg', outfit: 'fashion/outfit-1.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'a camel trench coat, a white button-up shirt, straight blue jeans, brown leather loafers',
+        'a concrete stairwell, a sunlit street, a rooftop at dusk',
+        'the trench coat\'s belt',
+        'a slow electronic beat',
+      ],
+    },
+  },
+  'try-on-still': {
+    type: 'image',
+    photo: false,
+    inputs: { model: 'fashion/model.jpg', garment: 'fashion/coat.jpg' },
+    first: [],
+    fills: { anchor: ['plain black trousers and white sneakers'] },
+  },
+  'lookbook-multi-look': {
+    type: 'video',
+    photo: false,
+    inputs: { model: 'fashion/model.jpg', 'outfit-1': 'fashion/outfit-1.jpg', 'outfit-2': 'fashion/outfit-2.jpg', 'outfit-3': 'fashion/outfit-3.jpg' },
+    first: ['look-1', 'look-2', 'look-3'],
+    fills: {
+      'look-1': ['a sunlit street'],
+      'look-2': ['a white gallery'],
+      'look-3': ['a rooftop at dusk'],
+      anchor: ['the model snaps their fingers at the camera', 'an upbeat house track'],
+    },
+  },
   'name-as-world-typography': {
     type: 'image',
     photo: false,
@@ -782,6 +1001,63 @@ const RUNS: Record<string, Run> = {
       ],
     },
     localeFills: { 'zh-CN': { anchor: ['水池上的闯关赛道：平衡木、摆锤沙袋、泡沫墙', '摆过来的沙袋', '她掉进水里，水花四溅', '她浑身湿透地爬上岸，笑着向观众挥手'] } },
+  },
+  'fight-duel-one-take': {
+    type: 'video',
+    photo: false,
+    inputs: { 'fighter-a': 'character.jpg', 'fighter-b': 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['a rain-soaked rooftop at night', 'kung fu kicks and palm strikes', 'the first fighter\'s spinning kick breaks through the second fighter\'s guard', 'a neon sign behind them'] },
+  },
+  'fight-exchange-short': {
+    type: 'video',
+    photo: false,
+    inputs: { 'fighter-a': 'character.jpg', 'fighter-b': 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['an empty warehouse lit through high windows', 'the first fighter\'s elbow lands on the second fighter\'s shoulder'] },
+  },
+  'fight-duel-locked': {
+    type: 'video',
+    photo: false,
+    inputs: { 'fighter-a': 'character.jpg', 'fighter-b': 'mini-tools/portrait.jpg' },
+    first: ['sheet-a', 'sheet-b'],
+    fills: { 'sheet-a': [], 'sheet-b': [], anchor: ['a rain-soaked rooftop at night', 'kung fu kicks and palm strikes', 'the first fighter\'s spinning kick breaks through the second fighter\'s guard', 'a neon sign behind them'] },
+  },
+  'hero-orbit-reveal': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: ['keyframe'],
+    frames: { 'first-frame': 'keyframe' },
+    fills: { keyframe: ['a cracked street after an explosion', 'a photorealistic film still'], anchor: ['the hero\'s awakening after being knocked down'] },
+  },
+  'bullet-time-moment': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['a car park at night in the rain', 'leaping over a car as sparks fly'] },
+  },
+  'impact-frame-hit': {
+    type: 'video',
+    photo: false,
+    inputs: { 'fighter-a': 'character.jpg', 'fighter-b': 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['a dojo with paper screens', 'the first fighter\'s fist driving into the second fighter\'s stomach', 'the second fighter skids back across the floor and drops to one knee'] },
+  },
+  'reference-video-remix': {
+    type: 'video',
+    photo: false,
+    inputs: { reference: 'mini-tools/driving.mp4', subject: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['the subject does the same moves on a rooftop at sunset', 'the last move ends in a freeze as confetti falls'] },
+  },
+  'seamless-bridge': {
+    type: 'video',
+    photo: false,
+    inputs: { 'clip-a': 'mini-tools/driving.mp4', 'clip-b': 'clip-ruined-street.mp4' },
+    first: [],
+    fills: { anchor: ['the white studio wall cracking and falling away to reveal the street behind it'] },
   },
   'extreme-sports-run': {
     type: 'video',
@@ -891,6 +1167,54 @@ const RUNS: Record<string, Run> = {
     inputs: { hero: 'character.jpg' },
     first: [],
     fills: { anchor: ['a ruined rooftop at night', 'a flaming sword slash'] },
+  },
+  'cinematic-15s-arc': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: { anchor: ['a rain-wet station platform at night', 'to catch the last train before it leaves', 'they squeeze through the doors as they shut', 'teal-and-orange blockbuster'] },
+  },
+  'landscape-3-shot': { type: 'video', photo: false, first: [], fills: {}, shots: [['a misty fjord at dawn'], ['water running over dark stones'], []] },
+  'epic-fantasy-scifi': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'high fantasy',
+        'a city of white towers on a cliff above a stormy sea',
+        'the hero\'s raised hand pulls the sea upward into a wall of water that moves only while the hand stays raised',
+        'raises the wall of water against an incoming fleet',
+      ],
+    },
+  },
+  'trailer-beat-3-shot': {
+    type: 'video',
+    photo: false,
+    inputs: { hero: 'character.jpg' },
+    first: [],
+    fills: {},
+    shots: [['a dusty frontier town under a red sky'], ['rides a motorbike through a wall of fire'], ['This ends tonight.']],
+  },
+  'transformation-6-shot': {
+    type: 'video',
+    photo: false,
+    inputs: { subject: 'character.jpg' },
+    first: [],
+    fills: {},
+    shots: [['a quiet forest clearing at dusk'], ['a dark shape bursting from the trees'], [], ['a figure of living flame'], [], []],
+  },
+  'long-form-acts': {
+    type: 'video',
+    photo: false,
+    first: ['act-2', 'act-3'],
+    fills: {
+      anchor: ['a small café by a rainy window, warm lamps, soft film grain', 'rain on glass and quiet jazz', 'the café opens and steam rises from the first cup'],
+      'act-2': ['a small café by a rainy window, warm lamps, soft film grain', 'rain on glass and quiet jazz', 'people come and go as the rain grows heavier'],
+      'act-3': ['a small café by a rainy window, warm lamps, soft film grain', 'rain on glass and quiet jazz', 'evening falls, the lamps glow and the café empties'],
+    },
   },
   'anime-opening-15s': {
     type: 'video',
@@ -1109,6 +1433,91 @@ const RUNS: Record<string, Run> = {
       ],
     },
   },
+  'scene-plate': {
+    type: 'image',
+    photo: false,
+    first: [],
+    fills: { anchor: ['a cramped hospital break room at night', 'a vending machine, a worn sofa and a window onto the corridor', 'a single flickering fluorescent tube above the sofa'] },
+  },
+  'drama-single-scene': {
+    type: 'video',
+    photo: false,
+    inputs: { 'character-a': 'character.jpg', 'character-b': 'mini-tools/portrait.jpg' },
+    first: ['scene'],
+    fills: {
+      scene: ['a small kitchen at dusk', 'a table with two chairs and a window over the sink', 'grey daylight from the window'],
+      anchor: [
+        'a delivery courier and her older brother; he has hidden that the family shop is closing',
+        'the brother at the window, the courier in the doorway',
+        'she holds up a closing notice she found on the shop door',
+        'he turns, sees it and freezes',
+        'he answers, then looks away',
+        'English',
+        'she: "When were you going to tell me?" He: "After the holidays."',
+        'grey daylight from the window',
+      ],
+    },
+  },
+  'short-drama-reversal': {
+    type: 'video',
+    photo: false,
+    inputs: { 'character-a': 'character.jpg', 'character-b': 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'a luxury car showroom',
+        'a salesman sneers at a young delivery courier in a red jacket',
+        'he blocks her way, mocks her backpack, then calls security',
+        'she calmly takes out her phone and makes one call',
+        'the manager rushes in and bows to her: she owns the company',
+        'the salesman\'s smile freezes and drains away',
+        'bright showroom spotlights',
+      ],
+    },
+  },
+  'emotional-dialogue-timeline': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: ['line'],
+    fills: {
+      line: ['I waited for you. Every single night, I waited.'],
+      anchor: ['she has just learned her brother is leaving for good', 'her chin trembles and her breath catches', 'a forced small smile as she speaks', 'a dim kitchen lit by one warm lamp'],
+    },
+  },
+  'horror-suspense': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    first: [],
+    fills: {
+      anchor: [
+        'an old apartment hallway at night',
+        'she walks home down the hallway, keys in hand',
+        'a door at the end of the hall that was shut now stands open a crack',
+        'the hallway light flickers out, and when it comes back a still, pale figure stands in the doorway',
+        'a single buzzing ceiling bulb',
+      ],
+    },
+  },
+  'short-drama-episode': {
+    type: 'video',
+    photo: false,
+    inputs: { character: 'character.jpg' },
+    texts: {
+      script: [
+        'Title: The Closing Sign',
+        'Characters: Mia, a delivery courier in a red jacket; Leo, her older brother',
+        'Place and light: their family noodle shop after closing, lit by one warm lamp over the counter',
+        'Scene 1: Mia comes in with her delivery bag and finds a closing notice on the counter. Mia: "What is this?"',
+        'Scene 2: Leo admits the shop closes next month. Leo: "I didn\'t want you to worry."',
+        'Scene 3: Mia puts down her bag and sits beside him. Mia: "Then we fight for it together."',
+      ].join('\n'),
+    },
+    first: ['cast'],
+    then: ['scene-2', 'scene-3'],
+    fills: { cast: [], anchor: [] },
+  },
   'twist-comedy-skit': {
     type: 'video',
     photo: true,
@@ -1127,6 +1536,90 @@ const RUNS: Record<string, Run> = {
     first: [],
     fills: {},
     shots: [['the mug spotless and shining inside, the coffee stain gone'], ['a spoon of baking soda into the wet mug'], ['scrubbing the stain and the rim with a damp sponge'], ['rinsing it under the tap'], []],
+  },
+  'song-with-lyrics': {
+    type: 'audio',
+    photo: false,
+    first: [],
+    texts: {
+      lyrics: [
+        '[Verse]',
+        'Streetlights hum your name tonight',
+        'I walk the long way home',
+        '',
+        '[Chorus]',
+        'Stay, stay, just one more song',
+        'Stay till the morning comes',
+        '',
+        '[Verse]',
+        'Your jacket\'s still on my chair',
+        'Your voice is still in the room',
+        '',
+        '[Chorus]',
+        'Stay, stay, just one more song',
+        'Stay till the morning comes',
+      ].join('\n'),
+    },
+    fills: { anchor: ['dreamy indie pop', '96 BPM', 'A minor', 'clean electric guitar, soft synth pads and live drums', 'a breathy female lead'] },
+  },
+  'mv-style-sheet': {
+    type: 'image',
+    photo: false,
+    first: [],
+    fills: { anchor: ['bittersweet and restless, late-night city pop', 'neon light in the rain, wet asphalt, 1980s Tokyo'] },
+  },
+  'mv-performer-sheet': {
+    type: 'image',
+    photo: false,
+    inputs: { performer: 'mini-tools/portrait.jpg' },
+    first: ['style'],
+    fills: {
+      style: ['bittersweet and restless, late-night city pop', 'neon light in the rain, wet asphalt, 1980s Tokyo'],
+      anchor: ['a long black vinyl coat over a white shirt, silver rings'],
+    },
+  },
+  'beat-synced-music-clip': {
+    type: 'video',
+    photo: false,
+    inputs: { song: 'music/song-15s.mp3', performer: 'mini-tools/portrait.jpg' },
+    first: [],
+    fills: { anchor: ['a rooftop at dusk as the city lights come on', 'dances alone, then turns to the camera when the chorus hits'] },
+  },
+  'music-first-mv': {
+    type: 'video',
+    photo: false,
+    inputs: { performer: 'mini-tools/portrait.jpg' },
+    first: ['music'],
+    fills: {
+      music: ['bright synth-pop at 120 BPM'],
+      anchor: [`${CUT_MENTION}anchor`, 'an empty bowling alley lit in pink and blue', 'dances down the lane, then freezes on the hit'],
+    },
+    cuts: { from: 'music', pieces: [{ into: 'anchor', start: 10, end: 25 }] },
+  },
+  'mv-chorus-performance': {
+    type: 'video',
+    photo: false,
+    inputs: { performer: 'mini-tools/portrait.jpg', chorus: 'music/song-15s.mp3' },
+    first: ['look'],
+    fills: {
+      look: ['a smoky jazz club lit by one warm spotlight, deep red and gold', 'a black velvet suit'],
+      anchor: ['eyes closed on the long notes, swaying gently, one hand on the microphone'],
+    },
+    frames: { 'character-image': 'look' },
+  },
+  'mv-full': {
+    type: 'image',
+    photo: false,
+    inputs: { performer: 'mini-tools/portrait.jpg' },
+    first: ['style'],
+    then: ['section-1', 'section-2'],
+    fills: {
+      style: ['bittersweet and restless, late-night city pop', 'neon light in the rain, wet asphalt, 1980s Tokyo'],
+      anchor: ['a long black vinyl coat over a white shirt, silver rings'],
+      'section-1': [`${CUT_MENTION}section-1`, 'the first verse', 'the singer walks alone through a night market, glancing at the camera', 'a slow tracking shot alongside them'],
+      'section-2': [`${CUT_MENTION}section-2`, 'the chorus', 'the singer stands in the rain on a crossing as the lights blur around them', 'a slow orbit around them'],
+    },
+    cuts: { from: 'song', file: 'music/song-30s.mp3', pieces: [{ into: 'section-1', start: 0, end: 15 }, { into: 'section-2', start: 15, end: 30 }] },
   },
   'underscore-bgm': {
     type: 'audio',
@@ -1216,6 +1709,23 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     for (const wired of [photo, ...pictures, material, song]) if (wired !== undefined) await wire(page, { projectId, spaceId }, wired, anchor);
     await openPanel(anchor);
     await applyTemplate(id, style);
+    for (const [key, words] of Object.entries(run.texts ?? {})) await writeText(id, key, words);
+    if (run.cuts?.file !== undefined) {
+      for (const piece of run.cuts.pieces) {
+        const cut = `${OUT}/${tag}-song-${String(piece.start)}-${String(piece.end)}-${LABEL}-${n}.mp3`;
+        execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(piece.start), '-to', String(piece.end), '-i', join(FIXTURES, run.cuts.file), cut]);
+        const clip = await dropMedia(cut);
+        await wire(page, { projectId, spaceId }, clip, piece.into === 'anchor' ? anchor : await keyed(piece.into));
+        cutClips.set(piece.into, clip);
+      }
+    }
+    /**
+     * Each text node's first line must reach the last request, in its prompt or its lyrics box (inner#1824, inner#1826).
+     */
+    const textsSent = (): void => {
+      const sent = bodies[bodies.length - 1] ?? '';
+      for (const words of Object.values(run.texts ?? {})) expect(sent).toContain(JSON.stringify(words.split('\n')[0] ?? '').slice(1, -1));
+    };
     for (const key of run.first) {
       const node = await keyed(key);
       await openPanel(node);
@@ -1230,6 +1740,15 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
       record({ template: id, node: key, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
       expectOptionalParagraphs(id, key, sentPrompt);
       await save(url, `${tag}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
+      if (run.cuts?.from === key) {
+        for (const piece of run.cuts.pieces) {
+          const cut = `${OUT}/${tag}-${key}-${String(piece.start)}-${String(piece.end)}-${LABEL}-${n}.mp3`;
+          execFileSync('ffmpeg', ['-v', 'error', '-y', '-ss', String(piece.start), '-to', String(piece.end), '-i', `${OUT}/${tag}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`, cut]);
+          const clip = await dropMedia(cut);
+          await wire(page, { projectId, spaceId }, clip, piece.into === 'anchor' ? anchor : await keyed(piece.into));
+          cutClips.set(piece.into, clip);
+        }
+      }
     }
     await openPanel(anchor);
     for (const [slot, key] of Object.entries(run.frames ?? {})) await pickIntoFrame(slot as VideoSlotId, await keyed(key));
@@ -1268,7 +1787,22 @@ if (AGENT_ASK === undefined) for (const id of process.env.TEMPLATE_RUN_ONLY ? [p
     const sentPrompt = requests[requests.length - 1] ?? '';
     record({ template: id, style, label: LABEL, n, empty: [...LEAVE_EMPTY], result: { prompt, sent: sentPrompt, url } });
     expectOptionalParagraphs(id, registered.anchor, sentPrompt);
+    textsSent();
     await save(url, `${tag}-${LABEL}-${n}.${EXTENSION[run.type]}`);
+    for (const key of run.then ?? []) {
+      const node = await keyed(key);
+      await openPanel(node);
+      await fillBraces(fills[key] ?? []);
+      const shown = await promptText();
+      assertDraftSent(`canvas.template.${id}.node.${key}.prompt`, shown);
+      const kind = ((await graph()).nodes.find((one) => one.id === node)?.type ?? 'video') as Kind;
+      const result = await generate(node, kind);
+      expect(result).toMatch(/^https?:/);
+      const sent = requests[requests.length - 1] ?? '';
+      record({ template: id, node: key, label: LABEL, n, result: { prompt: shown, sent, url: result } });
+      textsSent();
+      await save(result, `${tag}-${key}-${LABEL}-${n}.${EXTENSION[kind]}`);
+    }
     for (const { key, slot } of run.after ?? []) {
       const node = await keyed(key);
       await openPanel(node);

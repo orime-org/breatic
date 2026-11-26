@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 import type { Check } from "#repo-lint/check";
 import { agentRuleFiles } from "#repo-lint/checks/agent-rule-files";
 import { aiSdkWarningsBridged } from "#repo-lint/checks/ai-sdk-warnings-bridged";
@@ -21,11 +21,13 @@ import { noFfmpegBindingDeps } from "#repo-lint/checks/no-ffmpeg-binding-deps";
 import { noGplBlocknoteAddons } from "#repo-lint/checks/no-gpl-blocknote-addons";
 import { noHardcodedSecrets } from "#repo-lint/checks/no-hardcoded-secrets";
 import { noPrivateRepoPath } from "#repo-lint/checks/no-private-repo-path";
+import { noBillingInProduct } from "#repo-lint/checks/no-billing-in-product";
 import { noticeCoversDependencies } from "#repo-lint/checks/notice-covers-dependencies";
 import { noticeTravelsWithTheBundle } from "#repo-lint/checks/notice-travels-with-the-bundle";
 import { noSilentSkip } from "#repo-lint/checks/no-silent-skip";
 import { noSubagentResidue } from "#repo-lint/checks/no-subagent-residue";
 import { noTranslatedProductNoun } from "#repo-lint/checks/no-translated-product-noun";
+import { noPreviousLicenceHeader } from "#repo-lint/checks/no-previous-licence-header";
 import { noTrojanSource } from "#repo-lint/checks/no-trojan-source";
 import { noUpstreamFieldInCatalog } from "#repo-lint/checks/no-upstream-field-in-catalog";
 import { noUnresolvedAliasInDist } from "#repo-lint/checks/no-unresolved-alias-in-dist";
@@ -62,11 +64,13 @@ export const CHECKS: readonly Check[] = [
   noGplBlocknoteAddons,
   noHardcodedSecrets,
   noPrivateRepoPath,
+  noBillingInProduct,
   noticeCoversDependencies,
   noticeTravelsWithTheBundle,
   noSilentSkip,
   noSubagentResidue,
   noTranslatedProductNoun,
+  noPreviousLicenceHeader,
   noTrojanSource,
   noUpstreamFieldInCatalog,
   noUnresolvedAliasInDist,

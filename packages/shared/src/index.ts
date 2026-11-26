@@ -1,8 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 
-export { STRIPE_WEBHOOK_RESULTS, type StripeWebhookResult } from "@shared/types/stripe-webhook.js";
 
 export {
   Environment,
@@ -44,7 +43,6 @@ export type {
   ConversationAttachmentEntity,
   ProjectAgentInstructionsEntity,
   AssetKind,
-  PaymentEntity,
   CreditLotEntity,
   CreditLotLifecycle,
   CreditLedgerEntryEntity,
@@ -66,12 +64,14 @@ export type {
   AttachRef,
   FocusImage,
   FocusCropOutcome,
+  FocusUpload,
   AnnotationReply,
   CanvasNodeFields,
   NodeTaskCounts,
   NodeTaskResult,
   NodeMediaNumbers,
   NodeTaskCountsEvent,
+  SceneLookPictureEvent,
   NodeEvent,
   SpaceTasksVersionEvent,
   ModelModality,
@@ -131,8 +131,9 @@ export type {
   SpaceType,
   Space,
   ActivityNewControlEvent,
-  CreditsChangedControlEvent,
-  SpaceTasksChangedControlEvent,
+  UploadEndedEvent,
+  AssetPeaksReadyControlEvent,
+  SceneLookSettledControlEvent,
   ProjectConnectionsCloseEvent,
   SessionsRevokedEvent,
   ProjectConnectionsCloseReason,
@@ -170,8 +171,9 @@ export {
   SPACE_TASKS_TYPES,
   SPACE_TASKS_VERSION,
   activityNewChannel,
-  creditsChangedChannel,
-  spaceTasksChangedChannel,
+  uploadEndedChannel,
+  assetPeaksReadyChannel,
+  sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
@@ -203,7 +205,11 @@ export {
   PROJECT_ACTIVITY_TYPES,
   ACTIVITY_NEW_SIGNAL,
   CREDITS_CHANGED_SIGNAL,
-  SPACE_TASKS_CHANGED_SIGNAL,
+  ASSET_PEAKS_READY_SIGNAL,
+  NOTIFICATIONS_CHANGED_SIGNAL,
+  PROJECT_TRANSFER_CHANGED_SIGNAL,
+  UPLOAD_ENDED_SIGNAL,
+  SCENE_LOOK_SETTLED_SIGNAL,
   AssetActivityPayloadSchema,
   GENERATION_SOURCES,
   GenerationActivityPayloadSchema,
@@ -239,7 +245,11 @@ export type {
   ProjectActivityPage,
   ActivityNewSignal,
   CreditsChangedSignal,
-  SpaceTasksChangedSignal,
+  AssetPeaksReadySignal,
+  NotificationsChangedSignal,
+  ProjectTransferChangedSignal,
+  UploadEndedSignal,
+  SceneLookSettledSignal,
 } from "@shared/types/index.js";
 
 export {
@@ -445,6 +455,7 @@ export {
   documentSpaceDocName,
   timelineSpaceDocName,
   threeDSpaceDocName,
+  webAnimationSpaceDocName,
   spaceContentDocName,
   parseDocName,
   isProjectScopedDocName,
@@ -461,6 +472,7 @@ export type { FollowingDeclaration, FollowingEntry } from "@shared/following-tab
 export { COLLAB_CHUNK_ACK, COLLAB_FRAME_MAX_BYTES, collabChunkHeaderSchema, sendInChunks } from "@shared/collab-frame-chunks.js";
 
 export {
+  confirmsSync,
   SyncConfirmRequestSchema,
   SyncConfirmedResponseSchema,
 } from "@shared/sync-receipt.js";
@@ -489,6 +501,7 @@ export {
 export {
   documentBodyFragment,
   documentCommentThreads,
+  webAnimationAnnotationThreads,
   encodeInitialSpaceContent,
 } from "@shared/document-body.js";
 
@@ -516,7 +529,6 @@ export {
   TimelineWebAnimationClipSchema,
   TimelineUploadClipSchema,
   TimelineClipSchema,
-  TimelineOperationReceiptSchema,
   TimelineDocumentV1Schema,
   TIMELINE_MAIN_TRACK_ID,
   TIMELINE_SCHEMA_VERSIONS,
@@ -532,7 +544,6 @@ export type {
   TimelineWebAnimationContentBinding,
   TimelineUploadClip,
   TimelineClip,
-  TimelineOperationReceipt,
   TimelineDocumentV1,
 } from "@shared/timeline/schema.js";
 // The web-animation contracts are exported from `@breatic/shared/space-content` only: their schemas are built at
@@ -875,6 +886,7 @@ export {
 } from "@shared/upload/session-token.js";
 export {
   UPLOAD_STATUS_MAX_KEYS,
+  STUDIO_PAGE_POLL_DEFAULT_MS,
   type UploadStatus,
   type UploadStatusResult,
 } from "@shared/upload/upload-status.js";
@@ -894,9 +906,13 @@ export {
 // Why a task failed, as a code rather than a sentence: the writer is a server
 // and the user is whoever opens the list, in their own language.
 export {
+  ACCOUNT_KEY_FAILURE_KINDS,
+  ACCOUNT_KEY_FAILURE_REASONS,
   TASK_FAILURE_REASONS,
   encodeTaskFailure,
   readTaskFailure,
+  type AccountKeyFailureKind,
+  type AccountKeyFailureReason,
   type TaskFailureReason,
 } from "@shared/types/task-failure.js";
 // Which media the understanding endpoint takes. Both ends ask it: the browser
@@ -981,6 +997,7 @@ export {
   type TemplateNodeKey,
   type TemplateNodeWords,
   type TemplateResourceNode,
+  type TemplateTextNode,
   type TemplateLine,
   type TemplateShot,
   type TemplateTriggers,
@@ -995,6 +1012,21 @@ export {
   type TemplateStyleSetId,
 } from "@shared/canvas/template-styles.js";
 export { RETIRED_MODELS, currentModelName, withCurrentModelNames, type NodeModelFields } from "@shared/canvas/retired-models.js";
+export {
+  FOCUS_IMAGE_UPLOAD_EVENT_TYPE,
+  MAX_FOCUS_DIMENSION,
+  MAX_FOCUS_ENTRIES,
+  MAX_FOCUS_ID,
+  MAX_FOCUS_NAME,
+  MAX_FOCUS_URL,
+  focusImageTicketSchema,
+  isValidFocusImage,
+  isValidFocusUpload,
+  validFocusImages,
+  validFocusUploads,
+  type FocusImageTicket,
+  type FocusImageUploadEvent,
+} from "@shared/canvas/focus-images.js";
 export { inputRefusalText, type InputLimitShape, type InputRefusalShape } from "@shared/input-refusal.js";
 export {
   STAND_IN_ON,
@@ -1033,7 +1065,6 @@ export {
 } from "@shared/canvas/template-expansion.js";
 // Plain text in and out of a text node's body ships at
 // The one focus-image sanitizer, web and collab alike (frames-split §5.5).
-export { MAX_FOCUS_ENTRIES, MAX_FOCUS_NAME, validFocusImages } from "@shared/canvas/focus-images.js";
 // `@breatic/shared/canvas/text-body` — that file says why it is not here.
 
 export {
@@ -1344,12 +1375,15 @@ export {
   type VideoPresentationPricing,
   type VideoPresentationUsageFact,
 } from "@shared/upload/video-presentation-ingest.js";
-export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType,
+export { SCENE_OBJECT_NAME_MAX, SCENE_POSE_KEY_PREFIX, SCENE_POSE_KEY_MAX_LENGTH, SCENE_POSE_MAX_KEYS, SCENE_POSE_HIPS_KEY, SceneVectorSchema, SceneRotationSchema, SceneScaleSchema, SceneModelSchema, ScenePoseSchema, SceneObjectValuesSchema, SceneObjectSchema, gatherScenePose, expandScenePose, isSceneModelMediaType, isSceneLookImageMediaType,
+  SCENE_LOOK_KEY_PREFIX, SCENE_LOOK_MAX_PARTS, SCENE_LOOK_DEFAULT_PART, SCENE_LOOK_FIELDS, SCENE_LOOK_PICTURE_COLOR, SCENE_LOOK_EMISSIVE_DEFAULT, SCENE_LOOK_REPEAT_MIN, SCENE_LOOK_REPEAT_MAX, SCENE_LOOK_OFFSET_MAX, SCENE_LOOK_ROTATION_MAX, SceneLookSchema, SceneLookMapSchema, isSceneLookPartKey, gatherSceneLook, expandSceneLook,
   SCENE_LIGHT_TYPES, VIEWFINDER_RATIOS, DEFAULT_VIEWFINDER_RATIO, SCENE_FREE_RATIO_MIN, SCENE_FREE_RATIO_MAX, SCENE_FOCAL_LENGTH_MIN, SCENE_FOCAL_LENGTH_MAX, SCENE_FOCAL_LENGTH_DEFAULT,
   SCENE_SPOT_ANGLE_MIN, SCENE_SPOT_ANGLE_MAX, SCENE_SPOT_ANGLE_DEFAULT, SCENE_LIGHT_INTENSITY, SCENE_LIGHT_COLOR_DEFAULT, SCENE_AMBIENT_COLOR_DEFAULT, SCENE_AMBIENT_INTENSITY_DEFAULT, SCENE_AMBIENT_INTENSITY_MAX,
-  SceneColorSchema, SCENE_CAMERA_KEYS, SCENE_LIGHT_KEYS, isSceneCamera, isSceneLight, compareDirectorRecords, nextDirectorNumber, isSceneModelFile } from "@shared/scene.js";
-export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig, SceneCaptureConfig,
-  SceneLightType, ViewfinderRatio, SceneModelFile, SceneCameraObject, SceneLightObject, SceneDirectorConfig } from "@shared/scene.js";
+  SceneColorSchema, SCENE_CAMERA_KEYS, SCENE_LIGHT_KEYS, isSceneCamera, isSceneLight, compareDirectorRecords, nextDirectorNumber, isSceneModelFile,
+  readSceneRecord, judgeSceneLookPicture, SCENE_LOOK_PICTURE_SETTLEMENTS } from "@shared/scene.js";
+export type { SceneVector, SceneRotation, SceneModel, ScenePose, SceneLook, SceneLookPart, SceneLookField, SceneObjectValues, SceneObject, SceneEditableField, SceneImportLimits, SceneControlsConfig, SceneCaptureConfig,
+  SceneLightType, ViewfinderRatio, SceneModelFile, SceneCameraObject, SceneLightObject, SceneDirectorConfig,
+  SceneLookPictureOutcome, SceneLookPictureRefusal, SceneLookPictureSettlement } from "@shared/scene.js";
 export { SCENE_FORMAT_VERSION, getSceneRootMap, initializeSceneDocument } from "@shared/scene-version.js";
 
 export * from "@shared/credit-amount.js";
@@ -1358,7 +1392,8 @@ export { purchaseRowSchema, creditLotViewSchema, studioLotViewSchema, creditLedg
 export { projectVisitRequestSchema, projectVisitReceiptSchema, projectVisitOpenedSchema, projectVisitLookupSchema } from "@shared/project-visit-contract.js";
 export type { ProjectVisitRequest, ProjectVisitReceipt, ProjectVisitOpened, ProjectVisitLookup } from "@shared/project-visit-contract.js";
 export type { AccountActivityEntity, AccountActivityKind, AccountActivityCoverageEntity } from "@shared/types/entities.js";
+export type { AccountProviderKey, AccountModelUpstream, ChatKeyFailureReason, ChatKeyRefusal, ProviderKeyBalanceState } from "@shared/types/entities.js";
 export type {
-  TimelineExecution, TimelineExecutionRow, TimelineExecutionStatus, TimelineWebResolution, WebAnimationSourceVersion, DocumentVersion,
+  TimelineExecution, TimelineExecutionStatus, TimelineWebResolution, TimelineWebResolutionOrigin, WebAnimationSourceVersion, DocumentVersion,
 } from "@shared/types/entities.js";
 export { routeSchema, type RunRoute } from "@shared/schemas/route.js";

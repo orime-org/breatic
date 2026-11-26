@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Module barrel — shared auth kernel only.
@@ -7,8 +7,8 @@
  * Everything else moved out: server-private domain → `@server`/src/modules
  * (modular-monolith convergence ADR); AIGC business shared by
  * server+worker (credit / task / node-history) → `@breatic/domain`
- * (domain-extraction ADR); user.repo / stripe / mailer / pricing →
- * `@server` (PR4). What remains is the project_members repo + the
+ * (domain-extraction ADR); user.repo / mailer → `@server` (PR4); billing
+ * → the billing service. What remains is the project_members repo + the
  * loadProjectRole auth primitive, shared by server (requireRole) and
  * collab (onAuthenticate).
  */

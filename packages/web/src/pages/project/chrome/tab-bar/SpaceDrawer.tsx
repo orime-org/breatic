@@ -1,19 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import {
-  Box,
-  Clock,
-  Eye,
-  FileText,
-  Lock,
-  Menu,
-  MoreVertical,
-  Palette,
-  Pencil,
-  Trash2,
-  Unlock,
-} from 'lucide-react';
+import { Eye, Lock, Menu, MoreVertical, Pencil, Trash2, Unlock } from 'lucide-react';
 import * as React from 'react';
 
 import {
@@ -47,7 +35,7 @@ import { useExclusiveOverlay } from '@web/features/exclusive-overlay/use-exclusi
 import type { ProjectSpace } from '@web/data/yjs/project-meta';
 import { SPACE_NAME_MAX_LEN, spacesNewestFirst } from '@breatic/shared';
 import { relativeTime } from '@web/pages/project/chrome/tab-bar/relative-time';
-import type { SpaceType } from '@breatic/shared';
+import { SPACE_TYPE_ICON } from '@web/spaces/space-type-icon';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useInlineEditExit } from '@web/lib/inline-edit-exit';
 import { useHeldName } from '@web/lib/use-held-name';
@@ -69,16 +57,6 @@ interface SpaceDrawerProps {
   /** Renames a Space; omitted for a viewer, whose rows then offer no Rename. */
   onRenameSpace?: (spaceId: string, name: string) => Promise<void> | void;
 }
-
-const TYPE_META: Record<
-  SpaceType,
-  { icon: typeof Palette; labelKey: 'spaces.kind.canvas' | 'spaces.kind.document' | 'spaces.kind.timeline' | 'spaces.kind.threeD' }
-> = {
-  canvas: { icon: Palette, labelKey: 'spaces.kind.canvas' },
-  document: { icon: FileText, labelKey: 'spaces.kind.document' },
-  timeline: { icon: Clock, labelKey: 'spaces.kind.timeline' },
-  '3d': { icon: Box, labelKey: 'spaces.kind.threeD' },
-};
 
 // The row's own layout, the same whether it is the row's button or, while the
 // name is being edited, a plain box (the rename box cannot sit in a button).
@@ -283,8 +261,7 @@ function SpaceDrawerRow({
   onConfirmCloseAutoFocus,
 }: SpaceDrawerRowProps): React.JSX.Element {
   const t = useTranslation();
-  const meta = TYPE_META[space.type];
-  const Icon = meta.icon;
+  const Icon = SPACE_TYPE_ICON[space.type];
   // When the Space was made. The type word this line used to carry is what
   // the icon beside it already draws, so two Spaces of one type read the same
   // once their names truncate. `createdAt` is also what the list is ordered

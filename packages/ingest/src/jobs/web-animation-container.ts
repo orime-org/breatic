@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The web-animation container (inner#1711 design §6): one Durable Object per job, named by the job id, holding the
@@ -13,7 +13,7 @@
 
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext, StopParams } from "@cloudflare/containers";
-import type { MessagesCallEnd, MessagesPlan } from "@breatic/provider/messages";
+import type { AccountKeyRefusal, MessagesCallEnd, MessagesPlan } from "@breatic/provider/messages";
 import {
   WEB_ANIMATION_MANIFEST_MAX_BYTES,
   type WebAnimationJobReport,
@@ -24,7 +24,7 @@ import { noteFailure } from "@ingest/error-monitoring.js";
 import { askedKey } from "@ingest/object-url.js";
 import { MEDIA_OBJECT_HOST, mediaObjectUrl } from "@ingest/media-object-route.js";
 import { JOB_REPORT_HOST } from "@ingest/jobs/mini-tool-container.js";
-import { harnessKeyOf } from "@ingest/jobs/harness-keys.js";
+import { HeldKeys } from "@ingest/jobs/web-animation-held-keys.js";
 import { MODEL_HOST, relayModelCall } from "@ingest/jobs/web-animation-model-relay.js";
 import {
   WEB_ANIMATION_PORT,
@@ -44,13 +44,15 @@ import {
 import { hashStoredObject, writeStreamedObject } from "@ingest/stored-object.js";
 
 /**
- * What this class needs bound; the binding is optional, and its absence turns the feature off. The model keys are
- * `HARNESS_` plus each upstream's key variable (`key_env` in `config/provider/upstreams.yaml`), read through
- * `harnessKeyOf`.
+ * What this class needs bound; the binding and the private key are optional, and the absence of either turns the
+ * feature off. The Worker holds no model key: each job's keys arrive sealed with its submit and are opened with
+ * `KEY_UNSEAL_PRIVATE_KEY` into the job object's memory only (inner#1953).
  */
 export interface WebAnimationEnv {
   BUCKET: R2Bucket;
   WEB_ANIMATION?: DurableObjectNamespace<WebAnimationContainer>;
+  /** PKCS#8 PEM that opens the keys our worker seals with each submit (a Worker secret). */
+  KEY_UNSEAL_PRIVATE_KEY?: string;
 }
 
 /** What a submit answers. */
@@ -67,16 +69,18 @@ export interface WebAnimationOutput {
   bytes: number;
 }
 
-/** The two keys a job may write and the package's size limit. */
+/** The two keys a job may write, the package's size limit, and the one package a modification may read. */
 interface JobObjects {
   packageKey: string;
   manifestKey: string;
   maxPackageBytes: number;
+  basePackageKey?: string;
 }
 
 /**
  * What the model relay is told about its job. `plan` is absent from a container started by a Worker deployed before
- * the plan (inner#1743), whose stored outbound params carry `model` instead.
+ * the plan (inner#1743), whose stored outbound params carry `model` instead. The keys are never here: the outbound
+ * params are stored, and the keys live only in the job object's memory (inner#1953).
  */
 interface ModelLimits {
   plan?: MessagesPlan;
@@ -129,6 +133,22 @@ export async function storeWebAnimationOutput(
   return { response: new Response(null, { status: 200 }), written };
 }
 
+/**
+ * Serve the one package a job may read through `r2.local`: a modification's base, an export's source.
+ * @param request - The container's request.
+ * @param bucket - The R2 binding.
+ * @param key - The key the job may read; null when it may read none.
+ * @returns The package, or why not.
+ * @throws {Error} When R2 refuses the read.
+ */
+export async function readWebAnimationPackage(request: Request, bucket: R2Bucket, key: string | null): Promise<Response> {
+  if (request.method !== "GET") return new Response("Not allowed", { status: 405 });
+  if (key === null || askedKey(request) !== key) return new Response("Not this object", { status: 403 });
+  const object = await bucket.get(key);
+  if (object === null) return new Response("No such object", { status: 404 });
+  return new Response(object.body, { status: 200 });
+}
+
 /** One web-animation job and its container. */
 export class WebAnimationContainer extends Container<WebAnimationEnv> {
   defaultPort = WEB_ANIMATION_PORT;
@@ -139,15 +159,20 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
   /** Carries that refusal to HTTPS as well. */
   interceptHttps = true;
 
+  /** The keys the job's model calls run on (inner#1953), in memory only. */
+  private readonly heldKeys = new HeldKeys();
+
   /**
-   * Start a job, or answer the one this object already holds.
-   * @param request - The job.
+   * Start a job, or answer the one this object already holds, holding the keys its calls run on in memory.
+   * @param request - The job, without its keys.
+   * @param keys - The keys its submit carried, opened.
    * @returns Its report, that a cancel came first, or `start_failed` when the container could not be started or would
    *   not take the run.
    */
-  async submit(request: WebAnimationJobRequest): Promise<WebAnimationSubmitAnswer> {
+  async submit(request: WebAnimationJobRequest, keys: Readonly<Record<string, string>>): Promise<WebAnimationSubmitAnswer> {
     const next = await this.apply({ type: "submit", request });
     if (next.refused) return { kind: "cancelled_before_submit" };
+    this.heldKeys.afterSubmit(next.record?.state, keys);
     if (next.effects.includes("start")) {
       const failed = await this.startRun(request);
       if (failed !== null) return { kind: "start_failed", reason: failed };
@@ -209,6 +234,37 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
    */
   async endModelCall(seq: number, end: MessagesCallEnd): Promise<void> {
     await this.apply({ type: "endModelCall", seq, ...end });
+  }
+
+  /**
+   * The keys the job's calls run on.
+   * @returns Them, or null when this object holds none, as after a restart.
+   */
+  async callKeys(): Promise<Readonly<Record<string, string>> | null> {
+    return this.heldKeys.current();
+  }
+
+  /**
+   * Fail the job because a call could not run on its keys (inner#1953).
+   * @param reason - The failure reason: `key_lost_on_restart` or `account_key_failed`.
+   * @param upstream - The upstream that refused the payer's own key, if any.
+   * @param keyReason - Why it refused, for `account_key_failed`.
+   * @returns Nothing.
+   */
+  async failForKeys(reason: string, upstream?: string, keyReason?: AccountKeyRefusal["reason"]): Promise<void> {
+    await this.apply({ type: "keyFailed", reason, upstream, keyReason });
+  }
+
+  /**
+   * Note a passing failure of the payer's own key (inner#1953); the job keeps running, and fails with it only if the
+   * runner gives up before a later call completes.
+   * @param reason - `account_key_failed` (a rate limit) or `upstream_unavailable`.
+   * @param upstream - The upstream that failed.
+   * @param keyReason - Why it refused the key, for `account_key_failed`.
+   * @returns Nothing.
+   */
+  async notePassingKeyFailure(reason: string, upstream: string, keyReason?: AccountKeyRefusal["reason"]): Promise<void> {
+    await this.apply({ type: "keyPassing", reason, upstream, keyReason });
   }
 
   /**
@@ -308,6 +364,7 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
     await this.schedule(new Date(request.deadlineAt), "expireJob");
     const objects: JobObjects = {
       packageKey: request.packageKey, manifestKey: request.manifestKey, maxPackageBytes: request.maxPackageBytes,
+      ...(request.base !== undefined && { basePackageKey: request.base.packageKey }),
     };
     // The routes submit only a request with a plan; its prices are as provider's messagesPlan wrote them.
     const limits: ModelLimits = { plan: request.messagesPlan as MessagesPlan, maxTokens: request.maxTokens, callTimeoutMs: request.callTimeoutMs };
@@ -322,6 +379,14 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
       manifestUrl: mediaObjectUrl(request.manifestKey),
       progressUrl: `http://${JOB_REPORT_HOST}${WEB_ANIMATION_PROGRESS_PATH}`,
       reportUrl: `http://${JOB_REPORT_HOST}${WEB_ANIMATION_REPORT_PATH}`,
+      ...(request.base !== undefined && {
+        base: {
+          packageUrl: mediaObjectUrl(request.base.packageKey),
+          viewport: request.base.viewport,
+          durationFrames: request.base.durationFrames,
+          fontSetVersion: request.base.fontSetVersion,
+        },
+      }),
     };
     try {
       await this.setOutboundByHosts<unknown>({
@@ -369,6 +434,7 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
       // cut off after that.
       await this.schedule(new Date(Date.now() + 2 * callTimeoutMs), "drainJob");
     }
+    this.heldKeys.afterEffects(next.effects);
     if (next.effects.includes("destroy")) {
       this.deleteSchedules("expireJob");
       this.deleteSchedules("drainJob");
@@ -402,9 +468,9 @@ function jobObject(env: WebAnimationEnv, ctx: OutboundHandlerContext<unknown>): 
 }
 
 /**
- * Relay one model call along the job's plan under its limits.
+ * Relay one model call along the job's plan under its limits, on the keys the job object holds.
  * @param request - What the harness sent to `model.local`.
- * @param env - The bindings, holding the keys.
+ * @param env - The bindings.
  * @param ctx - The handler's context, carrying the job's plan and limits.
  * @returns The relayed answer, or 503 when the job object could not be reached or the container was started without a
  *   plan, which no call is registered for.
@@ -416,13 +482,15 @@ async function modelCall(request: Request, env: WebAnimationEnv, ctx: OutboundHa
   try {
     return await relayModelCall(request, {
       plan,
-      keyOf: harnessKeyOf(env),
+      readKeys: () => job.callKeys(),
       maxTokens: ctx.params.maxTokens,
       callTimeoutMs: ctx.params.callTimeoutMs,
       registry: {
         beginModelCall: () => job.beginModelCall(),
         recordModelCallStart: (seq, upstream, messageId) => job.recordModelCallStart(seq, upstream, messageId),
         endModelCall: (seq, end) => job.endModelCall(seq, end),
+        failJob: (reason, upstream, keyReason) => job.failForKeys(reason, upstream, keyReason),
+        notePassingKeyFailure: (reason, upstream, keyReason) => job.notePassingKeyFailure(reason, upstream, keyReason),
       },
     });
   } catch (err) {
@@ -432,13 +500,14 @@ async function modelCall(request: Request, env: WebAnimationEnv, ctx: OutboundHa
 }
 
 /**
- * Write one of the job's two outputs.
+ * Read a modification's base package, or write one of the job's two outputs.
  * @param request - What the container sent to `r2.local`.
  * @param env - The bindings.
  * @param ctx - The handler's context, carrying the job's keys.
- * @returns The write's answer.
+ * @returns The read or the write's answer.
  */
 async function jobObjects(request: Request, env: WebAnimationEnv, ctx: OutboundHandlerContext<JobObjects>): Promise<Response> {
+  if (request.method === "GET") return readWebAnimationPackage(request, env.BUCKET, ctx.params.basePackageKey ?? null);
   const { response, written } = await storeWebAnimationOutput(request, env.BUCKET, ctx.params);
   if (written !== null) await jobObject(env, ctx).noteWritten(written);
   return response;

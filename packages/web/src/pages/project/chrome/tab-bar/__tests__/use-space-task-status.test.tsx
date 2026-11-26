@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { act, cleanup, renderHook } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -32,9 +32,10 @@ vi.mock('@hocuspocus/provider', async () => {
     },
   };
 });
-// Canvas and Document tabs never read the Timeline execution list; its own file covers the Timeline branch.
-vi.mock('@web/spaces/timeline/use-timeline-executions', () => ({ useTimelineExecutions: () => ({ data: undefined }) }));
+// Canvas and Document tabs never read a Motion execution list; its own file covers the Motion branch.
+vi.mock('@web/spaces/web-animation/use-motion-running', () => ({ useMotionRunning: () => false }));
 vi.mock('@web/spaces/timeline/use-timeline-limits', () => ({ useTimelineLimits: () => undefined }));
+vi.mock('@web/spaces/three-d/use-space-tasks', () => ({ useSpaceTasks: () => ({ query: { data: undefined }, running: 0 }) }));
 vi.mock('@web/data/yjs/collab-failure-report', () => ({ reportCollabFailure: vi.fn() }));
 
 const PROJECT = 'project-one';

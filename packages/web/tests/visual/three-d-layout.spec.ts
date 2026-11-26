@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { expect } from 'playwright/test';
 import { test } from '../helpers/slot';
@@ -127,8 +127,20 @@ test('scene floating panels preserve the approved stage, Escape and development 
         await entry.click(); await expect(panel).toBeHidden();
         await entry.click(); await expect(page.getByTestId(`scene-${kind}-panel`)).toBeVisible();
         await page.mouse.move(500, 100);
-        await expect(entry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+        // The open panel's button shows selected: filled with the foreground colour, flat like the canvas toolbar.
+        const selected = await page.evaluate(() => {
+          const probe = document.createElement('div');
+          probe.style.backgroundColor = 'var(--color-foreground)';
+          document.body.append(probe);
+          const colour = getComputedStyle(probe).backgroundColor;
+          probe.remove();
+          return colour;
+        });
+        await expect(entry).toHaveCSS('background-color', selected);
+        await expect(entry).toHaveCSS('box-shadow', 'none');
         await close.click(); await expect(panel).toBeHidden();
+        await page.mouse.move(500, 100);
+        await expect(entry).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
       }
       await scene.getByTestId('scene-properties-trigger').click();
       await expect(lock).toBeVisible();

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Finding the one request a token names, across every request table.
@@ -45,7 +45,7 @@ import * as decisionRepo from "@server/modules/decision/decision.repo.js";
 import * as studioInvitationsRepo from "@server/modules/studio/studioInvitations.repo.js";
 import * as projectInvitationsRepo from "@server/modules/project-invite/projectInvitations.repo.js";
 import * as roleUpgradeRequestsRepo from "@server/modules/role-upgrade-request/roleUpgradeRequests.repo.js";
-import * as projectTransfersRepo from "@server/modules/project/projectTransfers.repo.js";
+import { projectTransfersRepo } from "@breatic/domain";
 import * as studioTransfersRepo from "@server/modules/studio/studioTransfers.repo.js";
 import * as projectJoinRequestsRepo from "@server/modules/project-join-request/projectJoinRequests.repo.js";
 

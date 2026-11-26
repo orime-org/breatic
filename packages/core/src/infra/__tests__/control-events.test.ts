@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Control-plane publish/subscribe namespacing (#1831).
@@ -32,9 +32,11 @@ vi.mock("@core/config/runtime.js", () => ({ env: envMock }));
 
 import {
   publishActivityNew,
-  publishCreditsChanged,
+  publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,
+  publishUploadEnded,
+  uploadEndedChannelName,
 } from "@core/infra/control-events.js";
 
 const PID = "4d1a0d66-ee82-4596-986a-21054cd65490";
@@ -84,13 +86,16 @@ describe("control-events — deployment prefix", () => {
     });
   });
 
-  it("publishes credits:changed on the prefixed channel, under the subscribe pattern", async () => {
-    await publishCreditsChanged(PID);
-
-    expect(lastChannel()).toBe(`dev:project:${PID}:credits:changed`);
+  it("publishes scene-look:settled on the prefixed channel, under the subscribe pattern, with who it is for and the outcome", async () => {
+    await publishSceneLookSettled({
+      projectId: PID, spaceId: "s", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged",
+    });
+    expect(lastChannel()).toBe(`dev:project:${PID}:scene-look:settled`);
     expect(patternMatches(projectControlChannelPattern(), lastChannel())).toBe(true);
-    const call = publishMock.mock.calls.at(-1) as unknown as [string, string];
-    expect(JSON.parse(call[1])).toMatchObject({ type: "project-credits:changed", projectId: PID });
+    const payload = JSON.parse((publishMock.mock.calls.at(-1) as unknown as [string, string])[1]) as Record<string, unknown>;
+    expect(payload).toMatchObject({
+      type: "project-scene-look:settled", projectId: PID, spaceId: "s", objectId: "o", part: "3", picture: "p", userId: "u", outcome: "partChanged",
+    });
   });
 
   it("derives the subscribe pattern from the same prefix", () => {
@@ -127,5 +132,28 @@ describe("control-events — deployment prefix", () => {
     await publishActivityNew(PID);
 
     expect(patternMatches(theirs, lastChannel())).toBe(false);
+  });
+});
+
+// #1580 B-17: an upload's ending is told on a channel the deployment prefix
+// separates, as the project channels are, so a second deployment's collab on
+// the same Redis never relays it.
+describe("control-events — the upload ending channel", () => {
+  beforeEach(() => {
+    publishMock.mockClear();
+  });
+
+  it.each(["dev", "dev-agent", "prod"])("B-17 with prefix %s publishes under that prefix", async (prefix) => {
+    envMock.REDIS_KEY_PREFIX = prefix;
+    await publishUploadEnded("11111111-1111-4111-8111-111111111111", { key: "uploads/k.png", state: "transferred" });
+    expect(lastChannel()).toBe(uploadEndedChannelName());
+    expect(lastChannel().startsWith(`${prefix}:`)).toBe(true);
+  });
+
+  it("B-17 gives two deployments two channels, also when one prefix starts the other", () => {
+    envMock.REDIS_KEY_PREFIX = "dev";
+    const ours = uploadEndedChannelName();
+    envMock.REDIS_KEY_PREFIX = "dev-agent";
+    expect(uploadEndedChannelName()).not.toBe(ours);
   });
 });

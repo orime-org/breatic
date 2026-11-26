@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The AI output dialog on screen (inner#1860 A1, A4, A5, A7, A8, design §5.3,
@@ -444,6 +444,16 @@ describe('a failure', () => {
 
     expect(toastError).toHaveBeenCalledTimes(1);
     expect(shownButtons()).toEqual(['doc-ai-close', 'doc-ai-retry']);
+  });
+
+  it('names the key and the upstream when the run failed on the payer\'s own key (inner#1953)', async () => {
+    const { call } = await polishing();
+
+    await act(async () => {
+      call.emit({ type: 'error', message: 'The text tool failed.', keyFailure: { reason: 'account_key_failed', upstream: 'openrouter' } });
+    });
+
+    expect(toastError).toHaveBeenCalledWith('The openrouter key failed. Check it in BYOK settings.');
   });
 
   it('retry sends the request again, as a new one', async () => {

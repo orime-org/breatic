@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Canvas routes — task management.
@@ -55,6 +55,7 @@ import {
   violatesTextLengthForModel,
 } from "@breatic/domain";
 import { assertLlmServable, assertServable, assertTakesInput } from "@server/modules/task/model-servable.js";
+import { accountKeys, creditsToHold, mediaRunKeys, runRoute, taskKeyRows } from "@server/modules/task/run-keys.js";
 import { catalogEntryOf } from "@breatic/shared/mini-tools";
 import {
   holdRowedRun,
@@ -67,6 +68,7 @@ import {
 } from "@server/modules/task/generation-task.js";
 import { startUrlIngest } from "@server/modules/asset/url-ingest.js";
 import { publishCountsQuietly } from "@server/modules/task/publish-counts.js";
+import { resolveKeys } from "@breatic/domain";
 import {
   assertStorageAllowance,
   pasteAssetsService,
@@ -105,9 +107,8 @@ canvas.use("*", requireAuth);
  *
  * `waveformMaxSeconds` / `waveformMaxBytes`: the longest and largest audio the
  * cut band decodes in the browser while its peaks file is missing; past either
- * the band stays plain. `waveformPeaksRetryMs` / `waveformPeaksRetryMaxMs`: how
- * often, and for how long, an open band re-reads a missing peaks file
- * (inner#1305).
+ * the band stays plain; a band past either reads its peaks again when the
+ * server announces them (#1580).
  *
  * `maxOutputs`: the frames and split `max_outputs`, which the panel checks
  * before creating the nodes (frames-split §10.7).
@@ -127,8 +128,6 @@ canvas.get("/limits", (c) => {
       understandLongMediaMaxBytes: getUnderstandConfig().long_media.max_source_bytes,
       waveformMaxSeconds: getMiniToolsConfig().waveform_max_seconds,
       waveformMaxBytes: getMiniToolsConfig().waveform_max_bytes,
-      waveformPeaksRetryMs: getMiniToolsConfig().waveform_peaks_retry_ms,
-      waveformPeaksRetryMaxMs: getMiniToolsConfig().waveform_peaks_retry_max_ms,
       quoteDebounceMs: getMiniToolsConfig().quote_debounce_ms,
       maxOutputs: Object.fromEntries((["video.extract-frames", "video.split"] as const).map((tool) => [tool, getMiniToolsConfig().executions[tool].max_outputs])),
       joinMaxClips: getMiniToolsConfig().join_max_clips,
@@ -248,10 +247,10 @@ canvas.post(
   // releases the hold; once queued, the worker charges or releases it.
   // The run as it is priced, and asked about before anything is held.
   const estimateInput = { params: body.params, prompt: extractPromptText(body.params.prompt ?? body.params.text) };
-  const { taskId } = await holdRun({
+  const { taskId, checked: { runKeys: keys, route } } = await holdRun({
     projectId,
     userId: user.id,
-    check: () => {
+    check: async () => {
       // #1675 execute gate (cross-modality): a model whose modes all need a source
       // input (image / video / audio) must not be submitted without it (e.g. Nano
       // Banana Edit needs an image; a video-edit needs a video). Reject BEFORE
@@ -311,7 +310,11 @@ canvas.post(
       // A model no upstream here can serve, or a route through one it is not offered on, is refused before
       // anything is held or queued.
       const entry = body.model === undefined ? undefined : catalogEntryOf(modelCatalog.getModelCatalog(), body.model);
-      if (entry !== undefined) assertServable(entry.name, entry.display_name, body.route);
+      // inner#1953: the keys of whoever pays for the Studio, settled once here; the task records their rows.
+      const runKeys = entry === undefined ? null : await mediaRunKeys(projectId, entry.name, body.params);
+      const route = runKeys === null ? body.route : runRoute(runKeys, body.route);
+      const onAccount = runKeys === null ? undefined : accountKeys(runKeys.media);
+      if (entry !== undefined) assertServable(entry.name, entry.display_name, route, onAccount);
       // inner#1825 text-length gate: a setting the model needs written, emptied.
       const short = violatesTextLengthForModel(body.model, body.params);
       if (short) {
@@ -319,11 +322,12 @@ canvas.post(
         throw new ValidationError(t("server.canvas.param_too_short", { name: t(`canvas.generatePanel.param.${short.param}`) }));
       }
       // #1521: a run no upstream here takes (too long a text, too many lines) is refused naming the limit.
-      return entry === undefined
-        ? Promise.resolve()
-        : assertTakesInput(entry.name, entry.display_name, estimateInput, body.route, { userId: user.id, projectId });
+      if (entry !== undefined) {
+        await assertTakesInput(entry.name, entry.display_name, estimateInput, route, { userId: user.id, projectId }, onAccount);
+      }
+      return { runKeys, route };
     },
-    credits: () => estimateTaskCredits(body.model, estimateInput, body.route),
+    credits: ({ runKeys, route }) => creditsToHold(runKeys, projectId, user.id, () => estimateTaskCredits(body.model, estimateInput, route)),
   });
 
   let task: Awaited<ReturnType<typeof taskService.create>>;
@@ -337,7 +341,7 @@ canvas.post(
     await assertStorageAllowance(projectId, "generate");
 
     // The run is held, priced and served on one route: the task row and the job both carry the one the estimate used.
-    const runParams = body.route === undefined ? body.params : { ...body.params, route: body.route };
+    const runParams = route === undefined ? body.params : { ...body.params, route };
     task = await admitGeneration(
       user.id,
       projectId,
@@ -348,6 +352,7 @@ canvas.post(
       body.model,
       body.source,
       taskId,
+      keys === null ? undefined : taskKeyRows(keys),
     );
 
     // A node carries several tasks at once (#186), so an overwrite claims
@@ -505,8 +510,10 @@ async function startReading(
 
   // Cross-tenant guard — see /canvas/tasks rationale.
   await projectService.assertAccess(body.project_id, userId, "editor");
+  // inner#1953: a reading runs on the OpenRouter key of whoever pays for the Studio when there is one, settled here.
+  const keys = await resolveKeys({ projectId: body.project_id }, { kind: "llm" });
   // A deployment with no understanding upstream refuses before the row opens, saying what it is missing.
-  assertLlmServable(model, "understand");
+  assertLlmServable(model, "understand", undefined, accountKeys(keys));
 
   const params: Record<string, unknown> = {
     source_type: body.source_type,
@@ -520,7 +527,7 @@ async function startReading(
     user_locale: body.user_locale ?? body.reader_locale,
     // Under the pre-#1378 name too, for a worker of the previous release
     // still running while a deploy rolls out. Carries the old name until
-    // #1387 removes it, in the release that also runs the rename migration
+    // inner#2130 removes it, in the release that also runs the rename migration
     // again.
     reader_locale: body.user_locale ?? body.reader_locale,
     ...reading,
@@ -535,7 +542,8 @@ async function startReading(
     taskId,
     projectId: body.project_id,
     userId,
-    credits: () => estimateTaskCredits(model, { params }),
+    // What the payer's own key pays for is not held (inner#1953).
+    credits: () => (keys.keyId === null ? estimateTaskCredits(model, { params }) : Promise.resolve(null)),
     create: () => admitGeneration(
       userId,
       body.project_id,
@@ -549,6 +557,7 @@ async function startReading(
       // would then be the only ones it cannot account for.
       "understand",
       taskId,
+      { keyId: null, llmKeyId: keys.keyId },
     ),
   });
 

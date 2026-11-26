@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Records every paid call one operation makes (#296).
@@ -13,7 +13,7 @@
  */
 
 import { env, getUsagePricing, type UsagePricing } from "@breatic/core";
-import type { Cost, CostLookup } from "@breatic/provider";
+import type { Cost, CostLookup, Payer } from "@breatic/provider";
 import { insertUsageRecord } from "@domain/credit/agentUsage.repo.js";
 import { toChargeCredits } from "@domain/credit/credit-math.js";
 import { creditsForUsd, type CostSource } from "@domain/credit/usage-cost.js";
@@ -26,7 +26,8 @@ export type UsageFeature =
   | "canvas_understand"
   | "canvas_transcribe"
   | "mini_tool"
-  | "timeline_web_animation";
+  | "timeline_web_animation"
+  | "canvas_generation";
 
 /** What inside the operation made the call. */
 export type UsageSource =
@@ -60,6 +61,8 @@ export interface UsageRow {
   credits: number;
   /** The call's stable identity, when it has one; a second row with the same identity is never written. */
   costIdentity: string | null;
+  /** The `account_provider_keys` row whose key paid the call (inner#1953); null for ours. */
+  keyId: string | null;
 }
 
 /** A paid call to a service that is not a language model. */
@@ -105,6 +108,8 @@ export interface AwaitedLookup {
   lookup: CostLookup;
   source: UsageSource;
   model: string;
+  /** Whose keys paid the call, as its pending cost said; absent when it did not say. */
+  payer?: Payer;
 }
 
 /** The operation a recorder writes its rows under. */
@@ -155,9 +160,15 @@ export interface UsageRecorderOptions {
   /**
    * Called for a row whose cost the service should have reported and did not.
    * The row is still written, at zero; this is how the caller, which can log,
-   * hears that it undercharged.
+   * hears that it undercharged. A row an account's own key paid is charged
+   * nothing either way, so its missing cost is written without this call.
    */
   onMissingCost: (row: UsageRow) => void;
+  /**
+   * The account key row the operation's calls run on (inner#1953). A call whose cost says an account's keys paid it is
+   * written under this row at 0 credits and charged nothing; a call our keys paid is charged as ever.
+   */
+  keyId?: string | null;
 }
 
 /**
@@ -185,6 +196,17 @@ const SOURCE_OF: Readonly<Record<Extract<Cost, { state: "known" }>["source"], Co
   price_table: "price_table",
   billing: "generation_lookup",
 };
+
+/**
+ * Whether a call's cost is the account's: marked so, or unmarked in an operation that runs on an account key row.
+ * Provider marks a deployment-paid cost `deployment` whenever it sits beside an account's.
+ * @param keyId - The operation's account key row; null or undefined on the deployment's keys.
+ * @param payer - The payer the cost carries.
+ * @returns True when no credits are charged for it and its row names the key row.
+ */
+export function paidByAccount(keyId: string | null | undefined, payer: Payer | undefined): boolean {
+  return payer === "account" || (keyId != null && payer !== "deployment");
+}
 
 /**
  * Open a recorder for one operation.
@@ -217,7 +239,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
   const append = (row: UsageRow): void => {
     credits += row.credits;
     pending.push(write(row).catch((err: unknown) => void failures.push(err)));
-    if (row.costSource === "missing") options.onMissingCost(row);
+    if (row.costSource === "missing" && row.keyId === null) options.onMissingCost(row);
   };
 
   /**
@@ -232,6 +254,7 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
    */
   const appendCall = (call: { source: UsageSource; model: string; upstream: string }, cost: Exclude<Cost, { state: "pending" }>, requestCount: number | null, costIdentity: string | null): void => {
     const costUsd = cost.state === "known" ? cost.usd : 0;
+    const onAccount = paidByAccount(options.keyId, cost.payer);
     append({
       ...base,
       source: call.source,
@@ -244,8 +267,9 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
       requestCount,
       costUsd,
       costSource: cost.state === "known" ? SOURCE_OF[cost.source] : "missing",
-      credits: creditsForUsd(costUsd, multiplier),
+      credits: onAccount ? 0 : creditsForUsd(costUsd, multiplier),
       costIdentity,
+      keyId: onAccount ? (options.keyId ?? null) : null,
     });
   };
 
@@ -253,7 +277,8 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
     operation: base,
     recordModelCall(call) {
       if (call.cost.state === "pending") {
-        lookups.set(JSON.stringify(call.cost.lookup), { lookup: call.cost.lookup, source: call.source, model: call.model });
+        const payer = call.cost.payer;
+        lookups.set(JSON.stringify(call.cost.lookup), { lookup: call.cost.lookup, source: call.source, model: call.model, ...(payer === undefined ? {} : { payer }) });
         return;
       }
       appendCall(call, call.cost, call.requests ?? null, call.costIdentity ?? null);
@@ -274,11 +299,14 @@ export function createUsageRecorder(options: UsageRecorderOptions): UsageRecorde
         costSource: cost.costSource,
         credits: creditsForUsd(cost.costUsd, multiplier),
         costIdentity: null,
+        keyId: null,
       });
     },
     recordLookedUpCall(call) {
       // A lookup answers only after its last attempt, so a pending answer is one that never came: missing.
-      const cost = call.cost.state === "pending" ? { state: "missing" as const, reason: "the lookup never answered" } : call.cost;
+      const cost = call.cost.state === "pending"
+        ? { state: "missing" as const, reason: "the lookup never answered", ...(call.cost.payer === undefined ? {} : { payer: call.cost.payer }) }
+        : call.cost;
       appendCall(call, cost, 1, null);
     },
     awaitingLookup() {

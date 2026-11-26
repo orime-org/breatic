@@ -421,6 +421,26 @@
               "sound": "A brassy 1920s vaudeville jazz number: muted trumpet, growling trombone, clarinet, honky-tonk piano, upright bass and a snare with rim shots and cymbal chokes, at a slinky medium swing around 120 beats per minute. Sly, sultry and theatrical, building to a punchy final hit."
             }
           }
+        },
+        "impact-accents": {
+          "style": {
+            "manga-impact": {
+              "name": "Manga impact frame",
+              "accent": "The accent is a manga impact frame: for two or three frames the whole picture turns into a hand-inked comic panel in one line style only, thick black ink outlines on flat white with the colour gone, a burst of speed lines radiating from the point of contact."
+            },
+            "white-flash": {
+              "name": "White flash",
+              "accent": "The accent is a white flash: for two or three frames the whole frame flashes bright white outward from the point of contact, the two figures left as crisp dark outlines against the white."
+            },
+            "negative-flash": {
+              "name": "Negative flash",
+              "accent": "The accent is a negative flash: for two or three frames every colour in the frame inverts to its photographic negative, light turned dark and dark turned light, every shape unchanged."
+            },
+            "black-flash": {
+              "name": "Black flash",
+              "accent": "The accent is a black flash: for two or three frames the frame drops to black, only the two figures and the point of contact picked out by a thin bright rim of light."
+            }
+          }
         }
       }
     }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect, vi } from 'vitest';
 
@@ -40,7 +40,6 @@ const CFG = {
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 1000,
   uploadIdleTimeoutMs: 60000,
-  uploadStatusPollSeconds: 2,
   assetUrlPrefix: 'https://cdn/',
 };
 
@@ -215,7 +214,7 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
 
     await runMediaUpload(file, { projectId: 'p1', derived: true }, deps);
 
-    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, undefined);
+    expect(deps.waitForEnding).toHaveBeenCalledWith(TICKET.storageKey, expect.any(AbortSignal));
     expect(deps.onSuccess).toHaveBeenCalledExactlyOnceWith({
       fileUrl: 'https://cdn/p.png',
       assetId: 'asset-new',
@@ -397,6 +396,18 @@ describe('runMediaUpload — ask for a ticket, send the bytes, hand back the out
       reason: 'transfer',
       taskId: TICKET.taskId,
     });
+  });
+
+  // With no row to report against, the key the grant was opened on is the one thing the uploader can name it by.
+  it('names the key of a transfer that never landed when no task row stands for the upload', async () => {
+    const deps = makeUploadDeps({
+      requestTicket: vi.fn().mockResolvedValue(TICKET_NO_NODE),
+      sendToIngest: vi.fn().mockRejectedValue(new BytesNotDelivered(new TypeError('Failed to fetch'))),
+    });
+
+    await runMediaUpload(file, { projectId: 'p1', spaceId: 's1' }, deps);
+
+    expect(deps.onFailure).toHaveBeenCalledExactlyOnceWith({ reason: 'transfer', storageKey: TICKET.storageKey });
   });
 
   // The edge read the stored bytes and turned them down. Nothing about sending

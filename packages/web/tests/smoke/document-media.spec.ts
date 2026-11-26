@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Images, videos and audio in a document body, end to end (inner#1127).
@@ -22,7 +22,7 @@ import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { blankPoint, bodySelection, pickFromPlus } from '../helpers/document-body';
 import { pressAndSettle } from '../helpers/editor-keys';
 import { wavBytes } from '../helpers/media-bytes';
-import { recordRequests, storedPicture, uniquePicture } from '../helpers/upload';
+import { storedPicture, uniquePicture } from '../helpers/upload';
 import { createSpace, deleteSpace, DOCUMENT_EDITOR as EDITOR, visibleSpace } from '../helpers/space';
 import { withTimelinePeer } from '../helpers/timeline-media';
 
@@ -209,12 +209,11 @@ test('the plus menu offers image, audio and video after the table, columns and t
   expect(await types(page)).toEqual(['image', 'paragraph']);
 });
 
-// inner#1367: the finish is queued with 202 and the status query delivers the
-// result; a WebP tagged to turn is filed as its upright copy, and the block is
-// sized from the server's width and height, which are the copy's.
+// inner#1367: the finish is queued with 202 and collab writes the result into
+// the block (#1574); a WebP tagged to turn is filed as its upright copy, and the
+// block is sized from the server's width and height, which are the copy's.
 test('a WebP tagged to turn lands as its upright copy, sized from what the server read @needs-ingest @needs-storage', async () => {
   await openFreshDocument(page);
-  const sent = recordRequests(page);
   const finished = page.waitForResponse(
     (r) => /\/assets\/uploads\/[^/]+\/complete$/.test(new URL(r.url()).pathname) && r.request().method() === 'POST',
     { timeout: 60_000 },
@@ -227,7 +226,6 @@ test('a WebP tagged to turn lands as its upright copy, sized from what the serve
   expect((await finished).status()).toBe(202);
   // The result reaches the block through the Document's Yjs document (#1574), so the page never asks for it.
   await expect(page.locator(`${IMAGE} img`)).toBeVisible({ timeout: UPLOAD_TIMEOUT });
-  expect(sent.filter((request) => request.url.includes('/assets/upload-status'))).toEqual([]);
 
   const block = await page.evaluate((selector) => {
     const el = document.querySelector(selector) as unknown as {

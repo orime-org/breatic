@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What one upload's outcome means for the ledger (#173, design §5).
@@ -38,22 +38,26 @@ import * as sceneTaskService from "@domain/node-task/scene-task.service.js";
 import { failureOutcome } from "@domain/node-task/failure-outcome.js";
 import { uploadDeadline } from "@domain/asset/upload-deadline.js";
 import { emitNodeTaskCounts } from "@domain/canvas-node/node-state-events.js";
+import { emitSceneLookPicture } from "@domain/asset/scene-look-picture.js";
 import {
   getStorageAdapter,
   getStorageConfig,
   getStreamRedis,
   NotFoundError,
-  publishSpaceTasksChanged,
+  announceSpaceTasksVersion,
+  publishUploadEnded,
   reportCollaboratorFirstAction,
 } from "@breatic/core";
-import { canvasSpaceDocName, NO_CONSENT, t, uprightKeyFor } from "@breatic/shared";
+import { canvasSpaceDocName, NO_CONSENT, t, threeDSpaceDocName, uprightKeyFor } from "@breatic/shared";
 import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
 import { ensureVideoPresentation } from "@domain/asset/video-presentation.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import { announceDocumentUploadAsset, announceDocumentUploadFailure, documentTargetOf } from "@domain/asset/document-upload-events.js";
+import { announceFocusImage, announceFocusImageFailed, focusImageTargetOf } from "@domain/asset/focus-image-events.js";
 import { referenceUploadAsset, settleUploadTerminal, type UploadTerminal } from "@domain/asset/upload-terminal.service.js";
+import { settledUploadStatus } from "@domain/asset/upload-status.service.js";
 import type {
   UploadGrant,
   FinalizeClaim,
@@ -375,7 +379,7 @@ async function settleSceneUpload(
       );
     }
   }
-  const countsPublishFailed = await publishSpaceTasksChanged(grant.projectId, row.spaceId).then(() => false, () => true);
+  const countsPublishFailed = await announceSpaceTasksVersion(threeDSpaceDocName(grant.projectId, row.spaceId)).then(() => false, () => true);
   return {
     ...(countsPublishFailed && { countsPublishFailed }),
     ...(activityAppendFailed && { activityAppendFailed }),
@@ -661,19 +665,24 @@ async function recordRegisteredUploadHistory(
 }
 
 /**
- * Publish and answer exclusively from the committed upload terminal.
+ * Publish and answer exclusively from the committed upload terminal. Every ending, a replay included, is told to its
+ * uploader before anything else is announced, with the status `settledUploadStatus` gives (#1580).
  * @param terminal - The result of serialized database arbitration.
  * @param sideEffects - Best-effort work whose failures the caller must log.
  * @param options - Trusted parent context for auxiliary presentation work.
  * @returns The same canonical result for completions and their later replays.
- * @throws {Error} When history recovery, success publication or a Document block's failure publication cannot finish.
+ * @throws {Error} When the uploader cannot be told, or history recovery, success publication or a Document block's
+ *   failure publication cannot finish; the finish runs again and tells it again.
  */
 async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}, options: IngestReportOptions = {}): Promise<IngestReportOutcome> {
   const { grant } = terminal;
   const documentTarget = documentTargetOf(grant);
+  const focusTarget = focusImageTargetOf(grant);
   if (terminal.state === "void") {
+    await publishUploadEnded(grant.userId, settledUploadStatus(grant, null));
     const reason = grant.failureReason ?? "aborted";
     if (documentTarget !== null) await announceDocumentUploadFailure(documentTarget, reason);
+    if (focusTarget !== null) await announceFocusImageFailed(focusTarget);
     const countsPublishFailed = await announceFailure(grant, reason);
     const scene = await settleSceneUpload(grant, { outcome: "failed", errorMessage: reason });
     const refusal: IngestReportOutcome = reason === "empty" || reason === "over_cap"
@@ -682,13 +691,26 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
     return { ...refusal, ...sideEffects, ...scene, ...(countsPublishFailed && { countsPublishFailed }) };
   }
   const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
-  if (asset === null) return { status: "stale", ...sideEffects };
+  await publishUploadEnded(grant.userId, settledUploadStatus(grant, asset));
+  if (asset === null) {
+    if (focusTarget !== null) await announceFocusImageFailed(focusTarget);
+    return { status: "stale", ...sideEffects };
+  }
   if (documentTarget !== null) await announceDocumentUploadAsset(documentTarget, asset);
+  if (focusTarget !== null) await announceFocusImage(focusTarget, asset);
   const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
   const coverUrl = cover?.fileUrl ?? null;
   const history = await recordRegisteredUploadHistory(grant, asset, coverUrl);
   const countsPublishFailed = await announceSuccess(grant, resultOf(asset, coverUrl), history.entryId);
   const scene = await settleSceneUpload(grant, { outcome: "done", asset });
+  // A part picture reaches its part only through this, so a lost publish
+  // fails the finish and its retry announces it again (inner#1693 design 6.3).
+  if (grant.sceneLook !== null && grant.projectId !== null && grant.spaceId !== null) {
+    await emitSceneLookPicture({
+      projectId: grant.projectId, spaceId: grant.spaceId, target: grant.sceneLook,
+      picture: asset.id, userId: grant.userId, uploadKey: grant.storageKey,
+    });
+  }
   return withPeaksQueued({
     status: terminal.newlyConsumed ? "registered" : "already_registered",
     assetId: asset.id,
@@ -884,4 +906,22 @@ async function withPeaksQueued(outcome: IngestReportOutcome, grant: UploadGrant,
     assetId: outcome.assetId, parentDeadlineAt: options.presentation?.deadlineAt ?? await uploadDeadline(grant), conditional,
   })).then(() => true, () => false);
   return presentationQueued ? result : { ...result, presentationQueueFailed: true };
+}
+
+/**
+ * End a focus crop whose bytes never reached the edge, on its uploader's word, as a node's upload row is ended
+ * (`POST /canvas/node-tasks/:taskId/failure`): the finish needs an upload id only a completed transfer hands back, so
+ * nothing else would end it before its deadline. Only the uploader's own crop still open is taken.
+ * @param userId - Who reports.
+ * @param storageKey - The key the crop's grant was opened on.
+ * @returns What was decided.
+ * @throws {NotFoundError} When the key names no open focus crop of this user's, one answer for every case.
+ * @throws {Error} When the grant cannot be ended or its ending published.
+ */
+export async function reportFocusTransferFailed(userId: string, storageKey: string): Promise<IngestReportOutcome> {
+  const grant = await findGrantByKey(storageKey);
+  if (grant === null || grant.userId !== userId || grant.focusImage === null || grant.consumedAt !== null || grant.voidedAt !== null) {
+    throw new NotFoundError(t("server.error.not_found"));
+  }
+  return applyIngestReport({ storageKey, outcome: "aborted", reason: "aborted" });
 }

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A judgement call, once the agent makes one, comes back answered.
@@ -102,7 +102,10 @@ async function runOneTurn(p: Page): Promise<StoredCall[]> {
   return callsOfLatestConversation(p);
 }
 
-test('a judgement call comes back answered @needs-model', async () => {
+// judge_likelihood is not offered to the Agent (`BASELINE_TOOLS` in
+// packages/domain/src/agent/tools/index.ts, inner#2178); this case goes back to
+// `test` when the tool is offered again.
+test.skip('a judgement call comes back answered @needs-model', async () => {
   test.setTimeout(ATTEMPTS * 240_000);
 
   let judged: StoredCall | undefined;

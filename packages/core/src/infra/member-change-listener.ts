@@ -1,8 +1,9 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * Listening for committed changes to `project_members` (inner#911).
+ * Listening for committed changes the database triggers announce: `project_members` (inner#911), and the rows behind
+ * a Project page's bell, transfer and credits (`live_updates`, #1580).
  *
  * A trigger on the table (migration 0095) sends a NOTIFY on every insert,
  * update of role / deleted_at / key, and delete, whichever code path wrote the
@@ -60,47 +61,108 @@ const changeSchema = z.object({
   userId: z.string().regex(CANONICAL_UUID),
 });
 
+/** The channel the 0136 triggers notify on (#1580). */
+export const LIVE_UPDATES_CHANNEL = "live_updates";
+
 /**
- * Read one notification payload.
- * @param raw - The payload.
- * @returns The change, or null when it is not one.
+ * One committed change a Project page shows: a person's bell (`notifications`), a Project's transfer
+ * (`project-transfer`) or a Studio's credits (`credits`). It names the kind and one id, nothing of the row.
  */
-function readChange(raw: string): MemberChange | null {
+export type LiveUpdate =
+  | { k: "notifications"; u: string }
+  | { k: "project-transfer"; p: string }
+  | { k: "credits"; s: string };
+
+/** What a live-updates listener calls. */
+export interface LiveUpdatesHandlers {
+  /** A committed change. */
+  onUpdate: (update: LiveUpdate) => void;
+  /** Listening started: the first time, and after every reconnect. */
+  onListening: () => void;
+  /** A notification on the channel that is not an update; the raw payload. */
+  onInvalid: (raw: string) => void;
+}
+
+/**
+ * A running live-updates listener. It shares the membership listener's connection, whose `probe` already tells whether
+ * that connection receives notifications.
+ */
+export interface LiveUpdatesListener {
+  /** Stop delivering; nothing reaches the handlers afterwards. */
+  stop: () => Promise<void>;
+}
+
+const liveUpdateSchema = z.discriminatedUnion("k", [
+  z.strictObject({ k: z.literal("notifications"), u: z.string().regex(CANONICAL_UUID) }),
+  z.strictObject({ k: z.literal("project-transfer"), p: z.string().regex(CANONICAL_UUID) }),
+  z.strictObject({ k: z.literal("credits"), s: z.string().regex(CANONICAL_UUID) }),
+]);
+
+/**
+ * Read one notification payload against a schema.
+ * @param schema - What a valid payload is.
+ * @param raw - The payload.
+ * @returns The value, or null when it is not one.
+ */
+function readPayload<T>(schema: z.ZodType<T>, raw: string): T | null {
   let value: unknown;
   try {
     value = JSON.parse(raw);
   } catch {
     return null;
   }
-  const parsed = changeSchema.safeParse(value);
+  const parsed = schema.safeParse(value);
   return parsed.success ? parsed.data : null;
 }
 
 /**
- * Start listening for membership changes on the process pool's database.
- * @param handlers - Where changes, (re)starts and unreadable payloads go.
- * @returns The running listener, once the first LISTEN has been answered.
+ * Listen on one trigger channel of the process pool's database.
+ * @param channel - The channel the trigger notifies on.
+ * @param schema - What a valid payload is.
+ * @param handlers - Where values, (re)starts and unreadable payloads go.
+ * @param handlers.onValue - A valid payload.
+ * @param handlers.onListening - Listening started, the first time and after every reconnect.
+ * @param handlers.onInvalid - A payload that is not valid; the raw text.
+ * @returns The running listener and whether it was stopped, once the first LISTEN has been answered.
  * @throws {Error} When the first LISTEN fails (the database is unreachable).
  */
-export async function listenProjectMemberChanges(
-  handlers: MemberChangeHandlers,
-): Promise<MemberChangeListener> {
+async function listenTriggerChannel<T>(
+  channel: string,
+  schema: z.ZodType<T>,
+  handlers: { onValue: (value: T) => void; onListening: () => void; onInvalid: (raw: string) => void },
+): Promise<LiveUpdatesListener & { stopped: () => boolean }> {
   let stopped = false;
-  const pending = new Map<string, () => void>();
   await rawPg.listen(
-    PROJECT_MEMBER_CHANGED_CHANNEL,
+    channel,
     (raw) => {
       if (stopped) return;
-      const change = readChange(raw);
-      if (change === null) handlers.onInvalid(raw);
-      else handlers.onChange(change);
+      const value = readPayload(schema, raw);
+      if (value === null) handlers.onInvalid(raw);
+      else handlers.onValue(value);
     },
     () => {
       if (!stopped) handlers.onListening();
     },
   );
-  await rawPg.listen(PROBE_CHANNEL, (nonce) => {
-    if (!stopped) pending.get(nonce)?.();
+  return {
+    stop: async () => {
+      stopped = true;
+    },
+    stopped: () => stopped,
+  };
+}
+
+/**
+ * Round-trip nonces through the listen connection on a channel of their own.
+ * @param probeChannel - The channel the nonces travel on.
+ * @param stopped - Whether the listener they check was stopped.
+ * @returns The probe, once its LISTEN has been answered.
+ * @throws {Error} When the LISTEN fails (the database is unreachable).
+ */
+async function listenProbe(probeChannel: string, stopped: () => boolean): Promise<MemberChangeListener["probe"]> {
+  const pending = new Map<string, () => void>();
+  await rawPg.listen(probeChannel, (nonce) => {
+    if (!stopped()) pending.get(nonce)?.();
   });
 
   /**
@@ -109,15 +171,15 @@ export async function listenProjectMemberChanges(
    * @returns True when it came back in time; false when it did not, when the
    *   listener is stopped, or when the send failed.
    */
-  const probe = async (timeoutMs: number): Promise<boolean> => {
-    if (stopped) return false;
+  return async (timeoutMs: number): Promise<boolean> => {
+    if (stopped()) return false;
     const nonce = randomUUID();
     const arrived = new Promise<boolean>((resolve) => {
       pending.set(nonce, () => resolve(true));
     });
     let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      await rawPg.notify(PROBE_CHANNEL, nonce);
+      await rawPg.notify(probeChannel, nonce);
       // The wait starts once the nonce is sent, so it measures delivery over
       // the listen connection, not queueing for a pool connection.
       return await Promise.race([
@@ -133,11 +195,61 @@ export async function listenProjectMemberChanges(
       pending.delete(nonce);
     }
   };
+}
 
-  return {
-    stop: async () => {
-      stopped = true;
-    },
-    probe,
-  };
+/**
+ * Start listening for membership changes on the process pool's database.
+ * @param handlers - Where changes, (re)starts and unreadable payloads go.
+ * @returns The running listener, once the first LISTEN has been answered.
+ * @throws {Error} When the first LISTEN fails (the database is unreachable).
+ */
+export async function listenProjectMemberChanges(
+  handlers: MemberChangeHandlers,
+): Promise<MemberChangeListener> {
+  const listener = await listenTriggerChannel<MemberChange>(PROJECT_MEMBER_CHANGED_CHANNEL, changeSchema, {
+    onValue: handlers.onChange,
+    onListening: handlers.onListening,
+    onInvalid: handlers.onInvalid,
+  });
+  return { stop: listener.stop, probe: await listenProbe(PROBE_CHANNEL, listener.stopped) };
+}
+
+/**
+ * Start listening for the changes the 0136 triggers announce (#1580), on the same listen connection as membership
+ * changes.
+ * @param handlers - Where updates, (re)starts and unreadable payloads go.
+ * @returns The running listener, once the first LISTEN has been answered.
+ * @throws {Error} When the first LISTEN fails (the database is unreachable).
+ */
+export async function listenLiveUpdates(handlers: LiveUpdatesHandlers): Promise<LiveUpdatesListener> {
+  const listener = await listenTriggerChannel<LiveUpdate>(LIVE_UPDATES_CHANNEL, liveUpdateSchema, {
+    onValue: handlers.onUpdate,
+    onListening: handlers.onListening,
+    onInvalid: handlers.onInvalid,
+  });
+  return { stop: listener.stop };
+}
+
+/**
+ * Tell a person's pages their bell changed, as the notifications trigger does (#1580): for a change no row write
+ * makes, a notification coming due.
+ * @param userId - The person.
+ * @returns Nothing.
+ * @throws {Error} When the database refuses the notify.
+ */
+export async function publishNotificationsChanged(userId: string): Promise<void> {
+  const update: LiveUpdate = { k: "notifications", u: userId };
+  await rawPg.notify(LIVE_UPDATES_CHANNEL, JSON.stringify(update));
+}
+
+/**
+ * Tell a Studio's Project pages its credits changed, as the credit-table triggers do (#1580): for a change no row
+ * write makes, a hold coming due.
+ * @param studioId - The Studio.
+ * @returns Nothing.
+ * @throws {Error} When the database refuses the notify.
+ */
+export async function publishStudioCreditsChanged(studioId: string): Promise<void> {
+  const update: LiveUpdate = { k: "credits", s: studioId };
+  await rawPg.notify(LIVE_UPDATES_CHANNEL, JSON.stringify(update));
 }

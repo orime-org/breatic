@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `propose_scene_generation` (inner#1691 design 6.1): a 3D generation the
@@ -23,12 +23,19 @@ import { resolveProjectImageInputs } from "@domain/asset/project-image-inputs.js
 import * as creditHoldService from "@domain/credit/creditHold.service.js";
 import * as taskService from "@domain/task/task.service.js";
 import * as sceneTaskService from "@domain/node-task/scene-task.service.js";
+import type * as ProviderKeys from "@domain/provider/provider-keys.js";
+import { resolveKeys } from "@domain/provider/provider-keys.js";
 
 vi.mock("@domain/asset/project-image-inputs.js", () => ({ resolveProjectImageInputs: vi.fn() }));
 
 vi.mock("@domain/model-catalog/model-catalog.js", async (importOriginal) => {
   const real = await importOriginal<typeof ModelCatalog>();
   return { ...real, inputRefusalFor: vi.fn(real.inputRefusalFor) };
+});
+
+vi.mock("@domain/provider/provider-keys.js", async (importOriginal) => {
+  const real = await importOriginal<typeof ProviderKeys>();
+  return { ...real, resolveKeys: vi.fn(real.resolveKeys) };
 });
 
 vi.mock("@domain/credit/creditHold.service.js", async (importOriginal) => ({
@@ -175,7 +182,15 @@ describe("a run no upstream here takes (#1521)", () => {
 
   it("asks with the run as planned", async () => {
     await propose(TEXT_TO_3D);
-    expect(vi.mocked(inputRefusalFor)).toHaveBeenLastCalledWith("tripo-h3.1-t23d", expect.objectContaining({ params: expect.any(Object) }));
+    expect(vi.mocked(inputRefusalFor)).toHaveBeenLastCalledWith("tripo-h3.1-t23d", expect.objectContaining({ params: expect.any(Object) }), { mode: "default" }, undefined);
+  });
+
+  it("asks on the upstream and key the Studio's payer runs the model on (inner#1953)", async () => {
+    const keys = { owner: "account" as const, keyOf: () => "ws-account-key" };
+    vi.mocked(resolveKeys).mockResolvedValueOnce({ keys, route: { mode: "upstream", upstream: "wavespeed" }, keyId: "key-row-1", payerUserId: "payer-account" });
+    await propose(TEXT_TO_3D);
+    expect(vi.mocked(resolveKeys)).toHaveBeenLastCalledWith({ projectId: PROJECT_ID }, { kind: "media", model: "tripo-h3.1-t23d" });
+    expect(vi.mocked(inputRefusalFor)).toHaveBeenLastCalledWith("tripo-h3.1-t23d", expect.any(Object), { mode: "upstream", upstream: "wavespeed" }, keys);
   });
 });
 

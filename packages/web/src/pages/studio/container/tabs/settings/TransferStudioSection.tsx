@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -66,11 +66,11 @@ export function TransferStudioSection({
   const liveQuery = useQuery({
     queryKey: liveKey,
     queryFn: () => studiosApi.liveTransfer(slug),
-    // Polls like the bell does. The offer can end without this tab doing
-    // anything — the recipient accepts or declines from their own — and a
-    // surface that never refetches keeps a Withdraw button over an offer that
-    // is already over, which answers 404 and reads as a failure.
-    refetchInterval: 30_000,
+    // The offer can end without this tab doing anything — the recipient
+    // accepts or declines from their own — so the Studio page's one poll reads
+    // it again when the offer changes (#1580). That holds only while the section is on screen, so each mount reads it
+    // once.
+    staleTime: 0,
     refetchOnWindowFocus: true,
   });
   const live = liveQuery.data ?? null;

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * One press of Understand or Transcribe, from the menu item to the request
@@ -305,7 +305,7 @@ function buildReadingRun(
     user_locale: getLocale(),
     // Under the pre-#1378 name too, for a server of the previous release
     // still answering while a deploy rolls out. Carries the old name until
-    // #1387 removes it, in the release that also runs the rename migration
+    // inner#2130 removes it, in the release that also runs the rename migration
     // again.
     reader_locale: getLocale(),
   };

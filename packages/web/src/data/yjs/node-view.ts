@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Canvas node **view** layer — the component-facing projection of the
@@ -193,6 +193,8 @@ interface ContentNodeViewBase extends NodeViewCommon {
    * pool; only @-mentioned crops reach the execute payload.
    */
   focusImages?: FocusImage[];
+  /** Focus crops still uploading (#1580, wire `data.focusUploads`), written by collab; shown as running in the rail. */
+  focusUploads?: unknown;
 }
 
 // No body here, on purpose (#1774). The text is a shared fragment on the
@@ -233,6 +235,8 @@ export interface VideoNodeView extends ContentNodeViewBase {
   /** Intrinsic pixel dimensions from the ledger (#209). See ImageNodeView. */
   width?: number;
   height?: number;
+  /** The Motion result this video was exported from (#1490). */
+  sourceAnimation?: { spaceId: string; executionId: string; videoUrl: string };
 }
 
 export interface ThreeDNodeView extends ContentNodeViewBase {
@@ -395,6 +399,7 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
     focusImages: data.focusImages,
     // The handled video focus crops by taskId (frames-split §5.5, §7.18), task state the canvas layer settles cards by.
     ...(data.focusCropOutcomes === undefined ? {} : { focusCropOutcomes: data.focusCropOutcomes }),
+    focusUploads: data.focusUploads,
     templateNode: data.templateNode,
   };
   switch (type) {
@@ -421,6 +426,7 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
           duration: data.duration,
           width: data.mediaWidth,
           height: data.mediaHeight,
+          ...(data.sourceAnimation === undefined ? {} : { sourceAnimation: data.sourceAnimation }),
           ...contentCommon,
         },
       };

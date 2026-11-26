@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Real HTTP middleware, PG roles/assets/tasks/rows/credit holds and BullMQ. No supplier or media is invoked.

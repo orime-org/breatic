@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Notification service — type-safe constructors + mark-read + listing.
@@ -20,10 +20,10 @@
  * Spec: access-permission design (2026-05-28) § 7.
  */
 
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 import { NotFoundError } from "@breatic/core";
 import { t } from "@breatic/shared";
-import type { DbTx } from "@server/modules/notification/notification.repo.js";
+import type { DbTx } from "@breatic/core";
 import type { BillingPeriod, DecisionGrantRole, NotificationEntity } from "@breatic/shared";
 
 export type { NotificationEntity };
@@ -677,6 +677,15 @@ export async function listAll(userId: string): Promise<NotificationEntity[]> {
  */
 export async function countUnread(userId: string): Promise<number> {
   return notificationRepo.countUnread(userId);
+}
+
+/**
+ * When the user's newest notification still there was made (#1580).
+ * @param userId - Inbox owner.
+ * @returns Its `created_at` as an ISO instant, or null when there is none.
+ */
+export async function latestCreatedAt(userId: string): Promise<string | null> {
+  return notificationRepo.latestCreatedAt(userId);
 }
 
 // ── Mutations ───────────────────────────────────────────────────────

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The later lookup of a model call whose cost was not in hand (#296): it retries while
@@ -147,20 +147,6 @@ describe("looking up a model call whose cost was not in hand", () => {
     const refKey = (chargeOnce.mock.calls[0] as unknown as [string, string])[1];
     expect(refKey).toBe(`turn:c1:4:lookup:${createHash("sha256").update(JSON.stringify(lookup)).digest("hex")}`);
     expect(refKey).toMatch(/^[A-Za-z0-9_:.-]{1,255}$/);
-  });
-
-  it("logs a charge whose readers could not be told", async () => {
-    costLookup.mockResolvedValue(KNOWN);
-    chargeOnce.mockResolvedValueOnce({
-      billed: true, charged: 3, shortfall: 0, studioId: "s", lotIds: [], signalFailure: new Error("redis down"),
-    } as never);
-
-    await runUsageLookup(jobAt(0), recorderIntoRows);
-
-    expect(vi.mocked(logger.error)).toHaveBeenCalledWith(
-      expect.objectContaining({ projectId: "p-1" }),
-      "credits_signal_failed",
-    );
   });
 
   it("records a call of a run that is not charged, and charges nothing", async () => {

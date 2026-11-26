@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A 3D generation runs on the catalog lane and settles the 3D Space's own
@@ -43,7 +43,7 @@ const h = vi.hoisted(() => {
     insertGenerationFailedIfAbsent: vi.fn(),
     settleCharge: vi.fn(),
     settleSceneRowById: vi.fn(),
-    publishSpaceTasksChanged: vi.fn(async (_projectId: string, _spaceId: string) => undefined),
+    announceSpaceTasksVersion: vi.fn(async (_docName: string) => undefined),
   };
 });
 
@@ -75,7 +75,7 @@ vi.mock("@breatic/core", () => ({
     upsertGenerationSucceeded: h.upsertGenerationSucceeded,
   },
   publishActivityNew: vi.fn(),
-  publishSpaceTasksChanged: h.publishSpaceTasksChanged,
+  announceSpaceTasksVersion: h.announceSpaceTasksVersion,
   getStorageAdapter: vi.fn(async () => ({ keyFromUrl: () => "three_d/out.glb" })),
   getRawEnvVar: vi.fn(),
   getUnderstandConfig: vi.fn(() => ({})),
@@ -123,6 +123,7 @@ vi.mock("@breatic/domain", async () => ({
 
 import type { Job } from "bullmq";
 
+import { threeDSpaceDocName } from "@breatic/shared";
 import { runTask } from "@worker/handlers/dispatch.js";
 import { storedAsOutput } from "@worker/handlers/persisted-output.js";
 
@@ -225,7 +226,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
 
     expect(result).not.toHaveProperty("failed");
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: null });
-    expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
+    expect(h.announceSpaceTasksVersion).toHaveBeenCalledWith(threeDSpaceDocName("proj-1", "space-1"));
     // A Space row is not a node: nothing is settled on the canvas.
     expect(h.settleTaskForNode).not.toHaveBeenCalled();
   });
@@ -249,7 +250,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
     await expect(runTask(sceneJob(1), "lock-token")).resolves.toEqual({ failed: true, reason: "persist_failed" });
 
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "failed", errorMessage: "internal" });
-    expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
+    expect(h.announceSpaceTasksVersion).toHaveBeenCalledWith(threeDSpaceDocName("proj-1", "space-1"));
     expect(h.markCompletedAndBill).not.toHaveBeenCalled();
   });
 
@@ -264,7 +265,7 @@ describe("a 3D generation on the catalog lane (inner#1691)", () => {
 
     expect(h.runModelTask).not.toHaveBeenCalled();
     expect(h.settleSceneRowById).toHaveBeenCalledExactlyOnceWith("row-1", { outcome: "done", assetId: "asset-glb", notice: null });
-    expect(h.publishSpaceTasksChanged).toHaveBeenCalledWith("proj-1", "space-1");
+    expect(h.announceSpaceTasksVersion).toHaveBeenCalledWith(threeDSpaceDocName("proj-1", "space-1"));
   });
 });
 

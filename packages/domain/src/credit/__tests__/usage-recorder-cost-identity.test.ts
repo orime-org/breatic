@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A model call may carry a stable cost identity (inner#1711 design §3.5): a Timeline execution's calls are recorded
@@ -66,6 +66,7 @@ describe("a model call's cost identity", () => {
         costSource: "provider",
         credits: 1.25,
         costIdentity: "timeline:11111111-1111-4111-8111-111111111111:1",
+        keyId: null,
       },
     ]);
     expect(missing).toEqual([]);

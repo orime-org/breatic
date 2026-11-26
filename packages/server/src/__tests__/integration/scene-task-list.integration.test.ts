@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The 3D Space task list (inner#1690): a model upload opens a Space-level
@@ -33,18 +33,17 @@ import postgres from "postgres";
 import {
   initCore,
   getRedis,
-  getStreamRedis,
   setSession,
   sessionCookieName,
   loadLocales,
   createQueue,
-  env,
-  type Redis,
 } from "@breatic/core";
+import { threeDSpaceDocName } from "@breatic/shared";
 import { uploadFinishService, UPLOAD_FINISH_QUEUE, type UploadFinishJob } from "@breatic/domain";
 import { resetOpenDouble } from "../helpers/ingest-open-double.js";
 import { workerAnswers } from "@server/__tests__/integration/transfer-grant-fixtures.js";
 import { closeFinishQueue, runQueuedFinish } from "@server/__tests__/helpers/queued-finish.js";
+import { listenSpaceTaskSignals, spaceTasksVersion, type SpaceTaskSignals, type SpaceTaskSignalsRead } from "@server/__tests__/integration/helpers/space-task-signals.js";
 import type { Hono } from "hono";
 
 try {
@@ -56,8 +55,7 @@ loadLocales();
 
 let sql: ReturnType<typeof postgres>;
 let app: Hono;
-let subscriber: Redis;
-const signals: { channel: string; message: Record<string, unknown> }[] = [];
+let spaceSignals: SpaceTaskSignals;
 
 beforeAll(async () => {
   sql = postgres(inject("DATABASE_URL"), {
@@ -67,21 +65,17 @@ beforeAll(async () => {
   });
   const { createApp } = await import("@server/app.js");
   app = createApp();
-  subscriber = getStreamRedis().duplicate();
-  subscriber.on("pmessage", (_pattern: string, channel: string, message: string) => {
-    signals.push({ channel, message: JSON.parse(message) as Record<string, unknown> });
-  });
-  await subscriber.psubscribe(`${env.REDIS_KEY_PREFIX}:project:*:space-tasks:changed`);
+  spaceSignals = await listenSpaceTaskSignals();
 });
 
-beforeEach(() => {
+beforeEach(async () => {
   resetOpenDouble();
   vi.clearAllMocks();
-  signals.length = 0;
+  await spaceSignals.mark();
 });
 
 afterAll(async () => {
-  await subscriber?.quit();
+  await spaceSignals?.stop();
   await closeFinishQueue();
   await sql?.end({ timeout: 1 });
 });
@@ -259,18 +253,34 @@ async function uploadActivities(projectId: string): Promise<Record<string, unkno
 }
 
 /**
- * Wait until the signal subscriber has seen a message for the Space.
+ * What the 3D Space was told since the last mark: its document's change versions and the old channel's messages.
  * @param projectId - The project.
  * @param spaceId - The Space.
- * @returns The messages for it.
+ * @returns The signals for it.
  */
-async function signalsFor(projectId: string, spaceId: string): Promise<Record<string, unknown>[]> {
-  const deadline = Date.now() + 2000;
-  for (;;) {
-    const mine = signals.filter((s) => s.message.projectId === projectId && s.message.spaceId === spaceId).map((s) => s.message);
-    if (mine.length > 0 || Date.now() > deadline) return mine;
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  }
+async function signalsFor(projectId: string, spaceId: string): Promise<SpaceTaskSignalsRead> {
+  return spaceSignals.read({ projectId, spaceId, docName: threeDSpaceDocName(projectId, spaceId) });
+}
+
+/**
+ * The 3D Space's document told exactly once, and the old channel nothing.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ * @returns The expected signals.
+ */
+function toldOnce(projectId: string, spaceId: string): SpaceTaskSignalsRead {
+  return { doc: [spaceTasksVersion(threeDSpaceDocName(projectId, spaceId))], meta: [] };
+}
+
+/**
+ * Assert the 3D Space's document was told at least once, and the old channel nothing.
+ * @param projectId - The project.
+ * @param spaceId - The Space.
+ */
+async function expectDocumentTold(projectId: string, spaceId: string): Promise<void> {
+  const told = await signalsFor(projectId, spaceId);
+  expect(told.meta).toEqual([]);
+  expect(told.doc).toContainEqual(spaceTasksVersion(threeDSpaceDocName(projectId, spaceId)));
 }
 
 /**
@@ -332,9 +342,7 @@ describe("scene model tickets open a Space-level row", () => {
       asset_id: null,
       started_by_user_id: owner.userId,
     });
-    expect(await signalsFor(projectId, spaceId)).toEqual([
-      expect.objectContaining({ type: "project-space-tasks:changed", projectId, spaceId }),
-    ]);
+    expect(await signalsFor(projectId, spaceId)).toEqual(toldOnce(projectId, spaceId));
   });
 
   it.each([
@@ -362,7 +370,7 @@ describe("scene model tickets open a Space-level row", () => {
     const row = await rowById(String(data.taskId));
     expect(row).toMatchObject({ node_id: null, space_id: spaceId, action: "scene_import", status: "done", asset_id: assets[0]!.id, label: "Barn lamp" });
     expect(await uploadActivities(projectId)).toEqual([]);
-    expect(await signalsFor(projectId, spaceId)).toHaveLength(1);
+    expect(await signalsFor(projectId, spaceId)).toEqual(toldOnce(projectId, spaceId));
   });
 });
 
@@ -371,7 +379,7 @@ describe("settling a scene upload", () => {
     const { owner, projectId, spaceId } = await seedProject();
     const data = await ticket(owner.cookie, sceneBody(projectId, spaceId));
     await complete(owner.cookie, data);
-    signals.length = 0;
+    await spaceSignals.mark();
 
     workerAnswers({ contentType: "model/gltf-binary", sizeBytes: 4096 });
     try {
@@ -387,7 +395,7 @@ describe("settling a scene upload", () => {
     expect(await uploadActivities(projectId)).toEqual([
       { fileUrl: assets[0]!.file_url, kind: "file", model: { name: "Barn lamp" } },
     ]);
-    expect((await signalsFor(projectId, spaceId)).length).toBeGreaterThanOrEqual(1);
+    await expectDocumentTold(projectId, spaceId);
   });
 
   it("attaches a result that arrives after the row expired, and writes its activity once", async () => {
@@ -504,13 +512,13 @@ describe("reading the Space's task list", () => {
   it("expires rows that outran their budget on read, and signals the Space", async () => {
     const { owner, projectId, spaceId } = await seedProject();
     const { taskId } = await openOverdue(owner.cookie, projectId, spaceId);
-    signals.length = 0;
+    await spaceSignals.mark();
 
     const res = await call("GET", `/projects/${projectId}/three-d/${spaceId}/tasks`, owner.cookie);
     const { data } = (await res.json()) as { data: { tasks: { id: string; status: string; errorMessage: string | null }[] } };
 
     expect(data.tasks.find((task) => task.id === taskId)).toMatchObject({ status: "expired", errorMessage: "expired" });
-    expect(await signalsFor(projectId, spaceId)).toHaveLength(1);
+    expect(await signalsFor(projectId, spaceId)).toEqual(toldOnce(projectId, spaceId));
   });
 });
 
@@ -521,14 +529,14 @@ describe("removing a row", () => {
     await call("POST", `/projects/${projectId}/three-d/${spaceId}/tasks/${String(failed.taskId)}/failure`, owner.cookie, { reason: "aborted" });
     const { taskId: expiredId } = await openOverdue(owner.cookie, projectId, spaceId);
     await call("GET", `/projects/${projectId}/three-d/${spaceId}/tasks`, owner.cookie);
-    signals.length = 0;
+    await spaceSignals.mark();
 
     for (const id of [String(failed.taskId), expiredId]) {
       const res = await call("DELETE", `/projects/${projectId}/three-d/${spaceId}/tasks/${id}`, editor.cookie);
       expect(res.status).toBe(200);
       expect((await rowById(id)).deleted_at).not.toBeNull();
     }
-    expect((await signalsFor(projectId, spaceId)).length).toBeGreaterThanOrEqual(1);
+    await expectDocumentTold(projectId, spaceId);
   });
 
   it("refuses to remove a running row, a done row and an expired row that holds a result", async () => {
@@ -577,12 +585,12 @@ describe("the browser's failure report", () => {
     const { owner, editor, projectId, spaceId } = await seedProject();
     const data = await ticket(owner.cookie, sceneBody(projectId, spaceId));
     const path = `/projects/${projectId}/three-d/${spaceId}/tasks/${String(data.taskId)}/failure`;
-    signals.length = 0;
+    await spaceSignals.mark();
 
     expect((await call("POST", path, editor.cookie, { reason: "aborted" })).status).toBe(403);
     expect((await call("POST", path, owner.cookie, { reason: "aborted" })).status).toBe(200);
     expect(await rowById(String(data.taskId))).toMatchObject({ status: "failed" });
-    expect((await signalsFor(projectId, spaceId)).length).toBeGreaterThanOrEqual(1);
+    await expectDocumentTold(projectId, spaceId);
   });
 });
 

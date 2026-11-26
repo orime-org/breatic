@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The extract-frames, split and video focus crop runners (inner#1306 test plan §67.3 W01–W03, §68 F01; frames-split design

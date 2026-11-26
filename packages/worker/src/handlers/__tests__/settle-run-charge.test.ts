@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What a finished run does with its credits (inner#1611, inner#1617).
@@ -116,13 +116,6 @@ describe("settleRunCharge", () => {
       { ...CONTEXT, studioId: "s", charged: "2.000000", shortfall: "5.000000" },
       "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
     );
-  });
-
-  it("logs a charge whose readers could not be told", async () => {
-    const redis = new Error("redis down");
-    h.settleCharge.mockResolvedValue({ billed: true, charged: "7.000000", shortfall: "0.000000", studioId: "s", lotIds: [], signalFailure: redis });
-    await settleRunCharge({ ...RUN, wasFirst: true, creditsUsed: 7 });
-    expect(h.error).toHaveBeenCalledExactlyOnceWith({ ...CONTEXT, err: redis }, "credits_signal_failed");
   });
 
   it("does nothing more when the request was already settled by the sweep", async () => {

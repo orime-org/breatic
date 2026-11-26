@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Studio transfers repository — `studio_transfers` table.
@@ -36,7 +36,7 @@
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 import { db, studioTransfers } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { mintShareToken } from "@server/utils/share-token.js";
+import { mintShareToken } from "@breatic/domain";
 import type { RequestFailedReason } from "@breatic/shared";
 
 /** Where a transfer sits in its lifecycle. */
@@ -68,6 +68,8 @@ export interface LiveStudioTransfer {
   fromUserId: string;
   toUserId: string;
   expiresAt: Date;
+  /** When the offer last changed, which the Studio page's poll compares (#1580). */
+  updatedAt: Date;
 }
 
 /**
@@ -347,6 +349,7 @@ export async function findLiveForContainer(
       fromUserId: studioTransfers.fromUserId,
       toUserId: studioTransfers.toUserId,
       expiresAt: studioTransfers.expiresAt,
+      updatedAt: studioTransfers.updatedAt,
     })
     .from(studioTransfers)
     .where(

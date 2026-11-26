@@ -1,10 +1,13 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { CreditDecimal } from '@breatic/shared';
 
 import * as React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+
+// These cases cover the program's entry points as they behave once shown again (inner#2155).
+vi.mock('@web/features/referral/referral-ui', () => ({ REFERRAL_UI_SHOWN: true }));
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { MemoryRouter, useLocation } from 'react-router-dom';
@@ -14,6 +17,7 @@ import type { CreditOverview } from '@breatic/shared';
 
 import { authApi } from '@web/data/api/auth';
 import type { AccountReferral } from '@web/data/api/referral';
+import type { ByokView } from '@web/data/api/byok';
 import { ApiException } from '@web/data/api/types';
 import { StudioAccountMenu } from '@web/pages/studio/shell/StudioAccountMenu';
 import { useCurrentUserStore } from '@web/stores/current-user';
@@ -53,6 +57,21 @@ vi.mock('@web/data/api/credits', () => ({
   fetchCreditOverview: () => overviewMock(),
 }));
 
+const byokViewMock = vi.fn();
+vi.mock('@web/data/api/byok', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@web/data/api/byok')>()),
+  byokApi: { ...(await importOriginal<typeof import('@web/data/api/byok')>()).byokApi, view: () => byokViewMock() },
+}));
+
+/**
+ * The account's BYOK view as the server answers it.
+ * @param enabled - Whether the deployment turned BYOK on.
+ * @returns The view.
+ */
+function byokView(enabled: boolean): ByokView {
+  return { enabled, upstreams: [], keys: [], models: [], choices: {} };
+}
+
 const referralMock = vi.fn();
 vi.mock('@web/data/api/referral', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@web/data/api/referral')>()),
@@ -85,7 +104,8 @@ function overview(over: Partial<CreditOverview> = {}): CreditOverview {
     assignedCredits: '3640.000000' as CreditDecimal,
     unassignedCredits: '1790.000000' as CreditDecimal,
     underRefundCredits: '0.000000' as CreditDecimal,
-    billing: true,
+    charging: true,
+    selling: true,
     studios: [],
     ...over,
   };
@@ -173,6 +193,7 @@ describe('StudioAccountMenu', () => {
     confirmMock.mockReset();
     overviewMock.mockReset().mockResolvedValue(overview());
     referralMock.mockReset().mockResolvedValue(referral());
+    byokViewMock.mockReset().mockResolvedValue(byokView(true));
   });
 
   it('shows the current user initial on the avatar button', () => {
@@ -236,13 +257,66 @@ describe('StudioAccountMenu', () => {
     const labels = screen
       .getAllByRole('menuitem')
       .map((entry) => entry.textContent ?? '');
-    expect(labels).toHaveLength(6);
+    // BYOK settings is account-level too, so it joins the account group, after settings (inner#1953).
+    expect(labels).toHaveLength(8);
     expect(labels[0]).toContain('Account settings');
-    expect(labels[1]).toBe('Promoter program');
-    expect(labels[2]).toContain('Membership');
-    expect(labels[3]).toContain('Credits');
-    expect(labels[4]).toBe('Sign out of other devices');
-    expect(labels[5]).toBe('Sign out');
+    expect(labels[1]).toBe('BYOK settings');
+    expect(labels[2]).toBe('Promoter program');
+    expect(labels[3]).toContain('Membership');
+    expect(labels[4]).toContain('Credits');
+    expect(labels[5]).toBe('Licenses and notices');
+    expect(labels[6]).toBe('Sign out of other devices');
+    expect(labels[7]).toBe('Sign out');
+  });
+
+  it('opens the licence, the trademark policy and the third-party notices this instance serves, each in a new tab', async () => {
+    // LICENSE section 12: the applicable licence and attribution notices stay
+    // reachable. The links are site paths, so a self-hosted copy shows the
+    // files its own image carries.
+    const user = userEvent.setup();
+    useCurrentUserStore.getState().setUser(ALEX);
+    setup();
+    await openMenu(user);
+    await user.click(screen.getByRole('menuitem', { name: 'Licenses and notices' }));
+
+    const links = await screen.findAllByRole('menuitem', { name: /license|trademark|third-party/i });
+    const hrefs = links
+      .filter((link) => link.tagName === 'A')
+      .map((link) => [link.textContent, link.getAttribute('href'), link.getAttribute('target'), link.getAttribute('rel')]);
+    expect(hrefs).toEqual([
+      ['Breatic license', '/LICENSE.txt', '_blank', 'noopener noreferrer'],
+      ['Trademark and branding policy', '/TRADEMARKS.md', '_blank', 'noopener noreferrer'],
+      ['Third-party notices', '/THIRD-PARTY.md', '_blank', 'noopener noreferrer'],
+    ]);
+    // Each row ends with the external-link glyph the Help menu uses, so the
+    // new tab is announced before the click.
+    for (const link of links.filter((l) => l.tagName === 'A')) {
+      expect(link.lastElementChild?.getAttribute('class')).toContain('lucide-external-link');
+    }
+  });
+
+  describe('BYOK settings entry (#1618)', () => {
+    it('is not offered where the deployment has not turned BYOK on', async () => {
+      byokViewMock.mockResolvedValue(byokView(false));
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => expect(byokViewMock).toHaveBeenCalled());
+      await waitFor(() => expect(screen.queryByRole('menuitem', { name: 'BYOK settings' })).toBeNull());
+      expect(screen.getByRole('menuitem', { name: 'Promoter program' })).toBeInTheDocument();
+    });
+
+    it('is offered where the deployment turned BYOK on', async () => {
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => expect(byokViewMock).toHaveBeenCalled());
+      expect(screen.getByRole('menuitem', { name: 'BYOK settings' })).toBeInTheDocument();
+    });
   });
 
   describe('promoter program entry (inner#1868)', () => {
@@ -776,6 +850,18 @@ describe('StudioAccountMenu', () => {
       expect(creditsTrailing()).toBe('Unavailable');
     });
 
+    it('shows the balance where credits are charged but not sold here', async () => {
+      const user = userEvent.setup();
+      useCurrentUserStore.getState().setUser(ALEX);
+      overviewMock.mockResolvedValue(overview({ charging: true, selling: false }));
+      setup();
+      await openMenu(user);
+
+      await waitFor(() => {
+        expect(creditsTrailing()).toBe('5,430');
+      });
+    });
+
     it('says nothing but the word where this deployment does not charge', async () => {
       // Three zeros there mean "we do not bill", not "your money is gone", and
       // rendering the 0 says the second one.
@@ -786,7 +872,8 @@ describe('StudioAccountMenu', () => {
           assignedCredits: '0.000000' as CreditDecimal,
           unassignedCredits: '0.000000' as CreditDecimal,
           underRefundCredits: '0.000000' as CreditDecimal,
-          billing: false,
+          charging: false,
+          selling: false,
         }),
       );
       setup();

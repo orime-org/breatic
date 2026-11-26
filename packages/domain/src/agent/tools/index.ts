@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Tool registry — maps tool names to AI SDK tool definitions.
@@ -7,6 +7,8 @@
 import type { Tool } from "ai";
 import { env } from "@breatic/core";
 import { UNDERSTAND_MODEL } from "@breatic/shared";
+import type { KeySet } from "@breatic/provider";
+import type { KeyHolder } from "@domain/agent/tools/failure.js";
 import { provider } from "@domain/provider/instance.js";
 
 import { makeAskUserTool, type AskUserContext } from "@domain/agent/tools/ask-user.js";
@@ -51,7 +53,7 @@ import { productGuide } from "@domain/agent/tools/product-guide.js";
 import { proposeCanvasAction } from "@domain/agent/tools/propose-canvas-action.js";
 import { makeProposeDocumentEdit } from "@domain/agent/tools/propose-document-edit.js";
 import { makeProposeSceneGeneration } from "@domain/agent/tools/propose-scene-generation.js";
-import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
+import { makeJudgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
 
 /** The document proposal tool; it holds nothing between calls. */
 const proposeDocumentEdit = makeProposeDocumentEdit();
@@ -73,6 +75,13 @@ export type ToolContext = AskUserContext & ToolPictureContext & RequestSpaceCont
    * looks in only when a link first needs it.
    */
   pageUrlFor?: PageUrlFor;
+  /**
+   * The key set the turn runs on (inner#1953): the payer's when it brought an OpenRouter key. Whether a model-calling
+   * tool is offered is judged on it, and every call the tool makes goes out on it; the deployment's when absent.
+   */
+  keys?: KeySet;
+  /** Whose key `keys` is to the user the turn answers (inner#1953), so a tool's key failure says whose key it was. */
+  keyHolder?: KeyHolder;
 };
 
 /** The context a tool gets when its caller has none: no media is vouched for. */
@@ -96,7 +105,11 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // builds them together; built one at a time, each starts its own run.
   web_search: (context = NO_TOOL_CONTEXT) => makeWebTools(context).web_search,
   [WEB_FETCH]: (context = NO_TOOL_CONTEXT) => makeWebTools(context).web_fetch,
-  [UNDERSTAND_MEDIA]: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({ seesPictures: context.seesPictures === true }),
+  [UNDERSTAND_MEDIA]: (context = NO_TOOL_CONTEXT) => makeUnderstandMediaTool({
+    seesPictures: context.seesPictures === true,
+    ...(context.keys === undefined ? {} : { keys: context.keys }),
+    ...(context.keyHolder === undefined ? {} : { keyHolder: context.keyHolder }),
+  }),
   // The name a tool answers to is this key, and it is the constant rather
   // than the string: the lists below and the turn's own test for whether to
   // wait for an answer read the same one, so there is no second spelling of
@@ -123,8 +136,8 @@ export const TOOL_MAP: Readonly<Record<string, (context?: ToolContext) => Tool>>
   // Built per turn: it holds whether a save is running, so one turn saves one
   // picture at a time.
   [SAVE_IMAGE]: () => makeSaveImageTool(),
-  // Holds nothing between calls, so one object serves every turn.
-  [JUDGE_LIKELIHOOD]: () => judgeLikelihood,
+  // Built per turn: it asks on the turn's key set.
+  [JUDGE_LIKELIHOOD]: (context = NO_TOOL_CONTEXT) => makeJudgeLikelihood(context.keys, context.keyHolder),
   // Record reads use the turn's execution context. Three reuse stateless
   // objects; node history binds this turn's picture capability and preparer.
   [SEARCH_CONVERSATIONS]: () => recordTools[SEARCH_CONVERSATIONS],
@@ -151,7 +164,8 @@ export const BASELINE_TOOLS: readonly string[] = [
   UNDERSTAND_MEDIA,
   ASK_USER,
   REQUEST_SPACE_CONTENT,
-  JUDGE_LIKELIHOOD,
+  // JUDGE_LIKELIHOOD stays registered in TOOL_MAP but is not offered until
+  // the product decides whether and how the Agent uses it (inner#2178).
   // The user's own records: about the project, not the Space in front of
   // them, so offered whatever is open.
   ...RECORD_TOOL_NAMES,
@@ -216,14 +230,14 @@ export {
  * Only genuinely required configuration goes here. Something a tool merely
  * prefers would silently remove the tool on a deployment that works fine.
  */
-const TOOL_REQUIREMENTS: Readonly<Record<string, () => boolean>> = {
+const TOOL_REQUIREMENTS: Readonly<Record<string, (keys?: KeySet) => boolean>> = {
   web_search: () => hasEnv("BRAVE_SEARCH_API_KEY"),
   // The same key, which the service accepts on the image endpoint too
   // (measured 2026-09-11).
   search_images: () => hasEnv("BRAVE_SEARCH_API_KEY"),
-  // Model calls are reachable when provider has an upstream for them with its key.
-  [UNDERSTAND_MEDIA]: () => provider().llm.availability(UNDERSTAND_MODEL.id, "understand").upstreams.some((u) => u.configured),
-  [JUDGE_LIKELIHOOD]: () => provider().llm.judgeAvailability().upstreams.some((u) => u.configured),
+  // Model calls are reachable when provider has an upstream for them with a key in the turn's key set.
+  [UNDERSTAND_MEDIA]: (keys) => provider().llm.availability(UNDERSTAND_MODEL.id, "understand", keys).upstreams.some((u) => u.configured),
+  [JUDGE_LIKELIHOOD]: (keys) => provider().llm.judgeAvailability(keys).upstreams.some((u) => u.configured),
 };
 
 /**
@@ -239,10 +253,11 @@ function hasEnv(name: string): boolean {
 /**
  * Whether a tool has what it needs to run.
  * @param name - The tool name to check.
+ * @param keys - The key set the turn runs on; the deployment's when absent.
  * @returns True when the tool needs no configuration, or has it.
  */
-function isConfigured(name: string): boolean {
-  return TOOL_REQUIREMENTS[name]?.() ?? true;
+function isConfigured(name: string, keys: KeySet | undefined): boolean {
+  return TOOL_REQUIREMENTS[name]?.(keys) ?? true;
 }
 
 /**
@@ -268,7 +283,7 @@ export function buildToolSet(
   let web: ReturnType<typeof makeWebTools> | undefined;
   for (const name of toolNames) {
     const build = TOOL_MAP[name];
-    if (!build || !isConfigured(name)) continue;
+    if (!build || !isConfigured(name, context.keys)) continue;
     if (name === "web_search" || name === WEB_FETCH) {
       web ??= makeWebTools(context);
       result[name] = web[name];

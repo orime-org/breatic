@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { ValidationError, env, type MiniToolsConfig } from "@breatic/core";
 import { t, videoPresentationAtIngest, type VideoPresentationVersion } from "@breatic/shared";

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Task repository — data access for the tasks table.
@@ -416,6 +416,8 @@ function toEntity(row: typeof tasks.$inferSelect): TaskEntity {
     source: row.source,
     providerResultUrl: row.providerResultUrl,
     providerTaskId: row.providerTaskId,
+    keyId: row.keyId,
+    llmKeyId: row.llmKeyId,
     billedAt: row.billedAt,
     billedCredits: row.billedCredits,
     deletedAt: row.deletedAt,
@@ -585,6 +587,8 @@ export async function softDeleteTask(id: string): Promise<void> {
  * @param data.model - Model identifier to run the task with, if applicable.
  * @param data.source - Which lane opened this task; defaults to `"task"`.
  * @param data.id - The row's id, when the caller held credits under it first.
+ * @param data.keyId - The account key row the media runs on; null or absent on our keys.
+ * @param data.llmKeyId - The account key row of a language-model step inside the task; null or absent on our keys.
  * @param tx - Optional transaction shared with activity admission.
  * @returns The created `TaskEntity`.
  */
@@ -608,6 +612,10 @@ export async function createTask(data: {
    * canvas route holds the run's credits under it first (inner#1611).
    */
   id?: string;
+  /** The account key row the media runs on (inner#1953); null or absent on our keys. */
+  keyId?: string | null;
+  /** The account key row of a language-model step inside the task; null or absent on our keys. */
+  llmKeyId?: string | null;
 }, tx?: DbTx): Promise<TaskEntity> {
   const rows = await (tx ?? db)
     .insert(tasks)
@@ -621,6 +629,8 @@ export async function createTask(data: {
       params: data.params,
       model: data.model,
       source: data.source ?? "task",
+      keyId: data.keyId ?? null,
+      llmKeyId: data.llmKeyId ?? null,
     })
     .returning();
   return toEntity(rows[0]!);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Integration test: BullMQ → worker.runTask → task-counts event → Collab task-listener → Yjs
@@ -624,6 +624,8 @@ beforeAll(async () => {
       handoffPollMs: 20,
       handoffWaitMs: 200,
     },
+    // A canvas run: no 3D part picture is refused here.
+    settleSceneLook: async () => undefined,
   });
 
 
@@ -1482,8 +1484,6 @@ describe("transcription results and usage cross the real settlement and collabor
       ...process.env,
       PAYMENT_ENABLED: "true",
       CREDIT_MULTIPLIER: "1",
-      STRIPE_SECRET_KEY: "sk_test_unused_by_transcription_suite",
-      STRIPE_WEBHOOK_SECRET: "whsec_unused_by_transcription_suite",
     });
     const granted = await serviceDb.transaction((tx) => creditLotService.grantTrialCredits({
       userId: FIXTURE_USER_ID,

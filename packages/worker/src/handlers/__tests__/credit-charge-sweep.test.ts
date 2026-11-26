@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The credit charge sweep (inner#1617 design §3.4): every pending request
@@ -130,15 +130,6 @@ describe("sweepCreditCharges", () => {
       { ...contextOf(ROWS[0]!), studioId: "studio-9", charged: "0.400000", shortfall: "0.600000" },
       "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
     );
-  });
-
-  it("logs a settled charge whose credits signal failed", async () => {
-    const redis = new Error("redis down");
-    h.settleCharge.mockResolvedValueOnce({ ...OUTCOME, signalFailure: redis });
-
-    await sweepCreditCharges();
-
-    expect(h.error).toHaveBeenCalledExactlyOnceWith({ ...contextOf(ROWS[0]!), err: redis }, "credits_signal_failed");
   });
 
   it("settles nothing when nothing is pending", async () => {

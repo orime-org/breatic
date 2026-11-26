@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Stored logical history, projected for the current request (inner#1549).
@@ -80,6 +80,8 @@ const replyForModel = z.object({
   modelId: z.string().optional(),
   /** The upstream that served the turn's calls, which a segment resumed by an answer to its card stays on (inner#1743). */
   servedUpstream: z.string().optional(),
+  /** The account key row the turn ran on, which its resume reads the key back by (inner#1953); absent on our keys. */
+  keyId: z.string().optional(),
   turnTokens: z.number(),
   endTokens: z.number(),
   /**

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** One frame a detector saw, named by its index and time. */
 export interface AnalysisFrame { frameIndex: number; pts: number }

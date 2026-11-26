@@ -499,6 +499,22 @@ body {
       0 0 26px 7px color-mix(in srgb, var(--color-status-selected) 55%, transparent);
   }
 }
+/* A Motion execution row the list just marked (#1490 design §13.8): an info wash that settles, with an info edge, so
+   it reads as "the run you just started", apart from the grey of the row the preview shows. */
+@layer components {
+  .motion-row-new {
+    animation: motion-row-new 1.2s ease-out both;
+    box-shadow: inset 2px 0 0 var(--color-status-info);
+  }
+}
+@keyframes motion-row-new {
+  from {
+    background-color: color-mix(in srgb, var(--color-status-info) 22%, transparent);
+  }
+  to {
+    background-color: color-mix(in srgb, var(--color-status-info) 8%, transparent);
+  }
+}
 /* I-beam over the editable prompt (C, user 2026-07-12): the gap between two
    adjacent chips is a real text-insertion point, so the cursor must read as
    "click to insert here" (text), not the default arrow the panel surface would

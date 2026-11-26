@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The grid recipes (frames-split design §4.1, §4.2, §4.4, §5.4, §7.16, §7.17): every recipe reads its tool source by grid frame.

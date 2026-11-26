@@ -323,6 +323,13 @@ html[data-theme='light'] {
   --color-foreground: var(--neutral-900);
   --color-foreground-secondary: var(--neutral-700);
   --color-muted-foreground: var(--neutral-500);
+  /* Recessive text on a list row that is hovered (`--color-accent`) or chosen
+     (`--color-accent-strong`): `--color-muted-foreground` is tuned against the
+     panel and lands at 4.39:1 light / 3.73:1 dark on the chosen fill, under the
+     4.5 floor for 11px regular (WCAG 2.2 SC 1.4.3). One step up in both
+     themes, as `--color-note-foreground-muted` does on the note; the dark
+     block's `--neutral-600` makes it #c0c0c0 there. */
+  --color-row-foreground-muted: var(--neutral-600);
   --color-foreground-disabled: var(--neutral-400);
   --color-card-foreground: var(--neutral-900);
   --color-popover-foreground: var(--neutral-900);
@@ -331,6 +338,8 @@ html[data-theme='light'] {
 
   /* ---- Border / input / focus ring ---- */
   --color-border: rgba(30, 30, 30, 0.12);
+  /* Outline of a colour swatch: strong enough to show a white or a surface-coloured swatch (#1536). */
+  --color-swatch-border: rgba(30, 30, 30, 0.32);
   --color-input: var(--neutral-200);
   /* focus = neutral solid 1px, no glow (translucent rejected: reads dirty). */
   --color-ring: var(--neutral-700);
@@ -582,6 +591,7 @@ html[data-theme='dark'] {
   --color-secondary-foreground: var(--neutral-900);
 
   --color-border: rgba(240, 240, 240, 0.12);
+  --color-swatch-border: rgba(240, 240, 240, 0.32);
   --color-input: var(--neutral-400);
 
   --color-primary: var(--neutral-900);

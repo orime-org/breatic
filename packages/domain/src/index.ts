@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `@breatic/domain` — AIGC business kernel shared by server + worker.
@@ -27,6 +27,13 @@ export * as creditHoldService from "@domain/credit/creditHold.service.js";
 export * as spendLimitRepo from "@domain/credit/spendLimit.repo.js";
 export { sumCreditsByOperationKeys } from "@domain/credit/agentUsage.repo.js";
 export * as webAnimationSourceRepo from "@domain/timeline/web-animation-source.repo.js";
+export * as timelineExecutionRepo from "@domain/timeline/timeline-execution.repo.js";
+export type { TimelineExecutionEvent, TimelineExecutionTransition } from "@domain/timeline/timeline-execution.repo.js";
+export {
+  TIMELINE_QUEUE,
+  addTimelineExecutionJob,
+  type TimelineExecutionJobData,
+} from "@domain/timeline/timeline-queue.js";
 export { timelineOperationKey } from "@domain/timeline/operation-key.js";
 export { SMALLEST_CREDIT, toChargeCredits } from "@domain/credit/credit-math.js";
 export {
@@ -51,6 +58,7 @@ export {
   handOffLookups,
   type UsageLookupJob,
 } from "@domain/credit/generation-lookup.js";
+export { watchModelCalls, type ModelCallEnd, type ModelCallWatch } from "@domain/credit/model-call-watch.js";
 export type { LotContext, PayerLedgerRow } from "@domain/credit/creditLot.repo.js";
 
 // ── Studio auth (loadStudioRole + studio_members repo; server+worker) ──
@@ -153,6 +161,8 @@ export type {
 } from "@domain/asset/backend-upload.service.js";
 export type {
   UploadGrant,
+  GrantFocusImage,
+  SceneLookTarget,
   FinalizeClaim,
   FinalizeRefusal,
 } from "@domain/asset/upload-grant.repo.js";
@@ -167,6 +177,8 @@ export {
   AWAITS_USER,
   REQUEST_SPACE_CONTENT,
   PROPOSE_CANVAS_ACTION,
+  LIST_GENERATION_MODELS,
+  GET_GENERATION_TEMPLATE,
   PROPOSE_DOCUMENT_EDIT,
   PROPOSE_SCENE_GENERATION,
   SAVE_IMAGE,
@@ -263,6 +275,7 @@ export type { Voice, VoicePage, VoiceQuery } from "@domain/model-catalog/voice-c
 // ── Node tasks (one row per task on a node; the counts the node shows) ──
 export * as nodeTaskService from "@domain/node-task/node-task.service.js";
 export * as sceneTaskService from "@domain/node-task/scene-task.service.js";
+export { emitSceneLookPicture } from "@domain/asset/scene-look-picture.js";
 export type { SceneTaskRow } from "@domain/node-task/node-task.repo.js";
 export { resolveProjectImageInputs, type ProjectImageInput } from "@domain/asset/project-image-inputs.js";
 export {
@@ -297,6 +310,7 @@ export {
 export * as ingestReportService from "@domain/asset/ingest-report.service.js";
 export { uploadDeadlineByKey } from "@domain/asset/upload-deadline.js";
 export { announceDocumentUploadAsset, announceDocumentUploadProcessing, documentTargetOf } from "@domain/asset/document-upload-events.js";
+export { announceFocusImage, announceFocusImageUploading } from "@domain/asset/focus-image-events.js";
 export type {
   IngestReport,
   IngestReportOutcome,
@@ -368,6 +382,12 @@ export type { MiniToolExecutionJob, MiniToolExecution, MiniToolExecutionCompleti
 export { escapeHtml, renderMail, type MailMessage, type MailSpec, type RenderedMail } from "@domain/mail/mail-shell.js";
 
 export * as storageReclaimRepo from "@domain/asset/storage-reclaim.repo.js";
+export * as notificationRepo from "@domain/notification/notification.repo.js";
+export * as projectTransfersRepo from "@domain/project/projectTransfers.repo.js";
+export * as transferExpiryService from "@domain/project/transfer-expiry.service.js";
+export * as deadlineSweepService from "@domain/sweep/deadline-sweep.service.js";
+export { readDatabaseClock } from "@domain/sweep/database-clock.repo.js";
+export { mintShareToken } from "@domain/request/share-token.js";
 
 // ── Presentation pins (inner#1306 §7.15) ──
 export * as presentationPinService from "@domain/presentation/presentation-pin.service.js";
@@ -375,3 +395,9 @@ export { syncPresentationPins } from "@domain/presentation/presentation-pin.serv
 // ── Provider (every model call goes through it, inner#1743) ──
 export { initProvider, provider } from "@domain/provider/instance.js";
 export { readProviderConfig } from "@domain/provider/provider-config-loader.js";
+
+// ── Which keys a model call runs on (inner#1953) ──
+export { resolveKeys, payerKeyPlan, keyOwnerOf, keysById, runCallsLlm, runDescribesInput, type KeyPayer, type ResolvedKeys } from "@domain/provider/provider-keys.js";
+export { PROMPT_REWRITTEN_MODELS } from "@domain/provider/prompt-rewritten-models.js";
+export { choiceHolds, studioKeyPlan, type KeyPurpose, type StudioKeyPlan } from "@domain/provider/account-keys.service.js";
+export { accountKeyFailureIn, type AccountKeyFailureFacts } from "@domain/provider/key-failure.js";

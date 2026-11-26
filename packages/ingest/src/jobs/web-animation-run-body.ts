@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What the web-animation Durable Object and its container agree on (inner#1711 design §6): where the runner listens,
@@ -32,6 +32,47 @@ export interface WebAnimationRunBody {
   /** Where it posts progress and its final report, through `jobs.local`. */
   progressUrl: string;
   reportUrl: string;
+  /**
+   * A modification's base: the package to start from, read by GET through `r2.local`, with its frame and length and
+   * the font set it was packed with, which may be older than the run's.
+   */
+  base?: { packageUrl: string; viewport: { width: number; height: number }; durationFrames: number; fontSetVersion: number };
+}
+
+/**
+ * What the render Durable Object posts to the render runner: the source package to render, the frozen frame, rate
+ * and length, and where the runner writes the video and its cover and posts its phase and final report.
+ */
+export interface WebAnimationRenderRunBody {
+  /** The source package, read by GET through `r2.local`. */
+  packageUrl: string;
+  fontSetVersion: number;
+  width: number;
+  height: number;
+  fps: { num: number; den: number };
+  durationFrames: number;
+  quality: string;
+  /** Where the runner PUTs the video and its first-frame cover, through `r2.local`. */
+  videoUrl: string;
+  coverUrl: string;
+  progressUrl: string;
+  reportUrl: string;
+}
+
+/** What the render runner posts to the progress path. */
+export interface WebAnimationRenderProgressBody {
+  phase: "rendering" | "saving";
+  /** How far the renderer got, 0 to 1. */
+  progress: number;
+}
+
+/** What the render runner posts to the report path; the media fields are what ffprobe measured of what it wrote. */
+export interface WebAnimationRenderReportBody {
+  ok: boolean;
+  failureReason: string | null;
+  cpuUsec: number | null;
+  video: { width: number; height: number; durationSeconds: number } | null;
+  cover: { width: number; height: number } | null;
 }
 
 /** The phases a run reports. */

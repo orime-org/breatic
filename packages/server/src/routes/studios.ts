@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Studio routes — the container shell (slice 1).
@@ -29,7 +29,7 @@ import { creditPageQuerySchema, projectListQuerySchema } from "@server/routes/sc
 import { requireAuth } from "@server/middleware/auth.js";
 import { requireStudioRole } from "@server/middleware/studio-role.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
-import { requirePayments } from "@server/middleware/require-payments.js";
+import { requireCharging } from "@server/middleware/require-charging.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import {
   studioService,
@@ -397,10 +397,10 @@ studio.patch(
  * `GET /api/v1/studio/:slug/spend-limits` — the studio's monthly spend limits,
  * this UTC month's span and spend, and everyone who can spend its credits
  * (inner#1968). Admin-only. The four spend-limit routes answer 404 where
- * payments are switched off: nothing judges a limit there.
+ * credits are not charged (`CHARGING_ENABLED`): nothing judges a limit there.
  * @returns `200` with `{ data: SpendLimitsView }`; `403` not admin, `404` personal studio
  */
-studio.get("/:slug/spend-limits", requirePayments, requireStudioRole("admin"), async (c) => {
+studio.get("/:slug/spend-limits", requireCharging, requireStudioRole("admin"), async (c) => {
   return c.json({ data: await spendLimitService.readSpendLimits(c.req.param("slug")) });
 });
 
@@ -409,7 +409,7 @@ studio.get("/:slug/spend-limits", requirePayments, requireStudioRole("admin"), a
  * studio total, each rounded up to the cent; null clears one. Admin-only.
  * @returns `200` with `{ data: { ok: true } }`; `403` not admin, `404` personal studio, `422` a negative amount
  */
-studio.put("/:slug/spend-limits", requirePayments, requireStudioRole("admin"), validate("json", studioSpendLimitsSchema), async (c) => {
+studio.put("/:slug/spend-limits", requireCharging, requireStudioRole("admin"), validate("json", studioSpendLimitsSchema), async (c) => {
   await spendLimitService.writeStudioLimits(c.req.param("slug"), c.get("user").id, c.req.valid("json"));
   return c.json({ data: { ok: true } });
 });
@@ -422,7 +422,7 @@ studio.put("/:slug/spend-limits", requirePayments, requireStudioRole("admin"), v
  */
 studio.put(
   "/:slug/members/:userId/spend-limit",
-  requirePayments,
+  requireCharging,
   requireStudioRole("admin"),
   validate("param", spendLimitParamSchema),
   validate("json", memberSpendLimitSchema),
@@ -438,7 +438,7 @@ studio.put(
  * person's limit, so the default applies again. Admin-only.
  * @returns `200` with `{ data: { ok: true } }`; `403` not admin, `404` personal studio
  */
-studio.delete("/:slug/members/:userId/spend-limit", requirePayments, requireStudioRole("admin"), validate("param", spendLimitParamSchema), async (c) => {
+studio.delete("/:slug/members/:userId/spend-limit", requireCharging, requireStudioRole("admin"), validate("param", spendLimitParamSchema), async (c) => {
   const { slug, userId } = c.req.valid("param");
   await spendLimitService.removeMemberLimit(slug, userId);
   return c.json({ data: { ok: true } });
@@ -487,7 +487,9 @@ studio.get("/:slug/transfer", requireStudioRole("admin"), async (c) => {
     c.req.param("slug"),
   );
   return c.json({
-    data: live ? { ...live, expiresAt: live.expiresAt.toISOString() } : null,
+    data: live
+      ? { id: live.id, fromUserId: live.fromUserId, toUserId: live.toUserId, expiresAt: live.expiresAt.toISOString() }
+      : null,
   });
 });
 

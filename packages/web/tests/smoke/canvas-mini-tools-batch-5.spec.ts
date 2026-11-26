@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The fifth batch of mini-tools, on audio (inner#1305): denoise, normalize,
@@ -41,6 +41,9 @@ const FIXTURES = resolve(__dirname, '../fixtures/mini-tools');
  * peaks file beside it (inner#1305 §4.4).
  */
 const SERVED = 'https://smoke-audio.test/audio/2026-10-21/1792580000000_18f58aed-b802-4243-a8ea-02d377de9679.mp3';
+
+/** The module the Project page hands an `asset-peaks:ready` message to (#1580). */
+const AUDIO_PEAKS_READY = 'spaces/canvas/mini-tool/audio-peaks-ready.ts';
 
 /** What the spec answers for the peaks file beside the audio, and what was asked of it. */
 const served = { peaks: null as string | null, decodes: 0, peaksReads: 0 };
@@ -198,9 +201,13 @@ test.describe('panels', () => {
     const decodes = served.decodes;
     await openTool(page, long, 'audio.cut');
     await expect(page.getByTestId('mini-tool-range-band')).toBeVisible();
-    // Only a band past the ceilings reads its missing peaks again, so a second
-    // read says it chose to stay plain.
-    await expect.poll(() => served.peaksReads - reads, { timeout: 15_000 }).toBeGreaterThanOrEqual(2);
+    // Past the ceiling the band reads the missing peaks, decodes nothing, and
+    // stays plain with no timer asking again (#1580).
+    await expect.poll(() => served.peaksReads - reads, { timeout: 15_000 }).toBeGreaterThanOrEqual(1);
+    await page.waitForTimeout(1_000);
+    const settled = served.peaksReads;
+    await page.waitForTimeout(6_000);
+    expect(served.peaksReads).toBe(settled);
     await expect(page.getByTestId('mini-tool-waveform')).toHaveCount(0);
     expect(served.decodes).toBe(decodes);
   });
@@ -226,8 +233,22 @@ test.describe('panels', () => {
     await expect.poll(() => served.peaksReads).toBeGreaterThan(0);
     await expect(page.getByTestId('mini-tool-waveform')).toHaveCount(0);
 
-    // Written while the band is open: the band reads again every 5 s.
+    // No timer reads the peaks again (#1580): the band waits for the server to say they were written.
+    await page.waitForTimeout(1_000);
+    const settled = served.peaksReads;
+    await page.waitForTimeout(6_000);
+    expect(served.peaksReads).toBe(settled);
+
+    // Written while the band is open, and announced as the Project page announces an `asset-peaks:ready` message.
     served.peaks = JSON.stringify({ version: 1, peaks: [10, 200, 90] });
+    const ready = await liveModuleUrl(page, AUDIO_PEAKS_READY);
+    await page.evaluate(
+      async ([at, url]: [string, string]) => {
+        const module = (await import(/* @vite-ignore */ at)) as { announceAudioPeaksReady: (audioUrl: string) => void };
+        module.announceAudioPeaksReady(url);
+      },
+      [ready, SERVED] as [string, string],
+    );
     await expect(page.getByTestId('mini-tool-waveform')).toHaveAttribute('data-from', 'peaks', { timeout: 15_000 });
     expect(served.decodes).toBe(0);
   });

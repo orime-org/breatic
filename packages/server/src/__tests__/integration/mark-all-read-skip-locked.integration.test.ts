@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * "Mark all read" — real Postgres.
@@ -14,7 +14,7 @@
 import { describe, it, expect, beforeAll, afterAll, inject } from "vitest";
 import postgres from "postgres";
 import { initCore } from "@breatic/core";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 
 try {
   initCore(process.env);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Where granted credits may go, and where they may not (task #267).
@@ -49,7 +49,7 @@ import { creditLotService, creditLotRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import * as studioService from "@server/modules/studio/studio.service.js";
-import { openPaymentSource } from "./payment-source.js";
+import { openPaymentSource, recordPaymentReceipt } from "./payment-source.js";
 
 const PG_DRIVER_LOCAL = "trial-credits-constraints-test-driver";
 
@@ -222,10 +222,7 @@ describe("bought credits are still the buyer's to move", () => {
     const team = await seedTeamStudio(userId);
 
     const sourceId = await openPaymentSource(sql);
-    await sql`
-      INSERT INTO payments (id, user_id, amount_cents, status, credits_granted)
-      VALUES (${sourceId}, ${userId}, 1000, 'completed', 880)
-    `;
+    await recordPaymentReceipt(sql, { id: sourceId, userId, amountCents: 1000, credits: 880 });
     const bought = (
       await sql<{ id: string }[]>`
         INSERT INTO credit_lots
@@ -307,11 +304,7 @@ describe("granted credits on the screens that list what an account holds", () =>
   it("still carries the price on a lot somebody paid for", async () => {
     const { userId } = await seedGranted();
     const sourceId = await openPaymentSource(sql);
-    await sql`
-      INSERT INTO payments
-        (id, user_id, amount_cents, total_cents, status, credits_granted)
-      VALUES (${sourceId}, ${userId}, 1000, 1080, 'completed', 880)
-    `;
+    await recordPaymentReceipt(sql, { id: sourceId, userId, amountCents: 1000, totalCents: 1080, credits: 880 });
     const bought = (
       await sql<{ id: string }[]>`
         INSERT INTO credit_lots

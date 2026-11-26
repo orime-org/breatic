@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /** The task panel's rows of a planned run keep their own identities, with controlled HTTP IO (frames-split §7.19). */
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';

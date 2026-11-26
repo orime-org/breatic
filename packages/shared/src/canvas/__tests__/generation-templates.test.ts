@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The template registry: what each generate panel lists and what a template
@@ -18,10 +18,12 @@ import {
   templatesFor,
   type GenerationTemplate,
   type TemplateGenerateNode,
+  type TemplateTextNode,
 } from '@shared/canvas/generation-templates.js';
 import { templateMarkTargets, templateSkeleton } from '@shared/canvas/template-expansion.js';
 import { storyboardSpec, MULTI_SHOT_MODE } from '@shared/storyboard.js';
 import type { ParamDescriptor } from '@shared/types/model-catalog.js';
+import { PANEL_EDITOR_PARAM } from '@shared/types/generate-panel.js';
 import { TEMPLATE_GUIDE_KEY } from '@shared/types/canvas-proposal.js';
 import { setLocale, setLocaleMessages } from '@shared/i18n/index.js';
 import { MAX_NODE_NAME_LEN } from '@shared/types/canvas-node.js';
@@ -78,6 +80,21 @@ const anchorOf = (template: GenerationTemplate): TemplateGenerateNode | undefine
 
 const textKey = (template: GenerationTemplate, rest: string): string => `canvas.template.${template.id}.${rest}`;
 
+/** A template's text nodes (inner#1824, CAP-3). */
+const textNodesOf = (template: GenerationTemplate): TemplateTextNode[] =>
+  template.nodes.filter((node): node is TemplateTextNode => node.role === 'written');
+
+/**
+ * Every key under a template's locale entry that holds words the user edits:
+ * each generate node's prompt, shots or lines, and each text node's text.
+ * @param template - The template.
+ * @returns The absolute keys.
+ */
+const editedKeysOf = (template: GenerationTemplate): string[] => [
+  ...generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest))),
+  ...textNodesOf(template).map((node) => textKey(template, `node.${node.key}.text`)),
+];
+
 /**
  * Where a generate node's words live under the template's locale entry: one
  * key per shot (`shot.<n>`, from 1) for a node with shots, one per line
@@ -126,7 +143,7 @@ const poolNamesOf = (locale: string, template: GenerationTemplate, key: string):
     .map((input) => raw(locale, textKey(template, `input.${input.key}.name`))),
   ...template.edges
     .filter((edge) => edge.to === key && (edge.into ?? 'pool') === 'pool')
-    .map((edge) => raw(locale, textKey(template, `node.${edge.from}.name`))),
+    .map((edge) => raw(locale, textKey(template, edge.from === template.anchor ? 'name' : `node.${edge.from}.name`))),
 ];
 
 /**
@@ -206,11 +223,53 @@ const COMICS_IMAGES = ['storyboard-grid-25', 'storyboard-sheet-9', 'comic-page',
 /** The comic and storyboard templates a video panel lists. */
 const COMICS_VIDEOS = ['storyboard-to-video', 'comic-page-to-motion', 'comic-panels-to-shots'];
 
+/** The fight and action templates (inner#1818), in registry order. */
+/** The short drama templates (inner#1824), in registry order. */
+const DRAMA = ['scene-plate', 'drama-single-scene', 'short-drama-reversal', 'emotional-dialogue-timeline', 'horror-suspense', 'short-drama-episode'];
+
+/** The short drama templates anchored on a video node. */
+const DRAMA_VIDEOS = DRAMA.filter((id) => id !== 'scene-plate');
+
+/** The text nodes the templates give (inner#1824, CAP-3), by template. */
+const TEXT_NODES: Record<string, string[]> = { 'song-with-lyrics': ['lyrics'], 'short-drama-episode': ['script'] };
+
+const FIGHT = ['fight-duel-one-take', 'fight-exchange-short', 'fight-duel-locked', 'hero-orbit-reveal', 'bullet-time-moment', 'impact-frame-hit'];
+
+/** The templates that remix videos the user already has (inner#1819), in registry order. */
+const VIDEO_REMIX = ['reference-video-remix', 'seamless-bridge'];
+
+/** The space, renovation and real estate templates (inner#1823), in registry order. */
+const SPACES = ['space-tour-single-take', 'room-staging-still', 'renovation-before-after', 'day-to-night-exterior', 'before-after-reveal', 'listing-walkthrough-15s', 'property-full-tour'];
+
+/** The space templates a video panel lists. */
+const SPACES_VIDEOS = SPACES.filter((id) => id !== 'room-staging-still');
+
+/** The promo film and brand story templates (inner#1822), in registry order. */
+const PROMO = ['app-launch-promo', 'brand-origin-film', 'launch-story-3-beat', 'promo-film-assembled'];
+
+/** The fashion lookbook templates (inner#1821), in registry order. */
+const FASHION = ['fashion-lookbook', 'try-on-still', 'lookbook-multi-look'];
+
+/** The fashion templates a video panel lists. */
+const FASHION_VIDEOS = FASHION.filter((id) => id !== 'try-on-still');
+
+/** The cinematic short and trailer templates (inner#1820), in registry order. */
+const CINEMATIC = ['cinematic-15s-arc', 'landscape-3-shot', 'epic-fantasy-scifi', 'trailer-beat-3-shot', 'transformation-6-shot', 'long-form-acts'];
+
 /** The film style templates (inner#1817), in registry order. */
 const FILM_STYLES = ['film-style-still', 'film-style-shot', 'era-walkthrough-montage', 'style-sound-bed'];
 
 /** The animated short templates (inner#1814), in registry order. */
 const ANIMATION = ['cartoon-gag', '3d-cartoon-short', 'stop-motion-short', 'anime-scene', 'anime-action-climax', 'anime-opening-15s'];
+
+/** The music video templates (inner#1826), in registry order. */
+const MV = ['mv-style-sheet', 'mv-performer-sheet', 'beat-synced-music-clip', 'music-first-mv', 'song-with-lyrics', 'mv-chorus-performance', 'mv-full'];
+
+/** The music video templates an image panel lists. */
+const MV_IMAGES = ['mv-style-sheet', 'mv-performer-sheet', 'mv-full'];
+
+/** The music video templates a video panel lists. */
+const MV_VIDEOS = ['beat-synced-music-clip', 'music-first-mv', 'mv-chorus-performance'];
 
 /** The e-commerce ad templates (inner#1811), in registry order. */
 const ECOMMERCE = [
@@ -260,8 +319,8 @@ const SOUND = [
 /** The sound templates an audio panel lists: all but the one anchored on its video. */
 const SOUND_AUDIO = SOUND.filter((id) => id !== 'clip-ambience-foley');
 
-/** The templates the plan's G13, G15, G18 and G19 give no case for offering unasked. */
-const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short'];
+/** The templates the plan's G13, G15, G17, G18 and G19 give no case for offering unasked. */
+const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fisheye-clone-pov', 'flash-photo-dump-grid', 'game-ui-livestream', 'photo-paper-diorama', 'sports-live-coverage', 'extreme-sports-run', 'song-cover', 'stop-motion-short', 'epic-fantasy-scifi', 'horror-suspense'];
 
 /**
  * The template nodes a generate node's words carry a note for, counted the
@@ -274,7 +333,7 @@ const NEVER_OFFERED_UNASKED = ['retro-found-footage', 'pov-continuous-shot', 'fi
  */
 const notedArrivals = (template: GenerationTemplate, key: string): string[] =>
   template.edges
-    .filter((edge) => edge.to === key)
+    .filter((edge) => edge.to === key && !textNodesOf(template).some((node) => node.key === edge.from))
     .filter((edge) => (edge.into ?? 'pool') !== 'pool' || generateNodes(template).some((node) => node.key === edge.from))
     .map((edge) => edge.from);
 
@@ -317,6 +376,7 @@ function expectEveryString(template: GenerationTemplate): void {
     ...names,
     'description',
     ...generateNodes(template).flatMap((node) => wordKeysOf(template, node)),
+    ...textNodesOf(template).map((node) => `node.${node.key}.text`),
     ...template.inputs.map((input) => `input.${input.key}.note`),
     ...template.steps.map((step) => `step.${step}`),
   ];
@@ -345,8 +405,12 @@ describe('generation templates', () => {
       'expression-sheet',
       'character-design-from-text',
       ...COMICS_IMAGES,
+      'scene-plate',
+      ...MV_IMAGES,
       'product-hero-still',
       'dish-hero-still',
+      'room-staging-still',
+      'try-on-still',
       'fisheye-clone-pov',
       'flash-photo-dump-grid',
       ...POSTERS,
@@ -357,19 +421,27 @@ describe('generation templates', () => {
       'identity-locked-sequence',
       'character-showcase-orbit',
       ...COMICS_VIDEOS,
+      ...DRAMA_VIDEOS,
+      ...FIGHT,
       ...ANIMATION,
+      ...MV_VIDEOS,
       ...ECOMMERCE,
       ...PRODUCT_SHOWCASE_VIDEOS,
+      ...PROMO,
       ...FOOD_VIDEOS,
+      ...SPACES_VIDEOS,
+      ...FASHION_VIDEOS,
       ...SOCIAL_HOOK_VIDEOS,
       ...TALKING,
       'film-style-shot',
       'era-walkthrough-montage',
+      ...CINEMATIC,
       ...SPEED,
       'clip-ambience-foley',
+      ...VIDEO_REMIX,
     ]);
     // inner#1825 changes this contract: audio had no template until the sound goal.
-    expect(templatesFor('audio').map((t) => t.id)).toEqual(['style-sound-bed', ...SOUND_AUDIO]);
+    expect(templatesFor('audio').map((t) => t.id)).toEqual(['song-with-lyrics', 'style-sound-bed', ...SOUND_AUDIO]);
   });
 
   it('fixes the mode, model and the params the real runs settled on', () => {
@@ -378,6 +450,9 @@ describe('generation templates', () => {
     const QWEN = 'qwen-image-edit-multiple-angles';
     const T2V = 'seedance-2.5-text-to-video';
     const I2V = 'seedance-2.5-image-to-video';
+    const GPT_T2I = 'gpt-image-2.5-sunburst-text-to-image';
+    /** A 15-second widescreen H3 reference video, the music video's clip that plays the music it is given. */
+    const H3_15: Pick<TemplateGenerateNode, 'type' | 'mode' | 'model' | 'params'> = { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } };
     /**
      * A one-node text-to-video template's anchor, 9:16 with sound unless told otherwise.
      * @param duration - Its seconds.
@@ -412,6 +487,52 @@ describe('generation templates', () => {
       'food-money-shot': t2v(8),
       'recipe-process-montage': t2v(15),
       'dish-hero-still': { result: { type: 'image', mode: 'i2i', model: 'gpt-image-2.5-sunburst-edit', params: { aspect_ratio: '4:5' } } },
+      'app-launch-promo': t2v(15),
+      'brand-origin-film': {
+        result: { type: 'video', mode: 'multi_shot', model: T2V, params: { aspect_ratio: '16:9', duration: 20, generate_audio: true }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+      },
+      'launch-story-3-beat': {
+        result: { type: 'video', mode: 'multi_shot', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 12 }, shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }] },
+        score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
+      },
+      'promo-film-assembled': {
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        'part-2': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        'part-3': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        'part-4': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 15 } },
+        score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
+      },
+      'space-tour-single-take': t2v(15, '16:9'),
+      'room-staging-still': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: 'auto' } } },
+      'renovation-before-after': {
+        result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 8, generate_audio: true } },
+        before: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        after: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'day-to-night-exterior': {
+        result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 6, generate_audio: true } },
+        day: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        night: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'before-after-reveal': { result: { type: 'video', mode: 'first_last', model: I2V, params: { duration: 6, generate_audio: true } } },
+      'listing-walkthrough-15s': {
+        result: { type: 'video', mode: 'multi_shot', model: T2V, params: { aspect_ratio: '16:9', duration: 15, generate_audio: true }, shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }] },
+      },
+      'property-full-tour': {
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
+        'room-2': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
+        'room-3': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
+        'room-4': { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 10 } },
+        score: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} },
+      },
+      'fashion-lookbook': t2v(15),
+      'try-on-still': { result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '3:4' } } },
+      'lookbook-multi-look': {
+        result: { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        'look-1': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        'look-2': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+        'look-3': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '9:16' } },
+      },
       'pet-selfie-vlog': t2v(10),
       'phone-vlog-realism': t2v(15),
       'retro-found-footage': t2v(10, '4:3'),
@@ -521,6 +642,55 @@ describe('generation templates', () => {
         before: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
         after: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '1:1' } },
       },
+      'fight-duel-one-take': t2v(15, '16:9'),
+      'fight-exchange-short': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 8 } } },
+      'fight-duel-locked': {
+        ...t2v(15, '16:9'),
+        'sheet-a': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3' } },
+        'sheet-b': { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '4:3' } },
+      },
+      'hero-orbit-reveal': {
+        result: { type: 'video', mode: 'i2v', model: I2V, params: { duration: 6, generate_audio: true } },
+        keyframe: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9', resolution: '4k' } },
+      },
+      'bullet-time-moment': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '16:9', duration: 6 } } },
+      'impact-frame-hit': t2v(10, '16:9'),
+      'reference-video-remix': { result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 10 } } },
+      'seamless-bridge': t2v(5, '16:9'),
+      'cinematic-15s-arc': t2v(15, '16:9'),
+      'landscape-3-shot': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: 'gemini-omni-1.1-flash-text-to-video',
+          params: { aspect_ratio: '16:9', duration: 9 },
+          shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
+        },
+      },
+      'epic-fantasy-scifi': t2v(15, '16:9'),
+      'trailer-beat-3-shot': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '21:9', duration: 12, generate_audio: true },
+          shots: [{ seconds: 4 }, { seconds: 4 }, { seconds: 4 }],
+        },
+      },
+      'transformation-6-shot': {
+        result: {
+          type: 'video',
+          mode: 'multi_shot',
+          model: T2V,
+          params: { aspect_ratio: '16:9', duration: 15, generate_audio: true },
+          shots: [{ seconds: 3 }, { seconds: 2 }, { seconds: 2 }, { seconds: 3 }, { seconds: 3 }, { seconds: 2 }],
+        },
+      },
+      'long-form-acts': {
+        ...t2v(30, '16:9'),
+        'act-2': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 30, generate_audio: true } },
+        'act-3': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '16:9', duration: 30, generate_audio: true } },
+      },
       'vehicle-speed-cutlist': t2v(12, '16:9'),
       'sports-live-coverage': t2v(12, '16:9'),
       'extreme-sports-run': t2v(10),
@@ -532,6 +702,43 @@ describe('generation templates', () => {
           params: { aspect_ratio: '9:16', duration: 15, generate_audio: true },
           shots: [{ seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }, { seconds: 3 }],
         },
+      },
+      'scene-plate': { result: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } } },
+      'drama-single-scene': {
+        ...t2v(15, '16:9'),
+        scene: { type: 'image', mode: 't2i', model: 'gpt-image-2.5-sunburst-text-to-image', params: { aspect_ratio: '16:9' } },
+      },
+      'short-drama-reversal': t2v(15),
+      'emotional-dialogue-timeline': {
+        result: { type: 'video', mode: 'ref', model: MINIMAX, params: { aspect_ratio: '9:16', duration: 10 } },
+        line: { type: 'audio', mode: 'tts', model: 'minimax-speech-2.8-hd', params: {} },
+      },
+      'horror-suspense': t2v(15, '16:9'),
+      'mv-style-sheet': { result: { type: 'image', mode: 't2i', model: GPT_T2I, params: { aspect_ratio: '16:9' } } },
+      'mv-performer-sheet': {
+        result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        style: { type: 'image', mode: 't2i', model: GPT_T2I, params: { aspect_ratio: '16:9' } },
+      },
+      'beat-synced-music-clip': { result: H3_15 },
+      'music-first-mv': { result: H3_15, music: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-bgm', params: {} } },
+      'song-with-lyrics': { result: { type: 'audio', mode: 't2m', model: 'mureka-v9.5-generate-song', params: {} } },
+      'mv-chorus-performance': {
+        result: { type: 'video', mode: 'talking_head', model: 'seedance-2.5-talking-avatar', params: {} },
+        look: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+      },
+      'mv-full': {
+        result: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
+        style: { type: 'image', mode: 't2i', model: GPT_T2I, params: { aspect_ratio: '16:9' } },
+        'section-1': H3_15,
+        'section-2': H3_15,
+        'section-3': H3_15,
+        'section-4': H3_15,
+      },
+      'short-drama-episode': {
+        ...t2v(15),
+        'scene-2': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        'scene-3': { type: 'video', mode: 't2v', model: T2V, params: { aspect_ratio: '9:16', duration: 15, generate_audio: true } },
+        cast: { type: 'image', mode: 'i2i', model: NANO, params: { aspect_ratio: '16:9' } },
       },
     };
     // The sound templates' settings are checked key by key under their own describe below.
@@ -626,21 +833,29 @@ describe('generation templates', () => {
 
 describe('creative goals and triggers', () => {
   it('lists the goals the registry uses, in panel order', () => {
-    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'animation', 'ecommerce', 'product-showcase', 'food', 'social-hooks', 'talking', 'posters', 'film-styles', 'speed', 'sound']);
+    expect([...TEMPLATE_GOALS]).toEqual(['character', 'comics-storyboards', 'drama', 'fight', 'animation', 'music-video', 'ecommerce', 'product-showcase', 'promo', 'food', 'spaces', 'fashion', 'social-hooks', 'talking', 'posters', 'film-styles', 'cinematic', 'speed', 'sound', 'video-remix']);
   });
 
   it('gives every template a known goal and words the user asks for it with, and words for when to offer it unless it has none', () => {
     const goals: Record<string, string> = {
+      ...Object.fromEntries(DRAMA.map((id) => [id, 'drama'])),
+      ...Object.fromEntries(FIGHT.map((id) => [id, 'fight'])),
       ...Object.fromEntries(ANIMATION.map((id) => [id, 'animation'])),
+      ...Object.fromEntries(MV.map((id) => [id, 'music-video'])),
       ...Object.fromEntries(ECOMMERCE.map((id) => [id, 'ecommerce'])),
       ...Object.fromEntries(PRODUCT_SHOWCASE.map((id) => [id, 'product-showcase'])),
       ...Object.fromEntries(TALKING.map((id) => [id, 'talking'])),
+      ...Object.fromEntries(PROMO.map((id) => [id, 'promo'])),
       ...Object.fromEntries(FOOD.map((id) => [id, 'food'])),
+      ...Object.fromEntries(SPACES.map((id) => [id, 'spaces'])),
+      ...Object.fromEntries(FASHION.map((id) => [id, 'fashion'])),
       ...Object.fromEntries(SOCIAL_HOOKS.map((id) => [id, 'social-hooks'])),
       ...Object.fromEntries(POSTERS.map((id) => [id, 'posters'])),
       ...Object.fromEntries(FILM_STYLES.map((id) => [id, 'film-styles'])),
+      ...Object.fromEntries(CINEMATIC.map((id) => [id, 'cinematic'])),
       ...Object.fromEntries(SPEED.map((id) => [id, 'speed'])),
       ...Object.fromEntries(SOUND.map((id) => [id, 'sound'])),
+      ...Object.fromEntries(VIDEO_REMIX.map((id) => [id, 'video-remix'])),
       ...Object.fromEntries(['storyboard-grid-25', ...COMICS].map((id) => [id, 'comics-storyboards'])),
       'costume-sheet': 'character',
       'character-bible': 'character',
@@ -686,8 +901,12 @@ describe('creative goals and triggers', () => {
     expect(templateGoalsFor('image').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['costume-sheet', 'character-bible', 'expression-sheet', 'character-design-from-text']],
       ['comics-storyboards', COMICS_IMAGES],
+      ['drama', ['scene-plate']],
+      ['music-video', MV_IMAGES],
       ['product-showcase', ['product-hero-still']],
       ['food', ['dish-hero-still']],
+      ['spaces', ['room-staging-still']],
+      ['fashion', ['try-on-still']],
       ['social-hooks', ['fisheye-clone-pov', 'flash-photo-dump-grid']],
       ['posters', POSTERS],
       ['film-styles', ['film-style-still']],
@@ -695,17 +914,26 @@ describe('creative goals and triggers', () => {
     expect(templateGoalsFor('video').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
       ['character', ['single-view-refs-scene', 'identity-locked-sequence', 'character-showcase-orbit']],
       ['comics-storyboards', COMICS_VIDEOS],
+      ['drama', DRAMA_VIDEOS],
+      ['fight', FIGHT],
       ['animation', ANIMATION],
+      ['music-video', MV_VIDEOS],
       ['ecommerce', ECOMMERCE],
       ['product-showcase', PRODUCT_SHOWCASE_VIDEOS],
+      ['promo', PROMO],
       ['food', FOOD_VIDEOS],
+      ['spaces', SPACES_VIDEOS],
+      ['fashion', FASHION_VIDEOS],
       ['social-hooks', SOCIAL_HOOK_VIDEOS],
       ['talking', TALKING],
       ['film-styles', ['film-style-shot', 'era-walkthrough-montage']],
+      ['cinematic', CINEMATIC],
       ['speed', SPEED],
       ['sound', ['clip-ambience-foley']],
+      ['video-remix', VIDEO_REMIX],
     ]);
     expect(templateGoalsFor('audio').map(({ goal, templates }) => [goal, templates.map((one) => one.id)])).toEqual([
+      ['music-video', ['song-with-lyrics']],
       ['film-styles', ['style-sound-bed']],
       ['sound', SOUND_AUDIO],
     ]);
@@ -715,7 +943,7 @@ describe('creative goals and triggers', () => {
 describe('generation template registry checks', () => {
   it('carries the same marks in the same order in every language, for every template prompt', () => {
     for (const template of GENERATION_TEMPLATES) {
-      for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
+      for (const key of editedKeysOf(template)) {
         const reference = marksOf(raw('en', key) ?? '');
         for (const locale of LOCALES) expect(marksOf(raw(locale, key) ?? ''), `${key} ${locale}`).toEqual(reference);
       }
@@ -727,7 +955,7 @@ describe('generation template registry checks', () => {
     const cjk = '[\\u3040-\\u30ff\\u3400-\\u9fff\\u3000-\\u303f\\uff00-\\uffef]';
     const spaced = new RegExp(`${cjk} \\{✏️|\\} ${cjk}`, 'u');
     for (const template of GENERATION_TEMPLATES) {
-      for (const key of generateNodes(template).flatMap((node) => wordKeysOf(template, node).map((rest) => textKey(template, rest)))) {
+      for (const key of editedKeysOf(template)) {
         for (const locale of ['zh-CN', 'zh-TW', 'ja']) expect(raw(locale, key) ?? '', `${key} ${locale}`).not.toMatch(spaced);
       }
     }
@@ -1301,9 +1529,8 @@ describe('sound, music and voice templates (inner#1825)', () => {
    */
   const settingsOf = (node: TemplateGenerateNode): Settings => ({ type: node.type, mode: node.mode, model: node.model });
 
-  it('registers all eleven under the sound goal, which the panels list last', () => {
+  it('registers all eleven under the sound goal', () => {
     for (const id of SOUND) expect(byId(id)?.goal, id).toBe('sound');
-    expect(TEMPLATE_GOALS[TEMPLATE_GOALS.length - 1]).toBe('sound');
   });
 
   it('anchors each on the node type, mode, model and params the design gives', () => {
@@ -1468,5 +1695,170 @@ describe('template inputs that go into a slot (inner#1825, CAP-1)', () => {
 describe('poster templates (inner#1809)', () => {
   it('tells the agent that the name and its annotations stay in the picture, not the name alone', () => {
     expect(byId('name-as-world-typography')?.agentNote).toContain('the name and the annotations must stay in the picture, the name spelled and shaped exactly right, and no other text appears');
+  });
+});
+
+describe('template text nodes (inner#1824, CAP-3)', () => {
+  it('has the text nodes the short drama and song templates give, so the checks below run on something', () => {
+    const found = Object.fromEntries(GENERATION_TEMPLATES.flatMap((template) => {
+      const keys = textNodesOf(template).map((node) => node.key);
+      return keys.length === 0 ? [] : [[template.id, keys]];
+    }));
+    expect(found).toEqual(TEXT_NODES);
+  });
+
+  it('wires a text node only out, into the pool or the lyrics box of a generate node whose model has one, and never anchors on one', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      const generate = new Map(generateNodes(template).map((node) => [node.key, node]));
+      for (const text of textNodesOf(template)) {
+        const where = `${template.id} ${text.key}`;
+        expect(template.anchor, where).not.toBe(text.key);
+        expect(template.edges.some((edge) => edge.to === text.key), `${where} is fed`).toBe(false);
+        expect(template.inputs.some((input) => feedsOf(template, input).includes(text.key)), `${where} is fed an input`).toBe(false);
+        const out = template.edges.filter((edge) => edge.from === text.key);
+        expect(out.length, `${where} feeds nothing`).toBeGreaterThan(0);
+        for (const edge of out) {
+          const target = generate.get(edge.to);
+          expect(target, `${where} into ${edge.to}`).toBeDefined();
+          if (edge.into === 'pool') continue;
+          expect(edge.into, `${where} into ${edge.to}`).toBe(PANEL_EDITOR_PARAM);
+          expect(MODELS.get(target?.model ?? '')?.params[PANEL_EDITOR_PARAM]?.fill, `${where}: ${String(target?.model)} has a lyrics box`).toBe('editor');
+        }
+      }
+    }
+  });
+
+  it('writes a text node\'s words with no reference mark and no note, in every language', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      for (const text of textNodesOf(template)) {
+        for (const locale of LOCALES) {
+          const kinds = marksOf(raw(locale, textKey(template, `node.${text.key}.text`)) ?? '');
+          expect(kinds.filter((kind) => kind !== 'tweak'), `${template.id} ${text.key} ${locale}`).toEqual([]);
+        }
+      }
+    }
+  });
+});
+
+describe('short drama templates (inner#1824)', () => {
+  /**
+   * A short drama template by id, failing the test when it is not registered.
+   * @param id - The id.
+   * @returns The template.
+   */
+  const drama = (id: string): GenerationTemplate => {
+    const template = byId(id);
+    if (!template) throw new Error(`template ${id} is not registered`);
+    return template;
+  };
+
+  it('sets the episode script out as a setup block and one block per scene, a blank line before each, in every language', () => {
+    const scenes = drama('short-drama-episode').nodes.filter((node) => node.role === 'generate' && node.type === 'video').length;
+    for (const locale of LOCALES) {
+      const blocks = (raw(locale, 'canvas.template.short-drama-episode.node.script.text') ?? '').split('\n\n');
+      expect(blocks.length, locale).toBe(1 + scenes);
+      expect(blocks.every((block) => block.trim().length > 0), locale).toBe(true);
+    }
+  });
+
+  /** Edges in one order, to compare as a set. */
+  const sorted = (edges: readonly GenerationTemplate['edges'][number][]): GenerationTemplate['edges'][number][] =>
+    [...edges].sort((a, b) => `${a.from}>${a.to}`.localeCompare(`${b.from}>${b.to}`));
+
+  it('names the drama goal in all five languages', () => {
+    const NAMES: Record<string, string> = {
+      en: 'Short dramas & story scenes',
+      'zh-CN': '短剧与剧情',
+      'zh-TW': '短劇與劇情',
+      ja: 'ショートドラマとドラマシーン',
+      ko: '숏드라마와 극 장면',
+    };
+    for (const locale of LOCALES) expect(raw(locale, 'canvas.template.goal.drama'), locale).toBe(NAMES[locale]);
+  });
+
+  it('wires the episode\'s script and cast sheet into every scene\'s pool and each scene into the next, the cast sheet fed the character', () => {
+    const episode = drama('short-drama-episode');
+    expect(episode.nodes.find((node) => node.key === 'script')).toEqual({ key: 'script', role: 'written', type: 'text' });
+    const scenes = ['result', 'scene-2', 'scene-3'];
+    expect(sorted(episode.edges)).toEqual(
+      sorted([
+        ...scenes.map((to) => ({ from: 'script', to, into: 'pool' })),
+        ...scenes.map((to) => ({ from: 'cast', to, into: 'pool' })),
+        { from: 'result', to: 'scene-2', into: 'pool' },
+        { from: 'scene-2', to: 'scene-3', into: 'pool' },
+      ]),
+    );
+    expect(episode.inputs).toEqual([{ key: 'character', type: 'image', feeds: ['cast'] }]);
+    expect(episode.steps).toEqual(['more', 'join']);
+  });
+
+  it('feeds the single scene and the reversal two characters, the dialogue scene and the horror scene one', () => {
+    expect(drama('scene-plate').inputs).toEqual([]);
+    expect(drama('drama-single-scene').inputs).toEqual([{ key: 'character-a', type: 'image' }, { key: 'character-b', type: 'image' }]);
+    expect(drama('drama-single-scene').edges).toEqual([{ from: 'scene', to: 'result', into: 'pool' }]);
+    expect(drama('short-drama-reversal').inputs).toEqual([{ key: 'character-a', type: 'image' }, { key: 'character-b', type: 'image' }]);
+    expect(drama('emotional-dialogue-timeline').inputs).toEqual([{ key: 'character', type: 'image' }]);
+    expect(drama('emotional-dialogue-timeline').edges).toEqual([{ from: 'line', to: 'result', into: 'pool' }]);
+    expect(drama('horror-suspense').inputs).toEqual([{ key: 'character', type: 'image' }]);
+  });
+});
+
+describe('music video templates (inner#1826)', () => {
+  /**
+   * A music video template by id, failing the test when it is not registered.
+   * @param id - The id.
+   * @returns The template.
+   */
+  const mv = (id: string): GenerationTemplate => {
+    const template = byId(id);
+    if (!template) throw new Error(`template ${id} is not registered`);
+    return template;
+  };
+
+  it('names the music video goal in all five languages', () => {
+    const NAMES: Record<string, string> = { en: 'Music videos', 'zh-CN': '音乐 MV', 'zh-TW': '音樂 MV', ja: 'ミュージックビデオ', ko: '뮤직비디오' };
+    for (const locale of LOCALES) expect(raw(locale, 'canvas.template.goal.music-video'), locale).toBe(NAMES[locale]);
+  });
+
+  it('feeds the user\'s song clip into the beat-synced clip\'s pool and leaves the generated music unwired, to be cut and @\'d', () => {
+    expect(mv('beat-synced-music-clip').inputs).toEqual([{ key: 'song', type: 'audio' }, { key: 'performer', type: 'image' }]);
+    expect(mv('music-first-mv').edges).toEqual([]);
+    expect(mv('music-first-mv').steps).toEqual(['trim']);
+  });
+
+  it('wires the lyrics node into the song\'s lyrics box', () => {
+    expect(mv('song-with-lyrics').edges).toEqual([{ from: 'lyrics', to: 'result', into: 'lyrics' }]);
+  });
+
+  it('puts the performance still in the character slot and the chorus in the driving audio slot', () => {
+    const chorus = mv('mv-chorus-performance');
+    expect(chorus.edges).toEqual([{ from: 'look', to: 'result', into: 'image' }]);
+    expect(chorus.inputs).toEqual([{ key: 'performer', type: 'image', feeds: ['look'] }, { key: 'chorus', type: 'audio', into: 'audio' }]);
+  });
+
+  it('keeps every generated video taken into an H3 pool at 14 seconds or less, as H3 runs a little over its duration and takes a reference video of at most 15', () => {
+    for (const template of GENERATION_TEMPLATES) {
+      const nodes = new Map(generateNodes(template).map((node) => [node.key, node]));
+      for (const edge of template.edges) {
+        const from = nodes.get(edge.from);
+        if (edge.into !== 'pool' || from?.type !== 'video' || nodes.get(edge.to)?.model !== 'minimax-h3-reference-to-video') continue;
+        expect(from.params.duration, `${template.id} ${edge.from} > ${edge.to}`).toBeLessThanOrEqual(14);
+      }
+    }
+  });
+
+  it('anchors the full video on the performer sheet and wires it and the style board into every section, no section into another', () => {
+    const full = mv('mv-full');
+    const sections = ['section-1', 'section-2', 'section-3', 'section-4'];
+    const key = (edge: GenerationTemplate['edges'][number]): string => `${edge.from}>${edge.to}>${String(edge.into)}`;
+    expect(full.edges.map(key).sort()).toEqual(
+      [
+        { from: 'style', to: 'result', into: 'pool' },
+        ...sections.map((to) => ({ from: 'style', to, into: 'pool' })),
+        ...sections.map((to) => ({ from: 'result', to, into: 'pool' })),
+      ].map(key).sort(),
+    );
+    expect(full.inputs).toEqual([{ key: 'performer', type: 'image' }]);
+    expect(full.steps).toEqual(['trim', 'more', 'join']);
   });
 });

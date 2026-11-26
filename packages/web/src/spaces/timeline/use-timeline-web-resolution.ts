@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { keepPreviousData, useQuery } from '@tanstack/react-query';
@@ -23,9 +23,9 @@ function distinct(values: Iterable<string>): string[] {
 
 /**
  * Resolve the source versions and executions the document's web-animation copies reference (inner#1711 design §3.2,
- * §9). It asks only for those ids, so moving a copy reads nothing; it lives under the Space-task key, so a new change
- * version in the Timeline's document (`SpaceTasksWatcher`) reads it again, and nothing reads it on a timer. A
- * placeholder whose execution succeeded is resolved with its result.
+ * §9). It asks only for those ids, so moving a copy reads nothing; it lives under the Space-task key, so a change
+ * version collab writes into the Timeline Space's document reads it again (#1490 design §4.7), and nothing polls it.
+ * A placeholder whose execution succeeded is resolved with its result.
  * @param projectId - The Project the document belongs to.
  * @param spaceId - The Timeline Space.
  * @param document - The current document.

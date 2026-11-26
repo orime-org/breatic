@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Fixture generation templates for the domain tests of the template framework
@@ -201,6 +201,53 @@ export const CAST: GenerationTemplate = {
   triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
 };
 
+/** A song model with a lyrics box. */
+export const SONG_MODEL = "mureka-v9.5-generate-song";
+
+/**
+ * A fixture with a text node (inner#1824, CAP-3): the `script` goes into the
+ * pool of both scenes, the anchor and `scene-2` downstream of it, which also
+ * takes the anchor's video into its pool.
+ */
+export const SCRIPTED: GenerationTemplate = {
+  id: "fixture-scripted",
+  anchor: "result",
+  nodes: [
+    { key: "result", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 15, generate_audio: true } },
+    { key: "script", role: "written", type: "text" },
+    { key: "scene-2", role: "generate", type: "video", mode: "t2v", model: "seedance-2.5-text-to-video", params: { aspect_ratio: "9:16", duration: 15, generate_audio: true } },
+  ],
+  edges: [
+    { from: "script", to: "result", into: "pool" },
+    { from: "script", to: "scene-2", into: "pool" },
+    { from: "result", to: "scene-2", into: "pool" },
+  ],
+  inputs: [],
+  steps: [],
+  agentNote: "a fixture two-scene episode played from one script",
+  goal: "cinematic",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
+};
+
+/** A fixture whose text node goes into a song model's lyrics box (inner#1824, CAP-3). */
+export const SUNG: GenerationTemplate = {
+  id: "fixture-sung",
+  anchor: "result",
+  nodes: [
+    { key: "result", role: "generate", type: "audio", mode: "t2m", model: SONG_MODEL, params: {} },
+    { key: "words", role: "written", type: "text" },
+  ],
+  edges: [{ from: "words", to: "result", into: "lyrics" }],
+  inputs: [],
+  steps: [],
+  agentNote: "a fixture song sung from its lyrics",
+  goal: "sound",
+  triggers: { asks: ["a fixture"], offerWhen: ["a fixture is wanted"] },
+};
+
+/** The fixtures with text nodes (inner#1824, CAP-3), as a registry. */
+export const TEXT_FIXTURES: readonly GenerationTemplate[] = [SCRIPTED, SUNG];
+
 /** The fixtures with the new places a template node or input can stand (inner#1825) and an optional input of a multi-shot anchor (inner#1811), as a registry. */
 export const PLACED_FIXTURES: readonly GenerationTemplate[] = [...FIXTURES, SLOTTED, DOWNSTREAM, STANDALONE, CAST];
 
@@ -262,6 +309,19 @@ const STRINGS: Record<string, Record<string, unknown>> = {
       name: "Fixture standalone",
       prompt: "An opening picture of a harbour.",
       node: { outro: { name: "Outro", prompt: "A closing picture of the same harbour at night." } },
+    },
+    "fixture-scripted": {
+      name: "Scene 1",
+      prompt: "Play only scene 1 of [📎 Script].",
+      node: {
+        script: { name: "Script", text: "Who: {✏️ the lead, e.g. a tired nurse}\nScene 1: {✏️ what happens first}\nScene 2: {✏️ what happens next}" },
+        "scene-2": { name: "Scene 2", prompt: "(💡 Generate Scene 1 first)Play only scene 2 of [📎 Script], going on from where [📎 Scene 1] ends." },
+      },
+    },
+    "fixture-sung": {
+      name: "Song",
+      prompt: "A slow piano ballad.",
+      node: { words: { name: "Lyrics", text: "[Verse]\n{✏️ the first verse}" } },
     },
   },
   ja: {
@@ -423,6 +483,12 @@ export function agentShape(
         : [],
     ),
   ];
+  // A text node sends its words, every blank written (inner#1824, CAP-3).
+  for (const node of template.nodes) {
+    if (node.role !== "written") continue;
+    const at_ = index(`node:${node.key}`);
+    nodes[at_] = { ...(nodes[at_] as SentNode), prompt: markedSegments(t(`${base}.node.${node.key}.text`)).map((segment) => sentSegment(segment, new Map())) };
+  }
   for (const node of template.nodes) {
     if (node.role !== "generate") continue;
     const key = node.key;

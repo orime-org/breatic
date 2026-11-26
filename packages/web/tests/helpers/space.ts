@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Creating and removing the Space a smoke run works in.
@@ -24,7 +24,7 @@ import { dirname } from 'node:path';
 
 import { expect, type Locator, type Page } from 'playwright/test';
 
-export type SpaceKind = 'canvas' | 'document' | '3d' | 'timeline';
+export type SpaceKind = 'canvas' | 'document' | '3d' | 'timeline' | 'web_animation';
 
 /**
  * The Space on screen, as a selector. Every open tab keeps its Space in the
@@ -48,6 +48,24 @@ export const DOCUMENT_EDITOR = `${VISIBLE_SPACE} [data-testid="document-space"] 
  */
 export function visibleSpace(page: Page): Locator {
   return page.locator(VISIBLE_SPACE);
+}
+
+/**
+ * Bring an existing Space to the front through its tab, or open it from the drawer when it has no tab.
+ * @throws {Error} When the Space does not become the one shown.
+ */
+export async function openSpaceById(page: Page, spaceId: string): Promise<void> {
+  const tab = page.getByTestId(`space-tab-name-${spaceId}`);
+  if (await tab.count() === 0) {
+    await page.getByTestId('space-drawer-trigger').click();
+    const drawer = page.getByTestId('space-drawer');
+    await expect(drawer).toBeVisible();
+    await drawer.getByTestId(`space-drawer-row-${spaceId}`).getByRole('button', { name: /Open/ }).click();
+    await expect(drawer).toHaveCount(0);
+  } else {
+    await tab.click();
+  }
+  await expect(page.locator(`[data-space-outlet="${spaceId}"]`)).toBeVisible();
 }
 
 /**

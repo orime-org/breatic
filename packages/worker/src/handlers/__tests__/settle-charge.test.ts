@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The one place the worker settles a charge request and logs it (inner#1617).
@@ -71,23 +71,6 @@ describe("settleChargeLogged", () => {
     h.settleCharge.mockResolvedValueOnce({ ...OUTCOME, charged: "2.999999", shortfall: "0.000001" });
     await settleChargeLogged("req-1", CONTEXT);
     expect(h.error).toHaveBeenCalledTimes(1);
-  });
-
-  it("logs a credits signal that failed with the context and the request", async () => {
-    const redis = new Error("redis down");
-    h.settleCharge.mockResolvedValue({ ...OUTCOME, signalFailure: redis });
-    await settleChargeLogged("req-1", CONTEXT);
-    expect(h.error).toHaveBeenCalledExactlyOnceWith({ executionId: "exec-1", userId: "user-1", amount: 3, err: redis, requestId: "req-1" }, "credits_signal_failed");
-  });
-
-  it("logs both a shortfall and a failed signal from one settlement", async () => {
-    const redis = new Error("redis down");
-    h.settleCharge.mockResolvedValue({ ...OUTCOME, charged: "1.000000", shortfall: "2.000000", signalFailure: redis });
-    await settleChargeLogged("req-1", CONTEXT);
-    expect(h.error.mock.calls.map(([, message]) => message)).toEqual([
-      "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
-      "credits_signal_failed",
-    ]);
   });
 
   it("logs a settlement that threw and does not throw", async () => {

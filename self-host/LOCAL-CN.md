@@ -2,9 +2,9 @@
 
 [English](LOCAL.md) | **简体中文**
 
-适用：自己使用，或分享给家庭、私密小组、同一组织内的同事。主站安装在一台电脑上，其他人通过浏览器访问这台电脑。**使用发布镜像，不启动源码开发服务器。** 修改源码请看 [开发环境](DEVELOPMENT-CN.md)。
+适用：自己使用，或分享给家庭、非商业的私密小组、同一组织内的同事。主站安装在一台电脑上，其他人通过浏览器访问这台电脑。**使用发布镜像，不启动源码开发服务器。** 修改源码请看 [开发环境](DEVELOPMENT-CN.md)。
 
-Breatic 采用 [GNU Affero General Public License v3.0](../LICENSE)。如果你修改了 Breatic，并让其他人通过网络使用修改后的版本，就必须按同一许可证向他们提供完整源代码。Breatic 名称和标识的使用规则见 [TRADEMARKS.md](../TRADEMARKS.md)。
+Breatic 采用 [Breatic Source-Available License 2.0](../LICENSE)。你可以自部署给自己、非商业的私人小组或本组织使用，不需要支付软件许可费。没有 Orime, Inc. 的书面授权，实例只能运行在自部署模式，`PAYMENT_ENABLED` 保持 `false`；把它作为商业平台提供给他人使用需要另行书面授权（LICENSE 第 10、11 条）。界面上保留 Breatic 名称和 Logo，见 [TRADEMARKS.md](../TRADEMARKS.md)。
 
 ## 1. 部署完成后是什么样
 
@@ -61,12 +61,12 @@ WEB_BIND_ADDRESS=127.0.0.1
 ENV=dev
 COOKIE_DOMAIN=
 ALLOWED_ORIGINS=http://localhost
-PAYMENT_ENABLED=false
+CHARGING_ENABLED=false
 EMAIL_BACKEND=console
 REDIS_KEY_PREFIX=personal
 ```
 
-这里的 `ENV=dev` 是现有代码中允许 HTTP 会话 cookie 的运行配置，**不表示启动开发服务器**；容器仍运行编译产物。切换 HTTPS 后使用 `ENV=prod`。支付关闭不会免除外部模型费用；`console` 邮件只输出日志，不投递真实邮件。真实邮件、Google 登录、Stripe 和搜索可按模板另行配置。
+这里的 `ENV=dev` 是现有代码中允许 HTTP 会话 cookie 的运行配置，**不表示启动开发服务器**；容器仍运行编译产物。切换 HTTPS 后使用 `ENV=prod`。积分扣费关闭不会免除外部模型费用；`console` 邮件只输出日志，不投递真实邮件。真实邮件、Google 登录和搜索可按模板另行配置。没有 Orime, Inc. 的书面授权，实例只能运行在自部署模式，`COMMERCE_API_URL` 留空、不出售积分或会员（LICENSE 第 10、11 条）。
 
 保留容器内部连接地址：
 
@@ -85,6 +85,8 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 供应商密钥必须替换为自己的有效值；不使用的密钥留空。配置 `OPENROUTER_API_KEY` 可以为未配置厂商直连密钥的文本模型提供调用入口，具体仍受模型可用性和账户额度限制。每家上游读的环境变量名写在 `config/provider/upstreams.yaml` 的 `key_env`；图像、视频等生成模型至少要配上它在 `config/provider/media/<类型>.yaml` 里列出的一家上游的密钥，例如 `WAVESPEED_API_KEY` 或 `FAL_KEY`。
 
+要让用户填自己的上游 key（账号菜单里的 BYOK 设置），按 `.env.docker` 的说明设置 `BYOK_ENABLED=true`，并配置 `PROVIDER_KEY_SECRET_ID` 和 `PROVIDER_KEY_SECRETS`；用户保存的 key 用主密钥加密后存储，设置了 `BYOK_ENABLED=true` 却没配主密钥时服务拒绝启动。用某个主密钥加密的 key 还在库里时，这个主密钥要一直留在列表里，否则那些 key 无法再解开。`BYOK_ENABLED` 不是 `true` 时，账号菜单里没有 BYOK 设置，所有调用都用上面配置的密钥；用户已保存的 key 保留，重新开启后照常使用。
+
 <a id="cloudflare"></a>
 ## 4. 正式部署 Cloudflare 上传服务
 
@@ -100,7 +102,7 @@ REDIS_COLLAB_URL=redis://redis:6379/3
 
 一次请求装不下的大段文字（很长的粘贴文本节点、它的历史快照、带大附件的 Agent 消息、长 Document 的快照）会作为临时传输文件上传到 `transfer/` 前缀下，由服务端用 S3 凭据读回。在 bucket 上加一条 R2 生命周期规则：前缀 `transfer/` 的对象 1 天后删除。使用自己的资产域名时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/transfer/` 开头的请求；`r2.dev` 地址配不了这条规则。参考 [对象生命周期](https://developers.cloudflare.com/r2/buckets/object-lifecycles/)。
 
-Timeline 网页动画是可选功能，默认关闭，开启方法见 [packages/ingest/README.md](../packages/ingest/README.md#web-animation)。它的源包存放在私有的 `web-animation/` 前缀下，只能经 Worker 的签名预览路由读取。在自己的资产域名上开启时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/web-animation/` 开头的请求；`r2.dev` 地址配不了这条规则。
+网页动画（Motion Space 及其在 Timeline 上的副本）是可选功能，默认关闭，开启方法见 [packages/ingest/README.md](../packages/ingest/README.md#web-animation)。它的源包存放在私有的 `web-animation/` 前缀下，只能经 Worker 的签名预览路由读取。在自己的资产域名上开启时，再加一条 Cloudflare WAF 自定义规则，拦掉路径以 `/web-animation/` 开头的请求；`r2.dev` 地址配不了这条规则。
 
 在 bucket 的 CORS 设置中保存：
 
@@ -261,7 +263,7 @@ INGEST_SHARED_SECRET=YOUR_GENERATED_SECRET
 
 替换全部 `YOUR_...`。共享密钥必须与刚设置到 Cloudflare 的完全相同，bucket 必须一致；公开读取地址和 S3 endpoint 不能互换，URL 不带末尾 `/`。不要把密钥提交到仓库。
 
-开启网页动画时，再把 `WEB_ANIMATION_PREVIEW_BASE_URL` 设为提供 Worker 预览路由的 HTTPS 地址，最好是单独的域名。
+开启网页动画时，再把 `WEB_ANIMATION_PREVIEW_BASE_URL` 设为提供 Worker 预览路由的 HTTPS 地址，最好是单独的域名；生成一对密钥，公钥填 `INGEST_KEY_SEAL_PUBLIC_KEY`，私钥用 `wrangler secret put KEY_UNSEAL_PRIVATE_KEY --env production` 放进 Worker（生成方法见 `.env.docker`）。Worker 不存任何模型 key：每次运行用的 key 加密后随任务带过去，所以模型 key（如 `OPENROUTER_API_KEY`）只配在应用的 `.env` 里，由 worker 每次提交时读取，不配进 Worker。
 
 Cloudflare Worker 不需要回调你的本机主站，因此个人使用不需要端口映射、内网穿透或公网主站域名。
 
@@ -388,7 +390,7 @@ docker compose ps -a
 | 上传跨域失败 | 更新正式 Worker 的来源并重新发布；局域网地址不能仍填写 localhost |
 | 图片 404 或裁剪失败 | 核对 R2 bucket、公开读取地址和 GET CORS；上传 CORS 无法代替读取 CORS |
 | 视频无封面 | 检查 Cloudflare 媒体容器发布、运行及日志，不要禁用容器 |
-| AI 报错 | 核对所选模型供应商、密钥、额度及网络；站内支付开关不解决供应商问题 |
+| AI 报错 | 核对所选模型供应商、密钥、额度及网络；积分扣费开关（`CHARGING_ENABLED`）不解决供应商问题 |
 | 收不到邮件 | console 只写 `docker compose logs server`；真实发送需 SMTP |
 
 Cloudflare 日志可在发布机器运行 `pnpm --filter @breatic/ingest exec wrangler tail --env production` 查看。分享日志前删除密钥、cookie 和签名令牌。

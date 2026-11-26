@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -599,5 +599,30 @@ describe('BellMenu — the mark-read buttons spin while the server answers', () 
 
     replyB.resolve({ ok: true });
     await waitFor(() => expect(rowB).not.toHaveAttribute('aria-busy'));
+  });
+});
+
+// #1580: the bell is kept current by live updates only while it is on screen, so each time it mounts it reads once,
+// however fresh the cached answer is.
+describe('BellMenu mounting again', () => {
+  it('reads the inbox again on a new mount even while the cached answer is fresh', async () => {
+    useCurrentUserStore.setState({ user: SELF });
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: 30_000 } } });
+    /** The bell on its own client. */
+    const bell = (): ReturnType<typeof render> =>
+      render(
+        <MemoryRouter>
+          <QueryClientProvider client={qc}>
+            <TooltipProvider>
+              <BellMenu />
+            </TooltipProvider>
+          </QueryClientProvider>
+        </MemoryRouter>,
+      );
+    const first = bell();
+    await waitFor(() => expect(notificationsApi.list).toHaveBeenCalledTimes(1));
+    first.unmount();
+    bell();
+    await waitFor(() => expect(notificationsApi.list).toHaveBeenCalledTimes(2));
   });
 });

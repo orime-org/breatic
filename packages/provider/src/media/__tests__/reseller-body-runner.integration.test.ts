@@ -1,10 +1,10 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { catalog, shipped } from "../../config/__tests__/shipped.js";
+import { shipped } from "../../config/__tests__/shipped.js";
 import { sampledCalls, type SampleRun, type SampleStep } from "./reseller-bodies.js";
 
 /** The reviewed request bodies of one reseller binding (`scripts/provider-reseller-bodies.ts`). */
@@ -15,9 +15,7 @@ interface BodySample {
 
 const BODIES = resolve(__dirname, "../../../test/fixtures/bodies");
 const config = shipped();
-const inCatalog = new Set(catalog().models.map((m) => m.name));
-// A retired model is outside the catalog and has no sample (gemini-3.8-tts.test.ts keeps it bound).
-const cases = Object.entries(config.media.models).filter(([model]) => inCatalog.has(model)).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream !== "wavespeed").map((binding) => ({ model, binding })));
+const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.filter((b) => b.upstream !== "wavespeed").map((binding) => ({ model, binding })));
 
 describe.each(cases)("the request bodies of $model on $binding.upstream", ({ model, binding }) => {
   const path = resolve(BODIES, binding.upstream, `${model}.json`);

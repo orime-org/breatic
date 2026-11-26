@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The mounting rules every node-anchored generate panel obeys, whichever
@@ -24,7 +24,7 @@ import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
 import { IMAGE_MODE_OPTIONS } from '@web/spaces/canvas/generate/image-mode-selection';
 import { filterAvailableModes } from '@web/spaces/canvas/generate/mode-selection';
 import { modelsForModality } from '@web/spaces/canvas/generate/modality-buckets';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { VIDEO_MODE_OPTIONS } from '@web/spaces/canvas/generate/video-mode-options';
 import { AUDIO_MODE_OPTIONS } from '@web/spaces/canvas/generate/audio-mode-options';
 

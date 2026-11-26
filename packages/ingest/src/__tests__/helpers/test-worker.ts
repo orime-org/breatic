@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 export { default, MediaContainer, MiniToolContainerStd1, MiniToolContainerStd4, LongMediaJobTestObject } from '@ingest/index.js';
 export { PresentationStateTestObject } from '@ingest/__tests__/helpers/presentation-state-object.js';

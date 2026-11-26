@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * yjs-bootstrap unit tests — verify the binary update produced for a
@@ -246,6 +246,7 @@ describe("defaultSpaceName", () => {
     expect(defaultSpaceName("document")).toBe("Document");
     expect(defaultSpaceName("timeline")).toBe("Timeline");
     expect(defaultSpaceName("3d")).toBe("3D");
+    expect(defaultSpaceName("web_animation")).toBe("Motion");
   });
 });
 

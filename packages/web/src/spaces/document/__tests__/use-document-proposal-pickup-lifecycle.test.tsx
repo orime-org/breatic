@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { act, cleanup, render, renderHook, waitFor } from '@testing-library/react';
@@ -86,7 +86,6 @@ const CONFIG: UploadConfig = {
   clientMaxAttempts: 3,
   clientRetryBaseDelayMs: 500,
   uploadIdleTimeoutMs: 60000,
-  uploadStatusPollSeconds: 5,
 };
 
 interface Gate {

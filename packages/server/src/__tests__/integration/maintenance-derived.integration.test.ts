@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The reclaim consumer's `derived` rows (S6e E4-1, E4-8, E4-9; inner#1306 test plan §90; frames-split design §7.15

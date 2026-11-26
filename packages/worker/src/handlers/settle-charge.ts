@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Settle a charge request and log what on-call needs from it (inner#1617).
@@ -33,9 +33,6 @@ export async function settleChargeLogged(requestId: string, context: SettleLogCo
         { ...context, requestId, studioId: outcome.studioId, charged: outcome.charged, shortfall: outcome.shortfall },
         "CREDIT_SHORTFALL_AFTER_COMPLETION — manual reconciliation required",
       );
-    }
-    if (outcome.signalFailure) {
-      logger.error({ ...context, err: outcome.signalFailure, requestId }, "credits_signal_failed");
     }
   } catch (err) {
     logger.error({ ...context, err, requestId }, "credit_charge_settle_failed");

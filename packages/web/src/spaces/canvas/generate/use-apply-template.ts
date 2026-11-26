@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 
@@ -151,8 +151,6 @@ export function useApplyTemplate(
       for (const [key, found] of match.keys) {
         const id = found.kind === 'one' ? found.node : found.kind === 'many' ? found.nodes[0] : undefined;
         if (id === undefined) continue;
-        const view = views.get(id);
-        if (view && !writable(view)) return;
         reuse.set(key, indexOf(id));
       }
       const inputs = new Map(
@@ -171,6 +169,12 @@ export function useApplyTemplate(
       // saying what to put there, as a node placed new does.
       const emptyNodes = new Set(held.flatMap((id, index) => (index > 0 && standsEmpty(views.get(id)) ? [index] : [])));
       const expansion = expandTemplate(template, { anchorAt: 0, base: held.length, inputs, wired, reuse, guide: !guided, emptyNodes, style });
+      // A reused node the apply rewrites must be writable; a template text
+      // node is only wired, so the user's lock on their words holds it as it is.
+      for (const index of reuse.values()) {
+        const view = views.get(held[index] as string);
+        if (view && expansion.rewritten.has(index) && !writable(view)) return;
+      }
 
       if (expansion.appended.length > 0 && inLockedGroup(own, views)) {
         toast.warning(t('canvas.template.groupLocked'));

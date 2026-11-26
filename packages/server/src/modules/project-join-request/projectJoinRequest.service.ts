@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project join requests — a studio member who is not on a project asks its
@@ -39,7 +39,7 @@ import type { DbTx } from "@breatic/core";
 import { studioMembersRepo } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import type { DecisionGrantRole, RequestFailedReason } from "@breatic/shared";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 import * as notificationService from "@server/modules/notification/notification.service.js";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";

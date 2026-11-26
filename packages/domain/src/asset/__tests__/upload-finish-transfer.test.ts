@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * T34 (inner#1006 §4.3): finishing a transfer upload branches off before
@@ -33,6 +33,8 @@ const findGrantByKey = vi.hoisted(() => vi.fn());
 vi.mock("@breatic/core", async (importOriginal) => ({
   ...(await importOriginal<Record<string, unknown>>()),
   env: { INGEST_SHARED_SECRET: "secret", INGEST_BASE_URL: "https://ingest.example" },
+  // The finish tells the uploader its upload ended (#1580); this file looks at the Worker call only.
+  publishUploadEnded: vi.fn(async () => {}),
 }));
 vi.mock("@breatic/shared", async (importOriginal) => ({
   ...(await importOriginal<typeof sharedModule>()),
@@ -40,6 +42,7 @@ vi.mock("@breatic/shared", async (importOriginal) => ({
 }));
 vi.mock("@domain/asset/upload-deadline.js", () => ({
   uploadDeadlineByKey: vi.fn(async () => DEADLINE_AT),
+  uploadDeadline: vi.fn(async () => DEADLINE_AT),
 }));
 vi.mock("@domain/asset/upload-grant.repo.js", async (importOriginal) => ({
   ...(await importOriginal<typeof grantRepoModule>()),
@@ -87,6 +90,7 @@ function grantFor(assetSource: string | null): Record<string, unknown> {
     filename: "body.transfer",
     assetSource,
     generationTaskId: null,
+    sceneLook: null,
     analyticsConsent: null,
     createdAt: new Date(),
   };

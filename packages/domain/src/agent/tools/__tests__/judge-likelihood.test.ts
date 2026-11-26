@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What `judge_likelihood` sends, what it answers with, and how it fails.
@@ -55,7 +55,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
 });
 
 import { judgeLikelihood } from "@domain/agent/tools/judge-likelihood.js";
-import { TOOL_MAP, BASELINE_TOOLS } from "@domain/agent/tools/index.js";
+import { TOOL_MAP, BASELINE_TOOLS, buildToolSet } from "@domain/agent/tools/index.js";
 import { buildAgentConfig } from "@domain/agent/agent-config.js";
 import { JUDGE_LIKELIHOOD } from "@domain/agent/tools/tool-names.js";
 import { hiddenInTags, TAG_CHARACTER } from "../../__tests__/helpers/tag-characters.js";
@@ -162,19 +162,20 @@ beforeEach(() => {
 });
 
 describe("judge_likelihood is in the agent's hands", () => {
-  it("is registered and handed to every turn by default", () => {
+  it("is registered but not handed to a turn until it is offered again (inner#2178)", async () => {
     expect(Object.keys(TOOL_MAP)).toContain(JUDGE_LIKELIHOOD);
-    expect(BASELINE_TOOLS).toContain(JUDGE_LIKELIHOOD);
+    expect(BASELINE_TOOLS).not.toContain(JUDGE_LIKELIHOOD);
+    const config = await buildAgentConfig({ basePrompt: "base" });
+    expect(Object.keys(config.tools)).not.toContain(JUDGE_LIKELIHOOD);
   });
 
   it("names a running line the panel can resolve", () => {
     expect(judgeLikelihood.metadata).toMatchObject({ runningLine: expect.any(String) });
   });
 
-  it("is left out of a deployment with no key", async () => {
+  it("is left out of a deployment with no key", () => {
     keyed.current = false;
-    const config = await buildAgentConfig({ basePrompt: "base" });
-    expect(Object.keys(config.tools)).not.toContain(JUDGE_LIKELIHOOD);
+    expect(Object.keys(buildToolSet([JUDGE_LIKELIHOOD]))).not.toContain(JUDGE_LIKELIHOOD);
   });
 
   it("says so rather than throwing bare when a turn reaches it without a key", async () => {
@@ -182,6 +183,26 @@ describe("judge_likelihood is in the agent's hands", () => {
     judge.mockRejectedValueOnce(new NoUpstreamAvailable("typesafe/jev-1.13", [{ upstream: "openrouter", kind: "missing_key", envVar: "OPENROUTER_API_KEY" }]));
     const { userKey } = await failureOf(askAll);
     expect(userKey).toBe(FAILURE_LINES.unavailable);
+  });
+
+  it("says the payer's own key failed, which upstream and why, when the key in BYOK settings is refused", async () => {
+    const { AccountKeyFailure } = await import("@breatic/provider");
+    judge.mockRejectedValueOnce(new AccountKeyFailure("typesafe/jev-1.13", "account_key_failed", { upstream: "openrouter", reason: "no_balance" }));
+    const { forModel, userKey } = await failureOf(askAll);
+    expect(userKey).toBe(FAILURE_LINES.accountKey);
+    expect(forModel).toContain("openrouter");
+    expect(forModel.toLowerCase()).toContain("no balance");
+  });
+
+  it("says it is the Studio Admin's key when the turn's key is the admin's, as the turn hands the tool", async () => {
+    const { AccountKeyFailure } = await import("@breatic/provider");
+    judge.mockRejectedValueOnce(new AccountKeyFailure("typesafe/jev-1.13", "account_key_failed", { upstream: "openrouter", reason: "no_balance" }));
+    const onAdmins = TOOL_MAP[JUDGE_LIKELIHOOD]!({ keys: { owner: "account", keyOf: () => "sk-or" }, keyHolder: "admin" } as never);
+    const { forModel } = await failureOf(() => onAdmins.execute!({
+      state: { user_said: "a product video" },
+      questions: { clear_enough: { type: "noul", instructions: "Is this specific enough to start?" } },
+    }, toolOptions({}) as never) as Promise<unknown>);
+    expect(forModel).toContain("the key the Studio Admin saved in BYOK settings");
   });
 });
 

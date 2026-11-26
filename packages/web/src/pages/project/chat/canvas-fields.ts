@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Which of a canvas node's fields an over-limit canvas keeps (inner#1413).
@@ -94,6 +94,7 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   locked: 'other',
   handling: 'other',
   taskCounts: 'other',
+  focusUploads: 'other',
   taskResultEventId: 'other',
   miniToolResultOrigin: 'other',
   // Which template node it was placed as: part of who the node is.
@@ -105,6 +106,7 @@ export const FIELD_RULES: { readonly [K in FieldKey]: FieldRule } = {
   duration: 'other',
   mimeType: 'other',
   size: 'other',
+  sourceAnimation: 'other',
   sizeBytes: 'other',
   operation: 'other',
   operationParams: 'other',

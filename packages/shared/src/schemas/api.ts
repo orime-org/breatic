@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Shared API request schemas.
@@ -644,7 +644,7 @@ export const understandSchema = z.object({
   user_locale: z.string().optional(),
   /**
    * The same locale under its pre-#1378 name, sent by a page loaded before
-   * the deploy. Carries the old name until #1387 removes it, in the release
+   * the deploy. Carries the old name until inner#2130 removes it, in the release
    * that also runs the rename migration again.
    */
   reader_locale: z.string().optional(),
@@ -1048,6 +1048,11 @@ export interface ChatSyncAnswer {
    * it, or the user or the Studio has spent its monthly limit (inner#1968).
    */
   blocked?: "credits" | "spend_cap";
+  /**
+   * Beside `blocked: "credits"`: the payer's own key runs the turn's model, so what the balance must pay for is the
+   * Agent's paid tools (inner#1953); `self` when that key is the caller's own, `admin` when it is the Studio Admin's.
+   */
+  own_key?: "self" | "admin";
   /** With `spend_cap`: whose limit, the user's own or the Studio's total. */
   scope?: "member" | "studio";
   /** With `spend_cap`: the limit reached, as a credit decimal. */

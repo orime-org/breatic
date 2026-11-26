@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Space size cap v2 (inner#1790 v2 web test spec RQ-20): dropping files onto
@@ -119,7 +119,6 @@ beforeEach(() => {
     clientMaxAttempts: 1,
     clientRetryBaseDelayMs: 1,
     uploadIdleTimeoutMs: 60000,
-    uploadStatusPollSeconds: 2,
     assetUrlPrefix: 'https://cdn/',
   });
   ticket = vi.spyOn(assetsApi, 'requestUploadTicket').mockReturnValue(new Promise(() => {}));

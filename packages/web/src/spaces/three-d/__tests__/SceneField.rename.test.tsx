@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import * as Y from 'yjs';
@@ -11,6 +11,7 @@ import { applySceneCommand, readSceneDocument } from '@web/data/yjs/scene-docume
 import { SceneSession } from '@web/data/yjs/scene-session';
 import { SceneInspector } from '@web/spaces/three-d/SceneInspector';
 import { SceneDirectorFields } from '@web/spaces/three-d/SceneDirectorFields';
+import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
 import { SceneField, type SceneFieldDraft } from '@web/spaces/three-d/SceneField';
 
 const NAME = 'project-p1/3d-s1';
@@ -41,7 +42,7 @@ function BoundInspector({ session }: { session: SceneSession }): React.JSX.Eleme
     });
   };
   return <div data-testid='scene-right-panel' tabIndex={-1}>
-    <SceneInspector DirectorFields={SceneDirectorFields} spaceId='scene' session={session} snapshot={snapshot} namedPeers={[]} Field={SceneField}
+    <SceneInspector DirectorFields={SceneDirectorFields} LookPanel={SceneLookPanel} spaceId='scene' session={session} snapshot={snapshot} namedPeers={[]} Field={SceneField}
       fieldDrafts={fieldDrafts} onFieldDraftChange={onFieldDraftChange}
       readObjects={() => readSceneDocument(session.doc).objects}
       skeletonStates={NO_SKELETON_STATES} jointMode={false} onJointModeChange={ignoreJointMode} />

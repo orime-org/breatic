@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project transfer-owner handshake — the owner offers the project to a
@@ -17,7 +17,7 @@
  *
  * ONE LIVE OFFER PER PROJECT. A project has exactly one owner, so it can never
  * be offered to two people at once; the partial unique index keys on the
- * project alone. `createPending` reaps a timed-out offer in the transaction
+ * project alone. `expireDueTransfers` ends a timed-out offer in the transaction
  * that takes the slot, because a partial index predicate cannot mention
  * `now()` — without that, one unanswered offer would freeze the project's
  * ownership for good.
@@ -42,9 +42,7 @@
 import { accountActivityRepo } from "@breatic/core";
 import * as projectRepo from "@server/modules/project/project.repo.js";
 import * as studioRepo from "@server/modules/studio/studio.repo.js";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
 import * as notificationService from "@server/modules/notification/notification.service.js";
-import * as transfersRepo from "@server/modules/project/projectTransfers.repo.js";
 import { recordProjectActivity } from "@server/modules/activity/projectActivity.service.js";
 import * as userRepo from "@server/modules/auth/user.repo.js";
 import { buildProjectTransferMail } from "@server/utils/notification-mail.js";
@@ -58,7 +56,7 @@ import {
   ValidationError,
 } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import { studioMembersRepo } from "@breatic/domain";
+import { notificationRepo, projectTransfersRepo as transfersRepo, studioMembersRepo, transferExpiryService } from "@breatic/domain";
 import { t } from "@breatic/shared";
 import {
   getDecisionWindowMs,
@@ -153,6 +151,9 @@ export async function requestProjectTransfer(
       if (!(await projectRepo.lockLiveProject(projectId, tx))) {
         return { refusal: "not_found" as const };
       }
+      // A timed-out offer still holds the project's one pending slot: end it
+      // and take its bell entry down first, as the deadline sweep does.
+      await transferExpiryService.expireDueTransfers({ projectId }, tx);
       const filed = await transfersRepo.createPending({
         projectId,
         fromUserId,
@@ -161,14 +162,6 @@ export async function requestProjectTransfer(
         tx,
       });
       const transferId = filed.id;
-      // Reaping is the one settle path the repo cannot finish on its own: it
-      // pushed timed-out rows terminal, and their bell entries have to come
-      // down with them or they outlive the offers they announce.
-      await Promise.all(
-        filed.retiredNotificationIds.map((id) =>
-          notificationRepo.retire(id, tx),
-        ),
-      );
       const notification =
         await notificationService.createProjectTransferRequest({
           userId: toUserId,

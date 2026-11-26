@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Seeding and reading the Timeline document (inner#1707, inner#1708 F1b). Editing lives in web; these tests write
@@ -95,7 +95,6 @@ describe("Timeline document ownership and schema", () => {
       tracks: { "visual-1": { id: "visual-1", kind: "visual", order: 0 } },
       clips: {},
       sources: {},
-      operationReceipts: {},
     });
     expect([...doc.share.keys()].sort()).toEqual(["clips", "sources", "timeline", "tracks"]);
     expect(doc.getMap("tracks").get("visual-1")).toBeInstanceOf(Y.Map);

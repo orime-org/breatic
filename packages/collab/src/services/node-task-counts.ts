@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Apply a task-counts event to a canvas document (#186, design §3.4).
@@ -23,6 +23,7 @@ import type { FocusCropOutcome, FocusImage, NodeTaskCounts, NodeTaskCountsEvent 
 import { CANVAS_NODES_KEY, MAX_FOCUS_ENTRIES, validFocusImages } from "@breatic/shared";
 import { writeNodeMedia } from "@breatic/shared";
 import { writePlainTextIntoBody } from "@breatic/shared/canvas/text-body";
+import { appendFocusImageCore } from "@breatic/shared/space-content";
 import { isNewerStreamId } from "@collab/services/stream-id.js";
 
 /** Node field naming the event the node's content last came from. */
@@ -155,13 +156,7 @@ function focusCropAppend(data: Y.Map<unknown>, event: Pick<NodeTaskCountsEvent, 
  * @throws {never} Never.
  */
 function applyFocusCrop(data: Y.Map<unknown>, append: FocusCropAppend): void {
-  if (append.image !== null) {
-    const raw = data.get(FOCUS_IMAGES_KEY);
-    // A Y.Array (what the front end seeds on every node) takes a concurrent-safe push; a plain value keeps its encoding,
-    // healed of malformed entries in the same write.
-    if (raw instanceof Y.Array) (raw as Y.Array<FocusImage>).push([append.image]);
-    else data.set(FOCUS_IMAGES_KEY, [...validFocusImages(raw), append.image]);
-  }
+  if (append.image !== null) appendFocusImageCore(data, append.image);
   const entries = Object.entries(outcomesOf(data));
   entries.push([append.taskId, append.outcome]);
   data.set(FOCUS_CROP_OUTCOMES_KEY, Object.fromEntries(entries.slice(-MAX_FOCUS_ENTRIES)));

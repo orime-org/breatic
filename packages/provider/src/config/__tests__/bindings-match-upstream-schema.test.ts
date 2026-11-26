@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -266,8 +266,7 @@ const SAME_EFFECT: Readonly<Record<string, string>> = {
 const config = shipped();
 const catalogModels = new Map(catalog().models.map((m) => [m.name, m]));
 const models = new Map([...catalogModels].map(([name, m]) => [name, m.params as Record<string, CatalogParam>]));
-// A retired model's bindings are checked only for staying bound (gemini-3.8-tts.test.ts): the catalog no longer has its params.
-const cases = Object.entries(config.media.models).filter(([model]) => catalogModels.has(model)).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
+const cases = Object.entries(config.media.models).flatMap(([model, { upstreams }]) => upstreams.map((binding) => ({ model, binding })));
 const provider = createProvider({ config, keyOf: () => "k", llmMaxRetries: 0, cleanText: (t) => t });
 /**
  * The longest text the model's vendor takes in one of our params (`prompt` for the prompt), from its limits.
@@ -458,7 +457,6 @@ const SANDBASE_ON_FAL: Readonly<Record<string, string>> = {
   "bytedance/dreamactor/2.0": "fal-ai/bytedance/dreamactor/v2",
   "bytedance/omnihuman/1.5": "fal-ai/bytedance/omnihuman/v1.5",
   "elevenlabs/v3": "fal-ai/elevenlabs/tts/eleven-v3",
-  "google/gemini-3.1-flash-tts": "fal-ai/gemini-3.1-flash-tts",
   "ideogram-ai/ideogram-v3": "fal-ai/ideogram/v3",
   "meigen/infinitetalk/video-to-video": "fal-ai/infinitalk/video-to-video",
   "sync/lipsync/3.0/video-to-video": "fal-ai/sync-lipsync/v3",

@@ -1,17 +1,26 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Cross-process control-plane events (Redis pub/sub on DB2).
  *
- * Four fire-and-forget notification paths:
+ * Six fire-and-forget notification paths:
  *
  *   - `activity:new`      — server or worker publishes after writing an
  *                           activity row; every collab instance relays
  *                           it on the meta doc. Per project.
- *   - `credits:changed`   — server or worker publishes after a charge made
- *                           in the project commits; every collab instance
- *                           relays it on the meta doc. Per project.
+ *   - `asset-peaks:ready` — the worker publishes once an audio's peaks file
+ *                           is written; every collab instance relays it on
+ *                           the meta docs of the projects that use the
+ *                           audio. Per project.
+ *   - `uploads:ended`     — the upload finish publishes at each of its
+ *                           ending exits; every collab instance relays it
+ *                           to the uploader's meta connections. Per
+ *                           deployment (#1580).
+ *   - `scene-look:settled` — collab's task listener publishes how an
+ *                           uploaded 3D part picture was settled; every
+ *                           collab instance relays it to the uploader's
+ *                           connections on the meta doc. Per project.
  *   - `connections:close` — collab's lifecycle consumer publishes after
  *                           a duplicate / archive / restore; every collab
  *                           instance closes its connections to the
@@ -34,9 +43,10 @@
  *   - Notification-only. A missed `activity:new` is made up by the next
  *     reconnect, which re-queries PG; a missed
  *     `connections:close` leaves that instance's connections on the role
- *     they had until they next reconnect; a missed `credits:changed` is
- *     made up the next time a screen showing the balance reads it; a missed
- *     `sessions:revoked` is made up by collab's session recheck.
+ *     they had until they next reconnect; a missed `asset-peaks:ready` is
+ *     made up the next time a cut band reads the peaks; a missed
+ *     `uploads:ended` is not made up, and the user uploads again (#1580); a
+ *     missed `sessions:revoked` is made up by collab's session recheck.
  *   - No replay / consumer-group semantics needed.
  *
  * Why DB2 (REDIS_STREAM_URL):
@@ -54,17 +64,20 @@ import { getStreamRedis } from "@core/infra/redis.js";
 import { env } from "@core/config/runtime.js";
 import {
   activityNewChannel,
-  creditsChangedChannel,
-  spaceTasksChangedChannel,
+  assetPeaksReadyChannel,
+  sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
   sessionsRevokedChannel,
+  uploadEndedChannel,
   type ActivityNewControlEvent,
-  type CreditsChangedControlEvent,
-  type SpaceTasksChangedControlEvent,
+  type AssetPeaksReadyControlEvent,
+  type SceneLookSettledControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
   type SessionsRevokedEvent,
+  type UploadEndedEvent,
+  type UploadStatus,
 } from "@breatic/shared";
 
 /**
@@ -103,39 +116,33 @@ export async function publishActivityNew(projectId: string): Promise<void> {
 }
 
 /**
- * Announce that a charge made in a project committed (inner#1611); collab
- * relays it to connected members as the `credits:changed` stateless signal.
- * Fire-and-forget like {@link publishActivityNew}.
- * @param projectId - Project whose studio was charged.
+ * Announce to one Project referencing an audio asset that the audio's peaks were written (#1580); collab relays it
+ * to that Project's connected members as the `asset-peaks:ready` stateless signal.
+ * @param projectId - A live Project referencing the audio.
+ * @param assetId - The audio asset.
+ * @param url - The audio's own address.
  * @returns Nothing.
  * @throws {Error} When Redis rejects the publish.
  */
-export async function publishCreditsChanged(projectId: string): Promise<void> {
-  const event: CreditsChangedControlEvent = {
-    type: "project-credits:changed",
-    projectId,
-    ts: Date.now(),
-  };
-  await getStreamRedis().publish(creditsChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+export async function publishAssetPeaksReady(projectId: string, assetId: string, url: string): Promise<void> {
+  const event: AssetPeaksReadyControlEvent = { type: "project-asset-peaks:ready", projectId, assetId, url, ts: Date.now() };
+  await getStreamRedis().publish(assetPeaksReadyChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**
- * Announce that a 3D Space's task list changed (inner#1690); collab relays it
- * to connected members as the `space-tasks:changed` stateless signal.
- * Fire-and-forget like {@link publishActivityNew}.
- * @param projectId - Project the Space belongs to.
- * @param spaceId - The Space whose list changed.
+ * Announce how collab settled an uploaded picture for a 3D part (inner#1693
+ * design 6.3); every collab instance relays it to the uploader's connections on
+ * the project meta doc as the `scene-look:settled` stateless signal, and their
+ * page ends that part's upload and tells them when it was not written.
+ * Fire-and-forget like {@link publishActivityNew}: the picture is in the
+ * Project's pictures either way.
+ * @param settlement - The part, the picture, the uploader and the outcome.
  * @returns Nothing.
  * @throws {Error} When Redis rejects the publish.
  */
-export async function publishSpaceTasksChanged(projectId: string, spaceId: string): Promise<void> {
-  const event: SpaceTasksChangedControlEvent = {
-    type: "project-space-tasks:changed",
-    projectId,
-    spaceId,
-    ts: Date.now(),
-  };
-  await getStreamRedis().publish(spaceTasksChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+export async function publishSceneLookSettled(settlement: Omit<SceneLookSettledControlEvent, "type" | "ts">): Promise<void> {
+  const event: SceneLookSettledControlEvent = { type: "project-scene-look:settled", ...settlement, ts: Date.now() };
+  await getStreamRedis().publish(sceneLookSettledChannel(env.REDIS_KEY_PREFIX, settlement.projectId), JSON.stringify(event));
 }
 
 /**
@@ -182,4 +189,26 @@ export function sessionsRevokedChannelName(): string {
 export async function publishSessionsRevoked(userId: string, sessionIds: string[]): Promise<void> {
   const event: SessionsRevokedEvent = { type: "sessions:revoked", userId, sessionIds, ts: Date.now() };
   await getStreamRedis().publish(sessionsRevokedChannelName(), JSON.stringify(event));
+}
+
+/**
+ * The channel collab subscribes to for ended uploads, with this deployment's prefix (the same reason as
+ * {@link projectControlChannelPattern}).
+ * @returns The channel name.
+ */
+export function uploadEndedChannelName(): string {
+  return uploadEndedChannel(env.REDIS_KEY_PREFIX);
+}
+
+/**
+ * Tell an upload's uploader that it ended (#1580), with the status the status read answers; every collab instance
+ * relays it to that person's meta connections. Called at the finish's terminal exits, after the ending committed.
+ * @param userId - The uploader.
+ * @param status - How the upload ended.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishUploadEnded(userId: string, status: UploadStatus): Promise<void> {
+  const event: UploadEndedEvent = { type: "upload:ended", userId, status };
+  await getStreamRedis().publish(uploadEndedChannelName(), JSON.stringify(event));
 }

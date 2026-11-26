@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, renderHook, waitFor } from '@testing-library/react';
@@ -81,7 +81,7 @@ beforeEach(() => {
     understandMaxBytes: 20_971_520,
     understandLongMediaMaxBytes: 2_147_483_648,
     waveformMaxSeconds: 3600,
-    waveformMaxBytes: 200_000_000, waveformPeaksRetryMs: 5000, waveformPeaksRetryMaxMs: 600_000,
+    waveformMaxBytes: 200_000_000,
   });
 });
 

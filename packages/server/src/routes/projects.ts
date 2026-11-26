@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project routes — CRUD, duplicate, and membership-aware reads.
@@ -62,6 +62,7 @@ projects.get(
         decoderWorkerLimit: limits.decoder_worker_limit,
         maxTextureEdge: limits.max_texture_edge,
         maxTextureBytes: limits.max_texture_bytes,
+        maxPictureHeaderBytes: limits.max_picture_header_bytes,
       },
       progressPublishMs: limits.progress_publish_ms,
       capture: {
@@ -87,8 +88,8 @@ projects.get(
 );
 
 /**
- * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model.
- * @returns The registered model URL, MIME type and registered size in the standard data envelope.
+ * `GET /projects/:id/three-d/assets/:assetId` — resolve a registered scene model or part picture.
+ * @returns The registered asset URL, MIME type and registered size in the standard data envelope.
  */
 projects.get(
   "/:id/three-d/assets/:assetId",

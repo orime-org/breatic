@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * notification.service unit tests — typed constructors + list / mark
@@ -13,18 +13,22 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+import type * as DomainModule from "@breatic/domain";
 
-vi.mock("../notification.repo.js", () => ({
-  create: vi.fn(),
-  listUnreadByUser: vi.fn(),
-  listAllByUser: vi.fn(),
-  countUnread: vi.fn(),
-  markRead: vi.fn(),
-  markAllRead: vi.fn(),
-  findById: vi.fn(),
+vi.mock("@breatic/domain", async (importOriginal) => ({
+  ...(await importOriginal<typeof DomainModule>()),
+  notificationRepo: {
+    create: vi.fn(),
+    listUnreadByUser: vi.fn(),
+    listAllByUser: vi.fn(),
+    countUnread: vi.fn(),
+    markRead: vi.fn(),
+    markAllRead: vi.fn(),
+    findById: vi.fn(),
+  },
 }));
 
-import * as notificationRepo from "../notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 import * as notificationService from "../notification.service.js";
 import { NotFoundError } from "@breatic/core";
 

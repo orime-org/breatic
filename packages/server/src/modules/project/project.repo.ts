@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Project repository — data access with soft delete support.
@@ -21,7 +21,7 @@ import type { SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectMembersRepo } from "@breatic/core";
 import type { DbTx } from "@breatic/core";
-import * as notificationRepo from "@server/modules/notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 import { insertOutboxEvent } from "@server/modules/project/lifecycle-outbox.repo.js";
 import { failedReasonAtNow } from "@server/modules/decision/decision.repo.js";
 import {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
@@ -162,5 +162,17 @@ describe("storageConfigSchema — the transfer section", () => {
       readFileSync(resolve(import.meta.dirname, "../../../../../config/rate-limits.yaml"), "utf8"),
     ) as Record<string, unknown>;
     expect(limits["transfer-ticket"]).toEqual({ max: 10, window_seconds: 60 });
+  });
+});
+
+// #1580 L-03: the status query and its interval are gone; a page learns how its
+// upload ended from a message (Project) or the Studio page poll.
+describe("the upload status interval (removed)", () => {
+  it("L-03 is neither in config/storage.yaml nor in the loader", () => {
+    const yaml = parse(readFileSync(resolve(import.meta.dirname, "../../../../../config/storage.yaml"), "utf8")) as {
+      upload?: Record<string, unknown>;
+    };
+    expect(Object.keys(yaml.upload ?? {})).not.toContain("upload_status_poll_seconds");
+    expect(Object.keys(storageConfigSchema.shape.upload.unwrap().shape)).not.toContain("upload_status_poll_seconds");
   });
 });

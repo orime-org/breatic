@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Space document size cap, second design (inner#1790), web test spec section
@@ -54,17 +54,17 @@ let session: SceneSession;
 
 /**
  * Loads the scene into the registered document and opens an editable session.
- * @param o1Pose - Flat pose keys stored on o1's record (inner#1692).
+ * @param o1Keys - Flat pose or look keys stored on o1's record (inner#1692, inner#1693).
  * @returns The document.
  */
-function seed(o1Pose: Readonly<Record<string, readonly number[]>> = {}): Y.Doc {
+function seed(o1Keys: Readonly<Record<string, unknown>> = {}): Y.Doc {
   doc = getDoc(NAME);
   loadRemote(doc, (source) => {
     source.getMap('scene').set('formatVersion', SCENE_FORMAT_VERSION);
     const objects = source.getMap<unknown>('objects');
     for (const item of [object(O1), object(O2, true)]) {
       const { id, ...values } = item;
-      objects.set(id, new Y.Map<unknown>(Object.entries(id === O1 ? { ...values, ...o1Pose } : values)));
+      objects.set(id, new Y.Map<unknown>(Object.entries(id === O1 ? { ...values, ...o1Keys } : values)));
     }
     const { id, locked: _locked, ...values } = object(O3);
     objects.set(id, new Y.Map<unknown>(Object.entries(values)));
@@ -156,6 +156,38 @@ describe('SC-09 posing a character is edit; resetting its pose deletes its keys:
     written: (result, target) => {
       expect(result).toEqual({ ok: true, ids: [O1] });
       expect((target.getMap('objects').get(O1) as Y.Map<unknown>).has('pose.h:leftUpperArm')).toBe(false);
+    },
+    refused: refusedIn });
+});
+
+/**
+ * The initial scene with a look on o1: one flat look key on its record (inner#1693).
+ * @returns The document.
+ */
+function seedLooked(): Y.Doc {
+  return seed({ 'look.0.color': '#112233' });
+}
+
+describe('SC-10 changing a part look is edit; resetting it deletes its keys: remove', () => {
+  kindRows({ id: 'SC-10', title: 'set a part colour', kind: 'edit', name: NAME, seed,
+    run: run({ type: 'look', id: O1, part: '0', set: { color: '#ff0000' } } as unknown as SceneCommand),
+    written: (result, target) => {
+      expect(result).toEqual({ ok: true, ids: [O1] });
+      expect((target.getMap('objects').get(O1) as Y.Map<unknown>).get('look.0.color')).toBe('#ff0000');
+    },
+    refused: refusedIn });
+  kindRows({ id: 'SC-10', title: 'reset a part', kind: 'remove', name: NAME, seed: seedLooked,
+    run: run({ type: 'look', id: O1, part: '0', set: { color: null } } as unknown as SceneCommand),
+    written: (result, target) => {
+      expect(result).toEqual({ ok: true, ids: [O1] });
+      expect((target.getMap('objects').get(O1) as Y.Map<unknown>).has('look.0.color')).toBe(false);
+    },
+    refused: refusedIn });
+  kindRows({ id: 'SC-10', title: 'reset every part', kind: 'remove', name: NAME, seed: seedLooked,
+    run: run({ type: 'look', id: O1, part: null, set: {} } as unknown as SceneCommand),
+    written: (result, target) => {
+      expect(result).toEqual({ ok: true, ids: [O1] });
+      expect((target.getMap('objects').get(O1) as Y.Map<unknown>).has('look.0.color')).toBe(false);
     },
     refused: refusedIn });
 });

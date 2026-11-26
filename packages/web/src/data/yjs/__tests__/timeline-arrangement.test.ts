@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, expect, it } from 'vitest';
 import fc from 'fast-check';
@@ -45,7 +45,6 @@ function documentOf(
     tracks: Object.fromEntries(trackList.map((item) => [item.id, item])),
     clips: Object.fromEntries(clips.map((item) => [item.id, item])),
     sources,
-    operationReceipts: {},
   };
 }
 

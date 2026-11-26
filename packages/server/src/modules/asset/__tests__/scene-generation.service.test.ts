@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A 3D generation refused for a text setting written too short (inner#1825):
@@ -78,7 +78,7 @@ describe("checkSubmission", () => {
     const refused = await checkSubmission("p", { mode: "t23d", model: "tripo-h3.1-t23d", prompt: "a chair", params: {} } as never)
       .catch((error: unknown) => error);
 
-    expect(servability).toHaveBeenCalledWith("tripo-h3.1-t23d", undefined);
+    expect(servability).toHaveBeenCalledWith("tripo-h3.1-t23d", undefined, undefined);
     expect(refused).toMatchObject({ statusCode: 503, message: "Tripo H3.1 is not set up on this deployment: it needs TRIPO_API_KEY, WAVESPEED_API_KEY." });
     expect(resolveProjectImageInputs).not.toHaveBeenCalled();
   });
@@ -93,7 +93,7 @@ describe("checkSubmission", () => {
     const refused = await checkSubmission("p", { mode: "t23d", model: "tripo-h3.1-t23d", prompt: "a chair", params: {} } as never)
       .catch((error: unknown) => error);
 
-    expect(inputRefusalFor).toHaveBeenCalledWith("tripo-h3.1-t23d", { params: { face_limit: 10 }, prompt: "a chair" }, undefined);
+    expect(inputRefusalFor).toHaveBeenCalledWith("tripo-h3.1-t23d", { params: { face_limit: 10 }, prompt: "a chair" }, undefined, undefined);
     expect(refused).toMatchObject({ statusCode: 422, message: "Tripo H3.1 takes at most 1,024 characters in the text." });
     expect(resolveProjectImageInputs).not.toHaveBeenCalled();
   });

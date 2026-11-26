@@ -12,7 +12,7 @@ Check: does this failure fall before or after the vendor-returned fact is writte
 
 ### Waiting on upstream throws StillRunning
 
-**A handler that must wait for an upstream result throws `StillRunning` (`handlers/still-running.ts`); it never polls or sleeps.** The running-task gate throws the same class; `dispatch.ts`, `runTimelineExecution` (`handlers/timeline/web-animation-execution.ts`) for a Timeline execution, the planned video tool run and analysis handlers (`handlers/mini-tool/run-execution-task.ts`, `run-analysis-task.ts`) and `handlers/video-presentation.ts` answer either by moving the job back to the delayed queue with `moveToDelayed`, which frees the slot and consumes no retry; a planned run or analysis stops waiting once its reporting window (`planReportingEnd`) has closed and ends expired.
+**A handler that must wait for an upstream result throws `StillRunning` (`handlers/still-running.ts`); it never polls or sleeps.** The running-task gate throws the same class; `dispatch.ts`, `runTimelineExecution` (`handlers/timeline/web-animation-execution.ts`) for a web-animation execution (create, modify or export), the planned video tool run and analysis handlers (`handlers/mini-tool/run-execution-task.ts`, `run-analysis-task.ts`) and `handlers/video-presentation.ts` answer either by moving the job back to the delayed queue with `moveToDelayed`, which frees the slot and consumes no retry; a planned run or analysis stops waiting once its reporting window (`planReportingEnd`) has closed and ends expired.
 
 ### No local media processing
 

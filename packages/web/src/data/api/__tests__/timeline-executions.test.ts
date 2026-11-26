@@ -1,11 +1,12 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The web side of the Timeline execution endpoints (inner#1711 design §4).
+ * The web side of the web-animation execution endpoints (inner#1711 design §4, #1490 design §4).
  *
  * Accepting and cancelling are presses that must run once, so each carries an `Idempotency-Key` the caller reuses
- * on resend; reads go through `apiGet`, which already unwraps `{ data }`.
+ * on resend; accepting also says whether this press created the row (201) or found it (200). Reads go through
+ * `apiGet`, which already unwraps `{ data }`.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -41,28 +42,42 @@ beforeEach(() => {
 });
 
 describe('timelineApi executions', () => {
-  it('lists one Space executions of this Project', async () => {
+  it('lists one page of a Motion Space\'s group', async () => {
     const signal = new AbortController().signal;
-    await timelineApi.listExecutions(PROJECT, SPACE, signal);
-    expect(apiGet).toHaveBeenCalledWith('/timeline/executions', expect.objectContaining({ params: { projectId: PROJECT, spaceId: SPACE }, signal }));
+    await timelineApi.listSpaceExecutions({ projectId: PROJECT, spaceId: SPACE, scope: 'space', group: 'running', cursor: 'c1' }, signal);
+    expect(apiGet).toHaveBeenCalledWith('/timeline/space-executions', expect.objectContaining({
+      params: { projectId: PROJECT, spaceId: SPACE, scope: 'space', group: 'running', cursor: 'c1' }, signal,
+    }));
   });
 
-  it('accepts a creation with the run-once key', async () => {
+  it('lists the Project\'s results for the Timeline picker', async () => {
+    await timelineApi.listResults(PROJECT, 'c2');
+    expect(apiGet).toHaveBeenCalledWith('/timeline/results', expect.objectContaining({ params: { projectId: PROJECT, cursor: 'c2' } }));
+  });
+
+  it('reads one execution as the asking Motion Space sees it', async () => {
+    await timelineApi.getExecution(PROJECT, SPACE, EXECUTION);
+    expect(apiGet).toHaveBeenCalledWith(`/timeline/executions/${EXECUTION}`, expect.objectContaining({ params: { projectId: PROJECT, spaceId: SPACE } }));
+  });
+
+  it('accepts a kinded request with the run-once key and answers the row', async () => {
+    vi.mocked(apiPost).mockResolvedValue({ id: EXECUTION });
     const body = {
-      projectId: PROJECT, spaceId: SPACE, actionId: KEY, prompt: 'A title slides in', engine: 'deepseek' as const,
-      aspect: '16:9' as const, durationSeconds: 4, fps: { num: 24, den: 1 },
+      projectId: PROJECT, spaceId: SPACE, actionId: KEY, kind: 'web_animation_create' as const, prompt: 'A title slides in',
+      engine: 'deepseek' as const, aspect: '16:9' as const, durationSeconds: 4,
     };
-    await timelineApi.acceptExecution(body, KEY);
+    await expect(timelineApi.acceptExecution(body, KEY)).resolves.toEqual({ id: EXECUTION });
     const [url, sentBody, config] = vi.mocked(apiPost).mock.calls[0] ?? [];
     expect(url).toBe('/timeline/executions');
     expect(sentBody).toEqual(body);
     expect(headersOf(config)['Idempotency-Key']).toBe(KEY);
   });
 
-  it('cancels with the run-once key the route requires', async () => {
-    await timelineApi.cancelExecution(EXECUTION, KEY);
-    const [url, , config] = vi.mocked(apiPost).mock.calls[0] ?? [];
+  it('cancels with the asking Project and the run-once key the route requires', async () => {
+    await timelineApi.cancelExecution(EXECUTION, PROJECT, KEY);
+    const [url, sentBody, config] = vi.mocked(apiPost).mock.calls[0] ?? [];
     expect(url).toBe(`/timeline/executions/${EXECUTION}/cancel`);
+    expect(sentBody).toEqual({ projectId: PROJECT });
     expect(headersOf(config)['Idempotency-Key']).toBe(KEY);
   });
 

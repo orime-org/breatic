@@ -19,8 +19,9 @@
 
 # Which tier a newly registered account lands in.
 #
-# This single field is what distinguishes a self-hosted install from our
-# hosted service — there is no separate "self-hosted mode" switch.
+# Self-Deployment Mode (LICENSE section 10) means paid features are off,
+# COMMERCE_API_URL blank; this field only sets capacity. Without written
+# authorization from Orime, Inc. an instance runs in that mode.
 #   self-hosted (this file as shipped): self_hosted, whose numbers you set
 #   our hosted service:                 base, and people pay their way up
 #
@@ -40,9 +41,9 @@ tiers:
     storage_bytes: 5368709120  # 5 GiB
     running_tasks_per_user: 2  # tasks one person may have running at once; at least 1
 
-  # Paid tier. What it costs over each billing period is in
-  # config/subscription.yaml — a figure repeated here is a figure that goes
-  # stale the next time one of them changes.
+  # Paid tier. What it costs over each billing period is set in the billing
+  # service — a figure repeated here is a figure that goes stale the next
+  # time one of them changes.
   pro:
     team_studios: 1
     projects_per_studio: 9999
@@ -52,8 +53,8 @@ tiers:
     storage_bytes: 107374182400  # 100 GiB
     running_tasks_per_user: 5
 
-  # Paid tier, charged flat rather than per seat. Its prices live in
-  # config/subscription.yaml, for the same reason as above.
+  # Paid tier, charged flat rather than per seat. Its prices live in the
+  # billing service, for the same reason as above.
   team:
     team_studios: 3
     projects_per_studio: 9999

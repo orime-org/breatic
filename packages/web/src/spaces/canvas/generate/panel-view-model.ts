@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Pure derivation of the Generate panel's render inputs from a node's live Yjs
@@ -15,7 +15,7 @@ import {
   deriveReferences,
   type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared';
 import {
   IMAGE_MODE_OPTIONS,
   resolveMode,

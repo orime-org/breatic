@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Pasting into the chat composer, in a real browser.
@@ -16,7 +16,7 @@ import { test } from '../helpers/slot';
 import { startNewConversation } from '../helpers/conversation';
 
 import { openSmokeProject } from '../helpers/project';
-import { storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
+import { recordRequests, storedPicture, uniquePicture, watchQueuedFinish } from '../helpers/upload';
 
 test.use({ viewport: { width: 1500, height: 900 } });
 
@@ -60,10 +60,13 @@ test.beforeEach(async ({ page }) => {
 });
 
 test('a pasted picture lands in the tray, as a picked one does @needs-storage', async ({ page }) => {
+  const sent = recordRequests(page);
   await pasteInto(page, { file: { name: 'pasted.png', type: 'image/png', base64: PNG_BASE64 }, text: 'pasted.png' });
 
   await expect(page.getByTestId('chat-composer-chips')).toContainText('pasted.png', { timeout: 20_000 });
   await expect(page.getByTestId('chat-composer-box')).toHaveText('');
+  // #1580 N-05: the upload's end came by message; the page asked for no upload's status.
+  expect(sent.filter((r) => new URL(r.url).pathname.includes('upload-status'))).toEqual([]);
 });
 
 test('a pasted file the attach button refuses is refused with the same toast', async ({ page }) => {

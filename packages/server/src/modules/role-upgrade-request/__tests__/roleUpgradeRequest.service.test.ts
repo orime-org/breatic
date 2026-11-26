@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * roleUpgradeRequest.service unit tests — the gates, and what each one leaves
@@ -77,6 +77,12 @@ vi.mock("@breatic/core", async (importOriginal) => {
 vi.mock("@breatic/domain", async () => ({
   ...(await import("../../../../../domain/src/mail/mail-shell.js")),
   enqueueMail: vi.fn(async () => {}),
+  notificationRepo: {
+    create: vi.fn(),
+    findById: vi.fn(),
+    markRead: vi.fn(),
+    retire: vi.fn(),
+  },
 }));
 vi.mock("../roleUpgradeRequests.repo.js", () => ({
   createPending: vi.fn(),
@@ -87,12 +93,6 @@ vi.mock("../roleUpgradeRequests.repo.js", () => ({
   failIfPending: vi.fn(async () => true),
   cancelIfPending: vi.fn(),
   findLiveForRequester: vi.fn(),
-}));
-vi.mock("../../notification/notification.repo.js", () => ({
-  create: vi.fn(),
-  findById: vi.fn(),
-  markRead: vi.fn(),
-  retire: vi.fn(),
 }));
 vi.mock("../../notification/notification.service.js", async (importOriginal) => {
   const actual = await importOriginal<typeof NotificationServiceModule>();
@@ -131,7 +131,7 @@ vi.mock("@server/modules/auth/user.repo.js", () => ({
   getUserById: vi.fn(),
 }));
 
-import * as notificationRepo from "../../notification/notification.repo.js";
+import { notificationRepo } from "@breatic/domain";
 import * as notificationService from "../../notification/notification.service.js";
 import * as studioService from "../../studio/studio.service.js";
 import * as projectRepo from "../../project/project.repo.js";

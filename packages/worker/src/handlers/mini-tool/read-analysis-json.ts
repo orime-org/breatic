@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { assetRepo } from "@breatic/domain";
 import { assertBeforeDeadline, httpRequest, readBytesWithin, untilDeadline, type StudioAssetEntity } from "@breatic/shared";

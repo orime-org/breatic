@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Assets route — the browser's half of an upload (#173).
@@ -33,10 +33,13 @@ import {
   reduceMediaType,
   isUploadableMediaType,
   isSceneModelMediaType,
+  isSceneLookImageMediaType,
+  isSceneLookPartKey,
+  SceneLookMapSchema,
   SceneObjectValuesSchema,
   REQUEST_SHAPE_PARAMS,
   INGEST_NOT_STARTED,
-  UPLOAD_STATUS_MAX_KEYS,
+  focusImageTicketSchema,
   t,
 } from "@breatic/shared";
 import {
@@ -51,7 +54,6 @@ import {
   ingestReportService,
   mediaReadService,
   studioAuthService,
-  uploadStatusService,
   UPLOAD_FINISH_QUEUE,
   type UploadFinishJob,
 } from "@breatic/domain";
@@ -110,7 +112,6 @@ assets.get("/upload-config", requireAuth, async (c) => {
       clientMaxAttempts: upload.client_max_attempts,
       clientRetryBaseDelayMs: upload.client_retry_base_delay_ms,
       uploadIdleTimeoutMs: upload.upload_idle_timeout_seconds * 1000,
-      uploadStatusPollSeconds: upload.upload_status_poll_seconds,
       assetUrlPrefix: store.publicUrl(""),
       // The largest body a route reads (inner#1006); past it the browser
       // moves the body through a transfer upload, on the routes that take one.
@@ -118,36 +119,6 @@ assets.get("/upload-config", requireAuth, async (c) => {
     },
   });
 });
-
-// ── Upload status (inner#1367 §4.2a) ────────────────────────────────
-
-/**
- * How the caller's uploads ended. Finishing answers 202 and runs as a job, so
- * the page asks here — every upload it is waiting on, in one request — until
- * each has an ending. A key that is not the caller's reads as `unknown`.
- */
-assets.get(
-  "/upload-status",
-  requireAuth,
-  rateLimitFor("upload-status", "user"),
-  validate(
-    "query",
-    z.object({
-      // One `key` arrives as a string, several as an array.
-      key: z.preprocess(
-        (v) => (Array.isArray(v) ? v : [v]),
-        z.array(z.string().min(1).max(512)).min(1).max(UPLOAD_STATUS_MAX_KEYS),
-      ),
-    }),
-  ),
-  async (c) => {
-    const user = c.get("user");
-    const { key } = c.req.valid("query");
-    const items = await uploadStatusService.statusOf(user.id, key);
-    c.header("Retry-After", String(getStorageConfig().upload.upload_status_poll_seconds));
-    return c.json({ data: { items } });
-  },
-);
 
 // ── Upload ticket (#173) ────────────────────────────────────────────
 
@@ -200,6 +171,12 @@ const uploadTicketFields = z.object({
   upload_id: z.string().uuid().optional(),
   /** The name a 3D model is imported under, shown on its task row (inner#1690). */
   label: SceneObjectValuesSchema.shape.name.optional(),
+  /** The 3D object a part picture is for (inner#1693 design 6.3). */
+  object_id: z.string().uuid().optional(),
+  /** The part of that object the picture is for. */
+  part: z.string().refine(isSceneLookPartKey, "part is not a part key").optional(),
+  /** The picture the part held when the upload started, or null for none. */
+  start_map: SceneLookMapSchema.nullable().optional(),
   /**
    * What started this upload. Only the mini-tool value is ever sent, and it
    * decides how the ledger files what is stored — a column the offline reclaim
@@ -212,6 +189,8 @@ const uploadTicketFields = z.object({
     .refine((id) => miniToolById(id)?.run.kind === "browser")
     .optional(),
   derived: z.boolean().optional(),
+  /** The focus image a crop becomes, in the pool of the node it names on `space_id` (#1580); collab adds it once registered. */
+  focusImage: focusImageTicketSchema.optional(),
 });
 
 /**
@@ -225,7 +204,7 @@ const uploadTicketSchema = z
     uploadTicketFields.extend({
       project_id: z.string().uuid(),
       studio_id: z.never().optional(),
-      purpose: z.enum(["project_cover", "scene_model"]).optional(),
+      purpose: z.enum(["project_cover", "scene_model", "scene_look"]).optional(),
       // The purpose decides which kinds a project upload takes; superRefine below is that gate.
       content_type: declaredContentTypeSchema,
     }),
@@ -237,6 +216,10 @@ const uploadTicketSchema = z
       space_id: z.never().optional(),
       upload_id: z.never().optional(),
       label: z.never().optional(),
+      focusImage: z.never().optional(),
+      object_id: z.never().optional(),
+      part: z.never().optional(),
+      start_map: z.never().optional(),
     }),
   ])
   // The purpose selects the format gate and whether node metadata is meaningful.
@@ -249,9 +232,30 @@ const uploadTicketSchema = z
         message: "a mini-tool upload names its tool, and only a mini-tool upload does",
       });
     }
+    // A focus crop lands in a node's pool on its canvas Space, and on nothing else.
+    if (body.focusImage !== undefined && (body.space_id === undefined || body.node_id !== undefined || body.upload_id !== undefined || body.purpose !== undefined || body.source !== undefined)) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["focusImage"], message: "a focus crop names its Space and lands in the pool of the node it names, on nothing else", params: REQUEST_SHAPE_PARAMS });
+    }
     // A Document block is the one place a body upload lands: its Space, and no node or purpose.
     if (body.upload_id !== undefined && (body.space_id === undefined || body.node_id !== undefined || body.purpose !== undefined || body.source !== undefined)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["upload_id"], message: "a Document block upload names its Space and nothing else to land on", params: REQUEST_SHAPE_PARAMS });
+    }
+    if (body.purpose === "scene_look") {
+      if (!isSceneLookImageMediaType(body.content_type)) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["content_type"], message: "a part picture is a PNG, JPEG or WebP picture" });
+      }
+      // Collab writes the stored picture onto this part of this object, judged
+      // against the picture the part held when the upload started.
+      if (body.space_id === undefined || body.object_id === undefined || body.part === undefined || body.start_map === undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "a part picture upload names its Space, object, part and starting picture", params: REQUEST_SHAPE_PARAMS });
+      }
+      if (body.node_id !== undefined || body.label !== undefined || body.source !== undefined || body.tool_name !== undefined) {
+        ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "a part picture upload carries no node, model name or mini-tool context", params: REQUEST_SHAPE_PARAMS });
+      }
+      return;
+    }
+    if (body.object_id !== undefined || body.part !== undefined || body.start_map !== undefined) {
+      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["purpose"], message: "only a part picture upload names a part", params: REQUEST_SHAPE_PARAMS });
     }
     if (body.purpose === "scene_model") {
       if (!isSceneModelMediaType(body.content_type)) {
@@ -529,6 +533,25 @@ const requireUploadSession = createMiddleware<{ Variables: { uploadSession: Uplo
 });
 
 /**
+ * A focus crop whose bytes never reached the edge (#1580), told by its uploader, as a node's upload is told on
+ * `POST /canvas/node-tasks/:taskId/failure`: without this the crop stays uploading in its node until its deadline.
+ * The grant is read off the key and must be the caller's own open focus crop; anything else is one 404.
+ */
+assets.post(
+  "/focus-uploads/failure",
+  requireAuth,
+  validate("json", z.object({ storageKey: z.string().min(1).max(1024), reason: z.literal("aborted") }).strict()),
+  async (c) => {
+    const user = c.get("user");
+    const { storageKey } = c.req.valid("json");
+    const outcome = await ingestReportService.reportFocusTransferFailed(user.id, storageKey);
+    noteIngestSideEffects(storageKey, outcome);
+    logger.info({ storageKey, userId: user.id, status: outcome.status }, "focus_upload_transfer_failed");
+    return c.json({ data: { ended: true } });
+  },
+);
+
+/**
  * `POST /assets/uploads/{uploadId}/complete` — the browser handing back what
  * it holds, so this server can finish the upload for it (design §3.1).
  *
@@ -592,7 +615,8 @@ assets.post(
 
     // Finishing lasts as long as the Worker takes, bounded by the upload's two
     // hours, so it runs as a job and the browser learns the ending from the
-    // status query (inner#1367 §4.2a), or, for a Document body block, from
+    // `upload:ended` message (the Studio page from its one poll; inner#1367
+    // §4.2a, #1580), or, for a Document body block, from
     // collab writing it into the block (breatic#1574). The key is the job id: a browser that
     // did not hear 202 sends this again, and a job with that id already queued
     // or kept takes no second one.

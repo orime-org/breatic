@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Storage YAML configuration loader.
@@ -62,11 +62,6 @@ export const storageConfigSchema = z
        * 30-second default after it cut uploads on slow links.
        */
       upload_idle_timeout_seconds: z.number().int().positive().default(60),
-      /**
-       * How long the browser waits between asking how its uploads ended, in
-       * seconds; sent as `Retry-After` on every status answer (inner#1367).
-       */
-      upload_status_poll_seconds: z.number().int().positive().default(2),
     })
     .prefault({}),
 

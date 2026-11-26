@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -12,7 +12,7 @@ import { dataOf } from './api';
 import { credentialsFor } from './credentials';
 import { liveModuleUrl, YJS_MANAGER } from './live-module';
 import { stateFile } from './slot';
-import { visibleSpace } from './space';
+import { openSpaceById, visibleSpace } from './space';
 import { roomForUploads } from './upload-budget';
 
 /** A real local upload and the placement created by accepting it. */
@@ -60,16 +60,7 @@ export function watchTimelineErrors(page: Page): TimelineErrors {
  * @throws {Error} When the requested Timeline cannot be opened.
  */
 export async function openTimeline(page: Page, spaceId: string): Promise<void> {
-  const tab = page.getByTestId(`space-tab-name-${spaceId}`);
-  if (await tab.count() === 0) {
-    await page.getByTestId('space-drawer-trigger').click();
-    const drawer = page.getByTestId('space-drawer');
-    await expect(drawer).toBeVisible();
-    await drawer.getByTestId(`space-drawer-row-${spaceId}`).getByRole('button', { name: /Open/ }).click();
-    await expect(drawer).toHaveCount(0);
-  } else {
-    await tab.click();
-  }
+  await openSpaceById(page, spaceId);
   await expect(visibleSpace(page).getByTestId('timeline-space')).toHaveAttribute('data-space-id', spaceId);
 }
 
@@ -159,13 +150,12 @@ export async function expectTimelineVideoReady(page: Page, clipId: string, fileU
 }
 
 /**
- * Identify the ticket, ingest transfer and finish/status requests used by this upload.
+ * Identify the ticket, ingest transfer and finish requests used by this upload.
  * @throws {never} Never; browser request URLs are already absolute URLs.
  */
 function isTimelineUploadRequest(request: Request): boolean {
   const path = new URL(request.url()).pathname;
-  return path === '/api/v1/assets/upload-ticket' || path === '/api/v1/assets/upload-status'
-    || /(?:^|\/)uploads(?:\/|$)/.test(path);
+  return path === '/api/v1/assets/upload-ticket' || /(?:^|\/)uploads(?:\/|$)/.test(path);
 }
 
 /**
@@ -336,7 +326,7 @@ export async function withTimelinePeer(
  * Drive the existing shared socket with a balanced temporary meta-provider reference.
  * @throws {Error} When this context's live Project metadata or transport is missing.
  */
-export async function setTimelineConnection(page: Page, projectId: string, spaceId: string, connected: boolean): Promise<void> {
+export async function setCollabConnection(page: Page, projectId: string, spaceId: string, connected: boolean): Promise<void> {
   const urls = {
     manager: await liveModuleUrl(page, YJS_MANAGER),
     socket: await liveModuleUrl(page, 'data/yjs/collab-socket.tsx'),
@@ -354,7 +344,7 @@ export async function setTimelineConnection(page: Page, projectId: string, space
     const name = manager.docName.projectMeta(projectId);
     if (name !== `project-${projectId}/meta` || !manager.hasDoc(name)) throw new Error('The current Project meta document is missing');
     const doc = manager.getDoc(name);
-    if (doc.getMap('spaces').size === 0 || !doc.getMap('spaces').has(spaceId)) throw new Error('The live Project metadata does not contain this Timeline');
+    if (doc.getMap('spaces').size === 0 || !doc.getMap('spaces').has(spaceId)) throw new Error('The live Project metadata does not contain this Space');
     const provider = socket.acquireDocProvider(name, doc);
     try {
       const transport = provider.configuration.websocketProvider;

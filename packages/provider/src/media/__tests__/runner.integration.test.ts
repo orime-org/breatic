@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import fc from "fast-check";
@@ -12,6 +12,7 @@ import type { Route } from "../../routing/route.js";
 import { createMediaRunner, ticketState, type MediaAnswer, type MediaClone, type MediaRunner, type MediaTicket, type PlanOptions } from "../runner.js";
 import { wavespeedAdapter } from "../wavespeed/adapter.js";
 import { accepted, billedIds, billing, driven, fakeUpstream, finishedAtOnce, result, submits, type FakeUpstream } from "./fake-upstream.js";
+import { accountKeys } from "../../__tests__/keys-harness.js";
 
 const pricing = { kind: "formula", base_price: 0, formula: "", discount_rate: 100 };
 const DEFAULT: Route = { mode: "default" };
@@ -1293,6 +1294,22 @@ describe("the per-upstream concurrency cap", () => {
     a.release();
     await Promise.all(sending);
     expect(submits(a.seen)).toHaveLength(2);
+  });
+
+  it("counts a payer's own key in slots of its own, so a call held on ours does not hold it (inner#1953)", async () => {
+    const held = JSON.stringify({ code: 200, data: { id: "p1", status: "created", outputs: [] } });
+    let n = 0;
+    a.answer(({ path }) => (path === "/billings/search" ? billing([]) : ++n === 1 ? { status: 200, raw: held, contentType: "application/json", hold: true } : accepted(`p${n}`)));
+    const r = runner();
+    const keys = accountKeys({ ws_a: "acct-ws" });
+    const ours = expectState(await r.plan("seedance", video, DEFAULT, options()), "send");
+    const theirs = expectState(await r.plan("seedance", video, DEFAULT, { ...options(), idempotencyKey: "task-2", keys }), "send");
+    const holding = r.send(stored(ours.ticket), live());
+    await new Promise((done) => setTimeout(done, 100));
+    expectState(await r.send(stored(theirs.ticket), { ...live(), keys }), "running");
+    expect(submits(a.seen)).toHaveLength(2);
+    a.release();
+    await holding;
   });
 
   it("lets a held submit leave on its deadline or its signal, and the slot still serves the next one", async () => {

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Every refusal the proposal check gives, held to what it says (design 5.10):
@@ -22,7 +22,7 @@ import { inputSchema } from "../proposal-input.js";
 import { markTypedAsWords } from "../proposal-node-checks.js";
 import { REFUSALS, type RefusalId } from "../proposal-refusals.js";
 
-import { agentShape, COVER_MODEL, FIXTURES, loadFixtureLocales, PLACED_FIXTURES } from "./template-fixtures.js";
+import { agentShape, COVER_MODEL, FIXTURES, loadFixtureLocales, PLACED_FIXTURES, TEXT_FIXTURES } from "./template-fixtures.js";
 
 beforeAll(() => {
   loadFixtureLocales();
@@ -193,6 +193,34 @@ function productAd(change?: "untagged" | "shared"): Sent {
       return node;
     }),
   };
+}
+
+/**
+ * The fixture episode as the agent sends it (inner#1824, CAP-3), its script
+ * written or sent with no words.
+ * @param script - The script's words, or undefined for none.
+ * @returns The proposal.
+ */
+function scripted(script: Sent["nodes"][number]["prompt"]): Sent {
+  const t2v = { type: "video" as const, mode: "t2v", model: "seedance-2.5-text-to-video" };
+  return group(
+    [
+      { role: "generate", ...t2v, name: "Scene 1", template: { id: "fixture-scripted" }, prompt: [{ text: "Play only scene 1 of " }, { ref: 1 }, { text: "." }] },
+      { role: "written", type: "text", name: "Script", template: { id: "fixture-scripted", key: "script" }, ...(script === undefined ? {} : { prompt: script }) },
+      {
+        role: "generate",
+        ...t2v,
+        name: "Scene 2",
+        template: { id: "fixture-scripted", key: "scene-2" },
+        prompt: [{ slot: { kind: "note", label: "Generate Scene 1 first" } }, { text: "Play only scene 2 of " }, { ref: 1 }, { text: ", going on from where " }, { ref: 0 }, { text: " ends." }],
+      },
+    ],
+    [
+      { fromIndex: 1, toIndex: 0, into: "pool" },
+      { fromIndex: 1, toIndex: 2, into: "pool" },
+      { fromIndex: 0, toIndex: 2, into: "pool" },
+    ],
+  );
 }
 
 /**
@@ -510,6 +538,13 @@ const CASES: Record<RefusalId, RefusalCase[]> = {
     states: ['"Clip" names template "fixture-shots" and sends no shots.', 'On node 1 ("Clip"), write the shots.'],
     fix: group([STILL, { ...CLIP_ANCHOR, shots: [{ prompt: [GEN_FIRST, { ref: 0 }, { text: " walks along the shore." }], duration: 5 }] }], [{ fromIndex: 0, toIndex: 1, into: "pool" }]),
     templates: FIXTURES,
+  }],
+  "template-no-text": [{
+    // A template's text node sent with no words (inner#1824, CAP-3).
+    meets: scripted(undefined),
+    states: ['"Script" names template "fixture-scripted" and sends no words.', 'On node 1 ("Script"), write its words.', "The template's text, to rewrite in the user's language with their story in it:"],
+    fix: scripted([{ text: "Who: a tired nurse\nScene 1: she finds the letter\nScene 2: she confronts her sister" }]),
+    templates: TEXT_FIXTURES,
   }],
   "template-tweak-unfilled": [{
     // The character design sent back with the template's style blank still in it (breatic#1361).

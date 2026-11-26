@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { IngestMeasurements, MiniToolJobRequest, MiniToolPlanJobRequest } from "@breatic/shared";
 import type { ContainerReportBody, MediaOfOutput, PlanContainerReportBody } from "@ingest/jobs/container-report.js";

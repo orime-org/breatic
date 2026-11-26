@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Canvas limits route tests — the knobs the frontend reads before it can
@@ -23,6 +23,7 @@ vi.mock("@breatic/core", async (importOriginal) => {
     getMiniToolsConfig: vi.fn(() => ({
       waveform_max_seconds: 600,
       waveform_max_bytes: 200_000_000,
+      // Left in the stub so the case sees a route that still reads and sends them.
       waveform_peaks_retry_ms: 5000,
       waveform_peaks_retry_max_ms: 600_000,
       executions: {
@@ -82,8 +83,6 @@ describe("GET /canvas/limits", () => {
         understandLongMediaMaxBytes: number;
         waveformMaxSeconds: number;
         waveformMaxBytes: number;
-        waveformPeaksRetryMs: number;
-        waveformPeaksRetryMaxMs: number;
         joinMaxClips: number;
       };
     };
@@ -97,9 +96,9 @@ describe("GET /canvas/limits", () => {
     // inner#1305 §4.4: the cut band draws a waveform only under both.
     expect(body.data.waveformMaxSeconds).toBe(600);
     expect(body.data.waveformMaxBytes).toBe(200_000_000);
-    // An open band reads peaks not yet written this often, for this long.
-    expect(body.data.waveformPeaksRetryMs).toBe(5000);
-    expect(body.data.waveformPeaksRetryMaxMs).toBe(600_000);
+    // #1580 G-10: an open band reads peaks again when they are announced, so no retry timing is sent.
+    expect(body.data).not.toHaveProperty("waveformPeaksRetryMs");
+    expect(body.data).not.toHaveProperty("waveformPeaksRetryMaxMs");
     // inner#1825 §6.3: the join panel's add tile and slot pick stop at this many clips.
     expect(body.data.joinMaxClips).toBe(17);
   });

@@ -1,15 +1,19 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * 碰积分的那几个入口，全部走新引擎（任务 #11）。
+ * Every entry point that touches credits goes through the lot engine (task #11).
  *
- * 换数据模型必须把写它的地方一次换完 —— 留一处写旧表，那一处的钱就从新账里
- * 消失。这个文件按入口逐个钉：充值到账、注册、鉴权中间件、预检、幂等扣费。
+ * Changing the data model means changing every place that writes it at once:
+ * one place left writing the old tables is money that disappears from the new
+ * books. This file pins each entry point: a payment grant, registration, the
+ * session payload, the precheck and the idempotent charge.
  *
- * 预检那三种情形是这里最要紧的一条。新模型下最高频的一条路径正好撞在它上面：
- * 用户刚买完一笔，它恒为未指定，他关掉面板直接去生成 —— 旧文案会告诉他
- * 「可用 0」，而他账上明明躺着刚付过钱的积分。
+ * The precheck's three cases matter most. The most frequent path under the
+ * new model runs straight into it: a user who has just bought a pack holds
+ * credits designated to no Studio, closes the panel and goes to generate —
+ * the old copy would tell them "0 available" while the credits they just paid
+ * for sit on their account.
  */
 
 import { initConfiguredProvider } from "@breatic/integration-tests/provider";
@@ -18,32 +22,6 @@ import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
 // `ai` is stubbed: the real SDK is replaced with a double that reaches no
 // network, so this suite needs no API key and the SDK stays out of its
 // module graph.
-// Fulfillment now asks Stripe what the session currently is, so this layer
-// needs a double. Every fixture payment here is 1000 / usd, and the double
-// answers with the same figures so the amount comparison holds.
-const stripe = {
-  checkout: {
-    sessions: {
-      retrieve: vi.fn(async (id: string) => ({
-        id,
-        mode: "payment",
-        status: "complete",
-        payment_status: "paid",
-        amount_subtotal: 1000,
-        amount_total: 1000,
-        currency: "usd",
-        total_details: { amount_tax: 0 },
-        payment_intent: `pi_${id}`,
-        metadata: {},
-      })),
-    },
-  },
-};
-
-vi.mock("@server/infra/stripe.js", () => ({
-  getStripeClient: () => stripe,
-}));
-
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
   streamText: () => ({
@@ -67,10 +45,10 @@ import {
 } from "@breatic/core";
 import { t } from "@breatic/shared";
 import { creditLotService } from "@breatic/domain";
-import * as paymentService from "@server/modules/payment/payment.service.js";
 import * as authService from "@server/modules/auth/auth.service.js";
+import { grantPayment } from "@server/modules/commerce/payment-grant.service.js";
 import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
-import { openPaymentSource } from "./payment-source.js";
+import { openPaymentSource, recordPaymentReceipt } from "./payment-source.js";
 import { chargeNow } from "./studio-credit-fixtures.js";
 
 const PG_DRIVER_LOCAL = "credit-entrypoints-test-driver";
@@ -79,12 +57,7 @@ let sql: ReturnType<typeof postgres>;
 let app: Hono;
 
 beforeAll(async () => {
-  initCore({
-    ...process.env,
-    PAYMENT_ENABLED: "true",
-    STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite",
-    STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite",
-  });
+  initCore({ ...process.env, CHARGING_ENABLED: "true" });
   loadLocales();
   initConfiguredProvider();
   sql = postgres(inject("DATABASE_URL"), {
@@ -92,8 +65,8 @@ beforeAll(async () => {
     prepare: false,
     connection: { application_name: PG_DRIVER_LOCAL },
   });
-  // 在 initCore 之后再 import：`@server/app.js` 会拉进 cors.ts，那个模块
-  // 求值时就读 `env.ALLOWED_ORIGINS`。
+  // Imported after initCore: `@server/app.js` pulls in cors.ts, which reads
+  // `env.ALLOWED_ORIGINS` when the module is evaluated.
   const { createApp } = await import("@server/app.js");
   app = createApp();
 });
@@ -111,7 +84,10 @@ interface Fixture {
   projectId: string;
 }
 
-/** 一个用户 + 他管理的 studio + 该 studio 下的一个 project。 */
+/**
+ * A user, a Studio they administer and a project in it.
+ * @returns The fixture.
+ */
 async function seedFixture(): Promise<Fixture> {
   const n = seq++;
   const [user] = await sql<{ id: string }[]>`
@@ -136,36 +112,35 @@ async function seedFixture(): Promise<Fixture> {
 }
 
 /**
- * One webhook event. The id and the type travel together because the claim
- * records both.
- * @param id - The event's own id.
- * @returns That event.
+ * Credits from a completed payment, granted the way the billing service's
+ * grant leaves them: a receipt and its lot, designated to no Studio.
+ * @param userId - The buyer.
+ * @param credits - What the payment bought.
+ * @returns The payment's id.
  */
-function evt(id: string): { id: string; type: string } {
-  return { id, type: "checkout.session.completed" };
+async function fundFromPayment(userId: string, credits: number): Promise<string> {
+  const paymentId = await openPaymentSource(sql);
+  await recordPaymentReceipt(sql, { id: paymentId, userId, amountCents: 1000, credits });
+  await creditLotService.grantFromPayment({ paymentId, userId, purchasedCredits: credits });
+  return paymentId;
 }
 
-/** 一笔待付款的结账会话。 */
-async function seedPendingPayment(
-  userId: string,
-  credits: number,
-): Promise<{ paymentId: string; sessionId: string }> {
-  const sessionId = `cs_test_${seq++}_${Date.now()}`;
-  const sourceId = await openPaymentSource(sql);
-  const [payment] = await sql<{ id: string }[]>`
-    INSERT INTO payments (id, user_id, stripe_session_id, amount_cents, status, credits_granted)
-    VALUES (${sourceId}, ${userId}, ${sessionId}, 1000, 'pending', ${credits}) RETURNING id
-  `;
-  return { paymentId: payment!.id, sessionId };
-}
-
-describe("充值到账", () => {
-  it("建出一笔 lot，不再写旧的余额表和流水表", async () => {
+describe("payment grant", () => {
+  it("opens one lot and writes nothing to the archived balance tables", async () => {
     const fx = await seedFixture();
-    const { paymentId, sessionId } = await seedPendingPayment(fx.userId, 880);
+    const paymentId = crypto.randomUUID();
 
-    const outcome = await paymentService.fulfillPayment(sessionId, evt("evt_test_1"));
-    expect(outcome.status).toBe("granted");
+    const answer = await grantPayment(paymentId, {
+      userId: fx.userId,
+      purchasedCredits: 880,
+      amountCents: 1000,
+      taxCents: null,
+      totalCents: null,
+      currency: "usd",
+      orderedAt: new Date().toISOString(),
+      conversion: { consent: { analytics: false, ads: false }, click: null, transactionId: `purchase:${paymentId}` },
+    });
+    expect(answer.httpStatus).toBe(200);
 
     const lots = await sql<{ id: string; remaining_credits: string }[]>`
       SELECT id, remaining_credits FROM credit_lots WHERE source_id = ${paymentId}
@@ -173,31 +148,17 @@ describe("充值到账", () => {
     expect(lots).toHaveLength(1);
     expect(lots[0]?.remaining_credits).toBe("880.000000");
 
-    // 归档表是上一个模型留下的只读记录，新的入账一行都不该落进去。
+    // The archive is the previous model's read-only record; no new grant lands in it.
     const legacy = await sql<{ count: string }[]>`
       SELECT COUNT(*)::text AS count
       FROM credit_transactions_archived WHERE user_id = ${fx.userId}
     `;
     expect(legacy[0]?.count).toBe("0");
   });
-
-  it("同一个会话再送一次，只发一次积分", async () => {
-    const fx = await seedFixture();
-    const { paymentId, sessionId } = await seedPendingPayment(fx.userId, 880);
-
-    await paymentService.fulfillPayment(sessionId, evt("evt_test_2"));
-    const replay = await paymentService.fulfillPayment(sessionId, evt("evt_test_2"));
-
-    expect(replay.status).toBe("replay");
-    const counted = await sql<{ count: string }[]>`
-      SELECT COUNT(*)::text AS count FROM credit_lots WHERE source_id = ${paymentId}
-    `;
-    expect(counted[0]?.count).toBe("1");
-  });
 });
 
-describe("注册", () => {
-  it("注册出来的账号一分积分都没有，也没有任何积分行", async () => {
+describe("registration", () => {
+  it("leaves the new account with no credits and no credit rows", async () => {
     // Registration creates no personal Studio yet; its setup grants trial credits.
     const email = `reg-${seq++}-${Date.now()}@example.test`;
     const { user } = await authService.register(email, "correct horse battery");
@@ -209,11 +170,10 @@ describe("注册", () => {
   });
 });
 
-describe("预检", () => {
-  it("这个 studio 有笔但不够时，说需要多少、可用多少", async () => {
+describe("precheck", () => {
+  it("says how much is needed and how much is available when the Studio has some but not enough", async () => {
     const fx = await seedFixture();
-    const { sessionId } = await seedPendingPayment(fx.userId, 30);
-    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
+    await fundFromPayment(fx.userId, 30);
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
 
     const err = await precheckCredits(fx.projectId, fx.userId, 100).then(
@@ -226,12 +186,12 @@ describe("预检", () => {
     );
   });
 
-  it("这个 studio 一分没有而账号有未指定的，说的是没指定不是没钱", async () => {
-    // 刚买完就去生成，是新模型下最高频的一条路径。把它说成「余额不足」
-    // 会让用户以为付款没到账。
+  it("says the credits are undesignated, not missing, when the Studio has none but the account does", async () => {
+    // Generating right after buying is the most frequent path under the new
+    // model. Calling it "insufficient balance" would make the user think the
+    // payment never arrived.
     const fx = await seedFixture();
-    const { sessionId } = await seedPendingPayment(fx.userId, 880);
-    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
+    await fundFromPayment(fx.userId, 880);
 
     const err = await precheckCredits(fx.projectId, fx.userId, 100).then(
       () => null,
@@ -241,7 +201,7 @@ describe("预检", () => {
     expect(err?.message).toBe(t("server.credit.unassigned", { available: 880 }));
   });
 
-  it("账号确实一分都没有时，说的是没钱", async () => {
+  it("says there are no credits when the account truly has none", async () => {
     const fx = await seedFixture();
     const err = await precheckCredits(fx.projectId, fx.userId, 100).then(
       () => null,
@@ -251,13 +211,14 @@ describe("预检", () => {
     expect(err?.message).toBe(t("server.credit.none"));
   });
 
-  it("欠着账时说清欠多少，即便账号里还有未指定的积分", async () => {
-    // 这一条必须排在「你有未指定的积分，去指定吧」之前。欠账时可用额是负的，
-    // 照旧的顺序会落到那句话上，而指定进来先抵债、抵完可能还是不能生成 ——
-    // 等于把人支使去做一件解决不了问题的事。
+  it("says how much is owed while in debt, even when the account holds undesignated credits", async () => {
+    // This must come before "you have undesignated credits, designate them".
+    // In debt the available amount is negative and the old order would land
+    // on that sentence, yet designated credits pay the debt first and may
+    // still not allow a generation — sending the user to do something that
+    // does not solve their problem.
     const fx = await seedFixture();
-    const { sessionId } = await seedPendingPayment(fx.userId, 30);
-    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
+    await fundFromPayment(fx.userId, 30);
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
     await chargeNow({
       projectId: fx.projectId,
@@ -265,9 +226,8 @@ describe("预检", () => {
       amount: 350,
       referenceId: `pre-owe-${seq++}`,
     });
-    // 账号里另有一笔没指定给任何 studio 的，旧顺序会先撞上它。
-    const spare = await seedPendingPayment(fx.userId, 500);
-    await paymentService.fulfillPayment(spare.sessionId, evt(`evt_${seq++}`));
+    // Another lot designated to no Studio, which the old order would hit first.
+    await fundFromPayment(fx.userId, 500);
 
     const err = await precheckCredits(fx.projectId, fx.userId, 100).then(
       () => null,
@@ -277,22 +237,20 @@ describe("预检", () => {
     expect(err?.message).toBe(t("server.credit.in_debt", { owed: 320 }));
   });
 
-  it("够花就放行", async () => {
+  it("lets the request through when there is enough", async () => {
     const fx = await seedFixture();
-    const { sessionId } = await seedPendingPayment(fx.userId, 880);
-    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
+    await fundFromPayment(fx.userId, 880);
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
 
     await expect(precheckCredits(fx.projectId, fx.userId, 100)).resolves.toBeUndefined();
   });
 });
 
-describe("幂等扣费", () => {
-  it("同一个 refKey 只扣一次", async () => {
-    // 聊天一个回合和一次文本工具都可能被重放：断线重连、流重发。
+describe("idempotent charge", () => {
+  it("charges one refKey only once", async () => {
+    // A chat turn and a text tool run can both be replayed: a reconnect, a resent stream.
     const fx = await seedFixture();
-    const { sessionId } = await seedPendingPayment(fx.userId, 100);
-    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
+    await fundFromPayment(fx.userId, 100);
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
 
     const refKey = `turn:${fx.projectId}:0`;
@@ -315,11 +273,12 @@ describe("幂等扣费", () => {
   });
 });
 
-describe("会话载荷", () => {
-  it("不再带账号总额", async () => {
-    // 余额是派生的，而账号总额在「未指定不能花」之后不再是任何一个可花的
-    // 数字。每个请求都下发它，只会有人拿它去做判断；要余额的地方去问
-    // 分得清「能花的」和「未指定的」那个端点。
+describe("session payload", () => {
+  it("no longer carries the account total", async () => {
+    // Balances are derived, and since undesignated credits cannot be spent the
+    // account total is no longer any spendable number. Sending it on every
+    // request only invites decisions based on it; whoever needs a balance asks
+    // the endpoint that tells spendable from undesignated.
     const fx = await seedFixture();
     const token = crypto.randomBytes(24).toString("hex");
     await setSession(getRedis(), token, fx.userId);
@@ -347,8 +306,7 @@ describe("Idempotency-Key", () => {
       INSERT INTO project_members (project_id, user_id, role, added_by)
       VALUES (${fx.projectId}, ${fx.userId}, 'owner', null)
     `;
-    const { sessionId } = await seedPendingPayment(fx.userId, 100);
-    await paymentService.fulfillPayment(sessionId, evt(`evt_${seq++}`));
+    await fundFromPayment(fx.userId, 100);
     await sql`UPDATE credit_lots SET designated_studio_id = ${fx.studioId} WHERE user_id = ${fx.userId}`;
     return fx;
   }

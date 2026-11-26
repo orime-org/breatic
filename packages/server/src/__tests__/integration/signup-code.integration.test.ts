@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Sign-up with a code sent by email (#287) — the pending sign-up state
@@ -58,6 +58,14 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
 
 vi.mock("@server/config/auth.js", () => ({
   getSignupCodeConfig: () => ({ ttlSeconds: 3, maxAttemptsPerCode: 5, resendCooldownSeconds: 1 }),
+  emailVerificationEnabled: () => true,
+}));
+
+vi.mock("ai", () => ({
+  generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
+  streamText: () => ({ fullStream: (async function* () {})(), text: Promise.resolve(""), usage: Promise.resolve({ totalTokens: 0 }) }),
+  stepCountIs: (_n: number) => () => false,
+  tool: (config: Record<string, unknown>) => config,
 }));
 
 import crypto from "node:crypto";
@@ -66,6 +74,7 @@ import bcrypt from "bcryptjs";
 import postgres from "postgres";
 import { initCore, loadLocales, AppError, TooManyRequestsError, env, getRedis, runWithLocale } from "@breatic/core";
 import { t } from "@breatic/shared";
+import { useCommerceApp } from "./commerce-harness.js";
 
 try {
   initCore(process.env);
@@ -381,119 +390,111 @@ describe("submitting the form again as the sign-up expires", () => {
   });
 });
 
-describe("two-step sign-up with a referral code (inner#1868)", () => {
-  beforeAll(() => {
-    initCore({ ...process.env, PAYMENT_ENABLED: "true", STRIPE_SECRET_KEY: "sk_test_unused_by_this_suite", STRIPE_WEBHOOK_SECRET: "whsec_unused_by_this_suite" });
-  });
-  afterAll(() => {
-    initCore(process.env);
-  });
+describe("two-step sign-up with a referral code (inner#1993 §8.4)", () => {
+  const commerce = useCommerceApp("signup-code-referral");
 
   /**
-   * Inserts an approved promoter with an active code.
-   * @returns The code row and its text.
+   * Has the stand-in billing service call the given codes active, in upper case, and every other code inactive.
+   * @param active - The codes it calls active, as the user types them.
    */
-  async function activeCode(): Promise<{ id: string; code: string }> {
-    const promoterId = crypto.randomUUID();
-    await sql`insert into users(id,email) values(${promoterId},${`${promoterId}@example.test`})`;
-    const code = `V${crypto.randomUUID().replaceAll("-", "").slice(0, 10).toUpperCase()}`;
-    const [app] = await sql<{ id: string }[]>`insert into promoter_applications
-      (user_id,status,country,channels,plan,terms_version,terms_accepted_at,decided_at,decided_by)
-      values(${promoterId},'approved','US',${sql.json(["x"])},'p','2026-11-07',now(),now(),'admin_7') returning id`;
-    const [row] = await sql<{ id: string }[]>`insert into referral_codes(code,promoter_id,application_id) values(${code},${promoterId},${app!.id}) returning id`;
-    return { id: row!.id, code };
+  function activeCodes(...active: string[]): void {
+    commerce.reply = (req) => {
+      const code = String((req.body as { code: string }).code);
+      return { status: 200, body: active.includes(code) ? { active: true, code: code.toUpperCase() } : { active: false, code } };
+    };
   }
 
   /**
-   * Reads the binding source of the account with this email.
+   * Reads the binding appended for the account with this email.
    * @param email - The account's email.
-   * @returns The source, or null when unbound.
+   * @returns The appended code and source, or null when none was appended.
    */
-  async function sourceOf(email: string): Promise<string | null> {
-    const [row] = await sql<{ source: string }[]>`select b.source from referral_bindings b join users u on u.id = b.user_id where u.email = ${email}`;
-    return row?.source ?? null;
+  async function bindingOf(email: string): Promise<{ code: string; source: string } | null> {
+    const [row] = await sql<{ payload: { code: string; source: string } }[]>`select o.payload from commerce_outbox o
+      join users u on o.aggregate_key = 'referral:' || u.id::text
+      where o.type = 'referral_binding' and u.email = ${email} and u.deleted_at is null`;
+    return row === undefined ? null : { code: row.payload.code, source: row.payload.source };
   }
 
-  it("refuses an invalid code at step one with 422 and sends no code", async () => {
+  it("refuses an inactive code at step one with 422 and sends no code", async () => {
+    activeCodes();
     const email = freshEmail();
     expect(await statusOf(startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: "NOPE-NOPE", source: "signup_typed" } }))).toBe(422);
     expect(sent.mails).toHaveLength(0);
   });
 
-  it("carries the code through the pending sign-up and binds it at step two", async () => {
-    const { code } = await activeCode();
+  it("carries the code through the pending sign-up and appends it at step two", async () => {
+    activeCodes("friend-a", "FRIEND-A");
     const email = freshEmail();
-    const started = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: code.toLowerCase(), source: "signup_link" } });
+    const started = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: "friend-a", source: "signup_link" } });
     const verified = await verifySignupCode(started.ticket, lastCode());
     expect(verified.referral).toBe("applied");
-    expect(await sourceOf(email)).toBe("signup_link");
+    expect(await bindingOf(email)).toEqual({ code: "FRIEND-A", source: "signup_link" });
   });
 
-  it("creates the account unbound and says not_applied when the code was disabled in between", async () => {
-    const { id, code } = await activeCode();
+  it("keeps the code through step one when the billing service cannot be asked", async () => {
+    commerce.reply = () => ({ status: 503, body: {} });
     const email = freshEmail();
-    const started = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code, source: "signup_typed" } });
-    await sql`update referral_codes set status = 'disabled' where id = ${id}`;
+    const started = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: "FRIEND-B", source: "signup_typed" } });
+    activeCodes("FRIEND-B");
+    const verified = await verifySignupCode(started.ticket, lastCode());
+    expect(verified.referral).toBe("applied");
+    expect(await bindingOf(email)).toEqual({ code: "FRIEND-B", source: "signup_typed" });
+  });
+
+  it("creates the account unbound and says not_applied when the code went inactive in between", async () => {
+    activeCodes("FRIEND-C");
+    const email = freshEmail();
+    const started = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: "FRIEND-C", source: "signup_typed" } });
+    activeCodes();
     const verified = await verifySignupCode(started.ticket, lastCode());
     expect(verified.referral).toBe("not_applied");
     expect(verified.user.email).toBe(email);
-    expect(await sourceOf(email)).toBeNull();
+    expect(await bindingOf(email)).toBeNull();
   });
 
   it("drops the code when the sign-up is resubmitted without one", async () => {
-    const { code } = await activeCode();
+    activeCodes("FRIEND-D");
     const email = freshEmail();
-    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code, source: "signup_typed" } });
+    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: "FRIEND-D", source: "signup_typed" } });
     await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en" });
     // The resubmission mails a new code once the one-second resend wait has run out.
     const verified = await verifySignupCode(first.ticket, lastCode());
     expect(verified.referral).toBeNull();
-    expect(await sourceOf(email)).toBeNull();
+    expect(await bindingOf(email)).toBeNull();
+    expect(commerce.received).toHaveLength(1);
   });
 
-  /**
-   * Reads the code the account with this email is bound to.
-   * @param email - The account's email.
-   * @returns The code text, or null when unbound.
-   */
-  async function boundCodeOf(email: string): Promise<string | null> {
-    const [row] = await sql<{ code: string }[]>`select c.code from referral_bindings b
-      join users u on u.id = b.user_id join referral_codes c on c.id = b.referral_code_id where u.email = ${email}`;
-    return row?.code ?? null;
-  }
-
   it("stores a code added when the sign-up is resubmitted", async () => {
-    const { code } = await activeCode();
+    activeCodes("FRIEND-E");
     const email = freshEmail();
     const first = await startSignup({ ticket: null, email, password: "password1", locale: "en" });
     const firstCode = lastCode();
-    await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en", referral: { code, source: "signup_typed" } });
+    await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en", referral: { code: "FRIEND-E", source: "signup_typed" } });
     const verified = await verifySignupCode(first.ticket, firstCode);
     expect(verified.referral).toBe("applied");
-    expect(await boundCodeOf(email)).toBe(code);
+    expect(await bindingOf(email)).toEqual({ code: "FRIEND-E", source: "signup_typed" });
   });
 
   it("overwrites the code when the sign-up is resubmitted with another one", async () => {
-    const a = await activeCode();
-    const b = await activeCode();
+    activeCodes("FRIEND-F", "FRIEND-G");
     const email = freshEmail();
-    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: a.code, source: "signup_link" } });
+    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: "FRIEND-F", source: "signup_link" } });
     const firstCode = lastCode();
-    await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en", referral: { code: b.code, source: "signup_typed" } });
+    await startSignup({ ticket: first.ticket, email, password: "password1", locale: "en", referral: { code: "FRIEND-G", source: "signup_typed" } });
     const verified = await verifySignupCode(first.ticket, firstCode);
     expect(verified.referral).toBe("applied");
-    expect(await boundCodeOf(email)).toBe(b.code);
-    expect(await sourceOf(email)).toBe("signup_typed");
+    expect(await bindingOf(email)).toEqual({ code: "FRIEND-G", source: "signup_typed" });
   });
 
-  it("refuses an invalid code on resubmission and keeps the code already stored", async () => {
-    const { code } = await activeCode();
+  it("refuses an inactive code on resubmission and keeps the code already stored", async () => {
+    activeCodes("FRIEND-H");
     const email = freshEmail();
-    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code, source: "signup_link" } });
+    const first = await startSignup({ ticket: null, email, password: "password1", locale: "en", referral: { code: "FRIEND-H", source: "signup_link" } });
     const firstCode = lastCode();
     expect(await statusOf(startSignup({ ticket: first.ticket, email, password: "password1", locale: "en", referral: { code: "NOPE-NOPE", source: "signup_typed" } }))).toBe(422);
     const verified = await verifySignupCode(first.ticket, firstCode);
     expect(verified.referral).toBe("applied");
-    expect(await boundCodeOf(email)).toBe(code);
+    expect(await bindingOf(email)).toEqual({ code: "FRIEND-H", source: "signup_link" });
   });
 });

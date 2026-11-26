@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * What every media upstream's adapter answers to. The runner, cost lookups and
@@ -8,7 +8,7 @@
  */
 
 import type { MediaBinding, UpstreamDecl } from "@provider/config/schema.js";
-import type { Cost } from "@provider/cost.js";
+import type { Cost, Payer } from "@provider/cost.js";
 import { BilledAnswerLost } from "@provider/errors.js";
 import { HttpStatus, NoAnswer } from "@provider/http/errors.js";
 import { answerText, isSuccess, send, type ReadOptions } from "@provider/http/request.js";
@@ -20,6 +20,8 @@ export interface Reach {
   name: string;
   decl: UpstreamDecl;
   key: string;
+  /** Whose key it is: an account's, or the deployment's (inner#1953). */
+  owner: Payer;
 }
 
 /** The bounds of one request. */
@@ -47,7 +49,8 @@ export type Asked =
   /** `handle` replaces the step's handle for the next question; it survives a JSON round trip in the ticket. */
   | { state: "running"; handle?: Record<string, string> }
   | { state: "done"; outputs: unknown[] }
-  | { state: "failed"; error: string };
+  /** `refusal` says the upstream failed the task on the account's side (its balance), as a submit refusal would. */
+  | { state: "failed"; error: string; refusal?: Exclude<Refusal, undefined> };
 
 /** What one step answered, for the steps after it and for billing. */
 export interface StepOutput {

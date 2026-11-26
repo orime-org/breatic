@@ -186,9 +186,6 @@ catalogs:
     postgres:
       specifier: ^4.1.0
       version: 4.1.0
-    stripe:
-      specifier: ^21.0.1
-      version: 21.0.1
     testcontainers:
       specifier: ^11.14.0
       version: 11.14.0
@@ -486,9 +483,6 @@ importers:
       postgres:
         specifier: 'catalog:'
         version: 4.1.0
-      stripe:
-        specifier: 'catalog:'
-        version: 21.0.1(@types/node@24.19.1)
       undici:
         specifier: 7.29.0
         version: 7.29.0
@@ -753,7 +747,7 @@ importers:
         version: 24.19.1
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 3.2.7(vitest@3.2.7)
+        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       fast-check:
         specifier: 'catalog:'
         version: 4.9.0
@@ -820,9 +814,6 @@ importers:
       resumable-stream:
         specifier: 2.2.13
         version: 2.2.13(patch_hash=a6derv6as3qqzweehvxg35zcli)
-      stripe:
-        specifier: 'catalog:'
-        version: 21.0.1(@types/node@24.19.1)
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
@@ -844,7 +835,7 @@ importers:
         version: 24.19.1
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 3.2.7(vitest@3.2.7)
+        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       bullmq:
         specifier: 'catalog:'
         version: 5.81.3
@@ -875,6 +866,9 @@ importers:
       intl-messageformat:
         specifier: ^11.2.13
         version: 11.2.13
+      jose:
+        specifier: 6.2.14
+        version: 6.2.14
       jsonata:
         specifier: 'catalog:'
         version: 2.2.2
@@ -1167,6 +1161,9 @@ importers:
       pdfjs-dist:
         specifier: ^6.2.108
         version: 6.2.108
+      probe-image-size:
+        specifier: 7.5.0
+        version: 7.5.0
       prosemirror-safari-ime-span:
         specifier: ^1.0.2
         version: 1.0.2
@@ -1338,7 +1335,7 @@ importers:
         version: 4.7.0(vite@5.4.21(@types/node@24.19.1)(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 3.2.7(vitest@3.2.7)
+        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       '@vitest/ui':
         specifier: ^4.1.10
         version: 4.1.10(vitest@3.2.7)
@@ -8504,6 +8501,9 @@ packages:
     resolution: {integrity: sha512-AC/7JofJvZGrrneWNaEnJeOLUx+JlGt7tNa0wZiRPT4MY1wmfKjt2+6O2p2uz2+skll8OZZmJMNqeke7kKbNgQ==}
     hasBin: true
 
+  jose@6.2.14:
+    resolution: {integrity: sha512-3JasLuki1NRLQvY4wCoC37KZk4qxoBx2k2aFqLxT84IezqW0bkJKnNtxnZj/Fu1xsQivoc/lytxaRHJoGLjJ1A==}
+
   joycon@3.1.1:
     resolution: {integrity: sha512-34wB/Y7MW7bzjKRjUKTa46I2Z7eV62Rkhva+KkopW7Qvv/OSWBqvkSY7vusOPrNuZcUG3tApvdVgNB8POj3SPw==}
     engines: {node: '>=10'}
@@ -9896,8 +9896,8 @@ packages:
     resolution: {integrity: sha512-Qb1gy5OrP5+zDf2Bvnzdl3jsTf1qXVMazbvCoKhtKqVs4/YK4ozX4gKQJJVyNe+cajNPn0KoC0MC3FUmaHWEmQ==}
     engines: {node: ^10.13.0 || ^12.13.0 || ^14.15.0 || >=15.0.0}
 
-  probe-image-size@7.3.0:
-    resolution: {integrity: sha512-7CaDeBwiAbh6ohXsvLbAZhO7wzsZAmaevfxe39qvCwRh8LyaZfDlBGGLU1CCTgrTLtCOdwBBhjOrIHaIIimHfQ==}
+  probe-image-size@7.5.0:
+    resolution: {integrity: sha512-ietdx4XPgmnzHRZOq1/KtcnsBkL4bRsBe+Szj5Tuq1/KPqDG42OspG1IhJb7vz6Z9pSzhp0J6UPnw6hujJTWoQ==}
 
   process-nextick-args@2.0.1:
     resolution: {integrity: sha512-3ouUOpQhtgrbOa17J7+uxOTpITYWaGP7/AhoR3+A+/1e9skrzelGi/dXzEYyvbxubEF6Wn2ypscTKiKJFFn1ag==}
@@ -10733,9 +10733,6 @@ packages:
     resolution: {integrity: sha512-eLoXW/DHyl62zxY4SCaIgnRhuMr6ri4juEYARS8E6sCEqzKpOiE521Ucofdx+KnDZl5xmvGYaaKCk5FEOxJCoQ==}
     engines: {node: '>= 0.4'}
 
-  stream-parser@0.3.1:
-    resolution: {integrity: sha512-bJ/HgKq41nlKvlhccD5kaCr/P+Hu0wPNKPJOH7en+YrJu/9EgqUF+88w5Jb6KNcjOFMhfX4B2asfeAtIGuHObQ==}
-
   stream-shift@1.0.3:
     resolution: {integrity: sha512-76ORR0DO1o1hlKwTbi/DM3EXWGf3ZJYO8cXX5RJwnul2DEg2oyoZyjLNoQM8WsvZiFKCRfC1O0J7iCvie3RZmQ==}
 
@@ -10827,15 +10824,6 @@ packages:
 
   strip-literal@3.1.0:
     resolution: {integrity: sha512-8r3mkIM/2+PpjHoOtiAW8Rg3jJLHaV7xPwG+YRGrv6FP0wwk/toTpATxWYOW0BKdWwl82VT2tFYi5DlROa0Mxg==}
-
-  stripe@21.0.1:
-    resolution: {integrity: sha512-ocv0j7dWttswDWV2XL/kb6+yiLpDXNXL3RQAOB5OB2kr49z0cEatdQc12+zP/j5nrXk6rAsT4N3y/NUvBbK7Pw==}
-    engines: {node: '>=18'}
-    peerDependencies:
-      '@types/node': '>=18'
-    peerDependenciesMeta:
-      '@types/node':
-        optional: true
 
   strtok3@10.3.5:
     resolution: {integrity: sha512-ki4hZQfh5rX0QDLLkOCj+h+CVNkqmp/CMf8v8kZpkNVK6jGQooMytqzLZYUVYIZcFZ6yDB70EfD8POcFXiF5oA==}
@@ -15801,7 +15789,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/coverage-v8@3.2.7(vitest@3.2.7)':
+  '@vitest/coverage-v8@3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@bcoe/v8-coverage': 1.0.2
@@ -18402,7 +18390,6 @@ snapshots:
   iconv-lite@0.4.24:
     dependencies:
       safer-buffer: 2.1.2
-    optional: true
 
   iconv-lite@0.6.3:
     dependencies:
@@ -18749,6 +18736,8 @@ snapshots:
 
   jiti@2.7.0: {}
 
+  jose@6.2.14: {}
+
   joycon@3.1.1: {}
 
   js-base64@2.6.4: {}
@@ -18922,7 +18911,7 @@ snapshots:
       make-dir: 5.1.0
       mime: 1.6.0
       needle: 3.5.0
-      probe-image-size: 7.3.0
+      probe-image-size: 7.5.0
       source-map: 0.6.1
     transitivePeerDependencies:
       - supports-color
@@ -20176,7 +20165,6 @@ snapshots:
       sax: 1.6.1
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   needle@3.5.0:
     dependencies:
@@ -20829,14 +20817,12 @@ snapshots:
       ansi-styles: 5.2.0
       react-is: 17.0.2
 
-  probe-image-size@7.3.0:
+  probe-image-size@7.5.0:
     dependencies:
       lodash.merge: 4.6.2
       needle: 2.9.1
-      stream-parser: 0.3.1
     transitivePeerDependencies:
       - supports-color
-    optional: true
 
   process-nextick-args@2.0.1: {}
 
@@ -21877,13 +21863,6 @@ snapshots:
       es-errors: 1.3.0
       internal-slot: 1.1.0
 
-  stream-parser@0.3.1:
-    dependencies:
-      debug: 2.6.9
-    transitivePeerDependencies:
-      - supports-color
-    optional: true
-
   stream-shift@1.0.3: {}
 
   streamx@2.28.0:
@@ -22007,10 +21986,6 @@ snapshots:
   strip-literal@3.1.0:
     dependencies:
       js-tokens: 9.0.1
-
-  stripe@21.0.1(@types/node@24.19.1):
-    optionalDependencies:
-      '@types/node': 24.19.1
 
   strtok3@10.3.5:
     dependencies:

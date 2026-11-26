@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
 import { HexColorPicker } from 'react-colorful';
@@ -202,7 +202,7 @@ export const SceneColorField = React.memo(function SceneColorField({ value, disa
   return <Popover onOpenChange={onOpenChange}>
     <PopoverTrigger asChild>
       <Button ref={swatch} variant={null} size={null} aria-labelledby={labelId} disabled={disabled}
-        className='size-6 rounded-full border border-border transition hover-enabled:border-active-border hover-enabled:opacity-70 disabled:cursor-not-allowed disabled:opacity-50'
+        className='size-6 rounded-full border border-swatch-border transition hover-enabled:border-active-border hover-enabled:opacity-70 disabled:cursor-not-allowed disabled:opacity-50'
         style={{ backgroundColor: value }} />
     </PopoverTrigger>
     <PopoverContent container={container} side='left' align='start' sideOffset={sideOffset} className='w-auto space-y-2 p-3'

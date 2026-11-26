@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -2963,7 +2963,6 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       clientMaxAttempts: 1,
       clientRetryBaseDelayMs: 1,
       uploadIdleTimeoutMs: 60000,
-      uploadStatusPollSeconds: 2,
       assetUrlPrefix: 'https://cdn/',
     });
     vi.mocked(hashFile).mockResolvedValueOnce('a'.repeat(64));
@@ -3932,7 +3931,8 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       fireEvent.pointerMove(layer, { clientX: 250, clientY: 180 });
       fireEvent.pointerUp(layer);
     });
-    act(() => {
+    // Async, so a crop run that settles at once drops its local entry inside act.
+    await act(async () => {
       fireEvent.click(screen.getByTestId('focus-crop-confirm'));
     });
     return () => {
@@ -4018,6 +4018,27 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     act(() => { fireEvent.click(screen.getByTestId('focus-crop-confirm')); });
     return () => { vi.restoreAllMocks(); };
   };
+
+  // The page holds a crop only until its bytes are sent; the node's `focusUploads` shows the rest (#1580).
+  it('drops the crop from this page once its run is over', async () => {
+    let finish: () => void = () => {};
+    mockRunFocusCrop.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          finish = resolve;
+        }),
+    );
+    const restore = await confirmImageCrop();
+    try {
+      expect(canvasSessions.of('s').getState().pendingFocusUploads).toHaveLength(1);
+      await act(async () => {
+        finish();
+      });
+      expect(canvasSessions.of('s').getState().pendingFocusUploads).toEqual([]);
+    } finally {
+      restore();
+    }
+  });
 
   // An image crop's upload is front-end work like any other upload on the
   // canvas: while it is out, closing this Space's tab is held back, so the

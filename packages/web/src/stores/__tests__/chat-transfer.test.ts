@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * A chat message whose body is over the request limit (inner#1006 design
@@ -136,6 +136,11 @@ function sleep(ms: number, signal?: unknown): Promise<void> {
  */
 function stubTransfer(): void {
   seen = { ticketBodies: [], ticketSignals: [], partSignals: [], partsStarted: 0, finishes: 0, waits: 0 };
+  // The wait is registered before the bytes go (#1580); the ending comes `timing.wait` after the finish answered.
+  let finishAnswered: () => void = () => undefined;
+  const answered = new Promise<void>((resolve) => {
+    finishAnswered = resolve;
+  });
   assetsApi.resetUploadConfigCache();
   vi.mocked(apiGet).mockImplementation(async (url: string) => {
     if (url !== '/assets/upload-config') throw new Error(`unexpected GET ${url}`);
@@ -146,7 +151,6 @@ function stubTransfer(): void {
       clientRetryBaseDelayMs: 1,
       uploadIdleTimeoutMs: 30_000,
       assetUrlPrefix: 'https://assets.test.invalid/',
-      uploadStatusPollSeconds: 1,
       maxRequestBodyBytes: LIMIT,
     };
   });
@@ -164,6 +168,7 @@ function stubTransfer(): void {
     if (/^\/assets\/uploads\/[^/]+\/complete$/.test(url)) {
       seen.finishes += 1;
       await sleep(timing.finish, config?.signal);
+      finishAnswered();
       return { storageKey: KEY };
     }
     throw new Error(`unexpected POST ${url}`);
@@ -182,6 +187,7 @@ function stubTransfer(): void {
   });
   vi.mocked(waitForUploadEnding).mockImplementation(async (key: string) => {
     seen.waits += 1;
+    await answered;
     await sleep(timing.wait);
     return { key, state: 'transferred' } as UploadEnding;
   });

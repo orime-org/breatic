@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Worker YAML configuration loader.
@@ -52,6 +52,13 @@ export const workerConfigSchema = z.object({
       interval_ms: z.number().int().positive().default(60_000),
       min_age_ms: z.number().int().nonnegative().default(30_000),
       batch_size: z.number().int().positive().default(100),
+    })
+    .strict()
+    .prefault({}),
+  /** The sweep that tells pages what came due (#1580): notifications, holds, Project transfers, 3D rows. */
+  deadline_sweep: z
+    .object({
+      interval_ms: z.number().int().positive().default(30_000),
     })
     .strict()
     .prefault({}),

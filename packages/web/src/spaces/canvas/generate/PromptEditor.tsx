@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type { HocuspocusProvider } from '@hocuspocus/provider';
 import { Placeholder } from '@tiptap/extension-placeholder';
@@ -33,7 +33,7 @@ import { MENTION_SOURCE_ID_ATTR, REFERENCE_MENTION_NODE } from '@web/features/re
 import {
   deriveReferences, focusToRailItem, type ReferenceRailItem,
 } from '@web/spaces/canvas/generate/derive-references';
-import { validFocusImages } from '@web/data/focus-images';
+import { validFocusImages } from '@breatic/shared';
 import { readEdges, readNodes } from '@web/data/yjs/canvas-space';
 import { useDocSize } from '@web/data/yjs/doc-size';
 import { docNameOf } from '@web/data/yjs/manager';

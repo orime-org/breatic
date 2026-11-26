@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import {
   Background,
@@ -65,7 +65,7 @@ import {
   MAX_FOCUS_ENTRIES,
   MAX_FOCUS_NAME,
   validFocusImages,
-} from '@web/data/focus-images';
+} from '@breatic/shared';
 import {
   getCachedReferencePoolCap,
   type NodeHistoryEntry,
@@ -73,7 +73,7 @@ import {
 import { referencePoolCount } from '@web/spaces/canvas/generate/reference-pool-cap';
 import { fillSlot } from '@web/spaces/canvas/generate/slot-write';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { modelCatalogQuery } from '@web/spaces/canvas/generate/model-catalog-query';
+import { modelCatalogQuery } from '@web/data/model-catalog-query';
 import { historyKey } from '@web/spaces/canvas/history/use-node-history';
 import { usePrefetchModelCatalog } from '@web/spaces/canvas/generate/use-prefetch-model-catalog';
 import {
@@ -108,7 +108,6 @@ import { frameIndexOfMediaTime } from '@web/spaces/canvas/video-presentation/fra
 import { deriveVideoToolPanelState } from '@web/spaces/canvas/video-presentation/use-canvas-video-bindings';
 import {
   addEdge,
-  addNodeFocusImage,
   addNode,
   appendNodeSlotItem,
   expandGroup,
@@ -130,7 +129,6 @@ import {
   type CanvasEdge,
   type CanvasNodeView,
   type CanvasUndoStep,
-  readCanvasGraph,
   readTextBodies,
   readEdges,
   readNodePlacements,
@@ -163,7 +161,8 @@ import {
 } from '@web/spaces/canvas/mini-tool/drawing-history';
 import { BRUSH_SIZE } from '@web/stores/drawing-draft';
 import { steppedMarkSize } from '@web/stores/mark-draft';
-import { uploadDerivedImage } from '@web/spaces/canvas/upload-derived-image';
+import { uploadDerivedImage, uploadFocusCrop } from '@web/spaces/canvas/upload-derived-image';
+import { uploadingFocusOf } from '@web/spaces/canvas/focus/focus-uploading';
 import { failUploadIntoNode, startUploadIntoNode } from '@web/spaces/canvas/upload-into-node';
 import { useCanvasRevealReceiver } from '@web/spaces/canvas/use-canvas-reveal-receiver';
 import {
@@ -175,8 +174,6 @@ import {
   fillNodesFromFiles,
   computeDeletedAssetEntries,
   type UploadNodeSpec,
-  assetUrlSurvives,
-  isReportableAssetUrl,
   TEXT_REFUSAL_MARK,
 } from '@web/spaces/canvas/canvas-upload';
 import { checkAdd, checkWrite, type SpaceRefusal } from '@web/data/yjs/space-write';
@@ -228,6 +225,8 @@ import {
   NODE_GATE_TOAST_KEY,
 } from '@web/spaces/canvas/node-gate';
 import { warnNodeGate } from '@web/spaces/canvas/node-gate-toast';
+import { sourceAnimationOf } from '@web/spaces/canvas/source-animation';
+import { useSpaceOpenRequestStore } from '@web/stores/space-open-request';
 import { downloadableAsset } from '@web/spaces/canvas/node-download';
 import { keepSnapshot } from '@web/spaces/canvas/keep-snapshot';
 import {
@@ -956,7 +955,7 @@ function CanvasSpaceInner({
         ?.data as { focusImages?: unknown } | undefined;
       if (
         validFocusImages(panelData?.focusImages).length +
-          pendingFocusCount(sessionStore, panelNodeId) >=
+          pendingFocusCount(sessionStore, graph.flowNodes, panelNodeId) >=
         MAX_FOCUS_ENTRIES
       ) {
         toast.warning(
@@ -969,7 +968,7 @@ function CanvasSpaceInner({
       if (
         cap !== null &&
         referencePoolCount(graph.flowEdges, graph.flowNodes, panelNodeId) +
-          pendingFocusCount(sessionStore, panelNodeId) >=
+          pendingFocusCount(sessionStore, graph.flowNodes, panelNodeId) >=
           cap
       ) {
         // Rejection keeps the marquee (the overlay clears only on true) —
@@ -1000,16 +999,19 @@ function CanvasSpaceInner({
           frameIndex: frameIndexOfMediaTime(drawn.mediaTime, selected.display), crop: result.crop });
         return true;
       }
-      const pendingId = newId();
+      // One id names the crop from here on: its local entry, its ticket, the node's uploading entry and the image
+      // collab adds to the pool. The local entry lasts until the bytes are sent; the node's shows the rest.
+      const cropId = newId();
       store.addPendingFocusUpload({
-        id: pendingId,
+        id: cropId,
         nodeId: panelNodeId,
         name: sourceName,
       });
       trackOperation(
-        pendingId,
+        cropId,
         runFocusCrop(
           {
+            id: cropId,
             sourceUrl,
             sourceName,
             sourceTimeSeconds: result.sourceTimeSeconds,
@@ -1018,66 +1020,13 @@ function CanvasSpaceInner({
           },
           {
             exportCrop: exportCropBlob,
-            uploadFile: (file, pid) => uploadDerivedImage(file, { projectId: pid, spaceId }),
-            addFocusImage: (image) => {
-              sessionStore.getState().removePendingFocusUpload(pendingId);
-              // A refused append must be SAID — the upload already succeeded,
-              // and silence here loses the crop after real side effects
-              // (round-7). Each refusal gets its TRUTHFUL message (round-8:
-              // one boolean told "pool full (200)" when the panel node was
-              // deleted mid-upload), and the just-uploaded orphan asset is
-              // reported deleted (ledger parity with the ✕ path) unless the
-              // URL survives elsewhere.
-              const outcome = addNodeFocusImage(
-                projectId,
-                spaceId,
-                panelNodeId,
-                image,
-              );
-              if (outcome === 'added') return;
-              if (outcome === 'pool-full') {
-                toast.warning(
-                  t('canvas.generatePanel.referencePoolFull', {
-                    cap: MAX_FOCUS_ENTRIES,
-                  }),
-                );
-              } else if (outcome !== 'refused') {
-                // A size-cap refusal said so itself; its crop is still an
-                // orphan to report below.
-                toast.warning(t('canvas.generatePanel.focusCropDiscarded'));
-              }
-              if (
-                isReportableAssetUrl(image.url) &&
-              !assetUrlSurvives(
-                image.url,
-                readCanvasGraph(projectId, spaceId).nodes,
-              )
-              ) {
-                void assetsApi
-                  .reportDeleted({
-                    projectId,
-                    entries: [
-                      {
-                        fileUrl: image.url,
-                        kind: 'image',
-                        nodeId: panelNodeId,
-                        spaceId,
-                      },
-                    ],
-                  })
-                  .catch(() => {
-                  // Silent: audit-feed miss at worst (reportDeletedAssets
-                  // parity).
-                  });
-              }
-            },
+            uploadFile: (file, pid, image, onSent) => uploadFocusCrop(file, { projectId: pid, spaceId, nodeId: panelNodeId }, image, onSent),
             onFailure: (stage) => {
-              sessionStore.getState().removePendingFocusUpload(pendingId);
+              sessionStore.getState().removePendingFocusUpload(cropId);
               toast.error(t(focusFailureMessageKey(stage)));
             },
-            makeId: newId,
           },
-        ),
+        ).then(() => sessionStore.getState().removePendingFocusUpload(cropId)),
       );
       return true;
     },
@@ -1946,7 +1895,7 @@ function CanvasSpaceInner({
           flowNodes,
           connection.target,
         ) +
-          pendingFocusCount(sessionStore, connection.target) >=
+          pendingFocusCount(sessionStore, flowNodes, connection.target) >=
           cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
@@ -2123,7 +2072,7 @@ function CanvasSpaceInner({
           graphStore.getState().flowNodes,
           target,
         ) +
-          pendingFocusCount(sessionStore, target) >=
+          pendingFocusCount(sessionStore, graphStore.getState().flowNodes, target) >=
           cap
       ) {
         toast.warning(t('canvas.generatePanel.referencePoolFull', { cap }));
@@ -3952,6 +3901,18 @@ function CanvasSpaceInner({
     openHistoryPanel(nodeId);
     selectOnlyNode(nodeId);
   }, [nodeMenu.nodeId, openHistoryPanel, selectOnlyNode]);
+  // A video still showing what a Motion Space exported opens that result (#1490 design §9.3).
+  const menuSourceAnimation = React.useMemo(() => {
+    const node = nodes.find((n) => n.id === nodeMenu.nodeId);
+    return node === undefined ? null : sourceAnimationOf(node);
+  }, [nodes, nodeMenu.nodeId]);
+  const openSourceAnimationFromMenu = React.useCallback((): void => {
+    if (menuSourceAnimation === null) return;
+    useSpaceOpenRequestStore.getState().dispatch({
+      type: 'request',
+      request: { type: 'web_animation', spaceId: menuSourceAnimation.spaceId, select: menuSourceAnimation.executionId },
+    });
+  }, [menuSourceAnimation]);
   // Node menu "download": the asset the menu's node is showing, or null when
   // it shows none — which is also what decides whether the item is offered at
   // all, so the item and its target come from one answer (#2108).
@@ -5305,6 +5266,7 @@ function CanvasSpaceInner({
               menuDownloadUrl === null ? undefined : understandFromMenu
             }
             understanding={understandingMenuNode}
+            onOpenSourceAnimation={menuSourceAnimation === null ? undefined : openSourceAnimationFromMenu}
             // Transcribe hears speech, which only audio and video carry; it
             // greys on the same answer the two above read.
             transcribeOffered={nodeMenu.type === 'audio' || nodeMenu.type === 'video'}
@@ -5359,18 +5321,21 @@ function CanvasSpaceInner({
 }
 
 /**
- * In-flight focus uploads for a node — counted by every pool-cap gate so a
- * pending crop occupies its slot BEFORE its Yjs write lands (adversarial
- * 2026-07-16: the edge gates ignoring pending let a same-client burst
- * overshoot the cap the confirm gate guards).
+ * Focus crops uploading on a node, counted by every pool-cap gate so an uploading crop holds its slot before it lands
+ * in the pool (adversarial 2026-07-16: the edge gates ignoring pending let a same-client burst overshoot the cap the
+ * confirm gate guards): this page's own until sent and the node's `focusUploads` (#1580), each once.
  * @param session - The canvas's session store.
+ * @param nodes - The canvas nodes, the node's data read from them.
  * @param nodeId - The pool's target node.
- * @returns The number of in-flight focus uploads for that node.
+ * @returns How many crops are uploading on that node.
  */
-function pendingFocusCount(session: CanvasSessionStore, nodeId: string): number {
-  return session
-    .getState()
-    .pendingFocusUploads.filter((p) => p.nodeId === nodeId).length;
+function pendingFocusCount(
+  session: CanvasSessionStore,
+  nodes: ReadonlyArray<{ id: string; data?: unknown }>,
+  nodeId: string,
+): number {
+  const data = nodes.find((n) => n.id === nodeId)?.data;
+  return uploadingFocusOf(session.getState().pendingFocusUploads, nodeId, typeof data === 'object' && data !== null ? data : undefined, Date.now()).length;
 }
 
 /**

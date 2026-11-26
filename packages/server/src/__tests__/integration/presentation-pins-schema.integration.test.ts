@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * S6e E4 schema (inner#1306 test plan §90 E4-4, E4-8, E4-1; frames-split design §7.15).

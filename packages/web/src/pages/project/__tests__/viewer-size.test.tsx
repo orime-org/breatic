@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Space document size cap, second design (inner#1790), web test spec section
@@ -101,7 +101,6 @@ beforeEach(() => {
     clientMaxAttempts: 1,
     clientRetryBaseDelayMs: 1,
     uploadIdleTimeoutMs: 60000,
-    uploadStatusPollSeconds: 2,
     assetUrlPrefix: 'https://cdn/',
   });
   picker = vi.spyOn(HTMLInputElement.prototype, 'click').mockImplementation(() => undefined);

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * S6d D5-8: the scene_cuts recipe on the frame grid (inner#1306 test plan §93 D5-8; frames-split design §7.16, §7.17

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Background work of a Space in its own document (root `AGENTS.md#space-task-state-lives-in-the-space-document`):
@@ -10,7 +10,7 @@
 import type { SpaceType } from "@shared/types/space.js";
 
 /** The Space types whose documents take a change version: collab writes it and web watches it, from this one list. */
-export const SPACE_TASKS_TYPES: ReadonlySet<SpaceType> = new Set<SpaceType>(["timeline"]);
+export const SPACE_TASKS_TYPES: ReadonlySet<SpaceType> = new Set<SpaceType>(["3d", "web_animation", "timeline"]);
 
 /** The root map of a Space document that holds its background work's change version. */
 export const SPACE_TASKS_KEY = "spaceTasks";

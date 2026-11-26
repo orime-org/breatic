@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, expect, it } from "vitest";
 import * as shared from "@shared/index.js";
@@ -66,7 +66,7 @@ const cases: readonly ViewCase[] = [
   { name: "projectCreditsViewSchema", value: { spendable: "80.000000", held: "30.000000", available: "50.000000" }, amountFields: ["spendable", "held", "available"], requiredAmounts: ["spendable", "held", "available"] },
   { name: "studioCreditsViewSchema", value: { spendable: "80.000000", debt: "20.000000", held: "30.000000", available: "50.000000", lots: [studioLot], ledger: { items: [studioLedger], nextCursor: null } }, amountFields: ["spendable", "debt", "held", "available"], requiredAmounts: [] },
   { name: "studioCreditSummarySchema", value: summary, amountFields: ["spendable", "debt", "spent"], requiredAmounts: ["spendable", "debt", "spent"] },
-  { name: "creditOverviewSchema", value: { assignedCredits: "80.000000", unassignedCredits: "0.000000", underRefundCredits: "0.000000", billing: true, studios: [summary] }, amountFields: ["assignedCredits", "unassignedCredits", "underRefundCredits"], requiredAmounts: ["assignedCredits", "unassignedCredits", "underRefundCredits"] },
+  { name: "creditOverviewSchema", value: { assignedCredits: "80.000000", unassignedCredits: "0.000000", underRefundCredits: "0.000000", charging: true, selling: true, studios: [summary] }, amountFields: ["assignedCredits", "unassignedCredits", "underRefundCredits"], requiredAmounts: ["assignedCredits", "unassignedCredits", "underRefundCredits"] },
 ];
 
 /**
@@ -146,12 +146,12 @@ describe("credit view nullability, paging and other units", () => {
   });
 
   it("validates each studio's summary inside an account overview", () => {
-    const overview = { assignedCredits: "80.000000", unassignedCredits: "0.000000", underRefundCredits: "0.000000", billing: true, studios: [{ ...summary, spent: 20 }] };
+    const overview = { assignedCredits: "80.000000", unassignedCredits: "0.000000", underRefundCredits: "0.000000", charging: true, selling: true, studios: [{ ...summary, spent: 20 }] };
     expect(schema("creditOverviewSchema").safeParse(overview).success).toBe(false);
   });
 
   it("accepts an aggregate beyond one numeric row in an account overview", () => {
-    const overview = { assignedCredits: "199999999999999.999998", unassignedCredits: "0.000000", underRefundCredits: "0.000001", billing: true, studios: [] };
+    const overview = { assignedCredits: "199999999999999.999998", unassignedCredits: "0.000000", underRefundCredits: "0.000001", charging: true, selling: true, studios: [] };
     expect(schema("creditOverviewSchema").parse(overview)).toEqual(overview);
   });
 });

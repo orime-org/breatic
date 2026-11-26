@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Seeking to a grid slot in the original (inner#1306 test plan §65.3 R03, R04; frames-split design §7.16 工具源为原片 row,

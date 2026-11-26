@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * `POST /api/v1/mini-tools` — the one entry every server-run tool shares.
@@ -445,7 +445,7 @@ describe("POST /mini-tools", () => {
     });
 
     expect(res.status).toBe(422);
-    expect(mocks.inputRefusalFor).toHaveBeenLastCalledWith("pro-upscaler", expect.objectContaining({ params: expect.any(Object) }), undefined);
+    expect(mocks.inputRefusalFor).toHaveBeenLastCalledWith("pro-upscaler", expect.objectContaining({ params: expect.any(Object) }), undefined, undefined);
     expect(mocks.taskService.create).not.toHaveBeenCalled();
   });
 

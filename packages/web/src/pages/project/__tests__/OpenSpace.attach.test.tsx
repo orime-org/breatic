@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { render, act } from '@testing-library/react';
@@ -110,22 +110,27 @@ describe('OpenSpace — attach lifecycle follows OPEN tabs, not the active tab',
     expect(providerInstances[1]!.config.websocketProvider).toBe(providerInstances[0]!.config.websocketProvider);
   });
 
-  it('reads the task lists again when a Timeline document records a change, and leaves other types alone', () => {
+  it('reads the task lists again when a Motion, Timeline or 3D document records a change, and leaves other types alone', () => {
     const invalidate = vi.spyOn(queryClient, 'invalidateQueries').mockResolvedValue();
     render(
       tree([
+        { id: 'm', type: 'web_animation' },
         { id: 't', type: 'timeline' },
+        { id: 'g', type: '3d' },
         { id: 'c', type: 'canvas' },
-        { id: 'd', type: 'document' },
       ]),
     );
     // Collab writes the version, so it reaches the tab as a remote update.
     const fromCollab = new Y.Doc();
     fromCollab.getMap(SPACE_TASKS_KEY).set(SPACE_TASKS_VERSION, '1-0');
-    for (const name of ['project-p1/timeline-t', 'project-p1/canvas-c', 'project-p1/document-d']) {
+    for (const name of ['project-p1/web_animation-m', 'project-p1/timeline-t', 'project-p1/3d-g', 'project-p1/canvas-c']) {
       act(() => { Y.applyUpdate(getDoc(name), Y.encodeStateAsUpdate(fromCollab)); });
     }
-    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([spaceTasksQueryKey('p1', 't')]);
+    expect(invalidate.mock.calls.map(([filters]) => filters?.queryKey)).toEqual([
+      spaceTasksQueryKey('p1', 'm'),
+      spaceTasksQueryKey('p1', 't'),
+      spaceTasksQueryKey('p1', 'g'),
+    ]);
     invalidate.mockRestore();
   });
 

@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * Asset repository — the studio ledger and permanent Project asset references.
@@ -15,7 +15,7 @@
 import { and, desc, eq, gt, isNotNull, isNull, inArray, or, sql, type SQL } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { db, type DbTx } from "@core/db/client.js";
-import { projectAssetRefs, studioAssets } from "@core/db/schema.js";
+import { projectAssetRefs, projects, studioAssets } from "@core/db/schema.js";
 import { coverKeyFor } from "@core/infra/storage/index.js";
 import * as maintenanceRepo from "@core/maintenance/maintenance.repo.js";
 import type { ProjectAssetReferenceEntity, ProjectRegisteredAsset, StudioAssetEntity } from "@breatic/shared";
@@ -568,6 +568,24 @@ export async function readLiveProjectReferences(projectId: string, studioId: str
       eq(studioAssets.studioId, studioId), isNull(studioAssets.deletedAt),
     )).orderBy(projectAssetRefs.assetId);
   return rows.map((row) => toReferenceEntity(row.reference));
+}
+
+/**
+ * The live Projects holding a live reference to an asset, whatever their Studio (#1580): the ones a page may have the
+ * asset open in, told when its peaks are ready. A Project counts as live as `countLiveProjectsInStudio` counts it:
+ * neither archived nor deleted.
+ * @param assetId - The asset.
+ * @returns The Projects' ids, in no particular order.
+ * @throws {Error} When the database read fails.
+ */
+export async function listProjectsReferencingAsset(assetId: string): Promise<string[]> {
+  const rows = await db.selectDistinct({ id: projectAssetRefs.projectId }).from(projectAssetRefs)
+    .innerJoin(projects, eq(projects.id, projectAssetRefs.projectId))
+    .where(and(
+      eq(projectAssetRefs.assetId, assetId), isNull(projectAssetRefs.deletedAt),
+      isNull(projects.deletedAt), isNull(projects.archivedAt),
+    ));
+  return rows.map((row) => row.id);
 }
 
 /**

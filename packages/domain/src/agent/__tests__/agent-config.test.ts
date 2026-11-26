@@ -1,5 +1,5 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
  * The one place an agent's three things get decided.
@@ -61,7 +61,6 @@ describe("buildAgentConfig", () => {
       "get_canvas_capabilities",
       "get_generation_template",
       "get_product_guide",
-      "judge_likelihood",
       "list_generation_models",
       "list_project_activity",
       "propose_canvas_action",

@@ -1,55 +1,156 @@
 // Copyright (c) 2026 Orime, Inc.
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The ONE sanitizer for a node's `focusImages` (#1782), shared by web and collab (frames-split §5.5 delivery row): the field is
- * collaborative Yjs data, untrusted, and every reader and writer (the panel view-model, the reference-pool cap count,
- * collab's video focus-crop append) must agree on what counts as an entry.
+ * What a focus image is (#1782, #1580): the one rule the page's pool read, the reference-pool cap, the upload ticket
+ * and collab's append all apply. A node's `focusImages` is collaborative Yjs data, so every reader narrows it through
+ * {@link validFocusImages}; two readers disagreeing is how a malformed entry became an invisible but counted pool slot.
+ *
+ * A crop's upload names the image it will become (`focusImageTicketSchema`); once its bytes are registered, the server
+ * hands the image with its registered address to collab ({@link FocusImageUploadEvent}), which adds it to the node's
+ * pool. The page never writes the result.
  */
 
-import type { FocusImage } from '@shared/types/canvas-node.js';
-import { MAX_FOCUS_NAME } from '@shared/mini-tools/video-draft.js';
+import { z } from "zod";
+import type { FocusImage, FocusUpload } from "@shared/types/canvas-node.js";
 
-export { MAX_FOCUS_NAME };
-
-/** Field bounds: a hostile valid-shaped entry with a multi-MB name or url would survive every heal; url mirrors `.max(2048)`. */
-const MAX_ID = 128;
-const MAX_URL = 2048;
-const MAX_DIM = 100000;
+/** Longest id kept. */
+export const MAX_FOCUS_ID = 128;
+/** Longest address kept, the asset ledger's bound. */
+export const MAX_FOCUS_URL = 2048;
+/** Largest crop side, in natural pixels. */
+export const MAX_FOCUS_DIMENSION = 100_000;
+/** Longest source-name snapshot; the crop pipeline clamps to it before uploading. */
+export const MAX_FOCUS_NAME = 300;
 /**
- * Max entries the sanitizer keeps: above the configurable pool cap and a hard ceiling against a hostile array write. The
- * write side refuses an append its readers would truncate away.
+ * Most entries a pool keeps: above the configurable reference-pool cap, and a hard ceiling against a megabyte array
+ * of entries that are each valid. The append refuses past it, so no reader truncates what was written.
  */
 export const MAX_FOCUS_ENTRIES = 200;
 
-/**
- * Whether a raw value has the full FocusImage shape within the field bounds.
- * @param f - The raw entry.
- * @returns True for a valid entry.
- * @throws {never} Never.
- */
-function validEntry(f: unknown): f is FocusImage {
-  if (typeof f !== 'object' || f === null) return false;
-  const e = f as FocusImage;
-  return typeof e.id === 'string' && e.id.length > 0 && e.id.length <= MAX_ID &&
-    typeof e.url === 'string' && e.url.length > 0 && e.url.length <= MAX_URL &&
-    typeof e.name === 'string' && e.name.length <= MAX_FOCUS_NAME &&
-    Number.isFinite(e.width) && e.width > 0 && e.width <= MAX_DIM &&
-    Number.isFinite(e.height) && e.height > 0 && e.height <= MAX_DIM;
+/** The task-events type of a focus crop's upload, for collab to write into its node. */
+export const FOCUS_IMAGE_UPLOAD_EVENT_TYPE = "focus-image-upload";
+
+/** Where a focus crop's upload is going, for collab to write into its node (#1580). */
+interface FocusImageUploadTarget {
+  type: typeof FOCUS_IMAGE_UPLOAD_EVENT_TYPE;
+  /** The canvas Space document holding the node. */
+  docName: string;
+  /** The node whose reference list takes the crop. */
+  nodeId: string;
 }
 
 /**
- * Narrows an untrusted `focusImages` value to the valid entries: anything but an array is none, the first entry of an id
- * wins, survivors are projected onto fresh five-field literals and at most `MAX_FOCUS_ENTRIES` are kept.
- * @param raw - The raw `data.focusImages` value off the wire.
- * @returns Fresh, exact-shape valid entries (empty for malformed input).
- * @throws {never} Never.
+ * A focus crop's upload as it moves: `uploading` when it opens (the node shows it as running until its deadline),
+ * `completed` with the address of the registered asset (it moves into the pool), `failed` when it ends without one (it
+ * goes). `openedAt` is when the upload opened, by the database's clock: entries whose deadline it has reached are over.
+ */
+export type FocusImageUploadEvent =
+  | (FocusImageUploadTarget & { state: "uploading"; openedAt: number; image: FocusUpload })
+  | (FocusImageUploadTarget & { state: "completed"; image: FocusImage })
+  | (FocusImageUploadTarget & { state: "failed"; id: string });
+
+/**
+ * A side that a crop may have.
+ * @param value - The value.
+ * @returns Whether it is a finite positive size within bounds.
+ */
+function isDimension(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 && value <= MAX_FOCUS_DIMENSION;
+}
+
+/**
+ * Whether one value has a focus crop's parts: an id, a name and two sides.
+ * @param value - The value.
+ * @returns True when it carries a non-empty id within bounds, a name within bounds and two valid sides.
+ */
+function isFocusCrop(value: unknown): value is Omit<FocusImage, "url"> {
+  if (typeof value !== "object" || value === null) return false;
+  const f = value as Record<string, unknown>;
+  return (
+    typeof f.id === "string" && f.id.length > 0 && f.id.length <= MAX_FOCUS_ID &&
+    typeof f.name === "string" && f.name.length <= MAX_FOCUS_NAME &&
+    isDimension(f.width) && isDimension(f.height)
+  );
+}
+
+/**
+ * Whether one value is a focus crop still uploading, read from untrusted data.
+ * @param value - The value.
+ * @returns True when it has a crop's parts and a finite deadline.
+ */
+export function isValidFocusUpload(value: unknown): value is FocusUpload {
+  return isFocusCrop(value) && Number.isFinite((value as { deadlineAt?: unknown }).deadlineAt);
+}
+
+/**
+ * Whether one value is a focus image, read from untrusted data.
+ * @param value - The value.
+ * @returns True when it has a crop's parts and a non-empty address within bounds.
+ */
+export function isValidFocusImage(value: unknown): value is FocusImage {
+  if (!isFocusCrop(value)) return false;
+  const url = (value as { url?: unknown }).url;
+  return typeof url === "string" && url.length > 0 && url.length <= MAX_FOCUS_URL;
+}
+
+/**
+ * Narrow an untrusted `focusImages` value to its valid entries: anything but an array is none; the first entry of an
+ * id wins; at most {@link MAX_FOCUS_ENTRIES} are kept; each survivor is projected onto a fresh five-field object, so
+ * extra properties on a remote entry never ride along.
+ * @param raw - The raw `data.focusImages` value, as a plain array.
+ * @returns The valid entries.
  */
 export function validFocusImages(raw: unknown): FocusImage[] {
   if (!Array.isArray(raw)) return [];
   const seen = new Set<string>();
-  return raw
-    .filter((f): f is FocusImage => validEntry(f) && !seen.has(f.id) && (seen.add(f.id), true))
-    .slice(0, MAX_FOCUS_ENTRIES)
-    .map(({ id, url, name, width, height }) => ({ id, url, name, width, height }));
+  const kept: FocusImage[] = [];
+  for (const f of raw) {
+    if (kept.length >= MAX_FOCUS_ENTRIES) break;
+    if (!isValidFocusImage(f) || seen.has(f.id)) continue;
+    seen.add(f.id);
+    kept.push({ id: f.id, url: f.url, name: f.name, width: f.width, height: f.height });
+  }
+  return kept;
 }
+
+/**
+ * Narrow an untrusted `focusUploads` value to its valid entries, as {@link validFocusImages} does for the pool.
+ * @param raw - The raw `data.focusUploads` value, as a plain array.
+ * @returns The valid entries, each a fresh five-field object, the first of an id kept.
+ */
+export function validFocusUploads(raw: unknown): FocusUpload[] {
+  if (!Array.isArray(raw)) return [];
+  const seen = new Set<string>();
+  const kept: FocusUpload[] = [];
+  for (const f of raw) {
+    if (kept.length >= MAX_FOCUS_ENTRIES) break;
+    if (!isValidFocusUpload(f) || seen.has(f.id)) continue;
+    seen.add(f.id);
+    kept.push({ id: f.id, name: f.name, width: f.width, height: f.height, deadlineAt: f.deadlineAt });
+  }
+  return kept;
+}
+
+const dimension = z.number().finite().positive().max(MAX_FOCUS_DIMENSION);
+
+/** Half of a surrogate pair with no other half, as a name clipped by UTF-16 units can end. */
+const LONE_SURROGATE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+/**
+ * The image a crop's upload ticket says it will become: the node whose pool takes it, the id the page started it under
+ * and the parts of the image the address is added to once registered.
+ */
+export const focusImageTicketSchema = z
+  .object({
+    nodeId: z.string().min(1).max(MAX_FOCUS_ID),
+    id: z.string().uuid(),
+    // Stored in jsonb, which refuses half a surrogate pair; replaced as a text column's UTF-8 encoding does.
+    name: z.string().max(MAX_FOCUS_NAME).transform((name) => name.replace(LONE_SURROGATE, "\uFFFD")),
+    width: dimension,
+    height: dimension,
+  })
+  .strict();
+
+/** What a focus crop's ticket names. */
+export type FocusImageTicket = z.infer<typeof focusImageTicketSchema>;
