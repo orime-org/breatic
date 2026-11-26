@@ -13,8 +13,9 @@ import type { SceneViewportProps } from '@web/spaces/three-d/viewport/scene-view
  * @throws {never} Renderer construction failures go to the editor's error UI.
  */
 const SceneViewport = React.memo(function SceneViewport(given: SceneViewportProps): React.JSX.Element {
-  // The picture cache loads three.js, so it is made here, inside the lazy viewport.
-  const lookTextures = React.useMemo(() => pageLookTextureCache(), []);
+  // The picture cache loads three.js, so it is made here, inside the lazy viewport, from what the editor hands over.
+  const { lookPictures } = given;
+  const lookTextures = React.useMemo(() => (lookPictures ? pageLookTextureCache(lookPictures) : null), [lookPictures]);
   const props = React.useMemo(() => ({ ...given, lookTextures }), [given, lookTextures]);
   const host = React.useRef<HTMLDivElement>(null);
   const runtime = React.useRef<SceneViewportRuntime | null>(null);

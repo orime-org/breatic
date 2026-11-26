@@ -43,6 +43,7 @@ import { useSpaceTasks } from '@web/spaces/three-d/use-space-tasks';
 import { SceneObjectToolbar } from '@web/spaces/three-d/SceneObjectToolbar';
 import type { SceneCameraView, SceneFrameCapture, SceneModelAcquire, SceneModelState, ScenePilotControl, SceneSkeletonState, SceneTransformMode, SceneView, SceneViewportProps } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { SceneLookPictures, SceneLookReport } from '@web/spaces/three-d/viewport/scene-look-runtime';
+import { pageLookPictureAccess } from '@web/spaces/three-d/look-picture-size';
 import { SceneLookPanel } from '@web/spaces/three-d/SceneLookPanel';
 import { getModelImportController } from '@web/spaces/three-d/model-import-controller';
 import type { ModelImportController, PreparedModel } from '@web/spaces/three-d/model-import-controller';
@@ -105,6 +106,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
   const placeFailedText = t('spaces.threeD.taskList.placeFailed');
   const lockText = t('spaces.threeD.lock');
   const unlockText = t('spaces.threeD.unlock');
+  const pictureAccess = pageLookPictureAccess();
   const controls = useSceneControls(projectId, userId);
   const [mode, setMode] = React.useState<SceneTransformMode>('translate');
   const [focusRevision, setFocusRevision] = React.useState(0);
@@ -879,7 +881,7 @@ const SceneEditor = React.memo(function SceneEditor({ projectId, spaceId, myRole
                   overviewHost={overviewHost} mode={mode} readOnly={!mutable} view={view.current} focusRevision={focusRevision} cancelRevision={snapshot.cancelRevision}
                   remotePeers={snapshot.remotePeers} scaleSensitivity={controls.data.scaleSensitivity} importLimits={controls.data.import} modelRetryRevision={modelRetryRevision}
                   jointMode={jointMode} selectedJoint={selectedJoint} onJointSelect={setSelectedJoint} onSkeletonState={onSkeletonState}
-                  selectedPart={selectedPart} onSelectPart={onSelectPart} onLookReport={onLookReport} onLookPictures={onLookPictures}
+                  selectedPart={selectedPart} onSelectPart={onSelectPart} lookPictures={pictureAccess} onLookReport={onLookReport} onLookPictures={onLookPictures}
                   onSelect={onSelect} onGestureStart={onGestureStart}
                   onGestureChange={onGestureChange} onGestureEnd={onGestureEnd}
                   onViewChange={onViewChange} onUserCameraMove={stopFollowing} onError={onError} onModelStateChange={onModelStateChange} onResources={onResources}

@@ -128,3 +128,17 @@ describe('LookTextureCache', () => {
     expect(d.open).toHaveBeenCalledTimes(0);
   });
 });
+
+describe('pageLookTextureCache (inner#2171 implementation round 3)', () => {
+  it('gives one access one cache, and another access its own', () => {
+    const access = (): sizeModule.LookPictureAccess => ({
+      sizes: new sizeModule.LookPictureSizes({ open: async () => new ReadableStream() }),
+      download: async () => new Blob(),
+    });
+    const page = access();
+    const other = access();
+    const cache = cacheModule.pageLookTextureCache(page);
+    expect(cacheModule.pageLookTextureCache(page)).toBe(cache);
+    expect(cacheModule.pageLookTextureCache(other)).not.toBe(cache);
+  });
+});
