@@ -255,7 +255,8 @@ export function documentPastedMediaExtension(
           return null;
         }
         // One of ours joins this Project the way a canvas paste does: its block waits for the paste request's answer
-        // (inner#2171 design §5.2).
+        // (inner#2171 design §5.2). A body with nowhere to upload to keeps it as it is.
+        if (how === 'ours' && options?.start === undefined) return props;
         const uploadId = newId();
         queued.push({ uploadId, url: url as string, ours: how === 'ours' });
         settle();
