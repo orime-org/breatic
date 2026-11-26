@@ -6,6 +6,7 @@
  * the tool's draft in source pixels and drawn in the node's own pixels.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,6 +20,7 @@ import {
   rectSize,
   relayout,
 } from '@web/spaces/canvas/crop/__tests__/crop-harness';
+import { presentedDisplay, seedUsablePresentation } from '@web/test-utils/video-presentation';
 
 const NODE = { id: 'n1', kind: 'img' as const, src: 'https://cdn/a.png' };
 
@@ -173,5 +175,19 @@ describe('NodeCropLayer for the video crop tool with no selected version (frames
     Object.defineProperty(video, 'videoHeight', { configurable: true, value: 96 });
     act(() => store().openMiniTool('n1', 'video.crop', { sourceContent: VIDEO.src, params: { aspect: 'free', rect: null } }));
     expect(store().miniTool?.sourceSize).toEqual({ width: 156, height: 94 });
+  });
+});
+
+describe('NodeCropLayer for the video crop tool with a selected version (frames-split §7.8 geometry reads)', () => {
+  it('frames the source in the selected version\'s display, over the size the upload was registered at', () => {
+    const VIDEO = { id: 'n1', kind: 'video' as const, src: 'https://cdn/dvd.mp4', content: 'https://cdn/dvd.mp4', width: 640, height: 480 };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedUsablePresentation(client, '', VIDEO.content, { display: presentedDisplay(853, 480) });
+    render(<QueryClientProvider client={client}>{cropCanvas([VIDEO], null)}</QueryClientProvider>);
+    const video = screen.getByTestId('media-element') as HTMLVideoElement;
+    Object.defineProperty(video, 'videoWidth', { configurable: true, value: 853 });
+    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 480 });
+    act(() => store().openMiniTool('n1', 'video.crop', { sourceContent: VIDEO.src, params: { aspect: 'free', rect: null } }));
+    expect(store().miniTool?.sourceSize).toEqual({ width: 853, height: 480 });
   });
 });
