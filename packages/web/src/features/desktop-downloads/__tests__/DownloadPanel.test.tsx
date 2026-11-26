@@ -169,10 +169,13 @@ describe('DownloadPanel', () => {
     expect(latest.querySelector('.lucide-chevron-down')).not.toBeNull();
   });
 
-  it('names running and failed downloads together in the title bar', async () => {
+  it('names running and failed downloads together on a line of their own under the title', async () => {
     inClient({ open: true, items: [failed, running] });
     renderWithTooltips(<DownloadPanel />);
-    expect(await screen.findByText('1 downloading · 1 failed')).toBeInTheDocument();
+    const status = await screen.findByText('1 downloading · 1 failed');
+    const titleRow = screen.getByRole('heading', { name: 'Downloads' }).parentElement!;
+    expect(titleRow.contains(status)).toBe(false);
+    expect(titleRow.contains(screen.getByRole('button', { name: 'All 2' }))).toBe(true);
   });
 
   it('shows a cut-off folder name in full on hover, and nothing for one that fits', async () => {
@@ -240,7 +243,7 @@ describe('DownloadPanel position', () => {
   /** The panel element. */
   const panel = (): HTMLElement => screen.getByTestId('desktop-download-panel');
   /** Its title bar, which drags it. */
-  const titleBar = (): HTMLElement => screen.getByRole('heading', { name: 'Downloads' }).parentElement!;
+  const titleBar = (): HTMLElement => screen.getByRole('heading', { name: 'Downloads' }).closest('header')!;
 
   beforeEach(() => {
     useCurrentUserStore.setState({ user: { id: 'u1' } as CurrentUser });

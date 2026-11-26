@@ -282,29 +282,32 @@ export function DownloadPanel(): React.JSX.Element | null {
       style={{ left: position.left, bottom: position.bottom }}
     >
       <header
-        className='flex h-9 cursor-move select-none items-center gap-2 px-3'
+        className='cursor-move select-none px-3 pb-2'
         onPointerDown={startDrag}
         onPointerMove={followDrag}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
         onLostPointerCapture={endDrag}
       >
-        <h2 className='font-semibold'>{t('desktopDownloads.title')}</h2>
-        <span className='min-w-0 flex-1 truncate text-xs text-muted-foreground'>{summary}</span>
-        {items.length > 1 && (
-          <Button size='compact' variant='outline' onClick={toggle}>
-            {expanded ? t('desktopDownloads.showLatest') : t('desktopDownloads.showAll', { count: items.length })}
-            {expanded ? <ChevronDown className='size-3.5' /> : <ChevronUp className='size-3.5' />}
-          </Button>
-        )}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button size='icon' variant='ghost' className='size-6 shrink-0' aria-label={t('desktopDownloads.close')} onClick={dismiss}>
-              <X className='size-3.5' />
+        <div className='flex h-9 items-center gap-2'>
+          <h2 className='min-w-0 flex-1 truncate font-semibold'>{t('desktopDownloads.title')}</h2>
+          {items.length > 1 && (
+            <Button size='compact' variant='outline' onClick={toggle}>
+              {expanded ? t('desktopDownloads.showLatest') : t('desktopDownloads.showAll', { count: items.length })}
+              {expanded ? <ChevronDown className='size-3.5' /> : <ChevronUp className='size-3.5' />}
             </Button>
-          </TooltipTrigger>
-          <TooltipContent>{t('desktopDownloads.close')}</TooltipContent>
-        </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size='icon' variant='ghost' className='size-6 shrink-0' aria-label={t('desktopDownloads.close')} onClick={dismiss}>
+                <X className='size-3.5' />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>{t('desktopDownloads.close')}</TooltipContent>
+          </Tooltip>
+        </div>
+        {/* A line of its own: the combined status does not fit beside the title and the toggle in every language. */}
+        <p className='-mt-1 truncate text-xs text-muted-foreground'>{summary}</p>
       </header>
       <ScrollArea viewportClassName='max-h-[var(--download-list-cap,none)]' style={listStyle}>
         <ul ref={measureList}>
