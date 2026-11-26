@@ -214,14 +214,85 @@ describe('DownloadPanel position', () => {
     expect(panel().style.left).toBe('12px');
   });
 
-  it('follows a drag by its title bar and keeps the place for the account', async () => {
-    const write = vi.spyOn(preferences, 'writeUserPreference');
+  it('moves to the right of the canvas menu when the anchor offset changes', async () => {
+    vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+      const left = this.className.includes('left-[80px]') ? 80 : 12;
+      return { left, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
+    });
+    inClient({ open: true, items: [done] });
+    const view = renderWithTooltips(<div><DownloadPanelAnchor /><DownloadPanel /></div>);
+    await screen.findByText('still.png');
+    expect(panel().style.left).toBe('12px');
+    view.rerender(<div><DownloadPanelAnchor className='left-[80px]' /><DownloadPanel /></div>);
+    expect(panel().style.left).toBe('80px');
+  });
+
+  /** Give the panel the height a browser would: a 36px title bar and 60px per row. */
+  const rowHeights = (): void => {
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.dataset.testid === 'desktop-download-panel' ? 36 + 60 * this.querySelectorAll('li').length : 0;
+    });
+  };
+
+  it('keeps its title bar inside the window when it expands near the top', async () => {
+    rowHeights();
+    inClient({ open: true, items: [done, failed, { ...done, id: '9', name: 'more.png' }] });
+    renderWithTooltips(<DownloadPanel />);
+    await screen.findByText('still.png');
+    fireEvent.pointerDown(titleBar(), { clientX: 100, clientY: 700, button: 0 });
+    fireEvent.pointerMove(titleBar(), { clientX: 100, clientY: -5000, buttons: 1 });
+    fireEvent.pointerUp(titleBar(), { clientX: 100, clientY: -5000 });
+    expect(panel().style.bottom).toBe(`${800 - 96}px`);
+    fireEvent.click(screen.getByRole('button', { name: 'All 3' }));
+    expect(panel().style.bottom).toBe(`${800 - 216}px`);
+  });
+
+  it('holds a kept place inside the window by the height it shows with', async () => {
+    rowHeights();
+    vi.spyOn(preferences, 'readUserPreferences').mockReturnValue({ ...preferences.DEFAULT_USER_PREFERENCES, downloadPanelPosition: { left: 40, bottom: 790 } });
+    inClient({ open: true, items: [done] });
+    renderWithTooltips(<DownloadPanel />);
+    await screen.findByText('still.png');
+    expect(panel().style.bottom).toBe(`${800 - 96}px`);
+  });
+
+  for (const ending of ['lostPointerCapture', 'pointerCancel'] as const) {
+    it(`ends the drag where it was when the pointer is taken away (${ending})`, async () => {
+      const write = vi.spyOn(preferences, 'writeUserPreference');
+      inClient({ open: true, items: [done] });
+      renderWithTooltips(<DownloadPanel />);
+      await screen.findByText('still.png');
+      fireEvent.pointerDown(titleBar(), { clientX: 100, clientY: 700, button: 0 });
+      fireEvent.pointerMove(titleBar(), { clientX: 400, clientY: 500, buttons: 1 });
+      fireEvent[ending](titleBar());
+      fireEvent.pointerMove(titleBar(), { clientX: 600, clientY: 300, buttons: 1 });
+      expect(panel().style.left).toBe('312px');
+      expect(write).toHaveBeenCalledWith('u1', { downloadPanelPosition: { left: 312, bottom: 212 } });
+    });
+  }
+
+  it('ends the drag on a move with no button held', async () => {
     inClient({ open: true, items: [done] });
     renderWithTooltips(<DownloadPanel />);
     await screen.findByText('still.png');
     fireEvent.pointerDown(titleBar(), { clientX: 100, clientY: 700, button: 0 });
-    fireEvent.pointerMove(window, { clientX: 400, clientY: 500 });
-    fireEvent.pointerUp(window, { clientX: 400, clientY: 500 });
+    fireEvent.pointerMove(titleBar(), { clientX: 400, clientY: 500, buttons: 1 });
+    fireEvent.pointerMove(titleBar(), { clientX: 600, clientY: 300, buttons: 0 });
+    fireEvent.pointerMove(titleBar(), { clientX: 700, clientY: 200, buttons: 1 });
+    expect(panel().style.left).toBe('312px');
+  });
+
+  it('follows a drag by its title bar, which holds the pointer, and keeps the place for the account', async () => {
+    const write = vi.spyOn(preferences, 'writeUserPreference');
+    const capture = vi.spyOn(HTMLElement.prototype, 'setPointerCapture');
+    inClient({ open: true, items: [done] });
+    renderWithTooltips(<DownloadPanel />);
+    await screen.findByText('still.png');
+    fireEvent.pointerDown(titleBar(), { clientX: 100, clientY: 700, button: 0, pointerId: 7 });
+    expect(capture).toHaveBeenCalledWith(7);
+    expect(capture.mock.contexts[0]).toBe(titleBar());
+    fireEvent.pointerMove(titleBar(), { clientX: 400, clientY: 500, buttons: 1 });
+    fireEvent.pointerUp(titleBar(), { clientX: 400, clientY: 500 });
     expect(panel().style.left).toBe('312px');
     expect(panel().style.bottom).toBe('212px');
     expect(write).toHaveBeenCalledWith('u1', { downloadPanelPosition: { left: 312, bottom: 212 } });
@@ -232,8 +303,8 @@ describe('DownloadPanel position', () => {
     renderWithTooltips(<DownloadPanel />);
     const button = await screen.findByRole('button', { name: 'All 2' });
     fireEvent.pointerDown(button, { clientX: 100, clientY: 700, button: 0 });
-    fireEvent.pointerMove(window, { clientX: 400, clientY: 500 });
-    fireEvent.pointerUp(window, { clientX: 400, clientY: 500 });
+    fireEvent.pointerMove(titleBar(), { clientX: 400, clientY: 500, buttons: 1 });
+    fireEvent.pointerUp(titleBar(), { clientX: 400, clientY: 500 });
     expect(panel().style.left).toBe('12px');
   });
 
@@ -251,12 +322,12 @@ describe('DownloadPanel position', () => {
     renderWithTooltips(<DownloadPanel />);
     await screen.findByText('still.png');
     fireEvent.pointerDown(titleBar(), { clientX: 100, clientY: 700, button: 0 });
-    fireEvent.pointerMove(window, { clientX: 5000, clientY: -5000 });
-    fireEvent.pointerUp(window, { clientX: 5000, clientY: -5000 });
+    fireEvent.pointerMove(titleBar(), { clientX: 5000, clientY: -5000, buttons: 1 });
+    fireEvent.pointerUp(titleBar(), { clientX: 5000, clientY: -5000 });
     expect(panel().style.left).toBe(`${1200 - 320}px`);
     fireEvent.pointerDown(titleBar(), { clientX: 100, clientY: 100, button: 0 });
-    fireEvent.pointerMove(window, { clientX: -5000, clientY: 5000 });
-    fireEvent.pointerUp(window, { clientX: -5000, clientY: 5000 });
+    fireEvent.pointerMove(titleBar(), { clientX: -5000, clientY: 5000, buttons: 1 });
+    fireEvent.pointerUp(titleBar(), { clientX: -5000, clientY: 5000 });
     expect(panel().style.left).toBe('0px');
     expect(panel().style.bottom).toBe('0px');
   });

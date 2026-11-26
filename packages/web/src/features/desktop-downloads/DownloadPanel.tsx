@@ -148,12 +148,18 @@ export function DownloadPanel(): React.JSX.Element | null {
 
   const userId = useCurrentUserStore((state) => state.user?.id);
   const anchorLeft = useDownloadPanelAnchorLeft();
-  const [dragged, setDragged] = React.useState<PanelPosition | null>(() => readUserPreferences(userId).downloadPanelPosition);
-  // Another account signing in reads its own place.
+  // The list arrives after mount, so the effect's read is the first one shown; it reads again for another account.
+  const [dragged, setDragged] = React.useState<PanelPosition | null>(null);
   React.useEffect(() => {
     setDragged(readUserPreferences(userId).downloadPanelPosition);
   }, [userId]);
   const panelRef = React.useRef<HTMLElement>(null);
+  // The panel's height as drawn, measured before paint, so showing it or a change of rows re-clamps at once.
+  const [height, setHeight] = React.useState(0);
+  React.useLayoutEffect(() => {
+    const measured = panelRef.current?.offsetHeight ?? 0;
+    if (measured !== height) setHeight(measured);
+  }, [list, expanded, height]);
   const [, setWindowSize] = React.useState(0);
   React.useEffect(() => {
     /**
@@ -164,36 +170,42 @@ export function DownloadPanel(): React.JSX.Element | null {
     window.addEventListener('resize', onResize);
     return () => window.removeEventListener('resize', onResize);
   }, []);
-  const position = insideWindow(dragged ?? { left: anchorLeft ?? EDGE_GAP, bottom: EDGE_GAP }, panelRef.current?.offsetHeight ?? 0);
+  const position = insideWindow(dragged ?? { left: anchorLeft ?? EDGE_GAP, bottom: EDGE_GAP }, height);
 
+  // The drag in progress: where the pointer went down, the place it started from, and where it has moved to.
+  const drag = React.useRef<{ x: number; y: number; from: PanelPosition; moved: PanelPosition | null } | null>(null);
   const startDrag = React.useCallback(
     (event: React.PointerEvent<HTMLElement>) => {
       // The title bar's buttons click; only the bar itself drags.
       if (event.button !== 0 || (event.target as Element).closest('button')) return;
       event.preventDefault();
-      const start = { x: event.clientX, y: event.clientY, ...position };
-      let moved: PanelPosition | null = null;
-      /**
-       * Follow the pointer.
-       * @param move - The pointer's move.
-       */
-      const onMove = (move: PointerEvent): void => {
-        moved = insideWindow(
-          { left: start.left + move.clientX - start.x, bottom: start.bottom - (move.clientY - start.y) },
-          panelRef.current?.offsetHeight ?? 0,
-        );
-        setDragged(moved);
-      };
-      /** Keep the place once the pointer lets go. */
-      const onUp = (): void => {
-        window.removeEventListener('pointermove', onMove);
-        window.removeEventListener('pointerup', onUp);
-        if (moved) writeUserPreference(userId, { downloadPanelPosition: moved });
-      };
-      window.addEventListener('pointermove', onMove);
-      window.addEventListener('pointerup', onUp);
+      // Held by the bar, the pointer's moves and release reach it outside the window too.
+      event.currentTarget.setPointerCapture(event.pointerId);
+      drag.current = { x: event.clientX, y: event.clientY, from: position, moved: null };
     },
-    [position, userId],
+    [position],
+  );
+  const endDrag = React.useCallback(() => {
+    const moved = drag.current?.moved;
+    drag.current = null;
+    if (moved) writeUserPreference(userId, { downloadPanelPosition: moved });
+  }, [userId]);
+  const followDrag = React.useCallback(
+    (event: React.PointerEvent<HTMLElement>) => {
+      const current = drag.current;
+      if (!current) return;
+      // A release the bar never saw: no button is held any more.
+      if (event.buttons === 0) {
+        endDrag();
+        return;
+      }
+      current.moved = insideWindow(
+        { left: current.from.left + event.clientX - current.x, bottom: current.from.bottom - (event.clientY - current.y) },
+        panelRef.current?.offsetHeight ?? 0,
+      );
+      setDragged(current.moved);
+    },
+    [endDrag],
   );
 
   if (!bridge || !list || !open || list.items.length === 0) return null;
@@ -216,7 +228,14 @@ export function DownloadPanel(): React.JSX.Element | null {
       className='fixed z-40 w-[320px] overflow-hidden rounded-overlay border border-border bg-popover text-sm text-popover-foreground shadow-lg'
       style={{ left: position.left, bottom: position.bottom }}
     >
-      <header className='flex h-9 cursor-move select-none items-center gap-2 px-3' onPointerDown={startDrag}>
+      <header
+        className='flex h-9 cursor-move select-none items-center gap-2 px-3'
+        onPointerDown={startDrag}
+        onPointerMove={followDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
+        onLostPointerCapture={endDrag}
+      >
         <h2 className='font-semibold'>{t('desktopDownloads.title')}</h2>
         <span className='min-w-0 flex-1 truncate text-xs text-muted-foreground'>{summary}</span>
         {items.length > 1 && (

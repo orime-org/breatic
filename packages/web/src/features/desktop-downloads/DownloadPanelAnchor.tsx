@@ -42,7 +42,7 @@ export function useDownloadPanelAnchorLeft(): number | null {
  * design §7.3.1): the page places it in its layout, at the bottom of the area
  * the panel belongs to, and it reports its left edge whenever that area or the
  * window changes size (the Agent column dragged wider or collapsed, the Studio
- * rail hidden). Its parent must be positioned.
+ * rail hidden) or its offset changes. Its parent must be positioned.
  * @param props - Where it sits in its area.
  * @param props.className - The left offset inside the area.
  * @returns The zero-size anchor.
@@ -66,6 +66,7 @@ export function DownloadPanelAnchor({ className }: { className?: string }): Reac
       window.removeEventListener('resize', report);
       setAnchorLeft(null);
     };
-  }, []);
+    // The offset moves the anchor without resizing its area, so a new offset reports again.
+  }, [className]);
   return <span ref={ref} aria-hidden data-download-panel-anchor='' className={cn('pointer-events-none absolute bottom-0 left-[var(--space-6)] size-0', className)} />;
 }
