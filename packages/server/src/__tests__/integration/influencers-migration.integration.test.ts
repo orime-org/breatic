@@ -99,8 +99,8 @@ describe("influencer attribution migration", () => {
       const rows = await tx<{ id: string; influencer_code: string }[]>`
         SELECT id, influencer_code FROM users WHERE id = ANY(${before}) ORDER BY id`;
       expect(rows).toEqual([...before].sort().map((id) => ({ id, influencer_code: "official" })));
-      const [{ others }] = await tx<{ others: number }[]>`
-        SELECT count(*)::int AS others FROM users WHERE influencer_code <> 'official'`;
+      const [{ others }] = (await tx<{ others: number }[]>`
+        SELECT count(*)::int AS others FROM users WHERE influencer_code <> 'official'`) as unknown as [{ others: number }];
       expect(others).toBe(0);
     });
   });
@@ -195,9 +195,9 @@ describe("influencer attribution migration", () => {
     await replay(async (tx) => {
       await apply(tx);
 
-      const [{ indexed }] = await tx<{ indexed: number }[]>`
+      const [{ indexed }] = (await tx<{ indexed: number }[]>`
         SELECT count(*)::int AS indexed FROM pg_indexes
-        WHERE tablename = 'users' AND indexdef ~ '\\(influencer_code\\)'`;
+        WHERE tablename = 'users' AND indexdef ~ '\\(influencer_code\\)'`) as unknown as [{ indexed: number }];
       expect(indexed).toBe(1);
     });
   });

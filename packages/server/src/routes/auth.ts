@@ -10,17 +10,31 @@
 
 import { Hono } from "hono";
 import type { Context } from "hono";
-import { frontendOrigin, validate, env, NotFoundError, UnauthorizedError, trackServerEvent, logger } from "@breatic/core";
-import { OAuth2Client } from "google-auth-library";
-import type { TokenPayload } from "google-auth-library";
+import {
+  cookieDomainHost,
+  currentConsent,
+  env,
+  frontendOrigin,
+  frontendOriginFor,
+  isTrustedFrontendOrigin,
+  logger,
+  NotFoundError,
+  runWithConsent,
+  runWithLocale,
+  trackServerEvent,
+  UnauthorizedError,
+  validate,
+} from "@breatic/core";
+import { setCookie, getCookie, deleteCookie } from "hono/cookie";
+import { SUPPORTED } from "@server/middleware/i18n.js";
 
-import { registerSchema, signupVerifySchema, loginSchema, googleAuthSchema, setupStudioSchema } from "@server/routes/schemas.js";
+import { registerSchema, signupVerifySchema, loginSchema, googleBeginSchema, setupStudioSchema } from "@server/routes/schemas.js";
 import { z } from "zod";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
-import { authService, invitationService, signupCodeService, studioService } from "@server/modules";
+import { authService, googleLoginService, invitationService, signupCodeService, studioService } from "@server/modules";
 import { randomUUID } from "node:crypto";
-import { emailSchema, getActiveLocale, normalizeEmail, parseAttribution, t } from "@breatic/shared";
+import { emailSchema, getActiveLocale, parseAttribution, t } from "@breatic/shared";
 import type { PersonalStudioRef, SignupReferralSource } from "@breatic/shared";
 import { rateLimitFor, rateLimitForAll } from "@server/middleware/rate-limit.js";
 import {
@@ -74,34 +88,21 @@ function toPersonalStudioRef(
 }
 
 /**
- * Lazily constructed Google OAuth2 client.
- *
- * Built on first use instead of module load so that self-hosted
- * installs without Google OAuth can boot without `GOOGLE_CLIENT_ID`.
- */
-let _googleClient: OAuth2Client | null = null;
-/**
- * Lazily build and cache the Google OAuth2 client from `GOOGLE_CLIENT_ID`.
- * @returns The cached {@link OAuth2Client}, constructed on first use.
- */
-function getGoogleClient(): OAuth2Client {
-  if (!_googleClient) {
-    _googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
-  }
-  return _googleClient;
-}
-
-/**
  * `GET /auth/options` - what the sign-up and recovery pages need to know
  * about this deployment: whether an email sign-up proves the address with a
  * code (and so whether recovery goes by email or by recovery code).
  * Also whether the referral code field exists: only where the deployment
- * sells (`SELLING`, inner#1868 §2).
- * @returns `200` with `{ emailVerification, referralEnabled }`
+ * sells (`SELLING`, inner#1868 §2), and whether Google sign-in is offered
+ * (client id and secret both set, inner#2157).
+ * @returns `200` with `{ emailVerification, referralEnabled, googleSignIn }`
  */
 auth.get("/options", (c) => {
   return c.json({
-    data: { emailVerification: signupCodeService.emailVerificationEnabled(), referralEnabled: env.SELLING },
+    data: {
+      emailVerification: signupCodeService.emailVerificationEnabled(),
+      referralEnabled: env.SELLING,
+      googleSignIn: googleLoginService.googleSignInAvailable(),
+    },
   });
 });
 
@@ -180,7 +181,9 @@ auth.post("/register", rateLimitFor("register"), validate("json", registerSchema
 
   let registered: Awaited<ReturnType<typeof authService.register>>;
   try {
-    registered = await authService.register(email, password, parseAttribution(attribution), signupReferral(body));
+    registered = await authService.register(
+      email, password, parseAttribution(attribution), signupReferral(body), c.req.header("origin"),
+    );
   } catch (err) {
     if (err instanceof authService.SignupReferralRefused) return refuseSignupReferral(c);
     throw err;
@@ -251,6 +254,7 @@ auth.post(
       readSignupTicketCookie(c),
       code,
       parseAttribution(attribution),
+      c.req.header("origin"),
     );
     clearSignupTicketCookie(c);
     if (user.emailVerified) await invitationService.claimEmailInvitations(user);
@@ -325,94 +329,162 @@ auth.post(
 );
 
 /**
- * `POST /auth/google` - authenticate with a Google ID token.
- *
- * The ID token must be verified cryptographically - otherwise any
- * attacker can craft a fake JWT with a victim's email and take over
- * their account. Delegation to `OAuth2Client.verifyIdToken` gives us:
- *
- *   - RS256 signature verified against Google's rotating JWKS
- *   - `iss` pinned to https://accounts.google.com (or accounts.google.com)
- *   - `aud` pinned to our `GOOGLE_CLIENT_ID`
- *   - `exp` / `iat` enforced
- *
- * We additionally require `email_verified === true` so that an attacker
- * who registers `victim@gmail.com` at an identity provider that
- * federates to Google (and doesn't verify ownership) cannot claim
- * someone else's email.
- * The session token leaves in the cookie, never in the body. The user
- * carries `personalStudio` like every other auth exit — a first Google
- * sign-in creates the account but not the studio, so it is `null` here more
- * often than anywhere else, and that null is what routes the client to the
- * slug-setup gate.
- * @param c - Hono context with Google credential in body
- * @returns `200` with `{ data: { user: { ...user, personalStudio } } }`
- * @throws {AppError} `401` if the credential is invalid, expired, or unverified
- * @throws {AppError} `503` if Google OAuth is not configured on this server
+ * Where the browser goes back to after a Google sign-in: the page it started
+ * on, with what happened in the query (inner#2157 design 7.9).
+ * @param origin - The site the sign-in started on.
+ * @param page - Its page.
+ * @param params - The query to carry.
+ * @returns The absolute URL.
  */
-auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema), async (c) => {
-  if (!env.GOOGLE_CLIENT_ID) {
-    logger.warn("google_oauth_unconfigured");
-    return c.json({ error: { code: 503, message: t("server.auth.google_oauth_unconfigured") } }, 503);
-  }
+function backToPage(origin: string, page: googleLoginService.GooglePage, params: Record<string, string | undefined>): string {
+  const url = new URL(`${origin}/${page}`);
+  for (const [name, value] of Object.entries(params)) if (value !== undefined) url.searchParams.set(name, value);
+  return url.toString();
+}
 
-  const googleBody = c.req.valid("json");
-  const { credential, attribution } = googleBody;
+/** The form a begin posted, validated. */
+type BeginForm = z.infer<typeof googleBeginSchema>;
 
-  let payload: TokenPayload | undefined;
+/**
+ * Where a refused begin sends the browser back to.
+ * @param c - Hono context with the validated form; the Origin is already trusted.
+ * @param reason - Why the begin was refused.
+ * @returns A 303 to the starting page.
+ */
+function refuseBegin(c: Context, reason: googleLoginService.GoogleFailure): Response {
+  const form = (c.req.valid as (target: "form") => BeginForm)("form");
+  return c.redirect(backToPage(c.req.header("origin")!, form.page, { googleError: reason, next: form.next }), 303);
+}
 
-  try {
-    const ticket = await getGoogleClient().verifyIdToken({
-      idToken: credential,
-      audience: env.GOOGLE_CLIENT_ID,
+/** The bind cookie's name: one per browser sign-in in flight. */
+const GOOGLE_BIND_COOKIE = "breatic_google_bind";
+
+/**
+ * The bind cookie's scope: the site-wide domain when set, so both the starting
+ * site and the official callback receive it; otherwise the starting host.
+ * @returns The cookie options besides the value and lifetime.
+ */
+function bindCookieScope(): { path: "/"; domain?: string } {
+  const domain = cookieDomainHost();
+  return { path: "/", ...(domain ? { domain } : {}) };
+}
+
+/**
+ * `POST /auth/google/begin` - start a full-page Google sign-in (inner#2157).
+ *
+ * The sign-in and sign-up pages post a form here; the answer is always a
+ * 303: to Google, or back to the page with `googleError`. The Origin must be
+ * a trusted site (403 otherwise): it names the influencer a new account is
+ * recorded under and the page the browser returns to. The consent and the
+ * page's language are stored with the sign-in, since the callback's host
+ * sees neither.
+ * @param c - Hono context with the validated begin form
+ * @returns `303` to Google, or back to the page
+ */
+auth.post(
+  "/google/begin",
+  validate("form", googleBeginSchema),
+  async (c, next) => {
+    const origin = c.req.header("origin");
+    if (!origin || !(await isTrustedFrontendOrigin(origin))) {
+      logger.warn({ origin }, "google_begin_untrusted_origin");
+      return c.json({ error: { code: 403, message: t("server.error.forbidden") } }, 403);
+    }
+    await next();
+  },
+  rateLimitFor("google", "ip", {
+    onLimited: (c) => refuseBegin(c, "rate_limited"),
+    failClosed: (c) => refuseBegin(c, "unavailable"),
+  }),
+  async (c) => {
+    const form = c.req.valid("form");
+    if (!googleLoginService.googleSignInAvailable()) {
+      logger.warn("google_oauth_unconfigured");
+      return refuseBegin(c, "unavailable");
+    }
+    const origin = c.req.header("origin")!;
+    const locale = (SUPPORTED as ReadonlyArray<string>).includes(form.locale ?? "") ? form.locale! : getActiveLocale();
+    let attribution: unknown;
+    try {
+      attribution = form.attribution === undefined ? undefined : JSON.parse(form.attribution);
+    } catch {
+      attribution = undefined;
+    }
+    const begun = await googleLoginService.beginGoogleLogin({
+      origin,
+      page: form.page,
+      next: form.next,
+      locale,
+      consent: currentConsent(),
+      attribution,
+      referral: signupReferral(form),
     });
-    payload = ticket.getPayload();
-  } catch (err) {
-    logger.warn({ err: err instanceof Error ? err.message : String(err) }, "google_id_token_verification_failed");
-    return c.json({ error: { code: 401, message: t("server.auth.invalid_google_credential") } }, 401);
+    setCookie(c, GOOGLE_BIND_COOKIE, begun.bind, {
+      ...bindCookieScope(),
+      httpOnly: true,
+      secure: env.ENV !== "dev",
+      sameSite: "Lax",
+      maxAge: begun.ttlSeconds,
+    });
+    return c.redirect(begun.authUrl, 303);
+  },
+);
+
+/**
+ * `GET /auth/google/callback` - Google sends the browser back here.
+ *
+ * The state is taken once; the browser must carry the bind cookie begin
+ * set, so a callback link from someone else's sign-in signs nobody in. On
+ * success the session cookie is set (site-wide when `COOKIE_DOMAIN` is) and
+ * the browser returns to the starting page with `google=created|signed_in`;
+ * otherwise with `googleError`. Not rate limited: a missing state or bind
+ * returns before Google is asked anything.
+ * @param c - Hono context with Google's query
+ * @returns `303` back to the page the sign-in started on
+ */
+auth.get("/google/callback", async (c) => {
+  const query = c.req.query();
+  const parsed = googleLoginService.parseState(query["state"]);
+  if (parsed === null) return c.redirect(backToPage(frontendOrigin(), "login", { googleError: "expired" }), 303);
+  const stored = await googleLoginService.takeGoogleLogin(parsed.random);
+  if (stored === null) {
+    const site = (await isTrustedFrontendOrigin(parsed.origin)) ? parsed : { origin: frontendOrigin(), page: "login" as const };
+    return c.redirect(backToPage(site.origin, site.page, { googleError: "expired" }), 303);
+  }
+  const back = (params: Record<string, string | undefined>): Response =>
+    c.redirect(backToPage(stored.origin, stored.page, params), 303);
+  if (!googleLoginService.bindMatches(stored, getCookie(c, GOOGLE_BIND_COOKIE))) {
+    logger.warn({ origin: stored.origin }, "google_callback_bind_mismatch");
+    return back({ googleError: "expired" });
+  }
+  deleteCookie(c, GOOGLE_BIND_COOKIE, bindCookieScope());
+  if (query["error"] !== undefined) return back({ googleError: "cancelled", next: stored.next });
+  const code = query["code"];
+  if (!code) return back({ googleError: "invalid_credential", next: stored.next });
+
+  const identity = await googleLoginService.verifyGoogleCode(stored, code);
+  if (!identity.ok) {
+    logger.warn({ reason: identity.reason, err: identity.err instanceof Error ? identity.err.message : undefined }, "google_id_token_verification_failed");
+    return back({ googleError: identity.reason, next: stored.next });
   }
 
-  if (!payload) {
-    return c.json({ error: { code: 401, message: t("server.auth.invalid_google_credential") } }, 401);
-  }
-
-  // `verifyIdToken` already enforces aud/iss/exp, but double-check iss
-  // in case the library ever changes defaults. Google emits both forms.
-  const VALID_ISSUERS = new Set(["accounts.google.com", "https://accounts.google.com"]);
-  if (!payload.iss || !VALID_ISSUERS.has(payload.iss)) {
-    return c.json({ error: { code: 401, message: t("server.auth.invalid_google_credential") } }, 401);
-  }
-
-  if (!payload.sub || !payload.email) {
-    return c.json({ error: { code: 401, message: t("server.auth.invalid_google_credential") } }, 401);
-  }
-
-  if (payload.email_verified !== true) {
-    return c.json({ error: { code: 401, message: t("server.auth.google_email_unverified") } }, 401);
-  }
-
-  const email = normalizeEmail(payload.email);
-  let signedIn: Awaited<ReturnType<typeof authService.loginOrCreateGoogle>>;
+  let signedIn: Awaited<ReturnType<typeof authService.resolveGoogleAccount>>;
   try {
-    signedIn = await authService.loginOrCreateGoogle(
-      payload.sub,
-      email,
-      email.endsWith("@gmail.com") || Boolean(payload.hd),
-      parseAttribution(attribution),
-      signupReferral(googleBody),
-    );
+    signedIn = await runWithLocale(stored.locale, () => runWithConsent(stored.consent, () => authService.resolveGoogleAccount(
+      identity.sub,
+      identity.email,
+      identity.authoritativeEmail,
+      parseAttribution(stored.attribution),
+      stored.referral,
+      stored.origin,
+    )));
   } catch (err) {
-    if (err instanceof authService.SignupReferralRefused) return refuseSignupReferral(c);
+    if (err instanceof authService.SignupReferralRefused) return back({ googleError: "referral_invalid", next: stored.next });
+    if (err instanceof authService.GoogleLinkRequiresEmailLogin) return back({ googleError: "link_requires_email_login", next: stored.next });
     throw err;
   }
-  const { user, token, created, referral } = signedIn;
-
-  setSessionCookie(c, token);
-  const [shown, studio] = await Promise.all([
-    authService.withTierInForce(user),
-    studioService.getPersonalStudio(user.id),
-  ]);
-  // Audit log moved from auth.service.ts (17B mandate).
+  const { user, created, referral } = signedIn;
+  setSessionCookie(c, await authService.createSession(user.id));
   logger.info({ userId: user.id, method: "google" }, "user_logged_in");
   // A first Google sign-in is a sign-up, already counted as `signup_completed`.
   if (!created) {
@@ -422,9 +494,10 @@ auth.post("/google", rateLimitFor("google"), validate("json", googleAuthSchema),
       properties: { method: "google" },
     });
   }
-  // `created` tells the page to report the sign-up conversion (inner#1442 §4.9).
-  return c.json({
-    data: { user: { ...shown, personalStudio: toPersonalStudioRef(studio) }, created, ...(referral ? { referral } : {}) },
+  return back({
+    google: created ? "created" : "signed_in",
+    ...(referral === "not_applied" ? { referral } : {}),
+    next: stored.next,
   });
 });
 
@@ -514,7 +587,7 @@ auth.post(
   rateLimitForAll([{ action: "forgot-ip" }, { action: "forgot", keyBy: "ip+email" }]),
   async (c) => {
     const { email } = c.req.valid("json");
-    const resetBaseUrl = `${frontendOrigin(c.req.header("Origin"))}/reset-password`;
+    const resetBaseUrl = `${await frontendOriginFor(c.req.header("Origin"))}/reset-password`;
 
     // Everything that depends on the account — the lookup, the token, the
     // send — runs after the reply, so a registered and an unregistered

@@ -46,7 +46,7 @@ vi.mock("@server/modules/auth/user.repo.js", async (importOriginal) => ({
   getHashedPassword: mocks.getHashedPassword,
 }));
 
-import { createAccount, loginEmail, loginOrCreateGoogle } from "@server/modules/auth/auth.service.js";
+import { createAccount, loginEmail, resolveGoogleAccount } from "@server/modules/auth/auth.service.js";
 
 /**
  * Build the account returned by the identity repository.
@@ -63,6 +63,7 @@ function account(emailVerified: boolean): UserEntity {
     locale: "en",
     createdAt: new Date("2026-01-01T00:00:00Z"),
     updatedAt: new Date("2026-01-01T00:00:00Z"),
+    influencerCode: "official",
     deletedAt: null,
   };
 }
@@ -78,7 +79,7 @@ beforeEach(() => {
 
 describe("Google invitation claim eligibility", () => {
   it("persists an authoritative new address as verified in the account creation", async () => {
-    const result = await loginOrCreateGoogle("google-invitee", "invitee@gmail.com", true);
+    const result = await resolveGoogleAccount("google-invitee", "invitee@gmail.com", true);
 
     expect(mocks.createUser).toHaveBeenCalledWith(expect.objectContaining({
       email: "invitee@gmail.com",
@@ -87,12 +88,11 @@ describe("Google invitation claim eligibility", () => {
     }));
     expect(result.user.emailVerified).toBe(true);
     expect(result.created).toBe(true);
-    expect(mocks.setSession).toHaveBeenCalledWith(mocks.redis, result.token, "invitee");
     expect(mocks.claimEmailInvitations).toHaveBeenCalledWith(account(true));
   });
 
   it("persists a third-party new address as unverified", async () => {
-    const result = await loginOrCreateGoogle("google-invitee", "invitee@gmail.com", false);
+    const result = await resolveGoogleAccount("google-invitee", "invitee@gmail.com", false);
 
     expect(mocks.createUser).toHaveBeenCalledWith(expect.objectContaining({
       email: "invitee@gmail.com",
@@ -149,7 +149,7 @@ describe("Verified account invitation compensation", () => {
   it("uses the newly verified stored identity when an existing Google account signs in", async () => {
     mocks.getUserByGoogleId.mockResolvedValue(account(false));
 
-    const result = await loginOrCreateGoogle("google-invitee", "invitee@gmail.com", true);
+    const result = await resolveGoogleAccount("google-invitee", "invitee@gmail.com", true);
 
     expect(result.user).toEqual(account(true));
     expect(result.created).toBe(false);
@@ -163,7 +163,7 @@ describe("Verified account invitation compensation", () => {
   it("claims for an already verified account on a non-authoritative Google login", async () => {
     mocks.getUserByGoogleId.mockResolvedValue(account(true));
 
-    const result = await loginOrCreateGoogle("google-invitee", "invitee@gmail.com", false);
+    const result = await resolveGoogleAccount("google-invitee", "invitee@gmail.com", false);
 
     expect(result.user).toEqual(account(true));
     expect(mocks.claimEmailInvitations).toHaveBeenCalledWith(account(true));
@@ -173,7 +173,7 @@ describe("Verified account invitation compensation", () => {
     const user = { ...account(false), email: "old@example.test" };
     mocks.getUserByGoogleId.mockResolvedValue(user);
 
-    const result = await loginOrCreateGoogle("google-invitee", "new@gmail.com", true);
+    const result = await resolveGoogleAccount("google-invitee", "new@gmail.com", true);
 
     expect(result.user).toEqual(user);
     expect(mocks.updateUser).not.toHaveBeenCalled();

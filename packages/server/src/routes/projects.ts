@@ -17,7 +17,7 @@
 import { projectVisitRequestSchema, creditAmountFormatQuerySchema } from "@breatic/shared";
 
 import { Hono } from "hono";
-import { frontendOrigin, validate, getSceneConfig, projectAuthService, AppError, logger, NotFoundError } from "@breatic/core";
+import { frontendOriginFor, validate, getSceneConfig, projectAuthService, AppError, logger, NotFoundError } from "@breatic/core";
 import { runOnce } from "@server/middleware/run-once.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { z } from "zod";
@@ -159,7 +159,7 @@ projects.post(
       id,
       user.id,
       toUserId,
-      frontendOrigin(c.req.header("Origin")),
+      await frontendOriginFor(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true } }, 201);
   },

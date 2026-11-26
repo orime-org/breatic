@@ -18,7 +18,7 @@ CREATE TABLE "influencer_operations" (
   "id" uuid PRIMARY KEY DEFAULT gen_random_uuid(),
   "key" text NOT NULL UNIQUE,
   "request_hash" varchar(64) NOT NULL,
-  "requested_by" uuid NOT NULL,
+  "requested_by" varchar(255) NOT NULL,
   "request_body" jsonb NOT NULL,
   "result" jsonb NOT NULL,
   "created_at" timestamptz NOT NULL DEFAULT now(),

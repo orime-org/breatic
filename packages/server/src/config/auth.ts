@@ -26,6 +26,9 @@ export const authConfigSchema = z.object({
       resend_cooldown_seconds: positiveInt.default(60),
     })
     .default({ ttl_seconds: 600, max_attempts_per_code: 5, resend_cooldown_seconds: 60 }),
+  google_login: z
+    .object({ state_ttl_seconds: positiveInt.default(600) })
+    .default({ state_ttl_seconds: 600 }),
 });
 
 /** The sign-up code settings, in the units the service works in. */
@@ -61,4 +64,18 @@ export function getSignupCodeConfig(): SignupCodeConfig {
     resendCooldownSeconds: c.resend_cooldown_seconds,
   };
   return _cached;
+}
+
+let _googleCached: { stateTtlSeconds: number } | null = null;
+
+/**
+ * Load and cache the full-page Google sign-in settings (inner#2157).
+ * @returns How long a started sign-in lives, in seconds.
+ * @throws {z.ZodError} if a value is malformed.
+ */
+export function getGoogleLoginConfig(): { stateTtlSeconds: number } {
+  if (_googleCached) return _googleCached;
+  const raw = readFileSync(resolve(MONOREPO_ROOT, "config", "auth.yaml"), "utf-8");
+  _googleCached = { stateTtlSeconds: authConfigSchema.parse(parse(raw) as unknown).google_login.state_ttl_seconds };
+  return _googleCached;
 }

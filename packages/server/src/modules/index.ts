@@ -25,6 +25,7 @@ export * as sceneGenerationService from "@server/modules/asset/scene-generation.
 export { holdRun } from "@server/modules/task/generation-task.js";
 export * as transferReferenceService from "@server/modules/asset/transfer-reference.service.js";
 export * as authService from "@server/modules/auth/auth.service.js";
+export * as googleLoginService from "@server/modules/auth/google-login.service.js";
 export * as invitationService from "@server/modules/invitation/invitation.service.js";
 export * as recoveryCodeService from "@server/modules/auth/recovery-code.service.js";
 export * as signupCodeService from "@server/modules/auth/signup-code.service.js";
@@ -53,6 +54,7 @@ export * as documentVersionService from "@server/modules/document-version/docume
 export * as maintenanceService from "@server/modules/maintenance/maintenance.service.js";
 
 export * as creditGrantService from "@server/modules/credit-grant/credit-grant.service.js";
+export * as influencerService from "@server/modules/influencer/influencer.service.js";
 
 export * as byokService from "@server/modules/byok/byok.service.js";
 export * as enterpriseCreditPurchaseService from "@server/modules/enterprise-credit-purchase/enterprise-credit-purchase.service.js";

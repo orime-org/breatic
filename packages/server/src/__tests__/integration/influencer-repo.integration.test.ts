@@ -97,8 +97,8 @@ describe("influencer repository", () => {
 
   it("never lists the official row, which has no host", async () => {
     const hosts = await influencerRepo.listHosts();
-    const [{ registered }] = await sql<{ registered: number }[]>`
-      SELECT count(*)::int AS registered FROM influencers WHERE host IS NOT NULL`;
+    const [{ registered }] = (await sql<{ registered: number }[]>`
+      SELECT count(*)::int AS registered FROM influencers WHERE host IS NOT NULL`) as unknown as [{ registered: number }];
 
     expect(hosts.length).toBe(registered);
     expect(hosts.every((host) => typeof host === "string" && host.length > 0)).toBe(true);

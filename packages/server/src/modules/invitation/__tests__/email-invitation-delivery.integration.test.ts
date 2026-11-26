@@ -96,7 +96,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
       if (outcome.ok) throw new Error("Expected email delivery to fail");
       expect(outcome.error).toBeInstanceOf(Error);
       expect((outcome.error as Error).message).toBe(t(`server.${scope}.invite_mail_failed`));
-      const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+      const user = await usersRepo.createUser({ locale: "en", influencerCode: "official", email: fixture.email, emailVerified: true });
       await claimEmailInvitations(user);
       expect(await invitationRows(sql, scope, fixture)).toMatchObject([{
         status: "revoked", invited_user_id: null, invited_email: fixture.email, notification_id: null,
@@ -109,7 +109,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
         const fixture = await seedInvitationFixture(sql);
         const attempt = await beginDelivery(scope, fixture);
         try {
-          const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+          const user = await usersRepo.createUser({ locale: "en", influencerCode: "official", email: fixture.email, emailVerified: true });
           await claimEmailInvitations(user);
           if (queueSucceeds) attempt.succeed();
           else attempt.fail();
@@ -137,7 +137,7 @@ for (const scope of ["project", "studio"] satisfies Scope[]) {
         const fixture = await seedInvitationFixture(sql);
         const attempt = await beginDelivery(scope, fixture);
         try {
-          const user = await usersRepo.createUser({ locale: "en", email: fixture.email, emailVerified: true });
+          const user = await usersRepo.createUser({ locale: "en", influencerCode: "official", email: fixture.email, emailVerified: true });
           await claimEmailInvitations(user);
           const invitation = (await invitationRows(sql, scope, fixture))[0]!;
           await answerInvitation(scope, invitation.id, user.id, accept);

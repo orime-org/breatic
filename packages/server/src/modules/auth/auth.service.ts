@@ -46,6 +46,7 @@ import {
   db,
 } from "@breatic/core";
 import { wakeCommerceRelay } from "@server/modules/commerce/commerce-relay.js";
+import { influencerCodeFor } from "@server/modules/auth/influencer-code.js";
 import { checkReferralCode, type ReferralCodeCheck } from "@server/modules/commerce/referral-check.service.js";
 import { adClickFrom, getActiveLocale, normalizeEmail, t } from "@breatic/shared";
 import type { Attribution, ReportedConsent, SignupReferralSource, UserEntity } from "@breatic/shared";
@@ -101,15 +102,19 @@ export function hashPassword(password: string): Promise<string> {
  * @param data - The account to create, as `userRepo.createUser` takes it.
  * @param referral - The code the sign-up carried, and what to do when it is
  *   refused: `reject` creates nothing, `skip` creates the account unbound.
+ * @param origin - The sign-up request's `Origin`: the account is recorded
+ *   under the influencer registered on it (inner#2157), whatever the consent.
  * @returns The created account and what became of the code.
  * @throws {ConflictError} When the address already belongs to an account.
  * @throws {SignupReferralRefused} When the code is refused and `onRefused` is `reject`.
  */
 export async function createAccount(
-  data: Parameters<typeof userRepo.createUser>[0],
+  data: Omit<Parameters<typeof userRepo.createUser>[0], "influencerCode">,
   referral?: SignupReferral & { onRefused: "reject" | "skip" },
+  origin?: string,
 ): Promise<{ user: UserEntity; referral: SignupReferralOutcome }> {
   const consent = currentConsent();
+  const influencerCode = await influencerCodeFor(origin);
   const attribution = consent.analytics || consent.ads ? (data.attribution ?? null) : null;
   const wanted = referral !== undefined && env.SELLING ? referral : undefined;
   // Asked before the account's transaction opens: the transaction never waits on the network.
@@ -120,9 +125,9 @@ export async function createAccount(
   let user: UserEntity;
   try {
     user = binding === null
-      ? await userRepo.createUser({ ...data, attribution })
+      ? await userRepo.createUser({ ...data, attribution, influencerCode })
       : await db.transaction(async (tx) => {
-        const created = await userRepo.createUser({ ...data, attribution }, tx);
+        const created = await userRepo.createUser({ ...data, attribution, influencerCode }, tx);
         await commerceOutboxRepo.appendReferralBinding({ userId: created.id, ...binding }, tx);
         return created;
       });
@@ -167,6 +172,7 @@ export async function createAccount(
  * @param password - Plaintext password (hashed with bcrypt, 12 rounds)
  * @param attribution - Campaign source the browser recorded before sign-up
  * @param referral - The referral code the sign-up carried, bound with the account
+ * @param origin - The sign-up request's `Origin`, naming the influencer site
  * @returns `{ user, recoveryCode, referral }` - recoveryCode is plaintext
  *   `XXXX-XXXX-XXXX-XXXX`, shown once.
  * @throws {ConflictError} If the email is already registered
@@ -177,6 +183,7 @@ export async function register(
   password: string,
   attribution: Attribution | null = null,
   referral?: SignupReferral,
+  origin?: string,
 ): Promise<{ user: UserEntity; recoveryCode: string; referral: SignupReferralOutcome }> {
   const existing = await userRepo.getUserByEmail(email);
   if (existing) {
@@ -187,6 +194,7 @@ export async function register(
   const { user, referral: referralOutcome } = await createAccount(
     { email, hashedPassword, locale: getActiveLocale(), attribution },
     referral && { ...referral, onRefused: "reject" },
+    origin,
   );
 
   // Generate + store recovery code. Done after createUser so we have
@@ -262,36 +270,43 @@ export async function loginEmail(
   return { user, token };
 }
 
+/** Google vouches for an address that belongs to an email account it cannot claim. */
+export class GoogleLinkRequiresEmailLogin extends UnauthorizedError {
+  /** Build the refusal with its user-facing message. */
+  constructor() {
+    super(t("server.auth.google_link_requires_email_login"));
+  }
+}
+
 /**
- * Log in or register a user via Google OAuth.
+ * Find or create the account a verified Google identity signs in to.
  *
- * If a user with the given Google ID exists, logs them in. Otherwise,
- * links to an existing email account or creates a new account (no
- * personal studio — like email step 1). The
- * new user hits the same "no personal studio → pick a slug" gate as
- * email sign-ups (email-registration rewrite, 2026-06-06).
+ * If a user with the given Google ID exists, that is the account. Otherwise
+ * the identity links to an existing email account or creates a new account
+ * (no personal studio — like email step 1), which then goes through the
+ * "no personal studio → pick a slug" gate. The caller opens the session.
  *
  * Google is pure authentication: we never import its display name or
  * avatar. Identity is user-owned — the display name is the slug chosen at
- * slug-setup, the avatar is a UI upload (#1809) — so Google's `name` /
- * `picture` are intentionally not accepted here. The frontend GIS button is
- * rendered by Google; this path creates/links accounts and issues a session.
+ * slug-setup, the avatar is a UI upload (#1809).
  * @param googleId - The Google account identifier
  * @param email - The email address from Google
  * @param authoritativeEmail - Whether Google owns verification of this email (Gmail or Workspace).
  * @param attribution - Campaign source the browser recorded, kept only on a new account.
  * @param referral - The referral code the sign-in carried; bound only to a new account.
+ * @param origin - The site the sign-in started on; a new account is recorded under its influencer (inner#2157).
  * @throws {SignupReferralRefused} If a new account's referral code is not valid; nothing is created
- * @throws {UnauthorizedError} If linking would claim an unproven or differently bound email.
- * @returns The user, a session token, whether this call created the account, and what became of the code
+ * @throws {GoogleLinkRequiresEmailLogin} If linking would claim an unproven or differently bound email.
+ * @returns The user, whether this call created the account, and what became of the code
  */
-export async function loginOrCreateGoogle(
+export async function resolveGoogleAccount(
   googleId: string,
   email: string,
   authoritativeEmail = false,
   attribution: Attribution | null = null,
   referral?: SignupReferral,
-): Promise<{ user: UserEntity; token: string; created: boolean; referral: SignupReferralOutcome }> {
+  origin?: string,
+): Promise<{ user: UserEntity; created: boolean; referral: SignupReferralOutcome }> {
   let user = await userRepo.getUserByGoogleId(googleId);
   let created = false;
   let referralOutcome: SignupReferralOutcome = referral && env.SELLING ? "not_applied" : null;
@@ -300,15 +315,16 @@ export async function loginOrCreateGoogle(
     user = await userRepo.getUserByEmail(email);
     if (user) {
       if (!authoritativeEmail || (user.googleId && user.googleId !== googleId)) {
-        throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
+        throw new GoogleLinkRequiresEmailLogin();
       }
       const linked = await userRepo.linkGoogleIdentity(user.id, googleId);
-      if (!linked) throw new UnauthorizedError(t("server.auth.google_link_requires_email_login"));
+      if (!linked) throw new GoogleLinkRequiresEmailLogin();
       user = linked;
     } else {
       ({ user, referral: referralOutcome } = await createAccount(
         { email, googleId, emailVerified: authoritativeEmail, locale: getActiveLocale(), attribution },
         referral && { ...referral, onRefused: "reject" },
+        origin,
       ));
       created = true;
     }
@@ -321,9 +337,7 @@ export async function loginOrCreateGoogle(
   }
 
   if (user.emailVerified) await claimEmailInvitations(user);
-  const token = await createSession(user.id);
-  // Caller logs `user_logged_in` (method=google) audit line.
-  return { user, token, created, referral: referralOutcome };
+  return { user, created, referral: referralOutcome };
 }
 
 /**

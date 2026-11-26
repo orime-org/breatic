@@ -182,7 +182,7 @@ export const influencerOperations = pgTable("influencer_operations", {
   id: uuid("id").defaultRandom().primaryKey(),
   key: text("key").notNull().unique(),
   requestHash: varchar("request_hash", { length: 64 }).notNull(),
-  requestedBy: uuid("requested_by").notNull(),
+  requestedBy: varchar("requested_by", { length: 255 }).notNull(),
   requestBody: jsonb("request_body").$type<Record<string, unknown>>().notNull(),
   result: jsonb("result").$type<Record<string, unknown>>().notNull(),
   createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

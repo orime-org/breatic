@@ -11,3 +11,9 @@ signup_code:
   # per-code limit this bounds guesses at one address to
   # 3600 / resend_cooldown_seconds * max_attempts_per_code an hour.
   resend_cooldown_seconds: 60
+
+# Full-page Google sign-in (inner#2157).
+google_login:
+  # How long a started sign-in (its state, PKCE verifier, nonce and the
+  # browser's bind cookie) waits for the user to come back from Google.
+  state_ttl_seconds: 600
