@@ -11,6 +11,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { act, fireEvent, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import type { DesktopBridge, DesktopDownloadList } from '@breatic/shared';
 
 import { DownloadPanel } from '@web/features/desktop-downloads/DownloadPanel';
@@ -104,7 +105,7 @@ describe('DownloadPanel', () => {
   });
 
   it('sums up running, then failed, then done in the title bar', async () => {
-    const { change } = inClient({ open: true, items: [running, failed] });
+    const { change } = inClient({ open: true, items: [running, done] });
     renderWithTooltips(<DownloadPanel />);
     expect(await screen.findByText('1 downloading')).toBeInTheDocument();
     await change({ open: true, items: [done, failed] });
@@ -154,6 +155,68 @@ describe('DownloadPanel', () => {
     expect(await screen.findByText('File moved or deleted')).toBeInTheDocument();
     expect(screen.getByText('Complete')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Show in Finder' })).toBeNull();
+  });
+
+  it('shows the expand toggle with a border and the way the panel will go', async () => {
+    inClient({ open: true, items: [running, done] });
+    renderWithTooltips(<DownloadPanel />);
+    const all = await screen.findByRole('button', { name: 'All 2' });
+    expect(all.className).toContain('border');
+    expect(all.querySelector('.lucide-chevron-up')).not.toBeNull();
+    fireEvent.click(all);
+    const latest = screen.getByRole('button', { name: 'Latest only' });
+    expect(latest.className).toContain('border');
+    expect(latest.querySelector('.lucide-chevron-down')).not.toBeNull();
+  });
+
+  it('names running and failed downloads together in the title bar', async () => {
+    inClient({ open: true, items: [failed, running] });
+    renderWithTooltips(<DownloadPanel />);
+    expect(await screen.findByText('1 downloading · 1 failed')).toBeInTheDocument();
+  });
+
+  it('shows a cut-off folder name in full on hover, and nothing for one that fits', async () => {
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.textContent?.includes('a-very-long-project-folder') ? 300 : 100;
+    });
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(150);
+    inClient({ open: true, items: [{ ...done, folder: 'a-very-long-project-folder' }, { ...done, id: '5', name: 'b.png' }] });
+    renderWithTooltips(<DownloadPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'All 2' }));
+    const user = userEvent.setup();
+    await user.hover(screen.getByText('Saved in Downloads'));
+    // Past the provider's 700ms open delay.
+    await new Promise((resolve) => setTimeout(resolve, 900));
+    expect(screen.queryByRole('tooltip')).toBeNull();
+    await user.hover(screen.getByText('Saved in a-very-long-project-folder'));
+    expect(await screen.findByRole('tooltip')).toHaveTextContent('Saved in a-very-long-project-folder');
+    vi.restoreAllMocks();
+  });
+
+  it('stops a list of five or more halfway through its fourth row', async () => {
+    const observed: Array<() => void> = [];
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private readonly callback: () => void) {}
+      observe(): void {
+        observed.push(this.callback);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetHeight', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.tagName === 'LI' ? 60 : 0;
+    });
+    vi.spyOn(HTMLElement.prototype, 'offsetTop', 'get').mockImplementation(function (this: HTMLElement) {
+      return this.tagName === 'LI' ? [...this.parentElement!.children].indexOf(this) * 60 : 0;
+    });
+    const rows = [1, 2, 3, 4, 5].map((n) => ({ ...done, id: String(n), name: `f${n}.png` }));
+    inClient({ open: true, items: rows });
+    renderWithTooltips(<DownloadPanel />);
+    fireEvent.click(await screen.findByRole('button', { name: 'All 5' }));
+    act(() => observed.forEach((callback) => callback()));
+    const capped = screen.getByTestId('desktop-download-panel').querySelector<HTMLElement>('[style*="--download-list-cap"]');
+    expect(capped?.style.getPropertyValue('--download-list-cap')).toBe(`${3 * 60 + 30}px`);
+    vi.restoreAllMocks();
   });
 
   it('closes through the client', async () => {

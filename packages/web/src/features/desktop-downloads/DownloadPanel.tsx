@@ -3,7 +3,7 @@
 
 import * as React from 'react';
 import { flushSync } from 'react-dom';
-import { ArrowDown, Check, CircleAlert, Minus, X } from 'lucide-react';
+import { ArrowDown, Check, ChevronDown, ChevronUp, CircleAlert, Minus, X } from 'lucide-react';
 import { formatBytes, type DesktopDownload, type DesktopDownloadList } from '@breatic/shared';
 
 import { Button } from '@web/components/ui/button';
@@ -42,6 +42,32 @@ function insideWindow(position: PanelPosition, height: number): PanelPosition {
 }
 
 /**
+ * Text cut short with an ellipsis that shows in full on hover, only when it is cut (as the Document outline's headings do).
+ * @param props - The text and its classes.
+ * @param props.text - The whole text.
+ * @param props.className - Classes of the span, including `truncate`.
+ * @returns The span.
+ */
+function CutText({ text, className }: { text: string; className: string }): React.JSX.Element {
+  const ref = React.useRef<HTMLSpanElement>(null);
+  const [tip, setTip] = React.useState(false);
+  const openTip = React.useCallback((open: boolean) => {
+    const element = ref.current;
+    setTip(open && element !== null && element.scrollWidth > element.clientWidth);
+  }, []);
+  return (
+    <Tooltip open={tip} onOpenChange={openTip}>
+      <TooltipTrigger asChild>
+        <span ref={ref} className={className}>
+          {text}
+        </span>
+      </TooltipTrigger>
+      <TooltipContent className='max-w-sm break-all'>{text}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/**
  * One download's row.
  * @param props - The download and how to reveal it.
  * @param props.item - The download.
@@ -73,7 +99,7 @@ const DownloadRow = React.memo(function DownloadRow({
     <li className='border-t border-border px-3 py-2.5'>
       <div className='flex min-w-0 items-center gap-2'>
         <span className='flex w-4 shrink-0 justify-center'>{icon}</span>
-        <span className={cn('min-w-0 flex-1 truncate', item.state === 'missing' && 'text-muted-foreground')}>{item.name}</span>
+        <CutText text={item.name} className={cn('min-w-0 flex-1 truncate', item.state === 'missing' && 'text-muted-foreground')} />
       </div>
       <div className='pl-6 text-xs'>
         {item.state === 'progressing' && (
@@ -88,7 +114,7 @@ const DownloadRow = React.memo(function DownloadRow({
         )}
         {item.state === 'completed' && (
           <div className='mt-1 flex items-center gap-2'>
-            <span className='min-w-0 flex-1 truncate text-muted-foreground'>{t('desktopDownloads.savedIn', { folder: item.folder })}</span>
+            <CutText text={t('desktopDownloads.savedIn', { folder: item.folder })} className='min-w-0 flex-1 truncate text-muted-foreground' />
             <Button size='compact' variant='outline' className='shrink-0' onClick={() => onReveal(item.id)}>
               {revealLabel}
             </Button>
@@ -168,6 +194,23 @@ export function DownloadPanel(): React.JSX.Element | null {
     observer.observe(element);
     return () => observer.disconnect();
   }, []);
+  // Five or more rows stop halfway through the fourth, so the list shows it goes on.
+  const [listCap, setListCap] = React.useState<number | null>(null);
+  const measureList = React.useCallback((list: HTMLUListElement | null) => {
+    if (!list) return;
+    /** Hold the list at the middle of its fourth row once it has five. */
+    const cap = (): void => {
+      const fourth = list.children.length >= 5 ? (list.children[3] as HTMLElement) : null;
+      setListCap(fourth ? fourth.offsetTop - list.offsetTop + fourth.offsetHeight / 2 : null);
+    };
+    const observer = new ResizeObserver(() => flushSync(cap));
+    observer.observe(list);
+    return () => observer.disconnect();
+  }, []);
+  const listStyle = React.useMemo(
+    () => (listCap === null ? undefined : ({ '--download-list-cap': `${listCap}px` } as React.CSSProperties)),
+    [listCap],
+  );
   const [, setWindowSize] = React.useState(0);
   React.useEffect(() => {
     /**
@@ -222,7 +265,9 @@ export function DownloadPanel(): React.JSX.Element | null {
   const running = items.filter((item) => item.state === 'progressing').length;
   const failed = items.filter((item) => item.state === 'failed').length;
   const summary = running
-    ? t('desktopDownloads.running', { count: running })
+    ? failed
+      ? t('desktopDownloads.runningFailed', { running, failed })
+      : t('desktopDownloads.running', { count: running })
     : failed
       ? t('desktopDownloads.failed', { count: failed })
       : t('desktopDownloads.done');
@@ -247,8 +292,9 @@ export function DownloadPanel(): React.JSX.Element | null {
         <h2 className='font-semibold'>{t('desktopDownloads.title')}</h2>
         <span className='min-w-0 flex-1 truncate text-xs text-muted-foreground'>{summary}</span>
         {items.length > 1 && (
-          <Button size='compact' variant='secondary' onClick={toggle}>
+          <Button size='compact' variant='outline' onClick={toggle}>
             {expanded ? t('desktopDownloads.showLatest') : t('desktopDownloads.showAll', { count: items.length })}
+            {expanded ? <ChevronDown className='size-3.5' /> : <ChevronUp className='size-3.5' />}
           </Button>
         )}
         <Tooltip>
@@ -260,8 +306,8 @@ export function DownloadPanel(): React.JSX.Element | null {
           <TooltipContent>{t('desktopDownloads.close')}</TooltipContent>
         </Tooltip>
       </header>
-      <ScrollArea viewportClassName='max-h-[260px]'>
-        <ul>
+      <ScrollArea viewportClassName='max-h-[var(--download-list-cap,none)]' style={listStyle}>
+        <ul ref={measureList}>
           {shown.map((item) => (
             <DownloadRow key={item.id} item={item} revealLabel={revealLabel} onReveal={onReveal} />
           ))}

@@ -5296,6 +5296,7 @@
     "title": "ダウンロード",
     "running": "{count} 件ダウンロード中",
     "failed": "{count} 件失敗",
+    "runningFailed": "{running} 件ダウンロード中 · {failed} 件失敗",
     "done": "ダウンロード完了",
     "showAll": "すべて（{count} 件）",
     "showLatest": "最新のみ",

@@ -81,6 +81,7 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   // inner#2041: the desktop client's Downloads panel.
   "desktopDownloads.running": { described: /its title bar says how many are downloading or failed/ },
   "desktopDownloads.failed": { described: /its title bar says how many are downloading or failed/ },
+  "desktopDownloads.runningFailed": { described: /its title bar says how many are downloading or failed/ },
   "desktopDownloads.done": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "desktopDownloads.progress": { described: /each row shows the file's name and progress/ },
   "desktopDownloads.receivedOnly": { described: /each row shows the file's name and progress/ },

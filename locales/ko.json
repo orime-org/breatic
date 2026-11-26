@@ -5296,6 +5296,7 @@
     "title": "다운로드",
     "running": "{count}개 다운로드 중",
     "failed": "{count}개 실패",
+    "runningFailed": "{running}개 다운로드 중 · {failed}개 실패",
     "done": "다운로드 완료",
     "showAll": "전체 {count}개",
     "showLatest": "최신만 보기",

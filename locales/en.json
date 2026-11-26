@@ -5296,6 +5296,7 @@
     "title": "Downloads",
     "running": "{count} downloading",
     "failed": "{count} failed",
+    "runningFailed": "{running} downloading · {failed} failed",
     "done": "Complete",
     "showAll": "All {count}",
     "showLatest": "Latest only",

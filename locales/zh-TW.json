@@ -5296,6 +5296,7 @@
     "title": "下載",
     "running": "{count} 個正在下載",
     "failed": "{count} 個失敗",
+    "runningFailed": "{running} 個正在下載 · {failed} 個失敗",
     "done": "下載完成",
     "showAll": "全部 {count} 個",
     "showLatest": "只看最新",
