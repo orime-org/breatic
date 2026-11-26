@@ -3,7 +3,7 @@
 
 import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { videoPresentationQuery, repairVideoPresentation } from '../video-presentation-query';
+import { videoPresentationQuery, videoPresentationQueryKey, repairVideoPresentation } from '../video-presentation-query';
 import { ApiException } from '@web/data/api/types';
 import { presentedBinding, presentedBundle, presentedPreparation, presentedResponse } from '@web/test-utils/video-presentation';
 
@@ -31,6 +31,11 @@ describe('canonical presentation query (inner#1306 Canvas §17)', () => {
     expect(apiGet).toHaveBeenCalledWith(`/projects/${input.projectId}/assets/video-presentation`, expect.objectContaining({
       params: { url: input.canonicalURL }, signal: expect.any(AbortSignal),
     }));
+  });
+
+  it('keys a source by project and address alone, whatever its activation', () => {
+    expect(videoPresentationQuery({ ...input, active: false }).queryKey).toEqual(videoPresentationQueryKey(input.projectId, input.canonicalURL));
+    expect(videoPresentationQuery(input).queryKey).toEqual(videoPresentationQueryKey(input.projectId, input.canonicalURL));
   });
 
   it('deduplicates concurrent consumers of the same project, source and schema version', async () => {

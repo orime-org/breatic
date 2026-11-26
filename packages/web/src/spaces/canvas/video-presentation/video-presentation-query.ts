@@ -16,6 +16,17 @@ export type VideoPresentationQueryOptions = UseQueryOptions<VideoPresentationRes
   readonly ['video-presentation', 1, string, string]>;
 
 /**
+ * The cache key of one canonical source's presentation in a Project.
+ * @param projectId - The Project.
+ * @param canonicalURL - The source's registered address.
+ * @returns The key.
+ * @throws {never} Never.
+ */
+export function videoPresentationQueryKey(projectId: string, canonicalURL: string): readonly ['video-presentation', 1, string, string] {
+  return ['video-presentation', 1, projectId, canonicalURL] as const;
+}
+
+/**
  * Describe one authorized canonical source query without creating another cache. It is read again when collab says
  * the video's presentation job ended (`useProjectLiveUpdates`, frames-split §7.20), never on a timer.
  * @param input - Project, source and current Space activation.
@@ -34,7 +45,7 @@ export function videoPresentationQuery(input: VideoPresentationQueryInput): Vide
  */
 function presentationOptions(input: VideoPresentationQueryInput): VideoPresentationQueryOptions {
   return queryOptions({
-    queryKey: ['video-presentation', 1, input.projectId, input.canonicalURL] as const,
+    queryKey: videoPresentationQueryKey(input.projectId, input.canonicalURL),
     enabled: input.active && input.projectId.length > 0 && input.canonicalURL.length > 0,
     retry: false,
     queryFn: async ({ signal }): Promise<VideoPresentationResponse> => {

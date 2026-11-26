@@ -16,7 +16,7 @@ import {
 import { settleUploadEnding } from '@web/data/upload/upload-status';
 import { useProjectSignal } from '@web/pages/project/use-project-signal';
 import { announceAudioPeaksReady } from '@web/spaces/canvas/mini-tool/audio-peaks-ready';
-import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
+import { videoPresentationQueryKey } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 /**
  * Act on what collab says changed behind the Project page (#1580): read the bell or the project's transfer again,
@@ -62,7 +62,7 @@ export function useProjectLiveUpdates(
       } else if (message.t === ASSET_PEAKS_READY_SIGNAL && typeof message.url === 'string') {
         announceAudioPeaksReady(message.url);
       } else if (message.t === VIDEO_PRESENTATION_CHANGED_SIGNAL && message.projectId === projectId && typeof message.url === 'string') {
-        void queryClient.invalidateQueries({ queryKey: videoPresentationQuery({ projectId, canonicalURL: message.url, active: true }).queryKey });
+        void queryClient.invalidateQueries({ queryKey: videoPresentationQueryKey(projectId, message.url) });
       }
     };
     provider.on('stateless', onStateless);

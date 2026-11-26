@@ -8,7 +8,7 @@
  */
 import type { QueryClient } from '@tanstack/react-query';
 import type { VideoPresentationResponse } from '@breatic/shared';
-import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
+import { videoPresentationQueryKey } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 type Bundle = NonNullable<VideoPresentationResponse['presentation']>;
 type Preparation = NonNullable<VideoPresentationResponse['preparation']>;
@@ -99,6 +99,6 @@ export function presentedResponse(sourceBinding: VideoPresentationResponse['sour
  */
 export function seedUsablePresentation(client: QueryClient, projectId: string, canonicalURL: string, fields: Partial<Bundle> = {}): VideoPresentationResponse {
   const response = presentedResponse(presentedBinding(canonicalURL), { presentation: presentedBundle(canonicalURL, fields) });
-  client.setQueryData(videoPresentationQuery({ projectId, canonicalURL, active: true }).queryKey, response);
+  client.setQueryData(videoPresentationQueryKey(projectId, canonicalURL), response);
   return response;
 }
