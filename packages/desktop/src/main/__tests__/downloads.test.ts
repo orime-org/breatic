@@ -164,7 +164,7 @@ describe("createDownloads", () => {
     expect(deps.showItemInFolder).toHaveBeenCalledWith("/Users/a/Downloads/a.png");
   });
 
-  it("looks for the file off the main thread and acts once the answer comes", async () => {
+  it("shows the folder only after the file check answers", async () => {
     let found!: (exists: boolean) => void;
     const { downloads, deps } = setup({ fileExists: vi.fn(() => new Promise<boolean>((resolve) => (found = resolve))) });
     const item = saved(downloads, "/Users/a/Downloads/a.png");

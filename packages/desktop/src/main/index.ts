@@ -350,7 +350,7 @@ function track(window: BrowserWindow): LoadTracker {
   loads.set(id, tracker);
   window.on("close", (event) => {
     saveWindowState(window);
-    quitGuard.windowClosing(event, { owner: window, appWindows, close: () => window.close() });
+    quitGuard.windowClosing(event, { owner: window, appWindows: () => appWindows, close: () => window.close() });
   });
   window.on("focus", () => {
     appWindows = [...appWindows.filter((other) => other !== window), window];

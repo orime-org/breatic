@@ -41,7 +41,7 @@ interface Preventable {
 /** The guard's hooks. */
 export interface QuitGuard {
   /** A window's `close`: the user closing the last app window on Windows or Linux is asked. */
-  windowClosing(event: Preventable, window: { owner: object; appWindows: readonly object[]; close: () => void }): void;
+  windowClosing(event: Preventable, window: { owner: object; appWindows: () => readonly object[]; close: () => void }): void;
   /** `app`'s `before-quit`. */
   beforeQuit(event: Preventable, quit: () => void): void;
   /** Before Restart now closes the windows; false keeps the app running. */
@@ -70,11 +70,11 @@ export function createQuitGuard(deps: QuitGuardDeps): QuitGuard {
    * Whether every other app window is already closing.
    * @param window - The window closing now and the app windows.
    * @param window.owner - The window closing now.
-   * @param window.appWindows - The app windows.
+   * @param window.appWindows - The app windows open now, read at each check as Chrome reads its live window list.
    * @returns True when it is the last one.
    */
-  const isLast = (window: { owner: object; appWindows: readonly object[] }): boolean =>
-    window.appWindows.every((other) => other === window.owner || closing.has(other));
+  const isLast = (window: { owner: object; appWindows: () => readonly object[] }): boolean =>
+    window.appWindows().every((other) => other === window.owner || closing.has(other));
 
   /**
    * Ask once; a second request while the dialog is open waits for nothing.

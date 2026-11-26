@@ -40,7 +40,7 @@ describe("createQuitGuard", () => {
   it("asks nothing when no download is running", async () => {
     const { guard, deps } = setup({ running: () => 0 });
     const close = event();
-    guard.windowClosing(close, { owner: w, appWindows: [w], close: vi.fn() });
+    guard.windowClosing(close, { owner: w, appWindows: () => [w], close: vi.fn() });
     const quit = event();
     guard.beforeQuit(quit, vi.fn());
     expect(await guard.confirmRestart()).toBe(true);
@@ -53,13 +53,13 @@ describe("createQuitGuard", () => {
     const { guard, deps } = setup();
     const close = vi.fn();
     const first = event();
-    guard.windowClosing(first, { owner: w, appWindows: [w], close });
+    guard.windowClosing(first, { owner: w, appWindows: () => [w], close });
     expect(first.preventDefault).toHaveBeenCalled();
     expect(deps.ask).toHaveBeenCalledWith(2, w);
     await answered();
     expect(close).toHaveBeenCalled();
     const again = event();
-    guard.windowClosing(again, { owner: w, appWindows: [w], close });
+    guard.windowClosing(again, { owner: w, appWindows: () => [w], close });
     const quit = event();
     guard.beforeQuit(quit, vi.fn());
     expect(again.preventDefault).not.toHaveBeenCalled();
@@ -70,11 +70,11 @@ describe("createQuitGuard", () => {
   it("keeps the window on Stay and asks again next time", async () => {
     const { guard, deps } = setup({ ask: vi.fn(async () => false) });
     const close = vi.fn();
-    guard.windowClosing(event(), { owner: w, appWindows: [w], close });
+    guard.windowClosing(event(), { owner: w, appWindows: () => [w], close });
     await answered();
     expect(close).not.toHaveBeenCalled();
     const next = event();
-    guard.windowClosing(next, { owner: w, appWindows: [w], close });
+    guard.windowClosing(next, { owner: w, appWindows: () => [w], close });
     expect(next.preventDefault).toHaveBeenCalled();
     expect(deps.ask).toHaveBeenCalledTimes(2);
   });
@@ -82,7 +82,7 @@ describe("createQuitGuard", () => {
   it("lets a window that is not the last one close", () => {
     const { guard, deps } = setup();
     const close = event();
-    guard.windowClosing(close, { owner: w, appWindows: [w, other], close: vi.fn() });
+    guard.windowClosing(close, { owner: w, appWindows: () => [w, other], close: vi.fn() });
     expect(close.preventDefault).not.toHaveBeenCalled();
     expect(deps.ask).not.toHaveBeenCalled();
   });
@@ -90,9 +90,9 @@ describe("createQuitGuard", () => {
   it("asks for the window that closes after another already closing, as when the taskbar closes them all", () => {
     const { guard, deps } = setup();
     const first = event();
-    guard.windowClosing(first, { owner: w, appWindows: [w, other], close: vi.fn() });
+    guard.windowClosing(first, { owner: w, appWindows: () => [w, other], close: vi.fn() });
     const second = event();
-    guard.windowClosing(second, { owner: other, appWindows: [w, other], close: vi.fn() });
+    guard.windowClosing(second, { owner: other, appWindows: () => [w, other], close: vi.fn() });
     expect(first.preventDefault).not.toHaveBeenCalled();
     expect(second.preventDefault).toHaveBeenCalled();
     expect(deps.ask).toHaveBeenCalledWith(2, other);
@@ -100,10 +100,10 @@ describe("createQuitGuard", () => {
 
   it("counts a window again once a leave confirmation kept it open", () => {
     const { guard, deps } = setup();
-    guard.windowClosing(event(), { owner: w, appWindows: [w, other], close: vi.fn() });
+    guard.windowClosing(event(), { owner: w, appWindows: () => [w, other], close: vi.fn() });
     guard.stayed(w);
     const next = event();
-    guard.windowClosing(next, { owner: other, appWindows: [w, other], close: vi.fn() });
+    guard.windowClosing(next, { owner: other, appWindows: () => [w, other], close: vi.fn() });
     expect(next.preventDefault).not.toHaveBeenCalled();
     expect(deps.ask).not.toHaveBeenCalled();
   });
@@ -111,26 +111,43 @@ describe("createQuitGuard", () => {
   it("keeps no confirmation from a window that stopped being the last one while its dialog was open", async () => {
     let answer!: (quit: boolean) => void;
     const { guard, deps } = setup({ ask: vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve))) });
-    guard.windowClosing(event(), { owner: w, appWindows: [w, other], close: vi.fn() });
+    guard.windowClosing(event(), { owner: w, appWindows: () => [w, other], close: vi.fn() });
     const close = vi.fn();
-    guard.windowClosing(event(), { owner: other, appWindows: [w, other], close });
+    guard.windowClosing(event(), { owner: other, appWindows: () => [w, other], close });
     // The first window's page kept it open while the dialog was up.
     guard.stayed(w);
     answer(true);
     await answered();
     expect(close).toHaveBeenCalled();
     const later = event();
-    guard.windowClosing(later, { owner: w, appWindows: [w], close: vi.fn() });
+    guard.windowClosing(later, { owner: w, appWindows: () => [w], close: vi.fn() });
+    expect(later.preventDefault).toHaveBeenCalled();
+    expect(deps.ask).toHaveBeenCalledTimes(2);
+  });
+
+  it("judges the last window by the windows open when the answer comes, as one opened meanwhile keeps the app running", async () => {
+    let answer!: (quit: boolean) => void;
+    const { guard, deps } = setup({ ask: vi.fn(() => new Promise<boolean>((resolve) => (answer = resolve))) });
+    let open: object[] = [w];
+    const close = vi.fn();
+    guard.windowClosing(event(), { owner: w, appWindows: () => open, close });
+    // The user opens another window from the taskbar while the dialog is up.
+    open = [w, other];
+    answer(true);
+    await answered();
+    expect(close).toHaveBeenCalled();
+    const later = event();
+    guard.windowClosing(later, { owner: other, appWindows: () => [other], close: vi.fn() });
     expect(later.preventDefault).toHaveBeenCalled();
     expect(deps.ask).toHaveBeenCalledTimes(2);
   });
 
   it("counts a window again after the quit dialog's Stay kept it open", async () => {
     const { guard, deps } = setup({ ask: vi.fn(async () => false) });
-    guard.windowClosing(event(), { owner: w, appWindows: [w], close: vi.fn() });
+    guard.windowClosing(event(), { owner: w, appWindows: () => [w], close: vi.fn() });
     await answered();
     const next = event();
-    guard.windowClosing(next, { owner: other, appWindows: [w, other], close: vi.fn() });
+    guard.windowClosing(next, { owner: other, appWindows: () => [w, other], close: vi.fn() });
     expect(next.preventDefault).not.toHaveBeenCalled();
     expect(deps.ask).toHaveBeenCalledTimes(1);
   });
@@ -142,7 +159,7 @@ describe("createQuitGuard", () => {
     const again = event();
     guard.beforeQuit(again, vi.fn());
     const closing = event();
-    guard.windowClosing(closing, { owner: w, appWindows: [w], close: vi.fn() });
+    guard.windowClosing(closing, { owner: w, appWindows: () => [w], close: vi.fn() });
     expect(await guard.confirmRestart()).toBe(false);
     expect(again.preventDefault).toHaveBeenCalled();
     expect(closing.preventDefault).toHaveBeenCalled();
@@ -154,7 +171,7 @@ describe("createQuitGuard", () => {
   it("lets the last window close on macOS, where the app keeps running", () => {
     const { guard, deps } = setup({ platform: "darwin" });
     const close = event();
-    guard.windowClosing(close, { owner: w, appWindows: [w], close: vi.fn() });
+    guard.windowClosing(close, { owner: w, appWindows: () => [w], close: vi.fn() });
     expect(close.preventDefault).not.toHaveBeenCalled();
     expect(deps.ask).not.toHaveBeenCalled();
   });
@@ -171,7 +188,7 @@ describe("createQuitGuard", () => {
     const second = event();
     guard.beforeQuit(second, quit);
     const close = event();
-    guard.windowClosing(close, { owner: w, appWindows: [w], close: vi.fn() });
+    guard.windowClosing(close, { owner: w, appWindows: () => [w], close: vi.fn() });
     expect(second.preventDefault).not.toHaveBeenCalled();
     expect(close.preventDefault).not.toHaveBeenCalled();
     expect(deps.ask).toHaveBeenCalledTimes(1);
@@ -193,7 +210,7 @@ describe("createQuitGuard", () => {
     const { guard, deps } = setup();
     expect(await guard.confirmRestart()).toBe(true);
     const close = event();
-    guard.windowClosing(close, { owner: w, appWindows: [w], close: vi.fn() });
+    guard.windowClosing(close, { owner: w, appWindows: () => [w], close: vi.fn() });
     const quit = event();
     guard.beforeQuit(quit, vi.fn());
     expect(close.preventDefault).not.toHaveBeenCalled();
