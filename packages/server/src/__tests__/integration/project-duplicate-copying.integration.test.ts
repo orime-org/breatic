@@ -7,8 +7,9 @@
  *
  * The duplicate request writes which Project the copy came from and leaves its completion empty, so the copy reads as
  * being copied; collab fills the completion in. A Project that is still being copied cannot itself be copied: the
- * request is refused with a sentence the user reads in a toast. A Project that never was a copy, which is every
- * Project made before this change, reads as not being copied.
+ * request is refused with a sentence the user reads in a toast. The Studio's project list and the Project page say
+ * whether each Project is being copied. A Project that never was a copy, which is every Project made before this
+ * change, reads as not being copied.
  */
 
 import { describe, it, expect, beforeAll, afterAll, inject, vi } from "vitest";
@@ -52,7 +53,7 @@ afterAll(async () => {
  * @returns The admin and the Project.
  * @throws {Error} When a database write fails.
  */
-async function adminWithProject(): Promise<{ admin: string; projectId: string }> {
+async function adminWithProject(): Promise<{ admin: string; studioId: string; projectId: string }> {
   const tag = randomUUID().replaceAll("-", "").slice(0, 16);
   const [user] = await sql<{ id: string }[]>`
     INSERT INTO users (email, email_verified, membership_tier)
@@ -62,7 +63,7 @@ async function adminWithProject(): Promise<{ admin: string; projectId: string }>
     VALUES (${user!.id}, ${`copying-s-${tag}`}, 'team', 'Studio') RETURNING id`;
   await sql`INSERT INTO studio_members (studio_id, user_id, role) VALUES (${studio!.id}, ${user!.id}, 'admin')`;
   const project = await projectService.create(user!.id, studio!.id, "Storyboard", `copying-p-${tag}`, "canvas");
-  return { admin: user!.id, projectId: project.id };
+  return { admin: user!.id, studioId: studio!.id, projectId: project.id };
 }
 
 /**
@@ -129,5 +130,28 @@ describe("a copy while it is being copied", () => {
       SELECT duplicated_from_id, duplicate_completed_at FROM projects WHERE id = ${projectId}`;
     expect(row).toEqual({ duplicated_from_id: null, duplicate_completed_at: null });
     expect((await getProjectById(projectId))?.copying).toBe(false);
+  });
+
+  it("is listed in its Studio's project list as being copied until its completion is recorded", async () => {
+    const { admin, studioId, projectId } = await adminWithProject();
+    const copy = await projectService.duplicate(projectId, admin);
+    const copyingById = async (): Promise<Record<string, boolean>> => {
+      const { items } = await projectService.listByStudioForViewer(studioId, admin, { archived: false, locale: "en" });
+      return Object.fromEntries(items.map((item) => [item.id, item.copying]));
+    };
+
+    expect(await copyingById()).toEqual({ [projectId]: false, [copy.id]: true });
+    await complete(copy.id);
+    expect(await copyingById()).toEqual({ [projectId]: false, [copy.id]: false });
+  });
+
+  it("is read by the Project page as being copied until its completion is recorded", async () => {
+    const { admin, projectId } = await adminWithProject();
+    const copy = await projectService.duplicate(projectId, admin);
+
+    expect((await projectService.loadForViewer(copy.id, admin)).copying).toBe(true);
+    expect((await projectService.loadForViewer(projectId, admin)).copying).toBe(false);
+    await complete(copy.id);
+    expect((await projectService.loadForViewer(copy.id, admin)).copying).toBe(false);
   });
 });
