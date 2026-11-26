@@ -93,8 +93,6 @@ With separate hosts, the security group is the only network-level isolation: on 
 
 Purchase eligibility requires `CHARGING_ENABLED=true` and current, complete enterprise membership. The confirmation contains the membership revision and contract read from the profile endpoint. The product stores the original creation decision under `Idempotency-Key: bo-<UUID>`; callers recover uncertain replies by reading that original key. Verify the deployed server revision and expected/applied migration watermarks through `GET /internal/v1/deployment-version`, then check current eligibility and original-key reading on the signed listener.
 
-Purchase eligibility requires `CHARGING_ENABLED=true` and current, complete enterprise membership. The confirmation contains the membership revision and contract read from the profile endpoint. The product stores the original creation decision under `Idempotency-Key: bo-<UUID>`; callers recover uncertain replies by reading that original key. Verify the deployed server revision and expected/applied migration watermarks through `GET /internal/v1/deployment-version`, then check current eligibility and original-key reading on the signed listener.
-
 ## Scope and verification
 
 This change implements the user-approved separate-frontend deployment without changing database tables, session format, task semantics or local deployment defaults. Keeping one configurable API base avoids divergent request paths; passing queue TLS/credentials fixes the lost connection options rather than weakening cloud security. Separate API and WS hostnames would require a different cookie-sharing decision and are not required.
