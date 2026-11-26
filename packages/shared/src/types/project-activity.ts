@@ -204,7 +204,7 @@ export interface CreditsChangedSignal {
 export const ASSET_PEAKS_READY_SIGNAL = "asset-peaks:ready" as const;
 
 /**
- * Stateless WS signal on the project meta doc when what a reader of a video's presentation sees changed (frames-split
+ * Stateless WS signal on the project meta doc when what users see of a video's presentation changed (frames-split
  * §7.20); every
  * surface showing that video reads its presentation again. The page knows its video by address, so the signal carries it.
  */

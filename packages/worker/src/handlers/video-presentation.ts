@@ -358,7 +358,7 @@ async function liveSource(data: VideoPresentationJob): Promise<StudioAssetEntity
 }
 
 /**
- * Tell every live Project referencing the video's stored bytes that what a reader of its presentation sees changed, so
+ * Tell every live Project referencing the video's stored bytes that what users see of its presentation changed, so
  * the surfaces showing it read it again (frames-split §7.20). The change is already committed at ingest, so a message that
  * cannot be sent is logged and the job goes on: a retry would settle it a second time.
  * @param row - The live source row.
@@ -389,7 +389,7 @@ async function announceChanged(row: StudioAssetEntity, data: VideoPresentationJo
 }
 
 /**
- * The Redis key holding what readers of a stored video's presentation were last told it shows.
+ * The Redis key holding what users of a stored video's presentation were last told it shows.
  * @param storageKey - The video's storage key.
  * @returns The key, with this deployment's prefix.
  * @throws {never} Never.
@@ -399,7 +399,7 @@ function announcedKey(storageKey: string): string {
 }
 
 /**
- * Tell the Projects showing the video when what a reader sees differs from what they were last told (frames-split §7.20).
+ * Tell the Projects showing the video when what users see differs from what they were last told (frames-split §7.20).
  * The selected version, the current job and its failure are written by this worker, by ingest itself (the expiry on read,
  * while the job is still current) and by the server (a Retry or a read that admits a new job); each is seen by a later pickup
  * of a current job, so comparing what the answer shows catches all three.
@@ -428,7 +428,7 @@ async function announceIfChanged(row: StudioAssetEntity, data: VideoPresentation
 
 /**
  * One pickup of a staged presentation job. A pickup that goes back to wait tells the Projects showing the video when
- * what readers see changed since they were last told; a pickup that ends the job leaves the telling to its caller.
+ * what users see changed since they were last told; a pickup that ends the job leaves the telling to its caller.
  * @param data - The queued job identity; the deadline comes from the DO.
  * @returns The live source row once the job is over, or null when its source is gone.
  * @throws {StillRunning} While work is in flight or usage is unmeasured.

@@ -21,7 +21,7 @@ import { videoPresentationQueryKey } from '@web/spaces/canvas/video-presentation
 /**
  * Act on what collab says changed behind the Project page (#1580): read the bell or the project's transfer again,
  * hand an upload's ending to whoever waits for it, tell the cut bands a waveform is ready, and read a video's
- * presentation again when what readers see of it changed (frames-split §7.20). The page asks the
+ * presentation again when what users see of it changed (frames-split §7.20). The page asks the
  * server again only on these messages, never on a timer.
  * @param projectId - The project being viewed.
  * @param provider - The live meta-doc provider, or null while there is none.

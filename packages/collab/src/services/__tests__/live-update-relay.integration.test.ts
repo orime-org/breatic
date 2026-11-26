@@ -421,7 +421,7 @@ describe("a waveform made ready", () => {
   });
 });
 
-describe("a video preparation ended", () => {
+describe("a video presentation changed", () => {
   it("H-12 reaches the named Project's meta connections with the asset and its address (frames-split §7.20)", async () => {
     const s = await scenario();
     const onP1 = await open(I1, s.U, projectMetaDocName(s.P1));

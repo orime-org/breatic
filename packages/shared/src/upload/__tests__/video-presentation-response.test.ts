@@ -11,8 +11,8 @@
  * so there is no ledger or read limit beside it any more (§3.4). A repair answers
  * the same response; there is no `attempt` field.
  *
- * The response carries no reread interval: a page reads it again when collab says the
- * preparation ended (frames-split §7.20).
+ * The response carries no reread interval: a page reads it again when collab says what users see of the
+ * video's presentation changed (frames-split §7.20).
  */
 
 import { describe, expect, it } from 'vitest';

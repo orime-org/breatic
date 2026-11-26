@@ -136,7 +136,7 @@ export function assetPeaksReadyChannel(prefix: string, projectId: string): strin
 }
 
 /**
- * Control event announcing that what a reader of a video's presentation sees changed (a failure, the expiry, abandon,
+ * Control event announcing that what users see of a video's presentation changed (a failure, the expiry, abandon,
  * a new job or the job's end; frames-split §7.20), sent once to each live Project referencing a live row under the
  * video's storage key; collab relays it as the `video-presentation:changed` stateless signal on that Project's meta
  * doc, and every surface showing the video reads its presentation again.

@@ -76,8 +76,8 @@ type ProjectControlEvent =
  * `project-activity:new` relays the activity signal on the meta doc;
  * `project-connections:close` closes this instance's connections to the
  * project; `project-asset-peaks:ready` relays a written waveform on the meta
- * doc; `project-video-presentation:changed` relays a change readers of a video's
- * presentation see on the meta doc; `project-scene-look:settled` relays how an uploaded 3D part picture was
+ * doc; `project-video-presentation:changed` relays a change users see in a video's
+ * presentation on the meta doc; `project-scene-look:settled` relays how an uploaded 3D part picture was
  * settled as the `scene-look:settled` signal on it. Unknown / unparseable messages are logged and ignored.
  * @param hocuspocus - Running Hocuspocus server passed through to the relay and close handlers.
  * @param raw - Raw JSON message body received on the project control channel.
@@ -116,7 +116,7 @@ async function handleEvent(
   }
 
   if (event.type === "project-video-presentation:changed") {
-    // What readers of a video this project references see changed; every
+    // What users see of a video this project references changed; every
     // surface showing it reads its presentation again (frames-split §7.20).
     relayOnMetaDoc(hocuspocus, projectMetaDocName(event.projectId), {
       t: VIDEO_PRESENTATION_CHANGED_SIGNAL,

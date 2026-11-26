@@ -366,7 +366,7 @@ describe('the response mirrors the snapshot (inner#1306 §3.5 web→server, §5.
     ['a selected version while new target work runs', { presentation: bundle, preparation: prep('next-policy', 'encode') }],
     ['nothing selected and target work in flight', { preparation: prep('in-flight', 'plan') }],
     ['nothing selected and the target work failed', { preparation: prep('failed-job', 'plan', 'classification_unknown') }],
-  ])('M03 answers no reread interval, pages read again on the preparation-ended message (frames-split §7.20): %s', async (_name, fields) => {
+  ])('M03 answers no reread interval, pages read again on the presentation-changed message (frames-split §7.20): %s', async (_name, fields) => {
     ingest(snapshot(fields));
     expect(await resolveVideoPresentation(input)).not.toHaveProperty('pollAfterMs');
   });

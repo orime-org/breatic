@@ -777,7 +777,7 @@ describe('a job BullMQ gave up on is settled from the queue failed event (frames
   });
 });
 
-describe('a change readers see is told to the Projects showing the video (frames-split §7.20)', () => {
+describe('a change users see is told to the Projects showing the video (frames-split §7.20)', () => {
   const P1 = '7a1f2c0e-0000-4000-8000-000000000001';
   const P2 = '7a1f2c0e-0000-4000-8000-000000000002';
   const URL = `https://assets.example.test/${KEY}`;
@@ -816,7 +816,7 @@ describe('a change readers see is told to the Projects showing the video (frames
     expect(findById).toHaveBeenCalledTimes(1);
   });
 
-  it('VP02 a pickup that goes back to wait with what readers see unchanged since the last message tells nobody', async () => {
+  it('VP02 a pickup that goes back to wait with what users see unchanged since the last message tells nobody', async () => {
     answer = encoding();
     expect(await pickup()).toBeInstanceOf(DelayedError);
     publishVideoPresentationChanged.mockClear();
@@ -909,7 +909,7 @@ describe('a change readers see is told to the Projects showing the video (frames
     expect(publishVideoPresentationChanged.mock.calls).toEqual(BOTH);
   });
 
-  it('VP09 a pickup that ends the job tells each Project once, even when what readers see also changed', async () => {
+  it('VP09 a pickup that ends the job tells each Project once, even when what users see also changed', async () => {
     answer = encoding('expired');
     reports.clear();
     expect(await pickup()).toBeUndefined();

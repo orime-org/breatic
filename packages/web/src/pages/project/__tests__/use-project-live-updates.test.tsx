@@ -190,7 +190,7 @@ describe('a waveform made ready', () => {
   });
 });
 
-describe('a video preparation ended (frames-split §7.20)', () => {
+describe('a video presentation changed (frames-split §7.20)', () => {
   it('reads that video\'s presentation in this Project again, and not for another Project\'s', () => {
     const double = providerDouble();
     const view = mount(double.provider);
