@@ -9,7 +9,7 @@ copyright holder is the one named at the package's home page. Packages
 that install on one platform alone are left out: their bytes are native
 binaries, and no browser receives them.
 
-Packages 592, distinct licence texts 265
+Packages 593, distinct licence texts 265
 
 Regenerate with: pnpm --filter @breatic/repo-lint licences
 
