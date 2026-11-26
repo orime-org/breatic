@@ -5,8 +5,9 @@
  * Data access for `timeline_execution_grants` (inner#1711 design §3.4, #1490 design §4.4): which Projects may see,
  * resolve, preview, modify and export what an execution made. The server writes it: acceptance grants the accepting
  * Project and duplicating a Project copies its source's grants. The worker's export finish reads which Projects hold
- * an export ({@link projectsHolding}). Every list and single-row read answers through {@link liveGrantOf}, so the
- * lists and the single-row, web-source and preview reads agree on what is granted.
+ * an export ({@link projectsHolding}), the one read across Projects, which checks only that a grant is live. Every
+ * other read answers through {@link liveGrantOf}, so the lists and the single-row, web-source and preview reads agree
+ * on what is granted.
  *
  * A Motion Space's own list walks `timeline_executions_space_order_idx` and checks each row against the grant; the
  * Timeline-made group and the Project's results walk the grant table through its two ordered indexes, which carry each
@@ -110,7 +111,7 @@ function readCursor(cursor: string): { createdAt: string; id: string } {
 }
 
 /**
- * A grant row that is a Project's live grant: the one condition every read of the table uses.
+ * A grant row that is a Project's live grant: the condition every read for one Project uses.
  * @param projectId - The Project.
  * @returns The condition on the grant table.
  * @throws {never} Never.
