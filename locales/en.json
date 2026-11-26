@@ -1389,7 +1389,9 @@
           "label": "Ratio"
         },
         "rect": {
-          "label": "Size (px)"
+          "label": "Size (px)",
+          "width": "W",
+          "height": "H"
         },
         "orient": {
           "label": "Orientation"

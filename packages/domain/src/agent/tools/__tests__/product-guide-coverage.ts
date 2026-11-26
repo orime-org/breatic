@@ -439,6 +439,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "canvas.miniTool.adjust.grain": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.adjust.fade": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.param.rect.label": { excluded: REASONS.MODEL_SETTING_NAME },
+  "canvas.miniTool.param.rect.width": { excluded: REASONS.MODEL_SETTING_NAME },
+  "canvas.miniTool.param.rect.height": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.param.orient.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.param.rate.label": { excluded: REASONS.MODEL_SETTING_NAME },
   "canvas.miniTool.param.target.label": { excluded: REASONS.MODEL_SETTING_NAME },

@@ -1389,7 +1389,9 @@
           "label": "比例"
         },
         "rect": {
-          "label": "尺寸（px）"
+          "label": "尺寸（px）",
+          "width": "宽",
+          "height": "高"
         },
         "orient": {
           "label": "朝向"

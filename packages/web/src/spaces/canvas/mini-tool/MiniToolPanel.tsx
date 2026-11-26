@@ -672,14 +672,13 @@ function RectSideInput({ side, value, onCommit }: RectSideInputProps): React.JSX
       inputMode='numeric'
       autoComplete='off'
       data-testid={`mini-tool-rect-${side}`}
-      aria-label={side === 'w' ? 'W' : 'H'}
       value={draft ?? String(value)}
       onChange={(event) => setDraft(event.target.value.replace(/[^0-9]/g, ''))}
       onBlur={commit}
       onKeyDown={(event) => {
         if (event.key === 'Enter') commit();
       }}
-      className='h-8 w-24 text-xs tabular-nums md:text-xs'
+      className='h-8 min-w-0 flex-1 text-xs tabular-nums md:text-xs'
     />
   );
 }
@@ -811,10 +810,15 @@ function LocalParamControl({ param, spec, params, onParams, source, slots }: Loc
       return (
         <div className='flex flex-col gap-1.5'>
           <span className='text-xs font-medium text-muted-foreground'>{label}</span>
-          <div className='flex items-center gap-1.5'>
-            <RectSideInput side='w' value={Math.round(rect.w)} onCommit={set} />
-            <span className='text-xs text-muted-foreground'>×</span>
-            <RectSideInput side='h' value={Math.round(rect.h)} onCommit={set} />
+          <div className='flex items-center gap-2 text-xs text-muted-foreground'>
+            <label className='flex min-w-0 flex-1 items-center gap-1.5'>
+              {t('canvas.miniTool.param.rect.width')}
+              <RectSideInput side='w' value={Math.round(rect.w)} onCommit={set} />
+            </label>
+            <label className='flex min-w-0 flex-1 items-center gap-1.5'>
+              {t('canvas.miniTool.param.rect.height')}
+              <RectSideInput side='h' value={Math.round(rect.h)} onCommit={set} />
+            </label>
           </div>
         </div>
       );

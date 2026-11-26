@@ -138,6 +138,22 @@ describe('MiniToolPanel', () => {
     expect(screen.getByTestId('mini-tool-rect-h')).toHaveValue('1000');
   });
 
+  it('names the two size fields width and height in the user language, with nothing between them', () => {
+    mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
+    expect(screen.getByLabelText('W')).toBe(screen.getByTestId('mini-tool-rect-w'));
+    expect(screen.getByLabelText('H')).toBe(screen.getByTestId('mini-tool-rect-h'));
+    expect(screen.queryByText('×')).toBeNull();
+    cleanupAll();
+    setLocale('zh-CN');
+    try {
+      mount({ spec: tool('image.crop'), params: { aspect: 'free', rect: null } });
+      expect(screen.getByLabelText('宽')).toBe(screen.getByTestId('mini-tool-rect-w'));
+      expect(screen.getByLabelText('高')).toBe(screen.getByTestId('mini-tool-rect-h'));
+    } finally {
+      setLocale('en');
+    }
+  });
+
   // A9: clearing a side to type a new one leaves the field empty until the
   // typing is done; the size is written when the field is left or Enter pressed.
   it('lets a side be cleared and retyped, writing it when the typing is done', () => {

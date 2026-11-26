@@ -1389,7 +1389,9 @@
           "label": "비율"
         },
         "rect": {
-          "label": "크기(px)"
+          "label": "크기(px)",
+          "width": "너비",
+          "height": "높이"
         },
         "orient": {
           "label": "방향"

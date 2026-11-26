@@ -1389,7 +1389,9 @@
           "label": "比率"
         },
         "rect": {
-          "label": "サイズ（px）"
+          "label": "サイズ（px）",
+          "width": "幅",
+          "height": "高さ"
         },
         "orient": {
           "label": "向き"
