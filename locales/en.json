@@ -1481,6 +1481,7 @@
         "drama": "Short dramas & story scenes",
         "fight": "Fights & action",
         "animation": "Animated shorts",
+        "music-video": "Music videos",
         "ecommerce": "E-commerce ads",
         "product-showcase": "Product showcase",
         "promo": "Promo films & brand stories",
@@ -1768,6 +1769,133 @@
             "name": "Third",
             "note": "Add a picture of the third character first, then generate."
           }
+        }
+      },
+      "mv-style-sheet": {
+        "name": "MV style board",
+        "description": "One look every section of the video shares",
+        "prompt": "A 16:9 style board for a music video, one look across the whole board, for a song that feels {✏️ the song's mood, e.g. bittersweet and restless, late-night city pop}. The visual direction: {✏️ the direction, e.g. neon light in the rain, wet asphalt, 1980s Tokyo}. Laid out as a clean moodboard on a neutral grey background: a strip of five colour swatches along the top; below it, six photographic frames showing the light, the materials and textures, the wardrobe and the locations, all in the same palette and light. Cinematic, with film grain. No text, no labels, no logos."
+      },
+      "mv-performer-sheet": {
+        "name": "MV performer sheet",
+        "description": "Your singer drawn in the video's look",
+        "prompt": "(💡 Generate Style board first)A 16:9 landscape sheet of the person in [📎 Performer], in the look of [📎 Style board]: on the left, the same person full body from the front, from the side and from the back in one row, standing straight, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin and build exactly as in [📎 Performer]. They wear {✏️ the outfit, e.g. a long black vinyl coat over a white shirt, silver rings}, in the palette, light and textures of [📎 Style board]; take nothing else from the board, none of its layout or swatches. Plain light grey background, even soft light. No text, no labels.",
+        "node": {
+          "style": {
+            "name": "Style board",
+            "prompt": "A 16:9 style board for a music video, one look across the whole board, for a song that feels {✏️ the song's mood, e.g. bittersweet and restless, late-night city pop}. The visual direction: {✏️ the direction, e.g. neon light in the rain, wet asphalt, 1980s Tokyo}. Laid out as a clean moodboard on a neutral grey background: a strip of five colour swatches along the top; below it, six photographic frames showing the light, the materials and textures, the wardrobe and the locations, all in the same palette and light. Cinematic, with film grain. No text, no labels, no logos."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or character first, face in view, then generate the sheet."
+          }
+        }
+      },
+      "beat-synced-music-clip": {
+        "name": "Beat-synced clip",
+        "description": "A 15-second clip cut to your own song",
+        "prompt": "A 15-second widescreen music-video clip of the person in [📎 Performer], cut to [📎 Song clip]. [📎 Song clip] is the soundtrack and the clock: keep it exactly as it is, never change its timing, add no other music or sound. The scene: {✏️ the scene, e.g. a rooftop at dusk as the city lights come on}. The performer: {✏️ what they do, e.g. dances alone, then turns to the camera when the chorus hits}. Face, hair and build exactly as in [📎 Performer]. The energy follows the song, calmer where it is quiet and bigger where it builds. Cuts land on strong beats, not on every beat; the biggest change of shot is kept for the drop. The picture stops hard on the last note. No text on screen.",
+        "input": {
+          "song": {
+            "name": "Song clip",
+            "note": "Add a piece of your song of up to 15 seconds first; cut a longer song with Tools → Cut and use the cut clip. For a shorter piece, set the duration to its length."
+          },
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or dancer first, face in view."
+          }
+        }
+      },
+      "music-first-mv": {
+        "name": "Music first, then video",
+        "description": "Music made first, then a clip cut to it",
+        "prompt": "A 15-second widescreen music-video clip of the person in [📎 Performer]. The soundtrack is {✏️ @ here the 15-second piece you cut from Music}: keep it exactly as it is and cut to it, on its strong beats, not on every beat, with the biggest change of shot on its biggest hit. The scene: {✏️ the scene, e.g. an empty bowling alley lit in pink and blue}. The performer: {✏️ what they do, e.g. dances down the lane, then freezes on the hit}. Face, hair and build exactly as in [📎 Performer]. No text on screen.",
+        "node": {
+          "music": {
+            "name": "Music",
+            "prompt": "Instrumental music for a 15-second music-video clip: {✏️ the genre and tempo, e.g. bright synth-pop at 120 BPM}, in one key, with a clear, steady beat, a short build and one big hit around the middle. No vocals."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or dancer first, face in view."
+          }
+        },
+        "step": {
+          "trim": "The music comes out a few minutes long. Once it has generated, use Tools → Cut on it to cut a 15-second piece; connect the cut clip (named CUT-…) to the video and @ it where the prompt asks."
+        }
+      },
+      "song-with-lyrics": {
+        "name": "Song from my lyrics",
+        "description": "Your lyrics sung as a whole song",
+        "prompt": "A {✏️ the genre, e.g. dreamy indie pop} song at {✏️ the tempo, e.g. 96 BPM} in {✏️ the key, e.g. A minor}, with {✏️ the instruments, e.g. clean electric guitar, soft synth pads and live drums} and {✏️ the voice, e.g. a breathy female lead}. The verses stay low and close; the chorus opens up, louder and fuller, with harmonies.",
+        "node": {
+          "lyrics": {
+            "name": "Lyrics",
+            "text": "[Verse]\n{✏️ the first verse, e.g. Streetlights hum your name tonight / I walk the long way home}\n\n[Chorus]\n{✏️ the chorus, e.g. Stay, stay, just one more song / Stay till the morning comes}\n\n[Verse]\n{✏️ the second verse, e.g. Your jacket's still on my chair / Your voice is still in the room}\n\n[Chorus]\n{✏️ the chorus again, e.g. Stay, stay, just one more song / Stay till the morning comes}"
+          }
+        }
+      },
+      "mv-chorus-performance": {
+        "name": "Chorus lip-sync",
+        "description": "Your singer sings the chorus on camera",
+        "prompt": "(💡 Generate Performance still first, then pick it into the Character slot)The person sings the chorus to the camera, lips matching every word of the vocal, {✏️ the manner, e.g. eyes closed on the long notes, swaying gently, one hand on the microphone}. The camera holds still.",
+        "node": {
+          "look": {
+            "name": "Performance still",
+            "prompt": "A 16:9 widescreen still of the person in [📎 Performer] at a microphone, chest up, facing the camera, lips gently closed, about to sing, in {✏️ the place and look, e.g. a smoky jazz club lit by one warm spotlight, deep red and gold}. Face, hair, skin and build exactly as in the picture; they wear {✏️ the outfit, e.g. a black velvet suit}. Sharp focus on the face. No text."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer first, face in view, then generate Performance still."
+          },
+          "chorus": {
+            "name": "Chorus",
+            "note": "Add your song first, cut the chorus out of it with Tools → Cut, then pick the cut clip into the Driving audio slot."
+          }
+        }
+      },
+      "mv-full": {
+        "name": "Full music video",
+        "description": "Your performer sheet first, then four sections cut to your song",
+        "prompt": "(💡 Generate Style board first)A 16:9 landscape sheet of the person in [📎 Performer], in the look of [📎 Style board]: on the left, the same person full body from the front, from the side and from the back in one row, standing straight, all at the same scale; on the right, a head-and-shoulders close-up of the face from the front. Face, hair, skin and build exactly as in [📎 Performer]. They wear {✏️ the outfit, e.g. a long black vinyl coat over a white shirt, silver rings}, in the palette, light and textures of [📎 Style board]; take nothing else from the board, none of its layout or swatches. Plain light grey background, even soft light. No text, no labels.",
+        "node": {
+          "style": {
+            "name": "Style board",
+            "prompt": "A 16:9 style board for a music video, one look across the whole board, for a song that feels {✏️ the song's mood, e.g. bittersweet and restless, late-night city pop}. The visual direction: {✏️ the direction, e.g. neon light in the rain, wet asphalt, 1980s Tokyo}. Laid out as a clean moodboard on a neutral grey background: a strip of five colour swatches along the top; below it, six photographic frames showing the light, the materials and textures, the wardrobe and the locations, all in the same palette and light. Cinematic, with film grain. No text, no labels, no logos."
+          },
+          "section-1": {
+            "name": "Section 1",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 1 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the first piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. No text on screen."
+          },
+          "section-2": {
+            "name": "Section 2",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 2 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the second piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. No text on screen."
+          },
+          "section-3": {
+            "name": "Section 3",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 3 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the third piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. No text on screen."
+          },
+          "section-4": {
+            "name": "Section 4",
+            "prompt": "(💡 Generate Style board first)(💡 Generate the performer sheet first)Section 4 of 4 of a widescreen music video, in the look of [📎 Style board]. The performer is the person on [📎 Full music video]: take from it only their face, hair, build and clothes, never the grey background or the layout. The soundtrack is {✏️ @ here the fourth piece you cut from your song}: keep it exactly as it is and cut on its strong beats, not on every beat. This section, {✏️ the part of the song, e.g. the first verse}: {✏️ what it shows, e.g. the singer walks alone through a night market, glancing at the camera}. One camera move only: {✏️ the move, e.g. a slow tracking shot alongside them}. It ends the video: the picture stops hard on the last note. No text on screen."
+          }
+        },
+        "input": {
+          "performer": {
+            "name": "Performer",
+            "note": "Add a picture of the singer or character first, face in view, then generate this sheet."
+          }
+        },
+        "step": {
+          "trim": "Add your song to the canvas. Once this sheet has generated, use Tools → Cut on the song to cut it where the music really changes (verse, chorus, bridge, drop, outro) into pieces of up to 15 seconds, one per section; set each section's duration to its piece's length, connect each cut clip (named CUT-…) to its section in order and @ it where that section's prompt asks.",
+          "more": "Need more sections? Copy Section 4, change its number and what it shows, connect Style board, this sheet and the next piece of the song to it, @ each where its prompt asks and generate it.",
+          "join": "Select the sections in order, right-click and choose Join, then play it through and check the beats at each seam."
         }
       },
       "product-ad-15s": {
