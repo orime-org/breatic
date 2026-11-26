@@ -206,3 +206,9 @@ export const chatStopSchema = z.object({
 export const chatQueueParamSchema = z.object({ id: z.string().uuid(), messageId: z.string().uuid() });
 
 export { creditAmountFormatQuerySchema } from "@breatic/shared";
+
+/** A comma-separated list in a query parameter; absent or empty reads as none. Pipe it into the entry rules. */
+export const commaListQuerySchema = z
+  .string()
+  .optional()
+  .transform((value) => (value === undefined || value === "" ? [] : value.split(",")));

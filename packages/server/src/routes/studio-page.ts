@@ -13,14 +13,9 @@ import { z } from "zod";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { pollStudioPage } from "@server/modules/studio/studioPagePoll.service.js";
+import { commaListQuerySchema } from "@server/routes/schemas.js";
 
 const studioPage = new Hono<{ Variables: AuthVariables }>();
-
-/** A comma-separated list in a query parameter; absent or empty reads as none. */
-const commaList = z
-  .string()
-  .optional()
-  .transform((v) => (v === undefined || v === "" ? [] : v.split(",")));
 
 studioPage.get(
   "/poll",
@@ -32,9 +27,9 @@ studioPage.get(
       // The Studio the page shows; absent on the Recent page, which shows none.
       studio: z.string().min(1).max(128).optional(),
       // The keys the page waits for; absent when it waits for none.
-      uploads: commaList.pipe(z.array(z.string().min(1).max(512)).max(UPLOAD_STATUS_MAX_KEYS)),
+      uploads: commaListQuerySchema.pipe(z.array(z.string().min(1).max(512)).max(UPLOAD_STATUS_MAX_KEYS)),
       // The Projects the page shows as being copied; absent when it shows none.
-      copying: commaList.pipe(z.array(z.string().uuid()).max(COPYING_POLL_MAX_IDS)),
+      copying: commaListQuerySchema.pipe(z.array(z.uuid()).max(COPYING_POLL_MAX_IDS)),
     }),
   ),
   async (c) => {
