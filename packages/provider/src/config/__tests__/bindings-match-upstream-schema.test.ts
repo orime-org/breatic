@@ -458,7 +458,6 @@ const SANDBASE_ON_FAL: Readonly<Record<string, string>> = {
   "bytedance/dreamactor/2.0": "fal-ai/bytedance/dreamactor/v2",
   "bytedance/omnihuman/1.5": "fal-ai/bytedance/omnihuman/v1.5",
   "elevenlabs/v3": "fal-ai/elevenlabs/tts/eleven-v3",
-  "google/gemini-3.1-flash-tts": "fal-ai/gemini-3.1-flash-tts",
   "ideogram-ai/ideogram-v3": "fal-ai/ideogram/v3",
   "meigen/infinitetalk/video-to-video": "fal-ai/infinitalk/video-to-video",
   "sync/lipsync/3.0/video-to-video": "fal-ai/sync-lipsync/v3",
