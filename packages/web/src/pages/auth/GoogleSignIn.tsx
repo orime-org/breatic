@@ -2,144 +2,122 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import * as React from 'react';
-import { configuredErrorEventId } from '@web/lib/error-monitoring';
-import { ErrorBoundary, type Scope, type FallbackRender } from '@sentry/react';
-import { GoogleLogin, GoogleOAuthProvider } from '@react-oauth/google';
+import '@fontsource/google-sans/500.css';
 import { getLocale } from '@breatic/shared';
-import { useTranslation } from '@web/i18n/use-translation';
+import { API_BASE_PATH } from '@web/data/api/base-path';
+import { attributionBody } from '@web/data/analytics';
+import type { SignupReferralFields } from '@web/data/api/auth';
+import { Button } from '@web/components/ui/button';
 import { FieldError } from '@web/components/FieldError';
+import { useTranslation } from '@web/i18n/use-translation';
+
+/** Where the sign-in form posts: a page navigation, not an API call (inner#2157). */
+const BEGIN_ACTION = `${API_BASE_PATH}/auth/google/begin`;
 
 interface GoogleSignInProps {
-  clientId: string;
-  busy: boolean;
-  onCredential: (credential: string) => Promise<void>;
+  /** The page the sign-in starts on and returns to. */
+  page: 'login' | 'register';
+  /** Where the page goes after signing in. */
+  next: string;
+  /** The referral code fields to carry, read when the form is posted. */
+  referral: SignupReferralFields;
+  /** Another submission on the page is in flight. */
+  disabled: boolean;
+  /** Why the last Google sign-in came back without a session, or null. */
+  error: string | null;
+  /** Runs just before the browser leaves for Google: save what the return needs, report the start. */
+  onLeave: () => void;
+}
+
+/** The mark's four colours, fixed by Google's branding guidelines in both themes. */
+const MARK = {
+  red: '#EA4335', // design-value: allow
+  blue: '#4285F4', // design-value: allow
+  yellow: '#FBBC05', // design-value: allow
+  green: '#34A853', // design-value: allow
+} as const;
+
+/**
+ * Google's standard multicolour "G", drawn as Google's branding guidelines give it.
+ * @returns The mark.
+ */
+function GoogleMark(): React.JSX.Element {
+  return (
+    <svg aria-hidden='true' viewBox='0 0 48 48' className='size-[18px] shrink-0'>
+      <path fill={MARK.red} d='M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z' />
+      <path fill={MARK.blue} d='M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z' />
+      <path fill={MARK.yellow} d='M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z' />
+      <path fill={MARK.green} d='M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z' />
+    </svg>
+  );
 }
 
 /**
- * Render Google's official button with the approved contrasting theme and the login card's width.
- * @param props - Button configuration and submission state.
- * @param props.clientId - Public Google Web application identifier.
- * @param props.busy - Whether either login method is submitting.
- * @param props.onCredential - Exchange the Google credential for a session.
- * @returns The Google-owned button and local loading/error feedback.
- * @throws {Error} If React cannot render the component.
+ * "Continue with Google": a form that posts to the server's begin endpoint, so
+ * the whole page goes to Google and comes back to this page. The button keeps
+ * waiting until the page is gone; coming back through the browser's back
+ * button lets it be pressed again.
+ * @param props - The page's sign-in context.
+ * @param props.page - The page the sign-in starts on and returns to.
+ * @param props.next - Where the page goes after signing in.
+ * @param props.referral - The referral code fields to carry.
+ * @param props.disabled - Another submission on the page is in flight.
+ * @param props.error - Why the last Google sign-in came back without a session.
+ * @param props.onLeave - Runs just before the browser leaves for Google.
+ * @returns The form with its button and the last failure.
  */
-function GoogleSignInButton({ clientId, busy, onCredential }: GoogleSignInProps): React.JSX.Element {
+export function GoogleSignIn({ page, next, referral, disabled, error, onLeave }: GoogleSignInProps): React.JSX.Element {
   const t = useTranslation();
-  const container = React.useRef<HTMLDivElement>(null);
-  const [width, setWidth] = React.useState(334);
-  const [dark, setDark] = React.useState(document.documentElement.dataset.theme === 'dark');
-  // Google supports outline_dark; @react-oauth/google 0.13.5 types lag the SDK.
-  // https://developers.google.com/identity/gsi/web/reference/js-reference#theme
-  const googleTheme = (dark ? 'outline' : 'outline_dark') as React.ComponentProps<typeof GoogleLogin>['theme'];
-  const [script, setScript] = React.useState<'loading' | 'ready' | 'failed'>('loading');
-  const [credentialError, setCredentialError] = React.useState(false);
+  const [leaving, setLeaving] = React.useState(false);
+  const { attribution } = attributionBody();
 
   React.useEffect(() => {
-    if (script !== 'loading') return;
-    // The status-specific timer is cancelled as soon as the script loads.
-    const timeout = window.setTimeout(() => setScript('failed'), 15_000);
-    return () => window.clearTimeout(timeout);
-  }, [script]);
-
-  React.useLayoutEffect(() => {
-    const element = container.current;
-    if (!element) return;
     /**
-     * Measure the space Google may occupy without restyling its iframe.
-     * @throws {Error} If the browser cannot measure the element.
+     * A page restored from the back-forward cache is usable again.
+     * @param event - The page show event.
      */
-    const measure = (): void => { setWidth(Math.min(400, Math.max(200, Math.floor(element.getBoundingClientRect().width) || 334))); };
-    measure();
-    const resize = new ResizeObserver(measure);
-    resize.observe(element);
-    const theme = new MutationObserver(() => setDark(document.documentElement.dataset.theme === 'dark'));
-    theme.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
-    return () => { resize.disconnect(); theme.disconnect(); };
+    const restore = (event: PageTransitionEvent): void => {
+      if (event.persisted) setLeaving(false);
+    };
+    window.addEventListener('pageshow', restore);
+    return () => window.removeEventListener('pageshow', restore);
   }, []);
 
-  return (
-    <div ref={container} className='flex flex-col gap-2'>
-      <GoogleOAuthProvider
-        clientId={clientId}
-        locale={getLocale()}
-        onScriptLoadSuccess={() => setScript('ready')}
-        onScriptLoadError={() => setScript('failed')}
-      >
-        {/* Match Google's iframe canvas scheme so its extra margins stay transparent in dark mode. */}
-        <div inert={busy || script !== 'ready'} aria-busy={busy} className={script === 'failed' ? 'hidden' : 'scheme-light min-h-10'}>
-          <GoogleLogin
-            theme={googleTheme}
-            size='large'
-            shape='pill'
-            text='continue_with'
-            logo_alignment='left'
-            width={width}
-            ux_mode='popup'
-            auto_select={false}
-            useOneTap={false}
-            onSuccess={({ credential }) => {
-              if (!credential || script !== 'ready') return;
-              setCredentialError(false);
-              void onCredential(credential);
-            }}
-            onError={() => setCredentialError(true)}
-          />
-        </div>
-      </GoogleOAuthProvider>
-      {script === 'loading' ? <p role='status' className='text-sm text-muted-foreground'>{t('auth.login.googleLoading')}</p> : null}
-      {script === 'failed' || credentialError ? <FieldError role='alert' className='text-center'>{t('auth.login.googleFailed')}</FieldError> : null}
-    </div>
-  );
-}
+  /**
+   * Let the post go once: save what the return needs and show the wait.
+   * @param event - The form's submit event; cancelled only while already leaving.
+   */
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
+    if (leaving || disabled) {
+      event.preventDefault();
+      return;
+    }
+    onLeave();
+    setLeaving(true);
+  }
 
-/**
- * Tag third-party button errors without attaching credentials or form values.
- * @param scope - The SDK's isolated capture scope.
- * @throws {Error} If the SDK cannot annotate the event.
- */
-function tagGoogleError(scope: Scope): void {
-  scope.setTag('error_boundary', 'google-sign-in');
-}
-
-/**
- * Explain the remaining email path after the Google subtree has failed.
- * @param props - Optional monitoring reference for this button failure.
- * @param props.eventId - Identifier returned by a configured client.
- * @returns Localized inline feedback.
- * @throws {Error} If React cannot render feedback.
- */
-function GoogleSignInFailure({ eventId }: { eventId?: string }): React.JSX.Element {
-  const t = useTranslation();
   return (
     <div className='flex flex-col gap-2'>
-      <FieldError role='alert' className='text-center'>{t('auth.login.googleFailed')}</FieldError>
-      {eventId ? <p className='break-all text-center text-xs text-muted-foreground'>{t('applicationError.reference', { id: eventId })}</p> : null}
+      <form method='post' action={BEGIN_ACTION} onSubmit={handleSubmit}>
+        <input type='hidden' name='page' value={page} />
+        <input type='hidden' name='next' value={next} />
+        <input type='hidden' name='locale' value={getLocale()} />
+        {attribution ? <input type='hidden' name='attribution' value={JSON.stringify(attribution)} /> : null}
+        {referral.referralCode ? <input type='hidden' name='referralCode' value={referral.referralCode} /> : null}
+        {referral.referralSource ? <input type='hidden' name='referralSource' value={referral.referralSource} /> : null}
+        <Button
+          type='submit'
+          variant={null}
+          size={null}
+          loading={leaving}
+          disabled={disabled}
+          icon={<GoogleMark />}
+          className='relative inline-flex h-10 w-full items-center justify-center gap-2.5 overflow-hidden rounded-full border border-[var(--google-button-border)] bg-[var(--google-button-bg)] px-3 font-[Google_Sans,var(--font-sans)] text-sm font-medium leading-5 text-[var(--google-button-fg)] after:pointer-events-none after:absolute after:inset-0 after:bg-current after:opacity-0 after:transition-opacity hover-enabled:after:opacity-[0.08] disabled:cursor-not-allowed disabled:opacity-50'
+        >
+          {t('auth.google.continue')}
+        </Button>
+      </form>
+      {error ? <FieldError role='alert' className='text-center'>{error}</FieldError> : null}
     </div>
-  );
-}
-
-/**
- * Render only the Google failure; the neighboring email form stays mounted.
- * @param report - The captured SDK report.
- * @param report.eventId - Identifier associated with this error.
- * @returns Inline failure feedback.
- * @throws {Error} If React cannot render feedback.
- */
-const renderGoogleFailure: FallbackRender = ({ eventId }): React.JSX.Element => (
-  <GoogleSignInFailure eventId={configuredErrorEventId(eventId)} />
-);
-
-/**
- * Isolate Google's render/effect lifecycle from the email sign-in form.
- * @param props - Existing Google button configuration and credential callback.
- * @returns A button or inline failure, with one Sentry capture per failure.
- * @throws {Error} If the failure feedback itself fails to render.
- */
-export function GoogleSignIn(props: GoogleSignInProps): React.JSX.Element {
-  return (
-    <ErrorBoundary beforeCapture={tagGoogleError} fallback={renderGoogleFailure}>
-      <GoogleSignInButton {...props} />
-    </ErrorBoundary>
   );
 }

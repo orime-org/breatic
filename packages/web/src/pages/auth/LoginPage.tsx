@@ -3,13 +3,15 @@
 
 import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { getLocale, REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
+import { REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
+import { saveGoogleReferral } from '@web/pages/auth/google-return';
+import { useGoogleArrival, useGoogleReturn, useGoogleSignInShown } from '@web/pages/auth/use-google-return';
 
 import { authApi } from '@web/data/api/auth';
 import { toCurrentUser, useCurrentUserStore } from '@web/stores/current-user';
 import { ApiException } from '@web/data/api/types';
-import { attributionBody, reportConversion, trackEvent } from '@web/data/analytics';
+import { trackEvent } from '@web/data/analytics';
 import { Button } from '@web/components/ui/button';
 import { Input } from '@web/components/ui/input';
 import { PasswordInput } from '@web/components/ui/password-input';
@@ -22,7 +24,6 @@ import { FieldError } from '@web/components/FieldError';
 import { looksLikeEmail } from '@web/lib/looks-like-email';
 import { safeNextPath } from '@web/lib/safe-next-path';
 import { renderSlottedText, slotMarker } from '@web/lib/slotted-text';
-import { toast } from '@web/lib/toast';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useSignupReferral } from '@web/features/referral/use-signup-referral';
 import { X } from 'lucide-react';
@@ -43,12 +44,10 @@ import { X } from 'lucide-react';
  * because form errors belong with the form, not the global
  * cross-page notification surface.
  *
- * Google OAuth: conditionally rendered if the frontend was built
- * with `GOOGLE_CLIENT_ID`. The id is injected at build time via
- * `__GOOGLE_CLIENT_ID__` (see `vite.config.mts`). Empty string =
- * not configured = hide the button entirely.
+ * Google sign-in: shown when `GET /auth/options` says the server has it; the
+ * button posts the page to Google and the callback brings it back here
+ * (inner#2157).
  */
-declare const __GOOGLE_CLIENT_ID__: string;
 
 /**
  * Login page with the email/password form and optional Google sign-in.
@@ -67,11 +66,25 @@ export default function LoginPage(): React.JSX.Element {
   const [email, setEmail] = React.useState('');
   const [password, setPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
-  const referral = useSignupReferral();
+  const arrival = useGoogleArrival();
+  const referral = useSignupReferral(arrival.saved?.code);
   // The carried code is named on one row; once refused it is named as no longer valid (inner#1868 table 12.14).
-  const [rowCode, setRowCode] = React.useState<string | null>(() => referral.value || null);
+  const [rowCode, setRowCode] = React.useState<string | null>(() => (arrival.saved?.typed ? null : referral.value || null));
   const [invalidCode, setInvalidCode] = React.useState<string | null>(null);
-  const [expanded, setExpanded] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(arrival.saved?.typed ?? false);
+  const googleShown = useGoogleSignInShown();
+  const googleError = useGoogleReturn(arrival, {
+    destination: () => next,
+    referral,
+    onReferralInvalid: () => {
+      referral.refused(t('auth.referral.invalid'));
+      if (!expanded && rowCode !== null) {
+        setInvalidCode(rowCode);
+        setRowCode(null);
+        referral.change('');
+      }
+    },
+  });
   const pending = React.useRef(false);
   const mounted = React.useRef(true);
   React.useEffect(() => {
@@ -79,46 +92,10 @@ export default function LoginPage(): React.JSX.Element {
     return () => { mounted.current = false; };
   }, []);
 
-  /**
-   * Exchange a Google-signed credential for the existing session cookie.
-   * @param credential - The ID token supplied by Google's official SDK.
-   * @throws {Error} Does not propagate errors; failures become form feedback.
-   */
-  async function handleGoogleCredential(credential: string): Promise<void> {
-    if (pending.current || !mounted.current) return;
-    pending.current = true;
-    setSubmitting(true);
-    setFormError(null);
+  /** Keep the referral state for the return from Google and report the start. */
+  function leaveForGoogle(): void {
+    saveGoogleReferral(referral.body().referralCode ? { code: referral.value, typed: expanded } : null);
     trackEvent('signup_started', { method: 'google' });
-    try {
-      const { user, created, referral: outcome } = await authApi.google({ credential, ...attributionBody(), ...referral.body() });
-      if (!mounted.current) return;
-      setUser(toCurrentUser(user));
-      // An existing account keeps the carried code: the warning below points to the panel, which fills from it.
-      if (created) {
-        reportConversion('signup', `signup:${user.id}`);
-        referral.used();
-      }
-      // Before navigating: the Toaster sits outside the router and keeps it (inner#1868 §10).
-      if (outcome === 'not_applied') toast.warning(t('auth.referral.existingAccount'));
-      void changeLocale(user.locale);
-      navigate(next, { replace: true });
-    } catch (err) {
-      if (!mounted.current) return;
-      if (err instanceof ApiException && err.status === 422 && err.reason === 'invalid_code') {
-        referral.refused(t('auth.referral.invalid'));
-        if (!expanded && rowCode !== null) {
-          setInvalidCode(rowCode);
-          setRowCode(null);
-          referral.change('');
-        }
-      } else {
-        setFormError(err instanceof ApiException ? err.message : t('auth.login.failed'));
-      }
-    } finally {
-      pending.current = false;
-      if (mounted.current) setSubmitting(false);
-    }
   }
 
   /** The visitor drops the carried code: the row folds to "Have a referral code?". */
@@ -228,9 +205,6 @@ export default function LoginPage(): React.JSX.Element {
     }
   }
 
-  const googleEnabled =
-    typeof __GOOGLE_CLIENT_ID__ === 'string' && __GOOGLE_CLIENT_ID__ !== '';
-
   return (
     <AuthCardShell
       showVersion
@@ -300,7 +274,7 @@ export default function LoginPage(): React.JSX.Element {
         </Button>
       </form>
 
-      {googleEnabled ? (
+      {googleShown ? (
         <div className='mt-4 flex flex-col gap-3'>
           <div className='flex items-center gap-2 text-xs text-muted-foreground'>
             <div className='h-px flex-1 bg-border' />
@@ -308,7 +282,14 @@ export default function LoginPage(): React.JSX.Element {
             <div className='h-px flex-1 bg-border' />
           </div>
           {referralRow()}
-          <GoogleSignIn key={getLocale()} clientId={__GOOGLE_CLIENT_ID__} busy={submitting || referral.field === 'loading'} onCredential={handleGoogleCredential} />
+          <GoogleSignIn
+            page='login'
+            next={next}
+            referral={referral.body()}
+            disabled={submitting || referral.field === 'loading'}
+            error={googleError}
+            onLeave={leaveForGoogle}
+          />
         </div>
       ) : null}
     </AuthCardShell>

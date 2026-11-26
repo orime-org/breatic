@@ -49,9 +49,8 @@ function serveNotices(): import('vite').Plugin {
 export default defineConfig(({ command, mode }) => {
   // Load .env from the monorepo root (shared by backend + frontend). The third
   // arg is an empty prefix, which makes loadEnv return EVERY var rather than
-  // only the VITE_-prefixed ones — that is how GOOGLE_CLIENT_ID (no prefix,
-  // injected via `define` below) is readable here at all. Reading a var here
-  // does not ship it to the client; only `define` and import.meta.env do.
+  // only the VITE_-prefixed ones. Reading a var here does not ship it to the
+  // client; only `define` and import.meta.env do.
   const env = loadEnv(mode, path.resolve(__dirname, '../..'), '');
   const sentryAuthToken = env.VITE_SENTRY_AUTH_TOKEN;
 
@@ -70,9 +69,7 @@ export default defineConfig(({ command, mode }) => {
   return {
     // Load .env from monorepo root so frontend + backend share one file
     envDir: path.resolve(__dirname, '../..'),
-    // Inject the public Google client identifier; never inject backend secrets.
     define: {
-      '__GOOGLE_CLIENT_ID__': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
       // Whether a product analytics vendor is configured (inner#1442). A
       // literal, so a build without one drops the analytics code entirely.
       '__ANALYTICS_CONFIGURED__': JSON.stringify(

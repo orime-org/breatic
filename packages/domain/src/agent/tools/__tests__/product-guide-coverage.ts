@@ -1449,7 +1449,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.auth.email_taken": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.google_email_unverified": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.google_link_requires_email_login": { excluded: REASONS.NOT_ON_THESE_SCREENS },
-  "server.auth.google_oauth_unconfigured": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.invalid_credentials": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.invalid_google_credential": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.auth.invalid_recovery_code": { excluded: REASONS.NOT_ON_THESE_SCREENS },

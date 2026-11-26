@@ -109,6 +109,11 @@ html[data-theme='light'] {
      brand-exemption tokens were removed when studio chrome went neutral;
      only the logo keeps brand identity. */
   --brand-fg: #ffffff;
+  /* The Google sign-in button, from Google's branding guidelines (inner#2157):
+     the dark button on a light page; the dark theme swaps in the light one. */
+  --google-button-bg: #131314;
+  --google-button-fg: #e3e3e3;
+  --google-button-border: #8e918f;
 
   /* Palette · 7 colors · single chromatic source of truth (#1549,
      2026-07-03, supersedes the 5-color scheme D; values re-taken by #923,
@@ -538,6 +543,10 @@ html[data-theme='light'] {
 html[data-theme='dark'] {
   /* Native-UI scheme flip — see the light block's color-scheme note (#1773). */
   color-scheme: dark;
+
+  --google-button-bg: #ffffff;
+  --google-button-fg: #1f1f1f;
+  --google-button-border: #747775;
 
   /* neutral reversal (= light scale reversed, same temperature). */
   --neutral-0: #141414;

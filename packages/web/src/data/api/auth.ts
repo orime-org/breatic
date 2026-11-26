@@ -113,6 +113,8 @@ export interface AuthOptions {
   emailVerification: boolean;
   /** The referral code field exists; only while this deployment takes payments. */
   referralEnabled: boolean;
+  /** Google sign-in is offered: the server has its client id and secret (inner#2157). */
+  googleSignIn: boolean;
 }
 
 interface LoginResponse {
@@ -125,11 +127,6 @@ interface SignupVerifiedResponse extends LoginResponse {
 }
 
 /** A Google sign-in's answer: `created` when it made the account (inner#1442 §4.9). */
-interface GoogleLoginResponse extends LoginResponse {
-  created: boolean;
-  referral?: SignupReferralOutcome;
-}
-
 /**
  * `POST /auth/setup-studio` response — the personal studio created by
  * the onboarding slug step. Returned so the caller can populate the
@@ -172,9 +169,6 @@ export const authApi = {
   },
   login(body: { email: string; password: string }) {
     return apiPost<LoginResponse>('/auth/login', body);
-  },
-  google(body: { credential: string; attribution?: Attribution | null } & SignupReferralFields) {
-    return apiPost<GoogleLoginResponse>('/auth/google', body);
   },
   me() {
     return apiGet<AuthUser>('/auth/me');

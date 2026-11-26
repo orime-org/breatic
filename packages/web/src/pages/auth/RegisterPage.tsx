@@ -4,7 +4,7 @@
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { getLocale, normalizeEmail, REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
+import { normalizeEmail, REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import type { SignupInvitationPreview } from '@breatic/shared';
 
 import { authApi, type AuthUser, type SignupCodeSent, type SignupReferralOutcome } from '@web/data/api/auth';
@@ -26,9 +26,8 @@ import { toast } from '@web/lib/toast';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useSignupReferral } from '@web/features/referral/use-signup-referral';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
-import { changeLocale } from '@web/i18n/locale-bootstrap';
-
-declare const __GOOGLE_CLIENT_ID__: string;
+import { saveGoogleReferral } from '@web/pages/auth/google-return';
+import { useGoogleArrival, useGoogleReturn, useGoogleSignInShown } from '@web/pages/auth/use-google-return';
 
 /**
  * Whether the server refused a sign-up for its referral code.
@@ -68,7 +67,14 @@ export default function RegisterPage(): React.JSX.Element {
   const slugPath = carriesNext ? `/choose-slug?next=${encodeURIComponent(next)}` : '/choose-slug';
   const loginPath = carriesNext ? `/login?next=${encodeURIComponent(next)}` : '/login';
   const setUser = useCurrentUserStore((s) => s.setUser);
-  const referral = useSignupReferral();
+  const arrival = useGoogleArrival();
+  const referral = useSignupReferral(arrival.saved?.code);
+  const googleShown = useGoogleSignInShown();
+  const googleError = useGoogleReturn(arrival, {
+    destination: (created) => (created ? slugPath : next),
+    referral,
+    onReferralInvalid: () => referral.refused(t('auth.referral.invalid')),
+  });
 
   const invitation = useQuery({
     queryKey: ['auth', 'invitation', inviteToken],
@@ -186,36 +192,11 @@ export default function RegisterPage(): React.JSX.Element {
     [setUser, navigate, slugPath, referral, t],
   );
 
-  /**
-   * Exchange a Google credential, carrying the referral code to a new account.
-   * @param credential - The ID token from Google's SDK.
-   */
-  const handleGoogleCredential = React.useCallback(
-    async (credential: string): Promise<void> => {
-      if (submitting) return;
-      setSubmitting(true);
-      setFormError(null);
-      trackEvent('signup_started', { method: 'google' });
-      try {
-        const answer = await authApi.google({ credential, ...attributionBody(), ...referral.body() });
-        setUser(toCurrentUser(answer.user));
-        // An existing account keeps the carried code: the warning below points to the panel, which fills from it.
-        if (answer.created) {
-          reportConversion('signup', `signup:${answer.user.id}`);
-          referral.used();
-        }
-        if (answer.referral === 'not_applied') toast.warning(t('auth.referral.existingAccount'));
-        void changeLocale(answer.user.locale);
-        navigate(answer.created ? slugPath : next, { replace: true });
-      } catch (err) {
-        if (referralRefused(err)) referral.refused(t('auth.referral.invalid'));
-        else setFormError(err instanceof ApiException ? err.message : t('auth.register.failed'));
-      } finally {
-        setSubmitting(false);
-      }
-    },
-    [submitting, referral, setUser, t, navigate, slugPath, next],
-  );
+  /** Keep the referral code for the return from Google and report the start. */
+  const leaveForGoogle = React.useCallback((): void => {
+    saveGoogleReferral(referral.body().referralCode ? { code: referral.value, typed: true } : null);
+    trackEvent('signup_started', { method: 'google' });
+  }, [referral]);
 
   const handleChangeEmail = React.useCallback((): void => {
     setCodeSent(null);
@@ -367,7 +348,7 @@ export default function RegisterPage(): React.JSX.Element {
               : t('auth.register.create')}
           </Button>
         </form>
-        {typeof __GOOGLE_CLIENT_ID__ === 'string' && __GOOGLE_CLIENT_ID__ !== '' ? (
+        {googleShown ? (
           <div className='mt-4 flex flex-col gap-3'>
             <div className='flex items-center gap-2 text-xs text-muted-foreground'>
               <div className='h-px flex-1 bg-border' />
@@ -375,10 +356,12 @@ export default function RegisterPage(): React.JSX.Element {
               <div className='h-px flex-1 bg-border' />
             </div>
             <GoogleSignIn
-              key={getLocale()}
-              clientId={__GOOGLE_CLIENT_ID__}
-              busy={submitting || referral.field === 'loading'}
-              onCredential={handleGoogleCredential}
+              page='register'
+              next={next}
+              referral={referral.body()}
+              disabled={submitting || referral.field === 'loading'}
+              error={googleError}
+              onLeave={leaveForGoogle}
             />
           </div>
         ) : null}

@@ -35,9 +35,11 @@ export interface SignupReferral {
  * when it cannot be read the field shows anyway, since the server ignores a
  * code it does not want. The field shows exactly what is sent. While the
  * program's entry points are hidden the field is absent and nothing is read.
+ * @param restored - The code the page held before a full-page Google sign-in
+ *   sent it away and back (inner#2157); it takes the place of the carried code.
  * @returns The field's state and its actions.
  */
-export function useSignupReferral(): SignupReferral {
+export function useSignupReferral(restored?: string): SignupReferral {
   const options = useQuery({
     queryKey: AUTH_OPTIONS_QUERY_KEY,
     queryFn: () => authApi.options(),
@@ -45,7 +47,7 @@ export function useSignupReferral(): SignupReferral {
     enabled: REFERRAL_UI_SHOWN,
   });
   const [carried] = React.useState(carriedReferralCode);
-  const [value, setValue] = React.useState(carried ?? '');
+  const [value, setValue] = React.useState(restored ?? carried ?? '');
   const [error, setError] = React.useState<string | null>(null);
 
   const field: SignupReferralField = !REFERRAL_UI_SHOWN

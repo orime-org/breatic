@@ -738,7 +738,7 @@ importers:
         version: 24.19.1
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
+        version: 3.2.7(vitest@3.2.7)
       fast-check:
         specifier: 'catalog:'
         version: 4.9.0
@@ -826,7 +826,7 @@ importers:
         version: 24.19.1
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
+        version: 3.2.7(vitest@3.2.7)
       bullmq:
         specifier: 'catalog:'
         version: 5.81.3
@@ -921,6 +921,9 @@ importers:
       '@floating-ui/react':
         specifier: ^0.27.20
         version: 0.27.20(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
+      '@fontsource/google-sans':
+        specifier: ^5.3.2
+        version: 5.3.2
       '@fontsource/inter':
         specifier: ^5.3.0
         version: 5.3.0
@@ -996,9 +999,6 @@ importers:
       '@radix-ui/react-tooltip':
         specifier: ^1.2.16
         version: 1.2.16(@types/react-dom@19.2.4(@types/react@19.2.18))(@types/react@19.2.18)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
-      '@react-oauth/google':
-        specifier: ^0.13.5
-        version: 0.13.5(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       '@react-three/drei':
         specifier: ^10.7.8
         version: 10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(immer@11.1.16)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.173.0))(@types/react@19.2.18)(@types/three@0.173.0)(immer@11.1.16)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.173.0)
@@ -1323,7 +1323,7 @@ importers:
         version: 4.7.0(vite@5.4.21(@types/node@24.19.1)(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
       '@vitest/coverage-v8':
         specifier: 'catalog:'
-        version: 3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))
+        version: 3.2.7(vitest@3.2.7)
       '@vitest/ui':
         specifier: ^4.1.10
         version: 4.1.10(vitest@3.2.7)
@@ -3273,6 +3273,9 @@ packages:
   '@fontsource-variable/noto-serif-sc@5.3.1':
     resolution: {integrity: sha512-aIHcBaL13QctVaJFeT6wqfgO9Rq/cNtD5g2ob4ze59fYPYwacGthnIrHBe83kDpMEB/k6VGtGc6fS99RImcoSQ==}
 
+  '@fontsource/google-sans@5.3.2':
+    resolution: {integrity: sha512-IwR9hZgU1LUi0RAkhlqb+mCflPi/dU3ZJRUfznUW9TwgGXS2mEOeCptvVKVy/jRqhCJgwHYWvKHM9DU3/N4xsQ==}
+
   '@fontsource/inter@5.3.0':
     resolution: {integrity: sha512-RofMylZmjlJEfELXeNHFWBRcSs75rGU/6bV2S2jfnvv/3rPXPGe0LgUJTklcHZ9lM4OZmAVFhcJPnACfb91A3g==}
 
@@ -4750,12 +4753,6 @@ packages:
     peerDependencies:
       react: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
       react-dom: ^16.8.0 || ^17.0.0-rc.1 || ^18.0.0 || ^19.0.0-rc.1
-
-  '@react-oauth/google@0.13.5':
-    resolution: {integrity: sha512-xQWri2s/3nNekZJ4uuov2aAfQYu83bN3864KcFqw2pK1nNbFurQIjPFDXhWaKH3IjYJ2r/9yyIIpsn5lMqrheQ==}
-    peerDependencies:
-      react: '>=16.8.0'
-      react-dom: '>=16.8.0'
 
   '@react-three/drei@10.7.8':
     resolution: {integrity: sha512-rJXyuzLm2Xq0kafHuR47ajDGbOe/pEhzIr4m8E8zwzQs0iNjloFDqBwRhrXmP/w+onLeYyN3EYPFW/cwWK/4yA==}
@@ -13245,6 +13242,8 @@ snapshots:
 
   '@fontsource-variable/noto-serif-sc@5.3.1': {}
 
+  '@fontsource/google-sans@5.3.2': {}
+
   '@fontsource/inter@5.3.0': {}
 
   '@formatjs/fast-memoize@3.1.7': {}
@@ -14535,11 +14534,6 @@ snapshots:
       react-aria: 3.51.0(react-dom@19.3.0(react@19.3.0))(react@19.3.0)
       react-dom: 19.3.0(react@19.3.0)
 
-  '@react-oauth/google@0.13.5(react-dom@19.3.0(react@19.3.0))(react@19.3.0)':
-    dependencies:
-      react: 19.3.0
-      react-dom: 19.3.0(react@19.3.0)
-
   '@react-three/drei@10.7.8(@react-three/fiber@9.7.0(@types/react@19.2.18)(immer@11.1.16)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.173.0))(@types/react@19.2.18)(@types/three@0.173.0)(immer@11.1.16)(react-dom@19.3.0(react@19.3.0))(react@19.3.0)(three@0.173.0)':
     dependencies:
       '@babel/runtime': 7.29.7
@@ -15771,7 +15765,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  '@vitest/coverage-v8@3.2.7(vitest@3.2.7(@types/debug@4.1.13)(@types/node@24.19.1)(jsdom@29.1.1(canvas@3.2.3))(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0))':
+  '@vitest/coverage-v8@3.2.7(vitest@3.2.7)':
     dependencies:
       '@ampproject/remapping': 2.3.0
       '@bcoe/v8-coverage': 1.0.2

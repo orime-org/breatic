@@ -138,7 +138,9 @@ describe('the Google sign-in form', () => {
     try {
       const user = userEvent.setup();
       renderAt('/login');
-      await user.click(await googleButton());
+      // The label is Japanese now, so the button is found through its form.
+      await waitFor(() => expect(document.querySelector(`form[action="${BEGIN_ACTION}"] button`)).not.toBeNull());
+      await user.click(document.querySelector<HTMLButtonElement>(`form[action="${BEGIN_ACTION}"] button`)!);
       expect(recorder.posts[0]!.fields.locale).toBe('ja');
     } finally {
       await changeLocale('en');
