@@ -89,11 +89,12 @@ export async function open(request: InfluencerRequest, body: { code: string; hos
   return keyed(request, body, async (tx) => {
     const host = influencerHost(body.host);
     if (host === null) return { result: { status: "refused", code: "host_invalid" } };
+    if (await influencerRepo.insertInfluencer({ code: body.code, host }, tx)) {
+      return { result: { status: "created", influencer: { code: body.code, host } } };
+    }
+    // The conflicting row is committed by now: the insert waited for it.
     const taken = await influencerRepo.findTaken({ code: body.code, host }, tx);
-    if (taken.code) return { result: { status: "refused", code: "code_taken" } };
-    if (taken.host) return { result: { status: "refused", code: "host_taken" } };
-    await influencerRepo.insertInfluencer({ code: body.code, host }, tx);
-    return { result: { status: "created", influencer: { code: body.code, host } } };
+    return { result: { status: "refused", code: taken.code ? "code_taken" : "host_taken" } };
   });
 }
 

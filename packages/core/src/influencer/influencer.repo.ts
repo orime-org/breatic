@@ -69,15 +69,20 @@ export async function findTaken(input: { code: string; host: string }, tx: DbTx)
 }
 
 /**
- * Register an influencer.
+ * Register an influencer, unless its code or host is already taken. A
+ * concurrent registration of the same code or host waits for the other one
+ * and then inserts nothing.
  * @param input - The influencer.
  * @param input.code - Its code.
  * @param input.host - Its site's lower-case host.
  * @param tx - The registering transaction, when there is one.
- * @throws {Error} When the code or host is taken or the write fails.
+ * @returns Whether the row was written.
+ * @throws {Error} When the write fails.
  */
-export async function insertInfluencer(input: { code: string; host: string }, tx?: DbTx): Promise<void> {
-  await (tx ?? db).insert(influencers).values({ code: input.code, host: input.host });
+export async function insertInfluencer(input: { code: string; host: string }, tx?: DbTx): Promise<boolean> {
+  const rows = await (tx ?? db).insert(influencers).values({ code: input.code, host: input.host })
+    .onConflictDoNothing().returning({ code: influencers.code });
+  return rows.length > 0;
 }
 
 /**

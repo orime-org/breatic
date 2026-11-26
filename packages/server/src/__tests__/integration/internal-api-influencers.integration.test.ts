@@ -258,6 +258,27 @@ describe("POST /internal/v1/influencers", () => {
     expect(await operationsUnder(key)).toBe(1);
   });
 
+  it("decides concurrent opens of one code under different keys as one created and the rest code_taken, storing every decision", async () => {
+    const { code, label } = fresh();
+    const keys = Array.from({ length: 6 }, () => freshKey());
+    const responses = await Promise.all(keys.map((key, i) => open({ code, host: `${label}${i}.partner.breatic.test` }, key)));
+
+    for (const res of responses) expect(res.status).toBe(200);
+    expect(responses.filter((r) => r.json.status === "created")).toHaveLength(1);
+    expect(responses.filter((r) => r.json.status === "refused").map((r) => r.json.code)).toEqual(Array(5).fill("code_taken"));
+    for (const key of keys) expect(await operationsUnder(key)).toBe(1);
+  });
+
+  it("decides concurrent opens of one host under different keys as one created and the rest host_taken", async () => {
+    const { label } = fresh();
+    const host = `${label}.partner.breatic.test`;
+    const responses = await Promise.all(Array.from({ length: 6 }, () => open({ code: fresh().code, host })));
+
+    for (const res of responses) expect(res.status).toBe(200);
+    expect(responses.filter((r) => r.json.status === "created")).toHaveLength(1);
+    expect(responses.filter((r) => r.json.status === "refused").map((r) => r.json.code)).toEqual(Array(5).fill("host_taken"));
+  });
+
   it("answers 404 not_found for a key that holds no decision", async () => {
     const res = await call(suite.baseUrl, operationPath(freshKey()), { admin: ADMIN });
     expect(res.status).toBe(404);
