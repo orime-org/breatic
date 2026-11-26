@@ -400,6 +400,22 @@ and licence travel with the fonts, and they do: the bundle carries
 browser fetches it at `/third-party-licences.txt`. The same file carries
 BlockNote's MPL-2.0 above, and this one is served beside it.
 
+### @fontsource/google-sans
+
+| | |
+|---|---|
+| Version | `5.3.2` |
+| Reached through | Declared by `packages/web`; the Google sign-in button imports its 500 weight |
+| Licence | **OFL-1.1** (SIL Open Font License 1.1) |
+| Source | https://github.com/fontsource/font-files |
+
+The font files are served to the browser as published, for the sign-in
+button's label as Google's branding guidelines set it. The copyright line
+declares no Reserved Font Name, and Breatic does not sell the font files on
+their own. The copyright notice and licence travel with the fonts in
+`third-party-licences.txt`, which the browser fetches at
+`/third-party-licences.txt`, as for Inter above.
+
 ### jszip
 
 | | |

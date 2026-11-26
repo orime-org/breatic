@@ -156,22 +156,22 @@ describe("influencer attribution migration", () => {
   it("keeps a registered influencer and lets an account point at it", async () => {
     await replay(async (tx) => {
       await apply(tx);
-      await tx`INSERT INTO influencers(code, host) VALUES ('alice', 'alice.partner.breatic.ai')`;
+      await tx`INSERT INTO influencers(code, host) VALUES ('alice', 'alice.partner.breatic.test')`;
       const id = randomUUID();
       await tx`INSERT INTO users(id,email,influencer_code) VALUES (${id},${`${id}@example.test`},'alice')`;
 
       const [row] = await tx`SELECT u.influencer_code, i.host, i.disabled_at
         FROM users u JOIN influencers i ON i.code = u.influencer_code WHERE u.id = ${id}`;
-      expect(row).toEqual({ influencer_code: "alice", host: "alice.partner.breatic.ai", disabled_at: null });
+      expect(row).toEqual({ influencer_code: "alice", host: "alice.partner.breatic.test", disabled_at: null });
     });
   });
 
   it.each([
-    ["an uppercase code", "Alice", "alice.partner.breatic.ai"],
-    ["a code with an underscore", "al_ice", "alice.partner.breatic.ai"],
-    ["an empty code", "", "alice.partner.breatic.ai"],
-    ["a code longer than 32 characters", "a".repeat(33), "alice.partner.breatic.ai"],
-    ["a host with capitals", "alice", "Alice.partner.breatic.ai"],
+    ["an uppercase code", "Alice", "alice.partner.breatic.test"],
+    ["a code with an underscore", "al_ice", "alice.partner.breatic.test"],
+    ["an empty code", "", "alice.partner.breatic.test"],
+    ["a code longer than 32 characters", "a".repeat(33), "alice.partner.breatic.test"],
+    ["a host with capitals", "alice", "Alice.partner.breatic.test"],
   ])("refuses %s", async (_label, code, host) => {
     await replay(async (tx) => {
       await apply(tx);
@@ -183,10 +183,10 @@ describe("influencer attribution migration", () => {
   it("refuses a second influencer on a host already registered", async () => {
     await replay(async (tx) => {
       await apply(tx);
-      await tx`INSERT INTO influencers(code, host) VALUES ('alice', 'alice.partner.breatic.ai')`;
+      await tx`INSERT INTO influencers(code, host) VALUES ('alice', 'alice.partner.breatic.test')`;
 
       expect(
-        await failureCode(tx, () => tx`INSERT INTO influencers(code, host) VALUES ('alice-two', 'alice.partner.breatic.ai')`),
+        await failureCode(tx, () => tx`INSERT INTO influencers(code, host) VALUES ('alice-two', 'alice.partner.breatic.test')`),
       ).toBe("23505");
     });
   });
@@ -218,7 +218,7 @@ describe("influencer attribution migration", () => {
         key: `bo-${randomUUID()}`,
         hash: "a".repeat(64),
         operator: randomUUID(),
-        body: tx.json({ code: "alice", host: "alice.breatic.ai" }),
+        body: tx.json({ code: "alice", host: "alice.breatic.test" }),
         result: tx.json({ status: "refused", reason: "host_invalid" }),
       };
       await tx`INSERT INTO influencer_operations(key, request_hash, requested_by, request_body, result)

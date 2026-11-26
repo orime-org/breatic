@@ -451,6 +451,11 @@ auth.get("/google/callback", async (c) => {
     const site = (await isTrustedFrontendOrigin(parsed.origin)) ? parsed : { origin: frontendOrigin(), page: "login" as const };
     return c.redirect(backToPage(site.origin, site.page, { googleError: "expired" }), 303);
   }
+  /**
+   * Send the browser back to the page the sign-in started on.
+   * @param params - The query to carry.
+   * @returns The 303.
+   */
   const back = (params: Record<string, string | undefined>): Response =>
     c.redirect(backToPage(stored.origin, stored.page, params), 303);
   if (!googleLoginService.bindMatches(stored, getCookie(c, GOOGLE_BIND_COOKIE))) {

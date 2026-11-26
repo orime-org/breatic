@@ -68,11 +68,11 @@ describe("sessionCookieName", () => {
  */
 describe("cookieDomainHost", () => {
   it.each([
-    ["breatic.ai", "breatic.ai"],
-    [".breatic.ai", "breatic.ai"],
-    [".Breatic.AI", "breatic.ai"],
-    ["  .breatic.ai  ", "breatic.ai"],
-    ["BREATIC.AI", "breatic.ai"],
+    ["breatic.test", "breatic.test"],
+    [".breatic.test", "breatic.test"],
+    [".Breatic.TEST", "breatic.test"],
+    ["  .breatic.test  ", "breatic.test"],
+    ["BREATIC.TEST", "breatic.test"],
     ["localhost", "localhost"],
   ])("normalises %j to %j", (raw, host) => {
     envMock.COOKIE_DOMAIN = raw;
@@ -94,14 +94,14 @@ describe("cookieDomainHost", () => {
  */
 describe("sessionCookieName with a site-wide cookie domain", () => {
   it("names the site-wide credential breatic_site_session_<prefix> when COOKIE_DOMAIN is set", () => {
-    envMock.COOKIE_DOMAIN = "breatic.ai";
+    envMock.COOKIE_DOMAIN = "breatic.test";
     envMock.REDIS_KEY_PREFIX = "prod";
 
     expect(sessionCookieName()).toBe("breatic_site_session_prod");
   });
 
   it("uses the normalised domain, so a leading dot or capitals still mean site-wide", () => {
-    envMock.COOKIE_DOMAIN = " .Breatic.ai ";
+    envMock.COOKIE_DOMAIN = " .Breatic.test ";
     envMock.REDIS_KEY_PREFIX = "dev";
 
     expect(sessionCookieName()).toBe("breatic_site_session_dev");
@@ -118,7 +118,7 @@ describe("sessionCookieName with a site-wide cookie domain", () => {
     envMock.REDIS_KEY_PREFIX = "prod";
     envMock.COOKIE_DOMAIN = "";
     const hostOnly = sessionCookieName();
-    envMock.COOKIE_DOMAIN = "breatic.ai";
+    envMock.COOKIE_DOMAIN = "breatic.test";
     const siteWide = sessionCookieName();
 
     expect([hostOnly, siteWide]).toEqual(["breatic_session_prod", "breatic_site_session_prod"]);

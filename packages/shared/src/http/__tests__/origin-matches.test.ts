@@ -15,25 +15,25 @@ import { describe, expect, it } from "vitest";
 import fc from "fast-check";
 import { originMatches } from "@shared/http/origin-matches.js";
 
-const ENTRIES = ["https://breatic.ai", "https://*.partner.breatic.ai"];
+const ENTRIES = ["https://breatic.test", "https://*.partner.breatic.test"];
 
 describe("originMatches", () => {
   it("matches an exact entry", () => {
-    expect(originMatches("https://breatic.ai", ENTRIES)).toBe(true);
+    expect(originMatches("https://breatic.test", ENTRIES)).toBe(true);
   });
 
   it("matches one label below the wildcard's domain", () => {
-    expect(originMatches("https://alice.partner.breatic.ai", ENTRIES)).toBe(true);
+    expect(originMatches("https://alice.partner.breatic.test", ENTRIES)).toBe(true);
   });
 
   it.each([
-    ["the wildcard's domain itself", "https://partner.breatic.ai"],
-    ["two labels below the domain", "https://a.alice.partner.breatic.ai"],
-    ["a sibling of the partner domain", "https://alice.breatic.ai"],
-    ["another scheme", "http://alice.partner.breatic.ai"],
-    ["an explicit port", "https://alice.partner.breatic.ai:8443"],
-    ["a lookalike suffix", "https://alice.partner.breatic.ai.attacker.test"],
-    ["a domain that only ends with the same text", "https://alicepartner.breatic.ai"],
+    ["the wildcard's domain itself", "https://partner.breatic.test"],
+    ["two labels below the domain", "https://a.alice.partner.breatic.test"],
+    ["a sibling of the partner domain", "https://alice.breatic.test"],
+    ["another scheme", "http://alice.partner.breatic.test"],
+    ["an explicit port", "https://alice.partner.breatic.test:8443"],
+    ["a lookalike suffix", "https://alice.partner.breatic.test.attacker.test"],
+    ["a domain that only ends with the same text", "https://alicepartner.breatic.test"],
     ["an unrelated site", "https://attacker.test"],
     ["the opaque origin", "null"],
     ["an empty origin", ""],
@@ -42,11 +42,11 @@ describe("originMatches", () => {
   });
 
   it("does not let an exact entry match its own subdomains", () => {
-    expect(originMatches("https://alice.breatic.ai", ["https://breatic.ai"])).toBe(false);
+    expect(originMatches("https://alice.breatic.test", ["https://breatic.test"])).toBe(false);
   });
 
   it("matches nothing against an empty list", () => {
-    expect(originMatches("https://breatic.ai", [])).toBe(false);
+    expect(originMatches("https://breatic.test", [])).toBe(false);
   });
 
   it("keeps an http wildcard to http only, for local development", () => {
@@ -60,9 +60,9 @@ describe("originMatches", () => {
     const label = fc.stringMatching(/^[a-z0-9]([a-z0-9-]{0,20}[a-z0-9])?$/);
     fc.assert(
       fc.property(label, label, (first, second) => {
-        expect(originMatches(`https://${first}.partner.breatic.ai`, ENTRIES)).toBe(true);
-        expect(originMatches(`https://${first}.${second}.partner.breatic.ai`, ENTRIES)).toBe(false);
-        expect(originMatches(`http://${first}.partner.breatic.ai`, ENTRIES)).toBe(false);
+        expect(originMatches(`https://${first}.partner.breatic.test`, ENTRIES)).toBe(true);
+        expect(originMatches(`https://${first}.${second}.partner.breatic.test`, ENTRIES)).toBe(false);
+        expect(originMatches(`http://${first}.partner.breatic.test`, ENTRIES)).toBe(false);
       }),
     );
   });

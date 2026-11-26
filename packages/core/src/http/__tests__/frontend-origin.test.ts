@@ -14,6 +14,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type * as FrontendOrigin from "@core/http/frontend-origin.js";
 
 const { envMock, listHosts } = vi.hoisted(() => ({
   envMock: {
@@ -26,7 +27,7 @@ const { envMock, listHosts } = vi.hoisted(() => ({
 vi.mock("@core/config/env.js", () => ({ env: envMock }));
 vi.mock("@core/influencer/influencer.repo.js", () => ({ listHosts }));
 
-type FrontendOriginModule = typeof import("../frontend-origin.js");
+type FrontendOriginModule = typeof FrontendOrigin;
 
 /**
  * A fresh copy of the module, so the 60-second host cache of one case never
