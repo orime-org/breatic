@@ -86,8 +86,8 @@ export function cropMediaOf(el: Element | null): CropMedia | null {
  * original, whose natural size is its own. Zero means "not decodable yet": a
  * bitmap still loading, a broken URL, or a video whose metadata has not
  * arrived.
- * A video's own size is the played file's; the crop tools frame it in the selected version's display through
- * `useMediaGeometry` (frames-split §5.5, §7.8).
+ * A video's own size is the played file's; the crop tools frame it through `useMediaGeometry` in the selected
+ * version's display or, with none, the size the upload was registered at (frames-split §5.5, §7.8).
  * @param el - The crop source.
  * @returns The original's size, possibly `0 × 0`.
  */
