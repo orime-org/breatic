@@ -45,8 +45,9 @@ function useWrittenElsewhere<T>(stored: T): { count: number; wrote: (value: T) =
  * The crop param of the open tool, when it has one.
  * @param draft - The open mini-tool draft.
  * @returns The rect param, or undefined.
+ * @throws {never} Never.
  */
-function rectParamOf(draft: MiniToolDraft | null): RectParam | undefined {
+export function rectParamOf(draft: MiniToolDraft | null): RectParam | undefined {
   if (draft === null) return undefined;
   const spec = miniToolById(draft.toolId);
   if (spec === undefined || isModelTool(spec)) return undefined;

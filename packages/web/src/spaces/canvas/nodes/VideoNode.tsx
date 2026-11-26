@@ -24,7 +24,8 @@ import { useMediaFullscreen } from '@web/spaces/canvas/nodes/_shared/use-media-f
 import { useZoomedPastPreview } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
 import { useNodeResolution } from '@web/spaces/canvas/nodes/_shared/use-node-resolution';
 import { useCanvasSession } from '@web/spaces/canvas/canvas-context';
-import type { CanvasSessionState } from '@web/stores/canvas-session';
+import { miniToolOpenOn, type CanvasSessionState } from '@web/stores/canvas-session';
+import { rectParamOf } from '@web/spaces/canvas/crop/NodeCropLayer';
 
 /**
  * Whether a canvas surface uses a video node's live frames: a tool panel open on it or a focus crop on it.
@@ -153,6 +154,8 @@ export const VideoNode = React.memo(function VideoNode({
   const focusPicking = useCanvasSession(
     (s) => s.pickSession?.purpose === 'focus',
   );
+  // A crop box over the node takes every press inside it, so the player's bar would only hide the frame being framed.
+  const cropToolOpen = useCanvasSession((s) => rectParamOf(miniToolOpenOn(nodeId ?? null)(s)) !== undefined);
   const demanded = useCanvasSession((s) => videoSurfaceDemanded(s, nodeId ?? ''));
   const player = React.useRef<MediaPlayerHandle>(null);
   const fullscreen = useMediaFullscreen({ name: data.name ?? '', currentSrc: data.content, player });
@@ -192,7 +195,7 @@ export const VideoNode = React.memo(function VideoNode({
               size={size}
               duration={data.duration}
               onDimensions={setResolution}
-              controlsHidden={focusPicking}
+              controlsHidden={focusPicking || cropToolOpen}
               restsOnCover={!demanded}
             />
             {fullscreen.layer}

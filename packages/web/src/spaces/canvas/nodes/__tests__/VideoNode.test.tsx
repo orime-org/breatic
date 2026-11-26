@@ -9,7 +9,8 @@ import { renderWithTooltips } from '@web/test-utils/render-with-tooltips';
 import { VideoNode } from '@web/spaces/canvas/nodes/VideoNode';
 import { resetPreviewRecords } from '@web/lib/preview-src';
 import { NodeZoomedPastPreviewContext } from '@web/spaces/canvas/nodes/_shared/preview-zoom';
-import { canvasSessions } from '@web/stores/canvas-session';
+import { canvasSessions, type MiniToolDraft } from '@web/stores/canvas-session';
+import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
 
 beforeAll(() => {
   HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
@@ -19,7 +20,7 @@ beforeAll(() => {
 afterEach(() => {
   // The canvas store is a module singleton: a session left open here reaches
   // every later test in this file.
-  canvasSessions.of('').setState({ pickSession: null });
+  canvasSessions.of('').setState({ pickSession: null, panelKind: null, panelHostId: null, miniTool: null });
 });
 
 describe('VideoNode', () => {
@@ -118,6 +119,43 @@ describe('VideoNode', () => {
     act(() => {
       canvasSessions.of('').setState({ pickSession: null });
     });
+    expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
+  });
+});
+
+describe('VideoNode while a crop tool is open on it', () => {
+  const content = 'https://e.com/v.mp4';
+  /**
+   * Opens a mini-tool panel on a node.
+   * @param toolId - The tool.
+   * @param host - The node the panel opens on.
+   */
+  function openTool(toolId: string, host: string): void {
+    act(() => {
+      canvasSessions.of('').setState({
+        panelKind: 'miniTool',
+        panelHostId: host,
+        pickSession: null,
+        miniTool: {
+          toolId, sourceContent: content, prompt: '', params: {}, slots: {}, sourceSize: null,
+          drawing: null, expand: null, mark: null, exporting: false,
+        } satisfies MiniToolDraft,
+      });
+    });
+  }
+
+  it('hides its control bar while the crop tool frames it, and only then', () => {
+    renderWithTooltips(
+      <NodeIdContext.Provider value='n1'>
+        <VideoNode data={{ handling: false, content }} />
+      </NodeIdContext.Provider>,
+    );
+    expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
+    openTool('video.crop', 'n1');
+    expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(true);
+    openTool('video.speed', 'n1');
+    expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
+    openTool('video.crop', 'other-node');
     expect(screen.getByTestId('controls').hasAttribute('inert')).toBe(false);
   });
 });
