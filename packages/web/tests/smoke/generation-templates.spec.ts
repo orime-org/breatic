@@ -199,8 +199,12 @@ test('picking a template places the reference it asks for, wired and @\'d, and p
   const nodeId = await openPanelOnNewNode('image', -200);
   const trigger = page.getByTestId('generate-template-trigger');
   await expect(trigger).toBeVisible({ timeout: 15_000 });
-  // Right before the close button, in the panel's corner.
-  expect(await trigger.evaluate((el) => el.nextElementSibling?.getAttribute('data-testid'))).toBe('generate-exit');
+  // In the panel's corner: the template menu, the prompt's full-screen button
+  // (inner#2115), then the close button.
+  expect(await trigger.evaluate((el) => el.nextElementSibling?.getAttribute('data-testid'))).toBe('prompt-fullscreen-button');
+  expect(
+    await trigger.evaluate((el) => el.nextElementSibling?.nextElementSibling?.getAttribute('data-testid')),
+  ).toBe('generate-exit');
   await pickStoryboard();
 
   await expect(page.getByTestId('generate-mode-trigger')).toHaveText('Image to Image');
