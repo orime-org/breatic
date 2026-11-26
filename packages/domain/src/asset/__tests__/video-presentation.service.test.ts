@@ -288,7 +288,7 @@ describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 �
     const got = await resolveVideoPresentation(input);
     const accept = acceptSent();
     expect(accept.repair).not.toBe(true);
-    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), pollAfterMs: 5000, coverURL: null });
+    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), coverURL: null });
     expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: accept.jobId }), expect.objectContaining({ jobId: accept.jobId }));
   });
 
@@ -296,16 +296,16 @@ describe('read: admit once, otherwise answer the snapshot as it is (inner#1306 �
     ingest(snapshot({ preparation: prep('in-flight', 'encode') }));
     const got = await resolveVideoPresentation(input);
     expect(sent().map((request) => request.action)).toEqual(['read']);
-    expect(got).toMatchObject({ preparation: prep('in-flight', 'encode'), pollAfterMs: 5000 });
+    expect(got).toMatchObject({ preparation: prep('in-flight', 'encode') });
     expect(queueAdd).toHaveBeenCalledWith('prepare', { assetId: asset.id, sourceFingerprint: H, jobId: 'in-flight' }, expect.objectContaining({ jobId: 'in-flight' }));
   });
 
-  it('R03 a failed target preparation with nothing selected is answered as it is: no admission, no queue, no polling', async () => {
+  it('R03 a failed target preparation with nothing selected is answered as it is: no admission and no queue', async () => {
     ingest(snapshot({ preparation: prep('failed-job', 'plan', 'too_long') }));
     const got = await resolveVideoPresentation(input);
     expect(sent().map((request) => request.action)).toEqual(['read']);
     expect(queueAdd).not.toHaveBeenCalled();
-    expect(got).toMatchObject({ presentation: null, preparation: prep('failed-job', 'plan', 'too_long'), pollAfterMs: null });
+    expect(got).toMatchObject({ presentation: null, preparation: prep('failed-job', 'plan', 'too_long') });
   });
 
   it('R06 carries the registered video\'s cover, for a surface that holds none of its own', async () => {
@@ -350,7 +350,7 @@ describe('the response mirrors the snapshot (inner#1306 §3.5 web→server, §5.
   it('M01 maps every field with one name per concept and nothing else', async () => {
     ingest(snapshot({ presentation: bundle, preparation: prep('next-policy', 'encode') }));
     expect(await resolveVideoPresentation(input)).toEqual({
-      sourceBinding: registered, presentation: bundle, preparation: prep('next-policy', 'encode'), pollAfterMs: null, coverURL: null,
+      sourceBinding: registered, presentation: bundle, preparation: prep('next-policy', 'encode'), coverURL: null,
     });
   });
 
@@ -362,13 +362,13 @@ describe('the response mirrors the snapshot (inner#1306 §3.5 web→server, §5.
   });
 
   it.each([
-    ['a selected version', { presentation: bundle }, null],
-    ['a selected version while new target work runs', { presentation: bundle, preparation: prep('next-policy', 'encode') }, null],
-    ['nothing selected and target work in flight', { preparation: prep('in-flight', 'plan') }, 5000],
-    ['nothing selected and the target work failed', { preparation: prep('failed-job', 'plan', 'classification_unknown') }, null],
-  ])('M03 polls with the configured interval exactly when waiting: %s', async (_name, fields, pollAfterMs) => {
+    ['a selected version', { presentation: bundle }],
+    ['a selected version while new target work runs', { presentation: bundle, preparation: prep('next-policy', 'encode') }],
+    ['nothing selected and target work in flight', { preparation: prep('in-flight', 'plan') }],
+    ['nothing selected and the target work failed', { preparation: prep('failed-job', 'plan', 'classification_unknown') }],
+  ])('M03 answers no reread interval, pages read again on the preparation-ended message (frames-split §7.20): %s', async (_name, fields) => {
     ingest(snapshot(fields));
-    expect((await resolveVideoPresentation(input)).pollAfterMs).toBe(pollAfterMs);
+    expect(await resolveVideoPresentation(input)).not.toHaveProperty('pollAfterMs');
   });
 
 });
@@ -378,13 +378,13 @@ describe('repair returns the same response (inner#1306 §3.5 web→server repair
     const got = await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'repair-press' });
     const accept = acceptSent();
     expect(accept).toMatchObject({ action: 'accept', repair: true, storageKey: asset.storageKey, sourceFingerprint: H });
-    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), pollAfterMs: 5000, coverURL: null });
+    expect(got).toEqual({ sourceBinding: registered, presentation: null, preparation: prep(accept.jobId!), coverURL: null });
   });
 
   it('RP02 a repair of the selected version answers it with the new work and queues the job ingest accepted', async () => {
     ingest(snapshot(), snapshot({ presentation: bundle, preparation: prep('repair-job', 'plan') }));
     const got = await repairVideoPresentation({ ...input, sourceFingerprint: H, requestId: 'retry-press' });
-    expect(got).toMatchObject({ presentation: bundle, preparation: prep('repair-job', 'plan'), pollAfterMs: null });
+    expect(got).toMatchObject({ presentation: bundle, preparation: prep('repair-job', 'plan') });
     expect(queueAdd).toHaveBeenCalledWith('prepare', expect.objectContaining({ jobId: 'repair-job' }), expect.objectContaining({ jobId: 'repair-job' }));
   });
 

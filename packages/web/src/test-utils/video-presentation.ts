@@ -7,7 +7,7 @@
  * the same response. Every builder returns a value `videoPresentationResponseSchema` admits.
  */
 import type { QueryClient } from '@tanstack/react-query';
-import { videoPresentationAwaitsServer, type VideoPresentationResponse } from '@breatic/shared';
+import type { VideoPresentationResponse } from '@breatic/shared';
 import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 
 type Bundle = NonNullable<VideoPresentationResponse['presentation']>;
@@ -77,17 +77,15 @@ export function presentedPreparation(failure: string | null, stage: Preparation[
 }
 
 /**
- * A complete presentation response; `pollAfterMs` follows the shared rule (`videoPresentationAwaitsServer`).
+ * A complete presentation response.
  * @param sourceBinding - The binding.
  * @param fields - The selected bundle and the preparation, each null when absent.
- * @param pollAfterMs - The interval while the reader waits on server work.
  * @returns The response.
  * @throws {never} Never.
  */
 export function presentedResponse(sourceBinding: VideoPresentationResponse['sourceBinding'],
-  fields: Partial<Pick<VideoPresentationResponse, 'presentation' | 'preparation' | 'coverURL'>> = {}, pollAfterMs = 5000): VideoPresentationResponse {
-  const value = { presentation: null, preparation: null, coverURL: null, ...fields };
-  return { sourceBinding, ...value, pollAfterMs: videoPresentationAwaitsServer(value) ? pollAfterMs : null };
+  fields: Partial<Pick<VideoPresentationResponse, 'presentation' | 'preparation' | 'coverURL'>> = {}): VideoPresentationResponse {
+  return { sourceBinding, presentation: null, preparation: null, coverURL: null, ...fields };
 }
 
 /**

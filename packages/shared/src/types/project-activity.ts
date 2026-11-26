@@ -204,6 +204,12 @@ export interface CreditsChangedSignal {
 export const ASSET_PEAKS_READY_SIGNAL = "asset-peaks:ready" as const;
 
 /**
+ * Stateless WS signal on the project meta doc when a video's presentation job ended (frames-split §7.20); every
+ * surface showing that video reads its presentation again. The page knows its video by address, so the signal carries it.
+ */
+export const VIDEO_PRESENTATION_CHANGED_SIGNAL = "video-presentation:changed" as const;
+
+/**
  * Stateless WS signal to one person's meta connections when their bell changed (#1580); it carries no
  * `projectId`, as the bell is the person's, not the project's.
  */
@@ -235,6 +241,13 @@ export interface UploadEndedSignal {
 
 export interface AssetPeaksReadySignal {
   t: typeof ASSET_PEAKS_READY_SIGNAL;
+  projectId: string;
+  assetId: string;
+  url: string;
+}
+
+export interface VideoPresentationChangedSignal {
+  t: typeof VIDEO_PRESENTATION_CHANGED_SIGNAL;
   projectId: string;
   assetId: string;
   url: string;

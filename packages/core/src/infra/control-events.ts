@@ -65,6 +65,7 @@ import { env } from "@core/config/runtime.js";
 import {
   activityNewChannel,
   assetPeaksReadyChannel,
+  videoPresentationChangedChannel,
   sceneLookSettledChannel,
   projectConnectionsCloseChannel,
   allProjectChannelsPattern,
@@ -72,6 +73,7 @@ import {
   uploadEndedChannel,
   type ActivityNewControlEvent,
   type AssetPeaksReadyControlEvent,
+  type VideoPresentationChangedControlEvent,
   type SceneLookSettledControlEvent,
   type ProjectConnectionsCloseEvent,
   type ProjectConnectionsCloseReason,
@@ -127,6 +129,20 @@ export async function publishActivityNew(projectId: string): Promise<void> {
 export async function publishAssetPeaksReady(projectId: string, assetId: string, url: string): Promise<void> {
   const event: AssetPeaksReadyControlEvent = { type: "project-asset-peaks:ready", projectId, assetId, url, ts: Date.now() };
   await getStreamRedis().publish(assetPeaksReadyChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
+}
+
+/**
+ * Announce to one Project referencing a video that its presentation job ended (frames-split §7.20); collab relays it
+ * to that Project's connected members as the `video-presentation:changed` stateless signal.
+ * @param projectId - A live Project referencing the video.
+ * @param assetId - The video asset.
+ * @param url - The video's registered address.
+ * @returns Nothing.
+ * @throws {Error} When Redis rejects the publish.
+ */
+export async function publishVideoPresentationChanged(projectId: string, assetId: string, url: string): Promise<void> {
+  const event: VideoPresentationChangedControlEvent = { type: "project-video-presentation:changed", projectId, assetId, url, ts: Date.now() };
+  await getStreamRedis().publish(videoPresentationChangedChannel(env.REDIS_KEY_PREFIX, projectId), JSON.stringify(event));
 }
 
 /**

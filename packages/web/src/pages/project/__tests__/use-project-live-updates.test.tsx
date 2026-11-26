@@ -190,6 +190,20 @@ describe('a waveform made ready', () => {
   });
 });
 
+describe('a video preparation ended (frames-split §7.20)', () => {
+  it('reads that video\'s presentation in this Project again, and not for another Project\'s', () => {
+    const double = providerDouble();
+    const view = mount(double.provider);
+    const url = 'https://assets.example.test/v.mp4';
+    double.send({ t: 'video-presentation:changed', projectId: P1, assetId: 'a-1', url });
+    expect(invalidations(['video-presentation', 1, P1, url])).toBe(1);
+    double.send({ t: 'video-presentation:changed', projectId: P2, assetId: 'a-1', url });
+    expect(invalidations(['video-presentation', 1, P2, url])).toBe(0);
+    expect(invalidations(['video-presentation', 1, P1, url])).toBe(1);
+    view.unmount();
+  });
+});
+
 describe('the meta provider', () => {
   it('I-09 is listened to only while there is one, and let go on unmount', () => {
     const double = providerDouble();

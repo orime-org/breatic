@@ -6,13 +6,13 @@
  * design §3.5 web→server row, §5.1 step 6, §7.12). It mirrors the S6c ingest
  * snapshot with one name per concept: the registered sourceBinding, the selected
  * bundle or null (no separate manifest), the target policy's preparation
- * `{targetPolicyVersion, jobId, stage, failure}` and the polling interval. The
+ * `{targetPolicyVersion, jobId, stage, failure}`. The
  * selected version is complete with its grid (frames-split §3.5, §10.6 存储 row),
  * so there is no ledger or read limit beside it any more (§3.4). A repair answers
  * the same response; there is no `attempt` field.
  *
- * pollAfterMs is non-null exactly when §7.12 would paint waiting from server data:
- * nothing selected while the target work has not failed.
+ * The response carries no reread interval: a page reads it again when collab says the
+ * preparation ended (frames-split §7.20).
  */
 
 import { describe, expect, it } from 'vitest';
@@ -41,9 +41,9 @@ const bundle = {
 const inFlight = { targetPolicyVersion: 1, jobId: 'video-presentation-a', stage: 'encode', failure: null };
 const failedPrep = { targetPolicyVersion: 1, jobId: 'video-presentation-a', stage: 'plan', failure: 'too_long' };
 /** Nothing selected, work in flight: waiting-presentation (§7.12 step 2). */
-const waiting = { sourceBinding: binding, presentation: null, preparation: inFlight, pollAfterMs: 5000, coverURL: null };
+const waiting = { sourceBinding: binding, presentation: null, preparation: inFlight, coverURL: null };
 /** A selected version and no target work: usable (§7.12 step 5). */
-const usable = { sourceBinding: binding, presentation: bundle, preparation: null, pollAfterMs: null, coverURL: null };
+const usable = { sourceBinding: binding, presentation: bundle, preparation: null, coverURL: null };
 
 /**
  * The response schema's verdict.
@@ -114,7 +114,7 @@ describe('selected bundle on the response (inner#1306 §3.5 P descriptor, §5.1 
 describe('target policy preparation (inner#1306 §3.5 「preparation报告目标policy、原attempt和真实阶段」)', () => {
   it('P01 carries work in flight and a failed preparation in the snapshot shape', () => {
     expect(videoPresentationResponseSchema.parse(waiting)).toEqual(waiting);
-    const failed = { ...waiting, preparation: failedPrep, pollAfterMs: null };
+    const failed = { ...waiting, preparation: failedPrep };
     expect(videoPresentationResponseSchema.parse(failed)).toEqual(failed);
   });
 
@@ -136,19 +136,14 @@ describe('the retired ledger fields (frames-split §3.4)', () => {
   });
 });
 
-describe('polling only while §7.12 paints waiting from server data (inner#1306 §7.12 steps 2 and 4)', () => {
+describe('no reread interval (frames-split §7.20)', () => {
   it.each([
-    ['nothing selected while target work is in flight', waiting, true],
-    ['a selected version', usable, false],
-    ['a selected version while target work is in flight', { ...usable, preparation: inFlight }, false],
-    ['nothing selected and the target work failed', { ...waiting, preparation: failedPrep }, false],
-  ] as const)('Q01 %s polls exactly when it waits', (_name, response, polls) => {
-    expect(parses({ ...response, pollAfterMs: polls ? 5000 : null })).toBe(true);
-    expect(parses({ ...response, pollAfterMs: polls ? null : 5000 })).toBe(false);
-  });
-
-  it.each([0, -1, 1.5])('Q02 rejects a polling interval of %s', (pollAfterMs) => {
-    expect(parses(waiting)).toBe(true);
-    expect(parses({ ...waiting, pollAfterMs })).toBe(false);
+    ['nothing selected while target work is in flight', waiting],
+    ['a selected version', usable],
+    ['nothing selected and the target work failed', { ...waiting, preparation: failedPrep }],
+  ] as const)('Q01 %s parses without one and is refused with one', (_name, response) => {
+    expect(parses(response)).toBe(true);
+    expect(parses({ ...response, pollAfterMs: 5000 })).toBe(false);
+    expect(parses({ ...response, pollAfterMs: null })).toBe(false);
   });
 });

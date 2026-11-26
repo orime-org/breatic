@@ -3,7 +3,7 @@
 
 import { createHash, randomUUID } from 'node:crypto';
 import { budgetDeadlineFrom, ConflictError, NotFoundError, ValidationError, createQueue, defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, projectAuthService } from '@breatic/core';
-import { t, videoPresentationAtIngest, videoPresentationAwaitsServer, videoPresentationResponseSchema,
+import { t, videoPresentationAtIngest, videoPresentationResponseSchema,
   videoPresentationSourceBindingSchema,
   type StudioAssetEntity, type VideoPresentationOriginal, type VideoPresentationIngestPreparation, type VideoPresentationIngestRequest, type VideoPresentationPricing,
   type VideoPresentationIngestSnapshot, type VideoPresentationResponse, type VideoPresentationSourceBinding } from '@breatic/shared';
@@ -198,7 +198,6 @@ async function response(row: StudioAssetEntity, binding: VideoPresentationSource
   const cover = await findCoverOf(row.id);
   return videoPresentationResponseSchema.parse({
     sourceBinding: binding, presentation: snapshot.presentation, preparation: snapshot.preparation,
-    pollAfterMs: videoPresentationAwaitsServer(snapshot) ? getMiniToolsConfig().poll_interval_ms : null,
     coverURL: cover?.fileUrl ?? null,
   });
 }

@@ -45,18 +45,16 @@ describe('canonical presentation query (inner#1306 Canvas §17)', () => {
     await expect(client.fetchQuery(videoPresentationQuery(input))).rejects.toThrow();
   });
 
-  it('polls only while accepted work is pending using the returned interval', async () => {
+  it('reads once while accepted work is pending and never again on a timer (frames-split §7.20)', async () => {
     vi.useFakeTimers();
-    const pending = presentedResponse(binding, { preparation: presentedPreparation(null, 'encode') }, 1234);
+    const pending = presentedResponse(binding, { preparation: presentedPreparation(null, 'encode') });
     apiGet.mockResolvedValueOnce(pending).mockResolvedValue(unknown);
     const observer = new QueryObserver(client, videoPresentationQuery(input));
     const unsubscribe = observer.subscribe(() => undefined);
     await vi.advanceTimersByTimeAsync(0);
     expect(observer.getCurrentResult().data).toEqual(pending);
-    await vi.advanceTimersByTimeAsync(1234);
-    expect(apiGet).toHaveBeenCalledTimes(2);
-    await vi.advanceTimersByTimeAsync(5000);
-    expect(apiGet).toHaveBeenCalledTimes(2);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(apiGet).toHaveBeenCalledTimes(1);
     unsubscribe();
   });
 
@@ -86,7 +84,7 @@ describe('canonical presentation query (inner#1306 Canvas §17)', () => {
   // schema; the earlier repair shape (an `attempt` beside a status preparation) is refused, as is a bundle of another source.
   it.each([
     ['the earlier repair attempt field', { attempt: { jobId: 'accepted-repair', deadlineAt: 1900000000000 } }],
-    ['a bundle of another source', { presentation: presentedBundle(input.canonicalURL, { sourceFingerprint: 'b'.repeat(64) }), preparation: null, pollAfterMs: null }],
+    ['a bundle of another source', { presentation: presentedBundle(input.canonicalURL, { sourceFingerprint: 'b'.repeat(64) }), preparation: null }],
   ])('refuses a repair answer with %s', async (_name, change) => {
     apiPost.mockResolvedValue({ ...presentedResponse(binding, { preparation: presentedPreparation(null) }), ...change });
     await expect(repairVideoPresentation({ ...input, sourceFingerprint: binding.contentHash }, 'repair-press')).rejects.toThrow();

@@ -152,6 +152,7 @@ export {
 export {
   publishActivityNew,
   publishAssetPeaksReady,
+  publishVideoPresentationChanged,
   publishSceneLookSettled,
   publishProjectConnectionsClose,
   projectControlChannelPattern,

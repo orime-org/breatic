@@ -44,7 +44,7 @@ const bundle = { schemaVersion: 1, versionId: VERSION, toolInputId: TOOL_INPUT, 
  * @returns The response.
  */
 function read(presentation: typeof bundle | null, failure?: string | null): unknown {
-  return { sourceBinding: binding, presentation, preparation: failure === undefined ? null : { targetPolicyVersion: 1, jobId: 'video-presentation:fixture', stage: failure === null ? 'encode' : null, failure }, pollAfterMs: null };
+  return { sourceBinding: binding, presentation, preparation: failure === undefined ? null : { targetPolicyVersion: 1, jobId: 'video-presentation:fixture', stage: failure === null ? 'encode' : null, failure } };
 }
 
 const usable: Input = { sourceURL: url, presentationStatus: 'ready', response: read(bundle), resourceVersionId: VERSION, toolInputId: TOOL_INPUT, retrying: false };

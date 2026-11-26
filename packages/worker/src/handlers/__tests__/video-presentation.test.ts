@@ -18,6 +18,7 @@
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import fc from 'fast-check';
+import { DelayedError } from 'bullmq';
 import * as shared from '@breatic/shared';
 import { videoContainerJobId, videoCarrierRouteStages } from '@breatic/shared/mini-tools';
 import type * as coreModule from '@breatic/core';
@@ -27,8 +28,9 @@ import { StillRunning } from '@worker/handlers/still-running.js';
 import { chunkInputId, SOURCE_INPUT_ID } from '@worker/handlers/video-presentation-recipes.js';
 import { planDigest } from '@worker/handlers/mini-tool/__tests__/frozen-presentation.js';
 
-const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger } = vi.hoisted(() => ({
+const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger, listProjectsReferencingAsset, publishVideoPresentationChanged } = vi.hoisted(() => ({
   findById: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), syncPresentationPins: vi.fn(),
+  listProjectsReferencingAsset: vi.fn(), publishVideoPresentationChanged: vi.fn(),
   // Every application-layer catch logs (root AGENTS.md "Application-layer error logging"); the spy lets the handler do so.
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
@@ -39,11 +41,13 @@ vi.mock('@breatic/core', async (original) => {
     env: { INGEST_BASE_URL: 'https://ingest.example.test', INGEST_SHARED_SECRET: 'secret' },
     logger,
     getMiniToolsConfig: () => ({ ...actual.getMiniToolsConfig(), poll_interval_ms: 5000 }),
+    getStorageAdapter: async () => ({ publicUrl: (key: string): string => `https://assets.example.test/${key}` }),
+    publishVideoPresentationChanged,
   };
 });
 vi.mock('@breatic/domain', async (original) => ({
   ...await original<Record<string, unknown>>(),
-  assetRepo: { findById },
+  assetRepo: { findById, listProjectsReferencingAsset },
   createUsageRecorder,
   // S6e E4-3: the domain function that writes candidate and selected pins from the prepare answer.
   syncPresentationPins,
@@ -761,5 +765,51 @@ describe('a job BullMQ gave up on is settled from the queue failed event (frames
     await settleExhausted()(queue, JOB);
     expect(sent).toEqual([]);
     expect(added).toEqual([]);
+  });
+});
+
+describe('the end of a job is told to the Projects showing the video (frames-split §7.20)', () => {
+  const P1 = '7a1f2c0e-0000-4000-8000-000000000001';
+  const P2 = '7a1f2c0e-0000-4000-8000-000000000002';
+  /**
+   * Run one pickup the way the queue does.
+   * @returns The rejection, if the pickup threw.
+   */
+  const pickup = async (): Promise<unknown> => {
+    const job = { data, moveToDelayed: vi.fn(async () => undefined) };
+    return handler.runVideoPresentation(job as never, 'lock').then(() => undefined, (error: unknown) => error);
+  };
+
+  beforeEach(() => {
+    listProjectsReferencingAsset.mockReset().mockResolvedValue([P1, P2]);
+    publishVideoPresentationChanged.mockReset().mockResolvedValue(undefined);
+  });
+
+  it('VP01 a pickup that ends the job tells each Project referencing the video, with its registered address', async () => {
+    answer = prepareAnswer({ capability: null, plan: null, work: { kind: 'none' } });
+    expect(await pickup()).toBeUndefined();
+    expect(listProjectsReferencingAsset).toHaveBeenCalledWith(asset.id);
+    const url = `https://assets.example.test/${KEY}`;
+    expect(publishVideoPresentationChanged.mock.calls).toEqual([[P1, asset.id, url], [P2, asset.id, url]]);
+  });
+
+  it('VP02 a pickup that goes back to wait tells nobody', async () => {
+    answer = prepareAnswer();
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    expect(publishVideoPresentationChanged).not.toHaveBeenCalled();
+  });
+
+  it('VP03 a source row that is gone tells nobody', async () => {
+    findById.mockResolvedValue(null);
+    expect(await pickup()).toBeUndefined();
+    expect(publishVideoPresentationChanged).not.toHaveBeenCalled();
+  });
+
+  it('VP04 a message that cannot be sent is logged and does not fail the ended job', async () => {
+    answer = prepareAnswer({ capability: null, plan: null, work: { kind: 'none' } });
+    publishVideoPresentationChanged.mockRejectedValueOnce(new Error('redis down'));
+    expect(await pickup()).toBeUndefined();
+    expect(publishVideoPresentationChanged).toHaveBeenCalledTimes(2);
+    expect(logger.error).toHaveBeenCalledWith(expect.objectContaining({ ctx: expect.objectContaining({ projectId: P1 }) }), 'video_presentation_changed_publish_failed');
   });
 });

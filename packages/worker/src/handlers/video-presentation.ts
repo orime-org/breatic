@@ -15,7 +15,7 @@
  */
 
 import { DelayedError, type Job, type Queue } from 'bullmq';
-import { defaultJobOpts, env, getMiniToolsConfig, logger } from '@breatic/core';
+import { defaultJobOpts, env, getMiniToolsConfig, getStorageAdapter, logger, publishVideoPresentationChanged } from '@breatic/core';
 import { assetRepo, containerCostUsd, createUsageRecorder, syncPresentationPins, type VideoPresentationJob } from '@breatic/domain';
 import {
   prepareVideoPresentationAtIngest, readMiniToolPlanJob, readMiniToolPlanJobById, stepVideoPresentationAtIngest, untilDeadline, videoPresentationAtIngest,
@@ -399,7 +399,33 @@ export async function advanceVideoPresentation(data: VideoPresentationJob): Prom
 }
 
 /**
- * Run one pickup without opening a billed user task; StillRunning moves the job back to the delayed queue.
+ * Tell every live Project referencing the video that its presentation job ended, so the surfaces showing it read the
+ * presentation again (frames-split §7.20). The job's result is already committed at ingest, so a message that cannot be
+ * sent is logged and the job still ends: a retry would settle it a second time.
+ * @param data - The ended job's identity.
+ * @returns Nothing.
+ * @throws {never} Every failure is logged.
+ */
+async function announceEnded(data: VideoPresentationJob): Promise<void> {
+  try {
+    const row = await assetRepo.findById(data.assetId);
+    if (row === null || row.deletedAt !== null || row.kind !== 'video' || row.contentHash !== data.sourceFingerprint) return;
+    const url = (await getStorageAdapter()).publicUrl(row.storageKey);
+    for (const projectId of await assetRepo.listProjectsReferencingAsset(row.id)) {
+      try {
+        await publishVideoPresentationChanged(projectId, row.id, url);
+      } catch (err) {
+        logger.error({ err, ctx: { ...data, projectId } }, 'video_presentation_changed_publish_failed');
+      }
+    }
+  } catch (err) {
+    logger.error({ err, ctx: data }, 'video_presentation_changed_publish_failed');
+  }
+}
+
+/**
+ * Run one pickup without opening a billed user task; StillRunning moves the job back to the delayed queue; a pickup
+ * that ends the job tells the Projects showing the video.
  * @param job - The queued presentation job.
  * @param token - The worker lock token.
  * @returns Nothing once the job is over.
@@ -417,6 +443,7 @@ export async function runVideoPresentation(job: Job<VideoPresentationJob>, token
     logger.error({ err, ctx: job.data }, 'video_presentation_attempt_failed');
     throw err;
   }
+  await announceEnded(job.data);
 }
 
 /**

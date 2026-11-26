@@ -25,22 +25,8 @@ export interface VideoPresentationResponse {
   sourceBinding: VideoPresentationSourceBinding;
   presentation: VideoPresentationVersion | null;
   preparation: VideoPresentationIngestPreparation | null;
-  pollAfterMs: number | null;
   /** The registered video's cover image, which a surface shows while its picture is not drawn; null when it has none. */
   coverURL: string | null;
-}
-
-/**
- * Whether the user's view waits on server work (§7.12): nothing selected while the target work has not failed. A
- * selected version is complete, its grid inside it. The one rule behind `pollAfterMs` on both sides.
- * @param value - The selected bundle and the preparation.
- * @param value.presentation - The selected bundle, or null.
- * @param value.preparation - The target policy's preparation, or null.
- * @returns True while a later read can change what the user sees.
- * @throws {never} Never.
- */
-export function videoPresentationAwaitsServer(value: { presentation: VideoPresentationVersion | null; preparation: VideoPresentationIngestPreparation | null }): boolean {
-  return value.presentation === null && value.preparation !== null && value.preparation.failure === null;
 }
 
 /** Registry-backed nullable metadata wire contract. */
@@ -56,7 +42,6 @@ export const videoPresentationSourceBindingSchema: z.ZodType<VideoPresentationSo
 export const videoPresentationResponseSchema: z.ZodType<VideoPresentationResponse> = z.strictObject({
   sourceBinding: videoPresentationSourceBindingSchema, presentation: videoPresentationVersionSchema.nullable(),
   preparation: videoPresentationIngestPreparationSchema.nullable(),
-  pollAfterMs: z.number().int().positive().max(Number.MAX_SAFE_INTEGER).nullable(),
   coverURL: z.url().nullable(),
 }).superRefine((value, ctx) => {
   checkSelectedVideoPresentation(value, value.sourceBinding.contentHash, ctx);
@@ -69,8 +54,5 @@ export const videoPresentationResponseSchema: z.ZodType<VideoPresentationRespons
         ctx.addIssue({ code: 'custom', path: ['presentation', 'original', field], message: 'Presentation differs from registered measurement' });
       }
     }
-  }
-  if (videoPresentationAwaitsServer(value) !== (value.pollAfterMs !== null)) {
-    ctx.addIssue({ code: 'custom', path: ['pollAfterMs'], message: 'Only a reader waiting on server work carries a polling interval' });
   }
 });

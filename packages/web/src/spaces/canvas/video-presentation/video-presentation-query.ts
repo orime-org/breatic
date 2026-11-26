@@ -16,7 +16,8 @@ export type VideoPresentationQueryOptions = UseQueryOptions<VideoPresentationRes
   readonly ['video-presentation', 1, string, string]>;
 
 /**
- * Describe one authorized canonical source query without creating another cache.
+ * Describe one authorized canonical source query without creating another cache. It is read again when collab says
+ * the video's presentation job ended (`useProjectLiveUpdates`, frames-split §7.20), never on a timer.
  * @param input - Project, source and current Space activation.
  * @returns Options for the existing QueryClient or a normal query observer.
  * @throws {never} Merely constructing options does not start a request.
@@ -43,8 +44,6 @@ function presentationOptions(input: VideoPresentationQueryInput): VideoPresentat
       signal.throwIfAborted();
       return videoPresentationResponseSchema.parse(answered);
     },
-    // The server sets pollAfterMs exactly while a later read can change what the reader sees (§7.12).
-    refetchInterval: (query): number | false => query.state.data?.pollAfterMs ?? false,
   });
 }
 

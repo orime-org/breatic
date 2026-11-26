@@ -354,7 +354,7 @@ test('an original the browser cannot play shows Preparing video… until the pre
 test('a preparation failure offers Retry, and Retry prepares the video @needs-ingest @needs-storage @needs-ffmpeg', async ({ page }) => {
   // A temporary preparation failure (a container lost mid-run, say) cannot be caused on demand, so the presentation reads
   // of this page answer the real response with its candidate failed the way the server reports one: nothing selected,
-  // the target preparation carrying `presentation_failed`, and no further polling. Retry's repair goes to the real
+  // the target preparation carrying `presentation_failed`. Retry's repair goes to the real
   // server, and every read after it is answered by the real server too.
   let failing = true;
   let preparation: unknown = null;
@@ -364,10 +364,10 @@ test('a preparation failure offers Retry, and Retry prepares the video @needs-in
   await page.route((url) => url.pathname.endsWith('/assets/video-presentation'), async (route) => {
     if (route.request().method() !== 'GET' || !failing) return route.fallback();
     const response = await route.fetch();
-    const body = (await response.json()) as { data: { presentation: unknown; preparation: unknown; pollAfterMs: number | null } };
+    const body = (await response.json()) as { data: { presentation: unknown; preparation: unknown } };
     if (body.data.preparation !== null) preparation = body.data.preparation;
     if (preparation !== null) {
-      body.data = { ...body.data, presentation: null, preparation: { ...(preparation as object), failure: 'presentation_failed' }, pollAfterMs: null };
+      body.data = { ...body.data, presentation: null, preparation: { ...(preparation as object), failure: 'presentation_failed' } };
     }
     await route.fulfill({ response, json: body });
   });
