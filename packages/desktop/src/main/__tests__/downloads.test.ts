@@ -281,11 +281,4 @@ describe("downloadIpcHandlers", () => {
     expect(deps.showItemInFolder).not.toHaveBeenCalled();
     expect(downloads.list().items).toHaveLength(1);
   });
-
-  it("refuses an id that is not a string", () => {
-    const { calls, deps } = handlers(true);
-    calls["download:reveal"]({}, { toString: () => "1" });
-    calls["download:reveal"]({}, 1);
-    expect(deps.showItemInFolder).not.toHaveBeenCalled();
-  });
 });

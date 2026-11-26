@@ -194,12 +194,12 @@ describe('DownloadPanel position', () => {
     vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
       return { left: this.hasAttribute('data-download-panel-anchor') ? left : 0, top: 0, right: 0, bottom: 0, width: 0, height: 0, x: 0, y: 0, toJSON: () => ({}) } as DOMRect;
     });
-    const resized: Array<() => void> = [];
+    const observed: Array<[Element, () => void]> = [];
     vi.stubGlobal('ResizeObserver', class {
-      constructor(callback: () => void) {
-        resized.push(callback);
+      constructor(private readonly callback: () => void) {}
+      observe(target: Element): void {
+        observed.push([target, this.callback]);
       }
-      observe(): void {}
       unobserve(): void {}
       disconnect(): void {}
     });
@@ -208,7 +208,9 @@ describe('DownloadPanel position', () => {
     await screen.findByText('still.png');
     expect(panel().style.left).toBe('300px');
     left = 420;
-    act(() => resized.forEach((callback) => callback()));
+    // Only the anchor's area resizes; the anchor itself has no size.
+    const area = document.querySelector('[data-download-panel-anchor]')!.parentElement;
+    act(() => observed.filter(([target]) => target === area).forEach(([, callback]) => callback()));
     expect(panel().style.left).toBe('420px');
     view.rerender(<div>{null}<DownloadPanel /></div>);
     expect(panel().style.left).toBe('12px');
