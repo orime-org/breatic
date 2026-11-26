@@ -284,9 +284,9 @@ describe('StudioAccountMenu', () => {
       .filter((link) => link.tagName === 'A')
       .map((link) => [link.textContent, link.getAttribute('href'), link.getAttribute('target'), link.getAttribute('rel')]);
     expect(hrefs).toEqual([
-      ['Breatic license', '/LICENSE.txt', '_blank', 'noopener noreferrer'],
-      ['Trademark and branding policy', '/TRADEMARKS.md', '_blank', 'noopener noreferrer'],
-      ['Third-party notices', '/THIRD-PARTY.md', '_blank', 'noopener noreferrer'],
+      ['Breatic license', 'https://github.com/orime-org/breatic/blob/main/LICENSE', '_blank', 'noopener noreferrer'],
+      ['Trademark and branding policy', 'https://github.com/orime-org/breatic/blob/main/TRADEMARKS.md', '_blank', 'noopener noreferrer'],
+      ['Third-party notices', 'https://github.com/orime-org/breatic/blob/main/THIRD-PARTY.md', '_blank', 'noopener noreferrer'],
     ]);
     // Each row ends with the external-link glyph the Help menu uses, so the
     // new tab is announced before the click.
