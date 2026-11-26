@@ -50,7 +50,7 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
       // The picked list item's address and media facts, as a canvas node stores them (inner#2171 design §4).
       source: {
         id: input.sourceId, kind: 'video', url: asset.fileUrl, coverUrl: asset.coverUrl,
-        name: timelineSourceName(asset.displayName ?? assetNameFromUrl(asset.fileUrl)), mimeType: asset.mimeType, width: asset.width, height: asset.height,
+        name: timelineSourceName(timelineVideoName(asset)), mimeType: asset.mimeType, width: asset.width, height: asset.height,
         timebase: current.settings.fps, extentFrames, durationSeconds: String(duration),
         durationOrigin: asset.durationSeconds === null ? 'decoded' : 'registered',
       },
@@ -64,6 +64,19 @@ export function prepareTimelineMediaPlacement(doc: Y.Doc, input: TimelineMediaPl
     placement: input.placement,
   };
   return { ok: true, command };
+}
+
+/**
+ * What a Project video is called in the Timeline, in its list and on its clip alike: its display name, else the file
+ * name its address ends in.
+ * @param asset - The listed video.
+ * @param asset.displayName - Its display name, which may be missing or empty.
+ * @param asset.fileUrl - Its address.
+ * @returns The name, or null when neither gives one.
+ * @throws {never} Never.
+ */
+export function timelineVideoName(asset: { displayName: string | null; fileUrl: string }): string | null {
+  return asset.displayName || assetNameFromUrl(asset.fileUrl);
 }
 
 /**

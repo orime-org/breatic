@@ -514,6 +514,19 @@ describe('TimelineSpace registered-video placement', () => {
     expect(data.sources[sourceIdOf(clip) ?? '']).toEqual({ ...SOURCE, id: sourceIdOf(clip) });
     expect(await screen.findByTestId('timeline-clip-' + clip?.id)).toBeInTheDocument();
   });
+  it('names a video without a display name the same in the list and on its clip (inner#2171 visual round 1)', async () => {
+    vi.mocked(timelineApi.listVideos).mockResolvedValue({ items: [{ ...ASSET, displayName: null }], nextCursor: null });
+    seedContent();
+    showTimeline();
+    const dialog = await openMaterial();
+    const choice = await within(dialog).findByTestId('timeline-project-video-' + ASSET.assetId);
+    expect(choice).toHaveTextContent('registered-launch.mp4');
+    fireEvent.click(choice);
+    fireEvent.click(screen.getByTestId('timeline-confirm-material'));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBe(null));
+    const clip = Object.values(layout().clips)[0];
+    expect(await screen.findByTestId('timeline-clip-' + clip?.id)).toHaveTextContent('registered-launch.mp4');
+  });
   it('uses the selected explicit integer start frame on a sub track', async () => {
     seedLayout([]);
     showTimeline();

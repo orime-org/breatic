@@ -241,6 +241,12 @@ describe('prepareTimelineMediaPlacement', () => {
     },
   );
 
+  it.each([null, ''])('names a video whose display name is %j after its address\'s file (inner#2171 visual round 1)', (displayName) => {
+    const result = prepareUnchanged(seededDoc(), placementInput({ asset: { ...ASSET, displayName } }));
+    if (!result.ok) throw new Error(result.reason);
+    expect(result.command.operation === 'add_video' && result.command.parameters.source?.name).toBe('registered-demo.mp4');
+  });
+
   it('refuses a read-only connection without changing the collaborative document', () => {
     expect(prepareUnchanged(seededDoc(), placementInput({ canWrite: false }))).toEqual({ ok: false, reason: 'readonly' });
   });
