@@ -558,6 +558,38 @@ describe('GeneratePanelContainer — catalog failure gate', () => {
     listSpy.mockRestore();
   });
 
+  // A hidden Space runs every effect cleanup; full screen and its editor come
+  // back as they were, caret and undo history included (inner#2115).
+  it('keeps the full-screen editor across a hidden Space', async () => {
+    const listSpy = vi.spyOn(modelsApi, 'list').mockResolvedValue(imageCatalog([T2I_MODEL]));
+    seedImageNode({ mode: 't2i', model: 'nano-banana' });
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const { rerender } = render(containerTree(client));
+    act(() => {
+      canvasSessions.of('s').getState().openGeneratePanel('target', 'image');
+    });
+    fireEvent.click(await screen.findByTestId('prompt-fullscreen-button'));
+    /**
+     * The full-screen editor's element.
+     * @returns The element, once it is there.
+     */
+    const editor = (): Promise<Element> =>
+      waitFor(() => {
+        const view = screen.getByTestId('prompt-fullscreen').querySelector('.ProseMirror');
+        expect(view).not.toBeNull();
+        return view as Element;
+      });
+    const first = await editor();
+    await act(async () => {
+      rerender(containerTree(client, undefined, 'hidden'));
+    });
+    await act(async () => {
+      rerender(containerTree(client, undefined, 'visible'));
+    });
+    expect(await editor()).toBe(first);
+    listSpy.mockRestore();
+  });
+
   // A full style slot has no room for another picture, so its thumbnails do
   // not open a pick whose every click would add nothing (inner#826).
   it('starts no style pick from a full style slot', async () => {
