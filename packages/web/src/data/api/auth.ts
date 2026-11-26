@@ -113,6 +113,10 @@ export interface AuthOptions {
   emailVerification: boolean;
   /** The referral code field exists; only while this deployment takes payments. */
   referralEnabled: boolean;
+  /** The scheme this deployment's desktop app receives sign-in codes on. */
+  desktopAppScheme: string;
+  /** The desktop app's name, as the sign-in confirmation shows it. */
+  desktopAppName: string;
 }
 
 interface LoginResponse {
@@ -175,6 +179,14 @@ export const authApi = {
   },
   google(body: { credential: string; attribution?: Attribution | null } & SignupReferralFields) {
     return apiPost<GoogleLoginResponse>('/auth/google', body);
+  },
+  // The browser side of the desktop client's sign-in (inner#2041): a one-time code bound to the client's challenge.
+  desktopHandoff(body: { challenge: string }) {
+    return apiPost<{ code: string }>('/auth/desktop-handoff', body);
+  },
+  // The desktop client's side: trade the code and the verifier behind the challenge for a session.
+  desktopExchange(body: { code: string; verifier: string }) {
+    return apiPost<LoginResponse>('/auth/desktop-exchange', body);
   },
   me() {
     return apiGet<AuthUser>('/auth/me');

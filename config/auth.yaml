@@ -11,3 +11,8 @@ signup_code:
   # per-code limit this bounds guesses at one address to
   # 3600 / resend_cooldown_seconds * max_attempts_per_code an hour.
   resend_cooldown_seconds: 60
+
+# Desktop client sign-in through the system browser (inner#2041): how long the
+# one-time code the browser hands to the client stays redeemable.
+desktop_handoff:
+  ttl_seconds: 300

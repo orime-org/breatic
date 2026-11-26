@@ -14,6 +14,7 @@ import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem,
   DropdownMenuSeparator, DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
+import { Progress } from '@web/components/ui/progress';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useCollaboratorNames } from '@web/features/collab-editor/collaborator-names-context';
@@ -368,7 +369,7 @@ export const SceneTaskList = React.memo(function SceneTaskList({ projectId, spac
               {t(`spaces.threeD.taskList.${rigNote}`)}</p>}
           </> : <p className='mt-1 text-xs text-muted-foreground'>{`${starter} · ${state}`}</p>}
           {task.status === 'running' && percent !== undefined && own?.phase !== 'registering'
-            ? <div className='mt-1.5 h-1 overflow-hidden rounded-full bg-muted'><div className='h-full rounded-full bg-foreground' style={{ width: `${percent}%` }} /></div> : null}
+            ? <Progress value={percent} className='mt-1.5' indicatorClassName='rounded-full' /> : null}
           {failure === null ? null : <p className='mt-1 text-xs text-status-error'>{failure}</p>}
           {placeable || locatable || removable || retryable || cancellable ? <div className='mt-2 flex flex-wrap gap-1.5'>
             {cancellable ? <Button size='compact' variant='outline' loading={cancelling.has(task.id)} onClick={() => cancel(task)}>{t('common.cancel')}</Button> : null}

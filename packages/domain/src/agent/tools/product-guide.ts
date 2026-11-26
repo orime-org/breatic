@@ -747,7 +747,17 @@ export function renderProductGuide(): string {
       `of the node's words in its history (words it already holds are not listed again; a snapshot row shows ` +
       `its words) and shows ${quoted(t("canvas.history.snapshotKept"))}`,
     `- On a picture, video or sound node, ${quoted(t("canvas.nodeMenu.download"))}, which saves the file (on a deployment whose ` +
-      "files are served from an r2.dev address it opens the file in a new tab instead), then " +
+      "files are served from an r2.dev address it opens the file in a new tab instead; in the desktop client the system asks where " +
+      `to save it, and the download then shows in a ${quoted(t("desktopDownloads.title"))} panel at the bottom left of the page's ` +
+      "working area, which the user can drag anywhere in the window by its title bar and which stays where it was dragged: " +
+      "its title bar says how many are downloading or failed, each row shows the file's name and progress, " +
+      "a finished row names the folder it was saved in, with " +
+      `${quoted(t("desktopDownloads.revealMac"))} on macOS or ${quoted(t("desktopDownloads.revealOther"))} on Windows and Linux, ` +
+      "which opens that folder with the file selected (when the file was moved or deleted since, the row says " +
+      `${quoted(t("desktopDownloads.missing"))} in place of the folder and the button), and a failed row says the download failed and to download it again; ` +
+      `with more than one download ${quoted(t("desktopDownloads.showAll", { count: 2 }))} lists them all and ` +
+      `${quoted(t("desktopDownloads.showLatest"))} goes back to the newest, and the panel stays until its ` +
+      `${quoted(t("desktopDownloads.close"))} button, an X, closes it), then ` +
       `${quoted(t("canvas.nodeMenu.understand"))}, which writes a description of what the node holds into a new ` +
       "text node connected to it (the canvas slides to show it when it lands out of view, as for the mini-tools). " +
       "Both are greyed while the node holds nothing. A reading that cannot " +

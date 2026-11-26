@@ -646,11 +646,12 @@ test('picking the product ad places the product, an optional person and the stil
   await page.screenshot({ path: test.info().outputPath('product-ad-person-filled.png') });
 });
 
-test('an audio panel lists the ten sound templates under the sound goal, beside the film styles', async () => {
+test('an audio panel lists the ten sound templates under the sound goal, after the music videos and the film styles', async () => {
   await openPanelOnNewNode('audio');
   await openGoal('sound');
   const goals = page.locator('[data-testid^="generate-template-goal-"]');
   expect(await goals.evaluateAll((all) => all.map((el) => el.getAttribute('data-testid')))).toEqual([
+    'generate-template-goal-music-video',
     'generate-template-goal-film-styles',
     'generate-template-goal-sound',
   ]);
@@ -669,6 +670,33 @@ test('an audio panel lists the ten sound templates under the sound goal, beside 
   ]);
   await closeTemplateMenu();
 });
+
+for (const [kind, ids] of [
+  ['image', ['mv-style-sheet', 'mv-performer-sheet', 'mv-full']],
+  ['video', ['beat-synced-music-clip', 'music-first-mv', 'mv-chorus-performance']],
+  ['audio', ['song-with-lyrics']],
+] as const) {
+  test(`${kind === 'audio' ? 'an' : 'a'} ${kind} panel lists its music video templates under the music video goal`, async () => {
+    await openPanelOnNewNode(kind);
+    await openGoal('music-video');
+    await expect(page.getByTestId('generate-template-goal-music-video')).toHaveText(new RegExp(`^Music videos\\s*${String(ids.length)}$`));
+    expect(await listedTemplates()).toEqual([...ids]);
+    await closeTemplateMenu();
+  });
+}
+
+for (const [kind, ids] of [
+  ['image', ['comic-drama-cast-sheet']],
+  ['video', ['comic-drama-episode', 'narrated-motion-comic', 'comic-drama-voice-line']],
+] as const) {
+  test(`a ${kind} panel lists its comic drama templates under the comic drama goal`, async () => {
+    await openPanelOnNewNode(kind);
+    await openGoal('comic-drama');
+    await expect(page.getByTestId('generate-template-goal-comic-drama')).toHaveText(new RegExp(`^Comic dramas\\s*${String(ids.length)}$`));
+    expect(await listedTemplates()).toEqual([...ids]);
+    await closeTemplateMenu();
+  });
+}
 
 test('a video panel lists the one sound template, the silent shot with foley', async () => {
   await openPanelOnNewNode('video');

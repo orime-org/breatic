@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 import { catalog, shipped } from "../../../config/__tests__/shipped.js";
 import { buildBody } from "../../body.js";
-import { ADDED_AFTER_FREEZE, DEPARTURES, OFF_WAVESPEED } from "./departures.js";
+import { ADDED_AFTER_FREEZE, DEPARTURES, OFF_WAVESPEED, REMOVED } from "./departures.js";
 
 interface BodyFixture {
   cases: { model: string; params: Record<string, unknown>; prompt: string; body: Record<string, unknown> }[];
@@ -41,7 +41,7 @@ function expectedBody(model: string, body: Record<string, unknown>): Record<stri
   );
 }
 
-const liveCases = fixture.cases.filter((c) => !OFF_WAVESPEED.has(c.model));
+const liveCases = fixture.cases.filter((c) => !OFF_WAVESPEED.has(c.model) && !REMOVED.has(c.model));
 
 describe("buildBody — the WaveSpeed body before provider on every case, departures applied", () => {
   it("has a WaveSpeed binding for every model WaveSpeed still serves", () => {

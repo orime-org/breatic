@@ -33,6 +33,7 @@ const LoginPage = lazyRoute(routeImports.loginPage);
 const RegisterPage = lazyRoute(routeImports.registerPage);
 const RecoveryCodePage = lazyRoute(routeImports.recoveryCodePage);
 const SlugSetupPage = lazyRoute(routeImports.slugSetupPage);
+const DesktopSignInPage = lazyRoute(routeImports.desktopSignInPage);
 const ForgotPasswordPage = lazyRoute(routeImports.forgotPasswordPage);
 const ResetPasswordPage = lazyRoute(routeImports.resetPasswordPage);
 const NotFoundPage = lazyRoute(routeImports.notFoundPage);
@@ -144,6 +145,17 @@ export const baseRoutes: RouteObject[] = [
     element: (
       <ProtectedRoute requirePersonalStudio={false}>
         <SlugSetupPage />
+      </ProtectedRoute>
+    ),
+  },
+  {
+    // The browser side of the desktop client's sign-in (inner#2041). Behind
+    // ProtectedRoute: signing in first and coming back keeps the challenge in
+    // `next`, and a new Google account picks its slug before it lands here.
+    path: '/desktop/sign-in',
+    element: (
+      <ProtectedRoute>
+        <DesktopSignInPage />
       </ProtectedRoute>
     ),
   },

@@ -35,6 +35,7 @@ import { ANIME_OPENING_15S } from "@shared/canvas/templates/anime-opening-15s.js
 import { ANIME_SCENE } from "@shared/canvas/templates/anime-scene.js";
 import { APP_LAUNCH_PROMO } from "@shared/canvas/templates/app-launch-promo.js";
 import { BEAT_SYNC_OUTFIT_CHANGE } from "@shared/canvas/templates/beat-sync-outfit-change.js";
+import { BEAT_SYNCED_MUSIC_CLIP } from "@shared/canvas/templates/beat-synced-music-clip.js";
 import { BEFORE_AFTER_REVEAL } from "@shared/canvas/templates/before-after-reveal.js";
 import { BRAND_ORIGIN_FILM } from "@shared/canvas/templates/brand-origin-film.js";
 import { BULLET_TIME_MISHAP } from "@shared/canvas/templates/bullet-time-mishap.js";
@@ -47,19 +48,18 @@ import { CHARACTER_SHOWCASE_ORBIT } from "@shared/canvas/templates/character-sho
 import { CINEMATIC_15S_ARC } from "@shared/canvas/templates/cinematic-15s-arc.js";
 import { CLIP_AMBIENCE_FOLEY } from "@shared/canvas/templates/clip-ambience-foley.js";
 import { COMIC_4KOMA } from "@shared/canvas/templates/comic-4koma.js";
+import { COMIC_DRAMA_CAST_SHEET } from "@shared/canvas/templates/comic-drama-cast-sheet.js";
+import { COMIC_DRAMA_EPISODE } from "@shared/canvas/templates/comic-drama-episode.js";
+import { COMIC_DRAMA_VOICE_LINE } from "@shared/canvas/templates/comic-drama-voice-line.js";
 import { COMIC_PAGE_TO_MOTION } from "@shared/canvas/templates/comic-page-to-motion.js";
 import { COMIC_PAGE } from "@shared/canvas/templates/comic-page.js";
 import { COMIC_PANELS_TO_SHOTS } from "@shared/canvas/templates/comic-panels-to-shots.js";
-import { SCENE_PLATE } from "@shared/canvas/templates/scene-plate.js";
-import { DRAMA_SINGLE_SCENE } from "@shared/canvas/templates/drama-single-scene.js";
-import { SHORT_DRAMA_REVERSAL } from "@shared/canvas/templates/short-drama-reversal.js";
-import { EMOTIONAL_DIALOGUE_TIMELINE } from "@shared/canvas/templates/emotional-dialogue-timeline.js";
-import { HORROR_SUSPENSE } from "@shared/canvas/templates/horror-suspense.js";
-import { SHORT_DRAMA_EPISODE } from "@shared/canvas/templates/short-drama-episode.js";
 import { COSTUME_SHEET } from "@shared/canvas/templates/costume-sheet.js";
 import { DAY_TO_NIGHT_EXTERIOR } from "@shared/canvas/templates/day-to-night-exterior.js";
 import { DESTINATION_FESTIVAL_POSTER } from "@shared/canvas/templates/destination-festival-poster.js";
 import { DISH_HERO_STILL } from "@shared/canvas/templates/dish-hero-still.js";
+import { DRAMA_SINGLE_SCENE } from "@shared/canvas/templates/drama-single-scene.js";
+import { EMOTIONAL_DIALOGUE_TIMELINE } from "@shared/canvas/templates/emotional-dialogue-timeline.js";
 import { EPIC_FANTASY_SCIFI } from "@shared/canvas/templates/epic-fantasy-scifi.js";
 import { ERA_WALKTHROUGH_MONTAGE } from "@shared/canvas/templates/era-walkthrough-montage.js";
 import { EXPRESSION_SHEET } from "@shared/canvas/templates/expression-sheet.js";
@@ -75,6 +75,7 @@ import { FLASH_PHOTO_DUMP_GRID } from "@shared/canvas/templates/flash-photo-dump
 import { FOOD_MONEY_SHOT } from "@shared/canvas/templates/food-money-shot.js";
 import { GAME_UI_LIVESTREAM } from "@shared/canvas/templates/game-ui-livestream.js";
 import { HERO_ORBIT_REVEAL } from "@shared/canvas/templates/hero-orbit-reveal.js";
+import { HORROR_SUSPENSE } from "@shared/canvas/templates/horror-suspense.js";
 import { HYPE_THEN_TWIST_AD } from "@shared/canvas/templates/hype-then-twist-ad.js";
 import { IDENTITY_LOCKED_SEQUENCE } from "@shared/canvas/templates/identity-locked-sequence.js";
 import { IMPACT_FRAME_HIT } from "@shared/canvas/templates/impact-frame-hit.js";
@@ -84,8 +85,14 @@ import { LISTING_WALKTHROUGH_15S } from "@shared/canvas/templates/listing-walkth
 import { LIVESTREAM_PITCH } from "@shared/canvas/templates/livestream-pitch.js";
 import { LONG_FORM_ACTS } from "@shared/canvas/templates/long-form-acts.js";
 import { LOOKBOOK_MULTI_LOOK } from "@shared/canvas/templates/lookbook-multi-look.js";
+import { MUSIC_FIRST_MV } from "@shared/canvas/templates/music-first-mv.js";
 import { MUSIC_MOOD_FROM_IMAGE } from "@shared/canvas/templates/music-mood-from-image.js";
+import { MV_CHORUS_PERFORMANCE } from "@shared/canvas/templates/mv-chorus-performance.js";
+import { MV_FULL } from "@shared/canvas/templates/mv-full.js";
+import { MV_PERFORMER_SHEET } from "@shared/canvas/templates/mv-performer-sheet.js";
+import { MV_STYLE_SHEET } from "@shared/canvas/templates/mv-style-sheet.js";
 import { NAME_AS_WORLD_TYPOGRAPHY } from "@shared/canvas/templates/name-as-world-typography.js";
+import { NARRATED_MOTION_COMIC } from "@shared/canvas/templates/narrated-motion-comic.js";
 import { PET_SELFIE_VLOG } from "@shared/canvas/templates/pet-selfie-vlog.js";
 import { PHONE_VLOG_REALISM } from "@shared/canvas/templates/phone-vlog-realism.js";
 import { PHOTO_PAPER_DIORAMA } from "@shared/canvas/templates/photo-paper-diorama.js";
@@ -105,11 +112,15 @@ import { REFERENCE_VIDEO_REMIX } from "@shared/canvas/templates/reference-video-
 import { RENOVATION_BEFORE_AFTER } from "@shared/canvas/templates/renovation-before-after.js";
 import { RETRO_FOUND_FOOTAGE } from "@shared/canvas/templates/retro-found-footage.js";
 import { ROOM_STAGING_STILL } from "@shared/canvas/templates/room-staging-still.js";
+import { SCENE_PLATE } from "@shared/canvas/templates/scene-plate.js";
 import { SCORE_FOR_MY_VIDEO } from "@shared/canvas/templates/score-for-my-video.js";
 import { SEAMLESS_BRIDGE } from "@shared/canvas/templates/seamless-bridge.js";
 import { SECTION_MAPPED_SCORE } from "@shared/canvas/templates/section-mapped-score.js";
+import { SHORT_DRAMA_EPISODE } from "@shared/canvas/templates/short-drama-episode.js";
+import { SHORT_DRAMA_REVERSAL } from "@shared/canvas/templates/short-drama-reversal.js";
 import { SINGLE_VIEW_REFS_SCENE } from "@shared/canvas/templates/single-view-refs-scene.js";
 import { SONG_COVER } from "@shared/canvas/templates/song-cover.js";
+import { SONG_WITH_LYRICS } from "@shared/canvas/templates/song-with-lyrics.js";
 import { SPACE_TOUR_SINGLE_TAKE } from "@shared/canvas/templates/space-tour-single-take.js";
 import { SPORTS_LIVE_COVERAGE } from "@shared/canvas/templates/sports-live-coverage.js";
 import { STOP_MOTION_SHORT } from "@shared/canvas/templates/stop-motion-short.js";
@@ -140,7 +151,7 @@ import { VOICE_LINE } from "@shared/canvas/templates/voice-line.js";
 import type { GenerationNodeType } from "@shared/types/model-catalog.js";
 
 /** Every creative goal, in the order the panels list them; its name is `canvas.template.goal.<goal>`. */
-export const TEMPLATE_GOALS = ["character", "comics-storyboards", "drama", "fight", "animation", "ecommerce", "product-showcase", "promo", "food", "spaces", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix"] as const;
+export const TEMPLATE_GOALS = ["character", "comics-storyboards", "drama", "fight", "animation", "music-video", "ecommerce", "product-showcase", "promo", "food", "spaces", "fashion", "social-hooks", "talking", "posters", "film-styles", "cinematic", "speed", "sound", "video-remix", "comic-drama"] as const;
 
 /** A creative goal a template serves; the panel groups templates under it. */
 export type TemplateGoal = (typeof TEMPLATE_GOALS)[number];
@@ -305,6 +316,13 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   ANIME_SCENE,
   ANIME_ACTION_CLIMAX,
   ANIME_OPENING_15S,
+  MV_STYLE_SHEET,
+  MV_PERFORMER_SHEET,
+  BEAT_SYNCED_MUSIC_CLIP,
+  MUSIC_FIRST_MV,
+  SONG_WITH_LYRICS,
+  MV_CHORUS_PERFORMANCE,
+  MV_FULL,
   PRODUCT_AD_15S,
   UGC_CREATOR_REVIEW,
   LIVESTREAM_PITCH,
@@ -382,6 +400,10 @@ export const GENERATION_TEMPLATES: readonly GenerationTemplate[] = [
   SECTION_MAPPED_SCORE,
   REFERENCE_VIDEO_REMIX,
   SEAMLESS_BRIDGE,
+  COMIC_DRAMA_CAST_SHEET,
+  COMIC_DRAMA_EPISODE,
+  NARRATED_MOTION_COMIC,
+  COMIC_DRAMA_VOICE_LINE,
 ];
 
 /**

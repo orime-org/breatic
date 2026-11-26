@@ -8,6 +8,7 @@ import AuthBootstrap from '@web/app/AuthBootstrap';
 import { LoadingScreenHost } from '@web/components/LoadingScreen';
 import { StaleReleaseDialog } from '@web/app/StaleReleaseDialog';
 import { Toaster } from '@web/components/ui/sonner';
+import { DownloadPanel } from '@web/features/desktop-downloads/DownloadPanel';
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { QueryClientProvider } from '@web/app/providers/QueryClientProvider';
 import { router } from '@web/app/routes';
@@ -62,6 +63,7 @@ export default function App(): React.JSX.Element {
               width — older, wider toasts showed past the newest as empty
               edges. Sonner shows three at a time; a fourth hides the oldest. */}
           <Toaster position='top-center' duration={3000} expand />
+          <DownloadPanel />
         </AuthBootstrap>
       </TooltipProvider>
     </QueryClientProvider>

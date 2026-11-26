@@ -45,7 +45,7 @@ describe('AppRouter error reporting', () => {
       expect(await screen.findByText('Something went wrong')).toBeInTheDocument();
       expect(screen.queryByText(error.message)).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Reload page' })).toBeEnabled();
-      expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/');
+      expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/studio');
       await waitFor(() => expect(captureException).toHaveBeenCalledExactlyOnceWith(error, { tags: { error_boundary: 'route' } }));
       expect(outerError).not.toHaveBeenCalled();
       expect(await screen.findByText('Error reference: route-event-id')).toBeInTheDocument();
@@ -69,7 +69,7 @@ describe('AppRouter error reporting', () => {
       expect(await screen.findByText('Something went wrong')).toBeInTheDocument();
       expect(screen.queryByText(error.message)).not.toBeInTheDocument();
       expect(screen.getByRole('button', { name: 'Reload page' })).toBeEnabled();
-      expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/');
+      expect(screen.getByRole('link', { name: 'Back to home' })).toHaveAttribute('href', '/studio');
       await waitFor(() => expect(captureException).toHaveBeenCalledExactlyOnceWith(error, { tags: { error_boundary: 'route' } }));
     } finally {
       view.unmount();

@@ -80,14 +80,11 @@ function creditsFigure(
   return formatCreditAmount(accountTotal(overview.data));
 }
 
-/**
- * The licence and attribution notices LICENSE section 12 keeps reachable.
- * Site paths, so each instance opens the copies its own image carries.
- */
+/** The licence and attribution notices LICENSE section 12 keeps reachable, in the public repository (inner#2183). */
 const NOTICE_LINKS = [
-  { href: '/LICENSE.txt', labelKey: 'studio.topBar.noticesLicense' },
-  { href: '/TRADEMARKS.md', labelKey: 'studio.topBar.noticesTrademarks' },
-  { href: '/THIRD-PARTY.md', labelKey: 'studio.topBar.noticesThirdParty' },
+  { href: 'https://github.com/orime-org/breatic/blob/main/LICENSE', labelKey: 'studio.topBar.noticesLicense' },
+  { href: 'https://github.com/orime-org/breatic/blob/main/TRADEMARKS.md', labelKey: 'studio.topBar.noticesTrademarks' },
+  { href: 'https://github.com/orime-org/breatic/blob/main/THIRD-PARTY.md', labelKey: 'studio.topBar.noticesThirdParty' },
 ] as const;
 
 /**

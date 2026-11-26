@@ -30,7 +30,7 @@ vi.mock('@web/data/api/auth', async (original) => ({
  */
 function QueryWrapper({ children }: { children: ReactNode }): ReactElement {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(['auth', 'options'], { emailVerification: false, referralEnabled: false });
+  client.setQueryData(['auth', 'options'], { emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
   return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
 }
 
