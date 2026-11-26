@@ -24,7 +24,7 @@ import { MEDIA_OBJECT_HOST, mediaObjectUrl } from "@ingest/media-object-route.js
 import { readContainerReport, type ContainerReportBody, type MediaOfOutput, type PlanContainerReportBody } from "@ingest/jobs/container-report.js";
 import { RUN_PATH } from "@ingest/jobs/op-args.js";
 import { PROBE_PORT } from "@ingest/probe-answer.js";
-import { transition, type JobEvent, type JobState } from "@ingest/jobs/transition.js";
+import { transition, type JobEffect, type JobEvent, type JobState } from "@ingest/jobs/transition.js";
 import { serveJobObjects, type JobObjectAccess } from "@ingest/jobs/job-objects.js";
 import { JOB_RECORD_KEY, type JobWritten as Written, type StoredMiniToolJob as JobRecord, type PlannedStartFacts } from "@ingest/jobs/job-record.js";
 import { recordJobWrite, claimJobWrite } from "@ingest/jobs/job-write.js";
@@ -382,15 +382,16 @@ abstract class MiniToolContainer extends Container<MiniToolEnv> {
     const next = transition(record?.state ?? null, event, Date.now());
     if (next.state === null) await this.ctx.storage.delete(RECORD);
     else if (record) await this.save({ ...record, state: next.state });
+    const run: Record<JobEffect, () => Promise<unknown>> = {
+      destroy: () => this.destroy(),
+      cancelSchedule: async () => this.deleteSchedules("expireJob"),
+      clearOverrides: () => this.setOutboundByHosts({}),
+    };
     for (const effect of next.effects) {
-      if (effect === "destroy") await this.destroy().catch(() => undefined);
-      if (effect === "cancelSchedule") this.deleteSchedules("expireJob");
-      // A refused clear must not replace the start failure that asked for it.
-      if (effect === "clearOverrides") {
-        await this.setOutboundByHosts({}).catch((err: unknown) => {
-          noteFailure("ingest_mini_tool_clear_outbound_failed", { containerId: this.ctx.id.toString() }, err);
-        });
-      }
+      // A refused effect must not replace the event that asked for it, such as a start failure, nor stop the next one.
+      await run[effect]().catch((err: unknown) => {
+        noteFailure("ingest_mini_tool_effect_failed", { containerId: this.ctx.id.toString(), effect }, err);
+      });
     }
     return next.state === null || !record ? null : { ...record, state: next.state };
   }

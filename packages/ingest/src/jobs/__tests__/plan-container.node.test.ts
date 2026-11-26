@@ -13,6 +13,8 @@ const runtime = vi.hoisted(() => ({
   startError: null as Error | null,
   fetchError: null as Error | null,
   outboundError: null as Error | null,
+  destroyError: null as Error | null,
+  deletedSchedules: [] as string[],
   fetchStatus: 202,
   runningAfterStart: true,
 }));
@@ -25,10 +27,10 @@ vi.mock("@cloudflare/containers", () => ({
       (this.ctx as { container: { running: boolean } }).container.running = runtime.runningAfterStart;
       if (runtime.startError !== null) throw runtime.startError;
     }
-    async destroy(): Promise<void> { (this.ctx as { container: { running: boolean } }).container.running = false; }
+    async destroy(): Promise<void> { if (runtime.destroyError !== null) throw runtime.destroyError; (this.ctx as { container: { running: boolean } }).container.running = false; }
     async setOutboundByHosts(value: Record<string, unknown>): Promise<void> { runtime.outbound.push(value); if (runtime.outboundError !== null) throw runtime.outboundError; }
     async schedule(at: Date, _name: string, payload: unknown): Promise<void> { runtime.schedules.push({ at, payload }); }
-    deleteSchedules(): void {}
+    deleteSchedules(name: string): void { runtime.deletedSchedules.push(name); }
     async containerFetch(request: Request): Promise<Response> { runtime.sent.push(request); if (runtime.fetchError !== null) throw runtime.fetchError; return new Response(null, { status: runtime.fetchStatus }); }
   },
 }));
@@ -79,6 +81,8 @@ beforeEach(() => {
   runtime.startError = null;
   runtime.fetchError = null;
   runtime.outboundError = null;
+  runtime.destroyError = null;
+  runtime.deletedSchedules.length = 0;
   runtime.fetchStatus = 202;
   runtime.runningAfterStart = true;
 });
@@ -333,5 +337,19 @@ describe("an old-protocol job whose container cannot be reached", () => {
       input: { storageKey: "fixtures/source-a.mp4" }, outputs: [{ storageKey: "results/T/out.mp4", contentType: "video/mp4" }] } as never;
     expect(await object.submit(job)).toMatchObject({ kind: "start_failed" });
     expect(await object.report()).toBeNull();
+    expect(runtime.deletedSchedules).toEqual(["expireJob"]);
+  });
+
+  it("logs each cleanup effect the platform refuses and still runs the others", async () => {
+    const { object } = owner(false);
+    const logged = vi.spyOn(console, "error").mockImplementation(() => undefined);
+    runtime.outboundError = new Error("Updating sidecar egress config failed with: 404");
+    runtime.destroyError = new Error("destroy refused");
+    const job = { jobId: "task:t1", containerClass: "MiniToolContainerStd1", deadlineAt: NOW + 7200000, op: "trim", params: {},
+      input: { storageKey: "fixtures/source-a.mp4" }, outputs: [{ storageKey: "results/T/out.mp4", contentType: "video/mp4" }] } as never;
+    expect(await object.submit(job)).toMatchObject({ kind: "start_failed" });
+    const effects = logged.mock.calls.filter(([label]) => label === "ingest_mini_tool_effect_failed").map(([, ctx]) => (ctx as { effect: string }).effect);
+    expect(effects).toEqual(["destroy", "clearOverrides"]);
+    expect(runtime.deletedSchedules).toEqual(["expireJob"]);
   });
 });

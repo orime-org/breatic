@@ -372,7 +372,9 @@ export class WebAnimationContainer extends Container<WebAnimationEnv> {
     if (next.effects.includes("destroy")) {
       this.deleteSchedules("expireJob");
       this.deleteSchedules("drainJob");
-      await this.destroy().catch(() => undefined);
+      await this.destroy().catch((err: unknown) => {
+        noteFailure("ingest_web_animation_destroy_failed", { containerId: this.ctx.id.toString() }, err);
+      });
     }
     return next;
   }
