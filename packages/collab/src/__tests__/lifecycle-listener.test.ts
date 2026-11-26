@@ -8,21 +8,33 @@
  * instance does the part that happens once — copying a duplicate's documents —
  * and then asks every instance, through the project control channel, to close
  * its own connections to the project:
- *   - project:duplicated → copy the source's docs, then close the NEW
- *     project's connections so a client that raced in reloads the copy;
+ *   - project:duplicated → copy the source's docs, record the copy as
+ *     completed on its Project row (inner#1706), then close the NEW project's
+ *     connections; a command for a copy already completed copies nothing, so a
+ *     redelivery never overwrites what the user has done in the copy since;
  *   - project:archived / project:restored → close every connection of the
  *     project with the reason the client re-authenticates on;
  *   - an unknown command does nothing, so one bad event can't block the stream.
  *
- * The yjs repo and the publisher are stand-ins.
+ * The yjs repo, the Project row reads and writes, and the publisher are stand-ins.
  */
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
+
+const { isDuplicateCompletedMock, markDuplicateCompletedMock } = vi.hoisted(() => ({
+  isDuplicateCompletedMock: vi.fn(),
+  markDuplicateCompletedMock: vi.fn(),
+}));
 
 vi.mock("@breatic/core", async (importOriginal) => {
   const orig = await importOriginal<Record<string, unknown>>();
   return {
     ...orig,
+    projectsRepo: {
+      ...(orig.projectsRepo as Record<string, unknown>),
+      isDuplicateCompleted: isDuplicateCompletedMock,
+      markDuplicateCompleted: markDuplicateCompletedMock,
+    },
     createLogger: () => ({
       info: vi.fn(),
       warn: vi.fn(),
@@ -57,13 +69,49 @@ describe("handleLifecycleEvent", () => {
     duplicateByProjectPrefixMock.mockReset().mockImplementation(async () => {
       order.push("copy");
     });
+    isDuplicateCompletedMock.mockReset().mockResolvedValue(false);
+    markDuplicateCompletedMock.mockReset().mockImplementation(async (projectId: string) => {
+      order.push(`completed:${projectId}`);
+    });
   });
 
-  it("project:duplicated copies the source, then asks every instance to close the NEW project's connections", async () => {
+  it("project:duplicated copies the source, records the copy as completed, then asks every instance to close the NEW project's connections", async () => {
     await handleLifecycleEvent({ type: "project:duplicated", sourceId: PID, newId: NEW_PID, ts: 1 }, publish);
 
+    expect(isDuplicateCompletedMock).toHaveBeenCalledWith(NEW_PID);
     expect(duplicateByProjectPrefixMock).toHaveBeenCalledWith(PID, NEW_PID, expect.any(Function));
-    expect(order).toEqual(["copy", `publish:${NEW_PID}:content-updated`]);
+    expect(order).toEqual(["copy", `completed:${NEW_PID}`, `publish:${NEW_PID}:content-updated`]);
+  });
+
+  it("project:duplicated for a copy already completed copies nothing and records nothing", async () => {
+    isDuplicateCompletedMock.mockResolvedValue(true);
+
+    await handleLifecycleEvent({ type: "project:duplicated", sourceId: PID, newId: NEW_PID, ts: 1 }, publish);
+
+    expect(isDuplicateCompletedMock).toHaveBeenCalledWith(NEW_PID);
+    expect(duplicateByProjectPrefixMock).not.toHaveBeenCalled();
+    expect(markDuplicateCompletedMock).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("propagates a failure to record the completion without closing anything, so the consumer retries", async () => {
+    markDuplicateCompletedMock.mockRejectedValue(new Error("business db down"));
+
+    await expect(
+      handleLifecycleEvent({ type: "project:duplicated", sourceId: PID, newId: NEW_PID, ts: 1 }, publish),
+    ).rejects.toThrow("business db down");
+    expect(order).toEqual(["copy"]);
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it("propagates a failure to read whether the copy is completed without copying, so the consumer retries", async () => {
+    isDuplicateCompletedMock.mockRejectedValue(new Error("business db down"));
+
+    await expect(
+      handleLifecycleEvent({ type: "project:duplicated", sourceId: PID, newId: NEW_PID, ts: 1 }, publish),
+    ).rejects.toThrow("business db down");
+    expect(duplicateByProjectPrefixMock).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
   });
 
   it("project:archived asks every instance to close the project's connections", async () => {
@@ -89,12 +137,13 @@ describe("handleLifecycleEvent", () => {
     expect(order).toEqual([]);
   });
 
-  it("propagates a copy error without closing anything, so the consumer retries", async () => {
+  it("propagates a copy error without recording completion or closing anything, so the consumer retries", async () => {
     duplicateByProjectPrefixMock.mockRejectedValue(new Error("yjs db down"));
 
     await expect(
       handleLifecycleEvent({ type: "project:duplicated", sourceId: PID, newId: NEW_PID, ts: 1 }, publish),
     ).rejects.toThrow("yjs db down");
+    expect(markDuplicateCompletedMock).not.toHaveBeenCalled();
     expect(publish).not.toHaveBeenCalled();
   });
 
