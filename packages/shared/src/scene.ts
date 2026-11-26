@@ -523,7 +523,7 @@ export type SceneLookPictureSettlement = (typeof SCENE_LOOK_PICTURE_SETTLEMENTS)
  * @param input.object - The object, or undefined when the scene no longer holds a readable one.
  * @param input.part - The part key.
  * @param input.startMap - The part's `map` when the upload started, or null for none.
- * @param input.picture - The uploaded picture's asset id.
+ * @param input.picture - The uploaded picture's registered address.
  * @returns `write`, `done` when the part already holds the picture, or why it is not written.
  */
 export function judgeSceneLookPicture(input: {
