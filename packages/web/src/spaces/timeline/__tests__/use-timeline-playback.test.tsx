@@ -24,7 +24,7 @@ vi.mock('@web/lib/toast', () => ({ toast: { warning: vi.fn(), error: vi.fn(), in
 
 type PlaybackInput = Parameters<typeof useTimelinePlayback>[0];
 type PlaybackResult = ReturnType<typeof useTimelinePlayback> & { frame: number };
-type AssetState = 'loading' | 'ready' | 'failed';
+type AssetState = 'ready' | 'failed';
 
 /** One visible or premounted video clip as the Space hands it to the playback (#1410 design §6.2). */
 interface VideoLayerInput {
@@ -604,35 +604,12 @@ describe('useTimelinePlayback', () => {
     expect(hook.result.current.frame).toBe(24);
   });
 
-  it('holds the requested frame while its asset is loading and reports the layer loading', () => {
-    const hook = renderPlayback(null, { assets: { [CLIP.id]: 'loading' } });
-    expect(hook.result.current.videoStates.get(CLIP.id)).toBe('loading');
-    act(() => hook.result.current.toggle());
-    expect(hook.result.current.intent).toBe('play');
-    expect(hook.result.current.state).toBe('waiting');
-    tick(1000);
-    expect(hook.result.current.frame).toBe(0);
-  });
-
   it('waits while the current video element has no data yet', () => {
     const hook = renderPlayback(mediaFixture({ readyState: 0, networkState: 2 }));
     act(() => hook.result.current.toggle());
     expect(hook.result.current.state).toBe('waiting');
     tick(1000);
     expect(hook.result.current.frame).toBe(0);
-  });
-
-  it('starts the fixed frame once the current loading asset arrives', async () => {
-    const media = mediaFixture();
-    const hook = renderPlayback(media, { assets: { [CLIP.id]: 'loading' } });
-    act(() => hook.result.current.toggle());
-    tick(4000);
-    hook.rerender({ ...hook.props, assets: {} });
-    await settle();
-    expect(media.element.src).toBe(urlOf(CLIP.id));
-    expect(hook.result.current.state).toBe('playing');
-    tick(4250);
-    expect(hook.result.current.frame).toBe(6);
   });
 
   it('advances through a true Timeline gap to the next video boundary', async () => {
@@ -2381,23 +2358,6 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     if (failure === 'element') expect(b.load).toHaveBeenCalledTimes(1);
   });
 
-  it('counts a visible lane whose asset is loading as not ready and reports it loading', async () => {
-    const { hook, a, b } = twoLanes({}, { assets: { [LANE_B.id]: 'loading' } });
-    expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('loading');
-    expect(hook.result.current.videoStates.get(CLIP.id)).toBe('ready');
-    act(() => hook.result.current.toggle());
-    expect(hook.result.current.state).toBe('waiting');
-    expect(a.play).toHaveBeenCalledTimes(0);
-    tick(1000);
-    expect(hook.result.current.frame).toBe(0);
-    hook.rerender({ ...hook.props, assets: {} });
-    await settle();
-    expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('ready');
-    expect(hook.result.current.state).toBe('playing');
-    expect(a.play).toHaveBeenCalledTimes(1);
-    expect(b.play).toHaveBeenCalledTimes(1);
-  });
-
   it('does not count networkState 3 with no error right after src as a failure, and starts the lane once it has data', async () => {
     const { hook, b } = twoLanes({ readyState: 0, networkState: 3 });
     expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('ready');
@@ -2439,36 +2399,6 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.state).toBe('playing');
     tick(1250);
     expect(hook.result.current.frame).toBe(30);
-  });
-
-  it('pauses a lane that already started when a retried lane\'s asset turns loading before every play() settled, and resumes every lane from the held frame', async () => {
-    const { hook, a, b } = twoLanes({}, { assets: { [LANE_B.id]: 'failed' } });
-    act(() => hook.result.current.toggle());
-    await settle();
-    expect(hook.result.current.state).toBe('playing');
-    tick(1000);
-    expect(hook.result.current.frame).toBe(24);
-    // The retry holds the preview and the main lane is asked to play again; the retried asset reads as loading
-    // before that play() settles.
-    act(() => hook.result.current.retryVideo(LANE_B.id));
-    hook.rerender({ ...hook.props, assets: { [LANE_B.id]: 'loading' } });
-    await settle();
-    expect(hook.result.current.state).toBe('waiting');
-    expect(a.facts.paused).toBe(true);
-    const held = a.facts.currentTime;
-    tick(3000);
-    expect(hook.result.current.frame).toBe(24);
-    expect(a.facts.currentTime).toBe(held);
-    hook.rerender({ ...hook.props, assets: {} });
-    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
-    await settle();
-    expect(hook.result.current.state).toBe('playing');
-    expect(Math.abs(a.facts.currentTime - 1)).toBeLessThan(ONE_FRAME);
-    expect(Math.abs(b.facts.currentTime - 1)).toBeLessThan(ONE_FRAME);
-    tick(3250);
-    expect(hook.result.current.frame).toBe(30);
-    expect(Math.abs(a.facts.currentTime - 30 / 24)).toBeLessThan(ONE_FRAME);
-    expect(Math.abs(b.facts.currentTime - 30 / 24)).toBeLessThan(ONE_FRAME);
   });
 
   it('seeks a lane that ran past the resume threshold while another lane\'s play() was pending back to the held frame, and anchors the clock only once it lands', async () => {

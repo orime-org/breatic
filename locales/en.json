@@ -5335,7 +5335,6 @@
     },
     "preview": {
       "playBlocked": "The browser blocked playback with sound. Press play to start.",
-      "videoLoading": "{track}: video loading…",
       "videoUnavailable": "{track}: video unavailable"
     }
   }

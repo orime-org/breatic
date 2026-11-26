@@ -5335,7 +5335,6 @@
     },
     "preview": {
       "playBlocked": "ブラウザが音声付きの再生をブロックしました。再生を押して開始してください。",
-      "videoLoading": "{track}：動画を読み込み中…",
       "videoUnavailable": "{track}：動画を利用できません"
     }
   }

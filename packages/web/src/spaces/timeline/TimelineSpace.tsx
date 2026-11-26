@@ -381,7 +381,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   // eslint-disable-next-line react-hooks/exhaustive-deps -- the specs change only when their signature does.
   }), [layerSignature, players]);
   // Every visible video clip and every one starting within the premount lead, bottom-up; each has its own element
-  // (#1410 design §6.2), and its asset is read through the cache the properties panel shares.
+  // (#1410 design §6.2), read from the source the document holds.
   const rank = React.useMemo(() => timelineTrackRank(document.tracks), [document.tracks]);
   const videoClips = React.useMemo(() => clips.flatMap((clip) => clip.kind === 'video' && readyIds.has(clip.id) && rank.has(clip.trackId)
     && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - premountFrames ? [clip] : [])
@@ -421,7 +421,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   }, [document.sources, canvas, sourceOf, web.sources]);
   // The layers a click can pick and a selection can handle: visible ready videos and web copies with a source (#1410
   // design §4.2).
-  // A video's asset state is read in this render; its element's error arrives through `videoStates`.
+  // A video's source state is known in this render; its element's error arrives through `videoStates`.
   const pickable = React.useMemo(() => {
     const assetStates = new Map(videoLayers.map((layer) => [layer.clipId, layer.state]));
     return visible.flatMap((clip) => {
@@ -769,7 +769,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
   const [notesLayer, setNotesLayer] = React.useState<HTMLDivElement | null>(null);
   const videoNotes = visible.flatMap((clip, index) => {
     const state = clip.kind === 'video' ? videoStates.get(clip.id) : undefined;
-    if (state !== 'loading' && state !== 'failed') return [];
+    if (state !== 'failed') return [];
     const track = labels.nameOf(clip.trackId) ?? clip.trackId;
     return [{ clipId: clip.id, z: index + 1, state, track }];
   });
@@ -816,8 +816,8 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, document, d
             <div data-testid='timeline-preview-notes' className='pointer-events-none absolute inset-px' style={NOTE_LAYER_STYLE}>
               <div ref={setNotesLayer} className='absolute right-3 top-3 flex flex-col items-end gap-1.5 *:pointer-events-auto'>
                 {videoNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z}
-                  text={t(note.state === 'failed' ? 'timeline.preview.videoUnavailable' : 'timeline.preview.videoLoading', { track: note.track })}>
-                  {note.state === 'failed' && <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryVideoLayer(note.clipId)}>{t('timeline.retry')}</Button>}
+                  text={t('timeline.preview.videoUnavailable', { track: note.track })}>
+                  <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryVideoLayer(note.clipId)}>{t('timeline.retry')}</Button>
                 </PreviewNote>)}
               </div>
             </div>

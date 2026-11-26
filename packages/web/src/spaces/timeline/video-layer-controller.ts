@@ -12,13 +12,13 @@
 
 import type { TimelineDocumentV1, TimelineRate, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 
-/** One visible or premounted video clip as the Space hands it over, with its asset state. */
+/** One visible or premounted video clip as the Space hands it over: ready when its source is in the document. */
 export interface TimelineVideoLayer {
   clipId: string;
-  /** The file address once the asset is ready. */
+  /** The source's stored address, or null for a clip whose source is gone. */
   fileUrl: string | null;
   coverUrl: string | null;
-  state: 'loading' | 'ready' | 'failed';
+  state: 'ready' | 'failed';
 }
 
 /** What a video layer's preview note shows. */

@@ -239,7 +239,7 @@ type PooledLayer = TimelineWebLayer & { role?: 'visible' | 'premount' | 'idle'; 
 
 // `web_animation.preview_premount_ms` (2000) at 24 fps: video clips premount as far ahead as web copies do.
 const VIDEO_PREMOUNT_FRAMES = 48;
-const NO_VIDEO_LAYERS: ReadonlyArray<{ clipId: string; fileUrl: string | null; coverUrl: string | null; state: 'loading' | 'ready' | 'failed' }> = [];
+const NO_VIDEO_LAYERS: ReadonlyArray<{ clipId: string; fileUrl: string | null; coverUrl: string | null; state: 'ready' | 'failed' }> = [];
 
 /**
  * The video layers the Space hands the playback at a frame (#1410 design §6.2): every video clip covering it or

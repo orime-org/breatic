@@ -13,7 +13,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { TimelineDocumentV1, TimelineVideoClip, TimelineVideoSource } from '@breatic/shared';
 import { createVideoLayerController } from '@web/spaces/timeline/video-layer-controller';
 
-type AssetState = 'loading' | 'ready' | 'failed';
+type AssetState = 'ready' | 'failed';
 
 interface ElementFixture {
   element: HTMLVideoElement;
@@ -166,12 +166,11 @@ describe('createVideoLayerController elements', () => {
     expect(controller.states().get(A.id)).toBe('ready');
   });
 
-  it('reports a loading asset as loading, and a failed asset or an element error as failed', () => {
+  it('reports a ready source as ready, and a missing source or an element error as failed', () => {
     const a = elementFixture();
     const b = elementFixture();
     const { controller, onChange } = controllerFor({ [A.id]: a, [B.id]: b });
-    controller.sync([layer(A.id, 'loading'), layer(B.id, 'failed')]);
-    expect(controller.states().get(A.id)).toBe('loading');
+    controller.sync([layer(A.id), layer(B.id, 'failed')]);
     expect(controller.states().get(B.id)).toBe('failed');
     controller.sync([layer(A.id), layer(B.id, 'failed')]);
     expect(controller.states().get(A.id)).toBe('ready');
