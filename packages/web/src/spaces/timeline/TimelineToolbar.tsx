@@ -120,7 +120,7 @@ export const TimelineToolbar = React.memo(function TimelineToolbar({ label, more
     const more = element.querySelector('[data-toolbar-more]')!.getBoundingClientRect().width;
     const gap = Number.parseFloat(getComputedStyle(element).columnGap) || 0;
     setShown(fittingEntryCount(measured as number[], room, gap, more));
-  });
+  }, [entries, room]);
 
   const count = Math.min(shown, entries.length);
   const overflowing = count < entries.length;
