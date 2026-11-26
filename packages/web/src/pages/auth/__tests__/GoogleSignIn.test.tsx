@@ -1,208 +1,247 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
-import type { ReactElement } from 'react';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+// Google sign-in as a full-page form post to the begin endpoint, and what the
+// login and register pages do when the callback sends the browser back
+// (inner#2157 design §7.9, §8 row "Google sign-in, page side").
+
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import * as Sentry from '@sentry/react';
-import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
+import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import type { ReactNode } from 'react';
-import LoginPage from '../LoginPage';
-import type * as AuthModule from '@web/data/api/auth';
-import { authApi } from '@web/data/api/auth';
+import type { Attribution } from '@breatic/shared';
 import { getLocale } from '@breatic/shared';
+import en from '@locales/en.json';
+
+import type * as AuthModule from '@web/data/api/auth';
+import type * as AnalyticsModule from '@web/data/analytics';
+
+vi.mock('@web/data/api/auth', async () => {
+  const actual = await vi.importActual<typeof AuthModule>('@web/data/api/auth');
+  return { ...actual, authApi: { ...actual.authApi, options: vi.fn(), me: vi.fn(), login: vi.fn(), register: vi.fn() } };
+});
+vi.mock('@web/data/analytics', async () => {
+  const actual = await vi.importActual<typeof AnalyticsModule>('@web/data/analytics');
+  return { ...actual, trackEvent: vi.fn(), reportConversion: vi.fn(), attributionBody: vi.fn() };
+});
+
+import LoginPage from '@web/pages/auth/LoginPage';
+import RegisterPage from '@web/pages/auth/RegisterPage';
+import { authApi } from '@web/data/api/auth';
+import { attributionBody, reportConversion, trackEvent } from '@web/data/analytics';
 import { changeLocale } from '@web/i18n/locale-bootstrap';
 import { useCurrentUserStore } from '@web/stores/current-user';
+import { readPath } from '@web/test-utils/locale-catalogs';
+import {
+  BEGIN_ACTION,
+  LocationProbe,
+  readLocation,
+  recordGoogleBeginPosts,
+  type GoogleBeginPost,
+} from './google-begin-harness';
 
-const sdk = vi.hoisted(() => ({ initialize: vi.fn(), renderButton: vi.fn() }));
-vi.mock('@web/data/api/auth', async (original) => ({
-  ...await original<typeof AuthModule>(),
-  authApi: { google: vi.fn(), login: vi.fn() },
-}));
+const USER = { id: 'g-1', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' } as const;
+const ATTRIBUTION: Attribution = {
+  first: { utm_source: 'newsletter', landing_page: '/register', at: '2026-11-20T08:00:00.000Z' },
+  last: { utm_source: 'video', landing_page: '/login', at: '2026-11-25T09:30:00.000Z' },
+};
+
+let recorder: { posts: GoogleBeginPost[]; stop: () => void };
 
 /**
- * Provides the query client with the deployment options already read, so the
- * page renders in its final state: nothing sold, no referral row.
- * @param props - The children.
- * @param props.children - The page under test.
- * @returns The wrapped page.
+ * Render the auth pages at one address, with the places they can go and a
+ * probe that always shows the current address.
+ * @param entry - The starting address.
  */
-function QueryWrapper({ children }: { children: ReactNode }): ReactElement {
+function renderAt(entry: string): void {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  client.setQueryData(['auth', 'options'], { emailVerification: false, referralEnabled: false });
-  return <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+  render(
+    <QueryClientProvider client={client}>
+      <MemoryRouter initialEntries={[entry]}>
+        <Routes>
+          <Route path='/login' element={<LoginPage />} />
+          <Route path='/register' element={<RegisterPage />} />
+          <Route path='/studio' element={<div data-testid='studio-page' />} />
+          <Route path='/decision' element={<div data-testid='decision-page' />} />
+          <Route path='/choose-slug' element={<div data-testid='slug-page' />} />
+        </Routes>
+        <LocationProbe />
+      </MemoryRouter>
+    </QueryClientProvider>,
+  );
 }
 
-function setup() {
-  const view = render(<MemoryRouter><LoginPage /></MemoryRouter>, { wrapper: QueryWrapper });
-  const script = document.querySelector('script[src^="https://accounts.google.com/gsi/client"]');
-  expect(script).not.toBeNull();
-  act(() => { script?.dispatchEvent(new Event('load')); });
-  return view;
+/**
+ * The Google button, once the deployment options say it is available.
+ * @returns The button.
+ */
+async function googleButton(): Promise<HTMLElement> {
+  return screen.findByRole('button', { name: /continue with google/i });
 }
 
-function respond(credential: string | undefined = 'signed-google-id-token') {
-  const config = sdk.initialize.mock.calls.at(-1)?.[0];
-  expect(config.client_id).toBe('test.apps.googleusercontent.com');
-  act(() => config.callback({ credential }));
+/**
+ * The English text of a catalog key; fails when the key is missing.
+ * @param key - Dotted catalog key.
+ * @returns The message.
+ */
+function english(key: string): string {
+  const message = readPath(en, key);
+  expect(typeof message, `missing en.json key ${key}`).toBe('string');
+  return message as string;
 }
 
 beforeEach(() => {
   vi.clearAllMocks();
-  vi.stubGlobal('__GOOGLE_CLIENT_ID__', 'test.apps.googleusercontent.com');
-  vi.stubGlobal('google', { accounts: { id: sdk } });
+  sessionStorage.clear();
   useCurrentUserStore.setState({ user: null, loading: false, bootstrapped: true });
   document.documentElement.dataset.theme = 'light';
+  vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, googleSignIn: true } as never);
+  vi.mocked(authApi.me).mockResolvedValue(USER as never);
+  vi.mocked(attributionBody).mockReturnValue({});
+  recorder = recordGoogleBeginPosts();
 });
 
-afterEach(async () => { await Sentry.close(); vi.restoreAllMocks(); });
+afterEach(() => {
+  recorder.stop();
+});
 
-describe('official Google login', () => {
-  it('contains SDK effect failures and preserves a usable email form', async () => {
-    vi.spyOn(console, 'error').mockImplementation(() => {});
-    const send = vi.fn<ReturnType<NonNullable<Sentry.BrowserOptions['transport']>>['send']>(async () => ({ statusCode: 200 }));
-    Sentry.init({ dsn: 'https://public@sentry.invalid/1', defaultIntegrations: false,
-      transport: () => ({ send, flush: async () => true }) });
-    const error = new TypeError('undefined is not an object (evaluating \'a.contentType\')');
-    sdk.renderButton.mockImplementationOnce(() => { throw error; });
-    vi.mocked(authApi.login).mockRejectedValue(new Error('Synthetic login rejection'));
-    render(<MemoryRouter><LoginPage /></MemoryRouter>, { wrapper: QueryWrapper });
-    fireEvent.change(screen.getByLabelText('Email'), { target: { value: 'test@example.invalid' } });
-    fireEvent.change(screen.getByLabelText('Password'), { target: { value: 'test-password' } });
-    fireEvent.load(document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')!);
-    expect(await screen.findByRole('alert')).toHaveTextContent(/use email sign-in/i);
-    expect(screen.getByLabelText('Email')).toHaveValue('test@example.invalid');
-    expect(screen.getByLabelText('Password')).toHaveValue('test-password');
-    fireEvent.click(screen.getByRole('button', { name: 'Sign in' }));
-    await waitFor(() => expect(authApi.login).toHaveBeenCalledExactlyOnceWith({
-      email: 'test@example.invalid', password: 'test-password',
-    }));
-    await Sentry.flush(2000);
-    expect(send).toHaveBeenCalledTimes(1);
-    const event = send.mock.calls[0]?.[0]?.[1]?.[0]?.[1];
-    expect(event).toMatchObject({ tags: { error_boundary: 'google-sign-in' },
-      exception: { values: expect.arrayContaining([expect.objectContaining({ value: error.message })]) } });
-  });
-  it('uses outline_dark in light mode and outline in dark mode', async () => {
-    setup();
-    expect(sdk.renderButton).toHaveBeenLastCalledWith(expect.any(HTMLElement), expect.objectContaining({
-      theme: 'outline_dark', size: 'large', shape: 'pill', text: 'continue_with', logo_alignment: 'left',
-    }));
-    act(() => { document.documentElement.dataset.theme = 'dark'; });
-    await waitFor(() => expect(sdk.renderButton.mock.calls.at(-1)?.[1].theme).toBe('outline'));
-    act(() => { document.documentElement.dataset.theme = 'light'; });
-    await waitFor(() => expect(sdk.renderButton.mock.calls.at(-1)?.[1].theme).toBe('outline_dark'));
+describe('the Google sign-in form', () => {
+  it('posts from the login page to the begin endpoint with page, next, locale and attribution', async () => {
+    vi.mocked(attributionBody).mockReturnValue({ attribution: ATTRIBUTION });
+    const user = userEvent.setup();
+    renderAt(`/login?next=${encodeURIComponent('/decision?token=abc')}`);
+    await user.click(await googleButton());
+    expect(recorder.posts).toHaveLength(1);
+    const [post] = recorder.posts;
+    expect(post!.form.getAttribute('action')).toBe(BEGIN_ACTION);
+    expect(BEGIN_ACTION).toBe('/api/v1/auth/google/begin');
+    expect(post!.form.method).toBe('post');
+    expect(post!.fields.page).toBe('login');
+    expect(post!.fields.next).toBe('/decision?token=abc');
+    expect(post!.fields.locale).toBe('en');
+    expect(JSON.parse(post!.fields.attribution!)).toEqual(ATTRIBUTION);
   });
 
-  it('isolates the Google iframe color scheme from the page theme', async () => {
-    setup();
-    const host = sdk.renderButton.mock.calls.at(-1)?.[0] as HTMLElement;
-    expect(host.parentElement).toHaveClass('scheme-light');
-    act(() => { document.documentElement.dataset.theme = 'dark'; });
-    await waitFor(() => expect(sdk.renderButton.mock.calls.at(-1)?.[1].theme).toBe('outline'));
-    expect(host.parentElement).toHaveClass('scheme-light');
+  it('posts from the register page with page=register', async () => {
+    const user = userEvent.setup();
+    renderAt('/register');
+    await user.click(await googleButton());
+    expect(recorder.posts).toHaveLength(1);
+    expect(recorder.posts[0]!.form.getAttribute('action')).toBe(BEGIN_ACTION);
+    expect(recorder.posts[0]!.fields.page).toBe('register');
+    expect(recorder.posts[0]!.fields.next).toBe('/studio');
   });
 
-  it('sends credential once and stores the returned user', async () => {
-    let finish!: (value: Awaited<ReturnType<typeof authApi.google>>) => void;
-    vi.mocked(authApi.google).mockReturnValue(new Promise(resolve => { finish = resolve; }));
-    setup();
-    respond();
-    respond();
-    expect(authApi.google).toHaveBeenCalledExactlyOnceWith({ credential: 'signed-google-id-token' });
-    expect(screen.getByRole('button', { name: 'Signing in...' })).toHaveAttribute('aria-disabled', 'true');
-    await act(async () => finish({ user: { id: 'g-1', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' }, created: false }));
-    expect(useCurrentUserStore.getState().user?.id).toBe('g-1');
-    expect(useCurrentUserStore.getState().user?.personalStudio).toBeNull();
-  });
-
-  it('reports API failures without creating a local session', async () => {
-    vi.mocked(authApi.google).mockRejectedValue(new Error('network'));
-    setup();
-    respond();
-    await waitFor(() => expect(screen.getByRole('alert')).toHaveTextContent(/failed/i));
-    expect(useCurrentUserStore.getState().user).toBeNull();
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
-  });
-
-  it('does not submit a missing credential', () => {
-    setup();
-    const config = sdk.initialize.mock.calls.at(-1)?.[0];
-    act(() => config.callback({}));
-    expect(authApi.google).not.toHaveBeenCalled();
-    expect(screen.getByRole('alert')).toBeVisible();
-  });
-
-  it('shows a script error while leaving email sign-in usable', () => {
-    render(<MemoryRouter><LoginPage /></MemoryRouter>, { wrapper: QueryWrapper });
-    fireEvent.error(document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')!);
-    expect(screen.getByRole('alert')).toBeVisible();
-    expect(screen.getByRole('button', { name: 'Sign in' })).toBeEnabled();
-  });
-
-  it('ignores an outstanding response after leaving the login page', async () => {
-    let finish!: (value: Awaited<ReturnType<typeof authApi.google>>) => void;
-    vi.mocked(authApi.google).mockReturnValue(new Promise(resolve => { finish = resolve; }));
-    const view = setup();
-    respond();
-    view.unmount();
-    await act(async () => finish({ user: { id: 'late', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' }, created: false }));
-    expect(useCurrentUserStore.getState().user).toBeNull();
-  });
-
-  it('does not load Google when no client ID is configured', () => {
-    vi.stubGlobal('__GOOGLE_CLIENT_ID__', '');
-    render(<MemoryRouter><LoginPage /></MemoryRouter>, { wrapper: QueryWrapper });
-    expect(document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')).toBeNull();
-    expect(sdk.renderButton).not.toHaveBeenCalled();
-  });
-  it('switches the interface to the account language', async () => {
-    vi.mocked(authApi.google).mockResolvedValue({
-      user: { id: 'g-2', email: 'demo@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'zh-TW' },
-      created: false,
-    });
+  it('sends the interface language in the locale field', async () => {
+    await changeLocale('ja');
     try {
-      setup();
-      respond();
-      await waitFor(() => expect(getLocale()).toBe('zh-TW'));
+      const user = userEvent.setup();
+      renderAt('/login');
+      await user.click(await googleButton());
+      expect(recorder.posts[0]!.fields.locale).toBe('ja');
     } finally {
-      changeLocale('en');
+      await changeLocale('en');
     }
   });
+
+  it('reports signup_started when the form is submitted', async () => {
+    const user = userEvent.setup();
+    renderAt('/register');
+    await user.click(await googleButton());
+    expect(trackEvent).toHaveBeenCalledWith('signup_started', { method: 'google' });
+  });
+
+  it('enters the waiting state after the press and does not post twice', async () => {
+    const user = userEvent.setup();
+    renderAt('/login');
+    const button = await googleButton();
+    await user.click(button);
+    await waitFor(() => expect(button).toHaveAttribute('aria-busy', 'true'));
+    await user.click(button);
+    expect(recorder.posts).toHaveLength(1);
+  });
+
+  it.each(['/login', '/register'])('shows no Google button on %s when the server has no Google sign-in', async (entry) => {
+    vi.mocked(authApi.options).mockResolvedValue({ emailVerification: false, referralEnabled: false, googleSignIn: false } as never);
+    renderAt(entry);
+    await waitFor(() => expect(authApi.options).toHaveBeenCalled());
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByRole('button', { name: /continue with google/i })).toBeNull();
+    expect(document.querySelector(`form[action="${BEGIN_ACTION}"]`)).toBeNull();
+  });
+
+  it.each(['/login', '/register'])('loads no Google script on %s', async (entry) => {
+    renderAt(entry);
+    await googleButton();
+    expect(document.querySelector('script[src^="https://accounts.google.com/gsi/client"]')).toBeNull();
+  });
 });
 
-
-/** Shows the destination chosen after the Google credential is exchanged. */
-function GoogleDestinationProbe(): ReactElement {
-  const location = useLocation();
-  return <output data-testid='google-destination'>{location.pathname}{location.search}</output>;
-}
-
-describe('Google invitation destination', () => {
+describe('returning from Google with a session', () => {
   it.each([
     ['/decision?token=google-invitation', '/decision?token=google-invitation'],
     ['//outside.example/path', '/studio'],
     ['https://outside.example/path', '/studio'],
-  ])('returns safely from Google sign-in for %s', async (next, destination) => {
-    vi.mocked(authApi.google).mockResolvedValueOnce({
-      user: { id: 'google-invitee', email: 'recipient@gmail.com', personalStudio: null, membershipTier: 'base', locale: 'en' },
-      created: true,
-    });
-    render(
-      <MemoryRouter initialEntries={[`/login?next=${encodeURIComponent(next)}`]}>
-        <Routes>
-          <Route path='/login' element={<LoginPage />} />
-          <Route path='/decision' element={<GoogleDestinationProbe />} />
-          <Route path='/studio' element={<GoogleDestinationProbe />} />
-        </Routes>
-      </MemoryRouter>,
-      { wrapper: QueryWrapper },
-    );
-    const script = document.querySelector('script[src^="https://accounts.google.com/gsi/client"]');
-    if (!script) throw new Error('The Google sign-in script was not mounted.');
-    fireEvent.load(script);
-    respond();
-    expect(await screen.findByTestId('google-destination')).toHaveTextContent(destination);
+  ])('signs in on the login page and goes safely to next=%s', async (next, destination) => {
+    renderAt(`/login?google=signed_in&next=${encodeURIComponent(next)}`);
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent(destination));
+    expect(screen.getByTestId('location').textContent).toBe(destination);
+    expect(authApi.me).toHaveBeenCalledTimes(1);
+    expect(useCurrentUserStore.getState().user?.id).toBe('g-1');
+    expect(reportConversion).not.toHaveBeenCalled();
   });
+
+  it('switches the interface to the account language', async () => {
+    vi.mocked(authApi.me).mockResolvedValue({ ...USER, locale: 'zh-TW' } as never);
+    try {
+      renderAt('/login?google=signed_in');
+      await waitFor(() => expect(getLocale()).toBe('zh-TW'));
+    } finally {
+      await changeLocale('en');
+    }
+  });
+
+  it('reports the sign-up conversion and goes to choose a slug for a new account on the register page', async () => {
+    renderAt('/register?google=created');
+    expect(await screen.findByTestId('slug-page')).toBeInTheDocument();
+    expect(screen.getByTestId('location').textContent).toBe('/choose-slug');
+    expect(reportConversion).toHaveBeenCalledExactlyOnceWith('signup', 'signup:g-1');
+    expect(useCurrentUserStore.getState().user?.id).toBe('g-1');
+  });
+
+  it('goes to next for an existing account on the register page', async () => {
+    renderAt('/register?google=signed_in');
+    expect(await screen.findByTestId('studio-page')).toBeInTheDocument();
+    expect(screen.getByTestId('location').textContent).toBe('/studio');
+    expect(reportConversion).not.toHaveBeenCalled();
+  });
+});
+
+const ERRORS: Array<[string, string]> = [
+  ['cancelled', 'auth.google.cancelled'],
+  ['expired', 'auth.google.expired'],
+  ['rate_limited', 'auth.google.rateLimited'],
+  ['unavailable', 'auth.google.unavailable'],
+  ['invalid_credential', 'server.auth.invalid_google_credential'],
+  ['email_unverified', 'server.auth.google_email_unverified'],
+  ['link_requires_email_login', 'server.auth.google_link_requires_email_login'],
+];
+
+describe('returning from Google with an error', () => {
+  it.each(ERRORS.flatMap(([reason, key]) => [['login', reason, key], ['register', reason, key]] as const))(
+    'the %s page shows googleError=%s as %s and clears it from the address',
+    async (page, reason, key) => {
+      const next = '/decision?token=abc';
+      renderAt(`/${page}?googleError=${reason}&next=${encodeURIComponent(next)}`);
+      expect(await screen.findByText(english(key))).toBeInTheDocument();
+      await waitFor(() => expect(readLocation(screen.getByTestId('location')).params.has('googleError')).toBe(false));
+      const { pathname, params } = readLocation(screen.getByTestId('location'));
+      expect(pathname).toBe(`/${page}`);
+      expect(params.get('next')).toBe(next);
+      expect(authApi.me).not.toHaveBeenCalled();
+      expect(useCurrentUserStore.getState().user).toBeNull();
+      expect(await googleButton()).toBeEnabled();
+    },
+  );
 });
