@@ -36,7 +36,8 @@ export interface SignupReferral {
  * code it does not want. The field shows exactly what is sent. While the
  * program's entry points are hidden the field is absent and nothing is read.
  * @param restored - The code the page held before a full-page Google sign-in
- *   sent it away and back (inner#2157); it takes the place of the carried code.
+ *   sent it away and back (inner#2157); it takes the place of the carried code,
+ *   even when empty (the user cleared the field).
  * @returns The field's state and its actions.
  */
 export function useSignupReferral(restored?: string): SignupReferral {

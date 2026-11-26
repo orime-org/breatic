@@ -95,7 +95,7 @@ export default function LoginPage(): React.JSX.Element {
   /** Keep the referral state for the return from Google and report the start. */
   function leaveForGoogle(): void {
     saveGoogleStart({
-      referral: referral.body().referralCode ? { code: referral.value, typed: expanded } : null,
+      referral: referral.field === 'shown' ? { code: referral.value, typed: expanded } : null,
       query: keptQuery(params),
     });
     trackEvent('signup_started', { method: 'google' });

@@ -195,7 +195,7 @@ export default function RegisterPage(): React.JSX.Element {
   /** Keep the referral code for the return from Google and report the start. */
   const leaveForGoogle = React.useCallback((): void => {
     saveGoogleStart({
-      referral: referral.body().referralCode ? { code: referral.value, typed: true } : null,
+      referral: referral.field === 'shown' ? { code: referral.value, typed: true } : null,
       query: keptQuery(params),
     });
     trackEvent('signup_started', { method: 'google' });

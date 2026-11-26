@@ -18,7 +18,7 @@ export const GOOGLE_KEPT_PARAMS = ['next', 'invite'] as const;
 
 /** The referral state the page had when it left for Google. */
 export interface SavedGoogleReferral {
-  /** The code in the field or carried row. */
+  /** The code in the field or carried row; empty when the user cleared it, so the carried code does not come back. */
   code: string;
   /** Whether the sign-in page showed the typed field (true) or the carried row. */
   typed: boolean;
@@ -26,7 +26,7 @@ export interface SavedGoogleReferral {
 
 /** What the page had when it left for Google. */
 export interface SavedGoogleStart {
-  /** The referral code to restore, or null when there was none. */
+  /** The referral field to restore, or null when the page showed none. */
   referral: SavedGoogleReferral | null;
   /** The page's own query parameters among {@link GOOGLE_KEPT_PARAMS}. */
   query: Record<string, string>;
@@ -110,7 +110,7 @@ export function readGoogleStart(): SavedGoogleStart | null {
     if (raw === null) return null;
     const parsed = JSON.parse(raw) as { referral?: Partial<SavedGoogleReferral> | null; query?: Record<string, unknown> };
     const r = parsed.referral;
-    const referral = r && typeof r.code === 'string' && r.code !== '' && typeof r.typed === 'boolean' ? { code: r.code, typed: r.typed } : null;
+    const referral = r && typeof r.code === 'string' && typeof r.typed === 'boolean' ? { code: r.code, typed: r.typed } : null;
     const query: Record<string, string> = {};
     for (const name of GOOGLE_KEPT_PARAMS) {
       const value = parsed.query?.[name];

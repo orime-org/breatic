@@ -245,6 +245,21 @@ describe('the sign-up page referral field with Google (inner#2157 §7.9)', () =>
     expect(recorder.posts[1]!.fields.referralSource).toBe('signup_link');
   });
 
+  it('keeps a cleared carried code cleared after googleError=cancelled, posting no code', async () => {
+    carry.code = 'ALICE';
+    const user = userEvent.setup();
+    const leave = setup();
+    await user.clear(await screen.findByLabelText('Referral code'));
+    await user.click(await google());
+    leave();
+    setup('/register?googleError=cancelled');
+    await waitFor(() => expect(screen.getByLabelText('Referral code')).toBeEnabled());
+    expect(screen.getByLabelText('Referral code')).toHaveValue('');
+    await user.click(await google());
+    expect(recorder.posts).toHaveLength(2);
+    expect(recorder.posts[1]!.fields.referralCode).toBeUndefined();
+  });
+
   it('clears the saved copy after google=created too', async () => {
     const user = userEvent.setup();
     await typeAndLeave(user, 'bob');
