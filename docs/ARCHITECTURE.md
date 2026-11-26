@@ -1207,7 +1207,6 @@ Login and registration cards (including the signup-code step) show their build i
 |---|---|
 | `VITE_APP_VERSION` | 构建提交标识；是 40 位小写 commit 时同时作 Sentry 的 release，与产品可读版本号不同 |
 | `VITE_RELEASE_VERSION` | 打包时的产品可读版本（如 `0.0.6`）；与 `app-version.json.releaseVersion` 同源，供登录/注册卡片显示 Beta 版本。开发或缺失时显示 `Dev` |
-| `GOOGLE_CLIENT_ID` | Google OAuth(可选;注入为 `__GOOGLE_CLIENT_ID__`) |
 | `VITE_SENTRY_DSN` | Sentry DSN(可选;留空不启动 Sentry)。environment 取 Vite 的 `MODE`,不是 `production` / `staging` / `development` 之一记作 `development` |
 | `VITE_AMPLITUDE_API_KEY` | Amplitude 项目 key(可选;留空不加载浏览器产品分析)。与 `VITE_GOOGLE_ADS_TAG_ID` 都空时构建常量 `__ANALYTICS_CONFIGURED__` 为假,横幅与分析代码不进产物 |
 | `VITE_GOOGLE_ADS_TAG_ID` | Google tag id `AW-…`(可选;留空不加载 Google tag) |
@@ -1216,7 +1215,7 @@ Login and registration cards (including the signup-code step) show their build i
 
 产品分析与广告转化的同意、事件、出口见 [self-host/DEPLOYMENT-CONNECTIONS.md](../self-host/DEPLOYMENT-CONNECTIONS.md#product-analytics-off-by-default)。
 
-鉴权基于 cookie — 后端在登录 / 注册完成(启用邮件时是验证码输对那一刻) / OAuth 时种一个 httpOnly 的 session cookie;前端不在 JS 里读或存任何 token。会话存在 Redis DB0(`{env}:session:{token}`,30 天);退出登录、账号菜单里的「登出其他设备」(`POST /auth/logout-others`,保留当前会话,按地址和按账号各限一道)、两种重置密码都经 core 的 `revokeSession` / `revokeAllSessions` 结束会话,collab 随之关掉这些会话打开的连接(见上文「会话结束了」一条)。**cookie 名是部署级的**(`breatic_session_{REDIS_KEY_PREFIX}`,构造在 core 的 `sessionCookieName()`,是唯一一处),因为 **cookie 不按端口隔离**(RFC 6265 §8.5)—— 同机跑两套部署时端口分得开服务、分不开 cookie jar,同名就会互相顶掉登录态。服务端环境变量 `COOKIE_DOMAIN` + `EMAIL_BACKEND` 见 [Configuration files](#configuration-files) 段(后端)。
+鉴权基于 cookie — 后端在登录 / 注册完成(启用邮件时是验证码输对那一刻) / OAuth 时种一个 httpOnly 的 session cookie;前端不在 JS 里读或存任何 token。会话存在 Redis DB0(`{env}:session:{token}`,30 天);退出登录、账号菜单里的「登出其他设备」(`POST /auth/logout-others`,保留当前会话,按地址和按账号各限一道)、两种重置密码都经 core 的 `revokeSession` / `revokeAllSessions` 结束会话,collab 随之关掉这些会话打开的连接(见上文「会话结束了」一条)。**cookie 名是部署级的**(`breatic_session_{REDIS_KEY_PREFIX}`;设了 `COOKIE_DOMAIN` 时是全站凭证 `breatic_site_session_{REDIS_KEY_PREFIX}`,带 `Domain`,官网和所有网红站点共用,旧名字不再认、见到就让它过期;构造在 core 的 `sessionCookieName()`,是唯一一处,server 和 collab 必须配同一个 `COOKIE_DOMAIN`),因为 **cookie 不按端口隔离**(RFC 6265 §8.5)—— 同机跑两套部署时端口分得开服务、分不开 cookie jar,同名就会互相顶掉登录态。服务端环境变量 `COOKIE_DOMAIN` + `EMAIL_BACKEND` 见 [Configuration files](#configuration-files) 段(后端)。
 
 **邮箱不分大小写**:一个收件箱只对应一个账号。所有收邮箱的接口(注册、登录、两种找回、两种邀请)都用 `@breatic/shared` 的 `emailSchema`,它去掉首尾空格、整段转小写;Google 登录在路由里对 ID token 的邮箱做同一次 `normalizeEmail`。`users.email` 只存归一化后的地址,CHECK `users_email_normalized` 拒绝其余写入,`users_email_idx` 因此就是不分大小写的唯一索引。建号统一走 `auth.service` 的 `createAccount`,两个注册同时撞上唯一索引时答 409「邮箱已注册」。
 
