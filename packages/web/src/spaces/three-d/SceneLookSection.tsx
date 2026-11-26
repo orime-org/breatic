@@ -66,7 +66,7 @@ export interface SceneLookSectionProps {
   /** Whether a picked Project picture is being checked against the limits. */
   checking?: boolean;
   /** A user picture's URL for its thumbnail, when known. */
-  pictureUrl?: (assetId: string) => string | undefined;
+  pictureUrl?: (url: string) => string | undefined;
   /** The user pictures the scene shows now; one still loading, failed or over the budget shows the model's own colour. */
   showingPictures?: ReadonlySet<string>;
   /** The properties panel's number-field drafts, which keep a value the part does not take in its box. */
@@ -103,7 +103,7 @@ const TILING_FIELDS = { map: null, mapRepeat: null, mapOffset: null, mapRotation
 /**
  * Whether a stored map is a user picture.
  * @param map - The stored map.
- * @returns True for an asset id.
+ * @returns True for a picture's address.
  */
 function isPicture(map: string | undefined): map is string {
   return map !== undefined && map !== 'none';
