@@ -5,7 +5,7 @@ import * as React from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { REFERRAL_CODE_INPUT_MAX } from '@breatic/shared';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
-import { saveGoogleReferral } from '@web/pages/auth/google-return';
+import { keptQuery, saveGoogleStart } from '@web/pages/auth/google-return';
 import { useGoogleArrival, useGoogleReturn, useGoogleSignInShown } from '@web/pages/auth/use-google-return';
 
 import { authApi } from '@web/data/api/auth';
@@ -67,11 +67,11 @@ export default function LoginPage(): React.JSX.Element {
   const [password, setPassword] = React.useState('');
   const [submitting, setSubmitting] = React.useState(false);
   const arrival = useGoogleArrival();
-  const referral = useSignupReferral(arrival.saved?.code);
+  const referral = useSignupReferral(arrival.saved?.referral?.code);
   // The carried code is named on one row; once refused it is named as no longer valid (inner#1868 table 12.14).
-  const [rowCode, setRowCode] = React.useState<string | null>(() => (arrival.saved?.typed ? null : referral.value || null));
+  const [rowCode, setRowCode] = React.useState<string | null>(() => (arrival.saved?.referral?.typed ? null : referral.value || null));
   const [invalidCode, setInvalidCode] = React.useState<string | null>(null);
-  const [expanded, setExpanded] = React.useState(arrival.saved?.typed ?? false);
+  const [expanded, setExpanded] = React.useState(arrival.saved?.referral?.typed ?? false);
   const googleShown = useGoogleSignInShown();
   const googleError = useGoogleReturn(arrival, {
     destination: () => next,
@@ -94,7 +94,10 @@ export default function LoginPage(): React.JSX.Element {
 
   /** Keep the referral state for the return from Google and report the start. */
   function leaveForGoogle(): void {
-    saveGoogleReferral(referral.body().referralCode ? { code: referral.value, typed: expanded } : null);
+    saveGoogleStart({
+      referral: referral.body().referralCode ? { code: referral.value, typed: expanded } : null,
+      query: keptQuery(params),
+    });
     trackEvent('signup_started', { method: 'google' });
   }
 

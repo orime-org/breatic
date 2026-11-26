@@ -15,19 +15,19 @@ import { toast } from '@web/lib/toast';
 import { AUTH_OPTIONS_QUERY_KEY, type SignupReferral } from '@web/features/referral/use-signup-referral';
 import {
   GOOGLE_RETURN_PARAMS,
-  clearGoogleReferral,
+  clearGoogleStart,
   googleErrorKey,
-  readGoogleReferral,
   readGoogleReturn,
+  readGoogleStart,
   type GoogleReturn,
-  type SavedGoogleReferral,
+  type SavedGoogleStart,
 } from '@web/pages/auth/google-return';
 
 /** What the page arrived with from the Google callback, read once. */
 export interface GoogleArrival {
   answer: GoogleReturn | null;
-  /** The referral state saved before the post; only after a return. */
-  saved: SavedGoogleReferral | null;
+  /** What the page saved before the post; only after a return. */
+  saved: SavedGoogleStart | null;
 }
 
 /**
@@ -40,7 +40,7 @@ export function useGoogleArrival(): GoogleArrival {
   const [params] = useSearchParams();
   const [arrival] = React.useState((): GoogleArrival => {
     const answer = readGoogleReturn(params);
-    return { answer, saved: answer === null ? null : readGoogleReferral() };
+    return { answer, saved: answer === null ? null : readGoogleStart() };
   });
   return arrival;
 }
@@ -86,13 +86,17 @@ export function useGoogleReturn(arrival: GoogleArrival, handling: GoogleReturnHa
     const answer = arrival.answer;
     if (answer === null || handled.current) return;
     handled.current = true;
-    clearGoogleReferral();
+    clearGoogleStart();
     if (answer.kind === 'error') {
       if (answer.reason === 'referral_invalid') latest.current.onReferralInvalid();
       else setError(t(googleErrorKey(answer.reason)));
+      // Take the callback's parameters out and put back the page's own ones
+      // an expired sign-in returned without.
+      const saved = arrival.saved?.query ?? {};
       setParams((current) => {
         const kept = new URLSearchParams(current);
         for (const name of GOOGLE_RETURN_PARAMS) kept.delete(name);
+        for (const [name, value] of Object.entries(saved)) if (!kept.has(name)) kept.set(name, value);
         return kept;
       }, { replace: true });
       return;

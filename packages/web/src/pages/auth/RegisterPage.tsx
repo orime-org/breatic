@@ -26,7 +26,7 @@ import { toast } from '@web/lib/toast';
 import { Skeleton } from '@web/components/ui/skeleton';
 import { useSignupReferral } from '@web/features/referral/use-signup-referral';
 import { GoogleSignIn } from '@web/pages/auth/GoogleSignIn';
-import { saveGoogleReferral } from '@web/pages/auth/google-return';
+import { keptQuery, saveGoogleStart } from '@web/pages/auth/google-return';
 import { useGoogleArrival, useGoogleReturn, useGoogleSignInShown } from '@web/pages/auth/use-google-return';
 
 /**
@@ -68,7 +68,7 @@ export default function RegisterPage(): React.JSX.Element {
   const loginPath = carriesNext ? `/login?next=${encodeURIComponent(next)}` : '/login';
   const setUser = useCurrentUserStore((s) => s.setUser);
   const arrival = useGoogleArrival();
-  const referral = useSignupReferral(arrival.saved?.code);
+  const referral = useSignupReferral(arrival.saved?.referral?.code);
   const googleShown = useGoogleSignInShown();
   const googleError = useGoogleReturn(arrival, {
     destination: (created) => (created ? slugPath : next),
@@ -194,9 +194,12 @@ export default function RegisterPage(): React.JSX.Element {
 
   /** Keep the referral code for the return from Google and report the start. */
   const leaveForGoogle = React.useCallback((): void => {
-    saveGoogleReferral(referral.body().referralCode ? { code: referral.value, typed: true } : null);
+    saveGoogleStart({
+      referral: referral.body().referralCode ? { code: referral.value, typed: true } : null,
+      query: keptQuery(params),
+    });
     trackEvent('signup_started', { method: 'google' });
-  }, [referral]);
+  }, [referral, params]);
 
   const handleChangeEmail = React.useCallback((): void => {
     setCodeSent(null);

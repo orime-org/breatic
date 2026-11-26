@@ -5,7 +5,7 @@
 // login and register pages do when the callback sends the browser back
 // (inner#2157 design §7.9, §8 row "Google sign-in, page side").
 
-import { act, render, screen, waitFor } from '@testing-library/react';
+import { act, cleanup, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
@@ -19,7 +19,7 @@ import type * as AnalyticsModule from '@web/data/analytics';
 
 vi.mock('@web/data/api/auth', async () => {
   const actual = await vi.importActual<typeof AuthModule>('@web/data/api/auth');
-  return { ...actual, authApi: { ...actual.authApi, options: vi.fn(), me: vi.fn(), login: vi.fn(), register: vi.fn() } };
+  return { ...actual, authApi: { ...actual.authApi, options: vi.fn(), me: vi.fn(), login: vi.fn(), register: vi.fn(), invitation: vi.fn() } };
 });
 vi.mock('@web/data/analytics', async () => {
   const actual = await vi.importActual<typeof AnalyticsModule>('@web/data/analytics');
@@ -229,6 +229,32 @@ const ERRORS: Array<[string, string]> = [
   ['email_unverified', 'server.auth.google_email_unverified'],
   ['link_requires_email_login', 'server.auth.google_link_requires_email_login'],
 ];
+
+describe('the page query across the Google round trip', () => {
+  it('puts next back when an expired return comes without it', async () => {
+    const user = userEvent.setup();
+    renderAt(`/login?next=${encodeURIComponent('/project/abc')}`);
+    await user.click(await googleButton());
+    cleanup();
+
+    renderAt('/login?googleError=expired');
+    expect(await screen.findByText(english('auth.google.expired'))).toBeInTheDocument();
+    await waitFor(() => expect(readLocation(screen.getByTestId('location')).params.get('next')).toBe('/project/abc'));
+    expect(readLocation(screen.getByTestId('location')).params.has('googleError')).toBe(false);
+  });
+
+  it('puts the invitation back on the sign-up page after an error return', async () => {
+    vi.mocked(authApi.invitation).mockResolvedValue({ state: 'open', email: 'invitee@example.test', inviterName: 'Ann', targetName: 'Team' } as never);
+    const user = userEvent.setup();
+    renderAt('/register?invite=tok-1');
+    await user.click(await googleButton());
+    cleanup();
+
+    renderAt(`/register?googleError=cancelled&next=${encodeURIComponent('/decision?token=tok-1')}`);
+    await waitFor(() => expect(readLocation(screen.getByTestId('location')).params.get('invite')).toBe('tok-1'));
+    expect(authApi.invitation).toHaveBeenLastCalledWith('tok-1');
+  });
+});
 
 describe('returning from Google with an error', () => {
   it.each(ERRORS.flatMap(([reason, key]) => [['login', reason, key], ['register', reason, key]] as const))(
