@@ -408,7 +408,8 @@ describe('the toolbar (design §6.1, acceptance 12)', () => {
     const toolbar = await screen.findByRole('toolbar');
     expect(toolbar.className).not.toContain('flex-wrap');
     for (const element of toolbar.querySelectorAll('*')) expect(element.getAttribute('class') ?? '').not.toContain('flex-wrap');
-    const buttons = within(toolbar).getAllByRole('button');
+    // More stays mounted but inert while every control fits, so it is not one the user can press.
+    const buttons = within(toolbar).getAllByRole('button').filter((button) => button.closest('[inert]') === null);
     expect(buttons.map((button) => button.getAttribute('aria-label'))).toEqual(NAMES);
     for (const button of buttons) expect(button.textContent).toBe('');
     expect(within(toolbar).getByRole('slider', { name: '缩放' })).toBeInTheDocument();

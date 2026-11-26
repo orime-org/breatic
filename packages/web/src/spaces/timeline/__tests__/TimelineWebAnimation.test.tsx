@@ -195,7 +195,8 @@ describe('track toolbar', () => {
    */
   function toolbarButtons(): Array<string | null> {
     const bar = screen.getByRole('toolbar', { name: t('timeline.tracks') });
-    return within(bar).getAllByRole('button').map((button) => button.getAttribute('data-testid'));
+    // More stays mounted but inert while every control fits (inner#1709), so it is not one the user can press.
+    return within(bar).getAllByRole('button').filter((button) => button.closest('[inert]') === null).map((button) => button.getAttribute('data-testid'));
   }
   const EDITING = ['timeline-undo', 'timeline-redo', 'timeline-split', 'timeline-duplicate', 'timeline-delete', 'timeline-toggle-magnet', 'timeline-toggle-snap', 'timeline-toggle-linkage'];
 

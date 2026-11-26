@@ -5242,7 +5242,8 @@
       "rotation": "Rotation (°)",
       "lockRatio": "Lock ratio",
       "offFrame": "This clip is not at the current frame.",
-      "addText": "Add text"
+      "addText": "Add text",
+      "more": "More"
     },
     "webAnimation": {
       "copy": "Web animation copy",

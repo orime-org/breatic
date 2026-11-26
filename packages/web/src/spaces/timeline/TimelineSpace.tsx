@@ -16,10 +16,8 @@ import type { TimelineEditCommand, TimelineEditPlan } from '@web/data/yjs/timeli
 import { audibleTimelineClipsAt, timelineStackOrder, visibleTimelineClipsAt } from '@web/data/yjs/timeline-layers';
 import { orderedTimelineClips, timelineTrackRank } from '@web/data/yjs/timeline-order';
 
-import { BarButton } from '@web/components/BarButton';
 import { Button } from '@web/components/ui/button';
 import { ScrollArea } from '@web/components/ui/scroll-area';
-import { Separator } from '@web/components/ui/separator';
 import { Slider } from '@web/components/ui/slider';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@web/components/ui/tooltip';
 import { useDocProvider } from '@web/data/yjs/collab-socket';
@@ -37,6 +35,7 @@ import type { SpaceBodyProps } from '@web/spaces';
 import { formatShortcut } from '@web/spaces/canvas/format-shortcut';
 import { TimelineClipProperties } from '@web/spaces/timeline/TimelineClipProperties';
 import { TimelineFrameRatio } from '@web/spaces/timeline/TimelineFrameRatio';
+import { TimelineToolbar, toolbarButton, type TimelineToolbarEntry } from '@web/spaces/timeline/TimelineToolbar';
 import { timelinePreviewFit } from '@web/spaces/timeline/timeline-preview-fit';
 import { TimelineMaterialDialog } from '@web/spaces/timeline/TimelineMaterialDialog';
 import { TimelineTrackArea } from '@web/spaces/timeline/TimelineTrackArea';
@@ -864,10 +863,36 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
   }, [readOnly, frame, queryClient, projectId, commit, t, document.settings.fps, placement, session]);
   const pressAddText = React.useCallback((): void => { void addText(); }, [addText]);
   const noSelection = selected === undefined;
+  const toolbarEntries = React.useMemo((): TimelineToolbarEntry[] => {
+    const zoomLabel = t('timeline.edit.zoom');
+    const zoom = <Slider data-testid='timeline-zoom' aria-label={zoomLabel} value={zoomValue} onValueChange={changeZoom} min={Math.log2(minZoom)} max={Math.log2(TIMELINE_MAX_PIXELS_PER_FRAME)} step={ZOOM_STEP} className='w-28' />;
+    return [
+      toolbarButton({ testId: 'timeline-add-media', group: 'add', label: t('timeline.addMedia'), icon: ADD_MEDIA_ICON, disabled: readOnly, onClick: openMaterial }),
+      ...(readOnly ? [] : [
+        toolbarButton({ testId: 'timeline-add-web-animation', group: 'add', label: t('timeline.webAnimation.add'), icon: ADD_WEB_ICON, onClick: openPicker }),
+        toolbarButton({ testId: 'timeline-add-text', group: 'add', label: t('timeline.edit.addText'), icon: ADD_TEXT_ICON, onClick: pressAddText }),
+      ]),
+      toolbarButton({ testId: 'timeline-undo', group: 'history', label: t('timeline.edit.undo'), shortcut: UNDO_KEY, icon: UNDO_ICON, disabled: readOnly || !history.canUndo, onClick: undo }),
+      toolbarButton({ testId: 'timeline-redo', group: 'history', label: t('timeline.edit.redo'), shortcut: REDO_KEY, icon: REDO_ICON, disabled: readOnly || !history.canRedo, onClick: redo }),
+      toolbarButton({ testId: 'timeline-split', group: 'clip', label: t('timeline.edit.split'), shortcut: SPLIT_KEY, icon: SPLIT_ICON, disabled: readOnly, unavailable: noSelection, onClick: split }),
+      toolbarButton({ testId: 'timeline-duplicate', group: 'clip', label: t('timeline.edit.duplicate'), shortcut: DUPLICATE_KEY, icon: DUPLICATE_ICON, disabled: readOnly, unavailable: noSelection, onClick: duplicate }),
+      toolbarButton({ testId: 'timeline-delete', group: 'clip', label: t('timeline.edit.delete'), shortcut: DELETE_KEY, icon: DELETE_ICON, disabled: readOnly, unavailable: noSelection, onClick: remove }),
+      toolbarButton({ testId: 'timeline-toggle-magnet', group: 'switch', label: t('timeline.edit.magnet'), pressed: prefs.magnet, icon: MAGNET_ICON, onClick: toggleMagnet }),
+      toolbarButton({ testId: 'timeline-toggle-snap', group: 'switch', label: t('timeline.edit.snap'), shortcut: 'N', pressed: prefs.snap, icon: SNAP_ICON, onClick: toggleSnap }),
+      toolbarButton({ testId: 'timeline-toggle-linkage', group: 'switch', label: t('timeline.edit.linkage'), pressed: prefs.linkage, icon: LINKAGE_ICON, onClick: toggleLinkage }),
+      {
+        id: 'timeline-zoom',
+        group: 'zoom',
+        bar: <Tooltip><TooltipTrigger asChild><span className='flex items-center'>{zoom}</span></TooltipTrigger><TooltipContent>{zoomLabel}</TooltipContent></Tooltip>,
+        row: <div className='flex items-center gap-2 py-1.5 pl-8 pr-2 text-sm'><span className='whitespace-nowrap'>{zoomLabel}</span>{zoom}</div>,
+      },
+    ];
+  }, [t, readOnly, openMaterial, openPicker, pressAddText, history.canUndo, history.canRedo, undo, redo, noSelection, split, duplicate, remove,
+    prefs.magnet, prefs.snap, prefs.linkage, toggleMagnet, toggleSnap, toggleLinkage, zoomValue, changeZoom, minZoom]);
   // Click-focusable, not tab-reachable: where the keyboard goes when the focused element leaves the page.
   return <div ref={root} data-testid='timeline-space' data-project-id={projectId} data-space-id={spaceId} tabIndex={-1} data-space-focus-root='' className='flex h-full min-h-0 min-w-0 bg-background outline-none'>
     {/* The tracks take their content's height up to half the column; the preview takes the rest. */}
-    <div ref={editorColumn} className='grid min-h-0 min-w-0 flex-1 grid-rows-[minmax(0,1fr)_auto_auto_fit-content(50%)]'>
+    <div ref={editorColumn} className='grid min-h-0 min-w-0 flex-1 grid-cols-[minmax(0,1fr)] grid-rows-[minmax(0,1fr)_auto_auto_fit-content(50%)]'>
       <div className='flex min-h-0 flex-1 items-center justify-center bg-muted/40 p-6'>
         {/* The frame clips the layers; the operation layer above it does not, so handles outside the frame stay reachable;
             the note layer is on top and lets clicks through except on its notes (#1410 design §4.1). */}
@@ -915,30 +940,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
         <Slider aria-label={t('timeline.seek')} value={seekValue} onValueChange={onSeek} min={0} max={Math.max(1, duration - 1)} step={1} disabled={duration === 0} className='min-w-0 flex-1' />
         <TimelineFrameRatio width={canvas.width} height={canvas.height} readOnly={readOnly} onChoose={chooseFrame} />
       </div>
-      <div role='toolbar' aria-label={t('timeline.tracks')} className='flex shrink-0 items-center gap-1.5 border-t border-border px-4 py-1.5'>
-        <BarButton testId='timeline-add-media' label={t('timeline.addMedia')} icon={ADD_MEDIA_ICON} disabled={readOnly} onClick={openMaterial} />
-        {!readOnly && <BarButton testId='timeline-add-web-animation' label={t('timeline.webAnimation.add')} icon={ADD_WEB_ICON} onClick={openPicker} />}
-        {!readOnly && <BarButton testId='timeline-add-text' label={t('timeline.edit.addText')} icon={ADD_TEXT_ICON} onClick={pressAddText} />}
-        <Separator orientation='vertical' className='mx-1 h-5' />
-        <BarButton testId='timeline-undo' label={t('timeline.edit.undo')} shortcut={UNDO_KEY} icon={UNDO_ICON} disabled={readOnly || !history.canUndo} onClick={undo} />
-        <BarButton testId='timeline-redo' label={t('timeline.edit.redo')} shortcut={REDO_KEY} icon={REDO_ICON} disabled={readOnly || !history.canRedo} onClick={redo} />
-        <Separator orientation='vertical' className='mx-1 h-5' />
-        <BarButton testId='timeline-split' label={t('timeline.edit.split')} shortcut={SPLIT_KEY} icon={SPLIT_ICON} disabled={readOnly} unavailable={noSelection} onClick={split} />
-        <BarButton testId='timeline-duplicate' label={t('timeline.edit.duplicate')} shortcut={DUPLICATE_KEY} icon={DUPLICATE_ICON} disabled={readOnly} unavailable={noSelection} onClick={duplicate} />
-        <BarButton testId='timeline-delete' label={t('timeline.edit.delete')} shortcut={DELETE_KEY} icon={DELETE_ICON} disabled={readOnly} unavailable={noSelection} onClick={remove} />
-        <Separator orientation='vertical' className='mx-1 h-5' />
-        <BarButton testId='timeline-toggle-magnet' label={t('timeline.edit.magnet')} pressed={prefs.magnet} icon={MAGNET_ICON} onClick={toggleMagnet} />
-        <BarButton testId='timeline-toggle-snap' label={t('timeline.edit.snap')} shortcut='N' pressed={prefs.snap} icon={SNAP_ICON} onClick={toggleSnap} />
-        <BarButton testId='timeline-toggle-linkage' label={t('timeline.edit.linkage')} pressed={prefs.linkage} icon={LINKAGE_ICON} onClick={toggleLinkage} />
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <span className='ml-2 flex items-center'>
-              <Slider data-testid='timeline-zoom' aria-label={t('timeline.edit.zoom')} value={zoomValue} onValueChange={changeZoom} min={Math.log2(minZoom)} max={Math.log2(TIMELINE_MAX_PIXELS_PER_FRAME)} step={ZOOM_STEP} className='w-28' />
-            </span>
-          </TooltipTrigger>
-          <TooltipContent>{t('timeline.edit.zoom')}</TooltipContent>
-        </Tooltip>
-      </div>
+      <TimelineToolbar label={t('timeline.tracks')} moreLabel={t('timeline.edit.more')} entries={toolbarEntries} />
       <TimelineTrackArea projectId={projectId} document={document} labels={labels} failedIds={failedIds} selectedId={selectedId} frame={frame} extent={extent} viewportRef={setTrackScroller}
         pixelsPerFrame={pixelsPerFrame} readOnly={readOnly} snap={prefs.snap} placement={placement} web={web} webClips={webClips} uploads={uploadViews} onSelect={selectClip} onSeek={seekTo} onCommit={commitCommand} onVanished={vanished} onDraggingChange={draggingChange} />
     </div>

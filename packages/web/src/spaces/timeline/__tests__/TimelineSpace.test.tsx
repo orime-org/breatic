@@ -948,6 +948,95 @@ describe('TimelineSpace toolbar', () => {
   });
 });
 
+describe('TimelineSpace toolbar that does not fit (inner#1709)', () => {
+  const ENTRY = 40;
+  const MORE = 32;
+
+  /**
+   * Give the toolbar `room` pixels of content width, each of its controls ENTRY pixels and More MORE pixels.
+   * @param room - The toolbar's content width.
+   * @throws {never} Never.
+   */
+  function sizeToolbar(room: number): void {
+    vi.stubGlobal('ResizeObserver', class {
+      readonly #callback: ResizeObserverCallback;
+      constructor(callback: ResizeObserverCallback) { this.#callback = callback; }
+      observe(target: Element): void {
+        if (target.getAttribute('role') === 'toolbar') this.#callback([{ target, contentRect: { width: room } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
+      }
+      unobserve(): void {}
+      disconnect(): void {}
+    });
+    const original = Element.prototype.getBoundingClientRect;
+    vi.spyOn(Element.prototype, 'getBoundingClientRect').mockImplementation(function (this: Element) {
+      if (this.hasAttribute('data-toolbar-entry')) return { width: ENTRY } as DOMRect;
+      if (this.hasAttribute('data-toolbar-more')) return { width: MORE } as DOMRect;
+      return original.call(this);
+    });
+  }
+
+  /**
+   * The test hooks of the controls a surface shows, in order.
+   * @param surface - The toolbar or the More menu.
+   * @returns Their test ids.
+   * @throws {never} Never.
+   */
+  function hooksIn(surface: HTMLElement): string[] {
+    return [...surface.querySelectorAll('[data-testid]')].map((node) => node.getAttribute('data-testid')!);
+  }
+
+  it('keeps one row and moves the rightmost controls behind More, in toolbar order with their groups', async () => {
+    sizeToolbar(6 * ENTRY + MORE);
+    seedLayout([clipAt(X, 'v2', 0, 24)]);
+    showTimeline();
+    const toolbar = await screen.findByRole('toolbar', { name: t('timeline.tracks') });
+    expect(hooksIn(toolbar)).toEqual(['timeline-add-media', 'timeline-add-web-animation', 'timeline-add-text', 'timeline-undo', 'timeline-redo', 'timeline-split', 'timeline-more']);
+    expect(within(toolbar).getByTestId('timeline-more')).toHaveAccessibleName(t('timeline.edit.more'));
+    await userEvent.click(within(toolbar).getByTestId('timeline-more'));
+    const menu = await screen.findByRole('menu');
+    expect(hooksIn(menu)).toEqual(['timeline-duplicate-item', 'timeline-delete-item', 'timeline-toggle-magnet-item', 'timeline-toggle-snap-item', 'timeline-toggle-linkage-item', 'timeline-zoom']);
+    expect(within(menu).getAllByRole('separator')).toHaveLength(2);
+    expect(within(menu).getByTestId('timeline-delete-item')).toHaveTextContent(t('timeline.edit.delete'));
+  });
+
+  it('shows the switches as checked rows and changes them from the menu', async () => {
+    sizeToolbar(2 * ENTRY + MORE);
+    seedLayout([]);
+    showTimeline();
+    await userEvent.click(await screen.findByTestId('timeline-more'));
+    const snap = await screen.findByTestId('timeline-toggle-snap-item');
+    expect(snap).toHaveAttribute('aria-checked', 'true');
+    await userEvent.click(snap);
+    expect(JSON.parse(window.localStorage.getItem('breatic.userPreferences') ?? '{}')[ME]?.timelineSnap).toBe(false);
+    await userEvent.click(screen.getByTestId('timeline-more'));
+    expect(await screen.findByTestId('timeline-toggle-snap-item')).toHaveAttribute('aria-checked', 'false');
+  });
+
+  it('disables undo in the menu while the history is empty and explains clip actions without a selection', async () => {
+    const doc = seedLayout([clipAt(X, 'v2', 0, 24)]);
+    const before = Y.encodeStateAsUpdate(doc);
+    sizeToolbar(2 * ENTRY + MORE);
+    showTimeline();
+    await screen.findByTestId('timeline-clip-' + X);
+    await userEvent.click(screen.getByTestId('timeline-more'));
+    expect(await screen.findByTestId('timeline-undo-item')).toHaveAttribute('aria-disabled', 'true');
+    vi.mocked(toast.warning).mockClear();
+    await userEvent.click(screen.getByTestId('timeline-delete-item'));
+    expect(vi.mocked(toast.warning).mock.calls.map(([message]) => message)).toEqual([t('timeline.edit.selectFirst')]);
+    expect(Y.encodeStateAsUpdate(doc)).toEqual(before);
+  });
+
+  it('shows every control on the toolbar and keeps More out of reach when the row fits', async () => {
+    sizeToolbar(10_000);
+    seedLayout([]);
+    showTimeline();
+    const toolbar = await screen.findByRole('toolbar', { name: t('timeline.tracks') });
+    expect(hooksIn(toolbar).filter((hook) => hook !== 'timeline-more')).toEqual(['timeline-add-media', 'timeline-add-web-animation', 'timeline-add-text', 'timeline-undo', 'timeline-redo',
+      'timeline-split', 'timeline-duplicate', 'timeline-delete', 'timeline-toggle-magnet', 'timeline-toggle-snap', 'timeline-toggle-linkage', 'timeline-zoom']);
+    expect(toolbar.querySelector('[data-toolbar-more]')).toHaveAttribute('inert');
+  });
+});
+
 describe('TimelineSpace clip actions', () => {
   it('splits the selected clip at the playhead from the toolbar', async () => {
     magnet(false);

@@ -5242,7 +5242,8 @@
       "rotation": "回転（°）",
       "lockRatio": "比率を固定",
       "offFrame": "このクリップは現在のフレームにありません。",
-      "addText": "テキストを追加"
+      "addText": "テキストを追加",
+      "more": "その他"
     },
     "webAnimation": {
       "copy": "ウェブアニメーションのコピー",

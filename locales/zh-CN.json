@@ -5242,7 +5242,8 @@
       "rotation": "旋转（°）",
       "lockRatio": "锁定比例",
       "offFrame": "这个片段不在当前帧。",
-      "addText": "添加文字"
+      "addText": "添加文字",
+      "more": "更多"
     },
     "webAnimation": {
       "copy": "网页动画副本",
