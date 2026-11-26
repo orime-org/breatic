@@ -8,7 +8,7 @@ export const TALKING_OWN_VOICE: GenerationTemplate = {
   id: "talking-own-voice",
   anchor: "result",
   nodes: [
-    { key: "result", role: "generate", type: "video", mode: "talking_head", model: "seedance-2.5-talking-avatar", params: {} },
+    { key: "result", role: "generate", type: "video", mode: "talking_head", model: "omnihuman-1.5", params: {} },
   ],
   edges: [],
   inputs: [
@@ -17,7 +17,7 @@ export const TALKING_OWN_VOICE: GenerationTemplate = {
   ],
   steps: [],
   agentNote:
-    "a talking clip of the user's own photo speaking the user's own recording: the photo goes into the character slot and the recording into the driving audio slot, and the clip lasts as long as the recording; the user fills in the manner",
+    "a talking clip of the user's own photo speaking the user's own recording: the photo goes into the character slot and the recording into the driving audio slot, and the clip lasts as long as the recording and plays the recording itself as its sound, however short; the model takes no prompt, so nothing is filled in",
   goal: "talking",
   triggers: {
     asks: ["a talking video in my own voice", "make my photo say my recording"],
