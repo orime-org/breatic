@@ -23,16 +23,18 @@ import * as shared from '@breatic/shared';
 import { videoContainerJobId, videoCarrierRouteStages } from '@breatic/shared/mini-tools';
 import type * as coreModule from '@breatic/core';
 import { containerCostUsd } from '@breatic/domain';
+import { getNodeTaskConfig } from '@breatic/core';
 import * as handler from '@worker/handlers/video-presentation.js';
 import { StillRunning } from '@worker/handlers/still-running.js';
 import { chunkInputId, SOURCE_INPUT_ID } from '@worker/handlers/video-presentation-recipes.js';
-import { planDigest } from '@worker/handlers/mini-tool/__tests__/frozen-presentation.js';
+import { frozenVersion, planDigest } from '@worker/handlers/mini-tool/__tests__/frozen-presentation.js';
 
-const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger, listProjectsReferencingStorageKey, publishVideoPresentationChanged, redisStore } = vi.hoisted(() => ({
+const { findById, createUsageRecorder, recordServiceCall, settle, syncPresentationPins, logger, listProjectsReferencingStorageKey, publishVideoPresentationChanged, redisStore, redisGet, redisSet } = vi.hoisted(() => ({
   findById: vi.fn(), createUsageRecorder: vi.fn(), recordServiceCall: vi.fn(), settle: vi.fn(), syncPresentationPins: vi.fn(),
   listProjectsReferencingStorageKey: vi.fn(), publishVideoPresentationChanged: vi.fn(),
-  // The Redis keys the handler keeps, in memory.
+  // The Redis keys the handler keeps, in memory, and its calls.
   redisStore: new Map<string, string>(),
+  redisGet: vi.fn(), redisSet: vi.fn(),
   // Every application-layer catch logs (root AGENTS.md "Application-layer error logging"); the spy lets the handler do so.
   logger: { error: vi.fn(), warn: vi.fn(), info: vi.fn(), debug: vi.fn() },
 }));
@@ -45,10 +47,7 @@ vi.mock('@breatic/core', async (original) => {
     getMiniToolsConfig: () => ({ ...actual.getMiniToolsConfig(), poll_interval_ms: 5000 }),
     getStorageAdapter: async () => ({ publicUrl: (key: string): string => `https://assets.example.test/${key}` }),
     publishVideoPresentationChanged,
-    getRedis: () => ({
-      get: async (key: string): Promise<string | null> => redisStore.get(key) ?? null,
-      set: async (key: string, value: string): Promise<'OK'> => { redisStore.set(key, value); return 'OK'; },
-    }),
+    getRedis: () => ({ get: redisGet, set: redisSet }),
   };
 });
 vi.mock('@breatic/domain', async (original) => ({
@@ -226,6 +225,8 @@ beforeEach(() => {
   findById.mockResolvedValue(asset);
   listProjectsReferencingStorageKey.mockResolvedValue([]);
   redisStore.clear();
+  redisGet.mockReset().mockImplementation(async (key: string): Promise<string | null> => redisStore.get(key) ?? null);
+  redisSet.mockReset().mockImplementation(async (key: string, value: string): Promise<'OK'> => { redisStore.set(key, value); return 'OK'; });
   createUsageRecorder.mockReturnValue({ recordServiceCall, settle });
   settle.mockResolvedValue(0);
   syncPresentationPins.mockImplementation(async () => { sent.push({ path: 'sync-pins', method: 'CALL', body: null }); });
@@ -858,11 +859,45 @@ describe('a change readers see is told to the Projects showing the video (frames
     expect(publishVideoPresentationChanged.mock.calls).toEqual(BOTH);
   });
 
-  it('VP07 a new job admitted after a failure (a Retry press) is told by its first pickup', async () => {
-    answer = encoding('presentation_failed');
+  it('VP07 a new job admitted by a Retry is told by the next pickup even when only the current job changed', async () => {
+    answer = encoding();
     expect(await pickup()).toBeInstanceOf(DelayedError);
     publishVideoPresentationChanged.mockClear();
-    answer = prepareAnswer();
+    answer = encoding(null, 'video-presentation-b');
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    expect(publishVideoPresentationChanged.mock.calls).toEqual(BOTH);
+  });
+
+  it('VP11 a selected version that changed while the job waits is told even when nothing else changed', async () => {
+    answer = encoding();
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    publishVideoPresentationChanged.mockClear();
+    answer = { ...encoding(), presentation: { ...frozenVersion(), sourceFingerprint: H } };
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    expect(publishVideoPresentationChanged.mock.calls).toEqual(BOTH);
+  });
+
+  it('VP12 the announced view is kept under the deployment prefix for one task budget', async () => {
+    answer = encoding();
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    expect(redisSet).toHaveBeenCalledWith(expect.stringMatching(new RegExp(`:video-presentation:announced:${KEY}$`)), expect.any(String), 'PX', getNodeTaskConfig().default_budget_ms);
+  });
+
+  it('VP13 a view that cannot be read is announced anyway', async () => {
+    answer = encoding();
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    publishVideoPresentationChanged.mockClear();
+    redisGet.mockRejectedValueOnce(new Error('redis down'));
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    expect(publishVideoPresentationChanged.mock.calls).toEqual(BOTH);
+    expect(logger.error).toHaveBeenCalledWith(expect.anything(), 'video_presentation_changed_state_failed');
+  });
+
+  it('VP14 a view that cannot be recorded is announced again by the next pickup', async () => {
+    answer = encoding();
+    redisSet.mockRejectedValueOnce(new Error('redis down'));
+    expect(await pickup()).toBeInstanceOf(DelayedError);
+    publishVideoPresentationChanged.mockClear();
     expect(await pickup()).toBeInstanceOf(DelayedError);
     expect(publishVideoPresentationChanged.mock.calls).toEqual(BOTH);
   });
