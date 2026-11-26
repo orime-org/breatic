@@ -34,6 +34,12 @@ interface ContentNodeFrameProps {
    * (empty node, or media not yet loaded) → no badge.
    */
   resolution?: NodeResolution;
+  /**
+   * A control over the card's top-right corner, where image and video show
+   * their size: the text node's full-screen button (inner#2115). Shown while
+   * the pointer is on the node; left out when a size badge holds the corner.
+   */
+  cornerAction?: React.ReactNode;
   /** The modality body rendered inside the shell. */
   children: React.ReactNode;
 }
@@ -59,6 +65,7 @@ interface ContentNodeFrameProps {
  * @param root0.className - Extra classes merged onto the shell (sizing).
  * @param root0.testId - Stable test id for the shell root.
  * @param root0.resolution - Intrinsic media resolution; renders the top-right pixel-size badge when set.
+ * @param root0.cornerAction - A control over the card's top-right corner when no size badge holds it.
  * @param root0.children - The modality body rendered inside the shell.
  * @returns The header-over-shell content node frame.
  */
@@ -71,6 +78,7 @@ export function ContentNodeFrame({
   className,
   testId,
   resolution,
+  cornerAction,
   children,
 }: ContentNodeFrameProps): React.JSX.Element {
   // The name header floats in an absolutely-positioned anchor pinned just above
@@ -126,6 +134,14 @@ export function ContentNodeFrame({
           />
         </ZoomCounterScaled>
       )}
+      {!badgeShown && cornerAction ? (
+        <ZoomCounterScaled
+          testId='node-corner-anchor'
+          className='absolute bottom-full right-0 origin-bottom-right pb-1'
+        >
+          {cornerAction}
+        </ZoomCounterScaled>
+      ) : null}
       <NodeShell
         selected={selected}
         locked={locked}

@@ -3253,6 +3253,13 @@
         "pinch": "雙指捏合",
         "wheel": "滾輪"
       }
+    },
+    "textFullscreen": {
+      "edit": "全螢幕編輯",
+      "view": "全螢幕檢視",
+      "editPrompt": "全螢幕編輯提示詞",
+      "exit": "結束全螢幕",
+      "inProgress": "正在全螢幕編輯"
     }
   },
   "auth": {

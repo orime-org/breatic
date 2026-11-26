@@ -298,6 +298,7 @@ import { GeneratePanelContainer } from '@web/spaces/canvas/generate/GeneratePane
 import { AudioGeneratePanelContainer } from '@web/spaces/canvas/generate/AudioGeneratePanelContainer';
 import { VideoGeneratePanelContainer } from '@web/spaces/canvas/generate/VideoGeneratePanelContainer';
 import { AnnotationPanelContainer } from '@web/spaces/canvas/annotation/AnnotationPanelContainer';
+import { TextNodeFullscreen } from '@web/spaces/canvas/nodes/TextNodeFullscreen';
 import { PIN_ORIGIN } from '@web/spaces/canvas/annotation/pin-geometry';
 import { EmptyImagePanelContainer } from '@web/spaces/canvas/empty-image/EmptyImagePanelContainer';
 import { NodeHistoryPanelContainer } from '@web/spaces/canvas/history/NodeHistoryPanelContainer';
@@ -727,6 +728,15 @@ function CanvasSpaceInner({
   const openEmptyImagePanel = useCanvasSession((s) => s.openEmptyImagePanel);
   const openHistoryPanel = useCanvasSession((s) => s.openHistoryPanel);
   const closeActivePanel = useCanvasSession((s) => s.closeActivePanel);
+  // The text node open full screen (inner#2115), read from the graph mirror,
+  // which culling never trims, so a node scrolled out of view keeps it.
+  const fullscreenTextNodeId = useCanvasSession((s) => s.fullscreenTextNode);
+  const fullscreenTextNode = React.useMemo(() => {
+    if (fullscreenTextNodeId === null) return null;
+    const node = flowNodes.find((n) => n.id === fullscreenTextNodeId);
+    const data = node?.data as { name?: string; locked?: boolean } | undefined;
+    return { id: fullscreenTextNodeId, exists: node !== undefined, name: data?.name, locked: data?.locked === true };
+  }, [fullscreenTextNodeId, flowNodes]);
   const panelHostId = useCanvasSession((s) => s.panelHostId);
   const panelKind = useCanvasSession((s) => s.panelKind);
   const pickSession = useCanvasSession((s) => s.pickSession);
@@ -1109,6 +1119,11 @@ function CanvasSpaceInner({
     },
     [setFlowNodes, setFlowEdges, rfStoreApi],
   );
+  // Opening a text node full screen selects it alone, as entering it in place
+  // does, so collaborators see who holds it.
+  React.useEffect(() => {
+    if (fullscreenTextNodeId !== null) selectOnlyNode(fullscreenTextNodeId);
+  }, [fullscreenTextNodeId, selectOnlyNode]);
   const hostSelected = React.useMemo((): boolean | null => {
     if (panelHostId == null) return null;
     const host = flowNodes.find((n) => n.id === panelHostId);
@@ -4917,6 +4932,14 @@ function CanvasSpaceInner({
             {/* An expanded annotation: the fifth panel in that same host +
               lifecycle, floating beside its pin. */}
             <AnnotationPanelContainer nodes={nodes} deletedByPeer={deletedByPeer} />
+            {fullscreenTextNode ? (
+              <TextNodeFullscreen
+                nodeId={fullscreenTextNode.id}
+                name={fullscreenTextNode.name}
+                exists={fullscreenTextNode.exists}
+                locked={fullscreenTextNode.locked}
+              />
+            ) : null}
             {/* Reset-empty-image panel: shares the host + lifecycle with Generate
               (panelHostId + panelKind), mutually exclusive, floats below its
               node via NodeToolbar. */}

@@ -3253,6 +3253,13 @@
         "pinch": "Pinch",
         "wheel": "Wheel"
       }
+    },
+    "textFullscreen": {
+      "edit": "Edit full screen",
+      "view": "View full screen",
+      "editPrompt": "Edit prompt full screen",
+      "exit": "Exit full screen",
+      "inProgress": "Editing in full screen"
     }
   },
   "auth": {

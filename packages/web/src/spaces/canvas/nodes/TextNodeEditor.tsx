@@ -127,12 +127,19 @@ interface TextNodeEditorProps {
   spaceId: string;
   /** The node. */
   nodeId: string;
+  /**
+   * What the editor is kept under; the node id when absent. Full screen keeps
+   * its own editor under its own key (inner#2115).
+   */
+  editorKey?: string;
   /** The node's shared body. */
   fragment: Y.XmlFragment;
   /** Provider carrying collaborator carets, or null before the first connect. */
   caretProvider: Pick<HocuspocusProvider, 'awareness'> | null;
   /** Text shown while the body is empty. */
   placeholder: string;
+  /** Classes added to the editable element. */
+  className?: string;
   /**
    * Whether this user may write. False builds a non-editable editor rather
    * than none: a viewer never gets this far (the body refuses to open one),
@@ -187,9 +194,11 @@ const wiringOf = new WeakMap<
  * @param props - The editor's inputs.
  * @param props.spaceId - The Space the node is on.
  * @param props.nodeId - The node.
+ * @param props.editorKey - What the editor is kept under.
  * @param props.fragment - The node's shared body.
  * @param props.caretProvider - Provider carrying collaborator carets.
  * @param props.placeholder - Text shown while the body is empty.
+ * @param props.className - Classes added to the editable element.
  * @param props.editable - Whether this user may write.
  * @param props.onLeave - Leave the editor, saying where focus should end up.
  * @returns The editor element.
@@ -197,9 +206,11 @@ const wiringOf = new WeakMap<
 export function TextNodeEditor({
   spaceId,
   nodeId,
+  editorKey,
   fragment,
   caretProvider,
   placeholder,
+  className,
   editable,
   onLeave,
 }: TextNodeEditorProps): React.JSX.Element {
@@ -240,7 +251,7 @@ export function TextNodeEditor({
         // implicit role to fall back on.
         editorProps: {
           attributes: {
-            class: EDITOR_CLASS,
+            class: className ? `${EDITOR_CLASS} ${className}` : EDITOR_CLASS,
             'data-testid': 'text-node-body',
             role: 'textbox',
             'aria-multiline': 'true',
@@ -272,14 +283,14 @@ export function TextNodeEditor({
     // A kept editor is reused while it is bound to the same body and the same
     // caret connection; a body replaced by a repair, or the connection's
     // first arrival, builds a new one.
-    return keptEditor(spaceId, nodeId, build, (kept) => {
+    return keptEditor(spaceId, editorKey ?? nodeId, build, (kept) => {
       const bound = wiringOf.get(kept);
       return bound?.fragment === fragment && bound.caretProvider === caretProvider;
     });
     // `onLeave`, `placeholder` and `editable` reach a kept editor below, not by
     // rebuilding it.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [spaceId, nodeId, fragment, caretProvider, resolveName]);
+  }, [spaceId, nodeId, editorKey, fragment, caretProvider, resolveName]);
 
   const bound = wiringOf.get(editor);
   if (bound !== undefined) {
