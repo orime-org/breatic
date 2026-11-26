@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * Collab writes only `project_activities`, `account_activity_events` and `project_edits` (packages/collab/AGENTS.md):
+ * Collab writes only `project_activities`, `account_activity_events` and `project_edits` (packages/collab/AGENTS.md#product-tables-collab-writes):
  * Project media relations are written at the entry points that bring media into a Space, so storing, loading and
  * duplicating a document never reads or writes them (inner#2171 design §5.5).
  */
