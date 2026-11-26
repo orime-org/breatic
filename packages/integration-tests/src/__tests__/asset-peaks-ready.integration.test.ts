@@ -153,12 +153,14 @@ describe("the Projects referencing an asset", () => {
     await sql`update studio_assets set deleted_at = now() where id = ${gone.id}`;
     const p1 = await project(s, admin);
     const p2 = await project(s, admin, "archived");
+    const p3 = await project(s, admin, "deleted");
     const q1 = await project(other, admin);
     const q2 = await project(other, admin);
     const r1 = await project(third, admin);
     const unrelated = await project(s, admin);
     await reference(p1, asset.id);
     await reference(p2, asset.id);
+    await reference(p3, asset.id);
     await reference(q1, pasted.id);
     await reference(q2, pasted.id, true);
     await reference(r1, gone.id);
