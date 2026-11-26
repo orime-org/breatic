@@ -101,7 +101,8 @@ function expectedCommand(overrides: Partial<TimelineVideoClip> = {}, placement: 
     operation: 'add_video',
     parameters: {
       source: {
-        id: SOURCE_ID, kind: 'video', assetId: ASSET.assetId, timebase: SETTINGS.fps,
+        id: SOURCE_ID, kind: 'video', url: ASSET.fileUrl, coverUrl: ASSET.coverUrl, name: ASSET.displayName ?? '',
+        mimeType: ASSET.mimeType, width: ASSET.width, height: ASSET.height, timebase: SETTINGS.fps,
         extentFrames: 48, durationSeconds: '2', durationOrigin: 'registered',
       },
       clip: {

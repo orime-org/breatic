@@ -86,14 +86,19 @@ const PREMOUNT_FRAMES = 48;
 const SOURCE: TimelineVideoSource = {
   id: '10000000-0000-4000-8000-000000000001',
   kind: 'video',
-  assetId: '20000000-0000-4000-8000-000000000001',
+  url: 'https://cdn.example/assets/clip-a.mp4',
+  coverUrl: null,
+  name: 'clip-a.mp4',
+  mimeType: 'video/mp4',
+  width: 1920,
+  height: 1080,
   timebase: { num: 24, den: 1 },
   extentFrames: 240,
   durationSeconds: '10',
   durationOrigin: 'registered',
 };
-const SOURCE_B: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', assetId: '20000000-0000-4000-8000-000000000002' };
-const SOURCE_C: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000003', assetId: '20000000-0000-4000-8000-000000000003' };
+const SOURCE_B: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', url: 'https://cdn.example/assets/clip-b.mp4' };
+const SOURCE_C: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000003', url: 'https://cdn.example/assets/clip-c.mp4' };
 const CLIP: TimelineVideoClip = {
   id: '30000000-0000-4000-8000-000000000001',
   trackId: 'visual-1',

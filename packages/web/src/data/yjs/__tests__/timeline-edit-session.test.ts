@@ -187,7 +187,7 @@ describe('Timeline edit session undo steps', () => {
 
   it('removes an added clip and the source it added on undo (inner#1708 L5)', () => {
     const { mine, session } = pair();
-    const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000077', assetId: '20000000-0000-4000-8000-000000000077' };
+    const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000077', url: 'https://cdn.example/assets/fresh-77.mp4' };
     const added = clip(cid(40), 'v2', 200, 30, { sourceId: fresh.id });
     expect(session.edit({ operation: 'add_video', parameters: { source: fresh, clip: added }, placement: OFF }).ok).toBe(true);
     session.undo();
@@ -198,7 +198,7 @@ describe('Timeline edit session undo steps', () => {
 
   it('keeps a source on undo while another copy still references it (inner#1708 L5)', () => {
     const { mine, session } = pair();
-    const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000078', assetId: '20000000-0000-4000-8000-000000000078' };
+    const fresh: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000078', url: 'https://cdn.example/assets/fresh-78.mp4' };
     const first = clip(cid(41), 'v2', 200, 30, { sourceId: fresh.id });
     const second = clip(cid(42), 'v2', 300, 30, { sourceId: fresh.id });
     expect(session.edit({ operation: 'add_video', parameters: { source: fresh, clip: first }, placement: OFF }).ok).toBe(true);

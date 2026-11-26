@@ -29,8 +29,8 @@ const NAME = 'project-p1/3d-s1';
 const PROJECT = 'p1';
 const SPACE = 's1';
 const ID = '11111111-1111-4111-8111-111111111111';
-const UPLOADED = '77777777-7777-4777-8777-777777777777';
-const OTHER_IMAGE = '88888888-8888-4888-8888-888888888888';
+const UPLOADED = 'https://cdn.example/assets/uploaded.png';
+const OTHER_IMAGE = 'https://cdn.example/assets/other.png';
 const OBJECT = {
   id: ID, name: 'Figure', model: { kind: 'builtin' as const, id: 'figure' as const },
   position: [0, 0, 0] as [number, number, number], rotation: [0, 0, 0, 1] as [number, number, number, number],
@@ -72,7 +72,7 @@ interface Harness {
   invalidateImages: ReturnType<typeof vi.fn>;
   /** The header byte caps the local and Project size reads were given. */
   caps: number[];
-  finish: (assetId?: string) => void;
+  finish: (url?: string) => void;
   fail: (error: unknown) => void;
 }
 
@@ -85,13 +85,13 @@ interface Harness {
  * @throws {AssertionError} When createSceneLookUploads is not exported.
  */
 function harness(session: () => SceneSession | undefined, localSize: { width: number; height: number; type: string } | null | Error = { width: 64, height: 64, type: 'png' },
-  size: (assetId: string) => Promise<{ width: number; height: number; type: string } | null> = async () => ({ width: 64, height: 64, type: 'png' })): Harness {
+  size: (url: string) => Promise<{ width: number; height: number; type: string } | null> = async () => ({ width: 64, height: 64, type: 'png' })): Harness {
   const factory = (uploadsModule as Record<string, unknown>).createSceneLookUploads as ((deps: unknown) => Harness['uploads']) | undefined;
   expect(factory, 'createSceneLookUploads must be exported').toBeTypeOf('function');
-  let finish: (assetId?: string) => void = () => {};
+  let finish: (url?: string) => void = () => {};
   let fail: (error: unknown) => void = () => {};
   const upload = vi.fn(() => new Promise((resolve, reject) => {
-    finish = (assetId = UPLOADED) => resolve({ assetId, url: 'https://assets.example.test/u.png' });
+    finish = (url = UPLOADED) => resolve({ assetId: 'uploaded-asset', fileUrl: url });
     fail = reject;
   }));
   const notify = vi.fn(); const register = vi.fn(); const unregister = vi.fn(); const invalidateImages = vi.fn();
@@ -99,7 +99,7 @@ function harness(session: () => SceneSession | undefined, localSize: { width: nu
   const uploads = factory!({
     upload, notify, register, unregister, invalidateImages,
     readLocalSize: async (_file: File, maxBytes: number) => { caps.push(maxBytes); if (localSize instanceof Error) throw localSize; return localSize; },
-    size: (_projectId: string, assetId: string, maxBytes: number) => { caps.push(maxBytes); return size(assetId); }, session,
+    size: (_projectId: string, url: string, maxBytes: number) => { caps.push(maxBytes); return size(url); }, session,
   });
   return { uploads, upload, notify, register, unregister, invalidateImages, caps, finish: (id) => finish(id), fail: (error) => fail(error) };
 }
@@ -266,7 +266,7 @@ describe('SceneLookUploads', () => {
   });
 
   it('says why for an earlier freed upload when its settlement arrives while a later upload on the part is still sending', async () => {
-    const SECOND = '99999999-9999-4999-8999-999999999999';
+    const SECOND = 'https://cdn.example/assets/second.png';
     const { doc, session } = editor();
     const h = harness(() => session);
     const first = h.uploads.start(startFor());
@@ -286,7 +286,7 @@ describe('SceneLookUploads', () => {
   });
 
   it('says why for an ended upload a new upload on the part replaced before anything released it', async () => {
-    const SECOND = '99999999-9999-4999-8999-999999999999';
+    const SECOND = 'https://cdn.example/assets/second.png';
     const { doc, session } = editor();
     let open: SceneSession | undefined = undefined;
     const h = harness(() => open);
@@ -510,7 +510,7 @@ describe('SceneLookUploads', () => {
     const { uploadMedia: freshUpload } = await import('@web/data/upload/media-upload');
     const client = new QueryClient();
     const invalidate = vi.spyOn(client, 'invalidateQueries');
-    vi.mocked(freshUpload).mockResolvedValueOnce({ assetId: UPLOADED, url: 'https://assets.example.test/u.png' } as never);
+    vi.mocked(freshUpload).mockResolvedValueOnce({ assetId: 'uploaded-asset', fileUrl: UPLOADED } as never);
     const header = new Uint8Array(33);
     header.set([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52]);
     new DataView(header.buffer).setUint32(16, 64);

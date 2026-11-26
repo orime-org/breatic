@@ -29,7 +29,7 @@ vi.mock('@web/components/ui/input', async (importOriginal) => {
 });
 
 const ID = '11111111-1111-4111-8111-111111111111';
-const IMAGE = '66666666-6666-4666-8666-666666666666';
+const IMAGE = 'https://cdn.example/assets/wood.png';
 const PARTS = [
   { key: '0', name: 'Jacket', color: '#ffffff', hasMap: true, unlit: false, line: false, mapRepeat: [3, 4] as [number, number], mapOffset: [0.5, 0] as [number, number], mapRotation: 30 },
   { key: '1', name: null, color: '#5f5f5f', hasMap: false, unlit: false, line: false },

@@ -46,7 +46,7 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
   return {
     ...actual,
-    timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), getExecution: vi.fn(), previewUrl: vi.fn(), limits: vi.fn(), resolveAsset: vi.fn(), acceptExecution: vi.fn(), cancelExecution: vi.fn() },
+    timelineApi: { ...actual.timelineApi, listSpaceExecutions: vi.fn(), getExecution: vi.fn(), previewUrl: vi.fn(), limits: vi.fn(), acceptExecution: vi.fn(), cancelExecution: vi.fn() },
   };
 });
 vi.mock('@hyperframes/player', () => ({}));
@@ -112,9 +112,14 @@ function done(id: string, request: string, createdAt: string): Record<string, un
     failureReason: null, ownProject: true, usageCredits: 0.3, deadlineAt: createdAt, createdAt, updatedAt: createdAt,
     kind: 'web_animation_create', engine: 'deepseek', request, export: null,
     input: { prompt: request, engine: 'deepseek', aspect: '16:9', durationSeconds: 4, fps: { num: 24, den: 1 } },
-    resultSourceVersionId: `80000000-0000-4000-8000-${id.slice(-12)}`, resultAssetId: null,
+    resultSourceVersionId: `80000000-0000-4000-8000-${id.slice(-12)}`, resultAsset: null,
   };
 }
+
+/** The video a finished export carries by its address (inner#2171). */
+const EXPORT_VIDEO = {
+  url: 'https://cdn.example/v.mp4', coverUrl: null, width: 1920, height: 1080, durationSeconds: 4, mimeType: 'video/mp4', sizeBytes: 1,
+};
 
 /**
  * A finished export of a finished create row, as the list answers it.
@@ -124,7 +129,7 @@ function done(id: string, request: string, createdAt: string): Record<string, un
 function exported(source: Record<string, unknown>): Record<string, unknown> {
   const { engine: _engine, request: _request, export: _export, resultSourceVersionId: _version, input: _input, ...common } = source;
   return {
-    ...common, id: EXPORT, actionId: EXPORT, kind: 'web_animation_export', engine: null, resultSourceVersionId: null, resultAssetId: null,
+    ...common, id: EXPORT, actionId: EXPORT, kind: 'web_animation_export', engine: null, resultSourceVersionId: null, resultAsset: null,
     input: { sourceVersionId: source.resultSourceVersionId, width: 1920, height: 1080, fps: { num: 24, den: 1 }, durationFrames: 96, videoKey: 'v/k.mp4' },
     source: { executionId: source.id, request: source.request },
   };
@@ -1028,7 +1033,7 @@ describe('a preview that cannot load', () => {
    */
   async function onExport(): Promise<ReturnType<typeof userEvent.setup>> {
     const source = done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z');
-    listing([{ ...exported(source), resultAssetId: '50000000-0000-4000-8000-000000000001' }]);
+    listing([{ ...exported(source), resultAsset: EXPORT_VIDEO }]);
     show();
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
     return userEvent.setup();
@@ -1041,37 +1046,13 @@ describe('a preview that cannot load', () => {
     listing([{ ...exported(source), resultAsset } as never]);
     show();
     await waitFor(() => expect(screen.getByTestId('motion-preview').querySelector('video')?.getAttribute('src')).toBe(resultAsset.url));
-    expect(vi.mocked(timelineApi.resolveAsset)).not.toHaveBeenCalled();
-  });
-
-  it('says an export whose video cannot be read is unavailable, and reads it again on Retry', async () => {
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockRejectedValue(new Error('network'));
-    const user = await onExport();
-    const preview = screen.getByTestId('motion-preview');
-    expect(await within(preview).findByText(t('timeline.webAnimation.unavailable'))).toBeInTheDocument();
-    const reads = vi.mocked(timelineApi.resolveAsset).mock.calls.length;
-    await user.click(within(preview).getByRole('button', { name: t('timeline.retry') }));
-    await waitFor(() => expect(vi.mocked(timelineApi.resolveAsset).mock.calls.length).toBeGreaterThan(reads));
-  });
-
-  it('plays the export once its video arrives when Play was pressed while its address was read', async () => {
-    let answer: (asset: unknown) => void = () => undefined;
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
-    const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
-    vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
-    const user = await onExport();
-    await user.click(screen.getByTestId('motion-play'));
-    act(() => answer({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 }));
-    await waitFor(() => expect(screen.getByTestId('motion-preview').querySelector('video')).not.toBeNull());
-    await waitFor(() => expect(play).toHaveBeenCalled());
   });
 
   it('pauses a playing export while its Space is hidden, as the play bar stops', async () => {
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
     const play = vi.spyOn(HTMLMediaElement.prototype, 'play').mockResolvedValue(undefined);
     const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => undefined);
     const source = done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z');
-    listing([{ ...exported(source), resultAssetId: '50000000-0000-4000-8000-000000000001' }]);
+    listing([{ ...exported(source), resultAsset: EXPORT_VIDEO }]);
     const setMode = showInActivity();
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
     await waitFor(() => expect(screen.getByTestId('motion-preview').querySelector('video')).not.toBeNull());
@@ -1082,19 +1063,7 @@ describe('a preview that cannot load', () => {
     expect(pause).toHaveBeenCalled();
   });
 
-  it('shows the export at the time sought while its address was read', async () => {
-    let answer: (asset: unknown) => void = () => undefined;
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockReturnValue(new Promise((resolve) => { answer = resolve; }) as never);
-    const user = await onExport();
-    act(() => screen.getByRole('slider').focus());
-    await user.keyboard('{End}');
-    act(() => answer({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 }));
-    const video = await waitFor(() => { const found = screen.getByTestId('motion-preview').querySelector('video'); expect(found).not.toBeNull(); return found as HTMLVideoElement; });
-    await waitFor(() => expect(video.currentTime).toBe(4));
-  });
-
   it('says an export whose video fails to play is unavailable, and loads it again on Retry', async () => {
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
     const user = await onExport();
     const preview = screen.getByTestId('motion-preview');
     const video = await waitFor(() => { const found = preview.querySelector('video'); expect(found).not.toBeNull(); return found as HTMLVideoElement; });
@@ -1106,7 +1075,6 @@ describe('a preview that cannot load', () => {
 
   it('downloads the export\'s video from its asset address', async () => {
     vi.mocked(downloadAsset).mockReset();
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
     const user = await onExport();
     const button = screen.getByTestId('motion-action-download');
     await waitFor(() => expect(button).toBeEnabled());
@@ -1174,7 +1142,7 @@ function inProgressRow(id: string, request: string, phase: string | null = 'writ
  * @returns The row.
  */
 function endedRow(row: Record<string, unknown>, status: 'failed' | 'cancelled' | 'expired' = 'failed', reason: string | null = 'validation_failed'): Record<string, unknown> {
-  return { ...row, status, failureReason: status === 'failed' ? reason : null, resultSourceVersionId: null, resultAssetId: null };
+  return { ...row, status, failureReason: status === 'failed' ? reason : null, resultSourceVersionId: null, resultAsset: null };
 }
 
 const RUNNING = '90000000-0000-4000-8000-0000000000a1';
@@ -1216,7 +1184,7 @@ describe('the execution list\'s three tabs', () => {
     listing([shown]);
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
       vi.mocked(timelineApi.listSpaceExecutions).mockReturnValue(new Promise(() => {}));
-      return { ...exported(shown), status: 'queued', resultAssetId: null } as never;
+      return { ...exported(shown), status: 'queued', resultAsset: null } as never;
     });
     show();
     fireEvent.click(await screen.findByTestId('motion-action-export'));
@@ -1353,7 +1321,7 @@ describe('the execution list\'s three tabs', () => {
 
   it('keeps the preview on the shown result after an accept, opening In progress with the new row marked', async () => {
     const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
-    const made = { ...exported(shown), status: 'queued', resultAssetId: null };
+    const made = { ...exported(shown), status: 'queued', resultAsset: null };
     listing([shown]);
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
       listing([shown], { running: [made] });
@@ -1418,7 +1386,7 @@ describe('the marked row of the execution list', () => {
 
   it('scrolls the list to a row an accept marks below the fold, by the least distance', async () => {
     const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
-    const made = { ...exported(shown), status: 'queued', resultAssetId: null };
+    const made = { ...exported(shown), status: 'queued', resultAsset: null };
     listing([shown]);
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
       listing([shown], { running: [made] });
@@ -1475,7 +1443,7 @@ describe('the marked row of the execution list', () => {
 
   it('leaves the list where it is when the marked row already shows', async () => {
     const shown = done(NEWER, 'Newer logo', '2026-11-15T09:00:00.000000Z');
-    const made = { ...exported(shown), status: 'queued', resultAssetId: null };
+    const made = { ...exported(shown), status: 'queued', resultAsset: null };
     listing([shown]);
     vi.mocked(timelineApi.acceptExecution).mockReset().mockImplementation(async () => {
       listing([shown], { running: [made] });
@@ -1825,8 +1793,7 @@ describe('putting an export on a Canvas', () => {
     const canvas = new Y.Map<unknown>();
     getDoc(docName.projectMeta(PROJECT)).getMap<Y.Map<unknown>>('spaces').set(CANVAS, canvas);
     for (const [key, value] of Object.entries({ id: CANVAS, name: 'Board', type: 'canvas', createdAt: 1 })) canvas.set(key, value);
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
-    listing([{ ...exported(done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')), resultAssetId: '50000000-0000-4000-8000-000000000001' }]);
+    listing([{ ...exported(done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')), resultAsset: EXPORT_VIDEO }]);
     show();
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
     return userEvent.setup();
@@ -1842,8 +1809,7 @@ describe('putting an export on a Canvas', () => {
 
   it('says why it cannot place when the Project has no Canvas, and opens no menu', async () => {
     vi.mocked(toast.warning).mockClear();
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue({ fileUrl: 'https://cdn.example/v.mp4', coverUrl: null, mimeType: 'video/mp4', sizeBytes: 1, width: 1920, height: 1080, durationSeconds: 4 } as never);
-    listing([{ ...exported(done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')), resultAssetId: '50000000-0000-4000-8000-000000000001' }]);
+    listing([{ ...exported(done(OLDER, 'Older logo', '2026-11-15T08:00:00.000000Z')), resultAsset: EXPORT_VIDEO }]);
     show();
     await waitFor(() => expect(screen.getByTestId('motion-preview')).toHaveAttribute('data-execution-id', EXPORT));
     const button = screen.getByTestId('motion-action-place-on-canvas');

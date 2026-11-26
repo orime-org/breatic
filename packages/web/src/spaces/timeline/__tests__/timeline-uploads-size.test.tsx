@@ -22,12 +22,10 @@ import * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
 import { t, type TimelineClip } from '@breatic/shared';
 import type * as MediaUploadModule from '@web/data/upload/media-upload';
-import type * as TimelineApiModule from '@web/data/api/timeline';
 
-const { toast, uploadMedia, resolveAsset } = vi.hoisted(() => ({
+const { toast, uploadMedia } = vi.hoisted(() => ({
   toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
   uploadMedia: vi.fn(),
-  resolveAsset: vi.fn(),
 }));
 vi.mock('@web/lib/toast', () => ({ toast, muteToasts: vi.fn(), _unmuteToastsForTests: vi.fn() }));
 vi.mock('@hocuspocus/provider', async () => {
@@ -89,10 +87,6 @@ vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof MediaUploadModule>()),
   uploadMedia,
 }));
-vi.mock('@web/data/api/timeline', async (importOriginal) => {
-  const actual = await importOriginal<typeof TimelineApiModule>();
-  return { ...actual, timelineApi: { ...actual.timelineApi, resolveAsset } };
-});
 
 import type { StoredUpload } from '@web/data/upload/media-upload';
 import { _resetCollabSocketForTests, acquireDocProvider } from '@web/data/yjs/collab-socket';
@@ -104,7 +98,7 @@ import { evictTimelineUploads, getTimelineUploads, type TimelineUploads } from '
 import { timelineUploadText, timelineUploadView, useTimelineUploadViews } from '@web/spaces/timeline/use-timeline-upload-views';
 import { useSpaceOperationsStore } from '@web/stores/space-operations';
 import { MAIN, V2, cid, seededDoc, timeline, track } from '@web/data/yjs/__tests__/timeline-document-fixtures';
-import { ASSET_ID, UPLOAD_ID, registeredVideo, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
+import { ASSET_ID, UPLOAD_ID, VIDEO_URL, uploadClip } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 import { P_FULL, P_NORMAL, P_WARNING, SIZE_COPY_EN, SIZE_COPY_ZH_CN, enterSize, pushSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
 
 /** What the fake provider exposes to the test. */
@@ -118,7 +112,10 @@ const SPACE = '70000000-0000-4000-8000-000000000001';
 const NAME = docName.timelineSpace(PROJECT, SPACE);
 const TRACKS = [track(MAIN, 0), track(V2, 1)];
 const FILE = new File([new Uint8Array(8)], 'beach.mp4', { type: 'video/mp4' });
-const STORED: StoredUpload = { assetId: ASSET_ID, fileUrl: 'https://cdn.example/beach.mp4', kind: 'video', width: 1920, height: 1080 };
+const STORED: StoredUpload = {
+  assetId: ASSET_ID, fileUrl: VIDEO_URL, kind: 'video', width: 1920, height: 1080,
+  coverUrl: null, durationSeconds: 5, mimeType: 'video/mp4', sizeBytes: 1024,
+};
 const P1 = cid(1);
 
 /** The running fake uploads, resolved by the test. */
@@ -213,7 +210,6 @@ beforeEach(async () => {
   pending.splice(0);
   vi.clearAllMocks();
   uploadMedia.mockImplementation(() => new Promise<StoredUpload>((resolve) => { pending.push(resolve); }));
-  resolveAsset.mockResolvedValue(registeredVideo(5));
 });
 
 afterEach(() => {
@@ -257,7 +253,7 @@ describe('TU-01 to TU-04 an upload that finishes while the Space has no room', (
     expect(sourceCount(doc)).toBe(sources + 1);
     const clip = readTimelineDocument(doc).clips[P1];
     const source = clip?.kind === 'video' ? readTimelineDocument(doc).sources[clip.sourceId] : undefined;
-    expect(source).toMatchObject({ kind: 'video', assetId: ASSET_ID });
+    expect(source).toMatchObject({ kind: 'video', url: VIDEO_URL });
 
     const updates = localUpdates(doc);
     pushSize(NAME, P_NORMAL);
@@ -387,11 +383,11 @@ describe('TU-08 to TU-10 what the placeholder shows', () => {
     screen.unmount();
   });
 
-  const asset = { assetId: 'asset-1' } as never;
+  const video = { url: 'https://cdn.example/assets/clip.mp4' } as never;
   it.each([
-    ['a finished upload with write access on a full Space', { phase: 'done', asset }, 'granted', null, true, { state: 'waitingFull', progress: null, reason: null, retryable: false }],
-    ['a finished upload without write access on a full Space', { phase: 'done', asset }, 'denied', null, true, { state: 'waiting', progress: null, reason: null, retryable: false }],
-    ['a finished upload with write access on a Space with room', { phase: 'done', asset }, 'granted', null, false, { state: 'uploading', progress: null, reason: null, retryable: false }],
+    ['a finished upload with write access on a full Space', { phase: 'done', video }, 'granted', null, true, { state: 'waitingFull', progress: null, reason: null, retryable: false }],
+    ['a finished upload without write access on a full Space', { phase: 'done', video }, 'denied', null, true, { state: 'waiting', progress: null, reason: null, retryable: false }],
+    ['a finished upload with write access on a Space with room', { phase: 'done', video }, 'granted', null, false, { state: 'uploading', progress: null, reason: null, retryable: false }],
     ['a running upload on a full Space', { phase: 'uploading', progress: 0.4 }, 'granted', null, true, { state: 'uploading', progress: 0.4, reason: null, retryable: false }],
     ['a failed upload on a full Space', { phase: 'failed', reason: 'upload', retryable: true }, 'granted', null, true, { state: 'failed', progress: null, reason: 'upload', retryable: true }],
     ['a collaborator\'s upload on a full Space', undefined, 'granted', 'uploading', true, { state: 'uploading', progress: null, reason: null, retryable: false }],

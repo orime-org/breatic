@@ -3,9 +3,8 @@
 
 /**
  * Space document size cap, second design (inner#1790), web test spec RQ-07
- * to RQ-09: the Timeline Add media dialog asks the server (upload, asset
- * resolution, or the background upload of a local video) before it writes,
- * so it checks `canAdd` first; on a full Space it sends nothing, places
+ * to RQ-09: the Timeline Add media dialog checks `canAdd` before it
+ * uploads or writes; on a full Space it sends nothing, places
  * nothing and shows the add sentence inside the dialog. A local video
  * confirmed with room is placed as an upload placeholder at once; when the
  * Space becomes full while it uploads, the placeholder is not converted and
@@ -22,22 +21,16 @@ import * as Y from 'yjs';
 import { QueryClient } from '@tanstack/react-query';
 import { t, type ProjectRegisteredAsset } from '@breatic/shared';
 import type * as MediaUploadModule from '@web/data/upload/media-upload';
-import type * as TimelineApiModule from '@web/data/api/timeline';
 
-const { toast, uploadMedia, resolveAsset } = vi.hoisted(() => ({
+const { toast, uploadMedia } = vi.hoisted(() => ({
   toast: { warning: vi.fn(), error: vi.fn(), info: vi.fn(), success: vi.fn(), loading: vi.fn(), dismiss: vi.fn() },
   uploadMedia: vi.fn(),
-  resolveAsset: vi.fn(),
 }));
 vi.mock('@web/lib/toast', () => ({ toast, muteToasts: vi.fn(), _unmuteToastsForTests: vi.fn() }));
 vi.mock('@web/data/upload/media-upload', async (importOriginal) => ({
   ...(await importOriginal<typeof MediaUploadModule>()),
   uploadMedia,
 }));
-vi.mock('@web/data/api/timeline', async (importOriginal) => {
-  const actual = await importOriginal<typeof TimelineApiModule>();
-  return { ...actual, timelineApi: { ...actual.timelineApi, resolveAsset } };
-});
 
 import { clearAllDocSizes } from '@web/data/yjs/doc-size';
 import { _resetForTests, docName, getDoc } from '@web/data/yjs/manager';
@@ -102,8 +95,10 @@ function dialogError(draft: TimelineMediaDraft): string | null {
 }
 
 beforeEach(() => {
-  uploadMedia.mockResolvedValue({ assetId: ASSET.assetId, fileUrl: ASSET.fileUrl, kind: 'video', width: 1280, height: 720 });
-  resolveAsset.mockResolvedValue(ASSET);
+  uploadMedia.mockResolvedValue({
+    assetId: ASSET.assetId, fileUrl: ASSET.fileUrl, kind: 'video', width: 1280, height: 720,
+    coverUrl: ASSET.coverUrl, durationSeconds: 2, mimeType: 'video/mp4', sizeBytes: 8192,
+  });
 });
 
 afterEach(() => {
@@ -134,7 +129,7 @@ describe('RQ-07 and RQ-08 confirming Add media on a full Space', () => {
     expect(toast.warning).not.toHaveBeenCalled();
   });
 
-  it('RQ-08 project video at F asks nothing and the dialog shows the add sentence', async () => {
+  it('RQ-08 project video at F places nothing and the dialog shows the add sentence', async () => {
     const { doc, draft } = openDraft();
     draft.setMode('project');
     draft.select(ASSET);
@@ -144,7 +139,6 @@ describe('RQ-07 and RQ-08 confirming Add media on a full Space', () => {
 
     await draft.confirm(ON);
 
-    expect(resolveAsset).not.toHaveBeenCalled();
     expect(dialogError(draft)).toBe(SIZE_COPY_EN.T_ADD);
     expect(draft.getSnapshot().busy).toBe(false);
     expect(Y.encodeStateAsUpdate(doc)).toEqual(before);

@@ -31,7 +31,6 @@ vi.mock('@web/data/api/scene', async (importOriginal) => ({
   ...(await importOriginal<typeof SceneApiModule>()),
   listSpaceTasks: vi.fn(async () => ({ serverNow: new Date().toISOString(), tasks: [] })),
   getSceneControls: vi.fn(async () => ({ scaleSensitivity: 1, import: IMPORT_LIMITS, progressPublishMs: 1000 })),
-  resolveSceneAsset: vi.fn(async () => ({ url: 'https://example.invalid/model.glb', mimeType: 'model/gltf-binary', sizeBytes: 100 })),
 }));
 vi.mock('@web/spaces/three-d/viewport/SceneViewport', () => ({
   default: (props: SceneViewportProps): React.JSX.Element => { viewportInputs(props); return <div data-testid='scene-viewport-boundary' />; },

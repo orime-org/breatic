@@ -35,7 +35,8 @@ const V2 = 'v2';
 const V3 = 'v3';
 
 const VIDEO_SOURCE: TimelineVideoSource = {
-  id: '10000000-0000-4000-8000-000000000001', kind: 'video', assetId: '20000000-0000-4000-8000-000000000001',
+  id: '10000000-0000-4000-8000-000000000001', kind: 'video', url: 'https://cdn.example/assets/clip.mp4', coverUrl: null,
+  name: 'clip.mp4', mimeType: 'video/mp4', width: 1920, height: 1080,
   timebase: FPS, extentFrames: 240, durationSeconds: '10', durationOrigin: 'registered',
 };
 const VIDEO: TimelineVideoClip = {
