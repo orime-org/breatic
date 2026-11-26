@@ -681,15 +681,15 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
     return { ...refusal, ...sideEffects, ...scene, ...(countsPublishFailed && { countsPublishFailed }) };
   }
   const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
-  await publishUploadEnded(grant.userId, settledUploadStatus(grant, asset));
+  const cover = asset?.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
+  const coverUrl = cover?.fileUrl ?? null;
+  await publishUploadEnded(grant.userId, settledUploadStatus(grant, asset, coverUrl));
   if (asset === null) {
     if (focusTarget !== null) await announceFocusImageFailed(focusTarget);
     return { status: "stale", ...sideEffects };
   }
   if (documentTarget !== null) await announceDocumentUploadAsset(documentTarget, asset);
   if (focusTarget !== null) await announceFocusImage(focusTarget, asset);
-  const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
-  const coverUrl = cover?.fileUrl ?? null;
   const history = await recordRegisteredUploadHistory(grant, asset, coverUrl);
   const countsPublishFailed = await announceSuccess(grant, resultOf(asset, coverUrl), history.entryId);
   const scene = await settleSceneUpload(grant, { outcome: "done", asset });
@@ -698,7 +698,7 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
   if (grant.sceneLook !== null && grant.projectId !== null && grant.spaceId !== null) {
     await emitSceneLookPicture({
       projectId: grant.projectId, spaceId: grant.spaceId, target: grant.sceneLook,
-      picture: asset.id, userId: grant.userId, uploadKey: grant.storageKey,
+      picture: asset.fileUrl, userId: grant.userId, uploadKey: grant.storageKey,
     });
   }
   return withPeaksQueued({

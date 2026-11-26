@@ -18,15 +18,18 @@ import { failureOutcome } from "@domain/node-task/failure-outcome.js";
 import { referenceUploadAsset } from "@domain/asset/upload-terminal.service.js";
 
 /**
- * How a settled grant ended: voided, a transfer, or registered as `asset` (null when its row is gone). Reads and writes
- * nothing, so the finish that settled the grant tells its uploader with it.
+ * How a settled grant ended: voided, a transfer, or registered as `asset` (null when its row is gone), with the media
+ * facts a Space stores beside the address (inner#2171 design §4). Reads and writes nothing, so the finish that settled
+ * the grant tells its uploader with it.
  * @param grant - A grant already consumed or voided.
  * @param asset - The live row a consumed grant registered as, or null.
+ * @param coverUrl - The video's cover the caller read with `findCoverOf`, or null.
  * @returns Its status.
  */
 export function settledUploadStatus(
   grant: Pick<UploadGrant, "storageKey" | "voidedAt" | "failureReason" | "assetSource">,
-  asset: Pick<StudioAssetEntity, "id" | "fileUrl" | "kind" | "width" | "height" | "deletedAt"> | null,
+  asset: Pick<StudioAssetEntity, "id" | "fileUrl" | "kind" | "width" | "height" | "durationSeconds" | "mimeType" | "sizeBytes" | "deletedAt"> | null,
+  coverUrl: string | null = null,
 ): UploadStatus {
   const key = grant.storageKey;
   if (grant.voidedAt !== null) return { key, state: "failed", reason: grant.failureReason ?? "aborted" };
@@ -37,7 +40,10 @@ export function settledUploadStatus(
   return {
     key,
     state: "completed",
-    result: { assetId: asset.id, fileUrl: asset.fileUrl, kind: asset.kind, width: asset.width, height: asset.height },
+    result: {
+      assetId: asset.id, fileUrl: asset.fileUrl, kind: asset.kind, width: asset.width, height: asset.height,
+      coverUrl, durationSeconds: asset.durationSeconds, mimeType: asset.mimeType, sizeBytes: asset.sizeBytes,
+    },
   };
 }
 
@@ -58,8 +64,10 @@ export async function statusOfGrant(grant: UploadGrant): Promise<UploadStatus> {
   }
   if (grant.consumedAt !== null) {
     const asset = grant.assetId === null ? null : await assetRepo.findLiveInStudio(grant.studioId, grant.assetId);
-    if (asset !== null && asset.deletedAt === null) await referenceUploadAsset(grant, asset.id);
-    return settledUploadStatus(grant, asset);
+    if (asset === null || asset.deletedAt !== null) return settledUploadStatus(grant, asset);
+    await referenceUploadAsset(grant, asset.id);
+    const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
+    return settledUploadStatus(grant, asset, cover?.fileUrl ?? null);
   }
   return failureOutcome(await uploadDeadline(grant)) === "expired"
     ? { key, state: "failed", reason: "expired" }

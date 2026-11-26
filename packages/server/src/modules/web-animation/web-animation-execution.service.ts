@@ -64,7 +64,7 @@ import {
 import { assertStorageAllowance } from "@server/modules/asset/storageQuota.service.js";
 import { precheckCredits } from "@server/modules/credit/credit-precheck.service.js";
 import * as projectService from "@server/modules/project/project.service.js";
-import * as grantRepo from "@server/modules/web-animation/web-animation-grants.repo.js";
+import { webAnimationGrantRepo as grantRepo } from "@breatic/domain";
 import { timelineQueue } from "@server/modules/web-animation/timeline-queue.js";
 
 /** The failures of the payer's own key or its upstream (inner#1953). */

@@ -3,9 +3,10 @@
 
 /**
  * Data access for `timeline_execution_grants` (inner#1711 design §3.4, #1490 design §4.4): which Projects may see,
- * resolve, preview, modify and export what an execution made. Only the server reads and writes it: acceptance grants
- * the accepting Project, duplicating a Project copies its source's grants, and every read answers through
- * {@link liveGrantOf}, so the lists and the single-row, web-source and preview reads agree on what is granted.
+ * resolve, preview, modify and export what an execution made. The server writes it: acceptance grants the accepting
+ * Project and duplicating a Project copies its source's grants. The worker's export finish reads which Projects hold
+ * an export ({@link projectsHolding}). Every list and single-row read answers through {@link liveGrantOf}, so the
+ * lists and the single-row, web-source and preview reads agree on what is granted.
  *
  * A Motion Space's own list walks `timeline_executions_space_order_idx` and checks each row against the grant; the
  * Timeline-made group and the Project's results walk the grant table through its two ordered indexes, which carry each
@@ -15,7 +16,7 @@
 
 import { and, desc, eq, inArray, isNull, notInArray, sql, type SQL } from "drizzle-orm";
 import { db, timelineExecutionGrants as g, timelineExecutions as t, type DbTx } from "@breatic/core";
-import { timelineExecutionRepo } from "@breatic/domain";
+import * as timelineExecutionRepo from "@domain/timeline/timeline-execution.repo.js";
 import type { TimelineExecution, TimelineExecutionStatus } from "@breatic/shared";
 import {
   WEB_ANIMATION_FAILED_STATUSES, WEB_ANIMATION_OPEN_STATUSES, type WebAnimationListGroup, type WebAnimationListScope,
@@ -303,4 +304,17 @@ export async function findLiveExports(key: { projectId: string; spaceId: string;
     ))
     .orderBy(desc(t.createdAt), desc(t.id));
   return rows.map(timelineExecutionRepo.toEntity);
+}
+
+/**
+ * The Projects that hold a live grant on one execution: its own and every copy made from it (inner#2171 design §5.3).
+ * @param executionId - The execution.
+ * @param tx - The caller's transaction, when it has one.
+ * @returns Their ids.
+ * @throws {Error} When the database query fails.
+ */
+export async function projectsHolding(executionId: string, tx?: DbTx): Promise<string[]> {
+  const rows = await (tx ?? db).select({ projectId: g.projectId }).from(g)
+    .where(and(eq(g.executionId, executionId), isNull(g.deletedAt)));
+  return [...new Set(rows.map((row) => row.projectId))];
 }
