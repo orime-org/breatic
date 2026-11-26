@@ -575,8 +575,8 @@ export async function setCover(
  *   is not in its studio
  * @throws {ForbiddenError} if the caller is neither the studio's admin nor the
  *   source's owner
- * @throws {ConflictError} if the source is archived, or its studio already
- *   holds as many projects as its tier allows
+ * @throws {ConflictError} if the source is archived or is itself still being
+ *   copied, or its studio already holds as many projects as its tier allows
  */
 export async function duplicate(
   sourceId: string,
@@ -589,6 +589,8 @@ export async function duplicate(
     // beside the thing it was copied from and counts against that studio.
     const source = await projectRepo.getProjectById(sourceId, tx);
     if (!source) throw new NotFoundError(t("server.error.not_found"));
+    // A copy has none of its documents until collab has copied them (inner#1706).
+    if (source.copying) throw new ConflictError(t("server.error.project_copying"));
     await assertStudioHasProjectRoom(source.studioId, tx);
     const isFirst = await claimFirstMilestone("first-project", userId, tx);
     const copy = await projectRepo.duplicateProject(tx, userId, source, copyName(source.name));

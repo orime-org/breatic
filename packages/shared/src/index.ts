@@ -886,6 +886,7 @@ export {
 export {
   UPLOAD_STATUS_MAX_KEYS,
   STUDIO_PAGE_POLL_DEFAULT_MS,
+  COPYING_POLL_MAX_IDS,
   type UploadStatus,
   type UploadStatusResult,
 } from "@shared/upload/upload-status.js";

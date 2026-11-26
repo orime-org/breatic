@@ -1,6 +1,6 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
-import { and, eq, isNull } from "drizzle-orm";
+import { and, eq, isNull, sql } from "drizzle-orm";
 import { db, type DbTx } from "@core/db/client.js";
 import { projects, studios } from "@core/db/schema.js";
 
@@ -76,4 +76,29 @@ export async function findCreatorAndStudio(
     .where(and(eq(projects.id, projectId), isNull(projects.deletedAt)))
     .limit(1);
   return rows[0];
+}
+
+/**
+ * Whether collab has already copied a duplicated Project's documents (inner#1706), so a lifecycle command delivered
+ * again copies nothing and cannot overwrite what the user has since done in the copy.
+ * @param projectId - The copy.
+ * @returns True once its completion is recorded; false while it is being copied or when no such row exists.
+ * @throws {Error} When the database query fails.
+ */
+export async function isDuplicateCompleted(projectId: string): Promise<boolean> {
+  const [row] = await db.select({ at: projects.duplicateCompletedAt }).from(projects)
+    .where(eq(projects.id, projectId)).limit(1);
+  return row?.at !== null && row?.at !== undefined;
+}
+
+/**
+ * Record that collab has copied a duplicated Project's documents, which is when it opens. Only the first record
+ * counts.
+ * @param projectId - The copy.
+ * @returns Nothing.
+ * @throws {Error} When the database write fails.
+ */
+export async function markDuplicateCompleted(projectId: string): Promise<void> {
+  await db.update(projects).set({ duplicateCompletedAt: sql`now()` })
+    .where(and(eq(projects.id, projectId), isNull(projects.duplicateCompletedAt)));
 }

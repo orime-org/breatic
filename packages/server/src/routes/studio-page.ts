@@ -8,7 +8,7 @@
 
 import { Hono } from "hono";
 import { validate } from "@breatic/core";
-import { UPLOAD_STATUS_MAX_KEYS } from "@breatic/shared";
+import { COPYING_POLL_MAX_IDS, UPLOAD_STATUS_MAX_KEYS } from "@breatic/shared";
 import { z } from "zod";
 import { requireAuth, type AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -31,11 +31,17 @@ studioPage.get(
         .optional()
         .transform((v) => (v === undefined || v === "" ? [] : v.split(",")))
         .pipe(z.array(z.string().min(1).max(512)).max(UPLOAD_STATUS_MAX_KEYS)),
+      // The Projects the page shows as being copied, comma-separated; absent when it shows none.
+      copying: z
+        .string()
+        .optional()
+        .transform((v) => (v === undefined || v === "" ? [] : v.split(",")))
+        .pipe(z.array(z.string().uuid()).max(COPYING_POLL_MAX_IDS)),
     }),
   ),
   async (c) => {
-    const { studio, uploads } = c.req.valid("query");
-    return c.json({ data: await pollStudioPage(c.get("user").id, studio, uploads) });
+    const { studio, uploads, copying } = c.req.valid("query");
+    return c.json({ data: await pollStudioPage(c.get("user").id, studio, uploads, copying) });
   },
 );
 

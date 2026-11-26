@@ -2,22 +2,56 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import { useEffect, useRef } from 'react';
-import { useQueryClient } from '@tanstack/react-query';
-import { STUDIO_PAGE_POLL_DEFAULT_MS, UPLOAD_STATUS_MAX_KEYS } from '@breatic/shared';
+import { useQueryClient, type InfiniteData, type QueryClient } from '@tanstack/react-query';
+import { COPYING_POLL_MAX_IDS, STUDIO_PAGE_POLL_DEFAULT_MS, UPLOAD_STATUS_MAX_KEYS, type StudioProjectPage } from '@breatic/shared';
 
+import { isStudioProjectsListKey } from '@web/data/api/projects';
 import { studioPageApi, type StudioPagePoll } from '@web/data/api/studio-page';
 import { settleUploadEnding, waitingUploadKeys } from '@web/data/upload/upload-status';
+
+/**
+ * The Projects a Studio's cached project lists show as being copied.
+ * @param queryClient - The app's query client.
+ * @param slug - The Studio.
+ * @returns Their ids, each once.
+ */
+function copyingProjectIds(queryClient: QueryClient, slug: string): string[] {
+  const ids = new Set<string>();
+  const lists = queryClient.getQueriesData<InfiniteData<StudioProjectPage>>({
+    predicate: (query) => isStudioProjectsListKey(query.queryKey) && query.queryKey[1] === slug,
+  });
+  for (const [, data] of lists) {
+    for (const page of data?.pages ?? []) {
+      for (const item of page.items) if (item.copying) ids.add(item.id);
+    }
+  }
+  return [...ids];
+}
+
+/**
+ * At most `max` of `all`, starting at `offset` and wrapping, so a long list is asked about in turn.
+ * @param all - Everything waiting.
+ * @param max - One request's worth.
+ * @param offset - Where this round starts.
+ * @returns This round's share.
+ */
+function roundOf(all: readonly string[], max: number, offset: number): string[] {
+  if (all.length <= max) return [...all];
+  const start = offset % all.length;
+  return [...all, ...all].slice(start, start + max);
+}
 
 /**
  * The Studio page's one poll (#1580). It asks once on mount, then again `nextPollMs` after each answer, with the
  * uploads the page waits for. The first answer is the baseline, and the bell and the Studio's transfer are read once
  * more against it; a later one reads the bell again when its count or newest time moved, and the Studio's transfer
- * when the offer changed, and every ended upload goes to its waiter.
- * One request carries at most `UPLOAD_STATUS_MAX_KEYS` keys, starting further on each round, so every key is asked
- * about in turn however many wait. A hidden tab pauses it, showing the tab again asks at once, and leaving the page stops it. One request is out at a
- * time, and an answer that comes back after the tab was hidden or the page went changes nothing. The bell is the
- * person's own, so its last answer carries over when the page moves to another Studio; the transfer section reads its
- * Studio's offer itself when it mounts.
+ * when the offer changed, and every ended upload goes to its waiter. It also asks about the Projects this Studio's
+ * lists show as being copied (inner#1706) and reads those lists again once an answer names one as copied.
+ * One request carries at most `UPLOAD_STATUS_MAX_KEYS` keys and `COPYING_POLL_MAX_IDS` Projects, starting further on
+ * each round, so every one is asked about in turn however many wait. A hidden tab pauses it, showing the tab again
+ * asks at once, and leaving the page stops it. One request is out at a time, and an answer that comes back after the
+ * tab was hidden or the page went changes nothing. The bell is the person's own, so its last answer carries over when
+ * the page moves to another Studio; the transfer section reads its Studio's offer itself when it mounts.
  * @param slug - The Studio the page shows, or null on the Recent page.
  */
 export function useStudioPagePoll(slug: string | null): void {
@@ -31,6 +65,7 @@ export function useStudioPagePoll(slug: string | null): void {
     let last: StudioPagePoll | null = null;
     let nextMs = STUDIO_PAGE_POLL_DEFAULT_MS;
     let offset = 0;
+    let copyingOffset = 0;
 
     /**
      * The keys this round asks about.
@@ -38,10 +73,21 @@ export function useStudioPagePoll(slug: string | null): void {
      */
     const roundKeys = (): string[] => {
       const waiting = waitingUploadKeys();
-      if (waiting.length <= UPLOAD_STATUS_MAX_KEYS) return waiting;
-      const start = offset % waiting.length;
-      offset = start + UPLOAD_STATUS_MAX_KEYS;
-      return [...waiting, ...waiting].slice(start, start + UPLOAD_STATUS_MAX_KEYS);
+      const keys = roundOf(waiting, UPLOAD_STATUS_MAX_KEYS, offset);
+      if (waiting.length > UPLOAD_STATUS_MAX_KEYS) offset = (offset % waiting.length) + UPLOAD_STATUS_MAX_KEYS;
+      return keys;
+    };
+
+    /**
+     * The copies this round asks about; none on the Recent page.
+     * @returns At most one request's worth, starting where the last round stopped.
+     */
+    const roundCopying = (): string[] => {
+      if (slug === null) return [];
+      const copying = copyingProjectIds(queryClient, slug);
+      const ids = roundOf(copying, COPYING_POLL_MAX_IDS, copyingOffset);
+      if (copying.length > COPYING_POLL_MAX_IDS) copyingOffset = (copyingOffset % copying.length) + COPYING_POLL_MAX_IDS;
+      return ids;
     };
 
     /**
@@ -75,6 +121,9 @@ export function useStudioPagePoll(slug: string | null): void {
         void queryClient.invalidateQueries({ queryKey: ['studio-transfer', 'live', slug] });
       }
       for (const status of answer.uploads) settleUploadEnding(status);
+      if (answer.copied.length > 0) {
+        void queryClient.invalidateQueries({ predicate: (query) => isStudioProjectsListKey(query.queryKey) });
+      }
     };
 
     /** Send one request, unless one is out or the poll is paused or stopped. */
@@ -82,7 +131,7 @@ export function useStudioPagePoll(slug: string | null): void {
       if (inFlight || !running()) return;
       inFlight = true;
       try {
-        const answer = await studioPageApi.poll(slug, roundKeys());
+        const answer = await studioPageApi.poll(slug, roundKeys(), roundCopying());
         if (running()) take(answer);
       } catch {
         // A failed round is tried again after the last named interval; the answers say what changed.

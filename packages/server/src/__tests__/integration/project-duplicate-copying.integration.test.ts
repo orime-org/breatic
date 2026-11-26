@@ -151,10 +151,10 @@ describe("a copy while it is being copied", () => {
     const { admin, projectId } = await adminWithProject();
     const copy = await projectService.duplicate(projectId, admin);
 
-    expect((await projectService.loadForViewer(copy.id, admin)).copying).toBe(true);
-    expect((await projectService.loadForViewer(projectId, admin)).copying).toBe(false);
+    expect((await projectService.loadForViewer(copy.id, admin)).project.copying).toBe(true);
+    expect((await projectService.loadForViewer(projectId, admin)).project.copying).toBe(false);
     await complete(copy.id);
-    expect((await projectService.loadForViewer(copy.id, admin)).copying).toBe(false);
+    expect((await projectService.loadForViewer(copy.id, admin)).project.copying).toBe(false);
   });
 
   it("lists none of the source's running 3D tasks in the copy's 3D Space, which keeps the source Space's id", async () => {

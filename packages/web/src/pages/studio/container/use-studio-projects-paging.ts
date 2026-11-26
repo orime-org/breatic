@@ -60,6 +60,7 @@ export function toContainerProject(p: ProjectSummary): ContainerProject {
     canArchive: p.canArchive,
     canRestore: p.canRestore,
     canLeave: p.canLeave,
+    copying: p.copying,
   };
 }
 

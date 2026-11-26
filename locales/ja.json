@@ -10,7 +10,8 @@
       "rate_limited": "リクエストが多すぎます。しばらくしてから再試行してください",
       "payload_too_large": "リクエストの内容が {limit} を超えています。プロンプトか参照しているテキストを短くしてください。",
       "transfer_invalid": "アップロードした内容を使用できませんでした。もう一度お試しください。",
-      "internal": "内部サーバーエラー"
+      "internal": "内部サーバーエラー",
+      "project_copying": "この Project はコピー中のため、まだコピーできません。"
     },
     "credit": {
       "not_studio_admin": "クレジットを割り当てられるのは、自分が管理する Studio だけです。",
@@ -3443,6 +3444,10 @@
       "title": "未完了の作業があります。再読み込みしますか？",
       "refresh": "再読み込みする",
       "failed": "再読み込みできませんでした。もう一度お試しください。"
+    },
+    "copying": {
+      "title": "この Project はコピー中です。完了したら Studio から開いてください。",
+      "backToStudio": "Studio に戻る"
     }
   },
   "common": {
@@ -4435,7 +4440,8 @@
         "openedAt": "最後に開いた：{time}",
         "editedAt": "最終編集：{time}",
         "archivedAt": "アーカイブ：{time}",
-        "neverOpened": "未オープン"
+        "neverOpened": "未オープン",
+        "copying": "コピー中"
       },
       "projects": {
         "new": "Project を新規作成",

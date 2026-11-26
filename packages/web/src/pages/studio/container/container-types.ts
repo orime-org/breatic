@@ -48,6 +48,8 @@ export interface ContainerProject {
   canRestore: boolean;
   /** The card menu may offer leaving the project. */
   canLeave: boolean;
+  /** A copy still being copied (inner#1706): it shows the spinner, opens nothing and has no menu. */
+  copying: boolean;
 }
 
 /** Which of a project's times a card or row shows: the one its list is sorted by. */
