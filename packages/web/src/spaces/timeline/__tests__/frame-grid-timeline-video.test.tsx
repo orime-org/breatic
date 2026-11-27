@@ -31,6 +31,9 @@ import { alphaManifestQuery } from '@web/spaces/canvas/video-presentation/use-re
 import { presentedBinding, presentedBundle, presentedPreparation, presentedResponse } from '@web/test-utils/video-presentation';
 
 import type * as RequestModule from '@web/data/api/request';
+import type * as SharedModule from '@breatic/shared';
+import { readAlphaPackedManifest } from '@breatic/shared';
+import { apiPost } from '@web/data/api/request';
 import type * as RendererModule from '@web/spaces/canvas/video-presentation/create-video-renderer';
 vi.mock('@web/data/api/timeline', async (importOriginal) => {
   const actual = await importOriginal<typeof TimelineApiModule>();
@@ -39,6 +42,11 @@ vi.mock('@web/data/api/timeline', async (importOriginal) => {
 vi.mock('@web/data/api/request', async (importOriginal) => ({
   ...(await importOriginal<typeof RequestModule>()),
   apiGet: vi.fn(() => new Promise<never>(() => undefined)),
+  apiPost: vi.fn(() => new Promise<never>(() => undefined)),
+}));
+vi.mock('@breatic/shared', async (importOriginal) => ({
+  ...(await importOriginal<typeof SharedModule>()),
+  readAlphaPackedManifest: vi.fn(() => Promise.reject(new Error('manifest unreadable'))),
 }));
 vi.mock('@web/spaces/canvas/video-presentation/create-video-renderer', async (importOriginal) => ({
   ...(await importOriginal<typeof RendererModule>()),
@@ -148,5 +156,30 @@ describe('U05 the Timeline preview plays through Qp (§7.8, §7.9)', () => {
     expect(preview.querySelector('[data-testid="alpha-surface"]')).not.toBeNull();
     expect(preview.querySelector(`video[src="${ASSET.fileUrl}"]`)).toBeNull();
     expect(screen.queryByText(/video unavailable/)).toBeNull();
+  });
+  it('U05: a selected alpha-packed version whose manifest cannot be read shows the preparation failure, and its Retry reads the manifest again', async () => {
+    const packed = { storageKey: 'timeline-packed.mp4', url: 'https://cdn.example/timeline-packed.mp4', etag: '"k"', size: 8192, sha256: '9'.repeat(64), contentType: 'video/mp4' };
+    const bundle = presentedBundle(ASSET.fileUrl, { playback: { kind: 'alpha-packed', carrier: packed, manifest: { ...packed, storageKey: 'timeline-alpha.json', url: 'https://cdn.example/timeline-alpha.json', contentType: 'application/json' } } });
+    const server = new Y.Doc();
+    initializeTimelineDocument(server, SETTINGS);
+    const doc = getDoc(docName.timelineSpace(PROJECT, SPACE));
+    Y.applyUpdate(doc, Y.encodeStateAsUpdate(server), 'provider');
+    server.destroy();
+    expect(applyTimelineEdit(doc, { operation: 'add_video', parameters: { source: SOURCE, clip: CLIP }, placement: { magnet: false, linkage: false } }, 'test-setup').ok).toBe(true);
+    client.setQueryData(videoPresentationQuery({ projectId: PROJECT, canonicalURL: ASSET.fileUrl, active: true }).queryKey, presentedResponse(presentedBinding(ASSET.fileUrl), { presentation: bundle }));
+    const manifest = { schemaVersion: 1 as const, packed, packedWidth: 196, packedHeight: 64, colorRect: { x: 0, y: 0, width: 96, height: 64 }, alphaRect: { x: 100, y: 0, width: 96, height: 64 } };
+    render(<QueryClientProvider client={client}><TooltipProvider><SpaceConnectionContext.Provider value={CONNECTED}>
+      <TimelineSpace projectId={PROJECT} spaceId={SPACE} readOnly={false} myRole='editor' />
+    </SpaceConnectionContext.Provider></TooltipProvider></QueryClientProvider>);
+    const preview = await screen.findByTestId('timeline-preview');
+    expect(await screen.findByText('Couldn\'t prepare the video')).toBeInTheDocument();
+    expect(screen.queryByText(/video unavailable/)).toBeNull();
+    const reads = vi.mocked(readAlphaPackedManifest).mock.calls.length;
+    vi.mocked(readAlphaPackedManifest).mockResolvedValueOnce(manifest);
+    fireEvent.click(screen.getByRole('button', { name: /retry/i }));
+    await waitFor(() => expect(preview.querySelector('[data-testid="alpha-surface"]')).not.toBeNull());
+    expect(vi.mocked(readAlphaPackedManifest).mock.calls.length).toBe(reads + 1);
+    expect(vi.mocked(apiPost)).not.toHaveBeenCalled();
+    expect(screen.queryByText('Couldn\'t prepare the video')).toBeNull();
   });
 });
