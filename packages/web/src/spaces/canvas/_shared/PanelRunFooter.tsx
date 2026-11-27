@@ -1,6 +1,7 @@
 // Copyright (c) 2026 Orime, Inc.
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
+import { toast } from '@web/lib/toast';
 import { ArrowUp } from 'lucide-react';
 import type * as React from 'react';
 
@@ -24,6 +25,8 @@ export interface PanelRunFooterProps {
   runLabel: string;
   /** Whether Run takes no press. */
   disabled: boolean;
+  /** Why Run cannot run now although its inputs exist: Run stays pressable, dimmed, and a press shows this as a warning. */
+  blockedReason?: string;
   /** Whether a press is still waiting. */
   loading: boolean;
   /** Runs it. */
@@ -52,6 +55,7 @@ export interface PanelRunFooterProps {
  * @param props.creditDetail - On the payer's key, the full sentence its short name stands for.
  * @param props.runLabel - Run's accessible name.
  * @param props.disabled - Whether Run takes no press.
+ * @param props.blockedReason - Why a press cannot run now, shown as a warning instead of running.
  * @param props.loading - Whether a press is still waiting.
  * @param props.onRun - Runs it.
  * @param props.creditTestId - Test hook for the cost text.
@@ -67,6 +71,7 @@ export function PanelRunFooter({
   creditDetail,
   runLabel,
   disabled,
+  blockedReason,
   loading,
   onRun,
   creditTestId,
@@ -91,10 +96,11 @@ export function PanelRunFooter({
       data-testid={runTestId}
       aria-label={runLabel}
       disabled={disabled}
+      aria-disabled={blockedReason === undefined ? undefined : true}
       loading={loading}
       icon={<ArrowUp className='h-4 w-4' aria-hidden='true' />}
-      onClick={onRun}
-      className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover-enabled:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed'
+      onClick={blockedReason === undefined ? onRun : () => toast.warning(blockedReason)}
+      className='flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary text-primary-foreground transition-colors hover-enabled:bg-primary-hover focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:opacity-50 disabled:cursor-not-allowed aria-disabled:opacity-50'
     />
   );
   return (

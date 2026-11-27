@@ -52,6 +52,7 @@ import { canvasSpaceDocName, NO_CONSENT, t, threeDSpaceDocName, uprightKeyFor } 
 import type { NodeTaskResult, StudioAssetEntity, UprightCopy } from "@breatic/shared";
 import { appendProjectActivity } from "@domain/activity/project-activity.service.js";
 import { scheduleAudioPeaks } from "@domain/asset/audio-peaks.service.js";
+import { ensureVideoPresentation } from "@domain/asset/video-presentation.service.js";
 import * as uploadGrantRepo from "@domain/asset/upload-grant.repo.js";
 import { announceDocumentUploadAsset, announceDocumentUploadFailure, documentTargetOf } from "@domain/asset/document-upload-events.js";
 import { announceFocusImage, announceFocusImageFailed, focusImageTargetOf } from "@domain/asset/focus-image-events.js";
@@ -149,6 +150,7 @@ export const INGEST_SIDE_EFFECT_EVENTS: Record<
   activityAppendFailed: "activity_record_failed",
   coverRegisterFailed: "ingest_cover_register_failed",
   peaksQueueFailed: "audio_peaks_queue_failed",
+  presentationQueueFailed: "video_presentation_queue_failed",
 };
 
 /**
@@ -182,6 +184,13 @@ export interface IngestSideEffects {
    * them, and this line is what says so.
    */
   peaksQueueFailed?: boolean;
+  /** Presentation admission failed; canonical registration remains successful. */
+  presentationQueueFailed?: boolean;
+}
+
+/** Trusted caller context, never parsed from a browser's registration report. */
+export interface IngestReportOptions {
+  presentation?: { deadlineAt: number };
 }
 
 /**
@@ -660,11 +669,12 @@ async function recordRegisteredUploadHistory(
  * uploader before anything else is announced, with the status `settledUploadStatus` gives (#1580).
  * @param terminal - The result of serialized database arbitration.
  * @param sideEffects - Best-effort work whose failures the caller must log.
+ * @param options - Trusted parent context for auxiliary presentation work.
  * @returns The same canonical result for completions and their later replays.
  * @throws {Error} When the uploader cannot be told, or history recovery, success publication or a Document block's
  *   failure publication cannot finish; the finish runs again and tells it again.
  */
-async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}): Promise<IngestReportOutcome> {
+async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: IngestSideEffects = {}, options: IngestReportOptions = {}): Promise<IngestReportOutcome> {
   const { grant } = terminal;
   const documentTarget = documentTargetOf(grant);
   const focusTarget = focusImageTargetOf(grant);
@@ -715,24 +725,40 @@ async function announceUploadTerminal(terminal: UploadTerminal, sideEffects: Ing
     ...sideEffects,
     ...scene,
     ...(countsPublishFailed && { countsPublishFailed }),
-  });
+  }, grant, options);
+}
+
+/**
+ * Why a measured object is refused whatever it is: over the upload cap, or nothing arrived (a provider that answers 200
+ * with no body, a transport that hands back an empty buffer). The object is already in storage, so a refusal leaves it
+ * for the voided grant to name as an orphan. A video tool run checks its staged outputs with this before its done report
+ * is written (frames-split §7.19).
+ * @param sizeBytes - What the Worker measured.
+ * @returns The refusal, or null.
+ * @throws {never} Never.
+ */
+export function ingestReportRefusal(sizeBytes: number): "over_cap" | "empty" | null {
+  if (sizeBytes > getStorageConfig().upload.max_upload_bytes) return "over_cap";
+  return sizeBytes === 0 ? "empty" : null;
 }
 
 /**
  * Apply one report from the ingest Worker.
  * @param report - What happened to this upload.
+ * @param options - Trusted parent presentation budget and channel hint.
  * @returns What was decided, for the route to answer with.
  * @throws {NotFoundError} When the key names no grant we ever issued.
  * @throws {Error} When registration, association, terminal commitment, success publication or a Document block's failure publication fails.
  */
 export async function applyIngestReport(
   report: IngestReport,
+  options: IngestReportOptions = {},
 ): Promise<IngestReportOutcome> {
   const grant = await findGrantByKey(report.storageKey);
   if (grant === null) throw new NotFoundError(t("server.error.not_found"));
 
   if (grant.consumedAt !== null || grant.voidedAt !== null) {
-    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "replay" }));
+    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "replay" }), {}, options);
   }
   if (report.outcome === "aborted") {
     const expired = failureOutcome(await uploadDeadline(grant)) === "expired";
@@ -750,24 +776,9 @@ export async function applyIngestReport(
   // The declared size got the ticket issued; this is the first time anyone has
   // measured what actually arrived. The object is already in storage, so this
   // refusal leaves it there and lets the voided grant name it as an orphan.
-  const { upload } = getStorageConfig();
   const sizeBytes = report.sizeBytes;
-  if (sizeBytes > upload.max_upload_bytes) {
-    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason: "over_cap" }));
-  }
-
-  // Nothing arrived. A provider that answers 200 with no body, or a transport
-  // that hands back an empty buffer, produces a completed report of zero bytes
-  // — and registering that would put an empty object on the node and let the
-  // generation reach its charge. Every one of these is either an address that
-  // answered with nothing in it, or a backend upload opened for bytes it
-  // expected to exist. A browser delivery is stopped a step
-  // earlier, where the Worker refuses a final part carrying no bytes
-  // (`packages/ingest/src/part-layout.ts`), and that refusal reaches the node
-  // the ordinary way.
-  if (sizeBytes === 0) {
-    return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason: "empty" }));
-  }
+  const refused = ingestReportRefusal(sizeBytes);
+  if (refused !== null) return announceUploadTerminal(await settleUploadTerminal(grant.storageKey, { kind: "failed", reason: refused }));
 
   const kind = assetService.detectAssetKind(contentType);
   // A picture turned upright is filed as its upright copy (inner#1367 §4.5).
@@ -865,7 +876,7 @@ export async function applyIngestReport(
     ...(reclaimUnrecorded && { reclaimQueueFailed: reclaimUnrecorded }),
     ...(activityAppendFailed && { activityAppendFailed }),
     ...((cover.failed || settled?.failed === true) && { coverRegisterFailed: true }),
-  });
+  }, options);
 }
 
 /**
@@ -876,14 +887,24 @@ export async function applyIngestReport(
  * leave its audio without a job. The row stands either way; a job that could
  * not be queued is a flag for the caller to write down.
  * @param outcome - What registration answered.
+ * @param grant - Original upload identity and budget.
+ * @param options - Trusted parent context for auxiliary presentation work.
  * @returns The same outcome, flagged when its job could not be queued.
  */
-async function withPeaksQueued(outcome: IngestReportOutcome): Promise<IngestReportOutcome> {
+async function withPeaksQueued(outcome: IngestReportOutcome, grant: UploadGrant, options: IngestReportOptions): Promise<IngestReportOutcome> {
   const queued = await scheduleAudioPeaks(outcome).then(
     () => true,
     () => false,
   );
-  return queued ? outcome : { ...outcome, peaksQueueFailed: true };
+  const result = queued ? outcome : { ...outcome, peaksQueueFailed: true };
+  if ((outcome.status !== 'registered' && outcome.status !== 'already_registered') || outcome.kind !== 'video') return result;
+  // Only a new upload's initialization admits unconditionally (§3.5); a dedup hit (another upload's row) or a replayed
+  // terminal of this upload admits only under the discovery read's conditions, so a running job is never archived.
+  const conditional = !(outcome.status === 'registered' && outcome.ownRow);
+  const presentationQueued = await Promise.resolve().then(async () => ensureVideoPresentation({
+    assetId: outcome.assetId, parentDeadlineAt: options.presentation?.deadlineAt ?? await uploadDeadline(grant), conditional,
+  })).then(() => true, () => false);
+  return presentationQueued ? result : { ...result, presentationQueueFailed: true };
 }
 
 /**

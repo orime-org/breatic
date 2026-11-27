@@ -14,16 +14,17 @@
 import { randomUUID } from "node:crypto";
 import { tasksQueue } from "@server/modules/task/tasks-queue.js";
 import { admitGeneration } from "@server/modules/task/admit-generation.service.js";
-import { currentConsent, defaultJobOpts, validate } from "@breatic/core";
+import { ConflictError, currentConsent, defaultJobOpts, logger, validate } from "@breatic/core";
 import { Hono } from "hono";
-import { miniToolById, miniToolRequestSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
+import { acceptMiniToolExecution, quoteMiniToolExecution } from "@breatic/domain";
+import { miniToolById, miniToolPlannedRequestSchema, miniToolSubmissionSchema, outputTemplateOf } from "@breatic/shared/mini-tools";
 
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
 import { runOnce } from "@server/middleware/run-once.js";
 import { idempotencyKeyHeaderSchema } from "@server/routes/schemas.js";
-import { projectService } from "@server/modules";
+import { explainHoldRefusal, miniToolPlannedRunService, projectService, reserveForRunIn } from "@server/modules";
 import { prepareRun } from "@server/modules/mini-tool/mini-tool.service.js";
 import { holdRowedRun, startRowedRun } from "@server/modules/task/generation-task.js";
 import { creditsToHold, taskKeyRows } from "@server/modules/task/run-keys.js";
@@ -32,6 +33,28 @@ const miniTools = new Hono<{ Variables: AuthVariables }>();
 
 miniTools.use("*", requireAuth);
 
+
+/**
+ * Quote a planned video run with the admission's own computation and write nothing (§97 D26-1).
+ * @param c - Hono context with the planned request admission would take.
+ * @returns `200` with `{ credits }`.
+ * @throws {AppError} The refusal admission would give the same body.
+ */
+miniTools.post(
+  "/quote",
+  rateLimitFor("mini_tool_quote", "user"),
+  validate("json", miniToolPlannedRequestSchema),
+  async (c) => {
+    const user = c.get("user");
+    const body = c.req.valid("json");
+    try {
+      return c.json({ data: await quoteMiniToolExecution(body, user.id) }, 200);
+    } catch (err) {
+      logger.error({ err, ctx: { userId: user.id, projectId: body.project_id, spaceId: body.space_id, runId: body.run_id, tool: body.tool } }, "mini_tool_quote_failed");
+      throw err;
+    }
+  },
+);
 
 /**
  * Run one mini-tool onto the result nodes the browser built.
@@ -45,11 +68,24 @@ miniTools.post(
   "/",
   rateLimitFor("mini_tool", "user"),
   validate("header", idempotencyKeyHeaderSchema),
-  validate("json", miniToolRequestSchema),
+  validate("json", miniToolSubmissionSchema),
   runOnce("mini-tool"),
   async (c) => {
   const user = c.get("user");
   const body = c.req.valid("json");
+  if ("run_id" in body) {
+    try {
+      // Its estimate is held with its task row's claim, so a refusal leaves nothing on the nodes (inner#1968).
+      const record = await acceptMiniToolExecution(body, user.id, (accepted) => miniToolPlannedRunService.startPlannedMiniToolRun(accepted, user.id),
+        (taskId, credits, tx) => reserveForRunIn(tx, body.project_id, user.id, taskId, credits));
+      return c.json({ data: { task_id: record.taskId, status: record.status } }, 201);
+    } catch (thrown) {
+      const err = await explainHoldRefusal(thrown);
+      logger.error({ err, ctx: { userId: user.id, projectId: body.project_id, spaceId: body.space_id, runId: body.run_id, tool: body.tool } },
+        err instanceof ConflictError ? "mini_tool_planned_identity_conflict" : "mini_tool_planned_admission_failed");
+      throw err;
+    }
+  }
   const spec = miniToolById(body.tool)!;
 
   await projectService.assertAccess(body.project_id, user.id, "editor");

@@ -1,0 +1,5 @@
+avi_h264_bf.avi
+
+AVI, 320x240 H.264 with B-frames at 30000/1001 fps with MP3; FFmpeg gives its packets a dts and no pts; one keyframe; 90 frames. Grid rate 30000/1001 (nominal) per the sample set's rate table. One of the sample set's legacy AVI samples (round-8 review); the exact generating command was not recorded with the sample.
+
+From the maintainers' frame-grid sample set (inner#1306), copied unchanged. Used by container/__tests__/frame-grid-*.node.test.ts.

@@ -763,6 +763,8 @@ export interface ProjectEntity {
   deletedAt: Date | null;
   /** When the project was archived, or null while it is live. An archived project is read-only. */
   archivedAt: Date | null;
+  /** A copy whose documents collab has not copied yet (inner#1706); it does not open until they are in. */
+  copying: boolean;
 }
 
 /**
@@ -800,6 +802,8 @@ export interface ProjectDetail {
   canRestore: boolean;
   /** Whether the user may leave it — live, and they are an editor or a viewer. */
   canLeave: boolean;
+  /** A copy whose documents are not copied yet (inner#1706); the page shows that and opens nothing. */
+  copying: boolean;
 }
 
 /**
@@ -831,6 +835,8 @@ export interface ProjectSummary {
   lastOpenedAt: Date | null;
   /** When its content or metadata last changed; its creation time until then. */
   lastEditedAt: Date;
+  /** A copy whose documents are not copied yet (inner#1706); its card shows that, opens nothing and has no menu. */
+  copying: boolean;
   /** The card menu: rename and change the cover. */
   canManageMeta: boolean;
   /** The card menu: duplicate. */

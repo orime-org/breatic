@@ -45,15 +45,21 @@ export type ContainerOp = (typeof CONTAINER_OPS)[number];
 /**
  * Why a container job failed. `no_audio_track` is an operation on the sound
  * given a source without one; `internal` is the run losing the source download
- * or the output upload; everything else the tool broke on is `tool_failed`.
+ * or the output upload; `expired` is ingest ending the job at its deadline,
+ * which the worker shows as the tool's timeout reason; everything else the
+ * tool broke on is `tool_failed`.
  */
-export const CONTAINER_FAILURES = ["tool_failed", "no_audio_track", "internal"] as const;
+export const CONTAINER_FAILURES = ["tool_failed", "no_audio_track", "internal", "expired"] as const;
 
 /** One of {@link CONTAINER_FAILURES}. */
 export type ContainerFailure = (typeof CONTAINER_FAILURES)[number];
 
+/** The most outputs one container job may write; every container tool's result count stays within it. */
+export const MINI_TOOL_JOB_MAX_OUTPUTS = 8;
+
 /** Where a tool runs. */
 export type MiniToolRun =
+  | { readonly kind: "planned" }
   | { readonly kind: "browser" }
   | { readonly kind: "model"; readonly model: string }
   | { readonly kind: "container"; readonly op: ContainerOp };
@@ -267,6 +273,8 @@ export interface MiniToolOutput {
   readonly modality: MiniToolMedium | "text";
   /** Upper-case prefix of the new node's name, as in `CROP-IMAGE-1`. */
   readonly namePrefix: string;
+  /** A video stored as WebM rather than MP4: a transparent split output, VP9 with alpha (§93 D5-12). */
+  readonly container?: "webm";
 }
 
 /**
@@ -390,5 +398,11 @@ interface LocalToolBase extends MiniToolBase {
 /** A tool run in the browser or in the container. */
 export type LocalToolSpec = LocalToolBase & (FixedOutputs | VariableOutputs);
 
+/** A tool whose immutable execution plan determines inputs and output count. */
+export interface PlannedToolSpec extends MiniToolBase, FixedOutputs {
+  readonly run: { readonly kind: "planned" };
+  readonly params: readonly MiniToolParam[];
+}
+
 /** One mini-tool declaration. */
-export type MiniToolSpec = ModelToolSpec | LocalToolSpec;
+export type MiniToolSpec = ModelToolSpec | LocalToolSpec | PlannedToolSpec;

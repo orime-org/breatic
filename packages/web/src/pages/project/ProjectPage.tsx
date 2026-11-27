@@ -18,6 +18,7 @@ import { ApiException } from '@web/data/api/types';
 import type { ProjectDetail } from '@web/data/api/projects';
 import { NotFoundScreen } from '@web/components/NotFoundScreen';
 import { ResourceLoadError } from '@web/components/ResourceLoadError';
+import { ProjectCopyingScreen } from '@web/pages/project/ProjectCopyingScreen';
 import {
   useProjectMembers,
   useRosterRefreshOnJoin,
@@ -175,6 +176,8 @@ export default function ProjectPage(): React.JSX.Element {
   const projectQuery = useQuery({
     queryKey: ['project', projectId],
     queryFn: () => projectsApi.get(projectId),
+    // A copy last read while it was still being copied may be done by now; nothing else refreshes it (inner#1706).
+    refetchOnMount: (query) => (query.state.data?.copying === true ? 'always' : true),
     // 403 = a studio member who is not on this project: offer to join
     // instead of looping a useless retry. The 404 path also
     // short-circuits (project may have been deleted).
@@ -187,8 +190,9 @@ export default function ProjectPage(): React.JSX.Element {
     },
   });
 
-  // Page-entry identity outlives query loading, permission rechecks and providers.
-  const visit = useRecordProjectOpen(projectId, !!projectQuery.data && !projectQuery.error, {
+  // Page-entry identity outlives query loading, permission rechecks and providers. A copy still being copied is not
+  // opened, so it stays off the Recent page (inner#1706).
+  const visit = useRecordProjectOpen(projectId, !!projectQuery.data && !projectQuery.error && !projectQuery.data.copying, {
     accountId: userId ?? null,
     navigationKey: location.key,
     accountSource: PROJECT_VISIT_ACCOUNT_SOURCE,
@@ -205,6 +209,10 @@ export default function ProjectPage(): React.JSX.Element {
     return <ProjectJoinGate projectId={projectId} />;
   }
   if (projectQuery.isError && !projectQuery.data) return <main><ResourceLoadError onRetry={retry} /></main>;
+  // No collaboration connection until the copy is done, so nothing seeds a default Space over it (inner#1706).
+  if (projectQuery.data?.copying === true) {
+    return projectQuery.isFetching ? <LoadingScreen /> : <main><ProjectCopyingScreen /></main>;
+  }
   if (!projectQuery.data || !preferencesRestored) return <LoadingScreen />;
   return (
     <CollabSocketProvider userId={userId}>

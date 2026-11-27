@@ -1,0 +1,40 @@
+Isolated media analysis runtime
+
+The Node service loads only Node built-ins and this repository's code.
+Python is a separate program. It uses only the limited OpenCV build below;
+media decoding remains in the existing separate FFmpeg program.
+
+OpenCV 4.12.0, Apache-2.0, plus the bundled third-party notices in
+opencv-licenses/. The source includes the built-in Protobuf parser and
+SoftFloat; their original notices and the MSCR notice travel beside it.
+Source: https://github.com/opencv/opencv/archive/4.12.0/opencv-4.12.0.tar.gz
+SHA512: 8ac63ddd61e22cc0eaeafee4f30ae6e1cab05fc4929e2cea29070203b9ca8dfead12cc0fd7c4a87b65c1e20ec6b9ab4865a1b83fad33d114fc0708fdf107c51b
+The Dockerfile records the complete CMake flags. CMakeCache.txt, install
+manifest and installed package lists are in /opt/opencv/build-record/.
+FFmpeg, GStreamer, GUI and dynamic backend plugins are disabled.
+
+PySceneDetect 0.7.2 (scenedetect-headless distribution), BSD-3-Clause.
+Source: https://github.com/Breakthrough/PySceneDetect/tree/v0.7.2
+Wheel: https://files.pythonhosted.org/packages/e3/14/727cbb58c72d6df4520153ea6788e1efdebb5d6b446392c784017c70ce0a/scenedetect_headless-0.7.2-py3-none-any.whl
+SHA256: 583fd5dbc2418f027a1c17c3444d0bbd8cb630357e19705c4f68ae4c1aa51ef2
+Its wheel is extracted without resolving dependencies; OpenCV comes from the
+limited source build. The wheel's own LICENSE and metadata are preserved.
+
+Python 3.12.16, Python-2.0; NumPy 2.3.5, BSD-3-Clause and the original
+third-party notices in its installed LICENSE.txt. Installed Python package
+licences remain in each distribution's dist-info/licenses or LICENSE files.
+Python: https://www.python.org/ftp/python/3.12.16/Python-3.12.16.tar.xz
+NumPy: https://github.com/numpy/numpy/tree/v2.3.5
+The GCC runtime libraries (libgcc, libstdc++, libgfortran) carry
+GPL-3.0-or-later WITH GCC-exception-3.1; GCC-COPYING3 and
+GCC-COPYING.RUNTIME carry those original texts.
+Source: https://gcc.gnu.org/pub/gcc/releases/gcc-15.2.0/gcc-15.2.0.tar.xz
+Exception: https://raw.githubusercontent.com/gcc-mirror/gcc/releases/gcc-15.2.0/COPYING.RUNTIME
+OpenBLAS: https://github.com/OpenMathLib/OpenBLAS/tree/v0.3.30
+
+Alpine package versions, declared licences and exact aports recipe commits
+are appended from the installed package database when this image builds.
+The recipe for an installed package is available under
+https://gitlab.alpinelinux.org/alpine/aports/-/tree/<commit>/<repository>/<origin>.
+The pre-existing media-program SOURCE and COPYING notices remain in their
+own /usr/share/ffmpeg-source, vips-source and sox-source directories.

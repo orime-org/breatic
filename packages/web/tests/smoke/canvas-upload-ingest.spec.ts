@@ -30,7 +30,8 @@ import { join } from 'node:path';
 import { expect, type BrowserContext, type Page } from 'playwright/test';
 import { test } from '../helpers/slot';
 
-import { openSmokeProject } from '../helpers/project';
+import { CANVAS_SPACE, liveModuleUrl } from '../helpers/live-module';
+import { openSmokeProject, smokeProjectId } from '../helpers/project';
 import { createSpace, deleteSpace, visibleSpace, VISIBLE_SPACE } from '../helpers/space';
 import { dropFile, expectOnlyPartsTo, expectOpenedUpload, PART_PATH, recordRequests } from '../helpers/upload';
 
@@ -120,12 +121,22 @@ async function noToastLeft(target: Page): Promise<void> {
     .toBe(0);
 }
 
-/** Every video node's `src` currently on the canvas. */
-async function videoSources(target: Page): Promise<string[]> {
-  return target.evaluate((space: string) =>
-    [...document.querySelectorAll(`${space} .react-flow__node video`)].map(
-      (v) => (v as HTMLVideoElement).src,
-    ), VISIBLE_SPACE);
+/**
+ * The video node's stored content and cover, as the canvas document holds them.
+ * @param target - The page.
+ * @returns The first video node's URLs, empty until there is one.
+ */
+async function storedVideo(target: Page): Promise<{ content: string; coverUrl: string }> {
+  const at = await liveModuleUrl(target, CANVAS_SPACE);
+  return target.evaluate(async ([pid, sid, url]: [string, string, string]) => {
+    const canvas = (await import(/* @vite-ignore */ url)) as {
+      readCanvasGraph: (p: string, s: string) => {
+        nodes: { type: string; data?: { content?: string; coverUrl?: string } }[];
+      };
+    };
+    const video = canvas.readCanvasGraph(pid, sid).nodes.find((n) => n.type === 'video');
+    return { content: video?.data?.content ?? '', coverUrl: video?.data?.coverUrl ?? '' };
+  }, [smokeProjectId(), spaceId, at] as [string, string, string]);
 }
 
 test.beforeEach(async ({ browser }) => {
@@ -223,6 +234,9 @@ test('a multi-part video lands with the cover our worker pulled out of it @needs
   // nothing it is here to prove.
   expect(size).toBeGreaterThan(2 * 8 * 1024 * 1024);
 
+  // The node plays through a presentation the server prepares; held, so the
+  // node stays at the stage where the cover is what it shows.
+  await page.route('**/assets/video-presentation?*', () => {});
   await dropFile(
     page,
     'multipart.mp4',
@@ -233,19 +247,28 @@ test('a multi-part video lands with the cover our worker pulled out of it @needs
   // The node hears nothing until the cover is out, so this one wait covers the
   // whole chain: every part written, the report accepted, the asset
   // registered, ffmpeg run, and one event carrying both URLs.
+  let stored = { content: '', coverUrl: '' };
   await expect
-    .poll(async () => (await videoSources(page)).length, { timeout: 360_000 })
-    .toBeGreaterThan(0);
-  const [videoUrl] = await videoSources(page);
-  expect(videoUrl).toMatch(/^https?:\/\//);
+    .poll(async () => {
+      stored = await storedVideo(page);
+      return /^https?:\/\//.test(stored.content) && /^https?:\/\//.test(stored.coverUrl);
+    }, { timeout: 360_000 })
+    .toBe(true);
+  expect(stored.coverUrl).not.toBe(stored.content);
 
-  // The cover rides in on the same event, as the node's poster.
-  const poster = await page.evaluate(
-    (space: string) =>
-      (document.querySelector(`${space} .react-flow__node video`) as HTMLVideoElement)
-        ?.poster ?? '', VISIBLE_SPACE);
-  expect(poster).toMatch(/^https?:\/\//);
-  expect(poster).not.toBe(videoUrl);
+  // The cover is a picture the browser decodes.
+  const coverWidth = await page.evaluate(async (url) => new Promise<number>((resolve) => {
+    const image = new Image();
+    image.onload = (): void => resolve(image.naturalWidth);
+    image.onerror = (): void => resolve(0);
+    image.src = url;
+  }), stored.coverUrl);
+  expect(coverWidth).toBeGreaterThan(0);
+  // While its presentation is prepared (held above), a node whose original the browser plays plays that original, with no
+  // preparing notice over it (frames-split §7.9).
+  const node = visibleSpace(page).locator('.react-flow__node');
+  await expect(node.locator('[data-testid="media-player"] video')).toHaveCount(1);
+  await expect(node.getByTestId('video-preparation-notice')).toHaveCount(0);
 });
 
 // A4: the second drop of a file this studio already stores sends no bytes and
@@ -302,22 +325,25 @@ test('a video whose frame cannot be cut still lands, without a cover @needs-ffmp
     Buffer.concat([MP4_HEAD, randomBytes(4096)]),
   );
 
-  // The Space is this case's own, so the one video that appears is this drop's.
+  // The Space is this case's own, so the one video that lands is this drop's.
+  let stored = { content: '', coverUrl: '' };
   await expect
-    .poll(async () => (await videoSources(page)).length, { timeout: 120_000 })
-    .toBeGreaterThan(0);
-  const sources = await videoSources(page);
-  const landed = sources[sources.length - 1] as string;
-  expect(landed).toMatch(/^https?:\/\//);
+    .poll(async () => {
+      stored = await storedVideo(page);
+      return /^https?:\/\//.test(stored.content);
+    }, { timeout: 120_000 })
+    .toBe(true);
 
-  // Held for a while: a poster that arrives late would make this pass on
-  // timing rather than on the outcome.
+  // These bytes cannot be prepared: the node shows the candidate's failure, and offers no Retry because a content failure
+  // comes out the same every time (frames-split §7.9, §10.6). Held for a while: a poster that arrives late would make this
+  // pass on timing rather than on the outcome.
+  const node = visibleSpace(page).locator('.react-flow__node');
+  await expect(node.getByText('This video is unsupported by this tool')).toBeVisible({ timeout: 120_000 });
   await page.waitForTimeout(5_000);
-  const poster = await page.evaluate((space: string) => {
-    const videos = [...document.querySelectorAll(`${space} .react-flow__node video`)];
-    return (videos[videos.length - 1] as HTMLVideoElement | undefined)?.poster ?? '';
-  }, VISIBLE_SPACE);
-  expect(poster).toBe('');
+  expect((await storedVideo(page)).coverUrl).toBe('');
+  await expect(node.getByRole('button', { name: 'Retry', exact: true })).toHaveCount(0);
+  await expect(node.getByRole('button', { name: 'Retry preview' })).toHaveCount(0);
+  await expect(node.locator('[data-testid="media-player"] img')).toHaveCount(0);
 });
 
 // #186 A5: a transfer that dies AFTER the ticket. The finish needs an upload id this

@@ -32,7 +32,7 @@ const SAME_LENGTH_WRONG = `${SECRET_W.slice(0, -1)}${SECRET_W.endsWith("x") ? "y
  * @param e - The bindings the Worker runs with.
  * @returns What it answered.
  */
-async function open(ticket: string | null, e = env): ReturnType<typeof ask> {
+async function open(ticket: string | null, e: Parameters<typeof ask>[1] = env): ReturnType<typeof ask> {
   const headers: Record<string, string> = { "x-ingest-secret": SECRET_W };
   if (ticket !== null) headers["x-upload-ticket"] = ticket;
   return ask(headers, e);

@@ -39,6 +39,7 @@ import type {
   NodeTaskCounts,
   NodeType,
 } from '@breatic/shared';
+import { videoToolNodeAssetUrls } from '@web/data/video-tool-node-data';
 import { withCurrentModelNames } from '@breatic/shared';
 
 /** The 6 content modalities that own a renderable payload. */
@@ -56,6 +57,8 @@ interface NodeViewCommon {
 
 /** Fields shared by every content-node view. */
 interface ContentNodeViewBase extends NodeViewCommon {
+  /** Media retained by persisted mini-tool drafts; derived from the wire scalars. */
+  miniToolAssetUrls?: string[];
   /**
    * What the ledger judged this node's file to be, and counted its bytes at
    * (#240). Absent for a node stored before the ledger reported them, and for
@@ -357,11 +360,13 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
   // stores it so (#1521); every panel read and write goes through this view.
   const data = withCurrentModelNames(fields.data);
   const locked = data.locked;
+  const miniToolAssetUrls = videoToolNodeAssetUrls(data);
   // Common content-view fields: the editable name (node name header), the
   // derived handling flag, and the Generate panel inputs (model / mode /
   // modelByMode / paramsByModel) — the panel reads these via the view and
   // writes back to the wire through the canvas-space setters.
   const contentCommon = {
+    ...(miniToolAssetUrls.length > 0 ? { miniToolAssetUrls } : {}),
     name: data.name,
     handling: deriveHandling(data),
     // What the ledger judged off the bytes that landed. The Understand gate
@@ -392,6 +397,8 @@ export function toNodeView(fields: CanvasNodeFields): TypedNodeView | null {
     soundVideo: data.soundVideo,
     moodImageUrl: data.moodImageUrl,
     focusImages: data.focusImages,
+    // The handled video focus crops by taskId (frames-split §5.5, §7.18), task state the canvas layer settles cards by.
+    ...(data.focusCropOutcomes === undefined ? {} : { focusCropOutcomes: data.focusCropOutcomes }),
     focusUploads: data.focusUploads,
     templateNode: data.templateNode,
   };

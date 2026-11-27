@@ -9,6 +9,7 @@ import { parse } from "yaml";
 import { getUnderstandConfig } from "@core/config/understand.js";
 import { MONOREPO_ROOT } from "@core/config/env.js";
 import { assertKnownQueues, getWorkerConfig, workerConcurrencyFor, workerConfigSchema } from "@core/config/worker.js";
+import { MINI_TOOL_SETTLEMENT_QUEUE } from "@core/infra/mini-tool-settlement.js";
 
 // A task waiting on an upstream is back on the queue between questions, so
 // waiting holds no worker slot (inner#1337).
@@ -77,7 +78,7 @@ describe("credit charge sweep", () => {
 // A misspelt queue name would leave that queue at the default without a word.
 describe("assertKnownQueues", () => {
   it("accepts per-queue figures that name the queues the worker runs", () => {
-    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", "long-media-dispatch", "credit-charge-sweep", "commerce-lot-mirror"])).not.toThrow();
+    expect(() => assertKnownQueues(["tasks", "upload-finish", "url-ingest", "media-read", "audio-peaks", "mail", MINI_TOOL_SETTLEMENT_QUEUE, "long-media-dispatch", "credit-charge-sweep", "commerce-lot-mirror"])).not.toThrow();
   });
 
   it("refuses a per-queue figure for a queue the worker does not run", () => {

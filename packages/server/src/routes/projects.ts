@@ -249,6 +249,7 @@ projects.get("/:id", async (c) => {
     canManageMeta,
     canRestore,
     canLeave,
+    copying: project.copying,
   };
   return c.json({ data: detail });
 });

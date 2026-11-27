@@ -9,6 +9,8 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { modelsApi } from '@web/data/api';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
+import type { VideoPresentationResponse } from '@breatic/shared';
 import { toast } from 'sonner';
 import { Awareness } from 'y-protocols/awareness';
 import type * as React from 'react';
@@ -68,7 +70,8 @@ vi.mock('@web/spaces/canvas/focus/run-focus-crop', async (importOriginal) => {
     await importOriginal<typeof import('@web/spaces/canvas/focus/run-focus-crop')>();
   // Resolves like the real one: the canvas tracks the crop as an operation
   // until it settles.
-  return { ...actual, runFocusCrop: vi.fn(() => Promise.resolve()) };
+  // A video crop is a backend run (frames-split §5.5): its press is recorded, nothing is sent.
+  return { ...actual, runFocusCrop: vi.fn(() => Promise.resolve()), runVideoFocusCrop: vi.fn(() => Promise.resolve({ kind: 'released' as const })) };
 });
 
 // The upload pipeline's network steps, passed through unless a case stands
@@ -112,7 +115,7 @@ import { docName, getDoc, _resetForTests } from '@web/data/yjs/manager';
 import { bodyToPlainText, writePlainTextIntoBody } from '@breatic/shared/canvas/text-body';
 import { addNode, getTextBody } from '@web/data/yjs/canvas-space';
 import type { TypedNodeView } from '@web/data/yjs/node-view';
-import { runFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
+import { runFocusCrop, runVideoFocusCrop } from '@web/spaces/canvas/focus/run-focus-crop';
 import { clearDocSize } from '@web/data/yjs/doc-size';
 import { toast as sizeToast } from '@web/lib/toast';
 import { P_FULL, P_OVER, SIZE_COPY_EN, pushSize } from '@web/data/yjs/__tests__/helpers/size-v2-harness';
@@ -123,6 +126,7 @@ import { hashFile } from '@web/data/upload/hash';
 import { sendFileAndFinish } from '@web/data/upload/finish-upload';
 import { waitForUploadEnding, type UploadEnding } from '@web/data/upload/upload-status';
 import { hasRetryFile, resetRetryFilesForTests } from '@web/spaces/canvas/upload-retry-files';
+import { PRESENTED, presentedBinding, presentedBundle, presentedDisplay, presentedResponse } from '@web/test-utils/video-presentation';
 
 const mockUseCanvasSpace = vi.mocked(canvasSpace.useCanvasSpace);
 
@@ -144,6 +148,7 @@ vi.mock('@web/data/api/users', () => ({
 }));
 
 const mockRunFocusCrop = vi.mocked(runFocusCrop);
+const mockRunVideoFocusCrop = vi.mocked(runVideoFocusCrop);
 
 let undoSpy: ReturnType<typeof vi.fn>;
 let redoSpy: ReturnType<typeof vi.fn>;
@@ -382,10 +387,11 @@ function spaceRegion(): HTMLElement {
  * where `keyTarget()` lands when nothing holds focus — takes the gate's
  * `<body>` branch either way.
  * @param readOnly - Mount the space in its read-only form.
+ * @param queryClient - An explicitly prepared account query cache, when needed.
  * @returns The render result.
  */
-function renderSpace(readOnly = false): ReturnType<typeof render> {
-  const client = new QueryClient({
+function renderSpace(readOnly = false, queryClient?: QueryClient): ReturnType<typeof render> {
+  const client = queryClient ?? new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
   return render(
@@ -408,6 +414,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     // it, making the file order-dependent (round-5).
     vi.mocked(useSocket).mockReset();
     mockRunFocusCrop.mockClear();
+    mockRunVideoFocusCrop.mockClear();
     undoSpy = vi.fn();
     redoSpy = vi.fn();
     useCanvasStore.setState({
@@ -3855,8 +3862,18 @@ describe('CanvasSpace (ReactFlow mount)', () => {
    * and its bar are drawn.
    * @returns Restores the stubbed layout.
    */
+  // A video source's node id is a uuid, as every canvas node's is: the backend press's source reference requires it.
+  const VIDEO_SOURCE_ID = 'a0000000-0000-4000-8000-00000000000a';
   const confirmVideoCrop = async (): Promise<() => void> => {
     installLayout();
+    // Each new frame subscription is answered once with the frame the paused player presents at 4.375 s; the bar reads its
+    // requestVideoFrameCallback mediaTime (§4.3). The subscription a callback renews waits for a next frame that never comes.
+    let answering = false;
+    Object.defineProperty(HTMLVideoElement.prototype, 'requestVideoFrameCallback', { configurable: true, writable: true, value: (callback: VideoFrameRequestCallback): number => {
+      if (!answering) queueMicrotask(() => { answering = true; callback(0, { mediaTime: 4.375 } as VideoFrameCallbackMetadata); answering = false; });
+      return 1;
+    } });
+    Object.defineProperty(HTMLVideoElement.prototype, 'cancelVideoFrameCallback', { configurable: true, writable: true, value: (): void => undefined });
     mockUseCanvasSpace.mockReturnValue(
       mockSpace({
         nodes: [
@@ -3867,7 +3884,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
             data: { handling: false },
           },
           {
-            id: 'src-video',
+            id: VIDEO_SOURCE_ID,
             type: 'video',
             position: { x: 300, y: 0 },
             data: {
@@ -3879,18 +3896,30 @@ describe('CanvasSpace (ReactFlow mount)', () => {
         ],
       }),
     );
-    renderSpace();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const queryKey = videoPresentationQuery({ projectId: 'p', canonicalURL: 'https://cdn/clip.mp4', active: true }).queryKey;
+    const sourceFingerprint = 'a'.repeat(64);
+    // The selected bundle on a 250-frame 25 fps grid (10 s).
+    const selected = presentedBundle('https://cdn/clip.mp4', { sourceFingerprint, display: presentedDisplay(800, 600, 250) });
+    const source: VideoPresentationResponse = presentedResponse(presentedBinding('https://cdn/clip.mp4', { width: 800, height: 600, duration: 10, mimeType: 'video/mp4' }, sourceFingerprint),
+      { presentation: selected });
+    client.setQueryDefaults(queryKey, { staleTime: Infinity });
+    client.setQueryData(queryKey, source);
+    renderSpace(false, client);
     act(() => {
       canvasSessions.of('s').getState().startFocusPick('target');
     });
     act(() => {
       fireEvent.click(
-        document.querySelector('.react-flow__node[data-id="src-video"]')!,
+        document.querySelector(`.react-flow__node[data-id="${VIDEO_SOURCE_ID}"]`)!,
       );
     });
-    const video = screen.getByTestId('media-element') as HTMLVideoElement;
+    await waitFor(() => expect(document.querySelector(`.react-flow__node[data-id="${VIDEO_SOURCE_ID}"] video`)).toBeInstanceOf(HTMLVideoElement));
+    const video = document.querySelector<HTMLVideoElement>(`.react-flow__node[data-id="${VIDEO_SOURCE_ID}"] video`)!;
     Object.defineProperty(video, 'videoWidth', { value: 800, configurable: true });
     Object.defineProperty(video, 'videoHeight', { value: 600, configurable: true });
+    act(() => { fireEvent.loadedMetadata(video); });
+    await waitFor(() => expect(screen.getByTestId('media-element')).toBe(video));
     // 用户拖时间轴停在的那一帧，故意不是整秒。
     Object.defineProperty(video, 'currentTime', {
       value: 4.375,
@@ -3909,21 +3938,26 @@ describe('CanvasSpace (ReactFlow mount)', () => {
       fireEvent.click(screen.getByTestId('focus-crop-confirm'));
     });
     return () => {
+      delete (HTMLVideoElement.prototype as Partial<HTMLVideoElement>).requestVideoFrameCallback;
+      delete (HTMLVideoElement.prototype as Partial<HTMLVideoElement>).cancelVideoFrameCallback;
       vi.unstubAllGlobals();
       vi.restoreAllMocks();
     };
   };
 
-  it('贯通：浮层交出的时间点原样到达 runFocusCrop 的入参（#1987 A9）', async () => {
-    // 从浮层到取源之间有五个环节，其中一个是函数赋值 —— 编译器管不住它，
-    // 少给一个字段照样编译通过（`natural` 今天就是这么被吃掉的）。所以这条
-    // 走完整条链：真的点节点、真的画选框、真的点确认，然后看最下游收到什么。
+  it('贯通：浮层交出的帧号原样到达 runVideoFocusCrop 的入参（#1987 A9, frames-split §5.5）', async () => {
+    // The whole chain, as A9 asks: a real node click, a real marquee and a real Confirm, then what the backend press
+    // receives. A video crop is cut by the backend, so the press carries the grid frame the player presented,
+    // round(4.375 × 25) = 109, and the box in P.display pixels; the browser crop never runs.
     const restore = await confirmVideoCrop();
     try {
-      expect(mockRunFocusCrop).toHaveBeenCalledTimes(1);
-      expect(mockRunFocusCrop.mock.calls[0]![0]).toMatchObject({
-        sourceUrl: 'https://cdn/clip.mp4',
-        sourceTimeSeconds: 4.375,
+      expect(mockRunFocusCrop).not.toHaveBeenCalled();
+      expect(mockRunVideoFocusCrop).toHaveBeenCalledTimes(1);
+      expect(mockRunVideoFocusCrop.mock.calls[0]![0]).toMatchObject({
+        projectId: 'p', spaceId: 's', panelNodeId: 'target',
+        source: { nodeId: VIDEO_SOURCE_ID, canonicalURL: 'https://cdn/clip.mp4', mediaInfo: { width: 800, height: 600 } },
+        presentationRef: { source: { toolInputId: PRESENTED.toolInputId, planSha256: PRESENTED.planSha256 } },
+        frameIndex: 109,
       });
     } finally {
       restore();
@@ -3951,6 +3985,42 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
+  /**
+   * Picks an image source for `target`, draws a crop and confirms it.
+   * @returns Restores the stubbed layout.
+   */
+  const confirmImageCrop = async (): Promise<() => void> => {
+    installLayout();
+    mockUseCanvasSpace.mockReturnValue(
+      mockSpace({
+        nodes: [
+          { id: 'target', type: 'image', position: { x: 0, y: 0 }, data: { handling: false } },
+          { id: 'src-image', type: 'image', position: { x: 300, y: 0 }, data: { content: 'https://cdn/still.png', name: 'Image Node 3', handling: false } },
+        ],
+      }),
+    );
+    renderSpace(false);
+    act(() => { canvasSessions.of('s').getState().startFocusPick('target'); });
+    act(() => { fireEvent.click(document.querySelector('.react-flow__node[data-id="src-image"]')!); });
+    const image = await waitFor(() => {
+      const found = document.querySelector<HTMLImageElement>('.react-flow__node[data-id="src-image"] img');
+      expect(found).toBeInstanceOf(HTMLImageElement);
+      return found!;
+    });
+    Object.defineProperty(image, 'naturalWidth', { value: 800, configurable: true });
+    Object.defineProperty(image, 'naturalHeight', { value: 600, configurable: true });
+    act(() => { fireEvent.load(image); });
+    await relayout();
+    const layer = screen.getByTestId('focus-crop-layer');
+    act(() => {
+      fireEvent.pointerDown(layer, { clientX: 150, clientY: 100, button: 0 });
+      fireEvent.pointerMove(layer, { clientX: 250, clientY: 180 });
+      fireEvent.pointerUp(layer);
+    });
+    act(() => { fireEvent.click(screen.getByTestId('focus-crop-confirm')); });
+    return () => { vi.restoreAllMocks(); };
+  };
+
   // The page holds a crop only until its bytes are sent; the node's `focusUploads` shows the rest (#1580).
   it('drops the crop from this page once its run is over', async () => {
     let finish: () => void = () => {};
@@ -3960,7 +4030,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           finish = resolve;
         }),
     );
-    const restore = await confirmVideoCrop();
+    const restore = await confirmImageCrop();
     try {
       expect(canvasSessions.of('s').getState().pendingFocusUploads).toHaveLength(1);
       await act(async () => {
@@ -3972,9 +4042,10 @@ describe('CanvasSpace (ReactFlow mount)', () => {
     }
   });
 
-  // A crop's upload is front-end work like any other upload on the canvas:
-  // while it is out, closing this Space's tab is held back, so the image it
-  // brings back has the document to land in (inner#1235 A17).
+  // An image crop's upload is front-end work like any other upload on the
+  // canvas: while it is out, closing this Space's tab is held back, so the
+  // image it brings back has the document to land in (inner#1235 A17). A video
+  // crop is a backend run whose result collab writes (frames-split §5.5).
   it('holds the Space as busy while a confirmed crop is uploading', async () => {
     let finish: () => void = () => {};
     mockRunFocusCrop.mockImplementationOnce(
@@ -3983,7 +4054,7 @@ describe('CanvasSpace (ReactFlow mount)', () => {
           finish = resolve;
         }),
     );
-    const restore = await confirmVideoCrop();
+    const restore = await confirmImageCrop();
     try {
       expect(useSpaceOperationsStore.getState().hasOperations('s')).toBe(true);
       await act(async () => {

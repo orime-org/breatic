@@ -48,7 +48,7 @@ import postgres from "postgres";
 import { Worker, type Job, type Queue } from "bullmq";
 import { canvasSpaceDocName, threeDSpaceDocName, timelineSpaceDocName, webAnimationSpaceDocName } from "@breatic/shared";
 import { createQueue, getNodeTaskConfig, getStreamRedis, getWorkerConfig, initCore, initLogger, loadLocales, reportGraceMs, taskEventsStreamKey } from "@breatic/core";
-import { nodeTaskService, runningSlotService, sceneTaskService, taskService, type TimelineExecutionJobData, timelineExecutionRepo } from "@breatic/domain";
+import { miniToolExecutionService, nodeTaskService, runningSlotService, sceneTaskService, taskService, type TimelineExecutionJobData, timelineExecutionRepo } from "@breatic/domain";
 import { cleanupFailedJobNodes } from "@worker/handlers/failed-job-cleanup.js";
 import { finishFailedRun, runTask, type TaskJobData } from "@worker/handlers/dispatch.js";
 import { listSpaceTasks } from "@server/modules/asset/scene-tasks.service.js";
@@ -1556,4 +1556,91 @@ describe("PT-4 the gate with cancels, failures, limit changes and lost jobs (K1,
     // A hundred runs of up to ten rows and eight rounds, each round harvesting every node: the slowest case of
     // this suite, many times its time alone beside every other suite.
   }, 600_000);
+});
+
+// frames-split §7.19: a run ends once, and every store of that end agrees with it.
+describe("G a run's end as its node rows and holdings tell it (frames-split §7.19)", () => {
+  it("failTask after a cancel committed ends the node rows with the stored reason, cancelled", async () => {
+    const p = await person();
+    const s = await seedTask(p, { node: true, waiting: { since: new Date(), checkedAt: new Date(), limit: 2 } });
+    // The cancel's commit, before it settles its rows (running-slot.service.ts cancelQueued).
+    await sql`update tasks set status = 'cancelled', error_message = 'cancelled', completed_at = now() where id = ${s.taskId}`;
+    const ended = await runningSlotService.failTask(s.taskId, "internal");
+    expect(ended.failed).toBe(false);
+    expect(await taskRow(s.taskId)).toMatchObject({ status: "cancelled", error_message: "cancelled" });
+    expect(await nodeRow(s.nodeTaskId!)).toMatchObject({ status: "failed", error_message: "cancelled" });
+  });
+
+  it("failTask with no stored reason ends the node rows with the caller's", async () => {
+    const p = await person();
+    const s = await seedTask(p, { node: true, waiting: { since: new Date(), checkedAt: new Date(), limit: 2 } });
+    expect((await runningSlotService.failTask(s.taskId, "internal")).failed).toBe(true);
+    expect(await nodeRow(s.nodeTaskId!)).toMatchObject({ status: "failed", error_message: "internal" });
+  });
+
+  it("the gate finishing a failed mini-tool task with a settlement period leaves its hold to the settlement", async () => {
+    const p = await person();
+    const s = await seedTask(p, { status: "failed", node: true, startedAt: new Date() });
+    await sql`update tasks set source = 'mini_tool', error_message = 'mini_tool_failed', result = ${sql.json({ settlement: { version: 1, state: "waiting", pendingConsumptionKeys: [], nextAttemptAt: null, leaseToken: null, leaseUntil: null, lastError: null, consumptionSetComplete: true } })} where id = ${s.taskId}`;
+    await inFlight(p, s.taskId, new Date(Date.now() + 3_600_000));
+    expect(await pick(s.taskId)).toEqual({ ended: true });
+    expect((await holdings(s.taskId)).credit.status).toBe("held");
+    expect(await nodeRow(s.nodeTaskId!)).toMatchObject({ status: "failed", error_message: "mini_tool_failed" });
+  });
+
+  it.each(["running", "pending"] as const)("both harvests leave an overdue row of a %s planned video tool run to the run itself", async (status) => {
+    const p = await person();
+    const now = await dbNow();
+    const overdue = new Date(now.getTime() - B - 1);
+    const onNode = await seedTask(p, { status, node: true, nodeStartedAt: overdue, startedAt: status === "running" ? overdue : null });
+    const onScene = await seedTask(p, { status, scene: true, nodeStartedAt: overdue, startedAt: status === "running" ? overdue : null });
+    await sql`update tasks set source = 'mini_tool', params = ${sql.json({ miniToolExecution: { tool: "video.split" } })} where id in (${onNode.taskId}, ${onScene.taskId})`;
+
+    await nodeTaskService.harvestAndList({ projectId: p.projectId, nodeId: onNode.nodeId! });
+    await sceneTaskService.harvestAndList(p.projectId, p.spaceId);
+
+    expect((await nodeRow(onNode.nodeTaskId!)).status).toBe("running");
+    expect((await nodeRow(onScene.nodeTaskId!)).status).toBe("running");
+  });
+
+  it("both harvests still expire an overdue row of a mini-tool task that is not a planned run", async () => {
+    const p = await person();
+    const now = await dbNow();
+    const overdue = new Date(now.getTime() - B - 1);
+    const onNode = await seedTask(p, { status: "running", node: true, nodeStartedAt: overdue, startedAt: overdue });
+    await sql`update tasks set source = 'mini_tool' where id = ${onNode.taskId}`;
+    await nodeTaskService.harvestAndList({ projectId: p.projectId, nodeId: onNode.nodeId! });
+    expect(await nodeRow(onNode.nodeTaskId!)).toMatchObject({ status: "expired", error_message: "expired" });
+  });
+
+  it("the planned run sweep lists running planned runs and pending ones that never waited and are past the grace window", async () => {
+    const p = await person();
+    const now = await dbNow();
+    const old = new Date(now.getTime() - 10 * 60_000);
+    const planned = async (s: Parameters<typeof seedTask>[1]): Promise<string> => {
+      const { taskId } = await seedTask(p, s);
+      await sql`update tasks set source = 'mini_tool', params = ${sql.json({ miniToolExecution: { tool: "video.split" } })} where id = ${taskId}`;
+      return taskId;
+    };
+    const running = await planned({ status: "running", startedAt: old });
+    const stalePending = await planned({ createdAt: old });
+    const freshPending = await planned({ createdAt: now });
+    const waiting = await planned({ createdAt: old, waiting: { since: old, checkedAt: old, limit: 2 } });
+    const ended = await planned({ status: "failed", createdAt: old });
+    const { taskId: other } = await seedTask(p, { status: "running", startedAt: old });
+    const listed = await (miniToolExecutionService as unknown as { plannedRunsToSweep: (limit: number, graceMs: number) => Promise<{ running: string[]; pending: string[] }> })
+      .plannedRunsToSweep(10_000, 5 * 60_000);
+    const mine = new Set([running, stalePending, freshPending, waiting, ended, other]);
+    expect(listed.running.filter((id) => mine.has(id))).toEqual([running]);
+    expect(listed.pending.filter((id) => mine.has(id))).toEqual([stalePending]);
+  });
+
+  it("the gate finishing a failed task with no settlement period releases its hold", async () => {
+    const p = await person();
+    const s = await seedTask(p, { status: "failed", node: true, startedAt: new Date() });
+    await sql`update tasks set source = 'mini_tool', error_message = 'mini_tool_failed' where id = ${s.taskId}`;
+    await inFlight(p, s.taskId, new Date(Date.now() + 3_600_000));
+    expect(await pick(s.taskId)).toEqual({ ended: true });
+    expect((await holdings(s.taskId)).credit.status).not.toBe("held");
+  });
 });

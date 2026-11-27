@@ -139,7 +139,7 @@ export const users = pgTable(
     // First-touch and last-touch campaign source, written at sign-up from
     // what the browser kept after consent (0097, inner#1442).
     attribution: jsonb("attribution").$type<Attribution>(),
-    // The influencer whose site this account signed up on (0138, inner#2157),
+    // The influencer whose site this account signed up on (0142, inner#2157),
     // `official` for the official site. Written once at sign-up and never
     // changed; revenue share is settled by it.
     influencerCode: varchar("influencer_code", { length: 32 })
@@ -159,7 +159,7 @@ export const users = pgTable(
 // ── 1a. Influencers ──────────────────────────────────────────────────
 
 /**
- * One influencer code per row (0138, inner#2157): the site it owns
+ * One influencer code per row (0142, inner#2157): the site it owns
  * (`<label>.partner.<COOKIE_DOMAIN>`, lower case; null for `official`) and
  * whether it is disabled. The code and host CHECKs live in the migration.
  *
@@ -177,7 +177,7 @@ export const influencers = pgTable(
   (table) => [uniqueIndex("influencers_host_idx").on(table.host)],
 );
 
-/** Every decision of the influencer internal endpoints, kept under its key (0138). */
+/** Every decision of the influencer internal endpoints, kept under its key (0142). */
 export const influencerOperations = pgTable("influencer_operations", {
   id: uuid("id").defaultRandom().primaryKey(),
   key: text("key").notNull().unique(),
@@ -332,6 +332,10 @@ export const projects = pgTable(
     archivedByUserId: uuid("archived_by_user_id").references(() => users.id, {
       onDelete: "restrict",
     }),
+    // Copy status (0138, inner#1706): the duplicate request writes the source, collab writes the completion once the
+    // documents are copied. A source with no completion means the copy is still being copied and does not open.
+    duplicatedFromId: uuid("duplicated_from_id").references((): AnyPgColumn => projects.id, { onDelete: "restrict" }),
+    duplicateCompletedAt: timestamp("duplicate_completed_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [index("projects_studio_id_idx").on(table.studioId, table.deletedAt)],
@@ -873,6 +877,17 @@ export const tasks = pgTable(
     index("tasks_project_space_idx").on(table.projectId, table.spaceId),
     index("tasks_task_type_idx").on(table.taskType),
     index("tasks_status_idx").on(table.status),
+    index("tasks_mini_tool_delivery_pending_idx").on(table.id)
+      .where(sql`${table.source} = 'mini_tool' AND ${table.status} IN ('completed', 'failed')
+        AND ${table.params}->'miniToolExecution' IS NOT NULL
+        AND jsonb_path_exists(${table.result}, '$.miniToolExecution.outputs[*] ? (@.result.status == "registered")')
+        AND (${table.result}->'miniToolDelivery' IS NULL
+          OR jsonb_path_exists(${table.result}, '$.miniToolDelivery.outputs[*] ? (@.state == "pending")'))`),
+    index("tasks_mini_tool_settlement_due_idx")
+      .on(sql`mini_tool_settlement_due_at(${table.result})`, table.id)
+      .where(sql`${table.source} = 'mini_tool' AND ${table.billedAt} IS NULL
+        AND jsonb_typeof(${table.result}->'settlement'->'version') = 'number'
+        AND ${table.result}->'settlement'->>'state' IN ('waiting', 'checking')`),
   ],
 );
 
@@ -3310,23 +3325,30 @@ export const storageReclaimQueue = pgTable(
      * the same key without `_upright` go with it (inner#1367).
      */
     storageKey: text("storage_key").notNull(),
+    /**
+     * `dedup_loser` (a redundant upload copy, with the four columns below) or
+     * `derived` (an object no live pin references, inner#1306 §7.15:
+     * content_hash, studio_id and source are null; kept_storage_key holds the
+     * canonical key of a presentation-derived object and is null for a run's or
+     * an analysis's intermediate).
+     */
+    kind: text("kind").$type<"dedup_loser" | "derived">().notNull().default("dedup_loser"),
     /** Its content fingerprint — identical to the surviving row's. */
-    contentHash: varchar("content_hash", { length: 64 }).notNull(),
+    contentHash: varchar("content_hash", { length: 64 }),
     /** Owning studio (quota / reconciliation audits). */
     studioId: uuid("studio_id")
-      .notNull()
       .references(() => studios.id, { onDelete: "restrict" }),
     /**
      * The key that WON dedup and stays live. A safety rail: the offline job can
      * confirm the winner still exists before deleting this one, so it can never
      * reclaim the last copy of a content.
      */
-    keptStorageKey: text("kept_storage_key").notNull(),
+    keptStorageKey: text("kept_storage_key"),
     /**
      * Mirrors `studio_assets.source` exactly — the column is written straight
      * from the registered asset's own source.
      */
-    source: varchar("source", { length: 16 }).notNull(),
+    source: varchar("source", { length: 16 }),
     /**
      * Null while pending; set once the offline job has reclaimed the object.
      * The row is MARKED, never deleted (same shape as upload_grants.consumed_at
@@ -3343,11 +3365,64 @@ export const storageReclaimQueue = pgTable(
     // One row per redundant object — a retry of the same report must not queue
     // it twice (the INSERT is ON CONFLICT DO NOTHING against this).
     uniqueIndex("storage_reclaim_queue_storage_key_unique").on(table.storageKey),
+    check("storage_reclaim_queue_kind_check", sql`${table.kind} IN ('dedup_loser', 'derived')`),
+    check("storage_reclaim_queue_dedup_loser_check", sql`${table.kind} = 'derived' OR (${table.contentHash} IS NOT NULL AND ${table.studioId} IS NOT NULL AND ${table.keptStorageKey} IS NOT NULL AND ${table.source} IS NOT NULL)`),
     // The offline job's driving query: the pending backlog, oldest first.
     index("storage_reclaim_queue_pending_idx").on(
       table.reclaimedAt,
       table.createdAt,
     ),
+  ],
+);
+
+// ── Presentation pins (0133, inner#1306 §7.15) ───────────────────────
+
+/**
+ * One holder's reference to derived presentation objects of one toolInputId
+ * (`execution`, `analysis`, `prepared`, `candidate`, `selected`). Live while
+ * `deletedAt` is null; written only by domain's presentation pin repository.
+ */
+export const presentationPins = pgTable(
+  "presentation_pins",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    holderKind: text("holder_kind").$type<"execution" | "analysis" | "prepared" | "candidate" | "selected">().notNull(),
+    /** A task id, a presentation job id, or the canonical key of a `selected` pin. */
+    holderId: text("holder_id").notNull(),
+    /** Recorded only, never a release key; a `candidate` pin may not know it yet (§7.15). */
+    toolInputId: varchar("tool_input_id", { length: 64 }),
+    /** The prepared model input a `prepared` pin keeps. */
+    preparedKey: text("prepared_key"),
+    /** The selected version of a `selected` pin. */
+    versionId: varchar("version_id", { length: 64 }),
+    ...timestamps,
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (table) => [
+    check("presentation_pins_holder_kind_check", sql`${table.holderKind} IN ('execution', 'analysis', 'prepared', 'candidate', 'selected')`),
+    check("presentation_pins_prepared_key_check", sql`(${table.holderKind} = 'prepared') = (${table.preparedKey} IS NOT NULL)`),
+    check("presentation_pins_version_check", sql`(${table.holderKind} = 'selected') = (${table.versionId} IS NOT NULL)`),
+    check("presentation_pins_tool_input_check", sql`${table.holderKind} = 'candidate' OR ${table.toolInputId} IS NOT NULL`),
+    uniqueIndex("presentation_pins_selected_live_unique").on(table.holderId).where(sql`holder_kind = 'selected' AND deleted_at IS NULL`),
+    uniqueIndex("presentation_pins_holder_live_unique").on(table.holderKind, table.holderId, table.toolInputId)
+      .where(sql`holder_kind IN ('execution', 'analysis') AND deleted_at IS NULL`),
+    uniqueIndex("presentation_pins_candidate_live_unique").on(table.holderKind, table.holderId).where(sql`holder_kind = 'candidate' AND deleted_at IS NULL`),
+    uniqueIndex("presentation_pins_prepared_live_unique").on(table.holderId, table.preparedKey).where(sql`holder_kind = 'prepared' AND deleted_at IS NULL`),
+  ],
+);
+
+/** The object keys a pin references now (Add appends, Mv replaces, Drop removes); whether they are live is the parent's `deletedAt`. */
+export const presentationPinObjects = pgTable(
+  "presentation_pin_objects",
+  {
+    pinId: uuid("pin_id").notNull().references(() => presentationPins.id, { onDelete: "restrict" }),
+    storageKey: text("storage_key").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (table) => [
+    primaryKey({ name: "presentation_pin_objects_pkey", columns: [table.pinId, table.storageKey] }),
+    // The reclaim consumer's check: is this key referenced by a live pin.
+    index("presentation_pin_objects_storage_key_idx").on(table.storageKey),
   ],
 );
 

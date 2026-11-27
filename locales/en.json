@@ -10,7 +10,8 @@
       "rate_limited": "Too many requests, please try again later",
       "payload_too_large": "This request is larger than {limit}. Shorten the prompt or the text it refers to.",
       "transfer_invalid": "The uploaded content could not be used. Please try again.",
-      "internal": "Internal server error"
+      "internal": "Internal server error",
+      "project_copying": "This Project is still being copied and can't be copied yet."
     },
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",
@@ -218,10 +219,13 @@
       "unavailable": "This tool is unavailable right now.",
       "invalidParam": "\"{name}\" has a value this tool does not take.",
       "foreignSource": "This file cannot be processed.",
+      "presentationChanged": "The video was updated. Pick the frame and region again.",
       "sourceTooLong": "This tool takes audio up to {minutes} minutes long.",
       "sourceTooLarge": "This tool takes files up to {size}.",
       "clipsTooLarge": "These clips are too large to join together.",
-      "joinClipCount": "A join takes 2 to {max} clips."
+      "joinClipCount": "A join takes 2 to {max} clips.",
+      "runTooLong": "This video is too long to process in one run: it would need more than {max, plural, one {# encoding job} other {# encoding jobs}}. Choose fewer or shorter outputs.",
+      "tooManyOutputs": "One run can create up to {max, plural, one {# result} other {# results}}."
     },
     "idempotency": {
       "missing": "This page was updated. Refresh it and try again.",
@@ -967,6 +971,7 @@
       "editProposalMarks": "Replace the text in braces. Orange notes are not sent to the model.",
       "notePrefix": "Note: ",
       "integerBlank": "Blank for auto",
+      "focusCropExpired": "Could not crop in time — please try again.",
       "ownKeyLabel": "Your key",
       "studioKeyLabel": "Studio key",
       "alsoCredits": "credits",
@@ -1257,6 +1262,12 @@
         },
         "hdr": {
           "label": "HDR"
+        },
+        "extract-frames": {
+          "label": "Extract frames"
+        },
+        "split": {
+          "label": "Split"
         }
       },
       "audio": {
@@ -1309,7 +1320,9 @@
           "label": "Ratio"
         },
         "rect": {
-          "label": "Size (px)"
+          "label": "Size (px)",
+          "width": "W",
+          "height": "H"
         },
         "orient": {
           "label": "Orientation"
@@ -1468,6 +1481,44 @@
         "attack": "Attack",
         "release": "Release",
         "makeup": "Make-up gain"
+      },
+      "videoUI": {
+        "analysisFailed": "Analysis failed. Try again.",
+        "atCursor": "Add at cursor",
+        "current": "Current frame",
+        "currentFrameUnavailable": "Current frame unavailable",
+        "cutPoint": "Cut point",
+        "detectScenes": "Detect scenes",
+        "first": "First frame",
+        "last": "Last frame",
+        "ledgerUnsupported": "This video is unsupported by this tool",
+        "mediaError": "Media unavailable",
+        "rebuildDraft": "Reset settings",
+        "removeCut": "Remove",
+        "retryPreview": "Retry preview",
+        "sourceUnavailable": "Source video unavailable",
+        "unsupportedDraft": "Saved settings need an update.",
+        "invalidNumber": "Enter a valid number.",
+        "sourceChanged": "The source changed.",
+        "useCurrentSource": "Use current source",
+        "tooManyOutputs": "A run can create up to {max, plural, one {# result} other {# results}}.",
+        "noCuts": "Add a cut or detect scenes.",
+        "detectAgain": "Detect again",
+        "cutSummary": "{cuts, plural, one {# cut point} other {# cut points}} · {segments, plural, one {# segment} other {# segments}}",
+        "segmentPreview": "Preview · {start} – {end}",
+        "stopPreview": "Stop preview",
+        "detectionError": "Detection failed. Try detecting scenes again.",
+        "detectionSuperseded": "Scene detection finished on an earlier edit. Detect again to use it.",
+        "videoUpdated": "The video was updated.",
+        "applyToVideo": "Apply to this video",
+        "settingsOutOfRange": "Some settings are outside the updated video. Adjust them first.",
+        "outputCapExceeded": "Up to {cap} outputs; this plan makes {count}",
+        "outputCount": "{count, plural, one {# output} other {# outputs}}",
+        "viewerMode": "Viewer mode",
+        "connectionUnavailable": "Connection unavailable",
+        "preparingVideo": "Preparing video…",
+        "preparationFailed": "Couldn't prepare the video",
+        "tooLongToPrepare": "Too long to prepare"
       }
     },
     "template": {
@@ -3562,6 +3613,10 @@
       "title": "Refresh with work in progress?",
       "refresh": "Refresh anyway",
       "failed": "Couldn't refresh. Try again."
+    },
+    "copying": {
+      "title": "This Project is still being copied. Open it from Studio once it's done.",
+      "backToStudio": "Back to Studio"
     }
   },
   "common": {
@@ -4554,7 +4609,8 @@
         "openedAt": "Opened {time}",
         "editedAt": "Edited {time}",
         "archivedAt": "Archived {time}",
-        "neverOpened": "Never opened"
+        "neverOpened": "Never opened",
+        "copying": "Copying"
       },
       "projects": {
         "new": "New project",

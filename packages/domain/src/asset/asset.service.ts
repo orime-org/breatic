@@ -42,6 +42,7 @@ import {
   getStorageConfig,
   NotFoundError,
   projectsRepo,
+  type DbTx,
 } from "@breatic/core";
 import {
   registerWithDedup,
@@ -60,11 +61,12 @@ import { queueForReclaim } from "@domain/asset/storage-reclaim.repo.js";
  * body is one query today; the rule it encodes is what other code depends
  * on, and dedup scope + future billing both derive from this one answer.
  * @param projectId - Project the asset was produced in.
+ * @param tx - An enclosing transaction, when the caller holds one.
  * @returns The owner studio id.
  * @throws {NotFoundError} If the project does not exist or is soft-deleted.
  */
-export async function resolveOwnerStudioId(projectId: string): Promise<string> {
-  const studioId = await projectsRepo.findOwnerStudioId(projectId);
+export async function resolveOwnerStudioId(projectId: string, tx?: DbTx): Promise<string> {
+  const studioId = await projectsRepo.findOwnerStudioId(projectId, tx);
   if (studioId === undefined) {
     throw new NotFoundError(t("server.project.not_found"));
   }

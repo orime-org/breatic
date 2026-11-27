@@ -10,7 +10,7 @@ import '@testing-library/jest-dom/vitest';
 // silently does nothing and tests fail with "Invalid Chai property:
 // toHaveNoViolations". Wiring the matcher by hand is the documented
 // workaround until vitest-axe ships a fixed dist.
-import { afterAll, afterEach, beforeAll, expect, vi } from 'vitest';
+import { afterAll, afterEach, beforeAll, beforeEach, expect, vi } from 'vitest';
 // Namespace import: vitest-axe v0.1.0's `dist/matchers.d.ts` mis-types
 // `toHaveNoViolations` as a type-only re-export (it is actually a
 // runtime function), so a named import errors at tsc. Importing as a
@@ -49,7 +49,7 @@ import { LOCALE_CATALOGS } from '@web/test-utils/locale-catalogs';
 // reason. The next locale we add should not need anyone to remember this file.
 beforeAll(() => {
   for (const [tag, catalog] of LOCALE_CATALOGS) {
-    setLocaleMessages(tag, catalog as Record<string, unknown>);
+    setLocaleMessages(tag, catalog);
   }
   setLocale('en');
 });
@@ -136,12 +136,12 @@ afterEach(() => {
   // Query stops reading the page's visibility, and a later file that hides
   // and shows the tab sees no change. Undefined hands it back to visibility.
   focusManager.setFocused(undefined);
-  // The page's visibility belongs to the one document every file shares, and
-  // tests hide the tab by defining `visibilityState` and `hidden` on it. One
-  // left hidden hands every later file a hidden page: the chat sync and the
-  // Studio page poll never ask, and a file far from the cause fails on an
-  // empty list, in an order only CI produced (inner#2168). Deleting the own
-  // properties hands back jsdom's, a visible page.
+  // The tab's visibility is the same kind of state: a test steers it by
+  // putting its own `visibilityState` and `hidden` on the one shared
+  // document, and one left at hidden hands every later file a hidden tab.
+  // Code that syncs only a visible tab (`chatLive`) then never syncs, and a
+  // file far away fails on a stream that never opens (inner#2168). Deleting
+  // them hands back jsdom's own, which reads visible.
   delete (document as { visibilityState?: unknown }).visibilityState;
   delete (document as { hidden?: unknown }).hidden;
   // A canvas's render buffer, session and text editors are kept by Space id
@@ -185,6 +185,13 @@ afterEach(() => {
 // it again, so giving sheets back leaves every later file without CSS the
 // isolated run had. An earlier commit on this branch claimed a peak of 105;
 // that figure does not reproduce, and what it actually counted is not known.
+
+// jsdom has no WebGL constructor. Libraries may check it before asking a
+// canvas for a context; individual tests still own their getContext/GL mocks.
+// Reapply after vitest's per-test unstub, and restore with the shared cleanup.
+beforeEach(() => {
+  vi.stubGlobal('WebGLRenderingContext', class {});
+});
 
 // jsdom lacks several APIs that Radix / cmdk / shadcn primitives use.
 // Provide minimal polyfills so component tests focus on contracts.
@@ -234,7 +241,7 @@ if (typeof Element !== 'undefined') {
       width: 0,
       height: 0,
       toJSON: () => ({}),
-    }) as DOMRect;
+    });
   const emptyRects = (): DOMRectList => [] as unknown as DOMRectList;
   const protos = [
     typeof Node !== 'undefined' ? Node.prototype : null,

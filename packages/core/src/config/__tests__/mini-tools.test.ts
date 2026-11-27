@@ -6,8 +6,55 @@ import { describe, expect, it } from "vitest";
 import { MINI_TOOL_JOB_MAX_EXTRA_INPUTS } from "@breatic/shared";
 
 import { getMiniToolsConfig, miniToolsConfigSchema } from "@core/config/mini-tools.js";
+import { workerConcurrencyFor } from "@core/config/worker.js";
 
 describe("getMiniToolsConfig", () => {
+  it("loads and defaults the durable settlement discovery and query settings", () => {
+    const expected = { lease_ms: 60000, retry_ms: 30000, lookup_timeout_ms: 15000, discovery_interval_ms: 30000, discovery_page_size: 100 };
+    const configured = getMiniToolsConfig() as unknown as Record<string, unknown>;
+    expect(configured.settlement).toEqual(expected);
+    const bare = structuredClone(configured); delete bare.settlement;
+    expect((miniToolsConfigSchema.parse(bare) as unknown as Record<string, unknown>).settlement).toEqual(expected);
+    const custom = { lease_ms: 70000, retry_ms: 20000, lookup_timeout_ms: 12000, discovery_interval_ms: 24000, discovery_page_size: 64 };
+    expect((miniToolsConfigSchema.parse({ ...bare, settlement: custom }) as unknown as Record<string, unknown>).settlement).toEqual(custom);
+  });
+
+  it("uses the existing worker concurrency registry for settlement jobs", () => {
+    expect(workerConcurrencyFor("mini-tool-settlement")).toBe(2);
+  });
+  it("loads and defaults the complete planned-process byte limits", () => {
+    const expected = { probeStdoutBytes: 268435456, analysisStdoutBytes: 16777216, stderrTailBytes: 65536 };
+    const configured = getMiniToolsConfig() as unknown as Record<string, unknown>;
+    expect(configured.plan_limits).toEqual(expected);
+    const bare = structuredClone(configured);
+    delete bare.plan_limits;
+    expect((miniToolsConfigSchema.parse(bare) as unknown as Record<string, unknown>).plan_limits).toEqual(expected);
+    const custom = { probeStdoutBytes: 2048, analysisStdoutBytes: 1024, stderrTailBytes: 256 };
+    expect((miniToolsConfigSchema.parse({ ...bare, plan_limits: custom }) as unknown as Record<string, unknown>).plan_limits).toEqual(custom);
+  });
+
+  it.each([
+    { probeStdoutBytes: 0, analysisStdoutBytes: 1024, stderrTailBytes: 256 },
+    { probeStdoutBytes: 2048, analysisStdoutBytes: -1, stderrTailBytes: 256 },
+    { probeStdoutBytes: 2048, analysisStdoutBytes: 1024, stderrTailBytes: 0.5 },
+    { probeStdoutBytes: Number.POSITIVE_INFINITY, analysisStdoutBytes: 1024, stderrTailBytes: 256 },
+    { probeStdoutBytes: 2048, analysisStdoutBytes: Number.MAX_SAFE_INTEGER + 1, stderrTailBytes: 256 },
+  ])("rejects invalid planned-process byte limits %j", (plan_limits) => {
+    expect(miniToolsConfigSchema.safeParse({ ...getMiniToolsConfig(), plan_limits }).success).toBe(false);
+  });
+  it("requires complete analysis profiles before accepting work", () => {
+    const config = structuredClone(getMiniToolsConfig()) as Record<string, unknown>;
+    delete config.analyses;
+    expect(miniToolsConfigSchema.safeParse(config).success).toBe(false);
+  });
+
+  it.each(["scene_cuts"])("requires the %s analysis profile", (kind) => {
+    const config = structuredClone(getMiniToolsConfig());
+    const analyses = config.analyses as Record<string, unknown>;
+    delete analyses[kind];
+    expect(miniToolsConfigSchema.safeParse(config).success).toBe(false);
+  });
+
   it("loads every container operation from config/mini-tools.yaml", () => {
     const config = getMiniToolsConfig();
     expect(Object.keys(config.ops).sort()).toEqual(

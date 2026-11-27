@@ -116,6 +116,17 @@ beforeAll(() => {
   loadLocales();
 });
 
+
+// §97 (frames-split design §10.6 删除行; tools design acceptance item 5): the guide describes frame extraction with its three
+// kept modes and no longer quotes the removed interval mode or explains it.
+describe("frame extraction in the guide after the interval mode is removed", () => {
+  it("quotes First, Last and Current and says nothing about intervals", () => {
+    const guide = renderProductGuide();
+    for (const mode of ["first", "last", "current"]) expect(guide).toContain(`"${t(`canvas.miniTool.videoUI.${mode}`)}"`);
+    expect(guide).not.toMatch(/interval/i);
+  });
+});
+
 describe("the guide as a tool", () => {
   it("is registered, and reaches a chat turn", () => {
     expect(Object.keys(TOOL_MAP)).toContain(GET_PRODUCT_GUIDE);
@@ -1180,6 +1191,19 @@ describe("product guide: full screen", () => {
     expect(text).toMatch(/row of icons over a picture or video holds only full screen/);
     expect(text).not.toMatch(/full-screen controls/);
     expect(text).not.toMatch(/play, seek and fullscreen/);
+  });
+});
+
+// frames-split §7.19: a video tool run is rerun only as a whole, from its panel; no row offers to retry part of it.
+describe("a video tool's ended task row (frames-split §7.19)", () => {
+  beforeAll(() => { loadLocales(); });
+  it("says a video tool's failed, cancelled or expired row offers only Clear and the tool runs again from its panel", () => {
+    const text = renderProductGuide();
+    expect(text).toContain(`a video tool's failed row (including one that says "${t("canvas.task.failure.cancelled")}") or expired row offers only "${t("canvas.task.action.clear")}"; run the tool again from its panel`);
+    expect(text).not.toMatch(/was not retried already|a retried result runs again/);
+  });
+  it("still offers Retry for an upload still at hand", () => {
+    expect(renderProductGuide()).toContain(`offers "${t("canvas.task.action.retry")}" for an upload still at hand`);
   });
 });
 

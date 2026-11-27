@@ -10,7 +10,8 @@
       "rate_limited": "请求过于频繁，请稍后再试",
       "payload_too_large": "请求内容超过 {limit}，请缩短提示词或减少引用的文字。",
       "transfer_invalid": "上传的内容无法使用，请重试。",
-      "internal": "服务器内部错误"
+      "internal": "服务器内部错误",
+      "project_copying": "这个 Project 正在复制，暂时不能复制。"
     },
     "credit": {
       "not_studio_admin": "只能指定给你管理的 Studio。",
@@ -218,10 +219,13 @@
       "unavailable": "这个工具暂时不可用。",
       "invalidParam": "“{name}”的值这个工具不支持。",
       "foreignSource": "这个文件无法处理。",
+      "presentationChanged": "视频已更新，请重新选择画面和区域。",
       "sourceTooLong": "这个工具只处理 {minutes} 分钟以内的音频。",
       "sourceTooLarge": "这个工具只处理 {size} 以内的文件。",
       "clipsTooLarge": "这些片段加起来太大，无法拼接。",
-      "joinClipCount": "拼接需要 2 到 {max} 段。"
+      "joinClipCount": "拼接需要 2 到 {max} 段。",
+      "runTooLong": "这个视频太长，一次运行处理不了（需要超过 {max} 个编码作业）。请减少或缩短输出。",
+      "tooManyOutputs": "一次运行最多生成 {max} 个结果。"
     },
     "idempotency": {
       "missing": "页面已更新，请刷新后重试。",
@@ -953,6 +957,7 @@
       "editProposalMarks": "请替换大括号里的内容。橙色的注意事项不会发给模型。",
       "notePrefix": "注意事项：",
       "integerBlank": "留空为自动",
+      "focusCropExpired": "裁剪超时——请重试。",
       "ownKeyLabel": "你的 key",
       "studioKeyLabel": "Studio 的 key",
       "alsoCredits": "积分",
@@ -1257,6 +1262,12 @@
         },
         "hdr": {
           "label": "HDR"
+        },
+        "extract-frames": {
+          "label": "抽帧"
+        },
+        "split": {
+          "label": "分割"
         }
       },
       "audio": {
@@ -1309,7 +1320,9 @@
           "label": "比例"
         },
         "rect": {
-          "label": "尺寸（px）"
+          "label": "尺寸（px）",
+          "width": "宽",
+          "height": "高"
         },
         "orient": {
           "label": "朝向"
@@ -1468,6 +1481,44 @@
         "attack": "启动",
         "release": "释放",
         "makeup": "补偿增益"
+      },
+      "videoUI": {
+        "analysisFailed": "分析失败，请重试。",
+        "atCursor": "在当前位置添加",
+        "current": "当前帧",
+        "currentFrameUnavailable": "当前帧不可用",
+        "cutPoint": "切点",
+        "detectScenes": "场景检测",
+        "first": "首帧",
+        "last": "尾帧",
+        "ledgerUnsupported": "该视频暂不支持此工具",
+        "mediaError": "媒体不可用",
+        "rebuildDraft": "重置设置",
+        "removeCut": "移除",
+        "retryPreview": "重试预览",
+        "sourceUnavailable": "源视频不可用",
+        "unsupportedDraft": "已保存设置需要更新。",
+        "invalidNumber": "请输入有效数值。",
+        "sourceChanged": "源素材已更改。",
+        "useCurrentSource": "使用当前素材",
+        "tooManyOutputs": "一次运行最多生成 {max} 个结果。",
+        "noCuts": "添加切点或执行场景检测。",
+        "detectAgain": "重新检测",
+        "cutSummary": "{cuts} 个切点 · {segments} 段",
+        "segmentPreview": "预览 · {start} – {end}",
+        "stopPreview": "停止预览",
+        "detectionError": "场景检测失败，请重新检测。",
+        "detectionSuperseded": "场景检测已在之前的编辑上完成。如需使用，请重新检测。",
+        "videoUpdated": "视频已更新。",
+        "applyToVideo": "应用到当前视频",
+        "settingsOutOfRange": "部分设置超出更新后的视频，请先调整。",
+        "outputCapExceeded": "最多 {cap} 个产物，当前 {count} 个",
+        "outputCount": "{count} 个产物",
+        "viewerMode": "Viewer 模式",
+        "connectionUnavailable": "连接不可用",
+        "preparingVideo": "正在准备视频…",
+        "preparationFailed": "视频准备失败",
+        "tooLongToPrepare": "超出可准备时长"
       }
     },
     "template": {
@@ -3562,6 +3613,10 @@
       "title": "仍有未完成的工作，要刷新吗？",
       "refresh": "仍然刷新",
       "failed": "刷新失败，请重试。"
+    },
+    "copying": {
+      "title": "这个 Project 正在复制，完成后在 Studio 打开。",
+      "backToStudio": "返回 Studio"
     }
   },
   "common": {
@@ -4554,7 +4609,8 @@
         "openedAt": "打开于 {time}",
         "editedAt": "修改于 {time}",
         "archivedAt": "归档于 {time}",
-        "neverOpened": "从未打开"
+        "neverOpened": "从未打开",
+        "copying": "正在复制"
       },
       "projects": {
         "new": "新建 Project",

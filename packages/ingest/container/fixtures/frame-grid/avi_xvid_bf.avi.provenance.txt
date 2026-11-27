@@ -1,0 +1,5 @@
+avi_xvid_bf.avi
+
+Xvid-style MPEG-4 Part 2 with B-frames in a packed-bitstream AVI, 320x240 at 25 fps with MP3; 75 frames. `-copyts -seek_timestamp 1 -noaccurate_seek -ss 0` prints `could not seek to position 0.000` and `first frame is no keyframe`, and frames 0-12 then differ from a read without -ss. One of the sample set's legacy AVI samples (round-8 review); the exact generating command was not recorded with the sample.
+
+From the maintainers' frame-grid sample set (inner#1306), copied unchanged. Used by container/__tests__/frame-grid-*.node.test.ts.

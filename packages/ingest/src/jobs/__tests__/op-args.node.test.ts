@@ -11,13 +11,13 @@
 import { describe, expect, it } from "vitest";
 import { buildAdjustVideoFilter, defaultAdjustValue } from "@breatic/shared";
 
-import { inputRefusal, opRuns, outputRefusal } from "@ingest/jobs/op-args.js";
+import { inputRefusal, opRuns, opSteps, outputRefusal, type RunStep } from "@ingest/jobs/op-args.js";
 import type { ProbeReport } from "@ingest/media-metadata.js";
 
 const IN = "/tmp/job/source";
 const OUT = "/tmp/job/out.mp4";
 const WORK = "/tmp/job";
-const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2";
+const EVEN = "scale=trunc(iw/2)*2:trunc(ih/2)*2,setsar=1";
 
 /**
  * The value after a flag in one run.
@@ -46,10 +46,26 @@ describe("opRuns", () => {
     expect(after(slow!, "-filter:a")).toBe("atempo=0.500000,atempo=0.500000");
   });
 
-  it("cuts the range the panel set", () => {
-    const [run] = opRuns("cut", { range: { start: 1.5, end: 4 } }, IN, OUT, WORK, videoProbe());
-    expect(after(run!, "-ss")).toBe("1.500");
-    expect(after(run!, "-to")).toBe("4.000");
+  // A cut reads the file's start time, then where its seek lands, moving the seek back while it lands on a keyframe
+  // presented after the cut's start (an MP4 with B-frames and no edit list), and drops the frames between them.
+  it("cuts the range the panel set, from a seek that lands no later than its start", () => {
+    const answers = (steps: RunStep[], ...stderr: string[]): RunStep[] => stderr.reduce((chain, text) => {
+      const [step] = chain;
+      expect(step!.kind).toBe("measure");
+      return (step as Extract<RunStep, { kind: "measure" }>).then(text);
+    }, steps);
+    const start = opSteps("cut", { range: { start: 1.5, end: 4 } }, IN, OUT, WORK, videoProbe());
+    const [first] = start as [Extract<RunStep, { kind: "measure" }>];
+    expect([first.program, after(first.args, "-show_entries"), after(first.args, "-o")]).toEqual(["ffprobe", "format=start_time", "pipe:2"]);
+    const [probe] = answers(start, "0.100000\n") as [Extract<RunStep, { kind: "measure" }>];
+    expect([probe.program, after(probe.args, "-read_intervals")]).toEqual(["ffprobe", "1.600000%+#1"]);
+    const [stands] = answers(start, "0.100000\n", "1.600000,1.520000\n") as [Extract<RunStep, { kind: "run" }>];
+    expect(stands.args.filter((arg) => arg === "-ss")).toHaveLength(1);
+    expect([after(stands.args, "-seek_timestamp"), after(stands.args, "-ss"), after(stands.args, "-t")]).toEqual(["1", "1.600000", "2.500000"]);
+    const [moved] = answers(start, "0.100000\n", "1.680000,1.600000\n", "1.200000,1.120000\n") as [Extract<RunStep, { kind: "run" }>];
+    expect(moved.args.slice(moved.args.indexOf("-ss"), moved.args.indexOf("-vf"))).toEqual(["-ss", "1.520000", "-protocol_whitelist", "file", "-i", IN, "-ss", "0.080000", "-t", "2.500000"]);
+    expect(after(moved.args, "-vf")).toBe(EVEN);
+    expect(moved.args.at(-1)).toBe(OUT);
   });
 
   it("adjusts with the filter the panel's sliders describe", () => {
@@ -92,7 +108,7 @@ describe("opRuns", () => {
   // zimg then finds no path between colorspaces ("code 3074").
   it("names the primaries the linear step writes", () => {
     const [pq] = opRuns("hdr", { transfer: "pq" }, IN, OUT, WORK, videoProbe());
-    const linear = after(pq!, "-vf")!.split(",")[1]!;
+    const linear = after(pq!, "-vf")!.split(",").find((step) => step.startsWith("zscale=tin="))!;
     expect(linear.split(":")).toContain("p=bt709");
   });
 });
@@ -193,7 +209,6 @@ function videoProbe(tags: { colorTransfer?: string; colorPrimaries?: string; col
 describe("the runs every encoding operation shares", () => {
   const encoding = [
     ["speed", { rate: 2 }],
-    ["cut", { range: { start: 1, end: 2 } }],
     ["adjust", { value: defaultAdjustValue }],
     ["stabilize", { shakiness: 5, smoothing: 10 }],
     ["hdr", { transfer: "pq" }],

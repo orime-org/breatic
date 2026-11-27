@@ -1,0 +1,7 @@
+ts_h264.m2t
+
+MPEG-TS, 320x240 H.264 with B-frames at 30000/1001 fps with AAC, starting at about 1.467 s; one keyframe; 90 frames. Grid rate 30000/1001 (nominal) per the sample set's rate table. From the sample set's round-8 review; the exact generating command was not recorded with the sample.
+
+From the maintainers' frame-grid sample set (inner#1306), copied unchanged. Used by container/__tests__/frame-grid-*.node.test.ts.
+
+Renamed from ts_h264.ts in the sample set: a .ts name is read as TypeScript by the repository lint.

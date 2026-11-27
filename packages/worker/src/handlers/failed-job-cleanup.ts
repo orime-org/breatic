@@ -61,10 +61,16 @@ import {
 import { costWaitOf } from "@worker/handlers/cost-wait.js";
 import { storedFailure } from "@worker/handlers/stored-failure.js";
 import { isTranscription } from "@worker/handlers/transcribe-question.js";
+import type { MiniToolAnalysisJob, MiniToolExecutionJob } from "@breatic/domain";
+import { MINI_TOOL_ANALYSIS_JOB } from "@breatic/shared/mini-tools";
+import { MINI_TOOL_DELIVERY_JOB, MINI_TOOL_DELIVERY_DISCOVERY_JOB, type MiniToolDeliveryWake, type MiniToolDeliveryDiscovery } from "@breatic/core";
+import { finishMiniToolAnalysisAndNotify } from "@worker/handlers/mini-tool/analysis-completion.js";
+import { recoverPlannedRun } from "@worker/handlers/mini-tool/recover-planned-run.js";
 
 /** Minimal failed-job shape (BullMQ `Job` narrowed to what we read). */
 export interface FailedJobLike {
-  data: TaskJobData;
+  data: TaskJobData | MiniToolAnalysisJob | MiniToolExecutionJob | MiniToolDeliveryWake | MiniToolDeliveryDiscovery;
+  name?: string;
   /**
    * Terminal-completion timestamp (epoch ms). BullMQ sets `finishedOn` for
    * EVERY terminal failure and ONLY terminal failures — verified against
@@ -96,6 +102,8 @@ export async function cleanupFailedJobNodes(
   reason: string,
 ): Promise<number> {
   if (!job) return 0;
+  if (job.name === MINI_TOOL_DELIVERY_JOB || job.name === MINI_TOOL_DELIVERY_DISCOVERY_JOB) return 0;
+  if ("deliveryVersion" in job.data || !("taskId" in job.data)) throw new Error("Delivery cleanup requires its original job name");
   // Only reclaim on a TERMINAL failure. BullMQ's 'failed' event also fires
   // for retryable attempts (worker.js emits after every moveToFailed) — and
   // writing idle then would fight the upcoming retry. `finishedOn` is set
@@ -106,6 +114,25 @@ export async function cleanupFailedJobNodes(
   // attemptsMade, so that gate skipped exactly the deaths it should catch.
   if (!job.finishedOn) return 0;
 
+  if (job.name === MINI_TOOL_ANALYSIS_JOB) {
+    await finishMiniToolAnalysisAndNotify(job.data.taskId, {
+      kind: "error", error: { code: "analysis_failed", message: reason },
+    }, streamRedis);
+    return 1;
+  }
+  if ("executionKind" in job.data) {
+    if (job.name !== "execute-mini-tool" || job.data.executionKind !== "planned" || job.data.source !== "mini_tool") {
+      throw new Error("Planned recovery requires its original queue discriminator");
+    }
+    // A planned run alone decides its end (frames-split §7.19); what this cannot end is left to the sweep.
+    try {
+      await recoverPlannedRun(job.data.taskId);
+    } catch (err) {
+      logger.error({ err, ctx: { taskId: job.data.taskId, reason } }, "mini_tool_execution_recovery_failed");
+    }
+    return 1;
+  }
+  if ("hostNodeId" in job.data) throw new Error("Analysis recovery requires its execution discriminator");
   let task = null as Awaited<ReturnType<typeof taskService.getByIdInternal>>;
   try {
     task = await taskService.getByIdInternal(job.data.taskId);
@@ -150,15 +177,17 @@ export async function cleanupFailedJobNodes(
   // are stored as codes keeps storing codes: a user opens a node's list in
   // their own language, and BullMQ's sentence is in one.
   let failure: string | undefined;
+  // Held narrowed: the closure below does not keep the narrowing of `job.data`.
+  const taskData = job.data;
   /**
    * The stored cause, worked out once and only for a task that did not bill.
    * @returns The cause.
    */
   const failureOf = (): string => (failure ??= storedFailure(
-    job.data.taskType,
+    taskData.taskType,
     new Error(`Task failed: ${reason}`),
     undefined,
-    isTranscription(job.data.params ?? {}) ? "transcribe" : undefined,
+    isTranscription(taskData.params ?? {}) ? "transcribe" : undefined,
   ));
   // Whether the task and every row it had open are ended already.
   let rowsEnded = false;

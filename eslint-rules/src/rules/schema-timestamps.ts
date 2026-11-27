@@ -16,8 +16,8 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   ["creditCompensations", "immutable funding evidence; deleting a receipt hides the provenance of credits already issued"],
   ["creditGifts", "immutable registration claim or operator funding evidence; removing a registration claim would permit a second grant"],
   ["creditGrantOperations", "immutable original grant decisions retain their idempotency keys permanently; deleting a decision would permit duplicate funding"],
-  ["influencers", "one row per influencer code (0138, inner#2157): every account points at a code with a RESTRICT foreign key and its revenue share is settled by it, so a code is permanent; disabling is disabled_at, never removal"],
-  ["influencerOperations", "immutable decisions of the influencer internal endpoints (0138, inner#2157), as creditGrantOperations: deleting one would let the same key open or change an influencer a second time"],
+  ["influencers", "one row per influencer code (0142, inner#2157): every account points at a code with a RESTRICT foreign key and its revenue share is settled by it, so a code is permanent; disabling is disabled_at, never removal"],
+  ["influencerOperations", "immutable decisions of the influencer internal endpoints (0142, inner#2157), as creditGrantOperations: deleting one would let the same key open or change an influencer a second time"],
   ["paymentReceipts", "immutable receipt of a completed payment (0131, inner#1993); a lot's source points at it, so removing one hides where credits already issued came from"],
   ["commerceRequests", "immutable record of a billing-service write and its answer (0131, inner#1993); removing one would let a replay of the same key act a second time"],
   ["commerceOutbox", "internal transactional-outbox queue (0131, inner#1993), like projectLifecycleOutbox: appended in a business transaction, then either marked sent by the relay and kept, or moved with its id, seq and payload to commerceOutboxDeadLetters"],
@@ -67,6 +67,10 @@ const NO_SOFT_DELETE: ReadonlyMap<string, string> = new Map([
   [
     "analyticsMilestones",
     "claims for milestones reported once (0094, inner#1442): a row is the record that the milestone already happened, so removing it would report the same milestone a second time",
+  ],
+  [
+    "presentationPinObjects",
+    "the object set of a presentation pin (0130, inner#1306 §7.15): a row is a key the pin references now, and whether the reference is live is the parent pin's deleted_at; a row leaves only when the pin stops referencing the key (a selected pin's whole-set Mv, a stitch's Drop), in the transaction that registers the key for reclaim, so a soft-deleted row would be a second, stale answer to whether a key is pinned",
   ],
   [
     "storageReclaimQueue",

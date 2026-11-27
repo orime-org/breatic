@@ -441,6 +441,32 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     sourceMany: false,
   },
   {
+    id: "video.extract-frames",
+    source: "video",
+    run: { kind: "planned" },
+    labelKey: key("video.extract-frames", "label"),
+    guide: "extracts the first, last or current frame",
+    icon: "GalleryVerticalEnd",
+    params: [],
+    slots: [],
+    outputs: [{ modality: "image", namePrefix: "FRAME" }],
+    sourceParam: "video",
+    sourceMany: false,
+  },
+  {
+    id: "video.split",
+    source: "video",
+    run: { kind: "planned" },
+    labelKey: key("video.split", "label"),
+    guide: "detects scene boundaries and splits the complete video at editable cuts",
+    icon: "Scissors",
+    params: [],
+    slots: [],
+    outputs: [{ modality: "video", namePrefix: "SPLIT" }],
+    sourceParam: "video",
+    sourceMany: false,
+  },
+  {
     id: "video.upscale",
     source: "video",
     run: { kind: "model", model: "seedvr2-video" },
@@ -741,3 +767,13 @@ export const MINI_TOOLS: readonly MiniToolSpec[] = [
     sourceMany: false,
   },
 ];
+
+/**
+ * The task type a planned tool's task row is opened with: the two frame tools produce a picture, every other planned
+ * tool a video (frames-split design §5.5 "plan shape" row).
+ * @param tool - The planned tool id.
+ * @returns The task type.
+ */
+export function miniToolTaskType(tool: string): "image" | "video" {
+  return tool === "video.extract-frames" || tool === "video.focus-crop" ? "image" : "video";
+}

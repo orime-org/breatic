@@ -173,6 +173,8 @@ jobs:
         # (`*.integration.test.ts`), which need live Postgres / Redis.
         run: pnpm turbo test --filter=!@breatic/web
         env:
+          # The ingest tests that run real FFmpeg run in the job below, inside the production image.
+          INGEST_MEDIA_TESTS: image
           DATABASE_URL: postgres://localhost/test
           REDIS_URL: redis://localhost/0
           REDIS_QUEUE_URL: redis://localhost/1
@@ -186,6 +188,18 @@ jobs:
 
       - name: Test the CLA check
         run: node --test scripts/cla-check.test.mjs
+
+  test-media-container:
+    name: Test (media container, in its image)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Test the media container with the production image's FFmpeg
+        # Builds packages/ingest/Dockerfile unchanged and runs the ingest tests that call FFmpeg inside it, so they
+        # read the FFmpeg build users' videos go through (packages/ingest/AGENTS.md#tests).
+        run: packages/ingest/scripts/test-container-in-image.sh
 
   test-web:
     name: Test (web, shard ${{ matrix.shard }}/4)

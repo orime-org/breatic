@@ -38,6 +38,12 @@ export const workerConfigSchema = z.object({
   slot_wait_sweep_interval_ms: z.number().int().positive().default(60_000),
   /** How many stale waiters one round of that sweep looks at. */
   slot_wait_sweep_batch_size: z.number().int().positive().default(200),
+  /** How often the sweep runs that ends planned video tool runs whose job will not pick them up again (frames-split §7.19). */
+  planned_run_sweep_interval_ms: z.number().int().positive().default(60_000),
+  /** How many running and how many pending planned runs one round of that sweep looks at. */
+  planned_run_sweep_batch_size: z.number().int().positive().default(200),
+  /** How old a pending planned run that never waited must be before that sweep reads its job, so one still being queued is left alone. */
+  planned_run_sweep_grace_ms: z.number().int().positive().default(300_000),
   /** How long a pickup tries for the person's running-task gate lock before going back to the queue. */
   slot_lock_wait_ms: z.number().int().nonnegative().default(200),
   /** The sweep that settles charge requests still pending (inner#1617). */

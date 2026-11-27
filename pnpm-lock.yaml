@@ -594,6 +594,9 @@ importers:
         specifier: 'catalog:'
         version: 4.4.3
     devDependencies:
+      '@testcontainers/postgresql':
+        specifier: 'catalog:'
+        version: 11.14.0
       '@types/mjml':
         specifier: 5.0.0
         version: 5.0.0
@@ -603,6 +606,9 @@ importers:
       fast-check:
         specifier: 'catalog:'
         version: 4.9.0
+      testcontainers:
+        specifier: 'catalog:'
+        version: 11.14.0
       tsup:
         specifier: 'catalog:'
         version: 8.5.1(jiti@2.7.0)(postcss@8.5.28)(tsx@4.23.12)(typescript@5.8.3)(yaml@2.9.0)
@@ -639,6 +645,9 @@ importers:
       unpdf:
         specifier: 1.1.0
         version: 1.1.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@cloudflare/vitest-pool-workers':
         specifier: 0.12.21
@@ -1294,6 +1303,9 @@ importers:
       vanilla-cookieconsent:
         specifier: 3.1.0
         version: 3.1.0
+      video-animation-player:
+        specifier: 1.0.5
+        version: 1.0.5
       wavesurfer.js:
         specifier: 8.0.2
         version: 8.0.2
@@ -1484,6 +1496,9 @@ importers:
       yaml:
         specifier: 'catalog:'
         version: 2.9.0
+      zod:
+        specifier: 'catalog:'
+        version: 4.4.3
     devDependencies:
       '@types/node':
         specifier: 'catalog:'
@@ -12022,6 +12037,9 @@ packages:
 
   vfile@6.0.3:
     resolution: {integrity: sha512-KzIbH/9tXat2u30jf+smMwFCsno4wHVdNmzFyL+T/L3UGqqk6JKfVqOFOZEpZSHADH1k40ab6NUIXZq422ov3Q==}
+
+  video-animation-player@1.0.5:
+    resolution: {integrity: sha512-KLz+uL6zojOYXEPFxL2AB0iKSLHnmKQPBnXmFWHpGtAdB6/j9EWCbWcUDCg0KVOBTFRHa2UfiSNK0y1I+LEfpA==}
 
   vite-node@3.2.4:
     resolution: {integrity: sha512-EbKSKh+bh1E1IFxeO0pg1n4dvoOTt0UDiXMd/qn++r98+jPO1xtJilvXldeuQ8giIB5IkpjCgMleHMNEsGH6pg==}
@@ -24125,6 +24143,8 @@ snapshots:
     dependencies:
       '@types/unist': 3.0.3
       vfile-message: 4.0.3
+
+  video-animation-player@1.0.5: {}
 
   vite-node@3.2.4(@types/node@24.19.1)(less@4.8.1)(lightningcss@1.32.0)(sass@1.51.0):
     dependencies:

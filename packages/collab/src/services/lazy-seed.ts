@@ -38,7 +38,7 @@ import {
   getRedis,
   getSession,
   getTimelineConfig,
-  loadInitialSpaceType,
+  loadSeedFacts,
   projectActivitiesRepo,
   runWithConsent,
   serverAnalyticsOn,
@@ -58,6 +58,18 @@ import * as yjsDocumentsRepo from "@collab/services/yjs-documents.repo.js";
 
 const logger = createLogger("lazy-seed");
 
+/** A load refused because the Project is a copy collab has not finished copying (inner#1706). */
+export class DuplicateInProgressError extends Error {
+  /**
+   * Name the copy whose load was refused.
+   * @param projectId - The copy.
+   */
+  constructor(projectId: string) {
+    super(`project ${projectId} is still being copied`);
+    this.name = "DuplicateInProgressError";
+  }
+}
+
 /** Placeholder creator/actor — backfilled to the real user via awareness. */
 const SYSTEM_ACTOR = "system";
 
@@ -65,10 +77,14 @@ const SYSTEM_ACTOR = "system";
  * If `documentName` is a meta doc with no row yet, seed the project's
  * first Space — its content doc AND the meta doc, using the Space type
  * chosen at create time — and return the meta bytes; otherwise return
- * null (the caller's fetch result stands).
+ * null (the caller's fetch result stands). A copy still being copied has
+ * no meta row until the copy lands, and a default seeded now would later be
+ * stored over the copied one (inner#1557), so its load is refused instead;
+ * the client reconnects and loads the copy once it is complete.
  * @param documentName - Full Yjs doc name being loaded
  * @param opener - The connection whose load triggered this, when there is one
  * @returns The seeded meta bytes, or null when no seed applies
+ * @throws {DuplicateInProgressError} When the Project is a copy still being copied.
  * @throws {Error} When configuration, initialization or database acceptance fails.
  */
 export async function lazySeedMeta(
@@ -79,9 +95,13 @@ export async function lazySeedMeta(
   if (!parsed || parsed.kind !== "meta") return null;
 
   const { projectId } = parsed;
-  // The Space type chosen at create time (stored on the project row);
-  // defaults to canvas for a missing/legacy row.
-  const kind = await loadInitialSpaceType(projectId);
+  // The Space type chosen at create time (stored on the project row; canvas for a missing or legacy row), and whether
+  // the Project is a copy still being copied.
+  const { kind, copying } = await loadSeedFacts(projectId);
+  if (copying) {
+    logger.info({ projectId, documentName }, "meta_load_refused_copy_in_progress");
+    throw new DuplicateInProgressError(projectId);
+  }
   // Deterministic Space id (shared `deriveId`) so concurrent first-loads
   // across collab instances converge to one Space (see header).
   const spaceId = deriveId(projectId);

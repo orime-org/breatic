@@ -35,6 +35,7 @@ const MEDIA_CONTAINER_FILES: string[] = MEDIA_CONTAINER_INCLUDE.map((entry) =>
 
 /** Where each package the service reaches sits, from the container's directory, by its alias. */
 const MEDIA_CONTAINER_ALIASES: ReadonlyArray<readonly [string, string]> = [
+  ["./", "@ingest/container/"],
   ["../src/", "@ingest/"],
   ["../../shared/src/", "@shared/"],
 ];

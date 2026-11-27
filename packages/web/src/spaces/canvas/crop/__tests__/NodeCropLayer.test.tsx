@@ -6,11 +6,13 @@
  * the tool's draft in source pixels and drawn in the node's own pixels.
  */
 
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { canvasSessions } from '@web/stores/canvas-session';
 import {
+  ALPHA_VIDEOS,
   IMG_BOX,
   cropCanvas,
   draw,
@@ -18,6 +20,7 @@ import {
   rectSize,
   relayout,
 } from '@web/spaces/canvas/crop/__tests__/crop-harness';
+import { presentedDisplay, seedUsablePresentation } from '@web/test-utils/video-presentation';
 
 const NODE = { id: 'n1', kind: 'img' as const, src: 'https://cdn/a.png' };
 
@@ -146,5 +149,45 @@ describe('NodeCropLayer for a crop tool', () => {
     expect(screen.queryByTestId('mini-tool-crop-layer')).toBeNull();
     act(() => store().openMiniTool('other', 'image.crop', { sourceContent: 'x', params: {} }));
     expect(screen.queryByTestId('mini-tool-crop-layer')).toBeNull();
+  });
+});
+
+describe('NodeCropLayer for the video crop tool on a transparent video (frames-split §7.8)', () => {
+  it('measures the box on the display canvas and writes a drawn box back in source pixels', () => {
+    const ALPHA = { id: 'n1', kind: 'alpha-video' as const, src: 'https://cdn/alpha.webm' };
+    render(cropCanvas([ALPHA], null));
+    const video = ALPHA_VIDEOS.get(ALPHA.src)!;
+    Object.defineProperty(video, 'videoWidth', { configurable: true, value: 800 });
+    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 600 });
+    act(() => store().openMiniTool('n1', 'video.crop', { sourceContent: ALPHA.src, params: { aspect: 'free', rect: null } }));
+    expect(rectSize('mini-tool-crop')).toEqual({ left: 0, top: 0, width: 400, height: 300 });
+    draw({ x: 150, y: 100 }, { x: 250, y: 180 }, 'mini-tool-crop');
+    expect(store().miniTool?.params.rect).toEqual({ x: 100, y: 100, w: 200, h: 160 });
+  });
+});
+
+describe('NodeCropLayer for the video crop tool with no selected version (frames-split §7.8 geometry reads)', () => {
+  it('frames the source in its registered size, not the played original\'s, so a container crop the browser ignores is not counted', () => {
+    const VIDEO = { id: 'n1', kind: 'video' as const, src: 'https://cdn/crop.mkv', width: 156, height: 94 };
+    render(cropCanvas([VIDEO], null));
+    const video = screen.getByTestId('media-element') as HTMLVideoElement;
+    Object.defineProperty(video, 'videoWidth', { configurable: true, value: 160 });
+    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 96 });
+    act(() => store().openMiniTool('n1', 'video.crop', { sourceContent: VIDEO.src, params: { aspect: 'free', rect: null } }));
+    expect(store().miniTool?.sourceSize).toEqual({ width: 156, height: 94 });
+  });
+});
+
+describe('NodeCropLayer for the video crop tool with a selected version (frames-split §7.8 geometry reads)', () => {
+  it('frames the source in the selected version\'s display, over the size the upload was registered at', () => {
+    const VIDEO = { id: 'n1', kind: 'video' as const, src: 'https://cdn/dvd.mp4', content: 'https://cdn/dvd.mp4', width: 640, height: 480 };
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    seedUsablePresentation(client, '', VIDEO.content, { display: presentedDisplay(853, 480) });
+    render(<QueryClientProvider client={client}>{cropCanvas([VIDEO], null)}</QueryClientProvider>);
+    const video = screen.getByTestId('media-element') as HTMLVideoElement;
+    Object.defineProperty(video, 'videoWidth', { configurable: true, value: 853 });
+    Object.defineProperty(video, 'videoHeight', { configurable: true, value: 480 });
+    act(() => store().openMiniTool('n1', 'video.crop', { sourceContent: VIDEO.src, params: { aspect: 'free', rect: null } }));
+    expect(store().miniTool?.sourceSize).toEqual({ width: 853, height: 480 });
   });
 });

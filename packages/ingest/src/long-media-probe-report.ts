@@ -4,6 +4,7 @@
 import { readLongMediaProbeReport, type LongMediaProbeReport } from "@shared/media/long-media-probe.js";
 import { realVideoStream } from "@ingest/media-metadata.js";
 import { readProbeOutput } from "@ingest/probe-command.js";
+import type { MeasuredStreamWindow } from "@ingest/long-media-measured-window.js";
 
 interface RawStream {
   index?: number;
@@ -29,6 +30,7 @@ interface StreamTiming {
  * @param stdout - The JSON output from ffprobe.
  * @param sourceFingerprint - The hash measured for the immutable R2 source.
  * @param profileVersion - The frozen media conversion profile version.
+ * @param measured - The Container's measured windows of streams that declare no duration.
  * @returns A report with one source timeline for the complete file.
  * @throws {Error} When the source media or stream timing facts are incomplete.
  */
@@ -36,6 +38,7 @@ export function buildLongMediaProbeReport(
   stdout: string,
   sourceFingerprint: string,
   profileVersion: string,
+  measured: readonly MeasuredStreamWindow[] = [],
 ): LongMediaProbeReport {
   if (profileVersion.length === 0) throw new Error("The long media profile version is missing");
   let raw: { streams?: RawStream[]; frames?: RawFrame[] };
@@ -64,7 +67,8 @@ export function buildLongMediaProbeReport(
       throw new Error("The long media stream kind is invalid");
     }
     const firstFrame = raw.frames?.find((frame) => frame.stream_index === stream.index);
-    return { index: stream.index, kind: stream.codec_type, ...streamTiming(stream, firstFrame) };
+    const window = measured.find((entry) => entry.index === stream.index);
+    return { index: stream.index, kind: stream.codec_type, ...streamTiming(stream, firstFrame, window) };
   });
   const sourceRange = sourceTimeEnvelope(streams);
   const descriptor = {
@@ -86,12 +90,21 @@ export function buildLongMediaProbeReport(
 }
 
 /**
- * Convert exact stream PTS facts to integer microseconds.
+ * Convert exact stream PTS facts to integer microseconds. A stream without a declared duration (Matroska writes none)
+ * takes the Container's measured window.
  * @param raw - One ffprobe stream.
+ * @param firstFrame - Its first frame, when FFprobe read one.
+ * @param measured - Its measured window, when the Container measured one.
  * @returns Its measured start and end on the source timeline.
  * @throws {Error} When PTS, duration or time base is unavailable.
  */
-function streamTiming(raw: RawStream, firstFrame: RawFrame | undefined): StreamTiming {
+function streamTiming(raw: RawStream, firstFrame: RawFrame | undefined, measured: MeasuredStreamWindow | undefined): StreamTiming {
+  if (raw.duration_ts === undefined && measured !== undefined) {
+    return {
+      startUs: ticksToMicroseconds(BigInt(measured.start.numerator), 1n, BigInt(measured.start.denominator)),
+      endUs: ticksToMicroseconds(BigInt(measured.end.numerator), 1n, BigInt(measured.end.denominator)),
+    };
+  }
   const startPts = exactIntegerText(raw.start_pts, true) ??
     exactIntegerText(firstFrame?.pts, true) ??
     exactIntegerText(firstFrame?.best_effort_timestamp, true);

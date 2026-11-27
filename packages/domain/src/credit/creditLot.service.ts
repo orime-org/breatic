@@ -314,7 +314,7 @@ async function applyCharge(input: ChargeInput, tx: DbTx): Promise<ChargeOutcome>
   // settled fact that the caller reads as a normal outcome and logs as a
   // shortfall.
   const studioId = input.projectId
-    ? await resolveOwnerStudioId(input.projectId).catch((err: unknown) => {
+    ? await resolveOwnerStudioId(input.projectId, tx).catch((err: unknown) => {
         if (err instanceof NotFoundError) return null;
         throw err;
       })

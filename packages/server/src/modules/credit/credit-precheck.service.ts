@@ -20,7 +20,7 @@
  * and /mini-tools/* share ONE admission that can never drift.
  */
 
-import { AppError, env, getNodeTaskConfig } from "@breatic/core";
+import { AppError, env, getNodeTaskConfig, type DbTx } from "@breatic/core";
 import { creditHoldService, creditLotService, SMALLEST_CREDIT } from "@breatic/domain";
 import { SpendCapReachedError } from "@breatic/core";
 import { parseCreditDecimal, quantizeQuotedCredits, serializeCreditMicro, ceilToCreditCent, formatCredits, getActiveLocale, t, type ProjectCreditsView } from "@breatic/shared";
@@ -105,6 +105,24 @@ async function refuse(userId: string, required: number, figures: RefusalFigures)
 }
 
 /**
+ * A balance refusal decided inside a caller's transaction ({@link reserveForRunIn}). Its sentence reads the account and
+ * the studio's debt, so it is built once that transaction has rolled back ({@link explainHoldRefusal}), never while it
+ * holds a connection.
+ */
+export class HoldRefused extends Error {
+  /**
+   * Carry what the refusal's sentence is built from.
+   * @param userId - The caller.
+   * @param required - The run's settled estimate.
+   * @param figures - The studio's position when it was refused.
+   */
+  constructor(readonly userId: string, readonly required: number, readonly figures: RefusalFigures) {
+    super("Run hold refused");
+    this.name = "HoldRefused";
+  }
+}
+
+/**
  * Admit an Agent turn on a balance above zero (#296), on the payer's own OpenRouter key too (inner#1953): the key pays
  * for the model, while web search, image search and page reading run on our services and are charged in credits, so a
  * turn that could not pay for them is refused before it starts. The refusal then says why the own key is not enough.
@@ -126,13 +144,46 @@ export async function precheckAgentTurn(projectId: string, userId: string, keyOw
 }
 
 /**
+ * Hold a run's estimate, inside `tx` when given. The hold lasts the task budget, the longest a run may go on (two hours,
+ * `default_budget_ms`), so a run still working is still counted. The estimate is settled to whole hundredths once, here,
+ * so the hold and the refusal's choice of cause read the same figure (inner#1666).
+ * @param projectId - The project the run belongs to; its studio pays.
+ * @param userId - The authenticated caller.
+ * @param referenceId - The run's task id, which the worker releases by.
+ * @param required - The run's estimate.
+ * @param tx - The caller's transaction, or none.
+ * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the estimate.
+ * @throws {HoldRefused} When the studio cannot cover it.
+ * @throws {RangeError} When the estimate is negative or not a number.
+ */
+async function holdForRun(projectId: string, userId: string, referenceId: string, required: number, tx?: DbTx): Promise<void> {
+  if (!env.CHARGING_ENABLED) return;
+  const charge = ceilToCreditCent(required);
+  const outcome = await creditHoldService.reserveCredits({
+    projectId,
+    actorUserId: userId,
+    referenceId,
+    amount: charge,
+    ttlMs: getNodeTaskConfig().default_budget_ms,
+  }, tx);
+  if (outcome.ok) return;
+  if (outcome.cap !== undefined) throw new SpendCapReachedError(outcome.cap);
+  throw new HoldRefused(userId, charge, outcome);
+}
+
+/**
+ * The answer to a failed admission: a {@link HoldRefused} becomes its 402 sentence; anything else is itself.
+ * @param err - What the admission threw.
+ * @returns The error to throw.
+ */
+export async function explainHoldRefusal(err: unknown): Promise<unknown> {
+  if (!(err instanceof HoldRefused)) return err;
+  return refuse(err.userId, err.required, err.figures).catch((answer: unknown) => answer);
+}
+
+/**
  * Admit a run by holding its estimate until the worker charges it or the run
  * ends. Skipped entirely when payments are disabled (dev / self-host).
- *
- * The hold lasts the task budget, the longest a run may go on (two hours,
- * `default_budget_ms`), so a run still working is still counted. The estimate
- * is settled to whole hundredths once, here, so the hold and the refusal's
- * choice of cause read the same figure (inner#1666).
  * @param projectId - The project the run belongs to; its studio pays.
  * @param userId - The authenticated caller.
  * @param referenceId - The run's task id, which the worker releases by.
@@ -147,18 +198,28 @@ export async function reserveForRun(
   referenceId: string,
   required: number,
 ): Promise<void> {
-  if (!env.CHARGING_ENABLED) return;
-  const charge = ceilToCreditCent(required);
-  const outcome = await creditHoldService.reserveCredits({
-    projectId,
-    actorUserId: userId,
-    referenceId,
-    amount: charge,
-    ttlMs: getNodeTaskConfig().default_budget_ms,
-  });
-  if (outcome.ok) return;
-  if (outcome.cap !== undefined) throw new SpendCapReachedError(outcome.cap);
-  await refuse(userId, charge, outcome);
+  try {
+    await holdForRun(projectId, userId, referenceId, required);
+  } catch (err) {
+    throw await explainHoldRefusal(err);
+  }
+}
+
+/**
+ * Hold a run's estimate inside the transaction that claims its task row (a mini-tool run whose task id the client chose,
+ * inner#1968 design 3.10 U9): a refusal rolls the claim back. The caller passes what the admission throws through
+ * {@link explainHoldRefusal} once the transaction has ended.
+ * @param tx - The claim's transaction.
+ * @param projectId - The project the run belongs to; its studio pays.
+ * @param userId - The authenticated caller.
+ * @param referenceId - The run's task id.
+ * @param required - The run's estimate.
+ * @throws {SpendCapReachedError} 402 when a monthly spend limit cannot take the estimate.
+ * @throws {HoldRefused} When the studio cannot cover it.
+ * @throws {RangeError} When the estimate is negative or not a number.
+ */
+export async function reserveForRunIn(tx: DbTx, projectId: string, userId: string, referenceId: string, required: number): Promise<void> {
+  await holdForRun(projectId, userId, referenceId, required, tx);
 }
 
 /**

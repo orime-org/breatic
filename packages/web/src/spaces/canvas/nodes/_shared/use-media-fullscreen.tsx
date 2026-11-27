@@ -78,6 +78,7 @@ export function useMediaFullscreen({
       src={opened.src}
       poster={opened.poster}
       size={opened.size}
+      projectId={opened.projectId}
       start={opened.start}
       name={name}
       id={id}

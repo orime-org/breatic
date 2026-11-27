@@ -56,7 +56,7 @@ describe('PT-5 the Studio page poll under any interleaving', () => {
             const entry = {
               settle: (ok: boolean, nextPollMs: number): void => {
                 out.splice(out.indexOf(entry), 1);
-                if (ok) resolve({ notifications: { unread: 0, latestAt: null }, transfer: null, uploads: [], nextPollMs });
+                if (ok) resolve({ notifications: { unread: 0, latestAt: null }, transfer: null, uploads: [], copied: [], nextPollMs });
                 else reject(new Error('network'));
               },
             };

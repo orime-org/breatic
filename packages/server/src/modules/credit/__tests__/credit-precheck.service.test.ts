@@ -47,7 +47,7 @@ vi.mock("@breatic/domain", () => ({
   },
 }));
 
-const { precheckCredits, reserveForRun } = await import("@server/modules/credit/credit-precheck.service.js");
+const { precheckCredits, reserveForRun, reserveForRunIn } = await import("@server/modules/credit/credit-precheck.service.js");
 
 const PROJECT = "p1";
 const USER = "u1";
@@ -88,7 +88,7 @@ beforeEach(() => {
 });
 
 describe("reserveForRun", () => {
-  it("holds the estimate under the run's key for the task budget", async () => {
+  it("holds the estimate under the run's key for the task budget, in a transaction of its own", async () => {
     await reserveForRun(PROJECT, USER, "task-1", 40);
     expect(reserveCredits).toHaveBeenCalledWith({
       projectId: PROJECT,
@@ -96,7 +96,14 @@ describe("reserveForRun", () => {
       referenceId: "task-1",
       amount: 40,
       ttlMs: 7_200_000,
-    });
+    }, undefined);
+  });
+
+  // inner#1968: a client-chosen run_id holds inside its claim transaction, so a refusal rolls the claim back.
+  it("holds inside the caller's transaction when one is given", async () => {
+    const tx = { claim: "transaction" } as unknown as Parameters<typeof reserveForRunIn>[0];
+    await reserveForRunIn(tx, PROJECT, USER, "task-1", 40);
+    expect(reserveCredits).toHaveBeenCalledWith(expect.objectContaining({ referenceId: "task-1", amount: 40 }), tx);
   });
 
   it("names the debt first", async () => {
@@ -166,7 +173,7 @@ describe("reserveForRun", () => {
 
   it("holds and judges the refusal by the estimate settled to whole hundredths (inner#1666)", async () => {
     await reserveForRun(PROJECT, USER, "t", 7.000000000000001);
-    expect(reserveCredits).toHaveBeenCalledWith(expect.objectContaining({ amount: 7 }));
+    expect(reserveCredits).toHaveBeenCalledWith(expect.objectContaining({ amount: 7 }), undefined);
     // The balance covers 7 unheld, so the holds are what stops it.
     refuseWith(7, 0.5);
     const err = await reserveForRun(PROJECT, USER, "t", 7.000000000000001).catch((e: unknown) => e);

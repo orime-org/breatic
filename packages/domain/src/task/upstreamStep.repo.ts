@@ -11,6 +11,10 @@
 
 import { and, asc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import { db, taskUpstreamSteps } from "@breatic/core";
+import type { DbTx } from "@breatic/core";
+import type { MiniToolConsumptionRecord } from "@domain/mini-tool/consumption.types.js";
+import type { MiniToolPlanJobRequest } from "@breatic/shared";
+import type { MiniToolStepState } from "@domain/mini-tool/upstream-step.types.js";
 
 /** What a step does; decides what the executor reads off its answer. */
 export type UpstreamStepKind =
@@ -64,12 +68,68 @@ function toStep(row: typeof taskUpstreamSteps.$inferSelect): UpstreamStep {
 }
 
 /**
+ * Re-read a step only after its parent task's consumption lock is held.
+ * @param taskId - The immutable owning task.
+ * @param stepId - The immutable step identity.
+ * @param tx - The transaction holding that task's row lock.
+ * @returns The current owned step, or null when it does not belong to the task.
+ * @throws {Error} When the database read fails.
+ */
+export async function getStepForConsumption(taskId: string, stepId: string, tx: DbTx): Promise<UpstreamStep | null> {
+  const [row] = await tx.select().from(taskUpstreamSteps)
+    .where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)));
+  return row ? toStep(row) : null;
+}
+
+/**
+ * Merge only the consumption fact, preserving concurrent execution output fields.
+ * @param taskId - The owning task whose row lock is held.
+ * @param stepId - The step to update.
+ * @param consumption - The validated recorded consumption.
+ * @param tx - The transaction that already wrote this consumption's usage.
+ * @returns Nothing.
+ * @throws {Error} When the step vanished or its write fails.
+ */
+export async function storeMiniToolConsumption(
+  taskId: string, stepId: string, consumption: MiniToolConsumptionRecord, tx: DbTx,
+): Promise<void> {
+  const patch = sql.param({ miniToolConsumption: consumption }, taskUpstreamSteps.output);
+  const rows = await tx.update(taskUpstreamSteps).set({
+    output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)))
+    .returning({ id: taskUpstreamSteps.id });
+  if (rows.length !== 1) throw new Error("Consumption step no longer belongs to its task");
+}
+
+/**
+ * Freeze the complete planned request in its owning step before submission.
+ * @param taskId - The immutable parent whose row lock is held.
+ * @param stepId - The parent-owned container step.
+ * @param request - The first validated indexed job request.
+ * @param tx - The transaction that also stores its pending consumption and period.
+ * @returns Nothing.
+ * @throws {Error} When the step disappeared or persistence fails.
+ */
+export async function storeMiniToolPlanJob(taskId: string, stepId: string, request: MiniToolPlanJobRequest, tx: DbTx): Promise<void> {
+  const patch = sql.param({ miniToolPlanJob: request }, taskUpstreamSteps.output);
+  const rows = await tx.update(taskUpstreamSteps).set({
+    output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)))
+    .returning({ id: taskUpstreamSteps.id });
+  if (rows.length !== 1) throw new Error("Planned job step no longer belongs to its task");
+}
+
+/**
  * A task's steps in order.
  * @param taskId - The task.
+ * @param tx - An enclosing transaction when consumption state must be current.
  * @returns Its steps, by position.
+ * @throws {Error} When the database read fails.
  */
-export async function listSteps(taskId: string): Promise<UpstreamStep[]> {
-  const rows = await db
+export async function listSteps(taskId: string, tx?: DbTx): Promise<UpstreamStep[]> {
+  const rows = await (tx ?? db)
     .select()
     .from(taskUpstreamSteps)
     .where(eq(taskUpstreamSteps.taskId, taskId))
@@ -78,12 +138,13 @@ export async function listSteps(taskId: string): Promise<UpstreamStep[]> {
 }
 
 /**
- * Write a task's steps on its first run and answer what is stored. A task
- * that already has steps keeps them: a redelivered job resumes the list it
- * started with, whatever plan it would draw now.
+ * Insert missing step positions and answer the stored list. Existing positions
+ * retain their original descriptors; callers extending a plan carry that stored
+ * prefix before appending newly discovered steps.
  * @param taskId - The task.
  * @param plan - The steps in order.
  * @returns The stored steps, by position.
+ * @throws {Error} When step persistence or reading fails.
  */
 export async function ensureSteps(taskId: string, plan: readonly PlannedStep[]): Promise<UpstreamStep[]> {
   if (plan.length > 0) {
@@ -172,4 +233,30 @@ export async function failOpenSteps(taskId: string, reason: string): Promise<voi
     .update(taskUpstreamSteps)
     .set(failedWith(reason))
     .where(and(eq(taskUpstreamSteps.taskId, taskId), inArray(taskUpstreamSteps.status, ["pending", "submitted"])));
+}
+
+
+/**
+ * Merge only planned execution facts after the caller locks the immutable parent.
+ * @param taskId - The task whose lock serializes result and consumption writers.
+ * @param stepId - The step belonging to that task.
+ * @param execution - The operation-owned state, without fee or complete-plan patches.
+ * @param columns - Only the step status and canonical provider identity may also change.
+ * @param columns.status - The monotonic execution state, when it changes.
+ * @param columns.predictionId - The first canonical provider identity, when newly received.
+ * @param tx - The same transaction used by the identity and consumption producer.
+ * @returns Nothing after exactly one owned row was written.
+ * @throws {Error} When the row disappeared, belongs elsewhere or SQL fails.
+ */
+export async function storeMiniToolStepExecution(
+  taskId: string, stepId: string, execution: MiniToolStepState,
+  columns: { status?: UpstreamStepStatus; predictionId?: string }, tx: DbTx,
+): Promise<void> {
+  const patch = sql.param({ miniToolStep: execution }, taskUpstreamSteps.output);
+  const rows = await tx.update(taskUpstreamSteps).set({
+    ...columns, output: sql`coalesce(${taskUpstreamSteps.output}, '{}'::jsonb) || ${patch}`,
+    updatedAt: sql`clock_timestamp()`,
+  }).where(and(eq(taskUpstreamSteps.taskId, taskId), eq(taskUpstreamSteps.id, stepId)))
+    .returning({ id: taskUpstreamSteps.id });
+  if (rows.length !== 1) throw new Error("Planned execution step no longer belongs to its task");
 }

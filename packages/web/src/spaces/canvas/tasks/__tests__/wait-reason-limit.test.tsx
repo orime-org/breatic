@@ -76,7 +76,7 @@ describe('a waiting row of the task list', () => {
     render(
       <TooltipProvider>
         <CollaboratorNamesProvider value={{ resolve: () => 'Ada', members: [] }}>
-          <TaskRow entry={entry} now={Date.now()} hasRetryFile={false} readOnly={false} retrying={false} dismissing={false}
+          <TaskRow entry={entry} now={Date.now()} canRetry={false} readOnly={false} retrying={false} dismissing={false}
             onView={vi.fn()} onRetry={vi.fn()} onDismiss={vi.fn()} onCancel={vi.fn()} />
         </CollaboratorNamesProvider>
       </TooltipProvider>,

@@ -13,7 +13,7 @@ const uuid = z.string().uuid();
 const key = z.string().regex(/^bo-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i);
 const text = z.string().min(1).max(2048).refine(v => !v.includes("\0"));
 const scope = z.object({
-  id: uuid, storageKey: text, keptStorageKey: text
+  id: uuid, storageKey: text, keptStorageKey: text.nullable()
 }).strict();
 const ids = z.array(uuid).min(1).max(100).refine(v => new Set(v).size === v.length);
 const items = z.array(scope).min(1).max(100).refine(v => new Set(v.map(i => i.id)).size === v.length);

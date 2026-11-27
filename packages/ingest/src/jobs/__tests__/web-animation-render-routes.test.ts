@@ -95,6 +95,20 @@ describe("render job routes", () => {
     expect(stub.submit).toHaveBeenCalledWith(JOB);
   });
 
+  it("answers 503 when the object reports that the container could not start, so the worker submits again later", async () => {
+    const { namespace, stub } = standIn();
+    stub.submit.mockResolvedValueOnce({ kind: "start_failed", reason: "the render was answered 503" } as never);
+    const res = await call(bindings(namespace), "/jobs", { method: "POST", body: JSON.stringify(JOB) });
+    expect(res.status).toBe(503);
+  });
+
+  it("answers 410 when a cancel came before the submit", async () => {
+    const { namespace, stub } = standIn();
+    stub.submit.mockResolvedValueOnce({ kind: "cancelled_before_submit" } as never);
+    const res = await call(bindings(namespace), "/jobs", { method: "POST", body: JSON.stringify(JOB) });
+    expect(res.status).toBe(410);
+  });
+
   it("reads and cancels a render job through the same class", async () => {
     const { namespace, stub } = standIn();
     expect((await call(bindings(namespace), JOB_PATH, { method: "GET" })).status).toBe(200);

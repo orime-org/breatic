@@ -26,7 +26,13 @@
 import { Container } from "@cloudflare/containers";
 import type { OutboundHandlerContext } from "@cloudflare/containers";
 import { askedKey } from "@ingest/object-url.js";
-import { serveOneObject } from "@ingest/media-object-route.js";
+import type { VideoPresentationPrepareAnswer } from '@breatic/shared';
+import { preparePresentation, VideoPresentationStore, type VideoPresentationAdmission, type PresentationCapability, type PresentationChunkReport,
+  type PresentationChunkUnit, type PresentationContainerPort, type PresentationJobIdentity, type PresentationJobRef, type PresentationReport, type PresentationView,
+} from '@ingest/video-presentation-store.js';
+import { MEDIA_OBJECT_HOST, mediaObjectUrl, serveOneObject } from "@ingest/media-object-route.js";
+import { createPresentationContainerPort } from '@ingest/presentation-container-port.js';
+import { PRESENTATION_RUN_PATH, type PresentationRunRequest } from '@ingest/presentation-run-contract.js';
 import { writeStreamedObject } from "@ingest/stored-object.js";
 import {
   UPRIGHT_HEIGHT_HEADER,
@@ -86,6 +92,157 @@ export class MediaContainer extends Container<MediaEnv> {
    * refuses it by the same rule as every other host.
    */
   interceptHttps = true;
+
+  /**
+   * Read the current presentation facts without starting a container; an expired admitted job fails as expired.
+   * @param storageKey - Registered canonical key.
+   * @param sourceFingerprint - Its registered hash.
+   * @returns The store view.
+   * @throws {Error} When durable storage or R2 fails.
+   */
+  readPresentation(storageKey: string, sourceFingerprint: string): Promise<PresentationView> {
+    return this.presentationStore().read(storageKey, sourceFingerprint, Date.now());
+  }
+
+  /**
+   * Accept or replay one canonical presentation job; the one admission entry, repairs included.
+   * @param admission - Trusted registry facts, frozen prices, target policy and retry caps.
+   * @returns The store view.
+   * @throws {Error} When durable admission fails.
+   */
+  acceptPresentation(admission: VideoPresentationAdmission): Promise<PresentationView> {
+    return this.presentationStore().accept(admission);
+  }
+
+
+  /**
+   * Run one basic execution of a presentation job, or re-read a started one (design §5.1 steps 1–2).
+   * @param identity - The job identity; its deadline is the DO's.
+   * @returns The worker-only prepare answer.
+   * @throws {Error} When storage, R2 or the container fails.
+   */
+  preparePresentation(identity: PresentationJobRef): Promise<VideoPresentationPrepareAnswer> {
+    return preparePresentation(this.presentationStore(), identity, this.presentationPort(), Date.now());
+  }
+
+  /**
+   * Move a job to the next stage of its route, or publish its carrier at `publish`.
+   * @param capability - The job's capability.
+   * @param stage - The stage.
+   * @returns Whether it was accepted.
+   * @throws {Error} When storage or R2 fails.
+   */
+  advancePresentationStage(capability: PresentationCapability, stage: string): Promise<boolean> { return this.presentationStore().advanceStage(capability, stage); }
+
+  /**
+   * Apply one unit attempt report.
+   * @param capability - The job's capability.
+   * @param unit - The unit.
+   * @param report - The report.
+   * @returns Whether it was accepted.
+   * @throws {Error} When storage fails.
+   */
+  reportPresentationChunk(capability: PresentationCapability, unit: PresentationChunkUnit, report: PresentationChunkReport): Promise<boolean> {
+    return this.presentationStore().reportChunk(capability, unit, report);
+  }
+
+  /**
+   * Record a job's measured usage.
+   * @param capability - The job's capability.
+   * @param fact - The finished usage.
+   * @returns The store view.
+   * @throws {Error} When storage fails.
+   */
+  reportPresentationFact(capability: PresentationCapability, fact: Extract<PresentationReport, { kind: 'finished' }>): Promise<PresentationView> {
+    return this.presentationStore().report(capability, fact);
+  }
+
+  /**
+   * Fail a job's candidate; expiry is `expired`.
+   * @param identity - The job identity and deadline.
+   * @param code - The failure code.
+   * @returns The store view.
+   * @throws {Error} When storage fails.
+   */
+  failPresentation(identity: PresentationJobIdentity, code: string): Promise<PresentationView> { return this.presentationStore().fail(identity, code); }
+
+  /**
+   * Fail a job's candidate after the worker's job gave up for good.
+   * @param identity - The job reference.
+   * @returns The store view.
+   * @throws {Error} When storage fails.
+   */
+  abandonPresentation(identity: PresentationJobRef): Promise<PresentationView> { return this.presentationStore().abandon(identity); }
+
+  /**
+   * Record one closed attempt's late usage after its candidate ended.
+   * @param identity - The job reference.
+   * @param unit - The unit.
+   * @param attempt - The attempt number.
+   * @param usage - Its measured wall time in milliseconds.
+   * @returns Whether it is recorded.
+   * @throws {Error} When storage fails.
+   */
+  recordPresentationChunkUsage(identity: PresentationJobRef, unit: PresentationChunkUnit, attempt: number, usage: number): Promise<boolean> {
+    return this.presentationStore().recordChunkUsage(identity, unit, attempt, usage);
+  }
+
+  /**
+   * Acknowledge one already-recorded platform usage fact.
+   * @param identity - Its original source and job identity.
+   * @returns The store view.
+   * @throws {Error} When persistence fails.
+   */
+  acknowledgePresentationUsage(identity: PresentationJobIdentity): Promise<PresentationView> { return this.presentationStore().acknowledgeUsage(identity); }
+
+  /**
+   * The basic container's presentation work.
+   * @returns The port.
+   * @throws {never} Constructing it starts no IO.
+   */
+  private presentationPort(): PresentationContainerPort {
+    const store = this.presentationStore();
+    /**
+     * One run request to this instance's container, which reads the source only through the serve handler.
+     * @param storageKey - The canonical key the container may read.
+     * @param body - The request.
+     * @returns The answer's JSON.
+     * @throws {Error} When the container is unreachable or refuses.
+     */
+    const send = async (storageKey: string, body: PresentationRunRequest): Promise<unknown> => {
+      const authorised: ServeOneKey = { key: storageKey };
+      await this.setOutboundByHost(MEDIA_OBJECT_HOST, SERVE_OBJECT, authorised);
+      const answer = await this.containerFetch(new Request(`http://media${PRESENTATION_RUN_PATH}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) }));
+      if (!answer.ok) throw new Error(`The presentation container answered ${answer.status}`);
+      return answer.json();
+    };
+    /**
+     * The port of the job a capability names, over this instance's container.
+     * @param capability - The granted job.
+     * @returns The port.
+     * @throws {Error} When the job is no longer held.
+     */
+    const portFor = async (capability: PresentationCapability): Promise<PresentationContainerPort> => {
+      const storageKey = capability.storageKey;
+      const admission = storageKey === undefined ? null : await store.admissionOf({ storageKey, sourceFingerprint: capability.sourceFingerprint, jobId: capability.jobId });
+      if (storageKey === undefined || admission === null) throw new Error('The presentation job is no longer held');
+      return createPresentationContainerPort((body) => send(storageKey, body), admission, mediaObjectUrl(storageKey));
+    };
+    let probed: PresentationContainerPort | null = null;
+    return {
+      probe: async (capability) => (probed = await portFor(capability)).probe(capability),
+      usage: async () => probed?.usage() ?? null,
+    };
+  }
+
+  /**
+   * Construct the sole storage owner with this object's actual durable serialization gate.
+   * @returns The canonical presentation persistence owner.
+   * @throws {never} No IO starts while the owner is constructed.
+   */
+  private presentationStore(): VideoPresentationStore {
+    return new VideoPresentationStore(this.ctx.storage, this.env.BUCKET, work => this.ctx.blockConcurrencyWhile(work));
+  }
 }
 
 /**

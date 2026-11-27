@@ -18,6 +18,7 @@
  */
 
 import { vi, describe, it, expect, beforeEach } from "vitest";
+import type * as coreModule from "@breatic/core";
 
 const mockMarkFailed = vi.hoisted(() => vi.fn(async () => true));
 const mockRecordFailure = vi.hoisted(() => vi.fn());
@@ -29,7 +30,8 @@ const mockError = vi.hoisted(() => vi.fn());
 const mockPendingChargeRequestId = vi.hoisted(() => vi.fn(async (..._args: unknown[]): Promise<string | null> => null));
 const mockSettleCharge = vi.hoisted(() => vi.fn(async (_requestId: string): Promise<unknown> => null));
 
-vi.mock("@breatic/core", () => ({
+vi.mock("@breatic/core", async (importOriginal) => ({
+  ...await importOriginal<typeof coreModule>(),
   // Product analytics (inner#1442) runs the job under its consent and reports
   // milestones; neither is what these cases are about.
   runWithConsent: (_consent: unknown, fn: () => unknown) => fn(),

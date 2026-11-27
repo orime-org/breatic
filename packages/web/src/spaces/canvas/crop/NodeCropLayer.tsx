@@ -3,12 +3,15 @@
 
 import { useStore } from '@xyflow/react';
 import * as React from 'react';
+import { useShallow } from 'zustand/react/shallow';
 
 import { isModelTool, miniToolById, type RectParam } from '@breatic/shared/mini-tools';
 
 import type { CropRect } from '@web/lib/crop-math';
 import { presetRatio } from '@web/lib/crop-math';
-import { useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { useQuery } from '@tanstack/react-query';
+import { useCanvasContext, useCanvasSession, useCanvasSessionStore } from '@web/spaces/canvas/canvas-context';
+import { videoPresentationQuery } from '@web/spaces/canvas/video-presentation/video-presentation-query';
 import { miniToolOpenOn } from '@web/stores/canvas-session';
 import { fromFraction, toFraction } from '@web/spaces/canvas/crop/crop-geometry';
 import { useMediaGeometry, type MediaGeometry } from '@web/spaces/canvas/crop/media-geometry';
@@ -42,8 +45,9 @@ function useWrittenElsewhere<T>(stored: T): { count: number; wrote: (value: T) =
  * The crop param of the open tool, when it has one.
  * @param draft - The open mini-tool draft.
  * @returns The rect param, or undefined.
+ * @throws {never} Never.
  */
-function rectParamOf(draft: MiniToolDraft | null): RectParam | undefined {
+export function rectParamOf(draft: MiniToolDraft | null): RectParam | undefined {
   if (draft === null) return undefined;
   const spec = miniToolById(draft.toolId);
   if (spec === undefined || isModelTool(spec)) return undefined;
@@ -59,6 +63,17 @@ interface NodeCropLayerProps {
    * effects have run, and only a change of value re-runs them.
    */
   wrapper: HTMLElement | null;
+}
+
+/**
+ * A video node's registered size.
+ * @param node - The node.
+ * @returns The size, or null for a node that is no video or carries no positive size.
+ */
+function registeredSizeOf(node: { type?: string; data: unknown } | undefined): { width: number; height: number } | null {
+  if (node?.type !== 'video') return null;
+  const { width, height } = node.data as { width?: unknown; height?: unknown };
+  return typeof width === 'number' && typeof height === 'number' && width > 0 && height > 0 ? { width, height } : null;
 }
 
 /**
@@ -79,7 +94,19 @@ export function NodeCropLayer({ nodeId, wrapper }: NodeCropLayerProps): React.JS
   const rectParam = rectParamOf(draft);
   // Read only while the layer shows, so a zoom does not re-render it on every node.
   const zoom = useStore((s) => (focus === null && rectParam === undefined ? 1 : s.transform[2]));
-  const geometry = useMediaGeometry(wrapper, focus !== null || rectParam !== undefined);
+  const cropping = focus !== null || rectParam !== undefined;
+  // A video's source size is its selected version's display geometry, not the played file's (frames-split §7.8).
+  const { projectId } = useCanvasContext();
+  const videoURL = useStore((s) => {
+    const node = s.nodeLookup.get(nodeId);
+    const content = (node?.data as { content?: unknown } | undefined)?.content;
+    return cropping && node?.type === 'video' && typeof content === 'string' ? content : '';
+  });
+  const presented = useQuery(videoPresentationQuery({ projectId, canonicalURL: videoURL, active: videoURL !== '' }));
+  // With no selected version the node plays the original, whose element size skips a container crop FFmpeg applies, so the
+  // source is framed in the size the upload was registered at, the decoded display the tools cut (frames-split §7.8, D07).
+  const registeredSize = useStore(useShallow((s) => (cropping ? registeredSizeOf(s.nodeLookup.get(nodeId)) : null)));
+  const geometry = useMediaGeometry(wrapper, cropping, presented.data?.presentation?.display ?? registeredSize);
   const focusWrites = useWrittenElsewhere(focus?.rect ?? null);
   const toolWrites = useWrittenElsewhere<unknown>(
     rectParam === undefined || draft === null ? null : (draft.params[rectParam.key] ?? null),
@@ -111,7 +138,7 @@ export function NodeCropLayer({ nodeId, wrapper }: NodeCropLayerProps): React.JS
   const toBoxPoint = React.useCallback(
     (clientX: number, clientY: number): { x: number; y: number } => {
       if (geometry === null) return { x: 0, y: 0 };
-      const shown = geometry.el.getBoundingClientRect();
+      const shown = geometry.shown.getBoundingClientRect();
       return {
         x: ((clientX - shown.left) * geometry.box.width) / shown.width,
         y: ((clientY - shown.top) * geometry.box.height) / shown.height,

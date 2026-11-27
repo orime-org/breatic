@@ -40,6 +40,7 @@ function summary(id: string): ProjectSummary {
     canArchive: true,
     canRestore: false,
     canLeave: false,
+    copying: false,
   };
 }
 

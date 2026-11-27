@@ -76,6 +76,7 @@ import {
   type MonitoringEnv,
 } from "@ingest/error-monitoring.js";
 import { readMediaAtEdge, type MediaEnv } from "@ingest/media-read.js";
+import { videoPresentationRoute } from '@ingest/video-presentation-route.js';
 import { turnUprightIfTagged } from "@ingest/upright-step.js";
 import {
   hasPreviewableFrame,
@@ -1468,6 +1469,7 @@ async function route(request: Request, env: Env, ctx: ExecutionContext): Promise
   if (request.method === "POST" && pathname === "/media") {
     return readStoredMedia(request, env);
   }
+  if (request.method === 'POST' && pathname === '/video-presentation') return videoPresentationRoute(request, env);
 
   if (request.method === "POST" && pathname === "/jobs") {
     return submitJob(request, env);

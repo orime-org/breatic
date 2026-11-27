@@ -156,6 +156,22 @@ beforeEach(() => {
   });
 });
 
+describe('video presentation registration context (inner#1306)', () => {
+  it.each(['bytes', 'url'] as const)('retains the original parent deadline for the %s lane', async (lane) => {
+    issueUploadGrant.mockResolvedValue({ key: 'video/canonical.webm', studioId: 's1' });
+    const measured = { ...MEASURED, contentType: 'video/webm' };
+    finishUploadAtIngest.mockResolvedValue(measured);
+    fetchUrlToIngest.mockResolvedValue(measured);
+    applyIngestReport.mockResolvedValue({ status: 'registered', assetId: 'a1', fileUrl: 'https://our-bucket/canonical.webm', kind: 'video' });
+    const ctx = { ...CTX, taskType: 'video', ext: '.webm', contentType: 'video/webm' };
+    if (lane === 'bytes') await uploadBytesToStorage(new Blob([new Uint8Array([1, 2, 3])]), ctx);
+    else await transferUrlToStorage('https://provider.example.test/temporary.webm', ctx);
+    expect(applyIngestReport).toHaveBeenCalledExactlyOnceWith(expect.objectContaining({
+      storageKey: 'video/canonical.webm', outcome: 'completed', sha256: measured.sha256,
+    }), { presentation: { deadlineAt: DEADLINE_AT } });
+  });
+});
+
 describe("uploadBytesToStorage — lane ②", () => {
   it("declares the bytes it is holding, and signs a ticket for the minted key", async () => {
     const bytes = new Blob([Buffer.alloc(1024, 7)]);
