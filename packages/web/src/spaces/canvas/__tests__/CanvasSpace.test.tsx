@@ -4740,6 +4740,15 @@ describe('reference-pick stylesheet contract (item 7 cursor specificity)', () =>
     );
   });
 
+  it('stands the emphasized handle ::after zone down while connecting (inner#2216)', () => {
+    // The plus on a lone selected node reaches into the node through the
+    // handle's ::after; it must stand down with the ::before zone, in a rule
+    // of its own so the ::before regex above keeps matching.
+    expect(css).toMatch(
+      /\.canvas-connecting \.react-flow__handle::after\s*\{[^}]*pointer-events:\s*none/,
+    );
+  });
+
   it('hides the NodesSelection rect during a pick (marquee dead-zone neutralizer)', () => {
     // Round-3: the Shift marquee stays enabled during a pick (gating
     // selectionKeyCode latches xyflow's key state mid-hold), so the

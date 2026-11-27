@@ -652,3 +652,81 @@ describe('a stored image zoomed past its preview', () => {
     expect(screen.getByTestId('image-node-original').getAttribute('src')).toBe(STORED);
   });
 });
+
+// inner#2216 design 4.1: the handles of a node show the plus only while it is
+// the one selected non-note node on the canvas, connectable, and no mini tool
+// is open on it. The wrapper counts the selection from the xyflow store.
+describe('the plus on a lone selected node’s handles', () => {
+  afterEach(() => {
+    storeApi = null;
+    canvasSessions.of('').getState().closeActivePanel();
+  });
+
+  /**
+   * Renders image node n1 as selected and connectable, with the store's
+   * selection set to the given nodes.
+   * @param others - Other nodes on the canvas, with their type and selection.
+   * @param connectable - Whether the node takes connections.
+   */
+  function renderSelected(
+    others: ReadonlyArray<{ id: string; type: string; selected: boolean }>,
+    connectable = true,
+  ): void {
+    const Image = FLOW_NODE_TYPES.image;
+    render(
+      <TooltipProvider>
+        <ReactFlowProvider>
+          <StoreGrabber />
+          <CanvasActionsContext.Provider value={{ renameNode: vi.fn(), deleteEdge: () => undefined,
+            deleteNode: () => undefined, activateNodeUpload: () => undefined, commitGroupResize: () => undefined,
+            reportGroupResize: () => undefined, beginGroupResize: () => undefined, }}>
+            <Image
+              {...({
+                id: 'n1',
+                type: 'image',
+                data: { handling: false, name: 'N', content: 'https://cdn.invalid/a.png' },
+                selected: true,
+                isConnectable: connectable,
+              } as unknown as NodeProps)}
+            />
+          </CanvasActionsContext.Provider>
+        </ReactFlowProvider>
+      </TooltipProvider>,
+    );
+    act(() => {
+      storeApi?.getState().setNodes([
+        { id: 'n1', type: 'image', position: { x: 0, y: 0 }, data: {}, selected: true },
+        ...others.map((n) => ({ ...n, position: { x: 400, y: 0 }, data: {} })),
+      ]);
+    });
+  }
+
+  it('shows the plus on both handles when the node is the only one selected', () => {
+    renderSelected([{ id: 'n2', type: 'video', selected: false }]);
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+  });
+
+  it('shows the plus when the only other selected node is a note', () => {
+    renderSelected([{ id: 'note', type: 'annotation', selected: true }]);
+    expect(screen.getAllByTestId('handle-plus')).toHaveLength(2);
+  });
+
+  // Guards: the dot stays wherever the plus is not due.
+  it('keeps the dot when another content node is selected too', () => {
+    renderSelected([{ id: 'n2', type: 'video', selected: true }]);
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+    expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
+  });
+
+  it('keeps the dot when the node takes no connections (viewer, reference pick)', () => {
+    renderSelected([], false);
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+  });
+
+  it('keeps the dot while a mini tool is open on the node', () => {
+    canvasSessions.of('').getState().openMiniTool('n1', 'image.crop', { sourceContent: 'https://cdn.invalid/a.png', params: {} });
+    renderSelected([]);
+    expect(screen.queryAllByTestId('handle-plus')).toHaveLength(0);
+    expect(screen.getAllByTestId('handle-dot')).toHaveLength(2);
+  });
+});

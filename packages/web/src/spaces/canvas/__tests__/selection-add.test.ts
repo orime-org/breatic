@@ -1,0 +1,329 @@
+// Copyright (c) 2026 Orime, Inc.
+// SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
+
+/**
+ * The selection plus (inner#2216): which selection gets the plus beside it,
+ * which nodes it wires into the new node, where the new node lands and when
+ * the reference cap refuses the whole build.
+ */
+
+import { describe, expect, it } from 'vitest';
+import fc from 'fast-check';
+
+import { canConnect } from '@web/spaces/canvas/lib/connection-rules';
+import { LAYER_STEP_PX, ROW_GAP_PX, shiftRightPastOccupied, withTaskCounts } from '@web/spaces/canvas/lib/place-flow';
+import { EMPTY_NODE_SIZE } from '@web/spaces/canvas/group-geometry';
+import { CREATABLE_NODE_TYPES, type CreatableNodeType } from '@web/spaces/canvas/node-factory';
+import {
+  handlesEmphasized,
+  orderSources,
+  planConnectedNode,
+  resolveSelectionAdd,
+  type SelectionAddNode,
+} from '@web/spaces/canvas/selection-add';
+
+/**
+ * A content node at an absolute position, standard size.
+ * @param id - The node id.
+ * @param type - Its modality.
+ * @param x - Absolute x.
+ * @param y - Absolute y.
+ * @param parentId - The group it belongs to, if any.
+ * @returns The node.
+ */
+function content(id: string, type: string, x = 0, y = 0, parentId?: string): SelectionAddNode {
+  return { id, type, position: { x, y }, width: EMPTY_NODE_SIZE.width, height: EMPTY_NODE_SIZE.height, ...(parentId ? { parentId } : {}) };
+}
+
+/**
+ * A sticky note.
+ * @param id - The note id.
+ * @returns The note.
+ */
+function note(id: string): SelectionAddNode {
+  return { id, type: 'annotation', position: { x: 0, y: 0 }, width: 40, height: 40 };
+}
+
+/**
+ * A group.
+ * @param id - The group id.
+ * @returns The group.
+ */
+function group(id: string): SelectionAddNode {
+  return { id, type: 'group', position: { x: 0, y: 0 }, width: 800, height: 600 };
+}
+
+/**
+ * Sorts ids so two id lists compare as sets.
+ * @param ids - The ids.
+ * @returns A sorted copy.
+ */
+function sorted(ids: readonly string[]): string[] {
+  return [...ids].sort();
+}
+
+describe('resolveSelectionAdd — where the plus shows (design 4.2)', () => {
+  it('shows nothing for an empty selection', () => {
+    expect(resolveSelectionAdd([], [content('a', 'image')])).toEqual({ kind: 'none' });
+  });
+
+  it('shows nothing when only notes are selected', () => {
+    expect(resolveSelectionAdd(['n1', 'n2'], [note('n1'), note('n2')])).toEqual({ kind: 'none' });
+  });
+
+  it('leaves one content node to its own handles', () => {
+    expect(resolveSelectionAdd(['a'], [content('a', 'image'), content('b', 'video')])).toEqual({
+      kind: 'single',
+      nodeId: 'a',
+    });
+  });
+
+  it('leaves one content node to its own handles when a note is selected with it', () => {
+    expect(resolveSelectionAdd(['a', 'n1'], [content('a', 'image'), note('n1')])).toEqual({
+      kind: 'single',
+      nodeId: 'a',
+    });
+  });
+
+  it('hangs the plus on a lone group and wires its edge-taking members', () => {
+    const nodes = [
+      group('g'),
+      content('m1', 'image', 10, 10, 'g'),
+      content('m2', 'video', 10, 300, 'g'),
+      content('m3', '3d', 400, 10, 'g'),
+      content('outside', 'image', 2000, 0),
+    ];
+    const result = resolveSelectionAdd(['g'], nodes);
+    expect(result.kind).toBe('add');
+    if (result.kind !== 'add') return;
+    expect(result.anchorIds).toEqual(['g']);
+    expect(sorted(result.sourceIds)).toEqual(['m1', 'm2', 'm3']);
+  });
+
+  it('hangs the plus on a lone group when a note is selected with it', () => {
+    const nodes = [group('g'), content('m1', 'image', 10, 10, 'g'), note('n1')];
+    const result = resolveSelectionAdd(['g', 'n1'], nodes);
+    expect(result).toEqual({ kind: 'add', anchorIds: ['g'], sourceIds: ['m1'] });
+  });
+
+  it('hangs the plus on two or more content nodes and wires all of them', () => {
+    const nodes = [content('a', 'image'), content('b', 'audio', 0, 300), content('c', 'video', 0, 600)];
+    const result = resolveSelectionAdd(['a', 'b', 'c'], nodes);
+    expect(result.kind).toBe('add');
+    if (result.kind !== 'add') return;
+    expect(sorted(result.anchorIds)).toEqual(['a', 'b', 'c']);
+    expect(sorted(result.sourceIds)).toEqual(['a', 'b', 'c']);
+  });
+
+  it('drops notes from both the anchors and the sources of a multi-selection', () => {
+    const nodes = [content('a', 'image'), content('b', 'text', 0, 300), note('n1')];
+    const result = resolveSelectionAdd(['a', 'n1', 'b'], nodes);
+    expect(result.kind).toBe('add');
+    if (result.kind !== 'add') return;
+    expect(sorted(result.anchorIds)).toEqual(['a', 'b']);
+    expect(sorted(result.sourceIds)).toEqual(['a', 'b']);
+  });
+
+  it('wires a selected group through its members when picked with loose nodes', () => {
+    const nodes = [group('g'), content('m1', 'image', 10, 10, 'g'), content('m2', 'text', 10, 300, 'g'), content('a', 'video', 1200, 0)];
+    const result = resolveSelectionAdd(['g', 'a'], nodes);
+    expect(result.kind).toBe('add');
+    if (result.kind !== 'add') return;
+    expect(sorted(result.anchorIds)).toEqual(['a', 'g']);
+    expect(sorted(result.sourceIds)).toEqual(['a', 'm1', 'm2']);
+  });
+
+  it('never lists a note, a group or the same node twice among the sources', () => {
+    const kinds = ['text', 'image', 'video', 'audio', '3d', 'web', 'annotation', 'group'] as const;
+    fc.assert(
+      fc.property(
+        fc.array(fc.record({ kind: fc.constantFrom(...kinds), inGroup: fc.nat(2), selected: fc.boolean() }), { maxLength: 12 }),
+        (specs) => {
+          // Groups g0 and g1 always exist; members point at one of them, or none.
+          const nodes: SelectionAddNode[] = [group('g0'), group('g1')];
+          const selected: string[] = [];
+          specs.forEach((spec, index) => {
+            const id = `n${index}`;
+            if (spec.kind === 'annotation') nodes.push(note(id));
+            else if (spec.kind === 'group') nodes.push(group(id));
+            else nodes.push(content(id, spec.kind, index * 10, index * 10, spec.inGroup < 2 ? `g${spec.inGroup}` : undefined));
+            if (spec.selected) selected.push(id);
+          });
+          selected.push('g0');
+          const result = resolveSelectionAdd(selected, nodes);
+          if (result.kind !== 'add') return;
+          const typeOf = new Map(nodes.map((n) => [n.id, n.type]));
+          expect(new Set(result.sourceIds).size).toBe(result.sourceIds.length);
+          for (const id of result.sourceIds) {
+            expect(['annotation', 'group']).not.toContain(typeOf.get(id));
+          }
+          for (const id of result.anchorIds) {
+            expect(typeOf.get(id)).not.toBe('annotation');
+          }
+        },
+      ),
+    );
+  });
+});
+
+describe('handlesEmphasized — when a node shows the plus on its handles (design 4.1)', () => {
+  it('shows the plus only on the one selected, connectable node with no mini tool open', () => {
+    for (const selected of [true, false]) {
+      for (const selectedNonNoteCount of [0, 1, 2, 3]) {
+        for (const connectable of [true, false]) {
+          for (const miniToolOpen of [true, false]) {
+            const expected = selected && selectedNonNoteCount === 1 && connectable && !miniToolOpen;
+            expect(
+              handlesEmphasized({ selected, selectedNonNoteCount, connectable, miniToolOpen }),
+              JSON.stringify({ selected, selectedNonNoteCount, connectable, miniToolOpen }),
+            ).toBe(expected);
+          }
+        }
+      }
+    }
+  });
+});
+
+describe('orderSources — reference order, top to bottom then left to right', () => {
+  it('orders by y first and x second', () => {
+    const nodes = [content('low', 'image', 0, 100), content('right', 'image', 50, 0), content('left', 'image', 10, 0)];
+    expect(orderSources(nodes).map((n) => n.id)).toEqual(['left', 'right', 'low']);
+  });
+
+  it('returns a permutation sorted by (y, x) for any positions', () => {
+    fc.assert(
+      fc.property(fc.array(fc.record({ x: fc.integer({ min: -5000, max: 5000 }), y: fc.integer({ min: -5000, max: 5000 }) }), { maxLength: 20 }), (points) => {
+        const nodes = points.map((p, i) => content(`n${i}`, 'image', p.x, p.y));
+        const out = orderSources(nodes);
+        expect(sorted(out.map((n) => n.id))).toEqual(sorted(nodes.map((n) => n.id)));
+        for (let i = 1; i < out.length; i += 1) {
+          const a = out[i - 1].position;
+          const b = out[i].position;
+          expect(a.y < b.y || (a.y === b.y && a.x <= b.x)).toBe(true);
+        }
+      }),
+    );
+  });
+});
+
+describe('planConnectedNode — what one pick builds (design 4.4)', () => {
+  const bounds = { x: 0, y: 0, width: 288, height: 492 };
+
+  it('keeps the 72px column between the selection and the new node', () => {
+    expect(LAYER_STEP_PX - EMPTY_NODE_SIZE.width).toBe(72);
+  });
+
+  it('places the new node 72px past the selection, centred on it, when nothing is in the way', () => {
+    const sources = [content('img', 'image', 0, 0), content('vid', 'video', 0, 300)];
+    const plan = planConnectedNode({ type: 'image', sources, selectionBounds: bounds, obstacles: [], cap: 50 });
+    expect(plan).toEqual({
+      kind: 'ok',
+      // left edge 288 + 72 = 360, top 246 - 96 = 150; centre = left/top + half size
+      center: { x: 360 + EMPTY_NODE_SIZE.width / 2, y: 246 },
+      sourceIds: ['img'],
+    });
+  });
+
+  it('moves right past a node outside the selection that the spot would cover', () => {
+    const sources = [content('img', 'image', 0, 0)];
+    const obstacle = { x: 400, y: 100, width: 300, height: 200 };
+    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [obstacle], cap: 50 });
+    const rect = { x: 360, y: 150, width: EMPTY_NODE_SIZE.width, height: EMPTY_NODE_SIZE.height };
+    const shift = shiftRightPastOccupied(withTaskCounts(rect), [obstacle], ROW_GAP_PX);
+    expect(shift).toBe(388);
+    expect(plan).toEqual({
+      kind: 'ok',
+      center: { x: rect.x + shift + EMPTY_NODE_SIZE.width / 2, y: 246 },
+      sourceIds: ['img'],
+    });
+  });
+
+  it('stays put when the only other node sits clear above the spot', () => {
+    const sources = [content('img', 'image', 0, 0)];
+    const obstacle = { x: 360, y: -1000, width: 288, height: 192 };
+    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [obstacle], cap: 50 });
+    expect(plan).toEqual({ kind: 'ok', center: { x: 504, y: 246 }, sourceIds: ['img'] });
+  });
+
+  it('wires only the sources that connect into the picked type, in reference order', () => {
+    const sources = [
+      content('audio-top', 'audio', 0, 0),
+      content('img-low', 'image', 0, 600),
+      content('text-mid-right', 'text', 300, 300),
+      content('text-mid-left', 'text', 0, 300),
+    ];
+    const plan = planConnectedNode({ type: 'image', sources, selectionBounds: bounds, obstacles: [], cap: 50 });
+    expect(plan.kind).toBe('ok');
+    if (plan.kind !== 'ok') return;
+    // audio does not feed an image node; the rest read top to bottom, left to right.
+    expect(plan.sourceIds).toEqual(['text-mid-left', 'text-mid-right', 'img-low']);
+  });
+
+  it('refuses the whole build when the connectable sources exceed the reference cap', () => {
+    const sources = [content('a', 'image', 0, 0), content('b', 'image', 0, 300), content('c', 'image', 0, 600)];
+    expect(planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [], cap: 2 })).toEqual({ kind: 'full', cap: 2 });
+  });
+
+  it('builds when the connectable sources fill the cap exactly', () => {
+    const sources = [content('a', 'image', 0, 0), content('b', 'image', 0, 300), content('c', 'image', 0, 600)];
+    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [], cap: 3 });
+    expect(plan.kind).toBe('ok');
+    if (plan.kind !== 'ok') return;
+    expect(plan.sourceIds).toEqual(['a', 'b', 'c']);
+  });
+
+  it('counts only the sources that connect against the cap', () => {
+    const sources = [content('a', 'image', 0, 0), content('b', 'image', 0, 300), content('c', 'audio', 0, 600)];
+    const plan = planConnectedNode({ type: 'image', sources, selectionBounds: bounds, obstacles: [], cap: 2 });
+    expect(plan.kind).toBe('ok');
+    if (plan.kind !== 'ok') return;
+    expect(plan.sourceIds).toEqual(['a', 'b']);
+  });
+
+  it('has no cap when the cap is unknown', () => {
+    const sources = Array.from({ length: 80 }, (_, i) => content(`n${i}`, 'text', 0, i * 10));
+    const plan = planConnectedNode({ type: 'video', sources, selectionBounds: bounds, obstacles: [], cap: null });
+    expect(plan.kind).toBe('ok');
+    if (plan.kind !== 'ok') return;
+    expect(plan.sourceIds).toHaveLength(80);
+  });
+
+  // Properties over any selection: the wiring is exactly the ordered,
+  // connectable sources; the cap is never crossed; the spot is never left of
+  // the 72px column and always level with the selection's middle.
+  it('holds its invariants for any selection, type, cap and obstacles', () => {
+    const kinds = ['text', 'image', 'video', 'audio', '3d', 'web'] as const;
+    const rect = fc.record({
+      x: fc.integer({ min: -3000, max: 3000 }),
+      y: fc.integer({ min: -3000, max: 3000 }),
+      width: fc.integer({ min: 1, max: 1000 }),
+      height: fc.integer({ min: 1, max: 1000 }),
+    });
+    fc.assert(
+      fc.property(
+        fc.array(fc.record({ kind: fc.constantFrom(...kinds), x: fc.integer({ min: -3000, max: 3000 }), y: fc.integer({ min: -3000, max: 3000 }) }), { maxLength: 15 }),
+        fc.constantFrom<CreatableNodeType>(...CREATABLE_NODE_TYPES),
+        fc.option(fc.nat(10), { nil: null }),
+        rect,
+        fc.array(rect, { maxLength: 6 }),
+        (specs, type, cap, selectionBounds, obstacles) => {
+          const sources = specs.map((s, i) => content(`s${i}`, s.kind, s.x, s.y));
+          const plan = planConnectedNode({ type, sources, selectionBounds, obstacles, cap });
+          const connectable = orderSources(sources).filter((s) => canConnect(s.type, type)).map((s) => s.id);
+          if (cap !== null && connectable.length > cap) {
+            expect(plan).toEqual({ kind: 'full', cap });
+            return;
+          }
+          expect(plan.kind).toBe('ok');
+          if (plan.kind !== 'ok') return;
+          expect(plan.sourceIds).toEqual(connectable);
+          const typeOf = new Map(sources.map((s) => [s.id, s.type]));
+          for (const id of plan.sourceIds) expect(canConnect(typeOf.get(id) ?? '', type)).toBe(true);
+          const left = plan.center.x - EMPTY_NODE_SIZE.width / 2;
+          expect(left).toBeGreaterThanOrEqual(selectionBounds.x + selectionBounds.width + 72);
+          expect(plan.center.y).toBe(selectionBounds.y + selectionBounds.height / 2);
+        },
+      ),
+    );
+  });
+});

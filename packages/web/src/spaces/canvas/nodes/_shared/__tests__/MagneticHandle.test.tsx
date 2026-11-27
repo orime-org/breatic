@@ -6,7 +6,8 @@ import { act, render } from '@testing-library/react';
 import { ReactFlowProvider, useStoreApi } from '@xyflow/react';
 import * as React from 'react';
 
-import { MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
+import { EMPHASIZED_HANDLE_Z, MagneticHandle } from '@web/spaces/canvas/nodes/_shared/MagneticHandle';
+import { NodeScaleContext } from '@web/spaces/canvas/nodes/_shared/node-scale';
 
 /** Captures the xyflow store api so a test can drive connection state. */
 let storeApi: ReturnType<typeof useStoreApi> | null = null;
@@ -262,5 +263,117 @@ describe('MagneticHandle — dot rests during a connection drag', () => {
     expect(dot.style.transform).toBe('translate(16px, 6px)');
     setConnecting(true);
     expect(dot.style.transform).toBe('');
+  });
+});
+
+/**
+ * Mounts an emphasized handle at a node counter-scale (1 at 100% zoom and
+ * above, 2 at 50% and below).
+ * @param scale - The NodeScaleContext value.
+ * @param emphasized - Whether the handle shows the plus.
+ * @returns The handle element and its visible dot.
+ */
+function mountEmphasized(scale: number, emphasized = true): { handle: HTMLElement; dot: HTMLElement } {
+  const { container } = render(
+    <ReactFlowProvider>
+      <NodeScaleContext.Provider value={scale}>
+        <MagneticHandle type='source' isConnectable emphasized={emphasized} />
+      </NodeScaleContext.Provider>
+    </ReactFlowProvider>,
+  );
+  const handle = container.querySelector('.react-flow__handle') as HTMLElement;
+  const dot = handle.querySelector('[data-testid="handle-dot"]') as HTMLElement;
+  return { handle, dot };
+}
+
+/**
+ * Stubs the 8px anchor's rect at a canvas zoom, centred on (100, 100).
+ * @param handle - The handle element.
+ * @param zoom - The canvas zoom; the anchor measures 8 × zoom on screen.
+ */
+function stubAnchorRectAt(handle: HTMLElement, zoom: number): void {
+  const half = 4 * zoom;
+  handle.getBoundingClientRect = () =>
+    ({
+      left: 100 - half,
+      top: 100 - half,
+      right: 100 + half,
+      bottom: 100 + half,
+      width: 2 * half,
+      height: 2 * half,
+      x: 100 - half,
+      y: 100 - half,
+      toJSON: () => ({}),
+    }) as DOMRect;
+}
+
+// inner#2216 design 4.1: on a lone selected node the dot becomes a 20px
+// screen-size plus. The handle's own pseudo-elements carry the press (the
+// ::after reaches into the node as a circle of radius r), r is handed to them
+// as a CSS variable, the handle rises above the video error layer (z-20), and
+// the chase keeps the whole plus inside the 36px zone.
+describe('MagneticHandle — emphasized (the plus on a lone selected node)', () => {
+  it('draws a plus inside the visible dot', () => {
+    const { dot } = mountEmphasized(1);
+    const plus = dot.querySelector('[data-testid="handle-plus"]');
+    expect(plus).not.toBeNull();
+    expect(dot.contains(plus)).toBe(true);
+  });
+
+  it('hands the plus radius to the pseudo-elements: 10px at 100% zoom', () => {
+    const { handle } = mountEmphasized(1);
+    expect(handle.style.getPropertyValue('--handle-plus-r')).toBe('10px');
+  });
+
+  it('hands the plus radius to the pseudo-elements: 20 canvas px at 50% zoom', () => {
+    const { handle } = mountEmphasized(2);
+    expect(handle.style.getPropertyValue('--handle-plus-r')).toBe('20px');
+  });
+
+  it('gives the handle a round ::after press zone sized from the radius', () => {
+    const { handle } = mountEmphasized(1);
+    expect(handle.className).toContain('after:rounded-full');
+    expect(handle.className).toMatch(/(^|\s)after:[^\s]*--handle-plus-r/);
+    expect(handle.className).toMatch(/(^|\s)before:[^\s]*--handle-plus-r/);
+  });
+
+  it('lifts the handle above the video error layer (z-20)', () => {
+    expect(typeof EMPHASIZED_HANDLE_Z).toBe('number');
+    expect(EMPHASIZED_HANDLE_Z).toBeGreaterThan(20);
+    const { handle } = mountEmphasized(1);
+    expect(handle.className).toMatch(new RegExp(`(^|\\s)!?z-(\\[${EMPHASIZED_HANDLE_Z}\\]|${EMPHASIZED_HANDLE_Z})(\\s|$)`));
+  });
+
+  it('keeps the handle connectable, so press, drag and click-connect stay as they are', () => {
+    const { handle, dot } = mountEmphasized(1);
+    expect(dot.querySelector('[data-testid="handle-plus"]')).not.toBeNull();
+    expect(handle.classList.contains('connectable')).toBe(true);
+    expect(handle.classList.contains('connectablestart')).toBe(true);
+    expect(handle.classList.contains('connectableend')).toBe(true);
+    expect(handle.className).toContain('!right-1');
+  });
+
+  it('clamps the chase by the plus radius at 100% zoom: 26 out, 8 vertical', () => {
+    const { handle, dot } = mountEmphasized(1);
+    stubAnchorRectAt(handle, 1);
+    firePointer(handle, 'pointermove', 400, 400);
+    expect(dot.style.transform).toBe('translate(26px, 8px)');
+  });
+
+  it('clamps the chase by the plus radius at 50% zoom: 16 out, no vertical travel', () => {
+    const { handle, dot } = mountEmphasized(2);
+    stubAnchorRectAt(handle, 0.5);
+    firePointer(handle, 'pointermove', 400, 400);
+    expect(dot.style.transform).toBe('translate(16px, 0px)');
+  });
+
+  // Guard: every other node keeps today's dot.
+  it('keeps the plain dot without emphasis', () => {
+    const { handle, dot } = mountEmphasized(1, false);
+    expect(dot.querySelector('[data-testid="handle-plus"]')).toBeNull();
+    expect(handle.style.getPropertyValue('--handle-plus-r')).toBe('');
+    stubAnchorRectAt(handle, 1);
+    firePointer(handle, 'pointermove', 400, 400);
+    expect(dot.style.transform).toBe('translate(32px, 14px)');
   });
 });
