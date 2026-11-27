@@ -16,7 +16,7 @@
  * the `yjs_documents` table.
  */
 
-import { eq, and, isNull, isNotNull, desc, inArray, count, sql } from "drizzle-orm";
+import { eq, and, or, isNull, isNotNull, desc, inArray, count, sql } from "drizzle-orm";
 import type { SQL } from "drizzle-orm";
 import type { AnyPgColumn, PgTransaction } from "drizzle-orm/pg-core";
 import { db, projectMembersRepo } from "@breatic/core";
@@ -65,7 +65,19 @@ function toEntity(row: typeof projects.$inferSelect): ProjectEntity {
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
     archivedAt: row.archivedAt,
+    copying: isCopying(row),
   };
+}
+
+/**
+ * Whether a Project row is a copy whose documents collab has not copied yet (inner#1706).
+ * @param row - The row's copy columns.
+ * @param row.duplicatedFromId - The Project it was copied from, or null.
+ * @param row.duplicateCompletedAt - When collab recorded the copy as completed, or null.
+ * @returns True while it is being copied.
+ */
+function isCopying(row: { duplicatedFromId: string | null; duplicateCompletedAt: Date | null }): boolean {
+  return row.duplicatedFromId !== null && row.duplicateCompletedAt === null;
 }
 
 /**
@@ -349,6 +361,24 @@ export async function getProjectById(
   return rows[0] ? toEntity(rows[0]) : null;
 }
 
+/**
+ * Which of some Projects in a Studio are no longer being copied (inner#1706): live ones that were never a copy, or
+ * whose copy collab has recorded as completed. An id outside the Studio, or of a deleted Project, is left out.
+ * @param studioId - The Studio.
+ * @param ids - The Projects asked about.
+ * @returns Those of them no longer being copied, in the order asked.
+ */
+export async function listCopiedInStudio(studioId: string, ids: readonly string[]): Promise<string[]> {
+  const rows = await db.select({ id: projects.id }).from(projects).where(and(
+    eq(projects.studioId, studioId),
+    inArray(projects.id, [...ids]),
+    isNull(projects.deletedAt),
+    or(isNull(projects.duplicatedFromId), isNotNull(projects.duplicateCompletedAt)),
+  ));
+  const copied = new Set(rows.map((row) => row.id));
+  return ids.filter((id) => copied.has(id));
+}
+
 /** A studio's project as listed, before the caller's card permissions are added. */
 export type StudioProjectRow = Omit<
   ProjectSummary,
@@ -427,6 +457,8 @@ export async function listStudioProjectPage(
       createdAt: projects.createdAt,
       updatedAt: projects.updatedAt,
       archivedAt: projects.archivedAt,
+      duplicatedFromId: projects.duplicatedFromId,
+      duplicateCompletedAt: projects.duplicateCompletedAt,
       lastOpenedAt: openedAt,
       lastEditedAt: editedAt,
       createdAtMicros: epochMicros<string>(projects.createdAt),
@@ -472,6 +504,7 @@ export async function listStudioProjectPage(
       archivedAt: row.archivedAt,
       lastOpenedAt: row.lastOpenedAt,
       lastEditedAt: new Date(row.lastEditedAt),
+      copying: isCopying(row),
     })),
     next,
     total: q.cursor ? null : Number(counted?.total ?? 0),
@@ -728,6 +761,8 @@ export async function duplicateProject(
       // A source with no meta document is seeded only after its first open.
       // Keep its chosen kind so that copying before that open cannot reset it.
       initialSpaceType: sql`(SELECT ${projects.initialSpaceType} FROM ${projects} WHERE ${projects.id} = ${source.id})`,
+      // Being copied until collab records the completion (inner#1706).
+      duplicatedFromId: source.id,
     })
     .returning();
   const newProject = inserted[0]!;

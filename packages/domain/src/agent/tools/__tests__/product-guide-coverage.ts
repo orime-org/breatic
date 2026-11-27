@@ -1440,6 +1440,9 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "notifications.subtitle.studioTransferHint": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "project.archived.banner": { excluded: REASONS.ARCHIVED_ONLY },
   "project.archived.restore": { excluded: REASONS.ARCHIVED_ONLY },
+  // inner#1706: a copy still being copied opens to this notice alone, with no chat.
+  "project.copying.backToStudio": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  "project.copying.title": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "project.header.renameFailed": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "project.leave.body": { described: /can no longer open the project/ },
   "project.leave.done": { excluded: REASONS.ECHO },
@@ -1587,6 +1590,8 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "server.error.internal": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.error.not_found": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "server.error.payload_too_large": { excluded: REASONS.SAYS_WHAT_HAPPENED },
+  // inner#1706: refused from a Studio page card menu.
+  "server.error.project_copying": { excluded: REASONS.NOT_ON_THESE_SCREENS },
   "server.error.rate_limited": { excluded: REASONS.SAYS_TRY_AGAIN },
   "server.error.transfer_invalid": { excluded: REASONS.SAYS_TRY_AGAIN },
   "server.error.upload_too_large": { excluded: REASONS.SAYS_WHAT_HAPPENED },

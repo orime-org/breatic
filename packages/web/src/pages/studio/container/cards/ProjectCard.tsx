@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 import type * as React from 'react';
+import { Loader2 } from 'lucide-react';
 
 import { useTranslation } from '@web/i18n/use-translation';
 import { hasCardMenu, ProjectCardMenu } from '@web/pages/studio/container/cards/ProjectCardMenu';
@@ -32,7 +33,9 @@ interface ProjectCardProps {
  * project the viewer is not on, the card opens the join dialog in place and
  * shows no role. An archived card carries the archived badge, still opens for
  * a member (read-only), and does nothing for anyone else: an archived project
- * takes no join requests.
+ * takes no join requests. A copy still being copied (inner#1706) covers its
+ * cover with a spinner and "Copying", opens nothing and has no menu until the
+ * Studio page's poll finds it copied.
  * @param props the card's props.
  * @param props.project the project to render.
  * @param props.timeKind which time the meta line shows.
@@ -60,6 +63,12 @@ export function ProjectCard({ project, timeKind }: ProjectCardProps): React.JSX.
       <ProjectOpenTarget project={project} className={OPEN_TARGET}>
         {body}
       </ProjectOpenTarget>
+      {project.copying ? (
+        <div className='pointer-events-none absolute inset-x-0 top-0 z-[1] flex aspect-video flex-col items-center justify-center gap-2 bg-muted text-sm text-foreground'>
+          <Loader2 className='size-6 animate-spin text-muted-foreground' aria-hidden />
+          {t('studio.container.card.copying')}
+        </div>
+      ) : null}
       {project.archivedAt !== null ? (
         <span className='pointer-events-none absolute left-[7px] top-[7px] z-[1]'>
           <ArchivedBadge />

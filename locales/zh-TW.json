@@ -10,7 +10,8 @@
       "rate_limited": "請求過於頻繁，請稍後再試",
       "payload_too_large": "請求內容超過 {limit}，請縮短提示詞或減少引用的文字。",
       "transfer_invalid": "上傳的內容無法使用，請重試。",
-      "internal": "伺服器內部錯誤"
+      "internal": "伺服器內部錯誤",
+      "project_copying": "這個 Project 正在複製，暫時不能複製。"
     },
     "credit": {
       "not_studio_admin": "只能指定給你管理的 Studio。",
@@ -3559,6 +3560,10 @@
       "title": "仍有未完成的工作，要重新整理嗎？",
       "refresh": "仍然重新整理",
       "failed": "重新整理失敗，請重試。"
+    },
+    "copying": {
+      "title": "這個 Project 正在複製，完成後在 Studio 開啟。",
+      "backToStudio": "返回 Studio"
     }
   },
   "common": {
@@ -4551,7 +4556,8 @@
         "openedAt": "開啟於 {time}",
         "editedAt": "修改於 {time}",
         "archivedAt": "封存於 {time}",
-        "neverOpened": "從未開啟"
+        "neverOpened": "從未開啟",
+        "copying": "正在複製"
       },
       "projects": {
         "new": "新增 Project",

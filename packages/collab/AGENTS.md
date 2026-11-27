@@ -28,7 +28,7 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 ### Product tables collab writes
 
-**Collab writes only `project_activities`, `account_activity_events` and `project_edits` in the product database, and never enqueues a worker job; background work is enqueued by the server, and the worker tells collab about state changes through Redis.** Business data belongs to server and worker, and a write collab makes on store or load holds up every save behind it. The one temporary exception is the first-action analytics of inner#2051 (`analytics_milestones`, `ads_conversion_uploads` and the `ads-conversion` queue); a database account that can write only these tables is inner#2043. Adding or removing a table needs the maintainer's explicit approval. Check: does this change make collab write another product table or open a queue?
+**Collab writes only `project_activities`, `account_activity_events`, `project_edits` and the `projects.duplicate_completed_at` column in the product database, and never enqueues a worker job; background work is enqueued by the server, and the worker tells collab about state changes through Redis.** Business data belongs to server and worker, and a write collab makes on store or load holds up every save behind it. The one temporary exception is the first-action analytics of inner#2051 (`analytics_milestones`, `ads_conversion_uploads` and the `ads-conversion` queue); a database account that can write only these tables is inner#2043. Adding or removing a table needs the maintainer's explicit approval. Check: does this change make collab write another product table or open a queue?
 
 ## Hocuspocus lifecycle
 

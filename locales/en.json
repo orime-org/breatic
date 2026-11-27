@@ -10,7 +10,8 @@
       "rate_limited": "Too many requests, please try again later",
       "payload_too_large": "This request is larger than {limit}. Shorten the prompt or the text it refers to.",
       "transfer_invalid": "The uploaded content could not be used. Please try again.",
-      "internal": "Internal server error"
+      "internal": "Internal server error",
+      "project_copying": "This Project is still being copied and can't be copied yet."
     },
     "credit": {
       "not_studio_admin": "You can only assign credits to a studio you administer.",
@@ -3559,6 +3560,10 @@
       "title": "Refresh with work in progress?",
       "refresh": "Refresh anyway",
       "failed": "Couldn't refresh. Try again."
+    },
+    "copying": {
+      "title": "This Project is still being copied. Open it from Studio once it's done.",
+      "backToStudio": "Back to Studio"
     }
   },
   "common": {
@@ -4551,7 +4556,8 @@
         "openedAt": "Opened {time}",
         "editedAt": "Edited {time}",
         "archivedAt": "Archived {time}",
-        "neverOpened": "Never opened"
+        "neverOpened": "Never opened",
+        "copying": "Copying"
       },
       "projects": {
         "new": "New project",
