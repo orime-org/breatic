@@ -21,7 +21,7 @@
  */
 
 import { defineWorkersProject } from "@cloudflare/vitest-pool-workers/config";
-import { defineConfig } from "vitest/config";
+import { configDefaults, defineConfig } from "vitest/config";
 import { resolve } from "node:path";
 
 /** Where both projects find this package's and shared's sources. */
@@ -36,6 +36,14 @@ const alias = {
  * container's own tests are among them: it runs on Node, not workerd.
  */
 const NODE_TESTS = "{src,container,scripts}/**/__tests__/**/*.node.test.ts";
+
+/**
+ * The tests that run real FFmpeg and read how it decodes or encodes. `INGEST_MEDIA_TESTS=image` leaves them out of
+ * this run, as CI's package job does: they run in the production image with its FFmpeg build instead
+ * (`scripts/test-container-in-image.sh`, the same paths).
+ */
+const MEDIA_TESTS = ["container/__tests__/**/*.node.test.ts", "src/__tests__/seek-landing-read.node.test.ts"];
+const mediaTestsElsewhere = process.env.INGEST_MEDIA_TESTS === "image";
 
 const workers = defineWorkersProject({
   test: {
@@ -113,6 +121,7 @@ const node = defineConfig({
   test: {
     name: "node",
     include: [NODE_TESTS],
+    exclude: [...configDefaults.exclude, ...(mediaTestsElsewhere ? MEDIA_TESTS : [])],
     // The media container's tests run real ffmpeg jobs of several seconds, and CI runs these beside the other
     // packages' suites, as it does the workers project above.
     testTimeout: 30_000,

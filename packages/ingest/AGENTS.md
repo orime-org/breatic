@@ -81,7 +81,7 @@ The ingest Worker on Cloudflare. The browser sends file bytes straight to it; it
 
 **Tests that touch neither run on Node and end in `.node.test.ts`; `vitest.config.ts` splits the two projects by that suffix.** Check: does this test assert platform behaviour or our own logic? Platform → workerd; our logic with no R2 and no `DigestStream` on the path → Node.
 
-**The media container's own tests (`container/__tests__`) also run inside the production image with `scripts/test-container-in-image.sh`, which uses the image's ffmpeg; the image build runs the Python analysis tests.** Check: does this test depend on how ffmpeg decodes or encodes? Then run it in the image.
+**The tests that run real ffmpeg (`MEDIA_TESTS` in `vitest.config.ts`: `container/__tests__` and the few beside it) run inside the production image with `scripts/test-container-in-image.sh`, which uses the image's ffmpeg; CI runs them only there, its package job leaving them out with `INGEST_MEDIA_TESTS=image`, and the image build runs the Python analysis tests.** Check: does this test depend on how ffmpeg decodes or encodes? Then it belongs in `MEDIA_TESTS` and the script's default paths.
 
 **A test that asserts on elapsed time runs on Node.** Isolate start-up in the pool is scheduled by the pool, not the test, and varies by orders of magnitude between runs.
 

@@ -48,7 +48,8 @@
     },
     "test": {
       "dependsOn": ["build"],
-      "cache": false
+      "cache": false,
+      "passThroughEnv": ["INGEST_MEDIA_TESTS"]
     },
     "test:integration": {
       "dependsOn": ["build"],

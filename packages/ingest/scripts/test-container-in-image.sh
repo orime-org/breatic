@@ -10,7 +10,8 @@
 #
 # Usage (from the repository root):
 #   packages/ingest/scripts/test-container-in-image.sh [vitest file filters...]
-# Defaults to every container Node test (container/__tests__). Needs Docker and network access for the install.
+# Defaults to the tests that run real FFmpeg (MEDIA_TESTS in vitest.config.ts): container/__tests__ and the seek
+# landing read. Needs Docker and network access for the install.
 # IMAGE names the image (default breatic-ingest-media-test:local); BUILD=0 skips the build and uses IMAGE as it is.
 # DOCKERFILE picks the Dockerfile to build (default packages/ingest/Dockerfile).
 set -euo pipefail
@@ -21,7 +22,7 @@ dockerfile=${DOCKERFILE:-$root/packages/ingest/Dockerfile}
 image=${IMAGE:-breatic-ingest-media-test:local}
 pnpm_version=$(node -p "require('$root/package.json').packageManager.split('@')[1]")
 filters=("$@")
-[[ ${#filters[@]} -gt 0 ]] || filters=(container/__tests__)
+[[ ${#filters[@]} -gt 0 ]] || filters=(container/__tests__ src/__tests__/seek-landing-read.node.test.ts)
 
 # BUILD=0 reuses an image already built from this Dockerfile (the OpenCV stage takes long under emulation).
 [[ "${BUILD:-1}" == 0 ]] || docker build --platform "$platform" -f "$dockerfile" -t "$image" "$root"
