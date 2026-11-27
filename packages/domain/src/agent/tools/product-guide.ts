@@ -1592,9 +1592,9 @@ export function renderProductGuide(): string {
       `${quoted(t("timeline.track", { index: 2 }))}. Any track holds any kind of clip: a video, a picture, a sound, a text or a web animation copy. ` +
       "The preview draws every clip at the playhead that has a picture (every kind but sound), stacked from the bottom track up, each placed by its own position, size and angle. " +
       "Each clip shows an icon for its kind and its name, with its length below as a timecode (hours:minutes:seconds:frames), as does the position beside the play button: " +
-      "a video is blue with a film icon, a picture green with a picture icon and a sound teal with a music note, each named after its file; a text is orange with a T icon and named by its first line; " +
+      "a video is blue with a film icon, a picture green with a picture icon and a sound pink with a music note, each named after its file; a text is orange with a T icon and named by its first line; " +
       "a web animation copy is violet with a code icon. Click a clip to select it, or an empty part of a track to clear the selection; " +
-      `the panel on the right shows its name (a text's reads ${quoted(t("timeline.video", { kind: "text" }))}), ` +
+      `the panel on the right shows its kind's icon and its name (a text's reads ${quoted(t("timeline.video", { kind: "text" }))}), ` +
       `${quoted(t("timeline.edit.track"))} (a menu of every track and ${quoted(t("timeline.edit.newTrack"))}), ${quoted(t("timeline.startFrame"))}, ` +
       `${quoted(t("timeline.edit.inPoint"))} (for a video, a sound or a web animation copy only) and ${quoted(t("timeline.edit.duration"))}. ` +
       "Type a whole frame and press Enter or leave the field to apply it. " +
@@ -1631,7 +1631,7 @@ export function renderProductGuide(): string {
       "covers it: the covered part is trimmed away, a clip covered in the middle splits in two, and a deleted clip leaves a gap. " +
       `With ${quoted(t("timeline.edit.linkage"))} on, clips above a main-track clip, sounds included, move or are deleted with it. ` +
       `${quoted(t("timeline.edit.snap"))} lines dragged edges up with other clip edges, the playhead and frame 0. ` +
-      `An empty track above the main track shows ${quoted(t("timeline.edit.deleteTrack"))}. ` +
+      `An empty track above the main track shows a bin button in its header, named ${quoted(t("timeline.edit.deleteTrack"))} on hover. ` +
       "Keys: Left and Right move the selected clip one frame (Shift one second); on the main track with the magnet on they swap it with the clip before or after it; " +
       "with nothing selected they move the playhead; " +
       "Alt+Up and Alt+Down change its track, and Alt+Up on the top track adds a new track; Esc cancels a drag without changing anything; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
@@ -1640,8 +1640,8 @@ export function renderProductGuide(): string {
       "that is free for that long, or on a new top track, without moving or trimming any other clip. The new text is selected, with the cursor in its " +
       `${quoted(t("timeline.text.body"))} box ready for typing. The preview draws a text's lines centred in the frame, then places it by its position, size and angle like any layer.`,
     `${quoted(t("timeline.addMedia"))} opens a form with ` +
-      `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}, and beside them ` +
-      `${quoted(t("timeline.video", { kind: "video" }))}, ${quoted(t("timeline.video", { kind: "image" }))} and ${quoted(t("timeline.video", { kind: "audio" }))} to choose the kind. ` +
+      `${quoted(t("timeline.material.project"))} and ${quoted(t("timeline.material.local"))}, and at the right of that row a switch of three parts, ` +
+      `${quoted(t("timeline.video", { kind: "video" }))}, ${quoted(t("timeline.video", { kind: "image" }))} and ${quoted(t("timeline.video", { kind: "audio" }))}, to choose the kind. ` +
       "The Project list shows the Project's registered files of that kind, a picture with its width and height, a video or a sound with its length; " +
       `${quoted(t("timeline.material.more"))} reads its next page. ` +
       `For a local file press ${quoted(t("timeline.material.chooseFile", { kind: "video" }))}, whose name follows the kind (such as ${quoted(t("timeline.material.chooseFile", { kind: "image" }))}). The form's ` +
