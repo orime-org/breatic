@@ -58,7 +58,7 @@ import { TimelineWebAnimationPicker } from '@web/spaces/timeline/TimelineWebAnim
 import type { PlayableRow } from '@web/spaces/web-animation/motion-parts';
 import { TimelineWebPreview, PreviewNote, type TimelineUploadNote, type TimelineWebEntry } from '@web/spaces/timeline/TimelineWebPreview';
 import { useTimelineLimitsQuery, useTimelinePreviewLimits } from '@web/spaces/timeline/use-timeline-limits';
-import { timelineApi } from '@web/data/api/timeline';
+import { timelineApi, timelineMediaQueryKey } from '@web/data/api/timeline';
 import { useTimelineWebResolution } from '@web/spaces/timeline/use-timeline-web-resolution';
 import { endedSentenceKey } from '@web/spaces/web-animation/execution-text';
 import { requestTitle, type TitleTranslator } from '@web/spaces/web-animation/web-animation-title';
@@ -204,7 +204,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
   }, [session, t]);
   // Background uploads live with the document, so a hidden tab keeps uploading and writing results.
   const uploads = React.useMemo(() => getTimelineUploads(doc, name, {
-    projectId, spaceId, onLanded: (kind) => { void queryClient.invalidateQueries({ queryKey: ['timeline-media', projectId, kind] }); },
+    projectId, spaceId, onLanded: (kind) => { void queryClient.invalidateQueries({ queryKey: timelineMediaQueryKey(projectId, kind) }); },
   }), [doc, name, projectId, spaceId, queryClient]);
   const material = React.useMemo(() => getTimelineMediaDraft(doc, name, { projectId, spaceId, queryClient, edit: editWithNotice, startUpload: uploads.start }), [doc, name, projectId, spaceId, queryClient, editWithNotice, uploads]);
   const materialState = React.useSyncExternalStore(material.subscribe, material.getSnapshot);
@@ -800,6 +800,10 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
     if (clip.kind === 'image') setImageAttempts((current) => new Map(current).set(clipId, (current.get(clipId) ?? 0) + 1));
     else retryVideo(clipId);
   }, [document.clips, retryVideo, retryFonts]);
+  const retryNote = React.useCallback((event: React.MouseEvent<HTMLButtonElement>): void => {
+    const clipId = event.currentTarget.dataset.clipId;
+    if (clipId !== undefined) retryLayer(clipId);
+  }, [retryLayer]);
 
   const openMaterial = React.useCallback((): void => {
     if (readOnly) return;
@@ -900,7 +904,7 @@ function TimelineEditor({ projectId, spaceId, readOnly = false, doc, stored }: T
             <div data-testid='timeline-preview-notes' className='pointer-events-none absolute inset-px' style={NOTE_LAYER_STYLE}>
               <div ref={setNotesLayer} className='absolute right-3 top-3 flex flex-col items-end gap-1.5 *:pointer-events-auto'>
                 {mediaNotes.map((note) => <PreviewNote key={note.clipId} clipId={note.clipId} z={note.z} text={note.text}>
-                  {note.retry && <Button data-testid={`timeline-video-retry-${note.clipId}`} variant='outline' size='compact' onClick={() => retryLayer(note.clipId)}>{t('timeline.retry')}</Button>}
+                  {note.retry && <Button data-testid={`timeline-video-retry-${note.clipId}`} data-clip-id={note.clipId} variant='outline' size='compact' onClick={retryNote}>{t('timeline.retry')}</Button>}
                 </PreviewNote>)}
               </div>
             </div>

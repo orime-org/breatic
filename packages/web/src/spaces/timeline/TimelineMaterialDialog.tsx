@@ -16,7 +16,7 @@ import { Input } from '@web/components/ui/input';
 import { Label } from '@web/components/ui/label';
 import { ScrollArea } from '@web/components/ui/scroll-area';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@web/components/ui/select';
-import { timelineApi } from '@web/data/api/timeline';
+import { timelineApi, timelineMediaQueryKey } from '@web/data/api/timeline';
 import { useTranslation } from '@web/i18n/use-translation';
 import { useReturnFocus } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
@@ -60,7 +60,8 @@ function ProjectVideoChoice({ asset, selected, disabled, onSelect }: ProjectVide
   return <Button type='button' data-testid={`timeline-project-video-${asset.assetId}`} variant={null} size={null} disabled={disabled} onClick={choose} aria-pressed={selected}
     className={cn('flex w-full min-w-0 justify-start gap-3 rounded-chrome border border-border p-3 text-left hover-enabled:bg-accent', selected && 'border-active-border')}>
     {asset.kind === 'audio' ? <Music className='size-10 shrink-0 text-muted-foreground' />
-      : asset.coverUrl === null ? <Film className='size-10 shrink-0 text-muted-foreground' /> : <img src={asset.coverUrl} alt='' className='h-10 w-16 shrink-0 rounded-content-xs object-cover' />}
+      : asset.kind === 'image' ? <img src={asset.fileUrl} alt='' className='h-10 w-16 shrink-0 rounded-content-xs object-cover' />
+        : asset.coverUrl === null ? <Film className='size-10 shrink-0 text-muted-foreground' /> : <img src={asset.coverUrl} alt='' className='h-10 w-16 shrink-0 rounded-content-xs object-cover' />}
     <span className='flex min-w-0 flex-1 flex-col gap-1'>
       <span className='min-w-0 truncate leading-normal'>{timelineVideoName(asset) ?? t('timeline.video', { kind: asset.kind })}</span>
       {asset.kind === 'image'
@@ -73,7 +74,7 @@ function ProjectVideoChoice({ asset, selected, disabled, onSelect }: ProjectVide
 /**
  * Display the document-owned material form and its explicit user actions.
  * @param props - The current Project and document-scoped material workflow.
- * @param props.projectId - The Project whose videos are listed.
+ * @param props.projectId - The Project whose media are listed.
  * @param props.spaceId - The target Space tab's stable identity.
  * @param props.draft - The document-owned material state and actions.
  * @param props.canWrite - The current Project role's permission.
@@ -89,7 +90,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const fileInput = React.useRef<HTMLInputElement>(null);
   const returnFocus = useReturnFocus(true);
   const { kind } = state;
-  const listKey = React.useMemo(() => ['timeline-media', projectId, kind], [projectId, kind]);
+  const listKey = React.useMemo(() => timelineMediaQueryKey(projectId, kind), [projectId, kind]);
   const queryFn = React.useCallback(({ pageParam, signal }: { pageParam: string | undefined; signal: AbortSignal }) => timelineApi.listVideos(projectId, pageParam, signal, kind), [projectId, kind]);
   const list = useInfiniteQuery({ queryKey: listKey, queryFn, initialPageParam: undefined as string | undefined, getNextPageParam: (page) => page.nextCursor ?? undefined, enabled: state.mode === 'project' });
   const { refetch, fetchNextPage } = list;
@@ -97,7 +98,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
   const changeOpen = React.useCallback((open: boolean): void => { if (!open) onClose(); }, [onClose]);
   const chooseProject = React.useCallback((): void => draft.setMode('project'), [draft]);
   const chooseLocal = React.useCallback((): void => draft.setMode('local'), [draft]);
-  const chooseKind = React.useCallback((next: TimelineUploadKind): void => draft.setKind(next), [draft]);
+  const chooseKind = React.useCallback((event: React.MouseEvent<HTMLButtonElement>): void => draft.setKind(event.currentTarget.dataset.kind as TimelineUploadKind), [draft]);
   const chooseFile = React.useCallback((): void => fileInput.current?.click(), []);
   const changeFile = React.useCallback((event: React.ChangeEvent<HTMLInputElement>): void => draft.setFile(event.target.files?.[0] ?? null), [draft]);
   // A start frame is whole and never negative: the plain field keeps digits only, with no native spinner.
@@ -121,7 +122,7 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
           <Button data-testid='timeline-material-project' type='button' variant='outline' onClick={chooseProject} disabled={state.busy} aria-pressed={state.mode === 'project'} className={state.mode === 'project' ? 'border-active-border' : undefined}>{t('timeline.material.project')}</Button>
           <Button data-testid='timeline-material-local' type='button' variant='outline' onClick={chooseLocal} disabled={state.busy} aria-pressed={state.mode === 'local'} className={state.mode === 'local' ? 'border-active-border' : undefined}>{t('timeline.material.local')}</Button>
           <span className='ml-auto flex items-center gap-1'>
-            {KINDS.map((item) => <Button key={item} data-testid={`timeline-material-kind-${item}`} type='button' variant='outline' size='sm' onClick={() => chooseKind(item)} disabled={state.busy}
+            {KINDS.map((item) => <Button key={item} data-testid={`timeline-material-kind-${item}`} data-kind={item} type='button' variant='outline' size='sm' onClick={chooseKind} disabled={state.busy}
               aria-pressed={kind === item} className={kind === item ? 'border-active-border' : undefined}>{t('timeline.video', { kind: item })}</Button>)}
           </span>
         </div>
@@ -133,7 +134,8 @@ export function TimelineMaterialDialog({ projectId, spaceId, draft, canWrite, do
             {videos.map((asset) => <ProjectVideoChoice key={asset.assetId} asset={asset} selected={state.selected?.assetId === asset.assetId} disabled={state.busy} onSelect={draft.select} />)}
             {list.hasNextPage && <Button type='button' variant='outline' onClick={moreVideos} loading={list.isFetchingNextPage}>{t('timeline.material.more')}</Button>}
           </div> : <div className='flex flex-col items-start gap-3 py-4'>
-            <Input ref={fileInput} data-testid='timeline-file-input' type='file' accept={ACCEPT[kind]} onChange={changeFile} disabled={state.busy} className='hidden' />
+            {/* One input per kind: a kind change clears the chosen file, so choosing that file again is read. */}
+            <Input key={kind} ref={fileInput} data-testid='timeline-file-input' type='file' accept={ACCEPT[kind]} onChange={changeFile} disabled={state.busy} className='hidden' />
             <Button type='button' variant='outline' onClick={chooseFile} disabled={state.busy} icon={<Upload className='mr-2 size-4' />}>{t('timeline.material.chooseFile', { kind })}</Button>
             <p className='max-w-full break-words text-sm text-muted-foreground'>{state.file?.name ?? t('timeline.material.fileEmpty', { kind })}</p>
           </div>}

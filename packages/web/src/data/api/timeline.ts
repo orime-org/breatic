@@ -25,6 +25,17 @@ export interface SpaceExecutionQuery {
   cursor?: string;
 }
 
+/**
+ * The query key one Project's media list of a kind is cached under, for the Add media dialog (inner#1709).
+ * @param projectId - The Project.
+ * @param kind - The kind listed.
+ * @returns The key.
+ * @throws {never} Never.
+ */
+export function timelineMediaQueryKey(projectId: string, kind: 'video' | 'image' | 'audio'): readonly [string, string, string] {
+  return ['timeline-media', projectId, kind];
+}
+
 export const timelineApi = {
   /**
    * Read one page of registered videos, pictures or sounds accepted by this Project (inner#1709).

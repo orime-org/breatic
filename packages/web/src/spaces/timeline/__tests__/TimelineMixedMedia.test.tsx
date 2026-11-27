@@ -22,6 +22,7 @@ import { setLocale, TIMELINE_PREVIEW_DEFAULTS, type ProjectRegisteredAsset } fro
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
 import { apiGet } from '@web/data/api/request';
+import { timelineMediaQueryKey } from '@web/data/api/timeline';
 import type * as RequestModule from '@web/data/api/request';
 import { ApiException } from '@web/data/api/types';
 import { handOffSpaceMedia } from '@web/data/upload/media-upload';
@@ -565,20 +566,23 @@ describe('tracks and clip faces (design §3.1, §3.5, §6.4)', () => {
     expect(within(panel).getByTestId('timeline-clip-text-body')).toHaveValue('镜头 1：开场\n第二行');
   });
 
-  it('has no conflicts section and draws no record it cannot read, even when two clips overlap on one track', async () => {
+  it('draws no record it cannot read, and of two clips overlapping on one track draws only the later-starting one', async () => {
+    const DAMAGED = '30000000-0000-4000-8000-0000000000dd';
     const LATER = { ...IMAGE, id: '30000000-0000-4000-8000-000000000012', startFrame: 24 };
     const doc = seed([IMAGE, LATER]);
     doc.transact(() => {
       const damaged = new Y.Map<unknown>();
-      doc.getMap('clips').set('30000000-0000-4000-8000-0000000000dd', damaged);
+      doc.getMap('clips').set(DAMAGED, damaged);
       damaged.set('startFrame', 5);
     }, 'provider');
     show();
     await screen.findByTestId('timeline-clip-' + IMAGE.id);
-    expect(screen.queryByTestId('timeline-conflicts')).toBe(null);
-    expect(screen.queryByText('冲突')).toBe(null);
-    expect(screen.queryByTestId('timeline-conflict-30000000-0000-4000-8000-0000000000dd')).toBe(null);
-    expect(screen.queryByTestId('timeline-damaged-delete-30000000-0000-4000-8000-0000000000dd')).toBe(null);
+    expect(screen.getByTestId('timeline-clip-' + LATER.id)).toBeInTheDocument();
+    expect(screen.queryByTestId('timeline-clip-' + DAMAGED)).toBe(null);
+    expect(layerOf(DAMAGED)).toBe(null);
+    seekForward(30);
+    await waitFor(() => expect(layerOf(LATER.id)?.style.visibility).not.toBe('hidden'));
+    expect(layerOf(IMAGE.id)).toBe(null);
   });
 
   it('neither draws nor plays a clip whose track was removed', async () => {
@@ -622,6 +626,28 @@ describe('the add media dialog (design §6.2, acceptance 2, 3)', () => {
     expect(sources[String(added?.sourceId)]).toEqual({
       id: added?.sourceId, kind: 'image', url: IMAGE_ASSET.fileUrl, name: IMAGE_ASSET.displayName, mimeType: 'image/png', width: 1920, height: 1080,
     });
+  });
+
+  it('draws each Project picture from its own file, since a registered picture has no cover (design §6.2)', async () => {
+    seed([]);
+    show();
+    const dialog = await openDialog();
+    fireEvent.click(within(dialog).getByRole('button', { name: '图片' }));
+    const choice = await within(dialog).findByRole('button', { name: /镜头2-生成图\.png/ });
+    expect(choice.querySelector('img')).toHaveAttribute('src', IMAGE_ASSET.fileUrl);
+  });
+
+  it('clears the chosen local file when the kind changes, so choosing the same file again is read', async () => {
+    seed([]);
+    show();
+    const dialog = await openDialog();
+    fireEvent.click(within(dialog).getByTestId('timeline-material-local'));
+    const user = userEvent.setup();
+    await user.upload(within(dialog).getByTestId('timeline-file-input') as HTMLInputElement, new File(['mp4'], 'clip.mp4', { type: 'video/mp4' }));
+    expect((within(dialog).getByTestId('timeline-file-input') as HTMLInputElement).files).toHaveLength(1);
+    fireEvent.click(within(dialog).getByRole('button', { name: '图片' }));
+    fireEvent.click(within(dialog).getByRole('button', { name: '视频' }));
+    expect((within(dialog).getByTestId('timeline-file-input') as HTMLInputElement).files).toHaveLength(0);
   });
 
   it('lists Project sounds with their length and adds one for the length of its file', async () => {
@@ -1006,7 +1032,7 @@ describe('upload placeholders (design §4.5, §7.1-§7.3)', () => {
     fireEvent.click(within(dialog).getByTestId('timeline-confirm-material'));
     await waitFor(() => expect(handOffSpaceMedia).toHaveBeenCalledTimes(1));
     const placeholder = Object.values(storedClips()).find((record) => record.kind === 'upload')!;
-    expect(invalidate.mock.calls.some(([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(['timeline-media', PROJECT, 'audio']))).toBe(false);
+    expect(invalidate.mock.calls.some(([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(timelineMediaQueryKey(PROJECT, 'audio')))).toBe(false);
     // Collab turns the placeholder into a sound clip under its own origin.
     const doc = currentDoc();
     act(() => {
@@ -1018,6 +1044,6 @@ describe('upload placeholders (design §4.5, §7.1-§7.3)', () => {
         record.delete('upload');
       }, 'timeline-upload');
     });
-    await waitFor(() => expect(invalidate.mock.calls.some(([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(['timeline-media', PROJECT, 'audio']))).toBe(true));
+    await waitFor(() => expect(invalidate.mock.calls.some(([filters]) => JSON.stringify(filters?.queryKey) === JSON.stringify(timelineMediaQueryKey(PROJECT, 'audio')))).toBe(true));
   });
 });
