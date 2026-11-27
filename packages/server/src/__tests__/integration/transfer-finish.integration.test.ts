@@ -415,6 +415,10 @@ describe("T37: where a transfer grant stands, as the status read answers", () =>
         kind: "image",
         width: 640,
         height: 480,
+        coverUrl: null,
+        durationSeconds: null,
+        mimeType: "image/png",
+        sizeBytes: 4096,
       },
     });
     expect(await statusVia(a.userId, theirs)).toEqual({ key: theirs, state: "unknown" });

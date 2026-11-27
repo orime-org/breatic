@@ -17,12 +17,11 @@ export async function resolveRegisteredProjectMedia(projectId: string, url: stri
   const result = await projectAssetReferenceService.referenceRegisteredProjectMedia({ projectId, urls: [url] });
   const asset = result.resolved[0]?.asset;
   if (asset === undefined) throw new NotFoundError(t("server.error.not_found"));
-  const cover = asset.kind === "video" ? await assetRepo.findCoverOf(asset.id) : null;
   return {
     assetId: asset.id,
     fileUrl: asset.fileUrl,
     kind: asset.kind,
-    coverUrl: cover !== null && cover.studioId === asset.studioId ? cover.fileUrl : null,
+    coverUrl: await assetRepo.findCoverUrlOf(asset),
     width: asset.width,
     height: asset.height,
     durationSeconds: asset.durationSeconds,

@@ -3,12 +3,11 @@
 
 /**
  * Real Yjs-database boundaries for empty Timeline upgrades and Project copies
- * (inner#1707). Copy callbacks inspect actual winning target bytes while the
- * target meta is still unpublished. The callback seam is exercised here;
- * Project authorization and business asset-reference writes have other tests.
+ * (inner#1707): a copy keeps a target content that already exists and
+ * publishes the target meta. A copy writes no Project media relation; the
+ * server copies those in its own transaction (inner#2171).
  */
 
-import { AsyncLocalStorage } from "node:async_hooks";
 import { randomUUID } from "node:crypto";
 import { inArray } from "drizzle-orm";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
@@ -260,70 +259,16 @@ describe("Timeline initialization in the real Yjs database", () => {
   });
 });
 
-describe("Project copy association boundary in the real Yjs database", () => {
-  it("passes actual existing target winners before publishing target meta", async () => {
+describe("Project copy in the real Yjs database", () => {
+  it("keeps an existing target content and publishes the target meta", async () => {
     const fixture = await copyFixture();
     const winner = seed(OTHER_SETTINGS);
     await yjsRepo.seedInitialState(fixture.targetContent, winner);
-    const observed: string[] = [];
-    // Reads from another connection run in the context from before the copy began.
-    const outside = AsyncLocalStorage.snapshot();
 
-    await yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
-      expect(await outside(() => yjsRepo.fetchDocData(fixture.targetMeta))).toBeNull();
-      expect(rows.map((row) => row.name)).toEqual([fixture.targetContent]);
-      for (const row of rows) {
-        observed.push(row.name);
-        expect(Array.from(row.data)).toEqual(Array.from(winner));
-        expect(readTimelineDocument(decode(row.data)).settings).toEqual(OTHER_SETTINGS);
-      }
-    });
+    await yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId);
 
-    expect(observed).toEqual([fixture.targetContent]);
     expect(Array.from(present(await yjsRepo.fetchDocData(fixture.targetContent)))).toEqual(Array.from(winner));
     const meta = decode(present(await yjsRepo.fetchDocData(fixture.targetMeta)));
     expect([...meta.getMap("spaces").keys()]).toEqual([fixture.spaceId]);
-  });
-
-  it("rolls back content and meta on association failure, then accepts the same copy retry", async () => {
-    const fixture = await copyFixture();
-    const associationFailure = new Error("Project asset-reference write refused");
-    const attempts: string[][] = [];
-    const outside = AsyncLocalStorage.snapshot();
-    await expect(yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
-      attempts.push(rows.map((row) => row.name));
-      expect(await outside(() => yjsRepo.fetchDocData(fixture.targetMeta))).toBeNull();
-      expect(await outside(() => yjsRepo.fetchDocData(fixture.targetContent))).toBeNull();
-      throw associationFailure;
-    })).rejects.toThrow(associationFailure.message);
-    expect(await yjsRepo.fetchDocData(fixture.targetContent)).toBeNull();
-    expect(await yjsRepo.fetchDocData(fixture.targetMeta)).toBeNull();
-
-    await yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
-      attempts.push(rows.map((row) => row.name));
-      expect(rows.map((row) => Array.from(row.data))).toEqual([Array.from(fixture.bytes)]);
-    });
-    expect(attempts).toEqual([[fixture.targetContent], [fixture.targetContent]]);
-    expect(Array.from(present(await yjsRepo.fetchDocData(fixture.targetContent)))).toEqual(Array.from(fixture.bytes));
-    expect(decode(present(await yjsRepo.fetchDocData(fixture.targetMeta))).getMap("spaces").size).toBe(1);
-  });
-
-  it("keeps the captured target bytes when the source changes during association", async () => {
-    const fixture = await copyFixture();
-    const sourceLater = decode(fixture.bytes);
-    sourceLater.getMap("timeline").set("sourceChangedDuringCopy", true);
-    const laterBytes = Y.encodeStateAsUpdate(sourceLater);
-    const observed: Uint8Array[] = [];
-    const outside = AsyncLocalStorage.snapshot();
-
-    await yjsRepo.duplicateByProjectPrefix(fixture.sourceId, fixture.targetId, async (rows) => {
-      await outside(() => yjsRepo.upsertDocData(fixture.sourceContent, laterBytes));
-      for (const row of rows) observed.push(row.data);
-      expect(rows.map((row) => Array.from(row.data))).toEqual([Array.from(fixture.bytes)]);
-    });
-
-    expect(observed.map((bytes) => Array.from(bytes))).toEqual([Array.from(fixture.bytes)]);
-    expect(Array.from(present(await yjsRepo.fetchDocData(fixture.targetContent)))).toEqual(Array.from(fixture.bytes));
-    expect(decode(present(await yjsRepo.fetchDocData(fixture.sourceContent))).getMap("timeline").get("sourceChangedDuringCopy")).toBe(true);
   });
 });

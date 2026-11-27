@@ -32,7 +32,6 @@ function props(): SceneViewportProps {
     remotePeers: [], scaleSensitivity: 0.006, importLimits: IMPORT_LIMITS,
     jointMode: false, selectedJoint: null, onJointSelect: vi.fn(), onSkeletonState: vi.fn(),
     onSelect: vi.fn(), onGestureStart: vi.fn(() => true), onGestureChange: vi.fn(), onGestureEnd: vi.fn(), onViewChange: vi.fn(), onError: vi.fn(),
-    resolveAsset: vi.fn(),
   };
 }
 
@@ -67,8 +66,7 @@ describe('viewport effect ownership under React Activity (inner#1689)', () => {
   it('hands the runtime the one picture cache of the access the editor gave, kept across renders', async () => {
     const { LookPictureSizes } = await import('@web/spaces/three-d/look-picture-size');
     const { LookTextureCache } = await import('@web/spaces/three-d/viewport/look-texture-cache');
-    const resolve = async (): Promise<string> => 'https://assets.example.test/a.png';
-    const access = { sizes: new LookPictureSizes({ resolve, open: async () => new ReadableStream() }), resolve, download: async () => new Blob() };
+    const access = { sizes: new LookPictureSizes({ open: async () => new ReadableStream() }), download: async () => new Blob() };
     const initial = { ...props(), lookPictures: access };
     const page = render(<SceneViewport {...initial} />);
     const runtime = mocks.instances[0];

@@ -10,9 +10,7 @@ import jpegFormat from 'probe-image-size/lib/formats/jpeg.js';
 import pngFormat from 'probe-image-size/lib/formats/png.js';
 import webpFormat from 'probe-image-size/lib/formats/webp.js';
 
-import { httpRequest, isSceneLookImageMediaType } from '@breatic/shared';
-
-import { resolveSceneAsset } from '@web/data/api/scene';
+import { httpRequest } from '@breatic/shared';
 
 /** A picture's size and type as its file header declares them. */
 export interface LookPictureSize {
@@ -63,15 +61,13 @@ export async function readPictureSize(stream: ReadableStream<Uint8Array>, maxByt
   }
 }
 
-/** How picture sizes are reached: the asset's URL and its bytes as a stream. */
+/** How picture sizes are reached: a picture's bytes as a stream. */
 export interface LookPictureSizeDeps {
-  /** The registered URL of a picture asset. */
-  resolve: (assetId: string) => Promise<string>;
   /** The response body, read until the header is known. */
   open: (url: string) => Promise<ReadableStream<Uint8Array>>;
 }
 
-/** Header sizes of part pictures, cached per asset for the page. */
+/** Header sizes of part pictures, cached per address for the page (a part stores its picture's address, inner#2171). */
 export class LookPictureSizes {
   private readonly deps: LookPictureSizeDeps;
   private readonly sizes = new Map<string, Promise<LookPictureSize | null>>();
@@ -86,47 +82,32 @@ export class LookPictureSizes {
 
   /**
    * A picture's size from its file header, stopping the download there.
-   * @param assetId - The picture asset.
+   * @param url - The picture's address.
    * @param maxBytes - The most bytes read for the size.
    * @returns The size and type, or null when the bytes are not a picture header or the read failed.
    */
-  size(assetId: string, maxBytes: number): Promise<LookPictureSize | null> {
-    return this.read(assetId, maxBytes).catch(() => null);
+  size(url: string, maxBytes: number): Promise<LookPictureSize | null> {
+    return this.read(url, maxBytes).catch(() => null);
   }
 
   /**
    * A picture's size from its file header, telling a read that failed apart from bytes that are not a picture.
-   * @param assetId - The picture asset.
+   * @param url - The picture's address.
    * @param maxBytes - The most bytes read for the size.
-   * @returns The size and type, or null when the bytes are not a picture header; an asset's content never changes, so
-   * the answer is kept.
+   * @returns The size and type, or null when the bytes are not a picture header; a stored file never changes, so the
+   * answer is kept.
    * @throws {Error} When the picture could not be reached or read; the failure is not kept, so a later read tries again.
    */
-  read(assetId: string, maxBytes: number): Promise<LookPictureSize | null> {
-    let pending = this.sizes.get(assetId);
+  read(url: string, maxBytes: number): Promise<LookPictureSize | null> {
+    let pending = this.sizes.get(url);
     if (!pending) {
-      const started = this.deps.resolve(assetId)
-        .then((url) => this.deps.open(url))
-        .then((stream) => readPictureSize(stream, maxBytes));
+      const started = this.deps.open(url).then((stream) => readPictureSize(stream, maxBytes));
       pending = started;
-      started.catch(() => { if (this.sizes.get(assetId) === started) this.sizes.delete(assetId); });
-      this.sizes.set(assetId, pending);
+      started.catch(() => { if (this.sizes.get(url) === started) this.sizes.delete(url); });
+      this.sizes.set(url, pending);
     }
     return pending;
   }
-}
-
-/**
- * A picture asset's URL; anything that is not a look picture is refused.
- * @param projectId - The Project whose scene assets are read.
- * @param assetId - The asset.
- * @returns Its registered URL.
- * @throws {Error} When it is not a PNG, JPEG or WebP picture.
- */
-async function resolveLookPicture(projectId: string, assetId: string): Promise<string> {
-  const asset = await resolveSceneAsset(projectId, assetId, new AbortController().signal);
-  if (!isSceneLookImageMediaType(asset.mimeType)) throw new Error(`Scene asset ${assetId} is not a look picture`);
-  return asset.url;
 }
 
 /**
@@ -143,54 +124,37 @@ async function fetchLookPicture(url: string): Promise<Response> {
 
 /** What the lazy viewport needs from the page to load part pictures. */
 export interface LookPictureAccess {
-  /** The page's picture sizes for the Project. */
+  /** The page's picture sizes. */
   sizes: LookPictureSizes;
-  /** A picture asset's registered URL. */
-  resolve: (assetId: string) => Promise<string>;
   /** A picture's whole file. */
   download: (url: string) => Promise<Blob>;
 }
 
-const pageAccess = new Map<string, LookPictureAccess>();
+let pageAccess: LookPictureAccess | null = null;
 
 /**
- * The page's way to part pictures for one Project, shared by every 3D Space of it and handed to the lazy viewport by the
- * editor.
- * @param projectId - The Project whose scene assets are read.
- * @returns The sizes, the resolver and the download.
+ * The page's way to part pictures, shared by every 3D Space and handed to the lazy viewport by the editor: a picture is
+ * read by its address alone, so one page reads each address once.
+ * @returns The sizes and the download.
  */
-export function pageLookPictureAccess(projectId: string): LookPictureAccess {
-  let access = pageAccess.get(projectId);
-  if (!access) {
-    /**
-     * A picture asset's registered URL in this Project.
-     * @param assetId - The asset.
-     * @returns Its URL.
-     * @throws {Error} When it is not a look picture.
-     */
-    const resolve = (assetId: string): Promise<string> => resolveLookPicture(projectId, assetId);
-    access = {
-      sizes: new LookPictureSizes({
-        resolve,
-        open: async (url) => {
-          const body = (await fetchLookPicture(url)).body;
-          if (!body) throw new Error('Look picture response has no body');
-          return body;
-        },
-      }),
-      resolve,
-      download: async (url) => (await fetchLookPicture(url)).blob(),
-    };
-    pageAccess.set(projectId, access);
-  }
-  return access;
+export function pageLookPictureAccess(): LookPictureAccess {
+  pageAccess ??= {
+    sizes: new LookPictureSizes({
+      open: async (url) => {
+        const body = (await fetchLookPicture(url)).body;
+        if (!body) throw new Error('Look picture response has no body');
+        return body;
+      },
+    }),
+    download: async (url) => (await fetchLookPicture(url)).blob(),
+  };
+  return pageAccess;
 }
 
 /**
- * The page's picture sizes for one Project, the same instance the lazy viewport gets from `pageLookPictureAccess`.
- * @param projectId - The Project whose scene assets are read.
+ * The page's picture sizes, the same instance the lazy viewport gets from `pageLookPictureAccess`.
  * @returns The sizes.
  */
-export function pageLookPictureSizes(projectId: string): LookPictureSizes {
-  return pageLookPictureAccess(projectId).sizes;
+export function pageLookPictureSizes(): LookPictureSizes {
+  return pageLookPictureAccess().sizes;
 }

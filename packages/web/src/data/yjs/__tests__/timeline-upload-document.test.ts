@@ -36,7 +36,7 @@ import {
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import { RESOLUTION, webClip } from '@web/data/yjs/__tests__/timeline-web-fixtures';
 import {
-  ASSET_ID, OTHER_UPLOAD_ID, UPLOAD_FRAMES, UPLOAD_ID, addUpload, clipRecords, registeredVideo, uploadClip,
+  OTHER_UPLOAD_ID, UPLOAD_FRAMES, UPLOAD_ID, VIDEO_URL, addUpload, clipRecords, registeredVideo, uploadClip,
 } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 
 const docs: Y.Doc[] = [];
@@ -117,7 +117,7 @@ describe('convertTimelineUpload', () => {
     expect(TimelineVideoClipSchema.safeParse(record).success, JSON.stringify(record)).toBe(true);
     expect(record).not.toHaveProperty('upload');
     expect(record).toMatchObject({ kind: 'video', trackId: V2, startFrame: 10, sourceInFrame: 0, durationFrames: 120 });
-    expect(sourceOf(doc, cid(1))).toMatchObject({ kind: 'video', assetId: ASSET_ID, timebase: FPS, extentFrames: 120, durationSeconds: '5', durationOrigin: 'registered' });
+    expect(sourceOf(doc, cid(1))).toMatchObject({ kind: 'video', url: VIDEO_URL, timebase: FPS, extentFrames: 120, durationSeconds: '5', durationOrigin: 'registered' });
     expect(TimelineVideoSourceSchema.safeParse(sourceOf(doc, cid(1))).success).toBe(true);
   });
 
@@ -160,7 +160,7 @@ describe('convertTimelineUpload', () => {
     const doc = docWith([uploadClip(cid(1), V2, 0)]);
     convertTimelineUpload(doc, UPLOAD_ID, registeredVideo(null));
     expect(readTimelineDocument(doc).clips[cid(1)]).toMatchObject({ kind: 'video', durationFrames: UPLOAD_FRAMES });
-    expect(sourceOf(doc, cid(1))).toMatchObject({ assetId: ASSET_ID, extentFrames: UPLOAD_FRAMES, durationSeconds: '2.5' });
+    expect(sourceOf(doc, cid(1))).toMatchObject({ url: VIDEO_URL, extentFrames: UPLOAD_FRAMES, durationSeconds: '2.5' });
   });
 
   it('leaves the placeholders of another upload alone', () => {
@@ -324,7 +324,7 @@ describe('undo and redo around a conversion (design §2.2)', () => {
       expectAllValid(doc);
       const revived = readTimelineDocument(doc).clips[cid(1)];
       expect(revived).toMatchObject({ kind: 'video', trackId: V2, startFrame: 0 });
-      if (revived?.kind === 'video') expect(readTimelineDocument(doc).sources[revived.sourceId]).toMatchObject({ assetId: ASSET_ID });
+      if (revived?.kind === 'video') expect(readTimelineDocument(doc).sources[revived.sourceId]).toMatchObject({ url: VIDEO_URL });
     }
   });
 });

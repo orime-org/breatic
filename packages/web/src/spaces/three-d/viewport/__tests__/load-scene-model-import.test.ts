@@ -110,10 +110,9 @@ function modelPackage(entryPath: string, files: Record<string, Uint8Array>, form
  * Isolate the asset HTTP request while retaining the real model decoder.
  * @throws {Error} When the production model loader rejects the input.
  */
-function loadRegistered(bytes: ArrayBuffer, mimeType: string, sizeBytes = bytes.byteLength, limits: SceneImportLimits = IMPORT_LIMITS): Promise<Group> {
+function loadRegistered(bytes: ArrayBuffer, mimeType: 'model/gltf-binary' | 'application/zip', sizeBytes = bytes.byteLength, limits: SceneImportLimits = IMPORT_LIMITS): Promise<Group> {
   vi.mocked(httpRequest).mockResolvedValue(new Response(bytes));
-  const resolve = vi.fn(async () => ({ url: ASSET_URL, mimeType, sizeBytes }));
-  return loadSceneModel({ kind: 'asset', assetId: 'registered-model' }, new AbortController().signal, resolve, '#888888', limits)
+  return loadSceneModel({ kind: 'asset', url: ASSET_URL, mimeType, sizeBytes }, new AbortController().signal, '#888888', limits)
     .then((root) => { templates.add(root); return root; });
 }
 

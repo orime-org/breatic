@@ -68,7 +68,9 @@ import {
 import {
   PromptEditor,
   type PromptEditorHandle,
+  useEndFullscreenEditor,
 } from '@web/spaces/canvas/generate/PromptEditor';
+import { promptFullscreenTitle } from '@web/spaces/canvas/generate/prompt-fullscreen-title';
 import { AddShotRow, ShotList, addBlockedKey, nextOpenShot } from '@web/spaces/canvas/generate/storyboard-controls';
 import { mentionedSourceIds } from '@web/spaces/canvas/generate/fragment-prompt';
 import { storyboardRun } from '@web/spaces/canvas/generate/storyboard-run';
@@ -895,6 +897,30 @@ function VideoGeneratePanelBody({
   // costs a TipTap instance plus its bindings. The cost is the prompt's undo
   // history, which lives on the editor instance and dies with it (#1961).
   const shotPlaceholder = t('canvas.generatePanel.storyboard.shotPlaceholder');
+  // The prompt box open full screen (inner#2115): `main`, or a shot's id. It
+  // opens the box the rail inserts into (`insertTarget`): the open shot's,
+  // else the main prompt.
+  const [promptFullscreen, setPromptFullscreen] = React.useState<string | null>(null);
+  const closePromptFullscreen = React.useCallback(() => setPromptFullscreen(null), []);
+  const nodeName = asContentView(nodes.find((n) => n.id === nodeId)?.data)?.name;
+  const openPromptFullscreen = React.useCallback(() => {
+    const shotId = expandedShotRef.current;
+    setPromptFullscreen(shotEditors.current.has(shotId) ? shotId : 'main');
+  }, []);
+  // A box the panel stops showing closes its full screen: the main prompt
+  // while the shots take its place, a shot once it is removed.
+  const multiShot = Boolean(spec && shots);
+  const fullscreenBoxShown =
+    promptFullscreen === 'main' ? !multiShot && Boolean(fragment) : multiShot && shots?.some((shot) => shot.id === promptFullscreen) === true;
+  if (promptFullscreen !== null && (!vm.promptRequired || !fullscreenBoxShown)) setPromptFullscreen(null);
+  useEndFullscreenEditor(
+    spaceId,
+    promptFullscreen === 'main' ? fragment : (shots?.find((shot) => shot.id === promptFullscreen)?.prompt ?? null),
+  );
+  const mainLayer = React.useMemo(
+    () => ({ open: promptFullscreen === 'main', title: promptFullscreenTitle(nodeName, 'video'), onClose: closePromptFullscreen }),
+    [promptFullscreen, nodeName, closePromptFullscreen],
+  );
   const mainEditor = React.useMemo(
     () =>
       fragment ? (
@@ -913,9 +939,11 @@ function VideoGeneratePanelBody({
           mentionEmptyLabel={mentionEmptyLabel}
           caretProvider={caretProvider}
           mentionTokens={stableMentionTokens}
+          fullscreenLayer={mainLayer}
         />
       ) : null,
     [
+      mainLayer,
       fragment,
       promptPlaceholder,
       mentionEmptyLabel,
@@ -953,9 +981,18 @@ function VideoGeneratePanelBody({
         mentionEmptyLabel={mentionEmptyLabel}
         caretProvider={caretProvider}
         mentionTokens={stableMentionTokens}
+        fullscreenLayer={{
+          open: promptFullscreen === shot.id,
+          title: promptFullscreenTitle(nodeName, 'video', t('canvas.generatePanel.storyboard.shot', { n: index + 1 })),
+          onClose: closePromptFullscreen,
+        }}
       />
     ),
     [
+      promptFullscreen,
+      nodeName,
+      t,
+      closePromptFullscreen,
       shotPlaceholder,
       stableReferences,
       referenceKinds,
@@ -1060,6 +1097,7 @@ function VideoGeneratePanelBody({
       promptSlot={promptSlot}
       durationFloor={spec ? shots?.length : undefined}
       onExit={closeActivePanel}
+      onOpenPromptFullscreen={vm.promptRequired && (fragment || (spec && shots)) ? openPromptFullscreen : undefined}
       onSelectModel={onSelectModel}
       onChangeParams={onChangeParams}
       onExecute={onExecute}

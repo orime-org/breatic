@@ -522,6 +522,51 @@ describe("reading the Space's task list", () => {
   });
 });
 
+describe("the model file each row carries (inner#2171 design §4, §10)", () => {
+  /** Read the Space's rows as `cookie` sees them. */
+  async function tasks(cookie: string, projectId: string, spaceId: string): Promise<Array<{ id: string; modelFile: unknown }>> {
+    const res = await call("GET", `/projects/${projectId}/three-d/${spaceId}/tasks`, cookie);
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { data: { tasks: Array<{ id: string; modelFile: unknown }> } }).data.tasks;
+  }
+
+  /** A model the Studio already holds, so a ticket for it is a dedup hit. */
+  async function heldModel(studioId: string, userId: string, mime: "model/gltf-binary" | "application/zip"): Promise<{ id: string; hash: string; url: string }> {
+    const hash = crypto.randomBytes(32).toString("hex");
+    const url = `https://cdn.test.invalid/${hash}.${mime === "application/zip" ? "zip" : "glb"}`;
+    const rows = await sql<{ id: string }[]>`
+      INSERT INTO studio_assets (studio_id, content_hash, storage_key, file_url, size_bytes, mime_type, kind, source, produced_by_user_id)
+      VALUES (${studioId}, ${hash}, ${`file/${hash}`}, ${url}, 5120, ${mime}, 'file', 'upload', ${userId})
+      RETURNING id
+    `;
+    return { id: rows[0]!.id, hash, url };
+  }
+
+  it.each(["model/gltf-binary", "application/zip"] as const)("gives a done import its file's URL, type and size (%s)", async (mime) => {
+    const { owner, studioId, projectId, spaceId } = await seedProject();
+    const model = await heldModel(studioId, owner.userId, mime);
+    const data = await ticket(owner.cookie, sceneBody(projectId, spaceId, { client_hash: model.hash, size: 5120 }));
+    const row = (await tasks(owner.cookie, projectId, spaceId)).find((task) => task.id === data.taskId);
+    expect(row?.modelFile).toEqual({ url: model.url, mimeType: mime, sizeBytes: 5120 });
+  });
+
+  it("gives a running import no model file", async () => {
+    const { owner, projectId, spaceId } = await seedProject();
+    const data = await ticket(owner.cookie, sceneBody(projectId, spaceId));
+    const row = (await tasks(owner.cookie, projectId, spaceId)).find((task) => task.id === data.taskId);
+    expect(row?.modelFile).toBeNull();
+  });
+
+  it("gives a done import whose asset was deleted no model file, and still answers", async () => {
+    const { owner, studioId, projectId, spaceId } = await seedProject();
+    const model = await heldModel(studioId, owner.userId, "model/gltf-binary");
+    const data = await ticket(owner.cookie, sceneBody(projectId, spaceId, { client_hash: model.hash, size: 5120 }));
+    await sql`UPDATE studio_assets SET deleted_at = now() WHERE id = ${model.id}`;
+    const row = (await tasks(owner.cookie, projectId, spaceId)).find((task) => task.id === data.taskId);
+    expect(row?.modelFile).toBeNull();
+  });
+});
+
 describe("removing a row", () => {
   it("removes a failed row and an expired row without a result, and signals", async () => {
     const { owner, editor, projectId, spaceId } = await seedProject();

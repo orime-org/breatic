@@ -25,7 +25,7 @@ import type { SceneLookTarget } from "@domain/asset/upload-grant.repo.js";
  * @param params.projectId - The project.
  * @param params.spaceId - The 3D Space.
  * @param params.target - The object, the part and the part's picture at the start.
- * @param params.picture - The stored picture's asset id.
+ * @param params.picture - The stored picture's registered address, as the part stores it (inner#2171).
  * @param params.userId - Who uploaded it.
  * @param params.uploadKey - Names this upload once, so collab applies a repeat of it once.
  * @throws {Error} When Redis rejects the publish.

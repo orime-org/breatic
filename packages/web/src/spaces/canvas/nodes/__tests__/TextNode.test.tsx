@@ -42,6 +42,7 @@ import {
   type CanvasContextValue,
 } from '@web/spaces/canvas/canvas-context';
 import { NodeIdContext } from '@web/spaces/canvas/nodes/_shared/node-id-context';
+import { TooltipProvider } from '@web/components/ui/tooltip';
 import { TextNode } from '@web/spaces/canvas/nodes/TextNode';
 import { TEXT_BODY_BOX } from '@web/spaces/canvas/nodes/TextNodeEditor';
 import type { TextNodeView } from '@web/data/yjs/node-view';
@@ -131,11 +132,13 @@ function tree(
 ): React.JSX.Element {
   const view = { handling: false, ...opts.view };
   return (
-    <CanvasContext.Provider value={canvasValue(opts.canvas)}>
-      <NodeIdContext.Provider value={NODE}>
-        <TextNode data={view} locked={opts.locked} />
-      </NodeIdContext.Provider>
-    </CanvasContext.Provider>
+    <TooltipProvider>
+      <CanvasContext.Provider value={canvasValue(opts.canvas)}>
+        <NodeIdContext.Provider value={NODE}>
+          <TextNode data={view} locked={opts.locked} />
+        </NodeIdContext.Provider>
+      </CanvasContext.Provider>
+    </TooltipProvider>
   );
 }
 
@@ -241,11 +244,13 @@ describe('TextNode', () => {
     it('selecting the node does not open the editor', () => {
       seedNode('x');
       render(
-        <CanvasContext.Provider value={canvasValue()}>
-          <NodeIdContext.Provider value={NODE}>
-            <TextNode data={{ handling: false }} selected />
-          </NodeIdContext.Provider>
-        </CanvasContext.Provider>,
+        <TooltipProvider>
+          <CanvasContext.Provider value={canvasValue()}>
+            <NodeIdContext.Provider value={NODE}>
+              <TextNode data={{ handling: false }} selected />
+            </NodeIdContext.Provider>
+          </CanvasContext.Provider>
+        </TooltipProvider>,
       );
       expect(editor()).toBeNull();
     });

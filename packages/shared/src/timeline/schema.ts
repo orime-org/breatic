@@ -12,11 +12,17 @@ export interface TimelineSettings { width: number; height: number; fps: Timeline
 /** A track identity; presentation libraries do not own this format. */
 export interface TimelineTrack { id: string; kind: "visual" | "audio"; order: number }
 
-/** A registered video measured in a fixed logical source timebase. */
+/** A registered video, stored by its address with its media facts like a canvas node, measured in a fixed logical source timebase. */
 export interface TimelineVideoSource {
   id: string;
   kind: "video";
-  assetId: string;
+  url: string;
+  coverUrl: string | null;
+  /** Shown as the clip label. */
+  name: string;
+  mimeType: string;
+  width: number | null;
+  height: number | null;
   timebase: TimelineRate;
   extentFrames: number;
   durationSeconds: string;
@@ -93,11 +99,16 @@ export const TimelineRateSchema = z.object({ num: positiveInteger, den: positive
 export const TimelineSettingsSchema = z.object({ width: positiveInteger, height: positiveInteger, fps: TimelineRateSchema }).strict();
 /** Stable tracks used by both the editor and its serialized snapshots. */
 export const TimelineTrackSchema = z.object({ id: z.string().min(1).max(64), kind: z.enum(["visual", "audio"]), order: safeFrame }).strict();
-/** An immutable logical source descriptor without an embedded playback URL. */
+/** An immutable source: the registered video's address and media facts, and its measured extent (inner#2171). */
 export const TimelineVideoSourceSchema = z.object({
   id: identity,
   kind: z.literal("video"),
-  assetId: identity,
+  url: z.string().url(),
+  coverUrl: z.string().url().nullable(),
+  name: z.string().min(1).max(255),
+  mimeType: z.string().startsWith("video/"),
+  width: positiveInteger.nullable(),
+  height: positiveInteger.nullable(),
   timebase: TimelineRateSchema,
   extentFrames: positiveInteger,
   durationSeconds: z.string().min(1).max(128),

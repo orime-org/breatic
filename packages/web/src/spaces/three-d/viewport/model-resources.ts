@@ -8,7 +8,6 @@ import { SCENE_LOOK_DEFAULT_PART, httpRequest, isSceneModelMediaType } from '@br
 import type { SceneImportLimits, SceneModelFile } from '@breatic/shared';
 import { createBuiltinBox } from '@web/spaces/three-d/viewport/builtin-models';
 import figureUrl from '@web/spaces/three-d/viewport/assets/figure.glb?url';
-import type { ResolvedSceneAsset } from '@web/spaces/three-d/viewport/scene-viewport-props';
 import type { ModelBounds } from '@web/spaces/three-d/model-import-controller';
 import { inspectModelFiles } from '@web/spaces/three-d/model-package';
 import { readRegisteredModelPackageInWorker } from '@web/spaces/three-d/model-import-worker-client';
@@ -190,12 +189,12 @@ export class ModelResourceCache {
 
   /**
    * Hold one independent instance, also while its shared template is loading.
-   * @param source - The immutable builtin identifier or registered asset ID used to share one cached template.
+   * @param source - The immutable builtin identifier or registered model address used to share one cached template.
    * @returns A lease whose ready promise yields an independent instance and whose release callback relinquishes this holder once.
    * @throws {Error} The ready promise rejects when loading or parsing fails.
    */
   acquire(source: SceneModelSource): SceneModelLease {
-    const key = source.kind === 'builtin' ? `builtin:${source.id}` : `asset:${source.assetId}`;
+    const key = source.kind === 'builtin' ? `builtin:${source.id}` : `url:${source.url}`;
     let entry = this.entries.get(key);
     if (!entry) {
       const abort = new AbortController();
@@ -280,22 +279,20 @@ export function acquireMeasured(cache: ModelResourceCache, source: SceneModelSou
  * Read a registered complete model through the shared HTTP transport.
  * @param source - The immutable source from the scene document.
  * @param signal - Invalidated when the last holder leaves.
- * @param resolveAsset - Permission-aware application resolver for registered assets.
  * @param builtinColor - The current semantic object colour.
  * @param limits - Import budgets injected from the Project configuration.
  * @param renderer - Current device capabilities used for texture decoding.
  * @returns A template whose immutable resources belong to the cache.
- * @throws {Error} When resolving, transferring or parsing the model fails.
+ * @throws {Error} When transferring or parsing the model fails.
  */
 export async function loadSceneModel(
   source: SceneModelSource,
   signal: AbortSignal,
-  resolveAsset: (assetId: string, signal: AbortSignal) => Promise<ResolvedSceneAsset>,
   builtinColor: string,
   limits: SceneImportLimits,
   renderer?: WebGLRenderer,
 ): Promise<Group> {
-  const root = await loadTemplate(source, signal, resolveAsset, builtinColor, limits, renderer);
+  const root = await loadTemplate(source, signal, builtinColor, limits, renderer);
   // The built-in box is one part, 0 (inner#1693 design 5.1).
   if (source.kind === 'builtin' && source.id === 'box') {
     root.traverse((child) => { if (isDrawable(child)) for (const material of [child.material].flat()) material.userData.lookPart = '0'; });
@@ -311,17 +308,15 @@ export async function loadSceneModel(
  * Load a model's template without its look model.
  * @param source - The immutable source from the scene document.
  * @param signal - Invalidated when the last holder leaves.
- * @param resolveAsset - Permission-aware application resolver for registered assets.
  * @param builtinColor - The current semantic object colour.
  * @param limits - Import budgets injected from the Project configuration.
  * @param renderer - Current device capabilities used for texture decoding.
  * @returns The template.
- * @throws {Error} When resolving, transferring or parsing the model fails.
+ * @throws {Error} When transferring or parsing the model fails.
  */
 async function loadTemplate(
   source: SceneModelSource,
   signal: AbortSignal,
-  resolveAsset: (assetId: string, signal: AbortSignal) => Promise<ResolvedSceneAsset>,
   builtinColor: string,
   limits: SceneImportLimits,
   renderer?: WebGLRenderer,
@@ -329,17 +324,17 @@ async function loadTemplate(
   if (source.kind === 'builtin') {
     return source.id === 'box' ? createBuiltinBox(builtinColor) : loadBuiltinFigure(signal, builtinColor, limits, renderer);
   }
-  const asset = await resolveAsset(source.assetId, signal);
-  if (!isSceneModelMediaType(asset.mimeType)) throw new ModelImportError('unsupported', 'Scene asset has an unsupported model type', { detail: asset.mimeType });
+  // The scene stores the model's address, type and size, so an oversized one is refused before any byte is fetched (inner#2171 design §6.2).
+  if (!isSceneModelMediaType(source.mimeType)) throw new ModelImportError('unsupported', 'Scene asset has an unsupported model type', { detail: source.mimeType });
   if (signal.aborted) throw new DOMException('Scene model load cancelled', 'AbortError');
-  if (asset.sizeBytes > limits.maxArtifactBytes) {
+  if (source.sizeBytes > limits.maxArtifactBytes) {
     throw new ModelImportError('budget', 'Registered model exceeds its configured asset budget', { detail: '',
-      budget: { limit: 'artifact', allowed: limits.maxArtifactBytes, actual: asset.sizeBytes } });
+      budget: { limit: 'artifact', allowed: limits.maxArtifactBytes, actual: source.sizeBytes } });
   }
-  const response = await httpRequest(asset.url, { method: 'GET' }, { replaySafe: true, signal });
+  const response = await httpRequest(source.url, { method: 'GET' }, { replaySafe: true, signal });
   if (!response.ok) throw new Error(`Scene model request failed (${response.status})`);
   const bytes = await readModelBytes(response, limits.maxArtifactBytes, signal);
-  const model = asset.mimeType === 'application/zip'
+  const model = source.mimeType === 'application/zip'
     ? await readRegisteredModelPackageInWorker(bytes, signal, limits)
     : inspectModelFiles(new Map([['model.glb', bytes]]), 'model.glb', limits, await detectTextureFormatSupport());
   return parseSceneModel(model, signal, limits, renderer);

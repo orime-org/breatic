@@ -152,6 +152,8 @@ export interface DeliveredUpload {
   fileUrl: string;
   width: number | null;
   height: number | null;
+  /** A video's cover; null for anything else or a video without one. */
+  coverUrl: string | null;
 }
 
 /**

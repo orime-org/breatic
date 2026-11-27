@@ -24,6 +24,12 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 `pnpm dev` runs collab under `tsx watch`, which restarts on edits to its sources and to a rebuilt `core/dist`; there is no need to kill it by hand.
 
+## Product database writes
+
+### Product tables collab writes
+
+**Collab writes only `project_activities`, `account_activity_events` and `project_edits` in the product database, and never enqueues a worker job; background work is enqueued by the server, and the worker tells collab about state changes through Redis.** Business data belongs to server and worker, and a write collab makes on store or load holds up every save behind it. The one temporary exception is the first-action analytics of inner#2051 (`analytics_milestones`, `ads_conversion_uploads` and the `ads-conversion` queue); a database account that can write only these tables is inner#2043. Adding or removing a table needs the maintainer's explicit approval. Check: does this change make collab write another product table or open a queue?
+
 ## Hocuspocus lifecycle
 
 ### Hook order
@@ -110,7 +116,7 @@ Cross-service stream keys: [packages/core/AGENTS.md#stream-keys](../core/AGENTS.
 
 ### Old formats are upgraded on load
 
-**When the stored format of a Space document changes, the same PR ships an upgrade that collab runs in its load hook before any client syncs, and the editor keeps reading the old format until that upgrade has run; never leave documents written before the change unreadable or wrong.** The product is live, so every older document is someone's work. Follow `convertStoredTablesOnLoad` (`services/legacy-table-conversion.ts`, wired in `hocuspocus.ts`): it does nothing on a document already in the new format, takes a per-document lock in collab Redis so one instance converts, reads the stored state again under the lock, and on failure logs and lets the load go on in the old format, trying again on the next load. Check: would a document written before this change open wrong after it? Then this PR carries its on-load upgrade.
+**When the stored format of a Space document changes, the same PR ships an upgrade that collab runs in its load hook before any client syncs, and the editor keeps reading the old format until that upgrade has run; never leave documents written before the change unreadable or wrong.** The one exception is Timeline video sources and 3D models and part pictures moving from asset ids to addresses (inner#2171): by the maintainer's decision they are not upgraded, and an old record reads as a damaged source or an invalid object while the rest of the document opens. The product is live, so every older document is someone's work. Follow `convertStoredTablesOnLoad` (`services/legacy-table-conversion.ts`, wired in `hocuspocus.ts`): it does nothing on a document already in the new format, takes a per-document lock in collab Redis so one instance converts, reads the stored state again under the lock, and on failure logs and lets the load go on in the old format, trying again on the next load. Check: would a document written before this change open wrong after it? Then this PR carries its on-load upgrade.
 
 ## Space lifecycle
 

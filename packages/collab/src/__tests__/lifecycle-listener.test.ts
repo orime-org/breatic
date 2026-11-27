@@ -79,7 +79,7 @@ describe("handleLifecycleEvent", () => {
     await handleLifecycleEvent({ type: "project:duplicated", sourceId: PID, newId: NEW_PID, ts: 1 }, publish);
 
     expect(isDuplicateCompletedMock).toHaveBeenCalledWith(NEW_PID);
-    expect(duplicateByProjectPrefixMock).toHaveBeenCalledWith(PID, NEW_PID, expect.any(Function));
+    expect(duplicateByProjectPrefixMock).toHaveBeenCalledWith(PID, NEW_PID);
     expect(order).toEqual(["copy", `completed:${NEW_PID}`, `publish:${NEW_PID}:content-updated`]);
   });
 

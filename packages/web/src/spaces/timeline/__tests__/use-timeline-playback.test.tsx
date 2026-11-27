@@ -24,14 +24,12 @@ vi.mock('@web/lib/toast', () => ({ toast: { warning: vi.fn(), error: vi.fn(), in
 
 type PlaybackInput = Parameters<typeof useTimelinePlayback>[0];
 type PlaybackResult = ReturnType<typeof useTimelinePlayback> & { frame: number };
-type AssetState = 'loading' | 'ready' | 'failed';
 
 /** One visible or premounted video clip as the Space hands it to the playback (#1410 design §6.2). */
 interface VideoLayerInput {
   clipId: string;
-  fileUrl: string | null;
+  fileUrl: string;
   coverUrl: string | null;
-  state: AssetState;
 }
 
 interface MediaFacts {
@@ -65,8 +63,6 @@ interface HarnessProps {
   enabled: boolean;
   /** The element the controller gets for each video clip, by clip id; an unlisted clip gets a fresh ready one. */
   media: ReadonlyMap<string, MediaFixture>;
-  /** Each video clip's asset state, by clip id; an unlisted clip is ready. */
-  assets: Readonly<Record<string, AssetState>>;
   /** Each video clip's file address, by clip id; an unlisted clip has its default address. */
   urls: Readonly<Record<string, string>>;
   initialFrame: number;
@@ -86,14 +82,19 @@ const PREMOUNT_FRAMES = 48;
 const SOURCE: TimelineVideoSource = {
   id: '10000000-0000-4000-8000-000000000001',
   kind: 'video',
-  assetId: '20000000-0000-4000-8000-000000000001',
+  url: 'https://cdn.example/assets/clip-a.mp4',
+  coverUrl: null,
+  name: 'clip-a.mp4',
+  mimeType: 'video/mp4',
+  width: 1920,
+  height: 1080,
   timebase: { num: 24, den: 1 },
   extentFrames: 240,
   durationSeconds: '10',
   durationOrigin: 'registered',
 };
-const SOURCE_B: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', assetId: '20000000-0000-4000-8000-000000000002' };
-const SOURCE_C: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000003', assetId: '20000000-0000-4000-8000-000000000003' };
+const SOURCE_B: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000002', url: 'https://cdn.example/assets/clip-b.mp4' };
+const SOURCE_C: TimelineVideoSource = { ...SOURCE, id: '10000000-0000-4000-8000-000000000003', url: 'https://cdn.example/assets/clip-c.mp4' };
 const CLIP: TimelineVideoClip = {
   id: '30000000-0000-4000-8000-000000000001',
   trackId: 'visual-1',
@@ -273,10 +274,7 @@ function videoLayersAt(props: HarnessProps, ready: ReadonlySet<string>, frame: n
     .filter((clip): clip is TimelineVideoClip => clip.kind === 'video' && ready.has(clip.id) && order.has(clip.trackId)
       && frame < clip.startFrame + clip.durationFrames && frame >= clip.startFrame - PREMOUNT_FRAMES)
     .sort((a, b) => (order.get(a.trackId) ?? 0) - (order.get(b.trackId) ?? 0) || (a.id < b.id ? -1 : 1))
-    .map((clip) => {
-      const state = props.assets[clip.id] ?? 'ready';
-      return { clipId: clip.id, fileUrl: state === 'ready' ? props.urls[clip.id] ?? urlOf(clip.id) : null, coverUrl: null, state };
-    });
+    .map((clip) => ({ clipId: clip.id, fileUrl: props.urls[clip.id] ?? urlOf(clip.id), coverUrl: null }));
 }
 
 /**
@@ -295,7 +293,7 @@ function renderPlayback(
   const props: HarnessProps = {
     document: timelineDocument(), enabled: true,
     media: new Map(media === null ? [] : [[CLIP.id, media]]),
-    assets: {}, urls: {}, initialFrame: 0, ...overrides,
+    urls: {}, initialFrame: 0, ...overrides,
   };
   const observedFrames: number[] = [];
   const created = new Map<string, MediaFixture>();
@@ -599,35 +597,12 @@ describe('useTimelinePlayback', () => {
     expect(hook.result.current.frame).toBe(24);
   });
 
-  it('holds the requested frame while its asset is loading and reports the layer loading', () => {
-    const hook = renderPlayback(null, { assets: { [CLIP.id]: 'loading' } });
-    expect(hook.result.current.videoStates.get(CLIP.id)).toBe('loading');
-    act(() => hook.result.current.toggle());
-    expect(hook.result.current.intent).toBe('play');
-    expect(hook.result.current.state).toBe('waiting');
-    tick(1000);
-    expect(hook.result.current.frame).toBe(0);
-  });
-
   it('waits while the current video element has no data yet', () => {
     const hook = renderPlayback(mediaFixture({ readyState: 0, networkState: 2 }));
     act(() => hook.result.current.toggle());
     expect(hook.result.current.state).toBe('waiting');
     tick(1000);
     expect(hook.result.current.frame).toBe(0);
-  });
-
-  it('starts the fixed frame once the current loading asset arrives', async () => {
-    const media = mediaFixture();
-    const hook = renderPlayback(media, { assets: { [CLIP.id]: 'loading' } });
-    act(() => hook.result.current.toggle());
-    tick(4000);
-    hook.rerender({ ...hook.props, assets: {} });
-    await settle();
-    expect(media.element.src).toBe(urlOf(CLIP.id));
-    expect(hook.result.current.state).toBe('playing');
-    tick(4250);
-    expect(hook.result.current.frame).toBe(6);
   });
 
   it('advances through a true Timeline gap to the next video boundary', async () => {
@@ -860,13 +835,13 @@ describe('useTimelinePlayback', () => {
     expect(a.pause).toHaveBeenCalledTimes(pauses);
   });
 
-  it('keeps the other lanes and the clock going when one lane\'s asset fails', async () => {
-    const { hook, a } = twoLanes();
+  it('keeps the other lanes and the clock going when one lane\'s element fails', async () => {
+    const { hook, a, b } = twoLanes();
     act(() => hook.result.current.toggle());
     await settle();
     tick(1000);
     const pauses = a.pause.mock.calls.length;
-    hook.rerender({ ...hook.props, assets: { [LANE_B.id]: 'failed' } });
+    mediaEvent(b, 'error', { error: { code: 3, message: 'Decode failed' } as MediaError });
     expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('failed');
     expect(hook.result.current.intent).toBe('play');
     expect(hook.result.current.state).toBe('playing');
@@ -882,7 +857,7 @@ describe('useTimelinePlayback', () => {
     await settle();
     tick(1000);
     const playsB = b.play.mock.calls.length;
-    hook.rerender({ ...hook.props, assets: { [LANE_B.id]: 'failed' } });
+    mediaEvent(b, 'error', { error: { code: 3, message: 'Decode failed' } as MediaError });
     expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('failed');
     expect(b.facts.paused).toBe(true);
     expect(a.facts.paused).toBe(false);
@@ -2360,9 +2335,8 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.frame).toBe(30);
   });
 
-  it.each(['asset', 'element'] as const)('reloads only the failed lane on its retry after its %s failed', async (failure) => {
-    const { hook, a, b } = twoLanes(failure === 'element' ? { readyState: 0, error: { code: 4, message: 'Media unavailable' } as MediaError } : {},
-      failure === 'asset' ? { assets: { [LANE_B.id]: 'failed' } } : {});
+  it('reloads only the failed lane on its retry after its element failed', async () => {
+    const { hook, a, b } = twoLanes({ readyState: 0, error: { code: 4, message: 'Media unavailable' } as MediaError });
     expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('failed');
     expect(hook.result.current.videoStates.get(CLIP.id)).toBe('ready');
     act(() => hook.result.current.toggle());
@@ -2373,24 +2347,7 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     act(() => hook.result.current.retryVideo(LANE_B.id));
     expect(a.load).toHaveBeenCalledTimes(0);
     expect(a.seeks).toEqual([]);
-    if (failure === 'element') expect(b.load).toHaveBeenCalledTimes(1);
-  });
-
-  it('counts a visible lane whose asset is loading as not ready and reports it loading', async () => {
-    const { hook, a, b } = twoLanes({}, { assets: { [LANE_B.id]: 'loading' } });
-    expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('loading');
-    expect(hook.result.current.videoStates.get(CLIP.id)).toBe('ready');
-    act(() => hook.result.current.toggle());
-    expect(hook.result.current.state).toBe('waiting');
-    expect(a.play).toHaveBeenCalledTimes(0);
-    tick(1000);
-    expect(hook.result.current.frame).toBe(0);
-    hook.rerender({ ...hook.props, assets: {} });
-    await settle();
-    expect(hook.result.current.videoStates.get(LANE_B.id)).toBe('ready');
-    expect(hook.result.current.state).toBe('playing');
-    expect(a.play).toHaveBeenCalledTimes(1);
-    expect(b.play).toHaveBeenCalledTimes(1);
+    expect(b.load).toHaveBeenCalledTimes(1);
   });
 
   it('does not count networkState 3 with no error right after src as a failure, and starts the lane once it has data', async () => {
@@ -2434,36 +2391,6 @@ describe('several video layers playing together (#1410 design §6.3)', () => {
     expect(hook.result.current.state).toBe('playing');
     tick(1250);
     expect(hook.result.current.frame).toBe(30);
-  });
-
-  it('pauses a lane that already started when a retried lane\'s asset turns loading before every play() settled, and resumes every lane from the held frame', async () => {
-    const { hook, a, b } = twoLanes({}, { assets: { [LANE_B.id]: 'failed' } });
-    act(() => hook.result.current.toggle());
-    await settle();
-    expect(hook.result.current.state).toBe('playing');
-    tick(1000);
-    expect(hook.result.current.frame).toBe(24);
-    // The retry holds the preview and the main lane is asked to play again; the retried asset reads as loading
-    // before that play() settles.
-    act(() => hook.result.current.retryVideo(LANE_B.id));
-    hook.rerender({ ...hook.props, assets: { [LANE_B.id]: 'loading' } });
-    await settle();
-    expect(hook.result.current.state).toBe('waiting');
-    expect(a.facts.paused).toBe(true);
-    const held = a.facts.currentTime;
-    tick(3000);
-    expect(hook.result.current.frame).toBe(24);
-    expect(a.facts.currentTime).toBe(held);
-    hook.rerender({ ...hook.props, assets: {} });
-    mediaEvent(b, 'seeked', { seeking: false, readyState: 4 });
-    await settle();
-    expect(hook.result.current.state).toBe('playing');
-    expect(Math.abs(a.facts.currentTime - 1)).toBeLessThan(ONE_FRAME);
-    expect(Math.abs(b.facts.currentTime - 1)).toBeLessThan(ONE_FRAME);
-    tick(3250);
-    expect(hook.result.current.frame).toBe(30);
-    expect(Math.abs(a.facts.currentTime - 30 / 24)).toBeLessThan(ONE_FRAME);
-    expect(Math.abs(b.facts.currentTime - 30 / 24)).toBeLessThan(ONE_FRAME);
   });
 
   it('seeks a lane that ran past the resume threshold while another lane\'s play() was pending back to the held frame, and anchors the clock only once it lands', async () => {

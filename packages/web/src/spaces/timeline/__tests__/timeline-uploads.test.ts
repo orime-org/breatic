@@ -6,7 +6,7 @@
  *
  * `getTimelineUploads(doc, name, { projectId, spaceId })` in `timeline-uploads.ts` is a document-scoped controller,
  * kept beside the edit session and the media draft, so hiding the Space tab does not stop it. `start(uploadId, file)`
- * uploads the file with `uploadMedia`, reads the registered asset with `timelineApi.resolveAsset`, and, whenever a
+ * uploads the file with `uploadMedia`, takes the registered video's address and media facts from its result (inner#2171), and, whenever a
  * placeholder of a finished upload is in the document and this page may write, converts it with
  * `convertTimelineUpload`. `entry(uploadId)` says where the upload stands on this page: `{ phase: 'uploading',
  * progress }` (the share sent, 0 to 1, or null), `{ phase: 'done', asset }` or `{ phase: 'failed', reason, retryable }`.
@@ -22,10 +22,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as Y from 'yjs';
 import type { Awareness } from 'y-protocols/awareness';
-import { TimelineClipSchema, type ProjectRegisteredAsset } from '@breatic/shared';
+import { TimelineClipSchema } from '@breatic/shared';
 
-import { timelineApi } from '@web/data/api/timeline';
-import type * as TimelineApiModule from '@web/data/api/timeline';
 import { UploadFailedError, uploadMedia, type StoredUpload } from '@web/data/upload/media-upload';
 import type * as MediaUploadModule from '@web/data/upload/media-upload';
 import { _resetCollabSocketForTests, acquireDocProvider } from '@web/data/yjs/collab-socket';
@@ -38,7 +36,7 @@ import {
   MAIN, OFF, SOURCE, V2, V3, cid, clip, seededDoc, timeline, track,
 } from '@web/data/yjs/__tests__/timeline-document-fixtures';
 import {
-  ASSET_ID, UPLOAD_ID, addUpload, clipRecords, registeredVideo, uploadClip,
+  ASSET_ID, UPLOAD_ID, addUpload, clipRecords, uploadClip,
 } from '@web/data/yjs/__tests__/timeline-upload-fixtures';
 
 vi.mock('@hocuspocus/provider', async () => {
@@ -100,10 +98,6 @@ vi.mock('@web/data/upload/media-upload', async (importOriginal) => {
   const actual = await importOriginal<typeof MediaUploadModule>();
   return { ...actual, uploadMedia: vi.fn() };
 });
-vi.mock('@web/data/api/timeline', async (importOriginal) => {
-  const actual = await importOriginal<typeof TimelineApiModule>();
-  return { ...actual, timelineApi: { ...actual.timelineApi, resolveAsset: vi.fn() } };
-});
 
 /** What the fake provider exposes to the test. */
 interface FakeProvider {
@@ -118,7 +112,10 @@ const SPACE = '70000000-0000-4000-8000-000000000001';
 const NAME = docName.timelineSpace(PROJECT, SPACE);
 const TRACKS = [track(MAIN, 0), track(V2, 1), track(V3, 2)];
 const FILE = new File([new Uint8Array(8)], 'beach.mp4', { type: 'video/mp4' });
-const STORED: StoredUpload = { assetId: ASSET_ID, fileUrl: 'https://cdn.example/beach.mp4', kind: 'video', width: 1920, height: 1080 };
+const STORED: StoredUpload = {
+  assetId: ASSET_ID, fileUrl: 'https://cdn.example/beach.mp4', kind: 'video', width: 1920, height: 1080,
+  coverUrl: 'https://cdn.example/beach_cover.jpg', durationSeconds: 5, mimeType: 'video/mp4', sizeBytes: 1024,
+};
 
 /** One running fake upload. */
 interface Pending { file: File; progress: (share: number) => void; resolve: (stored: StoredUpload) => void; reject: (err: unknown) => void }
@@ -187,7 +184,6 @@ beforeEach(() => {
   vi.mocked(uploadMedia).mockReset().mockImplementation((file, _context, onProgress) => new Promise<StoredUpload>((resolve, reject) => {
     pending.push({ file, progress: onProgress ?? ((): void => undefined), resolve, reject });
   }));
-  vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue(registeredVideo(5));
 });
 
 afterEach(() => {
@@ -215,14 +211,18 @@ describe('a background upload', () => {
     uploads.start(UPLOAD_ID, FILE);
     pending[0]?.resolve(STORED);
     await vi.waitFor(() => expect(kindOf(doc, cid(2))).toBe('video'));
-    expect(vi.mocked(timelineApi.resolveAsset).mock.calls[0]?.slice(0, 2)).toEqual([PROJECT, ASSET_ID]);
     const read = readTimelineDocument(doc);
+    // The source is written from the upload's own result, named after the file (inner#2171 design §4).
+    expect(Object.values(read.sources)).toEqual([expect.objectContaining({
+      url: STORED.fileUrl, coverUrl: STORED.coverUrl, name: FILE.name, mimeType: 'video/mp4', width: 1920, height: 1080,
+      durationSeconds: '5', durationOrigin: 'registered',
+    })]);
     const first = read.clips[cid(1)];
     const second = read.clips[cid(2)];
     expect(first).toMatchObject({ kind: 'video', trackId: V2, startFrame: 0, durationFrames: 30 });
     expect(second).toMatchObject({ kind: 'video', trackId: V2, startFrame: 30, sourceInFrame: 30, durationFrames: 30 });
     if (first?.kind === 'video' && second?.kind === 'video') expect(first.sourceId).toBe(second.sourceId);
-    expect(uploads.entry(UPLOAD_ID)).toMatchObject({ phase: 'done', asset: { assetId: ASSET_ID } });
+    expect(uploads.entry(UPLOAD_ID)).toMatchObject({ phase: 'done' });
     expect(session.getSnapshot().canUndo).toBe(false);
   });
 
@@ -388,30 +388,15 @@ describe('failures and retry', () => {
     await vi.waitFor(() => expect(kindOf(doc, cid(1))).toBe('video'));
   });
 
-  it('fails retryably when the registered asset cannot be read, and leaves the placeholder', async () => {
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockRejectedValue(new Error('network'));
+  it('measures a registered video without a duration by the duration the browser read', async () => {
     const { doc, uploads } = open([uploadClip(cid(1), V2, 0)]);
     uploads.start(UPLOAD_ID, FILE);
-    pending[0]?.resolve(STORED);
-    await vi.waitFor(() => expect(uploads.entry(UPLOAD_ID)).toMatchObject({ phase: 'failed', retryable: true }));
-    expect(kindOf(doc, cid(1))).toBe('upload');
-  });
-
-  it('retries a failed registration read without sending the file again', async () => {
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockRejectedValueOnce(new Error('network')).mockResolvedValue(registeredVideo(5));
-    const { doc, uploads } = open([uploadClip(cid(1), V2, 0)]);
-    uploads.start(UPLOAD_ID, FILE);
-    pending[0]?.resolve(STORED);
-    await vi.waitFor(() => expect(uploads.entry(UPLOAD_ID)).toMatchObject({ phase: 'failed', retryable: true }));
-    uploads.retry(UPLOAD_ID);
+    pending[0]?.resolve({ ...STORED, durationSeconds: null });
     await vi.waitFor(() => expect(kindOf(doc, cid(1))).toBe('video'));
-    expect(uploadMedia).toHaveBeenCalledTimes(1);
-    expect(vi.mocked(timelineApi.resolveAsset).mock.calls.map(([, assetId]) => assetId)).toEqual([ASSET_ID, ASSET_ID]);
+    expect(Object.values(readTimelineDocument(doc).sources)[0]).toMatchObject({ durationOrigin: 'decoded' });
   });
 
   it('fails without retry when the upload registered as something other than a video', async () => {
-    const image: ProjectRegisteredAsset = registeredVideo(null, { kind: 'image', mimeType: 'image/png' });
-    vi.mocked(timelineApi.resolveAsset).mockReset().mockResolvedValue(image);
     const registered = vi.fn();
     const { doc, uploads } = open([uploadClip(cid(1), V2, 0)], registered);
     uploads.start(UPLOAD_ID, FILE);

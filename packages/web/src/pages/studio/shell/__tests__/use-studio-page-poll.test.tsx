@@ -267,7 +267,8 @@ describe('what an answer reads again', () => {
     const b = waitForUploadEnding('covers/b.png');
     const ended: UploadStatus = {
       key: 'covers/a.png', state: 'completed',
-      result: { assetId: 'asset-a', fileUrl: 'https://assets.example.test/a.png', kind: 'image', width: 64, height: 48 },
+      result: { assetId: 'asset-a', fileUrl: 'https://assets.example.test/a.png', kind: 'image', width: 64, height: 48,
+        coverUrl: null, durationSeconds: null, mimeType: 'image/png', sizeBytes: 1024 },
     };
     poll.mockResolvedValueOnce(answerWith({ uploads: [ended, { key: 'covers/b.png', state: 'finishing' }] }));
     await pass(2000);

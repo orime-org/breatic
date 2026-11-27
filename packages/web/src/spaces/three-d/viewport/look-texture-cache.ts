@@ -13,12 +13,10 @@ interface Decoded {
   close: () => void;
 }
 
-/** How the cache reaches a picture: the page's header sizes, its URL, its bytes as a blob, and the decoder. */
+/** How the cache reaches a picture by its address: the page's header sizes, its bytes as a blob, and the decoder. */
 export interface LookTextureCacheDeps {
-  /** The page's picture sizes for this Project. */
+  /** The page's picture sizes, by address. */
   sizes: Pick<LookPictureSizes, 'size'>;
-  /** The registered URL of a picture asset. */
-  resolve: (assetId: string) => Promise<string>;
   /** The whole file. */
   download: (url: string) => Promise<Blob>;
   /** `createImageBitmap` in the browser: the file, or an already decoded picture to scale. */
@@ -62,33 +60,33 @@ export class LookTextureCache {
 
   /**
    * A picture's size from its file header.
-   * @param assetId - The picture asset.
+   * @param url - The picture's address.
    * @param maxBytes - The most bytes read for the size.
    * @returns The size and type, or null when the bytes are not a picture header or the read failed.
    */
-  size(assetId: string, maxBytes: number): Promise<LookPictureSize | null> {
-    return this.deps.sizes.size(assetId, maxBytes);
+  size(url: string, maxBytes: number): Promise<LookPictureSize | null> {
+    return this.deps.sizes.size(url, maxBytes);
   }
 
   /**
    * Hold a picture, decoding it on the first hold.
-   * @param assetId - The picture asset.
+   * @param url - The picture's address.
    * @param maxEdge - The longest edge a picture is shown at; this page's limit is one for every hold.
    * @returns A clone of the shared texture for this holder.
    * @throws {Error} When the picture cannot be downloaded or decoded; the hold is dropped.
    */
-  async acquire(assetId: string, maxEdge = Number.POSITIVE_INFINITY): Promise<Texture> {
-    let entry = this.entries.get(assetId);
+  async acquire(url: string, maxEdge = Number.POSITIVE_INFINITY): Promise<Texture> {
+    let entry = this.entries.get(url);
     if (!entry) {
-      const created: Entry = { refs: 0, ready: this.load(assetId, maxEdge), base: null };
+      const created: Entry = { refs: 0, ready: this.load(url, maxEdge), base: null };
       created.ready.then((base) => {
         created.base = base;
         // Every hold was released while it decoded.
         if (created.refs === 0) close(base);
       }, () => {
-        if (this.entries.get(assetId) === created) this.entries.delete(assetId);
+        if (this.entries.get(url) === created) this.entries.delete(url);
       });
-      this.entries.set(assetId, created);
+      this.entries.set(url, created);
       entry = created;
     }
     entry.refs += 1;
@@ -102,16 +100,16 @@ export class LookTextureCache {
 
   /**
    * Release one hold: its clone is disposed, and the shared texture and picture after the last hold.
-   * @param assetId - The picture asset.
+   * @param url - The picture's address.
    * @param clone - The clone `acquire` returned.
    */
-  release(assetId: string, clone: Texture): void {
+  release(url: string, clone: Texture): void {
     clone.dispose();
-    const entry = this.entries.get(assetId);
+    const entry = this.entries.get(url);
     if (!entry) return;
     entry.refs -= 1;
     if (entry.refs > 0) return;
-    this.entries.delete(assetId);
+    this.entries.delete(url);
     if (entry.base) close(entry.base);
   }
 
@@ -119,13 +117,12 @@ export class LookTextureCache {
    * Download and decode one picture into the shared texture, then scale it down when its longest edge is over the
    * limit. The scale follows the decoded picture, whose orientation the file's EXIF has already applied (three.js,
    * Figma and PlayCanvas likewise scale the decoded image).
-   * @param assetId - The picture asset.
+   * @param url - The picture's address.
    * @param maxEdge - The longest edge it is shown at.
    * @returns The texture, not flipped, in sRGB, repeating.
    * @throws {Error} When the download, the decode or the scale fails.
    */
-  private async load(assetId: string, maxEdge: number): Promise<Texture> {
-    const url = await this.deps.resolve(assetId);
+  private async load(url: string, maxEdge: number): Promise<Texture> {
     const blob = await this.deps.download(url);
     let bitmap = await this.deps.decode(blob, DECODE);
     const fitted = fittedLookSize(bitmap, maxEdge);
@@ -147,19 +144,20 @@ export class LookTextureCache {
   }
 }
 
-const pageCaches = new WeakMap<LookPictureAccess, LookTextureCache>();
+const caches = new WeakMap<LookPictureAccess, LookTextureCache>();
 
 /**
- * The page's picture cache for one Project, shared by every 3D Space of it. It lives in the lazy viewport, which loads
- * three.js, so the eager editor hands it the page's way to the pictures.
- * @param access - The page's picture sizes, resolver and download for the Project, one per Project.
+ * The picture cache of one way to the pictures, so the page's single access gives every 3D Space on the page one
+ * cache. It lives in the lazy viewport, which loads three.js and may import nothing the eager page holds, so the editor
+ * hands the access over.
+ * @param access - The picture sizes and download the editor hands over.
  * @returns The cache.
  */
 export function pageLookTextureCache(access: LookPictureAccess): LookTextureCache {
-  let cache = pageCaches.get(access);
+  let cache = caches.get(access);
   if (!cache) {
     cache = new LookTextureCache({ ...access, decode: (source, options) => createImageBitmap(source as ImageBitmapSource, options) });
-    pageCaches.set(access, cache);
+    caches.set(access, cache);
   }
   return cache;
 }

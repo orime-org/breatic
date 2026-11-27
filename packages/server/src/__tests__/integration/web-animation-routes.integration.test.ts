@@ -78,7 +78,7 @@ type RowView = Pick<TimelineExecution, "id" | "spaceId" | "kind" | "status" | "p
   base?: { executionId: string; request: string };
   source?: { executionId: string; request: string; base?: { executionId: string; request: string } };
   export?: { executionId: string; status: string } | null;
-  resultAssetId: string | null;
+  resultAsset: { url: string; coverUrl: string | null; width: number | null; height: number | null; durationSeconds: number | null; mimeType: string; sizeBytes: number } | null;
 };
 
 /** A list page. */
@@ -222,7 +222,7 @@ describe("POST /timeline/executions — create from a Motion Space", () => {
     const fx = await seedProject();
     const body = createBody(fx);
     const data = await acceptRow(fx.editor.cookie, body, 201);
-    expect(data).toMatchObject({ kind: "web_animation_create", status: "queued", request: "A logo reveal", export: null, ownProject: true, resultAssetId: null });
+    expect(data).toMatchObject({ kind: "web_animation_create", status: "queued", request: "A logo reveal", export: null, ownProject: true, resultAsset: null });
     expect(await timelineExecutionRepo.findById(data.id)).toMatchObject({ origin: "web_animation_space", engine: "deepseek" });
     expect(data.input).toEqual({ prompt: "A logo reveal", engine: "deepseek", aspect: "16:9", durationSeconds: 4, fps: getTimelineConfig().web_animation.fps });
     expect(await grantedProjects(data.id)).toEqual([fx.projectId]);
@@ -322,7 +322,7 @@ describe("POST /timeline/executions — export", () => {
     const fx = await seedProject();
     const { execution, versionId } = await finishedCreate(fx, fx.spaceId, { width: 1080, height: 1920, durationFrames: 144 });
     const data = await acceptRow(fx.editor.cookie, exportBody(fx, versionId), 201);
-    expect(data).toMatchObject({ kind: "web_animation_export", status: "queued", source: { executionId: execution.id, request: "A red square" }, resultAssetId: null });
+    expect(data).toMatchObject({ kind: "web_animation_export", status: "queued", source: { executionId: execution.id, request: "A red square" }, resultAsset: null });
     expect(await timelineExecutionRepo.findById(data.id)).toMatchObject({ origin: "web_animation_space", engine: null });
     expect(data).not.toHaveProperty("export");
     const input = data.input as { videoKey: string };
@@ -626,11 +626,19 @@ describe("GET /timeline/space-executions", () => {
     const running = await step(made.id, { type: "claim" });
     await step(made.id, { type: "success", fence: running.fence, resultAssetId: filed.assetId });
 
+    // The row carries the video by its address (inner#2171 design §4); reading it writes no relation (§5.3).
+    const relationsOf = async (): Promise<number> =>
+      (await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM project_asset_refs WHERE project_id = ${copyId} AND deleted_at IS NULL`)[0]!.n;
+    const before = await relationsOf();
     const listed = await page(fx.owner.cookie, `/timeline/space-executions?projectId=${copyId}&spaceId=${fx.spaceId}&scope=space&group=succeeded`);
     const exported = listed.rows.find((row) => row.id === made.id);
-    expect(exported).toMatchObject({ ownProject: false, resultAssetId: filed.assetId });
-    const video = await get(fx.owner.cookie, `/projects/${copyId}/assets/${filed.assetId}`);
-    expect(video.status, await video.clone().text()).toBe(200);
+    const [stored] = await sql<{ file_url: string }[]>`SELECT file_url FROM studio_assets WHERE id = ${filed.assetId}`;
+    expect(exported).toMatchObject({
+      ownProject: false,
+      resultAsset: { url: stored!.file_url, coverUrl: null, width: 1920, height: 1080, durationSeconds: 4, mimeType: "video/mp4", sizeBytes: 4096 },
+    });
+    expect(exported).not.toHaveProperty("resultAssetId");
+    expect(await relationsOf()).toBe(before);
   });
 
   it("answers an outsider with 404", async () => {

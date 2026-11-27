@@ -5,7 +5,6 @@ import { createHash, randomUUID } from "node:crypto";
 import { sql as statement } from "drizzle-orm";
 import fc from "fast-check";
 import { afterAll, afterEach, beforeAll, describe, expect, inject, it } from "vitest";
-import * as Y from "yjs";
 import {
   createPgClient,
   db,
@@ -16,8 +15,6 @@ import {
   projectAssetReferenceService,
   schema,
 } from "@breatic/core";
-import { CANVAS_NODES_KEY, canvasSpaceDocName } from "@breatic/shared";
-import { acceptSpaceMediaReferences } from "@collab/services/space-media-acceptance.js";
 import { waitUntilBlockedOn } from "@server/__tests__/integration/lock-probe.js";
 import { issueUploadTicket } from "@server/modules/asset/upload-ticket.service.js";
 
@@ -414,18 +411,12 @@ describe("Detailed canonical Project media acceptance", () => {
     }
   });
 
-  it("exposes the first upload filename after an unnamed Canvas acceptance and hash dedup", async () => {
+  it("exposes the first upload filename after an unnamed relation and hash dedup", async () => {
     const scope = await fixture();
     const media = await asset(scope);
     await sql`INSERT INTO project_members (project_id, user_id, role, added_by)
       VALUES (${scope.projectId}, ${scope.ownerId}, 'owner', null)`;
-    const canvas = new Y.Doc();
-    try {
-      canvas.getMap(CANVAS_NODES_KEY).set(randomUUID(), { type: "video", data: { content: media.fileUrl } });
-      await acceptSpaceMediaReferences(canvasSpaceDocName(scope.projectId, randomUUID()), Y.encodeStateAsUpdate(canvas));
-    } finally {
-      canvas.destroy();
-    }
+    await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({ projectId: scope.projectId, assetIds: [media.id] });
     const before = await references(scope.projectId);
     expect(before.map((entry) => ({ assetId: entry.asset_id, name: entry.display_name }))).toEqual([
       { assetId: media.id, name: null },
@@ -439,13 +430,10 @@ describe("Detailed canonical Project media acceptance", () => {
       );
       expect(outcome).toMatchObject({ kind: "alreadyExists", assetId: media.id, fileUrl: media.fileUrl });
       const persisted = await references(scope.projectId);
-      const resolved = await projectAssetReferenceService.resolveProjectAsset({
-        projectId: scope.projectId, userId: scope.ownerId, assetId: media.id,
-      });
       const page = await projectAssetReferenceService.listProjectMedia({ projectId: scope.projectId, userId: scope.ownerId });
       expect(persisted).toEqual(before.map((entry) => ({ ...entry, display_name: "First upload.mp4" })));
-      expect(resolved).toMatchObject({ assetId: media.id, projectReferenceId: before[0]!.id, displayName: "First upload.mp4" });
-      expect(page).toEqual({ items: [resolved], nextCursor: null });
+      expect(page.nextCursor).toBeNull();
+      expect(page.items).toEqual([expect.objectContaining({ assetId: media.id, projectReferenceId: before[0]!.id, displayName: "First upload.mp4" })]);
     }
     const repeated = await projectAssetReferenceService.referenceRegisteredProjectMediaDetailed({ projectId: scope.projectId, assetIds: [media.id] });
     expect(repeated.insertedAssetIds).toEqual([]);

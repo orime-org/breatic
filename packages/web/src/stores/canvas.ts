@@ -16,7 +16,17 @@ import { readUserPreferences, writeUserPreference } from '@web/lib/user-preferen
  * column. Both post what they want built and let the canvas decide where it
  * goes, so both travel this way -- one node type, or a whole wired group.
  */
-export type CreateIntent = CanvasNodeFields['type'] | { proposal: CanvasProposal };
+export type CreateIntent = CanvasNodeFields['type'] | ProposalIntent;
+
+/**
+ * A press of a proposal card: the group, and the press's own reply. The canvas answers on `settle` once the group
+ * is placed or could not be, which can come after its paste request answers (inner#2171), so the answer reaches the
+ * press that asked whatever happened to the card or the chat meanwhile.
+ */
+export interface ProposalIntent {
+  proposal: CanvasProposal;
+  settle: (outcome: ProposalOutcome) => void;
+}
 
 /**
  * Whether this intent is a group rather than a single node.
@@ -29,7 +39,7 @@ export type CreateIntent = CanvasNodeFields['type'] | { proposal: CanvasProposal
  */
 export function isProposalIntent(
   intent: CreateIntent,
-): intent is { proposal: CanvasProposal } {
+): intent is ProposalIntent {
   return typeof intent !== 'string';
 }
 
@@ -101,14 +111,6 @@ interface CanvasState {
    */
   canvasListening: boolean;
   /**
-   * What became of the proposal just posted, for the card that posted it.
-   *
-   * Cleared as the card reads it. Untagged because it cannot be ambiguous:
-   * placing runs to completion inside one synchronous effect, so a second card
-   * cannot have posted in between.
-   */
-  proposalOutcome: ProposalOutcome | null;
-  /**
    * Chrome → canvas mailbox: files picked from the left "upload assets" button
    * for the canvas to turn into nodes at the viewport centre. The picker lives
    * in chrome (it must open synchronously inside the button's click to keep the
@@ -145,10 +147,6 @@ interface CanvasState {
   requestNodeCreate: (intent: CreateIntent) => void;
   /** Say whether a canvas is holding the mailbox (the canvas, on mount / unmount). */
   setCanvasListening: (listening: boolean) => void;
-  /** Report what became of a placed proposal (the canvas). */
-  reportProposalOutcome: (outcome: ProposalOutcome) => void;
-  /** Drop the outcome once the card that posted has read it. */
-  clearProposalOutcome: () => void;
   /** Clear the mailbox once the canvas has fulfilled the intent. */
   consumePendingNodeCreate: () => void;
   /** Post picked upload files from chrome (left "upload assets" button). */
@@ -194,7 +192,6 @@ export const useCanvasStore = create<CanvasState>()(
     showLockedOverlay: false,
     pendingNodeCreate: null,
     canvasListening: false,
-    proposalOutcome: null,
     pendingUploadFiles: null,
     pendingViewportCommand: null,
     pendingHistoryCommand: null,
@@ -254,14 +251,6 @@ export const useCanvasStore = create<CanvasState>()(
     setCanvasListening: (listening) =>
       set((s) => {
         s.canvasListening = listening;
-      }),
-    reportProposalOutcome: (outcome) =>
-      set((s) => {
-        s.proposalOutcome = outcome;
-      }),
-    clearProposalOutcome: () =>
-      set((s) => {
-        s.proposalOutcome = null;
       }),
     consumePendingNodeCreate: () =>
       set((s) => {

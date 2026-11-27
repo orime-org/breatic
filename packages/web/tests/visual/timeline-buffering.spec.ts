@@ -3,7 +3,6 @@
 
 /** Native buffering at the Timeline clock boundary (inner#1707). */
 import { writeFileSync } from 'node:fs';
-import type { ProjectRegisteredAsset } from '@breatic/shared';
 import { expect, type Page, type Route } from 'playwright/test';
 
 import { openSmokeProject, smokeProjectId } from '../helpers/project';
@@ -30,15 +29,16 @@ async function saveEvidence(name: string, evidence: unknown): Promise<void> {
 /**
  * Capture the actual HTTP byte delivery and the placement's current native state, including first-frame failures.
  * @param clipId - The uploaded placement, or null before the upload has one.
+ * @param storedUrl - The address the Timeline document stores for the video, redirected to the fixture; null before it is known.
  * @throws {Error} When the numeric evidence cannot be written or attached.
  */
-async function saveFixtureEvidence(page: Page, range: TimelineRange, name: string, clipId: string | null): Promise<void> {
-  const native = page.isClosed() ? { pageClosed: true } : await page.evaluate(({ fixtureUrl, clipId }) => {
+async function saveFixtureEvidence(page: Page, range: TimelineRange, name: string, clipId: string | null, storedUrl: string | null = null): Promise<void> {
+  const native = page.isClosed() ? { pageClosed: true } : await page.evaluate(({ storedUrl, clipId }) => {
     const root = document.querySelector('[data-space-outlet]:not([style*="display: none"])');
     const video = clipId === null ? null : root?.querySelector<HTMLVideoElement>(`[data-testid="timeline-preview"] video[data-clip-id="${clipId}"]`);
     if (video === undefined || video === null) return { mediaPresent: false };
     return {
-      mediaPresent: true, usesLoopbackFixture: video.currentSrc === fixtureUrl,
+      mediaPresent: true, usesRedirectedSource: video.currentSrc === storedUrl,
       currentTime: video.currentTime, duration: video.duration,
       readyState: video.readyState, networkState: video.networkState,
       paused: video.paused, ended: video.ended, seeking: video.seeking,
@@ -49,7 +49,7 @@ async function saveFixtureEvidence(page: Page, range: TimelineRange, name: strin
       timelineFrame: Number(root?.querySelector('[role="slider"]')?.getAttribute('aria-valuenow') ?? '0'),
       playControl: root?.querySelector('[data-testid="timeline-play"]')?.textContent ?? null,
     };
-  }, { fixtureUrl: range.url, clipId }).catch((error: unknown) => ({ snapshotUnavailable: true, errorName: error instanceof Error ? error.name : 'UnknownError' }));
+  }, { storedUrl, clipId }).catch((error: unknown) => ({ snapshotUnavailable: true, errorName: error instanceof Error ? error.name : 'UnknownError' }));
   await saveEvidence(name, {
     fixture: {
       name: 'mini-tools/driving.mp4', sizeBytes: range.sizeBytes, holdStart: range.holdStart,
@@ -88,11 +88,12 @@ async function sampleTransport(page: Page, clipId: string, milliseconds = 350): 
 }
 
 /**
- * Upload and authorize through production paths, replacing only the authorized media location.
+ * Upload through production paths, replacing only where the stored media address is read from.
  *
- * R2 playback is exercised by timeline-video.spec.ts. Here the same uploaded fixture bytes
- * are served from loopback so starvation is controlled without modifying native media facts.
- * @throws {Error} When real upload, authorization, media decoding or cleanup fails.
+ * R2 playback is exercised by timeline-video.spec.ts. Here the browser's media requests for the stored address are
+ * redirected to the same fixture bytes served from loopback, so starvation is controlled without modifying native
+ * media facts or the address the Timeline document stores (inner#2171).
+ * @throws {Error} When real upload, registration, media decoding or cleanup fails.
  */
 async function withBufferingTimeline(
   page: Page,
@@ -102,40 +103,58 @@ async function withBufferingTimeline(
   await openSmokeProject(page);
   const projectId = smokeProjectId();
   const range = await startTimelineRange();
-  const pattern = `**/api/v1/projects/${projectId}/assets/*`;
-  let spaceId: string | null = null;
-  let clipId: string | null = null;
-  const authorization: { asset: ProjectRegisteredAsset | null } = { asset: null };
+  const stored = { urls: new Set<string>(), keys: new Set<string>() };
   /**
-   * Preserve the actual authorized DTO and envelope, changing only fileUrl for transport control.
-   * @throws {Error} When the real canonical asset cannot be authorized or does not match the fixture.
+   * Learn the upload's stored address from our own upload answer before the page receives it, so no media request can
+   * come first: a dedup hit names its address, a ticket its key.
+   * @throws {Error} When the answer cannot be fetched or handed on.
+   */
+  const learnStoredAddress = async (route: Route): Promise<void> => {
+    const response = await route.fetch();
+    const text = await response.text();
+    for (const [, url] of text.matchAll(/"fileUrl":"([^"]+)"/g)) stored.urls.add(url);
+    for (const [, key] of text.matchAll(/"storageKey":"([^"]+)"/g)) stored.keys.add(key);
+    await route.fulfill({ response, body: text });
+  };
+  const redirected = new Set<string>();
+  /**
+   * Send the stored video's media requests to the loopback fixture; everything else goes on unchanged.
+   * @throws {Error} When the route cannot be answered.
    */
   const locateMedia = async (route: Route): Promise<void> => {
-    const response = await route.fetch();
-    expect(response.status(), 'the real Project-scoped asset authorization succeeds').toBe(200);
-    const envelope = await response.json() as { data: ProjectRegisteredAsset };
-    const asset = envelope.data;
-    expect(asset.assetId).toBe(new URL(route.request().url()).pathname.split('/').at(-1));
-    expect(asset.projectReferenceId).toMatch(/^[0-9a-f-]{36}$/);
-    expect(asset.kind).toBe('video');
-    expect(asset.sizeBytes).toBe(range.sizeBytes);
-    expect(asset.mimeType).toBe('video/mp4');
-    expect(new URL(asset.fileUrl).protocol).toMatch(/^https?:$/);
-    expect(asset.fileUrl).not.toBe(range.url);
-    if (authorization.asset === null) authorization.asset = asset;
-    else expect(asset).toEqual(authorization.asset);
-    await route.fulfill({ response, json: { ...envelope, data: { ...asset, fileUrl: range.url } } });
+    const request = route.request();
+    const { pathname } = new URL(request.url());
+    if (request.method() === 'POST' && pathname === '/api/v1/assets/upload-ticket') {
+      await learnStoredAddress(route);
+      return;
+    }
+    const isStoredVideo = stored.urls.has(request.url()) || [...stored.keys].some((key) => pathname.endsWith(`/${key}`));
+    if (request.resourceType() !== 'media' || !isStoredVideo) {
+      await route.fallback();
+      return;
+    }
+    redirected.add(request.url());
+    await route.fulfill({ status: 302, headers: { location: range.url, 'access-control-allow-origin': '*', 'cache-control': 'no-store' } });
   };
+  let spaceId: string | null = null;
+  let clipId: string | null = null;
+  let storedUrl: string | null = null;
   try {
-    await page.route(pattern, locateMedia);
+    await page.route('**/*', locateMedia);
     spaceId = await createSpace(page, 'timeline', `Timeline buffering ${crypto.randomUUID()}`);
     const uploaded = await uploadTimelineVideo(page, projectId, range.fixturePath);
     clipId = uploaded.clipId;
-    await saveFixtureEvidence(page, range, 'native-first-frame', clipId);
-    const canonicalAsset = authorization.asset;
-    if (canonicalAsset === null) throw new Error('the uploaded video was not authorized through its Project');
-    expect(uploaded.asset).toEqual({ ...canonicalAsset, fileUrl: range.url });
+    storedUrl = uploaded.asset.fileUrl;
+    await saveFixtureEvidence(page, range, 'native-first-frame', clipId, storedUrl);
+    expect(uploaded.asset.projectReferenceId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(uploaded.asset.kind).toBe('video');
+    expect(uploaded.asset.sizeBytes).toBe(range.sizeBytes);
+    expect(uploaded.asset.mimeType).toBe('video/mp4');
+    expect(new URL(uploaded.asset.fileUrl).protocol).toMatch(/^https?:$/);
+    expect(uploaded.asset.fileUrl).not.toBe(range.url);
+    expect([...redirected], 'only the stored video is read from the loopback fixture').toEqual([uploaded.asset.fileUrl]);
     errors.mediaUrls.add(range.url);
+    errors.mediaUrls.add(uploaded.asset.fileUrl);
     await run(uploaded, range);
     expect(range.rangeRequests).toBeGreaterThan(0);
     expect(range.heldResponses).toBeGreaterThan(0);
@@ -143,13 +162,13 @@ async function withBufferingTimeline(
     expect(errors.unexpected).toEqual([]);
   } finally {
     try {
-      await saveFixtureEvidence(page, range, 'native-final-snapshot', clipId);
+      await saveFixtureEvidence(page, range, 'native-final-snapshot', clipId, storedUrl);
     } finally {
       try {
         if (spaceId !== null) await deleteSpace(page, spaceId);
       } finally {
         try {
-          await page.unroute(pattern, locateMedia);
+          await page.unroute('**/*', locateMedia);
         } finally {
           await range.close();
         }
@@ -228,7 +247,7 @@ async function enterNativeWaiting(page: Page, uploaded: TimelineUpload, range: T
   expect(waiting[0].frame).toBeGreaterThan(0);
   expect(waiting[0].frame).toBeLessThan(uploaded.durationFrames - 1);
   await saveEvidence('native-playing-then-waiting', { fps: uploaded.fps, advancing, waiting });
-  await saveFixtureEvidence(page, range, 'native-waiting-byte-delivery', uploaded.clipId);
+  await saveFixtureEvidence(page, range, 'native-waiting-byte-delivery', uploaded.clipId, uploaded.asset.fileUrl);
   return waiting;
 }
 

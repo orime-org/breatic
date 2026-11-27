@@ -54,7 +54,7 @@ export interface ApplyLookOptions {
   /** The current theme's muted foreground, the colour of built-in models. */
   themeColor: string;
   /** A user picture's base texture when it is loaded and usable, otherwise null. */
-  picture: (assetId: string) => Texture | null;
+  picture: (url: string) => Texture | null;
 }
 
 /** The textures an apply cloned for a material, disposed on its next apply. */

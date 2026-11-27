@@ -26,7 +26,8 @@ let run = 0;
 function ending(key: string, kind: 'completed' | 'failed' | 'transferred'): UploadStatus {
   if (kind === 'failed') return { key, state: 'failed', reason: 'empty' };
   if (kind === 'transferred') return { key, state: 'transferred' };
-  return { key, state: 'completed', result: { assetId: `a-${key}`, fileUrl: `https://assets.example.test/${key}`, kind: 'image', width: 1, height: 1 } };
+  return { key, state: 'completed', result: { assetId: `a-${key}`, fileUrl: `https://assets.example.test/${key}`, kind: 'image', width: 1, height: 1,
+    coverUrl: null, durationSeconds: null, mimeType: 'image/png', sizeBytes: 1024 } };
 }
 
 /** Let promise continuations run. */

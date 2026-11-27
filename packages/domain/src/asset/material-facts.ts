@@ -12,7 +12,7 @@
 
 import { getStorageAdapter } from "@breatic/core";
 import type { NodeMediaFields, StudioAssetEntity } from "@breatic/shared";
-import { findCoverOf, findLiveByKeyInStudio } from "@domain/asset/asset.repo.js";
+import { findCoverUrlOf, findLiveByKeyInStudio } from "@domain/asset/asset.repo.js";
 
 /** What the registration behind one material address says. */
 export interface MaterialFacts {
@@ -52,11 +52,11 @@ export async function materialFacts(studioId: string, urls: readonly string[]): 
       table.set(url, "missing");
       continue;
     }
-    const cover = row.kind === "video" ? await findCoverOf(row.id) : null;
+    const coverUrl = await findCoverUrlOf(row);
     table.set(url, {
       kind: row.kind,
       media: {
-        coverUrl: cover?.fileUrl ?? null,
+        coverUrl,
         width: row.width,
         height: row.height,
         duration: row.durationSeconds,

@@ -31,6 +31,7 @@ import { ReferenceRail } from '@web/spaces/canvas/generate/ReferenceRail';
 import type { VoiceListState } from '@web/spaces/canvas/generate/voice-list-state';
 import { NO_REFERENCE_KINDS } from '@web/spaces/canvas/generate/reference-urls';
 import { TemplateMenu } from '@web/spaces/canvas/generate/TemplateMenu';
+import { TextFullscreenButton } from '@web/spaces/canvas/nodes/_shared/TextFullscreenButton';
 import { GENERATE_PANEL_WIDTH_STYLE } from '@web/spaces/canvas/generate/panel-width';
 
 /**
@@ -151,6 +152,8 @@ interface AudioGeneratePanelProps {
   onVoiceLoadMore: () => void;
   /** Close the panel without generating. */
   onExit: () => void;
+  /** Opens the shown prompt box full screen (inner#2115); none while the panel shows no box. */
+  onOpenPromptFullscreen?: () => void;
   /** Every model served for the node type: the template menu greys out templates it cannot run (inner#977). */
   catalogModels: readonly ModelEntry[];
   /** Applies a template picked from the corner menu. */
@@ -212,6 +215,7 @@ interface AudioGeneratePanelProps {
  * @param root0.onVoicePick - Called with the chosen voice.
  * @param root0.onVoiceLoadMore - Called when the voice list reaches its end.
  * @param root0.onExit - Called to close the panel.
+ * @param root0.onOpenPromptFullscreen - Opens the shown prompt box full screen.
  * @param root0.catalogModels - Every model served for the node type.
  * @param root0.onPickTemplate - Applies a picked template.
  * @param root0.onExecute - Called to submit.
@@ -260,6 +264,7 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
   onVoicePick,
   onVoiceLoadMore,
   onExit,
+  onOpenPromptFullscreen,
   catalogModels,
   onPickTemplate,
   onExecute,
@@ -379,6 +384,13 @@ export const AudioGeneratePanel = React.memo(function AudioGeneratePanel({
         />
         <div className='flex items-center gap-1.5'>
           <TemplateMenu nodeType='audio' models={catalogModels} onPick={onPickTemplate} />
+          {onOpenPromptFullscreen ? (
+            <TextFullscreenButton
+              label={t('canvas.textFullscreen.editPrompt')}
+              onOpen={onOpenPromptFullscreen}
+              testId='prompt-fullscreen-button'
+            />
+          ) : null}
           {exitButton}
         </div>
       </div>
