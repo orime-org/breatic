@@ -28,7 +28,7 @@
 
 import type { Context } from "hono";
 import { setCookie, getCookie, deleteCookie } from "hono/cookie";
-import { cookieDomainHost, env, sessionCookieName } from "@breatic/core";
+import { cookieDomainHost, env, hostOnlySessionCookieName, sessionCookieName } from "@breatic/core";
 
 // `sessionCookieName()` is the single source of truth in
 // `@breatic/core` (session-store), shared with collab's onAuthenticate
@@ -92,7 +92,7 @@ export function readSessionCookie(c: Context): string | undefined {
  */
 function expireHostOnlySession(c: Context): void {
   if (cookieDomainHost() === "") return;
-  const old = `breatic_session_${env.REDIS_KEY_PREFIX}`;
+  const old = hostOnlySessionCookieName();
   if (getCookie(c, old) !== undefined) deleteCookie(c, old, { path: "/" });
 }
 

@@ -185,6 +185,7 @@ export {
   revokeSession,
   revokeAllSessions,
   sessionCookieName,
+  hostOnlySessionCookieName,
   cookieDomainHost,
   type RevokeOutcome,
 } from "@core/infra/session-store.js";

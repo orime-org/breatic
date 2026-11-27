@@ -38,8 +38,16 @@ import { redactSessionError } from "@core/infra/session-error.js";
 export function sessionCookieName(): string {
   // A site-wide credential takes its own name, so a host-only cookie issued
   // before COOKIE_DOMAIN was set can never shadow it on the same host.
-  const kind = cookieDomainHost() === "" ? "session" : "site_session";
-  return `breatic_${kind}_${env.REDIS_KEY_PREFIX}`;
+  return cookieDomainHost() === "" ? hostOnlySessionCookieName() : `breatic_site_session_${env.REDIS_KEY_PREFIX}`;
+}
+
+/**
+ * The host-only session cookie's name: the credential while `COOKIE_DOMAIN`
+ * is empty, and the one the server expires once site-wide sign-in is on.
+ * @returns The name, e.g. `breatic_session_dev`.
+ */
+export function hostOnlySessionCookieName(): string {
+  return `breatic_session_${env.REDIS_KEY_PREFIX}`;
 }
 
 /**
