@@ -198,6 +198,14 @@ describe("expandTemplate", () => {
     expect(reason).not.toContain("write a prompt.");
   });
 
+  it("asks a shot-list template's node moved to Kling with its own shot planning on for a prompt, as auto_shots takes one", () => {
+    const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "vertical-15s-quick-tip" }, mode: "t2v", model: "kling-v3.0-4k-text-to-video", params: { auto_shots: true } }, AT);
+    expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });
+    const reason = out.ok ? "" : out.reason;
+    expect(reason).toContain("sends no prompt");
+    expect(reason).toContain("write a prompt.");
+  });
+
   it("asks a shot-list template's node moved to a model that takes no shots in the mode for a prompt", () => {
     const out = expandTemplate({ role: "generate", type: "video", name: "Clip", template: { id: "vertical-15s-quick-tip" }, mode: "first_last", model: "minimax-h3-image-to-video" }, AT);
     expect(out).toMatchObject({ ok: false, refusal: "template-no-prompt" });

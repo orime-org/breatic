@@ -183,9 +183,11 @@ export function expandAt(place: TemplatePlace, rest: ProposalNode, at: NodeLabel
     // The pool is the template's own model's; a node settling another model
     // is told how its nodes go in once it has a prompt to check.
     const keeps = own?.role === "generate" && filled.mode === own.mode && filled.model === own.model;
-    // A shot-list node goes on writing its shots wherever its model takes shots, as HOW_TO_SEND says.
-    const shotsHere = own?.role === "generate" && own.shots !== undefined && storyboardSpec(proposalModelEntry(filled)?.params ?? {}, filled.mode ?? "") !== undefined;
-    const words = sentWords(shotsHere ? { ...filled, shots: own.shots } : filled);
+    // A shot-list node goes on writing its shots wherever its model takes shots, as HOW_TO_SEND says,
+    // unless the model plans its own shots from a prompt (auto_shots, refused beside shots).
+    const board = own?.role === "generate" && own.shots !== undefined ? storyboardSpec(proposalModelEntry(filled)?.params ?? {}, filled.mode ?? "") : undefined;
+    const shotsHere = board !== undefined && !(board.autoParam !== undefined && filled.params?.[board.autoParam] === true);
+    const words = sentWords(shotsHere && own?.role === "generate" ? { ...filled, shots: own.shots } : filled);
     const pool = keeps ? ` Each node ${words.mentions} goes into the pool. ${poolSentence(rest.name)}` : "";
     const form = own?.role !== "generate" ? "prompt" : own.shots !== undefined ? "shots" : own.lines !== undefined ? "lines" : "prompt";
     const styled = template.styles !== undefined && own?.role === "generate" && own.styleWords !== undefined
