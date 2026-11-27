@@ -26,7 +26,7 @@ export interface TimelineMediaDraftSnapshot {
   selected: ProjectRegisteredAsset | null;
   file: File | null;
   startFrame: string;
-  /** The captured target visual track, or 'new' for a track created with the clip. */
+  /** The captured target track, or 'new' for a track created with the clip. */
   trackId: string;
   busy: boolean;
   errorKey: string | null;
@@ -211,7 +211,7 @@ function createTimelineMediaDraft(doc: Y.Doc, inputs: TimelineMediaDraftInputs):
     setStartFrame(startFrame: string): void { if (!snapshot.busy) publish({ startFrame, errorKey: null }); },
     /**
      * Change the next confirmed placement's target track.
-     * @param trackId - A visual track id, or 'new' for a new track.
+     * @param trackId - A track id, or 'new' for a new track.
      * @throws {never} Never.
      */
     setTrack(trackId: string): void { if (!snapshot.busy) publish({ trackId, errorKey: null }); },

@@ -130,7 +130,7 @@ function TrimHandle({ clipId, mode }: { clipId: string; mode: 'trim-start' | 'tr
  * One placed clip: click selects, drag moves, the selected clip shows trim handles.
  * @param props - The clip and its state.
  * @param props.clip - The placement.
- * @param props.sourceName - A video's source name, or null when its source is gone.
+ * @param props.sourceName - A video, picture or sound clip's source name, or null when its source is gone.
  * @param props.webView - What a web-animation copy shows.
  * @param props.uploadView - What an upload placeholder shows.
  * @param props.selected - Whether it is selected.
