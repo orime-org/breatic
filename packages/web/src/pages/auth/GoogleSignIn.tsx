@@ -87,7 +87,7 @@ export function GoogleSignIn({ page, next, referral, disabled, error, onLeave }:
 
   /**
    * Let the post go once: save what the return needs and show the wait.
-   * @param event - The form's submit event; cancelled only while already leaving.
+   * @param event - The form's submit event; cancelled while already leaving or while disabled.
    */
   function handleSubmit(event: React.FormEvent<HTMLFormElement>): void {
     if (leaving || disabled) {

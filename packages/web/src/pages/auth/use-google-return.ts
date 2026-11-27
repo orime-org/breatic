@@ -91,7 +91,8 @@ export function useGoogleReturn(arrival: GoogleArrival, handling: GoogleReturnHa
       if (answer.reason === 'referral_invalid') latest.current.onReferralInvalid();
       else setError(t(googleErrorKey(answer.reason)));
       // Take the callback's parameters out and put back the page's own ones
-      // an expired sign-in returned without.
+      // the return lacks: `invite` after every error, `next` too after an
+      // expired sign-in.
       const saved = arrival.saved?.query ?? {};
       setParams((current) => {
         const kept = new URLSearchParams(current);

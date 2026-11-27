@@ -7,7 +7,7 @@
  * after a session was set, `googleError=<reason>` otherwise. The referral
  * code the page held and the page's own query (`next`, `invite`) are saved in
  * session storage before the full-page post: the return address never carries
- * the code, and an expired sign-in comes back without the query.
+ * the code or `invite`, and an expired sign-in comes back without `next` too.
  */
 
 /** Where the page keeps what it had across the Google round trip. */
