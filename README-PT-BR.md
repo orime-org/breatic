@@ -83,7 +83,7 @@ Um **Studio** reúne projetos e recursos. Um **Project** organiza uma produção
 3. **Desenvolva cada cena** em um Canvas Space: escolha um modelo configurado, adicione prompts e referências e compare variações.
 4. **Revise e entregue:** selecione os recursos com seus colaboradores e baixe-os para a produção.
 
-Você pode nomear Spaces como “Abertura · 0–10 s”, “Cena principal · 10–20 s” e “Encerramento · 20–30 s”. Esses nomes ajudam no planejamento; não definem a duração dos clipes nem montam um vídeo automaticamente. Use a Timeline para organizar e visualizar vídeos e seu editor de vídeo para finalizar e exportar. Veja o [exemplo ilustrado (inglês)](docs/USAGE.md#example-from-a-brief-to-a-visual).
+Você pode nomear Spaces como “Abertura · 0–10 s”, “Cena principal · 10–20 s” e “Encerramento · 20–30 s”. Esses nomes ajudam no planejamento; não definem a duração dos clipes nem montam um vídeo automaticamente. Use a Timeline para organizar e visualizar e seu editor de vídeo para finalizar e exportar. Veja o [exemplo ilustrado (inglês)](docs/USAGE.md#example-from-a-brief-to-a-visual).
 
 <a id="get-started"></a>
 

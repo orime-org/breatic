@@ -1636,7 +1636,7 @@ export function renderProductGuide(): string {
       "with nothing selected they move the playhead; " +
       "Alt+Up and Alt+Down change its track, and Alt+Up on the top track adds a new track; Esc cancels a drag without changing anything; Delete or Backspace deletes; Cmd/Ctrl+D duplicates; Cmd/Ctrl+B splits; " +
       "Cmd/Ctrl+Z undoes and Cmd/Ctrl+Shift+Z or Ctrl+Y redoes your own edits; N turns snapping on or off.",
-    `${quoted(t("timeline.edit.addText"))} places a new text reading ${quoted(t("timeline.text.default"))} at the playhead for a set length, on the lowest track above every clip drawn there ` +
+    `${quoted(t("timeline.edit.addText"))} places a new text reading ${quoted(t("timeline.text.default"))} at the playhead for a set length, on the lowest track above the main track and above every clip drawn there ` +
       "that is free for that long, or on a new top track, without moving or trimming any other clip. The new text is selected, with the cursor in its " +
       `${quoted(t("timeline.text.body"))} box ready for typing. The preview draws a text's lines centred in the frame, then places it by its position, size and angle like any layer.`,
     `${quoted(t("timeline.addMedia"))} opens a form with ` +
@@ -1677,7 +1677,7 @@ export function renderProductGuide(): string {
     `Web animations are made in Motion Spaces. ${quoted(t("timeline.webAnimation.add"))}, beside ${quoted(t("timeline.addMedia"))}, opens a list of the Project's finished web animations, ` +
       "read again each time it opens and grouped by the Space that made them (Motion Spaces first, then ones made in a Timeline before Motion existed, then " +
       `${quoted(t("timeline.webAnimation.picker.deletedSpace"))}); each row shows its name, aspect ratio and length. A web animation still being made is not listed until it finishes. ` +
-      "Pressing a row places a separate copy at the playhead, on the lowest track above every video, picture and text there that is free for its length, or on a new top track, and closes the list; " +
+      "Pressing a row places a separate copy at the playhead, on the lowest track above the main track and above every video, picture and text there that is free for its length, or on a new top track, and closes the list; " +
       "open it again and press the same row to place another copy. " +
       `${quoted(t("timeline.webAnimation.picker.loadMore"))} reads more, and with none it says ${quoted(t("timeline.webAnimation.picker.empty"))}. ` +
       `${quoted(t("timeline.webAnimation.goMake"))} at its bottom opens the newest Motion Space, or makes one named Motion when the Project has none. ` +
