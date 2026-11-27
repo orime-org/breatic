@@ -218,8 +218,11 @@ describe('a planned job reads its tool source in place and holds one output at a
     const { report, bytes } = await runJob({ [SOURCE]: edit }, [{ recipe: { ...segment(210, 225), grid, source: { kind: 'edit' } }, contentType: 'video/mp4' }]);
     expect(report, JSON.stringify(vi.mocked(console.error).mock.calls)).toMatchObject({ ok: true });
     expect(bytes[0]).toBeDefined();
-    // A probe and one decode from frame 210 read the index, the moov and the frames from 7 s: a small part of the file.
+    // A probe and one decode from frame 210 read the index, the moov and the frames from 7 s (30% of the file). Each read
+    // the reader opens and drops at once (the whole-object open, the moov) also carries what the loopback buffered before
+    // it was dropped, about 3 MB each in the production image. Walking every moof reads the whole file per open, so
+    // the probe and the decode would read it twice.
     expect(requests, 'source requests for the probe and one seek').toBeLessThan(20);
-    expect(read, `bytes read of the ${stdout.byteLength}-byte edit file`).toBeLessThan(stdout.byteLength / 2);
+    expect(read, `bytes read of the ${stdout.byteLength}-byte edit file`).toBeLessThan(stdout.byteLength);
   }, 120_000);
 });
