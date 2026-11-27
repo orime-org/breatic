@@ -707,7 +707,6 @@ export {
 export { appliesInMode, paramsForMode } from "@shared/param-modes.js";
 export {
   effectiveShots,
-  MULTI_SHOT_MAX_SHOTS,
   storyboardSend,
   storyboardSpec,
 } from "@shared/storyboard.js";
