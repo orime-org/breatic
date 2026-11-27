@@ -359,7 +359,8 @@ function refWordsFor(proposal: CanvasProposal, node: ProposalNode, pooled: reado
  */
 function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelInfo, sent: string, scripts: readonly ProposalNode[], at: NodeLabel): Refusal | null {
   const model = chosen.name;
-  const board = chosen.storyboard;
+  // The storyboard counts only on a node writing its shots out.
+  const board = node.shots === undefined ? undefined : chosen.storyboard;
   switch (verdict.refusal) {
     case "storyboard-shot-empty":
       return refuse("shot-empty", `Shot ${String(verdict.shot)} writes nothing. Every shot needs its own words.`);
@@ -377,7 +378,7 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
     case "prompt-too-long": {
       const written = [...extractPromptText(sent)].length;
       const holding = scripts.map((n) => `"${n.name}"`);
-      return refuse("prompt-too-long", `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${board === undefined || node.shots === undefined ? "" : " with the shots written into it"}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}.`);
+      return refuse("prompt-too-long", `"${model}" takes ${String(chosen.maxInputChars)} characters and this prompt is ${String(written)}${board === undefined ? "" : " with the shots written into it"}${holding.length > 0 ? `, counting the words in ${holding.join(", ")}` : ""}.`);
     }
     default:
       return null;
@@ -396,11 +397,12 @@ function gateReason(verdict: ExecuteVerdict, node: ProposalNode, chosen: ModelIn
  */
 function sentPrompt(proposal: CanvasProposal, node: ProposalNode, chosen: ModelInfo, pooled: readonly number[]): { sent: string; shots: { text: string; duration: NonNullable<ProposalNode["shots"]>[number]["duration"] }[] } {
   const refWords = refWordsFor(proposal, node, pooled);
-  const board = chosen.storyboard;
+  // The storyboard counts only on a node writing its shots out.
+  const board = node.shots === undefined ? undefined : chosen.storyboard;
   const shots = (node.shots ?? []).map((shot) => ({ text: promptTextOf(shot.prompt, refWords), duration: shot.duration }));
   const sent = onDialogueSide(node)
     ? proposalDialogueText(node, (segments) => promptTextOf(segments, refWords))
-    : board === undefined || node.shots === undefined
+    : board === undefined
       ? promptTextOf(node.prompt ?? [], refWords)
       : (storyboardSend(board, shots.map((shot) => ({ prompt: shot.text, duration: shot.duration }))).prompt ?? "");
   return { sent, shots };
@@ -461,13 +463,13 @@ export function generateRunOf(proposal: CanvasProposal, node: ProposalNode, inde
  */
 function checkPanelGate(proposal: CanvasProposal, node: ProposalNode, chosen: ModelInfo, wiring: Wiring, at: NodeLabel): ProposalVerdict {
   const { arriving, pooled } = wiring;
-  const board = chosen.storyboard;
+  // The storyboard counts only on a node writing its shots out.
+  const board = node.shots === undefined ? undefined : chosen.storyboard;
   const scripts = pooled.flatMap((at) => {
     const target = proposal.nodes[at];
     return target?.type === "text" ? [target] : [];
   });
-  // Only a node writing its shots out holds a shot to the shot's cap.
-  const shotCap = node.shots === undefined ? undefined : board?.maxChars;
+  const shotCap = board?.maxChars;
   const long = shotCap === undefined ? undefined : scripts.find((n) => [...extractPromptText(promptPlainText(n.prompt ?? []))].length > shotCap);
   if (long) {
     return refuse("script-too-long-for-shot", `"${long.name}" is longer than the ${String(shotCap)} characters "${chosen.name}" takes for one shot, so @'ing it into a shot is refused at Generate.`);
