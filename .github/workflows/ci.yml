@@ -198,7 +198,7 @@ jobs:
 
       - name: Test the media container with the production image's FFmpeg
         # Builds packages/ingest/Dockerfile unchanged and runs the ingest tests that call FFmpeg inside it, so they
-        # read the FFmpeg build users' videos go through (packages/ingest/AGENTS.md).
+        # read the FFmpeg build users' videos go through (packages/ingest/AGENTS.md#tests).
         run: packages/ingest/scripts/test-container-in-image.sh
 
   test-web:
