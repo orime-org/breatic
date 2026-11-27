@@ -192,9 +192,9 @@ describe('modelControls', () => {
   });
 
   it('leaves out the model planning its own shots, which the Shots control holds (inner#2192)', () => {
+    // Declared as the catalog declares it: no label, so no control of its own.
     const auto = {
       description: '',
-      label: 'Auto multi-shot',
       values: [true, false],
       default: false,
       modes: ['t2v'],
@@ -343,8 +343,7 @@ describe('every param a panel names has words in every locale', () => {
     });
   const labelled = models.flatMap((m) =>
     Object.entries(m.params ?? {})
-      // The model planning its own shots is named by the Shots control's own words (inner#2192).
-      .filter(([, spec]) => spec.fill === 'panel' && typeof spec.label === 'string' && spec.shots_auto !== true)
+      .filter(([, spec]) => spec.fill === 'panel' && typeof spec.label === 'string')
       .map(([name, spec]) => ({ model: m.name, name, spec })),
   );
   const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'].map((lang) => {

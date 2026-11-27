@@ -639,7 +639,6 @@ models:
         fill: "storyboard"
       auto_shots:
         description: "Let the model split the prompt into several shots itself"
-        label: "Auto multi-shot"
         default: false
         values: [true, false]
         absent_value: false
@@ -918,7 +917,6 @@ models:
         fill: "storyboard"
       auto_shots:
         description: "Let the model split the prompt into several shots itself"
-        label: "Auto multi-shot"
         default: false
         values: [true, false]
         absent_value: false

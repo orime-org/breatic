@@ -175,8 +175,6 @@ export function modelControls(model: ModelEntry, mode: string): ModelControl[] {
   for (const [name, spec] of Object.entries(model.params)) {
     if (spec.fill !== 'panel' || typeof spec.label !== 'string') continue;
     if (!appliesInMode(spec, mode)) continue;
-    // The model planning its own shots is an item of the Shots control (inner#2192).
-    if (spec.shots_auto === true) continue;
     // The three params of one pose are one control, drawn where the first of them is declared.
     if (pose && inPose.has(name)) {
       if (!controls.some((c) => c.kind === 'cameraAngle')) controls.push({ kind: 'cameraAngle', name: 'camera_angle', params: pose });
