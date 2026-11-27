@@ -11,7 +11,8 @@
  * default (a null default left unset), every source the catalog requires (an `accepts` param not
  * marked optional) at a sample url named by the param, `https://example.com/<param>.<ext>` with
  * the extension of the kind it accepts, a sample of the first param of the model's first source
- * group when the run carries none of that group, a voice the panel fills from
+ * group when the run carries none of that group (left out when the binding refuses it and the model
+ * has a mode no source group asks material of, as a text-only binding of a text-and-reference model), a voice the panel fills from
  * the upstream's list at its first voice, and "sample text" in each param the panel fills from its
  * editor (`fill: editor`) without a default; every run's prompt mentions only the references that
  * run carries. Then one run per value a param's sample covers (`coveredValues`) and one per bound
@@ -41,7 +42,7 @@ import { isPresent } from "../packages/provider/src/pricing/estimate.js";
 // The test helpers read `__dirname`, which only a CommonJS load of them has.
 const load = createRequire(import.meta.url);
 const { catalog, coveredValues, gateHolds, resolvedParams, shipped } = load("../packages/provider/src/config/__tests__/shipped.ts") as typeof import("../packages/provider/src/config/__tests__/shipped.js");
-const { sampledCalls, takes } = load("../packages/provider/src/media/__tests__/reseller-bodies.ts") as typeof import("../packages/provider/src/media/__tests__/reseller-bodies.js");
+const { hasPlainMode, sampledCalls, takes } = load("../packages/provider/src/media/__tests__/reseller-bodies.ts") as typeof import("../packages/provider/src/media/__tests__/reseller-bodies.js");
 
 /** One param of our catalog, as far as samples read it. */
 interface CatalogParam {
@@ -219,12 +220,16 @@ for (const [model, { upstreams: bindings }] of Object.entries(config.media.model
       }
     }
     // A run the application sends carries material for the model's first source group.
+    // A binding that takes no material runs the model only in a mode that needs none, so that run comes first.
     const group = sourceGroups.get(model)?.[0];
     const seeded = group?.any_of[0];
+    const plainParams = resolvedParams(entries.get(model)!, { ...defaults, ...required });
+    let firstParams = plainParams;
     if (group !== undefined && seeded !== undefined && params[seeded] !== undefined && !group.any_of.some((p) => isPresent(defaults[p] ?? required[p]))) {
-      required[seeded] = sampleOf(seeded, params[seeded]);
+      firstParams = resolvedParams(entries.get(model)!, { ...defaults, ...required, [seeded]: sampleOf(seeded, params[seeded]) });
+      const seededTaken = await takes(model, binding, firstParams, promptOf(model, binding, firstParams));
+      if (!seededTaken && hasPlainMode(entries.get(model)!)) firstParams = plainParams;
     }
-    const firstParams = resolvedParams(entries.get(model)!, { ...defaults, ...required });
     const first: Run = { params: firstParams, prompt: promptOf(model, binding, firstParams) };
     const candidates: (Run | undefined)[] = [first];
     for (const name of bound) {
