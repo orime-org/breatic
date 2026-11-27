@@ -333,8 +333,8 @@ const proposalNodeSchema = z.object({
   prompt: z.array(promptSegmentSchema).optional(),
   /**
    * The shots of a multi-shot generation, each with its own prompt and whole
-   * seconds; given in the `multi_shot` mode only, where they stand in for the
-   * main prompt.
+   * seconds; given only where the node's model takes shots in its mode, they
+   * put the node on Multi-shot and stand in for the main prompt.
    */
   shots: z.array(proposalShotSchema).optional(),
   /**

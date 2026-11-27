@@ -66,7 +66,7 @@ function paramsOf(name: string): Record<string, ParamDescriptor> {
  * @returns Its modes.
  */
 function modesOf(entry: FullModelEntry): string[] {
-  return [entry.mode].flat();
+  return [entry.mode ?? []].flat();
 }
 
 /**

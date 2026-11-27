@@ -868,7 +868,6 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "反向提示詞",
-        "auto_shots": "自動分鏡",
         "motion": "運動幅度",
         "order": "順序",
         "model_mode": "區域",
@@ -923,7 +922,12 @@
         "addShot": "新增鏡頭",
         "shotPlaceholder": "描述這個鏡頭，@ 引用參考",
         "shotCapReached": "最多 {max, number} 個鏡頭",
-        "noSecondToSpare": "加長總時長才能再加鏡頭"
+        "noSecondToSpare": "加長總時長才能再加鏡頭",
+        "single": "單鏡頭",
+        "multi": "多鏡頭",
+        "multiHint": "逐個鏡頭自己寫",
+        "auto": "自動多鏡頭",
+        "autoHint": "由模型自行拆分鏡頭"
       },
       "refuseStoryboardShotEmpty": "鏡頭 {shot, number} 沒有內容",
       "refuseStoryboardTooMany": "最多 {limit, number} 個鏡頭",

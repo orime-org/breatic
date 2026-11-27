@@ -40,7 +40,7 @@ describe('the overwrite task envelope', () => {
   });
 
   it('leaves a param declared only for other modes behind', () => {
-    expect(payloadIn('multi_shot').params).toEqual({ duration: 5, prompt: 'a boat' });
+    expect(payloadIn('i2v').params).toEqual({ duration: 5, prompt: 'a boat' });
   });
 
   it('wraps the run in the overwrite envelope', () => {

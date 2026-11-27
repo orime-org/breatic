@@ -20,7 +20,7 @@ const BASE = {
   slotUrls: {},
   // Nothing mentioned, or a model that takes no pool: no pool params.
   poolParams: {},
-  // Outside the multi-shot mode: no shot params.
+  // Off Multi-shot: no shot params.
   storyboardParams: {},
 };
 

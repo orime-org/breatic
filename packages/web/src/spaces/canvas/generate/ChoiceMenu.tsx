@@ -15,6 +15,8 @@ export interface ChoiceMenuOption {
   label: string;
   /** Test id of its row. */
   testId: string;
+  /** A line under the name saying what picking it does. */
+  hint?: string;
   /** Whether it cannot be picked now. */
   disabled?: boolean;
 }
@@ -97,7 +99,12 @@ export function ChoiceMenu({ value, options, onSelect, triggerTestId, triggerCla
                 if (option.value !== value) onSelect(option.value);
                 change(false);
               }}>
-              {option.label}
+              {option.hint === undefined ? option.label : (
+                <span className='flex flex-col items-start'>
+                  <span>{option.label}</span>
+                  <span className='text-xs text-muted-foreground'>{option.hint}</span>
+                </span>
+              )}
             </Button>
           ))}
         </div>

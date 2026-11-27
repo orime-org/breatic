@@ -868,7 +868,6 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "ネガティブプロンプト",
-        "auto_shots": "自動マルチショット",
         "motion": "動きの大きさ",
         "order": "順序",
         "model_mode": "範囲",
@@ -923,7 +922,12 @@
         "addShot": "ショットを追加",
         "shotPlaceholder": "このショットを説明してください。@ で参照を追加",
         "shotCapReached": "最大 {max, number} ショット",
-        "noSecondToSpare": "ショットを追加するには動画を長くしてください"
+        "noSecondToSpare": "ショットを追加するには動画を長くしてください",
+        "single": "シングルショット",
+        "multi": "マルチショット",
+        "multiHint": "ショットごとに自分で書く",
+        "auto": "自動マルチショット",
+        "autoHint": "モデルがショットを分割"
       },
       "refuseStoryboardShotEmpty": "ショット {shot, number} が空です",
       "refuseStoryboardTooMany": "最大 {limit, number} ショット",

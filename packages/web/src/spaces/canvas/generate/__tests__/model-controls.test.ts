@@ -178,6 +178,20 @@ describe('modelControls', () => {
   });
 
   it('leaves out a control declared only for other modes', () => {
+    const audio = {
+      description: '',
+      label: 'Sound',
+      values: [true, false],
+      default: false,
+      modes: ['t2v'],
+      fill: 'panel' as const,
+    };
+    expect(modelControls(model({ generate_audio: audio }), 't2v')).toEqual([{ kind: 'toggle', name: 'generate_audio' }]);
+    expect(modelControls(model({ generate_audio: audio }), 'i2v')).toEqual([]);
+    expect(ownControlSummary(model({ generate_audio: audio }), 'i2v', { generate_audio: true }, (n) => n)).toEqual([]);
+  });
+
+  it('leaves out the model planning its own shots, which the Shots control holds (inner#2192)', () => {
     const auto = {
       description: '',
       label: 'Auto multi-shot',
@@ -185,10 +199,10 @@ describe('modelControls', () => {
       default: false,
       modes: ['t2v'],
       fill: 'panel' as const,
+      shots_auto: true,
     };
-    expect(modelControls(model({ auto_shots: auto }), 't2v')).toEqual([{ kind: 'toggle', name: 'auto_shots' }]);
-    expect(modelControls(model({ auto_shots: auto }), 'multi_shot')).toEqual([]);
-    expect(ownControlSummary(model({ auto_shots: auto }), 'multi_shot', { auto_shots: true }, (n) => n)).toEqual([]);
+    expect(modelControls(model({ auto_shots: auto }), 't2v')).toEqual([]);
+    expect(ownControlSummary(model({ auto_shots: auto }), 't2v', { auto_shots: true }, (n) => n)).toEqual([]);
   });
 
   it('keeps the order the model declares its params in', () => {
@@ -329,7 +343,8 @@ describe('every param a panel names has words in every locale', () => {
     });
   const labelled = models.flatMap((m) =>
     Object.entries(m.params ?? {})
-      .filter(([, spec]) => spec.fill === 'panel' && typeof spec.label === 'string')
+      // The model planning its own shots is named by the Shots control's own words (inner#2192).
+      .filter(([, spec]) => spec.fill === 'panel' && typeof spec.label === 'string' && spec.shots_auto !== true)
       .map(([name, spec]) => ({ model: m.name, name, spec })),
   );
   const locales = ['en', 'zh-CN', 'zh-TW', 'ja', 'ko'].map((lang) => {

@@ -738,7 +738,7 @@ describe('useNodeCreation', () => {
           { role: 'source', type: 'image', name: 'Hero' },
           { role: 'source', type: 'image', name: 'Extra' },
           {
-            role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model',
+            role: 'generate', type: 'video', name: 'Clip', mode: 't2v', model: 'some-model',
             takesPrompt: true,
             shots: [
               { prompt: [{ text: 'first ' }, { ref: 0 }], duration: 2 },
@@ -758,6 +758,21 @@ describe('useNodeCreation', () => {
       expect(landed?.map((shot) => shot.duration)).toEqual([2, 3]);
       expect(landed?.[0]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[0]!}"`);
       expect(landed?.[1]?.prompt.toJSON()).toContain(`sourceNodeId="${ids[1]!}"`);
+      const data = canvasSpace.readCanvasGraph('p-shot', 's-shot').nodes.find((n) => n.id === ids[2])?.data as { multiShot?: boolean };
+      expect(data.multiShot).toBe(true);
+    });
+
+    it('lands a video proposal with no shots on Single shot (inner#2192)', () => {
+      const single: CanvasProposal = {
+        nodes: [{ role: 'generate', type: 'video', name: 'Clip', mode: 't2v', model: 'some-model', takesPrompt: true, prompt: [{ text: 'a boat' }] }],
+        edges: [],
+        rationale: '',
+        groupName: 'Clip',
+      };
+      const { result } = renderHook(() => useNodeCreation('p-one', 's-one'));
+      const { nodeIds: ids } = placeOk(result.current, single, { x: 0, y: 0 }, []);
+      const data = canvasSpace.readCanvasGraph('p-one', 's-one').nodes.find((n) => n.id === ids[0])?.data as { multiShot?: boolean };
+      expect(data.multiShot).toBe(false);
     });
 
     describe('reminding the user to edit the marked parts (inner#977)', () => {
@@ -784,7 +799,7 @@ describe('useNodeCreation', () => {
         const shot: CanvasProposal = {
           nodes: [
             {
-              role: 'generate', type: 'video', name: 'Clip', mode: 'multi_shot', model: 'some-model',
+              role: 'generate', type: 'video', name: 'Clip', mode: 't2v', model: 'some-model',
               takesPrompt: true,
               shots: [{ prompt: [{ text: 'a ' }, { slot: { kind: 'tweak', label: 'scene', note: '' } }], duration: 2 }],
             },

@@ -882,7 +882,6 @@
         "horizontal_angle": "Horizontal angle",
         "vertical_angle": "Vertical angle",
         "negative_prompt": "Negative prompt",
-        "auto_shots": "Auto multi-shot",
         "motion": "Motion",
         "order": "Order",
         "model_mode": "Region",
@@ -937,7 +936,12 @@
         "addShot": "Add shot",
         "shotPlaceholder": "Describe this shot, @ to add a reference",
         "shotCapReached": "Up to {max, number} shots",
-        "noSecondToSpare": "Lengthen the video to add a shot"
+        "noSecondToSpare": "Lengthen the video to add a shot",
+        "single": "Single shot",
+        "multi": "Multi-shot",
+        "multiHint": "Write each shot yourself",
+        "auto": "Auto multi-shot",
+        "autoHint": "The model plans the shots"
       },
       "refuseStoryboardShotEmpty": "Shot {shot, number} is empty",
       "refuseStoryboardTooMany": "Up to {limit, number} shots",

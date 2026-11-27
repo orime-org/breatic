@@ -868,7 +868,6 @@
         "horizontal_angle": "水平角度",
         "vertical_angle": "垂直角度",
         "negative_prompt": "反向提示词",
-        "auto_shots": "自动分镜",
         "motion": "运动幅度",
         "order": "顺序",
         "model_mode": "区域",
@@ -923,7 +922,12 @@
         "addShot": "添加镜头",
         "shotPlaceholder": "描述这个镜头，@ 引用参考",
         "shotCapReached": "最多 {max, number} 个镜头",
-        "noSecondToSpare": "加长总时长才能再加镜头"
+        "noSecondToSpare": "加长总时长才能再加镜头",
+        "single": "单镜头",
+        "multi": "多镜头",
+        "multiHint": "逐个镜头自己写",
+        "auto": "自动多镜头",
+        "autoHint": "由模型自己拆分镜头"
       },
       "refuseStoryboardShotEmpty": "镜头 {shot, number} 没有内容",
       "refuseStoryboardTooMany": "最多 {limit, number} 个镜头",
