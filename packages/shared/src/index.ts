@@ -585,7 +585,8 @@ export {
   TIMELINE_TEXT_FONT_FAMILIES, TIMELINE_TEXT_STYLE, TimelineFontFaceSchema, TimelineFontFacesSchema, TimelineFontGlyphSchema,
   TimelineFontGlyphsSchema, timelineFontFilesMatch,
 } from "@shared/timeline/text.js";
-export type { TimelineFontFace, TimelineFontGlyph } from "@shared/timeline/text.js";
+export type { TimelineFontGlyph } from "@shared/timeline/text.js";
+export type { TimelineFontFace } from "@shared/timeline/font-face.js";
 export { MAX_TIMELINE_ASSET_PAGE_SIZE, TIMELINE_PREVIEW_DEFAULTS } from "@shared/timeline/api.js";
 export type { TimelineClientLimits, TimelinePreviewSyncLimits } from "@shared/timeline/api.js";
 export {

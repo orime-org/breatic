@@ -3,6 +3,8 @@
 
 import { z } from "zod";
 
+import type { TimelineFontFace } from "@shared/timeline/font-face.js";
+
 /**
  * The families every Timeline text clip is drawn with, in fallback order; the same files as the export container's
  * font set. The order matches the page's own `--font-sans` and decides which family each character takes.
@@ -25,7 +27,7 @@ export const TimelineFontFaceSchema = z.object({
   file: z.string().min(1),
   unicodeRange: z.string().min(1),
   weight: z.string().min(1).optional(),
-});
+}) satisfies z.ZodType<TimelineFontFace>;
 
 /** The font set's `faces.json`. */
 export const TimelineFontFacesSchema = z.array(TimelineFontFaceSchema);
@@ -36,8 +38,6 @@ export const TimelineFontGlyphSchema = z.object({ file: z.string().min(1), glyph
 /** The font set's `glyphs.json`. */
 export const TimelineFontGlyphsSchema = z.array(TimelineFontGlyphSchema);
 
-/** One face of `faces.json`. */
-export type TimelineFontFace = z.infer<typeof TimelineFontFaceSchema>;
 
 /** One entry of `glyphs.json`. */
 export type TimelineFontGlyph = z.infer<typeof TimelineFontGlyphSchema>;
