@@ -1594,7 +1594,7 @@ export function renderProductGuide(): string {
       "Each clip shows an icon for its kind and its name, with its length below as a timecode (hours:minutes:seconds:frames), as does the position beside the play button: " +
       "a video is blue with a film icon, a picture green with a picture icon and a sound pink with a music note, each named after its file; a text is orange with a T icon and named by its first line; " +
       "a web animation copy is violet with a code icon. Click a clip to select it, or an empty part of a track to clear the selection; " +
-      `the panel on the right shows its kind's icon and its name (a text's reads ${quoted(t("timeline.video", { kind: "text" }))}), ` +
+      `the panel on the right shows its kind's icon and its name (a text's reads ${quoted(t("timeline.video", { kind: "text" }))} and a web animation copy's reads ${quoted(t("timeline.webAnimation.copy"))}), ` +
       `${quoted(t("timeline.edit.track"))} (a menu of every track and ${quoted(t("timeline.edit.newTrack"))}), ${quoted(t("timeline.startFrame"))}, ` +
       `${quoted(t("timeline.edit.inPoint"))} (for a video, a sound or a web animation copy only) and ${quoted(t("timeline.edit.duration"))}. ` +
       "Type a whole frame and press Enter or leave the field to apply it. " +

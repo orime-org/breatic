@@ -129,7 +129,6 @@ export const NOT_QUOTED: Readonly<Record<string, Described | Excluded>> = {
   "timeline.errors.track_not_empty": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.errors.missing_source": { excluded: REASONS.SAYS_WHAT_HAPPENED },
   "timeline.errors.source_unresolved": { excluded: REASONS.SAYS_TRY_AGAIN },
-  "timeline.webAnimation.copy": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.webAnimation.durationShort": { excluded: REASONS.FILLS_A_VALUE },
   "timeline.webAnimation.dialog.title": { described: /opens a dialog: / },
   "timeline.webAnimation.dialog.retryTitle": { described: /opens the dialog filled in as before/ },

@@ -9,7 +9,7 @@ import { z } from "zod";
  */
 export const TIMELINE_TEXT_FONT_FAMILIES = ["Inter", "Noto Sans SC", "Noto Sans TC", "Noto Sans JP", "Noto Sans KR"] as const;
 
-/** The fixed look of every Timeline text clip; the preview and the export both take it from here. */
+/** The fixed look of every Timeline text clip; the preview takes it from here, and the planned Timeline export is to read the same values. */
 export const TIMELINE_TEXT_STYLE = {
   color: "#ffffff",
   fontWeight: 600,

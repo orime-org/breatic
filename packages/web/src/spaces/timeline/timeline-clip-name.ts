@@ -5,7 +5,7 @@ import type { t as translate, TimelineClip } from '@breatic/shared';
 
 /** What a clip's name is read from besides the clip itself. */
 export interface TimelineClipNameFacts {
-  /** The registered asset's name of a video, picture or sound, once read. */
+  /** The name stored on a video, picture or sound clip's source; null when its source is gone. */
   assetName: string | null;
   /** A web copy's title, once its origin is known. */
   webTitle: string | null;
