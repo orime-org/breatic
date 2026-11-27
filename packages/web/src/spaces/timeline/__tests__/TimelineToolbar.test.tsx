@@ -6,7 +6,7 @@
  * control that appears later is measured before the row settles.
  */
 
-import { render } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { TooltipProvider } from '@web/components/ui/tooltip';
@@ -41,11 +41,12 @@ function sizeToolbar(room: number): void {
 /**
  * A plain control entry.
  * @param id - Its id and test hook.
+ * @param end - Whether it sits in the right-aligned part.
  * @returns The entry.
  * @throws {never} Never.
  */
-function entry(id: string): TimelineToolbarEntry {
-  return { id, group: 'edit', bar: <span data-testid={id} />, row: <div data-testid={`${id}-item`} /> };
+function entry(id: string, end = false): TimelineToolbarEntry {
+  return { id, group: end ? 'switch' : 'edit', end, bar: <span data-testid={id} />, row: <div data-testid={`${id}-item`} /> };
 }
 
 /**
@@ -70,5 +71,28 @@ describe('TimelineToolbar (inner#1709)', () => {
     // A Viewer made an Editor gains controls the toolbar has never measured.
     rerender(<TimelineToolbar label='Tracks' moreLabel='More' entries={[entry('a'), entry('b'), entry('x'), entry('c')]} />);
     expect(onBar(container)).toEqual(['a', 'b']);
+  });
+
+  it('pushes the right-aligned part to the end of the row without a separator before it', () => {
+    sizeToolbar(4 * ENTRY);
+    const { container } = render(<TimelineToolbar label='Tracks' moreLabel='More' entries={[entry('a'), entry('b'), entry('m', true), entry('z', true)]} />, { wrapper: TooltipProvider });
+    const start = container.querySelector('[data-toolbar-entry="m"]')!;
+    expect(start.classList.contains('ml-auto')).toBe(true);
+    expect(start.querySelector('[data-orientation="vertical"]')).toBeNull();
+    expect(container.querySelector('[data-toolbar-entry="z"]')!.classList.contains('ml-auto')).toBe(false);
+  });
+
+  it('pushes More to the end of the row once the whole right-aligned part is behind it', () => {
+    sizeToolbar(2 * ENTRY + MORE);
+    const { container } = render(<TimelineToolbar label='Tracks' moreLabel='More' entries={[entry('a'), entry('b'), entry('m', true), entry('z', true)]} />, { wrapper: TooltipProvider });
+    expect(onBar(container)).toEqual(['a', 'b']);
+    expect(container.querySelector('[data-toolbar-more]')!.classList.contains('ml-auto')).toBe(true);
+  });
+
+  it('keeps More\'s tooltip closed when focus comes back to it as its menu closes', () => {
+    sizeToolbar(2 * ENTRY + MORE);
+    render(<TimelineToolbar label='Tracks' moreLabel='More' entries={[entry('a'), entry('b'), entry('m', true), entry('z', true)]} />, { wrapper: TooltipProvider });
+    fireEvent.focus(screen.getByTestId('timeline-more'));
+    expect(screen.queryByRole('tooltip')).toBeNull();
   });
 });

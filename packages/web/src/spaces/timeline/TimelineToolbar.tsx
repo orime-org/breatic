@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LicenseRef-Breatic-Source-Available-2.0
 
 /**
- * The Timeline toolbar (inner#1709): one row of controls; when the row is too narrow the rightmost controls move,
- * in order, behind a More button at its end and come back as it widens.
+ * The Timeline toolbar (inner#1709): one row of controls, editing on the left and the right-aligned part (switches
+ * and zoom) at its end; when the row is too narrow the rightmost controls move, in order, behind a More button at its
+ * end and come back as it widens.
  */
 
 import * as React from 'react';
@@ -14,6 +15,7 @@ import {
   DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuShortcut, DropdownMenuTrigger,
 } from '@web/components/ui/dropdown-menu';
 import { Separator } from '@web/components/ui/separator';
+import { suppressTooltipFocusOpen } from '@web/lib/overlay-focus';
 import { cn } from '@web/lib/utils';
 import { fittingEntryCount } from '@web/spaces/timeline/toolbar-fit';
 
@@ -22,6 +24,8 @@ export interface TimelineToolbarEntry {
   id: string;
   /** Neighbouring entries of one group sit together; a separator opens each group after the first. */
   group: string;
+  /** Set from the first entry of the right-aligned part onwards. */
+  end?: boolean;
   bar: React.ReactNode;
   row: React.ReactNode;
 }
@@ -44,6 +48,7 @@ const MENU_OFFSET = 4 + 6 + 1;
 interface TimelineToolbarButton {
   testId: string;
   group: string;
+  end?: boolean;
   label: string;
   icon: React.ReactElement<{ className?: string }>;
   onClick: () => void;
@@ -62,11 +67,12 @@ interface TimelineToolbarButton {
  * @throws {never} Never.
  */
 export function toolbarButton(button: TimelineToolbarButton): TimelineToolbarEntry {
-  const { testId, group, label, icon, onClick, shortcut, pressed, disabled = false, unavailable = false } = button;
+  const { testId, group, end, label, icon, onClick, shortcut, pressed, disabled = false, unavailable = false } = button;
   const content = <>{icon}{label}{shortcut !== undefined && <DropdownMenuShortcut className='pl-4'>{shortcut}</DropdownMenuShortcut>}</>;
   return {
     id: testId,
     group,
+    end,
     bar: <BarButton testId={testId} label={label} icon={icon} shortcut={shortcut} pressed={pressed} disabled={disabled} unavailable={unavailable} onClick={onClick} />,
     row: pressed === undefined
       ? <DropdownMenuItem data-testid={`${testId}-item`} disabled={disabled} onSelect={onClick} className={cn('pl-8', unavailable && 'opacity-50')}>{content}</DropdownMenuItem>
@@ -125,20 +131,24 @@ export const TimelineToolbar = React.memo(function TimelineToolbar({ label, more
 
   const count = Math.min(shown, entries.length);
   const overflowing = count < entries.length;
+  // The first shown element of the right-aligned part, or More once that part is all behind it, takes the free room.
+  const split = entries.findIndex((entry) => entry.end === true);
+  const pushed = split < 0 ? -1 : Math.min(split, count);
   const rows: React.ReactNode[] = [];
   for (let index = count; index < entries.length; index += 1) {
     if (index > count && opensGroup(entries, index)) rows.push(<DropdownMenuSeparator key={`separator-${entries[index]!.id}`} />);
     rows.push(<React.Fragment key={entries[index]!.id}>{entries[index]!.row}</React.Fragment>);
   }
   return <div ref={toolbar} role='toolbar' aria-label={label} className='relative flex shrink-0 items-center gap-1.5 border-t border-border px-4 py-1.5'>
-    {entries.slice(0, count).map((entry, index) => <div key={entry.id} data-toolbar-entry={entry.id} className='flex shrink-0 items-center gap-1.5'>
-      {opensGroup(entries, index) && <Separator orientation='vertical' className='mx-1 h-5' />}
+    {entries.slice(0, count).map((entry, index) => <div key={entry.id} data-toolbar-entry={entry.id} className={cn('flex shrink-0 items-center gap-1.5', index === pushed && 'ml-auto')}>
+      {index !== pushed && opensGroup(entries, index) && <Separator orientation='vertical' className='mx-1 h-5' />}
       {entry.bar}
     </div>)}
     {/* Kept mounted while unused so its width is known before the first control has to move behind it. */}
-    <span data-toolbar-more='' inert={!overflowing} className={cn('inline-flex shrink-0', !overflowing && 'invisible absolute')}>
+    <span data-toolbar-more='' inert={!overflowing} className={cn('inline-flex shrink-0', pushed === count && 'ml-auto', !overflowing && 'invisible absolute')}>
       <DropdownMenu open={open && overflowing} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild>
+        {/* Focus comes back here as the menu closes; its tooltip opens on hover only, so it does not cover the play bar above. */}
+        <DropdownMenuTrigger asChild onFocusCapture={suppressTooltipFocusOpen}>
           <BarButton testId='timeline-more' label={moreLabel} icon={MORE_ICON} pressed={open && overflowing} />
         </DropdownMenuTrigger>
         <DropdownMenuContent side='top' align='end' sideOffset={MENU_OFFSET} className='w-max'>{rows}</DropdownMenuContent>

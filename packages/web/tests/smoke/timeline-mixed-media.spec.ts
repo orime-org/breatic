@@ -419,7 +419,6 @@ test.describe('a Timeline beside the widest Agent column', () => {
       await page.mouse.move(0, 0);
       const ratioBox = (await ratio.boundingBox())!;
       await page.mouse.move(ratioBox.x + ratioBox.width / 2, ratioBox.y + ratioBox.height / 2, { steps: 5 });
-      // More keeps focus after Escape closed its menu, so its own tooltip may be open beside this one.
       await expect(page.getByRole('tooltip').filter({ hasText: '16:9' })).toBeVisible();
       await page.setViewportSize({ width: 1280, height: 800 });
       await expect(ratio).toHaveText(/^16:9$/);
