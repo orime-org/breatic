@@ -48,8 +48,7 @@ const origin = createServer(async (req, res) => {
     res.writeHead(upright.answer).end();
     return;
   }
-  res.writeHead(200, { 'content-type': 'video/mp4' });
-  res.end(readFileSync(fixture));
+  res.writeHead(404).end();
 });
 
 /** A JPEG with an APP1 Exif segment carrying `orientation`, inserted after SOI. */
@@ -81,6 +80,7 @@ try {
   execFileSync('ffmpeg', ['-v', 'error', '-f', 'lavfi', '-i',
     'color=c=blue:s=64x48:r=10', '-t', '1', '-c:v', 'libx264',
     '-pix_fmt', 'yuv420p', '-movflags', '+faststart', fixture], { timeout: 30000 });
+  served.set('/media/video.mp4', fixture);
   origin.listen(0, '127.0.0.1');
   await once(origin, 'listening');
   service = spawn(process.execPath, ['/app/server.mjs'], { stdio: 'inherit' });
@@ -97,7 +97,7 @@ try {
   for (const wantCover of [true, false]) {
     const answer = await fetch('http://127.0.0.1:8080/probe', {
       method: 'POST', headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ objectUrl: `http://127.0.0.1:${origin.address().port}/video.mp4`,
+      body: JSON.stringify({ objectUrl: `http://127.0.0.1:${origin.address().port}/media/video.mp4`,
         wantCover, deadlineAt: Date.now() + 25000 }), signal: AbortSignal.timeout(25000),
     });
     assert.equal(answer.status, 200);
