@@ -1620,8 +1620,8 @@ export function renderProductGuide(): string {
       `then two curved arrows, ${quoted(t("timeline.edit.undo"))} and ${quoted(t("timeline.edit.redo"))}, faded when there is nothing to undo or redo; ` +
       `then scissors, ${quoted(t("timeline.edit.split"))} (splits the selected clip at the playhead), two sheets, ` +
       `${quoted(t("timeline.edit.duplicate"))} (places a copy right after it) and a bin, ${quoted(t("timeline.edit.delete"))}, which with no clip selected say to select one first; ` +
-      `then three switches that look pressed while on, a magnet, ${quoted(t("timeline.edit.magnet"))}, an arrow to a line, ${quoted(t("timeline.edit.snap"))} and a chain link, ` +
-      `${quoted(t("timeline.edit.linkage"))}; and at the right end the ${quoted(t("timeline.edit.zoom"))} slider, named on hover too. ` +
+      `then, pushed to the right end of the toolbar, three switches that look pressed while on, a magnet, ${quoted(t("timeline.edit.magnet"))}, an arrow to a line, ${quoted(t("timeline.edit.snap"))} and a chain link, ` +
+      `${quoted(t("timeline.edit.linkage"))}, and last the ${quoted(t("timeline.edit.zoom"))} slider, named on hover too. ` +
       `When the toolbar is too narrow, its rightmost controls move in order into a menu behind ${quoted(t("timeline.edit.more"))}, a button with three dots at its end, ` +
       `where each shows its icon, name and shortcut, the switches as ticked rows and the zoom as a slider row; they come back to the toolbar as it widens. The switches are yours and are kept for your account in this browser. ` +
       `A Viewer sees ${quoted(t("timeline.addMedia"))} and the editing buttons faded, and no ${quoted(t("timeline.edit.addText"))}. ` +
