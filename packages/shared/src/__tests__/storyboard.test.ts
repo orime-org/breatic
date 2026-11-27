@@ -102,6 +102,7 @@ describe("what a multi-shot run sends", () => {
     expect(storyboardSend(storyboardSpec(kling, "t2v")!, shots)).toEqual({
       params: {
         shot_type: "customize",
+        auto_shots: false,
         multi_prompt: [
           { prompt: "a paper boat", duration: 2 },
           { prompt: "the pond at dusk", duration: 3 },
@@ -109,6 +110,11 @@ describe("what a multi-shot run sends", () => {
       },
       prompt: undefined,
     });
+  });
+
+  it("turns the model's own shot planning off, since both name the same upstream field", () => {
+    const sent = storyboardSend(storyboardSpec(kling, "t2v")!, shots);
+    expect(sent.params.auto_shots).toBe(false);
   });
 
   it("writes the shots into one prompt with their running seconds for a prompt-only model", () => {

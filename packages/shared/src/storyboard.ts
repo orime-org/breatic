@@ -152,8 +152,9 @@ function writeShots(template: string, shots: readonly StoryboardShotInput[]): st
 }
 
 /**
- * What a multi-shot run sends: Kling its fixed values and each shot as a field, a
- * model with no field for shots one prompt that writes them all out.
+ * What a multi-shot run sends: Kling its fixed values, its own shot planning
+ * off (it names the same upstream field) and each shot as a field, a model with
+ * no field for shots one prompt that writes them all out.
  * @param spec - The model's storyboard.
  * @param shots - The shots, in order, with their words already plain text.
  * @returns The params to merge and the prompt to send in place of the main one.
@@ -166,6 +167,7 @@ export function storyboardSend(spec: StoryboardSpec, shots: readonly StoryboardS
   return {
     params: {
       ...spec.fixed,
+      ...(spec.autoParam === undefined ? {} : { [spec.autoParam]: false }),
       [spec.shotsParam]: shots.map((shot) =>
         seconds === undefined ? { prompt: shot.prompt } : { prompt: shot.prompt, [seconds]: shot.duration },
       ),
