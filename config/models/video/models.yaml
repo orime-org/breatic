@@ -466,7 +466,7 @@ models:
     mode: ["t2v", "ref"]
     takes_prompt: true
     tier: "optional"
-    description: "4K from 50 reference assets"
+    description: "4K from a prompt, or from up to 50 refs"
     guide: "Bring your own cast, look and soundtrack: in reference to video it takes reference images, videos and audio together and returns 4K; in text to video it works from the prompt alone."
     generation_time: 600
     icon: "seedream"
