@@ -2538,8 +2538,8 @@ describe('multi-shot inside a mode (inner#2192)', () => {
     expect(readShots('p', 's', 'target')?.map((s) => s.duration)).toEqual([2, 3]);
   });
 
-  it('leaves a shot closed when the shots come back after a mode without them, and opens it on a new editor (inner#2115)', async () => {
-    const view = await openOn('multi_shot', () => enterStoryboardShots('p', 's', 'target', 5));
+  it('leaves a shot closed when the shots come back after Single shot, and opens it on a new editor (inner#2115)', async () => {
+    const view = await openOn('multi', () => enterStoryboardShots('p', 's', 'target', 5));
     await screen.findByTestId('generate-storyboard-shot-1-editor');
     /**
      * Opens full screen and returns its editor's element.
@@ -2554,10 +2554,10 @@ describe('multi-shot inside a mode (inner#2192)', () => {
       });
     };
     const first = await openFullscreen();
-    const stored = (mode: string): Record<string, unknown> => ({ mode, model: 'kling-v3', modelByMode: { [mode]: 'kling-v3' } });
-    view.rerender(panelTree('video', stored('t2v')));
+    const stored = (multiShot: boolean): Record<string, unknown> => ({ mode: 't2v', model: 'kling-v3', modelByMode: { t2v: 'kling-v3' }, multiShot });
+    view.rerender(panelTree('video', stored(false)));
     await waitFor(() => expect(screen.queryByTestId('prompt-fullscreen')).toBeNull());
-    view.rerender(panelTree('video', stored('multi_shot')));
+    view.rerender(panelTree('video', stored(true)));
     await screen.findByTestId('generate-storyboard-shot-1-editor');
     expect(screen.queryByTestId('prompt-fullscreen')).toBeNull();
     // Opened again, the shot gets a new editor: the one the panel closed ended.
