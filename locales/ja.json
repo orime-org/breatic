@@ -3468,7 +3468,6 @@
       "googleOnly": "Google で新規登録するときに使われます"
     },
     "desktop": {
-      "continueWithGoogle": "Google で続ける",
       "waitingBrowser": "ブラウザでサインインを完了してください",
       "cancel": "キャンセル",
       "exchangeFailed": "サインインが完了しませんでした。もう一度お試しください。",

@@ -3468,7 +3468,6 @@
       "googleOnly": "Used when signing up with Google"
     },
     "desktop": {
-      "continueWithGoogle": "Continue with Google",
       "waitingBrowser": "Continue in your browser",
       "cancel": "Cancel",
       "exchangeFailed": "Sign-in did not finish. Try again.",

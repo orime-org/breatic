@@ -3468,7 +3468,6 @@
       "googleOnly": "用 Google 新注册时使用"
     },
     "desktop": {
-      "continueWithGoogle": "通过 Google 继续操作",
       "waitingBrowser": "请在浏览器中完成登录",
       "cancel": "取消",
       "exchangeFailed": "登录没有完成，请重试。",
