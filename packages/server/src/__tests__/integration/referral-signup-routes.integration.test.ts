@@ -10,7 +10,6 @@
  */
 
 import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from "vitest";
-import type * as GoogleAuthLibrary from "google-auth-library";
 
 const sent = vi.hoisted(() => ({ mails: [] as { to: string; text: string }[] }));
 vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unknown>>) => ({
@@ -21,13 +20,11 @@ vi.mock("@breatic/core", async (importOriginal: () => Promise<Record<string, unk
   },
 }));
 
-// Google's token endpoint and token check are answered here; the begin and
-// callback routes run for real (inner#2157 design §7.9).
-const google = vi.hoisted(() => ({ getToken: vi.fn(), verifyIdToken: vi.fn() }));
-vi.mock("google-auth-library", async (io) => {
-  const { googleClientDouble } = await import("./google-redirect-harness.js");
-  return googleClientDouble(await io<typeof GoogleAuthLibrary>(), google);
-});
+// Google's token check is answered here; the rest of the route runs for real.
+const google = vi.hoisted(() => ({ verifyIdToken: vi.fn() }));
+vi.mock("google-auth-library", () => ({
+  OAuth2Client: vi.fn().mockImplementation(() => ({ verifyIdToken: google.verifyIdToken })),
+}));
 
 vi.mock("ai", () => ({
   generateText: async () => ({ text: "", steps: [], usage: { totalTokens: 0 } }),
@@ -41,18 +38,12 @@ import { env, getRedis, initCore } from "@breatic/core";
 import type { Hono } from "hono";
 import { withPeer } from "../helpers/peer.js";
 import { initSellingCore, useCommerceApp } from "./commerce-harness.js";
-import { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET } from "./google-redirect-harness.js";
-import { answerGoogleFrom, signInWithGoogle } from "./google-redirect-steps.js";
 
 const suite = useCommerceApp("referral-signup-routes");
 let app: Hono;
 
-/** The settings this suite adds to the environment, as they were before it. */
-const outer = {
-  EMAIL_BACKEND: process.env["EMAIL_BACKEND"],
-  GOOGLE_CLIENT_ID: process.env["GOOGLE_CLIENT_ID"],
-  GOOGLE_CLIENT_SECRET: process.env["GOOGLE_CLIENT_SECRET"],
-};
+/** The two settings this suite adds to the environment, as they were before it. */
+const outer = { EMAIL_BACKEND: process.env["EMAIL_BACKEND"], GOOGLE_CLIENT_ID: process.env["GOOGLE_CLIENT_ID"] };
 
 /**
  * Starts core selling through the stand-in or selling nothing, with Google sign-in configured.
@@ -61,8 +52,7 @@ const outer = {
  */
 function start(selling: boolean, emailBackend: "disabled" | "console" = "disabled"): void {
   process.env["EMAIL_BACKEND"] = emailBackend;
-  process.env["GOOGLE_CLIENT_ID"] = GOOGLE_CLIENT_ID;
-  process.env["GOOGLE_CLIENT_SECRET"] = GOOGLE_CLIENT_SECRET;
+  process.env["GOOGLE_CLIENT_ID"] = "test-client.apps.googleusercontent.com";
   if (selling) initSellingCore(suite.billingUrl);
   else initCore(process.env);
 }
@@ -70,7 +60,6 @@ function start(selling: boolean, emailBackend: "disabled" | "console" = "disable
 beforeAll(() => {
   start(true);
   app = withPeer(suite.app);
-  answerGoogleFrom(google);
 });
 afterEach(async () => {
   const throttled = [
@@ -79,8 +68,7 @@ afterEach(async () => {
   ];
   if (throttled.length > 0) await getRedis().del(...throttled);
   sent.mails.length = 0;
-  google.getToken.mockClear();
-  google.verifyIdToken.mockClear();
+  google.verifyIdToken.mockReset();
   start(true);
 });
 afterAll(() => {
@@ -129,7 +117,7 @@ async function register(body: Record<string, unknown>): Promise<{ email: string;
 describe("sign-up with a referral code while selling", () => {
   it("tells the sign-up page the code field exists", async () => {
     const res = await app.request("/api/v1/auth/options");
-    expect(await res.json()).toEqual({ data: { emailVerification: false, referralEnabled: true, googleSignIn: true, desktopAppScheme: "ai.breatic.desktop", desktopAppName: "Breatic" } });
+    expect(await res.json()).toEqual({ data: { emailVerification: false, referralEnabled: true, desktopAppScheme: "ai.breatic.desktop", desktopAppName: "Breatic" } });
   });
 
   it("creates the account and appends the code carried in from a link", async () => {
@@ -222,54 +210,55 @@ describe("two-step sign-up with a referral code", () => {
 });
 
 /**
- * Signs in with Google as one Google account, from the official site's
- * register page, through begin and callback.
+ * Signs in with Google as one Google account.
  * @param sub - The Google account id.
  * @param email - Its address.
- * @param fields - Extra begin form fields.
- * @returns Where the callback sent the browser.
+ * @param body - Extra body fields.
+ * @returns The response.
  */
-async function googleSignIn(sub: string, email: string, fields: { referralCode?: string; referralSource?: string } = {}): Promise<URL> {
-  const { location } = await signInWithGoogle(app, { origin: "http://localhost:8000" }, { sub, email }, { page: "register", next: "/studio", ...fields });
-  return location;
+async function googleSignIn(sub: string, email: string, body: Record<string, unknown> = {}): Promise<Response> {
+  google.verifyIdToken.mockResolvedValue({
+    getPayload: () => ({ iss: "https://accounts.google.com", sub, email, email_verified: true }),
+  });
+  return await post("/google", { credential: "signed-token", ...body });
 }
 
 describe("Google sign-in with a referral code", () => {
-  it("refuses an inactive code for a new account with referral_invalid and creates no account", async () => {
+  it("refuses an inactive code for a new account as a field error and creates no account", async () => {
     inactiveCodes();
     const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
-    const to = await googleSignIn(crypto.randomUUID(), email, { referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
-    expect(`${to.origin}${to.pathname}`).toBe("http://localhost:8000/register");
-    expect(to.searchParams.get("googleError")).toBe("referral_invalid");
-    expect(to.searchParams.get("next")).toBe("/studio");
-    expect(to.searchParams.get("referralCode")).toBeNull();
+    const res = await googleSignIn(crypto.randomUUID(), email, { referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
+    expect(res.status).toBe(422);
+    expect(((await res.json()) as { error: object }).error).toMatchObject({ reason: "invalid_code", field: "referralCode" });
     expect(await suite.sql`select 1 from users where email = ${email}`).toHaveLength(0);
   });
 
-  it("appends a code carried into a new account", async () => {
+  it("appends a code carried into a new account and says it was applied", async () => {
     activeCodes();
     const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
-    const to = await googleSignIn(crypto.randomUUID(), email, { referralCode: "friend-4", referralSource: "signup_link" });
-    expect(to.searchParams.get("google")).toBe("created");
+    const res = await googleSignIn(crypto.randomUUID(), email, { referralCode: "friend-4", referralSource: "signup_link" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { created: boolean; referral?: string } }).data).toMatchObject({ created: true, referral: "applied" });
     expect(await bindingOfEmail(email)).toEqual({ code: "FRIEND-4", source: "signup_link" });
   });
 
-  it("keeps a code carried into a new account when the billing service cannot be asked", async () => {
+  it("says a code carried into a new account is pending when the billing service cannot be asked, and keeps it", async () => {
     suite.reply = () => ({ status: 503, body: {} });
     const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
-    const to = await googleSignIn(crypto.randomUUID(), email, { referralCode: "friend-6", referralSource: "signup_link" });
-    expect(to.searchParams.get("google")).toBe("created");
+    const res = await googleSignIn(crypto.randomUUID(), email, { referralCode: "friend-6", referralSource: "signup_link" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { created: boolean; referral?: string } }).data).toMatchObject({ created: true, referral: "pending" });
     expect(await bindingOfEmail(email)).toEqual({ code: "friend-6", source: "signup_link" });
   });
 
   it("says a code carried into an existing account was not applied, and asks and appends nothing", async () => {
     const sub = crypto.randomUUID();
     const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
-    expect((await googleSignIn(sub, email)).searchParams.get("google")).toBe("created");
+    expect((await googleSignIn(sub, email)).status).toBe(200);
     activeCodes();
-    const to = await googleSignIn(sub, email, { referralCode: "friend-5", referralSource: "signup_link" });
-    expect(to.searchParams.get("google")).toBe("signed_in");
-    expect(to.searchParams.get("referral")).toBe("not_applied");
+    const res = await googleSignIn(sub, email, { referralCode: "friend-5", referralSource: "signup_link" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: { created: boolean; referral?: string } }).data).toMatchObject({ created: false, referral: "not_applied" });
     expect(await bindingOfEmail(email)).toBeNull();
     expect(suite.received).toEqual([]);
   });
@@ -278,7 +267,7 @@ describe("Google sign-in with a referral code", () => {
 describe("sign-up with a referral code where nothing is sold", () => {
   it("hides the code field and ignores any code sent", async () => {
     start(false);
-    expect(await (await app.request("/api/v1/auth/options")).json()).toEqual({ data: { emailVerification: false, referralEnabled: false, googleSignIn: true, desktopAppScheme: "ai.breatic.desktop", desktopAppName: "Breatic" } });
+    expect(await (await app.request("/api/v1/auth/options")).json()).toEqual({ data: { emailVerification: false, referralEnabled: false, desktopAppScheme: "ai.breatic.desktop", desktopAppName: "Breatic" } });
     const { email, res } = await register({ referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
     expect(res.status).toBe(201);
     expect(await bindingOfEmail(email)).toBeNull();
@@ -297,9 +286,11 @@ describe("sign-up with a referral code where nothing is sold", () => {
   it("ignores a code on Google sign-in for a new account", async () => {
     start(false);
     const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
-    const to = await googleSignIn(crypto.randomUUID(), email, { referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
-    expect(to.searchParams.get("google")).toBe("created");
-    expect(to.searchParams.get("referral")).toBeNull();
+    const res = await googleSignIn(crypto.randomUUID(), email, { referralCode: "NOPE-NOPE", referralSource: "signup_typed" });
+    expect(res.status).toBe(200);
+    const data = ((await res.json()) as { data: Record<string, unknown> }).data;
+    expect(data).toMatchObject({ created: true });
+    expect(data).not.toHaveProperty("referral");
     expect(await bindingOfEmail(email)).toBeNull();
     expect(suite.received).toEqual([]);
   });
@@ -308,9 +299,9 @@ describe("sign-up with a referral code where nothing is sold", () => {
     start(false);
     const sub = crypto.randomUUID();
     const email = `ref-google-${crypto.randomUUID()}@gmail.com`;
-    expect((await googleSignIn(sub, email)).searchParams.get("google")).toBe("created");
-    const to = await googleSignIn(sub, email, { referralCode: "NOPE-NOPE", referralSource: "signup_link" });
-    expect(to.searchParams.get("google")).toBe("signed_in");
-    expect(to.searchParams.get("referral")).toBeNull();
+    expect((await googleSignIn(sub, email)).status).toBe(200);
+    const res = await googleSignIn(sub, email, { referralCode: "NOPE-NOPE", referralSource: "signup_link" });
+    expect(res.status).toBe(200);
+    expect(((await res.json()) as { data: Record<string, unknown> }).data).not.toHaveProperty("referral");
   });
 });

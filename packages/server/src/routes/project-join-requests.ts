@@ -17,7 +17,7 @@
 
 import { Hono } from "hono";
 import { z } from "zod";
-import { validate, frontendOriginFor } from "@breatic/core";
+import { validate, frontendOrigin } from "@breatic/core";
 import { requireAuth } from "@server/middleware/auth.js";
 import type { AuthVariables } from "@server/middleware/auth.js";
 import { rateLimitFor } from "@server/middleware/rate-limit.js";
@@ -45,7 +45,7 @@ route.post(
       projectId: pid,
       requesterUserId: user.id,
       message: body.message ?? null,
-      origin: await frontendOriginFor(c.req.header("Origin")),
+      origin: frontendOrigin(c.req.header("Origin")),
     });
     return c.json({ data: null }, 201);
   },

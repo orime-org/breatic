@@ -49,7 +49,7 @@ function setup(search: string) {
 }
 
 /** This deployment's settings: a partner's desktop app. */
-const OPTIONS = { emailVerification: false, referralEnabled: false, googleSignIn: false, desktopAppScheme: 'com.acme.studio', desktopAppName: 'Acme Studio' };
+const OPTIONS = { emailVerification: false, referralEnabled: false, desktopAppScheme: 'com.acme.studio', desktopAppName: 'Acme Studio' };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -146,7 +146,7 @@ describe('DesktopSignInPage', () => {
     expect(authApi.options).toHaveBeenCalledTimes(2);
   });
   it('reads the deployment settings again when they named no desktop app', async () => {
-    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: false, referralEnabled: false, googleSignIn: false, desktopAppScheme: '', desktopAppName: '' });
+    vi.mocked(authApi.options).mockResolvedValueOnce({ emailVerification: false, referralEnabled: false, desktopAppScheme: '', desktopAppName: '' });
     setup(`?challenge=${CHALLENGE}`);
     await userEvent.setup().click(await screen.findByRole('button', { name: 'Try again' }));
     expect(await screen.findByRole('button', { name: 'Continue' })).toBeEnabled();

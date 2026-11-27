@@ -53,7 +53,7 @@ describe('useSignupReferral (inner#1868 §10, table 12.13)', () => {
     options.mockReturnValue(new Promise((r) => { resolve = r; }));
     const { result } = render();
     expect(result.current.field).toBe('loading');
-    act(() => resolve({ emailVerification: false, referralEnabled: true, googleSignIn: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' }));
+    act(() => resolve({ emailVerification: false, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' }));
     await waitFor(() => expect(result.current.field).toBe('shown'));
   });
 
@@ -65,7 +65,7 @@ describe('useSignupReferral (inner#1868 §10, table 12.13)', () => {
 
   it('hides the field and sends nothing where nothing is sold', async () => {
     carry.code = 'ALICE';
-    options.mockResolvedValue({ emailVerification: false, referralEnabled: false, googleSignIn: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
+    options.mockResolvedValue({ emailVerification: false, referralEnabled: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
     const { result } = render();
     await waitFor(() => expect(result.current.field).toBe('hidden'));
     expect(result.current.body()).toEqual({});
@@ -73,7 +73,7 @@ describe('useSignupReferral (inner#1868 §10, table 12.13)', () => {
 
   it('pre-fills the carried code as from the link, and typing makes it typed', async () => {
     carry.code = 'ALICE';
-    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
+    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
     const { result } = render();
     await waitFor(() => expect(result.current.field).toBe('shown'));
     expect(result.current.value).toBe('ALICE');
@@ -83,7 +83,7 @@ describe('useSignupReferral (inner#1868 §10, table 12.13)', () => {
   });
 
   it('sends nothing for an empty or blank field', async () => {
-    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
+    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
     const { result } = render();
     await waitFor(() => expect(result.current.field).toBe('shown'));
     expect(result.current.body()).toEqual({});
@@ -93,7 +93,7 @@ describe('useSignupReferral (inner#1868 §10, table 12.13)', () => {
 
   it('shows a refusal under the field and names the refused code to the carried one; typing clears the error', async () => {
     carry.code = 'ALICE';
-    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
+    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
     const { result } = render();
     await waitFor(() => expect(result.current.field).toBe('shown'));
     act(() => result.current.refused('That code is not valid.'));
@@ -106,7 +106,7 @@ describe('useSignupReferral (inner#1868 §10, table 12.13)', () => {
 
   it('names what the visitor typed when that is what was refused', async () => {
     carry.code = 'ALICE';
-    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
+    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
     const { result } = render();
     await waitFor(() => expect(result.current.field).toBe('shown'));
     act(() => result.current.change('BOB'));
@@ -116,7 +116,7 @@ describe('useSignupReferral (inner#1868 §10, table 12.13)', () => {
 
   it('forgets the carried code once a sign-up succeeded', async () => {
     carry.code = 'ALICE';
-    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, googleSignIn: false, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
+    options.mockResolvedValue({ emailVerification: false, referralEnabled: true, desktopAppScheme: 'ai.breatic.desktop', desktopAppName: 'Breatic' });
     const { result } = render();
     await waitFor(() => expect(result.current.field).toBe('shown'));
     act(() => result.current.used());

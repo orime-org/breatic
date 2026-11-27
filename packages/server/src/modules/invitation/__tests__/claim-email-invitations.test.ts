@@ -30,7 +30,7 @@ import { claimEmailInvitations } from "@server/modules/invitation/claim-email-in
 
 const USER: UserEntity = {
   id: "invitee", email: "Invitee@Example.Test", emailVerified: true,
-  googleId: null, locale: "en", membershipTier: "base", influencerCode: "official",
+  googleId: null, locale: "en", membershipTier: "base",
   createdAt: new Date("2026-01-01T00:00:00Z"),
   updatedAt: new Date("2026-01-01T00:00:00Z"), deletedAt: null,
 };

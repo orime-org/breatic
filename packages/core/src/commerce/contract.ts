@@ -273,7 +273,7 @@ export const accountLookupAnswerSchema = z.array(
 export type AccountLookupAnswer = z.infer<typeof accountLookupAnswerSchema>;
 
 /** What the product's outbox tells the billing service (inner#1993 §3.4). */
-export const COMMERCE_OUTBOX_TYPES = ["referral_binding", "lot_refund_lifecycle", "account_erasure", "influencer_status"] as const;
+export const COMMERCE_OUTBOX_TYPES = ["referral_binding", "lot_refund_lifecycle", "account_erasure"] as const;
 export type CommerceOutboxType = (typeof COMMERCE_OUTBOX_TYPES)[number];
 
 /** A bought lot's lifecycle, mirrored by the billing service for its refund views. */
@@ -291,15 +291,6 @@ export type ReferralBindingEvent = z.infer<typeof referralBindingEventSchema>;
 /** A deleted account whose consent the billing service's orders must drop. */
 export const accountErasureEventSchema = z.object({ userId: uuid }).strict();
 export type AccountErasureEvent = z.infer<typeof accountErasureEventSchema>;
-
-/**
- * An influencer enabled or disabled at `changedAt` (inner#2157 V12). The
- * billing service counts a payment toward the influencer only while enabled.
- */
-export const influencerStatusEventSchema = z
-  .object({ code: z.string().regex(/^[a-z0-9-]{1,32}$/), enabled: z.boolean(), changedAt: instant })
-  .strict();
-export type InfluencerStatusEvent = z.infer<typeof influencerStatusEventSchema>;
 
 /**
  * `POST /v1/inbox/:outboxId` on the billing service: one outbox row. `seq`

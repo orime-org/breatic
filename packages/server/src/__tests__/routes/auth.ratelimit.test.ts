@@ -84,6 +84,7 @@ describe("Auth rate limiting", () => {
       [`reset-recovery-ip:${IP}`, `reset-recovery:${IP}:${EMAIL_HASH}`],
     ],
     ["/register", { email: EMAIL, password: "password123" }, [`register:${IP}`]],
+    ["/google", { credential: "fake.jwt.token" }, [`google:${IP}`]],
     ["/register/resend", {}, [`register-resend:${IP}`]],
     ["/register/verify", { code: "123456" }, [`register-verify:${IP}`]],
     ["/reset-password", { token: "t", password: "password123" }, [`reset:${IP}`]],

@@ -9,7 +9,6 @@ import { getDesktopBridge } from '@web/lib/desktop-bridge';
 import { toast } from '@web/lib/toast';
 import { useCurrentUserStore } from '@web/stores/current-user';
 import { useCompleteSignIn } from '@web/pages/auth/use-complete-sign-in';
-import { GOOGLE_BUTTON_CLASS, GOOGLE_MARK_CLASS, GoogleMark } from '@web/pages/auth/GoogleMark';
 
 interface DesktopGoogleSignInProps {
   /** The referral code the page carries, handed to the browser's sign-up. */
@@ -18,6 +17,34 @@ interface DesktopGoogleSignInProps {
   next: string;
   /** Another sign-in on the page is in flight. */
   busy: boolean;
+}
+
+/** Google's multicolour "G": each part's fill and outline, fixed by Google's sign-in branding guidelines. */
+const GOOGLE_MARK: ReadonlyArray<readonly [string, string]> = [
+  ['#4285F4', 'M17.64 9.2c0-.64-.06-1.25-.16-1.84H9v3.48h4.84a4.14 4.14 0 0 1-1.8 2.72v2.26h2.92c1.7-1.57 2.68-3.88 2.68-6.62Z'], // design-value: allow — Google's mark
+  ['#34A853', 'M9 18c2.43 0 4.47-.8 5.96-2.18l-2.92-2.26c-.8.54-1.83.86-3.04.86-2.34 0-4.33-1.58-5.04-3.7H.96v2.33A9 9 0 0 0 9 18Z'], // design-value: allow — Google's mark
+  ['#FBBC05', 'M3.96 10.72A5.4 5.4 0 0 1 3.68 9c0-.6.1-1.18.28-1.72V4.95H.96A9 9 0 0 0 0 9c0 1.45.35 2.83.96 4.05l3-2.33Z'], // design-value: allow — Google's mark
+  ['#EA4335', 'M9 3.58c1.32 0 2.5.45 3.44 1.35l2.58-2.58A9 9 0 0 0 .96 4.95l3 2.33C4.67 5.16 6.66 3.58 9 3.58Z'], // design-value: allow — Google's mark
+];
+
+/**
+ * The look of Google's official button on the web login page, drawn by us:
+ * a pill in Google's colours for the page theme (tokens.css), its blue-tinted
+ * hover, the mark 12px from the left and the text centred beside it.
+ */
+const GOOGLE_BUTTON =
+  'relative h-10 w-full cursor-pointer rounded-full border border-(--google-button-stroke) bg-(--google-button-fill) pl-10 pr-3 text-sm font-medium text-(--google-button-text) hover-enabled:border-(--google-button-hover-stroke) hover-enabled:bg-(--google-button-hover)';
+
+/**
+ * Google's "G" mark for the sign-in button.
+ * @returns The mark.
+ */
+function GoogleMark(): React.JSX.Element {
+  return (
+    <svg viewBox='0 0 18 18' aria-hidden='true' className='size-[18px]'>
+      {GOOGLE_MARK.map(([fill, d]) => <path key={fill} fill={fill} d={d} />)}
+    </svg>
+  );
 }
 
 /**
@@ -92,7 +119,7 @@ export function DesktopGoogleSignIn({ referralCode, next, busy }: DesktopGoogleS
     return (
       <div className='flex flex-col items-center gap-2'>
         {/* The label is the instruction to follow in the browser, so it keeps the button's own contrast. */}
-        <Button type='button' variant={null} size={null} icon={<GoogleMark className={GOOGLE_MARK_CLASS} />} className={`${GOOGLE_BUTTON_CLASS} cursor-not-allowed opacity-100`} loading>
+        <Button type='button' variant={null} size={null} className={`${GOOGLE_BUTTON} cursor-not-allowed opacity-100`} loading>
           {t('auth.desktop.waitingBrowser')}
         </Button>
         {exchanging ? null : (
@@ -105,16 +132,11 @@ export function DesktopGoogleSignIn({ referralCode, next, busy }: DesktopGoogleS
   }
 
   return (
-    <Button
-      type='button'
-      variant={null}
-      size={null}
-      icon={<GoogleMark className={GOOGLE_MARK_CLASS} />}
-      className={GOOGLE_BUTTON_CLASS}
-      disabled={busy}
-      onClick={() => void start()}
-    >
-      {t('auth.google.continue')}
+    <Button type='button' variant={null} size={null} className={GOOGLE_BUTTON} disabled={busy} onClick={() => void start()}>
+      <span className='absolute top-1/2 left-3 -translate-y-1/2'>
+        <GoogleMark />
+      </span>
+      {t('auth.desktop.continueWithGoogle')}
     </Button>
   );
 }

@@ -109,12 +109,13 @@ html[data-theme='light'] {
      brand-exemption tokens were removed when studio chrome went neutral;
      only the logo keeps brand identity. */
   --brand-fg: #ffffff;
-  /* The "Continue with Google" button of the web pages and the desktop
-     client (inner#2157, inner#2041): Google's branding-guideline colours, the
-     dark button on a light page; the dark theme swaps in the light one. Plain
-     :root variables because Google's greys are not neutral ramp values; the
-     button reads them with bg-(--…). The hover values are read off Google's
-     own rendered button. */
+
+  /* Google's sign-in button where Google's own cannot run (the desktop
+     client, inner#2041). The colours are Google's branding-guideline values, the
+     same theme the web page's official button takes: its dark button on a
+     light page. Plain :root variables because Google's greys are not neutral
+     ramp values; the button reads them with bg-(--…). The hover values are
+     read off Google's own button on the web login page. */
   --google-button-fill: #131314;
   --google-button-hover: #252526;
   --google-button-stroke: #8e918f;
@@ -550,7 +551,7 @@ html[data-theme='dark'] {
   /* Native-UI scheme flip — see the light block's color-scheme note (#1773). */
   color-scheme: dark;
 
-  /* Google's light button on a dark page. */
+  /* Google's light button on a dark page, as the web page's official one. */
   --google-button-fill: #ffffff;
   --google-button-hover: #f0f5fe;
   --google-button-stroke: #747775;

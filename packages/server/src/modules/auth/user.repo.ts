@@ -34,7 +34,6 @@ function toEntity(row: typeof users.$inferSelect): UserEntity {
     // through it.
     membershipTier: asKnownTier(row.membershipTier, { accountId: row.id }),
     locale: row.locale,
-    influencerCode: row.influencerCode,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     deletedAt: row.deletedAt,
@@ -186,7 +185,6 @@ export async function getHashedPassword(userId: string): Promise<string | null> 
  * @param data.locale - The account's language: the one the sign-up request was negotiated in
  * @param data.emailVerified - Whether the address was proven at sign-up (a matched sign-up code)
  * @param data.attribution - Campaign source to keep, already cleared when the browser gave no consent
- * @param data.influencerCode - The influencer whose site the sign-up came from, `official` for any other (inner#2157)
  * @param tx - The transaction that also binds a referral code, when there is one
  * @returns The created UserEntity
  * @throws {z.ZodError} if `config/membership.yaml` is malformed — the file is
@@ -200,7 +198,6 @@ export async function createUser(data: {
   locale: string;
   emailVerified?: boolean;
   attribution?: Attribution | null;
-  influencerCode: string;
 }, tx?: DbTx): Promise<UserEntity> {
   const rows = await (tx ?? db)
     .insert(users)
@@ -211,7 +208,6 @@ export async function createUser(data: {
       locale: data.locale,
       emailVerified: data.emailVerified ?? false,
       attribution: data.attribution ?? null,
-      influencerCode: data.influencerCode,
       membershipTier: getDefaultMembershipTier(),
       // Every account is created by continuing from the sign-in or sign-up
       // card, which carries the terms line (#302).

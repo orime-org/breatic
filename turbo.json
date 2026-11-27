@@ -14,6 +14,7 @@
     "SMTP_PORT",
     "SMTP_USER",
     "SMTP_PASSWORD",
+    "GOOGLE_CLIENT_ID",
     "REDIS_COLLAB_URL",
     "REDIS_KEY_PREFIX",
     "PORT",
@@ -29,6 +30,7 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"],
       "env": [
+        "GOOGLE_CLIENT_ID",
         "VITE_API_BASE_URL",
         "VITE_COLLAB_URL",
         "VITE_APP_VERSION",

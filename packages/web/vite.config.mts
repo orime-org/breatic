@@ -18,12 +18,11 @@ const LOCALES_DIR = path.resolve(__dirname, '../../locales');
 export default defineConfig(({ command, mode }) => {
   // Load .env from the monorepo root (shared by backend + frontend). The third
   // arg is an empty prefix, which makes loadEnv return EVERY var rather than
-  // only the VITE_-prefixed ones. Reading a var here does not ship it to the
-  // client; only `define` and import.meta.env do.
+  // only the VITE_-prefixed ones — that is how GOOGLE_CLIENT_ID (no prefix,
+  // injected via `define` below) is readable here at all. Reading a var here
+  // does not ship it to the client; only `define` and import.meta.env do.
   const env = loadEnv(mode, path.resolve(__dirname, '../..'), '');
   const sentryAuthToken = env.VITE_SENTRY_AUTH_TOKEN;
-  // COOKIE_DOMAIN normalised as cookieDomainHost() does on the server.
-  const siteDomain = (env.COOKIE_DOMAIN ?? '').trim().replace(/^\.+/, '').toLowerCase();
 
   // Dev-server port + proxy targets, derived from .env so several worktrees can
   // run `pnpm dev` at once without fighting over the same ports (#1831).
@@ -40,7 +39,9 @@ export default defineConfig(({ command, mode }) => {
   return {
     // Load .env from monorepo root so frontend + backend share one file
     envDir: path.resolve(__dirname, '../..'),
+    // Inject the public Google client identifier; never inject backend secrets.
     define: {
+      '__GOOGLE_CLIENT_ID__': JSON.stringify(env.GOOGLE_CLIENT_ID || ''),
       // Whether a product analytics vendor is configured (inner#1442). A
       // literal, so a build without one drops the analytics code entirely.
       '__ANALYTICS_CONFIGURED__': JSON.stringify(
@@ -298,11 +299,6 @@ export default defineConfig(({ command, mode }) => {
       // another worktree's frontend (#1831). Every other collision in this
       // setup fails loudly; this was the last one that degraded quietly.
       strictPort: true,
-      // Influencer sites are `<label>.partner.<COOKIE_DOMAIN>` (inner#2157).
-      // Browsers refuse a session cookie scoped to `localhost`, so local
-      // site-wide sign-in runs on a `.test` domain mapped to this machine,
-      // whose hosts the dev server must answer.
-      ...(siteDomain ? { allowedHosts: [siteDomain, `.${siteDomain}`] } : {}),
       open: '/',
       // Dev server, API and Collab run on three different ports — different
       // origins from the browser's perspective. Proxy /api and /ws

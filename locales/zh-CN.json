@@ -44,6 +44,7 @@
       "logout_success": "已退出登录",
       "logout_others_success": "已登出其他设备",
       "not_authenticated": "未登录",
+      "google_oauth_unconfigured": "本服务器未开启 Google 登录",
       "invalid_google_credential": "无法验证你的 Google 账号",
       "desktop_exchange_invalid": "这个登录链接已失效，请重新登录。",
       "google_email_unverified": "你的 Google 账号邮箱未验证",
@@ -3409,13 +3410,6 @@
     "email": "邮箱",
     "password": "密码",
     "or": "或",
-    "google": {
-      "continue": "使用 Google 账号继续",
-      "cancelled": "已取消 Google 登录。请重试或使用邮箱。",
-      "expired": "Google 登录已过期，请重试。",
-      "rateLimited": "尝试次数过多，请稍后再试。",
-      "unavailable": "Google 登录暂不可用，请使用邮箱。"
-    },
     "invalidEmail": "请输入有效的邮箱地址。",
     "passwordTooShort": "密码至少 8 个字符。",
     "passwordShow": "显示密码",
@@ -3428,6 +3422,8 @@
       "signUp": "注册",
       "noAccount": "还没有账号?",
       "forgotPassword": "忘记密码?",
+      "googleLoading": "正在加载 Google 登录…",
+      "googleFailed": "Google 登录暂不可用，请刷新页面或使用邮箱登录。",
       "failed": "登录失败,请重试。"
     },
     "register": {
@@ -3519,6 +3515,7 @@
       "googleOnly": "用 Google 新注册时使用"
     },
     "desktop": {
+      "continueWithGoogle": "通过 Google 继续操作",
       "waitingBrowser": "请在浏览器中完成登录",
       "cancel": "取消",
       "exchangeFailed": "登录没有完成，请重试。",

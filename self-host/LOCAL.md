@@ -109,7 +109,7 @@ Save the following bucket CORS configuration:
 ```json
 [
   {
-    "AllowedOrigins": ["*"],
+    "AllowedOrigins": ["http://localhost"],
     "AllowedMethods": ["GET", "HEAD"],
     "AllowedHeaders": ["*"],
     "ExposeHeaders": ["ETag"],
@@ -118,7 +118,7 @@ Save the following bucket CORS configuration:
 ]
 ```
 
-R2 GET CORS enables asset reads and image cropping. Reads carry no credentials and the files are public already, so any origin may read them; the same rule serves every site and every cached copy. The upload Worker has its own origin setting (`ALLOWED_ORIGINS` in `wrangler.toml`). See [R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/).
+R2 GET CORS enables asset reads and image cropping. The upload Worker has a separate origin setting; maintain both. See [R2 CORS](https://developers.cloudflare.com/r2/buckets/cors/).
 
 ### 4.2 Prepare the deployment configuration
 
@@ -339,7 +339,7 @@ ALLOWED_ORIGINS=https://192.168.1.50,https://localhost
 
 `0.0.0.0` listens on all IPv4 interfaces. Restrict ports 80/443 to your trusted LAN in the host firewall and do not forward them from the public Internet. To use just one interface, set `WEB_BIND_ADDRESS` to its private IP instead.
 
-Set `[env.production.vars].ALLOWED_ORIGINS` in `wrangler.toml` to the same origin list and redeploy with `pnpm --filter @breatic/ingest deploy:worker`. R2 CORS already allows every origin to read, so it needs no change. Match protocol, hostname and port exactly, with no trailing slash. You do not add every visitor's device IP: these are the origins of the application page.
+Set `[env.production.vars].ALLOWED_ORIGINS` in `wrangler.toml` to the same origin list and redeploy with `pnpm --filter @breatic/ingest deploy:worker`. Set R2 CORS `AllowedOrigins` to those two HTTPS origins as well. Match protocol, hostname and port exactly, with no trailing slash. You do not add every visitor's device IP: these are the origins of the application page.
 
 Recreate application containers to load `.env` changes and let nginx select the certificate configuration:
 
@@ -399,6 +399,6 @@ On the publishing machine, inspect cloud logs with `pnpm --filter @breatic/inges
 
 ## Google sign-in (optional)
 
-Create a Google OAuth **Web application** client and add one **Authorized redirect URI** per deployment: `<first ALLOWED_ORIGINS item>/api/v1/auth/google/callback` when `COOKIE_DOMAIN` is set, otherwise `<origin>/api/v1/auth/google/callback` for each origin that offers Google sign-in (when the API has its own host, `API_PUBLIC_URL` takes the place of `<origin>/api/v1`). This local deployment registers `http://localhost/api/v1/auth/google/callback`. Set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in `.env`; the server reads both, and the sign-in and sign-up pages show the button only when both are set.
+Create a Google OAuth **Web application** client and register the frontend origin (scheme, hostname and port, without a path) in Authorized JavaScript origins; development normally uses `http://localhost:8000`. Set `GOOGLE_CLIENT_ID` in `.env` and use the same ID for the frontend build and backend runtime. The official button returns an ID token through a popup callback; the backend verifies it and issues the session cookie. No client secret or backend redirect URI is required. An empty ID hides the button.
 
-Sign-in is a full-page redirect through the server, so changing these values needs a server restart and no frontend rebuild. Google does not accept a bare IP address as a redirect URI (localhost excepted); use localhost or an HTTPS host name. Email sign-in remains available when Google is unreachable.
+Restart both development processes after changing the ID. For Docker, rebuild the frontend, for example `docker build -f Dockerfile.web --build-arg GOOGLE_CLIENT_ID=YOUR_ID.apps.googleusercontent.com -t breatic-web:google .`, and point the Compose web service at that image. Runtime container variables cannot change an existing frontend build. The browser must reach Google's SDK and account pages; email sign-in remains available when Google is unreachable. Plain HTTP LAN IPs do not meet Google's Web origin requirements; use an allowed localhost or HTTPS origin.

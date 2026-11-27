@@ -87,15 +87,18 @@ function isAdRequest(request: Request): boolean {
   return /(^|\.)google\.[a-z.]+$/.test(hostname) && /^\/(pagead|ads)\//.test(pathname);
 }
 
+/** Hosts the app reaches for a feature the visitor uses, not for measurement: Sign in with Google's script. */
+const FEATURE_HOSTS = ['accounts.google.com'];
+
 /**
- * The hosts of the requests that left the app for anything but the region lookup.
+ * The hosts of the requests that left the app for anything but the region lookup and a feature host.
  * @param outside - The recorded requests.
  * @returns The hosts.
  */
 function vendorHosts(outside: Request[]): string[] {
   return outside
     .map((r) => new URL(r.url()))
-    .filter((url) => url.pathname !== '/cdn-cgi/trace')
+    .filter((url) => url.pathname !== '/cdn-cgi/trace' && !FEATURE_HOSTS.includes(url.hostname))
     .map((url) => url.hostname);
 }
 

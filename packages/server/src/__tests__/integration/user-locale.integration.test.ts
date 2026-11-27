@@ -150,7 +150,7 @@ describe("users.locale", () => {
     const { authService } = await import("@server/modules");
     const email = `user-locale-google-${crypto.randomUUID()}@example.test`;
     const { user } = await runWithLocale("ja", () =>
-      authService.resolveGoogleAccount(crypto.randomUUID(), email),
+      authService.loginOrCreateGoogle(crypto.randomUUID(), email),
     );
     created.push(user.id);
     expect(user.locale).toBe("ja");

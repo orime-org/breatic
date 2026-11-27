@@ -75,20 +75,6 @@ export async function appendReferralBinding(binding: { userId: string; code: str
   await append(`referral:${binding.userId}`, "referral_binding", { ...binding, requestedAt: new Date().toISOString() }, tx);
 }
 
-/**
- * Append an influencer being enabled or disabled (inner#2157 V12). The billing
- * service applies one influencer's changes in `seq` order.
- * @param change - What changed.
- * @param change.code - The influencer code.
- * @param change.enabled - Its new state.
- * @param change.changedAt - The instant written to `disabled_at`, or the enabling instant.
- * @param tx - The status change's transaction.
- * @returns Whether a row was written: none is while the deployment sells nothing.
- */
-export async function appendInfluencerStatus(change: { code: string; enabled: boolean; changedAt: Date }, tx: DbTx): Promise<boolean> {
-  return await append(`influencer:${change.code}`, "influencer_status", { code: change.code, enabled: change.enabled, changedAt: change.changedAt.toISOString() }, tx);
-}
-
 /** One claimed outbox row. */
 export interface CommerceOutboxRow {
   id: string;

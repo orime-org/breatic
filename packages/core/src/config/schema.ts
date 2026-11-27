@@ -241,21 +241,14 @@ export const coreConfigSchema = z.object({
   // explicitly to :8000, and the Docker deployment serves the frontend from the
   // same origin as the API, so neither path ever fell back to the default.
   // Aligned with `.env.dev` (2026-07-27).
-  // Exact origins only: influencer sites are admitted from the influencers
-  // table (inner#2157), and a wildcard here would trust every host under it.
-  ALLOWED_ORIGINS: z
-    .string()
-    .default("http://localhost:8000")
-    .refine((value) => !value.includes("*"), { message: "ALLOWED_ORIGINS takes exact origins only; no wildcard" }),
+  ALLOWED_ORIGINS: z.string().default("http://localhost:8000"),
 
   // ── Cookie ────────────────────────────────────────
   // Empty string = let the browser scope to the request host
-  // (right for dev where the API and web share `localhost`). Set to
-  // the main domain (e.g. `breatic.ai`) for site-wide sign-in: the
-  // official site and every `<label>.partner.<domain>` influencer
-  // site then share one session (inner#2157). It also names the
-  // session cookie (`sessionCookieName`), so server and collab MUST
-  // set the same value, or collab reads every browser as signed out.
+  // (right for dev where the API and web share `localhost`). In
+  // prod set a parent domain (e.g. `.thinkai.cc`) when the API
+  // and web sit on different subdomains and must share the
+  // session cookie.
   COOKIE_DOMAIN: z.string().default(""),
 
   // ── Error monitoring ─────────────────────────────
@@ -277,17 +270,7 @@ export const coreConfigSchema = z.object({
   BRAVE_SEARCH_API_KEY: z.string().default(""),
 
   // ── Google OAuth ────────────────────────────────
-  // Sign-in with Google is a full-page redirect through the server
-  // (inner#2157); it is offered only when both the client id and its
-  // secret are set. The secret exchanges the code for tokens. Secret.
   GOOGLE_CLIENT_ID: z.string().default(""),
-  GOOGLE_CLIENT_SECRET: z.string().default(""),
-  // The API's public base when the front end and the API sit on separate
-  // hosts, the same value as the web build's VITE_API_BASE_URL (e.g.
-  // `https://api.example.com/api/v1`). Empty for a same-origin deployment,
-  // where each site reaches the API at `<site>/api/v1`. The Google callback
-  // is built under it.
-  API_PUBLIC_URL: z.string().trim().default(""),
 
   // ── Desktop client ──────────────────────────────
   // The desktop build this deployment hands browser sign-ins back to (inner#2041):

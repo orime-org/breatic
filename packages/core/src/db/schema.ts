@@ -139,54 +139,14 @@ export const users = pgTable(
     // First-touch and last-touch campaign source, written at sign-up from
     // what the browser kept after consent (0097, inner#1442).
     attribution: jsonb("attribution").$type<Attribution>(),
-    // The influencer whose site this account signed up on (0142, inner#2157),
-    // `official` for the official site. Written once at sign-up and never
-    // changed; revenue share is settled by it.
-    influencerCode: varchar("influencer_code", { length: 32 })
-      .default("official")
-      .notNull()
-      .references(() => influencers.code, { onDelete: "restrict" }),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
     ...timestamps,
   },
   (table) => [
     uniqueIndex("users_email_idx").on(table.email),
     uniqueIndex("users_google_id_idx").on(table.googleId),
-    index("users_influencer_code_idx").on(table.influencerCode),
   ],
 );
-
-// ── 1a. Influencers ──────────────────────────────────────────────────
-
-/**
- * One influencer code per row (0142, inner#2157): the site it owns
- * (`<label>.partner.<COOKIE_DOMAIN>`, lower case; null for `official`) and
- * whether it is disabled. The code and host CHECKs live in the migration.
- *
- * Never deleted: every account points at a code with a RESTRICT foreign key,
- * and disabling is `disabled_at`.
- */
-export const influencers = pgTable(
-  "influencers",
-  {
-    code: varchar("code", { length: 32 }).primaryKey(),
-    host: varchar("host", { length: 253 }),
-    disabledAt: timestamp("disabled_at", { withTimezone: true }),
-    ...timestamps,
-  },
-  (table) => [uniqueIndex("influencers_host_idx").on(table.host)],
-);
-
-/** Every decision of the influencer internal endpoints, kept under its key (0142). */
-export const influencerOperations = pgTable("influencer_operations", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  key: text("key").notNull().unique(),
-  requestHash: varchar("request_hash", { length: 64 }).notNull(),
-  requestedBy: varchar("requested_by", { length: 255 }).notNull(),
-  requestBody: jsonb("request_body").$type<Record<string, unknown>>().notNull(),
-  result: jsonb("result").$type<Record<string, unknown>>().notNull(),
-  createdAt: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
-});
 
 // ── 1b. Membership Tier Changes ──────────────────────────────────────
 

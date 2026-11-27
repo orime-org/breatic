@@ -25,7 +25,6 @@ const EXCUSED: ReadonlyArray<{ file: string; name: string; reason: string }> = [
   { file: "packages/web/src/data/api/auth.ts", name: "google", reason: "Google sign-in" },
   { file: "packages/web/src/pages/auth/LoginPage.tsx", name: "google", reason: "Google sign-in" },
   { file: "packages/web/src/pages/auth/RegisterPage.tsx", name: "google", reason: "Google sign-in" },
-  { file: "packages/web/src/pages/auth/google-return.ts", name: "google", reason: "Google sign-in" },
   { file: "packages/web/src/components/ModelIcon.tsx", name: "openai", reason: "a brand icon's key" },
   {
     file: "packages/worker/src/handlers/timeline/web-animation-execution.ts",

@@ -34,8 +34,7 @@ export async function submitSignIn(page: Page, email: string, password: string):
     page.waitForResponse((r) => r.url().includes('/auth/login'), {
       timeout: 20_000,
     }),
-    // The email form's own button: the Google sign-in beside it is a form too.
-    page.locator('form', { has: page.locator('#login-email') }).locator('button[type="submit"]').click(),
+    page.locator('form button[type="submit"]').click(),
   ]);
   return answer;
 }

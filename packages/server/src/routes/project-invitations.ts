@@ -15,7 +15,7 @@
  */
 
 import { Hono } from "hono";
-import { frontendOriginFor, validate } from "@breatic/core";
+import { frontendOrigin, validate } from "@breatic/core";
 import { z } from "zod";
 import { emailSchema } from "@breatic/shared";
 import { requireAuth } from "@server/middleware/auth.js";
@@ -62,7 +62,7 @@ projectInvites.post(
       user.id,
       body.email,
       body.role,
-      await frontendOriginFor(c.req.header("Origin")),
+      frontendOrigin(c.req.header("Origin")),
     );
     return c.json({ data: { ok: true, pendingSignup: result.pendingSignup } }, 201);
   },

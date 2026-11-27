@@ -92,6 +92,6 @@ Check: am I writing to a conversation id the client gave me? Were all three chec
 
 ### Billing runs in the billing service
 
-**Credit-pack purchases, memberships, refunds and referral codes are run by a separate billing service: the product forwards those user requests to it (`modules/commerce/commerce-client.ts`), answers its signed calls on the internal listener, and tells it about payment lots, account erasures, referral bindings and influencer status changes through `commerce_outbox` rows written in the same transaction as the change.** repo-lint `no-billing-in-product` keeps the Stripe SDK, a Stripe webhook and the moved modules out of this repository.
+**Credit-pack purchases, memberships, refunds and referral codes are run by a separate billing service: the product forwards those user requests to it (`modules/commerce/commerce-client.ts`), answers its signed calls on the internal listener, and tells it about payment lots, account erasures and referral bindings through `commerce_outbox` rows written in the same transaction as the change.** repo-lint `no-billing-in-product` keeps the Stripe SDK, a Stripe webhook and the moved modules out of this repository.
 
 Check: does this change need Stripe or a purchase record? Then it belongs in the billing service, and the product sends an outbox event or answers an internal endpoint.

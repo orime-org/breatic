@@ -15,7 +15,6 @@ import { registerEnterpriseCreditPurchaseRoutes } from "@server/routes/internal/
 import { registerEnterpriseMembershipRoutes } from "@server/routes/internal/enterprise-membership.js";
 import { registerDeploymentVersionRoute } from "@server/routes/internal/deployment-version.js";
 import { registerCommerceRoutes } from "@server/routes/internal/commerce.js";
-import { registerInfluencerRoutes } from "@server/routes/internal/influencer.js";
 
 /**
  * Register the table on the internal app.
@@ -28,5 +27,4 @@ export function registerInternalRoutes(app: Hono): void {
   registerMaintenanceRoutes(app);
   registerDeploymentVersionRoute(app);
   registerCommerceRoutes(app);
-  registerInfluencerRoutes(app);
 }

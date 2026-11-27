@@ -119,7 +119,7 @@ describe("an account records the terms it was created under", () => {
   it("when it signs in with Google for the first time", async () => {
     const email = freshEmail();
     const before = new Date();
-    await authService.resolveGoogleAccount(`google-${crypto.randomUUID()}`, email, true);
+    await authService.loginOrCreateGoogle(`google-${crypto.randomUUID()}`, email, true);
     await expectAccepted(email, before);
   });
 });

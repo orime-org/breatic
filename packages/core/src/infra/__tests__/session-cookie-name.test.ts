@@ -14,20 +14,15 @@
  * a mismatch between what the server writes and what collab reads off the
  * WebSocket upgrade is an auth failure with no error to trace.
  */
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi } from "vitest";
 
 const { envMock } = vi.hoisted(() => ({
-  envMock: { REDIS_KEY_PREFIX: "dev", COOKIE_DOMAIN: "" },
+  envMock: { REDIS_KEY_PREFIX: "dev" },
 }));
 
 vi.mock("@core/config/env.js", () => ({ env: envMock }));
 
-import { cookieDomainHost, sessionCookieName } from "@core/infra/session-store.js";
-
-beforeEach(() => {
-  envMock.REDIS_KEY_PREFIX = "dev";
-  envMock.COOKIE_DOMAIN = "";
-});
+import { sessionCookieName } from "@core/infra/session-store.js";
 
 describe("sessionCookieName", () => {
   it("carries the deployment prefix", () => {
@@ -57,70 +52,4 @@ describe("sessionCookieName", () => {
       expect(sessionCookieName()).toMatch(/^[A-Za-z0-9_-]+$/);
     },
   );
-});
-
-/**
- * Site-wide sign-in (inner#2157 V11, design 7.5 and 7.9). `COOKIE_DOMAIN` is
- * written by operators in more than one shape (`.thinkai.cc` in the
- * session-cookie comment, a bare host, stray capitals or spaces); every
- * consumer reads it through `cookieDomainHost()` so the cookie `Domain`, the
- * influencer host suffix and the cookie name all agree.
- */
-describe("cookieDomainHost", () => {
-  it.each([
-    ["breatic.test", "breatic.test"],
-    [".breatic.test", "breatic.test"],
-    [".Breatic.TEST", "breatic.test"],
-    ["  .breatic.test  ", "breatic.test"],
-    ["BREATIC.TEST", "breatic.test"],
-    ["localhost", "localhost"],
-  ])("normalises %j to %j", (raw, host) => {
-    envMock.COOKIE_DOMAIN = raw;
-
-    expect(cookieDomainHost()).toBe(host);
-  });
-
-  it.each(["", "   "])("is empty when COOKIE_DOMAIN is %j", (raw) => {
-    envMock.COOKIE_DOMAIN = raw;
-
-    expect(cookieDomainHost()).toBe("");
-  });
-});
-
-/**
- * A site-wide credential gets a name of its own, so a host-only cookie issued
- * before the switch can never shadow it on the same host (design 7.9 row
- * 全站会话).
- */
-describe("sessionCookieName with a site-wide cookie domain", () => {
-  it("names the site-wide credential breatic_site_session_<prefix> when COOKIE_DOMAIN is set", () => {
-    envMock.COOKIE_DOMAIN = "breatic.test";
-    envMock.REDIS_KEY_PREFIX = "prod";
-
-    expect(sessionCookieName()).toBe("breatic_site_session_prod");
-  });
-
-  it("uses the normalised domain, so a leading dot or capitals still mean site-wide", () => {
-    envMock.COOKIE_DOMAIN = " .Breatic.test ";
-    envMock.REDIS_KEY_PREFIX = "dev";
-
-    expect(sessionCookieName()).toBe("breatic_site_session_dev");
-  });
-
-  it("keeps the host-only name breatic_session_<prefix> when COOKIE_DOMAIN is blank", () => {
-    envMock.COOKIE_DOMAIN = "  ";
-    envMock.REDIS_KEY_PREFIX = "dev";
-
-    expect(sessionCookieName()).toBe("breatic_session_dev");
-  });
-
-  it("never gives the site-wide and host-only credentials the same name", () => {
-    envMock.REDIS_KEY_PREFIX = "prod";
-    envMock.COOKIE_DOMAIN = "";
-    const hostOnly = sessionCookieName();
-    envMock.COOKIE_DOMAIN = "breatic.test";
-    const siteWide = sessionCookieName();
-
-    expect([hostOnly, siteWide]).toEqual(["breatic_session_prod", "breatic_site_session_prod"]);
-  });
 });

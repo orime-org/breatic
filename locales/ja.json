@@ -39,6 +39,7 @@
       "logout_success": "ログアウトしました",
       "logout_others_success": "他のデバイスからログアウトしました",
       "not_authenticated": "認証されていません",
+      "google_oauth_unconfigured": "このサーバーでは Google サインインは利用できません",
       "invalid_google_credential": "Google アカウントを確認できませんでした",
       "desktop_exchange_invalid": "このサインインリンクは無効になりました。もう一度サインインしてください。",
       "google_email_unverified": "Google アカウントのメールアドレスが確認されていません",
@@ -3409,13 +3410,6 @@
     "email": "メールアドレス",
     "password": "パスワード",
     "or": "または",
-    "google": {
-      "continue": "Google で続行",
-      "cancelled": "Google ログインをキャンセルしました。もう一度お試しいただくか、メールをご利用ください。",
-      "expired": "Google ログインの有効期限が切れました。もう一度お試しください。",
-      "rateLimited": "試行回数が多すぎます。しばらくしてからもう一度お試しください。",
-      "unavailable": "現在 Google ログインを利用できません。メールをご利用ください。"
-    },
     "invalidEmail": "有効なメールアドレスを入力してください。",
     "passwordTooShort": "パスワードは 8 文字以上にしてください。",
     "passwordShow": "パスワードを表示",
@@ -3428,6 +3422,8 @@
       "signUp": "登録",
       "noAccount": "アカウントをお持ちでないですか?",
       "forgotPassword": "パスワードをお忘れですか?",
+      "googleLoading": "Google ログインを読み込み中…",
+      "googleFailed": "Google ログインを利用できません。ページを再読み込みするか、メールでログインしてください。",
       "failed": "サインインに失敗しました。もう一度お試しください。"
     },
     "register": {
@@ -3519,6 +3515,7 @@
       "googleOnly": "Google で新規登録するときに使われます"
     },
     "desktop": {
+      "continueWithGoogle": "Google で続ける",
       "waitingBrowser": "ブラウザでサインインを完了してください",
       "cancel": "キャンセル",
       "exchangeFailed": "サインインが完了しませんでした。もう一度お試しください。",
